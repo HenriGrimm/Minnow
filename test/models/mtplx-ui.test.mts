@@ -17,7 +17,8 @@ const descriptor = { source: 'inspect', draft: { supported: true, minimum: 1, ma
   loadDefaults: { profile: 'sustained', generation_mode: 'Model recommendation (MTP fallback)',
     depth: 1, context_window: 12288, paged_kv_quantization: 'off', reasoning: 'on', reasoning_effort: 'low',
     reasoning_parser: 'qwen3', preserve_thinking: 'auto (model history policy)', tool_prompt_mode: 'native',
-    enable_thermal_poll: true, allow_swap: false, default_temperature: 0, default_presence_penalty: 0 } };
+    enable_thermal_poll: true, allow_swap: false, default_temperature: 0, default_presence_penalty: 0,
+    scheduling_preset: 'auto', max_active_requests: 1, decode_batch_max: 1, batch_wait_ms: 0 } };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 before(() => {
@@ -61,7 +62,7 @@ test('load form uses descriptor bounds, preserves engine drafts and omits llama 
   const render = () => { body.replaceChildren(); renderModelEngineSettings(row, body, render); };
   render(); await settle();
   const field = (label: string) => [...body.querySelectorAll('label')].find((node) => node.firstElementChild?.textContent === label)?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
-  const depth = field('MTP depth') as HTMLInputElement;
+  const depth = field('Depth') as HTMLInputElement;
   assert.equal(depth.max, '2'); assert.equal((field('Context window') as HTMLInputElement).step, '1024');
   assert.equal(body.textContent?.includes('q4'), false);
   depth.value = '6'; depth.dispatchEvent(new win.Event('change') as unknown as Event); await settle();
@@ -103,16 +104,16 @@ test('load controls show inherited values, retain explicit overrides and reset t
   const field = (label: string) => [...body.querySelectorAll('label')].find((node) => node.firstElementChild?.textContent === label)?.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
   render(); await settle();
   assert.equal(field('Profile').value, 'turbo');
-  for (const [label, expected] of [['Profile', 'sustained'], ['KV quantization', 'off'], ['Reasoning', 'on'], ['Effort', 'low'], ['Parser', 'qwen3'], ['Tool prompts', 'native'], ['Thermal polling', 'on'], ['Allow swap', 'off']]) {
+  for (const [label, expected] of [['Profile', 'Sustained'], ['KV quantization', 'Off'], ['Reasoning', 'On'], ['Reasoning effort', 'Low'], ['Reasoning parser', 'qwen3'], ['Tool prompts', 'native'], ['Enable thermal polling', 'On'], ['Allow swap', 'Off'], ['Mode', 'Auto']]) {
     assert.equal(field(label).querySelector('option')?.textContent, `${expected} (default)`);
   }
-  assert.equal(field('Generation').querySelector('option')?.textContent, 'Model recommendation (MTP fallback) (default)');
+  assert.equal(field('Generation mode').querySelector('option')?.textContent, 'Model recommendation (MTP fallback) (default)');
   assert.equal(field('Preserve thinking').querySelector('option')?.textContent, 'auto (model history policy) (default)');
-  assert.equal((field('MTP depth') as HTMLInputElement).placeholder, '1');
+  assert.equal((field('Depth') as HTMLInputElement).placeholder, '1');
   assert.equal((field('Context window') as HTMLInputElement).placeholder, '12288');
   assert.equal((field('Temperature') as HTMLInputElement).placeholder, '0');
-  assert.equal((field('Presence penalty') as HTMLInputElement).placeholder, '0');
-  assert.equal(field('Thermal polling').value, '');
+  assert.equal((field('Presence Penalty') as HTMLInputElement).placeholder, '0');
+  assert.equal(field('Enable thermal polling').value, '');
   assert.equal(field('Allow swap').value, 'off');
   assert.equal(body.textContent?.includes('Engine default'), false);
   const change = async (label: string, value: string) => {
@@ -120,16 +121,47 @@ test('load controls show inherited values, retain explicit overrides and reset t
     input.dispatchEvent(new win.Event('change') as unknown as Event); await settle();
   };
   await change('Profile', '');
-  await change('Thermal polling', 'off');
+  await change('Enable thermal polling', 'off');
   assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.profile, undefined);
   assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.enable_thermal_poll, false);
-  await change('Thermal polling', '');
+  await change('Enable thermal polling', '');
   await change('Allow swap', '');
   assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.enable_thermal_poll, undefined);
   assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.allow_swap, undefined);
   render(); await settle();
   assert.equal(field('Profile').value, '');
-  assert.equal(field('Profile').querySelector('option')?.textContent, 'sustained (default)');
+  assert.equal(field('Profile').querySelector('option')?.textContent, 'Sustained (default)');
+  body.remove();
+});
+
+test('Performance mode and concurrency cap follow the MTPLX app presets', async () => {
+  setLibraryLaunchPrefsForTests({ byLibraryId: { [row.id]: { engine: 'mtplx', mtplx: { scheduler_mode: 'ar_batch', batching_preset: 'agent', max_active_requests: 6 } } } });
+  const body = document.createElement('div'); document.body.append(body);
+  renderModelEngineSettings(row, body, () => {});
+  await settle();
+  const field = (label: string) => body.querySelector(`[aria-label="${label}"]`) as HTMLInputElement | HTMLSelectElement;
+  const change = async (label: string, value: string) => {
+    const input = field(label); input.value = value;
+    input.dispatchEvent(new win.Event('change') as unknown as Event); await settle();
+  };
+  const mode = field('Mode') as HTMLSelectElement;
+  assert.deepEqual([...mode.options].map((option) => option.textContent), ['Auto (default)', 'Fastest response', 'Handle multiple at once', 'Long agent tasks']);
+  assert.equal(mode.value, 'agent');
+  assert.equal(field('Concurrency cap').value, '6');
+  assert.equal((field('Decode batch max') as HTMLInputElement).placeholder, '4');
+  assert.equal((field('Admission window') as HTMLInputElement).placeholder, '50');
+  await change('Mode', 'throughput');
+  const saved = getLibraryLaunchSettingsForId(row.id)?.mtplx;
+  assert.equal(saved?.scheduling_preset, 'throughput');
+  for (const key of ['scheduler_mode', 'batching_preset', 'max_active_requests'] as const) assert.equal(saved?.[key], undefined);
+  assert.equal(field('Concurrency cap').value, '');
+  assert.equal((field('Concurrency cap') as HTMLInputElement).placeholder, '8');
+  await change('Concurrency cap', '20');
+  assert.equal(field('Concurrency cap').value, '16');
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.max_active_requests, 16);
+  await change('Mode', '');
+  assert.equal(getLibraryLaunchSettingsForId(row.id)?.mtplx?.scheduling_preset, undefined);
+  assert.equal((field('Concurrency cap') as HTMLInputElement).placeholder, '1');
   body.remove();
 });
 
@@ -143,8 +175,8 @@ test('MTPLX Basic and Advanced share descriptor limits and retain edits across v
   const context = basic.querySelector<HTMLInputElement>('[aria-label="Context window"]')!;
   assert.ok(context);
   assert.equal(context.max, '16384');
-  assert.equal(basic.querySelector('[aria-label="MTP depth"]'), null);
-  assert.ok(advanced.querySelector('[aria-label="MTP depth"]'));
+  assert.equal(basic.querySelector('[aria-label="Depth"]'), null);
+  assert.ok(advanced.querySelector('[aria-label="Depth"]'));
   context.value = '65536';
   context.dispatchEvent(new win.Event('change') as unknown as Event);
   await settle();
@@ -168,7 +200,7 @@ test('MTPLX omits controls the model descriptor does not support', async () => {
     const { basic, advanced } = createLoadSettingsLayout(body, row.id);
     renderModelEngineSettings(row, basic, () => {}, advanced);
     await settle();
-    for (const label of ['Context window', 'KV quantization', 'Reasoning', 'Effort', 'MTP depth']) {
+    for (const label of ['Context window', 'KV quantization', 'Reasoning', 'Reasoning effort', 'Depth', 'Adaptive depth']) {
       assert.equal(body.querySelector(`[aria-label="${label}"]`), null);
     }
     assert.ok(body.querySelector('[aria-label="Profile"]'));
