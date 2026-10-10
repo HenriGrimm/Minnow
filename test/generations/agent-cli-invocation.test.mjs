@@ -74,7 +74,8 @@ test('explicit context windows use provider-supported controls', async () => {
   const automatic = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   assert.equal(automatic.args.some(arg => arg.startsWith('model_context_window=')), false);
   for (const [model, requested] of [['sonnet', 'sonnet[1m]'], ['claude-opus-4-6', 'claude-opus-4-6[1m]'],
-    ['claude-sonnet-5-5', 'claude-sonnet-5-5'], ['haiku', 'haiku']]) {
+    ['claude-sonnet-5-5', 'claude-sonnet-5-5'], ['haiku', 'haiku'],
+    ['claude-haiku-5-5', 'claude-haiku-5-5'], ['claude-fable-5-1', 'claude-fable-5-1']]) {
     const claude = await prepareAgentCliInvocation({ ...common, kind: 'claude', profile, body: { model } });
     assert.equal(claude.args[claude.args.indexOf('--model') + 1], requested);
     assert.equal(claude.env.CLAUDE_CODE_DISABLE_1M_CONTEXT, '0');

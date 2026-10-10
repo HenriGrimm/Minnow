@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { after, before, describe, test } from 'node:test';
 import { handleModelsRequest } from '../../server/models/routes.js';
 import { handleProviderRequest } from '../../server/providers/routes.js';
@@ -159,6 +160,44 @@ describe('agent CLI model routes', () => {
     assert.equal(capabilities.json.models.sonnet.vision, true);
     assert.equal(capabilities.json.models.sonnet.tools, true);
     assert.equal(capabilities.json.models.haiku.reasoning, false);
+  });
+
+  test('model Refresh and CLI verification discover new account models through the provider route', async () => {
+    const root = path.join(homeDir, 'catalog-fixture');
+    await fs.mkdir(root, { recursive: true });
+    await fs.copyFile(fileURLToPath(new URL('../fixtures/fake-claude-catalog.mjs', import.meta.url)), path.join(root, 'fixture.mjs'));
+    const binPath = path.join(root, process.platform === 'win32' ? 'claude.cmd' : 'claude');
+    await fs.writeFile(binPath, process.platform === 'win32' ? '@node "%~dp0\\fixture.mjs" %*\r\n'
+      : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${path.join(root, 'fixture.mjs').replaceAll("'", "'\\''")}' "$@"\n`);
+    await fs.chmod(binPath, 0o700);
+    const modelsFile = path.join(root, 'models.json');
+    const trace = path.join(root, 'trace.jsonl');
+    const haiku = { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5',
+      supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'] };
+    await fs.writeFile(modelsFile, JSON.stringify([haiku]));
+    const previous = { models: process.env.CLAUDE_CATALOG_MODELS, trace: process.env.CLAUDE_CATALOG_TRACE };
+    process.env.CLAUDE_CATALOG_MODELS = modelsFile;
+    process.env.CLAUDE_CATALOG_TRACE = trace;
+    try {
+      assert.equal((await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { binPath })).status, 200);
+      const first = await httpRequest(baseUrl, 'GET', '/api/providers/claude-code-cli/models');
+      assert.equal(first.status, 200);
+      assert.equal(first.json.data.find(row => row.id === 'haiku').display_name, 'Claude Haiku 5.5 (CLI default)');
+      await fs.writeFile(modelsFile, JSON.stringify([haiku, { value: 'new-release', displayName: 'New Release' }]));
+      const cached = await httpRequest(baseUrl, 'GET', '/api/providers/claude-code-cli/models');
+      assert.equal(cached.json.data.some(row => row.id === 'new-release'), false);
+      const fresh = await httpRequest(baseUrl, 'GET', '/api/providers/claude-code-cli/models?refresh=1');
+      assert.equal(fresh.json.data.some(row => row.id === 'new-release'), true);
+      assert.equal((await httpRequest(baseUrl, 'POST', '/api/models/agent-clis/claude/verify')).status, 200);
+      await httpRequest(baseUrl, 'GET', '/api/providers/claude-code-cli/models');
+      assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 3);
+    } finally {
+      if (previous.models === undefined) delete process.env.CLAUDE_CATALOG_MODELS;
+      else process.env.CLAUDE_CATALOG_MODELS = previous.models;
+      if (previous.trace === undefined) delete process.env.CLAUDE_CATALOG_TRACE;
+      else process.env.CLAUDE_CATALOG_TRACE = previous.trace;
+      await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { binPath: process.execPath });
+    }
   });
 
   test('generic updates and secret writes cannot mutate reserved providers', async () => {

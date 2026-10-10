@@ -192,7 +192,7 @@ function errorMessage(error: unknown): string {
 async function refreshNormalModelPicker(): Promise<void> {
   invalidateProviderCache();
   if (!document.getElementById('modelSelect')) return;
-  await (await import('../../api/models')).fetchModels();
+  await (await import('../../api/models')).fetchModels({ refresh: true });
 }
 
 function replaceStatus(next: AgentCliStatus): void {

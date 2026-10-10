@@ -74,7 +74,7 @@ export function isUpstreamCatalogUnreachable(err) {
  * Fake board-testing provider is registered but returns no models until the host starts.
  * A local runtime that is simply not up returns an empty catalog (not HTTP 500).
  */
-export async function proxyModels(id) {
+export async function proxyModels(id, options = {}) {
   validateProviderId(id);
   if (id === FAKE_PROVIDER_ID && !getFakeModelStatus().running) {
     return { data: [] };
@@ -84,6 +84,7 @@ export async function proxyModels(id) {
     const status = await detectAgentCli(profile.agentCli.kind, {
       binPath: profile.agentCli.binPath,
       cliToken: secrets?.cliToken,
+      fresh: options.refresh === true,
     });
     if (!status.installed) {
       return { data: [], unreachable: true, error: `${profile.label} is not installed` };
@@ -96,6 +97,7 @@ export async function proxyModels(id) {
         binPath: profile.agentCli?.binPath || status.resolvedBinPath,
         cliToken: secrets?.cliToken,
         cliVersion: status.version,
+        refresh: options.refresh === true,
         contextWindowTokens: profile.agentCli.contextWindowTokens,
       }),
     };

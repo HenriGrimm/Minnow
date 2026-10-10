@@ -420,6 +420,7 @@ function buildMultiProviderModelSelectInnerHtml(results: ProviderModelsResult[])
 
 /** Options for {@link populateMultiProviderModelSelect}. */
 export interface PopulateMultiProviderModelSelectOptions {
+  refresh?: boolean;
   selectedProviderId?: string;
   selectedModelId?: string;
   includeEmptyOption?: boolean;
@@ -450,7 +451,7 @@ export async function populateMultiProviderModelSelect(
       return null;
     }
 
-    let results = await fetchModelsForAllProviders(enabled, signal ?? new AbortController().signal);
+    let results = await fetchModelsForAllProviders(enabled, signal ?? new AbortController().signal, { refresh: options?.refresh });
     // Never list llama.cpp / mlx-lm catalogs — My Models is the only picker surface.
     results = omitLocalRuntimeCatalogModels(results);
 
@@ -633,7 +634,7 @@ function restoreDefaultModelOption(select: HTMLSelectElement): void {
 }
 
 /** Load models from every enabled provider and populate the model select. */
-export async function fetchModels(): Promise<void> {
+export async function fetchModels(options: { refresh?: boolean } = {}): Promise<void> {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement;
 
   if (modelsFetchAbort) modelsFetchAbort.abort();
@@ -672,7 +673,7 @@ export async function fetchModels(): Promise<void> {
       return;
     }
 
-    const results = await populateMultiProviderModelSelect(sel, { signal });
+    const results = await populateMultiProviderModelSelect(sel, { signal, refresh: options.refresh });
     if (!results) {
       restoreDefaultModelOption(sel);
       const { providers: listed } = await listProviders();

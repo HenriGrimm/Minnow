@@ -182,7 +182,7 @@ export async function prepareAgentCliInvocation(input) {
     args.push('--mcp-config', files.mcpPath, '--system-prompt-file', files.systemPath);
     const extended = contextWindow > 200_000 && supportsClaudeExtendedContext(model);
     // Native 1M models need no suffix; older models and moving aliases do.
-    const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5))/i.test(model);
+    const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5)|haiku-5-5|fable-5)/i.test(model);
     const claudeModel = extended && !native1m && !model.endsWith('[1m]') ? `${model}[1m]` : model;
     if (claudeModel) args.push('--model', claudeModel);
     if (effort) args.push('--effort', effort);

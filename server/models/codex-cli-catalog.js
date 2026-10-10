@@ -10,6 +10,8 @@ const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
 const inflight = new Map();
 
+export function clearCodexModelCatalogCache() { cache.clear(); }
+
 /** Discovery only: initialize and model/list, with no thread or inference. */
 export async function readCodexModelCatalog(invocation, timeoutMs = 15_000) {
   const rpc = createCodexRpc(invocation, { maxTotalBytes: 4 * 1024 * 1024 });
@@ -55,7 +57,7 @@ export async function fetchCodexModelCatalog(options = {}) {
     options.cliToken, env.OPENAI_API_KEY, env.CODEX_API_KEY,
   ])).update(auth).digest('hex');
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.models;
+  if (!options.refresh && cached && Date.now() - cached.at < TTL_MS) return cached.models;
   if (inflight.has(key)) return inflight.get(key);
   const work = (async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-catalog-'));

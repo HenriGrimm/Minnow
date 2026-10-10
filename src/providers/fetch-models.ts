@@ -44,9 +44,12 @@ export function normalizeModelsForUi(
 export async function fetchModelsForProvider(
   provider: ProviderPublic,
   signal: AbortSignal,
+  options: { refresh?: boolean } = {},
 ): Promise<LmModelRecord[]> {
   const endpoints = resolveProviderEndpoints(provider);
-  const res = await fetch(endpoints.modelsUrl, { signal, cache: 'no-store' });
+  const modelsUrl = options.refresh && provider.apiKind === 'agent-cli-v1'
+    ? `${endpoints.modelsUrl}?refresh=1` : endpoints.modelsUrl;
+  const res = await fetch(modelsUrl, { signal, cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }

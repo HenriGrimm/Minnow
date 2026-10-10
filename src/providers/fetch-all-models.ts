@@ -24,13 +24,14 @@ function providerHasModelCatalog(provider: ProviderPublic): boolean {
 export async function fetchModelsForAllProviders(
   providers: ProviderPublic[],
   signal: AbortSignal,
+  options: { refresh?: boolean } = {},
 ): Promise<ProviderModelsResult[]> {
   const settled = await Promise.allSettled(
     providers.map(async (provider) => {
       if (!providerHasModelCatalog(provider)) {
         return { provider, models: [] } satisfies Omit<ProviderModelsResult, 'error'>;
       }
-      const models = await fetchModelsForProvider(provider, signal);
+      const models = await fetchModelsForProvider(provider, signal, options);
       return { provider, models } satisfies Omit<ProviderModelsResult, 'error'>;
     }),
   );

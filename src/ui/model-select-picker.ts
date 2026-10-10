@@ -479,7 +479,7 @@ async function refreshModelsFromHostFilterBar(
   refreshBtn.disabled = true;
   try {
     const { fetchModels } = await import('../api/models');
-    await fetchModels();
+    await fetchModels({ refresh: true });
     onAfterRefresh?.();
   } finally {
     refreshBtn.disabled = false;

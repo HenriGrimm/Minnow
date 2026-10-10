@@ -130,6 +130,23 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.equal(current.find((row) => row.id === 'haiku').max_context_length, 200_000);
   });
 
+  test('Haiku 5.5 fallback follows the CLI gate and advertises native context and reasoning', () => {
+    const older = listAgentCliModels('claude-code-cli', { cliVersion: '2.1.292' });
+    assert.ok(older.some(row => row.id === 'claude-haiku-4-5'));
+    assert.equal(older.find(row => row.id === 'haiku').reasoning.default, 'off');
+    for (const version of ['2.1.293', '2.1.296']) {
+      const rows = listAgentCliModels('claude-code-cli', { cliVersion: version });
+      assert.ok(rows.some(row => row.id === 'claude-haiku-5-5'));
+      const alias = rows.find(row => row.id === 'haiku');
+      assert.equal(alias.display_name, 'Claude Haiku 5.5 (CLI default)');
+      assert.equal(alias.max_context_length, 1_000_000);
+      assert.equal(alias.reasoning.default, 'medium');
+      assert.ok(alias.reasoning.allowed_options.includes('high'));
+      const lowered = applyAgentCliContextWindow(rows, 'claude', 128000);
+      assert.equal(lowered.find(row => row.id === 'haiku').max_context_length, 128000);
+    }
+  });
+
   test('explicit CLI windows reach the live budget and retain model restrictions', async () => {
     const claude = await listAgentCliModelsWithConfig('claude-code-cli', { contextWindowTokens: 1_000_000 });
     assert.equal(claude.find(row => row.id === 'sonnet').max_context_length, 1_000_000);

@@ -11,6 +11,7 @@ import {
   AGENT_CLI_DEFINITIONS,
   getAgentCliDefinition,
   getAgentCliInstallCommand,
+  clearAgentCliModelCatalogCache,
 } from './agent-cli-catalog.js';
 
 function sendJson(res, status, payload) {
@@ -125,6 +126,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       return true;
     }
     if (action === 'verify' && req.method === 'POST') {
+      clearAgentCliModelCatalogCache(kind);
       sendJson(res, 200, { agentCli: await getAgentCliStatus(kind, { verify: true }) });
       return true;
     }
@@ -144,6 +146,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       return true;
     }
     if (action === 'settings' && req.method === 'PUT') {
+      clearAgentCliModelCatalogCache(kind);
       const body = await readJsonBody(req);
       await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId, { forget: true });
       const provider = await updateAgentCliProviderSettings(kind, body);

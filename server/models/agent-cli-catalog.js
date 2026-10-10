@@ -1,7 +1,9 @@
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
-import { fetchCodexModelCatalog } from './codex-cli-catalog.js';
+import { fetchCodexModelCatalog, clearCodexModelCatalogCache } from './codex-cli-catalog.js';
+import { fetchClaudeModelCatalog, clearClaudeModelCatalogCache } from './claude-cli-catalog.js';
 import { applyAgentCliContextWindow } from './agent-cli-context.js';
 import {
   applyAgentCliCaptureEnv,
@@ -153,7 +155,9 @@ function claudeCatalogForVersion(version) {
     : claudeVersionAtLeast(version, 2, 1, 197)
       ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
       : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
-  const haiku = { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' };
+  const haiku = claudeVersionAtLeast(version, 2, 1, 293)
+    ? { id: 'claude-haiku-5-5', max_context_length: 1_000_000, reasoning: 'adaptive', reasoningDefault: 'medium' }
+    : { id: 'claude-haiku-4-5', max_context_length: 200_000, reasoning: 'none' };
   return [
     ...CATALOGS.claude.map((entry) => {
       const resolved = entry.id === 'sonnet' ? sonnet : entry.id === 'opus' ? opus : haiku;
@@ -161,6 +165,7 @@ function claudeCatalogForVersion(version) {
       const family = entry.id.charAt(0).toUpperCase() + entry.id.slice(1);
       return {
         ...entry,
+        reasoning: resolved.reasoning,
         max_context_length: resolved.max_context_length,
         display_name: `Claude ${family} ${version} (CLI default)`,
         ...(resolved.reasoningDefault ? { reasoningDefault: resolved.reasoningDefault } : {}),
@@ -208,8 +213,15 @@ export function parseCursorListModels(text) {
 }
 
 export function resetAgentCliCatalogCacheForTests() {
-  cursorListCache.clear();
+  clearAgentCliModelCatalogCache();
   cursorListInflight.clear();
+}
+
+/** Verification/update scans must not keep a catalog from before the scan. */
+export function clearAgentCliModelCatalogCache(kind) {
+  if (!kind || kind === 'claude') clearClaudeModelCatalogCache();
+  if (!kind || kind === 'codex') clearCodexModelCatalogCache();
+  if (!kind || kind === 'cursor') cursorListCache.clear();
 }
 
 /**
@@ -222,9 +234,11 @@ async function fetchCursorListModelsText(options = {}) {
   const requested = typeof options.binPath === 'string' ? options.binPath.trim() : '';
   const binPath = requested || await findAgentCliOnPath('cursor-agent', { env, homeDir });
   if (!binPath) return '';
-  const cacheKey = `${binPath}:${homeDir}`;
+  const cacheKey = createHash('sha256').update(JSON.stringify([
+    binPath, homeDir, options.cliVersion, options.cliToken, env.CURSOR_CONFIG_DIR, env.CURSOR_API_KEY,
+  ])).digest('hex');
   const cached = cursorListCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < CURSOR_LIST_MODELS_TTL_MS) return cached.text;
+  if (!options.refresh && cached && Date.now() - cached.at < CURSOR_LIST_MODELS_TTL_MS) return cached.text;
   const pending = cursorListInflight.get(cacheKey);
   if (pending) return pending;
 
@@ -287,7 +301,8 @@ export function listAgentCliModels(providerId, options = {}) {
     api: 'agent-cli-v1',
     catalogVision: kind !== 'cursor',
     reasoning: entry.reasoning === 'adaptive'
-      ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault } : {}) }
+      ? { ...REASONING[kind], ...(reasoningDefault ? { default: reasoningDefault,
+        allowed_options: REASONING[kind].allowed_options.filter(value => value !== 'off') } : {}) }
       : REASONING.cursor,
   }));
   return kind === 'cursor' ? cursorReasoningForModels(rows) : rows;
@@ -312,15 +327,24 @@ function normalizeCodexReasoning(raw, advertisedDefault) {
 }
 
 /**
- * Discover Codex through its installed app-server and Cursor from `cursor-agent --list-models`.
- * Neither path starts a chat or spends inference. Codex discovery failures are explicit; Cursor retains its static fallback.
+ * Discover installed CLI catalogs without submitting a prompt or spending inference.
+ * Claude and Cursor retain version-aware/static fallbacks for older CLIs.
  * @param {string} providerId
- * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, codexAuthPath?: string, listModelsText?: string }} [options]
+ * @param {{ env?: NodeJS.ProcessEnv, homeDir?: string, binPath?: string, cliToken?: string, cliVersion?: string, codexAuthPath?: string, listModelsText?: string, refresh?: boolean }} [options]
  */
 export async function listAgentCliModelsWithConfig(providerId, options = {}) {
   const kind = agentCliKindForProviderId(providerId);
   const applyContext = (rows) => applyAgentCliContextWindow(rows, kind, options.contextWindowTokens);
   const staticRows = listAgentCliModels(providerId, options);
+  if (providerId === CLAUDE_CODE_CLI_ID && options.binPath) {
+    try {
+      const rows = claudeCatalogRows(await fetchClaudeModelCatalog(options), staticRows);
+      if (rows.length) return applyContext(rows);
+    } catch {
+      // Older CLIs may not expose SDK model metadata.
+    }
+    return applyContext(staticRows);
+  }
   if (providerId === CURSOR_AGENT_CLI_ID) {
     const text = typeof options.listModelsText === 'string'
       ? options.listModelsText
@@ -339,6 +363,41 @@ export async function listAgentCliModelsWithConfig(providerId, options = {}) {
   }
   if (providerId !== CODEX_CLI_ID) return applyContext(staticRows);
   return applyContext(codexCatalogRows(await fetchCodexModelCatalog(options)));
+}
+
+/** Keep CLI model values for requests, adding pinned IDs only when the CLI resolves them. */
+export function claudeCatalogRows(models, fallback = []) {
+  const rows = new Map();
+  for (const model of models) {
+    if (!model || typeof model !== 'object' || model.disabled === true) continue;
+    const id = typeof model.value === 'string' ? model.value.trim() : '';
+    if (!id || id === 'default' || rows.has(id)) continue;
+    const resolved = typeof model.resolvedModel === 'string' ? model.resolvedModel.trim() : id;
+    const known = fallback.find(row => row.id === resolved)
+      ?? (!model.resolvedModel ? fallback.find(row => row.id === id) : undefined);
+    const native1m = /^claude-(?:sonnet-5|opus-(?:4-[789]|5)|haiku-5-5|fable-5)/i.test(resolved);
+    const advertisedContext = Number(model.contextWindow ?? model.context_window);
+    const allowed_options = model.supportsEffort === true
+      ? [...new Set((Array.isArray(model.supportedEffortLevels) ? model.supportedEffortLevels : REASONING.claude.allowed_options)
+        .map(value => value === 'xhigh' ? 'max' : value).filter(value => MINNOW_REASONING_OPTIONS.has(value) && value !== 'off'))]
+      : model.supportsEffort === false ? [] : known?.reasoning?.allowed_options ?? [];
+    const preferred = model.defaultEffort
+      ?? (/^claude-(?:opus|sonnet|haiku)-5-5/.test(resolved) ? 'medium' : known?.reasoning?.default ?? 'high');
+    const label = typeof model.displayName === 'string' ? model.displayName.trim() : '';
+    const name = label ? (/^Claude\b/i.test(label) ? label : `Claude ${label}`) : undefined;
+    const row = { id, type: 'llm', state: 'loaded', owned_by: 'anthropic', api: 'agent-cli-v1',
+      catalogVision: true,
+      max_context_length: Number.isFinite(advertisedContext) && advertisedContext > 0
+        ? advertisedContext : known?.max_context_length ?? (native1m ? 1_000_000 : 200_000),
+      ...(name ? { display_name: `${name}${id !== resolved || /^(?:sonnet|opus|haiku|fable)$/.test(id) ? ' (CLI default)' : ''}` } : {}),
+      reasoning: { allowed_options, default: allowed_options.includes(preferred) ? preferred : allowed_options[0] ?? 'off' },
+    };
+    rows.set(id, row);
+    if (resolved && resolved !== id && !rows.has(resolved)) {
+      rows.set(resolved, { ...row, id: resolved, ...(name ? { display_name: name } : {}) });
+    }
+  }
+  return [...rows.values()];
 }
 
 export function codexCatalogRows(models) {

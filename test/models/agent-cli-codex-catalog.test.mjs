@@ -45,6 +45,9 @@ test('Codex picker queries its installed CLI, isolates desktop metadata, caches 
     await listAgentCliModelsWithConfig('codex-cli', { ...options, cliVersion: 'new-cli-version' });
     runs = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
     assert.equal(runs.length, 3);
+    await listAgentCliModelsWithConfig('codex-cli', { ...options, refresh: true });
+    runs = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(runs.length, 4, 'explicit refresh bypasses the catalog TTL');
     assert.match(await fs.readFile(path.join(root, 'models_cache.json'), 'utf8'), /gpt-6.1-sol/);
   } finally { await fs.rm(root, { recursive: true, force: true, maxRetries: 5 }); }
 });

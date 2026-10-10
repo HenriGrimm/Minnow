@@ -240,7 +240,8 @@ export async function handleProviderRequest(req, res, pathname) {
         sendJson(res, 400, { error: 'Invalid provider id' });
         return true;
       }
-      sendJson(res, 200, await proxyModels(id));
+      const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
+      sendJson(res, 200, await proxyModels(id, { refresh: query.get('refresh') === '1' }));
       return true;
     }
 

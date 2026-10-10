@@ -33,6 +33,8 @@ test('fetches an enabled agent CLI catalog through the provider proxy without a 
     assert.equal(canSendImagesToModel('gpt-5.3-codex', results[0].models), true);
     assert.equal(canSendImagesToModel('text-only', results[0].models), false);
     assert.equal(results[0].error, undefined);
+    await fetchModelsForAllProviders([provider], new AbortController().signal, { refresh: true });
+    assert.equal(urls.at(-1), '/api/providers/codex-cli/models?refresh=1');
   } finally {
     globalThis.fetch = originalFetch;
   }

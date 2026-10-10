@@ -15,6 +15,7 @@ export const KNOWN_CONTEXT_WINDOWS = {
   'claude-opus-4-5': 200_000,
   'claude-opus-4': 200_000,
   'claude-haiku-4-5': 200_000,
+  'claude-haiku-5-5': 1_000_000,
   'claude-haiku-4': 200_000,
   'claude-fable-5': 200_000,
   'claude-haiku-3-5': 200_000,

@@ -3,9 +3,9 @@ export function agentCliContextWindowTokens(value) {
   return Number.isInteger(value) && value >= 1000 && value <= 1_000_000 ? value : null;
 }
 
-/** Claude extended context is available for Sonnet/Opus, never Haiku. */
+/** Older Haiku models stay capped; Haiku 5.5 and Fable have native 1M windows. */
 export function supportsClaudeExtendedContext(model) {
-  return /^(?:sonnet|opus)(?:\[1m\])?$|^claude-(?:sonnet|opus)-/i.test(model);
+  return /^(?:sonnet|opus|fable)(?:\[1m\])?$|^claude-(?:sonnet|opus|fable)-|^claude-haiku-5-5/i.test(model);
 }
 
 export function applyAgentCliContextWindow(rows, kind, value) {
