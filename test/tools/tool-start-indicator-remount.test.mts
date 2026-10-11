@@ -176,6 +176,16 @@ async function startTurnWithPendingToolCall(
     if (url.includes('/api/memory/')) return Response.json({ enabled: false });
     if (url.includes('/api/config/ping')) return Response.json({ ok: true });
     if (url.includes('/api/config/meta')) return Response.json({ titles: { enabled: false } });
+    // config/ping puts storage in server mode, where the turn needs the provider registry.
+    if (url.endsWith('/api/providers')) {
+      return Response.json({
+        providers: [{
+          id: 'lmstudio', label: 'LM Studio (local)', baseUrl: 'http://localhost:1234',
+          apiKind: 'lm-studio-v0', enabled: true, hasApiKey: false, hasBearer: false,
+        }],
+        activeProviderId: 'lmstudio',
+      });
+    }
     if (url.includes('/models/load')) return Response.json({ ok: true });
     if (url.includes(ids.genResume) && url.includes('/stream')) {
       resumeStreamOpened = true;

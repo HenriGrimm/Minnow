@@ -14,11 +14,22 @@ export function validId(id) {
 }
 export const appRoot = id => path.join(reefRoot(), 'apps', validId(id));
 
-/** Check every existing ancestor, including the root: a junction must not escape Reef. */
+const isWithin = (base, target) => {
+  const relative = path.relative(base, target);
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
+};
+
+/**
+ * Check every existing ancestor up to and including the Reef root (or `root` when it
+ * lies outside Reef): a junction must not escape Reef. Ancestors above that boundary
+ * belong to the host, e.g. macOS `/var` → `/private/var` or a symlinked home.
+ */
 export async function safePath(root, ...parts) {
-  const target = path.resolve(root, ...parts);
-  const relative = path.relative(path.resolve(root), target);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path outside Reef');
+  const base = path.resolve(root);
+  const target = path.resolve(base, ...parts);
+  if (!isWithin(base, target)) throw new Error('Path outside Reef');
+  const reef = path.resolve(reefRoot());
+  const boundary = isWithin(reef, base) ? reef : base;
   let cursor = target;
   while (true) {
     try {
@@ -26,7 +37,7 @@ export async function safePath(root, ...parts) {
       if (stat.isSymbolicLink()) throw new Error('Reef paths cannot contain symbolic links');
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const parent = path.dirname(cursor);
-    if (parent === cursor) break;
+    if (cursor === boundary || parent === cursor) break;
     cursor = parent;
   }
   return target;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 const appState = await import('../../src/app-state.ts');
@@ -84,6 +84,15 @@ describe('shouldAllowComposerPrimaryAction', () => {
 });
 
 describe('setComposerStreamingMode', () => {
+  // The composer wave reads the active chat, so every test needs a session.
+  beforeEach(() => {
+    setSessionStateForTests({
+      version: 3,
+      activeId: FIXED_CHAT_ID,
+      sidebarCollapsed: false,
+      chats: [createEmptyChatObject(FIXED_CHAT_ID)],
+    });
+  });
   afterEach(() => {
     appState.setStreaming(false);
     setSessionStateForTests(null);

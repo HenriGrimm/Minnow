@@ -14,7 +14,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
   gitDeleteRemoteBranch: unused, gitDiffSummary: unused, gitRebase: unused,
   gitStashList: unused, gitStashPush: unused, gitStashPop: unused, gitStashApply: unused,
   gitStashDrop: unused, gitCherryPick: unused, gitSnapshotCreate: unused,
-  gitSnapshotRestore: unused, gitSnapshotDiff: unused,
+  gitSnapshotRestore: unused, gitSnapshotDiff: unused, gitFileDiff: unused,
   gitBranchTree: async (cwd?: string) => {
     calls.push(['inspect', cwd]);
     return { ok: true, current: 'feature', branches: [{ name: 'feature', upstream: null }] };

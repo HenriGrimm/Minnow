@@ -107,7 +107,8 @@
     "read_symbol": true,
     "read_diagnostics": false,
     "plugin_inspect": true,
-    "plugin_manage": true
+    "plugin_manage": true,
+    "present_files": true
   },
   "lazyTools": true,
   "permissions": {
@@ -219,7 +220,8 @@
       "read_symbol": "full",
       "read_diagnostics": "off",
       "plugin_inspect": "full",
-      "plugin_manage": "ask"
+      "plugin_manage": "ask",
+      "present_files": "full"
     }
   },
   "keys": {
