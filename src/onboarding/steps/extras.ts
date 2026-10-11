@@ -2,7 +2,6 @@
  * S4 — Parallel optional extras: SearXNG, embeddings, voice, llama.cpp runtime.
  */
 
-import { saveSearchConfig, loadSearchConfig } from '../../config/search-config';
 import {
   fetchLlamaRuntime,
   installLlamaRuntime,
@@ -42,37 +41,38 @@ interface ExtraRow {
   selected: boolean;
   status: 'idle' | 'working' | 'ok' | 'err' | 'skip';
   message: string;
+  percent?: number;
 }
 
 let rows: ExtraRow[] = [
   {
-    id: 'searxng',
-    title: 'Private web search (SearXNG)',
-    description: 'Local metasearch for agents using web_search.',
-    selected: true,
-    status: 'idle',
-    message: '',
-  },
-  {
     id: 'embeddings',
-    title: 'Semantic memory embeddings',
-    description: 'Downloads a small local model for memory recall (~80 MB).',
+    title: 'Better memory recall',
+    description: 'Helps agents find relevant memories. Small local download (~80 MB).',
     selected: true,
     status: 'idle',
     message: '',
   },
   {
     id: 'voice',
-    title: 'Voice I/O runtime',
-    description: 'Speech-to-text and text-to-speech worker (larger download).',
+    title: 'Voice input and replies',
+    description: 'Speak to your agents and hear replies. Includes a larger local runtime download.',
     selected: false,
     status: 'idle',
     message: '',
   },
   {
     id: 'llama',
-    title: 'llama.cpp runtime only',
-    description: 'Server binary without a model (skip if you used managed models).',
+    title: 'Local model runtime',
+    description: 'Prepares local model hosting without downloading a model.',
+    selected: false,
+    status: 'idle',
+    message: '',
+  },
+  {
+    id: 'searxng',
+    title: 'Local web search (SearXNG)',
+    description: 'Optional self-hosted search. Tavily works without this install.',
     selected: false,
     status: 'idle',
     message: '',
@@ -81,7 +81,9 @@ let rows: ExtraRow[] = [
 
 let searxngSkipped = false;
 let installStarted = false;
+let installingExtras = false;
 let installConsole: InstallConsole | null = null;
+let refreshExtrasView: (() => void) | null = null;
 
 interface ExtrasUi {
   paint: () => void;
@@ -90,11 +92,11 @@ interface ExtrasUi {
 
 function createExtrasUi(listHost: HTMLElement): ExtrasUi {
   return {
-    paint: () => paintRows(listHost),
+    paint: () => refreshExtrasView?.(),
     log(rowId, level, text) {
       const source = EXTRA_LOG_SOURCE[rowId] ?? rowId;
       installConsole?.log(source, level, text);
-      paintRows(listHost);
+      refreshExtrasView?.();
     },
   };
 }
@@ -136,8 +138,6 @@ async function installSearxng(row: ExtraRow, ui: ExtrasUi): Promise<void> {
   ui.log(row.id, 'info', 'Starting SearXNG…');
   const start = await startManagedServer('searxng');
   if (start.ok === false) throw new Error(start.error);
-  const config = await loadSearchConfig();
-  await saveSearchConfig({ ...config, provider: 'searxng' });
   row.status = 'ok';
   row.message = 'SearXNG running on loopback';
   ui.log(row.id, 'ok', row.message);
@@ -146,12 +146,12 @@ async function installSearxng(row: ExtraRow, ui: ExtrasUi): Promise<void> {
 
 async function installEmbeddings(row: ExtraRow, ui: ExtrasUi): Promise<void> {
   row.status = 'working';
-  row.message = 'Warming up embeddings model…';
+  row.message = 'Preparing memory recall…';
   ui.log(row.id, 'working', row.message);
   const result = await warmupMemoryEmbeddings();
   if (result.kind === 'err') throw new Error(result.error);
   row.status = 'ok';
-  row.message = 'Semantic memory ready';
+  row.message = 'Memory recall is ready';
   ui.log(row.id, 'ok', row.message);
 }
 
@@ -161,33 +161,36 @@ async function installVoice(row: ExtraRow, ui: ExtrasUi): Promise<void> {
   ui.log(row.id, 'working', row.message);
   const status = await fetchRuntimeStatus();
   if (!status.installed) {
-    const applyVoiceJob = (message: string, phase: string | undefined): void => {
+    const applyVoiceJob = (message: string, phase: string | undefined, percent?: number): void => {
       const trimmed = message.trim();
       if (!trimmed) return;
-      row.message = trimmed;
+      row.message = phase === 'failed' ? 'Voice setup needs attention.' : friendlyInstallMessage('voice', trimmed);
+      row.percent = typeof percent === 'number' ? Math.min(99, Math.max(0, percent)) : undefined;
       const level: InstallLogLevel = phase === 'failed' ? 'err' : 'working';
       ui.log(row.id, level, trimmed);
     };
 
     const unsub = subscribeInstallProgress((job) => {
-      applyVoiceJob(job.message || job.phase, job.phase);
+      applyVoiceJob(job.message || job.phase, job.phase, job.percent);
     });
     try {
       await installRuntime();
       const started = Date.now();
+      let completed = false;
       while (Date.now() - started < 600_000) {
         const next = await fetchRuntimeStatus();
         const job = next.installJob;
         if (job?.message || job?.phase) {
-          applyVoiceJob(job.message || job.phase, job.phase);
+          applyVoiceJob(job.message || job.phase, job.phase, job.percent);
         }
         const phase = job?.phase;
-        if (phase === 'completed') break;
+        if (phase === 'completed') { completed = true; break; }
         if (phase === 'failed') {
           throw new Error(job?.error || job?.message || 'Install failed');
         }
         await sleep(500);
       }
+      if (!completed) throw new Error('Voice setup timed out. Try again.');
     } finally {
       unsub();
     }
@@ -204,6 +207,7 @@ async function installVoice(row: ExtraRow, ui: ExtrasUi): Promise<void> {
 
 async function installLlamaOnly(row: ExtraRow, ui: ExtrasUi): Promise<void> {
   row.status = 'working';
+  row.message = 'Checking the local model runtime…';
   ui.log(row.id, 'working', 'Checking llama.cpp runtime…');
   const runtime = await fetchLlamaRuntime();
   if (runtime.path) {
@@ -220,15 +224,16 @@ async function installLlamaOnly(row: ExtraRow, ui: ExtrasUi): Promise<void> {
   }
   const unsub = subscribeLlamaInstallProgress((job) => {
     const msg = job.message || 'Installing llama.cpp…';
-    row.message = msg;
+    row.message = friendlyInstallMessage('llama', msg);
+    row.percent = Math.min(99, Math.max(0, job.percent));
     ui.log(row.id, 'working', msg);
   });
   try {
     const result = await installLlamaRuntime({ variant: runtime.preferredVariant });
     if (!result.path) throw new Error('Install did not complete');
     row.status = 'ok';
-    row.message = `Installed (${result.variant ?? runtime.preferredVariant})`;
-    ui.log(row.id, 'ok', row.message);
+    row.message = 'Local model runtime is ready';
+    ui.log(row.id, 'ok', `Installed (${result.variant ?? runtime.preferredVariant})`);
   } finally {
     unsub();
   }
@@ -240,7 +245,9 @@ async function runSelectedExtras(
   installBtn: HTMLButtonElement | null,
   actions: { setPrimaryEnabled: (v: boolean) => void },
 ): Promise<void> {
-  const selected = rows.filter((r) => r.selected);
+  if (installingExtras) return;
+  const visibleIds = new Set(Array.from(listHost.querySelectorAll<HTMLElement>('[data-extra-id]'), node => node.dataset.extraId));
+  const selected = rows.filter((r) => r.selected && visibleIds.has(r.id));
   if (!selected.length) {
     searxngSkipped = !rows.find((r) => r.id === 'searxng')?.selected;
     actions.setPrimaryEnabled(true);
@@ -250,6 +257,7 @@ async function runSelectedExtras(
   const ui = createExtrasUi(listHost);
 
   installStarted = true;
+  installingExtras = true;
   if (installBtn) installBtn.hidden = true;
   actions.setPrimaryEnabled(false);
   installConsole?.clear();
@@ -262,7 +270,8 @@ async function runSelectedExtras(
   );
   ui.paint();
 
-  const tasks = selected.map(async (row) => {
+  const tasks = selected.filter(row => row.status !== 'ok').map(async (row) => {
+    row.percent = undefined;
     try {
       if (row.id === 'searxng') await installSearxng(row, ui);
       else if (row.id === 'embeddings') await installEmbeddings(row, ui);
@@ -277,13 +286,14 @@ async function runSelectedExtras(
   });
 
   await Promise.all(tasks);
+  installingExtras = false;
 
   const failed = selected.filter((r) => r.status === 'err').length;
   if (failed > 0) {
-    installConsole?.setHeadline(`${failed} failed`);
+    installConsole?.setHeadline('Some extras need attention');
     installConsole?.log('Setup', 'err', `${failed} of ${selected.length} installs failed`);
   } else {
-    installConsole?.setHeadline('Done');
+    installConsole?.setHeadline('Your extras are ready');
     installConsole?.log('Setup', 'ok', 'All selected extras finished');
   }
 
@@ -291,7 +301,20 @@ async function runSelectedExtras(
 
   ctx.searxngSkipped = searxngSkipped;
   actions.setPrimaryEnabled(true);
+  if (installBtn) {
+    installBtn.hidden = failed === 0;
+    installBtn.textContent = 'Retry failed installs';
+  }
   ui.paint();
+}
+
+function friendlyInstallMessage(id: ExtraId, message: string): string {
+  const name = id === 'voice' ? 'voice packages' : id === 'llama' ? 'the model runtime' : 'SearXNG';
+  if (/download|fetch/i.test(message)) return `Downloading ${name}…`;
+  if (/extract|unpack/i.test(message)) return `Unpacking ${name}…`;
+  if (/check|verify/i.test(message)) return `Checking ${name}…`;
+  if (/start|launch/i.test(message)) return `Starting ${name}…`;
+  return `Installing ${name}… This can take a few minutes.`;
 }
 
 function paintRows(listHost: HTMLElement): void {
@@ -302,22 +325,31 @@ function paintRows(listHost: HTMLElement): void {
     const status = node.querySelector('.mn-onboarding-extra-row__status');
     const msg = node.querySelector('.mn-onboarding-extra-row__message');
     const checkbox = node.querySelector('input[type=checkbox]') as HTMLInputElement | null;
-    if (checkbox) checkbox.checked = row.selected;
+    if (checkbox) { checkbox.checked = row.selected; checkbox.disabled = installingExtras; }
     if (status) {
       status.textContent =
         row.status === 'ok'
-          ? 'Done'
+          ? 'Ready'
           : row.status === 'err'
-            ? 'Error'
+            ? 'Needs attention'
             : row.status === 'working'
-              ? '…'
+              ? 'Setting up'
               : row.status === 'skip'
                 ? 'Skipped'
                 : '';
       status.className = `mn-onboarding-extra-row__status is-${row.status}`;
     }
     if (msg) msg.textContent = row.message;
+    const progress = node.querySelector<HTMLProgressElement>('progress');
+    if (progress) {
+      progress.hidden = row.status !== 'working';
+      if (row.percent === undefined) progress.removeAttribute('value');
+      else progress.value = row.percent;
+    }
   });
+  const selected = rows.filter(row => row.selected && listHost.querySelector(`[data-extra-id="${row.id}"]`));
+  installConsole?.setProgress(selected.filter(row => row.status === 'ok' || row.status === 'skip').length,
+    selected.length, selected.filter(row => row.status === 'err').length);
 }
 
 export const extrasStep: OnboardingStep = {
@@ -327,6 +359,7 @@ export const extrasStep: OnboardingStep = {
   isApplicable: () => true,
 
   render(container, ctx, actions) {
+    let active = true;
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
     renderStepHeader(container, extrasStep, actions.stepIndex, actions.totalSteps);
@@ -348,11 +381,15 @@ export const extrasStep: OnboardingStep = {
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Optional local services run in parallel. Toggle what you want, then install.',
+        'Add optional capabilities to your workspace. Choose what you need, or continue and add them later.',
       ),
     );
 
     const managedDone = Boolean(ctx.state.steps['provider-managed']?.done);
+    if (!installStarted) {
+      const searxng = rows.find(row => row.id === 'searxng');
+      if (searxng) searxng.selected = ctx.state.steps['api-keys']?.data?.provider === 'searxng';
+    }
     const visibleRows = rows.filter((r) => !(r.id === 'llama' && managedDone));
 
     const list = el('div', 'mn-onboarding-extra-list');
@@ -362,9 +399,10 @@ export const extrasStep: OnboardingStep = {
       const checkbox = el('input') as HTMLInputElement;
       checkbox.type = 'checkbox';
       checkbox.checked = row.selected;
-      checkbox.disabled = installStarted;
+      checkbox.disabled = installingExtras;
       checkbox.addEventListener('change', () => {
         row.selected = checkbox.checked;
+        refreshExtrasView?.();
       });
 
       const copy = el('div', 'mn-onboarding-extra-row__copy');
@@ -374,6 +412,11 @@ export const extrasStep: OnboardingStep = {
       meta.appendChild(el('span', 'mn-onboarding-extra-row__status is-idle', ''));
       meta.appendChild(el('span', 'mn-onboarding-extra-row__message', ''));
       copy.appendChild(meta);
+      const progress = el('progress', 'mn-onboarding-install-progress');
+      progress.max = 100;
+      progress.hidden = true;
+      progress.setAttribute('aria-label', `${row.title} setup progress`);
+      copy.appendChild(progress);
 
       item.append(checkbox, copy);
       list.appendChild(item);
@@ -390,8 +433,25 @@ export const extrasStep: OnboardingStep = {
       void runSelectedExtras(ctx, list, installBtn, actions);
     });
     container.appendChild(installBtn);
+    const consoleForView = installConsole;
+    const refresh = () => {
+      if (!active) return;
+      paintRows(list);
+      const pending = visibleRows.filter(row => row.selected && row.status !== 'ok' && row.status !== 'skip');
+      installBtn.disabled = pending.length === 0;
+      installBtn.hidden = installingExtras || (installStarted && pending.length === 0);
+      installBtn.textContent = pending.some(row => row.status === 'err') ? 'Retry failed installs' : 'Install selected';
+      actions.setPrimaryEnabled(!installingExtras);
+      if (installStarted) {
+        consoleForView?.show();
+        consoleForView?.setHeadline(installingExtras ? 'Installing…'
+          : visibleRows.some(row => row.selected && row.status === 'err') ? 'Some extras need attention' : 'Your extras are ready');
+      }
+    };
+    refreshExtrasView = refresh;
 
     void fetchManagedServers().then((servers) => {
+      if (!active) return;
       const searxng = servers?.find((s) => s.id === 'searxng');
       if (searxng?.running) {
         const row = rows.find((r) => r.id === 'searxng');
@@ -399,13 +459,20 @@ export const extrasStep: OnboardingStep = {
           row.status = 'ok';
           row.message = 'Already running';
         }
-        paintRows(list);
+        refresh();
       }
-    });
+    }).catch(() => {});
 
     actions.setPrimaryLabel('Continue');
-    actions.setPrimaryEnabled(installStarted);
-    paintRows(list);
+    actions.setPrimaryEnabled(!installingExtras);
+    refresh();
+    return () => {
+      active = false;
+      if (refreshExtrasView === refresh) {
+        refreshExtrasView = null;
+        installConsole = null;
+      }
+    };
   },
 
   async commit(ctx) {
@@ -426,7 +493,9 @@ export const extrasStep: OnboardingStep = {
 
 export function resetExtrasStepState(): void {
   installStarted = false;
+  installingExtras = false;
   searxngSkipped = false;
   installConsole = null;
-  rows = rows.map((r) => ({ ...r, status: 'idle', message: '' }));
+  refreshExtrasView = null;
+  rows = rows.map((r) => ({ ...r, selected: r.id === 'embeddings', status: 'idle', message: '', percent: undefined }));
 }

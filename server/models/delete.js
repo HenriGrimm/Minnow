@@ -12,7 +12,7 @@ async function resolveTarget(libraryId) {
   const { models } = await listCachedModels();
   for (const row of models) {
     if (row.is_ollama) continue;
-    const hub = !row.is_local_dir && row.status !== 'downloaded';
+    const hub = !row.mtplx_root && !row.is_local_dir && row.status !== 'downloaded';
     const root = hub ? path.join(row.path, `models--${row.repo_id.replace(/\//g, '--')}`) : row.path;
     for (const file of row.gguf_files ?? []) {
       if (file.role !== 'model' || libraryId !== `gguf:${row.repo_id}:${file.rel_path}`) continue;
@@ -26,7 +26,8 @@ async function resolveTarget(libraryId) {
         : [modelPath];
       return { root, paths: files, modelPath, recursive: false, repoId: row.repo_id };
     }
-    if (row.mlx_root && !(row.gguf_files ?? []).some((file) => file.role === 'model') && libraryId === `mlx:${row.repo_id}`) {
+    const mlxLibraryId = row.mtplx_root ? `mtplx:${row.repo_id}` : `mlx:${row.repo_id}`;
+    if (row.mlx_root && !(row.gguf_files ?? []).some((file) => file.role === 'model') && libraryId === mlxLibraryId) {
       // An MLX row represents the whole repo; HF revisions share its blob store.
       return { root, paths: [root], modelPath: row.mlx_root, recursive: true, repoId: row.repo_id };
     }

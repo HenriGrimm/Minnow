@@ -28,6 +28,7 @@ const FILE_TOOL_MIDDLE_ORDER = [
   'grep',
   'list_directory',
   'get_file_metadata',
+  'present_files',
   'find_files',
   'make_directory',
   'copy_file',
@@ -134,6 +135,11 @@ const FILE_FIXTURE_OVERRIDES: Record<string, ToolFixture> = {
   get_file_metadata: {
     prompt: `Use get_file_metadata on ${BENCHMARK_FIXTURE_FILE}. Call the tool only.`,
     expectArgs: (a) => typeof a.path === 'string',
+  },
+  present_files: {
+    prompt: `Use present_files to show ${BENCHMARK_FIXTURE_FILE} to the user. Call the tool only.`,
+    expectArgs: (a) => Array.isArray(a.files) && a.files.some((file: { path?: string }) => file.path === BENCHMARK_FIXTURE_FILE),
+    verifyExec: (result) => result.includes('"kind":"presented-files"') && result.includes('fixture.txt'),
   },
   find_files: {
     prompt: `Use find_files with pattern "**/fixture.txt" under ${BENCHMARK_FIXTURE_DIR}. Call the tool only.`,

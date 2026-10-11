@@ -129,6 +129,7 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/models/mlx-serve.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/models/mlx-serve-crash.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/models/serve-crash.test.mjs', runner: 'tsx-mocks' },
+  { pattern: 'test/models/mtplx-crash.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/models/serve-heartbeat.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/models/serve-residency.test.mjs', runner: 'tsx-mocks' },
   { pattern: 'test/models/admit-serve.test.mjs', runner: 'node' },

@@ -10,7 +10,7 @@ mock.module('../../src/api/stream-event-source.ts', {
 });
 
 const { buildLibrary } = await import('../../src/models/library.ts');
-const { getModelsState, teardownModelsStore } = await import('../../src/ui/models/store.ts');
+const { getModelsState, refreshModels, teardownModelsStore } = await import('../../src/ui/models/store.ts');
 const { render } = await import('../../src/ui/models/library-panel.ts');
 const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
 let cached: CachedModelRow[];
@@ -87,6 +87,22 @@ function deleteButton(): HTMLButtonElement {
   return btn;
 }
 
+test('Loaded filter displays the running quantization even when another variant was selected', () => {
+  const state = getModelsState();
+  const running = state.library[1];
+  state.serves = [{
+    id: 'serve-loaded-filter', status: 'running', runtime: 'llama-cpp', modelPath: running.path!,
+    libraryId: running.id, modelLabel: running.name,
+  } as ServeRecord];
+  render();
+  const loadedFilter = Array.from(document.querySelectorAll<HTMLButtonElement>('.models-library-tabs__button'))
+    .find((button) => button.textContent?.startsWith('Loaded'))!;
+  loadedFilter.click();
+  assert.equal(document.querySelector('.models-row')?.getAttribute('data-model-id'), running.id);
+  assert.match(document.querySelector('.models-row__actions')?.textContent ?? '', /Eject/);
+  document.querySelector<HTMLButtonElement>('.models-library-tabs__button')!.click();
+});
+
 async function answerDialog(action: 'cancel' | 'confirm'): Promise<void> {
   await waitFor(() => Boolean(document.querySelector('[data-dialog-action="confirm"]')));
   document.querySelector<HTMLButtonElement>(`[data-dialog-action="${action}"]`)!.click();
@@ -143,4 +159,24 @@ test('keyboard activation of a delete button does not select its row', async () 
   render();
   deleteButton().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   assert.equal(getModelsState().selectedId, null);
+});
+
+test('refresh keeps an unavailable MTPLX model selected for inspection', async () => {
+  cached = [{
+    repo_id: 'test/mtplx', path: '/models/test--mtplx', size_bytes: 192, nb_files: 2,
+    has_incomplete: true, mlx_root: '/models/test--mtplx', mtplx_root: '/models/test--mtplx',
+    mtplx_validated: false,
+  }];
+  getModelsState().selectedId = 'mtplx:test/mtplx';
+  await refreshModels({ hardware: false });
+  assert.equal(getModelsState().selectedId, 'mtplx:test/mtplx');
+  assert.equal(getModelsState().library[0].servable, false);
+});
+
+test('refresh clears both inspector identities when the selected model disappears', async () => {
+  getModelsState().selectedServeId = 'missing-serve';
+  cached = [];
+  await refreshModels({ hardware: false });
+  assert.equal(getModelsState().selectedId, null);
+  assert.equal(getModelsState().selectedServeId, null);
 });

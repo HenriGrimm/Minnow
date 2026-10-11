@@ -25,7 +25,7 @@ Providers, Routing, Sampler, Thinking, and Usage & cost also appear under **Mode
 
 This is the runtime dashboard: what is loaded, whether the process is healthy, and a live log. A loading card shows a modelled percent that actually moves (llama.cpp and mlx-lm do not print a weight-load percentage). Once the model is up, chips report prompt processing as a percent when the request came from Minnow, generated tokens as a count, and **N queued** when llama.cpp has more inference requests than free slots. mlx-lm has no server-side queue gauge, so that chip stays off.
 
-Click a card to open the inspector on **Inference**, with **Loaded with** listing the flags that process was started with (llama.cpp launch flags, or for MLX the snapshot path, quant, mlx-lm version, port, and context). Loading a model from Code does not yank you here; Local Server only comes to the front if you were already in Models.
+Select a session to follow its runtime log and open its **Overview**. Expand **Runtime snapshot** to see the values that session started with: llama.cpp launch flags, MLX snapshot details, or readable MTPLX settings. The **Connection** area shows the selected ready model's base URL and model identifier, with copy controls and supported endpoints. **Stop all** stops the running models. Loading a model from Code does not yank you here; Local Server only comes to the front if you were already in Models.
 
 Idle `update_slots` heartbeats are dropped from the log so they cannot drown the lines that matter.
 
@@ -43,15 +43,23 @@ The **Downloads** shelf keeps progress, speed, and estimated time visible. **Pau
 
 ## My models and Storage
 
-Downloads from **Discover** appear in **My models**. Select a model and use the inspector to load it with the local runtime. Minnow registers the runtime as a provider so the model becomes available in Code.
+Downloads from **Discover** appear in **My models**. Search or filter by maker, publisher, and format, or use **Loaded** and **Needs attention** to narrow the library. Quantizations of the same model share a row. **Load** uses that model's saved settings; the launch-settings button opens a large popover for adjusting them. Minnow registers the runtime as a provider so the model becomes available in Code.
+
+Select a model to open its details panel. **Overview** shows runtime status, model size, trained context, capabilities, and connection copy controls when running. Expand **Model & files** for the repository, architecture, and local path, or **Runtime snapshot** for the current session's launch values. **Inference** provides per-model sampling controls with explanations and recommended presets. The panel's **Load settings** button opens the popover and returns to the same tab when you close it. The close button collapses the details panel.
+
+**Basic settings** explains the everyday controls. For llama.cpp, choose context length, GPU layers, and KV cache precision, with a memory estimate above them. GPU **Auto** chooses a split for your hardware. For MTPLX, Basic exposes profile, context window, conversation-memory compression, and supported reasoning controls, with an estimate of unified memory. Available options and limits come from the model's MTPLX descriptor.
+
+**Advanced settings** contains the detailed runtime controls: GPU selection, parallel slots, memory, speculative decoding, and extra arguments for llama.cpp; model, MTP heads, sampling, reasoning, performance, memory, persistent cache (SSD), thermal, and advanced controls for MTPLX. Switching between Basic and Advanced retains your edits. Changes save automatically and apply on the next load. **Use defaults** restores the selected engine's automatic or inherited settings. Close the popover with its close button, Escape, or a click outside it.
 
 To remove a model from disk, choose the trash button on its row and confirm **Delete model**. If the row has a quantization picker, deletion applies to the selected quantization, including every shard of a split GGUF; other quantizations and shared image projectors are kept. MLX deletion removes the model folder and its contents, including all revisions of a Hugging Face cache repo. The confirmation shows the model and its current path. Eject a loaded model first, and cancel any unfinished download for its repo before deleting. Files in custom model folders are deleted from their original location too.
 
-**Parallel slots and KV cache.** In the Load tab, **Unified KV cache** makes the selected context one shared token pool. For example, 98,304 tokens with three slots allocates 98,304 tokens of KV capacity; concurrent requests share that capacity. With unified KV off, the context is per slot and the same selection allocates 294,912 tokens. The memory estimate updates when you change this setting. Existing saved context totals remain intact until you adjust the slider.
+**Parallel slots and KV cache.** In the load popover, **Unified KV cache** makes the selected context one shared token pool. For example, 98,304 tokens with three slots allocates 98,304 tokens of KV capacity; concurrent requests share that capacity. With unified KV off, the context is per slot and the same selection allocates 294,912 tokens. The memory estimate updates when you change this setting. Existing saved context totals remain intact until you adjust the slider.
 
-**Loading GGUF on more than one GPU.** The inspector Load tab has a collapsed **GPUs** section. Check the cards that should run the model: the first you check is first in `--device` (so CUDA1 then CUDA0 means check CUDA1, then CUDA0). With two or more cards checked you can pick layer split (the default) or experimental tensor split, and drag per-card ratios. One GPU stays selected until you check another, so a second card stays free for the desktop. **Loaded with** lists Devices, Split, and Tensor split after a successful load. Extra llama-server args still override these fields.
+**Loading GGUF on more than one GPU.** The load popover's **Advanced settings** has a collapsed **GPUs** section. Check the cards that should run the model: the first you check is first in `--device` (so CUDA1 then CUDA0 means check CUDA1, then CUDA0). With two or more cards checked you can pick layer split (the default) or experimental tensor split, and drag per-card ratios. One GPU stays selected until you check another, so a second card stays free for the desktop. **Loaded with** lists Devices, Split, and Tensor split after a successful load. Extra llama-server args still override these fields.
 
 **Storage** manages additional model folders and Hugging Face credentials. Model files are large; they are kept out of the small-backup path described in [Where your data lives](../reference/configuration.md).
+
+**Runtime log.** Local Server shows the selected runtime's complete recorded output and follows new messages. Minnow starts llama.cpp with verbose logging, including generated token IDs and text. Reload an already-running GGUF model to enable verbose output; an explicit verbosity setting in extra arguments takes precedence. Copy log copies the full received output, and Clear view clears the pane until more output arrives. Other engines show the messages their runtime emits.
 
 ## MLX on Apple Silicon
 
@@ -66,6 +74,18 @@ MLX is Apple Silicon only. On Windows and Linux the option is not shown at all, 
 **Loading.** MLX models appear in My Models with format `MLX` and a quant like `mlx-4bit`, and load the same way as GGUF — including a moving load percent while weights warm up. One difference is worth knowing: MLX runs as a single server that holds whichever model you asked for, so switching between two MLX models is a request rather than a process restart. The server keeps a model resident in memory after use; stop it from **Settings → Servers** when you want the RAM back. During a chat, prompt processing shows as a percent and generated tokens as a live count, same as GGUF.
 
 Vision models are filtered out of MLX search. They need a different runtime that Minnow does not ship yet, and downloading 20 GB to hit a load error is not a useful way to find that out.
+
+## MTPLX on Apple Silicon
+
+MTPLX runs MLX weights with multi-token prediction on Apple Silicon and macOS 14 or newer. Install MTPLX separately (`pip install --upgrade mtplx`); Minnow detects the installed executable and lists its model cache in **My Models**. **Settings → Servers → MTPLX → Diagnostics** shows the runtime's troubleshooting checks.
+
+Select a model and open **Load → Engine**. Validated MTPLX rows offer **Powered by MTPLX** and **MLX (no MTP acceleration)**. Missing files appear as a reason the model cannot load. In Discover, MLX snapshot downloads can target the **MTPLX cache**; the runtime validates them after downloading.
+
+MTPLX controls use the same names as the MTPLX app's settings, so values carry over by name. **Performance → Mode** offers **Fastest response**, **Handle multiple at once**, and **Long agent tasks**; **Concurrency cap** sets how many completions run in parallel, and picking a Mode resets it, **Decode batch max**, and **Admission window** to that Mode's preset. The model supplies control bounds where available. Saved values outside those bounds are adjusted with a warning. Memory figures before loading are conservative estimates; the runtime determines its actual memory requirements.
+
+If a matching MTPLX daemon already runs on the configured port or default port 8000, Minnow connects to it and marks it **External daemon**. Its existing settings remain in effect. **Eject** disconnects Minnow without terminating that daemon. Otherwise Minnow starts a process, manages its idle timeout, and stops it on eject or app shutdown. Requests sent directly to its endpoint also renew the idle window. A daemon that crashes after a healthy run receives one automatic restart with the same port and settings. Local Server shows decode/prefill speed, time to first token, cached tokens, MTP depth and active requests.
+
+Powered by [MTPLX](https://github.com/youssofal/MTPLX).
 
 ## Providers
 
@@ -89,7 +109,7 @@ Full walkthrough: [Connect a model](../get-started/connect-a-model.md).
 
 Use an installed **Claude Code**, **Codex**, or **Cursor CLI** as a model provider. Open **Models → CLIs**, scan for installations, and expand a CLI row to enable it. Its models appear in the normal model picker and can be assigned to chats and work agents.
 
-If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vendor installer for that shell — including Cursor's PowerShell installer on Windows. When the installer finishes, return and choose **Scan again**. **Sign in** opens a dedicated Minnow terminal for the CLI's login flow. After signing in, choose **Verify**. Scanning and verification do not generate a model response or consume an inference request. Some credential stores cannot report login status; **Sign-in unverified** means Minnow could not confirm it. Credentials stay with the CLI. Codex sign-in uses its native `auth.json` file store so isolated requests can reuse the login; a keyring-only login needs this sign-in step once. Your saved CLI configuration is not changed.
+If a CLI is missing, choose **Install**. Minnow opens Terminal and runs the vendor installer for that shell — including Cursor's PowerShell installer on Windows. When the installer finishes, return and choose **Scan again**. **Update** runs the CLI's own updater (`claude update`, `codex update`, or `cursor-agent update`) in Terminal, so you get each vendor's latest release as soon as it ships. Minnow first closes idle CLI processes it started so the update can replace their files; chats that are running keep going, and closed conversations resume on the next message. When the update finishes, choose **Scan again** to pick up the new version and any models it adds. **Sign in** opens a dedicated Minnow terminal for the CLI's login flow. After signing in, choose **Verify**. Scanning and verification do not generate a model response or consume an inference request. Some credential stores cannot report login status; **Sign-in unverified** means Minnow could not confirm it. Credentials stay with the CLI. Codex sign-in uses its native `auth.json` file store so isolated requests can reuse the login; a keyring-only login needs this sign-in step once. Your saved CLI configuration is not changed.
 
 Each expanded row shows connection controls, concurrent runs, and the context window. Claude Code retains a dollar-budget field for the legacy headless connection; leave it empty for interactive chat. **Advanced settings** contains the executable path override and **Allow helper tasks**. Changes save automatically as you edit; the status below the fields confirms when they are saved. If a save fails, your input stays in place and **Retry** sends it again.
 
@@ -117,9 +137,10 @@ Minnow disables Claude Code's automatic session-title inference. Chat titles use
 
 ### Account usage
 
-Codex and Claude connections show subscription allowance in **Models → CLIs**.
+Codex, Claude and Cursor connections show subscription allowance in **Models → CLIs**.
 Open a CLI row for each quota window, its remaining percentage, reset time and
-last refresh. When a Code chat uses one of these CLIs, the **Usage** button beside
+last refresh. Cursor reports its monthly included usage as Total, Auto and API
+meters that reset at the end of your billing cycle. When a Code chat uses one of these CLIs, the **Usage** button beside
 the model opens the same account details. After loading, the button shows the
 remaining percentage for the most-used window.
 
@@ -156,6 +177,10 @@ Open **Models → Routers**, choose **New router**, and add models from **My Mod
 When a chat is assigned a My Models entry that is not loaded, Minnow loads it before generating. If another local model is still producing a response, the router waits for that work to finish, then unloads it if residency requires and loads the assigned weights. Idle TTL (twenty minutes) still applies. Cloud and LM Studio entries are unchanged.
 
 **Priority** prefers the first eligible model with free capacity. **Balance by rank** assigns new chats using rank weights: a three-entry router uses weights 3, 2, and 1. Once assigned, a chat keeps that model. If its model is busy, the chat waits in a FIFO queue even when another entry has capacity. If all entries are busy, new chats queue too. Streaming and non-streaming generations each occupy one slot.
+
+**Auto (task evaluator)** picks a model for each turn. Choose a **Task evaluator** provider and model: a decision model such as TypeSafe Jev (`typesafe/jev-1.13` on OpenRouter) or Cloudflare Clef (on Workers AI or OpenRouter) answers through the Decisions API with real confidence scores, and any other chat model can judge too by answering as JSON — pick something small and fast. Each entry gets a **Tier** (Fast, Balanced, or Frontier); **Auto** guesses it from the model name. On every message you send, the evaluator reads your request and chooses a tier and a reasoning level. The router runs the highest-ranked eligible entry in that tier, or the nearest tier when none is eligible, preferring a stronger one, and sets the reasoning level to the closest one the model offers. Tool rounds stay on the model their turn started with. When the evaluator is unsure (below 55% confidence) the chat keeps its current tier. If the evaluator is unset, fails, or takes longer than four seconds, the router uses rank order and the turn goes ahead. A pinned override skips the evaluator.
+
+While the evaluator decides, the composer's model label shows **Deciding**; the first turn of a chat rolls through the pool's models before settling on the pick, for example **High · deepseek-v4**. Hover the label to see which model judged the turn, its confidence, and why. The live view shows each chat's last judgment.
 
 Routers appear in the normal model picker with a **Router** label. **Default for new chats** sets the workspace's default router; existing chat bindings stay unchanged. A chat's picker shows the router and its current provider/model assignment after a request starts.
 

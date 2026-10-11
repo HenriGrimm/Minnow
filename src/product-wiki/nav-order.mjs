@@ -17,6 +17,7 @@ export const PRODUCT_WIKI_NAV_PATH_ORDER = [
   'documentation/manual/README.md',
   'documentation/manual/get-started/install.md',
   'documentation/manual/get-started/connect-a-model.md',
+  'documentation/manual/get-started/costs-and-providers.md',
   'documentation/manual/get-started/first-chat.md',
   'documentation/manual/concepts/how-minnow-works.md',
   'documentation/manual/concepts/modes.md',

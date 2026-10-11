@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
   countOpenSubAgentStreams,
+  getSubAgentRun,
   hydrateSubAgentRunsForParentChat,
   markSubAgentDeliveryAccepted,
   resetSubAgentOrchestrator,
@@ -234,10 +235,11 @@ describe('sub-agent SSE stream lifecycle (MIN-584)', () => {
     const stream = streams[0];
     stream.emit('snapshot', { seq: 1, parentChatId: CHAT_A, run: runningFold(result.runId, CHAT_A) });
     stream.emit('event', {
-      v: 1, seq: 2, ts: 2, type: 'attempt.ended', runId: result.runId,
+      v: 1, seq: 2, ts: Date.parse('2026-05-19T12:01:05Z'), type: 'attempt.ended', runId: result.runId,
       attemptId: 'attempt-1', outcome: 'pass', summary: 'done',
     });
     assert.equal(countOpenSubAgentStreams(), 1);
+    assert.equal(getSubAgentRun(result.runId)?.endedAt, '2026-05-19T12:01:05.000Z');
     assert.equal(stream.closeCount, 0);
     stream.emit('deliver', {
       kind: 'completion', parentChatId: CHAT_A, runIds: [result.runId], message: 'done',

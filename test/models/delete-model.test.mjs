@@ -6,8 +6,10 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 
 let serves = [];
 let downloads = [];
+let mtplxModels = [];
 mock.module('../../server/models/serve.js', { namedExports: { listServes: async () => serves } });
 mock.module('../../server/models/download.js', { namedExports: { listDownloads: async () => downloads } });
+mock.module('../../server/models/mtplx-cache.js', { namedExports: { scanMtplxCache: async () => mtplxModels } });
 const { deleteLibraryModel } = await import('../../server/models/delete.js');
 const { listCachedModels, invalidateCachedModelsCache } = await import('../../server/models/cached.js');
 const { withModelArtifactAccess } = await import('../../server/models/artifact-access.js');
@@ -28,12 +30,13 @@ async function exists(filename) {
 
 beforeEach(async () => {
   previousHome = process.env.MINNOW_HOME;
-  home = await fsp.mkdtemp(path.join(os.tmpdir(), 'minnow-delete-'));
+  home = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), 'minnow-delete-')));
   process.env.MINNOW_HOME = home;
   resetMinnowHomeCache();
   invalidateCachedModelsCache();
   serves = [];
   downloads = [];
+  mtplxModels = [];
 });
 afterEach(async () => {
   if (previousHome === undefined) delete process.env.MINNOW_HOME;
@@ -127,6 +130,25 @@ test('deletes an MLX artifact folder and all of its weights and config', async (
   await write(path.join(root, 'tokenizer.json'));
   await deleteLibraryModel(`mlx:${repoId}`, root);
   assert.equal(await exists(root), false);
+});
+
+test('deletes an MTPLX cache folder by its library identity, keeping sibling models', async () => {
+  const root = path.join(home, 'mtplx-cache', repoId.replace('/', '--'));
+  const sibling = path.join(home, 'mtplx-cache', 'other--model', 'model.safetensors');
+  await write(path.join(root, 'config.json'), '{}');
+  await write(path.join(root, 'model.safetensors'));
+  await write(sibling);
+  mtplxModels = [{ repo_id: repoId, path: root, mlx_root: root, mtplx_root: root }];
+  await assert.rejects(deleteLibraryModel(`mlx:${repoId}`, root), /not found/);
+  await withModelArtifactAccess([root], false, async () => {
+    await assert.rejects(deleteLibraryModel(`mtplx:${repoId}`, root), /busy/);
+  });
+  serves = [{ modelPath: root, status: 'running' }];
+  await assert.rejects(deleteLibraryModel(`mtplx:${repoId}`, root), /Eject/);
+  serves = [];
+  await deleteLibraryModel(`mtplx:${repoId}`, root);
+  assert.equal(await exists(root), false);
+  assert.equal(await exists(sibling), true);
 });
 
 test('deletes an HF MLX repo with all revisions and blobs, keeping other repos', async () => {

@@ -32,7 +32,7 @@ per-turn tokens and cost. Reuse the CLI provider configuration and login stores.
 - A missing measurement is unavailable, never zero usage.
 - Quotas are account-wide, including usage outside Minnow.
 - No billing changes, credit purchases, logout or model calls from this feature.
-- Cursor is excluded until its account usage can be retrieved reliably.
+- Cursor reads the private RPCs behind the CLI's `/usage` command with the CLI's own login.
 
 ## Sources and verified feasibility
 

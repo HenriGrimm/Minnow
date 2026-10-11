@@ -1,0 +1,17 @@
+{
+  "model_dir": "/models/qwen3.8-bare",
+  "compatibility": {
+    "arch_id": "qwen3-next-mtp",
+    "can_run": true,
+    "mtp_supported": "yes",
+    "recommended_backend": "qwen3_next",
+    "recommended_profile": "turbo",
+    "support_level": "verified-native",
+    "tier": "verified",
+    "runtime_contract": {
+      "arch_id": "qwen3-next-mtp",
+      "mtp_depth_max": 6
+    }
+  },
+  "recommended_sampler": null
+}

@@ -232,6 +232,9 @@ export async function killBrowserProcess(child, opts = {}) {
     if (child.exitCode !== null || child.signalCode !== null) resolve(true);
     child.once('exit', () => resolve(true));
   });
+  // A browser parent can exit before its helpers finish writing to the profile.
+  // close waits for inherited stdio to be released by those owned descendants.
+  const closed = new Promise((resolve) => child.once('close', () => resolve(true)));
 
   if (process.platform === 'win32') {
     try {
@@ -262,10 +265,11 @@ export async function killBrowserProcess(child, opts = {}) {
       }
     }
     const gracePassed = await Promise.race([exited, delay(grace).then(() => false)]);
-    if (!gracePassed) {
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch {
+    // Finish the owned detached group even when the parent accepted SIGTERM first.
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      if (!gracePassed) {
         try {
           child.kill('SIGKILL');
         } catch {
@@ -274,7 +278,7 @@ export async function killBrowserProcess(child, opts = {}) {
     }
   }
 
-  const confirmed = await Promise.race([exited, delay(waitMs).then(() => false)]);
+  const confirmed = await Promise.race([closed, delay(waitMs).then(() => false)]);
   for (const entry of liveBrowsers) if (entry.pid === pid) liveBrowsers.delete(entry);
   return { killed: Boolean(confirmed), alreadyDead: false };
 }

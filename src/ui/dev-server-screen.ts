@@ -14,7 +14,6 @@ import {
   type DevServerListItem,
   type ListeningPortRow,
 } from '../config/dev-servers-api';
-import { DEFAULT_DEV_SERVER_PORT, type DevServerNetwork } from '../config/startup-api';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { navigateToCodeChat, navigateToCodeDevServers } from '../os/router';
 import { sessionState } from '../state/sessions';
@@ -53,6 +52,7 @@ import { listWorktrees } from '../state/worktree-service';
 import { getWorkspacePath } from '../state/workspace';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
 import { createIcon, iconHtml, type IconName } from './icon';
+import { openDevServerFormPopover } from './dev-server-form-popover';
 const ROOT_ID = 'devServerScreenRoot';
 const CHAT_AREA_CLASS = 'chat-area--dev-server';
 const MAIN_COLUMN_CLASS = 'main-column--dev-server';
@@ -84,8 +84,7 @@ let pollTimer: number | undefined;
 let servers: DevServerListItem[] = [];
 let ports: ListeningPortRow[] = [];
 let selectedId: string | null = null;
-let editingId: string | null = null;
-let showAddForm = false;
+let closeEditForm: (() => void) | null = null;
 let portsAuto = true;
 let portsFilterQuery = '';
 let portsScopeFilter: PortsScopeFilter = 'all';
@@ -166,7 +165,7 @@ function buildShell(): HTMLElement {
         <button type="button" class="dev-server-screen__btn" data-action="refresh">
           ${iconHtml('refresh', { size: 14 })}<span>Refresh</span>
         </button>
-        <button type="button" class="dev-server-screen__btn dev-server-screen__btn--primary" data-action="add">
+        <button type="button" class="dev-server-screen__btn dev-server-screen__btn--primary" data-action="add" aria-haspopup="dialog" aria-expanded="false">
           ${iconHtml('plus', { size: 14 })}<span>Add server</span>
         </button>
       </div>
@@ -175,7 +174,6 @@ function buildShell(): HTMLElement {
       <section class="dev-server-screen__section dev-server-screen__section--servers" aria-label="Server list">
         <div class="dev-server-screen__section-panel">
           <div class="dev-server-screen__list" data-role="server-list"></div>
-          <div class="dev-server-screen__form hidden" data-role="edit-form"></div>
         </div>
       </section>
       <section class="dev-server-screen__section dev-server-screen__section--logs" data-section="logs" aria-label="Logs">
@@ -421,88 +419,28 @@ function iconBtn(
 }
 
 function openEditForm(id: string | 'new'): void {
-  editingId = id === 'new' ? null : id;
-  showAddForm = true;
-  renderEditForm();
+  hideEditForm();
+  const anchor = document.querySelector<HTMLElement>('[data-action="add"]');
+  if (!anchor) return;
+  const existing = id === 'new' ? undefined : servers.find((server) => server.id === id);
+  closeEditForm = openDevServerFormPopover({
+    anchor,
+    existing,
+    workspacePath: getWorkspacePath().trim(),
+    worktrees: buildWorktreeSelectOptions(),
+    getPorts: () => ports,
+    nextFreePort: fetchNextFreePort,
+    onSave: (values) => existing
+      ? updateDevServerApi(existing.id, values)
+      : createDevServerApi(values),
+    onSaved: () => { void refreshAll(); },
+    onClose: () => { closeEditForm = null; },
+  });
 }
 
 function hideEditForm(): void {
-  showAddForm = false;
-  editingId = null;
-  const form = document.querySelector<HTMLElement>('[data-role="edit-form"]');
-  form?.classList.add('hidden');
-  form?.replaceChildren();
-}
-
-function renderEditForm(): void {
-  const form = document.querySelector<HTMLElement>('[data-role="edit-form"]');
-  if (!form || !showAddForm) return;
-  form.classList.remove('hidden');
-  const existing = editingId ? servers.find((s) => s.id === editingId) : null;
-  const def = existing?.def;
-  const lockedCmd = def?.source === 'startup.md';
-  const worktreeOptions = buildWorktreeSelectOptions();
-  const selectedWorktree =
-    def?.worktreeRoot?.trim() ||
-    existing?.worktreeRoot?.trim() ||
-    getWorkspacePath().trim();
-  const worktreeOptionsHtml = worktreeOptions
-    .map((opt) => {
-      const selected =
-        normalizePathKey(opt.value) === normalizePathKey(selectedWorktree) ? 'selected' : '';
-      return `<option value="${escapeAttr(opt.value)}" ${selected}>${escapeAttr(opt.label)}</option>`;
-    })
-    .join('');
-
-  form.innerHTML = `
-    <div class="dev-server-screen__form-heading">
-      <strong>${existing ? 'Edit server' : 'Add server'}</strong>
-      <span>${lockedCmd ? 'Command details come from startup.md.' : 'Register a command Minnow can start and monitor.'}</span>
-    </div>
-    <label>Name<input name="name" value="${escapeAttr(def?.name ?? '')}" /></label>
-    <label>Command<input name="command" value="${escapeAttr(def?.command ?? existing?.command ?? '')}" ${lockedCmd ? 'disabled' : ''} /></label>
-    <label>Working directory<input name="cwd" value="${escapeAttr(def?.cwd ?? '.')}" ${lockedCmd ? 'disabled' : ''} /></label>
-    <label>Worktree
-      <select name="worktreeRoot">${worktreeOptionsHtml}</select>
-    </label>
-    <label>Port<input name="port" type="number" min="1" max="65535" value="${def?.port ?? existing?.port ?? DEFAULT_DEV_SERVER_PORT}" /></label>
-    <label>Network
-      <select name="network">
-        <option value="local" ${(def?.network ?? 'local') === 'local' ? 'selected' : ''}>This PC</option>
-        <option value="lan" ${(def?.network ?? 'local') === 'lan' ? 'selected' : ''}>Network</option>
-      </select>
-    </label>
-    <label>Health check URL<input name="healthUrl" value="${escapeAttr(def?.healthUrl ?? '')}" ${lockedCmd ? 'disabled' : ''} /></label>
-    <div class="dev-server-screen__form-actions">
-      <label class="dev-server-screen__inline-check">
-        <input type="checkbox" name="autoStart" ${def?.autoStart ? 'checked' : ''} />
-        <span>Auto-start</span>
-      </label>
-      <span class="dev-server-screen__warn" data-role="port-warn" hidden></span>
-      <button type="button" class="dev-server-screen__btn" data-action="use-free-port">Use next free port</button>
-      <button type="button" class="dev-server-screen__btn" data-action="cancel-edit">Cancel</button>
-      <button type="button" class="dev-server-screen__btn dev-server-screen__btn--primary" data-action="save-edit">Save</button>
-    </div>
-  `;
-
-  const portInput = form.querySelector<HTMLInputElement>('input[name="port"]');
-  portInput?.addEventListener('input', () => void checkPortConflict(form));
-  void checkPortConflict(form);
-}
-
-async function checkPortConflict(form: HTMLElement): Promise<void> {
-  const warn = form.querySelector<HTMLElement>('[data-role="port-warn"]');
-  const portInput = form.querySelector<HTMLInputElement>('input[name="port"]');
-  if (!warn || !portInput) return;
-  const port = Number(portInput.value);
-  const hit = ports.find((p) => p.port === port);
-  if (hit) {
-    warn.hidden = false;
-    warn.textContent = `Port ${port} in use by ${hit.process} (pid ${hit.pid})`;
-  } else {
-    warn.hidden = true;
-    warn.textContent = '';
-  }
+  closeEditForm?.();
+  closeEditForm = null;
 }
 
 function escapeAttr(value: string): string {
@@ -745,69 +683,6 @@ async function onDetect(): Promise<void> {
   }
 }
 
-async function onSaveEdit(): Promise<void> {
-  const form = document.querySelector<HTMLElement>('[data-role="edit-form"]');
-  if (!form) return;
-  const name = (form.querySelector<HTMLInputElement>('input[name="name"]')?.value ?? '').trim();
-  const command = (
-    form.querySelector<HTMLInputElement>('input[name="command"]')?.value ?? ''
-  ).trim();
-  const cwd = (form.querySelector<HTMLInputElement>('input[name="cwd"]')?.value ?? '.').trim();
-  const port = Number(form.querySelector<HTMLInputElement>('input[name="port"]')?.value);
-  const network = (form.querySelector<HTMLSelectElement>('select[name="network"]')?.value ??
-    'local') as DevServerNetwork;
-  const healthUrl = (
-    form.querySelector<HTMLInputElement>('input[name="healthUrl"]')?.value ?? ''
-  ).trim();
-  const autoStart = Boolean(
-    form.querySelector<HTMLInputElement>('input[name="autoStart"]')?.checked,
-  );
-  const worktreeSelect = form.querySelector<HTMLSelectElement>('select[name="worktreeRoot"]');
-  const worktreeRoot = worktreeSelect?.value?.trim() ?? '';
-  const ws = getWorkspacePath().trim();
-  const worktreePatch =
-    ws && worktreeRoot && normalizePathKey(worktreeRoot) !== normalizePathKey(ws)
-      ? { worktreeRoot }
-      : { worktreeRoot: '' };
-  if (!name) {
-    await appAlert('Name is required');
-    return;
-  }
-  try {
-    if (editingId) {
-      await updateDevServerApi(editingId, {
-        name,
-        command,
-        cwd,
-        port,
-        network,
-        healthUrl: healthUrl || undefined,
-        autoStart,
-        ...worktreePatch,
-      });
-    } else {
-      if (!command) {
-        await appAlert('Command is required');
-        return;
-      }
-      await createDevServerApi({
-        name,
-        command,
-        cwd,
-        port,
-        network,
-        healthUrl: healthUrl || undefined,
-        autoStart,
-        ...worktreePatch,
-      });
-    }
-    hideEditForm();
-    await refreshAll();
-  } catch (err) {
-    await appAlert(err instanceof Error ? err.message : String(err));
-  }
-}
-
 function wireShellEvents(root: HTMLElement): void {
   root.addEventListener('click', (ev) => {
     const sortBtn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-ports-sort]');
@@ -841,17 +716,6 @@ function wireShellEvents(root: HTMLElement): void {
       portsAuto = !portsAuto;
       syncPortsAutoButton();
       if (portsAuto) void refreshPorts(true);
-    }
-    if (action === 'cancel-edit') hideEditForm();
-    if (action === 'save-edit') void onSaveEdit();
-    if (action === 'use-free-port') {
-      const form = document.querySelector<HTMLElement>('[data-role="edit-form"]');
-      const portInput = form?.querySelector<HTMLInputElement>('input[name="port"]');
-      const base = Number(portInput?.value) || DEFAULT_DEV_SERVER_PORT;
-      void fetchNextFreePort(base).then((port) => {
-        if (portInput) portInput.value = String(port);
-        if (form) void checkPortConflict(form);
-      });
     }
   });
 
@@ -924,6 +788,7 @@ export function closeDevServerScreen(options?: {
 }): void {
   if (!isDevServerScreenOpen()) return;
 
+  hideEditForm();
   stopPolling();
   teardownDevServerLogView();
   const savedReturnChatId = returnChatId;

@@ -71,8 +71,8 @@ describe('product wiki catalog generation', () => {
       'documentation/manual/README.md',
       'documentation/manual/get-started/install.md',
       'documentation/manual/get-started/connect-a-model.md',
+      'documentation/manual/get-started/costs-and-providers.md',
       'documentation/manual/get-started/first-chat.md',
-      'documentation/manual/concepts/how-minnow-works.md',
     ]);
     const appsBlock = paths.filter((pagePath) => pagePath.includes('/manual/apps/'));
     assert.deepEqual(appsBlock[0], 'documentation/manual/apps/overview.md');

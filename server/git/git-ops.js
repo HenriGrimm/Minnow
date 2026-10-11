@@ -1,3 +1,4 @@
+import { assertActionWorktreeIdle, withWorktreeMutation } from './action-run-lock.js';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -978,6 +979,7 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
   }
 
   const targetPath = worktreePath.trim();
+  assertActionWorktreeIdle(path.resolve(repo.cwd, targetPath));
   const mainWorktreePath = await resolveMainWorktreePath(repo.cwd);
   if (
     mainWorktreePath &&
@@ -991,7 +993,7 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
   args.push(targetPath);
 
   const gitCwd = mainWorktreePath ?? repo.cwd;
-  const result = await git(args, gitCwd);
+  const result = await withWorktreeMutation(path.resolve(repo.cwd, targetPath), () => git(args, gitCwd));
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
@@ -1003,6 +1005,7 @@ export async function worktreeRemove({ cwd, path: worktreePath, force } = {}) {
 export async function checkout({ cwd, branch, create, startPoint } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
+  assertActionWorktreeIdle(repo.cwd);
 
   if (!branch || typeof branch !== 'string' || !branch.trim()) {
     return { ok: false, error: 'branch is required' };
@@ -1015,7 +1018,7 @@ export async function checkout({ cwd, branch, create, startPoint } = {}) {
   if (create && startPoint && typeof startPoint === 'string' && startPoint.trim()) {
     args.push(startPoint.trim());
   }
-  const result = await git(args, repo.cwd);
+  const result = await withWorktreeMutation(repo.cwd, () => git(args, repo.cwd));
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
@@ -1026,12 +1029,13 @@ export async function checkout({ cwd, branch, create, startPoint } = {}) {
 export async function checkoutDetach({ cwd, sha } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
+  assertActionWorktreeIdle(repo.cwd);
 
   if (!sha || typeof sha !== 'string' || !sha.trim()) {
     return { ok: false, error: 'sha is required' };
   }
 
-  const result = await git(['checkout', '--detach', sha.trim()], repo.cwd);
+  const result = await withWorktreeMutation(repo.cwd, () => git(['checkout', '--detach', sha.trim()], repo.cwd));
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }

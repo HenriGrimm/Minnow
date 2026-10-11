@@ -344,6 +344,80 @@ function renderIncremental(
   if (streamCursor) bubble.appendChild(streamCursor);
 }
 
+// ── Source blocks ────────────────────────────────────────────────────────────
+
+/** One top-level markdown block and the `[start, end)` source range it came from. */
+export interface MarkdownSourceBlock {
+  type: string;
+  start: number;
+  end: number;
+}
+
+/** Block types that render nothing visible, so there is nothing to click on. */
+const INVISIBLE_BLOCK_TYPES = new Set(['space', 'def']);
+
+/**
+ * Full render where every element is tagged `data-md-block="<index>"` with the
+ * source range of the top-level token that produced it. Ranges come from the
+ * real source, not the lexer, so splicing an edited block back is lossless.
+ */
+export function renderMarkdownSourceBlocks(
+  bubble: HTMLElement,
+  raw: string,
+): MarkdownSourceBlock[] {
+  ensureMarkedOptionsConfigured();
+  bubble.classList.add('msg-bubble--md');
+
+  let tokens: Token[] & { links?: unknown };
+  try {
+    tokens = marked.lexer(raw) as Token[] & { links?: unknown };
+  } catch {
+    renderFull(bubble, raw, false, null);
+    return [];
+  }
+
+  const blocks: MarkdownSourceBlock[] = [];
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const token of tokens) {
+    const tokenRaw = token.raw ?? '';
+    const at = tokenRaw ? raw.indexOf(tokenRaw, cursor) : -1;
+    // The lexer rewrote this text (it should not after EOL normalization) — render, never edit.
+    const located = at >= 0;
+    if (located) cursor = at + tokenRaw.length;
+    if (INVISIBLE_BLOCK_TYPES.has(token.type)) continue;
+
+    let html: string;
+    try {
+      // Reference-style links resolve against the whole document's definitions.
+      html = marked.parser(Object.assign([token], { links: tokens.links }) as Token[]) as string;
+    } catch {
+      html = '';
+    }
+    if (!html.trim()) continue;
+    const template = document.createElement('template');
+    template.innerHTML = DOMPurify.sanitize(`<div data-mn-md-wrap>${html}</div>`, {
+      USE_PROFILES: { html: true },
+    });
+    const sourceRoot: ParentNode = template.content.querySelector('[data-mn-md-wrap]') ?? template.content;
+    const index = located ? blocks.length : -1;
+    if (located) blocks.push({ type: token.type, start: at, end: at + tokenRaw.length });
+    for (const child of Array.from(sourceRoot.childNodes)) {
+      if (child.nodeType === 1 && index >= 0) {
+        (child as HTMLElement).dataset.mdBlock = String(index);
+      }
+      if (child.nodeType === 1 || (child.textContent ?? '').trim()) fragment.appendChild(child);
+    }
+  }
+
+  bubble.replaceChildren(fragment);
+  applyDataLangAttributes(bubble);
+  highlightCodeBlocks(bubble);
+  decorateRenderedMarkdown(bubble);
+  resetIncrementalState(bubble);
+  return blocks;
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**

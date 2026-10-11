@@ -23,6 +23,7 @@ export interface BoardSummary {
   /** Stamped workspace; null/absent on journals written before MIN-752. */
   workspacePath?: string | null;
   status: BoardState['status'];
+  stopReason?: BoardState['stopReason'];
   concurrency: number;
   taskCount: number;
   mergedCount?: number;
@@ -92,6 +93,7 @@ export interface BoardClient {
 
   start(concurrency?: number): Promise<void>;
   stop(): Promise<void>;
+  pause(): Promise<void>;
   setConcurrency(n: number): Promise<void>;
   startTask(taskId: string): Promise<boolean>;
   abandonTask(taskId: string): Promise<boolean>;
@@ -767,6 +769,10 @@ export function createBoardClient(
             ? JSON.stringify({})
             : JSON.stringify({ concurrency }),
       });
+    },
+
+    async pause() {
+      await request(`/${encodeURIComponent(boardId)}/pause`, { method: 'POST' });
     },
 
     async stop() {

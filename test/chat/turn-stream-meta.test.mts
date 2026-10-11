@@ -72,6 +72,33 @@ describe('runtimeStatusFromStreamMetaRuntime', () => {
 });
 
 describe('runtimeStatusFromStreamMetaRuntime — hosted estimate (MIN-337)', () => {
+  test('shows native MTPLX tokens before output and prefers them to text estimates', () => {
+    for (const hasOutput of [false, true]) {
+      const runtime = { mtplx_progress: { completion_tokens: 128 }, output_tokens_estimate: 7 };
+      const view = runtimeStatusFromStreamMetaRuntime(runtime, hasOutput);
+      assert.deepEqual(view, { phase: 'generating', detail: '128 tokens' });
+      const acc = applyStreamMetaEvent({}, { type: 'stream_meta', runtime });
+      assert.equal(acc.usage, undefined);
+      assert.equal(acc.timings, undefined);
+    }
+  });
+
+  test('ignores malformed MTPLX counts and keeps the text fallback', () => {
+    for (const completion_tokens of [null, '128', -1, 0, 1.5, Infinity, NaN]) {
+      const view = runtimeStatusFromStreamMetaRuntime({
+        mtplx_progress: { completion_tokens }, output_tokens_estimate: 7,
+      }, true);
+      assert.equal(view.detail, '7 tokens');
+    }
+  });
+
+  test('final llama-compatible timings win over the last MTPLX progress count', () => {
+    const view = runtimeStatusFromStreamMetaRuntime({
+      timings: { predicted_n: 120 }, mtplx_progress: { completion_tokens: 128 },
+    }, true);
+    assert.equal(view.detail, '120 tokens');
+  });
+
   test('falls back to the runner estimate when llama timings are absent', () => {
     const view = runtimeStatusFromStreamMetaRuntime({ output_tokens_estimate: 103 }, false);
     assert.equal(view.phase, 'generating');

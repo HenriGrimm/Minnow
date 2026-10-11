@@ -677,7 +677,7 @@ describe('llama args', () => {
     }
   });
 
-  test('-lv 4 is emitted so the load bar has phase markers, unless extra_args sets it', () => {
+  test('verbose logging includes token traces, unless extra_args sets verbosity', () => {
     const args = buildLlamaServerArgs({
       modelPath: '/tmp/model.gguf',
       port: 8085,
@@ -687,8 +687,8 @@ describe('llama args', () => {
       ggufMeta: GGUF_8B,
       settings: {},
     });
-    // At the default verbosity (3) the whole weight load is silent.
-    assert.equal(flagValue(args, '-lv'), '4');
+    assert.ok(args.includes('--verbose'));
+    assert.equal(args.includes('-lv'), false);
     // The activity poller depends on /slots; do not rely on it staying default-on.
     assert.ok(args.includes('--slots'));
 
@@ -703,6 +703,7 @@ describe('llama args', () => {
     });
     assert.equal(pinned.filter((token) => token === '-lv').length, 1);
     assert.equal(flagValue(pinned, '-lv'), '2');
+    assert.equal(pinned.includes('--verbose'), false);
 
     const verbose = buildLlamaServerArgs({
       modelPath: '/tmp/model.gguf',
@@ -714,6 +715,7 @@ describe('llama args', () => {
       settings: { extra_args: ['-v'] },
     });
     assert.equal(verbose.includes('-lv'), false);
+    assert.equal(verbose.includes('--verbose'), false);
   });
 
   test('spec decoding emits only the --spec-* spellings', () => {

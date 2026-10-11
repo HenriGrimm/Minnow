@@ -1,6 +1,6 @@
 import { runProcess } from '../process-runner.js';
 import { runGh } from './gh-cli.js';
-import { createGithubRequestGate } from './github-request-gate.js';
+import { createGhRequests } from './gh-requests.js';
 import { isGitRepository } from '../tools/git-change-stats.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 
@@ -10,17 +10,7 @@ const GH_LOG_TIMEOUT_MS = 90_000;
 const STATUS_TTL_MS = 60_000;
 /** @type {Map<string, { at: number, value: object }>} */
 const statusCache = new Map();
-
-const githubRequest = createGithubRequestGate({
-  probe: async (host, cwd, args) => {
-    try {
-      const endpoint = args[0] === 'api' && !args.includes('graphql')
-        ? ['rate_limit'] : ['graphql', '-f', 'query=query { rateLimit { resetAt } }'];
-      const result = await runGh(['api', '--hostname', host, '--include', ...endpoint], { cwd, timeout: 15_000 });
-      return `${result.stdout}\n${result.stderr}`;
-    } catch { return ''; }
-  },
-});
+const ghRequests = createGhRequests({ run: runGh });
 
 function resolveCwd(cwd) {
   return cwd && String(cwd).trim() ? String(cwd).trim() : getEffectiveWorkspaceRoot();
@@ -28,14 +18,13 @@ function resolveCwd(cwd) {
 
 export async function gh(args, cwd, timeout = GH_TIMEOUT_MS) {
   try {
-    const hostnameArg = args.indexOf('--hostname');
-    const host = hostnameArg >= 0 ? args[hostnameArg + 1]
-      : statusCache.get(cwd)?.value?.hostname || process.env.GH_HOST || 'github.com';
-    return await githubRequest(args, cwd, host, () => runGh(args, {
+    const hostIndex = args.indexOf('--hostname');
+    const hostname = (hostIndex >= 0 ? args[hostIndex + 1] : statusCache.get(cwd)?.value?.hostname) || process.env.GH_HOST || 'github.com';
+    return await ghRequests.request(args, {
       cwd,
       timeout,
       env: { GH_PAGER: 'cat', PAGER: 'cat', NO_COLOR: '1', CLICOLOR: '0' },
-    }));
+    }, hostname);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -50,7 +39,9 @@ export async function gh(args, cwd, timeout = GH_TIMEOUT_MS) {
 export function processError(result, fallback) {
   const text = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim();
   if (!text) return fallback;
-  return text.replace(/^[Xx✗]\s+/, '').split('\n').slice(0, 6).join('\n');
+  const retry = text.match(/Retry after \d{4}-\d{2}-\d{2}T[\d:.]+Z/i)?.[0];
+  const lines = text.replace(/^[Xx✗]\s+/, '').split('\n').filter((line) => line !== retry);
+  return [...lines.slice(0, retry ? 5 : 6), ...(retry ? [retry] : [])].join('\n');
 }
 
 /**
@@ -192,15 +183,14 @@ async function probeForgeStatus(root) {
     };
   }
 
-  // Check local credentials without a network auth probe on every cache expiry.
-  // The token stays in this local result and is never returned or logged.
-  const auth = await gh(['auth', 'token', '--hostname', hostname], root, 20_000);
+  const auth = await gh(['api', '--hostname', hostname, 'user', '--jq', '.login'], root, 20_000);
   if (auth.code !== 0) {
     return {
       ...withRemote,
       cliInstalled: true,
       cliVersion: version,
-      reason: 'The GitHub CLI is not signed in. Run `gh auth login` to manage pull requests and CI.',
+      reason: /rate limit/i.test(auth.stderr) ? processError(auth, 'GitHub is temporarily rate limited')
+        : 'The GitHub CLI is not signed in. Run `gh auth login` to manage pull requests and CI.',
     };
   }
 
@@ -312,7 +302,7 @@ export async function prList({ cwd, state = 'open', limit = 50 } = {}) {
 
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const result = await gh(
-    ['pr', 'list', '--state', String(state), '--limit', String(safeLimit), '--json', PR_LIST_FIELDS],
+    ['pr', 'list', '--repo', `${gate.status.hostname}/${gate.status.repo}`, '--state', String(state), '--limit', String(safeLimit), '--json', PR_LIST_FIELDS],
     gate.cwd,
   );
   if (result.code !== 0) {
@@ -343,7 +333,7 @@ export async function prView({ cwd, number } = {}) {
     return { ok: false, error: 'A pull request number is required' };
   }
 
-  const result = await gh(['pr', 'view', String(num), '--json', PR_VIEW_FIELDS], gate.cwd);
+  const result = await gh(['pr', 'view', String(num), '--repo', `${gate.status.hostname}/${gate.status.repo}`, '--json', PR_VIEW_FIELDS], gate.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result, `Could not load pull request #${num}`) };
   }
@@ -442,10 +432,11 @@ export async function prMerge({ cwd, number, method = 'squash', deleteBranch, au
 }
 
 export async function prCheckout({ cwd, number } = {}) {
+  const { withWorktreeMutation } = await import('./action-run-lock.js');
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await gh(['pr', 'checkout', String(Number(number))], gate.cwd);
+  const result = await withWorktreeMutation(gate.cwd, () => gh(['pr', 'checkout', String(Number(number))], gate.cwd));
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not check out the pull request') };
   }
@@ -519,12 +510,23 @@ function normalizeRun(run) {
   };
 }
 
-export async function runList({ cwd, branch, limit = 25 } = {}) {
+export async function runList({ cwd, branch, workflow, status, page, limit = 25 } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
   const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  if (page !== undefined || workflow || status) {
+    const params = new URLSearchParams({ per_page: String(safeLimit), page: String(Math.max(1, Math.floor(Number(page) || 1))) });
+    if (branch) params.set('branch', branch);
+    if (status) params.set('status', status);
+    const endpoint = workflow ? `actions/workflows/${encodeURIComponent(workflow)}/runs` : 'actions/runs';
+    const result = await gh(['api', '--hostname', gate.status.hostname, `repos/${gate.status.repo}/${endpoint}?${params}`], gate.cwd);
+    if (result.code !== 0) return { ok: false, error: processError(result, 'Could not list workflow runs') };
+    const data = parseJson(result.stdout, {});
+    return { ok: true, hasMore: Number(params.get('page')) * safeLimit < data.total_count, runs: (data.workflow_runs || []).map(run => normalizeRun({ databaseId: run.id, number: run.run_number, displayTitle: run.display_title, workflowName: run.name || run.path, status: run.status, conclusion: run.conclusion, headBranch: run.head_branch, headSha: run.head_sha, event: run.event, createdAt: run.created_at, updatedAt: run.updated_at, startedAt: run.run_started_at, url: run.html_url })) };
+  }
   const args = ['run', 'list', '--limit', String(safeLimit), '--json', RUN_LIST_FIELDS];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (branch && String(branch).trim()) args.push('--branch', String(branch).trim());
 
   const result = await gh(args, gate.cwd);
@@ -548,7 +550,7 @@ export async function runView({ cwd, id } = {}) {
   if (!Number.isFinite(runId) || runId <= 0) return { ok: false, error: 'A run id is required' };
 
   const result = await gh(
-    ['run', 'view', String(runId), '--json', `${RUN_LIST_FIELDS},jobs`],
+    ['run', 'view', String(runId), '--repo', `${gate.status.hostname}/${gate.status.repo}`, '--json', `${RUN_LIST_FIELDS},jobs`],
     gate.cwd,
   );
   if (result.code !== 0) {
@@ -586,6 +588,7 @@ export async function runRerun({ cwd, id, failedOnly } = {}) {
   if (!gate.ok) return gate;
 
   const args = ['run', 'rerun', String(Number(id))];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (failedOnly) args.push('--failed');
 
   const result = await gh(args, gate.cwd);
@@ -599,7 +602,7 @@ export async function runCancel({ cwd, id } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await gh(['run', 'cancel', String(Number(id))], gate.cwd);
+  const result = await gh(['run', 'cancel', String(Number(id)), '--repo', `${gate.status.hostname}/${gate.status.repo}`], gate.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not cancel the run') };
   }
@@ -611,6 +614,7 @@ export async function runLog({ cwd, id, jobId, failedOnly = true, maxLines = 400
   if (!gate.ok) return gate;
 
   const args = ['run', 'view', String(Number(id))];
+  args.push('--repo', `${gate.status.hostname}/${gate.status.repo}`);
   if (jobId) args.push('--job', String(Number(jobId)), '--log');
   else if (failedOnly) args.push('--log-failed');
   else args.push('--log');
@@ -633,7 +637,7 @@ export async function runLog({ cwd, id, jobId, failedOnly = true, maxLines = 400
 }
 
 export function invalidateForgeStatusCache(cwd) {
-  githubRequest.invalidateReads();
+  ghRequests.invalidateReads();
   if (cwd) statusCache.delete(resolveCwd(cwd));
   else statusCache.clear();
 }

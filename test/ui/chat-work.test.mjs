@@ -79,6 +79,71 @@ const bookkeepingRound = (name, content = null) => [
   { role: 'tool', tool_call_id: name, content: 'Saved' },
 ];
 
+test('steering stays in one live timeline and one settled change summary', () => {
+  chat.history.splice(3, 0,
+    { role: 'user', content: 'Keep the transition inline.\nAlso preserve message actions.', steer: true },
+    ...tool('b', 'src/steer.ts'),
+    { role: 'user', content: 'Use the existing theme tokens.', steer: true },
+  );
+  chat.history[4].content = '';
+  const originalHistory = JSON.stringify(chat.history);
+  const turns = collectTranscriptTurns(chat);
+  assert.equal(turns.length, 1);
+  assert.equal(turns[0].run.runId, 'r1');
+  assert.equal(turns[0].toolCount, 2);
+  assert.deepEqual(turns[0].finalIndices, [7]);
+
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  const work = mount.querySelector('.chat-work');
+  const steers = [...mount.querySelectorAll('.msg--steered')];
+  assert.equal(mount.querySelectorAll('.chat-work').length, 1);
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+  assert.equal(steers.length, 2);
+  for (const row of steers) {
+    assert.equal(row.querySelector('.msg-steer-chip').textContent, 'You steered');
+    assert.ok(row.querySelector('.message-actions__trigger'));
+    assert.ok(row.classList.contains('chat-step'));
+    assert.ok(!row.classList.contains('chat-work-hidden'));
+  }
+  const tools = [...mount.querySelectorAll(':scope > .tool-call-msg')];
+  assert.equal(tools[0].nextElementSibling, steers[0]);
+  assert.ok(tools[0].classList.contains('chat-step--joined'));
+  assert.ok(steers[0].classList.contains('chat-step--joined'));
+  assert.ok(tools[1].classList.contains('chat-step--joined'));
+  assert.equal(steers[1].nextElementSibling.dataset.historyIndex, '7');
+
+  setStreaming(false, chat.id);
+  installChatWorkView(mount, chat, () => false);
+  const card = mount.querySelector('.chat-turn-changes');
+  assert.equal(mount.querySelectorAll('.chat-turn-changes').length, 1);
+  assert.match(card.textContent, /Edited 2 files/);
+  assert.equal(card.previousElementSibling.dataset.historyIndex, '7');
+  assert.ok(tools.every((row) => row.classList.contains('chat-work-hidden')));
+  assert.ok(steers.every((row) => !row.classList.contains('chat-work-hidden')));
+  work.click();
+  assert.ok(steers[0].classList.contains('chat-step--joined'));
+  setChatView('full');
+  assert.ok(steers.every((row) => !row.classList.contains('chat-step')));
+  setChatView('compact');
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelectorAll('.chat-work').length, 1);
+  assert.equal(mount.querySelectorAll('.chat-turn-changes').length, 1);
+  assert.equal(JSON.stringify(chat.history), originalHistory);
+});
+
+test('steering clears a previous reply even when followed only by bookkeeping', () => {
+  chat.history.push({ role: 'user', content: 'Adjust the answer.', steer: true },
+    ...bookkeepingRound('save_memory'), { role: 'assistant', content: 'Adjusted answer.' });
+  assert.deepEqual(collectTranscriptTurns(chat).map((turn) => turn.finalIndices), [[7]]);
+  chat.history.push({ role: 'user', content: 'A separate request.' },
+    { role: 'assistant', content: 'A separate answer.' });
+  assert.deepEqual(collectTranscriptTurns(chat).map((turn) => turn.finalIndices), [[7], [9]]);
+  chat.history = [{ role: 'user', content: 'Recovered correction.', steer: true },
+    { role: 'assistant', content: 'Recovered answer.' }];
+  assert.deepEqual(collectTranscriptTurns(chat).map((turn) => turn.finalIndices), [[1]]);
+});
+
 test('a reply around a trailing memory save stays visible and copies both parts without activity', async () => {
   const report = '## What changed\n\nSet `PUBLIC_ADSENSE_CLIENT`.\n\n## Verification\n\nBuild passed.';
   const closing = 'Set the remaining slot IDs in Cloudflare Pages.';

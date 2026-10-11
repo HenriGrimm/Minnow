@@ -111,13 +111,14 @@ describe('toLogLines', () => {
     assert.equal(lines.at(-1), 'line 799');
   });
 
-  test('drops idle-slot heartbeats before applying the cap', () => {
+  test('keeps the full log including idle messages, blank lines and partial tokens', () => {
     const idle = 'srv  update_slots: all slots are idle';
     const real = Array.from({ length: 20 }, (_, i) => `I srv real ${i}`);
     const text = [...real, ...Array.from({ length: 80 }, () => idle)].join('\n');
-    const lines = toLogLines(text, 20);
-    assert.equal(lines.length, 20);
-    assert.ok(lines.every((line) => !/all slots are idle/.test(line)));
-    assert.equal(lines.at(-1), 'I srv real 19');
+    const lines = toLogLines(text);
+    assert.equal(lines.length, 100);
+    assert.equal(lines.at(-1), idle);
+    assert.deepEqual(toLogLines('next token: hello\n\npart'), ['next token: hello', '', 'part']);
+    assert.equal(toLogLines(Array.from({ length: 800 }, () => 'token').join('\n')).length, 800);
   });
 });

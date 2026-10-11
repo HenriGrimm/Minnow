@@ -14,6 +14,7 @@ export const UI_DESIGNER_TOOL_ALLOWLIST = [
   'read_file',
   'read_file_range',
   'read_document',
+  'present_files',
   'search_in_file',
   'replace_text_in_file',
   'save_file',

@@ -6,13 +6,21 @@ description: >-
   codebase research via sub-agents, and a review pass before handoff. The lead
   agent does not write product code. Use when the user asks for a plan, roadmap,
   phased breakdown, implementation spec, or to plan a feature before building;
-  pair with orchestrate-plan for execution.
+  choose Build for one chat or Orchestrate for board execution.
 disable-model-invocation: true
 ---
 
 # Plan work (discover → draft → review)
 
-You are the **planner**. Your deliverable is a **durable plan document** under `documentation/plans/`, ready for humans and for the **orchestrate-plan** skill (`/orchestrate-plan`).
+You are the **planner**. Your deliverable is a **durable plan document** under `documentation/plans/`, ready for the selected Build or Orchestrate workflow.
+
+## Choose the execution format first
+
+For a **new planning request**, before scope questions or exploration, call **`ask_question`** with one card: **"How do you want to execute this plan?"** Options: **Build** (implement sequentially in one chat) and **Orchestrate** (distribute tasks across an orchestrator board). Wait for the answer before drafting. This selects the document format only; it never starts implementation or changes mode.
+
+Ask once per plan. Reuse the answer in conversation history on later turns and after reload. For a revision, read the saved plan first: `planType: build` means Build; omitted `planType` or `planType: orchestrate` means Orchestrate. Preserve its type unless the user explicitly requests conversion. Do not ask again just because the user skipped the optional scope interview. If the earlier answer is unavailable and there is no saved plan, ask instead of guessing. Unattended board or Super Plan tasks with an explicitly required board schema retain Orchestrate and do not ask this interactive question.
+
+The existing **waves, task ids, front-matter todos, Touches, dependency rules, and fresh-agent handoff requirements below apply only to Orchestrate**. Keep that format unchanged. For **Build**, use the Build schema below instead, including when revising. Apply the active granularity setting to sequential step size; write shared context once, without waves, task graph, write-ownership globs, duplicated todos, or agent orchestration instructions.
 
 ## Hard rules (planner)
 
@@ -93,27 +101,10 @@ Templates: [prompt-templates.md](prompt-templates.md)
 ## Step 4: Draft the plan
 
 1. Choose a **slug** (`kebab-case`, issue id prefix if applicable): `documentation/plans/<slug>.md`.
-2. Follow [plan-template.md](plan-template.md).
-3. Every **phase** must include:
-   - **Goal** (one paragraph)
-   - **In / out of scope** for that phase
-   - **Verification** — exact commands (`npm test`, `npx tsc --noEmit`, scoped suite), and for UI: route + `browser_*` criteria
-   - **Orchestration hints** — `explore` vs `generalPurpose`, **Impeccable** + **browser-automation** when UI
-
-### Phase sizing (for later orchestration)
-
-Phases should match one implement + one verify sub-agent run (see **orchestrate-plan**).
-
-### UI-heavy work
-
-Tag UI phases explicitly:
-
-- Implement: **`/impeccable`**
-- Verify: **`/browser-automation`** (`browser_navigate`, `browser_snapshot`, `browser_screenshot`)
-
-### Todos table
-
-Include a **Todos** section with stable phase ids (`phase-0-…`) and status — the orchestrator updates this during execution.
+2. Follow the selected format in [plan-template.md](plan-template.md). Preserve an existing plan's type when revising.
+3. Build uses sequential numbered steps with Changes, Verify, and progress checkboxes; share context once. Orchestrate uses the current Planner board schema with waves, task ids, Build/Test/Accept/Touches, explicit dependencies, and matching front-matter todos.
+4. Keep verification concrete: scoped commands, expected outcomes, and browser interactions for UI changes. Respect the active granularity setting.
+5. Run `check_plan`, fix errors, and rerun before finalizing.
 
 ---
 
@@ -124,7 +115,7 @@ Before calling the plan final, spawn **`generalPurpose`** with **`wait: true`** 
 Reviewer rubric:
 
 - [ ] Locked decisions and non-goals are explicit
-- [ ] Each phase has verifiable acceptance criteria
+- [ ] Each step or task has verifiable acceptance criteria in the selected format
 - [ ] Order respects dependencies
 - [ ] Files/areas named are plausible (spot-check paths)
 - [ ] Risks, rollout, and `documentation/context.md` update called out if APIs/architecture change
@@ -141,10 +132,10 @@ Prompt template: [prompt-templates.md](prompt-templates.md)
 Tell the user:
 
 - Plan path(s)
-- Recommended next step: **`/orchestrate-plan`** and execute phase-by-phase
+- Recommended next step: **Build** in one chat for Build plans; **Orchestrate** for board plans
 - Any decisions still open (short list)
 
-Do not start orchestration unless the user asks.
+Do not start implementation or orchestration unless the user asks.
 
 ---
 

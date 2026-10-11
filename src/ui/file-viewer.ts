@@ -1,3 +1,4 @@
+import { captureEditorFocusRequest } from './editor-focus-request';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * Editable file viewer (CodeMirror 6) with multi-tab strip and per-tab in-memory state.
@@ -11,6 +12,7 @@ import {
   getDocumentPreviewKind,
 } from '../attachments/document-path';
 import { setAssistantBubbleContent } from '../markdown/renderer';
+import { mountEditableMarkdownPreview } from './markdown-preview-edit';
 import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/links';
 import { executeTool, getLocalServerAvailable } from '../tools/client';
 import { resolveDocumentHtmlLoadUrl, resolvePreviewLoadUrl } from './preview-load-url';
@@ -114,6 +116,18 @@ const LSP_CHANGE_DEBOUNCE_MS = 400;
 /** Footer appended when only a range of a large file is loaded. */
 export const LARGE_FILE_EXCERPT_FOOTER_RE =
   /\n\n\/\* Showing lines 1–\d+ only \(\d+ bytes total\)\. \*\/\s*$/;
+
+let pendingEditorFocus: { path: string; ownsFocus: () => boolean } | null = null;
+
+function requestEditorFocus(path: string): void {
+  pendingEditorFocus = { path, ownsFocus: captureEditorFocusRequest(document) };
+}
+
+function focusRequestedEditor(path: string): void {
+  if (editorViewPath !== path || pendingEditorFocus?.path !== path) return;
+  if (pendingEditorFocus.ownsFocus()) editorView?.focus();
+  pendingEditorFocus = null;
+}
 
 let editorView: EditorView | null = null;
 /** Path key for the tab currently bound to `editorView` (may differ from active tab during switches). */
@@ -361,10 +375,9 @@ export function updateSecondaryViewerChrome(): void {
       const secondaryView = m.getSecondaryViewerEditorView();
       const canSave = Boolean(
         tab &&
-          secondaryView &&
+          (tab.viewMode === 'editor' ? secondaryView : tab.viewMode === 'markdown-preview') &&
           tab.isDirty &&
           !tab.readOnlyExcerpt &&
-          tab.viewMode === 'editor' &&
           !savingTabs.has(tab),
       );
       saveBtn.disabled = !canSave;
@@ -534,10 +547,9 @@ function updateViewerChrome(): void {
   if (saveBtn) {
     const canSave = Boolean(
       tab &&
-        editorView &&
+        (tab.viewMode === 'editor' ? editorView : tab.viewMode === 'markdown-preview') &&
         tab.isDirty &&
         !tab.readOnlyExcerpt &&
-        tab.viewMode === 'editor' &&
         !savingTabs.has(tab),
     );
     saveBtn.disabled = !canSave;
@@ -559,6 +571,35 @@ function updateViewerChrome(): void {
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
+/** Record a block edit made in a markdown preview (either pane) on its tab. */
+function applyMarkdownPreviewEdit(path: string, next: string): void {
+  const tab = getViewerTab(path);
+  if (!tab || tab.readOnlyExcerpt) return;
+  const dirty = isViewerDocDirty(next, tab.originalContent);
+  const dirtyChanged = dirty !== tab.isDirty;
+  snapshotViewerTabEditorContent(path, next, dirty);
+  if (dirtyChanged) updateViewerChrome();
+}
+
+/** Render a markdown tab into `preview` — click-to-edit unless the tab is read-only. */
+export function mountMarkdownPreviewContent(
+  preview: HTMLElement,
+  tab: ViewerTabState,
+  content: string,
+): void {
+  if (tab.readOnlyExcerpt) {
+    setAssistantBubbleContent(preview, content, { streaming: false });
+    return;
+  }
+  const path = tab.path;
+  mountEditableMarkdownPreview(preview, normalizeViewerDocText(content), {
+    onChange: (next) => applyMarkdownPreviewEdit(path, next),
+    onSave: () => {
+      void saveViewerTabByPath(path);
+    },
+  });
+}
+
 function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
   const host = getViewerHost();
   if (!host) return;
@@ -579,7 +620,7 @@ function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
   preview.dataset.mdSourcePath = tab.path;
   host.appendChild(preview);
   markdownPreviewEl = preview;
-  setAssistantBubbleContent(preview, content, { streaming: false });
+  mountMarkdownPreviewContent(preview, tab, content);
   const headingId = takePendingMarkdownHeading(tab.path);
   if (headingId) scrollMarkdownHeading(preview, headingId);
   updateViewerChrome();
@@ -588,6 +629,10 @@ function mountMarkdownPreview(tab: ViewerTabState, content: string): void {
 function mountEditor(tab: ViewerTabState, content: string): void {
   const host = getViewerHost();
   if (!host) return;
+  const focusRequest = pendingEditorFocus?.path === tab.path
+    ? pendingEditorFocus.ownsFocus
+    : editorView?.hasFocus ? captureEditorFocusRequest(document) : null;
+  if (pendingEditorFocus?.path === tab.path) pendingEditorFocus = null;
   const generation = ++mountGeneration;
   destroyEditor();
   host.innerHTML = '';
@@ -745,7 +790,6 @@ function mountEditor(tab: ViewerTabState, content: string): void {
         selection: EditorSelection.range(from, to),
         scrollIntoView: true,
       });
-      editorView.focus();
     } else if (tab.pendingInitialSelection && editorView) {
       const { line, character } = tab.pendingInitialSelection;
       tab.pendingInitialSelection = null;
@@ -758,10 +802,8 @@ function mountEditor(tab: ViewerTabState, content: string): void {
         selection: EditorSelection.cursor(anchor),
         scrollIntoView: true,
       });
-      editorView.focus();
-    } else if (getActiveViewerTabPath() === path) {
-      editorView.focus();
     }
+    if (focusRequest?.()) editorView.focus();
 
     if (useLsp) {
       lspSyncedPath = path;
@@ -927,12 +969,13 @@ interface LoadedFileContent {
   readOnlyExcerpt: boolean;
 }
 
-async function loadFileContent(path: string): Promise<LoadedFileContent> {
+async function loadFileContent(path: string, workspaceRoot?: string): Promise<LoadedFileContent> {
   const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
   const { parseGetFileMetadataSize, readWorkspaceTextFile } = await import(
     '../attachments/workspace-text-read'
   );
   const toolContext = buildFileTreeToolContext();
+  if (workspaceRoot) toolContext.workspaceRoot = workspaceRoot;
 
   const metaRaw = (await executeTool('get_file_metadata', { path }, toolContext)).content;
   if (metaRaw.startsWith('Error:')) {
@@ -991,7 +1034,7 @@ export async function ensureViewerTabLoaded(path: string): Promise<void> {
       renderViewerSlotsForPath(path);
       return;
     }
-    const loaded = await loadFileContent(path);
+    const loaded = await loadFileContent(path, tab.workspaceRoot);
     const still = getViewerTab(path);
     if (!still || still.loadStatus !== 'loading') return;
     const viewMode = still.viewMode === 'markdown-preview' ? 'markdown-preview' : 'editor';
@@ -1076,7 +1119,7 @@ export function renderActiveViewerTab(): void {
       const src = resolvePreviewLoadUrl(
         { kind: 'workspace', path: tab.path },
         undefined,
-        getFileTreeListingWorkspaceRoot(),
+        tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
       );
       mountImagePreview(tab, src, () => {
         setViewerError(
@@ -1091,7 +1134,7 @@ export function renderActiveViewerTab(): void {
     const src = resolvePreviewLoadUrl(
       { kind: 'workspace', path: tab.path },
       undefined,
-      getFileTreeListingWorkspaceRoot(),
+      tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
     );
     void mountPdfPreview(tab, src);
     return;
@@ -1101,7 +1144,7 @@ export function renderActiveViewerTab(): void {
     const src = resolveDocumentHtmlLoadUrl(
       tab.path,
       undefined,
-      getFileTreeListingWorkspaceRoot(),
+      tab.workspaceRoot ?? getFileTreeListingWorkspaceRoot(),
     );
     const label = tab.viewMode === 'spreadsheet' ? 'Spreadsheet preview' : 'Word document preview';
     mountDocumentHtmlPreview(tab, src, label, () => {
@@ -1149,6 +1192,7 @@ async function confirmCloseDirtyTab(tab: ViewerTabState): Promise<boolean> {
 
 /** Activate a tab inside the slot that owns it. */
 async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?: boolean }): Promise<boolean> {
+  requestEditorFocus(path);
   const slotTabs = await import('./right-pane-slot-tabs');
   const split = await import('./right-pane-split');
   const targetSlot = slotTabs.targetSlotForViewerPath(path);
@@ -1166,6 +1210,7 @@ async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?:
   }
   showViewerSplit();
   renderViewerSlots();
+  focusRequestedEditor(path);
   renderFileTreeViaBridge();
   return true;
 }
@@ -1334,7 +1379,7 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
   updateViewerChrome();
   const listingRoot = getFileTreeListingWorkspaceRoot();
   const mainWorkspaceRoot = getWorkspacePath();
-  const workspaceRoot = listingRoot ?? mainWorkspaceRoot;
+  const workspaceRoot = tab.workspaceRoot ?? listingRoot ?? mainWorkspaceRoot;
   const savedPath = tab.path;
   const submittedRevision = tab.revision;
   const content = tab.cachedEditorContent ?? tab.originalContent;
@@ -1419,8 +1464,9 @@ export async function saveFocusedViewerTab(): Promise<boolean> {
 export function switchMarkdownViewerToCode(): void {
   const tab = primarySlotViewerTab();
   if (!tab || !isMarkdownFilePath(tab.path) || tab.viewMode !== 'markdown-preview') return;
+  requestEditorFocus(tab.path);
+  // The draft (including edits made in the preview) carries over to the editor.
   tab.viewMode = 'editor';
-  tab.cachedEditorContent = tab.originalContent;
   renderActiveViewerTab();
 }
 
@@ -1428,20 +1474,8 @@ export function switchMarkdownViewerToCode(): void {
 export async function switchMarkdownViewerToPreview(): Promise<void> {
   const tab = primarySlotViewerTab();
   if (!tab || !isMarkdownFilePath(tab.path) || !editorView) return;
-  if (tab.isDirty) {
-    const choice = await showViewerUnsavedDialog(
-      `You have unsaved changes in "${tab.displayName}".`,
-    );
-    if (choice === 'cancel') return;
-    if (choice === 'save') {
-      const saved = await saveViewerTabByPath(tab.path);
-      if (!saved || tab.isDirty) return;
-    }
-  }
-  const content = normalizeViewerDocText(editorView.state.doc.toString());
-  tab.originalContent = content;
-  tab.cachedEditorContent = content;
-  tab.isDirty = false;
+  // The preview is editable too, so an unsaved draft just carries over.
+  snapshotOutgoingEditorTab();
   tab.viewMode = 'markdown-preview';
   renderActiveViewerTab();
 }
@@ -1643,6 +1677,7 @@ export function getFileViewerEditorView(): EditorView | null {
 }
 
 export interface OpenFileInViewerOptions {
+  workspaceRoot?: string;
   skipUnsavedGuard?: boolean;
   asCode?: boolean;
   initialSelection?: { line: number; character: number };
@@ -1655,11 +1690,13 @@ export async function openGitFileInEditor(options: {
   isCurrent?: () => boolean;
 }): Promise<boolean> {
   if (options.isCurrent?.() === false) return false;
+  const ownsFocus = captureEditorFocusRequest(document);
   snapshotOutgoingEditorTab();
   const snapshot = options.staged || options.deleted;
   const path = snapshot
     ? `.minnow/attachments/git/${encodeURIComponent(options.cwd ?? getWorkspacePath())}/${options.staged ? 'staged' : 'deleted'}/${options.path}`
     : options.path;
+  pendingEditorFocus = { path, ownsFocus };
   const result = await openViewerTab(path, {
     kind: snapshot ? 'attachment' : 'workspace',
     displayName: `${options.path.split('/').pop()}${options.staged ? ' (staged)' : options.deleted ? ' (deleted)' : ''}`,
@@ -1697,6 +1734,7 @@ function openTabOptionsFromViewerOptions(
 ): OpenViewerTabOptions {
   return {
     skipUnsavedGuard: options?.skipUnsavedGuard,
+    workspaceRoot: options?.workspaceRoot,
     asCode: options?.asCode,
     initialSelection: options?.initialSelection,
     initialLineRange: options?.initialLineRange,
@@ -1738,8 +1776,9 @@ async function adoptOpenedViewerTab(path: string): Promise<void> {
 }
 
 /** Open a workspace image via the preview file API (binary-safe). */
-export async function openWorkspaceImageInViewer(relativePath: string): Promise<void> {
+export async function openWorkspaceImageInViewer(relativePath: string, options?: OpenFileInViewerOptions): Promise<void> {
   const result = await openViewerTab(relativePath, {
+    ...openTabOptionsFromViewerOptions(options),
     viewMode: 'image',
     readOnlyExcerpt: true,
     readOnlyBannerText: 'Workspace image (read-only preview).',
@@ -1782,13 +1821,14 @@ export async function openFileInViewer(
   relativePath: string,
   options?: OpenFileInViewerOptions,
 ): Promise<void> {
+  requestEditorFocus(relativePath);
   if (window.minnow?.viewContext?.appId) {
     const { routeCodeWindowCommand } = await import('../os/code-window-command');
     const { getWorkspacePath } = await import('../state/workspace');
-    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: getFileTreeListingWorkspaceRoot() || getWorkspacePath() })) return;
+    if (await routeCodeWindowCommand({ kind: 'file', path: relativePath, workspacePath: options?.workspaceRoot || getFileTreeListingWorkspaceRoot() || getWorkspacePath() })) return;
   }
   if (isImageFilePath(relativePath)) {
-    openWorkspaceImageInViewer(relativePath);
+    await openWorkspaceImageInViewer(relativePath, options);
     return;
   }
 
@@ -1849,6 +1889,7 @@ export async function openFileInViewer(
 
   if (result.focusedExisting && result.tab.loadStatus === 'ready') {
     renderViewerSlots();
+    focusRequestedEditor(relativePath);
     return;
   }
 

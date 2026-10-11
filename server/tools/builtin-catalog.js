@@ -1,4 +1,5 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
+import { ACTION_TOOLS } from './action-catalog.js';
 import { TAVILY_SEARCH_PROPERTIES } from './tavily-options.js';
 import { MAP_PROPERTIES, EXTRACT_PROPERTIES } from './tavily-tool-schemas.js';
 
@@ -50,6 +51,7 @@ function withFullResult(properties) {
 
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
+  ...ACTION_TOOLS,
   {
     id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
     description: 'List installed plugins, validate a workspace package, or read the plugin authoring API.',
@@ -478,14 +480,29 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
+    id: 'present_files',
+    label: 'Present files',
+    description: 'Shows saved files as compact chat cards with Open and Download actions.',
+    category: 'files',
+    serverRequired: true,
+    definition: toolSchema('present_files',
+      'Present saved project files or generated deliverables to the user as file cards with Open and Download. Call after saving or finding the files you want the user to inspect. Does not create files or automatically open them. Paths resolve in this chat’s workspace; cards retain that workspace after reload.',
+      { files: { type: 'array', minItems: 1, maxItems: 20, items: {
+        type: 'object', properties: {
+          path: { type: 'string', description: 'Saved file path, relative to the workspace or an allowed absolute path.' },
+          title: { type: 'string', maxLength: 160, description: 'Optional readable title; defaults to the filename.' },
+        }, required: ['path'],
+      } } }, ['files']),
+  },
+  {
     id: 'check_plan',
     label: 'Check plan',
-    description: 'Checks whether a saved markdown plan parses for an orchestrator board.',
+    description: 'Checks a saved Build or Orchestrate markdown plan.',
     category: 'files',
     serverRequired: true,
     definition: toolSchema(
       'check_plan',
-      'Check a saved plan with the orchestrator board parser. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
+      'Check a saved plan using its planType: build for sequential chat instructions, orchestrate (or omitted) for the same structure and workspace-aware task dependency validation used by board creation and resync. Returns a success summary or line-numbered errors with repair hints. Run after saving or editing a plan and before marking planning done.',
       { path: { type: 'string', description: 'Workspace-relative path to the saved markdown plan' } },
       ['path'],
     ),

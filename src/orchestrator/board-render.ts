@@ -206,6 +206,7 @@ function headerStatus(
     return { variant: 'complete', label: 'Complete' };
   }
   if (state.status === 'running') return { variant: 'running', label: 'Running' };
+  if (state.stopReason === 'paused') return { variant: 'stopped', label: 'Paused' };
   if (state.status === 'stopped') return { variant: 'stopped', label: 'Stopped' };
   return { variant: 'ready', label: 'Ready' };
 }

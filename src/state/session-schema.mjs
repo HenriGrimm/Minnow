@@ -1244,6 +1244,9 @@ export function normalizeChatRow(raw) {
       : {}),
     ...(expertRuntime ? { expertRuntime } : {}),
     ...(row.unread === true ? { unread: true } : {}),
+    ...(typeof row.pinnedAt === 'number' && Number.isFinite(row.pinnedAt) && row.pinnedAt > 0
+      ? { pinnedAt: row.pinnedAt }
+      : {}),
     ...(typeof row.lastAssistantAt === 'number' &&
     Number.isFinite(row.lastAssistantAt) &&
     row.lastAssistantAt > 0

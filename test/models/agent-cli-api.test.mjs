@@ -7,6 +7,7 @@ import { handleModelsRequest } from '../../server/models/routes.js';
 import { handleProviderRequest } from '../../server/providers/routes.js';
 import { getProviderRuntime } from '../../server/providers/store.js';
 import { resolveServerModelContextLimit } from '../../server/models/context-window.js';
+import { registerCliDisposal } from '../../server/generations/agent-cli/lifecycle.js';
 import { setTestHome, rmTestHome, httpRequest } from '../providers/test-helpers.js';
 
 let homeDir;
@@ -38,7 +39,12 @@ after(async () => {
 
 describe('agent CLI model routes', () => {
   test('usage is read-only, query-compatible, and unsupported providers return no invented measurements', async () => {
-    const response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1');
+    // An API-key login has no subscription meter; never reach the developer's real Cursor login.
+    const previousKey = process.env.CURSOR_API_KEY;
+    process.env.CURSOR_API_KEY = 'test-key';
+    let response;
+    try { response = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/cursor/usage?refresh=1'); }
+    finally { if (previousKey === undefined) delete process.env.CURSOR_API_KEY; else process.env.CURSOR_API_KEY = previousKey; }
     assert.equal(response.status, 200);
     assert.equal(response.json.usage.status, 'unsupported');
     assert.deepEqual(response.json.usage.windows, []);
@@ -106,6 +112,30 @@ describe('agent CLI model routes', () => {
     assert.equal(response.status, 200);
     assert.equal(response.json.agentCli.enabled, true);
     assert.equal(response.json.provider.id, 'claude-code-cli');
+  });
+
+  test('prepare-update closes only idle processes of the matching CLI and reports the update command', async () => {
+    const sessions = [
+      { key: 'idle', providerId: 'codex-cli' },
+      { key: 'running', providerId: 'codex-cli', active: true },
+      { key: 'awaiting-tools', providerId: 'codex-cli', waiting: true },
+      { key: 'other-cli', providerId: 'claude-code-cli' },
+    ];
+    const closed = [];
+    registerCliDisposal('prepare-update-test', async (filter, options) => {
+      assert.notEqual(options?.forget, true);
+      for (const session of sessions.filter(filter)) closed.push(session.key);
+    });
+    try {
+      const response = await httpRequest(baseUrl, 'POST', '/api/models/agent-clis/codex/prepare-update');
+      assert.equal(response.status, 200);
+      assert.equal(response.json.agentCli.updateCommand, 'codex update');
+      assert.deepEqual(closed, ['idle']);
+      const get = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/codex/prepare-update');
+      assert.equal(get.status, 405);
+    } finally {
+      registerCliDisposal('prepare-update-test', async () => {});
+    }
   });
 
   test('serves the static catalog and capability matrix without an HTTP upstream', async () => {

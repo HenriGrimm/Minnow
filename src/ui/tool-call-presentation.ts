@@ -56,6 +56,7 @@ const TOOL_ICON: Record<string, IconName> = {
   read_file_range: 'fileText',
   read_document: 'fileText',
   get_file_metadata: 'fileText',
+  present_files: 'fileText',
   save_file: 'save',
   append_file: 'plus',
   insert_at_line: 'plus',

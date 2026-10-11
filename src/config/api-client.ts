@@ -115,12 +115,20 @@ export async function getSessions(): Promise<SessionState & { revision?: number;
  * GET /api/config/bugs — read-only migration source for Issues (MIN-261).
  * Leftover bugs/state.json is left on disk after migration.
  */
-/** GET /api/config/sessions/summaries?workspace=… — chats omit `history` (Phase C.1). */
-export async function getSessionSummaries(workspace?: string, signal?: AbortSignal): Promise<SessionSummariesState> {
+/**
+ * GET /api/config/sessions/summaries?workspace=… — chats omit `history` (Phase C.1).
+ * `sinceRevision` asks for only what changed after that store revision.
+ */
+export async function getSessionSummaries(
+  workspace?: string,
+  signal?: AbortSignal,
+  sinceRevision?: number,
+): Promise<SessionSummariesState> {
   const params = new URLSearchParams();
   if (workspace != null && workspace !== '') {
     params.set('workspace', workspace);
   }
+  if (sinceRevision != null) params.set('sinceRevision', String(sinceRevision));
   const qs = params.toString();
   const res = await fetch(`/api/config/sessions/summaries${qs ? `?${qs}` : ''}`, {
     cache: 'no-store',
@@ -193,6 +201,23 @@ export async function getIssues(): Promise<IssuesState | null> {
   const res = await fetch('/api/config/issues', { cache: 'no-store' });
   if (res.status === 404) return null;
   return parseJsonResponse<IssuesState>(res);
+}
+
+/**
+ * Conditional GET /api/config/issues for pollers: `unchanged` when the server's ETag
+ * still matches the one from the previous read, so nothing is downloaded or parsed.
+ */
+export async function getIssuesIfChanged(etag: string | null): Promise<
+  { unchanged: true } | { unchanged: false; state: IssuesState | null; etag: string | null }
+> {
+  const res = await fetch('/api/config/issues', {
+    cache: 'no-store',
+    ...(etag ? { headers: { 'If-None-Match': etag } } : {}),
+  });
+  if (etag && res.status === 304) return { unchanged: true };
+  if (res.status === 404) return { unchanged: false, state: null, etag: null };
+  const state = await parseJsonResponse<IssuesState>(res);
+  return { unchanged: false, state, etag: res.headers.get('ETag') };
 }
 
 /** PUT /api/config/issues */

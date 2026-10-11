@@ -1142,6 +1142,12 @@ export interface SessionSummariesState {
   revision?: number;
   /** Per-chat revisions for safe concurrent viewer writes. */
   chatRevisions?: Record<string, number>;
+  /**
+   * `?sinceRevision=` answers: `unchanged` carries only `revision`; `delta` lists just the
+   * chats stamped after it, while `chatRevisions` still names every chat.
+   */
+  unchanged?: boolean;
+  delta?: boolean;
   activeId: string | null;
   sidebarCollapsed: boolean;
   sidebarWidth?: number;
@@ -1282,6 +1288,8 @@ export interface Chat {
   pendingModeId?: ModeId;
   /** Sidebar: green dot on inactive rows until the user opens this chat again. */
   unread?: boolean;
+  /** Epoch ms the user pinned this chat; pinned chats list above everything else, newest pin first. */
+  pinnedAt?: number;
   /** Sidebar: red dot on inactive rows after a failed turn until the user opens this chat again. */
   turnError?: boolean;
   /** Epoch ms of the last committed assistant reply (unread baseline). */
@@ -1552,6 +1560,8 @@ export interface ChatCompletionChunk {
   /** llama.cpp prefill progress (`return_progress`). */
   prompt_progress?: LlamaPromptProgress;
   error?: string | { message?: string; code?: string | number; type?: string };
+  /** MTPLX native decode progress, separate from final billed usage. */
+  mtplx_progress?: { completion_tokens?: number };
 }
 
 /** Partial tool calls keyed by stream `index` while merging SSE deltas. */

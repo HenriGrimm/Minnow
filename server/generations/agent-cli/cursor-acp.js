@@ -1,13 +1,43 @@
 import { PassThrough } from 'node:stream';
 import { createCliRpc } from './rpc.js';
 import { cliHash } from './checkpoints.js';
+import { cursorVariantParts } from '../../../src/models/cursor-variants.mjs';
+
+const EFFORT_OPTION_IDS = new Set(['reasoning', 'effort', 'reasoning_effort', 'thought_level']);
+const acpEffort = value => value === 'extra-high' ? 'xhigh' : value === 'none' ? 'off' : value;
+
+/**
+ * Cursor's parameterized picker reports the base model and its parameters
+ * separately, while `--model` takes the CLI's combined slug
+ * (`gpt-5.3-codex-high-fast` → `gpt-5.3-codex` + reasoning=high, fast=true).
+ */
+export function cursorAcpModelMatches(selected, result) {
+  if (!selected) return true;
+  const current = String(result?.models?.currentModelId ?? '').replace(/\[.*\]$/, '');
+  if (selected === 'auto') return current === 'default';
+  const parts = cursorVariantParts(selected);
+  if (!parts || (current !== parts.baseId && `cursor-${current}` !== parts.baseId)) return false;
+  const options = Array.isArray(result?.configOptions) ? result.configOptions : [];
+  const value = id => options.find(option => option.id === id)?.currentValue;
+  const effort = options.find(option => EFFORT_OPTION_IDS.has(option.id))?.currentValue;
+  if (parts.effort && acpEffort(effort) !== parts.effort) return false;
+  if (value('fast') != null && value('fast') !== String(parts.fast)) return false;
+  if (parts.thinking && value('thinking') != null && value('thinking') !== 'true') return false;
+  return true;
+}
 
 /** ACP extensions never gain a second execution/approval path around Minnow. */
 export function cursorPermissionAllowed(params, names) {
   const call = params?.toolCall;
   const raw = call?.rawInput;
-  if (raw?.serverName === 'minnow' && names.has(raw.toolName)) return true;
-  return [...names].some(name => call?.title === `mcp__minnow__${name}` || call?.title === `minnow:${name}`);
+  // Cursor reports MCP calls as `${providerIdentifier}: ${toolName}`.
+  if ((raw?.providerIdentifier === 'minnow' || raw?.serverName === 'minnow') && names.has(raw.toolName)) return true;
+  return [...names].some(name => [`mcp__minnow__${name}`, `minnow:${name}`, `minnow: ${name}`].includes(call?.title));
+}
+
+/** Cursor announces an MCP call before its arguments arrive, then names it in an update. */
+export function cursorUnnamedMcpCall(update) {
+  return update?.title === 'MCP: tool' && !update.rawInput?.toolName && !update.rawInput?.providerIdentifier && !update.rawInput?.serverName;
 }
 
 export async function openCursorAcp(invocation, { tools = [], saved, onNativeData, signal } = {}) {
@@ -48,7 +78,7 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
   }
   function digest() { return cliHash(ledger.map(({ toolId, ...row }) => row)); }
   function verifyModel(result) {
-    if (invocation.selectedModel && result.models?.currentModelId !== invocation.selectedModel) {
+    if (!cursorAcpModelMatches(invocation.selectedModel, result)) {
       throw new Error('Cursor ACP did not confirm the selected model.');
     }
   }
@@ -67,7 +97,10 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
       } else if (type === 'agent_thought_chunk') {
         if (!loading && started && u.content?.type === 'text') emit({ type: 'thinking', text: u.content.text });
       } else if (type === 'tool_call' || type === 'tool_call_update') {
-        if (!loading && type === 'tool_call' && !cursorPermissionAllowed({ toolCall: u }, names)) {
+        // Check every identity Cursor reports, not only the first row: its
+        // MCP placeholder is unnamed until a later tool_call_update.
+        const identifies = type === 'tool_call' || u.title != null || u.rawInput != null;
+        if (!loading && identifies && !cursorPermissionAllowed({ toolCall: u }, names) && !cursorUnnamedMcpCall(u)) {
           throw new Error('Cursor attempted an unexposed native tool.');
         }
         const known = ledger.findLast(entry => entry.toolId === u.toolCallId);
@@ -78,8 +111,11 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
     } catch (error) { fail(error); }
   });
   try {
+    // The variants picker collapses each model to one default variant and
+    // reports e.g. reasoning=medium for `--model gpt-5.3-codex-low`; the
+    // parameterized picker reports what `--model` actually selected.
     const init = await rpc.request('initialize', { protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, _meta: { parameterizedModelPicker: true } },
       clientInfo: { name: 'minnow', version: '1' } }, { signal });
     if (init.protocolVersion !== 1 || init.agentCapabilities?.loadSession !== true) throw new Error('Cursor ACP does not support verified session loading.');
     await rpc.request('authenticate', { methodId: 'cursor_login' }, { signal });
@@ -100,11 +136,9 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
       verifyModel(created);
       sessionId = created.sessionId;
       if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 512) throw new Error('Cursor ACP returned an invalid session ID.');
-      loading = true;
-      try { verifyModel(await rpc.request('session/load', { ...params, sessionId }, { signal })); }
-      catch { throw new Error('The installed Cursor ACP cannot load a newly created session.'); }
-      loading = false;
-      if (failure || ledger.length) throw new Error('Cursor ACP failed its empty-session round trip.');
+      // Cursor persists a session only after its first prompt, so an empty
+      // session cannot be loaded back. A later failed load rebuilds instead.
+      if (failure) throw failure;
     }
     return {
       child: { stdout: output, stderr: rpc.child.stderr, get pid() { return rpc.child.pid; },

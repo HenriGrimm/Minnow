@@ -20,6 +20,7 @@ import {
 } from './issues-expand-state';
 import { setStatus } from './status';
 import { showToast } from './toast';
+import { isIssueBackgroundExpanding, setIssueBackgroundExpanding } from './issues-background-activity';
 
 export { isIssueDraftExpanding, isIssueExpandOverlayOpen };
 
@@ -82,11 +83,12 @@ const EXPAND_EMPTY_MESSAGE = 'Model returned no expanded prompt.';
 /** Expand a saved issue independently of the form that created it. */
 export async function expandCreatedIssueInBackground(issueId: string): Promise<void> {
   const issue = findIssueById(issueId);
-  if (!issue) return;
+  if (!issue || isIssueBackgroundExpanding(issueId, issue.workspacePath)) return;
   const original = {
     title: issue.title, description: issue.description ?? '', type: issue.type,
     priority: issue.priority, labels: [...issue.labels],
   };
+  setIssueBackgroundExpanding(issueId, true, issue.workspacePath);
   try {
     const draft = await expandUnsavedIssueDraft({ ...original, id: issueId, workspacePath: issue.workspacePath }, new AbortController().signal);
     if (!draft) return;
@@ -103,6 +105,8 @@ export async function expandCreatedIssueInBackground(issueId: string): Promise<v
     showToast(`${issueId} expanded`, 'success');
   } catch (error) {
     showToast(`${issueId} was created, but expansion failed: ${error instanceof Error ? error.message : 'Could not expand the issue'}`, 'error');
+  } finally {
+    setIssueBackgroundExpanding(issueId, false, issue.workspacePath);
   }
 }
 const EXPAND_FAILED_MESSAGE = 'Expand failed — check provider and model in Settings';

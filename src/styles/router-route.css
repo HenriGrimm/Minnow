@@ -1,0 +1,88 @@
+/*
+ * Auto model pool label in the composer model trigger: "✦ High · Model".
+ * Deciding shimmers the level and rolls candidate names; the pick flashes the
+ * accent, then settles. Every animation here is removed (not hidden) once the
+ * pick lands — a running CSS animation costs local tokens per second.
+ */
+.mn-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mn-route__spark {
+  display: inline-flex;
+  flex: none;
+  color: var(--mn-accent);
+}
+
+.mn-route__level {
+  flex: none;
+  font-weight: 600;
+  color: var(--mn-fg);
+  white-space: nowrap;
+}
+
+.mn-route__sep,
+.mn-route__model {
+  color: var(--mn-fg-muted);
+}
+
+.mn-route__model {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mn-route.is-deciding .mn-route__level {
+  color: var(--mn-fg);
+  -webkit-mask-image: linear-gradient(90deg, color-mix(in srgb, currentColor 35%, transparent) 0%, currentColor 45%, color-mix(in srgb, currentColor 35%, transparent) 90%);
+  mask-image: linear-gradient(90deg, color-mix(in srgb, currentColor 35%, transparent) 0%, currentColor 45%, color-mix(in srgb, currentColor 35%, transparent) 90%);
+  -webkit-mask-size: 200% 100%;
+  mask-size: 200% 100%;
+  animation: mn-route-shimmer 1.3s linear infinite;
+}
+
+.mn-route.is-deciding .mn-route__spark {
+  animation: mn-route-spin 1.2s linear infinite;
+}
+
+.mn-route__model.is-tick {
+  animation: mn-route-tick 0.16s ease-out;
+}
+
+.mn-route.is-flash .mn-route__level,
+.mn-route.is-flash .mn-route__model {
+  color: var(--mn-accent);
+  transition: none;
+}
+
+.mn-route.is-settling .mn-route__level,
+.mn-route.is-settling .mn-route__model {
+  transition: color 0.8s ease;
+}
+
+@keyframes mn-route-shimmer {
+  from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+  to { -webkit-mask-position: -100% 0; mask-position: -100% 0; }
+}
+
+@keyframes mn-route-spin {
+  to { transform: rotate(180deg); }
+}
+
+@keyframes mn-route-tick {
+  from { opacity: 0.25; transform: translateY(30%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-route.is-deciding .mn-route__level,
+  .mn-route.is-deciding .mn-route__spark,
+  .mn-route__model.is-tick {
+    animation: none;
+  }
+}

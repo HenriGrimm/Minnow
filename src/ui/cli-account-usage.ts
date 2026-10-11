@@ -1,5 +1,5 @@
 import '../styles/cli-account-usage.css';
-import { fetchAgentCliAccountUsage, type AgentCliAccountUsage, type AgentCliKind } from '../models/agent-clis';
+import { AGENT_CLI_USAGE_NAMES, fetchAgentCliAccountUsage, type AgentCliAccountUsage, type AgentCliKind } from '../models/agent-clis';
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 
 export interface AccountUsageView {
@@ -29,7 +29,7 @@ export function createAccountUsageView(
 ): AccountUsageView {
   const root = document.createElement('section');
   root.className = 'cli-account-usage';
-  root.setAttribute('aria-label', `${kind === 'codex' ? 'Codex' : 'Claude'} account usage`);
+  root.setAttribute('aria-label', `${AGENT_CLI_USAGE_NAMES[kind]} account usage`);
   const heading = document.createElement('div');
   heading.className = 'cli-account-usage__heading';
   const title = document.createElement('h3');
@@ -38,7 +38,7 @@ export function createAccountUsageView(
   refreshButton.type = 'button';
   refreshButton.className = 'cli-account-usage__refresh';
   refreshButton.textContent = 'Refresh';
-  refreshButton.setAttribute('aria-label', `Refresh ${kind === 'codex' ? 'Codex' : 'Claude'} account usage`);
+  refreshButton.setAttribute('aria-label', `Refresh ${AGENT_CLI_USAGE_NAMES[kind]} account usage`);
   heading.append(title, refreshButton);
   const status = document.createElement('p');
   status.className = 'cli-account-usage__status';

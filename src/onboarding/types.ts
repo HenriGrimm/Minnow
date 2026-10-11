@@ -8,13 +8,15 @@ import type { ThemeFamily, ThemeMode } from '../theme';
 export type OnboardingStepId =
   | 'welcome'
   | 'theme'
-  | 'apps'
+  | 'apps' // Legacy persisted id; the Apps step is no longer shown.
   | 'provider-choice'
   | 'provider-local'
   | 'provider-managed'
   | 'provider-cloud'
+  | 'provider-cli'
   | 'model-pick'
   | 'extras'
+  | 'github'
   | 'permissions'
   | 'memory'
   | 'api-keys'
@@ -49,7 +51,7 @@ export interface OnboardingPersistedState {
 export interface OnboardingContext {
   state: OnboardingPersistedState;
   /** Selected provider path from S2. */
-  providerPath: 'local' | 'managed' | 'cloud' | null;
+  providerPath: 'local' | 'managed' | 'cloud' | 'cli' | null;
   providerId: string | null;
   modelId: string | null;
   themeMode: ThemeMode | 'system' | null;

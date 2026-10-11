@@ -1,0 +1,11 @@
+export type RouterTier = 'fast' | 'balanced' | 'frontier';
+export type RouterEffort = 'low' | 'medium' | 'high';
+export declare const ROUTER_TIERS: readonly RouterTier[];
+export declare const ROUTER_EFFORTS: readonly RouterEffort[];
+export declare function isRouterTier(value: unknown): value is RouterTier;
+export declare function isRouterEffort(value: unknown): value is RouterEffort;
+export declare function formatRouterTierLabel(tier: string): string;
+export declare function guessRouterTier(modelId: string): RouterTier;
+export declare function routerEntryTier(entry: { tier?: string; modelId: string; label?: string }): RouterTier;
+export declare function routerTierFallbackOrder(target: string): RouterTier[];
+export declare function isDecisionModelId(modelId: string): boolean;

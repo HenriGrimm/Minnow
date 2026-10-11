@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Models workspace UI fixture</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css">
+  <link rel="stylesheet" href="/src/styles/models-page.css">
+  <link rel="stylesheet" href="/src/styles/models-workspace.css">
+  <link rel="stylesheet" href="/src/styles/models-load-settings.css">
+  <link rel="stylesheet" href="/src/styles/models-inspector.css">
+  <link rel="stylesheet" href="/src/styles/settings-sampler.css">
+  <link rel="stylesheet" href="/node_modules/@flaticon/flaticon-uicons/css/all/all.css">
+  <style>
+    :root { --font-ui: system-ui; --font-mono: ui-monospace, monospace; --radius-sm: 6px; --radius-md: 10px; --topbar-h: 48px; }
+    body { margin: 0; background: var(--mn-bg); color: var(--mn-fg); font: 14px system-ui; }
+    .fixture-controls { height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+    #modelsView { height: calc(100dvh - 40px); }
+  </style>
+</head>
+<body>
+  <div class="fixture-controls">
+    <span>Isolated UI fixture</span>
+    <select aria-label="Fixture theme"><option value="swamp-dark">Dark</option><option value="swamp-light">Light</option></select>
+    <select aria-label="Fixture runtime state"><option value="running">Running</option><option value="loading">Loading</option><option value="crashed">Crashed</option><option value="empty">Empty</option></select>
+  </div>
+  <script type="module">
+    import { getModelsState, subscribeModelsStore } from '/src/ui/models/store.ts';
+    import { render as renderLibrary } from '/src/ui/models/library-panel.ts';
+    import { render as renderServer } from '/src/ui/models/server-panel.ts';
+    import { initInspector } from '/src/ui/models/inspector.ts';
+    import { closeLoadSettingsPopover } from '/src/ui/models/load-settings-popover.ts';
+    import { setModelsInspectorOpen } from '/src/ui/models/inspector-visibility.ts';
+    import { setLibraryLaunchPrefsForTests } from '/src/config/library-launch-meta.ts';
+    const source = await fetch('/index.html').then((response) => response.text());
+    const page = new DOMParser().parseFromString(source, 'text/html').querySelector('#modelsView');
+    document.body.append(page);
+    page.classList.add('is-open', 'is-inspector-hidden', 'is-runtime-workspace');
+    page.querySelector('#btnModelsInspector').addEventListener('click', () => setModelsInspectorOpen(page.classList.contains('is-inspector-hidden')));
+    setModelsInspectorOpen(false);
+    const model = (id, name, format, extras = {}) => ({ id, name, format, repoId: 'Fixture/' + name, publisher: 'Fixture', producerSlug: 'qwen', producerName: 'Qwen', producerLogoId: 'qwen', quant: format === 'MLX' ? '4-bit' : 'Q4_K_M', arch: 'qwen', domain: 'chat', paramsB: 9, contextLength: 262144, capabilities: ['tools', 'reasoning'], sizeBytes: 5e9, path: '/fixture/' + id, fileName: name, source: 'downloaded', servable: true, incomplete: false, isMoe: false, ...extras });
+    const library = [model('gguf:Fixture/Qwen:Qwen-Q4_K_M.gguf', 'Qwen3.5-9B', 'GGUF'), model('mtplx:Fixture/Qwen', 'Qwen3.8-27B', 'MLX', { source: 'mtplx-cache', mtplxValidated: true, paramsB: 27, sizeBytes: 16e9 }), model('gguf:Fixture/Gemma:Gemma-Q4_K_M.gguf', 'Gemma-4-12B', 'GGUF', { producerSlug: 'google', producerName: 'Google', producerLogoId: 'google', paramsB: 12, sizeBytes: 7.5e9 })];
+    let prefs = { byLibraryId: {} };
+    setLibraryLaunchPrefsForTests(prefs);
+    const descriptor = { modelPath: '/fixture', canRun: true, mtpSupported: true, source: 'inspect', draft: { supported: true, minimum: 1, maximum: 3, default: 3, valueLabels: ['D1', 'D2', 'D3'] }, contextWindow: { supported: true, minimum: 4096, maximum: 262144, default: 32768, step: 1024 }, kvQuant: { supported: true, modes: ['off', 'q8', 'q4'] }, reasoning: { supported: true, modes: ['auto', 'on', 'off'], effortLevels: ['low', 'medium', 'high'], parser: 'qwen3' }, loadDefaults: { profile: 'sustained', context_window: 32768, paged_kv_quantization: 'off', reasoning: 'auto', reasoning_effort: 'medium', depth: 3 } };
+    // Keep live-log transport inside this fixture, just like the HTTP controls.
+    window.WebSocket = class {
+      static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+      readyState = 0;
+      constructor() { queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+      send(value) {
+        const request = JSON.parse(value);
+        if (request.type !== 'open') return;
+        queueMicrotask(() => {
+          this.onmessage?.({ data: JSON.stringify({ id: request.id, type: 'headers', status: 200, contentType: 'text/event-stream' }) });
+          const log = 'data: ' + JSON.stringify({ initial: true, offset: 50, text: 'Runtime ready\nListening for requests\n' }) + '\n\n';
+          this.onmessage?.({ data: JSON.stringify({ id: request.id, type: 'data', data: btoa(log) }) });
+        });
+      }
+      close() { this.readyState = 3; this.onclose?.(); }
+    };
+    window.fetch = async (url, options) => {
+      const path = String(url);
+      if (path.includes('/mtplx/descriptor')) return Response.json(descriptor);
+      if (path.includes('/mtplx/estimate')) return Response.json({ estimateGb: 20.5, budgetGb: 48, estimateSource: 'config-upper-bound' });
+      if (path === '/api/models/launch' && options?.method === 'PUT') {
+        const payload = JSON.parse(options.body); prefs.byLibraryId[payload.libraryId] = payload.settings;
+        return Response.json(prefs);
+      }
+      if (path === '/api/models/launch') return Response.json(prefs);
+      if (path.includes('/log')) return new Response('data: {"type":"snapshot","text":"Runtime ready\\nListening for requests\\n"}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+      if (path.includes('/llama/runtime')) return Response.json({ installed: true, variant: 'metal', devices: [] });
+      return Response.json({});
+    };
+    const state = getModelsState();
+    state.library = library;
+    state.hardware = { os: 'macOS', platform: 'darwin', arch: 'arm64', cpuName: 'Apple M4 Max', cpuCores: 16, totalRamGb: 64, availableRamGb: 48, backend: 'metal', unifiedMemory: true, hasGpu: true, gpuName: 'Apple M4 Max', gpuVramGb: 48, gpuCount: 1, gpus: [], gpuGroups: [] };
+    state.selectedId = null;
+    state.selectedServeId = null;
+    const serves = library.slice(0, 2).map((model, index) => ({ id: 'fixture-' + index, libraryId: model.id, runtime: index ? 'mtplx' : 'llama-cpp', modelPath: model.path, modelLabel: model.name, status: 'running', baseUrl: 'http://127.0.0.1:' + (8085 + index), port: 8085 + index, providerId: index ? 'mtplx-local' : 'llama-cpp-local', startedAt: Date.now() - 60000, runId: 'fixture-run', llamaSettings: index ? null : { ctx: 32768, parallel: 1 }, mtplxSettings: index ? { context_window: 32768 } : null }));
+    let section = 'installed';
+    function draw() { section === 'server' ? renderServer() : renderLibrary(); }
+    function scenario(value) {
+      state.serves = value === 'empty' ? [] : serves.map((serve) => ({ ...serve, status: value === 'loading' ? 'starting' : value === 'crashed' ? 'crashed' : 'running' }));
+      state.loads = value === 'loading' ? [{ serveId: serves[0].id, modelId: library[0].id, phase: 'Loading weights', phaseKey: 'weights', percent: 42, etaMs: 12000, startedAt: Date.now() - 8000, error: null, bytesTotal: 5e9 }] : [];
+      draw();
+    }
+    page.querySelectorAll('[data-models-nav]').forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.modelsNav;
+      if (!['installed', 'server'].includes(next)) return;
+      closeLoadSettingsPopover(); section = next;
+      page.querySelectorAll('.models-section').forEach((panel) => panel.classList.toggle('is-active', panel.id === 'modelsSection-' + section));
+      page.querySelectorAll('[data-models-nav]').forEach((nav) => nav.setAttribute('aria-current', nav === button ? 'page' : 'false'));
+      draw();
+    }));
+    document.querySelector('[aria-label="Fixture theme"]').onchange = (event) => document.documentElement.dataset.theme = event.target.value;
+    document.querySelector('[aria-label="Fixture runtime state"]').onchange = (event) => scenario(event.target.value);
+    subscribeModelsStore(draw);
+    initInspector();
+    scenario('running');
+  </script>
+</body>
+</html>

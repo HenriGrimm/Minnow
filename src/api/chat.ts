@@ -1,4 +1,5 @@
-﻿import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming } from '../app-state';
+import { setChatRunActivity, type ChatRunActivityStatus } from '../state/chat-run-activity';
+import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming } from '../app-state';
 import {
   isActiveChatStreaming,
   isBackgroundStreamBlockingSend,
@@ -812,6 +813,7 @@ export async function sendMessage(): Promise<void> {
     syncComposerFromStreamingState();
   }
 
+  let completionActivityStatus: ChatRunActivityStatus = 'completed';
   let fullText = '';
   let streamMeta: StreamMetaAccumulator = {};
   const t0 = performance.now();
@@ -1027,6 +1029,7 @@ export async function sendMessage(): Promise<void> {
     }
   } catch (err) {
     const e = err as { name?: string; message?: string };
+    completionActivityStatus = e?.name === 'AbortError' ? 'stopped' : 'failed';
     if (e && e.name === 'AbortError') {
       thinkingTracker.abort();
       streamStatus.setThinkingElapsed(null);
@@ -1081,6 +1084,7 @@ export async function sendMessage(): Promise<void> {
     clearInFlightPromptOverlay();
     streamingStatsPublisher.reset();
     thoughtController.abort();
+    setChatRunActivity(chat.id, completionActivityStatus);
     setStreaming(false, chat.id);
     clearStaleGenerationStatus(isAnyChatStreaming());
     setSidebarStreamPhase(null, chat.id);

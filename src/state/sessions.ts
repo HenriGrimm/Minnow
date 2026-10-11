@@ -143,6 +143,12 @@ let sessionsHydratedFromServer = false;
  * `null` means unknown — writes then skip the check rather than block.
  */
 let sessionRevision: number | null = null;
+/**
+ * Store revision the live poll has fully read. Unlike `sessionRevision`, this window's
+ * own saves never advance it — a save can jump past another window's write, and the
+ * poll asks the server only for chats stamped after this value.
+ */
+let summariesSyncedRevision: number | null = null;
 /** Revision of each chat as last observed by this viewer, independent of store writes. */
 const chatRevisions = new Map<string, number>();
 let sessionWriteBlockedByChatConflict = false;
@@ -212,6 +218,12 @@ let dirtyTrackingCursor = 0;
  */
 const DIRTY_TRACKING_SAMPLE_DEV = 64;
 const DIRTY_TRACKING_SAMPLE_PROD = 8;
+/**
+ * Wall-clock cap per baseline or verify pass. A hydrated long transcript serializes to
+ * megabytes, so a 64-chat window could stall a save for 120 ms+; the cursor resumes
+ * where a capped pass stopped, so the whole list is still swept, just over more saves.
+ */
+const DIRTY_TRACKING_BUDGET_MS = 6;
 /** When true, flush runs the unmarked-mutation verifier (tests / Vite DEV). */
 let dirtyTrackingVerifierForced = false;
 /**
@@ -298,14 +310,18 @@ function captureDirtyTrackingShadow(state: SessionState | null): void {
   }
   if (dirtyTrackingCursor >= chats.length) dirtyTrackingCursor = 0;
   const count = Math.min(dirtyTrackingSampleSize(), chats.length);
-  for (let n = 0; n < count; n += 1) {
+  const deadline = performance.now() + DIRTY_TRACKING_BUDGET_MS;
+  let n = 0;
+  while (n < count) {
     const chat = chats[(dirtyTrackingCursor + n) % chats.length];
+    n += 1;
     if (!chat) continue;
     // A chat already marked dirty proves nothing about tracking; skip the serialization.
     if (dirtyChatIds.has(chat.id)) continue;
     dirtyTrackingShadow.set(chat.id, hashChatForDirtyTracking(chat));
+    if (performance.now() > deadline) break;
   }
-  dirtyTrackingCursor = (dirtyTrackingCursor + count) % chats.length;
+  dirtyTrackingCursor = (dirtyTrackingCursor + n) % chats.length;
 }
 
 function clearSessionDirtySets(preserveConflicts = false): void {
@@ -372,12 +388,16 @@ export function markGroupDeleted(groupId: string): void {
 function verifyDirtyChatTracking(state: SessionState): boolean {
   if (dirtyTrackingShadow.size === 0) return false;
   let missed = false;
+  const deadline = performance.now() + DIRTY_TRACKING_BUDGET_MS;
   for (const chat of state.chats) {
+    if (dirtyTrackingShadow.size === 0) break;
     const prev = dirtyTrackingShadow.get(chat.id);
     if (prev === undefined) continue;
     // Marking it dirty already cleared the entry, so anything left here claims to be clean.
     dirtyTrackingShadow.delete(chat.id);
     if (dirtyChatIds.has(chat.id)) continue;
+    // Over budget, the rest of the window goes unchecked; the cursor re-samples it later.
+    if (performance.now() > deadline) continue;
     if (prev !== hashChatForDirtyTracking(chat)) {
       missed = true;
       // Repair rather than only report: production trusts the dirty set, so an unmarked
@@ -574,6 +594,7 @@ function markSessionsReady(): void {
 export function setSessionStateForTests(state: SessionState | null): void {
   sessionState = state;
   chatRevisions.clear();
+  summariesSyncedRevision = null;
   sessionWriteBlockedByChatConflict = false;
   conflictedChatIds.clear();
   clearSessionDirtySets();
@@ -595,6 +616,7 @@ export function resetSessionPersistenceForTests(): void {
   sessionPersistenceShutdownRegistered = false;
   clearSessionDirtySets();
   chatRevisions.clear();
+  summariesSyncedRevision = null;
   sessionWriteBlockedByChatConflict = false;
   conflictedChatIds.clear();
   dirtyTrackingShadow.clear();
@@ -1526,6 +1548,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           sessionWriteBlockedByChatConflict = false;
           conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
+          summariesSyncedRevision = sessionRevision;
           chatRevisions.clear();
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
             if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
@@ -1556,6 +1579,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           sessionWriteBlockedByChatConflict = false;
           conflictedChatIds.clear();
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
+          summariesSyncedRevision = sessionRevision;
           chatRevisions.clear();
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
             if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
@@ -1574,6 +1598,7 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           markAllHistoriesLoaded(sessionState.chats);
           sessionsHydratedFromServer = false;
           sessionRevision = null;
+          summariesSyncedRevision = null;
         }
         return;
       }
@@ -1614,17 +1639,30 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
   const protectedChat = (chat: Chat) => dirtyChatIds.has(chat.id) || deletedChatIds.has(chat.id) ||
     conflictedChatIds.has(chat.id) || streamingChatIds.has(chat.id) ||
     historyLoadInflight.has(chat.id) || Boolean(chat.composerDraft);
-  const remote = await getSessionSummaries(undefined, signal);
+  const synced = summariesSyncedRevision;
+  const remote = await getSessionSummaries(undefined, signal, synced ?? undefined);
+  // Nothing was written anywhere since the last poll: skip the parse entirely.
+  if (remote.unchanged) return unchanged;
   if (!Array.isArray(remote.chats) || !remote.chatRevisions) return unchanged;
-  const remoteIds = new Set(remote.chats.map((chat) => chat.id));
+  // A delta lists only changed chats; every surviving id is still in `chatRevisions`.
+  const remoteIds = new Set(remote.delta
+    ? Object.keys(remote.chatRevisions)
+    : remote.chats.map((chat) => chat.id));
   const incoming = sessionStateFromSummaries(remote);
   if (!sessionStateCoversRemoteChats(incoming, remote)) return unchanged;
+  const localById = new Map(state.chats.map((row) => [row.id, row]));
   const replacements = new Map<string, Chat>();
+  // A remote edit held back by local work must come round again in the next delta.
+  let deferred = false;
   for (const chat of incoming.chats) {
     if (!remoteIds.has(chat.id)) continue;
-    const local = state.chats.find((row) => row.id === chat.id);
-    if (deletedChatIds.has(chat.id) || (local && protectedChat(local))) continue;
-    if (local && chatRevisions.get(chat.id) === remote.chatRevisions[chat.id]) continue;
+    const local = localById.get(chat.id);
+    const sameRevision = chatRevisions.get(chat.id) === remote.chatRevisions[chat.id];
+    if (deletedChatIds.has(chat.id) || (local && protectedChat(local))) {
+      if (!sameRevision) deferred = true;
+      continue;
+    }
+    if (local && sameRevision) continue;
     if (chat.id === activeId || !sessionsLazyHistoryEnabled) {
       chat.history = await getChatHistory(chat.id, { signal });
       chat.historyLoaded = true;
@@ -1646,7 +1684,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
   });
   for (const [id, chat] of replacements) {
     const local = state.chats.find((row) => row.id === id);
-    if (local && protectedChat(local)) continue;
+    if (local && protectedChat(local)) { deferred = true; continue; }
     if (local) {
       for (const key of Object.keys(local)) delete (local as unknown as Record<string, unknown>)[key];
       Object.assign(local, chat);
@@ -1678,7 +1716,10 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     state.activeId = draft.id;
     activeChanged = true;
   }
-  if (typeof remote.revision === 'number') sessionRevision = remote.revision;
+  if (typeof remote.revision === 'number') {
+    sessionRevision = remote.revision;
+    if (!deferred) summariesSyncedRevision = remote.revision;
+  }
   if (changed) { captureDirtyTrackingShadow(state); notifyPluginContextChanged(); }
   return { changed, activeChanged };
 }

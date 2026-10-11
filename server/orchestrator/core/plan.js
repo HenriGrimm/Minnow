@@ -144,7 +144,7 @@ export function pendingAbandonments(state) {
  * @returns {import('./types').Desired[]}
  */
 export function plan(state) {
-  if (!state) return [];
+  if (!state || state.stopReason === 'paused') return [];
   if (state.status !== 'running') return manualDesires(state);
 
   /** @type {import('./types').Desired[]} */

@@ -1,3 +1,4 @@
+import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 /**
  * Router bind for My Models: wait until other local generations idle, then load.
  */
@@ -63,7 +64,7 @@ function isLiveStatus(status) {
 }
 
 function isLocalRuntimeProvider(providerId) {
-  return providerId === LLAMA_CPP_LOCAL_ID || providerId === MLX_LM_LOCAL_ID;
+  return isLocalServeProviderId(providerId);
 }
 
 /**
@@ -186,7 +187,7 @@ async function otherLocalServesBusy(libraryId, deps) {
     (row) =>
       row &&
       isLiveStatus(row.status) &&
-      (row.runtime === 'llama-cpp' || row.runtime === 'mlx-lm') &&
+      (['llama-cpp', 'mlx-lm', 'mtplx'].includes(row.runtime)) &&
       !serveMatchesLibrary(row, libraryId),
   );
   return others.some(

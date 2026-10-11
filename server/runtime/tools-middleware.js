@@ -1,3 +1,5 @@
+import { ACTION_TOOL_HANDLERS } from '../git/action-tools.js';
+import { withWorktreeMutation } from '../git/action-run-lock.js';
 import { execFile } from 'node:child_process';
 import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
@@ -73,6 +75,7 @@ import {
   toolWhoCalls,
 } from '../tools/code-tools.js';
 import { toolSaveMemory } from '../tools/memory-tools.js';
+import { toolPresentFiles } from '../tools/present-files.js';
 import {
   extractWorkspaceDocumentText,
   toolReadDocument,
@@ -154,7 +157,10 @@ import {
 } from '../browser-agent-api.js';
 import { unlinkSharedDepsBeforeInstall } from '../worktree/dep-symlinks.js';
 import { toolGodotControl, toolGodotInspect } from '../godot/tool-handler.js';
-import { formatParseErrors, isParseErrors, parsePlan } from '../orchestrator/core/parse-plan.js';
+import { formatParseErrors } from '../orchestrator/core/parse-plan.js';
+import { validateBoardPlan } from '../orchestrator/validate-plan.js';
+import { readPlanType } from '../orchestrator/core/plan-format.js';
+import { validateBuildPlan } from '../tools/validate-build-plan.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -393,10 +399,18 @@ async function toolCheckPlan(args) {
   if (stat.size > MAX_READ_FILE_BYTES) {
     return `Error: file is ${formatMb(stat.size)} (limit ${formatMb(MAX_READ_FILE_BYTES)}).`;
   }
-  const parsed = parsePlan(await fs.readFile(filePath, 'utf8'));
-  if (isParseErrors(parsed)) {
-    return `Plan does not parse:\n${formatParseErrors(parsed)}`;
+  const markdown = await fs.readFile(filePath, 'utf8');
+  if (readPlanType(markdown) === 'build') {
+    const { errors, stepCount } = validateBuildPlan(markdown);
+    return errors.length
+      ? `Plan does not parse:\n${formatParseErrors(errors)}`
+      : `Build plan parses successfully: ${stepCount} sequential step(s).`;
   }
+  const validation = await validateBoardPlan(markdown);
+  if (!validation.ok) {
+    return `Plan does not parse:\n${formatParseErrors(validation.errors)}`;
+  }
+  const parsed = validation.graph;
   return `Plan parses successfully: ${parsed.tasks.length} task(s) across ${parsed.waves.length} wave(s).`;
 }
 
@@ -1002,7 +1016,7 @@ async function toolGitCheckout(args) {
     return `Error: invalid branch name "${branch}" (cannot start with "-")`;
   }
   const gitArgs = args?.create ? ['checkout', '-b', branch] : ['checkout', branch];
-  return runGit(gitArgs);
+  return withWorktreeMutation(getEffectiveWorkspaceRoot(), () => runGit(gitArgs));
 }
 
 async function toolGitBranch(args) {
@@ -1421,6 +1435,7 @@ async function toolSendNotification(args) {
 }
 
 const SERVER_TOOL_HANDLERS = {
+  ...Object.fromEntries(Object.entries(ACTION_TOOL_HANDLERS).map(([name, handler]) => [name, async (args, options) => JSON.stringify(await handler({ ...args, chatId: options?.activityChatId || args?.chatId }))])),
   web_search_ddg: toolWebSearchDdg,
   web_search_tavily: toolWebSearchTavily,
   web_map: async (args, options) => runTavilyMap(args, await readTavilyApiKeyFromConfig(), options?.abortSignal),
@@ -1446,6 +1461,7 @@ const SERVER_TOOL_HANDLERS = {
   delete_path: toolDeletePath,
   find_files: toolFindFiles,
   get_file_metadata: toolGetFileMetadata,
+  present_files: toolPresentFiles,
   git_status: toolGitStatus,
   git_diff: toolGitDiff,
   git_log: toolGitLog,
@@ -1587,6 +1603,7 @@ export async function executeServerTool(name, args, options = {}) {
         });
       }
       const handler = SERVER_TOOL_HANDLERS[name];
+      if (Object.hasOwn(ACTION_TOOL_HANDLERS, name) && tools.permissions.default[name] === 'off') return { result: 'Error: action tool is disabled in Settings' };
       if (!handler) {
         return { result: `Not implemented: ${name}` };
       }

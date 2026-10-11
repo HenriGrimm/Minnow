@@ -22,6 +22,7 @@ import {
 import { PreviewInstanceRegistry, DEFAULT_PREVIEW_INSTANCE_ID } from './preview-instance-registry.js';
 import {
   resolvePreviewGuestAttachMode,
+  showPreviewGuestIfHidden,
   shouldKeepPreviewGuestVisibleAfterCapture,
 } from './preview-guest-reveal.js';
 import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
@@ -628,8 +629,7 @@ function applyPreviewViewBounds(
   }
   const split = splitPreviewBounds(rounded, Boolean(entry.devtools), dock);
   entry.view.setBounds(split.guest);
-  entry.visible = true;
-  entry.view.setVisible(true);
+  showPreviewGuestIfHidden(entry);
   if (entry.devtools) {
     if (split.devtools) {
       entry.devtools.setBounds(split.devtools);

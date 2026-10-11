@@ -25,7 +25,7 @@ Nothing on that page is transmitted. Minnow sends no telemetry.
 |---------|-----|
 | Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Filesystem access** if you genuinely need full disk. |
 | A tool says it needs the server | That tool runs server-side. In the packaged app the server is always up; check Health & diagnostics. |
-| Web search does nothing | **Settings → Integrations → Search**. The default SearXNG runs locally — check it under **Servers**. Or switch to DuckDuckGo, which needs no key. |
+| Web search does nothing | **Settings → Integrations → Search**. Add an API key for the default Tavily provider, or choose DuckDuckGo without a key. If you selected local SearXNG, check it under **Servers**. |
 | `browser_*` tools missing | Browser automation needs the Electron desktop app. |
 | Browser navigation blocked | Only localhost is allowed by default. Add the origin under **Settings → Integrations → Browser**, or approve when asked. |
 | Approval strip never appears, tool just runs | That tool is on **Full**. Probably from pressing **2** once. |

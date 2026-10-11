@@ -4,6 +4,10 @@
  */
 
 import '../tools/install-dom-before-imports.mts';
+import { createIssueChatActivity } from '../../src/ui/issues-chat-activity.ts';
+import { getChatRunActivity } from '../../src/state/chat-run-activity.ts';
+import type { IssueCard } from '../../src/types.ts';
+
 
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
@@ -140,11 +144,18 @@ describe('P6-D stream-end order (MIN-726)', () => {
       ownsGlobalStreaming: false,
     });
 
+    const issue = { chatIds: [CHAT_ID], status: 'in_progress' } as IssueCard;
+    const badge = createIssueChatActivity(issue);
+    document.body.append(badge);
+    assert.equal(badge.textContent, 'Chat running');
     assert.equal(isChatStreaming(CHAT_ID), true);
     assert.ok(getChatAbort(CHAT_ID));
     await pending;
     assert.equal(registeredDuringRun, true);
     assert.equal(isChatStreaming(CHAT_ID), false);
+    assert.equal(getChatRunActivity(CHAT_ID), 'completed');
+    assert.equal(badge.textContent, 'Chat finished');
+    assert.equal(issue.status, 'in_progress');
   });
 
   test('no_report restores idle composer and clears the main-turn activity fallback', async () => {

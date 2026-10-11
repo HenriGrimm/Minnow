@@ -61,6 +61,7 @@ export interface RunState {
   parentChatId: string;
   cwd: string;
   requestedAt: number | null;
+  endedAt: number | null;
   phase: RunPhase;
   attempts: Attempt[];
   abandonedReason: string | null;

@@ -21,6 +21,7 @@ import {
   type RouterEntry,
 } from '../../models/routers';
 import { fetchModelsForAllProviders } from '../../providers/fetch-all-models';
+import { formatRouterTierLabel, guessRouterTier, isDecisionModelId, ROUTER_TIERS } from '../../models/router-tiers.mjs';
 import { listProviders } from '../../providers/store';
 import { sessionState as state } from '../../state/sessions';
 import { listFillProviderOptions } from '../settings-model-binding';
@@ -140,6 +141,7 @@ export async function mountRoutersPanel(): Promise<void> {
         router.name = savedRouter.name;
         router.enabled = savedRouter.enabled;
         router.policy = savedRouter.policy;
+        router.evaluator = savedRouter.evaluator;
         const savedEntries = new Map(savedRouter.entries.map((e) => [e.id, e]));
         for (const entry of [...router.entries]) {
           const savedEntry = savedEntries.get(entry.id);
@@ -151,6 +153,7 @@ export async function mountRoutersPanel(): Promise<void> {
           entry.modelId = savedEntry.modelId;
           entry.enabled = savedEntry.enabled;
           entry.concurrencyLimit = savedEntry.concurrencyLimit;
+          entry.tier = savedEntry.tier;
         }
       }
     };
@@ -210,6 +213,45 @@ export async function mountRoutersPanel(): Promise<void> {
       return { providerId: catalog.provider.id, modelId: model.id };
     }
 
+    /** Provider + model for the Auto pool's task evaluator. The model is free text so decision models missing from a catalog still work. */
+    function evaluatorFields(router: ModelRouter): HTMLElement {
+      const wrap = node('div', '', 'router-fields router-evaluator');
+      const provider = node('select'); provider.setAttribute('aria-label', 'Task evaluator provider');
+      provider.append(new Option('Not set', ''), ...providerChoices.filter((c) => c.id !== LIBRARY_MODEL_PROVIDER_ID).map((c) => new Option(c.label, c.id)));
+      ensureSelectValue(provider, router.evaluator?.providerId || '', router.evaluator?.providerId || '');
+      const model = node('input'); model.setAttribute('aria-label', 'Task evaluator model');
+      model.placeholder = 'typesafe/jev-1.13'; model.maxLength = 500; model.value = router.evaluator?.modelId || '';
+      const options = node('datalist'); options.id = `router-evaluator-models-${router.id}`; model.setAttribute('list', options.id);
+      const hint = node('span', '', 'router-evaluator-hint');
+      const fillOptions = (): void => {
+        const models = catalogs.find((c) => c.provider.id === provider.value)?.models || [];
+        options.replaceChildren(...models
+          .filter((m) => m.type !== 'embeddings' && m.type !== 'embedding')
+          .sort((a, b) => Number(isDecisionModelId(b.id)) - Number(isDecisionModelId(a.id)))
+          .map((m) => new Option(m.id, m.id)));
+      };
+      const describe = (): void => {
+        hint.textContent = !model.value.trim()
+          ? 'No evaluator: the pool uses rank order.'
+          : isDecisionModelId(model.value)
+            ? 'Decision model: answers through the Decisions API with real confidence scores.'
+            : 'Chat model: answers as JSON. Pick something small and fast.';
+      };
+      const persist = (): void => {
+        const providerId = provider.value.trim();
+        const modelId = model.value.trim();
+        if (providerId && modelId) router.evaluator = { providerId, modelId };
+        else delete router.evaluator;
+        describe();
+        markDirty();
+      };
+      provider.onchange = () => { fillOptions(); persist(); };
+      model.oninput = persist;
+      fillOptions(); describe();
+      wrap.append(field('Task evaluator', provider), field('Model', model), options, hint);
+      return wrap;
+    }
+
     function render(): void {
       liveEpoch++;
       picker.replaceChildren(...config.routers.map((r) => new Option(r.name, r.id)));
@@ -225,13 +267,17 @@ export async function mountRoutersPanel(): Promise<void> {
       name.oninput = () => { router.name = name.value; markDirty(); };
       const enabled = node('input'); enabled.type = 'checkbox'; enabled.checked = router.enabled;
       enabled.onchange = () => { router.enabled = enabled.checked; if (!enabled.checked && config.defaultRouterId === router.id) config.defaultRouterId = null; markDirty(); };
-      const policy = node('select'); policy.append(new Option('Priority', 'priority'), new Option('Balance by rank', 'balance')); policy.value = router.policy;
-      policy.onchange = () => { router.policy = policy.value as ModelRouter['policy']; markDirty(); };
+      const policy = node('select'); policy.append(new Option('Priority', 'priority'), new Option('Balance by rank', 'balance'), new Option('Auto (task evaluator)', 'evaluate')); policy.value = router.policy;
+      policy.onchange = () => { router.policy = policy.value as ModelRouter['policy']; markDirty(); render(); };
+      const auto = router.policy === 'evaluate';
       const defaultToggle = node('input'); defaultToggle.type = 'checkbox'; defaultToggle.checked = config.defaultRouterId === router.id;
       defaultToggle.onchange = () => { config.defaultRouterId = defaultToggle.checked ? router.id : null; markDirty(); };
       header.append(field('Name', name), field('Policy', policy), field('Enabled', enabled), field('Default for new chats', defaultToggle));
-      editor.append(header, node('p', 'Chats keep their assigned model. When it is full, they wait; if it fails, the response restarts on another eligible model. My Models entries load when needed and unload after in-flight local work finishes.'));
-      const list = node('ol', '', 'router-entry-list');
+      editor.append(header, node('p', auto
+        ? 'Each turn, the task evaluator judges how much model the request needs and picks a tier and reasoning level. Tool rounds stay on the model their turn started with, and an unsure judgment keeps the current tier. If the evaluator is unset or slow, the pool falls back to rank order.'
+        : 'Chats keep their assigned model. When it is full, they wait; if it fails, the response restarts on another eligible model. My Models entries load when needed and unload after in-flight local work finishes.'));
+      if (auto) editor.append(evaluatorFields(router));
+      const list = node('ol', '', auto ? 'router-entry-list is-auto' : 'router-entry-list');
       router.entries.forEach((entry, index) => {
         const row = node('li'); row.dataset.entryId = entry.id;
         const provider = node('select'); provider.setAttribute('aria-label', `Provider for rank ${index + 1}`);
@@ -255,6 +301,11 @@ export async function mountRoutersPanel(): Promise<void> {
         model.onchange = () => { entry.modelId = model.value; markDirty(); };
         const capacity = node('input'); capacity.type = 'number'; capacity.min = '1'; capacity.max = '100'; capacity.value = String(entry.concurrencyLimit);
         capacity.oninput = () => { entry.concurrencyLimit = Number(capacity.value); markDirty(); };
+        const tier = node('select'); tier.setAttribute('aria-label', `Tier for rank ${index + 1}`);
+        tier.title = 'How capable this model is. The evaluator picks a tier per turn; the pool uses the highest-ranked entry in it.';
+        tier.append(new Option(`Auto (${formatRouterTierLabel(guessRouterTier(routerEntryModelLabel(entry, library)))})`, ''), ...ROUTER_TIERS.map((t) => new Option(formatRouterTierLabel(t), t)));
+        tier.value = entry.tier || '';
+        tier.onchange = () => { if (tier.value) entry.tier = tier.value as RouterEntry['tier']; else delete entry.tier; markDirty(); };
         const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = entry.enabled;
         toggle.onchange = () => { entry.enabled = toggle.checked; markDirty(); };
         const move = (offset: number): void => {
@@ -266,7 +317,7 @@ export async function mountRoutersPanel(): Promise<void> {
         const up = button('↑', () => move(-1)); up.disabled = index === 0; up.setAttribute('aria-label', `Move rank ${index + 1} up`);
         const down = button('↓', () => move(1)); down.disabled = index === router.entries.length - 1; down.setAttribute('aria-label', `Move rank ${index + 1} down`);
         row.onkeydown = (event) => { if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); move(event.key === 'ArrowUp' ? -1 : 1); } };
-        row.append(node('span', String(index + 1), 'router-rank'), provider, model, field('Slots', capacity), field('Enabled', toggle), up, down, button('Remove', () => { router.entries.splice(index, 1); markDirty(); render(); }));
+        row.append(node('span', String(index + 1), 'router-rank'), provider, model, ...(auto ? [tier] : []), field('Slots', capacity), field('Enabled', toggle), up, down, button('Remove', () => { router.entries.splice(index, 1); markDirty(); render(); }));
         list.append(row);
       });
       const configuration = node('details', '', 'router-configuration');
@@ -308,6 +359,11 @@ export async function mountRoutersPanel(): Promise<void> {
         const row = node('div', '', 'router-chat'); row.dataset.target = targetEntry?.id || ''; row.dataset.status = request?.status || 'idle';
         const modelName = targetEntry ? routerEntryModelLabel(targetEntry, library) : 'Unavailable model';
         row.append(node('strong', state?.chats.find((c) => c.id === assignment.chatId)?.name || assignment.chatId), node('span', `${request?.status === 'queued' ? 'Queued · waiting for capacity' : request?.status === 'active' ? 'Generating' : 'Idle'} → ${modelName}`));
+        const decision = activity.decisions?.find((d) => d.chatId === assignment.chatId);
+        if (decision?.tier) {
+          const judged = `${formatRouterTierLabel(decision.tier)} · ${decision.effort || 'default'} reasoning · ${Math.round(decision.confidence * 100)}%`;
+          const line = node('span', `Last judgment: ${judged}`); line.title = decision.reason; row.append(line);
+        }
         const override = node('select'); override.setAttribute('aria-label', 'Persistent model override');
         override.title = 'Applies to the next generation. Choose model pool assignment to clear.';
         override.append(new Option('Model pool assignment', ''), ...router.entries.filter((e) => e.enabled).map((e) => new Option(`${routerEntryProviderLabel(e, providerChoices)} / ${routerEntryModelLabel(e, library)}`, e.id)));

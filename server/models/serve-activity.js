@@ -1,3 +1,4 @@
+import { readMtplxActivity } from './mtplx-activity.js';
 const BUSY_INTERVAL_MS = 400;
 const IDLE_INTERVAL_MS = 2_500;
 const REQUEST_TIMEOUT_MS = 1_500;
@@ -188,7 +189,7 @@ async function fetchMetricsText(baseUrl) {
  */
 export function startServeActivity(serve) {
   if (!serve?.id || !serve.baseUrl) return;
-  if (serve.runtime && serve.runtime !== 'llama-cpp') return;
+  if (serve.runtime && !['llama-cpp', 'mtplx'].includes(serve.runtime)) return;
   if (pollers.has(serve.id)) return;
 
   const identity = {
@@ -201,6 +202,17 @@ export function startServeActivity(serve) {
 
   const tick = async () => {
     if (entry.stopped) return;
+    if (serve.runtime === 'mtplx') {
+      let activity;
+      try { activity = await readMtplxActivity(serve, fetchImpl); }
+      catch { activity = entry.last ? { ...entry.last, stale: true } : { serveId: serve.id, ...identity, updatedAt: Date.now(), available: false, stale: true, queued: 0, slots: [] }; }
+      if (entry.stopped) return;
+      entry.last = activity;
+      publish(activity);
+      entry.timer = setTimeout(() => void tick(), activity.mtplx?.activeRequests > 0 && !activity.stale ? BUSY_INTERVAL_MS : IDLE_INTERVAL_MS);
+      entry.timer.unref?.();
+      return;
+    }
     const [raw, metricsText] = await Promise.all([
       fetchSlots(serve.baseUrl),
       fetchMetricsText(serve.baseUrl),

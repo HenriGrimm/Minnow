@@ -73,10 +73,10 @@ The `/browser-automation` skill has the recipes.
 
 | Provider | Needs |
 |----------|-------|
-| **SearXNG** | Nothing — Minnow provisions and runs it locally on port 8899, including its own Python. The default. |
+| **Tavily** (default) | API key from a free account at [tavily.com](https://www.tavily.com/) |
+| **SearXNG** | Optional local installation on port 8899, or an existing instance |
 | **DuckDuckGo** | Nothing |
 | **Brave** | API key |
-| **Tavily** | API key |
 
 Result count and API keys are set here. Tavily search accepts domain filters, relative date windows or explicit dates, result count (up to 20), topic, and search depth. Basic search is the default; advanced search uses more credits. These additional search arguments require Tavily as the selected provider.
 
@@ -84,7 +84,7 @@ With a saved Tavily key, agents also have `web_map` to discover documentation UR
 
 The **Tavily usage** group shows the saved key's credit usage, account plan usage, pay-as-you-go usage when available, and a breakdown by endpoint. It loads on opening Search Settings; use **Refresh** for an updated reading. These totals can include activity outside Minnow. Unavailable values are labeled explicitly.
 
-**Settings → Integrations → Servers** manages the local processes Minnow runs for you: SearXNG (auto-starts) and `llama-cpp` (on demand). Enable, auto-start and port for each.
+**Settings → Integrations → Servers** manages the local processes Minnow runs for you: optional SearXNG and `llama-cpp`. Enable, auto-start and port are configurable for each. SearXNG auto-start is off on new installations; selecting its install during setup turns it on.
 
 ## Dev servers
 

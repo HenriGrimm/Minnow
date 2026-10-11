@@ -1394,3 +1394,12 @@ describe('renderBoardHeader', () => {
     assert.ok(node.querySelector('.board-header__badge--failed'));
   });
 });
+
+
+test('a paused board keeps its task attempts and announces Paused', () => {
+  setupDom();
+  const state = board([{ v: 1, seq: 99, type: 'board.stopped', reason: 'paused' }]);
+  const node = renderBoardHeader(state, true);
+  assert.match(node.textContent!, /Paused/);
+  assert.equal(state.tasks.get('W1-B')!.attempts.at(-1)!.ended, false);
+});

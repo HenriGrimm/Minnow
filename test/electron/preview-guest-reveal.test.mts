@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   resolvePreviewGuestAttachMode,
+  showPreviewGuestIfHidden,
   shouldKeepPreviewGuestVisibleAfterCapture,
 } from '../../electron/preview-guest-reveal.ts';
 
@@ -48,4 +49,17 @@ describe('shouldKeepPreviewGuestVisibleAfterCapture', () => {
   test('leaves the guest painted after capture when it was already visible', () => {
     assert.equal(shouldKeepPreviewGuestVisibleAfterCapture(true), true);
   });
+});
+
+test('layout sync and reload completion do not show an already visible guest again', () => {
+  const calls: boolean[] = [];
+  const entry = { visible: false, view: { setVisible: (visible: boolean) => calls.push(visible) } };
+  showPreviewGuestIfHidden(entry);
+  showPreviewGuestIfHidden(entry);
+  showPreviewGuestIfHidden(entry);
+  assert.deepEqual(calls, [true]);
+  entry.view.setVisible(false);
+  entry.visible = false;
+  showPreviewGuestIfHidden(entry);
+  assert.deepEqual(calls, [true, false, true], 'hidden guests must still be revealed');
 });

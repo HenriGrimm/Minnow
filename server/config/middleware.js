@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import {
   ensureMinnowLayout,
@@ -326,7 +327,9 @@ export async function handleConfigRequest(req, res, pathname) {
       }
       const url = new URL(req.url ?? '', 'http://localhost');
       const workspace = url.searchParams.get('workspace') ?? undefined;
-      sendJson(res, 200, readSessionSummariesState({ workspace }));
+      const sinceRaw = url.searchParams.get('sinceRevision');
+      const sinceRevision = sinceRaw && /^\d+$/.test(sinceRaw) ? Number(sinceRaw) : undefined;
+      sendJson(res, 200, readSessionSummariesState({ workspace, sinceRevision }));
       return true;
     }
 
@@ -492,6 +495,21 @@ export async function handleConfigRequest(req, res, pathname) {
         const data = await readResource(resource);
         if (resource === 'issues' && data === null) {
           sendJson(res, 404, { error: 'Not found' });
+          return true;
+        }
+        if (resource === 'issues') {
+          // Every open window polls this; an unchanged board answers 304 instead of ~1 MB.
+          const body = JSON.stringify(data);
+          const etag = `"${createHash('sha1').update(body).digest('base64url')}"`;
+          res.setHeader('ETag', etag);
+          if (req.headers['if-none-match'] === etag) {
+            res.statusCode = 304;
+            res.end();
+            return true;
+          }
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(body);
           return true;
         }
         sendJson(res, 200, data);

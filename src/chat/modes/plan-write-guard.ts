@@ -32,6 +32,7 @@ const PLAN_SCOPED_WRITE_TOOLS = new Set([
 
 /** Other mutation tools remain blocked even if policy regresses. */
 const PLAN_BLOCKED_WRITE_TOOLS = new Set([
+  'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
   'plugin_manage',
   'apply_patch',
   'delete_path',

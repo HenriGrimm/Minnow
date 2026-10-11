@@ -15,8 +15,13 @@ createInterface({ input: process.stdin }).on('line', async line => {
     if (p.clientCapabilities.fs.readTextFile || p.clientCapabilities.fs.writeTextFile || p.clientCapabilities.terminal) process.exit(2);
     respond({ protocolVersion: 1, agentCapabilities: { loadSession: process.env.ACP_UNAVAILABLE !== '1' } });
   } else if (row.method === 'authenticate') respond({});
-  else if (row.method === 'session/new') { history = []; save(); respond({ sessionId, models: { currentModelId: process.env.ACP_WRONG_MODEL ? 'wrong' : 'fixture' } }); }
-  else if (row.method === 'session/load') { history = JSON.parse(fs.readFileSync(file, 'utf8')); for (const item of history) update(item); respond({ models: { currentModelId: 'fixture' } }); }
+  // Like the real CLI: nothing is stored until the first prompt, so an empty
+  // session cannot be loaded back.
+  else if (row.method === 'session/new') { history = []; fs.rmSync(file, { force: true }); respond({ sessionId, models: { currentModelId: process.env.ACP_WRONG_MODEL ? 'wrong' : 'fixture' }, configOptions: [] }); }
+  else if (row.method === 'session/load') {
+    if (!fs.existsSync(file)) { send({ id: row.id, error: { code: -32602, message: 'Invalid params', data: { message: `Session "${p.sessionId}" not found` } } }); return; }
+    history = JSON.parse(fs.readFileSync(file, 'utf8')); for (const item of history) update(item); respond({ models: { currentModelId: 'fixture' }, configOptions: [] });
+  }
   else if (row.method === 'session/cancel') return;
   else if (row.method === 'session/prompt') {
     const text = p.prompt[0].text;
@@ -30,7 +35,11 @@ createInterface({ input: process.stdin }).on('line', async line => {
     if (text.includes('BLOCKING')) { send({ id: 98, method: 'cursor/create_plan', params: { sessionId } }); pending = row.id; return; }
     let reply = `Reply ${history.filter(item => item.sessionUpdate === 'user_message_chunk').length}.`;
     if (text.includes('TOOL')) {
-      const tool = { sessionUpdate: 'tool_call', toolCallId: 'native-tool', title: 'mcp__minnow__read_file', kind: 'other', status: 'pending', rawInput: { path: 'src/main.ts' } };
+      // Real Cursor sequence: an unnamed placeholder, then the named call.
+      const placeholder = { sessionUpdate: 'tool_call', toolCallId: 'native-tool', title: 'MCP: tool', kind: 'other', status: 'pending', rawInput: {} };
+      history.push(placeholder); update(placeholder);
+      const tool = { sessionUpdate: 'tool_call_update', toolCallId: 'native-tool', title: process.env.ACP_FOREIGN_MCP ? 'other: read_file' : 'minnow: read_file',
+        rawInput: { providerIdentifier: process.env.ACP_FOREIGN_MCP ? 'other' : 'minnow', toolName: 'read_file', args: { path: 'src/main.ts' } } };
       history.push(tool); update(tool);
       const res = await fetch(process.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.MINNOW_CLI_BRIDGE_TOKEN}` },
         body: JSON.stringify({ name: 'read_file', arguments: { path: 'src/main.ts' } }) });

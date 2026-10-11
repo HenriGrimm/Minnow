@@ -6,7 +6,7 @@ This is the most powerful thing in Minnow and the one that most rewards understa
 
 ## The shape of it
 
-1. You write a plan in [Plan mode](../concepts/modes.md) into `documentation/plans/`.
+1. You choose **Orchestrate** when writing a plan in [Plan mode](../concepts/modes.md) into `documentation/plans/`.
 2. An **orchestrator** reads it and creates a board of tasks. **Waves group cards**; start order is each task's **Depends on** list — later waves do not wait automatically.
 3. Each task gets its own chat and its own agent: a **builder** implements it, a **tester** verifies it, a **fixer** repairs failures.
 4. Completed work merges into an integration branch.
@@ -57,12 +57,17 @@ The most important control on the board. Four stops, least to most autonomous:
 | Control | Behaviour |
 |---------|-----------|
 | **Running** | The board starts eligible work up to the concurrency cap, unattended |
+| **Paused** | Chats wait at the next model or tool boundary; Resume continues the same attempts |
 | **Stopped** | Nothing new starts unless you start a task by hand (Manual) |
 | **Concurrency** | How many tasks may start at once. Set to 1 for sequential |
 
 Running at concurrency 1 is sequential. Running at a higher N is parallel. Stopped plus per-task start is Manual.
 
-**Stop** freezes the board immediately. A board paused by a shutdown or a memory-recovery event stays Stopped until you press Start.
+**Pause** holds the current chats, context, and worktrees. An operation already in progress can finish, but no new model requests, tools, or tasks start. **Resume** continues those same attempts, and paused time does not consume their time limit.
+
+**Stop** ends the current attempts. Press **Start** to run replacement attempts using retained work. Completed tasks stay complete. Use Stop when you want to restart workers instead of continuing their live chats.
+
+A paused board stays paused when you reopen Boards. If Minnow itself restarts, the live processes are gone; Resume uses the existing interruption-recovery path with retained worktrees and recorded builder progress.
 
 ## Worktree isolation
 

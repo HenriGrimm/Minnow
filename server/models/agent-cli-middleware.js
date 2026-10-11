@@ -86,6 +86,7 @@ export async function getAgentCliStatus(kind, options = {}) {
     ...getCliCapability(definition.providerId),
     installCommand: getAgentCliInstallCommand(kind),
     loginCommand: definition.loginCommand,
+    updateCommand: definition.updateCommand,
     checkedAt: detection.checkedAt,
     ...(detection.verifiedAt ? { verifiedAt: detection.verifiedAt } : {}),
   };
@@ -112,7 +113,7 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     return true;
   }
 
-  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage)$/);
+  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage|prepare-update)$/);
   if (!match) return false;
   try {
     const kind = getAgentCliDefinition(decodeURIComponent(match[1])).kind;
@@ -132,6 +133,14 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       if (body?.enabled !== true) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId);
       const provider = await setAgentCliProviderEnabled(kind, body?.enabled);
       sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
+      return true;
+    }
+    if (action === 'prepare-update' && req.method === 'POST') {
+      // Idle CLI children hold their binaries open, which blocks a self-update on
+      // Windows. Running turns keep their process; conversations resume after.
+      const { providerId } = getAgentCliDefinition(kind);
+      await disposeCodexSessions(session => session.providerId === providerId && !session.active && !session.waiting);
+      sendJson(res, 200, { agentCli: await getAgentCliStatus(kind) });
       return true;
     }
     if (action === 'settings' && req.method === 'PUT') {

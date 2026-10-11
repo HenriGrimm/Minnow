@@ -14,6 +14,8 @@ export interface BuildSamplerFieldInputsOptions {
   emptyPlaceholder?: string;
   /** Prefix for data-settings-search-key on each field (e.g. models.sampler). */
   searchKeyPrefix?: string;
+  /** Render described fields with unique label/input ids on another surface. */
+  idPrefix?: string;
 }
 
 const SEARCH_KEY_BY_FIELD: Record<keyof SamplerPreset, string> = {
@@ -43,7 +45,7 @@ export function buildSamplerFieldInputs(
   initial: SamplerPreset | null | undefined,
   options: BuildSamplerFieldInputsOptions = {},
 ): SamplerFieldInputs {
-  const useGrid = Boolean(options.searchKeyPrefix);
+  const useGrid = Boolean(options.searchKeyPrefix || options.idPrefix);
   const root = el(
     'div',
     useGrid ? 'settings-sampler-grid' : 'settings-model-row settings-sampler-row',
@@ -137,7 +139,7 @@ export function buildSamplerFieldInputs(
   };
 
   for (const field of fields) {
-    const inputId = options.searchKeyPrefix ? `sampler-${field.key}` : undefined;
+    const inputId = useGrid ? `${options.idPrefix ?? 'sampler'}-${field.key}` : undefined;
 
     let mount: HTMLElement = root;
 
@@ -166,7 +168,7 @@ export function buildSamplerFieldInputs(
       ? 'settings-sampler-field__input'
       : 'settings-sampler-field__input settings-kv-input';
     if (inputId) input.id = inputId;
-    if (!useGrid) input.setAttribute('aria-label', field.label);
+    input.setAttribute('aria-label', field.label);
     if (useGrid && inputId) {
       input.setAttribute('aria-describedby', `${inputId}-hint`);
     }

@@ -22,12 +22,37 @@ export interface ScheduledJob {
   providerId?: string;
   modelId?: string;
   workspacePath?: string;
+  githubWatch?: { repository: string; label?: string } | null;
   channels: SchedulerChannel[];
   lastRunAt?: string;
   nextRunAt?: string;
   running?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WatchedGithubIssue {
+  number: number;
+  title: string;
+  url: string;
+  phase: string;
+  boardId: string;
+  boardCreated?: boolean;
+  prUrl?: string;
+  error?: string;
+}
+
+export async function fetchWatchedGithubIssues(jobId: string): Promise<WatchedGithubIssue[]> {
+  const res = await fetch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/issues`);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? 'Could not load watched issues');
+  return body.issues;
+}
+
+export async function retryWatchedGithubIssue(jobId: string, number: number): Promise<void> {
+  const res = await fetch(`/api/scheduler/jobs/${encodeURIComponent(jobId)}/issues/${number}/retry`, { method: 'POST' });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? body.summary ?? 'Could not retry issue');
 }
 
 export type SchedulerRunStatus =

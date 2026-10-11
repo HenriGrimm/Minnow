@@ -10,6 +10,8 @@ import {
   updateJob,
 } from './store.js';
 import { runJobNow } from './runner.js';
+import { readWatchLedger } from './github-watch-store.js';
+import { retryGithubWatchIssue } from './github-watch.js';
 import { listRunsForJob } from './runner.js';
 import { getSchedulerServerBaseUrl } from './server-base-url.js';
 import {
@@ -118,6 +120,22 @@ export function createSchedulerMiddleware() {
             return;
           }
           sendJson(res, 200, { job });
+          return;
+        }
+      }
+
+      const watchMatch = url.match(/^\/api\/scheduler\/jobs\/([^/]+)\/issues(?:\/(\d+)\/retry)?$/);
+      if (watchMatch) {
+        const job = await getJobById(decodeURIComponent(watchMatch[1]));
+        if (!job?.githubWatch) throw new Error('GitHub watcher not found');
+        if (req.method === 'GET' && !watchMatch[2]) {
+          const ledger = await readWatchLedger(job.githubWatch.repository);
+          sendJson(res, 200, { issues: ledger.issues.filter(row => row.jobId === job.id) });
+          return;
+        }
+        if (req.method === 'POST' && watchMatch[2]) {
+          const result = await retryGithubWatchIssue(job, Number(watchMatch[2]));
+          sendJson(res, result.ok ? 200 : 409, result);
           return;
         }
       }

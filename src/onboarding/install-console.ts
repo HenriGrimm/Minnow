@@ -10,6 +10,7 @@ export interface InstallConsole {
   element: HTMLElement;
   log: (source: string, level: InstallLogLevel, text: string) => void;
   setHeadline: (text: string) => void;
+  setProgress: (completed: number, total: number, failed: number) => void;
   show: () => void;
   hide: () => void;
   clear: () => void;
@@ -29,17 +30,26 @@ function formatTime(date: Date): string {
 /** Build a live install log panel for the extras onboarding step. */
 export function createInstallConsole(): InstallConsole {
   const root = el('section', 'mn-onboarding-install-console is-hidden');
-  root.setAttribute('aria-label', 'Install log');
-  root.setAttribute('aria-live', 'polite');
+  root.setAttribute('aria-label', 'Setup progress');
 
   const head = el('div', 'mn-onboarding-install-console__head');
-  const title = el('span', 'mn-onboarding-install-console__title', 'Install log');
+  const title = el('span', 'mn-onboarding-install-console__title', 'Setting things up');
   const status = el('span', 'mn-onboarding-install-console__status', 'Waiting');
+  status.setAttribute('role', 'status');
   head.append(title, status);
+
+  const overview = el('div', 'mn-onboarding-install-console__overview');
+  const progress = el('progress', 'mn-onboarding-install-progress');
+  progress.setAttribute('aria-label', 'Extras completed');
+  const count = el('p', 'mn-onboarding-muted');
+  overview.append(progress, count);
+  const details = el('details', 'mn-onboarding-install-console__details');
+  details.appendChild(el('summary', undefined, 'Show technical details'));
 
   const body = el('div', 'mn-onboarding-install-console__body');
   body.setAttribute('role', 'log');
-  root.append(head, body);
+  details.appendChild(body);
+  root.append(head, overview, details);
 
   const lastBySource = new Map<string, string>();
   const liveLines = new Map<string, HTMLElement>();
@@ -115,7 +125,13 @@ export function createInstallConsole(): InstallConsole {
 
     setHeadline(text) {
       status.textContent = text;
-      root.classList.toggle('is-busy', text !== 'Done' && text !== 'Waiting');
+      root.classList.toggle('is-busy', text === 'Installing…');
+    },
+
+    setProgress(completed, total, failed) {
+      progress.max = Math.max(1, total);
+      progress.value = completed + failed;
+      count.textContent = `${completed} of ${total} ready${failed ? ` · ${failed} need attention` : ''}`;
     },
 
     show() {
@@ -132,6 +148,8 @@ export function createInstallConsole(): InstallConsole {
       liveLines.clear();
       lineCount = 0;
       status.textContent = 'Waiting';
+      progress.value = 0;
+      count.textContent = '';
       root.classList.remove('is-busy');
     },
   };

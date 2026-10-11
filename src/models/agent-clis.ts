@@ -22,8 +22,11 @@ export interface AgentCliAccountUsage {
   message: string | null;
 }
 
-export function agentCliUsageKind(providerId: string | undefined): 'codex' | 'claude' | null {
-  return providerId === 'codex-cli' ? 'codex' : providerId === 'claude-code-cli' ? 'claude' : null;
+export const AGENT_CLI_USAGE_NAMES: Record<AgentCliKind, string> = { claude: 'Claude', codex: 'Codex', cursor: 'Cursor' };
+
+export function agentCliUsageKind(providerId: string | undefined): AgentCliKind | null {
+  return providerId === 'codex-cli' ? 'codex' : providerId === 'claude-code-cli' ? 'claude'
+    : providerId === 'cursor-agent-cli' ? 'cursor' : null;
 }
 
 export interface AgentCliStatus {
@@ -47,6 +50,7 @@ export interface AgentCliStatus {
   fallbackReason?: string;
   installCommand: string;
   loginCommand: string;
+  updateCommand: string;
   checkedAt: string;
   verifiedAt?: string;
 }
@@ -100,6 +104,18 @@ export async function verifyAgentCli(
   signal?: AbortSignal,
 ): Promise<AgentCliStatus> {
   const body = await requestJson<AgentCliResponse>(cliUrl(kind, 'verify'), {
+    method: 'POST',
+    signal,
+  });
+  return body.agentCli;
+}
+
+/** Close idle Minnow-owned CLI processes so the vendor updater can replace their files. */
+export async function prepareAgentCliUpdate(
+  kind: AgentCliKind,
+  signal?: AbortSignal,
+): Promise<AgentCliStatus> {
+  const body = await requestJson<AgentCliResponse>(cliUrl(kind, 'prepare-update'), {
     method: 'POST',
     signal,
   });

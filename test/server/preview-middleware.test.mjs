@@ -137,6 +137,24 @@ describe('preview middleware', () => {
     assert.match(res.json.error, /ENOENT/);
   });
 
+  test('Download serves original HTML bytes without preview injection and uses an attachment filename', async () => {
+    const res = await httpRequest(baseUrl, 'GET', '/api/preview/file/index.html?download=1');
+    assert.equal(res.status, 200);
+    assert.equal(res.body, await fs.readFile(path.join(workspaceDir, 'index.html'), 'utf8'));
+    assert.match(res.headers['content-disposition'], /attachment; filename\*=UTF-8''index.html/);
+    assert.match(res.headers['content-security-policy'], /sandbox/);
+  });
+
+  test('Download permits generated build outputs while retaining file boundary checks', async () => {
+    await fs.mkdir(path.join(workspaceDir, 'dist'), { recursive: true });
+    await fs.writeFile(path.join(workspaceDir, 'dist', 'report.pdf'), 'binary deliverable');
+    const res = await httpRequest(baseUrl, 'GET', '/api/preview/file/dist/report.pdf?download=1');
+    assert.equal(res.status, 200);
+    assert.equal(res.body, 'binary deliverable');
+    const blocked = await httpRequest(baseUrl, 'GET', '/api/preview/file/..%2Foutside.pdf?download=1');
+    assert.equal(blocked.status, 400);
+  });
+
   test('rejects path traversal', async () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/preview/file/..%2F..%2Fetc%2Fpasswd');
     assert.equal(res.status, 400);

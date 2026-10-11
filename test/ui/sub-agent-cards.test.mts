@@ -264,7 +264,7 @@ describe('sub-agent cards', { concurrency: false }, () => {
         status: 'completed',
         summary: 'Found the frontend-design skill.',
         endedAt: '2026-05-20T12:01:05.000Z',
-        liveNestedToolCalls: undefined,
+        liveNestedToolCalls: 1,
         toolTurns: 3,
       },
       chat.id,

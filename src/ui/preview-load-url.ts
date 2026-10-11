@@ -26,8 +26,11 @@ async function isolatedUrl(path: string, workspaceRoot?: string): Promise<string
   return new URL(`/p/${access.token}${path}`, access.origin).href;
 }
 
-function normalizeWorkspacePath(input: string): string {
-  return input.replace(/^\/+/, '').trim();
+function encodeWorkspaceFilePath(input: string): string {
+  const normalized = input.trim().replace(/\\/g, '/');
+  // Preserve absolute POSIX paths through URL parsing rather than making them workspace-relative.
+  return normalized.startsWith('/') ? encodeURIComponent(normalized)
+    : normalized.split('/').map(segment => encodeURIComponent(segment)).join('/');
 }
 
 function appendQueryParam(url: string, key: string, value: string): string {
@@ -65,8 +68,7 @@ export function workspacePreviewUrl(
             typeof cacheBustOrOptions === 'number' ? cacheBustOrOptions : undefined,
           workspaceRoot,
         };
-  const normalized = normalizeWorkspacePath(relativePath);
-  const encoded = normalized.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  const encoded = encodeWorkspaceFilePath(relativePath);
   let url = `${PREVIEW_FILE_API}${encoded}`;
   if (options.cacheBust !== undefined) {
     url = appendQueryParam(url, 'v', String(options.cacheBust));
@@ -87,8 +89,7 @@ export function workspaceDocumentHtmlUrl(
   cacheBust?: number,
   workspaceRoot?: string,
 ): string {
-  const normalized = normalizeWorkspacePath(relativePath);
-  const encoded = normalized.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  const encoded = encodeWorkspaceFilePath(relativePath);
   let url = `${PREVIEW_DOCUMENT_HTML_API}${encoded}`;
   if (cacheBust !== undefined) {
     url = appendQueryParam(url, 'v', String(cacheBust));

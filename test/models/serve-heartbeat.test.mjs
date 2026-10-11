@@ -12,6 +12,8 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { getServesIndexPath } from '../../server/models/paths.js';
 import {
   getServe,
+  patchServeRowForTests,
+  peekServeRowForTests,
   resetServesForTests,
   setServeBackgroundRunOverrideForTests,
   setServeHealthOverrideForTests,
@@ -109,6 +111,16 @@ describe('serve heartbeat', () => {
     await tickServeHeartbeatForTests();
     row = await getServe(serve.id);
     assert.equal(row.status, 'unhealthy');
+  });
+
+  test('successful probes preserve the healthy stretch used for crash restart', async () => {
+    const serve = await startServe({ modelPath, runtime: 'llama-cpp', async: true });
+    await waitForStatus(serve.id, 'running');
+    const healthyAt = Date.now() - 31000;
+    patchServeRowForTests(serve.id, { lastHealthyAt: healthyAt });
+    setServeHeartbeatProbeOverrideForTests(async () => true);
+    await tickServeHeartbeatForTests();
+    assert.equal(peekServeRowForTests(serve.id).lastHealthyAt, healthyAt);
   });
 
   test('dead pid with failed health becomes crashed, not unhealthy', async () => {

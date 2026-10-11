@@ -326,11 +326,11 @@
 }
 
 .msg.user.msg--steered .msg-steer-chip {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.8;
   color: var(--mn-fg-muted);
-  margin-bottom: 4px;
 }
 
 .msg.user.msg--goal-achieved .msg-goal-achieved-chip {

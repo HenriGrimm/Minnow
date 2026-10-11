@@ -80,7 +80,7 @@ test('failed save keeps input and wizard mounted, Retry saves it, completion fai
   }
 });
 
-test('keyboard controls retain native Enter behavior and skipping extras reveals hosted search setup', async () => {
+test('keyboard controls retain native Enter behavior and search appears before extras', async () => {
   const win = new Window({ url: 'http://localhost:9473' });
   const previousFetch = globalThis.fetch;
   installHappyDomGlobals(win, { fetch: async () => Response.json({ data: [], providers: [] }) });
@@ -103,7 +103,7 @@ test('keyboard controls retain native Enter behavior and skipping extras reveals
     assert.equal(selectEvent.defaultPrevented, false);
     select.remove();
     const skip = root.querySelector<HTMLButtonElement>('.mn-onboarding-skip-btn')!;
-    for (const title of ['Choose your apps', 'How will you run models?', 'Install extras', 'Tool permissions', 'Memory and Brain', 'Search API keys']) {
+    for (const title of ['How will you run models?', 'Connect web search', 'Install extras', 'Tool permissions', 'Memory and Brain']) {
       skip.click();
       await waitUntil(() => root.querySelector('h2')?.textContent === title);
     }
@@ -122,4 +122,33 @@ test('partially completed setup is resumed rather than migrated away after addin
   const state = { ...createDefaultOnboardingState(), lastStep: 'provider-cloud' as const,
     steps: { 'provider-cloud': { done: true, data: { providerId: 'custom' } } } };
   assert.equal(await migrateExistingUsersIfNeeded(state), state);
+});
+
+test('shared Settings markers inside setup do not close onboarding on click', async () => {
+  const win = new Window({ url: 'http://localhost:9473/#/workspaces' });
+  const previousFetch = globalThis.fetch;
+  installHappyDomGlobals(win, { fetch: async () => Response.json({ data: [], providers: [] }) });
+  setStorageModeForTests('localStorage');
+  const welcome = ONBOARDING_STEPS[0];
+  const originalRender = welcome.render;
+  let clicked = false;
+  welcome.render = (container, _ctx, actions) => {
+    container.innerHTML = '<section data-settings-search-key="github.account"><button>Check again</button></section>';
+    container.querySelector('button')!.onclick = () => { clicked = true; };
+    actions.setPrimaryEnabled(true);
+  };
+  try {
+    await mountOnboarding({ force: true });
+    win.document.querySelector<HTMLButtonElement>('[data-settings-search-key] button')!.click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(clicked, true);
+    assert.equal(isOnboardingMounted(), true);
+    assert.equal(win.location.hash, '#/workspaces');
+  } finally {
+    await unmountOnboarding(false);
+    welcome.render = originalRender;
+    globalThis.fetch = previousFetch;
+    setStorageModeForTests(null);
+    win.close();
+  }
 });

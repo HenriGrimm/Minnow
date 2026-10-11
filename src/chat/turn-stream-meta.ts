@@ -47,6 +47,11 @@ export function runtimeStatusFromStreamMetaRuntime(
 ): LlamaRuntimeStatusView {
   const view = llamaRuntimeStatusView(llamaRuntimeFromStreamMetaRuntime(runtime), hasOutput);
   if (view.phase || !isPlainObject(runtime)) return view;
+  const progress = isPlainObject(runtime.mtplx_progress) ? runtime.mtplx_progress : undefined;
+  const completionTokens = progress?.completion_tokens;
+  if (typeof completionTokens === 'number' && Number.isSafeInteger(completionTokens) && completionTokens > 0) {
+    return generatedTokensView(completionTokens);
+  }
   // Hosted providers send no llama timings; the runner estimates output tokens
   // (prose, reasoning and tool-call args) so the live row still counts up.
   const estimate = Number(runtime.output_tokens_estimate);

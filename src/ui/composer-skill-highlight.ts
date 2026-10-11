@@ -57,22 +57,50 @@ function copyTextareaMetrics(textarea: HTMLTextAreaElement, layer: HTMLDivElemen
   if (!view) return;
   const cs = view.getComputedStyle(textarea);
   for (const prop of STYLE_PROPS) {
-    layer.style[prop] = cs[prop];
+    // Rewriting an unchanged inline value still dirties the layer's style.
+    if (layer.style[prop] !== cs[prop]) layer.style[prop] = cs[prop];
   }
   // A visible native scrollbar narrows the textarea's text area. Match that
   // width so the paint-only layer wraps at the same words as the caret.
   const borders = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
-  layer.style.right = `${Math.max(0, textarea.offsetWidth - textarea.clientWidth - borders)}px`;
+  const right = `${Math.max(0, textarea.offsetWidth - textarea.clientWidth - borders)}px`;
+  if (layer.style.right !== right) layer.style.right = right;
 }
+
+/** Markup last painted into each layer, so an unchanged value skips the reparse. */
+const paintedMarkup = new WeakMap<HTMLDivElement, string>();
+const pendingFrames = new WeakMap<HTMLTextAreaElement, number>();
 
 /** Paint known `/skill-id` tokens to match the live textarea. */
 export function syncComposerSkillHighlight(textarea: HTMLTextAreaElement): void {
   const layer = ensureLayer(textarea);
   copyTextareaMetrics(textarea, layer);
   const html = highlightedSkillTextHtml(textarea.value);
-  layer.innerHTML = html ? `${html}\n` : '';
+  const markup = html ? `${html}\n` : '';
+  if (paintedMarkup.get(layer) !== markup) {
+    layer.innerHTML = markup;
+    paintedMarkup.set(layer, markup);
+  }
   layer.scrollTop = textarea.scrollTop;
   layer.scrollLeft = textarea.scrollLeft;
+}
+
+/**
+ * Coalesce overlay syncs to one per frame. A keystroke fires input, keyup and the
+ * auto-resize pass, and each sync forces style and layout on the composer; rAF still
+ * runs before the frame paints, so the chips never trail the caret.
+ */
+export function scheduleComposerSkillHighlight(textarea: HTMLTextAreaElement): void {
+  if (pendingFrames.has(textarea)) return;
+  const view = textarea.ownerDocument.defaultView;
+  if (typeof view?.requestAnimationFrame !== 'function') {
+    syncComposerSkillHighlight(textarea);
+    return;
+  }
+  pendingFrames.set(textarea, view.requestAnimationFrame(() => {
+    pendingFrames.delete(textarea);
+    syncComposerSkillHighlight(textarea);
+  }));
 }
 
 /** Bind overlay listeners on one composer (idempotent). */
@@ -81,7 +109,7 @@ export function initComposerSkillHighlight(textarea: HTMLTextAreaElement): void 
   textarea.dataset.skillHighlightBound = '1';
 
   const sync = (): void => {
-    syncComposerSkillHighlight(textarea);
+    scheduleComposerSkillHighlight(textarea);
   };
 
   textarea.addEventListener('input', sync);
@@ -97,5 +125,5 @@ export function initComposerSkillHighlight(textarea: HTMLTextAreaElement): void 
     observer.observe(textarea);
   }
 
-  sync();
+  syncComposerSkillHighlight(textarea);
 }

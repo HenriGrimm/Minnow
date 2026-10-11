@@ -32,6 +32,7 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 
 - [Install and first launch](get-started/install.md) — installers, SmartScreen, updates, the system tray
 - [Connect a model](get-started/connect-a-model.md) — LM Studio, Ollama, local serve, cloud APIs, routing
+- [Costs and providers](get-started/costs-and-providers.md) — pricing, subscriptions, free options, and local hardware compared
 - [Your first chat](get-started/first-chat.md) — workspace picker, Code chat, approving a tool
 
 ### Core concepts

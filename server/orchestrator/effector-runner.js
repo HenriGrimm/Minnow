@@ -38,6 +38,7 @@ import {
   tryParseStructuredOutcomeFromAssistantProse,
 } from '../runner/sub-agent-structured-outcome.js';
 import { parseReportFor, reportToolFor, REPORT_TOOL_NAME } from './report-tool.js';
+import { createPauseGate } from '../runner/pause-gate.js';
 import { buildSeed } from './seeds.js';
 import { runMerge } from './merge-queue.js';
 import { finalAttemptEnd, formatRunInstructions, runFinalLadder } from './final-test.js';
@@ -395,6 +396,7 @@ export function createRunnerEffector(options = {}) {
 
   /** @type {Map<string, LiveAttempt>} */
   const running = new Map();
+  const pauseGate = createPauseGate();
   /** @type {Array<(end: import('./engine.js').AttemptEnd) => Promise<void> | void>} */
   const listeners = [];
   /** @type {Array<{ taskId: string | null, role: string, attemptId: string, seedKind?: string, worktree?: string }>} */
@@ -441,6 +443,7 @@ export function createRunnerEffector(options = {}) {
    * @param {import('./engine.js').AttemptEnd} end
    */
   async function deliverEnd(entry, end) {
+    if (pauseGate.paused) await pauseGate.wait(entry.controller.signal).catch(() => {});
     if (entry.stopped) return;
     try {
       for (const listener of listeners) await listener(end);
@@ -708,6 +711,7 @@ export function createRunnerEffector(options = {}) {
   }
 
   const effector = {
+    setPaused: (paused) => pauseGate.setPaused(paused),
     /** @returns {Array<{ taskId: string | null, role: string, attemptId: string }>} */
     inspect() {
       return [...running.values()].map(({ taskId, role, attemptId, worktree }) => ({
@@ -885,6 +889,7 @@ export function createRunnerEffector(options = {}) {
             model: turnModel,
             cwd: attemptCwd,
             signal: controller.signal,
+            pauseGate,
             limits: {
               ...limits,
               ...(wallClockMs > 0 ? { wallClockMs } : {}),
@@ -947,6 +952,7 @@ export function createRunnerEffector(options = {}) {
         } catch (err) {
           result = { outcome: 'crashed', error: errorMessage(err) };
         }
+        if (pauseGate.paused) await pauseGate.wait(controller.signal).catch(() => {});
         if (entry.stopped) return;
         result = recoverBoardReportIfDumped(
           result,

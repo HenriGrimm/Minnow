@@ -23,6 +23,7 @@ import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/
 import { startReefForHost, stopReefForHost } from './server/reef/supervisor.js';
 import { stopExports } from './server/reef/exports.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
+import { shutdownLocalActions } from './server/git/local-action-ops.js';
 import { shutdownAllModelServes } from './server/models/index.js';
 import {
   resolveSafePath,
@@ -199,6 +200,7 @@ async function main() {
   await startSchedulerForHost(localUrl);
   await startReefForHost(localUrl);
   const onShutdown = async () => {
+    await shutdownLocalActions();
     clearDevHostState();
     stopSchedulerForHost();
     stopReefForHost();

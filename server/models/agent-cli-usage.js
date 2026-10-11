@@ -5,6 +5,9 @@ import { codexSourceHome } from '../generations/agent-cli/codex-auth.js';
 import { getAgentCliProviderConfig } from '../providers/store.js';
 import { readCodexAccountUsage } from './codex-cli-usage.js';
 import { CliUsageError, readClaudeUsageCredentials, readClaudeAccountUsage } from './claude-cli-usage.js';
+import { readCursorUsageCredentials, readCursorAccountUsage } from './cursor-cli-usage.js';
+
+const NAMES = { codex: 'Codex', claude: 'Claude', cursor: 'Cursor' };
 
 const TTL_MS = 60_000;
 const MAX_STALE_MS = 60 * 60_000;
@@ -21,6 +24,10 @@ async function loadCredentials(kind, options) {
   if (kind === 'claude') {
     const credentials = await readClaudeUsageCredentials(options);
     return { key: identity.update(credentials.token).digest('hex'), credentials };
+  }
+  if (kind === 'cursor') {
+    const credentials = await readCursorUsageCredentials(options);
+    return { key: identity.update(credentials.token).digest('hex'), credentials, accountKey: credentials.accountKey };
   }
   const authPath = options.codexAuthPath || path.join(codexSourceHome(options), 'auth.json');
   const auth = await fs.readFile(authPath).catch(error => {
@@ -39,13 +46,13 @@ async function loadCredentials(kind, options) {
 export function createAgentCliUsageService(deps = {}) {
   const now = deps.now ?? Date.now;
   const credentials = deps.loadCredentials ?? loadCredentials;
-  const read = deps.readUsage ?? ((kind, login, options) => kind === 'codex'
-    ? readCodexAccountUsage(options) : readClaudeAccountUsage(login, options));
+  const read = deps.readUsage ?? ((kind, login, options) => kind === 'codex' ? readCodexAccountUsage(options)
+    : kind === 'cursor' ? readCursorAccountUsage(login, options) : readClaudeAccountUsage(login, options));
   const cache = new Map();
   const inflight = new Map();
   return {
     async get(kind, options = {}) {
-      if (!['codex', 'claude'].includes(kind)) return empty(kind, 'unsupported', 'Account usage is unavailable for this CLI.', now());
+      if (!Object.hasOwn(NAMES, kind)) return empty(kind, 'unsupported', 'Account usage is unavailable for this CLI.', now());
       let login;
       try { login = await credentials(kind, options); }
       catch (error) {
@@ -70,11 +77,11 @@ export function createAgentCliUsageService(deps = {}) {
           // A sign-in change during a request must not paint another account's quota.
           const current = await credentials(kind, options);
           if (current.key !== login.key) {
-            if (kind !== 'codex' || !login.accountKey || current.accountKey !== login.accountKey) {
+            if (!login.accountKey || current.accountKey !== login.accountKey) {
               return empty(kind, 'unavailable', 'CLI login changed. Refresh to load the current account.', now());
             }
-            // The native CLI refreshed tokens for the same account under the
-            // concurrent-sign-in guard. Cache under its new credential fingerprint.
+            // The native CLI refreshed tokens for the same account (Codex
+            // account_id, Cursor token subject). Cache under its new fingerprint.
             cacheKey = `${kind}:${current.key}`;
           }
           const at = now();
@@ -93,7 +100,7 @@ export function createAgentCliUsageService(deps = {}) {
           }
           const at = now();
           const status = error instanceof CliUsageError ? error.status : 'error';
-          const message = error instanceof CliUsageError ? error.message : `${kind === 'codex' ? 'Codex' : 'Claude'} account usage could not be refreshed. Verify the CLI or try again later.`;
+          const message = error instanceof CliUsageError ? error.message : `${NAMES[kind]} account usage could not be refreshed. Verify the CLI or try again later.`;
           const failures = (cached?.failures ?? 0) + 1;
           const delay = Math.min(15 * TTL_MS, Math.max(TTL_MS * 2 ** Math.min(failures - 1, 4),
             error instanceof CliUsageError && Number.isFinite(error.retryMs) ? error.retryMs : 0));

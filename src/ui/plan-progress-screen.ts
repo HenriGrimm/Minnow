@@ -29,6 +29,7 @@ export interface PlanPreviewActionHandlers {
 
 export interface BuildPlanPreviewPopoutOptions {
   orchestrateEnabled?: boolean;
+  planType?: 'build' | 'orchestrate' | 'invalid';
 }
 
 export interface RegularPlanWorkingStepInput {
@@ -216,7 +217,7 @@ export function buildPlanPreviewPopoutDom(
 
   const buildBtn = document.createElement('button');
   buildBtn.type = 'button';
-  buildBtn.className = 'orchestrate-plan-screen__btn orchestrate-plan-screen__btn--ghost';
+  buildBtn.className = `orchestrate-plan-screen__btn orchestrate-plan-screen__btn--${options.planType === 'build' ? 'primary' : 'ghost'}`;
   buildBtn.dataset.planAction = 'build';
   buildBtn.textContent = 'Build';
   buildBtn.addEventListener('click', handlers.onBuild);
@@ -229,7 +230,8 @@ export function buildPlanPreviewPopoutDom(
   orchestrateBtn.disabled = options.orchestrateEnabled === false;
   orchestrateBtn.addEventListener('click', handlers.onStartOrchestrator);
 
-  actions.append(reviseBtn, buildBtn, orchestrateBtn);
+  actions.append(reviseBtn, buildBtn);
+  if (!options.planType || options.planType === 'orchestrate') actions.append(orchestrateBtn);
   popout.append(title, actions);
   return popout;
 }

@@ -429,7 +429,7 @@ function defaultToolsJson() {
     enabled,
     permissions: { default: permissionsDefault },
     keys: { braveApiKey: '', tavilyApiKey: '' },
-    webSearchProvider: 'duckduckgo',
+    webSearchProvider: 'tavily',
     plugins: {},
     lazyTools: true,
   };

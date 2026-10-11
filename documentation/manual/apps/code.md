@@ -4,6 +4,10 @@ Code is the development environment: a file tree, an editor with AI completion a
 
 Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
 
+## Pin a chat
+
+Right-click a chat in the sidebar and choose **Pin to top** to keep it in a **Pinned** section above every other chat and group, however long ago it was last used. The most recently pinned chat is listed first. A pinned chat that belongs to a group is listed under Pinned instead of in the group, and returns to the group when you choose **Unpin**.
+
 ## Share a chat
 
 Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
@@ -72,6 +76,10 @@ Language-server diagnostics, hover and signature help work where a server is ins
 
 Files get the same colourful icons as VS Code, in the tree and on tabs.
 
+### Markdown files
+
+Markdown files open as a rendered preview, and you can edit them right there. Click any paragraph, heading, list, table or code block and it turns into its Markdown source. Edit it, then click elsewhere (or press **Ctrl/Cmd+Enter**) to see it rendered again. **Esc** throws away the changes to that block, and **Ctrl/Cmd+S** saves the file. Only the block you touched changes; the rest of the file stays exactly as it was. Links stay clickable, and selecting text to copy it does not open a block. To work on the whole file as source, right-click and choose **Open as code** (**Open as preview** switches back). Unsaved edits carry over when you switch.
+
 ### Godot projects
 
 Open a folder containing `project.godot` and Minnow recognises it automatically. If Godot 4 is already on `PATH`, in a standard installation location, or in your Downloads or Desktop folder, no setup is required. Portable Windows builds may remain in their extracted folder.
@@ -123,7 +131,21 @@ Commit, push, pull, merge, and other git or GitHub actions show a small bouncing
 
 ## Source Control Center
 
-The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, and **Checks** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**7** jump between sections; **Ctrl+K** opens the **Commands** palette (rebase, cherry-pick, stash, worktree, open PR, review the current branch PR, and similar). Pull requests and CI use your local `gh` CLI (Minnow stores no GitHub token). Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub. Screenshots and a longer walkthrough: [Source Control Center in the project README](https://github.com/HenriGrimm/Minnow#source-control-center--the-full-git-surface).
+The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, **Actions**, and **Releases** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**8** jump between sections; **Ctrl+K** opens the command palette. GitHub operations use your local `gh` CLI authentication. Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub.
+
+### Actions and releases
+
+**Actions → Workflows** lists GitHub workflows or the selected worktree's local workflow files. On GitHub, choose a remote branch or tag and complete the workflow inputs. Only workflows with `workflow_dispatch` can be started manually. Dispatch acceptance means GitHub received the request; open **Runs** to follow execution, jobs, logs, reruns, and cancellation.
+
+For **Local workflow (act)**, install [act](https://nektosact.com/installation/) and start Docker. Choose an event, compatible Ubuntu job, and runner image. Local runs use the selected worktree, including uncommitted edits. Dynamic, Windows, and macOS runners are not treated as Linux. Local execution does not guarantee the same result as GitHub. Use the Source Control branch/worktree controls to choose the checkout; stop its active local run before switching branches or removing it.
+
+**Commands** discovers root package scripts and supports named commands in `.minnow/actions.json`. Saved commands can specify a relative directory, shell profile, environment values, and references to encrypted local secrets. The command file is versioned; secret values stay in Minnow's local profile. The **Run saved command** button executes the saved definition. Package scripts use the declared package manager or detected lockfile, with npm as fallback.
+
+**Runs → Local runs** shows status and logs. Runs continue when you close Source Control or reload its view. Logs are capped at 4 MiB per run and completed records are retained for seven days. Server shutdown stops local runs; interrupted runs are not automatically restarted. Local action secrets are passed only when selected and known values are masked in captured output.
+
+**Releases** lists GitHub drafts, prereleases, and published releases. Create a draft from an existing tag or an explicitly selected remote commit for a new tag. Drafts open ready to edit. Select **Write draft** to create user-facing release notes from commit subjects and bodies since the last published release, including prereleases. Override the previous tag when needed; an initial release uses the full target history. The writer uses your utility model, or your default model when no utility override is set. Review the Notes and preview, use **Undo** to restore your preceding edits, and select **Save changes** to save. **Cancel** keeps your notes intact. **Generate with GitHub** remains available. Edit published releases with **Edit release**, choose prerelease/latest settings, and publish drafts when ready. Upload assets using paths relative to the worktree; downloads use a selected relative directory. Replacing or deleting an asset requires confirmation. Deleting a release preserves its Git tag. Immutable releases and accounts without write access show read-only controls. **Run release workflow** opens a popover for the mapped GitHub workflow. In **Actions → Workflows → GitHub**, select a manually runnable workflow and choose **Use for releases** to map it to this button. The mapping is saved locally per GitHub host and repository and applies across its worktrees. From Releases, choose a remote branch or tag, complete the workflow inputs, and select **Run on GitHub**. Inputs reload when the ref changes. Dispatch acceptance means GitHub received the request; **View runs** opens Actions to follow execution. Use **Change workflow** to pick another workflow, or **Remove release mapping** in its workflow inspector to clear the mapping. Running a workflow and creating a release are separate operations.
+
+Agents use the same services through `action_inspect`, `action_run`, `action_cancel`, `action_command`, `release_inspect`, `release_manage`, and `release_asset`. Inspection defaults to Full permission; mutations default to Ask. Plan mode allows inspection only for these tools.
 
 In **Branches** and **Worktrees**, click a row to select it, Ctrl/Cmd-click to toggle individual rows, or Shift-click to select a range. Ctrl/Cmd+A selects all visible rows; Escape clears the selection. **Delete selected** lists the targets for confirmation. Bulk deletion keeps unmerged local branches and dirty worktrees, with individual errors shown. Bulk deletion skips current and protected local branches and the main/workspace worktree. While deleting, progress shows the current item and its position in the batch.
 
@@ -148,6 +170,8 @@ Drag the divider beside the chat to make it wider or narrower. Minnow remembers 
 ## Dev servers
 
 A first-class screen rather than a terminal tab you have to remember. Register the servers a project needs — command, working directory, port, auto-start, and which git worktree to run in — then start, stop and restart them from one place, with logs and a listening-ports view.
+
+Choose **Add server** to open a popover. Enter the command you normally run in a terminal, give the server a name, and set its port. **Advanced** contains the working folder, worktree, network access, optional health check URL, and automatic startup. New servers default to the workspace root and this computer only. If the port is busy, choose **Use a free port**. Adding a server saves its configuration; choose Start when you are ready to run it. **Detect in chat** asks the assistant to find and configure the project's servers.
 
 Minnow wires the **Port** field by stack: Vite gets `--port`, Next gets `-p`, and stacks that reject those flags (including electron-vite) get `PORT` / `VITE_PORT` in the environment instead. Configs that ignore env keep their own port. Split stacks (API + client via `concurrently`) inject the port into the client, set `PORT` for the API, and health-check the UI.
 

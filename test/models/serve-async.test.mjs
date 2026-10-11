@@ -16,6 +16,8 @@ import {
   setServeBackgroundRunOverrideForTests,
   setServeHealthOverrideForTests,
   setServePidAliveOverrideForTests,
+  setStopActiveRunOverrideForTests,
+  resetStopActiveRunOverrideForTests,
   startServe,
   stopServe,
 } from '../../server/models/serve.js';
@@ -138,6 +140,50 @@ describe('async serve start', () => {
     const settled = await waitForStatus(serve.id, 8_000);
     assert.equal(settled.status, 'error');
     assert.match(settled.error, /healthy/i);
+  });
+
+  test('loading eject uses native stdin shutdown and shares concurrent stop requests', async () => {
+    let spawnOptions;
+    let releaseHealth;
+    let releaseStop;
+    const healthGate = new Promise(resolve => { releaseHealth = resolve; });
+    const stopGate = new Promise(resolve => { releaseStop = resolve; });
+    setServeBackgroundRunOverrideForTests(async opts => {
+      spawnOptions = opts;
+      return { runId: 'graceful-run', pid: 12345 };
+    });
+    setServeHealthOverrideForTests(async () => { await healthGate; return true; });
+    let stops = 0;
+    setStopActiveRunOverrideForTests(async (runId, opts) => {
+      stops++;
+      assert.equal(runId, 'graceful-run');
+      assert.equal(opts.graceMs, 60_000);
+      await stopGate;
+      return { ok: true, runId };
+    });
+    setServePidAliveOverrideForTests(() => false);
+    try {
+      const serve = await startServe({ modelPath, runtime: 'llama-cpp', async: true });
+      assert.equal(spawnOptions.env.LLAMA_SERVER_ROUTER_PORT, '0');
+      assert.equal(spawnOptions.env.LLAMA_SERVER_CHILD_MODE, 'normal');
+      assert.equal(spawnOptions.gracefulStop.stdinText, 'cmd_router_to_child:exit\n');
+      const first = stopServe(serve.id);
+      const second = stopServe(serve.id);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(stops, 1);
+      assert.equal((await getServe(serve.id)).status, 'starting');
+      releaseHealth();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal((await getServe(serve.id)).status, 'starting');
+      releaseStop();
+      assert.ok((await Promise.all([first, second])).every(row => row.status === 'stopped'));
+    } finally {
+      releaseHealth();
+      releaseStop();
+      resetStopActiveRunOverrideForTests();
+      resetServePidAliveOverrideForTests();
+      setServeBackgroundRunOverrideForTests(async () => ({ runId: 'test-run', pid: 12345 }));
+    }
   });
 
   test('port_conflict on load retries once on a fresh port', async () => {

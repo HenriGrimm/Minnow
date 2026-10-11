@@ -736,6 +736,7 @@ describe('the surface itself', () => {
         'POST editTask',
         'POST mergeAndSkipTask',
         'POST model',
+        'POST pause',
         'POST rerun',
         'POST resetTask',
         'POST resumeResolve',
@@ -847,4 +848,25 @@ describe('GET /api/boards — workspace scope (MIN-752)', () => {
       await fs.rm(wsB, { recursive: true, force: true }).catch(() => {});
     }
   });
+});
+
+
+it('pause and resume preserve attempts across API calls; non-running boards reject pause', async () => {
+  const boardId = await createBoard();
+  assert.equal((await call('POST', `/api/boards/${boardId}/pause`)).status, 409);
+  const started = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
+  assert.equal(started.status, 200);
+  const before = stateFromJSON(started.body.state).tasks.get('W1-A').attempts[0].attemptId;
+  const paused = await call('POST', `/api/boards/${boardId}/pause`);
+  assert.equal(paused.status, 200);
+  assert.equal(paused.body.state.stopReason, 'paused');
+  const listed = await call('GET', '/api/boards');
+  assert.equal(listed.body.boards.find(board => board.boardId === boardId).stopReason, 'paused');
+  const resumed = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
+  assert.equal(resumed.status, 200);
+  const attempts = stateFromJSON(resumed.body.state).tasks.get('W1-A').attempts;
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].attemptId, before);
+  assert.equal(attempts[0].ended, false);
+  assert.equal((await call('POST', '/api/boards/missing/pause')).status, 404);
 });

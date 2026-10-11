@@ -24,6 +24,7 @@ export type SccSectionId =
   | 'stashes'
   | 'worktrees'
   | 'pulls'
+  | 'releases'
   | 'checks';
 
 /** Rail badge: a count, or a state dot for things that are green/red. */

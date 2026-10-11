@@ -107,6 +107,22 @@ export async function createWorkspaceSubfolder(
   return json;
 }
 
+/** Clone a repository without changing the active workspace. */
+export async function cloneWorkspaceRepository(
+  parentPath: string,
+  name: string,
+  remoteUrl: string,
+): Promise<WorkspaceMkdirResult> {
+  const res = await fetch('/api/workspace/clone', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parentPath, name, remoteUrl }),
+  });
+  const json = await res.json() as WorkspaceMkdirResult;
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json;
+}
+
 /** Open the native folder picker and set workspace when a folder is chosen. */
 export async function pickWorkspaceFolder(): Promise<WorkspacePickResult> {
   const res = await fetch('/api/workspace/pick', {

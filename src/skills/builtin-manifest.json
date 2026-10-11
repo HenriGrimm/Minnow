@@ -99,6 +99,13 @@
       "disableModelInvocation": false
     },
     {
+      "id": "kickoff",
+      "label": "Kickoff",
+      "description": "Kickoff for a new project, app, or feature: grill, PRD, design, then a plan. Use when the user wants to start, set up, scope, or spec something new before building it. Not when a plan already exists.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
       "id": "orchestrate-plan",
       "label": "Orchestrate Plan",
       "description": "Runs multi-phase plans by delegating each phase to sub-agents and gating progress on a dedicated verification pass after every phase. The lead agent does not implement product code. Use when the user asks to orchestrate a plan, execute a plan via sub-agents, delegate phases, or run plan-and-verify loops.",
@@ -115,7 +122,7 @@
     {
       "id": "plan-work",
       "label": "Plan Work",
-      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; pair with orchestrate-plan for execution.",
+      "description": "Produces implementation plans in documentation/plans/ through discovery, codebase research via sub-agents, and a review pass before handoff. The lead agent does not write product code. Use when the user asks for a plan, roadmap, phased breakdown, implementation spec, or to plan a feature before building; choose Build for one chat or Orchestrate for board execution.",
       "source": "builtin",
       "disableModelInvocation": true
     },

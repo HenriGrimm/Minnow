@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "20d5980b089e63bec1a6c082ae76a4fd0f834525d928b506a88d6e83afa69fbb"
+      "hash": "244c7c5a9e3fec0a8ff742da8de94ede13d3bea9d30825153a280a55fd0a2537"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "fa6fcc0ceb173f742afed109cb8e97b6acc33c40024bf04daebbbb864ccb5860"
+      "hash": "11c1d9741a3d4dd46e3e9671d5fb647ac7c676728339963afcd5804efd369557"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -55,12 +55,42 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "a2cac48a27662ee0921560dba183082e216f90cfe45cf6f92a586ee0b6b790c9"
+      "hash": "f337744315bb0bc9988c6ac8198508faae7a82f54271604cdf17f99b86886437"
+    },
+    {
+      "path": "documentation/manual/get-started/costs-and-providers.md",
+      "title": "Costs and providers",
+      "summary": "Minnow itself is free. The models are where the money goes, and there are four ways to pay for them: per token, by subscription, by a capped monthly gateway plan, or upfront for hardware. This page compares them so you can pick a starting point, and it covers a setup that costs n",
+      "headings": [
+        "The short version",
+        "What has worked for us",
+        "How the billing models differ",
+        "What an hour of agent work costs",
+        "Pay-per-token APIs",
+        "DeepSeek",
+        "Gateways: one key, many models",
+        "Subscriptions through agent CLIs",
+        "Capped monthly plans",
+        "OpenCode Go",
+        "GitHub Copilot",
+        "Ollama Cloud",
+        "Lab coding plans",
+        "Free cloud options",
+        "A free setup that holds up",
+        "Local hardware",
+        "What hardware costs in October 2026",
+        "Does local save money?",
+        "Spend less, whatever you choose",
+        "Privacy",
+        "Related"
+      ],
+      "section": "Get started",
+      "hash": "392bce26f272067ea3d188eb98c051206ad604441ed38edc4be10412b99c1c38"
     },
     {
       "path": "documentation/manual/get-started/first-chat.md",
       "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. This page walks through one real turn: send a message, watch it stream, approve a tool, and understand what you just saw. Code with c",
+      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. To start from a remote repository, choose Create From Remote , paste its HTTPS or SSH clone link, and review the suggested folder nam",
       "headings": [
         "Code with chat open",
         "Send something",
@@ -74,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "938a1d99171865e77cee57f72f2ec7db402180487423d2c942f054532a64105b"
+      "hash": "eccbecc614b16b45914ff055755a12ffc307def7c73ad3c0c76f1fc70c09bc42"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -99,6 +129,7 @@
       "summary": "A mode changes two things at once: the instructions the model gets, and the tools that exist for that turn. It is the most consequential control in the composer, and it is one click. The product defines several mode ids for prompts and tool policy. Four are in the composer strip ",
       "headings": [
         "The four you choose",
+        "Choose how to execute a plan",
         "What Plan mode actually blocks",
         "Modes you enter (not on the strip)",
         "Tool access at a glance",
@@ -107,7 +138,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "165e4f152b3649ea2dd049782efcc3cb107e9d47017d2805a8c1bda84acbfbc1"
+      "hash": "dbbb72f865550cc0ac406c38ace8240a48e627afb3911ee992f9b0a6f8b7d503"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
@@ -158,6 +189,7 @@
         "When a turn fails",
         "Watching what agents do",
         "Undoing a turn",
+        "Files from the assistant",
         "Branches",
         "Managing conversations",
         "Notifications",
@@ -165,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "cb20176d2b42771fd24f6eaa8da20cf7d979a66749244d24c18199529d2552ef"
+      "hash": "32741cd410cdb453e7c3e0bc7cb7ad0427d0990b628b61b213b5ff78d0fd8513"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -209,15 +241,18 @@
       "title": "Code",
       "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
       "headings": [
+        "Pin a chat",
         "Share a chat",
         "Open a project",
         "The layout",
         "The editor",
+        "Markdown files",
         "Godot projects",
         "The file tree",
         "Terminal",
         "Git",
         "Source Control Center",
+        "Actions and releases",
         "Code map",
         "Dev servers",
         "Browser preview",
@@ -225,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "6311afc8bc44f0120ff6de2260d7b0bb8e21dabd9ce9bdbe7b0c7f4973ebc330"
+      "hash": "731aaff49c580576bf13a32af8e4ef6b3c67f20fa8434accd06c528e8a8931ef"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -253,6 +288,7 @@
         "Discover",
         "My models and Storage",
         "MLX on Apple Silicon",
+        "MTPLX on Apple Silicon",
         "Providers",
         "CLIs",
         "Account usage",
@@ -267,7 +303,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "88a87c9a7c15fe90a6089c7fe54e7ec6bff913d62dbb27b49c0fd0ccd67788d8"
+      "hash": "7c7e546579fbcd5e7ffe35dde7d12b93e8a89a19b04909b4780fdabe83242d31"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -283,7 +319,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "68373f6ea9d9ee494513ab204a3a110b7677a8930f1d34f499c6c841a2bbe89d"
+      "hash": "782e3efae8edc0534735c3ad54cd5d71602fabda0c3a4d6752a76a3683d23140"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -293,6 +329,7 @@
         "The one rule",
         "Creating a job",
         "Schedules",
+        "Watching GitHub issues",
         "Writing a prompt that works unattended",
         "Run history",
         "Scheduler or `/loop`?",
@@ -300,7 +337,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "b33d7c6304ab7df51fe87a8880f85b1c5bb56f4305b6266b891c885b85cae04a"
+      "hash": "3b84019a6caab5458a91f2bba4b7a43371f1fc4be7a2da2d187a28caf77a01ae"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -318,7 +355,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "3053a4d75cb681d80aff86a2e2741c5f82cfc179b3bece85418b06d351fbecdb"
+      "hash": "cc7f791215504f4de5447e09d2be291e9dfbe1a000c5928d51c847d8822dbada"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -341,7 +378,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "2b660316b91115f4a684332c98fc5bc2d01e92d1650525167a1700d03ed02ee5"
+      "hash": "614e7636dc668fbce0e9bdcfd2b39be503e9644c0d85735de97cf047027c846b"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
@@ -378,7 +415,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "78dd11f73c53475c366571fac391daa121069cce8178e53700e9bfd9ad6eb123"
+      "hash": "c5f453bf509c1a6fc753c645c6cec5fc8d552f06e95c3cf359bbd13c266241c8"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -463,7 +500,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "587e5bc22ba06f49374b6cfb8accfc1261debd674cf350641a3cd1ca30162d25"
+      "hash": "96a024d14f9992316489f8afa3d4cfc53b5be03eafbeb48ec94c6c6a3b97e921"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -483,7 +520,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "21bec99056528345772c5a95d751bf8c97099a90c9bfae9dc0f9463e5af82713"
+      "hash": "74321873c604f98ce8f07df18101e8342d466136f7b2e3677e03af98f30b210f"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -493,7 +530,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "81bb8b91a6a59bb4c5484fc483a37ab6be67318a7ee974e88c414e8c38837769"
+      "hash": "212f0d8eae7447d962e65870f013119e055e570fe0dadb5e27f158e23ac41430"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",

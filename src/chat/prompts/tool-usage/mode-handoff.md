@@ -2,7 +2,7 @@
 id: mode-handoff
 kind: tool-usage
 label: Mode handoff
-version: 1
+version: 2
 part: tool-usage
 description: Structured mode switches via ask_question and host tools.
 ---
@@ -14,7 +14,9 @@ Use **`ask_question`** (or **`propose_mode_switch`** for standard presets) when 
 | Situation | Action |
 |-----------|--------|
 | User asks to implement while in Plan or **General** | Offer **Switch to Build** |
-| User asks to plan while in Build or **General** | Offer **Switch to Plan** |
+| User wants a specialized implementation planning workflow while in Build or **General** | Offer **Switch to Plan** |
+
+In **General**, create and revise requested documents (PRDs, specs, RFCs, proposals, reports, notes, guides, and written plans) directly with the enabled file tools. Do not switch modes for document creation or treat a request to write a PRD or plan file as a request for the Plan workflow. Honor an explicit request to use Plan mode.
 
 ### After the user chooses
 

@@ -51,7 +51,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsSectionId[]
 > = {
   general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'about'],
-  apps: ['plugins', 'issues'],
+  apps: ['plugins', 'github', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
   agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
@@ -134,6 +134,10 @@ function field(
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
 const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
+  field('github.account', 'GitHub account', 'apps', 'github', {
+    keywords: ['login', 'sign in', 'authentication', 'gh', 'pull requests', 'CI', 'repository'],
+    description: 'Connect the GitHub account shared by pull requests, CI and issue sync.',
+  }),
   field('general.updates', 'App updates', 'general', 'general', {
     keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update'],
     description: 'Stay on the latest build. Downloads run in the background; restart when you are ready.',

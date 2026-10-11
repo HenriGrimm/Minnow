@@ -5,6 +5,7 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { buildOnboardingContext, createDefaultOnboardingState } from '../../src/onboarding/state-core.ts';
 
 let keyWrites: unknown[] = [];
+let searchWrites: any[] = [];
 let loadKeys: () => Promise<any> = async () => ({ keys: { braveApiKey: 'saved-brave', tavilyApiKey: '' } });
 mock.module('../../src/mcp/client.ts', { namedExports: {
   fetchMcpSecrets: async () => ({ hasContext7ApiKey: true }),
@@ -12,7 +13,7 @@ mock.module('../../src/mcp/client.ts', { namedExports: {
 } });
 mock.module('../../src/config/search-config.ts', { namedExports: {
   loadSearchConfig: () => loadKeys(),
-  saveSearchConfig: async (value: unknown) => value,
+  saveSearchConfig: async (value: unknown) => { searchWrites.push(value); return value; },
 } });
 const { context7Step, resetContext7StepState } = await import('../../src/onboarding/steps/context7.ts');
 const { apiKeysStep, resetApiKeysStepState } = await import('../../src/onboarding/steps/api-keys.ts');
@@ -80,4 +81,23 @@ test('loading search keys does not overwrite a key already being entered', async
     assert.equal(input.value, 'new-tavily');
     assert.equal(state.enabled(), true);
   } finally { if (typeof cleanup === 'function') cleanup(); state.win.close(); }
+});
+
+test('saving search preserves other providers credentials and the existing local search URL', async () => {
+  const state = setup();
+  resetApiKeysStepState();
+  searchWrites = [];
+  loadKeys = async () => ({ provider: 'brave', searxngUrl: 'http://local-search:8899',
+    keys: { braveApiKey: 'keep-brave', tavilyApiKey: '' } });
+  try {
+    apiKeysStep.render(state.container, state.ctx, state.actions);
+    await flush();
+    const input = state.container.querySelector<HTMLInputElement>('input')!;
+    input.value = 'new-tavily';
+    input.dispatchEvent(new state.win.Event('input'));
+    await apiKeysStep.commit(state.ctx);
+    assert.deepEqual(searchWrites[0].keys, { braveApiKey: 'keep-brave', tavilyApiKey: 'new-tavily' });
+    assert.equal(searchWrites[0].searxngUrl, 'http://local-search:8899');
+    assert.equal(searchWrites[0].provider, 'tavily');
+  } finally { state.win.close(); }
 });

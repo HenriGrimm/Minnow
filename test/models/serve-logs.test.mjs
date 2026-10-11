@@ -88,7 +88,7 @@ describe('serve log tail', () => {
     assert.match(tail.text, /second line/);
   });
 
-  test('follow emits the existing tail, then appended chunks', async () => {
+  test('follow replays existing output, then appended chunks', async () => {
     const runId = 'run-follow';
     const logPath = path.join(modelsLogDir(), `${runId}.log`);
     await fs.writeFile(logPath, 'boot\n', 'utf8');
@@ -98,20 +98,47 @@ describe('serve log tail', () => {
     const done = new Promise((resolve) => {
       const unsub = subscribeServeLog(runId, (event) => {
         events.push(event);
-        if (events.length === 1) {
+        if (event.text.includes('boot')) {
           void fs.appendFile(logPath, 'loading 50.00 %\n', 'utf8');
           return;
         }
-        unsub();
-        resolve(undefined);
+        if (event.text.includes('loading')) {
+          unsub();
+          resolve(undefined);
+        }
       });
     });
 
     await done;
     assert.equal(events[0].initial, true);
-    assert.match(events[0].text, /boot/);
-    assert.match(events[1].text, /loading 50\.00 %/);
-    assert.ok(!events[1].text.includes('boot'), 'follow-up chunks are deltas, not the whole file');
+    assert.match(events[1].text, /boot/);
+    assert.match(events[2].text, /loading 50\.00 %/);
+    assert.ok(!events[2].text.includes('boot'), 'follow-up chunks are deltas, not the whole file');
+  });
+
+  test('follow replays more than one chunk from the start without splitting UTF-8 tokens', async () => {
+    const runId = 'run-full-history';
+    const logPath = path.join(modelsLogDir(), `${runId}.log`);
+    const output = 'boot\n' + 'x'.repeat(512 * 1024 - 6) + '€生成\nend\n';
+    await fs.writeFile(logPath, output, 'utf8');
+    const texts = [];
+    let unsub;
+    try {
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Full log replay timed out')), 3000);
+        unsub = subscribeServeLog(runId, (event) => {
+          texts.push(event.text);
+          if (texts.join('').endsWith('end\n')) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+      assert.equal(texts.join(''), output);
+      assert.ok(texts.length >= 3, 'reset plus multiple bounded replay chunks');
+    } finally {
+      unsub?.();
+    }
   });
 
   test('follow does not skip checkpoints after a dump larger than one read', async () => {

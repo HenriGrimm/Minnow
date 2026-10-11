@@ -761,8 +761,9 @@ export function buildLlamaServerLaunch(opts) {
     args.push('--slots');
   }
 
-  if (!extraHasFlag('-lv') && !extraHasFlag('--verbosity') && !extraHasFlag('--log-verbosity') && !extraHasFlag('-v') && !extraHasFlag('--verbose')) {
-    args.push('-lv', '4');
+  if (!extraHasFlag('-lv') && !extraHasFlag('--verbosity') && !extraHasFlag('--log-verbosity') && !extraHasFlag('-v') && !extraHasFlag('--verbose') && !extraHasFlag('--log-verbose')) {
+    // Include per-token generation traces in the Local Server runtime log.
+    args.push('--verbose');
   }
 
   if (!extraHasFlag('--cont-batching') && !extraHasFlag('--no-cont-batching')) {

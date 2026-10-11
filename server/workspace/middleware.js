@@ -23,6 +23,7 @@ import {
   saveDefaultProjectsParent,
 } from './browse.js';
 import { pickWorkspaceFolder } from './pick-folder.js';
+import { cloneWorkspaceRepository } from './clone.js';
 import { countWorkspaceLoc } from './loc.js';
 import {
   getDevServerStatus,
@@ -125,6 +126,13 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
         return true;
       }
       const created = await createWorkspaceSubfolder(parentPath, name);
+      sendJson(res, 201, { ok: true, ...created });
+      return true;
+    }
+
+    if (pathname === '/api/workspace/clone' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const created = await cloneWorkspaceRepository(body?.parentPath, body?.name, body?.remoteUrl);
       sendJson(res, 201, { ok: true, ...created });
       return true;
     }

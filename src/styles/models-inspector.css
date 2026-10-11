@@ -1,0 +1,414 @@
+/* Model details use the side inspector; launch controls live in the load popover. */
+.models-inspector.models-inspector--details {
+  background: var(--mn-bg);
+}
+
+.models-inspector.models-inspector--details.is-empty {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.models-inspector--details .models-details__head {
+  display: block;
+  flex-shrink: 0;
+  padding: 10px 20px 14px;
+  border-bottom: 0;
+}
+
+.models-details__heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.models-details__caption {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--mn-fg-muted);
+}
+
+.models-details__heading-row .models-icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.models-details__identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.models-details__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  color: var(--mn-fg);
+  background: var(--mn-surface-1);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+}
+
+.models-details__mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.models-details__mark .icon-svg {
+  --mn-icon-size: 20px;
+}
+
+.models-details__names {
+  min-width: 0;
+}
+
+.models-inspector--details .models-inspector__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  white-space: normal;
+}
+
+.models-details__repo {
+  margin: 6px 0 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.models-details__state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.models-details__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.models-details__engine {
+  padding-left: 12px;
+  color: var(--mn-fg-muted);
+  border-left: 1px solid var(--mn-border);
+}
+
+.models-inspector--details .models-inspector__tabs {
+  gap: 24px;
+  padding: 0 20px;
+}
+
+.models-inspector--details .models-tab {
+  flex: 0 1 auto;
+  min-height: 40px;
+  padding: 8px 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.models-inspector--details .models-tab[aria-selected='true'] {
+  color: var(--mn-fg);
+  background: transparent;
+  border-bottom-color: var(--mn-accent);
+}
+
+.models-inspector--details .models-tab:hover {
+  color: var(--mn-fg);
+}
+
+.models-inspector--details :is(.models-tab, summary, a, button):focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 3px;
+}
+
+.models-inspector--details .models-inspector__body {
+  padding: 0 20px 24px;
+}
+
+.models-details__facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px 16px;
+  margin: 0;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-details__fact {
+  min-width: 0;
+}
+
+.models-details__fact dt {
+  margin-bottom: 5px;
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.models-details__fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.models-details__section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-details__section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.models-details__help,
+.models-details__notice {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mn-fg-muted);
+  line-height: 1.6;
+}
+
+.models-details__notice {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-details__capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.models-details__field-label {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+.models-inspector--details .models-copy-field {
+  min-height: 36px;
+  box-sizing: border-box;
+  background: var(--mn-surface-1);
+}
+
+.models-inspector--details .models-copy-field__value {
+  font-size: 11px;
+}
+
+.models-details__disclosure {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-details__disclosure > summary {
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.models-details__disclosure > summary::marker {
+  color: var(--mn-fg-muted);
+}
+
+.models-details__disclosure[open] > summary {
+  margin-bottom: 16px;
+}
+
+.models-details__metadata {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 16px;
+}
+
+.models-details__metadata .models-details__fact {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+
+.models-details__metadata dt {
+  margin: 0;
+}
+
+.models-details__metadata dd {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.models-details__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mn-accent);
+  text-underline-offset: 3px;
+}
+
+.models-details__filename {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.models-details__disclosure .models-inspector__block {
+  padding-bottom: 0;
+  border: 0;
+}
+
+.models-details__disclosure .models-info-row {
+  align-items: baseline;
+  min-height: 28px;
+}
+
+.models-details__disclosure .models-info-row__value .models-chip {
+  padding: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
+  background: transparent;
+}
+
+.models-inspector--details .models-inspector__footer {
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  background: var(--mn-bg);
+}
+
+.models-inspector--details .models-inspector__footer .models-btn {
+  min-height: 38px;
+  white-space: normal;
+}
+
+.models-inspector--details .models-inspector__footer > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.models-inspector--details .models-inspector__footer:empty {
+  display: none;
+}
+
+.models-inspector--details .models-inspector__sampler {
+  padding: 20px 0 0;
+}
+
+.models-inspector--details .models-muted {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.models-inspector--details .settings-sampler-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.models-inspector--details .settings-sampler-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.models-inspector--details .settings-sampler-field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--mn-fg);
+}
+
+.models-inspector--details .settings-sampler-field__hint {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.models-inspector--details .settings-sampler-field__input {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 36px;
+}
+
+.models-inspector--details .models-sampler-presets__controls select {
+  min-height: 36px;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.models-inspector--details .models-details__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  padding-bottom: 80px;
+}
+
+.models-details__empty > .icon-svg {
+  --mn-icon-size: 28px;
+  color: var(--mn-fg-muted);
+}
+
+.models-details__empty h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.models-details__empty p {
+  max-width: 28ch;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--mn-fg-muted);
+}
+
+@container models (max-width: 560px) {
+  .models-details__heading-row .models-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .models-inspector.models-inspector--details :is(.models-tab, .models-btn, .models-copy-field, .settings-sampler-field__input) {
+    min-height: 44px;
+  }
+
+  .models-inspector--details .models-copy-field .models-icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .models-details__disclosure > summary {
+    display: list-item;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 8px 0;
+  }
+}

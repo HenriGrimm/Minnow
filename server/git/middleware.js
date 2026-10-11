@@ -1,4 +1,6 @@
 import { runRequestWork } from '../runtime/request-work.js';
+import { githubAuth } from './github-auth.js';
+import { ACTION_OPS } from './action-service.js';
 import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 /**
  * /api/git — programmatic git operations (MIN-198).
@@ -60,7 +62,7 @@ import {
 } from './forge-ops.js';
 import {
   issueComment as forgeIssueComment,
-  issueChanges,
+  issueBatch,
   issueCreate,
   issueDelete,
   issueEdit,
@@ -94,6 +96,11 @@ function sendJson(res, status, payload) {
 }
 
 const OPS = {
+  ...ACTION_OPS,
+  githubAuthStatus: () => githubAuth.status(),
+  githubAuthStart: () => githubAuth.start(),
+  githubAuthPoll: () => githubAuth.poll(),
+  githubAuthCancel: () => githubAuth.cancel(),
   status: (a) => status(a),
   diff: (a) => diff(a),
   fileDiff: (a) => fileDiff(a),
@@ -148,7 +155,7 @@ const OPS = {
   runCancel: (a) => runCancel(a),
   runLog: (a) => runLog(a),
   issueList: (a) => issueList(a),
-  issueChanges: (a) => issueChanges(a),
+  issueBatch: (a) => issueBatch(a),
   issueView: (a) => issueView(a),
   issueCreate: (a) => issueCreate(a),
   issueDelete: (a) => issueDelete(a),

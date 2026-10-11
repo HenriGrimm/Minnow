@@ -180,8 +180,9 @@ function restoreComposerAfterQuestion(
 function deactivateComposerQuestionChrome(
   state: ActiveQuestionModalState,
   focusOverride?: HTMLElement | null,
+  options?: { suppressFocus?: boolean },
 ): void {
-  restoreComposerAfterQuestion(state, focusOverride);
+  restoreComposerAfterQuestion(state, focusOverride, options);
   removeSidebarInputPendingChatId(state.chatId);
 }
 
@@ -474,7 +475,7 @@ export function showQuestionCardsModal(
     const panel = document.createElement('div');
     panel.className = panelClasses.join(' ');
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-modal', 'false');
     panel.setAttribute('aria-label', args.title?.trim() || 'Assistant questions');
     panel.tabIndex = -1;
 
@@ -579,39 +580,25 @@ export function showQuestionCardsModal(
 
     let settled = false;
     let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
-    let trapFocusHandler: ((ev: KeyboardEvent) => void) | null = null;
-    let focusInHandler: ((ev: FocusEvent) => void) | null = null;
-
-    const detachFocusTrap = (): void => {
-      if (trapFocusHandler) {
-        panel.removeEventListener('keydown', trapFocusHandler);
-        trapFocusHandler = null;
-      }
-      if (focusInHandler) {
-        document.removeEventListener('focusin', focusInHandler, true);
-        focusInHandler = null;
-      }
-    };
-
     const finish = (result: AskQuestionToolResult): void => {
       if (settled) return;
       settled = true;
       cancelAutoAdvance();
-      detachFocusTrap();
       document.removeEventListener('keydown', onDocKeyDown, true);
       if (abortListener) {
         getChatAbort(chatIdForAbort)?.signal.removeEventListener('abort', abortListener);
       }
       const modal = modalsByChatId.get(chatIdForAbort);
+      const ownedFocus = panel.contains(document.activeElement);
       modalsByChatId.delete(chatIdForAbort);
       if (modal?.panel.parentNode) {
         modal.panel.remove();
       }
       if (modal && !modal.embedded && !modal.parked) {
-        deactivateComposerQuestionChrome(modal, previousFocus);
+        deactivateComposerQuestionChrome(modal, previousFocus, { suppressFocus: !ownedFocus });
       } else {
         removeSidebarInputPendingChatId(chatIdForAbort);
-        if (previousFocus?.isConnected && modal && !modal.parked) {
+        if (ownedFocus && previousFocus?.isConnected && modal && !modal.parked) {
           previousFocus.focus();
         }
       }
@@ -871,7 +858,7 @@ export function showQuestionCardsModal(
 
     const onDocKeyDown = (ev: KeyboardEvent): void => {
       const modal = modalsByChatId.get(chatIdForAbort);
-      if (!modal || !isModalForeground(modal)) return;
+      if (!modal || !isModalForeground(modal) || !panel.contains(document.activeElement)) return;
       if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
@@ -889,31 +876,6 @@ export function showQuestionCardsModal(
         return;
       }
     };
-
-    trapFocusHandler = (ev: KeyboardEvent): void => {
-      const modal = modalsByChatId.get(chatIdForAbort);
-      if (ev.key !== 'Tab' || !modal || !isModalForeground(modal)) return;
-      const nodes = listPanelFocusables(panel);
-      if (nodes.length === 0) return;
-      const active = document.activeElement as HTMLElement;
-      const index = nodes.indexOf(active);
-      const from = index >= 0 ? index : 0;
-      ev.preventDefault();
-      const next = ev.shiftKey
-        ? nodes[(from - 1 + nodes.length) % nodes.length]
-        : nodes[(from + 1) % nodes.length];
-      next.focus();
-    };
-    panel.addEventListener('keydown', trapFocusHandler);
-
-    focusInHandler = (ev: FocusEvent): void => {
-      const modal = modalsByChatId.get(chatIdForAbort);
-      if (!modal || !isModalForeground(modal) || settled) return;
-      const target = ev.target;
-      if (target instanceof HTMLElement && panel.contains(target)) return;
-      focusFirstPanelControl(panel);
-    };
-    document.addEventListener('focusin', focusInHandler, true);
 
     document.addEventListener('keydown', onDocKeyDown, true);
     showCard();

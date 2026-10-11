@@ -4,6 +4,8 @@ import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from 
 import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createTurnChanges } from './chat-turn-changes';
+import { getTurnPresentedFiles } from '../chat/presented-files';
+import { createPresentedFileCards } from './presented-file-cards';
 import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
@@ -18,6 +20,8 @@ interface WorkGroup {
   expanded: boolean;
   card?: HTMLElement | null;
   cardKey?: string;
+  presentedFiles?: HTMLElement | null;
+  presentedFilesKey?: string;
   foot?: HTMLElement | null;
   replies?: HTMLElement[];
   todos?: HTMLDetailsElement | null;
@@ -63,7 +67,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (!target) return false;
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
-      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-reply-foot, .msg-bubble, .thoughts-flow')) return false;
+      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow')) return false;
       return record.type === 'childList' || record.type === 'attributes';
     })) schedule();
   });
@@ -203,8 +207,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'].filter(Boolean).join('. '));
     const controlled: string[] = [];
     for (const row of activity) {
-      // Recovery controls, the active checkpoint and open questions stay reachable while collapsed.
-      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
+      // Corrections, recovery controls, the active checkpoint and open questions stay visible while collapsed.
+      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated, .msg--steered')
         || Boolean(row.querySelector('.msg-bubble--error'))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && (row.dataset.toolName === 'ask_question'
@@ -234,6 +238,15 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
         closedThoughts.add(toggle);
       }
     }
+    const presentedFiles = getTurnPresentedFiles(chat, turn.fork + 1, turn.end);
+    const presentedFilesKey = JSON.stringify(presentedFiles);
+    if (group.presentedFilesKey !== presentedFilesKey) {
+      group.presentedFiles?.remove();
+      group.presentedFiles = createPresentedFileCards(presentedFiles);
+      group.presentedFilesKey = presentedFilesKey;
+    }
+    const lastRow = rows.at(-1)!;
+    if (group.presentedFiles && lastRow.nextElementSibling !== group.presentedFiles) lastRow.after(group.presentedFiles);
     if (!live) {
       const key = `${turn.end}:${run?.endedAt ?? ''}:${turn.fork === primaryFork ? 'primary' : ''}`;
       if (group.cardKey !== key) {
@@ -244,7 +257,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
         group.cardKey = key;
         if (turn.fork === primaryFork) syncTurnChangeActions();
       }
-      const last = rows.at(-1)!;
+      const last = group.presentedFiles ?? lastRow;
       if (group.card && last.nextElementSibling !== group.card) last.after(group.card);
       syncReplyFoot(group, replies, latest && !full, group.card ?? last, chat.id);
     } else {
@@ -267,12 +280,12 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const buckets = new Map<TranscriptTurn, HTMLElement[]>();
     let current: TranscriptTurn | undefined;
     for (const node of Array.from(mount.children)) {
-      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-reply-foot')) continue;
+      if (!(node instanceof HTMLElement) || node.matches('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot')) continue;
       const index = node.dataset.historyIndex;
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);
-      if (!current || node.matches('.msg.user')) continue;
-      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
+      if (!current || node.matches('.msg.user:not(.msg--steered)')) continue;
+      if (!node.matches('.msg.assistant, .msg--steered, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
       const bucket = buckets.get(current) ?? [];
       bucket.push(node);
       buckets.set(current, bucket);
@@ -295,6 +308,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (mounted.has(fork)) continue;
       group.button.remove();
       group.card?.remove();
+      group.presentedFiles?.remove();
       group.foot?.remove();
       group.todos?.remove();
       groups.delete(fork);
@@ -318,7 +332,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     disposed = true;
     disposeScrollLayout();
     observer.disconnect();
-    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.foot?.remove(); group.todos?.remove(); }
+    for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.presentedFiles?.remove(); group.foot?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');
     clearSteps(mount);
     paintRunStatus(null);
@@ -452,7 +466,7 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
   const visible = activity.filter((row) => !row.matches(OFF_RAIL));
   const steps = new Set<HTMLElement>();
   visible.forEach((row) => {
-    if (row.matches(TOOL_ROW)) { steps.add(row); return; }
+    if (row.matches(TOOL_ROW) || row.matches('.msg--steered')) { steps.add(row); return; }
     if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
     // A thinking-only round (live, or one that settled without prose) is its own step.
     if (!hasProse(row) && (hasSettledThoughts(row)

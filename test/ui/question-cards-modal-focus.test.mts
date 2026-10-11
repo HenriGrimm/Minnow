@@ -1,5 +1,5 @@
 /**
- * ask_question strip traps focus and restores it after close.
+ * ask_question strip scopes keyboard commands to its own focus.
  */
 
 import assert from 'node:assert/strict';
@@ -30,7 +30,7 @@ function setupDom(win: import('happy-dom').Window): void {
   `;
 }
 
-describe('question-cards-modal focus trap', () => {
+describe('question-cards-modal focus scope', () => {
   beforeEach(async () => {
     const { Window } = await import('happy-dom');
     win = new Window();
@@ -68,7 +68,7 @@ describe('question-cards-modal focus trap', () => {
     }
   });
 
-  test('panel is modal dialog with labelled prompt', async () => {
+  test('panel is nonmodal dialog with labelled prompt', async () => {
     const { showQuestionCardsModal } = await import('../../src/ui/question-cards-modal.ts');
     const promise = showQuestionCardsModal({
       questions: [
@@ -86,7 +86,7 @@ describe('question-cards-modal focus trap', () => {
     const panel = win!.document.querySelector('.question-cards-panel');
     assert.ok(panel);
     assert.equal(panel?.getAttribute('role'), 'dialog');
-    assert.equal(panel?.getAttribute('aria-modal'), 'true');
+    assert.equal(panel?.getAttribute('aria-modal'), 'false');
     assert.ok(panel?.getAttribute('aria-labelledby'));
 
     const { forceCloseAskQuestionModal } = await import('../../src/ui/question-cards-modal.ts');
@@ -95,7 +95,7 @@ describe('question-cards-modal focus trap', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
-  test('Tab cycles inside panel and close restores prior focus', async () => {
+  test('Tab can leave panel and close restores prior focus', async () => {
     const beforeBtn = win!.document.getElementById('beforeBtn') as HTMLButtonElement;
     beforeBtn.focus();
     assert.equal(win!.document.activeElement, beforeBtn);
@@ -129,8 +129,7 @@ describe('question-cards-modal focus trap', () => {
       cancelable: true,
     });
     panel.dispatchEvent(tabEvent);
-    assert.ok(tabEvent.defaultPrevented);
-    assert.notEqual(win!.document.activeElement, closeBtn);
+    assert.equal(tabEvent.defaultPrevented, false);
 
     closeBtn.click();
     const result = await promise;
@@ -138,7 +137,7 @@ describe('question-cards-modal focus trap', () => {
     assert.equal(win!.document.activeElement, beforeBtn);
   });
 
-  test('focusin outside panel returns focus to first answer control', async () => {
+  test('outside focus stays outside and its keyboard commands do not cancel the question', async () => {
     const { showQuestionCardsModal } = await import('../../src/ui/question-cards-modal.ts');
     const promise = showQuestionCardsModal({
       questions: [
@@ -154,14 +153,33 @@ describe('question-cards-modal focus trap', () => {
     afterBtn.focus();
 
     const panel = win!.document.querySelector('.question-cards-panel') as HTMLElement;
-    const trapped = panel.querySelector(
-      '.question-cards-options input',
-    ) as HTMLInputElement;
-    assert.ok(trapped);
-    assert.equal(win!.document.activeElement, trapped);
+    assert.equal(win!.document.activeElement, afterBtn);
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Escape', 'Tab']) {
+      const event = new win!.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      afterBtn.dispatchEvent(event);
+      assert.equal(event.defaultPrevented, false, key);
+      assert.ok(panel.isConnected, key);
+      assert.equal(win!.document.activeElement, afterBtn, key);
+    }
+    const option = panel.querySelector('.question-cards-options input') as HTMLInputElement;
+    option.focus();
+    const escape = new win!.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    option.dispatchEvent(escape);
+    assert.equal(escape.defaultPrevented, true);
+    assert.equal((await promise).status, 'cancelled');
 
     const { forceCloseAskQuestionModal } = await import('../../src/ui/question-cards-modal.ts');
     forceCloseAskQuestionModal();
     await promise;
   });
+  test('background cancellation preserves focus outside the question', async () => {
+    const { showQuestionCardsModal, forceCloseAskQuestionModal } = await import('../../src/ui/question-cards-modal.ts');
+    const promise = showQuestionCardsModal({ questions: [{ id: 'q1', prompt: 'Pick one', options: [{ id: 'a', label: 'Alpha' }] }] });
+    const afterBtn = win!.document.getElementById('afterBtn') as HTMLButtonElement;
+    afterBtn.focus();
+    forceCloseAskQuestionModal();
+    assert.equal((await promise).status, 'cancelled');
+    assert.equal(win!.document.activeElement, afterBtn);
+  });
+
 });

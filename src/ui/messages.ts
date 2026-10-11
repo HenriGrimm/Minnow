@@ -349,10 +349,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       turnKind: 'user',
       chatId: chat.id,
       modeId: chat.modeId,
-    }, { renderFromHistory: true, persistedImages: userMsg.images, issue: userMsg.issue, codeMap: userMsg.codeMap });
-    if (userMsg.steer) {
-      markMessageSteered(wrap);
-    }
+    }, { renderFromHistory: true, persistedImages: userMsg.images, issue: userMsg.issue, codeMap: userMsg.codeMap, steer: userMsg.steer });
     if (userMsg.goalAchieved) {
       restoreGoalAchievedAffordance(wrap, userMsg);
     }
@@ -798,6 +795,8 @@ export interface BubbleRenderMeta {
 export interface AppendUserBubbleOptions extends UserBubbleRenderOptions {
   /** When true, paint chips from persisted history content (default for user rows). */
   renderFromHistory?: boolean;
+  /** An inline correction within the current turn. */
+  steer?: boolean;
 }
 
 // ── Notices ──────────────────────────────────────────────────────────────────
@@ -1091,9 +1090,10 @@ export function appendBubble(
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
+  if (role === 'user' && userOptions?.steer) markMessageSteered(wrap);
   appendChatTranscriptNode(wrap, mount);
   if (!suppressBubbleScroll) {
-    if (role === 'user') {
+    if (role === 'user' && !userOptions?.steer) {
       scrollChatToBottom();
     } else {
       scrollChatIfPinned();

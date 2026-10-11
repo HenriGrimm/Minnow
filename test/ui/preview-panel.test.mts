@@ -11,6 +11,11 @@ describe('preview panel helpers', () => {
     );
   });
 
+  test('absolute source paths retain their meaning on Windows and POSIX', () => {
+    assert.equal(workspacePreviewUrl('/tmp/worktree/report.pdf'), '/api/preview/file/%2Ftmp%2Fworktree%2Freport.pdf');
+    assert.equal(workspacePreviewUrl('C:\\worktree\\report.pdf'), '/api/preview/file/C%3A/worktree/report.pdf');
+  });
+
   test('workspacePreviewUrl adds cache-bust query', () => {
     assert.equal(
       workspacePreviewUrl('app.js', 12345),

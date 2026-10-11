@@ -39,6 +39,7 @@ export function blockAfkInteractionAttempt(
 }
 
 const COMPANION_MUTATING_TOOLS = new Set([
+  'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
   'plugin_manage',
   'write_clipboard',
   'save_file',

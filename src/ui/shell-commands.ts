@@ -136,7 +136,7 @@ export function codeCommands(inCode = getForegroundAppId() === 'code'): Command[
     },
     {
       id: 'code.save', title: 'Save current file', group: 'Code', keywords: 'editor write document',
-      available: () => Boolean(document.querySelector('.cm-editor')),
+      available: () => Boolean(document.querySelector('.cm-editor, .file-viewer-markdown-preview--editable')),
       run: async () => { await (await import('./file-viewer')).saveFocusedViewerTab(); },
     },
   ];

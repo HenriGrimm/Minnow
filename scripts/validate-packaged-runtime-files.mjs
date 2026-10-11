@@ -13,6 +13,7 @@ const REQUIRED_RUNTIME_PATHS = [
   'server/reef/runtime-host.mjs',
   'server/reef/verify-browser.mjs',
   'server/reef/electron-wrapper.cjs',
+  'server/git/action-worker.js',
   'src/lsp/merge-config.mjs',
   'src/lsp/defaults.json',
   'src/lsp/bundles.json',

@@ -55,6 +55,14 @@ import {
  * @property {string | null} fallbackRole
  * @property {string | null} chatId
  * @property {boolean} [routerPreferAvailable]
+ * @property {Record<string, SendReasoningCapabilities>} [modelCapabilities] reasoning
+ *   capabilities by model id, for the upstream sanitize pass
+ */
+
+/**
+ * @typedef {object} SendReasoningCapabilities
+ * @property {boolean} [reasoning]
+ * @property {string[]} [reasoningAllowedOptions]
  */
 
 const EVICT_MS_EPHEMERAL = 30_000;
@@ -93,7 +101,7 @@ export function generationMemoryUsage() {
 }
 
 /**
- * @typedef {{ queue: Buffer[], queuedBytes: number, draining: boolean, endAfterFlush?: boolean, timer?: ReturnType<typeof setTimeout>, onDrain?: () => void, onClose?: () => void }} SubscriberWriteState
+ * @typedef {{ queue: Buffer[], queuedBytes: number, draining: boolean, replayEnd?: number, replayChunk?: number, replayOffset?: number, endAfterFlush?: boolean, timer?: ReturnType<typeof setTimeout>, onDrain?: () => void, onClose?: () => void }} SubscriberWriteState
  */
 
 /** @type {WeakMap<ServerResponse, SubscriberWriteState>} */
@@ -212,14 +220,28 @@ function flushSubscriberQueue(state, res, opts = {}) {
   if (w.draining) return;
   const requireSubscriber = !opts.terminal;
 
-  while (w.queue.length > 0) {
+  while ((w.replayChunk ?? 0) < (w.replayEnd ?? 0) || w.queue.length > 0) {
     if (requireSubscriber && !state.subscribers.has(res)) {
       clearWriteState(res);
       return;
     }
 
-    const buf = w.queue.shift();
-    w.queuedBytes -= buf.length + CHUNK_OVERHEAD_BYTES;
+    let buf;
+    if ((w.replayChunk ?? 0) < (w.replayEnd ?? 0)) {
+      // Replay already belongs to the generation RAM budget. Read it lazily,
+      // rather than duplicating the whole reply into the live subscriber queue.
+      const chunk = state.chunks[w.replayChunk];
+      const offset = w.replayOffset ?? 0;
+      buf = chunk.subarray(offset, offset + 64 * 1024);
+      w.replayOffset = offset + buf.length;
+      if (w.replayOffset >= chunk.length) {
+        w.replayChunk += 1;
+        w.replayOffset = 0;
+      }
+    } else {
+      buf = w.queue.shift();
+      w.queuedBytes -= buf.length + CHUNK_OVERHEAD_BYTES;
+    }
     try {
       const ok = res.write(buf);
       if (!ok) {
@@ -320,6 +342,12 @@ function scheduleEviction(state) {
   }
   const delay = state.persist ? EVICT_MS_PERSIST : EVICT_MS_EPHEMERAL;
   state.evictTimer = setTimeout(() => {
+    // A replay cursor still reads these buffers while its socket drains.
+    // Stall timers and the subscriber cap keep this retention bounded.
+    if ([...openResponses.values()].includes(state)) {
+      scheduleEviction(state);
+      return;
+    }
     releaseGeneration(state);
   }, delay);
 }
@@ -327,7 +355,28 @@ function scheduleEviction(state) {
 // ── Generation ───────────────────────────────────────────────────────────────
 
 /**
- * @param {{ providerId: string, body: unknown, persist?: boolean, candidates?: FallbackCandidate[], fallbackRole?: string | null, chatId?: string | null, }} params
+ * The reasoning half of the capabilities the caller already sanitized the body
+ * with. Without it the upstream pass treats reasoning as unsupported and strips
+ * the composer's effort. Kept for the requested model only, so a fallback
+ * model still gets the capability-unknown pass.
+ * @param {unknown} caps
+ * @returns {SendReasoningCapabilities | null}
+ */
+function sendReasoningCapabilities(caps) {
+  if (!caps || typeof caps !== 'object') return null;
+  const raw = /** @type {{ reasoning?: unknown, reasoningAllowedOptions?: unknown }} */ (caps);
+  const allowed = Array.isArray(raw.reasoningAllowedOptions)
+    ? raw.reasoningAllowedOptions.filter((option) => typeof option === 'string')
+    : [];
+  if (typeof raw.reasoning !== 'boolean' && allowed.length === 0) return null;
+  return {
+    ...(typeof raw.reasoning === 'boolean' ? { reasoning: raw.reasoning } : {}),
+    ...(allowed.length > 0 ? { reasoningAllowedOptions: allowed } : {}),
+  };
+}
+
+/**
+ * @param {{ providerId: string, body: unknown, persist?: boolean, candidates?: FallbackCandidate[], fallbackRole?: string | null, chatId?: string | null, modelCapabilities?: unknown }} params
  * @returns {GenerationState}
  */
 export function createGenerationState({
@@ -337,6 +386,7 @@ export function createGenerationState({
   candidates,
   fallbackRole = null,
   chatId = null,
+  modelCapabilities = null,
 }) {
   const id = randomUUID();
   const requestBody = Buffer.from(JSON.stringify(body ?? {}), 'utf8');
@@ -380,6 +430,8 @@ export function createGenerationState({
     fallbackRole: typeof fallbackRole === 'string' ? fallbackRole : null,
     chatId: typeof chatId === 'string' && chatId.trim() ? chatId.trim() : null,
   };
+  const sendCaps = sendReasoningCapabilities(modelCapabilities);
+  if (primaryModelId && sendCaps) state.modelCapabilities = { [primaryModelId]: sendCaps };
   generations.set(id, state);
   generationCosts.set(state, cost);
   retainedBytes += cost;
@@ -526,9 +578,9 @@ export function addSubscriber(state, res) {
   res.once('close', writeState.onClose);
   state.subscribers.add(res);
 
-  for (const chunk of state.chunks) {
-    writeToSubscriber(state, res, chunk);
-  }
+  writeState.replayEnd = state.chunks.length;
+  writeState.replayChunk = 0;
+  writeState.replayOffset = 0;
 
   if (isTerminal(state.status)) {
     const line = `\n\nevent: end\ndata: ${JSON.stringify(terminalEventPayload(state))}\n\n`;
@@ -543,6 +595,8 @@ export function addSubscriber(state, res) {
       detachSubscriber(state, res);
     }
     state.subscribers.delete(res);
+  } else {
+    flushSubscriberQueue(state, res);
   }
 }
 
@@ -723,5 +777,4 @@ export function deleteGenerationsForProviderShutdown() {
   generations.clear();
   flushAllCheckpoints();
 }
-
 

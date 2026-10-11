@@ -210,6 +210,25 @@ describe('buildLibrary', () => {
     assert.equal(rows[0].contextLength, 8192);
   });
 
+  test('marks MTPLX rows with a vision tower as vision-capable', async () => {
+    const mtplxRow = (repo_id: string, mtplx_vision?: boolean): CachedModelRow => ({
+      repo_id,
+      size_bytes: 20_000_000_000,
+      nb_files: 4,
+      has_incomplete: false,
+      path: `/home/u/.mtplx/models/${repo_id.replace('/', '--')}`,
+      mlx_root: `/home/u/.mtplx/models/${repo_id.replace('/', '--')}`,
+      mlx_quant: 'mlx-4bit',
+      mtplx_root: `/home/u/.mtplx/models/${repo_id.replace('/', '--')}`,
+      mtplx_validated: true,
+      ...(mtplx_vision ? { mtplx_vision } : {}),
+    });
+    const rows = await buildLibrary([mtplxRow('Org/Vlm-MTPLX', true), mtplxRow('Org/Text-MTPLX')]);
+    const byRepo = new Map(rows.map((r) => [r.repoId, r]));
+    assert.ok(byRepo.get('Org/Vlm-MTPLX')?.capabilities.includes('vision'));
+    assert.ok(!byRepo.get('Org/Text-MTPLX')?.capabilities.includes('vision'));
+  });
+
   test('resolves maker from the weight name when the repo publisher is a quantizer', async () => {
     const rows = await buildLibrary([
       ggufRow({

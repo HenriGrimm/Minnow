@@ -920,6 +920,12 @@ function toolIdWasStored(raw, id) {
 }
 
 function backfillDefaultToolPermissions(config, raw) {
+  for (const id of ['action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset']) {
+    if (!toolIdWasStored(raw, id)) {
+      config.permissions.default[id] = id.endsWith('_inspect') ? 'full' : 'ask';
+      config.enabled[id] = true;
+    }
+  }
   for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
     if (!toolIdWasStored(raw, id)) {
       config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
@@ -979,7 +985,7 @@ export function normalizeContextCompactionConfig(raw) {
 
 function defaultPermissionForTool(id, enabled) {
   if (
-    id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings'
+    id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'present_files' || id === 'search_settings'
     || id === 'get_settings'
     || id === 'get_appearance'
     || id === 'godot_inspect'
@@ -995,7 +1001,9 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
     'load_skill',
+    'present_files',
     'plugin_inspect',
     'plugin_manage',
     'get_datetime',
@@ -3624,7 +3632,7 @@ const SEARCH_FALLBACK_PROVIDERS = new Set(['tavily', 'brave', 'duckduckgo']);
  */
 export function defaultSearchConfig() {
   return {
-    provider: 'searxng',
+    provider: 'tavily',
     fallbackChain: ['tavily', 'brave', 'duckduckgo'],
     searxngUrl: 'http://localhost:8899',
     keys: { braveApiKey: '', tavilyApiKey: '' },
@@ -3809,12 +3817,13 @@ export function normalizeResearchConfig(raw) {
   return config;
 }
 
-const MANAGED_SERVER_IDS = ['searxng', 'llama-cpp', 'mlx-lm'];
+const MANAGED_SERVER_IDS = ['searxng', 'llama-cpp', 'mlx-lm', 'mtplx'];
 
 const DEFAULT_SERVER_PORTS = {
   searxng: 8899,
   'llama-cpp': 8085,
   'mlx-lm': 8087,
+  mtplx: 8088,
 };
 
 /**
@@ -3822,9 +3831,10 @@ const DEFAULT_SERVER_PORTS = {
  */
 export function defaultServersConfig() {
   return {
+    mtplx: { enabled: true, autoStart: false, port: 8088 },
     searxng: {
       enabled: true,
-      autoStart: true,
+      autoStart: false,
       port: DEFAULT_SERVER_PORTS.searxng,
     },
     'llama-cpp': {

@@ -41,7 +41,8 @@ import { openGitBranchSwitchPopover, openGitRefNamePopover } from './git-panel-n
 import { resolvePanelWorktreeCwd } from './panel-worktree-cwd';
 import { createChangesView, focusCommitMessage } from './scc-changes';
 import { pushWithPublishPrompt } from './git-publish-push';
-import { createChecksView } from './scc-checks';
+import { createActionsView } from './scc-actions';
+import { createReleasesView } from './scc-releases';
 import { createHistoryView } from './scc-history';
 import { createPullsView, requestPullsSelection } from './scc-pulls';
 import { createBranchesView, createStashesView, createWorktreesView } from './scc-refs';
@@ -174,11 +175,12 @@ function sections(): SectionDef[] {
     },
     {
       id: 'checks',
-      label: 'Checks',
+      label: 'Actions',
       icon: 'statusRunning',
       group: 'Remote',
-      create: (ctx) => createChecksView(ctx, { getForgeStatus: () => forge }),
+      create: (ctx) => createActionsView(ctx, { getForgeStatus: () => forge }),
     },
+    { id: 'releases', label: 'Releases', icon: 'gitCommit', group: 'Remote', create: (ctx) => createReleasesView(ctx) },
   ];
 }
 
@@ -651,7 +653,8 @@ function buildCommands(): Command[] {
     jump('stashes', 'Stashes', modKeyLabel('4')),
     jump('worktrees', 'Worktrees', modKeyLabel('5')),
     jump('pulls', 'Pull requests', modKeyLabel('6')),
-    jump('checks', 'Checks', modKeyLabel('7')),
+    jump('checks', 'Actions', modKeyLabel('7')),
+    jump('releases', 'Releases', modKeyLabel('8')),
 
     {
       id: 'sync.fetch',
@@ -886,6 +889,7 @@ const SECTION_ORDER: SccSectionId[] = [
   'worktrees',
   'pulls',
   'checks',
+  'releases',
 ];
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
@@ -897,7 +901,7 @@ function handleKey(event: KeyboardEvent): void {
 
   if (isCommandPaletteOpen()) return;
 
-  if (mod && /^[1-7]$/.test(event.key)) {
+  if (mod && /^[1-8]$/.test(event.key)) {
     event.preventDefault();
     void showSection(SECTION_ORDER[Number(event.key) - 1]!);
     return;

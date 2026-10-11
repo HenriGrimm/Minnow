@@ -81,7 +81,7 @@ test('switching from a connected local provider to cloud cannot reuse local cred
   providers = [];
   try {
     providerChoiceStep.render(container, ctx, actions);
-    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[0].click();
+    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[3].click();
     providerLocalStep.render(container, ctx, actions);
     container.querySelector<HTMLButtonElement>('.mn-onboarding-secondary-btn')!.click();
     await flush();
@@ -93,12 +93,21 @@ test('switching from a connected local provider to cloud cannot reuse local cred
     url.dispatchEvent(new win.Event('input'));
     assert.equal(state.enabled(), false, 'editing a tested URL requires another test');
     providerChoiceStep.render(container, ctx, actions);
-    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[2].click();
+    container.querySelectorAll<HTMLButtonElement>('.mn-onboarding-choice')[1].click();
     providerCloudStep.render(container, ctx, actions);
     await flush();
     assert.equal(state.enabled(), false);
     assert.equal(ctx.providerId, null);
     await providerCloudStep.commit(ctx);
     assert.equal(ctx.state.steps['provider-cloud'], undefined);
+  } finally { win.close(); }
+});
+
+test('provider paths use the requested labels and order', () => {
+  const { win, container, ctx, actions } = setup();
+  try {
+    providerChoiceStep.render(container, ctx, actions);
+    assert.deepEqual(Array.from(container.querySelectorAll('.mn-onboarding-choice__title'), node => node.textContent),
+      ['Minnow', 'Cloud API', 'CLI', 'External Local Server']);
   } finally { win.close(); }
 });

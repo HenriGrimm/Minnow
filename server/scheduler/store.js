@@ -15,6 +15,8 @@ import {
 import { computeNextRun, validateSchedule } from './schedule.js';
 import { schedulerJobsPath } from './paths.js';
 import { renameSchedulerFile } from './atomic-file.js';
+import { normalizeGithubWatch } from './github-watch-config.js';
+import { readWatchLedger } from './github-watch-store.js';
 
 /** Maximum user-defined scheduled jobs. */
 export const MAX_SCHEDULER_JOBS = 50;
@@ -80,6 +82,7 @@ async function toPublicJob(stored) {
     providerId: stored.providerId ?? undefined,
     modelId: stored.modelId ?? undefined,
     workspacePath: stored.workspacePath ?? undefined,
+    githubWatch: stored.githubWatch ?? undefined,
     channels: Array.isArray(stored.channels) ? [...stored.channels] : ['in_app'],
     lastRunAt: stored.lastRunAt ?? undefined,
     nextRunAt: stored.nextRunAt ?? undefined,
@@ -106,7 +109,8 @@ async function normalizeJobInput(input, existingId) {
     throw new Error('label must be 120 characters or fewer');
   }
 
-  const prompt = String(input.prompt ?? '').trim();
+  const githubWatch = normalizeGithubWatch(input.githubWatch, input.workspacePath);
+  const prompt = String(input.prompt ?? '').trim() || (githubWatch ? 'Triage and fix GitHub issues labeled minnow.' : '');
   if (!prompt) {
     throw new Error('prompt is required');
   }
@@ -143,6 +147,7 @@ async function normalizeJobInput(input, existingId) {
     enabled: input.enabled !== false,
     schedule,
     promptEnc,
+    githubWatch,
     modeId,
     workAgentId: input.workAgentId ? String(input.workAgentId).trim() : undefined,
     providerId: input.providerId ? String(input.providerId).trim() : undefined,
@@ -234,6 +239,12 @@ export async function updateJob(id, input) {
       throw new Error('Job not found');
     }
     const existing = store.jobs[index];
+    if (existing.githubWatch) {
+      const watch = input.githubWatch === undefined ? existing.githubWatch : normalizeGithubWatch(input.githubWatch, input.workspacePath ?? existing.workspacePath);
+      if (watch?.repository !== existing.githubWatch.repository || (input.workspacePath !== undefined && input.workspacePath !== existing.workspacePath)) {
+        throw new Error('Create a new watcher to change its repository or workspace');
+      }
+    }
     const merged = {
       ...existing,
       ...input,
@@ -260,6 +271,13 @@ export async function updateJob(id, input) {
 export async function deleteJob(id) {
   return withWriteLock(async () => {
     const store = await readStoreUnlocked();
+    const job = store.jobs.find(job => job.id === id);
+    if (job?.githubWatch) {
+      const ledger = await readWatchLedger(job.githubWatch.repository);
+      if (job.running || ledger.issues.some(row => row.jobId === id && !['complete', 'blocked'].includes(row.phase))) {
+        throw new Error('This watcher has active work. Disable it to pause polling; stop active work from its board.');
+      }
+    }
     const nextJobs = store.jobs.filter((job) => job.id !== id);
     if (nextJobs.length === store.jobs.length) {
       throw new Error('Job not found');

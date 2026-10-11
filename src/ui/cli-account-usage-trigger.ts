@@ -1,4 +1,4 @@
-import { agentCliUsageKind } from '../models/agent-clis';
+import { AGENT_CLI_USAGE_NAMES, agentCliUsageKind, type AgentCliKind } from '../models/agent-clis';
 import { accountUsageSummary, createAccountUsageView, type AccountUsageView } from './cli-account-usage';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 
@@ -15,7 +15,7 @@ export function createAccountUsageTrigger() {
   popover.className = 'cli-account-usage-popover';
   popover.popover = 'auto';
   popover.setAttribute('role', 'dialog');
-  let kind: 'codex' | 'claude' | null = null;
+  let kind: AgentCliKind | null = null;
   let view: AccountUsageView | null = null;
   let registered = false;
 
@@ -59,7 +59,7 @@ export function createAccountUsageTrigger() {
       button.textContent = 'Usage';
       popover.replaceChildren();
       if (!kind) return;
-      const name = kind === 'codex' ? 'Codex' : 'Claude';
+      const name = AGENT_CLI_USAGE_NAMES[kind];
       popover.setAttribute('aria-label', `${name} account usage`);
       button.setAttribute('aria-label', `${name} account usage`);
       view = createAccountUsageView(kind, {

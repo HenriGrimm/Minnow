@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, test } from 'node:test';
 import { Window } from 'happy-dom';
 import {
   APP_LOADER_REMOVE_DELAY_MS,
   APP_CSS_READY_PROPERTY,
   isAppShellStyled,
   isChromeReady,
+  holdAppReveal,
   markAppReady,
   markChromeReady,
   resetAppReadyForTests,
@@ -13,6 +14,29 @@ import {
   whenAppShellStyled,
   whenAppStylesReady,
 } from '../../src/boot/app-ready.ts';
+
+test('first-run reveal hold prevents ready chrome from exposing the workspace picker', async () => {
+  const win = new Window();
+  Object.assign(globalThis, { window: win, document: win.document,
+    requestAnimationFrame: win.requestAnimationFrame.bind(win) });
+  resetAppReadyForTests();
+  try {
+    const release = holdAppReveal();
+    scheduleMarkAppReady({ styleTimeoutMs: 0 });
+    markChromeReady();
+    await new Promise(resolve => setTimeout(resolve, 40));
+    markAppReady();
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), false);
+    const onboarding = win.document.createElement('div');
+    onboarding.className = 'mn-onboarding';
+    win.document.body.append(onboarding);
+    release();
+    release();
+    await new Promise(resolve => setTimeout(resolve, 80));
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
+    assert.ok(win.document.querySelector('.mn-onboarding'));
+  } finally { resetAppReadyForTests(); win.close(); }
+});
 
 describe('whenAppStylesReady', () => {
   let win: Window;

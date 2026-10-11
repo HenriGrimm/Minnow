@@ -566,7 +566,7 @@ function renderListItem(board: BoardSummary): HTMLElement {
   const meta = el('span', 'ov2__board-meta');
   meta.appendChild(
     pill(
-      board.finished ? 'finished' : board.status,
+      board.finished ? 'finished' : board.stopReason === 'paused' ? 'paused' : board.status,
       board.finished ? 'good' : board.status === 'running' ? 'live' : 'neutral',
     ),
   );
@@ -1634,6 +1634,7 @@ function renderControls(state: BoardState): HTMLElement {
   const controls = el('div', 'board-header__controls');
   const finished = state.finished;
   const running = state.status === 'running';
+  const paused = state.stopReason === 'paused';
 
   const modelSlot = el('div', 'board-header__model-slot mn-os-mb-model-slot');
   modelSlot.title = state.model
@@ -1654,22 +1655,31 @@ function renderControls(state: BoardState): HTMLElement {
   );
   runBtn.type = 'button';
   runBtn.disabled = false;
-  runBtn.textContent = running ? 'Stop' : rerunInstead ? 'Rerun' : 'Start';
+  runBtn.textContent = running ? 'Pause' : paused ? 'Resume' : rerunInstead ? 'Rerun' : 'Start';
   runBtn.setAttribute(
     'aria-label',
-    running ? 'Stop board' : rerunInstead ? 'Rerun failed work' : 'Start board',
+    running ? 'Pause board' : paused ? 'Resume board' : rerunInstead ? 'Rerun failed work' : 'Start board',
   );
   runBtn.title = running
-    ? 'Stop the loop. In-flight attempts keep running until they finish; nothing new starts.'
-    : rerunInstead
-      ? 'Reopen failed tasks (or add a fix task) and start the board again, with the agent count set beside this button.'
-      : 'Start the reconcile loop. One agent works through tasks in order; more than one works on tasks in parallel.';
+    ? 'Pause chats at the next model or tool boundary. Current operations may finish; Resume continues the same chats.'
+    : paused
+      ? 'Continue the paused chats with their current context and work.'
+      : rerunInstead
+        ? 'Reopen failed tasks (or add a fix task) and start the board again, with the agent count set beside this button.'
+        : 'Start the reconcile loop. One agent works through tasks in order; more than one works on tasks in parallel.';
   runBtn.addEventListener('click', () => {
-    if (running) void commandStop();
+    if (running) void commandPause();
     else if (rerunInstead) void commandRerun();
     else void commandStart(readConcurrencyInput());
   });
   controls.appendChild(runBtn);
+  if (running || paused) {
+    const stop = el('button', 'board-btn board-btn--compact', 'Stop');
+    stop.type = 'button';
+    stop.title = 'End current attempts. Start runs replacement attempts using retained work.';
+    stop.addEventListener('click', () => void commandStop());
+    controls.appendChild(stop);
+  }
 
   if (wantsReportScreen(state)) {
     const onReport = showingReport(state);
@@ -2022,6 +2032,13 @@ function commandStart(concurrency: number): Promise<void> {
   return run('Start', async () => {
     await seedBoundModelBeforeStart();
     await client?.start(concurrency);
+    void list?.refresh();
+  });
+}
+
+function commandPause(): Promise<void> {
+  return run('Pause', async () => {
+    await client?.pause();
     void list?.refresh();
   });
 }

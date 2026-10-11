@@ -49,9 +49,9 @@ Plan file: documentation/plans/<slug>.md
 Read the full plan. Evaluate:
 1. Locked decisions and non-goals are clear
 2. Each phase has in/out scope and concrete verification (commands and/or browser_* steps)
-3. Phase order respects dependencies; phases fit one implement + one verify sub-agent each
+3. Build steps are sequential with Changes/Verify/checklists and shared context; Orchestrate tasks follow the board schema with dependencies and Touches
 4. Key files table is plausible — spot-check 3–5 paths exist
-5. UI phases call out /impeccable and /browser-automation for orchestrate-plan
+5. UI steps have browser verification; only Orchestrate plans need agent handoff instructions
 6. context.md / manual updates listed if behavior changes
 
 End with exactly: VERDICT: PASS or VERDICT: FAIL

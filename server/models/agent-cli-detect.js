@@ -164,6 +164,7 @@ export async function detectAgentCli(kind, options = {}) {
     } : {}),
     installCommand: getAgentCliInstallCommand(kind),
     loginCommand: definition.loginCommand,
+    updateCommand: definition.updateCommand,
     checkedAt: new Date(now).toISOString(),
   };
   STATUS_CACHE.set(cacheKey, { at: now, value });

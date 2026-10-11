@@ -117,6 +117,16 @@ describe('workspace API', () => {
     assert.ok(stat.isDirectory());
   });
 
+  test('clone endpoint rejects invalid requests without changing workspace', async () => {
+    const before = getWorkspaceInfo().path;
+    for (const body of [{}, { parentPath: workspaceDir, name: '../escape', remoteUrl: 'https://example.com/repo.git' }, { parentPath: workspaceDir, name: 'repo', remoteUrl: 'file:///local/repo' }]) {
+      const result = await httpRequest(baseUrl, 'POST', '/api/workspace/clone', body);
+      assert.equal(result.status, 400);
+      assert.ok(result.json.error);
+    }
+    assert.equal(getWorkspaceInfo().path, before);
+  });
+
   test('project location persists without switching workspace and rejects invalid paths', async () => {
     const before = getWorkspaceInfo().path;
     const saved = await httpRequest(baseUrl, 'PUT', '/api/workspace/project-location', {

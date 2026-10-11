@@ -13,7 +13,7 @@ import {
   validateProjectKey,
 } from '../issues/project-key.ts';
 import { isServerStorageMode } from '../config/storage-mode.ts';
-import { getBugs, getIssues, putIssues } from '../config/api-client.ts';
+import { getBugs, getIssues, getIssuesIfChanged, putIssues } from '../config/api-client.ts';
 import {
   defaultIssuePriorityId,
   defaultIssueStatusId,
@@ -1075,6 +1075,9 @@ export function scheduleSaveIssues(): void {
 }
 
 let persistedIssuesBase: IssuesState | null = null;
+// ETag of the poll read that produced `persistedIssuesBase`. Keyed by object identity,
+// so any other write to the base (load, save, tests) silently invalidates it.
+let polledIssues: { etag: string; base: IssuesState } | null = null;
 // Snapshot shown after a failed first server load. Edits against it are pending
 // additions, not deletions of issues that may already exist on the server.
 let unavailableIssuesBase: IssuesState | null = null;
@@ -1128,7 +1131,18 @@ function notifyMergedGithubWrites(previous: IssuesState, next: IssuesState): voi
 export async function refreshIssuesFromStorage(): Promise<void> {
   await withIssuesStorageLock(async () => {
     if (!issuesState) return;
-    const remote = await readPersistedIssues();
+    let remote: IssuesState | null;
+    let etag: string | null = null;
+    if (isServerStorageMode() && !unavailableIssuesBase) {
+      // A remote equal to the base merges back to `current`, so a 304 is a no-op.
+      const known = polledIssues && polledIssues.base === persistedIssuesBase ? polledIssues.etag : null;
+      const read = await getIssuesIfChanged(known);
+      if (read.unchanged) return;
+      remote = read.state === null ? null : parseIssuesState(read.state);
+      etag = read.etag;
+    } else {
+      remote = await readPersistedIssues();
+    }
     if (!remote && !unavailableIssuesBase) return;
     const current = issuesState;
     const baseline = unavailableIssuesBase;
@@ -1141,6 +1155,7 @@ export async function refreshIssuesFromStorage(): Promise<void> {
     // An initial/recovery load is not a request to publish historical local cards.
     if (changed && persistedIssuesBase && !baseline) notifyMergedGithubWrites(current, next);
     persistedIssuesBase = cloneState(resolvedRemote);
+    polledIssues = etag ? { etag, base: persistedIssuesBase } : null;
     unavailableIssuesBase = null;
     if (changed) emitIssuesChange();
     if (baseline && !issuesStatesEqual(baseline, current)) scheduleSaveIssues();

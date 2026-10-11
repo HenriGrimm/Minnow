@@ -1,4 +1,5 @@
 import { gh, parseJson, processError, requireForge } from './forge-ops.js';
+import { isGithubRateLimitError } from '../../src/lib/github-rate-limit.mjs';
 
 const ISSUE_FIELDS = [
   'number',
@@ -13,6 +14,57 @@ const ISSUE_FIELDS = [
 ].join(',');
 
 const MAX_ISSUE_BODY_CHARS = 65_536;
+export const ISSUE_BATCH_SIZE = 50;
+
+export function buildIssueBatchQuery(numbers) {
+  if (!Array.isArray(numbers) || !numbers.length || numbers.length > ISSUE_BATCH_SIZE ||
+      numbers.some((number) => !Number.isSafeInteger(number) || number <= 0)) {
+    throw new Error('Provide between 1 and 50 positive issue numbers');
+  }
+  const fields = 'number title body state url createdAt updatedAt labels(first:100){nodes{name} pageInfo{hasNextPage}} assignees(first:100){nodes{login} pageInfo{hasNextPage}}';
+  return `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${[...new Set(numbers)].map((number) => `i${number}:issue(number:${number}){${fields}}`).join(' ')}}}`;
+}
+
+export function parseIssueBatch(stdout, numbers) {
+  const raw = parseJson(stdout, null);
+  if (!raw?.data?.repository || raw.errors?.some((error) => error.type !== 'NOT_FOUND' ||
+      error.path?.[0] !== 'repository' || !numbers.some((number) => error.path?.[1] === `i${number}`))) {
+    throw new Error('Could not read the GitHub issue batch');
+  }
+  return [...new Set(numbers)].map((number) => {
+    const issue = raw.data.repository[`i${number}`];
+    // Missing/deleted issues are left out; callers report them without clearing local data.
+    if (!issue) return null;
+    if (issue.labels?.pageInfo?.hasNextPage || issue.assignees?.pageInfo?.hasNextPage) {
+      throw new Error(`Issue #${number} has more labels or assignees than Minnow can sync at once`);
+    }
+    return normalizeForgeIssue({ ...issue, labels: issue.labels?.nodes, assignees: issue.assignees?.nodes });
+  }).filter(Boolean);
+}
+
+/** Exact linked identities, including closed/reopened issues, in one GraphQL request. */
+export async function issueBatch({ cwd, numbers } = {}) {
+  try {
+    const query = buildIssueBatchQuery(numbers);
+    const gate = await requireForge(cwd);
+    if (!gate.ok) return gate;
+    const [owner, name] = gate.status.repo.split('/');
+    const result = await gh(['api', '--hostname', gate.status.hostname, 'graphql',
+      '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`], gate.cwd);
+    if (result.code !== 0 && isGithubRateLimitError(`${result.stderr}\n${result.stdout}`)) {
+      return { ok: false, error: processError(result, 'Could not read the GitHub issue batch') };
+    }
+    if (result.accumulationTruncated) return { ok: false, error: 'GitHub issue batch exceeded the response size limit' };
+    try {
+      return { ok: true, issues: parseIssueBatch(result.stdout, numbers) };
+    } catch (err) {
+      if (result.code !== 0) return { ok: false, error: processError(result, 'Could not read the GitHub issue batch') };
+      throw err;
+    }
+  } catch (err) {
+    return forgeCatch(err, 'Could not read the GitHub issue batch');
+  }
+}
 
 function forgeCatch(err, fallback) {
   const message = err instanceof Error ? err.message : String(err);
@@ -119,47 +171,6 @@ export async function issueView({ cwd, number } = {}) {
   const issue = normalizeForgeIssue(parseJson(result.stdout, null));
   if (!issue) return { ok: false, error: `Issue #${num} could not be parsed` };
   return { ok: true, issue };
-}
-
-/** Read all pages, including closed issues, without a per-issue GraphQL query. */
-export async function fetchIssueChanges({ cwd, repo, hostname, since }, run = gh) {
-  const startedAt = Date.now();
-  const params = new URLSearchParams({ state: 'all', sort: 'updated', direction: 'asc', per_page: '100' });
-  if (since != null) {
-    const stamp = Number(since);
-    if (!Number.isFinite(stamp) || stamp < 0 || stamp > startedAt) {
-      return { ok: false, error: 'Invalid GitHub issue sync cursor' };
-    }
-    // GitHub timestamps have second precision; overlap to retain boundary updates.
-    params.set('since', new Date(Math.max(0, stamp - 60_000)).toISOString());
-  }
-  const issues = new Map();
-  for (let page = 1; ; page++) {
-    params.set('page', String(page));
-    const result = await run(['api', '--hostname', hostname, `repos/${repo}/issues?${params}`], cwd);
-    if (result.code !== 0) return { ok: false, error: processError(result, 'Could not read GitHub issue changes') };
-    if (result.accumulationTruncated) return { ok: false, error: 'GitHub issue page was too large to read. Sync was not advanced.' };
-    const rows = parseJson(result.stdout, null);
-    if (!Array.isArray(rows)) return { ok: false, error: 'Could not parse GitHub issue changes' };
-    for (const row of rows) {
-      if (row.pull_request) continue;
-      const issue = normalizeForgeIssue({ ...row, url: row.html_url,
-        createdAt: row.created_at, updatedAt: row.updated_at });
-      if (!issue) return { ok: false, error: 'GitHub returned an invalid issue' };
-      issues.set(issue.number, issue);
-    }
-    if (rows.length < 100) break;
-  }
-  return { ok: true, issues: [...issues.values()], cursor: startedAt };
-}
-
-export async function issueChanges({ cwd, since } = {}) {
-  try {
-    const gate = await requireForge(cwd);
-    if (!gate.ok) return gate;
-    return await fetchIssueChanges({ cwd: gate.cwd, repo: gate.status.repo,
-      hostname: gate.status.hostname, since });
-  } catch (err) { return forgeCatch(err, 'Could not read GitHub issue changes'); }
 }
 
 /**

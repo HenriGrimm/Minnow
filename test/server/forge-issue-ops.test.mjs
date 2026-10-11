@@ -11,6 +11,9 @@ import { describe, test } from 'node:test';
 import { gh } from '../../server/git/forge-ops.js';
 import {
   buildIssueDeleteArgs,
+  buildIssueBatchQuery,
+  parseIssueBatch,
+  issueBatch,
   buildIssueEditArgs,
   cleanLabelNames,
   issueList,
@@ -146,6 +149,39 @@ describe('issueList fail-closed', () => {
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('issue batches', () => {
+  test('queries exact identities once and validates sizes/numbers before launching gh', async () => {
+    const query = buildIssueBatchQuery([1, 2, 1]);
+    assert.equal(query.match(/i1:issue/g)?.length, 1);
+    assert.match(query, /i2:issue\(number:2\)/);
+    assert.match(query, /query\(\$owner:String!,\$name:String!\)/);
+    for (const numbers of [[], [0], [1.5], ['1'], Array.from({ length: 51 }, (_, i) => i + 1)]) {
+      assert.throws(() => buildIssueBatchQuery(numbers), /1 and 50/);
+    }
+    assert.equal((await issueBatch({ numbers: [0] })).ok, false);
+  });
+
+  test('normalizes batched connections and preserves missing issues and full bodies', () => {
+    const issue = { number: 3, title: 'Reopened', state: 'OPEN', body: 'x'.repeat(60_000),
+      labels: { nodes: [{ name: 'bug' }], pageInfo: { hasNextPage: false } },
+      assignees: { nodes: [{ login: 'ada' }] }, updatedAt: '2026-01-02T00:00:00Z' };
+    const stdout = JSON.stringify({ data: { repository: { i3: issue, i4: null } } });
+    const result = parseIssueBatch(stdout, [3, 4]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].body.length, 60_000);
+    assert.deepEqual(result[0].labels, ['bug']);
+    assert.deepEqual(result[0].assignees, ['ada']);
+    assert.equal(result[0].state, 'open');
+    const partial = { data: { repository: { i3: issue, i4: null } },
+      errors: [{ type: 'NOT_FOUND', path: ['repository', 'i4'] }] };
+    assert.equal(parseIssueBatch(JSON.stringify(partial), [3, 4]).length, 1);
+    assert.throws(() => parseIssueBatch('{}', [3]), /Could not read/);
+    assert.throws(() => parseIssueBatch(JSON.stringify({ data: { repository: { i3: issue } }, errors: [{}] }), [3]), /Could not read/);
+    issue.labels.pageInfo.hasNextPage = true;
+    assert.throws(() => parseIssueBatch(JSON.stringify({ data: { repository: { i3: issue } } }), [3]), /more labels/);
   });
 });
 

@@ -1,3 +1,5 @@
+import { PROVIDER_ID_BY_ENGINE, MTPLX_LOCAL_ID, isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
+import { getLaunchPrefs } from './launch-prefs.js';
 import path from 'node:path';
 
 import { listCachedModels } from './cached.js';
@@ -48,15 +50,16 @@ export function isLibraryModelBinding(providerId, modelId) {
   const pid = providerId?.trim();
   const mid = modelId?.trim();
   if (!pid || !mid) return false;
-  return pid === MINNOW_LIBRARY_PROVIDER_ID && (mid.startsWith('gguf:') || mid.startsWith('mlx:'));
+  return pid === MINNOW_LIBRARY_PROVIDER_ID && (mid.startsWith('gguf:') || mid.startsWith('mlx:') || mid.startsWith('mtplx:'));
 }
 
 /**
  * @param {{ providerId?: string, id?: string } | null | undefined} binding
  * @param {LibraryBindingDeps} [deps]
+ * @param {{ signal?: AbortSignal }} [options]
  * @returns {Promise<{ providerId: string, id: string }>}
  */
-export async function resolveLibraryAttemptBinding(binding, deps = {}) {
+export async function resolveLibraryAttemptBinding(binding, deps = {}, options = {}) {
   const providerId = typeof binding?.providerId === 'string' ? binding.providerId.trim() : '';
   const id = typeof binding?.id === 'string' ? binding.id.trim() : '';
   if (!providerId || !id) {
@@ -67,7 +70,8 @@ export async function resolveLibraryAttemptBinding(binding, deps = {}) {
   }
 
   const resolved = mergeDeps(deps);
-  const serve = await findOrStartServe(id, resolved);
+  options.signal?.throwIfAborted();
+  const serve = await findOrStartServe(id, resolved, options.signal);
   const remapped = remapFromServe(serve);
   return { ...binding, providerId: remapped.providerId, id: remapped.id };
 }
@@ -95,17 +99,19 @@ function mergeDeps(explicit = {}) {
  * @param {string} libraryId
  * @param {ReturnType<typeof mergeDeps>} deps
  */
-async function findOrStartServe(libraryId, deps) {
+async function findOrStartServe(libraryId, deps, signal) {
   const existing = await findMatchingLiveServe(libraryId, deps);
+  signal?.throwIfAborted();
   if (existing?.status === 'running') return existing;
   if (existing && (existing.status === 'starting' || existing.status === 'unhealthy')) {
-    return waitUntilRunning(existing, deps);
+    return waitUntilRunning(existing, deps, signal);
   }
 
   const target = await resolveCachedTarget(libraryId, deps);
   if (!target) {
     throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
   }
+  signal?.throwIfAborted();
 
   const started = await deps.startServe({
     runtime: target.runtime,
@@ -114,9 +120,10 @@ async function findOrStartServe(libraryId, deps) {
     libraryId: target.libraryId,
     ...(target.quant ? { quant: target.quant } : {}),
     ...(target.weightsGb ? { weightsGb: target.weightsGb } : {}),
+    ...(signal ? { async: true } : {}),
   });
   if (started?.status === 'running') return started;
-  return waitUntilRunning(started, deps);
+  return waitUntilRunning(started, deps, signal);
 }
 
 /**
@@ -128,10 +135,12 @@ async function findMatchingLiveServe(libraryId, deps) {
   const mlx = await deps.findLiveMlxServe(libraryId);
   const direct = pickPreferredServe(llama, mlx);
   if (direct) return direct;
+  const serves = await deps.listServes();
+  const byLibraryId = serves.find((row) => row.libraryId === libraryId && ['running', 'starting', 'unhealthy'].includes(row.status));
+  if (byLibraryId) return byLibraryId;
 
   const target = await resolveCachedTarget(libraryId, deps).catch(() => null);
   if (!target?.modelPath) return null;
-  const serves = await deps.listServes();
   const byPath = (Array.isArray(serves) ? serves : []).find(
     (row) =>
       row &&
@@ -170,7 +179,7 @@ function remapFromServe(serve) {
   }
   const label = typeof serve.modelLabel === 'string' ? serve.modelLabel.trim() : '';
   if (!label) throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
-  return { providerId: LLAMA_CPP_LOCAL_ID, id: label };
+  return { providerId: PROVIDER_ID_BY_ENGINE[serve.runtime] ?? LLAMA_CPP_LOCAL_ID, id: label };
 }
 
 /**
@@ -186,6 +195,12 @@ async function resolveCachedTarget(libraryId, deps) {
   const row = models.find((m) => m && m.repo_id === parsed.repoId);
   if (!row) return null;
 
+  if (parsed.kind === 'mtplx') {
+    if (!row.mtplx_validated || row.has_incomplete || !row.mtplx_root) return null;
+    const saved = (await getLaunchPrefs()).byLibraryId[libraryId];
+    return { runtime: saved?.engine === 'mlx-lm' ? 'mlx-lm' : 'mtplx', modelPath: row.mtplx_root,
+      modelLabel: saved?.mtplx?.model_id || row.repo_id, libraryId, weightsGb: Number(row.size_bytes) / 1024 ** 3 };
+  }
   if (parsed.kind === 'mlx') {
     const snapshot = typeof row.mlx_root === 'string' ? row.mlx_root.trim() : '';
     if (!snapshot) return null;
@@ -260,16 +275,24 @@ export async function resolveLibraryIdForProviderModel(providerId, modelId, deps
   const mid = modelId?.trim() ?? '';
   if (!pid || !mid) return null;
   if (isLibraryModelBinding(pid, mid)) return mid;
-  if (pid !== LLAMA_CPP_LOCAL_ID && pid !== MLX_LM_LOCAL_ID) return null;
+  if (!isLocalServeProviderId(pid)) return null;
   const payload = await mergeDeps(deps).listCachedModels();
   const models = Array.isArray(payload?.models) ? payload.models : [];
+  if (pid === MTPLX_LOCAL_ID) {
+    const live = (await mergeDeps(deps).listServes()).find((serve) => serve.runtime === 'mtplx' && serve.modelLabel === mid && serve.libraryId);
+    if (live) return live.libraryId;
+    const prefs = (await getLaunchPrefs()).byLibraryId;
+    const row = models.find((r) => r.mtplx_validated && [r.repo_id, r.mtplx_root, path.basename(r.mtplx_root ?? ''), prefs[`mtplx:${r.repo_id}`]?.mtplx?.model_id].includes(mid));
+    return row ? 'mtplx:' + row.repo_id : null;
+  }
   const want = mid.toLowerCase();
   if (pid === MLX_LM_LOCAL_ID) {
     for (const row of models) {
       const snapshot = typeof row?.mlx_root === 'string' ? row.mlx_root.trim() : '';
       const repo = typeof row?.repo_id === 'string' ? row.repo_id.trim() : '';
-      if (snapshot && (snapshot === mid || snapshot.toLowerCase() === want)) return `mlx:${repo}`;
-      if (repo && repo.toLowerCase() === want) return `mlx:${repo}`;
+      const libraryId = `${row.mtplx_root ? 'mtplx' : 'mlx'}:${repo}`;
+      if (snapshot && (snapshot === mid || snapshot.toLowerCase() === want)) return libraryId;
+      if (repo && repo.toLowerCase() === want) return libraryId;
     }
     return null;
   }
@@ -302,6 +325,7 @@ export async function resolveLibraryIdForProviderModel(providerId, modelId, deps
  */
 export function parseLibraryId(libraryId) {
   const id = libraryId.trim();
+  if (id.startsWith('mtplx:')) return id.slice(6).trim() ? { kind: 'mtplx', repoId: id.slice(6).trim() } : null;
   if (id.startsWith('mlx:')) {
     const repoId = id.slice(4).trim();
     return repoId ? { kind: 'mlx', repoId } : null;
@@ -338,13 +362,14 @@ function resolveGgufFilePath(row, relPath) {
  * @param {object} serve
  * @param {ReturnType<typeof mergeDeps>} deps
  */
-async function waitUntilRunning(serve, deps) {
+async function waitUntilRunning(serve, deps, signal) {
   if (serve?.status === 'running') return serve;
   const serveId = typeof serve?.id === 'string' ? serve.id : '';
   if (!serveId) throw new Error(LIBRARY_MODEL_NOT_LOADED_MESSAGE);
 
   const started = deps.now();
   while (deps.now() - started < deps.loadTimeoutMs) {
+    signal?.throwIfAborted();
     const next = await deps.getServe(serveId);
     if (next?.status === 'running') return next;
     if (next?.status === 'error' || next?.status === 'stopped' || next?.status === 'crashed') {

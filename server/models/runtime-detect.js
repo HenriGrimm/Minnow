@@ -7,6 +7,7 @@ import { getInstallStatus as getMlxInstallStatus, isMlxSupported } from '../serv
 import { runProcess } from '../process-runner.js';
 import { isLlamaRuntimeInstallable, resolveLlamaServer, getInstalledLlamaVariant } from './llama-runtime.js';
 import { isGpuCapableVariant } from './llama-variant.js';
+import { getMtplxStatus } from './mtplx-runtime.js';
 
 /**
  * @param {string} cmd
@@ -56,6 +57,7 @@ export async function detectRuntimes() {
   const mlxSupported = isMlxSupported();
 
   return {
+    mtplx: await getMtplxStatus(),
     mlxLm: {
       available: mlxSupported,
       installed: mlxStatus.installed === true,

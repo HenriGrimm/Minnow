@@ -128,6 +128,31 @@ async function ensureRuntime(
   }
 }
 
+/** Load weights already in storage, using the same runtime and provider as downloads. */
+export async function runExistingModelSetup(
+  model: import('../models/library').LibraryModel,
+  onProgress: (progress: ManagedSetupProgress) => void,
+): Promise<ManagedSetupResult> {
+  try {
+    if (!model.path || model.format !== 'GGUF' || model.incomplete) throw new Error('Choose a complete GGUF model.');
+    await ensureRuntime(onProgress);
+    onProgress({ phase: 'serving', percent: 85, message: `Loading ${model.name}…` });
+    const serve = await startModelServe({
+      modelPath: model.path, runtime: 'llama-cpp', modelLabel: model.name,
+      libraryId: model.id, quant: model.quant, paramsB: model.paramsB ?? undefined,
+      weightsGb: model.sizeBytes / 1024 ** 3, isMoe: model.isMoe, llama: { fit: true },
+    });
+    if (serve.status !== 'running') throw new Error(serve.error || 'The model did not start. Try again.');
+    await selectProviderModel(serve.providerId, serve.modelLabel);
+    onProgress({ phase: 'done', percent: 100, message: 'Your model is ready.' });
+    return { ok: true, providerId: serve.providerId, modelId: serve.modelLabel, serve };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not load this model.';
+    onProgress({ phase: 'error', percent: 0, message, error: message });
+    return { ok: false, error: message };
+  }
+}
+
 /** Download catalog GGUF when not already on disk. */
 async function ensureModelDownloaded(
   row: ModelFitResult,

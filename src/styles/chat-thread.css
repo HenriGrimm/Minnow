@@ -53,7 +53,7 @@
   line-height: 1.55;
 }
 
-.chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket):not(.msg-bubble--code-map)::before {
+.chat-thread > .msg.user:not(.msg--steered) .msg-bubble:not(.msg-bubble--issue-ticket):not(.msg-bubble--code-map)::before {
   content: '›';
   position: absolute;
   left: 16px;
@@ -75,6 +75,44 @@
 }
 
 .chat-thread > .msg.user .issue-mention-link:hover { color: var(--mn-fg); }
+
+/* Steering belongs to the work in progress, with no new prompt block. */
+.chat-thread > .msg.user.msg--steered {
+  position: relative;
+  box-sizing: border-box;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 0;
+  padding: 2px 0 2px 26px;
+}
+
+.chat-thread > .msg.user.msg--steered > .msg-bubble {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--mn-fg);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.chat-thread > .msg.user.msg--steered.chat-step::before {
+  border-color: var(--mn-accent);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+@media (max-width: 480px) {
+  .chat-thread > .msg.user.msg--steered {
+    flex-direction: column;
+    gap: 2px;
+  }
+}
 
 .chat-thread > .msg.assistant > .msg-bubble {
   padding: 0;
@@ -100,73 +138,77 @@
 .chat-thread[data-chat-view='compact'] > .msg > .msg-stats { display: none; }
 .chat-thread .chat-work-hidden { display: none !important; }
 
-.chat-thread[data-chat-view='compact'] > .tool-call-msg .tool-call-details,
-.chat-thread[data-chat-view='compact'] .tool-call-batch__body > .tool-call-msg .tool-call-details {
-  background: transparent;
-  border-color: transparent;
-}
-.chat-thread[data-chat-view='compact'] .tool-call-details > summary {
-  cursor: pointer;
-  pointer-events: auto;
-  gap: 9px;
-  min-height: 26px;
-  margin-inline: -8px;
-  padding: 0 8px;
-  border-radius: 7px;
-  font-size: 12.5px;
-}
-.chat-thread[data-chat-view='compact'] .tool-call-status { width: 12px; height: 12px; }
-.chat-thread[data-chat-view='compact'] .tool-call-spinner { width: 12px; height: 12px; }
-.chat-thread[data-chat-view='compact'] .tool-call-icon { --mn-icon-size: 12px; color: var(--mn-fg-subtle); }
-.chat-thread[data-chat-view='compact'] .tool-call-action {
-  min-width: 48px;
-  font-size: 12.5px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--mn-fg-muted);
-}
-/* Meta sits right after the path; nothing drifts to the far edge. */
-.chat-thread[data-chat-view='compact'] .tool-call-target { flex: 0 1 auto; }
-.chat-thread[data-chat-view='compact'] .tool-call-outcome { margin-left: 0; color: var(--mn-fg-subtle); }
-.chat-thread[data-chat-view='compact'] .tool-call-chevron { margin-left: auto; opacity: 0; }
-.chat-thread[data-chat-view='compact'] .tool-call-details--file .tool-call-chevron { display: block; }
-.chat-thread[data-chat-view='compact'] .tool-call-details[open] > summary { background: var(--chat-raise); }
-.chat-thread[data-chat-view='compact'] .tool-call-details[open] .tool-call-chevron { opacity: 1; }
-.chat-thread[data-chat-view='compact'] .tool-call-details:not([open]) > .tool-call-body { display: none; }
-.chat-thread[data-chat-view='compact'] .tool-call-details[open] > .tool-call-body {
-  margin: 6px 0 10px 22px;
-  border: 1px solid var(--mn-border);
-  border-radius: 10px;
-  background: var(--mn-surface-0);
-}
+/* Compact rules stop at a nested full-view thread: an orchestrator board renders
+   its attempt transcript inside #chatArea, which is itself a compact thread. */
+@scope (.chat-thread[data-chat-view='compact']) to (.chat-thread[data-chat-view='full']) {
+  :scope.chat-thread > .tool-call-msg .tool-call-details,
+  :scope.chat-thread .tool-call-batch__body > .tool-call-msg .tool-call-details {
+    background: transparent;
+    border-color: transparent;
+  }
+  :scope.chat-thread .tool-call-details > summary {
+    cursor: pointer;
+    pointer-events: auto;
+    gap: 9px;
+    min-height: 26px;
+    margin-inline: -8px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 12.5px;
+  }
+  :scope.chat-thread .tool-call-status { width: 12px; height: 12px; }
+  :scope.chat-thread .tool-call-spinner { width: 12px; height: 12px; }
+  :scope.chat-thread .tool-call-icon { --mn-icon-size: 12px; color: var(--mn-fg-subtle); }
+  :scope.chat-thread .tool-call-action {
+    min-width: 48px;
+    font-size: 12.5px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--mn-fg-muted);
+  }
+  /* Meta sits right after the path; nothing drifts to the far edge. */
+  :scope.chat-thread .tool-call-target { flex: 0 1 auto; }
+  :scope.chat-thread .tool-call-outcome { margin-left: 0; color: var(--mn-fg-subtle); }
+  :scope.chat-thread .tool-call-chevron { margin-left: auto; opacity: 0; }
+  :scope.chat-thread .tool-call-details--file .tool-call-chevron { display: block; }
+  :scope.chat-thread .tool-call-details[open] > summary { background: var(--chat-raise); }
+  :scope.chat-thread .tool-call-details[open] .tool-call-chevron { opacity: 1; }
+  :scope.chat-thread .tool-call-details:not([open]) > .tool-call-body { display: none; }
+  :scope.chat-thread .tool-call-details[open] > .tool-call-body {
+    margin: 6px 0 10px 22px;
+    border: 1px solid var(--mn-border);
+    border-radius: 10px;
+    background: var(--mn-surface-0);
+  }
 
-/* A step that is itself one call reads with the weight of a group heading. */
-.chat-thread[data-chat-view='compact'] > .tool-call-msg .tool-call-action {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--mn-fg);
-}
+  /* A step that is itself one call reads with the weight of a group heading. */
+  :scope.chat-thread > .tool-call-msg .tool-call-action {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--mn-fg);
+  }
 
-/* ── Round groups: "Explored 5 files, 1 search" with file chips while collapsed ── */
-.chat-thread[data-chat-view='compact'] > .tool-call-batch { color: var(--mn-fg-muted); }
-.chat-thread[data-chat-view='compact'] .tool-call-batch__summary {
-  flex-wrap: wrap;
-  gap: 0 6px;
-  min-height: 24px;
-  padding: 0;
+  /* ── Round groups: "Explored 5 files, 1 search" with file chips while collapsed ── */
+  :scope.chat-thread > .tool-call-batch { color: var(--mn-fg-muted); }
+  :scope.chat-thread .tool-call-batch__summary {
+    flex-wrap: wrap;
+    gap: 0 6px;
+    min-height: 24px;
+    padding: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    :scope.chat-thread .tool-call-batch__summary:hover { background: transparent; }
+    :scope.chat-thread .tool-call-batch__summary:hover .tool-call-batch__label { color: var(--mn-accent-ink); }
+    :scope.chat-thread .tool-call-details > summary:hover .tool-call-chevron { opacity: 1; }
+  }
+  :scope.chat-thread .tool-call-batch__status,
+  :scope.chat-thread .tool-call-batch__counts { display: none; }
+  :scope.chat-thread .tool-call-batch__label { font-size: 13px; font-weight: 500; color: var(--mn-fg); }
+  /* Failure shows on the dot and the chips; the heading stays readable. */
+  :scope.chat-thread .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-fg); }
+  :scope.chat-thread .tool-call-batch__chevron { color: var(--mn-fg-subtle); }
+  :scope.chat-thread .tool-call-batch__body { gap: 0; padding: 4px 0 0; }
 }
-@media (hover: hover) and (pointer: fine) {
-  .chat-thread[data-chat-view='compact'] .tool-call-batch__summary:hover { background: transparent; }
-  .chat-thread[data-chat-view='compact'] .tool-call-batch__summary:hover .tool-call-batch__label { color: var(--mn-accent-ink); }
-  .chat-thread[data-chat-view='compact'] .tool-call-details > summary:hover .tool-call-chevron { opacity: 1; }
-}
-.chat-thread[data-chat-view='compact'] .tool-call-batch__status,
-.chat-thread[data-chat-view='compact'] .tool-call-batch__counts { display: none; }
-.chat-thread[data-chat-view='compact'] .tool-call-batch__label { font-size: 13px; font-weight: 500; color: var(--mn-fg); }
-/* Failure shows on the dot and the chips; the heading stays readable. */
-.chat-thread[data-chat-view='compact'] .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-fg); }
-.chat-thread[data-chat-view='compact'] .tool-call-batch__chevron { color: var(--mn-fg-subtle); }
-.chat-thread[data-chat-view='compact'] .tool-call-batch__body { gap: 0; padding: 4px 0 0; }
 .tool-call-batch__chips {
   display: flex;
   flex: 1 0 100%;
@@ -304,7 +346,7 @@
 }
 
 /* Prompt blocks span the column, so ⋮ moves inside the block instead of a lane beside it. */
-.chat-thread > .msg.user.msg--has-actions { padding-left: 0; }
+.chat-thread > .msg.user.msg--has-actions:not(.msg--steered) { padding-left: 0; }
 .chat-thread > .msg.user.msg--has-actions .msg-bubble { padding-right: 40px; }
 .chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: 7px; }
 

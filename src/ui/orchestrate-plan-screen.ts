@@ -1,6 +1,7 @@
 /** Orchestrate planning screen — full #chatArea overlay for Plan-mode authoring. */
 
 import '../styles/orchestrate-plan-screen.css';
+import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 
 import { findLastPlanSavePath } from '../chat/plans/plan-from-history';
 import {
@@ -575,12 +576,18 @@ function buildPlanPreviewActionHandlers(
     onBuild: () => {
       if (!planPath) return;
       teardownOrchestratePlanScreen();
-      createChatWithMode({
-        modeId: 'build',
-        orchestratePlanPath: planPath,
-        initialUserMessage: `Implement the plan at ${planPath}.`,
-      });
+      createChatWithMode(buildPlanChatOptions(planPath, opts.chatId ? findChatById(opts.chatId) : undefined));
     },
+  };
+}
+
+/** Keep a Build handoff bound to the planner's workspace and saved artifact. */
+export function buildPlanChatOptions(planPath: string, source?: Chat): import('./sidebar').CreateChatWithModeOptions {
+  return {
+    modeId: 'build',
+    orchestratePlanPath: planPath,
+    initialUserMessage: `Implement the plan at ${planPath}.`,
+    workspacePath: source?.workspacePath,
   };
 }
 
@@ -590,7 +597,7 @@ function appendWorkingPhaseContent(
 ): void {
   appendPlanScreenHeader(
     inner,
-    'Orchestrate',
+    'Plan',
     'Planning in progress',
     'Status updates here. Answer any questions below, or open the chat to inspect tool calls.',
   );
@@ -685,7 +692,7 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
   root.id = ORCHESTRATE_PLAN_SCREEN_ROOT_ID;
   root.className = 'orchestrate-plan-screen';
   root.setAttribute('role', 'region');
-  root.setAttribute('aria-label', 'Orchestrate plan authoring');
+  root.setAttribute('aria-label', 'Plan authoring');
 
   const inner = document.createElement('div');
   inner.className = 'orchestrate-plan-screen__inner';
@@ -693,9 +700,9 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
   if (opts.phase === 'prompt') {
     appendPlanScreenHeader(
       inner,
-      'Orchestrate',
+      'Plan',
       'Make a plan',
-      'Plan mode writes a markdown plan under documentation/plans/. When it is ready, open the board to run waves.',
+      'Choose Build for one chat or Orchestrate for a board. Plan mode saves the matching plan under documentation/plans/.',
     );
 
     const form = document.createElement('section');
@@ -711,13 +718,13 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
     prompt.className = 'orchestrate-plan-screen__prompt';
     prompt.rows = 8;
     prompt.placeholder =
-      'Goals, constraints, tech stack, and how you want work grouped into waves…';
+      'Goals, constraints, tech stack, and what a successful result looks like…';
     if (opts.savedPrompt) prompt.value = opts.savedPrompt;
 
     const hint = document.createElement('p');
     hint.className = 'orchestrate-plan-screen__hint';
     hint.textContent =
-      'The planner may ask follow-up questions before saving the plan file.';
+      'The planner first asks how you want to execute the plan, then clarifies scope if needed.';
 
     form.append(promptLabel, prompt, hint);
 
@@ -763,7 +770,7 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
     const planPath = opts.planPath?.trim() ?? '';
     appendPlanScreenHeader(
       inner,
-      'Orchestrate',
+      readPlanType(opts.previewMarkdown ?? '') === 'build' ? 'Build' : 'Orchestrate',
       'Plan ready',
       'Review the draft below, then choose how to continue.',
     );
@@ -789,6 +796,7 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
     const popout = buildPlanPreviewPopoutDom(
       buildPlanPreviewActionHandlers(opts, planPath),
       {
+        planType: readPlanType(opts.previewMarkdown ?? ''),
         orchestrateEnabled: Boolean(planPath && isExecutableOrchestratePlan(planPath)),
       },
     );
@@ -815,7 +823,7 @@ function buildPlanScreenDom(opts: RenderOrchestratePlanScreenOptions): HTMLEleme
   } else if (opts.phase === 'error') {
     appendPlanScreenHeader(
       inner,
-      'Orchestrate',
+      'Plan',
       'Planning stopped',
       'The run ended without a saved plan file. Retry or open the chat to see what happened.',
     );

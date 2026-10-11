@@ -22,12 +22,17 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   let turn: TranscriptTurn | undefined;
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
-    if (msg.role === 'user' && !isHiddenTranscriptUserMessage(msg)) {
+    // Steering extends the current work; an orphaned correction still gets a turn.
+    if (msg.role === 'user' && !isHiddenTranscriptUserMessage(msg) && (!turn || !msg.steer)) {
       turn = { fork: i, end: i, finalIndex: null, finalIndices: [], toolCount: 0 };
       turns.push(turn);
     }
     if (!turn) continue;
     turn.end = i;
+    if (msg.role === 'user' && msg.steer) {
+      turn.finalIndices = [];
+      turn.finalIndex = null;
+    }
     if (msg.role === 'assistant') {
       if ('tool_calls' in msg && msg.tool_calls?.length) {
         turn.toolCount += msg.tool_calls.length;

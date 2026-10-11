@@ -1,3 +1,4 @@
+import { PROVIDER_ID_BY_ENGINE, MTPLX_LOCAL_ID, isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
 import { listProviders, MINNOW_LIBRARY_PROVIDER_ID } from '../providers/store.js';
 import { proxyModels } from '../providers/proxy.js';
 import { readCapabilities } from '../providers/capabilities-store.js';
@@ -18,6 +19,23 @@ const catalogs = new Map();
 
 export function invalidateRouterProvider(providerId) { catalogs.delete(providerId); }
 
+/** Provider catalog with the same short cache the availability check uses. */
+function cachedCatalog(id) {
+  let cached = catalogs.get(id);
+  if (!cached || cached.expires < Date.now()) {
+    const promise = proxyModels(id).catch(() => ({ data: [], error: 'Provider unavailable or credentials rejected' }));
+    cached = { expires: Date.now() + 10000, promise };
+    catalogs.set(id, cached);
+  }
+  return cached.promise;
+}
+
+/** One model's catalog row (reasoning levels live here, not in the capabilities file). */
+export async function routerCatalogModel(providerId, modelId) {
+  const catalog = await cachedCatalog(providerId);
+  return catalog?.data?.find((m) => m.id === modelId) ?? null;
+}
+
 function isLiveStatus(status) {
   return status === 'running' || status === 'starting' || status === 'unhealthy';
 }
@@ -35,7 +53,7 @@ async function libraryAvailabilityForEntry(entry, body, capabilitiesByProvider) 
   const vision = (body.messages || []).some((m) => Array.isArray(m.content) && m.content.some((c) => c.type === 'image_url'));
   const row = await findLibraryCachedRow(libraryId);
   const catalogVision = libraryCachedRowHasVision(row);
-  const runtimeId = libraryId.startsWith('mlx:') ? MLX_LM_LOCAL_ID : LLAMA_CPP_LOCAL_ID;
+  const runtimeId = PROVIDER_ID_BY_ENGINE[target.runtime] ?? LLAMA_CPP_LOCAL_ID;
   const capabilities =
     capabilitiesByProvider.get(MINNOW_LIBRARY_PROVIDER_ID)?.models?.[libraryId] ||
     capabilitiesByProvider.get(runtimeId)?.models?.[libraryId] ||
@@ -78,19 +96,14 @@ export async function routerAvailability(router, body = {}) {
     }
     const provider = providers.find((p) => p.id === id && p.enabled !== false);
     if (!provider) { results.set(id, { error: 'Provider missing or disabled' }); return; }
-    let cached = catalogs.get(id);
-    if (!cached || cached.expires < Date.now()) {
-      const promise = proxyModels(id).catch(() => ({ data: [], error: 'Provider unavailable or credentials rejected' }));
-      cached = { expires: Date.now() + 10000, promise };
-      catalogs.set(id, cached);
-    }
-    results.set(id, await cached.promise);
+    results.set(id, await cachedCatalog(id));
     capabilitiesByProvider.set(id, await readCapabilities(id));
   }));
   try {
     capabilitiesByProvider.set(LLAMA_CPP_LOCAL_ID, await readCapabilities(LLAMA_CPP_LOCAL_ID));
   } catch { capabilitiesByProvider.set(LLAMA_CPP_LOCAL_ID, { models: {} }); }
   try {
+    capabilitiesByProvider.set(MTPLX_LOCAL_ID, await readCapabilities(MTPLX_LOCAL_ID));
     capabilitiesByProvider.set(MLX_LM_LOCAL_ID, await readCapabilities(MLX_LM_LOCAL_ID));
   } catch { capabilitiesByProvider.set(MLX_LM_LOCAL_ID, { models: {} }); }
 
@@ -101,8 +114,7 @@ export async function routerAvailability(router, body = {}) {
     if (
       entry.providerId === MINNOW_LIBRARY_PROVIDER_ID ||
       isLibraryModelBinding(entry.providerId, entry.modelId) ||
-      entry.providerId === LLAMA_CPP_LOCAL_ID ||
-      entry.providerId === MLX_LM_LOCAL_ID
+      isLocalServeProviderId(entry.providerId)
     ) {
       const library = await libraryAvailabilityForEntry(entry, body, capabilitiesByProvider);
       if (library.reason !== 'Model unavailable' || entry.providerId === MINNOW_LIBRARY_PROVIDER_ID) {

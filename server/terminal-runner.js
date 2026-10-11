@@ -85,6 +85,8 @@ const STOP_SETTLE_TIMEOUT_MS = 3_000;
  * @property {(value: string) => void} resolveCompletion
  * @property {import('./terminal/sandbox/index.js').SandboxMeta | null | undefined} [sandbox]
  * @property {{ headLines?: number, tailLines?: number } | undefined} [outputSlice]
+ * @property {{ stdinText: string, timeoutMs: number }} [gracefulStop]
+ * @property {Promise<object>} [stopPromise]
  */
 
 /** @type {Map<string, RunState>} */
@@ -425,6 +427,7 @@ export async function createRun({
  * @param {string} [params.toolCallId]
  * @param {boolean} [params.shell]
  * @param {string} [params.logSubdir]
+ * @param {{ stdinText: string, timeoutMs: number }} [params.gracefulStop]
  * @param {Record<string, string>} [params.env]
  * @param {import('./terminal/shell-profiles.js').ShellProfile | null} [params.shellProfile]
  * @param {boolean} [params.sandbox]
@@ -442,6 +445,7 @@ export async function createBackgroundRun({
   chatId,
   toolCallId,
   logSubdir = 'terminal',
+  gracefulStop,
   env: envOverrides,
   shellProfile = null,
   sandbox,
@@ -486,6 +490,7 @@ export async function createBackgroundRun({
     completion,
     resolveCompletion,
     sandbox: null,
+    gracefulStop,
   };
 
   activeRuns.set(runId, state);
@@ -542,11 +547,12 @@ export async function createBackgroundRun({
     env: childEnv,
     shell: useShell,
     detached: process.platform !== 'win32',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [gracefulStop ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
 
   state.child = child;
+  child.stdin?.on('error', () => {});
   child.unref();
 
   const indexed = recordRunStart({
@@ -744,8 +750,9 @@ export function cancelRun(runId) {
 /**
  * @param {string} runId
  * @returns {Promise<{ ok: boolean, runId: string, alreadyStopped?: boolean, orphaned?: boolean, pid?: number | null, error?: string }>}
+ * @param {{ graceMs?: number }} [opts]
  */
-export async function stopActiveRun(runId) {
+export async function stopActiveRun(runId, opts = {}) {
   const state = activeRuns.get(runId);
   if (!state) {
     const indexed = await readRunIndexEntry(runId);
@@ -771,9 +778,29 @@ export async function stopActiveRun(runId) {
       ? { ok: true, runId, alreadyStopped: true }
       : { ok: false, runId, error: `run ${runId} finished but completion did not settle` };
   }
+  if (state.stopPromise) return state.stopPromise;
+  state.stopPromise = stopRunState(state, opts);
+  try {
+    return await state.stopPromise;
+  } finally {
+    state.stopPromise = undefined;
+  }
+}
+
+async function stopRunState(state, opts) {
+  const runId = state.runId;
   state.stoppedByUser = true;
   if (state.child) {
-    await killProcessTreeAndWait(state.child);
+    const child = state.child;
+    if (state.gracefulStop && child.stdin?.writable && !child.stdin.destroyed) {
+      try {
+        // Keep stdin open: llama.cpp treats EOF as forced termination.
+        child.stdin.write(state.gracefulStop.stdinText);
+        await waitForChildExit(child, opts.graceMs ?? state.gracefulStop.timeoutMs);
+      } catch {
+      }
+    }
+    await killProcessTreeAndWait(child);
   } else {
     killLiveRun(state);
   }

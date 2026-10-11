@@ -13,7 +13,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 | Group | Pages |
 |-------|-------|
 | **General** | Startup & setup, Appearance, Notifications, Audio |
-| **Code & workspace** | Editor, Terminal, Language servers, Browser, Issues |
+| **Code & workspace** | Editor, Terminal, Language servers, Browser, GitHub, Issues |
 | **AI & agents** | Models & connections, Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
 | **Data & privacy** | Backups & access |
@@ -30,6 +30,10 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 **Audio** selects input and output devices and microphone processing. Speech recognition and read-aloud models live in **Models → Voice**.
 
 ### Code & workspace
+
+**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in. The same optional step appears during first-run setup.
+
+If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select **Check again**. Existing CLI logins are detected automatically. GitHub CLI manages credentials; Minnow does not store another GitHub token. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed. Repository remotes and Git's existing credential setup remain separate from account sign-in.
 
 **Editor** controls wrapping, indentation, inline AI suggestions, their context, and their model. **Terminal** controls panel behavior and the default shell, with workspace overrides. **Language servers** configures code diagnostics and symbol completions.
 

@@ -275,8 +275,10 @@ describe('tool payload token reduction', () => {
     // shipped Godot control/inspection surface added 24 debugger actions, then ~14.6k
     // after the October tool-description growth; the lazy default below is the budget that guards users).
     assert.ok(
-      buildTokens >= 7_000 && buildTokens <= 15_000,
-      `build payload expected ~7k-15k tok, got ${buildTokens} (all=${allTokens})`,
+      // Actions and Releases add seven typed tools (~2.5k tokens); the lazy
+      // first-request ceiling below remains unchanged.
+      buildTokens >= 7_000 && buildTokens <= 18_000,
+      `build payload expected ~7k-18k tok, got ${buildTokens} (all=${allTokens})`,
     );
     // lazyTools is on by default and is the normal first-request payload. Keep
     // this tighter budget so raising the complete catalog ceiling cannot hide

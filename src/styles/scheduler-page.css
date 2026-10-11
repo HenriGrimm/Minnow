@@ -521,6 +521,28 @@
   min-width: 0;
 }
 
+.scheduler-field[hidden],
+.scheduler-watched-issues[hidden] {
+  display: none;
+}
+
+.scheduler-watched-issues {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.scheduler-watched-issues p {
+  margin: 4px 0;
+  color: var(--mn-fg-muted);
+}
+
+.scheduler-watched-issues a {
+  color: var(--mn-accent-ink);
+}
+
 .scheduler-field__label {
   font-size: 12px;
   font-weight: 600;

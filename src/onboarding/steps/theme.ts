@@ -73,14 +73,6 @@ export const themeStep: OnboardingStep = {
     });
     container.appendChild(themeMount);
 
-    const foot = el('p', 'mn-onboarding-footnote');
-    foot.append('Change anytime in ');
-    const link = el('button', 'mn-onboarding-settings-link', 'Settings → Appearance');
-    link.type = 'button';
-    link.dataset.settingsSearchKey = 'appearance.theme';
-    foot.appendChild(link);
-    container.appendChild(foot);
-
     actions.setPrimaryLabel('Continue');
     actions.setPrimaryEnabled(true);
     return cleanupZoom;

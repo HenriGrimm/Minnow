@@ -72,6 +72,12 @@ Details worth knowing:
 
 Snapshots are made with dangling commits, so your index, HEAD and branch are never moved. If two chats share one repository, the last restore wins.
 
+## Files from the assistant
+
+An assistant can present saved project files and generated deliverables as compact cards beneath its response. Each card shows the title, path, file type and size, with **Open** and **Download** actions. Cards stay visible when the work transcript is collapsed and remain after reopening the chat.
+
+**Open** uses Code's editor or document preview. **Download** saves the file's original bytes. These are links to saved files, so both actions use the current file on disk rather than a copy frozen in the conversation. The source workspace stays attached to the card, including files produced in a worktree or sandbox. If a file has been moved or deleted, it must be restored or presented again at its new path.
+
 ## Branches
 
 Regenerating or forking a turn creates a **branch** — a separate continuation from the same point. The branch picker appears on that message and lets you move between them; the branch you leave keeps its follow-up messages, so switching back and forth does not destroy either side.

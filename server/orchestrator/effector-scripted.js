@@ -1,4 +1,5 @@
 /** Scripted effector for tests. No model calls. */
+import { createPauseGate } from '../runner/pause-gate.js';
 
 /**
  * @typedef {object} ScriptRule
@@ -34,8 +35,9 @@ export function createScriptedEffector(options = {}) {
   };
   const defaultOutcome = options.defaultOutcome ?? 'pass';
 
-  /** @type {Map<string, { taskId: string | null, role: string, attemptId: string, timer: unknown }>} */
+  /** @type {Map<string, { taskId: string | null, role: string, attemptId: string, timer: unknown, controller: AbortController }>} */
   const running = new Map();
+  const pauseGate = createPauseGate();
   /** @type {Array<(end: import('./engine.js').AttemptEnd) => void>} */
   const listeners = [];
   /** @type {number[]} */
@@ -64,6 +66,7 @@ export function createScriptedEffector(options = {}) {
   }
 
   return {
+    setPaused: (paused) => pauseGate.setPaused(paused),
     /** @returns {Array<{ taskId: string | null, role: string, attemptId: string }>} */
     inspect() {
       return [...running.values()].map(({ taskId, role, attemptId }) => ({
@@ -87,7 +90,7 @@ export function createScriptedEffector(options = {}) {
         seedKind: desired.seedKind,
       });
 
-      const entry = { taskId: desired.taskId, role: desired.role, attemptId, timer: null };
+      const entry = { taskId: desired.taskId, role: desired.role, attemptId, timer: null, controller: new AbortController() };
       running.set(attemptId, entry);
 
       if (emit.vanish) {
@@ -96,6 +99,7 @@ export function createScriptedEffector(options = {}) {
       }
 
       const fire = async () => {
+        if (pauseGate.paused) await pauseGate.wait(entry.controller.signal).catch(() => {});
         if (!running.has(attemptId)) return;
         /** @type {import('./engine.js').AttemptEnd} */
         const end = {
@@ -134,6 +138,7 @@ export function createScriptedEffector(options = {}) {
     async stop(attemptId) {
       const entry = running.get(attemptId);
       if (!entry) return;
+      entry.controller.abort();
       if (entry.timer !== null) clock.clearTimer(entry.timer);
       running.delete(attemptId);
     },
@@ -157,6 +162,7 @@ export function createScriptedEffector(options = {}) {
      */
     vanishAll() {
       for (const entry of running.values()) {
+        entry.controller.abort();
         if (entry.timer !== null) clock.clearTimer(entry.timer);
       }
       running.clear();
