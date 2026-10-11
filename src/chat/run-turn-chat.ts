@@ -92,6 +92,7 @@ import {
   isStreamDomVisible,
   notifyChatStreamActivity,
   notifyChatStreamEnded,
+  registerChatStreamText,
 } from './streaming-state';
 import {
   createChatTurnEventPainter,
@@ -1275,6 +1276,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
       },
     });
+    const livePainter = painter;
+    registerChatStreamText(chat.id, () => livePainter.snapshot());
 
     // Local inference shares the GPU with the compositor, so stepping looping animations at
     // STEP_HZ buys tok/s back. A cloud turn reclaims nothing and only looks choppier (MIN-793).

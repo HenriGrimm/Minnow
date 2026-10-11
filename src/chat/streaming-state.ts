@@ -78,6 +78,26 @@ export function notifyChatStreamEnded(chatId: string): void {
       reportBackgroundError('stream-end-listener', err);
     }
   }
+  streamTextReaders.delete(chatId);
+}
+
+/** What a live turn has streamed so far in its current round. */
+export interface ChatStreamText {
+  lastDelta: string;
+  lastThinking: string;
+  toolCallCount: number;
+}
+
+const streamTextReaders = new Map<string, () => ChatStreamText>();
+
+/** Expose a live turn's text to activity listeners; cleared when the chat's stream ends. */
+export function registerChatStreamText(chatId: string, read: () => ChatStreamText): void {
+  if (chatId) streamTextReaders.set(chatId, read);
+}
+
+/** The live turn's text for a chat, or null when nothing is streaming there. */
+export function readChatStreamText(chatId: string): ChatStreamText | null {
+  return streamTextReaders.get(chatId)?.() ?? null;
 }
 
 type ChatStreamActivityListener = (chatId: string) => void;
