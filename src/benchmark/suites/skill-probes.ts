@@ -193,6 +193,20 @@ export function divide(a: number, b: number) {
     passKind: 'regex',
     pattern: /git init|remote|GitHub|repository|version control|branch/i,
   },
+  'frontend-design': {
+    skillId: 'frontend-design',
+    prompt:
+      'Redesign the landing page hero for a small coffee roaster. What do you do before writing any markup, and how do you verify the result?',
+    passKind: 'regex',
+    pattern: /direction|audience|hierarchy|typography|render|screenshot|verif|inspect|aesthetics/i,
+  },
+  kickoff: {
+    skillId: 'kickoff',
+    prompt:
+      'I want to start a new habit-tracker app from scratch. Walk me through the kickoff stages before any code is written.',
+    passKind: 'regex',
+    pattern: /PRD|context|grill|gate|DESIGN|documentation\/plans|ask_question|stage/i,
+  },
   partymode: {
     skillId: 'partymode',
     prompt:

@@ -43,6 +43,11 @@ export const CREDENTIALS_CATEGORY = 'credentials';
 /** @type {BackupCategory[]} */
 export const BACKUP_CATEGORIES = [
   {
+    id: 'reef', label: 'Reef apps', description: 'Utility source, local Git history, metadata and app data.',
+    defaultOn: true, requiresPassphrase: true,
+    roots: [{ path: 'reef', omit: ['cache'], skipDirNames: ['node_modules', 'worktrees', 'exports', 'test-data', 'release-test-data'] }],
+  },
+  {
     id: 'settings',
     label: 'Settings and preferences',
     description:

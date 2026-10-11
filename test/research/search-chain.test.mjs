@@ -75,19 +75,15 @@ describe('searchStructured', () => {
       }
       if (url.includes('api.tavily.com')) {
         assert.equal(init?.method, 'POST');
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            results: [
-              {
-                title: 'Tavily hit',
-                url: 'https://tavily.example/doc',
-                content: 'From Tavily',
-              },
-            ],
-          }),
-        };
+        return Response.json({
+          results: [
+            {
+              title: 'Tavily hit',
+              url: 'https://tavily.example/doc',
+              content: 'From Tavily',
+            },
+          ],
+        });
       }
       throw new Error(`unexpected fetch: ${url}`);
     };
@@ -135,19 +131,15 @@ describe('searchStructured', () => {
         return { ok: true, status: 200, json: async () => ({ results: decoy }) };
       }
       if (url.includes('api.tavily.com')) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            results: [
-              {
-                title: 'chokidar v4 watch options',
-                url: 'https://github.com/paulmillr/chokidar',
-                content: 'chokidar watch options changed in v4',
-              },
-            ],
-          }),
-        };
+        return Response.json({
+          results: [
+            {
+              title: 'chokidar v4 watch options',
+              url: 'https://github.com/paulmillr/chokidar',
+              content: 'chokidar watch options changed in v4',
+            },
+          ],
+        });
       }
       throw new Error(`unexpected fetch: ${url}`);
     };

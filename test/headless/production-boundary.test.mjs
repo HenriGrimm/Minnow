@@ -16,6 +16,7 @@ const children = new Set();
 let modelStarted;
 let notifyModelStarted;
 let lastModelText = '';
+let fullContextMessages;
 
 async function awaitModel(run) {
   let timer;
@@ -60,10 +61,12 @@ async function until(predicate) {
   }
   assert.fail('production boundary condition did not settle');
 }
-function launch(prompt, chatId) {
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--json', '--profile', 'lite', '--prompt', prompt,
-    '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
-    '--persist-chat', '--chat-id', chatId], { cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true });
+function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', reef = false } = {}) {
+  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--json', '--profile', 'lite', '--stdin',
+    '--workspace', runWorkspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', modelId,
+    '--persist-chat', '--chat-id', chatId, ...(reef ? ['--agent', 'builder', '--mode', 'build'] : [])], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1', ...(reef ? { MINNOW_REEF_PHASE: 'build' } : {}) }, windowsHide: true,
+  });
   children.add(child);
   let stdout = '', stderr = '';
   child.stdout.on('data', chunk => { stdout += chunk; });
@@ -77,6 +80,7 @@ function launch(prompt, chatId) {
     });
   });
   void done.catch(() => {});
+  child.stdin.end(prompt);
   return { child, done, output: () => `stdout=${stdout} stderr=${stderr}` };
 }
 
@@ -91,7 +95,10 @@ before(async () => {
   model = http.createServer(async (req, res) => {
     if (req.url === '/v1/models') {
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ data: [{ id: 'fixture', object: 'model', context_length: 32768 }] }));
+      res.end(JSON.stringify({ data: [
+        { id: 'fixture', object: 'model', context_length: 32768 },
+        { id: 'fixture-large', object: 'model', context_length: 131072 },
+      ] }));
       return;
     }
     if (req.url !== '/v1/chat/completions') { res.writeHead(404).end(); return; }
@@ -102,6 +109,11 @@ before(async () => {
     const text = JSON.stringify(body.messages);
     lastModelText = text;
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    if (text.includes('[full-context]')) {
+      fullContextMessages = body.messages;
+      res.end(proseSseChunks('Full build context received.').join(''));
+      return;
+    }
     if (text.includes('[hold-generation]')) {
       res.write('data: {"choices":[{"delta":{"content":"Partial waiting text"}}]}\n\n');
       notifyModelStarted?.();
@@ -118,6 +130,15 @@ before(async () => {
     }
     if (body.tools?.some(tool => tool.function.name === 'report_outcome')) {
       res.end(functionCallChunks('report_outcome', { outcome: 'pass', summary: 'Child completed', evidence: [] }).join(''));
+      return;
+    }
+    if (text.includes('[recover-tool-error]')) {
+      const results = body.messages.filter(row => row.role === 'tool');
+      res.end(results.length === 0
+        ? functionCallChunks('read_file', { path: 'missing-file.md' }, 'boundary-missing').join('')
+        : results.length === 1
+          ? functionCallChunks('read_file', { path: 'README.md' }, 'boundary-recovered').join('')
+          : proseSseChunks('Read confirmed.').join(''));
       return;
     }
     res.end(body.messages.some(row => row.role === 'tool')
@@ -218,6 +239,71 @@ async function spawnChild(parentChatId, runId) {
   assert.equal(response.status, 201, await response.text());
 }
 
+test('actual CLI streams partial agent text before completion and keeps the JSON artifact separate', { timeout: 30000 * SLOW }, async () => {
+  modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
+  const outputFile = path.join(home, 'stream-result.json');
+  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream', '--quiet', '--json-out', outputFile,
+    '--profile', 'lite', '--prompt', '[hold-generation]', '--workspace', workspace,
+    '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
+  });
+  children.add(child);
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.on('data', text => { stdout += text; }); child.stderr.on('data', text => { stderr += text; });
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => { children.delete(child); resolve(code); }); });
+  void done.catch(() => {});
+  try {
+    await awaitModel({ done, output: () => stdout + stderr });
+    await until(() => stdout.includes('Partial waiting text'));
+    assert.equal(child.exitCode, null, 'the live response must be visible while the model stream remains open');
+    const active = await until(async () => (await states()).find(row => row.status === 'streaming'));
+    assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
+    assert.equal(await done, 130);
+    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
+    assert.equal(result.ok, false); assert.match(result.assistantFinal, /Partial waiting text/);
+    assert.equal(stdout.match(/Partial waiting text/g)?.length, 1, 'the final response must not duplicate the streamed text');
+    assert.ok(!stdout.includes('"assistantFinal"'), 'JSON metadata must stay in its artifact');
+  } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
+});
+
+test('actual Reef Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
+  const outputFile = path.join(home, 'reef-json-stream-result.json');
+  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream-json', '--quiet', '--json-out', outputFile,
+    '--agent', 'builder', '--mode', 'build', '--profile', 'lite', '--prompt', '[recover-tool-error] Read README.md and confirm.',
+    '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
+    '--persist-chat', '--chat-id', 'boundary-reef-json'], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, MINNOW_REEF_PHASE: 'build', BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
+  });
+  children.add(child);
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8'); child.stdout.on('data', text => { stdout += text; });
+  child.stderr.on('data', text => { stderr += text; });
+  try {
+    const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+    assert.equal(code, 0, stderr);
+    const events = stdout.trim().split('\n').map(line => JSON.parse(line));
+    const failed = events.find(event => event.type === 'tool_result' && event.id === 'boundary-missing');
+    assert.match(failed?.content, /Error:|ENOENT|not found/i);
+    const call = events.find(event => event.type === 'tool_call' && event.id === 'boundary-recovered');
+    const resultEvent = events.find(event => event.type === 'tool_result' && event.id === call?.id);
+    assert.ok(call); assert.ok(resultEvent); assert.match(resultEvent.content, /boundary read persisted/);
+    assert.ok(events.some(event => event.type === 'delta' && event.text.includes('Read confirmed.')));
+    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
+    assert.equal(result.workAgentId, 'builder'); assert.equal(result.chatId, 'boundary-reef-json');
+    assert.equal(result.ok, true); assert.ok(!stdout.includes('"assistantFinal"'));
+    assert.equal(result.turns.length, 3);
+    const generations = await states();
+    for (const turn of result.turns) {
+      assert.equal(generations.find(row => row.id === turn.generationId)?.chatId, 'boundary-reef-json',
+        'every tool round must retain the Reef chat binding for native CLI reuse');
+    }
+    const sessions = await (await api('/api/config/sessions')).json();
+    const chat = sessions.chats.find(row => row.id === 'boundary-reef-json');
+    assert.equal(chat.workAgentId, 'builder'); assert.ok(chat.history.some(row => row.role === 'tool'));
+  } finally { children.delete(child); await killOwnedChild(child); }
+});
+
 async function acceptDelivery(parentChatId, frame) {
   const sessions = await (await api('/api/config/sessions')).json();
   let parent = sessions.chats.find(chat => chat.id === parentChatId);
@@ -244,6 +330,51 @@ test('normal runtime rejects missing/bad tokens and keeps tools inside the reque
   const body = await read.json();
   assert.match(JSON.stringify(body), /outside|workspace|not allowed|boundary/i);
   assert.doesNotMatch(JSON.stringify(body), /foreign data/);
+});
+
+test('model-window HTTP lookup uses the shared host resolver and validates its inputs', async () => {
+  const route = '/api/providers/boundary-fixture/context-window';
+  assert.equal((await api(route)).status, 400);
+  assert.equal((await api('/api/providers/missing/context-window?modelId=fixture')).status, 404);
+  for (const [modelId, contextLength] of [['fixture', 32768], ['fixture-large', 131072], ['unknown-model', null]]) {
+    const response = await api(`${route}?modelId=${modelId}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { contextLength });
+  }
+});
+
+test('actual Reef Builder uses the full model window and leaves an automatic context cap at zero', { timeout: 30000 * SLOW }, async () => {
+  const config = await (await api('/api/config/sub-agents')).json();
+  const updated = { ...config, defaultContextCompaction: { highWater: 0.8, lowWater: 0.5, minRecentTurns: 3, workingContextTokens: 0 } };
+  assert.equal((await api('/api/config/sub-agents', { method: 'PUT', body: JSON.stringify(updated) })).status, 200);
+  try {
+    const prompt = `[full-context]\n${'Implement the detailed app specification.\n'.repeat(4500)}full-context-end`;
+    const run = await launch(prompt, 'boundary-reef-full-context', workspace, { modelId: 'fixture-large', reef: true }).done;
+    assert.equal(run.code, 0, run.stderr);
+    assert.equal(run.result.ok, true, run.result.error);
+    assert.equal(run.result.workAgentId, 'builder');
+    assert.equal(run.result.assistantFinal, 'Full build context received.');
+    const user = fullContextMessages.find(row => row.role === 'user');
+    const received = typeof user.content === 'string' ? user.content : user.content.map(part => part.text ?? '').join('');
+    assert.equal(received, prompt, 'context above 32K must reach the model unchanged below its compaction watermark');
+  } finally {
+    assert.equal((await api('/api/config/sub-agents', { method: 'PUT', body: JSON.stringify(config) })).status, 200);
+  }
+});
+
+test('actual CLI registers a fresh Reef worktree before scoped requests and releases it afterward', { timeout: 30000 * SLOW }, async () => {
+  const worktree = path.join(home, 'reef', 'apps', crypto.randomUUID(), 'worktrees', crypto.randomUUID());
+  await fs.mkdir(worktree, { recursive: true });
+  await fs.writeFile(path.join(worktree, 'README.md'), 'fresh Reef workspace');
+  const scope = { headers: { 'X-Minnow-Workspace': worktree } };
+  assert.equal((await api('/api/tools/ping', scope)).status, 400);
+  const run = await launch('Read README.md and confirm.', 'boundary-reef-fresh', worktree).done;
+  assert.equal(run.code, 0, run.stderr);
+  assert.equal(run.result.ok, true);
+  const sessions = await (await api('/api/config/sessions')).json();
+  const chat = sessions.chats.find(row => row.id === 'boundary-reef-fresh');
+  assert.ok(chat?.history.some(row => row.role === 'tool' && row.content.includes('fresh Reef workspace')));
+  assert.equal((await api('/api/tools/ping', scope)).status, 400);
 });
 
 test('actual CLI shared turn executes a read-only tool and survives durable session reload', { timeout: 30000 * SLOW }, async () => {

@@ -491,6 +491,34 @@
   --mn-icon-size: 10px;
 }
 
+/* While the model works, a liquid rim (composer-wave.ts) stands in for the stop
+   button's border and ripples with the streamed reply. The rim starts as a solid
+   accent disc and drains, so the send button morphs into it: the veil swaps in
+   underneath at once rather than cross-fading against the disc. */
+.send-btn { position: relative; }
+.send-btn.send-btn--stop.is-model-working {
+  border-color: transparent;
+  transition-property: opacity, transform, color, box-shadow;
+}
+
+.composer-wave {
+  position: absolute;
+  /* A canvas is replaced content: insets alone won't stretch it, so size it outright. */
+  top: calc(-1 * var(--composer-wave-outset));
+  left: calc(-1 * var(--composer-wave-outset));
+  width: calc(100% + 2 * var(--composer-wave-outset));
+  height: calc(100% + 2 * var(--composer-wave-outset));
+  display: block;
+  pointer-events: none;
+  color: var(--mn-accent);
+  opacity: 1;
+}
+
+.composer-wave[data-tone="idle"] {
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-out);
+}
+
 .send-btn .minnow-glyph {
   width: 17px;
   height: 17px;

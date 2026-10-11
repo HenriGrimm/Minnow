@@ -94,6 +94,7 @@ export function osOnAppOpen(appId: AppId): void {
 /** Called when a foreground app is replaced or the shell returns to the workspace gate. */
 export function osOnAppClose(appId: AppId): void {
   if (!isOsShellEnabled()) return;
+  if (appId === 'reef') void import('../ui/reef-page').then(m => m.suspendReef());
   if (appId === 'brain') {
     void import('../ui/brain-page').then((m) => m.suspendBrainAppSurface());
   }

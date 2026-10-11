@@ -30,7 +30,7 @@ describe('workspace clone', { concurrency: false }, () => {
   let projects;
   const oldEnv = {};
   before(async () => {
-    scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-clone-test-'));
+    scratch = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-clone-test-')));
     projects = path.join(scratch, 'projects');
     await fs.mkdir(projects);
     const source = path.join(scratch, 'sample.git');

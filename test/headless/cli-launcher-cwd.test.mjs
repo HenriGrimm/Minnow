@@ -22,6 +22,8 @@ describe('cli launcher cwd', () => {
   let callerDir = '';
   let tempHome = '';
   let workspaceOpenBody = null;
+  let workspaceOpenScope;
+  let runWorkspaceScope;
 
   before(async () => {
     callerDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-caller-'));
@@ -42,6 +44,12 @@ describe('cli launcher cwd', () => {
         return;
       }
       if (url.pathname === '/api/workspace/open' && req.method === 'POST') {
+        workspaceOpenScope = req.headers['x-minnow-workspace'];
+        // A fresh folder is not allowed as a request scope until registered.
+        if (workspaceOpenScope) {
+          res.writeHead(400).end(JSON.stringify({ error: `Unknown workspace: ${workspaceOpenScope}` }));
+          return;
+        }
         let raw = '';
         req.on('data', (chunk) => {
           raw += chunk;
@@ -58,6 +66,7 @@ describe('cli launcher cwd', () => {
         });
         return;
       }
+      runWorkspaceScope = req.headers['x-minnow-workspace'];
       res.statusCode = 500;
       res.end('not found');
     });
@@ -109,8 +118,10 @@ describe('cli launcher cwd', () => {
     });
 
     assert.ok(workspaceOpenBody, 'expected /api/workspace/open to be called');
+    assert.equal(workspaceOpenScope, undefined, 'registration must precede workspace scoping');
     const expected = fs.realpathSync(callerDir);
     assert.equal(workspaceOpenBody.path, expected);
+    assert.equal(runWorkspaceScope, expected, 'subsequent run requests must target the registered workspace');
     assert.notEqual(workspaceOpenBody.path, fs.realpathSync(repoRoot));
   });
 });

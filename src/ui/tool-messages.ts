@@ -644,9 +644,10 @@ function formatForPre(value: unknown): string {
 /** Pending tool invocation row: collapsed summary with spinner, expandable body. */
 export function renderToolCall(
   name: string,
-  argsObj: Record<string, unknown> | unknown
+  argsObj: Record<string, unknown> | unknown,
+  options: { standalone?: boolean } = {},
 ): HTMLElement {
-  const empty = document.getElementById('emptyState');
+  const empty = options.standalone ? null : document.getElementById('emptyState');
   if (empty) empty.remove();
 
   const wrap = document.createElement('div');

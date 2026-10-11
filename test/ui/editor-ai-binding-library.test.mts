@@ -65,6 +65,8 @@ mock.module('../../src/models/api-client.ts', {
     controlModelDownload: async () => ({}),
     fetchHubFiles: async () => ({}),
     listModelDownloads: async () => [],
+    deleteLibraryModel: async () => ({}),
+    bindLibraryModel: async () => ({}),
     fetchInstalledModels: async () => [],
     fetchRuntimes: async () => ({}),
     fetchGgufGeometry: async () => null,

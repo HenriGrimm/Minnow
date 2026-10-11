@@ -6,7 +6,7 @@ import path from 'node:path';
 import { prepareCodexAuth } from '../../server/generations/agent-cli/codex-auth.js';
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-auth-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-auth-')));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const source = path.join(root, 'auth.json');
   await fs.writeFile(source, 'original-login');

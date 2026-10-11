@@ -98,12 +98,12 @@ describe('catalog covers the home', () => {
     assert.deepEqual(ROOT_PATHS.filter((root) => root.includes('/') || root.includes('\\')), []);
   });
 
-  test('category ids are unique and only credentials needs a passphrase', () => {
+  test('category ids are unique and sensitive categories need a passphrase', () => {
     const ids = BACKUP_CATEGORIES.map((category) => category.id);
     assert.equal(new Set(ids).size, ids.length);
     assert.deepEqual(
       BACKUP_CATEGORIES.filter((category) => category.requiresPassphrase).map((category) => category.id),
-      [CREDENTIALS_CATEGORY],
+      ['reef', CREDENTIALS_CATEGORY],
     );
     assert.equal(defaultCategoryIds().includes('models'), false, 'models are large and off by default');
   });

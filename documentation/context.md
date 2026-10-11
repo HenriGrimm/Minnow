@@ -26,6 +26,198 @@ Authoritative technical reference for the codebase. For orientation, start with 
 
 ---
 
+**Interface icons:** `src/styles/icons.css` loads locally bundled Flaticon Uicons
+4.0.0 Regular Rounded and Solid Rounded styles from `src/styles/vendor/uicons/`.
+The official versioned CDN supplies these assets because the npm package still
+publishes 3.3.1. WOFF2 fonts ship locally for offline use; `npm run check:icons`
+validates `src/ui/icon.ts` against the bundled CSS. Reef uses `fi-rr-coral-reef`.
+
+## Reef implementation (MIN-18)
+
+Reef is a lazy app, ungated (`released`) for testing. It is not a composer mode.
+Shared records and client API helpers live in `src/reef/`; `src/ui/reef-page.ts`
+owns separate app-store (`#/app/reef`) and creation (`#/app/reef/new`) screens;
+the reserved `new` route never loads an app record. Creation is a three-step
+setup (idea, name, look; `src/reef/setup.ts`) whose answers persist while
+navigating within Reef. The name step suggests playful names from the idea's
+subject words; the look step offers six vibe presets (swatches from the
+`--mn-label-*` tokens), Match Minnow (the live theme tokens, resolved to hex at
+submit) and Make your own (a background/main/highlight palette set with colour
+pickers), plus free text. Build reads the top-bar default model and
+swaps the form for a live orb seeded with the answers until the app opens.
+`POST /api/reef/apps` takes `{ prompt, name?, look? }`; the app stores `look`, and
+`initialBuildRequest` folds the name and look into the first run's prompt. The workspace model control is the composer's own chip
+(`mountAppModelTrigger`, an app-bound variant in `composer-model-trigger.ts`): the same menu, filter bar
+and search over the full `#modelSelect` catalog, CLI agents included;
+`PUT /api/reef/apps/:id/model` validates and persists the app's provider/model and
+publishes a model event. Each fresh agent reads the latest app binding, so a change
+applies to the next stage, continuation, repair, retry or reply; an active response
+finishes on its original model. The global default and Code chat stay unchanged.
+App UUID routes open a workspace
+with Build/Preview views. Build is a stage built around one ring
+(`src/ui/reef-orb.ts`, canvas): each snapshot's newly streamed text and log
+output is written into the rim at a rotating head and spreads as a damped wave,
+and tool calls land as splashes. It animates at a fixed 30 Hz only while a run is
+busy, pauses when hidden or render-idle, and draws one still frame otherwise.
+`describeReefActivity` (`src/reef/activity.ts`) turns the run into the ring's
+plain-language stage, headline and caption; raw errors never reach the headline.
+A six-step track, the files touched and Retry (inside the ring) sit on the stage.
+The agent transcript and build log are backstage disclosures, closed by default,
+and the transcript only renders while open. The conversation pane is hidden behind
+a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview opens the verified app
+automatically through `src/ui/reef-preview.ts`, using an explicit Electron guest
+tab or a separate-origin iframe so controls accept clicks, typing and scrolling.
+Loading and launch/navigation failures appear in the preview with Run app as the
+retry action; leaving the page disposes its guest and pending frame load.
+Preview and export require a verified release; failed
+revisions retain access to the previous release. The app store and Build view
+offer Retry build for failures and Resume build for cancelled/interrupted runs;
+builds recover on their own, so these are for a stop only the user can clear.
+The runs endpoint accepts `{ action: 'resume' | 'reset-phase' | 'reset-build', runId }`;
+recovery targets only the latest stopped run. Retry requeues that same run and
+retains its workspace, final plan, logs and agent chats. Reset current phase
+restores the source tree saved at phase entry and reruns that phase; Reset whole
+build enqueues a fresh run for the same request from the last verified repository.
+Neither reset removes the previous release or build history. `reef-chat.ts` embeds
+the shared message renderer and composer without selecting a Code chat or
+changing Code's workspace. Only the explicit Open in Code action switches it.
+`src/ui/reef-export.ts` mounts the build/export panel with labeled platform,
+architecture and method controls beside export history. Live snapshots update
+status, downloads and logs in place, preserving selected options and open logs;
+the fallback poll also stays active while an export is queued or building.
+
+The authenticated `/api/reef` middleware exposes apps, runs, cancellation,
+replayable SSE events, verified previews, launch/stop, chats and exports.
+`server/reef/supervisor.js` owns a persisted FIFO queue with one active build,
+a three-hour backstop deadline, process-tree cancellation and automatic resume:
+on start it requeues any unfinished run (and one Minnow's own shutdown
+interrupted, `hostStopped`) as `recovery: 'resume'`. A run records `ownerPid`;
+start leaves a run alone while another live Minnow on the same home owns it, and
+after `MAX_AUTO_RESUMES` (3) consecutive restarts it waits for Resume instead.
+`pipeline.js` scaffolds a versioned Vite/TypeScript project, plans through the
+shared headless engine, implements in an isolated local Git worktree, installs
+with lifecycle scripts disabled, runs host-controlled type/test/build and
+Chromium scenario checks, then commits and promotes a release. A build runs
+unattended: `buildApp` retries any failure from its checkpoint unless
+`needsUser()` says only the user can clear it (spent credit or quota, a rejected
+sign-in, a missing model, missing Git, uncommitted repository changes, a lost
+workspace); those stop at once with a plain `run.stopReason`. Verification
+failures get `MAX_REPAIRS` (4) repairs. Anything else, including network trouble
+during install or checks, retries the same phase with backoff (15 s doubling to
+5 min, `MAX_RETRIES` 8) while `run.retry` drives a "Trying again shortly" state.
+A per-attempt watchdog aborts and retries an attempt that produces no output for
+`STALL_MS` (15 min). Retry, continuation and repair counts live in the
+checkpoint, so an automatic resume cannot reset them; a phase advance refills
+retries and continuations but never repairs. Every agent attempt is a separate persisted
+normal chat; plans and diagnostics are explicitly passed between attempts.
+Each run persists `runs/<id>/checkpoint.json` with its next/current phase,
+plan, repair diagnostics, phase-entry Git tree and promotion commit. Completed
+phases are skipped on recovery; incomplete Builder work is continued in a fresh
+chat against the same files. Installation and checking safely rerun the stopped
+phase's host checks. Promotion resumes with its saved commit without rebuilding.
+Legacy runs reuse their existing worktree and `plan.txt` when available; missing
+workspaces require Reset whole build, and phase reset needs a saved checkpoint.
+Reef explicitly launches the Planner and Builder work agents in different
+headless processes and fresh chat/context windows. Only the final plan and
+verification diagnostics are passed to the Builder, never the Planner transcript.
+Builder context-budget exhaustion allows `MAX_CONTINUATIONS` (6) continuations in
+fresh Builder chats, inspecting the files already written in the same worktree;
+after that the saved work goes to verification, whose failures direct a repair.
+Structured result errors take precedence over command stdout dumps.
+Reef agents use the supervisor's cancellation signal, the stall watchdog and the
+build deadline
+instead of the CLI's ten-minute/100-round ceilings or a second process timer.
+Ordinary tool failures return to the shared chat runner for model recovery;
+context exhaustion continues from saved files in a fresh Builder chat. Process
+timeouts retain their cause, and streamed agent JSON is excluded from failure
+diagnostics when no structured result is available. CLI and Scheduler limits
+remain bounded independently.
+Reef, CLI and Scheduler context limits use the same saved work-agent/global
+context policy and compaction settings as regular chat, without a headless 32K
+fallback. `GET /api/providers/:id/context-window?modelId=…` exposes the shared
+host model-window resolver: a running local serve's per-slot window wins, then
+provider catalog/probe metadata and known-model resolution. Unknown capacity
+stays unknown rather than introducing a separate headless cap.
+Headless opening transcript rows retain their store IDs so deterministic
+compaction can fold them and `recall_history` can read the original content.
+Headless `--stream-json` forwards runner events as JSON lines; `--stream` remains
+the readable CLI format. Reef folds events into bounded `agentSessions` (512 KB
+of display data per run; full chats persist separately), batches activity and
+process-log persistence every 200ms, and replays notifications over SSE through
+the shared WebSocket transport. Backpressure waits for drain instead of closing
+the connection. The Build view reuses Markdown, Thoughts and tool-call components
+with stable rows and disclosures for each Planner/Builder context. It retains
+legacy `agentLog` display, separates command output, and shows elapsed time,
+last-activity age and reconnect status. A five-second snapshot refresh catches
+missed updates without app navigation. These updates never switch the Code chat
+or its workspace.
+Read-only app conversations use the same runner and can enqueue explicit
+revision requests. Failed revisions leave the prior release available.
+
+Reef source tools use the headless request-scoped workspace and a run-specific
+allowlist. Model providers and CLI agents use this same policy: CLI adapters
+expose the permitted tools through Minnow's bridge/dynamic tools with native
+execution disabled, and the headless runner owns source-tool execution.
+Headless generations retain the runner's chat ID across tool rounds so native
+CLI processes resume pending tool results. Reef closes that attempt's CLI
+sessions after success, failure or cancellation while preserving saved chats
+and clean native checkpoints. Anonymous Codex handoffs close immediately because
+they have no binding that a later generation can resume.
+The headless CLI registers each fresh workspace with an authenticated,
+unscoped request before attaching its workspace header to agent requests.
+Disabled tools stay disabled; interactive questions, shell execution,
+remote Git and connector tools are excluded. Node 24.21.0/npm are downloaded
+with official SHA-256 verification. Playwright 1.64.0 supplies Chromium checks.
+Packaged hosts extract trusted runtime/verifier scripts from app.asar into a
+content-addressed cache before launching managed Node. Generated Node code is
+trusted local code, not an OS sandbox. Runtime environments exclude Minnow's
+session token and provider secrets. Each app serves a separate loopback origin
+with an app-specific capability token, using an isolated Electron preview guest
+or a separate-origin iframe.
+
+Storage is `getMinnowHome()/reef/apps/<UUID>/`: `repo/`, `app.json`, `runs/`,
+`releases/`, `data/`, temporary `worktrees/`, and `exports/`. App repositories
+have no remotes. The passphrase-required Reef backup category preserves source,
+Git, releases, metadata and user data; it excludes dependencies, toolchains,
+worktrees, temporary verification data and export outputs. Launch restores
+omitted runtime dependencies from the release lockfile after a backup restore.
+
+Export staging copies a selected validated release. The Electron wrapper owns
+its runtime, isolated renderer and user data directory. Native export produces
+a Windows portable executable, macOS app ZIP or Linux unpacked tar archive.
+Exports carry the app's name, never its id: `server/reef/icon.js` derives the
+product name (window, menu, `.exe`/`.app`, download filename) and npm/Linux
+executable name. The Builder draws `icon.svg` (README contract; `checkProject`
+rejects scripts, external references or a non-square viewBox so a repair fixes
+it); apps without a usable one get a deterministic monogram. Export rasterizes it
+in Reef's Playwright Chromium through `<img>` (`render-icon.mjs`) and writes
+PNG-based `icon.ico`/`icon.icns`/`icon.png` itself into `reef-build/`, so
+electron-builder needs no icon toolset. Windows uses `signExecutable: false`,
+never `signAndEditExecutable: false`, which would also skip stamping the icon
+and version info. If no icon renders the export proceeds with Electron's default.
+The wrapper reads `reef-host/identity.json`: user data lives under
+`<appData>/Reef Apps/<app id>` (rename-stable, never shared by same-named apps),
+one instance runs at a time, Windows/Linux have no default Electron menu, http(s)
+and mailto links open in the system browser, and window bounds persist.
+Source build kits exclude Git history, chats, logs, data and credentials.
+Docker supplies optional Windows/Linux cross-builds. Every cloud export requires
+explicit consent: `gh` creates/reuses a private per-app staging repository,
+dispatches a platform workflow, watches its exact commit and downloads the
+artifact. The original repository remains local. Packages are unsigned and
+unnotarized; no GitHub releases are published.
+
+`test/reef/core.test.mjs` covers storage, confinement, runtime tokens/origins,
+queue/recovery, process cancellation, SSE replay, encrypted backup selection
+and mocked GitHub contracts. `chat.test.mts` verifies composer isolation.
+`MINNOW_REEF_E2E=1` enables deterministic-agent fixtures exercising real
+Git/npm/Chromium, automatic repair and restart. Add `MINNOW_REEF_EXPORT_E2E=1`
+for native packaging and executable smoke checks. These use scratch profiles
+and never create cloud repositories. `.github/workflows/reef.yml` runs native
+fixtures on Windows, macOS and Linux. Cross-platform installed-host and
+live-provider/cloud acceptance remains the release gate.
+
+---
+
 **Git changes refresh:** Code's Source Control sidebar and the Source Control Changes view retain their file-list DOM when the workspace, buckets, paths, and status letters are unchanged. The Changes view still fetches the selected diff on refresh (a file can change while its status remains `M`), but only replaces the diff DOM when the response changes. Request generations reject superseded status/diff responses, including same-path selections across staging buckets. This removes repeated accessibility-subtree deletion during idle polling; a Windows Electron 43.2.0 freeze was sampled in Chromium's UIA text-range handling during subtree deletion, and the user reported relief after committing 81 modified files. The optimization addresses measured DOM churn, not a confirmed complete resolution of the native hang. Regression tests: `test/ui/git-panel-branch-sync.test.mts` and `test/ui/scc-changes-refresh.test.mts`.
 
 **Development process logs:** `npm start` and `npm run electron:dev` supervise the Node server through `scripts/dev-server.mjs`; `scripts/spawn-electron.mjs` captures Electron output in foreground and detached launches. `scripts/runtime-process-log.mjs` writes raw stdout/stderr and timestamped lifecycle events (PIDs, exit code, signal, spawn failure) outside the observed process under `~/.minnow/logs/runtime/{server,electron}/`, honoring `MINNOW_HOME`/`SPEEDCHAT_HOME`. Each launch gets separate files; each file rotates at 4 MiB with two backups, and startup retains ten runs plus any older live supervisors. Disk logging failures warn once and do not stop the app. Native fatal stderr survives app-process failure; forcibly killing the supervisor or a whole process tree can still prevent an exit event. Direct `node server.js` and packaged launches bypass the dev server supervisor. The detached Electron launcher keeps its output pipes open to capture the shell until it exits, without inheriting the server's pipes.
@@ -547,7 +739,7 @@ Legacy Claude stream-JSON tool handoffs wait for the current native `message_sto
 
 **Transport recovery:** Both generation subscribers accept LF/CRLF framing across byte boundaries and require the terminal `event: end`. A premature EOF or transient stream failure re-subscribes once to the same generation, skipping already delivered blocks from its retained byte replay. It does not start duplicate model work. Retention remains 30 seconds for ephemeral generations and five minutes for persistent ones, with no byte cap; eviction or another disconnect surfaces an error. Readers are cancelled/released on early termination. The nonstreaming response parser assembles text, reasoning, and tool-call deltas when a provider returns SSE despite `stream: false`.
 
-Main chat: `POST /api/generations` + `GET .../stream` with replay. Client stores `chat.currentGenerationId`; reload re-subscribes via [`src/chat/generation-resume.ts`](../src/chat/generation-resume.ts). Stop: [`src/chat/stop-generation.ts`](../src/chat/stop-generation.ts) aborts the main stream, immediately clears its visible running state, and cancels every child sub-agent for that chat (including a spawn whose response arrives after Stop). `runChatTurn` `finally` clears that id unless a resumable `system` Stop so the **agent activity** fallback row cannot keep ticking after the turn. **Boot resume gate** ([`src/boot/resume-gate-boot.ts`](../src/boot/resume-gate-boot.ts), hold flag [`src/chat/resume-gate.ts`](../src/chat/resume-gate.ts)): on app open, asks before restarting an interrupted chat generation or unfinished tool batch — including after **Quit Minnow**, which cancels generations. Mid-turn work stamps persisted `chat.resumeInterrupted` ([`src/chat/resume-interrupted.ts`](../src/chat/resume-interrupted.ts)); Electron `before-quit` calls `__minnowPrepareForShutdown` so the marker is flushed before generations die. Chat-switch generation/tool resume no-ops while the gate is held. Under V2 the gate is chat-only: the client no longer resumes boards at boot, so there is nothing on this side to park — the server engine owns board lifecycle through its own journal + reconcile. **Agent activity panel** ([`src/ui/agent-activity-panel.ts`](../src/ui/agent-activity-panel.ts), OS menubar next to notifications): lists in-flight main turns, sub-agents, and title jobs across all apps. While `ask_question` is waiting on the user, rows show **Pending question** and the elapsed timer pauses ([`pauseMainTurnActivityForQuestion`](../src/chat/main-turn-activity.ts) from [`ask-question-queue.ts`](../src/tools/ask-question-queue.ts)). **Stop all** (footer, confirm via [`appConfirm`](../src/ui/app-dialog.ts)) calls [`stopAllAgentActivity`](../src/chat/stop-all-agent-activity.ts) to halt orchestrate boards, Super Plan, streaming chats, sub-agents, title jobs, and desktop research runs; `/loop` schedules are left running.
+Main chat: `POST /api/generations` + `GET .../stream` with replay. The runner passes the reasoning half of the capabilities it sanitized the body with (`modelCapabilities`: `reasoning`, `reasoningAllowedOptions`) on the POST, or via `postChatCompletionsInProcess` for server-run turns; the store's pre-wire [sanitize pass](../server/generations/upstream.js) applies them to the requested model only, because without them it treats reasoning as unsupported and strips the composer's `reasoning_effort`. A fallback model keeps the capability-unknown pass. Client stores `chat.currentGenerationId`; reload re-subscribes via [`src/chat/generation-resume.ts`](../src/chat/generation-resume.ts). Stop: [`src/chat/stop-generation.ts`](../src/chat/stop-generation.ts) aborts the main stream, immediately clears its visible running state, and cancels every child sub-agent for that chat (including a spawn whose response arrives after Stop). `runChatTurn` `finally` clears that id unless a resumable `system` Stop so the **agent activity** fallback row cannot keep ticking after the turn. **Boot resume gate** ([`src/boot/resume-gate-boot.ts`](../src/boot/resume-gate-boot.ts), hold flag [`src/chat/resume-gate.ts`](../src/chat/resume-gate.ts)): on app open, asks before restarting an interrupted chat generation or unfinished tool batch — including after **Quit Minnow**, which cancels generations. Mid-turn work stamps persisted `chat.resumeInterrupted` ([`src/chat/resume-interrupted.ts`](../src/chat/resume-interrupted.ts)); Electron `before-quit` calls `__minnowPrepareForShutdown` so the marker is flushed before generations die. Chat-switch generation/tool resume no-ops while the gate is held. Under V2 the gate is chat-only: the client no longer resumes boards at boot, so there is nothing on this side to park — the server engine owns board lifecycle through its own journal + reconcile. **Agent activity panel** ([`src/ui/agent-activity-panel.ts`](../src/ui/agent-activity-panel.ts), OS menubar next to notifications): lists in-flight main turns, sub-agents, and title jobs across all apps. While `ask_question` is waiting on the user, rows show **Pending question** and the elapsed timer pauses ([`pauseMainTurnActivityForQuestion`](../src/chat/main-turn-activity.ts) from [`ask-question-queue.ts`](../src/tools/ask-question-queue.ts)). **Stop all** (footer, confirm via [`appConfirm`](../src/ui/app-dialog.ts)) calls [`stopAllAgentActivity`](../src/chat/stop-all-agent-activity.ts) to halt orchestrate boards, Super Plan, streaming chats, sub-agents, title jobs, and desktop research runs; `/loop` schedules are left running.
 
 SSE parsing: [`src/api/sse-parse.ts`](../src/api/sse-parse.ts) — event boundaries and glued JSON chunks; do not `Response.json()` on the generations shim. mlx-lm prefill `: keepalive processed/total` comments become a synthetic `prompt_progress` chunk. Stream end: [`src/api/stream-end.ts`](../src/api/stream-end.ts); no empty-SSE non-streaming fallback; [`turnProducedOutput`](../src/chat/history.ts) preserves partial failed turns. **Failed-turn recovery (MIN-666):** the error chrome and the tail `failed: true` chip expose **Continue** (retry with the visible transcript still in context — [`continueFailedTurn`](../src/chat/failed-turn-recovery.ts), hydrates first, never truncates) and **Clear** ([`clearFailedAssistantOutput`](../src/chat/history.ts) drops only the failed assistant row; the user prompt and earlier successful turns stay). After claiming a Continue turn, `runChatTurn` acknowledges the current turn's failed assistant flags, saves the preserved partials, and rebuilds the visible transcript to dismiss the transient error banner and recovery controls. Earlier failures and run diagnostics remain intact; a new failure creates its own notice. Claude's CLI prompt explicitly maps original Minnow tool names to advertised `mcp__minnow__` names; unprefixed and native calls remain rejected. Truncation UI [`src/ui/truncated-affordance.ts`](../src/ui/truncated-affordance.ts). [`subscribeToGeneration`](../src/api/generations.ts) / `subscribeToGenerationRaw` yield after every 8 SSE blocks in one `read()` (`SSE_BLOCKS_PER_YIELD`, MIN-729) so a token burst cannot monopolize the renderer; events are not dropped.
 
@@ -1169,7 +1361,7 @@ Scoped suites: see `package.json` (`test:memory`, `test:brain`, `test:product-wi
 
 ## Key files
 
-**Model routers:** `server/model-routers/` owns workspace-scoped router configuration, persisted sticky assignments/overrides, smooth rank-weighted or priority selection, and FIFO admission keyed by provider/model. Data lives in `~/.minnow/model-routers/<sha256-workspace-path>.json`; writes use atomic replacement and revision checks. Sub-agent attempts carry a capacity preference through the in-process completion adapter: each round keeps its own sticky assignment while capacity is free, but selects another eligible free entry when that model is busy. Parent chat assignments and explicit router overrides stay sticky; when all eligible entries are busy, FIFO admission still applies. Activity/telemetry is session-only. `/api/generations/routers` supports GET/PUT configuration; `/:routerId/activity` returns live counters/assignments/availability; POST `/:routerId/override` changes a chat override. The synthetic picker provider `minnow-router` carries the router id as `model`; both HTTP and in-process generation bindings dispatch to `pumpRouterGeneration`. Each attempt uses the existing provider transport with same-candidate retries disabled. A `minnow_router` SSE control payload identifies assignments and resets failed partial responses before failover (`phase: loading | waiting | generating`); the shared runner emits `response_restart` or `loading_model`, clearing prose on restart, and the chat painter / stream status show **Loading model…** while a My Models serve comes up. Providers are checked against live catalogs and persisted capabilities; **My Models** (`minnow-library` + `gguf:`/`mlx:`) entries are eligible from the cached library even when unloaded. [`library-serve.js`](../server/model-routers/library-serve.js) serializes local load/swap: wait until in-flight llama.cpp / MLX generations finish, then [`resolveLibraryAttemptBinding`](../server/models/library-binding.js) → `startServe` / `admitServe`. `admitServe` also skips victims that still have in-flight completions. llama-cpp-local / mlx-lm-local are omitted from the Routers editor; the surface is My Models plus other configured providers. `src/models/routers.ts` caches workspace defaults for synchronous new-chat creation, while existing chats retain their explicit binding. Models → Routers is a lazy section (`src/ui/models/routers-panel.ts`) with editable rank, live capacity graph, telemetry, and overrides. Coverage: `test/model-routers/`.
+**Model routers:** `server/model-routers/` owns workspace-scoped router configuration, persisted sticky assignments/overrides, smooth rank-weighted or priority selection, and FIFO admission keyed by provider/model. Data lives in `~/.minnow/model-routers/<sha256-workspace-path>.json`; writes use atomic replacement and revision checks. Sub-agent attempts carry a capacity preference through the in-process completion adapter: each round keeps its own sticky assignment while capacity is free, but selects another eligible free entry when that model is busy. Parent chat assignments and explicit router overrides stay sticky; when all eligible entries are busy, FIFO admission still applies. Activity/telemetry is session-only. `/api/generations/routers` supports GET/PUT configuration; `/:routerId/activity` returns live counters/assignments/availability; POST `/:routerId/override` changes a chat override. The synthetic picker provider `minnow-router` carries the router id as `model`; both HTTP and in-process generation bindings dispatch to `pumpRouterGeneration`. Each attempt uses the existing provider transport with same-candidate retries disabled. A `minnow_router` SSE control payload identifies assignments and resets failed partial responses before failover (`phase: loading | waiting | generating`); the shared runner emits `response_restart` or `loading_model`, clearing prose on restart, and the chat painter / stream status show **Loading model…** while a My Models serve comes up. Providers are checked against live catalogs and persisted capabilities; **My Models** (`minnow-library` + `gguf:`/`mlx:`) entries are eligible from the cached library even when unloaded. [`library-serve.js`](../server/model-routers/library-serve.js) serializes local load/swap: wait until in-flight llama.cpp / MLX generations finish, then [`resolveLibraryAttemptBinding`](../server/models/library-binding.js) → `startServe` / `admitServe`. `admitServe` also skips victims that still have in-flight completions. llama-cpp-local / mlx-lm-local are omitted from the Routers editor; the surface is My Models plus other configured providers. `src/models/routers.ts` caches workspace defaults for synchronous new-chat creation, while existing chats retain their explicit binding. Models → Routers is a lazy section (`src/ui/models/routers-panel.ts`) with editable rank, live capacity graph, telemetry, and overrides. **Auto pools** (policy `evaluate`) add `router.evaluator {providerId, modelId}` and optional `entry.tier` (`fast | balanced | frontier`; unset = guessed by `src/models/router-tiers.mjs`, shared with the UI). [`evaluator.js`](../server/model-routers/evaluator.js) asks two typed questions (tier, effort) once per user turn — decision models (Jev/Clef, detected by id) via the Jev-compatible Decisions API (`/api/alpha/decisions` on OpenRouter, `/ai/run/@cf/cloudflare/<model>` on Workers AI, else `<baseUrl>/v1/decisions`), any other model via a JSON-answer chat call — under a 4 s timeout. It never names a model: `generation.js` narrows eligibility to the decided tier (nearest tier next, stronger first; loaded local entries first), then maps effort onto the entry's catalog `reasoning.allowed_options` and sets `reasoning_effort`, passing those caps to `prepareUpstreamRequestBody` (the server sanitizer otherwise strips effort for caps-unknown openai-v1 models). Rules in `decideRoute`: tool-loop rounds (last message not `user`) reuse the turn's decision; a different tier below 0.55 confidence keeps the previous tier; overrides skip evaluation; any evaluator failure falls back to the last decision or rank order. Decisions live in `scheduler.decisions` (session-only, exposed by `/activity`). The stream carries `minnow_router {phase: 'deciding', judgedBy, first, candidates}` before the pick and `decision {tier, effort, confidence, reason, judgedBy, source, modelLabel}` on `generating`; `turn-runner.js` ignores `deciding`, `fetch-chat.ts` feeds both into the per-chat route store in `src/models/routers.ts`, and [`router-route-label.ts`](../src/ui/router-route-label.ts) animates the composer label (shimmer + candidate roll on a chat's first pick, shimmer only after; minimum hold; accent flash on a timer). All label animations are removed once the pick lands — a running CSS animation costs local tok/s. Coverage: `test/model-routers/`.
 
 | File | Role |
 |------|------|
