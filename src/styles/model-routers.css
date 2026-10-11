@@ -37,3 +37,7 @@
 @media (max-width: 900px) { .router-entry-list li { display: flex; flex-wrap: wrap; } .router-entry-list select { flex: 1 1 180px; } .router-graph { grid-template-columns: 1fr; gap: 20px; } .router-connections { display: none; } .router-panel { padding: 16px; } }
 @media (prefers-reduced-motion: reduce) { .router-connections .is-active { animation: none; stroke-dasharray: none; } }
 @media (pointer: coarse) { .router-panel button, .router-panel select, .router-panel input { min-height: 44px; } }
+.router-entry-list.is-auto li { grid-template-columns: 24px minmax(100px, 1fr) minmax(140px, 2fr) minmax(110px, auto) auto auto auto auto auto; }
+.router-evaluator { margin: 4px 0 8px; }
+.router-evaluator input:not([type]) { min-width: 240px; }
+.router-evaluator-hint { color: var(--mn-fg-muted); font-size: .85rem; }

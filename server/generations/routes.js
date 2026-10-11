@@ -114,6 +114,7 @@ export async function handleGenerationsRequest(req, res, pathname) {
         candidates,
         fallbackRole,
         chatId: typeof payload.chatId === 'string' ? payload.chatId : null,
+        modelCapabilities: payload.modelCapabilities,
       });
 
       if (providerId === 'minnow-router') pumpRouterGeneration(state);

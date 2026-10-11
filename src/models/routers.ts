@@ -9,10 +9,36 @@ import {
   resolveLibraryModelIdForChatBinding,
 } from './model-select-library';
 import { getWorkspacePath } from '../state/workspace';
+import type { RouterTier } from './router-tiers.mjs';
 
 export const ROUTER_PROVIDER_ID = 'minnow-router';
-export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number }
-export interface ModelRouter { id: string; name: string; enabled: boolean; policy: 'priority' | 'balance'; entries: RouterEntry[] }
+/** `tier` only matters to Auto pools; unset means guessed from the model id. */
+export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier }
+/** The model that judges each turn in an Auto pool. */
+export interface RouterEvaluator { providerId: string; modelId: string }
+export interface ModelRouter { id: string; name: string; enabled: boolean; policy: 'priority' | 'balance' | 'evaluate'; evaluator?: RouterEvaluator; entries: RouterEntry[] }
+/** What the task evaluator chose for a turn (the `decision` in a `minnow_router` payload). */
+export interface RouterDecision {
+  tier: RouterTier | null;
+  effort: string | null;
+  confidence: number;
+  reason: string;
+  judgedBy: string;
+  /** evaluator · turn (tool round kept it) · kept (low confidence) · fallback · override */
+  source: string;
+  modelLabel: string;
+}
+/** Live Auto-pool state for one chat, driven by the generation stream. */
+export interface RouterRouteState {
+  phase: 'deciding' | 'decided';
+  judgedBy: string;
+  /** First decision in this chat: the composer plays the full pick animation. */
+  first: boolean;
+  candidates: string[];
+  decision?: RouterDecision;
+  /** When deciding started (performance.now()), so a fast answer still reads as a pick. */
+  startedAt: number;
+}
 export interface RouterConfig { routers: ModelRouter[]; defaultRouterId: string | null; revision: number; assignments?: RouterActivity['assignments'] }
 export interface RouterActivity {
   assignments: { chatId: string; routerId: string; assignmentMode: 'router' | 'override'; assignedEntryId: string; overrideEntryId?: string }[];
@@ -20,10 +46,14 @@ export interface RouterActivity {
   entries: { entryId: string; active: number; queued: number; telemetry: { completed: number; errors: number; latencyMs: number; tokens: number; promptTokens: number; completionTokens: number; usageSamples: number } | null }[];
   availability: Record<string, { available: boolean; reason: string }>;
   events: { chatId: string; entryId?: string; status: string; timestamp: string; error?: string }[];
+  decisions?: (Omit<RouterDecision, 'modelLabel'> & { chatId: string; routerId: string; decidedAt: string })[];
 }
 const empty = (): RouterConfig => ({ routers: [], defaultRouterId: null, revision: 0 });
 const cache = new Map<string, RouterConfig>();
 const assignments = new Map<string, string>();
+const routeStates = new Map<string, RouterRouteState>();
+const routeKey = (routerId: string, chatId: string): string => JSON.stringify([routerId, chatId]);
+const notifyRoute = (): void => { window.dispatchEvent(new window.Event('minnow-router-assignment')); };
 const workspaceKey = (root = getWorkspacePath()): string => {
   const normalized = root.replace(/\\/g, '/').replace(/\/$/, '');
   return /^[a-z]:/i.test(normalized) ? normalized.toLowerCase() : normalized;
@@ -93,6 +123,56 @@ export function remapRouterEntriesToLibrary(
 export function noteRouterAssignment(chatId: string, providerId: string, modelId: string, routerId: string): void {
   assignments.set(JSON.stringify([routerId, chatId]), `${providerId} / ${modelId}`);
   window.dispatchEvent(new window.Event('minnow-router-assignment'));
+}
+
+export function routerRouteState(chatId: string, routerId: string): RouterRouteState | undefined {
+  return routeStates.get(routeKey(routerId, chatId));
+}
+
+export function noteRouterDeciding(
+  chatId: string,
+  routerId: string,
+  info: { judgedBy?: string; first?: boolean; candidates?: unknown },
+): void {
+  const previous = routeStates.get(routeKey(routerId, chatId));
+  routeStates.set(routeKey(routerId, chatId), {
+    phase: 'deciding',
+    judgedBy: typeof info.judgedBy === 'string' ? info.judgedBy : '',
+    first: info.first === true,
+    candidates: Array.isArray(info.candidates) ? info.candidates.filter((c): c is string => typeof c === 'string') : [],
+    ...(previous?.decision ? { decision: previous.decision } : {}),
+    startedAt: performance.now(),
+  });
+  notifyRoute();
+}
+
+export function noteRouterDecision(chatId: string, routerId: string, decision: RouterDecision): void {
+  const previous = routeStates.get(routeKey(routerId, chatId));
+  routeStates.set(routeKey(routerId, chatId), {
+    phase: 'decided',
+    judgedBy: decision.judgedBy || previous?.judgedBy || '',
+    first: previous?.first ?? false,
+    candidates: previous?.candidates ?? [],
+    decision,
+    startedAt: previous?.startedAt ?? performance.now(),
+  });
+  notifyRoute();
+}
+
+/**
+ * A generation ended before the decision arrived (stop, error): drop the
+ * deciding state so no shimmer keeps running — a live CSS animation costs
+ * local tokens per second.
+ */
+export function settleRouterDeciding(chatId: string): void {
+  let changed = false;
+  for (const [key, route] of routeStates) {
+    if (route.phase !== 'deciding' || JSON.parse(key)[1] !== chatId) continue;
+    if (route.decision) routeStates.set(key, { ...route, phase: 'decided' });
+    else routeStates.delete(key);
+    changed = true;
+  }
+  if (changed) notifyRoute();
 }
 
 export async function routerApi<T>(suffix = '', body?: unknown, method = 'GET'): Promise<T> {

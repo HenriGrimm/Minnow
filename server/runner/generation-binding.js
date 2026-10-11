@@ -150,6 +150,7 @@ async function startInProcessCompletion(providerId, body, options = {}) {
     candidates,
     fallbackRole,
     chatId: typeof options.chatId === 'string' ? options.chatId : null,
+    modelCapabilities: options.modelCapabilities,
   });
 
   const signal = options.signal;
@@ -194,6 +195,7 @@ export async function postChatCompletionsInProcess(provider, body, signal, optio
     fallbackRole: options?.fallbackRole,
     chatId: options?.chatId,
     routerPreferAvailable: options?.routerPreferAvailable,
+    modelCapabilities: options?.modelCapabilities,
   });
 
   const encoder = new TextEncoder();

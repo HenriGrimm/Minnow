@@ -1,4 +1,17 @@
+import { isRouterTier } from '../../src/models/router-tiers.mjs';
+
 export const entryKey = (entry) => JSON.stringify([entry.providerId.trim(), entry.modelId.trim()]);
+
+/** Auto pools only: the model that judges each turn. Empty means plain priority order. */
+function validateEvaluator(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'object' || typeof value.providerId !== 'string' || typeof value.modelId !== 'string') throw new Error('Invalid task evaluator');
+  const providerId = value.providerId.trim();
+  const modelId = value.modelId.trim();
+  if (!providerId && !modelId) return null;
+  if (!/^[\w-]{1,100}$/.test(providerId) || !modelId || modelId.length > 500) throw new Error('Choose a provider and model for the task evaluator');
+  return { providerId, modelId };
+}
 
 export function validateRouters(value) {
   if (!value || !Array.isArray(value.routers) || value.routers.length > 100) throw new Error('Invalid routers');
@@ -7,18 +20,21 @@ export function validateRouters(value) {
     if (!router || typeof router.id !== 'string' || !/^[\w-]{1,100}$/.test(router.id) || ids.has(router.id)) throw new Error('Invalid or duplicate router id');
     ids.add(router.id);
     if (typeof router.name !== 'string' || !router.name.trim() || router.name.length > 100) throw new Error('Router name is required (100 characters maximum)');
-    if (!['priority', 'balance'].includes(router.policy)) throw new Error('Invalid routing policy');
+    if (!['priority', 'balance', 'evaluate'].includes(router.policy)) throw new Error('Invalid routing policy');
     if (!Array.isArray(router.entries) || router.entries.length > 100) throw new Error('Invalid router entries');
     const entries = new Set();
     const pairs = new Set();
+    const evaluator = validateEvaluator(router.evaluator);
     return { id: router.id, name: router.name.trim(), enabled: router.enabled !== false, policy: router.policy,
+      ...(evaluator ? { evaluator } : {}),
       entries: router.entries.map((entry) => {
         if (!entry || typeof entry.id !== 'string' || !/^[\w-]{1,100}$/.test(entry.id) || entries.has(entry.id)) throw new Error('Invalid or duplicate entry id');
         if (typeof entry.providerId !== 'string' || !/^[\w-]{1,100}$/.test(entry.providerId) || typeof entry.modelId !== 'string' || !entry.modelId.trim() || entry.modelId.length > 500) throw new Error('Choose a configured provider and model');
         if (!Number.isInteger(entry.concurrencyLimit) || entry.concurrencyLimit < 1 || entry.concurrencyLimit > 100) throw new Error('Concurrency must be an integer from 1 to 100');
         if (pairs.has(entryKey(entry))) throw new Error('Provider/model pairs must be unique within a router');
+        if (entry.tier != null && entry.tier !== '' && !isRouterTier(entry.tier)) throw new Error('Invalid model tier');
         pairs.add(entryKey(entry)); entries.add(entry.id);
-        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit };
+        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit, ...(isRouterTier(entry.tier) ? { tier: entry.tier } : {}) };
       }) };
   });
   const defaultRouterId = value.defaultRouterId || null;
@@ -36,6 +52,8 @@ export class RouterScheduler {
     this.events = [];
     this.requests = new Map();
     this.telemetry = new Map();
+    /** Last task-evaluator decision per [routerId, chatId]; session-only like telemetry. */
+    this.decisions = new Map();
   }
 
   assignmentKey(routerId, chatId) { return JSON.stringify([routerId, chatId]); }
@@ -152,6 +170,7 @@ export class RouterScheduler {
     return { assignments: Object.values(this.assignments).filter((a) => a.routerId === router.id),
       requests: [...this.requests.values()].filter((r) => r.router.id === router.id).map((r) => ({ chatId: r.chatId, entryId: r.entry.id, status: r.status, requestId: r.requestId })),
       entries: router.entries.map((entry) => ({ entryId: entry.id, active: this.active.get(entryKey(entry)) || 0, queued: (this.queues.get(entryKey(entry)) || []).length, telemetry: this.telemetry.get(entryKey(entry)) || null })),
-      events: this.events.filter((e) => e.routerId === router.id) };
+      events: this.events.filter((e) => e.routerId === router.id),
+      decisions: [...this.decisions.values()].filter((d) => d.routerId === router.id) };
   }
 }
