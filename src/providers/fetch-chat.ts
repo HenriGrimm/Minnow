@@ -126,6 +126,8 @@ export async function postChatCompletions(
                 const route = payload.minnow_router;
                 if (route?.phase === 'deciding') {
                   noteRouterDeciding(options.chatId, route.routerId, route);
+                } else if (route?.phase === 'evaluated') {
+                  settleRouterDeciding(options.chatId);
                 } else if (route) {
                   if (route.decision) noteRouterDecision(options.chatId, route.routerId, route.decision);
                   noteRouterAssignment(options.chatId, route.providerId, route.modelId, route.routerId);

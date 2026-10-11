@@ -14,17 +14,19 @@ import type { RouterTier } from './router-tiers.mjs';
 export const ROUTER_PROVIDER_ID = 'minnow-router';
 /** `tier` only matters to Auto pools; unset means guessed from the model id. */
 export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier }
-/** The model that judges each turn in an Auto pool. */
+/** The model that judges a chat in an Auto pool. */
 export interface RouterEvaluator { providerId: string; modelId: string }
 export interface ModelRouter { id: string; name: string; enabled: boolean; policy: 'priority' | 'balance' | 'evaluate'; evaluator?: RouterEvaluator; entries: RouterEntry[] }
-/** What the task evaluator chose for a turn (the `decision` in a `minnow_router` payload). */
+/** The saved chat choice and the reasoning actually applied to the selected model. */
 export interface RouterDecision {
   tier: RouterTier | null;
   effort: string | null;
+  requestedEffort?: string | null;
+  reasoningStatus?: 'applied' | 'unsupported' | 'default';
   confidence: number;
   reason: string;
   judgedBy: string;
-  /** evaluator · turn (tool round kept it) · kept (low confidence) · fallback · override */
+  /** evaluator · kept (low confidence) · fallback · override */
   source: string;
   modelLabel: string;
 }
@@ -32,14 +34,16 @@ export interface RouterDecision {
 export interface RouterRouteState {
   phase: 'deciding' | 'decided';
   judgedBy: string;
-  /** First decision in this chat: the composer plays the full pick animation. */
+  /** First evaluation in this chat. */
   first: boolean;
   candidates: string[];
   decision?: RouterDecision;
-  /** When deciding started (performance.now()), so a fast answer still reads as a pick. */
+  /** When the real evaluation started (performance.now()). */
   startedAt: number;
+  reevaluate?: boolean;
 }
-export interface RouterConfig { routers: ModelRouter[]; defaultRouterId: string | null; revision: number; assignments?: RouterActivity['assignments'] }
+interface SavedRouterDecision { chatId: string; routerId: string; reevaluate?: boolean; display?: RouterDecision }
+export interface RouterConfig { routers: ModelRouter[]; defaultRouterId: string | null; revision: number; assignments?: RouterActivity['assignments']; decisions?: SavedRouterDecision[] }
 export interface RouterActivity {
   assignments: { chatId: string; routerId: string; assignmentMode: 'router' | 'override'; assignedEntryId: string; overrideEntryId?: string }[];
   requests: { chatId: string; entryId: string; status: string; requestId: string }[];
@@ -129,6 +133,14 @@ export function routerRouteState(chatId: string, routerId: string): RouterRouteS
   return routeStates.get(routeKey(routerId, chatId));
 }
 
+export async function requestRouterReevaluation(chatId: string, routerId: string): Promise<void> {
+  const activity = await routerApi<RouterActivity>(`/${encodeURIComponent(routerId)}/reevaluate`, { chatId }, 'POST');
+  const saved = activity.decisions?.find((d) => d.chatId === chatId);
+  const previous = routerRouteState(chatId, routerId);
+  if (previous && saved) routeStates.set(routeKey(routerId, chatId), { ...previous, reevaluate: true });
+  notifyRoute();
+}
+
 export function noteRouterDeciding(
   chatId: string,
   routerId: string,
@@ -161,7 +173,7 @@ export function noteRouterDecision(chatId: string, routerId: string, decision: R
 
 /**
  * A generation ended before the decision arrived (stop, error): drop the
- * deciding state so no shimmer keeps running — a live CSS animation costs
+ * deciding state so no spinner keeps running — a live CSS animation costs
  * local tokens per second.
  */
 export function settleRouterDeciding(chatId: string): void {
@@ -189,6 +201,21 @@ export async function loadRouterConfig(): Promise<RouterConfig> {
     const entry = config.routers.find((r) => r.id === assignment.routerId)?.entries.find((e) => e.id === assignment.assignedEntryId);
     if (entry) assignments.set(JSON.stringify([assignment.routerId, assignment.chatId]), `${entry.providerId} / ${entry.modelId}`);
   }
+  for (const saved of config.decisions || []) {
+    if (!saved.display || routerRouteState(saved.chatId, saved.routerId)?.phase === 'deciding') continue;
+    const assignment = config.assignments?.find((a) => a.chatId === saved.chatId && a.routerId === saved.routerId);
+    const pinned = assignment?.assignmentMode === 'override';
+    const entry = pinned ? config.routers.find((r) => r.id === saved.routerId)?.entries.find((e) => e.id === assignment.assignedEntryId) : undefined;
+    const display: RouterDecision = pinned ? {
+      tier: null, effort: null, requestedEffort: null, confidence: 1, reason: 'Pinned to a model for this chat',
+      judgedBy: '', source: 'override', modelLabel: entry?.modelId || 'Unavailable model',
+    } : saved.display;
+    routeStates.set(routeKey(saved.routerId, saved.chatId), {
+      phase: 'decided', judgedBy: display.judgedBy, first: false, candidates: [],
+      decision: display, startedAt: 0, reevaluate: !pinned && saved.reevaluate === true,
+    });
+  }
+  notifyRoute();
   try { localStorage.setItem(`minnow.routers:${key}`, JSON.stringify(config)); } catch {}
   return config;
 }

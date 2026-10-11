@@ -122,7 +122,7 @@ test('routers accept the Auto policy, an evaluator, and entry tiers', () => {
   assert.throws(() => validateRouters({ routers: [{ id: 'r', name: 'Auto', policy: 'evaluate', entries: [{ ...entry, tier: 'huge' }] }] }), /tier/);
 });
 
-test('decideRoute judges user turns once, keeps tool rounds, and holds the tier when unsure', async () => {
+test('decideRoute keeps the chat choice until explicit re-evaluation, including synthetic user tool turns', async () => {
   const scheduler = new RouterScheduler();
   const router = { id: 'auto', evaluator: { providerId: 'or', modelId: 'typesafe/jev-1.13' } };
   const user = (text) => ({ messages: [{ role: 'user', content: text }] });
@@ -137,16 +137,27 @@ test('decideRoute judges user turns once, keeps tool rounds, and holds the tier 
   assert.deepEqual(deciding, [{ judgedBy: 'Jev 1.13', first: true }]);
 
   const toolRound = await decideRoute({ scheduler, router, chatId: 'c', body: { messages: [{ role: 'user', content: 'x' }, { role: 'tool', content: 'y' }] }, evaluate });
-  assert.equal(toolRound.source, 'turn');
+  assert.equal(toolRound.source, 'evaluator');
   assert.equal(toolRound.tier, 'frontier');
   assert.equal(calls, 1);
 
+  const followUp = await decideRoute({ scheduler, router, chatId: 'c', body: user('rename x'), evaluate });
+  assert.equal(followUp.tier, 'frontier');
+  const imageRound = await decideRoute({ scheduler, router, chatId: 'c', body: {
+    messages: [{ role: 'tool', content: 'screenshot' }, { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
+  }, evaluate });
+  assert.equal(imageRound.effort, 'high');
+  assert.equal(calls, 1);
+  assert.equal(deciding.length, 1);
+
+  scheduler.requestReevaluation({ ...router, policy: 'evaluate' }, 'c');
   answers.push({ tier: 'fast', effort: 'low', confidence: 0.4, reason: 'Maybe easy', judgedBy: 'Jev 1.13', source: 'evaluator' });
   const unsure = await decideRoute({ scheduler, router, chatId: 'c', body: user('and the other thing'), evaluate, onDeciding: (info) => deciding.push(info) });
   assert.equal(unsure.source, 'kept');
   assert.equal(unsure.tier, 'frontier');
   assert.equal(deciding[1].first, false);
 
+  scheduler.requestReevaluation({ ...router, policy: 'evaluate' }, 'c');
   answers.push({ tier: 'fast', effort: 'low', confidence: 0.95, reason: 'Rename', judgedBy: 'Jev 1.13', source: 'evaluator' });
   assert.equal((await decideRoute({ scheduler, router, chatId: 'c', body: user('rename x'), evaluate })).tier, 'fast');
   assert.equal(scheduler.activity({ id: 'auto', entries: [] }).decisions[0].tier, 'fast');
@@ -163,6 +174,7 @@ test('decideRoute never blocks a turn: failures, no evaluator, and overrides fal
   assert.match(none.reason, /503/);
 
   scheduler.decisions.set(scheduler.assignmentKey('auto', 'b'), { tier: 'balanced', effort: 'medium', confidence: 0.8, reason: 'ok', judgedBy: 'Jev', source: 'evaluator' });
+  scheduler.requestReevaluation({ ...router, policy: 'evaluate' }, 'b');
   const kept = await decideRoute({ scheduler, router, chatId: 'b', body, evaluate: failing });
   assert.equal(kept.tier, 'balanced');
   assert.match(kept.reason, /Kept the last choice/);
@@ -176,4 +188,29 @@ test('decideRoute never blocks a turn: failures, no evaluator, and overrides fal
   const pinned = await decideRoute({ scheduler, router, chatId: 'd', body, evaluate: async () => { called = true; } });
   assert.equal(pinned.source, 'override');
   assert.equal(called, false);
+});
+
+test('failed evaluation is cached so tool turns do not repeatedly retry it', async () => {
+  const scheduler = new RouterScheduler();
+  const router = { id: 'auto', evaluator: { providerId: 'or', modelId: 'jev' } };
+  let calls = 0;
+  const evaluate = async () => { calls++; throw new Error('offline'); };
+  const body = { messages: [{ role: 'user', content: 'continue after tool output' }] };
+  await decideRoute({ scheduler, router, chatId: 'c', body, evaluate });
+  await decideRoute({ scheduler, router, chatId: 'c', body, evaluate });
+  assert.equal(calls, 1);
+});
+
+test('re-evaluation waits through tool replies and rejects pinned or busy chats', async () => {
+  const scheduler = new RouterScheduler();
+  const router = { id: 'auto', policy: 'evaluate', evaluator: { providerId: 'or', modelId: 'jev' }, entries: [] };
+  scheduler.setDecision('auto', 'c', { tier: 'balanced', effort: 'medium', source: 'evaluator' });
+  scheduler.requestReevaluation(router, 'c');
+  await decideRoute({ scheduler, router, chatId: 'c', body: { messages: [{ role: 'tool', content: 'output' }] }, evaluate: async () => assert.fail('tool turn evaluated') });
+  assert.equal(scheduler.decisions.get(scheduler.assignmentKey('auto', 'c')).reevaluate, true);
+  scheduler.requests.set('busy', { chatId: 'c' });
+  assert.throws(() => scheduler.requestReevaluation(router, 'c'), /current response/);
+  scheduler.requests.clear();
+  scheduler.assignments[scheduler.assignmentKey('auto', 'c')] = { assignmentMode: 'override' };
+  assert.throws(() => scheduler.requestReevaluation(router, 'c'), /pinned/);
 });

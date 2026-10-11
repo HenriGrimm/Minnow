@@ -2,7 +2,7 @@ import { isRouterTier } from '../../src/models/router-tiers.mjs';
 
 export const entryKey = (entry) => JSON.stringify([entry.providerId.trim(), entry.modelId.trim()]);
 
-/** Auto pools only: the model that judges each turn. Empty means plain priority order. */
+/** Auto pools only: the model that judges a chat. Empty means plain priority order. */
 function validateEvaluator(value) {
   if (value == null || value === '') return null;
   if (typeof value !== 'object' || typeof value.providerId !== 'string' || typeof value.modelId !== 'string') throw new Error('Invalid task evaluator');
@@ -43,7 +43,7 @@ export function validateRouters(value) {
 }
 
 export class RouterScheduler {
-  constructor({ assignments = {}, onAssignment = () => {} } = {}) {
+  constructor({ assignments = {}, decisions = {}, onAssignment = () => {} } = {}) {
     this.assignments = assignments;
     this.onAssignment = onAssignment;
     this.active = new Map();
@@ -52,11 +52,25 @@ export class RouterScheduler {
     this.events = [];
     this.requests = new Map();
     this.telemetry = new Map();
-    /** Last task-evaluator decision per [routerId, chatId]; session-only like telemetry. */
-    this.decisions = new Map();
+    this.decisions = new Map(Object.entries(decisions));
   }
 
   assignmentKey(routerId, chatId) { return JSON.stringify([routerId, chatId]); }
+
+  setDecision(routerId, chatId, decision) {
+    this.decisions.set(this.assignmentKey(routerId, chatId), { ...decision, chatId, routerId });
+    this.onAssignment(this.assignments);
+  }
+
+  requestReevaluation(router, chatId) {
+    if (router.policy !== 'evaluate') throw new Error('Only Auto pools can re-evaluate a task');
+    const key = this.assignmentKey(router.id, chatId);
+    if (this.assignments[key]?.assignmentMode === 'override') throw new Error('Remove the pinned model before re-evaluating');
+    if ([...this.requests.values()].some((r) => r.chatId === chatId)) throw new Error('Wait for the current response to finish');
+    const previous = this.decisions.get(key);
+    if (!previous) throw new Error('Send a message before re-evaluating');
+    this.setDecision(router.id, chatId, { ...previous, reevaluate: true });
+  }
 
   emit(router, chatId, entry, status, error) {
     this.events.push({ routerId: router.id, chatId, entryId: entry?.id, status, timestamp: new Date().toISOString(), ...(error ? { error } : {}) });

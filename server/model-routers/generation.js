@@ -48,8 +48,10 @@ async function entryLabels(router) {
  * entry, preferring already-loaded local models inside it so a decision does
  * not force a model swap when an equal one is resident.
  */
-function tierFilter(router, decision, labels, availability, attempted) {
+function tierFilter(router, decision, labels, availability, attempted, stickyEntryId) {
   if (!decision?.tier) return null;
+  const sticky = router.entries.find((e) => e.id === stickyEntryId && e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e)));
+  if (sticky) return (e) => e.id === sticky.id;
   for (const tier of routerTierFallbackOrder(decision.tier)) {
     const candidates = router.entries.filter((e) => e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e))
       && routerEntryTier({ ...e, label: labels[e.id] }) === tier);
@@ -74,18 +76,19 @@ async function resolveEntryEffort(bound, effort) {
   if (!effort) return {};
   const row = await routerCatalogModel(bound.providerId, bound.id).catch(() => null);
   const probed = (await readCapabilities(bound.providerId).catch(() => null))?.models?.[bound.id];
-  if (probed?.reasoning === false) return {};
+  if (probed?.reasoning === false) return { reasoningStatus: 'unsupported' };
   const raw = Array.isArray(row?.reasoning?.allowed_options) ? row.reasoning.allowed_options : [];
   const allowed = ensureGlm53ReasoningAllowedOptions(bound.id,
     ensureQwen38ReasoningAllowedOptions(bound.id, normalizeReasoningAllowedOptions(raw, bound.id)));
-  const level = mapEffortToLevels(effort, getComposerReasoningLevelOptions(allowed));
-  return level ? { effort: level, caps: { reasoning: true, reasoningAllowedOptions: allowed } } : {};
+  const level = mapEffortToLevels(effort, getComposerReasoningLevelOptions(allowed)) || (allowed.includes('on') ? 'on' : undefined);
+  return level ? { effort: level, reasoningStatus: 'applied', caps: { reasoning: true, reasoningAllowedOptions: allowed } }
+    : { reasoningStatus: 'default' };
 }
 
 /** What the composer shows for a decision. */
-function publicDecision(decision, effort, modelLabel) {
+function publicDecision(decision, effort, modelLabel, reasoningStatus) {
   if (!decision) return undefined;
-  return { tier: decision.tier, effort: effort || null, confidence: decision.confidence, reason: decision.reason, judgedBy: decision.judgedBy, source: decision.source, modelLabel };
+  return { tier: decision.tier, effort: effort || null, requestedEffort: decision.effort || null, reasoningStatus, confidence: decision.confidence, reason: decision.reason, judgedBy: decision.judgedBy, source: decision.source, modelLabel };
 }
 
 export function pumpRouterGeneration(state) {
@@ -104,6 +107,7 @@ export async function runRouterGeneration(state) {
   state.upstreamController = controller;
   let previousError = '';
   let decision = null;
+  let evaluated = false;
   let labels = {};
   try {
   const startRouter = workspace.routers.find((r) => r.id === routerId);
@@ -111,19 +115,25 @@ export async function runRouterGeneration(state) {
     labels = await entryLabels(startRouter);
     decision = await decideRoute({
       scheduler: workspace.scheduler, router: startRouter, chatId, body, signal: controller.signal,
-      onDeciding: ({ judgedBy, first }) => emitRouterControl(state, body, {
-        routerId, phase: 'deciding', judgedBy, first, reset: false, warning: '',
-        candidates: startRouter.entries.filter((e) => e.enabled).map((e) => labels[e.id]),
-      }),
+      onDeciding: ({ judgedBy, first }) => {
+        evaluated = true;
+        emitRouterControl(state, body, {
+          routerId, phase: 'deciding', judgedBy, first, reset: false, warning: '',
+          candidates: startRouter.entries.filter((e) => e.enabled).map((e) => labels[e.id]),
+        });
+      },
     });
     if (controller.signal.aborted || state.status === 'cancelled') return;
+    if (evaluated) emitRouterControl(state, body, { routerId, phase: 'evaluated', reset: false, warning: '' });
   }
   while (state.status !== 'cancelled') {
     const router = workspace.routers.find((r) => r.id === routerId);
     if (!router) throw new Error('Router no longer exists. Select a model or router in Models.');
     const availability = await routerAvailability(router, body);
     if (controller.signal.aborted || state.status === 'cancelled') return;
-    const inTier = tierFilter(router, decision, labels, availability, attempted);
+    const keepAssignment = !evaluated || decision?.source === 'kept' || decision?.source === 'fallback';
+    const stickyEntryId = state.routerPreferAvailable === true || !keepAssignment ? undefined : workspace.scheduler.assignments[workspace.scheduler.assignmentKey(routerId, chatId)]?.assignedEntryId;
+    const inTier = tierFilter(router, decision, labels, availability, attempted, stickyEntryId);
     const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available && (!inTier || inTier(e)), attempted, { preferAvailable: state.routerPreferAvailable === true });
     attempted.add(entryKey(entry));
     let release;
@@ -174,20 +184,29 @@ export async function runRouterGeneration(state) {
       }
       if (controller.signal.aborted || state.status === 'cancelled') return;
 
-      const { effort, caps: effortCaps } = await resolveEntryEffort(bound, decision?.effort);
+      const { effort, caps: effortCaps, reasoningStatus } = await resolveEntryEffort(bound, decision?.effort);
       if (controller.signal.aborted || state.status === 'cancelled') return;
       state.chosenProviderId = bound.providerId;
       state.chosenModelId = bound.id;
       state.fallbackUsed = attempted.size > 1;
+      const displayDecision = publicDecision(decision, effort, labels[entry.id] || entry.modelId, reasoningStatus);
+      if (decision && decision.source !== 'override') {
+        const saved = workspace.scheduler.decisions.get(workspace.scheduler.assignmentKey(routerId, chatId));
+        workspace.scheduler.setDecision(routerId, chatId, { ...saved, display: displayDecision });
+        await workspace.flush();
+      }
       emitRouterControl(state, body, {
         ...controlBase,
         phase: 'generating',
         reset: Boolean(previousError),
         warning: previousError ? `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
-        ...(decision ? { decision: publicDecision(decision, effort, labels[entry.id] || entry.modelId) } : {}),
+        ...(displayDecision ? { decision: displayDecision } : {}),
       });
       if (previousError) workspace.scheduler.emit(router, chatId, entry, 'failover', previousError);
-      child = createGenerationState({ providerId: bound.providerId, body: { ...body, model: bound.id, ...(effort ? { reasoning_effort: effort } : {}) }, candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
+      const childBody = { ...body, model: bound.id };
+      if (decision && decision.source !== 'override') delete childBody.reasoning_effort;
+      if (effort) childBody.reasoning_effort = effort;
+      child = createGenerationState({ providerId: bound.providerId, body: childBody, candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
       child.routerAttempt = true;
       // The upstream sanitizer drops reasoning_effort for models it has no
       // capabilities for; hand it the ones that justified this level.

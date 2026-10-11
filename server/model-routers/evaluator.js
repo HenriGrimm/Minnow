@@ -1,8 +1,8 @@
 /**
  * Task evaluator for Auto model pools (router policy `evaluate`).
  *
- * Once per user turn the evaluator answers two typed questions about the
- * request — which capability tier it needs and how much reasoning — and the
+ * Once per chat (or explicit re-evaluation) the evaluator answers two typed
+ * questions: which capability tier it needs and how much reasoning. The
  * router maps that onto its entries. It never names a model, so the pool can
  * change without retraining a prompt.
  *
@@ -297,9 +297,8 @@ export async function evaluateTask(evaluator, body, { signal, timeoutMs = EVALUA
 }
 
 /**
- * Decide this request's tier and effort for a chat, applying the turn and
- * confidence rules. Returns null when the router should fall back to plain
- * priority order.
+ * Reuse a chat's decision until explicitly re-evaluated. Cache failures too,
+ * so synthetic user messages after tools cannot repeatedly invoke the judge.
  * @param {{
  *   scheduler: import('./scheduler.js').RouterScheduler,
  *   router: { id: string, evaluator?: { providerId: string, modelId: string } | null },
@@ -316,11 +315,12 @@ export async function decideRoute({ scheduler, router, chatId, body, signal, onD
   if (scheduler.assignments[key]?.assignmentMode === 'override') {
     return { tier: null, effort: null, confidence: 1, source: 'override', reason: 'Pinned to a model for this chat', judgedBy: '' };
   }
-  // Every round of one turn stays on the model the turn started with.
-  if (previous && !isUserTurn(body)) return { ...previous, source: 'turn' };
+  if (previous && (!previous.reevaluate || !isUserTurn(body))) return previous;
   const evaluator = router.evaluator;
   if (!evaluator?.providerId || !evaluator?.modelId) {
-    return { tier: null, effort: null, confidence: 0, source: 'fallback', reason: 'No task evaluator is set for this pool', judgedBy: '' };
+    const fallback = { tier: null, effort: null, confidence: 0, source: 'fallback', reason: 'No task evaluator is set for this pool', judgedBy: '' };
+    scheduler.setDecision(router.id, chatId, fallback);
+    return fallback;
   }
   const judgedBy = evaluatorLabel(evaluator.modelId);
   onDeciding?.({ judgedBy, first: !previous });
@@ -330,9 +330,11 @@ export async function decideRoute({ scheduler, router, chatId, body, signal, onD
   } catch (error) {
     if (signal?.aborted) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    return previous
-      ? { ...previous, source: 'fallback', reason: `${message}. Kept the last choice.` }
+    const fallback = previous
+      ? { ...previous, reevaluate: false, source: 'fallback', reason: `${message}. Kept the last choice.` }
       : { tier: null, effort: null, confidence: 0, source: 'fallback', reason: message, judgedBy };
+    scheduler.setDecision(router.id, chatId, fallback);
+    return fallback;
   }
   if (previous?.tier && decision.tier !== previous.tier && decision.confidence < KEEP_BELOW_CONFIDENCE) {
     decision = {
@@ -343,6 +345,6 @@ export async function decideRoute({ scheduler, router, chatId, body, signal, onD
       reason: `Unsure (${Math.round(decision.confidence * 100)}%), so it stayed on the ${formatRouterTierLabel(previous.tier).toLowerCase()} tier`,
     };
   }
-  scheduler.decisions.set(key, { ...decision, chatId, routerId: router.id, decidedAt: new Date().toISOString() });
+  scheduler.setDecision(router.id, chatId, { ...decision, reevaluate: false, decidedAt: new Date().toISOString() });
   return decision;
 }

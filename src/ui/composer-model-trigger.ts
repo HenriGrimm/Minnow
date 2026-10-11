@@ -1,7 +1,7 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
-import { modelCache } from '../app-state';
+import { modelCache, streamingChatIds } from '../app-state';
 import { getForegroundAppId, getOsView } from '../os/instances';
 import { modelProducerLogoSvg } from '../providers/model-producer';
 import { isModelLoadUnloadBusy } from './model-load-unload-button';
@@ -38,6 +38,7 @@ import {
 import { iconHtml } from './icon';
 import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
 import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
+import { syncRouterReevaluateAction } from './router-reevaluate-action';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 import { applyModelProducerLogo, createComposerModelButton, parseModelOptionLabels } from './composer-model-button';
 
@@ -290,7 +291,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   const router = decodeModelSelectKey(selectValue)?.providerId === 'minnow-router'
     ? getRouterConfigSync().routers.find((r) => r.id === modelId)
     : undefined;
-  // Auto pools own their label element (animated pick); plain writes would reset it.
+  // Auto pools own their reasoning and model label; plain writes would reset it.
   const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) && !trigger.app ? router : undefined;
 
   if (autoPool) {
@@ -342,11 +343,17 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       poolName: autoPool.name,
       route: routerRouteState(getActiveChat()?.id || '', autoPool.id),
     });
+    trigger.trigger.setAttribute('aria-label', `Active Auto model: ${trigger.labelEl.textContent}`);
+    trigger.trigger.title = trigger.labelEl.title;
   } else {
     clearRouterRouteLabel(trigger.labelEl);
     if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
       const assignment = !isMenubarStyleVariant(trigger.variant) && !trigger.app ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
       trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;
+    }
+    if (!isMenubarStyleVariant(trigger.variant)) {
+      trigger.trigger.setAttribute('aria-label', `${trigger.app?.ariaLabel || 'Active model'}: ${trigger.labelEl.textContent}`);
+      trigger.trigger.title = trigger.labelEl.title;
     }
   }
 
@@ -419,6 +426,14 @@ function rebuildOpenMenu(): void {
     selectedValue,
   );
   syncAllModelMenuReasoningDefaults();
+  const binding = decodeModelSelectKey(selectedValue);
+  const chat = getActiveChat();
+  const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
+  syncRouterReevaluateAction(openTrigger.panel,
+    router?.policy === 'evaluate' && chat && !isMenubarStyleVariant(openTrigger.variant) && !openTrigger.app
+      ? { chatId: chat.id, routerId: router.id, route: routerRouteState(chat.id, router.id), busy: streamingChatIds.has(chat.id) }
+      : undefined,
+  );
 }
 
 function positionPanel(trigger: ComposerModelTrigger): void {

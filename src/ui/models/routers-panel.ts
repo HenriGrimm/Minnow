@@ -274,7 +274,7 @@ export async function mountRoutersPanel(): Promise<void> {
       defaultToggle.onchange = () => { config.defaultRouterId = defaultToggle.checked ? router.id : null; markDirty(); };
       header.append(field('Name', name), field('Policy', policy), field('Enabled', enabled), field('Default for new chats', defaultToggle));
       editor.append(header, node('p', auto
-        ? 'Each turn, the task evaluator judges how much model the request needs and picks a tier and reasoning level. Tool rounds stay on the model their turn started with, and an unsure judgment keeps the current tier. If the evaluator is unset or slow, the pool falls back to rank order.'
+        ? 'The task evaluator picks a tier and reasoning level once for each chat. Follow-ups and tool rounds keep that choice. Use Re-evaluate in the composer model menu to choose again on your next message. If the evaluator is unset or slow, the pool falls back to rank order.'
         : 'Chats keep their assigned model. When it is full, they wait; if it fails, the response restarts on another eligible model. My Models entries load when needed and unload after in-flight local work finishes.'));
       if (auto) editor.append(evaluatorFields(router));
       const list = node('ol', '', auto ? 'router-entry-list is-auto' : 'router-entry-list');

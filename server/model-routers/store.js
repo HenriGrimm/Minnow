@@ -19,7 +19,7 @@ export async function getRouterWorkspace() {
       let writes = Promise.resolve();
       const workspace = { ...validateRouters(saved), revision: saved.revision || 0, scheduler: null, flush: () => writes };
       const persist = () => {
-        const content = JSON.stringify({ routers: workspace.routers, defaultRouterId: workspace.defaultRouterId, revision: workspace.revision, assignments: workspace.scheduler.assignments });
+        const content = JSON.stringify({ routers: workspace.routers, defaultRouterId: workspace.defaultRouterId, revision: workspace.revision, assignments: workspace.scheduler.assignments, decisions: Object.fromEntries(workspace.scheduler.decisions) });
         writes = writes.catch(() => {}).then(async () => {
           await fs.mkdir(path.dirname(file), { recursive: true });
           const temporary = `${file}.tmp`;
@@ -28,7 +28,7 @@ export async function getRouterWorkspace() {
         });
         return writes;
       };
-      workspace.scheduler = new RouterScheduler({ assignments: saved.assignments || {}, onAssignment: () => { void persist().catch((error) => console.error('[model-routers] assignment save:', error.message)); } });
+      workspace.scheduler = new RouterScheduler({ assignments: saved.assignments || {}, decisions: saved.decisions || {}, onAssignment: () => { void persist().catch((error) => console.error('[model-routers] assignment save:', error.message)); } });
       workspace.save = async (value) => {
         if (value.revision !== workspace.revision) throw new Error('Routers changed in another window. Reload before saving.');
         const validated = validateRouters(value);
