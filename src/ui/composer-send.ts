@@ -15,6 +15,7 @@ import { refreshModeSelectorDisabled } from './mode-selector';
 import { isChatAppForeground } from './chat-mount';
 import { setStatus } from './status';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
+import { syncComposerWave } from './composer-wave';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
 import { syncFollowupActiveHint } from './followup-active-hint';
@@ -99,6 +100,8 @@ function syncChatAppStopButton(streaming: boolean): void {
 
 /** Toggle send vs stop affordance on the composer primary button. */
 export function setComposerStreamingMode(mode: ComposerStreamingMode): void {
+  syncComposerWave();
+  if (getActiveComposerSurface().onPrimaryAction) return;
   const { sendBtnEl: sendBtn, inputEl: input } = getActiveComposerSurface();
   if (!sendBtn) return;
 
@@ -219,6 +222,8 @@ function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): 
 
 /** Send when idle; queue follow-up when streaming with text; stop when streaming with empty input. */
 export function handleComposerPrimaryAction(): void {
+  const scopedAction = getActiveComposerSurface().onPrimaryAction;
+  if (scopedAction) { scopedAction(); return; }
   if (isPluginSlashCommand(getActiveComposerSurface().inputEl?.value ?? '')) {
     void loadChatMessaging().then(m => m.sendMessage());
     return;

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const uiconsRoot = join(root, 'node_modules/@flaticon/flaticon-uicons/css');
+const uiconsRoot = join(root, 'src/styles/vendor/uicons');
 
 function loadUiconClasses(relativePath) {
   const css = readFileSync(join(uiconsRoot, relativePath), 'utf8');
@@ -16,8 +16,8 @@ function loadUiconClasses(relativePath) {
 }
 
 const catalog = new Set([
-  ...loadUiconClasses('regular/rounded.css'),
-  ...loadUiconClasses('solid/rounded.css'),
+  ...loadUiconClasses('regular-rounded.css'),
+  ...loadUiconClasses('solid-rounded.css'),
 ]);
 
 const iconTs = readFileSync(join(root, 'src/ui/icon.ts'), 'utf8');

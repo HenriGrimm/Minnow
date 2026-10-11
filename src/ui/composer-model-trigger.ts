@@ -39,8 +39,7 @@ import { iconHtml } from './icon';
 import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
 import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
-
-const CHEVRON_SVG = iconHtml('chevronDown', { size: 10 });
+import { applyModelProducerLogo, createComposerModelButton, parseModelOptionLabels } from './composer-model-button';
 
 const MODEL_FALLBACK_ICON_SVG = iconHtml('appModels', { className: 'mn-os-mb-model-fallback-icon' });
 
@@ -51,9 +50,10 @@ type ComposerModelVariant =
   | 'menubar'
   | 'board'
   | 'research'
-  | 'super-plan';
+  | 'super-plan'
+  | 'app';
 
-type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar' | 'board'>;
+type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar' | 'board' | 'app'>;
 
 type MenubarStyleVariant = 'menubar' | 'board';
 
@@ -65,6 +65,24 @@ export interface BoardModelChipContext {
 }
 
 let boardModelTriggerContext: BoardModelChipContext | null = null;
+
+/** A model binding an app owns (Reef workspace): same chip and menu, the app persists picks. */
+export interface AppModelTriggerContext {
+  ariaLabel: string;
+  resolveBinding: () => { providerId?: string; modelId: string };
+  /** Called with the picked #modelSelect value. */
+  pick: (selectValue: string) => void;
+}
+
+export interface AppModelTriggerHandle {
+  root: HTMLDivElement;
+  trigger: HTMLButtonElement;
+  /** Repaint the chip from the app binding. */
+  sync: () => void;
+  /** Disable the chip while the app saves a pick. */
+  setBusy: (busy: boolean) => void;
+  dispose: () => void;
+}
 
 /** How long the menubar hover label stays visible before collapsing. */
 const MENUBAR_EXPAND_HOLD_MS = 3200;
@@ -83,6 +101,8 @@ interface ComposerModelTrigger {
   dotEl?: HTMLElement;
   expandEl?: HTMLElement;
   collapseTimer?: number;
+  app?: AppModelTriggerContext;
+  appBusy?: boolean;
 }
 
 const triggers: ComposerModelTrigger[] = [];
@@ -93,6 +113,8 @@ let chromePopoverRegistered = false;
 let globalsBound = false;
 let shortcutBound = false;
 let unregisterExternalCloser: (() => void) | null = null;
+/** Keyboard-highlighted row in the open menu (-1 = none). */
+let activeOptionIndex = -1;
 
 // ── Finders ──────────────────────────────────────────────────────────────────
 
@@ -196,36 +218,12 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
     const values = [...sel.options].map((o) => o.value);
     return resolveModelSelectValueForChat(getActiveChat(), values);
   }
+  if (trigger.app) {
+    const values = [...sel.options].map((o) => o.value);
+    return resolveModelSelectValueForChat(trigger.app.resolveBinding(), values);
+  }
   const values = [...sel.options].map((o) => o.value);
   return resolveModelSelectValueForChat(getActiveChat(), values);
-}
-
-/** Split composite option text into model name and provider label. */
-function parseModelOptionLabels(opt?: HTMLOptionElement): {
-  model: string;
-  provider: string;
-} {
-  const text = opt?.text?.trim() || opt?.label?.trim() || '';
-  const sep = ' — ';
-  const idx = text.lastIndexOf(sep);
-  if (idx > 0) {
-    return {
-      model: text.slice(0, idx).trim(),
-      provider: text.slice(idx + sep.length).trim(),
-    };
-  }
-  return { model: text || 'Select model', provider: '' };
-}
-
-function applyLogoSvg(target: HTMLElement, modelId: string): void {
-  const svg = modelId ? modelProducerLogoSvg(modelId) : '';
-  if (svg) {
-    target.innerHTML = svg;
-    target.classList.remove('hidden');
-  } else {
-    target.innerHTML = '';
-    target.classList.add('hidden');
-  }
 }
 
 /** True while fetchModels has the select parked on its "Loading models…" placeholder. */
@@ -281,15 +279,19 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   const selectValue = resolveTriggerSelectValue(trigger);
   trigger.usage?.setProvider(decodeModelSelectKey(selectValue)?.providerId);
-  const selectedOpt = sel ? selectedOptionForValue(sel, selectValue) : undefined;
-  const { model, provider } = parseModelOptionLabels(selectedOpt);
+  // An app binding outside the catalog names its own model, never the global selection.
+  const appModelId = trigger.app && !selectValue ? trigger.app.resolveBinding().modelId.trim() : '';
+  const selectedOpt = sel && !appModelId ? selectedOptionForValue(sel, selectValue) : undefined;
+  const { model, provider } = appModelId
+    ? { model: appModelId, provider: '' }
+    : parseModelOptionLabels(selectedOpt);
 
-  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : '';
+  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : appModelId;
   const router = decodeModelSelectKey(selectValue)?.providerId === 'minnow-router'
     ? getRouterConfigSync().routers.find((r) => r.id === modelId)
     : undefined;
   // Auto pools own their label element (animated pick); plain writes would reset it.
-  const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) ? router : undefined;
+  const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) && !trigger.app ? router : undefined;
 
   if (autoPool) {
     // Rendered below, once the shared title/logo work is done.
@@ -302,7 +304,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       trigger.providerEl.textContent = provider;
       trigger.providerEl.hidden = !showProvider;
     }
-  } else if (trigger.variant === 'code') {
+  } else if (trigger.variant === 'code' || trigger.variant === 'app') {
     // The Code footer row names the model only; the provider lives in the tooltip.
     trigger.labelEl.textContent = model;
   } else {
@@ -313,14 +315,14 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 
   const fullLabel = selectedOpt?.text?.trim() || '';
   const title = selectedOpt?.title?.trim()
-    || (trigger.variant === 'code' && provider ? fullLabel : '')
-    || selectValue || '';
+    || ((trigger.variant === 'code' || trigger.variant === 'app') && provider ? fullLabel : '')
+    || selectValue || appModelId;
   if (title) trigger.labelEl.title = title;
   else trigger.labelEl.removeAttribute('title');
 
   if (isMenubarStyleVariant(trigger.variant)) {
     if (trigger.iconLogoEl) {
-      applyLogoSvg(trigger.iconLogoEl, modelId);
+      applyModelProducerLogo(trigger.iconLogoEl, modelId);
       const hasProducerLogo = Boolean(modelId && modelProducerLogoSvg(modelId));
       trigger.trigger.classList.toggle('has-producer-logo', hasProducerLogo);
     }
@@ -331,7 +333,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     trigger.trigger.title =
       trigger.variant === 'menubar' ? `Default for new chats: ${summary}` : summary;
   } else {
-    applyLogoSvg(trigger.logoEl, modelId);
+    applyModelProducerLogo(trigger.logoEl, modelId);
     syncMenubarLoadDot(trigger, selectValue);
   }
 
@@ -343,7 +345,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   } else {
     clearRouterRouteLabel(trigger.labelEl);
     if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
-      const assignment = !isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
+      const assignment = !isMenubarStyleVariant(trigger.variant) && !trigger.app ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
       trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;
     }
   }
@@ -352,7 +354,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     Boolean(sel) &&
     [...sel!.options].some((o) => o.value.trim() !== '') &&
     !sel!.disabled;
-  trigger.trigger.disabled = !hasSelectable;
+  trigger.trigger.disabled = !hasSelectable || Boolean(trigger.appBusy);
 }
 
 /** Sync every mounted composer model trigger. */
@@ -389,6 +391,10 @@ function handleComposerModelPick(trigger: ComposerModelTrigger, modelId: string)
     onActiveChatModelChange(modelId);
     return;
   }
+  if (trigger.app) {
+    if (modelId.trim() && modelId !== resolveTriggerSelectValue(trigger)) trigger.app.pick(modelId);
+    return;
+  }
   onActiveChatModelChange(modelId);
 }
 
@@ -397,6 +403,8 @@ function rebuildOpenMenu(): void {
   const sel = getModelSelect();
   if (!sel) return;
   const selectedValue = resolveTriggerSelectValue(openTrigger);
+  activeOptionIndex = -1;
+  openTrigger.menu.removeAttribute('aria-activedescendant');
   renderModelSelectMenuRows(
     openTrigger.menu,
     sel,
@@ -547,10 +555,47 @@ function onDocumentPointerDown(e: PointerEvent): void {
 }
 
 function onDocumentKeyDown(e: KeyboardEvent): void {
-  if (e.key === 'Escape' && openTrigger) {
+  if (!openTrigger) return;
+  if (e.key === 'Escape') {
     e.preventDefault();
+    const trigger = openTrigger.trigger;
     closeComposerModelMenu();
+    trigger.focus();
+    return;
   }
+  handleOpenMenuNavigation(e);
+}
+
+/** Arrow / Home / End move the highlight; Enter picks it (the search field keeps focus). */
+function handleOpenMenuNavigation(e: KeyboardEvent): void {
+  const menu = openTrigger?.menu;
+  if (!menu) return;
+  const rows = [...menu.querySelectorAll<HTMLLIElement>('.model-select-option[role="option"][data-value]')];
+  if (!rows.length) return;
+  if (e.key === 'Enter') {
+    if (activeOptionIndex < 0) return;
+    e.preventDefault();
+    rows[activeOptionIndex]?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    return;
+  }
+  let next: number;
+  if (e.key === 'ArrowDown') next = activeOptionIndex < 0 ? 0 : activeOptionIndex + 1;
+  else if (e.key === 'ArrowUp') next = activeOptionIndex < 0 ? rows.length - 1 : activeOptionIndex - 1;
+  else if (e.key === 'Home' && !isTextField(e.target)) next = 0;
+  else if (e.key === 'End' && !isTextField(e.target)) next = rows.length - 1;
+  else return;
+  e.preventDefault();
+  activeOptionIndex = Math.max(0, Math.min(next, rows.length - 1));
+  rows.forEach((row, index) => {
+    if (!row.id) row.id = `composer-model-option-${index}`;
+    row.classList.toggle('model-select-option--active', index === activeOptionIndex);
+  });
+  menu.setAttribute('aria-activedescendant', rows[activeOptionIndex].id);
+  rows[activeOptionIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function isTextField(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
 }
 
 function onWindowResize(): void {
@@ -711,7 +756,7 @@ function createModelMenuPanel(
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
-    showReasoningDefault: variant !== 'board',
+    showReasoningDefault: variant !== 'board' && variant !== 'app',
     onReasoningDefaultChange: (selectValue) => {
       refreshActiveChatReasoningDefault(selectValue);
     },
@@ -811,7 +856,7 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   return entry;
 }
 
-function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
+function buildTrigger(variant: ComposerModelVariant, app?: AppModelTriggerContext): ComposerModelTrigger {
   if (isMenubarStyleVariant(variant)) {
     return buildMenubarStyleTrigger(variant);
   }
@@ -819,37 +864,13 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   const root = document.createElement('div');
   root.className = `composer-model-trigger-wrap composer-model-trigger-wrap--${variant}`;
 
-  const triggerBtn = document.createElement('button');
-  triggerBtn.type = 'button';
-  triggerBtn.className = 'composer-model-trigger';
-  triggerBtn.setAttribute('aria-haspopup', 'listbox');
-  triggerBtn.setAttribute('aria-expanded', 'false');
-  const ariaLabel =
+  const ariaLabel = app?.ariaLabel ?? (
     variant === 'research'
       ? 'Research model'
       : variant === 'super-plan'
         ? 'Super Plan model'
-        : 'Active model';
-  triggerBtn.setAttribute('aria-label', ariaLabel);
-
-  const dotEl = document.createElement('span');
-  dotEl.className = 'model-load-dot composer-model-trigger__spinner';
-  dotEl.setAttribute('aria-hidden', 'true');
-
-  const logoEl = document.createElement('span');
-  logoEl.className = 'composer-model-trigger__logo hidden';
-  logoEl.setAttribute('aria-hidden', 'true');
-
-  const labelEl = document.createElement('span');
-  labelEl.className = 'composer-model-trigger__label';
-  labelEl.textContent = 'Select model';
-
-  const chevronEl = document.createElement('span');
-  chevronEl.className = 'composer-model-trigger__chevron';
-  chevronEl.setAttribute('aria-hidden', 'true');
-  chevronEl.innerHTML = CHEVRON_SVG;
-
-  triggerBtn.append(dotEl, logoEl, labelEl, chevronEl);
+        : 'Active model');
+  const { trigger: triggerBtn, dotEl, logoEl, labelEl } = createComposerModelButton(ariaLabel);
   root.appendChild(triggerBtn);
 
   const usage = variant === 'code' ? createAccountUsageTrigger() : undefined;
@@ -867,6 +888,7 @@ function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
     dotEl,
     menu,
     panel,
+    app,
   };
 
   triggerBtn.addEventListener('click', () => toggleMenu(entry));
@@ -887,6 +909,36 @@ export function mountComposerModelTrigger(
   const entry = buildTrigger(variant);
   anchor.appendChild(entry.root);
   syncTrigger(entry);
+}
+
+/** Mount a model chip bound to an app's own provider/model (full shared catalog and menu). */
+export function mountAppModelTrigger(
+  anchor: HTMLElement,
+  app: AppModelTriggerContext,
+): AppModelTriggerHandle {
+  ensureGlobals();
+  const entry = buildTrigger('app', app);
+  anchor.appendChild(entry.root);
+  return {
+    root: entry.root,
+    trigger: entry.trigger,
+    sync: () => {
+      syncTrigger(entry);
+      if (openTrigger === entry) rebuildOpenMenu();
+    },
+    setBusy: (busy) => {
+      entry.appBusy = busy;
+      if (busy && openTrigger === entry) closeComposerModelMenu();
+      syncTrigger(entry);
+    },
+    dispose: () => {
+      if (openTrigger === entry) closeComposerModelMenu();
+      entry.panel.remove();
+      entry.root.remove();
+      const index = triggers.indexOf(entry);
+      if (index !== -1) triggers.splice(index, 1);
+    },
+  };
 }
 
 /** Mount the menubar default-model icon chip (shared composer model menu). */

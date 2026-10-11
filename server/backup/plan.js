@@ -134,12 +134,13 @@ async function readSmallJson(abs, size) {
  *   home: string,
  *   categories?: string[],
  *   includeCredentials: boolean,
+ *   encrypted?: boolean,
  * }} options
  * `includeCredentials` is the caller's decision that this archive is
  * passphrase-protected *and* the credentials category is selected.
  * @returns {Promise<BackupPlan>}
  */
-export async function planBackup({ home, categories, includeCredentials }) {
+export async function planBackup({ home, categories, includeCredentials, encrypted = includeCredentials }) {
   const selected = new Set(normalizeCategoryIds(categories));
   if (!includeCredentials) selected.delete(CREDENTIALS_CATEGORY);
   else selected.add(CREDENTIALS_CATEGORY);
@@ -153,6 +154,7 @@ export async function planBackup({ home, categories, includeCredentials }) {
   let credentialsOmitted = 0;
 
   for (const category of BACKUP_CATEGORIES) {
+    if (category.requiresPassphrase && !encrypted) continue;
     const categorySelected = selected.has(category.id);
     for (const spec of category.roots) {
       // An unselected root is still searched for credential files when

@@ -46,7 +46,7 @@ if (process.env.BOUNDARY_HOST_MODE === 'packaged') {
 process.send?.({ type: 'ready', baseUrl, token: getSessionToken() });
 process.on('message', message => {
   if (message?.type === 'states') {
-    process.send?.({ type: 'states', requestId: message.requestId, states: listGenerationStates().map(row => ({ id: row.id, status: row.status, totalBytes: row.totalBytes })) });
+    process.send?.({ type: 'states', requestId: message.requestId, states: listGenerationStates().map(row => ({ id: row.id, chatId: row.chatId, status: row.status, totalBytes: row.totalBytes })) });
   } else if (message?.type === 'stop') {
     void closeHost().then(() => process.exit(0), error => { console.error(error); process.exit(1); });
   }

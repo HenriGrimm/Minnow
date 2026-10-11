@@ -6,6 +6,8 @@ import { isChatAppForeground } from './chat-mount';
 export interface ComposerSurface {
   inputEl: HTMLTextAreaElement | null;
   sendBtnEl: HTMLButtonElement | null;
+  /** Scoped hosts own turn dispatch without changing Code's active chat. */
+  onPrimaryAction?: () => void;
 }
 
 const DEFAULT_IDS: Record<string, { inputId: string; sendBtnId: string }> = {
@@ -16,8 +18,9 @@ const DEFAULT_IDS: Record<string, { inputId: string; sendBtnId: string }> = {
 const registry = new Map<AppId, ComposerSurface>();
 
 /** Override composer elements for an app (e.g. tests or embedded hosts). */
-export function registerComposerSurface(appId: AppId, surface: ComposerSurface): void {
+export function registerComposerSurface(appId: AppId, surface: ComposerSurface): () => void {
   registry.set(appId, surface);
+  return () => { if (registry.get(appId) === surface) registry.delete(appId); };
 }
 
 function resolveByIds(inputId: string, sendBtnId: string): ComposerSurface {

@@ -179,6 +179,7 @@ export function parseOsHash(hash: string): OsRoute {
         ? seg
         : (pendingCodeSection ?? 'chat');
     }
+    if (route.appId === 'reef') route.reefAppId = appMatch[2];
     if (route.appId === 'issues' && appMatch[2]) {
       if (appMatch[2] === 'projects') route.issuesSection = 'projects';
       else route.issueId = appMatch[2];
@@ -210,6 +211,7 @@ export function hashForCodeSection(section: CodeSectionId): string {
 }
 
 function hashForRoute(route: OsRoute): string {
+  if (route.appId === 'reef' && route.reefAppId) return `#/app/reef/${route.reefAppId}`;
   if (route.view === 'workspaces') return '#/workspaces';
   if (route.appId === 'models' && route.modelsSection) {
     return `#/app/models/${route.modelsSection}`;
@@ -400,7 +402,7 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
         ? 'chat'
         : (options?.codeSection ?? 'chat')
       : undefined;
-  const next =
+  const next = appId === 'reef' && options?.reefAppId ? `#/app/reef/${options.reefAppId}` :
     appId === 'models' && options?.modelsSection
       ? `#/app/models/${options.modelsSection}`
       : appId === 'brain' && options?.brainSection
@@ -421,6 +423,7 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
       settingsSection: options?.settingsSection,
       modelsSection: options?.modelsSection,
       brainSection: options?.brainSection,
+      reefAppId: options?.reefAppId,
       codeSection,
     },
     options,

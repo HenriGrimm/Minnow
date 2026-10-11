@@ -131,6 +131,7 @@ export type ChromeIconName =
   | 'boardView'
   | 'loop'
   | 'sparkles'
+  | 'dice'
   | 'thinkingBrain'
   | 'reasoning'
   | 'codeMapInjection'
@@ -234,7 +235,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   modeSuperPlan: 'fi-sr-clipboard-list-check',
   modeDebug: 'fi-sr-bug',
   modeOrchestrate: 'fi-sr-network',
-  modeReef: 'fi-sr-water',
+  modeReef: 'fi-rr-coral-reef',
 
   gitPull: 'fi-rr-cloud-download',
   gitPush: 'fi-rr-cloud-upload',
@@ -309,6 +310,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   boardView: 'fi-rr-layout-fluid',
   loop: 'fi-rr-rotate-right',
   sparkles: 'fi-rr-sparkles',
+  dice: 'fi-rr-dice',
   thinkingBrain: 'fi-sr-brain',
   reasoning: 'fi-sr-bulb',
   codeMapInjection: 'fi-rr-sitemap',

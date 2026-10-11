@@ -132,7 +132,7 @@ export async function runScheduledSnapshot(options = {}) {
     const passphrase = await readSchedulePassphrase();
     const includeCredentials = Boolean(passphrase) && settings.categories.includes(CREDENTIALS_CATEGORY);
     const home = getMinnowHome();
-    const plan = await planBackup({ home, categories: settings.categories, includeCredentials });
+    const plan = await planBackup({ home, categories: settings.categories, includeCredentials, encrypted: Boolean(passphrase) });
     const fingerprint = await fingerprintPlan(plan);
 
     const existing = await listSnapshots(schedule.destDir);
