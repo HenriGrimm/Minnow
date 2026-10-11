@@ -177,7 +177,7 @@ export function mountWaveRim(canvas: HTMLCanvasElement, shape: WaveRimShape) {
     const wanted = silentFor >= QUIET_MS ? 1 : 0;
     waiting += (wanted - waiting) * Math.min(1, dt / (wanted > waiting ? 500 : 140));
     // The head drifts at the same pixel pace whatever the rim's length; a waiting head laps the rim.
-    head += dt / 1000 * (0.32 + energy * 0.9 + waiting * 1.5) * RING_BINS / bins;
+    head += dt / 1000 * (0.32 + energy * 0.9 + waiting * (ring ? 1.5 : 0.8)) * RING_BINS / bins;
     clock += dt / 1000;
     morph = Math.min(1, morph + dt / MORPH_MS);
     // A damped wave equation on a closed string, a few small substeps per frame for stability.
@@ -239,8 +239,9 @@ export function mountWaveRim(canvas: HTMLCanvasElement, shape: WaveRimShape) {
     const amplitude = reach * (ring ? 1 : 0.5) * (live ? 0.05 + energy * 0.07 : 0.04) * settle;
     const ambient = reach * (ring ? 1 : 0.3) * (live ? 0.008 + energy * 0.006 : tone === 'failed' ? 0.004 : 0.006) * settle;
     // Waiting on the model: the glow breathes and a droplet circles the rim, so a quiet prefill never looks stalled.
-    const hold = live ? waiting * settle : 0;
-    const droplet = reach * (ring ? 0.09 : 0.12) * hold * (0.8 + 0.2 * Math.sin(clock * 5));
+    // Beside the composer's controls the waiting motion stays quiet: a faint swell, a gentle breath.
+    const hold = live ? waiting * settle * (ring ? 1 : 0.4) : 0;
+    const droplet = reach * (ring ? 0.09 : 0.1) * hold * (0.8 + 0.2 * Math.sin(clock * 5));
     const glow = (tone === 'idle' ? 0.35 : tone === 'failed' ? 0.55 : live ? 0.7 + energy * 0.3 : 0.8) * (0.4 + 0.6 * settle) * (1 + hold * 0.18 * Math.sin(clock * 2.6));
     // A border sits among other controls, so its rim is a hairline with a tight halo.
     const bloom = ring ? 1 : 0.4;
