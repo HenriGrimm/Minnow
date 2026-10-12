@@ -51,6 +51,67 @@ test('re-evaluation retains the current reasoning and model until the new decisi
   el.remove();
 });
 
+test('composer refreshes preserve the constellation and text nodes during evaluation', () => {
+  const el = host();
+  renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route(), scopeKey: 'chat-a' });
+  const spark = el.querySelector('.mn-route__spark svg');
+  const label = el.querySelector('.mn-route__level')!.firstChild;
+  for (let i = 0; i < 5; i += 1) {
+    renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route(), scopeKey: 'chat-a' });
+  }
+  assert.equal(el.querySelector('.mn-route__spark svg'), spark);
+  assert.equal(el.querySelector('.mn-route__level')!.firstChild, label);
+  assert.equal(el.querySelector('.mn-route__spark')!.getAttribute('aria-hidden'), 'true');
+  clearRouterRouteLabel(el);
+  assert.equal(el.querySelector('.mn-route')!.getAttribute('aria-busy'), 'false');
+  el.remove();
+});
+
+test('completion settles once, cancels on a new evaluation, and never celebrates switching chats', () => {
+  const el = host();
+  const animations: { frames: Keyframe[]; cancelled: boolean; onfinish?: () => void; oncancel?: () => void }[] = [];
+  renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route(), scopeKey: 'chat-a' });
+  for (const element of el.querySelectorAll('.mn-route__spark svg > *, .mn-route__level, .mn-route__model')) {
+    Object.defineProperty(element, 'animate', { value: (frames: Keyframe[]) => {
+      const animation = { frames, cancelled: false, cancel() { this.cancelled = true; this.oncancel?.(); },
+        onfinish: undefined as (() => void) | undefined, oncancel: undefined as (() => void) | undefined };
+      animations.push(animation);
+      return animation;
+    } });
+  }
+  const completed = { poolName: 'Workhorse', route: route({ phase: 'decided', decision }), scopeKey: 'chat-a' };
+  renderRouterRouteLabel(el, completed);
+  assert.ok(animations.length > 0);
+  assert.equal(text(el, 'model'), 'big-70b', 'decision is visible immediately');
+  const count = animations.length;
+  renderRouterRouteLabel(el, completed);
+  assert.equal(animations.length, count, 'refreshing a finished decision does not replay it');
+  renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route({ startedAt: 2000 }), scopeKey: 'chat-a' });
+  assert.ok(animations.every((animation) => animation.cancelled));
+  renderRouterRouteLabel(el, { ...completed, route: route({ phase: 'decided', decision, startedAt: 2000 }), scopeKey: 'chat-b' });
+  assert.equal(animations.length, count, 'another chat cannot finish the previous chat animation');
+  renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route(), scopeKey: 'chat-b' });
+  renderRouterRouteLabel(el, { ...completed, scopeKey: 'chat-b' });
+  clearRouterRouteLabel(el);
+  assert.ok(animations.every((animation) => animation.cancelled));
+  el.remove();
+});
+
+test('reduced motion shows the result immediately without a settling animation', () => {
+  const el = host();
+  const originalMatchMedia = window.matchMedia;
+  window.matchMedia = (() => ({ matches: true })) as typeof window.matchMedia;
+  try {
+    renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route() });
+    for (const element of el.querySelectorAll('.mn-route__spark svg > *, .mn-route__level, .mn-route__model')) {
+      Object.defineProperty(element, 'animate', { value: () => { assert.fail('reduced motion must not animate'); } });
+    }
+    renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route({ phase: 'decided', decision }) });
+    assert.equal(text(el, 'level'), 'High reasoning');
+    assert.equal(el.querySelector('.is-deciding'), null);
+  } finally { window.matchMedia = originalMatchMedia; el.remove(); }
+});
+
 test('unadvertised reasoning levels show the requested level, never masquerading as a tier', () => {
   const el = host();
   const unknown: RouterDecision = { ...decision, effort: null, reasoningStatus: 'default' };
@@ -66,8 +127,23 @@ test('fallback and queued re-evaluation explain their state', () => {
   const el = host();
   renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route({ phase: 'decided', reevaluate: true,
     decision: { ...decision, source: 'fallback', reason: 'Evaluator HTTP 503. Kept the last choice.' } }) });
+  assert.equal(text(el, 'level'), 'High reasoning');
+  assert.match(el.title, /Task evaluator unavailable/);
   assert.match(el.title, /Evaluator HTTP 503/);
   assert.match(el.title, /Re-evaluates on your next message/);
+  el.remove();
+});
+
+test('an initial evaluator failure displays Fallback beside the selected model', () => {
+  const el = host();
+  const fallback: RouterDecision = { ...decision, tier: null, effort: null, requestedEffort: null,
+    reasoningStatus: 'default', source: 'fallback', reason: 'Evaluator HTTP 503', modelLabel: 'small-4b' };
+  renderRouterRouteLabel(el, { poolName: 'Workhorse', route: route({ phase: 'decided', decision: fallback }) });
+  assert.equal(text(el, 'level'), 'Fallback');
+  assert.equal(text(el, 'model'), 'small-4b');
+  assert.match(el.title, /Task evaluator unavailable/);
+  assert.match(el.title, /Evaluator HTTP 503/);
+  assert.match(el.title, /Kept for this chat/);
   el.remove();
 });
 

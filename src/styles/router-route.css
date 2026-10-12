@@ -9,8 +9,26 @@
 .mn-route__spark {
   display: inline-flex;
   flex: none;
+  width: 22px;
+  height: 22px;
+  margin-inline: -2px 1px;
   color: var(--mn-accent);
 }
+
+.mn-route__spark svg { width: 100%; height: 100%; overflow: visible; }
+
+.mn-route__star,
+.mn-route__halo,
+.mn-route__mote {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.mn-route__star { fill: currentColor; }
+.mn-route__star--north { opacity: .75; }
+.mn-route__star--west { opacity: .5; }
+.mn-route__mote { fill: currentColor; opacity: 0; }
+.mn-route__halo { fill: none; stroke: currentColor; stroke-width: .65; opacity: 0; }
 
 .mn-route__level {
   flex: none;
@@ -32,8 +50,38 @@
   white-space: nowrap;
 }
 
-.mn-route.is-deciding .mn-route__spark {
-  animation: mn-route-spin 1.2s linear infinite;
+.mn-route.is-deciding .mn-route__star--main {
+  animation: mn-route-focus 2.4s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+
+.mn-route.is-deciding .mn-route__star--north {
+  animation: mn-route-twinkle 2.4s cubic-bezier(.45, 0, .25, 1) -.8s infinite;
+}
+
+.mn-route.is-deciding .mn-route__star--west {
+  animation: mn-route-twinkle 2.4s cubic-bezier(.45, 0, .25, 1) -1.6s infinite;
+}
+
+.mn-route.is-deciding .mn-route__halo {
+  animation: mn-route-ripple 2.4s cubic-bezier(.16, 1, .3, 1) infinite;
+}
+
+.mn-route.is-deciding .mn-route__mote--one {
+  --mn-route-drift-x: -10px;
+  --mn-route-drift-y: 5px;
+  animation: mn-route-gather 2.4s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+
+.mn-route.is-deciding .mn-route__mote--two {
+  --mn-route-drift-x: 8px;
+  --mn-route-drift-y: 8px;
+  animation: mn-route-gather 2.4s cubic-bezier(.45, 0, .25, 1) -.8s infinite;
+}
+
+.mn-route.is-deciding .mn-route__mote--three {
+  --mn-route-drift-x: -3px;
+  --mn-route-drift-y: -11px;
+  animation: mn-route-gather 2.4s cubic-bezier(.45, 0, .25, 1) -1.6s infinite;
 }
 
 .router-reevaluate-action[hidden] { display: none; }
@@ -43,10 +91,31 @@
   font-size: 11px;
 }
 
-@keyframes mn-route-spin {
-  to { transform: rotate(180deg); }
+@keyframes mn-route-focus {
+  0%, 100% { transform: scale(.88) rotate(-8deg); opacity: .7; }
+  38% { transform: scale(1.12) rotate(8deg); opacity: 1; }
+  65% { transform: scale(.96) rotate(0deg); opacity: .85; }
+}
+
+@keyframes mn-route-twinkle {
+  0%, 100% { transform: scale(.65) rotate(-12deg); opacity: .3; }
+  40% { transform: scale(1.15) rotate(12deg); opacity: 1; }
+  70% { transform: scale(.8) rotate(0deg); opacity: .55; }
+}
+
+@keyframes mn-route-ripple {
+  0%, 18% { transform: scale(.5); opacity: 0; }
+  24% { opacity: .25; }
+  70%, 100% { transform: scale(1.45); opacity: 0; }
+}
+
+@keyframes mn-route-gather {
+  0%, 12% { transform: translate(var(--mn-route-drift-x), var(--mn-route-drift-y)) scale(.4); opacity: 0; }
+  28% { opacity: .8; }
+  62% { transform: translate(0, 0) scale(.3); opacity: 0; }
+  100% { transform: translate(0, 0) scale(.3); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mn-route.is-deciding .mn-route__spark { animation: none; }
+  .mn-route.is-deciding .mn-route__spark svg > * { animation: none; }
 }

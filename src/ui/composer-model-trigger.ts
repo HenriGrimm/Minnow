@@ -294,6 +294,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   // Auto pools own their reasoning and model label; plain writes would reset it.
   const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) && !trigger.app ? router : undefined;
 
+  if (!autoPool) clearRouterRouteLabel(trigger.labelEl);
   if (autoPool) {
     // Rendered below, once the shared title/logo work is done.
   } else if (isMenubarStyleVariant(trigger.variant)) {
@@ -341,12 +342,12 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   if (autoPool) {
     renderRouterRouteLabel(trigger.labelEl, {
       poolName: autoPool.name,
+      scopeKey: JSON.stringify([getActiveChat()?.id, autoPool.id]),
       route: routerRouteState(getActiveChat()?.id || '', autoPool.id),
     });
     trigger.trigger.setAttribute('aria-label', `Active Auto model: ${trigger.labelEl.textContent}`);
     trigger.trigger.title = trigger.labelEl.title;
   } else {
-    clearRouterRouteLabel(trigger.labelEl);
     if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
       const assignment = !isMenubarStyleVariant(trigger.variant) && !trigger.app ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
       trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;

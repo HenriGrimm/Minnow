@@ -19,6 +19,7 @@
 import { getProviderRuntime } from '../providers/store.js';
 import { createGenerationState, cancel } from '../generations/store.js';
 import { pumpUpstreamAsync } from '../generations/upstream.js';
+import { isAgentCliProviderId } from '../../src/models/runtime-ids.mjs';
 import {
   formatRouterTierLabel,
   isDecisionModelId,
@@ -27,6 +28,9 @@ import {
 } from '../../src/models/router-tiers.mjs';
 
 export const EVALUATOR_TIMEOUT_MS = 4000;
+export const CHAT_EVALUATOR_TIMEOUT_MS = 30_000;
+// CLI admission, process startup and account initialization precede inference.
+export const CLI_EVALUATOR_TIMEOUT_MS = 60_000;
 /** Below this confidence a new decision does not move a chat off its current tier. */
 export const KEEP_BELOW_CONFIDENCE = 0.55;
 
@@ -235,6 +239,7 @@ async function askChatModel(evaluator, state, signal) {
   const criteria = (obj) => Object.entries(obj).map(([k, v]) => `- ${k}: ${v}`).join('\n');
   const child = createGenerationState({
     providerId: evaluator.providerId,
+    fallbackRole: 'utility',
     candidates: [{ providerId: evaluator.providerId, modelId: evaluator.modelId }],
     body: {
       model: evaluator.modelId,
@@ -255,8 +260,10 @@ async function askChatModel(evaluator, state, signal) {
       ],
     },
   });
+  child.routerAttempt = true;
   const abort = () => cancel(child);
   signal.addEventListener('abort', abort, { once: true });
+  if (signal.aborted) abort();
   try { await pumpUpstreamAsync({ state: child }); }
   finally { signal.removeEventListener('abort', abort); }
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -270,14 +277,18 @@ async function askChatModel(evaluator, state, signal) {
  * @param {Record<string, unknown>} body
  * @param {{ signal?: AbortSignal, timeoutMs?: number }} [options]
  */
-export async function evaluateTask(evaluator, body, { signal, timeoutMs = EVALUATOR_TIMEOUT_MS } = {}) {
+export async function evaluateTask(evaluator, body, { signal, timeoutMs } = {}) {
+  signal?.throwIfAborted();
+  const decisionModel = isDecisionModelId(evaluator.modelId);
+  const deadlineMs = timeoutMs ?? (decisionModel ? EVALUATOR_TIMEOUT_MS
+    : isAgentCliProviderId(evaluator.providerId) ? CLI_EVALUATOR_TIMEOUT_MS : CHAT_EVALUATOR_TIMEOUT_MS);
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort, { once: true });
-  const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), deadlineMs);
   const state = buildDecisionState(body);
   try {
-    const decision = isDecisionModelId(evaluator.modelId)
+    const decision = decisionModel
       ? await askDecisionModel(evaluator, state, controller.signal)
       : await askChatModel(evaluator, state, controller.signal);
     return {
@@ -288,7 +299,7 @@ export async function evaluateTask(evaluator, body, { signal, timeoutMs = EVALUA
     };
   } catch (error) {
     if (signal?.aborted) throw error;
-    if (controller.signal.aborted) throw new Error(`Evaluator took longer than ${Math.round(timeoutMs / 100) / 10}s`);
+    if (controller.signal.aborted) throw new Error(`Evaluator took longer than ${Math.round(deadlineMs / 100) / 10}s`);
     throw error;
   } finally {
     clearTimeout(timer);
