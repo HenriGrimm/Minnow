@@ -206,7 +206,7 @@ function showCreatePanel(show: boolean, fromRemote = false): void {
   const actions = document.querySelector('.welcome-page__actions');
   if (panel) {
     panel.classList.toggle('hidden', !show);
-    panel.setAttribute('aria-label', fromRemote ? 'Create From Remote' : 'Create new project');
+    panel.setAttribute('aria-label', fromRemote ? 'Clone repository' : 'Create new project');
   }
   document.getElementById('welcomeRemoteFields')?.classList.toggle('hidden', !createRemoteMode);
   const nameLabel = document.getElementById('welcomeProjectNameLabel');
