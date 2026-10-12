@@ -97,9 +97,29 @@ export function showDesktop(): void {
   showWorkspaces();
 }
 
+/**
+ * Code launch intents that app-host acts on once. Merging them into later
+ * launches would make every route (e.g. `#/app/code/boards`) replay the old
+ * chat switch and bounce the user back to that chat.
+ */
+const CODE_ONE_SHOT_LAUNCH_KEYS = [
+  'chatId',
+  'seed',
+  'issue',
+  'modeId',
+  'workspacePath',
+  'codeRefs',
+  'runTarget',
+] as const satisfies readonly (keyof LaunchOptions)[];
+
 function applyLaunchOptionsToInstance(inst: AppInstance, options?: LaunchOptions): void {
   if (!options || Object.keys(options).length === 0) return;
-  inst.launchOptions = { ...inst.launchOptions, ...options };
+  const previous = { ...inst.launchOptions };
+  if (inst.appId === 'code') {
+    for (const key of CODE_ONE_SHOT_LAUNCH_KEYS) delete previous[key];
+    inst.seed = undefined;
+  }
+  inst.launchOptions = { ...previous, ...options };
   if (options.seed) inst.seed = options.seed;
 }
 
