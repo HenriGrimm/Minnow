@@ -58,6 +58,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   let frame: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  /** The live turn as of the last full sync; the 1s tick repaints its line from this alone. */
+  let liveView: LiveView | null = null;
 
   function schedule(): void {
     if (disposed || frame !== undefined) return;
@@ -178,7 +180,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const failed = run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
     const duration = run && (live || run.endedAt != null)
       ? formatWorkDuration((live ? Date.now() : run.endedAt!) - run.createdAt) : '';
-    group.label.textContent = live ? `Working${duration ? ` · ${duration}` : '…'}` : endLabel(run, failed, stopped, duration);
+    setText(group.label, live ? workingLabel(duration) : endLabel(run, failed, stopped, duration));
     const outcome: WorkOutcome = live ? 'live' : failed ? 'failed' : stopped ? 'stopped' : 'done';
     paintStatus(group, outcome);
     group.button.dataset.outcome = outcome;
@@ -193,24 +195,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const tally = full ? undefined : group.summary;
     paintTally(group, tally, runningAgents);
 
-    let activityText = '';
-    if (live) {
-      const runningTool = rows.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>('.tool-call-summary--running'))).at(-1);
-      const latestAssistant = assistants.at(-1);
-      // Narration counts only when the round in flight wrote it; older prose is stale.
-      const bubble = latestAssistant?.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting):not(.msg-bubble--error)');
-      const narration = bubble?.textContent ? narrationSentence(bubble.textContent) : '';
-      const toolText = runningTool?.querySelector('.tool-call-action')?.textContent
-        || latestAssistant?.querySelector('.tool-start-indicator__label')?.textContent;
-      const runtime = latestAssistant?.querySelector('.stream-status__detail')?.textContent?.trim();
-      const phaseLabel = latestAssistant?.querySelector('.stream-status:not(.hidden) .stream-status__label')?.textContent;
-      const thinking = assistants.some((row) => row.dataset.streamPhase === 'thinking' || row.querySelector('.thoughts-panel-wrap--live'));
-      activityText = [narration || toolText || (thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ');
-    }
-    if (group.activity.textContent !== activityText) group.activity.textContent = activityText;
-    const tallyText = tally ? formatTurnSummary(tally) : '';
-    group.button.setAttribute('aria-label', [group.label.textContent, tallyText,
-      full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'].filter(Boolean).join('. '));
+    setText(group.activity, live ? liveActivityText(mount, rows, assistants) : '');
+    const ariaTail = [tally ? formatTurnSummary(tally) : '',
+      full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'];
+    setAttr(group.button, 'aria-label', workAriaLabel(group, ariaTail));
+    if (live) liveView = { group, turn, rows, assistants, ariaTail, historyLength: chat.history.length };
     const controlled: string[] = [];
     for (const row of activity) {
       // Corrections, recovery controls, the active checkpoint and open questions stay visible while collapsed.
@@ -227,7 +216,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       showActivity(thought, show, group);
       controlled.push(thought.id);
     }
-    group.button.setAttribute('aria-controls', controlled.join(' '));
+    // Thousands of ids on a long run; rewriting them each sync churns the accessibility tree.
+    setAttr(group.button, 'aria-controls', controlled.join(' '));
     paintSteps(activity, full, live);
     if (live) paintRunStatus(duration, turn.toolCount);
     for (const row of rows) {
@@ -277,6 +267,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     if (disposed) return;
     observer.disconnect();
     if (timer) { clearTimeout(timer); timer = undefined; }
+    liveView = null;
     const full = getChatView() === 'full';
     mount.classList.add('chat-thread');
     mount.dataset.chatView = full ? 'full' : 'compact';
@@ -321,7 +312,32 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     observer.observe(mount, { childList: true, subtree: true, attributes: true,
       attributeFilter: ['class', 'data-history-index', 'data-stream-phase', 'data-turn-kind'] });
-    if (streaming) timer = setTimeout(() => { if (mount.isConnected) sync(); else dispose(); }, 1000);
+    if (streaming) scheduleTick();
+  }
+
+  function scheduleTick(): void {
+    timer = setTimeout(() => { timer = undefined; if (mount.isConnected) tick(); else dispose(); }, 1000);
+  }
+
+  /**
+   * The live clock, narration and token count change every second without any
+   * structural mutation. Repaint just that line; a full sync walks every row of
+   * the run, which grows with the session.
+   */
+  function tick(): void {
+    const view = liveView;
+    if (disposed) return;
+    if (!view || !view.group.button.isConnected || !isStreaming() || chat.history.length !== view.historyLength) {
+      sync();
+      return;
+    }
+    const run = view.turn.run;
+    const duration = run ? formatWorkDuration(Date.now() - run.createdAt) : '';
+    setText(view.group.label, workingLabel(duration));
+    setText(view.group.activity, liveActivityText(mount, view.rows, view.assistants));
+    setAttr(view.group.button, 'aria-label', workAriaLabel(view.group, view.ariaTail));
+    paintRunStatus(duration, view.turn.toolCount);
+    scheduleTick();
   }
 
   function onPreference(): void {
@@ -356,6 +372,54 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
 export function disposeChatWorkView(mount: HTMLElement): void {
   controllers.get(mount)?.dispose();
+}
+
+interface LiveView {
+  group: WorkGroup;
+  turn: TranscriptTurn;
+  rows: HTMLElement[];
+  assistants: HTMLElement[];
+  ariaTail: string[];
+  historyLength: number;
+}
+
+function setText(el: HTMLElement, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+function setAttr(el: HTMLElement, name: string, value: string): void {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
+function workingLabel(duration: string): string {
+  return `Working${duration ? ` · ${duration}` : '…'}`;
+}
+
+function workAriaLabel(group: WorkGroup, tail: string[]): string {
+  return [group.label.textContent, ...tail].filter(Boolean).join('. ');
+}
+
+/**
+ * "Running tests · 1,234 tokens". Scans from the tail: the work in flight is at
+ * the end of the run, so a long turn costs a few rows, not all of them.
+ */
+function liveActivityText(mount: HTMLElement, rows: HTMLElement[], assistants: HTMLElement[]): string {
+  let runningTool: HTMLElement | undefined;
+  for (let i = rows.length - 1; i >= 0 && !runningTool; i--) {
+    runningTool = Array.from(rows[i]!.querySelectorAll<HTMLElement>('.tool-call-summary--running')).at(-1);
+  }
+  const latestAssistant = assistants.at(-1);
+  // Narration counts only when the round in flight wrote it; older prose is stale.
+  const bubble = latestAssistant?.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting):not(.msg-bubble--error)');
+  const narration = bubble?.textContent ? narrationSentence(bubble.textContent) : '';
+  const toolText = runningTool?.querySelector('.tool-call-action')?.textContent
+    || latestAssistant?.querySelector('.tool-start-indicator__label')?.textContent;
+  const runtime = latestAssistant?.querySelector('.stream-status__detail')?.textContent?.trim();
+  const phaseLabel = latestAssistant?.querySelector('.stream-status:not(.hidden) .stream-status__label')?.textContent;
+  // One native lookup instead of a query per assistant row.
+  const owners = new Set(Array.from(mount.querySelectorAll('.thoughts-panel-wrap--live'), (panel) => panel.closest('.msg')));
+  const thinking = assistants.some((row) => row.dataset.streamPhase === 'thinking' || owners.has(row));
+  return [narration || toolText || (thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ');
 }
 
 function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean, duration: string): string {

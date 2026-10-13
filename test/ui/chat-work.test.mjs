@@ -663,3 +663,38 @@ test('streaming token counts wait for the live tick instead of walking the trans
   assert.match(mount.querySelector('.chat-work__activity').textContent, /Thinking.*35 tokens/);
   row.streamStatus.dispose();
 });
+
+test('the live tick repaints the activity line without walking a long run', async () => {
+  chat.history = [{ role: 'user', content: 'Do the long task.' }];
+  for (let i = 0; i < 40; i++) chat.history.push(...tool(`t${i}`, `src/f${i}.ts`));
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  const row = appendStreamingAssistantRow(chat.id);
+  row.streamStatus.setPhase('thinking');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  const history = chat.history;
+  let reads = 0;
+  Object.defineProperty(chat, 'history', { configurable: true, get: () => { reads += 1; return history; } });
+  const bubble = row.wrap.querySelector(':scope > .msg-bubble');
+  bubble.classList.remove('msg-bubble--awaiting');
+  bubble.textContent = 'Checking the last file now. Then done.';
+  const activity = () => mount.querySelector('.chat-work__activity').textContent;
+  for (let i = 0; i < 30 && !activity().startsWith('Checking'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(activity(), 'Checking the last file now.');
+  // One length check per tick; a full sync reads every message of the run.
+  assert.ok(reads <= 2, `tick read history ${reads} times`);
+
+  // New history means new work: the next tick falls back to a full sync.
+  history.push({ role: 'assistant', content: '' });
+  reads = 0;
+  for (let i = 0; i < 30 && reads < history.length; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.ok(reads >= history.length, `full sync after history grew (${reads} reads)`);
+  row.streamStatus.dispose();
+});
