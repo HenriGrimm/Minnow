@@ -185,6 +185,29 @@ describe('resolveContextBudget', () => {
     );
   });
 
+  test('hosted providers cap max_tokens to the room left in the window', () => {
+    // Strata (and other hosted providers) reject prompt + max_tokens > window.
+    const messages = [user('p'.repeat(48_000))];
+    const prompt = estimateApiMessagesTokens(messages);
+    const window = resolveLocalWindowReserves({
+      providerId: 'strata',
+      maxTokens: 131072,
+      modelLimit: 131072,
+      toolsReserveTokens: 0,
+      messages,
+    });
+    assert.ok(window.requestMaxTokens < 131072);
+    assert.ok(prompt + window.requestMaxTokens <= 131072, `prompt ${prompt} + ${window.requestMaxTokens}`);
+    const unknown = resolveLocalWindowReserves({
+      providerId: 'strata',
+      maxTokens: 131072,
+      modelLimit: null,
+      toolsReserveTokens: 0,
+      messages,
+    });
+    assert.equal(unknown.requestMaxTokens, 131072);
+  });
+
   test('a prompt trimmed right up to the ceiling still asks for a real reply', () => {
     // A separate generation allowance used to make an otherwise valid prompt
     // request one token — every reply was "the".

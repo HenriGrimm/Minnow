@@ -192,6 +192,18 @@ function localRequestMaxTokens(params) {
 function resolveLocalWindowReserves(params) {
   const toolsReserveTokens = Math.max(0, Math.floor(params?.toolsReserveTokens ?? 0));
   const requestedMax = Math.floor(params?.maxTokens ?? 0);
+  const remoteMax = () => {
+    // Hosted providers (Strata, ...) reject prompt + max_tokens > window rather
+    // than stopping at the window, so cap max_tokens to the room left. Unknown
+    // window keeps the Settings max.
+    const window = Math.floor(params?.modelLimit ?? 0);
+    if (requestedMax <= 0 || window <= 0) return requestedMax;
+    const prompt = estimateApiMessagesTokens(Array.isArray(params?.messages) ? params.messages : []);
+    const margin = Math.max(256, Math.floor(window * 0.02));
+    const leftover = window - toolsReserveTokens - prompt - margin;
+    if (leftover >= requestedMax) return requestedMax;
+    return Math.max(Math.min(requestedMax, LOCAL_MIN_GENERATION_TOKENS), leftover);
+  };
   const generationReserveTokens = localGenerationReserveTokens({
     providerId: params?.providerId,
     maxTokens: requestedMax,
@@ -211,7 +223,7 @@ function resolveLocalWindowReserves(params) {
         modelLimit: params.modelLimit,
         generationReserveTokens
       })
-      : requestedMax
+      : remoteMax()
   };
 }
 function isPriorContextSummary(msg) {

@@ -73,7 +73,8 @@ import { createRepeatGuard, RepeatedToolCallError } from "./repeat-guard.js";
 import {
   contextRetryMessageLimit,
   isContextOverflowText,
-  parseContextOverflowNumbers
+  parseContextOverflowNumbers,
+  parseMaxTokensOverflow
 } from "./context-overflow-error.js";
 import {
   contextCalibratedMessageLimit,
@@ -1066,13 +1067,22 @@ function createTurnRunner(deps) {
       );
       // llama.cpp / mlx count prompt + n_predict against n_ctx. Trim against
       // tools only; leftover after the live prompt becomes request max_tokens.
-      const refreshLocalWindowReserves = () => resolveLocalWindowReserves({
-        providerId: input.providerId,
-        maxTokens: resolvedSampler.maxTokens,
-        modelLimit: modelContextLimit,
-        toolsReserveTokens: estimateToolsTokens(input.tools),
-        messages
-      });
+      // Set when a host rejects prompt + max_tokens > window: the room it
+      // reported bounds max_tokens until a round succeeds.
+      let maxTokensCap = null;
+      const refreshLocalWindowReserves = () => {
+        const reserves = resolveLocalWindowReserves({
+          providerId: input.providerId,
+          maxTokens: resolvedSampler.maxTokens,
+          modelLimit: modelContextLimit,
+          toolsReserveTokens: estimateToolsTokens(input.tools),
+          messages
+        });
+        if (maxTokensCap != null) {
+          reserves.requestMaxTokens = Math.min(reserves.requestMaxTokens, maxTokensCap);
+        }
+        return reserves;
+      };
       let { reservedTokens, requestMaxTokens } = refreshLocalWindowReserves();
       const noteContextStatus = (turnIndex, label, estimatedTokens) => {
         if (!label) return;
@@ -1550,6 +1560,25 @@ function createTurnRunner(deps) {
         } catch (streamErr) {
           if (isAbortLikeStreamError(streamErr, input.signal)) throw streamErr;
           const reason = errorText(streamErr);
+          const maxOverflow = parseMaxTokensOverflow(reason);
+          if (maxOverflow && overflowRetries < MAX_CONTEXT_OVERFLOW_RETRIES) {
+            // The prompt fits; only max_tokens is too large. Shrink it to the
+            // room the host reported instead of compacting the conversation.
+            const room = maxOverflow.contextTokens - maxOverflow.promptTokens - 256;
+            if (room >= 1 && room < maxOverflow.maxTokens) {
+              recordObservedContextWindow(input.providerId, input.modelId, maxOverflow.contextTokens);
+              modelContextLimit = narrowContextLimit(modelContextLimit, maxOverflow.contextTokens);
+              maxTokensCap = room;
+              ({ reservedTokens, requestMaxTokens } = refreshLocalWindowReserves());
+              overflowRetries += 1;
+              logSubAgentDebug("max_tokens_overflow_retry", {
+                retry: overflowRetries,
+                requestedMaxTokens: maxOverflow.maxTokens,
+                room
+              });
+              continue;
+            }
+          }
           if (isContextOverflowText(reason) && overflowRetries < MAX_CONTEXT_OVERFLOW_RETRIES) {
             const sentEstimate = estimateApiMessagesTokens(messages);
             const numbers = parseContextOverflowNumbers(reason);
@@ -1606,6 +1635,7 @@ function createTurnRunner(deps) {
           throw streamErr;
         }
         overflowRetries = 0;
+        maxTokensCap = null;
         const subFinishReason = turnResult.finishReason || (turnResult.toolCalls.length > 0 ? "tool_calls" : void 0);
         const subStreamEnd = classifyStreamEnd({
           finishReason: subFinishReason,
