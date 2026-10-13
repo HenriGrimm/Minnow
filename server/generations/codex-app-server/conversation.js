@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { buildAgentCliToolCatalog } from '../agent-cli/bridge.js';
 import { MAX_TRANSCRIPT_BYTES, validateAgentCliImageUrl } from '../agent-cli/prompt.js';
+import { codexReadBatchTool } from './read-batch.js';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function normalizeMessages(messages) {
@@ -37,6 +38,8 @@ export function prepareConversation(body, identity) {
   const messages = normalizeMessages(body.messages);
   const tools = buildAgentCliToolCatalog(body).map((tool, index) => ({ ...tool, name: `mn_tool_${index}`,
     description: `Minnow tool: ${tool.originalName}\n${tool.description}` }));
+  const batchTool = codexReadBatchTool(tools, body.tool_choice);
+  if (batchTool) tools.push(batchTool);
   const systems = messages.filter(row => ['system', 'developer'].includes(row.role));
   const instructions = systems.map(row => row.content).join('\n\n');
   if (Buffer.byteLength(JSON.stringify(messages)) > MAX_TRANSCRIPT_BYTES) throw new Error('Codex transcript exceeds 8 MB.');

@@ -175,6 +175,13 @@ test('Codex nested unsupported-model errors explain how to refresh the CLI catal
   assert.ok(!failure.message.includes('{"'));
 });
 
+for (const kind of ['claude', 'cursor', 'codex']) test(`${kind} batching guidance dispatches independent reads before awaiting results`, () => {
+  const { systemPrompt } = buildAgentCliPrompt({ messages: [{ role: 'user', content: 'Read.' }] }, kind);
+  assert.match(systemPrompt, /up to eight calls, before waiting for their results/);
+  assert.match(systemPrompt, /interactive tools sequential/);
+  assert.match(systemPrompt, /Wait for real results before dependent work/);
+});
+
 test('replay keeps tool ids/results, escapes role boundaries, and excludes private reasoning', () => {
   const replay = buildAgentCliPrompt({ messages: [
     { role: 'system', content: 'System instructions' },

@@ -5,6 +5,18 @@ import { normalizeMessages, prepareConversation, continuation, seedConversation 
 const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=', detail: 'high' } };
 const user = content => ({ role: 'user', content });
 
+test('read batch advertises only permitted safe names and preserves explicit tool choice', () => {
+  const tools = ['read_file', 'apply_patch', 'mcp__external', 'read_symbol'].map(name => ({ type: 'function',
+    function: { name, parameters: { type: 'object', properties: {} } } }));
+  const prepare = tool_choice => prepareConversation({ messages: [user('Read.')], tools, tool_choice }, {});
+  const batch = prepare().dynamicTools.find(tool => tool.name === 'mn_read_batch');
+  assert.deepEqual(batch.inputSchema.properties.calls.items.properties.name.enum, ['read_file', 'read_symbol']);
+  assert.equal(batch.inputSchema.properties.calls.maxItems, 6);
+  for (const choice of ['none', 'required', { type: 'function', function: { name: 'read_file' } }]) {
+    assert.ok(!prepare(choice).dynamicTools.some(tool => tool.name === 'mn_read_batch'));
+  }
+});
+
 test('Codex validates image content before inference and retains the transcript bound', () => {
   for (const url of ['https://example.com/private.png', 'file:///tmp/image.png', 'data:image/svg+xml;base64,aW1hZ2U=',
     'data:image/png;base64,abc', 'data:image/png;base64,!!!']) {

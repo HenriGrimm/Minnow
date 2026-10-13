@@ -17,6 +17,11 @@ async function step(tid, turnId) {
   if (script.compact) { event('item/started', { threadId: tid, turnId, item: { id: 'compact', type: 'contextCompaction' } }); return; }
   if (script.calls) {
     for (const call of script.calls) {
+      for (let i = 0; i < (call.activityCount ?? 0); i++) {
+        await new Promise(resolve => setTimeout(resolve, call.activityIntervalMs ?? 100));
+        event('item/started', { threadId: tid, turnId, item: { id: `activity-${call.id}-${i}`, type: 'dynamicToolCall' } });
+      }
+      if (call.delayMs) await new Promise(resolve => setTimeout(resolve, call.delayMs));
       const id = ++requestId;
       const row = { id, method: 'item/tool/call', params: { threadId: tid, turnId, callId: call.id, tool: call.name, arguments: call.args ?? {} } };
       pending.set(id, { tid, turnId, call }); send(row); if (call.duplicate) send(row);

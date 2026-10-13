@@ -11,8 +11,12 @@ import { codexIdentity, codexSessionKey, lockCodexChat, getCodexSession, createC
   closeCodexSession, syncCodexCredentials, retainCodexSession, dirtyCodexSession, checkpointCodexSession } from './manager.js';
 import { updateAgentCliSessionOutput } from '../agent-cli/output.js';
 import { withCliTurnContext } from '../agent-cli/conversation.js';
+import { CODEX_READ_BATCH, expandCodexReadBatch } from './read-batch.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
+const MAX_HANDOFF_CALLS = 8;
+const HANDOFF_QUIET_MS = 200;
+const HANDOFF_MAX_MS = 1000;
 function failure(session, error) { session.round?.finish('error', error); void closeCodexSession(session).catch(() => {}); }
 function onEvent(session, event) {
   const p = event.params ?? {};
@@ -68,16 +72,27 @@ function onRequest(session, request) {
     if (existing.response) void session.rpc.respond(request.id, existing.response).catch(error => failure(session, error));
     return;
   }
-  if (session.seen.size >= 1024 || session.pending.size >= 64 || Buffer.byteLength(JSON.stringify(p.arguments)) > 1024 * 1024) {
+  let functions;
+  try { functions = p.tool === CODEX_READ_BATCH ? expandCodexReadBatch(p.arguments, session.tools)
+    : [{ name: session.tools.get(p.tool).originalName, arguments: JSON.stringify(p.arguments) }]; }
+  catch (error) {
+    void session.rpc.respond(request.id, null, { code: -32602, message: error.message }).catch(() => {});
+    failure(session, error); return;
+  }
+  if (session.seen.size >= 1024 || session.pending.size + functions.length > 64 || Buffer.byteLength(JSON.stringify(p.arguments)) > 1024 * 1024) {
     failure(session, new Error('Codex tool queue exceeded its limit.')); return;
   }
-  const call = { id: `call_${randomUUID().replaceAll('-', '')}`, type: 'function',
-    function: { name: session.tools.get(p.tool).originalName, arguments: JSON.stringify(p.arguments) } };
-  const entry = { call, tool: p.tool, arguments: call.function.arguments, requestIds: new Set([request.id]), receivedAt: performance.now() };
-  session.seen.set(nativeKey, entry); session.pending.set(call.id, entry);
-  const round = session.round;
-  if (round && !round.finished && round.calls.length < 8) round.tool(call);
-  else session.buffered.push(call);
+  const group = { tool: p.tool, arguments: JSON.stringify(p.arguments), requestIds: new Set([request.id]),
+    calls: [], results: new Map(), receivedAt: performance.now() };
+  session.seen.set(nativeKey, group);
+  for (const fn of functions) {
+    const call = { id: `call_${randomUUID().replaceAll('-', '')}`, type: 'function', function: fn };
+    group.calls.push(call);
+    session.pending.set(call.id, { call, group, receivedAt: group.receivedAt });
+    const round = session.round;
+    if (round && !round.finished && round.calls.length < MAX_HANDOFF_CALLS) round.tool(call);
+    else session.buffered.push(call);
+  }
 }
 
 /** One native turn can span multiple ordinary Minnow generation/tool rounds. */
@@ -134,22 +149,38 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     let resolveRound;
     const done = new Promise(resolve => { resolveRound = resolve; });
     round = {
-      calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, bytes: 0,
+      calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, batchStartedAt: null, handoffReady: false, bytes: 0,
       choose() { if (!this.emitted) { this.emitted = true; noteGenerationCandidateChosen(state, { ...candidate, index }); } },
       activity() {
         clearTimeout(this.idleTimer);
+        if (this.calls.length) this.scheduleHandoff();
         if (idleMs > 0 && !this.calls.length) this.idleTimer = setTimeout(() => { timeoutKind = 'idle'; controller.abort(); }, idleMs);
+      },
+      scheduleHandoff() {
+        if (this.finished) return;
+        clearTimeout(this.batchTimer);
+        // Native code-mode can still be emitting a group after the first call.
+        // Activity extends collection, but never beyond the bounded deadline.
+        const remaining = HANDOFF_MAX_MS - (performance.now() - this.batchStartedAt);
+        const delay = this.handoffReady || this.calls.length >= MAX_HANDOFF_CALLS ? 0 : Math.max(0, Math.min(HANDOFF_QUIET_MS, remaining));
+        this.batchTimer = setTimeout(() => this.finish('tool_calls'), delay);
       },
       tool(call) {
         metrics.tool_handoff_ms ??= performance.now() - initializedAt;
+        this.batchStartedAt ??= performance.now();
+        // A validated transport batch is already complete; no quiet wait needed.
+        this.handoffReady ||= session.pending.get(call.id)?.group.tool === CODEX_READ_BATCH;
         clearTimeout(this.idleTimer); this.calls.push(call); this.choose();
         if (body.stream !== false) append(state, { choices: [{ index: 0, delta: { tool_calls: [{ index: this.calls.length - 1, ...call }] } }] });
-        clearTimeout(this.batchTimer);
-        this.batchTimer = setTimeout(() => this.finish('tool_calls'), 200);
+        this.scheduleHandoff();
       },
       async finish(reason, error) {
         if (this.finished) return;
         this.finished = true; clearTimeout(this.idleTimer); clearTimeout(this.batchTimer);
+        if (this.calls.length) {
+          metrics.tool_batch_count = this.calls.length;
+          metrics.tool_batch_collect_ms = performance.now() - this.batchStartedAt;
+        }
         if (reason === 'stop' && !this.calls.length && !resume?.results && (body.tool_choice === 'required' || body.tool_choice?.function?.name)) {
           error = new Error('Codex completed without calling the required tool.');
         }
@@ -210,15 +241,23 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       for (const call of session.handed) {
         const entry = session.pending.get(call.id);
         if (!entry) throw new Error('Codex tool handoff was lost; execution results are retained in Minnow.');
-        entry.response = { contentItems: resume.results.get(call.id), success: true };
+        const group = entry.group;
+        group.results.set(call.id, resume.results.get(call.id));
         session.pending.delete(call.id);
         metrics.tool_wait_ms = Math.max(metrics.tool_wait_ms ?? 0, performance.now() - entry.receivedAt);
+        if (group.results.size !== group.calls.length) continue;
+        const contentItems = group.tool === CODEX_READ_BATCH
+          ? group.calls.flatMap((member, index) => [{ type: 'inputText', text: JSON.stringify({ index,
+            name: member.function.name, content: group.results.get(member.id).filter(item => item.type === 'inputText').map(item => item.text).join('\n') }) },
+            ...group.results.get(member.id).filter(item => item.type !== 'inputText')])
+          : group.results.get(call.id);
+        group.response = { contentItems, success: true };
         const returnStartedAt = performance.now();
-        for (const id of entry.requestIds) await session.rpc.respond(id, entry.response);
+        for (const id of group.requestIds) await session.rpc.respond(id, group.response);
         metrics.tool_return_ms = Math.max(metrics.tool_return_ms ?? 0, performance.now() - returnStartedAt);
       }
       session.handed = [];
-      for (const call of session.buffered.splice(0, 8)) round.tool(call);
+      for (const call of session.buffered.splice(0, MAX_HANDOFF_CALLS)) round.tool(call);
     } else {
       session.context = undefined;
       const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);

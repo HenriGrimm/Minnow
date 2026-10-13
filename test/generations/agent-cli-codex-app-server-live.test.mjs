@@ -74,7 +74,7 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     }
     assert.equal(processes, 1);
     assert.equal(endpoint.requests.length, 12);
-    assert.ok(endpoint.requests.every(row => row.tools.every(tool => ['mn_tool_0', 'exec', 'wait'].includes(tool.name))));
+    assert.ok(endpoint.requests.every(row => row.tools.every(tool => ['mn_tool_0', 'mn_read_batch', 'exec', 'wait'].includes(tool.name))));
     assert.ok(Math.max(...forwarding) < 50, `Forwarding exceeded 50 ms: ${forwarding}`);
     assert.equal(states.length, 13);
     const billed = () => states.reduce((sum, state) => sum + Buffer.concat(state.chunks).toString().split('\n\n')
@@ -103,6 +103,25 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     // This abandoned handoff was killed before the native CLI reported its
     // usage. The replacement must never invent that missing count.
     assert.equal(billed(), (endpoint.requests.length - 1) * 25);
+    // Direct dynamic calls above are dispatched serially by the native CLI.
+    // A transport read batch fans out independently of native serialization.
+    messages.push({ role: 'user', content: 'Read two files independently.' });
+    const beforeBatch = endpoint.requests.length;
+    const grouped = await round({ calls: [{ id: 'parallel-exec', name: 'exec', namespace: 'functions',
+      code: 'text(await tools.mn_read_batch({calls:[{name:"read_file",arguments:{}},{name:"read_file",arguments:{}}]}));' }] });
+    assert.equal(grouped.calls.length, 2, 'code-mode independent reads reach Minnow in one batch');
+    assert.equal(grouped.rows.at(-1).minnow_cli.timings.tool_batch_count, 2);
+    assert.equal((await round({ text: 'Both results received.' })).content, 'Both results received.');
+    assert.equal(endpoint.requests.length - beforeBatch, 2, 'one inference for the batch, one for the answer');
+    assert.equal(processes, 3, 'batch continuation retains the native process');
+    const returned = JSON.stringify(endpoint.requests.at(-1).input);
+    for (const call of grouped.calls) assert.ok(returned.includes(`Recorded ${call.id}`), 'both real results return through exec');
+    await shutdownCodexSessions();
+    messages.push({ role: 'user', content: 'Continue after the batch and restart.' });
+    const batchResumed = await round({ text: 'Batch resumed.' });
+    assert.equal(batchResumed.content, 'Batch resumed.');
+    assert.equal(batchResumed.rows.at(-1).minnow_cli.continuation, 'resumed');
+    assert.equal(processes, 4);
   } finally {
     await shutdownCodexSessions(); __setCodexInvocationForTests();
     for (const state of states) clearTimeout(state.evictTimer);

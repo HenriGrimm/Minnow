@@ -202,6 +202,9 @@ test('Codex enables isolated tool orchestration and disables native environment 
   assert.deepEqual(start.environments, []);
   assert.match(start.dynamicTools[0].description, /Minnow tool: read_file/);
   assert.match(start.developerInstructions, /code-mode exec/);
+  assert.match(start.developerInstructions, /tools\.mn_read_batch/);
+  assert.match(start.developerInstructions, /up to six ordinary Minnow calls/);
+  assert.match(start.developerInstructions, /interactive tools sequential/);
 });
 
 test('the production provider entry selects app-server for legacy persisted replay profiles', async () => {
@@ -220,6 +223,111 @@ test('parallel handoff, duplicate notification, real tool results and same-turn 
   const second = await generate(messages);
   assert.equal(second.state.status, 'complete'); assert.ok(second.wire.includes('Done.')); assert.equal(processes, 1);
 });
+test('native activity keeps staggered calls in one handoff without restarting the process', async () => {
+  setup([{ calls: [{ id: 'one', name: 'mn_tool_0' },
+    { id: 'two', name: 'mn_tool_0', activityCount: 3, activityIntervalMs: 100 }] }, { text: 'Done.' }]);
+  const messages = [{ role: 'user', content: 'Read independently.' }];
+  const first = await generate(messages);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.equal(calls.length, 2);
+  assert.equal(first.rows.at(-1).minnow_cli.timings.tool_batch_count, 2);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    ...calls.map(call => ({ role: 'tool', tool_call_id: call.id, content: 'Real result' })));
+  assert.ok((await generate(messages)).wire.includes('Done.'));
+  assert.equal(processes, 1);
+});
+
+test('single-call handoff retains the short quiet window', async () => {
+  setup([{ calls: [{ id: 'one', name: 'mn_tool_0' }] }]);
+  const first = await generate([{ role: 'user', content: 'Read.' }]);
+  const timings = first.rows.at(-1).minnow_cli.timings;
+  assert.equal(timings.tool_batch_count, 1);
+  assert.ok(timings.tool_batch_collect_ms < 800, `collection took ${timings.tool_batch_collect_ms} ms`);
+});
+
+test('continuous native activity cannot postpone handoff indefinitely', async () => {
+  setup([{ calls: [{ id: 'one', name: 'mn_tool_0' },
+    { id: 'two', name: 'mn_tool_0', activityCount: 20, activityIntervalMs: 100 }] }]);
+  const first = await generate([{ role: 'user', content: 'Read.' }]);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const timings = first.rows.at(-1).minnow_cli.timings;
+  assert.equal(timings.tool_batch_count, 1);
+  assert.ok(timings.tool_batch_collect_ms >= 900);
+  assert.ok(timings.tool_batch_collect_ms < 1800, `collection took ${timings.tool_batch_collect_ms} ms`);
+});
+
+test('a full handoff flushes promptly and overflow calls survive the next round', async () => {
+  setup([{ calls: Array.from({ length: 9 }, (_, i) => ({ id: `read-${i}`, name: 'mn_tool_0' })) }, { text: 'Done.' }]);
+  const messages = [{ role: 'user', content: 'Read files.' }];
+  const collect = result => result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  const first = await generate(messages);
+  const calls = collect(first);
+  assert.equal(calls.length, 8);
+  assert.ok(first.rows.at(-1).minnow_cli.timings.tool_batch_collect_ms < 180);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    ...calls.map(call => ({ role: 'tool', tool_call_id: call.id, content: 'Real result' })));
+  const overflow = collect(await generate(messages));
+  assert.equal(overflow.length, 1);
+  assert.ok(!calls.some(call => call.id === overflow[0].id));
+  messages.push({ role: 'assistant', content: '', tool_calls: overflow },
+    { role: 'tool', tool_call_id: overflow[0].id, content: 'Last real result' });
+  assert.ok((await generate(messages)).wire.includes('Done.'));
+  assert.equal(processes, 1);
+});
+
+test('read batch expands into ordinary calls once and returns ordered real results', async () => {
+  const log = path.join(root, 'read-batch-results.jsonl');
+  setup([{ calls: [{ id: 'batch', name: 'mn_read_batch', duplicate: true, args: { calls: [
+    { name: 'read_file', arguments: { path: 'safe' } }, { name: 'read_file', arguments: { path: 'blocked' } },
+  ] } }] }, { text: 'Done.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const messages = [{ role: 'user', content: 'Read files.' }];
+  const first = await generate(messages);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.deepEqual(calls.map(call => call.function.name), ['read_file', 'read_file']);
+  assert.equal(new Set(calls.map(call => call.id)).size, 2);
+  assert.ok(first.rows.at(-1).minnow_cli.timings.tool_batch_collect_ms < 180, 'complete transport batches skip the quiet wait');
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Actual source' },
+    { role: 'tool', tool_call_id: calls[1].id, content: 'Error: permission denied' });
+  assert.ok((await generate(messages)).wire.includes('Done.'));
+  const responses = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.result?.contentItems);
+  assert.equal(responses.length, 1, 'duplicate notification has one native request ID');
+  assert.deepEqual(responses[0].result.contentItems.map(item => JSON.parse(item.text)), [
+    { index: 0, name: 'read_file', content: 'Actual source' },
+    { index: 1, name: 'read_file', content: 'Error: permission denied' },
+  ]);
+  assert.equal(processes, 1);
+});
+
+test('split transport batches retain partial results until every member is recorded', async () => {
+  const batch = id => ({ id, name: 'mn_read_batch', args: { calls: Array.from({ length: 5 }, (_, i) =>
+    ({ name: 'read_file', arguments: { path: `${id}-${i}` } })) } });
+  setup([{ calls: [batch('first'), batch('second')] }, { text: 'Both batches received.' }]);
+  const messages = [{ role: 'user', content: 'Read files.' }];
+  const collect = result => result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  const first = collect(await generate(messages));
+  assert.equal(first.length, 8);
+  messages.push({ role: 'assistant', content: '', tool_calls: first },
+    ...first.map(call => ({ role: 'tool', tool_call_id: call.id, content: `Result ${call.id}` })));
+  const remaining = collect(await generate(messages));
+  assert.equal(remaining.length, 2);
+  messages.push({ role: 'assistant', content: '', tool_calls: remaining },
+    ...remaining.map(call => ({ role: 'tool', tool_call_id: call.id, content: `Result ${call.id}` })));
+  assert.ok((await generate(messages)).wire.includes('Both batches received.'));
+  assert.equal(new Set([...first, ...remaining].map(call => call.id)).size, 10);
+  assert.equal(processes, 1);
+});
+
+for (const name of ['apply_patch', 'unknown_read', 'ask_question']) test(`read batch rejects ${name} before handing off any member`, async () => {
+  setup([{ calls: [{ id: 'invalid-batch', name: 'mn_read_batch', args: { calls: [
+    { name: 'read_file', arguments: {} }, { name, arguments: {} },
+  ] } }] }]);
+  const result = await generate([{ role: 'user', content: 'Read.' }]);
+  assert.equal(result.state.status, 'error');
+  assert.match(result.state.errorMessage, /unavailable or non-read-only/);
+  assert.equal(result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).length, 0);
+});
+
 test('history edits, changed tool permissions and instruction changes rebuild the native thread', async () => {
   setup([{ text: 'Reply.' }]);
   await generate([{ role: 'user', content: 'A.' }]);
@@ -319,6 +427,27 @@ test('shared runner executes duplicated native calls once and retains real denie
   assert.equal(result.outcome, 'no_report'); assert.deepEqual(executed, ['safe', 'blocked']);
   assert.equal(processes, 1);
   assert.ok(events.some(event => event.type === 'tool_result' && event.content.includes('permission denied')));
+});
+
+test('transport batches still use ordinary runner execution and permission results', async () => {
+  setup([{ calls: [{ id: 'batch', name: 'mn_read_batch', duplicate: true, args: { calls: [
+    { name: 'read_file', arguments: { path: 'safe' } }, { name: 'read_file', arguments: { path: 'blocked' } },
+  ] } }] }, { text: 'Finished.' }]);
+  const executed = [], events = [];
+  const result = await runTurn({ chatId: 'runner-batch', seed: 'Read files.', tools, lazyTools: false,
+    model: { providerId: 'codex-cli', id: 'fixture' }, deps: runnerDeps(),
+    injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    execute: async (name, args) => {
+      assert.equal(name, 'read_file', 'the transport wrapper never reaches tool execution');
+      executed.push(args.path);
+      return { content: args.path === 'blocked' ? 'Error: permission denied' : 'Actual file contents' };
+    },
+    onEvent: event => events.push(event),
+  });
+  assert.equal(result.outcome, 'no_report');
+  assert.deepEqual(executed, ['safe', 'blocked']);
+  assert.ok(events.some(event => event.type === 'tool_result' && event.content.includes('permission denied')));
+  assert.equal(processes, 1);
 });
 
 test('shared runner compacts its own transcript before rebuilding after native compaction', async () => {
