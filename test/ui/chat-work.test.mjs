@@ -603,3 +603,63 @@ test('the latest settled answer gets copy, remake and its speed; older turns do 
   assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 0, 'full view keeps the raw metric chips instead');
   setChatView('compact');
 });
+
+test('a repeat sync of a long live turn writes no transcript classes', async () => {
+  chat.history = [{ role: 'user', content: 'Do the long task.' }];
+  // Silent tool rounds (thoughts only) chain into one joined rail, like a long agent run.
+  for (let i = 0; i < 40; i++) chat.history.push(...tool(`t${i}`, `src/f${i}.ts`).map((m) => ({ ...m, ...(m.role === 'assistant' ? { content: '' } : {}) })));
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  await new Promise((resolve) => setTimeout(resolve, 350));
+  appendStreamingAssistantRow(chat.id);
+  installChatWorkView(mount, chat, () => true);
+  const steps = mount.querySelectorAll('.chat-step').length;
+  const joined = mount.querySelectorAll('.chat-step--joined').length;
+  assert.ok(steps >= 40 && joined >= 39, `rail painted (${steps} steps, ${joined} joined)`);
+
+  const records = [];
+  const observer = new win.MutationObserver((list) => records.push(...list));
+  observer.observe(mount, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+  installChatWorkView(mount, chat, () => true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  observer.disconnect();
+  // Same-value writes are free; a remove+add pair leaves one record whose old value
+  // differs from the final class, and that restyles every row of the run per tick.
+  const churned = records.filter((r) => !r.target.closest('.chat-work') && r.oldValue !== r.target.className);
+  assert.deepEqual(churned.map((r) => `${r.oldValue} -> ${r.target.className}`), []);
+  assert.equal(mount.querySelectorAll('.chat-step').length, steps);
+  assert.equal(mount.querySelectorAll('.chat-step--joined').length, joined);
+});
+
+test('streaming token counts wait for the live tick instead of walking the transcript', async () => {
+  chat.history = [{ role: 'user', content: 'Run the tests.' }];
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  const row = appendStreamingAssistantRow(chat.id);
+  const history = chat.history;
+  let walks = 0;
+  Object.defineProperty(chat, 'history', { configurable: true, get: () => { walks += 1; return history; } });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+
+  // A phase change is structural: it walks on the next frame (and re-arms the 1s tick).
+  row.streamStatus.setPhase('thinking');
+  await settle();
+  assert.ok(walks > 0, 'phase changes still sync the disclosure');
+
+  walks = 0;
+  for (let n = 1; n <= 5; n++) {
+    row.streamStatus.setRuntimeDetail(`${n * 7} tokens`);
+    row.streamStatus.setThinkingElapsed(n * 1000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await settle();
+  assert.equal(walks, 0, 'timer-driven status text never schedules a transcript walk');
+
+  for (let i = 0; i < 30 && !/35 tokens/.test(mount.querySelector('.chat-work__activity').textContent); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.match(mount.querySelector('.chat-work__activity').textContent, /Thinking.*35 tokens/);
+  row.streamStatus.dispose();
+});

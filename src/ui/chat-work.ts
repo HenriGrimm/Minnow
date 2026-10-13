@@ -31,6 +31,9 @@ interface WorkGroup {
   detailKey?: string;
 }
 
+/** Text that ticks on a timer during a stream; never worth a transcript walk. */
+const LIVE_TEXT_LEAVES = '.stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label';
+
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();
 let nextId = 0;
@@ -68,6 +71,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
       if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow')) return false;
+      // Token counts and elapsed clocks rewrite every ~80ms while streaming; the
+      // 1s live tick picks them up. Phase changes still land via classes/data-stream-phase.
+      if (target.closest(LIVE_TEXT_LEAVES)) return false;
       return record.type === 'childList' || record.type === 'attributes';
     })) schedule();
   });
@@ -457,30 +463,40 @@ function hasSettledThoughts(row: HTMLElement): boolean {
  * were mounted; only classes change. A thinking-only round keeps its own step:
  * its Thoughts panel is the only place the reasoning can be read, so folding
  * the row into the tool round it led to would hide it entirely.
+ *
+ * Classes are diffed, never cleared and re-added: a live turn holds every row
+ * of the run, and an unchanged remove+add still restyles each row (~140ms per
+ * sync at 66k elements).
  */
 function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void {
-  for (const row of activity) {
-    for (const cls of STEP_CLASSES) row.classList.remove(cls);
-  }
-  if (full) return;
-  const visible = activity.filter((row) => !row.matches(OFF_RAIL));
   const steps = new Set<HTMLElement>();
-  visible.forEach((row) => {
-    if (row.matches(TOOL_ROW) || row.matches('.msg--steered')) { steps.add(row); return; }
-    if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
-    // A thinking-only round (live, or one that settled without prose) is its own step.
-    if (!hasProse(row) && (hasSettledThoughts(row)
-      || (live && row.querySelector('.thoughts-panel-wrap--live, .tool-start-indicator')))) steps.add(row);
-  });
-  const ordered = visible.filter((row) => steps.has(row));
-  ordered.forEach((row, i) => {
-    row.classList.add('chat-step');
-    let sibling = row.nextElementSibling;
-    while (sibling instanceof HTMLElement && sibling.matches(OFF_RAIL)) {
-      sibling = sibling.nextElementSibling;
-    }
-    if (ordered[i + 1] && sibling === ordered[i + 1]) row.classList.add('chat-step--joined');
-  });
+  const joined = new Set<HTMLElement>();
+  if (!full) {
+    const visible = activity.filter((row) => !row.matches(OFF_RAIL));
+    visible.forEach((row) => {
+      if (row.matches(TOOL_ROW) || row.matches('.msg--steered')) { steps.add(row); return; }
+      if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
+      // A thinking-only round (live, or one that settled without prose) is its own step.
+      if (!hasProse(row) && (hasSettledThoughts(row)
+        || (live && row.querySelector('.thoughts-panel-wrap--live, .tool-start-indicator')))) steps.add(row);
+    });
+    const ordered = visible.filter((row) => steps.has(row));
+    ordered.forEach((row, i) => {
+      let sibling = row.nextElementSibling;
+      while (sibling instanceof HTMLElement && sibling.matches(OFF_RAIL)) {
+        sibling = sibling.nextElementSibling;
+      }
+      if (ordered[i + 1] && sibling === ordered[i + 1]) joined.add(row);
+    });
+  }
+  for (const row of activity) {
+    setClass(row, 'chat-step', steps.has(row));
+    setClass(row, 'chat-step--joined', joined.has(row));
+  }
+}
+
+function setClass(row: HTMLElement, cls: string, on: boolean): void {
+  if (row.classList.contains(cls) !== on) row.classList.toggle(cls, on);
 }
 
 function clearSteps(mount: HTMLElement): void {
