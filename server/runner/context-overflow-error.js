@@ -13,6 +13,7 @@ export const CONTEXT_OVERFLOW_MARKERS = [
   'context limit has been reached',
   'exceed context window',
   'requested tokens',
+  'exceeds the context window',
 ];
 
 export function isContextOverflowText(text) {
@@ -33,6 +34,23 @@ export function parseContextOverflowNumbers(text) {
   if (requestTokens <= 0 || limitTokens <= 0) return null;
   if (requestTokens <= limitTokens) return null;
   return { requestTokens, limitTokens };
+}
+
+/**
+ * `prompt (13355 tokens) + max tokens (131072) exceeds the context (131072)`
+ * Hosted providers (Strata) reject prompt + max_tokens > window outright.
+ */
+const PROMPT_PLUS_MAX_NUMBERS =
+  /prompt\s*\(\s*(\d+)\s*tokens?\s*\)\s*\+\s*max[_ ]tokens\s*\(\s*(\d+)\s*\)[^()]*\(\s*(\d+)\s*\)/i;
+
+export function parseMaxTokensOverflow(text) {
+  const match = PROMPT_PLUS_MAX_NUMBERS.exec(String(text ?? ''));
+  if (!match) return null;
+  const promptTokens = Number(match[1]);
+  const maxTokens = Number(match[2]);
+  const contextTokens = Number(match[3]);
+  if (![promptTokens, maxTokens, contextTokens].every((n) => Number.isFinite(n) && n > 0)) return null;
+  return { promptTokens, maxTokens, contextTokens };
 }
 
 export function contextRetryMessageLimit(sentEstimate, numbers, safetyMargin) {

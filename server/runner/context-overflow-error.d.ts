@@ -22,6 +22,19 @@ export interface ContextOverflowNumbers {
  */
 export function parseContextOverflowNumbers(text: string): ContextOverflowNumbers | null;
 
+/** Counts from a "prompt + max tokens exceeds the context" rejection. */
+export interface MaxTokensOverflow {
+  promptTokens: number;
+  maxTokens: number;
+  contextTokens: number;
+}
+
+/**
+ * Recover prompt / max_tokens / window from a hosted provider's rejection of
+ * `prompt + max_tokens > window`. Returns null when the shape does not match.
+ */
+export function parseMaxTokensOverflow(text: string): MaxTokensOverflow | null;
+
 /**
  * Message-estimate ceiling for a retry after `sentEstimate` tokens of messages
  * were rejected.
