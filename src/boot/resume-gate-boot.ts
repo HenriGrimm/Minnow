@@ -14,6 +14,9 @@
 
 import { getActiveChat, saveSessionsNow } from '../state/sessions.ts';
 import type { Chat, SessionState } from '../types.ts';
+import { normalizeWorkspacePath } from '../lib/normalize-workspace-path.ts';
+import { getViewWorkspacePath } from '../state/view-workspace.ts';
+import { getWorkspacePath } from '../state/workspace.ts';
 import { listChatsWithGenerationId } from '../chat/generation-resume.ts';
 import { hasIncompleteToolBatchForBoot } from '../chat/incomplete-tool-resume.ts';
 import { setResumeGateState } from '../chat/resume-gate.ts';
@@ -47,6 +50,29 @@ function hasCandidates(candidates: ResumeCandidates): boolean {
 }
 
 /**
+ * Keep only the chats that belong to this window's workspace.
+ *
+ * Every window loads the same session store, so another window's live chat
+ * carries a generation id here too and would be offered for resume. With no
+ * workspace to scope by (browser, unbound gate window) every chat is kept, which
+ * is the single-window behaviour. Legacy chats with no workspace belong to no
+ * window once a workspace is known.
+ */
+export function scopeChatsToWindowWorkspace(
+  chats: readonly Chat[],
+  workspacePath: string = getViewWorkspacePath() || getWorkspacePath(),
+): Chat[] {
+  const key = normalizeWorkspacePath(workspacePath);
+  if (!key) return [...chats];
+  return chats.filter((chat) => normalizeWorkspacePath(chat.workspacePath ?? '') === key);
+}
+
+function isActiveChatInScope(scoped: readonly Chat[]): boolean {
+  const activeId = getActiveChat()?.id;
+  return Boolean(activeId) && scoped.some((chat) => chat.id === activeId);
+}
+
+/**
  * Everything the three boot resumes would restart, plus chats stamped
  * `resumeInterrupted` by Quit Minnow / crash mid-turn (generation id may already
  * be gone after a clean shutdown cancel).
@@ -65,15 +91,16 @@ export async function collectResumeCandidates(state: SessionState): Promise<Resu
   };
 
   const activeId = getActiveChat()?.id;
-  const active = listChatsWithGenerationId(state.chats).find((chat) => chat.id === activeId);
+  const scoped = scopeChatsToWindowWorkspace(state.chats);
+  const active = listChatsWithGenerationId(scoped).find((chat) => chat.id === activeId);
   if (active) {
     pushChat(active, 'generation');
-  } else if (await hasIncompleteToolBatchForBoot()) {
+  } else if (isActiveChatInScope(scoped) && (await hasIncompleteToolBatchForBoot())) {
     const activeChat = getActiveChat();
     if (activeChat) pushChat(activeChat, 'tool-batch');
   }
 
-  for (const chat of state.chats) {
+  for (const chat of scoped) {
     if (!isChatResumeInterrupted(chat)) continue;
     pushChat(chat, 'interrupted');
   }
@@ -89,8 +116,9 @@ export async function collectResumeCandidates(state: SessionState): Promise<Resu
  * synchronous on purpose: it must land before the first `await` in `initApp`.
  */
 export function parkResumeCandidatesAtBoot(state: SessionState): void {
-  const hasInterrupted = state.chats.some((chat) => isChatResumeInterrupted(chat));
-  const hasGeneration = listChatsWithGenerationId(state.chats).length > 0;
+  const scoped = scopeChatsToWindowWorkspace(state.chats);
+  const hasInterrupted = scoped.some((chat) => isChatResumeInterrupted(chat));
+  const hasGeneration = listChatsWithGenerationId(scoped).length > 0;
   if (!hasInterrupted && !hasGeneration) return;
   setResumeGateState('pending');
 }
@@ -134,10 +162,15 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
   const { bootGenerationResumeForChats } = await import('../chat/generation-resume.ts');
   const { bootIncompleteToolResumeForChats } = await import('../chat/incomplete-tool-resume.ts');
 
+  const scopedChats = scopeChatsToWindowWorkspace(state.chats);
+  const resumeScopedChats = async (): Promise<void> => {
+    await bootGenerationResumeForChats(scopedChats);
+    if (isActiveChatInScope(scopedChats)) await bootIncompleteToolResumeForChats(scopedChats);
+  };
+
   if (!hasCandidates(candidates)) {
     setResumeGateState('resumed');
-    await bootGenerationResumeForChats(state.chats);
-    await bootIncompleteToolResumeForChats(state.chats);
+    await resumeScopedChats();
     return;
   }
 
@@ -158,8 +191,7 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
 
   if (candidates.boards.length) await resolveBoardResumes('resume');
 
-  await bootGenerationResumeForChats(state.chats);
-  await bootIncompleteToolResumeForChats(state.chats);
+  await resumeScopedChats();
 
   clearResumeInterruptedForChats(candidates.chats.map((c) => c.chat));
   if (candidates.chats.length) saveSessionsNow();
