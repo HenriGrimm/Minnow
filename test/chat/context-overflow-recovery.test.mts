@@ -13,6 +13,7 @@ import {
   contextRetryMessageLimit,
   isContextOverflowText,
   parseContextOverflowNumbers,
+  parseMaxTokensOverflow,
 } from '../../src/chat/context/context-overflow-error.ts';
 import {
   contextCalibratedMessageLimit,
@@ -31,7 +32,31 @@ const LLAMA_CPP_400 =
 const LLAMA_CPP_EXCEED_CONTEXT_ERROR =
   'request (69351 tokens) exceeds the available context size (58368 tokens), try increasing it';
 
+/** Reported by Strata (stratallm.org) when prompt + max_tokens > window. */
+const STRATA_400 =
+  'Upstream HTTP 400: request exceeds the context window: prompt (13355 tokens) + max tokens (131072) ' +
+  'exceeds the context (131072); requests are never truncated. Send a smaller max_tokens (at most 117709 here)';
+
+describe('parseMaxTokensOverflow', () => {
+  test('recovers prompt, max_tokens and window from Strata', () => {
+    assert.deepEqual(parseMaxTokensOverflow(STRATA_400), {
+      promptTokens: 13355,
+      maxTokens: 131072,
+      contextTokens: 131072,
+    });
+  });
+
+  test('returns null for other overflow shapes', () => {
+    assert.equal(parseMaxTokensOverflow(LLAMA_CPP_400), null);
+    assert.equal(parseMaxTokensOverflow('Upstream HTTP 401: invalid api key'), null);
+  });
+});
+
 describe('isContextOverflowText', () => {
+  test("matches Strata's prompt + max tokens rejection", () => {
+    assert.equal(isContextOverflowText(STRATA_400), true);
+  });
+
   test("matches llama.cpp's wording", () => {
     assert.equal(isContextOverflowText(LLAMA_CPP_400), true);
     assert.equal(isContextOverflowText(LLAMA_CPP_EXCEED_CONTEXT_ERROR), true);
