@@ -41,6 +41,13 @@ describe('isParallelSafeTool (server port)', () => {
     assert.equal(isParallelSafeTool('web_search'), true);
   });
 
+  test('code navigation reads are parallel-safe; unknown tools stay sequential', () => {
+    for (const name of ['repo_map', 'find_symbol', 'who_calls', 'read_symbol']) {
+      assert.equal(isParallelSafeTool(name), true, name);
+    }
+    assert.equal(isParallelSafeTool('unknown_tool'), false);
+  });
+
   test('extra read utilities are parallel-safe', () => {
     assert.equal(isParallelSafeTool('get_datetime'), true);
     assert.equal(isParallelSafeTool('calculate'), true);
@@ -82,6 +89,18 @@ describe('partitionToolCalls (server port)', () => {
       segments[0].calls.map((c) => c.id),
       ['a', 'b'],
     );
+  });
+
+  test('code navigation reads share a segment and respect write barriers', () => {
+    const reads = ['repo_map', 'find_symbol', 'who_calls', 'read_symbol'].map((name) => tc(name));
+    assert.deepEqual(partitionToolCalls(reads), [{ kind: 'parallel', calls: reads }]);
+    const write = tc('apply_patch');
+    const after = tc('read_symbol', 'after');
+    assert.deepEqual(partitionToolCalls([...reads, write, after]), [
+      { kind: 'parallel', calls: reads },
+      { kind: 'sequential', calls: [write] },
+      { kind: 'parallel', calls: [after] },
+    ]);
   });
 
   test('mutator splits parallel runs and preserves order', () => {

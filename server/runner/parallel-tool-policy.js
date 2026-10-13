@@ -7,6 +7,11 @@ const PARALLEL_EXTRA_WHITELIST = new Set([
   'wikipedia_search',
   'list_sub_agents',
   'get_sub_agent_status',
+  // Code navigation reads are parallel-safe without opting into result caching.
+  'repo_map',
+  'find_symbol',
+  'who_calls',
+  'read_symbol',
 ]);
 
 const SEQUENTIAL_DENY = new Set([
