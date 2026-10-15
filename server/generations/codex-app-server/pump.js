@@ -72,19 +72,27 @@ function onRequest(session, request) {
     if (existing.response) void session.rpc.respond(request.id, existing.response).catch(error => failure(session, error));
     return;
   }
-  let functions;
-  try { functions = p.tool === CODEX_READ_BATCH ? expandCodexReadBatch(p.arguments, session.tools)
-    : [{ name: session.tools.get(p.tool).originalName, arguments: JSON.stringify(p.arguments) }]; }
-  catch (error) {
-    void session.rpc.respond(request.id, null, { code: -32602, message: error.message }).catch(() => {});
-    failure(session, error); return;
-  }
-  if (session.seen.size >= 1024 || session.pending.size + functions.length > 64 || Buffer.byteLength(JSON.stringify(p.arguments)) > 1024 * 1024) {
+  if (session.seen.size >= 1024 || Buffer.byteLength(JSON.stringify(p.arguments)) > 1024 * 1024) {
     failure(session, new Error('Codex tool queue exceeded its limit.')); return;
   }
   const group = { tool: p.tool, arguments: JSON.stringify(p.arguments), requestIds: new Set([request.id]),
     calls: [], results: new Map(), receivedAt: performance.now() };
   session.seen.set(nativeKey, group);
+  let functions;
+  try { functions = p.tool === CODEX_READ_BATCH ? expandCodexReadBatch(p.arguments, session.tools)
+    : [{ name: session.tools.get(p.tool).originalName, arguments: JSON.stringify(p.arguments) }]; }
+  catch (error) {
+    // Invalid model arguments are a tool failure, not a broken transport. No
+    // member has been dispatched; let Codex correct the batch or call separately.
+    group.response = { success: false, contentItems: [{ type: 'inputText',
+      text: `Error: ${error.message} No calls were executed. Use only the read-only tool names in mn_read_batch's schema, or call the supplied Minnow tools separately.` }] };
+    session.round?.activity();
+    void session.rpc.respond(request.id, group.response).catch(error => failure(session, error));
+    return;
+  }
+  if (session.pending.size + functions.length > 64) {
+    failure(session, new Error('Codex tool queue exceeded its limit.')); return;
+  }
   for (const fn of functions) {
     const call = { id: `call_${randomUUID().replaceAll('-', '')}`, type: 'function', function: fn };
     group.calls.push(call);

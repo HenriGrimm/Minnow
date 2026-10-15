@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { agentCliToolWaitMs } from '../../server/generations/agent-cli/tool-wait.js';
+import { DEFAULT_ASK_TIMEOUT_MS } from '../../server/runner/ask-question-tool.js';
 
 const call = (name, args = {}) => ({ function: { name, arguments: JSON.stringify(args) } });
 
@@ -12,10 +13,16 @@ test('CLI handoff remains alive through long commands and sequential batches', (
   assert.ok(agentCliToolWaitMs([call('read_file')]) >= 300000);
 });
 
+test('CLI question handoffs outlive the runner answer timeout plus other tools', () => {
+  assert.ok(agentCliToolWaitMs([call('ask_question')]) > DEFAULT_ASK_TIMEOUT_MS);
+  assert.ok(agentCliToolWaitMs([call('read_file'), call('ask_question')]) > DEFAULT_ASK_TIMEOUT_MS + 300000);
+});
+
 test('CLI abandoned handoffs still have a finite deadline', () => {
-  for (const calls of [[], [call('ask_question')], [call('execute_command', { timeout_ms: 1e15 })],
+  for (const calls of [[], [call('execute_command', { timeout_ms: 1e15 })],
     [{ function: { name: 'read_file', arguments: '{bad json' } }]]) {
     const wait = agentCliToolWaitMs(calls);
     assert.ok(Number.isFinite(wait) && wait >= 300000 && wait <= 660000);
   }
+  assert.ok(Number.isFinite(agentCliToolWaitMs([call('ask_question')])));
 });

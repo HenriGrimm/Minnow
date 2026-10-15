@@ -318,14 +318,40 @@ test('split transport batches retain partial results until every member is recor
   assert.equal(processes, 1);
 });
 
-for (const name of ['apply_patch', 'unknown_read', 'ask_question']) test(`read batch rejects ${name} before handing off any member`, async () => {
-  setup([{ calls: [{ id: 'invalid-batch', name: 'mn_read_batch', args: { calls: [
+for (const name of ['apply_patch', 'unknown_read', 'ask_question']) test(`read batch rejects ${name} without ending the native turn or executing members`, async () => {
+  const log = path.join(root, `invalid-batch-${name}.jsonl`);
+  setup([{ calls: [{ id: 'invalid-batch', name: 'mn_read_batch', duplicate: true, args: { calls: [
     { name: 'read_file', arguments: {} }, { name, arguments: {} },
-  ] } }] }]);
+  ] } }] }, { text: 'I can correct that call.' }], { MINNOW_CODEX_REQUEST_LOG: log });
   const result = await generate([{ role: 'user', content: 'Read.' }]);
-  assert.equal(result.state.status, 'error');
-  assert.match(result.state.errorMessage, /unavailable or non-read-only/);
+  assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  assert.ok(result.wire.includes('I can correct that call.'));
   assert.equal(result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).length, 0);
+  const responses = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.result?.contentItems);
+  assert.ok(responses.length >= 1);
+  assert.equal(new Set(responses.map(row => row.id)).size, 1, 'duplicate notifications share one native call');
+  for (const response of responses) assert.deepEqual(response.result, responses[0].result, 'retransmissions reuse the cached rejection');
+  assert.equal(responses[0].result.success, false);
+  assert.match(responses[0].result.contentItems[0].text, /unavailable or non-read-only/);
+  assert.match(responses[0].result.contentItems[0].text, /No calls were executed/);
+  assert.equal(processes, 1);
+});
+
+test('Codex corrects a malformed batch and continues with real tool results in the same process', async () => {
+  setup([{ calls: [{ id: 'invalid', name: 'mn_read_batch', args: { calls: [] } }] },
+    { calls: [{ id: 'corrected', name: 'mn_read_batch', args: { calls: [{ name: 'read_file', arguments: { path: 'safe' } }] } }] },
+    { text: 'Read the actual source.' }]);
+  const messages = [{ role: 'user', content: 'Read.' }];
+  const first = await generate(messages);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.deepEqual(calls.map(call => call.function), [{ name: 'read_file', arguments: '{"path":"safe"}' }]);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Actual source' });
+  const next = await generate(messages);
+  assert.equal(next.state.status, 'complete', next.state.errorMessage);
+  assert.ok(next.wire.includes('Read the actual source.'));
+  assert.equal(processes, 1);
 });
 
 test('history edits, changed tool permissions and instruction changes rebuild the native thread', async () => {
@@ -468,6 +494,25 @@ test('shared runner compacts its own transcript before rebuilding after native c
     } }),
   });
   assert.equal(result.outcome, 'no_report', result.error); assert.equal(compacted, true); assert.equal(processes, 2);
+});
+
+test('a rejected question batch can be corrected into a real runner question', async () => {
+  const question = { questions: [{ id: 'q', prompt: 'Choose', options: [{ id: 'a', label: 'A' }] }] };
+  setup([{ calls: [{ id: 'invalid-ask', name: 'mn_read_batch', args: { calls: [
+    { name: 'read_file', arguments: {} }, { name: 'ask_question', arguments: question },
+  ] } }] }, { calls: [{ id: 'ask', name: 'mn_tool_1', args: question }] }, { text: 'Answered.' }]);
+  let asks = 0;
+  const deps = runnerDeps();
+  const result = await runTurn({ chatId: 'runner-corrected-question', seed: 'Ask me.', tools, lazyTools: false,
+    model: { providerId: 'codex-cli', id: 'fixture' }, deps,
+    injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    ask: { ask: async value => { asks++; assert.deepEqual(value, question); return 'A'; } },
+    execute: async () => { throw new Error('Rejected batch members must not execute'); },
+  });
+  assert.equal(result.outcome, 'no_report', result.error);
+  assert.equal(deps.transcriptStore.load('runner-corrected-question').messages.at(-1).content, 'Answered.');
+  assert.equal(asks, 1);
+  assert.equal(processes, 1);
 });
 
 test('questions and terminal reports remain runner capabilities', async () => {
