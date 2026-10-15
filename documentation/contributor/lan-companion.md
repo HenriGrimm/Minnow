@@ -18,6 +18,8 @@ The authenticated, private `/api/auth/manifest` provides a stable app identity a
 
 Phones and tablets reconnect automatically after a temporary Wi-Fi interruption or host outage. The reconnect banner stays visible until the host responds. An outage does not require another code. A confirmed rejection from the host's auth session endpoint clears the credential; provider authentication failures and temporary device-store errors do not.
 
+An open page also retains its credential in memory if browser storage becomes temporarily unavailable. Loading an older localStorage-only pairing restores its cookie so Home Screen installation can copy the login state. Saving a new pairing succeeds when either persistent store accepts it, even if the other retains an older credential. Confirmed host revocation clears the in-memory credential even when browser storage cannot be erased.
+
 ## Revoke access
 
 In **Settings → General → Network access → Paired devices**, select **Revoke**. The token is rejected on its next API request. An open companion checks the host every five seconds and replaces its UI with the pairing-required screen after revocation.

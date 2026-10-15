@@ -63,6 +63,7 @@ beforeEach(() => {
   });
   const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
   Object.defineProperty(doc, 'cookie', {
+    configurable: true,
     get: () => cookie,
     set: (value: string) => { cookie = value.includes('Max-Age=0') ? '' : value.split(';')[0]; },
   });
@@ -231,6 +232,49 @@ test('tablet visibility changes and auth storage failures retain pairing and ret
   assert.equal(revoked, 0);
 });
 
+test('wake keeps sending the paired credential when browser storage becomes unavailable', async () => {
+  assert.equal(await start().ready, true);
+  window.localStorage.getItem = () => { throw new Error('Storage unavailable after sleep'); };
+  window.localStorage.removeItem = () => { throw new Error('Storage unavailable after sleep'); };
+  Object.defineProperty(document, 'cookie', {
+    get() { throw new Error('Cookies unavailable after sleep'); },
+    set() { throw new Error('Cookies unavailable after sleep'); },
+  });
+  let checks = 0;
+  fetchMock = async (_input, init) => {
+    assert.equal(new Headers(init?.headers).get('X-Minnow-Token'), TOKEN);
+    checks += 1;
+    return new Response('{}');
+  };
+  window.dispatchEvent(new Event('pageshow'));
+  await flush();
+  assert.equal(checks, 1);
+  assert.equal(getDeviceToken(), TOKEN);
+  assert.deepEqual(changes, [true, true]);
+  fetchMock = async () => rejectAuth();
+  tick();
+  await flush();
+  assert.equal(revoked, 1, 'the host can still revoke a remembered credential');
+  assert.equal(getDeviceToken(), '');
+});
+
+test('pairing in another tab refreshes the credential used by the open companion', async () => {
+  assert.equal(await start().ready, true);
+  window.localStorage.setItem('minnow.auth.deviceToken', NEW_TOKEN);
+  const event = Object.assign(new Event('storage'), {
+    key: 'minnow.auth.deviceToken', newValue: NEW_TOKEN,
+  });
+  window.dispatchEvent(event);
+  fetchMock = async (_input, init) => {
+    assert.equal(new Headers(init?.headers).get('X-Minnow-Token'), NEW_TOKEN);
+    return new Response('{}');
+  };
+  tick();
+  await flush();
+  assert.equal(getDeviceToken(), NEW_TOKEN);
+  assert.equal(revoked, 0);
+});
+
 test('confirmed revocation clears both credential stores and stops reconnecting', async () => {
   fetchMock = async () => rejectAuth();
   assert.equal(await start().ready, false);
@@ -248,6 +292,20 @@ test('a late rejected probe cannot erase a newer pairing', async () => {
   fetchMock = () => new Promise((resolve) => { finish = resolve; });
   const connection = start();
   saveDeviceToken(NEW_TOKEN);
+  finish(rejectAuth());
+  await flush();
+  assert.equal(getDeviceToken(), NEW_TOKEN);
+  assert.equal(revoked, 0);
+  fetchMock = async () => new Response('{}');
+  tick();
+  assert.equal(await connection.ready, true);
+});
+
+test('a late probe cannot clear another tab\'s pairing before the storage event arrives', async () => {
+  let finish!: (response: Response) => void;
+  fetchMock = () => new Promise((resolve) => { finish = resolve; });
+  const connection = start();
+  window.localStorage.setItem('minnow.auth.deviceToken', NEW_TOKEN);
   finish(rejectAuth());
   await flush();
   assert.equal(getDeviceToken(), NEW_TOKEN);

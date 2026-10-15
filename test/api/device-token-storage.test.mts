@@ -31,7 +31,7 @@ describe('client device token storage', () => {
   let localStorage: StorageLike;
   let cookieJar: string;
 
-  beforeEach(async () => {
+  function setupBrowserStorage() {
     localStorage = createMemoryStorage();
     cookieJar = '';
     const g = globalThis as typeof globalThis & {
@@ -41,7 +41,7 @@ describe('client device token storage', () => {
     g.window = {
       localStorage,
       isSecureContext: true,
-      location: { href: 'https://minnow.test/' },
+      location: { href: 'https://minnow.test/', hash: '' },
     } as unknown as Window & typeof globalThis;
     g.document = {
       get cookie() {
@@ -67,7 +67,9 @@ describe('client device token storage', () => {
         cookieJar = next.join('; ');
       },
     } as unknown as Document;
-  });
+  }
+
+  beforeEach(setupBrowserStorage);
 
   afterEach(() => {
     const g = globalThis as typeof globalThis & {
@@ -91,6 +93,56 @@ describe('client device token storage', () => {
     const { getDeviceToken } = await import('../../src/api/session-token.ts');
     assert.equal(getDeviceToken(), TOKEN);
     assert.equal(localStorage.getItem('minnow.auth.deviceToken'), TOKEN);
+  });
+
+  test('an existing localStorage pairing restores the cookie used by Home Screen installation', async () => {
+    localStorage.setItem('minnow.auth.deviceToken', TOKEN);
+    const { getDeviceToken } = await import('../../src/api/session-token.ts');
+    assert.equal(getDeviceToken(), TOKEN);
+    assert.match(cookieJar, /minnow_device=/);
+  });
+
+  test('Home Screen launch recovers an older pairing from copied cookies without a code or launch fragment', async () => {
+    localStorage.setItem('minnow.auth.deviceToken', TOKEN);
+    const { getDeviceToken } = await import('../../src/api/session-token.ts');
+    const { initializeDevicePairing } = await import('../../src/api/device-auth.ts');
+    assert.equal(getDeviceToken(), TOKEN);
+    const installedCookies = cookieJar;
+    setupBrowserStorage();
+    cookieJar = installedCookies;
+    assert.equal(await initializeDevicePairing(), 'device');
+    assert.equal(getDeviceToken(), TOKEN);
+    assert.equal(localStorage.getItem('minnow.auth.deviceToken'), TOKEN);
+  });
+
+  test('an open device keeps its credential while both browser stores are unavailable', async () => {
+    const { saveDeviceToken, getDeviceToken } = await import('../../src/api/session-token.ts');
+    saveDeviceToken(TOKEN);
+    localStorage.getItem = () => { throw new Error('Storage temporarily unavailable'); };
+    Object.defineProperty(document, 'cookie', {
+      get() { throw new Error('Cookies temporarily unavailable'); },
+      set() { throw new Error('Cookies temporarily unavailable'); },
+    });
+    assert.equal(getDeviceToken(), TOKEN);
+  });
+
+  test('a successful cookie save replaces a stale read-only localStorage credential', async () => {
+    const { saveDeviceToken, getDeviceToken } = await import('../../src/api/session-token.ts');
+    saveDeviceToken('minnow_device_old-credential');
+    localStorage.setItem = () => { throw new Error('Storage is read-only'); };
+    saveDeviceToken(TOKEN);
+    assert.equal(getDeviceToken(), TOKEN);
+    assert.match(cookieJar, new RegExp(encodeURIComponent(TOKEN)));
+    assert.equal(localStorage.getItem('minnow.auth.deviceToken'), null, 'remove the stale value for the next launch');
+  });
+
+  test('revocation cannot resurrect a credential when browser storage cannot be cleared', async () => {
+    const { saveDeviceToken, clearDeviceToken, getDeviceToken } = await import('../../src/api/session-token.ts');
+    saveDeviceToken(TOKEN);
+    localStorage.removeItem = () => { throw new Error('Storage is read-only'); };
+    Object.defineProperty(document, 'cookie', { get: () => `minnow_device=${TOKEN}`, set: () => {} });
+    clearDeviceToken();
+    assert.equal(getDeviceToken(), '');
   });
 
   test('pairing survives unavailable localStorage using the cookie', async () => {

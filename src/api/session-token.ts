@@ -9,6 +9,13 @@ declare global {
 const DEVICE_TOKEN_STORAGE_KEY = 'minnow.auth.deviceToken';
 const DEVICE_TOKEN_COOKIE_NAME = 'minnow_device';
 const DEVICE_TOKEN_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
+// Browser storage can become temporarily unavailable when a mobile page wakes.
+// Keep the current page authorized independently of those storage reads.
+const deviceTokens = new WeakMap<Window, { token: string; stored: string }>();
+
+function rememberDeviceToken(token: string, stored: string): void {
+  deviceTokens.set(window, { token, stored });
+}
 
 function isValidDeviceToken(token: string): boolean {
   return token.startsWith('minnow_device_');
@@ -57,13 +64,31 @@ function clearDeviceTokenCookie(): void {
 /** Read the paired-device credential without throwing in private storage modes. */
 export function getDeviceToken(): string {
   if (typeof window === 'undefined') return '';
+  const remembered = deviceTokens.get(window);
+  if (remembered?.token === '') return '';
+  let stored = '';
   try {
-    const stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? '';
-    if (isValidDeviceToken(stored)) return stored;
+    stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? '';
+    // Check for a newer pairing even before its cross-tab storage event fires.
+    // An unchanged stale store must not override a successful cookie-only save.
+    if (remembered && (stored === remembered.stored || !isValidDeviceToken(stored))) {
+      return remembered.token;
+    }
+    if (isValidDeviceToken(stored)) {
+      // Safari copies cookies, rather than localStorage, into Home Screen apps.
+      // Repair older pairings and cookies that have expired or been removed.
+      if (readDeviceTokenCookie() !== stored) {
+        try { writeDeviceTokenCookie(stored); } catch {}
+      }
+      rememberDeviceToken(stored, stored);
+      return stored;
+    }
   } catch {}
+  if (remembered) return remembered.token;
   const fromCookie = readDeviceTokenCookie();
   if (fromCookie) {
     try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, fromCookie); } catch {}
+    rememberDeviceToken(fromCookie, stored);
   }
   return fromCookie;
 }
@@ -76,12 +101,25 @@ export function saveDeviceToken(token: string): void {
   // Either first-party store can persist pairing when the other is restricted.
   try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, token); } catch {}
   try { writeDeviceTokenCookie(token); } catch {}
-  if (getDeviceToken() !== token) throw new Error('Allow browser storage to remember this device');
+  let stored = '';
+  try { stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? ''; } catch {}
+  // Verify each store separately: a failed localStorage write may leave an old
+  // token there even though the cookie has successfully saved the new pairing.
+  if (stored !== token && readDeviceTokenCookie() !== token) {
+    throw new Error('Allow browser storage to remember this device');
+  }
+  if (stored && stored !== token) {
+    // Quota failures can block writes while still allowing removal. Leave the
+    // cookie as the durable source on the next launch instead of the old token.
+    try { window.localStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY); } catch {}
+  }
+  rememberDeviceToken(token, stored);
 }
 
 /** Remove a revoked or rejected paired-device credential. */
 export function clearDeviceToken(): void {
   if (typeof window === 'undefined') return;
+  rememberDeviceToken('', '');
   try {
     window.localStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY);
   } catch {}
