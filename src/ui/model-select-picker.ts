@@ -1000,17 +1000,22 @@ interface AuxiliaryModelSelectPicker {
   triggerText: HTMLSpanElement;
   menu: HTMLUListElement;
   composerButton?: ReturnType<typeof createComposerModelButton>;
+  panel: HTMLElement;
+  search?: HTMLInputElement;
+  pick: (value: string) => void;
 }
 
 const auxiliaryPickers = new WeakMap<HTMLSelectElement, AuxiliaryModelSelectPicker>();
 let openAuxiliaryPicker: AuxiliaryModelSelectPicker | null = null;
 let auxiliaryPickerGlobalsBound = false;
+let auxiliaryPickerId = 0;
 
 function closeAuxiliaryModelSelectMenu(): void {
   if (!openAuxiliaryPicker) return;
   openAuxiliaryPicker.root.classList.remove('is-open');
-  openAuxiliaryPicker.menu.classList.add('hidden');
+  openAuxiliaryPicker.panel.classList.add('hidden');
   openAuxiliaryPicker.trigger.setAttribute('aria-expanded', 'false');
+  openAuxiliaryPicker.search?.setAttribute('aria-expanded', 'false');
   openAuxiliaryPicker = null;
   if (auxiliaryChromePopoverRegistered) {
     unregisterChromePopover();
@@ -1065,7 +1070,7 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
     ) && !select.disabled;
   picker.trigger.disabled = !hasSelectable;
 
-  renderModelSelectMenuRows(picker.menu, select, (modelId) => {
+  picker.pick = (modelId) => {
     closeAuxiliaryModelSelectMenu();
     closeModelSelectMenu();
     const resetting = modelId === '' && [...select.options].some((option) =>
@@ -1077,14 +1082,18 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
     }
     select.value = modelId;
     select.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+    if (picker.trigger.isConnected) picker.trigger.focus();
+  };
+  renderModelSelectMenuRows(picker.menu, select, picker.pick, undefined,
+    picker.search ? { isolated: true, searchQuery: picker.search.value } : undefined);
 }
 
 /** Wrap a native model &lt;select&gt; with the same custom list UI as the top-bar picker. */
 export function mountAuxiliaryModelSelectCombobox(
   select: HTMLSelectElement,
-  appearance: 'select' | 'composer' = 'select',
+  options: 'select' | 'composer' | { appearance?: 'select' | 'composer'; searchable?: boolean } = 'select',
 ): void {
+  const appearance = typeof options === 'string' ? options : options.appearance ?? 'select';
   if (auxiliaryPickers.has(select)) return;
   ensureAuxiliaryPickerGlobals();
 
@@ -1121,18 +1130,43 @@ export function mountAuxiliaryModelSelectCombobox(
   menu.setAttribute('role', 'listbox');
 
   const labelledBy = select.getAttribute('aria-label')?.trim();
-  if (labelledBy) menu.setAttribute('aria-label', labelledBy);
+  if (labelledBy) {
+    menu.setAttribute('aria-label', labelledBy);
+    trigger.setAttribute('aria-label', labelledBy);
+  }
+  menu.id = `auxiliary-model-menu-${++auxiliaryPickerId}`;
+  menu.tabIndex = -1;
+  trigger.setAttribute('aria-controls', menu.id);
 
   root.appendChild(trigger);
-  root.appendChild(menu);
+  let panel: HTMLElement = menu;
+  let search: HTMLInputElement | undefined;
+  if (typeof options !== 'string' && options.searchable) {
+    panel = document.createElement('div');
+    panel.className = 'model-select-popover auxiliary-model-popover hidden';
+    search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'model-host-filter-search-input';
+    search.placeholder = 'Search models…';
+    search.setAttribute('aria-label', `Search ${labelledBy || 'models'}`);
+    search.setAttribute('role', 'combobox');
+    search.setAttribute('aria-autocomplete', 'list');
+    search.setAttribute('aria-controls', menu.id);
+    search.setAttribute('aria-expanded', 'false');
+    menu.classList.remove('hidden');
+    panel.append(search, menu);
+    search.addEventListener('input', () => syncAuxiliaryModelSelectCombobox(select));
+  }
+  root.appendChild(panel);
 
-  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, composerButton };
+  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, composerButton, pick: () => {} };
   auxiliaryPickers.set(select, picker);
 
   select.addEventListener('change', () => {
     syncAuxiliaryModelSelectCombobox(select);
   });
 
+  let activeIndex = -1;
   trigger.addEventListener('click', () => {
     if (trigger.disabled) return;
     if (openAuxiliaryPicker === picker) {
@@ -1143,16 +1177,62 @@ export function mountAuxiliaryModelSelectCombobox(
     closeAuxiliaryModelSelectMenu();
     openAuxiliaryPicker = picker;
     picker.root.classList.add('is-open');
-    picker.menu.classList.remove('hidden');
+    picker.panel.classList.remove('hidden');
     picker.trigger.setAttribute('aria-expanded', 'true');
+    search?.setAttribute('aria-expanded', 'true');
     if (!auxiliaryChromePopoverRegistered) {
       registerChromePopover();
       auxiliaryChromePopoverRegistered = true;
     }
     syncAuxiliaryModelSelectCombobox(select);
+    activeIndex = -1;
+    menu.removeAttribute('aria-activedescendant');
+    search?.removeAttribute('aria-activedescendant');
+    (search || menu).focus();
+  });
+
+  root.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') { closeAuxiliaryModelSelectMenu(); return; }
+    if (event.key === 'Escape') {
+      if (openAuxiliaryPicker === picker) { event.preventDefault(); closeAuxiliaryModelSelectMenu(); trigger.focus(); }
+      return;
+    }
+    if (openAuxiliaryPicker !== picker) {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault(); trigger.click(); activeIndex = -1;
+    }
+    const rows = listModelMenuOptions(menu);
+    if (!rows.length) return;
+    if ((event.key === 'Enter' || (event.key === ' ' && event.target === menu)) && activeIndex >= 0) {
+      event.preventDefault(); picker.pick(rows[activeIndex]?.dataset.value || ''); return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (event.target === search && ['Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    activeIndex = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1
+      : activeIndex < 0 ? (event.key === 'ArrowUp' ? rows.length - 1 : 0)
+        : Math.max(0, Math.min(rows.length - 1, activeIndex + (event.key === 'ArrowUp' ? -1 : 1)));
+    rows.forEach((row, index) => {
+      row.classList.toggle('model-select-option--active', index === activeIndex);
+      row.id = `${menu.id}-option-${index}`;
+    });
+    menu.setAttribute('aria-activedescendant', rows[activeIndex].id);
+    search?.setAttribute('aria-activedescendant', rows[activeIndex].id);
+    rows[activeIndex].scrollIntoView({ block: 'nearest' });
+  });
+  search?.addEventListener('input', () => {
+    activeIndex = -1; menu.removeAttribute('aria-activedescendant'); search.removeAttribute('aria-activedescendant');
   });
 
   syncAuxiliaryModelSelectCombobox(select);
+}
+
+/** Release a picker before replacing a dynamic editor or activity view. */
+export function unmountAuxiliaryModelSelectCombobox(select: HTMLSelectElement): void {
+  const picker = auxiliaryPickers.get(select);
+  if (!picker) return;
+  if (openAuxiliaryPicker === picker) closeAuxiliaryModelSelectMenu();
+  auxiliaryPickers.delete(select);
 }
 
 /** Canonical model id for capability tooltip lines (strip composite select encoding). */
@@ -1411,6 +1491,7 @@ export function renderModelSelectMenuRows(
   sel: HTMLSelectElement,
   onSelect?: ModelSelectPickHandler,
   selectedValueOverride?: string,
+  filters?: { isolated?: boolean; searchQuery?: string },
 ): void {
   const selectedValue = selectedValueOverride?.trim() || sel.value;
   const scrollTop = menu.scrollTop;
@@ -1437,10 +1518,10 @@ export function renderModelSelectMenuRows(
   const allOptions = collectSelectOptions(sel);
   if (allOptions.length === 0) return;
 
-  const hostFilter = getModelHostFilter();
-  const loadFilter = getModelLocalLoadFilter();
-  const libraryFilter = getModelLibraryFilter();
-  const searchQuery = getModelSearchQuery();
+  const hostFilter = filters?.isolated ? 'all' : getModelHostFilter();
+  const loadFilter = filters?.isolated ? 'all' : getModelLocalLoadFilter();
+  const libraryFilter = filters?.isolated ? 'all' : getModelLibraryFilter();
+  const searchQuery = filters?.searchQuery ?? getModelSearchQuery();
   let options = filterOptionsByHost(allOptions, hostFilter);
   if (hostFilter === 'local') {
     options = filterOptionsByLocalLoad(options, loadFilter);
@@ -1463,7 +1544,7 @@ export function renderModelSelectMenuRows(
     if (collapsed.has(slug)) collapsed.delete(slug);
     else collapsed.add(slug);
     saveCollapsedProducers(collapsed);
-    renderModelSelectMenuRows(menu, sel, onSelect);
+    renderModelSelectMenuRows(menu, sel, onSelect, selectedValueOverride, filters);
     menu.scrollTop = scrollTop;
   };
 

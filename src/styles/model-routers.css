@@ -1,25 +1,83 @@
-.router-panel { padding: 24px; color: var(--mn-fg); max-width: 1400px; margin: 0 auto; }
-.router-panel h2 { font-size: 1.2rem; margin: 0 0 16px; }
-.router-panel h3 { font-size: 1rem; margin: 0 0 12px; }
+.router-panel { padding: 28px 32px; color: var(--mn-fg); max-width: 1280px; margin: 0 auto; }
+.router-panel h2 { font-size: 1.4rem; line-height: 1.3; margin: 0; font-weight: 600; }
+.router-panel h3 { font-size: 1rem; margin: 0; font-weight: 600; }
+.router-panel p { color: var(--mn-fg-muted); max-width: 75ch; line-height: 1.5; margin: 8px 0; }
 .router-toolbar, .router-fields { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.router-toolbar h2 { margin: 0 auto 0 0; }
-.router-panel button, .router-panel select, .router-panel input { font: inherit; color: var(--mn-fg); background: var(--mn-bg); border: 1px solid var(--mn-border); border-radius: 6px; min-height: 36px; padding: 6px 10px; max-width: 100%; }
+.router-heading { margin-right: auto; }
+.router-heading p { font-size: .9rem; margin: 6px 0 0; }
+.router-panel :where(button, select, input):not(:where(.model-select-native)) { box-sizing: border-box; font: inherit; color: var(--mn-fg); background: var(--mn-bg); border: 1px solid var(--mn-border); border-radius: var(--radius-sm); min-height: 36px; padding: 6px 10px; max-width: 100%; }
 .router-panel button { cursor: pointer; }
-.router-panel button:hover { background: var(--mn-surface-elevated); }
 .router-panel button:disabled { opacity: .5; cursor: default; }
 .router-panel :focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
-.router-panel label { display: flex; align-items: center; gap: 8px; color: var(--mn-fg-muted); font-size: .85rem; }
-.router-panel input[type=checkbox] { accent-color: var(--mn-accent); }
-.router-panel input[type=number] { width: 64px; }
-.router-panel p { color: var(--mn-fg-muted); max-width: 75ch; line-height: 1.5; }
-.router-message { min-height: 1.5em; }
+.router-panel label { display: flex; align-items: center; gap: 8px; color: var(--mn-fg-muted); font-size: .85rem; min-width: 0; }
+.router-panel input[type=number] { width: 72px; }
+.router-panel .router-primary { background: var(--mn-accent); color: var(--mn-fg-on-accent); border-color: var(--mn-accent); }
+.router-save-status { display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-height: 32px; margin: 6px 0 14px; }
+.router-panel .router-message { font-size: .8rem; margin: 0; }
 .router-editor { padding-bottom: 24px; border-bottom: 1px solid var(--mn-border); }
-.router-editor > button { margin-right: 8px; }
-.router-configuration summary { cursor: pointer; padding: 10px 0; }
-.router-configuration > button { margin-right: 8px; }
-.router-entry-list { list-style: none; padding: 0; }
-.router-entry-list li { display: grid; grid-template-columns: 24px minmax(100px, 1fr) minmax(140px, 2fr) auto auto auto auto auto; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--mn-border); }
-.router-rank { color: var(--mn-fg-muted); font-variant-numeric: tabular-nums; }
+.router-pool-header { margin-bottom: 28px; }
+.router-panel .router-pool-name { flex: 1 1 260px; font-size: 1.3rem; font-weight: 600; border-color: transparent; background: transparent; padding-left: 0; min-width: 0; }
+.router-panel .router-pool-name:hover { border-color: var(--mn-border); }
+.router-panel .router-toggle[aria-pressed=true] { background: var(--mn-accent-soft); border-color: var(--mn-accent); }
+.router-routing { margin-bottom: 24px; }
+.router-policy-choices { display: flex; margin-top: 12px; border: 1px solid var(--mn-border); border-radius: var(--radius-md); }
+.router-panel .router-policy-choices > button { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; flex: 1; border: 0; border-radius: 0; text-align: left; padding: 16px 18px; min-width: 0; background: transparent; }
+.router-panel .router-policy-choices > button + button { border-inline-start: 1px solid var(--mn-border); }
+.router-policy-choices > button:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.router-policy-choices > button:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.router-policy-choices strong { display: block; font-size: .95rem; margin-bottom: 5px; }
+.router-policy-choices span { display: block; color: var(--mn-fg-muted); font-size: .85rem; line-height: 1.5; }
+.router-panel .router-policy-choices > button[aria-pressed=true] { background: var(--mn-accent-soft); box-shadow: inset 0 0 0 1px var(--mn-accent); }
+.router-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.router-section-heading p { font-size: .85rem; margin: 5px 0 0; }
+.router-panel .router-caption { color: var(--mn-fg-muted); font-size: .8rem; line-height: 1.5; }
+.router-evaluator { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(200px, 1fr); gap: 8px 24px; padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid var(--mn-border); }
+.router-evaluator .router-section-heading, .router-custom-evaluator { grid-column: 1 / -1; }
+.router-evaluator > p { font-size: .85rem; margin: 0; align-self: center; }
+.router-custom-evaluator summary { color: var(--mn-fg-muted); cursor: pointer; font-size: .8rem; padding: 8px 0; }
+.router-custom-evaluator .router-fields { margin-top: 8px; }
+.router-lineup { margin-top: 24px; }
+.router-entry-list { list-style: none; padding: 0; margin: 0; }
+.router-entry { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 0; border-top: 1px solid var(--mn-border); }
+.router-entry:last-child { border-bottom: 1px solid var(--mn-border); }
+.router-panel .router-drag-handle { border-color: transparent; color: var(--mn-fg-muted); font-size: 1.2rem; padding: 4px; min-width: 28px; cursor: grab; }
+.router-drag-handle:active { cursor: grabbing; }
+.router-rank { font: .85rem var(--font-mono); color: var(--mn-fg-muted); width: 24px; font-variant-numeric: tabular-nums; }
+.router-entry-identity { flex: 1 1 240px; min-width: 0; }
+.router-entry-identity > .router-caption { display: block; margin: 5px 0 0 10px; }
+.router-model-picker, .router-model-picker .model-select-inner { min-width: 0; width: 100%; }
+.router-panel .model-select-trigger { min-height: 40px; text-align: left; padding-right: 30px; font-weight: 500; }
+.router-panel .model-select-native { min-height: 0; padding: 0; border: 0; }
+.router-panel .model-select-inner { position: relative; }
+.router-panel .auxiliary-model-popover { width: 100%; min-width: 0; max-width: 100%; }
+.router-capacity { display: flex; align-items: center; gap: 2px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); }
+.router-panel .router-capacity button { border: 0; min-width: 30px; padding: 4px 8px; background: transparent; }
+.router-capacity output { min-width: 58px; text-align: center; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.router-order-actions { display: flex; gap: 4px; }
+.router-order-actions button { width: 30px; padding-inline: 4px; }
+.router-entry.is-paused .router-entry-identity { opacity: .65; }
+.router-entry.is-dragging { opacity: .4; }
+.router-entry.is-drop-target { background: var(--mn-accent-soft); outline: 1px dashed var(--mn-accent); outline-offset: -1px; }
+.router-entry-details { width: auto; }
+.router-entry-details[open] { width: 100%; }
+.router-entry-details summary { width: fit-content; padding: 3px 8px; color: var(--mn-fg-muted); font-size: .8rem; cursor: pointer; }
+.router-entry-settings { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; padding: 12px 0 0 76px; }
+.router-panel .router-remove { color: var(--mn-fg-muted); background: transparent; border-color: transparent; }
+.router-pool-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+.router-model-browser { margin: 16px 0 24px; border-top: 1px solid var(--mn-border); padding-top: 22px; }
+.router-model-browser > input { width: 100%; }
+.router-browser-results { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
+.router-browser-results h4 { color: var(--mn-fg-muted); font-size: .8rem; font-weight: 500; margin: 20px 10px 8px; }
+.router-panel .router-browser-model { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; text-align: left; border-color: transparent; border-radius: var(--mn-menu-item-radius); padding: 10px; }
+.router-browser-identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.router-browser-identity strong { font-size: .9rem; font-weight: 500; }
+.router-browser-action { color: var(--mn-accent-ink); font-size: .85rem; flex-shrink: 0; }
+.router-empty { padding: 40px 0; }
+.router-empty h3 { font-size: 1.2rem; }
+.router-empty p { margin-bottom: 20px; }
+.router-lineup-empty { padding: 26px 0; border-block: 1px dashed var(--mn-border); }
+.router-lineup-empty p { margin-bottom: 0; font-size: .85rem; }
+.router-panel .router-warning { color: var(--mn-warning); }
 .router-live { margin-top: 24px; }
 .router-graph { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 100px; position: relative; }
 .router-chats, .router-nodes { z-index: 1; min-width: 0; }
@@ -34,10 +92,36 @@
 .router-connections .is-active { stroke: var(--mn-accent); stroke-dasharray: 4 12; animation: router-request 1.5s linear infinite; }
 .router-connections .is-queued { stroke-dasharray: 3 4; }
 @keyframes router-request { to { stroke-dashoffset: -32; } }
-@media (max-width: 900px) { .router-entry-list li { display: flex; flex-wrap: wrap; } .router-entry-list select { flex: 1 1 180px; } .router-graph { grid-template-columns: 1fr; gap: 20px; } .router-connections { display: none; } .router-panel { padding: 16px; } }
+@media (max-width: 900px) {
+  .router-panel { padding: 20px; }
+  .router-policy-choices { flex-direction: column; }
+  .router-panel .router-policy-choices > button + button { border-inline-start: 0; border-top: 1px solid var(--mn-border); }
+  .router-policy-choices > button:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+  .router-policy-choices > button:last-child { border-radius: 0 0 var(--radius-md) var(--radius-md); }
+  .router-evaluator { grid-template-columns: minmax(0, 1fr); }
+  .router-entry-identity { flex-basis: calc(100% - 90px); }
+  .router-entry > label { margin-left: 76px; }
+  .router-entry-settings { padding-left: 0; }
+  .router-entry-details summary { margin-left: 0; }
+  .router-graph { grid-template-columns: 1fr; gap: 20px; }
+  .router-connections { display: none; }
+}
+@media (max-width: 520px) {
+  .router-panel { padding: 16px; }
+  .router-heading { width: 100%; }
+  .router-toolbar > select { flex: 1; }
+  .router-panel .router-pool-name { flex-basis: 100%; }
+  .router-section-heading { align-items: flex-start; }
+  .router-order-actions { margin-left: auto; }
+  .router-entry { gap: 8px; }
+  .router-entry > label { margin-left: 0; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .router-panel button:hover:not(:disabled) { background: var(--mn-surface-elevated); }
+  .router-panel .router-policy-choices > button[aria-pressed=true]:hover,
+  .router-panel .router-toggle[aria-pressed=true]:hover { background: var(--mn-accent-soft); }
+  .router-panel .router-remove:hover { color: var(--mn-danger); }
+  .router-panel .router-primary:hover { background: color-mix(in srgb, var(--mn-accent) 85%, var(--mn-fg)); }
+}
 @media (prefers-reduced-motion: reduce) { .router-connections .is-active { animation: none; stroke-dasharray: none; } }
-@media (pointer: coarse) { .router-panel button, .router-panel select, .router-panel input { min-height: 44px; } }
-.router-entry-list.is-auto li { grid-template-columns: 24px minmax(100px, 1fr) minmax(140px, 2fr) minmax(110px, auto) auto auto auto auto auto; }
-.router-evaluator { margin: 4px 0 8px; }
-.router-evaluator input:not([type]) { min-width: 240px; }
-.router-evaluator-hint { color: var(--mn-fg-muted); font-size: .85rem; }
+@media (pointer: coarse) { .router-panel :is(button, select, input):not(.model-select-native) { min-height: 44px; } }

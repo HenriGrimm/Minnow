@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import type { RouterConfig } from '../../src/models/routers.ts';
+import { invalidateProviderCache } from '../../src/providers/store.ts';
 
 let win: Window;
 
@@ -28,6 +29,9 @@ function json(body: unknown): Response {
 describe('Models model pools panel auto-save', () => {
   let saves: RouterConfig[] = [];
   let serverRevision = 1;
+  let loadedConfig: RouterConfig;
+  let saveGate: Promise<void> | undefined;
+  let onSaveStarted: (() => void) | undefined;
   const initialConfig: RouterConfig = {
     revision: 1,
     defaultRouterId: null,
@@ -42,10 +46,16 @@ describe('Models model pools panel auto-save', () => {
     globalThis.document = win.document as unknown as Document;
     globalThis.HTMLElement = win.HTMLElement as unknown as typeof HTMLElement;
     globalThis.Event = win.Event as unknown as typeof Event;
+    globalThis.localStorage = win.localStorage as unknown as Storage;
+    globalThis.requestAnimationFrame = (callback) => { callback(0); return 0; };
     globalThis.Option = OptionShim as unknown as typeof Option;
     win.document.body.innerHTML = '<section id="modelsSection-routers" class="is-active"></section>';
     setStorageModeForTests('server');
     saves = [];
+    loadedConfig = structuredClone(initialConfig);
+    saveGate = undefined;
+    onSaveStarted = undefined;
+    invalidateProviderCache();
     serverRevision = initialConfig.revision;
     globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const target = String(url);
@@ -53,6 +63,8 @@ describe('Models model pools panel auto-save', () => {
       if (target.includes('/api/generations/routers')) {
         if (method === 'PUT') {
           const body = JSON.parse(String(init?.body)) as RouterConfig;
+          onSaveStarted?.();
+          if (saveGate) await saveGate;
           if (body.revision !== serverRevision) {
             return new Response(
               JSON.stringify({ error: 'Routers changed in another window. Reload before saving.' }),
@@ -73,10 +85,13 @@ describe('Models model pools panel auto-save', () => {
             events: [],
           });
         }
-        return json(structuredClone(initialConfig));
+        return json(structuredClone(loadedConfig));
+      }
+      if (target.includes('/api/providers/sample-cloud/models')) {
+        return json({ data: ['fast-mini', 'balanced-model', 'frontier-model'].map((id) => ({ id, type: 'llm' })) });
       }
       if (target.includes('/api/providers')) {
-        return json({ providers: [], activeProviderId: null });
+        return json({ providers: [{ id: 'sample-cloud', label: 'Sample Cloud', enabled: true, baseUrl: 'http://localhost:12345', apiKind: 'openai-v1' }], activeProviderId: null });
       }
       return json({});
     }) as typeof fetch;
@@ -130,5 +145,66 @@ describe('Models model pools panel auto-save', () => {
     assert.equal(saves.length, 2, 'expected a second save');
     assert.equal(saves[1]?.routers[0]?.name, 'Second rename');
     assert.equal(saves[1]?.revision, 3);
+  });
+
+  test('users choose models, reorder them, pause them and adjust capacity without duplicate entries', async () => {
+    const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
+    await mountRoutersPanel();
+    const click = (selector: string): void => {
+      const control = win.document.querySelector<HTMLButtonElement>(selector);
+      assert.ok(control, `missing control: ${selector}`); control.click();
+    };
+    click('.router-add-models');
+    click('[aria-label="Add Fast mini from Sample Cloud"]');
+    assert.equal(win.document.querySelector<HTMLButtonElement>('[aria-label="Included Fast mini from Sample Cloud"]')?.disabled, true);
+    click('[aria-label="Add Balanced model from Sample Cloud"]');
+    assert.equal(win.document.querySelectorAll('.router-entry').length, 2);
+    click('[aria-label="Move rank 2 up"]');
+    assert.match(win.document.querySelector('.router-entry .model-select-trigger-text')?.textContent || '', /Balanced model/);
+    click('[aria-label="Increase slots for rank 1"]');
+    assert.equal(win.document.querySelector('.router-entry output')?.textContent, '2 slots');
+    click('.router-entry-toggle');
+    assert.equal(win.document.querySelector('.router-entry-toggle')?.getAttribute('aria-pressed'), 'false');
+    const select = win.document.querySelector<HTMLSelectElement>('[aria-label="Model for rank 1"]')!;
+    assert.ok(select.classList.contains('model-select-native'), 'uses the shared model dropdown');
+    assert.equal([...select.options].some((option) => option.value.endsWith('\u001ffast-mini')), false, 'another entry cannot be selected twice');
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.deepEqual(saves.at(-1)?.routers[0].entries.map((entry) => ({ model: entry.modelId, slots: entry.concurrencyLimit, enabled: entry.enabled })), [
+      { model: 'balanced-model', slots: 2, enabled: false }, { model: 'fast-mini', slots: 1, enabled: true },
+    ]);
+  });
+
+  test('an edit made during a save uses the returned revision for the next save', async () => {
+    const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
+    await mountRoutersPanel();
+    let release!: () => void;
+    saveGate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { onSaveStarted = resolve; });
+    const name = win.document.querySelector<HTMLInputElement>('[aria-label="Pool name"]')!;
+    name.value = 'First'; name.dispatchEvent(new win.Event('input'));
+    await started;
+    name.value = 'Latest'; name.dispatchEvent(new win.Event('input'));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    assert.equal(saves.length, 2);
+    assert.equal(saves[1].revision, 3);
+    assert.equal(saves[1].routers[0].name, 'Latest');
+    assert.equal(name.value, 'Latest');
+    assert.equal(win.document.querySelector('.router-message')?.textContent, 'Saved');
+  });
+
+  test('task matching preserves unavailable evaluators and pausing a default pool clears its default', async () => {
+    loadedConfig.defaultRouterId = 'r1';
+    loadedConfig.routers[0].policy = 'evaluate';
+    loadedConfig.routers[0].evaluator = { providerId: 'sample-cloud', modelId: 'unlisted-judge' };
+    const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
+    await mountRoutersPanel();
+    const evaluator = win.document.querySelector<HTMLSelectElement>('[aria-label="Task evaluator model"]')!;
+    assert.match(evaluator.selectedOptions[0].textContent || '', /unlisted-judge.*unavailable/);
+    win.document.querySelector<HTMLButtonElement>('.router-pool-enabled')!.click();
+    assert.equal(win.document.querySelector<HTMLButtonElement>('.router-default-toggle')!.disabled, true);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal(saves.at(-1)?.defaultRouterId, null);
+    assert.equal(saves.at(-1)?.routers[0].evaluator?.modelId, 'unlisted-judge');
   });
 });

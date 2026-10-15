@@ -458,6 +458,48 @@ describe('syncModelSelectPicker', () => {
 });
 
 describe('syncAuxiliaryModelSelectCombobox', () => {
+  for (const appearance of ['select', 'composer'] as const) {
+    test(`searchable ${appearance} pickers isolate search, support keyboard selection and release open menus`, async () => {
+      const { Window } = await import('happy-dom');
+      const win = new Window();
+      const previous = { document: globalThis.document, window: globalThis.window, Event: globalThis.Event };
+      globalThis.document = win.document as unknown as Document;
+      globalThis.window = win as unknown as Window & typeof globalThis.window;
+      globalThis.Event = win.Event as unknown as typeof Event;
+      const picker = await import('../../src/ui/model-select-picker.ts');
+      try {
+        picker.setModelSearchQuery('unrelated composer search');
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', 'Pool model');
+        select.innerHTML = '<option value="provider\u001fmodel-a">Model A</option><option value="provider\u001fmodel-b">Model B</option>';
+        document.body.append(select);
+        picker.mountAuxiliaryModelSelectCombobox(select, { appearance, searchable: true });
+        const trigger = document.querySelector<HTMLButtonElement>('.model-select-trigger, .composer-model-trigger')!;
+        trigger.click();
+        assert.equal(trigger.getAttribute('aria-label'), 'Pool model');
+        assert.equal(document.querySelectorAll('[role="option"]').length, 2, 'composer search does not filter pool models');
+        const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
+        search.value = 'Model B'; search.dispatchEvent(new win.Event('input'));
+        assert.equal(document.querySelectorAll('[role="option"]').length, 1);
+        search.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        assert.ok(search.getAttribute('aria-activedescendant'), 'focused search announces the highlighted model');
+        search.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        assert.equal(select.value, 'provider\u001fmodel-b');
+        assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+        assert.equal(document.activeElement, trigger);
+        trigger.click();
+        picker.unmountAuxiliaryModelSelectCombobox(select);
+        assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+      } finally {
+        picker.setModelSearchQuery('');
+        globalThis.document = previous.document;
+        globalThis.window = previous.window;
+        globalThis.Event = previous.Event;
+        win.close();
+      }
+    });
+  }
+
   for (const hasModels of [true, false]) {
     test(`routing reset remains selectable with ${hasModels ? 'filtered' : 'no'} catalog models`, async () => {
       const { Window } = await import('happy-dom');

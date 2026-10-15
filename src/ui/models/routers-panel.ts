@@ -1,12 +1,11 @@
 import { randomUUID } from '../../lib/random-id';
 import '../../styles/model-routers.css';
 import { formatModelLabel } from '../../lib/format-model-label';
-import type { LibraryModel } from '../../models/library';
+import { decodeModelSelectKey, encodeModelSelectKey } from '../../lib/model-select-key';
 import {
   fetchLibraryModelSelectMerge,
   LIBRARY_MODEL_PROVIDER_ID,
   libraryModelLoadState,
-  type LibraryModelSelectMerge,
 } from '../../models/model-select-library';
 import {
   loadRouterConfig,
@@ -25,6 +24,7 @@ import { formatRouterTierLabel, guessRouterTier, isDecisionModelId, ROUTER_TIERS
 import { listProviders } from '../../providers/store';
 import { sessionState as state } from '../../state/sessions';
 import { listFillProviderOptions } from '../settings-model-binding';
+import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from '../model-select-picker';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.textContent = text; el.className = className; return el;
@@ -40,26 +40,6 @@ function ensureSelectValue(select: HTMLSelectElement, value: string, missingLabe
     select.append(new Option(`${missingLabel} (unavailable)`, value));
   }
   select.value = value;
-}
-
-/** Fill a router model select from My Models (display name + quant + load state). */
-function fillLibraryModelOptions(
-  select: HTMLSelectElement,
-  library: LibraryModel[],
-  serves: LibraryModelSelectMerge['serves'],
-): void {
-  select.replaceChildren();
-  for (const model of library) {
-    const stateLabel = libraryModelLoadState(model, serves);
-    const { optionText, title } = formatModelLabel({
-      id: model.name,
-      quantization: model.quant || undefined,
-      state: stateLabel,
-    });
-    const option = new Option(optionText, model.id);
-    option.title = title;
-    select.append(option);
-  }
 }
 
 let dispose: (() => void) | undefined;
@@ -97,12 +77,22 @@ export async function mountRoutersPanel(): Promise<void> {
     let selected = config.routers[0]?.id || '';
     let dirty = false;
     let saving = false;
+    let adding = false;
+    let searchQuery = '';
+    let draggedEntry = '';
+    const expandedEntries = new Set<string>();
+    const releasePickers = (container: HTMLElement): void => {
+      container.querySelectorAll<HTMLSelectElement>('.model-select-native').forEach(unmountAuxiliaryModelSelectCombobox);
+    };
+    const previousDispose = dispose;
+    dispose = () => { previousDispose?.(); releasePickers(root); };
     /** Bumped on every edit so a save that lands mid-edit cannot clobber it. */
     let revision = 0;
     const root = node('div', '', 'router-panel');
     const bar = node('div', '', 'router-toolbar');
     const picker = node('select'); picker.setAttribute('aria-label', 'Model pool');
     const message = node('p', '', 'router-message'); message.setAttribute('role', 'status');
+    const retry = button('Retry save', () => { void commit(); }); retry.hidden = true;
     const editor = node('div', '', 'router-editor');
     const live = node('div', '', 'router-live');
     let liveEpoch = 0;
@@ -111,6 +101,7 @@ export async function mountRoutersPanel(): Promise<void> {
       dirty = true;
       revision += 1;
       message.textContent = 'Unsaved changes';
+      retry.hidden = true;
       scheduleSave();
     };
     const scheduleSave = (): void => {
@@ -161,178 +152,325 @@ export async function mountRoutersPanel(): Promise<void> {
     async function commit(): Promise<void> {
       if (saving) { scheduleSave(); return; }
       const target = revision;
+      if (config.routers.some((router) => !router.name.trim())) {
+        message.textContent = 'Give your pool a name to save changes.';
+        return;
+      }
       saving = true; root.setAttribute('aria-busy', 'true');
       try {
         const saved = await saveRouterConfig(structuredClone(config));
+        config.revision = saved.revision;
         if (revision === target) {
           applySavedConfig(saved);
           dirty = false;
           message.textContent = 'Saved';
           syncPickerLabels();
         }
-      } catch (error) { message.textContent = (error as Error).message; }
+      } catch (error) { message.textContent = `Could not save: ${(error as Error).message}`; retry.hidden = false; }
       finally {
         saving = false; root.removeAttribute('aria-busy');
         if (revision !== target) scheduleSave();
       }
     }
     const current = (): ModelRouter | undefined => config.routers.find((r) => r.id === selected);
-    picker.onchange = () => { selected = picker.value; render(); };
-    bar.append(node('h2', 'Model pools'), picker, button('New model pool', () => {
+    picker.onchange = () => { selected = picker.value; adding = false; render(); };
+    const heading = node('div', '', 'router-heading');
+    heading.append(node('h2', 'Model pools'), node('p', 'Bring your models together. Choose how they take on the work.'));
+    const create = button('New model pool', () => {
       const router: ModelRouter = { id: randomUUID(), name: 'New model pool', enabled: true, policy: 'priority', entries: [] };
-      config.routers.push(router); selected = router.id; markDirty(); render();
-    }));
-    root.append(bar, message, editor, live); host.replaceChildren(root);
+      config.routers.push(router); selected = router.id; adding = true; searchQuery = ''; markDirty(); render();
+      editor.querySelector<HTMLInputElement>('[aria-label="Pool name"]')?.select();
+    });
+    create.className = 'router-primary';
+    bar.append(heading, picker, create);
+    const saveStatus = node('div', '', 'router-save-status'); saveStatus.append(message, retry);
+    root.append(bar, saveStatus, editor, live); host.replaceChildren(root);
 
-    function fillEntryModels(modelSelect: HTMLSelectElement, entry: RouterEntry): void {
-      if (entry.providerId === LIBRARY_MODEL_PROVIDER_ID) {
-        fillLibraryModelOptions(modelSelect, library, libraryMerge?.serves ?? []);
-      } else {
-        const models = catalogs.find((c) => c.provider.id === entry.providerId)?.models || [];
-        modelSelect.replaceChildren(
-          ...models
-            .filter((m) => m.type === 'llm' || m.type === 'vlm' || !m.type)
-            .map((m) => new Option(m.id, m.id)),
-        );
+    type ModelChoice = { providerId: string; modelId: string; label: string; providerLabel: string; detail: string };
+    const choices: ModelChoice[] = providerChoices.flatMap((provider) => {
+      if (provider.id === LIBRARY_MODEL_PROVIDER_ID) return library.map((model) => ({
+        providerId: provider.id, modelId: model.id, providerLabel: provider.label,
+        label: routerEntryModelLabel({ providerId: provider.id, modelId: model.id } as RouterEntry, library),
+        detail: libraryModelLoadState(model, libraryMerge?.serves ?? []) || 'Loads when needed',
+      }));
+      return (catalogs.find((catalog) => catalog.provider.id === provider.id)?.models || [])
+        .filter((model) => model.type === 'llm' || model.type === 'vlm' || !model.type || isDecisionModelId(model.id))
+        .map((model) => ({ providerId: provider.id, modelId: model.id, providerLabel: provider.label,
+          label: formatModelLabel({ id: model.id, quantization: model.quantization }).optionText,
+          detail: isDecisionModelId(model.id) ? 'Task evaluator' : formatRouterTierLabel(guessRouterTier(model.id)),
+        }));
+    });
+    const key = (binding: { providerId: string; modelId: string }): string => encodeModelSelectKey(binding.providerId, binding.modelId);
+
+    function modelPicker(label: string, binding: { providerId: string; modelId: string } | undefined,
+      available: ModelChoice[], onPick: (binding: { providerId: string; modelId: string } | null) => void,
+      emptyLabel?: string): HTMLElement {
+      const wrap = node('div', '', 'router-model-picker');
+      const select = node('select'); select.setAttribute('aria-label', label);
+      if (emptyLabel) {
+        const reset = new Option(emptyLabel, ''); reset.dataset.modelSelectReset = 'true'; select.append(reset);
       }
-      ensureSelectValue(modelSelect, entry.modelId, entry.modelId);
-    }
-
-    function firstUnusedModel(): { providerId: string; modelId: string } | null {
-      const used = new Set(current()?.entries.map((e) => `${e.providerId}\0${e.modelId}`) ?? []);
-      const unusedLibrary = library.find((model) => !used.has(`${LIBRARY_MODEL_PROVIDER_ID}\0${model.id}`));
-      if (unusedLibrary) return { providerId: LIBRARY_MODEL_PROVIDER_ID, modelId: unusedLibrary.id };
-      const catalog = catalogs.find((c) =>
-        providerChoices.some((choice) => choice.id === c.provider.id) &&
-        c.models.some((m) => (m.type === 'llm' || m.type === 'vlm' || !m.type) && !used.has(`${c.provider.id}\0${m.id}`)),
-      );
-      const model = catalog?.models.find((m) =>
-        (m.type === 'llm' || m.type === 'vlm' || !m.type) && !used.has(`${catalog.provider.id}\0${m.id}`),
-      );
-      if (!catalog || !model) return null;
-      return { providerId: catalog.provider.id, modelId: model.id };
-    }
-
-    /** Provider + model for the Auto pool's task evaluator. The model is free text so decision models missing from a catalog still work. */
-    function evaluatorFields(router: ModelRouter): HTMLElement {
-      const wrap = node('div', '', 'router-fields router-evaluator');
-      const provider = node('select'); provider.setAttribute('aria-label', 'Task evaluator provider');
-      provider.append(new Option('Not set', ''), ...providerChoices.filter((c) => c.id !== LIBRARY_MODEL_PROVIDER_ID).map((c) => new Option(c.label, c.id)));
-      ensureSelectValue(provider, router.evaluator?.providerId || '', router.evaluator?.providerId || '');
-      const model = node('input'); model.setAttribute('aria-label', 'Task evaluator model');
-      model.placeholder = 'typesafe/jev-1.13'; model.maxLength = 500; model.value = router.evaluator?.modelId || '';
-      const options = node('datalist'); options.id = `router-evaluator-models-${router.id}`; model.setAttribute('list', options.id);
-      const hint = node('span', '', 'router-evaluator-hint');
-      const fillOptions = (): void => {
-        const models = catalogs.find((c) => c.provider.id === provider.value)?.models || [];
-        options.replaceChildren(...models
-          .filter((m) => m.type !== 'embeddings' && m.type !== 'embedding')
-          .sort((a, b) => Number(isDecisionModelId(b.id)) - Number(isDecisionModelId(a.id)))
-          .map((m) => new Option(m.id, m.id)));
-      };
-      const describe = (): void => {
-        hint.textContent = !model.value.trim()
-          ? 'No evaluator: the pool uses rank order.'
-          : isDecisionModelId(model.value)
-            ? 'Decision model: answers through the Decisions API with real confidence scores.'
-            : 'Chat model: answers as JSON. Pick something small and fast.';
-      };
-      const persist = (): void => {
-        const providerId = provider.value.trim();
-        const modelId = model.value.trim();
-        if (providerId && modelId) router.evaluator = { providerId, modelId };
-        else delete router.evaluator;
-        describe();
-        markDirty();
-      };
-      provider.onchange = () => { fillOptions(); persist(); };
-      model.oninput = persist;
-      fillOptions(); describe();
-      wrap.append(field('Task evaluator', provider), field('Model', model), options, hint);
+      for (const provider of providerChoices) {
+        const group = node('optgroup'); group.label = provider.label;
+        for (const model of available.filter((choice) => choice.providerId === provider.id)) {
+          const option = new Option(`${model.label} · ${model.providerLabel}`, key(model));
+          option.title = `${model.label} · ${model.providerLabel} · ${model.detail}`;
+          group.append(option);
+        }
+        if (group.children.length) select.append(group);
+      }
+      ensureSelectValue(select, binding ? key(binding) : '', binding ? `${binding.modelId} · ${binding.providerId}` : '');
+      select.onchange = () => onPick(decodeModelSelectKey(select.value));
+      wrap.append(select);
+      mountAuxiliaryModelSelectCombobox(select, { searchable: true });
       return wrap;
+    }
+
+    function evaluatorFields(router: ModelRouter): HTMLElement {
+      const wrap = node('section', '', 'router-evaluator');
+      const heading = node('div', '', 'router-section-heading');
+      heading.append(node('h3', 'Who chooses the model?'), node('span', 'Task evaluator', 'router-caption'));
+      const hint = node('p', router.evaluator
+        ? isDecisionModelId(router.evaluator.modelId) ? 'This decision model chooses a tier and reasoning level when a chat starts.'
+          : 'This model chooses once per chat. A small, fast model works well here.'
+        : 'Choose an evaluator to pick a model for each new chat. Until then, the pool uses your model order.');
+      wrap.append(heading, modelPicker('Task evaluator model', router.evaluator,
+        choices.filter((choice) => choice.providerId !== LIBRARY_MODEL_PROVIDER_ID), (binding) => {
+          if (binding) router.evaluator = binding; else delete router.evaluator;
+          markDirty(); render();
+          editor.querySelector<HTMLButtonElement>('.router-evaluator .model-select-trigger')?.focus();
+        }, 'No evaluator (use model order)'), hint);
+      const custom = node('details', '', 'router-custom-evaluator');
+      custom.append(node('summary', 'Use a model ID not listed here'));
+      const fields = node('div', '', 'router-fields');
+      const provider = node('select'); provider.setAttribute('aria-label', 'Custom evaluator provider');
+      provider.append(new Option('Choose provider', ''), ...providerChoices
+        .filter((choice) => choice.id !== LIBRARY_MODEL_PROVIDER_ID).map((choice) => new Option(choice.label, choice.id)));
+      ensureSelectValue(provider, router.evaluator?.providerId || '', router.evaluator?.providerId || '');
+      const model = node('input'); model.setAttribute('aria-label', 'Custom evaluator model ID');
+      model.placeholder = 'typesafe/jev-1.13'; model.maxLength = 500; model.value = router.evaluator?.modelId || '';
+      const apply = button('Use evaluator', () => {
+        if (!provider.value || !model.value.trim()) { model.reportValidity(); return; }
+        router.evaluator = { providerId: provider.value, modelId: model.value.trim() }; markDirty(); render();
+      });
+      model.required = true;
+      fields.append(field('Provider', provider), field('Model ID', model), apply);
+      custom.append(fields); wrap.append(custom);
+      return wrap;
+    }
+
+    function renderModelBrowser(router: ModelRouter): HTMLElement {
+      const browser = node('section', '', 'router-model-browser');
+      browser.setAttribute('aria-label', 'Add models to pool');
+      const heading = node('div', '', 'router-section-heading');
+      heading.append(node('h3', 'Choose models to add'), button('Done', () => {
+        adding = false; render(); editor.querySelector<HTMLButtonElement>('.router-add-models')?.focus();
+      }));
+      const search = node('input'); search.type = 'search'; search.placeholder = 'Search models or providers…';
+      search.value = searchQuery; search.setAttribute('aria-label', 'Search available models');
+      const results = node('div', '', 'router-browser-results');
+      const count = node('p', '', 'router-caption'); count.setAttribute('role', 'status');
+      const draw = (): void => {
+        results.replaceChildren();
+        const query = search.value.toLowerCase().trim();
+        const matches = choices.filter((choice) => !isDecisionModelId(choice.modelId) &&
+          `${choice.label} ${choice.providerLabel}`.toLowerCase().includes(query));
+        count.textContent = `${matches.length} model${matches.length === 1 ? '' : 's'} available · ${router.entries.length} in this pool`;
+        for (const provider of providerChoices) {
+          const group = matches.filter((choice) => choice.providerId === provider.id);
+          if (!group.length) continue;
+          results.append(node('h4', provider.label));
+          for (const choice of group) {
+            const included = router.entries.some((entry) => key(entry) === key(choice));
+            const add = button('', () => {
+              router.entries.push({ id: randomUUID(), providerId: choice.providerId, modelId: choice.modelId, enabled: true, concurrencyLimit: 1 });
+              markDirty(); render();
+              const refreshed = editor.querySelector<HTMLInputElement>('[aria-label="Search available models"]');
+              refreshed?.focus(); refreshed?.setSelectionRange(searchQuery.length, searchQuery.length);
+            });
+            add.className = 'router-browser-model'; add.disabled = included;
+            add.setAttribute('aria-label', `${included ? 'Included' : 'Add'} ${choice.label} from ${choice.providerLabel}`);
+            const identity = node('span', '', 'router-browser-identity');
+            identity.append(node('strong', choice.label), node('span', choice.detail, 'router-caption'));
+            add.append(identity, node('span', included ? '✓ Added' : '+ Add', 'router-browser-action'));
+            results.append(add);
+          }
+        }
+        if (!matches.length) results.append(node('p', choices.length
+          ? 'No models match this search. Try a different model or provider name.'
+          : 'No models are available yet. Download one in My Models or connect a provider in Models → Providers.'));
+        for (const catalog of catalogs.filter((catalog) => catalog.error && providerChoices.some((choice) => choice.id === catalog.provider.id))) {
+          results.append(node('p', `${catalog.provider.label}: could not load models. Check the provider connection.`, 'router-caption'));
+        }
+      };
+      search.oninput = () => { searchQuery = search.value; draw(); };
+      draw(); browser.append(heading, search, count, results);
+      return browser;
     }
 
     function render(): void {
       liveEpoch++;
-      picker.replaceChildren(...config.routers.map((r) => new Option(r.name, r.id)));
+      releasePickers(editor); releasePickers(live);
+      picker.replaceChildren(...config.routers.map((router) => new Option(router.name, router.id)));
       picker.value = selected; picker.disabled = !config.routers.length;
       editor.replaceChildren(); live.replaceChildren();
       const router = current();
       if (!router) {
-        editor.append(node('p', 'Create a model pool to share model capacity across chats. Add models from My Models or your configured providers, then select the model pool in any chat.'));
-        return;
+        const empty = node('div', '', 'router-empty');
+        empty.append(node('h3', 'A model lineup for your workspace'),
+          node('p', 'Pool local and connected models, arrange your favorites, and let chats share their capacity.'),
+          button('Create your first pool', () => create.click()));
+        editor.append(empty); return;
       }
-      const header = node('div', '', 'router-fields');
+      const header = node('div', '', 'router-pool-header router-fields');
       const name = node('input'); name.value = router.name; name.maxLength = 100;
-      name.oninput = () => { router.name = name.value; markDirty(); };
-      const enabled = node('input'); enabled.type = 'checkbox'; enabled.checked = router.enabled;
-      enabled.onchange = () => { router.enabled = enabled.checked; if (!enabled.checked && config.defaultRouterId === router.id) config.defaultRouterId = null; markDirty(); };
-      const policy = node('select'); policy.append(new Option('Priority', 'priority'), new Option('Balance by rank', 'balance'), new Option('Auto (task evaluator)', 'evaluate')); policy.value = router.policy;
-      policy.onchange = () => { router.policy = policy.value as ModelRouter['policy']; markDirty(); render(); };
-      const auto = router.policy === 'evaluate';
-      const defaultToggle = node('input'); defaultToggle.type = 'checkbox'; defaultToggle.checked = config.defaultRouterId === router.id;
-      defaultToggle.onchange = () => { config.defaultRouterId = defaultToggle.checked ? router.id : null; markDirty(); };
-      header.append(field('Name', name), field('Policy', policy), field('Enabled', enabled), field('Default for new chats', defaultToggle));
-      editor.append(header, node('p', auto
-        ? 'The task evaluator picks a tier and reasoning level once for each chat. Follow-ups and tool rounds keep that choice. Use Re-evaluate in the composer model menu to choose again on your next message. If the evaluator is unset or slow, the pool falls back to rank order.'
-        : 'Chats keep their assigned model. When it is full, they wait; if it fails, the response restarts on another eligible model. My Models entries load when needed and unload after in-flight local work finishes.'));
-      if (auto) editor.append(evaluatorFields(router));
-      const list = node('ol', '', auto ? 'router-entry-list is-auto' : 'router-entry-list');
-      router.entries.forEach((entry, index) => {
-        const row = node('li'); row.dataset.entryId = entry.id;
-        const provider = node('select'); provider.setAttribute('aria-label', `Provider for rank ${index + 1}`);
-        provider.append(...providerChoices.map((choice) => new Option(choice.label, choice.id)));
-        ensureSelectValue(provider, entry.providerId, entry.providerId);
-        const model = node('select'); model.setAttribute('aria-label', `Model for rank ${index + 1}`);
-        fillEntryModels(model, entry);
-        provider.onchange = () => {
-          entry.providerId = provider.value;
-          if (entry.providerId === LIBRARY_MODEL_PROVIDER_ID) {
-            entry.modelId = library.find((m) => !router.entries.some((e) => e !== entry && e.providerId === LIBRARY_MODEL_PROVIDER_ID && e.modelId === m.id))?.id
-              || library[0]?.id
-              || '';
-          } else {
-            const catalog = catalogs.find((c) => c.provider.id === entry.providerId);
-            entry.modelId = catalog?.models.find((m) => m.type === 'llm' || m.type === 'vlm' || !m.type)?.id || '';
-          }
-          fillEntryModels(model, entry);
-          markDirty();
-        };
-        model.onchange = () => { entry.modelId = model.value; markDirty(); };
-        const capacity = node('input'); capacity.type = 'number'; capacity.min = '1'; capacity.max = '100'; capacity.value = String(entry.concurrencyLimit);
-        capacity.oninput = () => { entry.concurrencyLimit = Number(capacity.value); markDirty(); };
-        const tier = node('select'); tier.setAttribute('aria-label', `Tier for rank ${index + 1}`);
-        tier.title = 'How capable this model is. The evaluator picks a tier per turn; the pool uses the highest-ranked entry in it.';
-        tier.append(new Option(`Auto (${formatRouterTierLabel(guessRouterTier(routerEntryModelLabel(entry, library)))})`, ''), ...ROUTER_TIERS.map((t) => new Option(formatRouterTierLabel(t), t)));
-        tier.value = entry.tier || '';
-        tier.onchange = () => { if (tier.value) entry.tier = tier.value as RouterEntry['tier']; else delete entry.tier; markDirty(); };
-        const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = entry.enabled;
-        toggle.onchange = () => { entry.enabled = toggle.checked; markDirty(); };
-        const move = (offset: number): void => {
-          const target = index + offset;
-          if (target < 0 || target >= router.entries.length) return;
-          [router.entries[index], router.entries[target]] = [router.entries[target], router.entries[index]];
-          markDirty(); render(); editor.querySelector<HTMLElement>(`[data-entry-id="${entry.id}"] button`)?.focus();
-        };
-        const up = button('↑', () => move(-1)); up.disabled = index === 0; up.setAttribute('aria-label', `Move rank ${index + 1} up`);
-        const down = button('↓', () => move(1)); down.disabled = index === router.entries.length - 1; down.setAttribute('aria-label', `Move rank ${index + 1} down`);
-        row.onkeydown = (event) => { if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); move(event.key === 'ArrowUp' ? -1 : 1); } };
-        row.append(node('span', String(index + 1), 'router-rank'), provider, model, ...(auto ? [tier] : []), field('Slots', capacity), field('Enabled', toggle), up, down, button('Remove', () => { router.entries.splice(index, 1); markDirty(); render(); }));
-        list.append(row);
+      name.className = 'router-pool-name'; name.setAttribute('aria-label', 'Pool name');
+      name.oninput = () => { router.name = name.value; syncPickerLabels(); markDirty(); };
+      const enabled = button(router.enabled ? 'Pool active' : 'Pool paused', () => {
+        router.enabled = !router.enabled;
+        if (!router.enabled && config.defaultRouterId === router.id) config.defaultRouterId = null;
+        markDirty(); render(); editor.querySelector<HTMLButtonElement>('.router-pool-enabled')?.focus();
       });
-      const configuration = node('details', '', 'router-configuration');
-      configuration.open = dirty || !router.entries.length;
-      configuration.append(node('summary', `Configure entries (${router.entries.length})`));
-      configuration.append(list, button('Add model', () => {
-        const next = firstUnusedModel();
-        if (!next) { message.textContent = 'No additional models available. Download a model in My Models or configure a provider in Models → Providers.'; return; }
-        router.entries.push({ id: randomUUID(), providerId: next.providerId, modelId: next.modelId, enabled: true, concurrencyLimit: 1 }); markDirty(); render();
-      }), button('Delete router', () => {
-        config.routers = config.routers.filter((r) => r.id !== router.id);
-        if (config.defaultRouterId === router.id) config.defaultRouterId = null;
-        selected = config.routers[0]?.id || ''; markDirty(); render();
-      }));
-      editor.append(configuration);
+      enabled.className = 'router-pool-enabled router-toggle'; enabled.setAttribute('aria-pressed', String(router.enabled));
+      const defaultToggle = button(config.defaultRouterId === router.id ? '✓ Default for new chats' : 'Use for new chats', () => {
+        config.defaultRouterId = config.defaultRouterId === router.id ? null : router.id;
+        markDirty(); render(); editor.querySelector<HTMLButtonElement>('.router-default-toggle')?.focus();
+      });
+      defaultToggle.className = 'router-default-toggle router-toggle'; defaultToggle.disabled = !router.enabled;
+      defaultToggle.setAttribute('aria-pressed', String(config.defaultRouterId === router.id));
+      header.append(name, enabled, defaultToggle); editor.append(header);
+
+      const routing = node('section', '', 'router-routing');
+      routing.append(node('h3', 'How should this pool choose?'));
+      const policies: { id: ModelRouter['policy']; title: string; detail: string }[] = [
+        { id: 'priority', title: 'Prefer first', detail: 'Start with the first available model in your lineup.' },
+        { id: 'balance', title: 'Share work', detail: 'Spread new chats across models. Higher ranks get more work.' },
+        { id: 'evaluate', title: 'Match the task', detail: 'An evaluator picks the model tier and reasoning for each new chat.' },
+      ];
+      const modes = node('div', '', 'router-policy-choices'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Routing strategy');
+      for (const policy of policies) {
+        const choice = button('', () => {
+          router.policy = policy.id; markDirty(); render();
+          editor.querySelector<HTMLButtonElement>(`[data-policy="${policy.id}"]`)?.focus();
+        });
+        choice.dataset.policy = policy.id; choice.setAttribute('aria-pressed', String(router.policy === policy.id));
+        choice.append(node('strong', policy.title), node('span', policy.detail)); modes.append(choice);
+      }
+      routing.append(modes); editor.append(routing);
+      const auto = router.policy === 'evaluate';
+      if (auto) editor.append(evaluatorFields(router));
+
+      const lineup = node('section', '', 'router-lineup');
+      const title = node('div', '', 'router-section-heading');
+      const label = node('div'); label.append(node('h3', 'Model lineup'), node('p', auto
+        ? 'Order models within each tier. Drag to reorder, or use the arrows.'
+        : 'Drag to reorder, or use the arrows. First in line gets the highest priority.'));
+      const add = button(adding ? 'Choosing models…' : '+ Add models', () => {
+        adding = !adding; render(); editor.querySelector<HTMLInputElement>('[aria-label="Search available models"]')?.focus();
+      });
+      add.className = 'router-add-models'; add.setAttribute('aria-expanded', String(adding));
+      title.append(label, add); lineup.append(title);
+      if (adding) lineup.append(renderModelBrowser(router));
+      const list = node('ol', '', 'router-entry-list'); list.setAttribute('aria-label', 'Models in priority order');
+      router.entries.forEach((entry, index) => {
+        const row = node('li', '', entry.enabled ? 'router-entry' : 'router-entry is-paused'); row.dataset.entryId = entry.id;
+        const moveTo = (target: number): void => {
+          const from = router.entries.findIndex((item) => item.id === entry.id);
+          if (target < 0 || target >= router.entries.length || from === target) return;
+          router.entries.splice(from, 1); router.entries.splice(target, 0, entry);
+          markDirty(); render(); editor.querySelector<HTMLButtonElement>(`[data-entry-id="${entry.id}"] .router-drag-handle`)?.focus();
+          message.textContent = `Moved ${routerEntryModelLabel(entry, library)} to rank ${target + 1}. Saving…`;
+        };
+        const handle = button('⠿', () => {}); handle.className = 'router-drag-handle'; handle.draggable = true;
+        handle.setAttribute('aria-label', `Reorder rank ${index + 1}`); handle.title = 'Drag to reorder, or press Alt + Arrow Up / Down';
+        handle.ondragstart = (event) => {
+          draggedEntry = entry.id; event.dataTransfer?.setData('text/plain', entry.id);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'; row.classList.add('is-dragging');
+        };
+        handle.ondragend = () => { draggedEntry = ''; list.querySelectorAll('.is-drop-target, .is-dragging').forEach((item) => item.classList.remove('is-drop-target', 'is-dragging')); };
+        row.ondragover = (event) => { if (draggedEntry && draggedEntry !== entry.id) { event.preventDefault(); row.classList.add('is-drop-target'); } };
+        row.ondragleave = () => row.classList.remove('is-drop-target');
+        row.ondrop = (event) => {
+          event.preventDefault(); const from = router.entries.findIndex((item) => item.id === draggedEntry);
+          if (from < 0 || from === index) return;
+          const moved = router.entries.splice(from, 1)[0]; router.entries.splice(index, 0, moved);
+          draggedEntry = ''; markDirty(); render();
+          editor.querySelector<HTMLButtonElement>(`[data-entry-id="${moved.id}"] .router-drag-handle`)?.focus();
+        };
+        row.onkeydown = (event) => { if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); moveTo(index + (event.key === 'ArrowUp' ? -1 : 1)); } };
+        const identity = node('div', '', 'router-entry-identity');
+        const alternatives = choices.filter((choice) => !isDecisionModelId(choice.modelId) &&
+          !router.entries.some((other) => other !== entry && key(other) === key(choice)));
+        identity.append(modelPicker(`Model for rank ${index + 1}`, entry, alternatives, (binding) => {
+          if (!binding || router.entries.some((other) => other !== entry && key(other) === key(binding))) return;
+          entry.providerId = binding.providerId; entry.modelId = binding.modelId; markDirty(); render();
+          editor.querySelector<HTMLButtonElement>(`[data-entry-id="${entry.id}"] .model-select-trigger`)?.focus();
+        }), node('span', `${routerEntryProviderLabel(entry, providerChoices)}${entry.providerId === LIBRARY_MODEL_PROVIDER_ID ? ' · Loads when needed' : ''}`, 'router-caption'));
+        const capacity = node('div', '', 'router-capacity');
+        const slots = node('output', `${entry.concurrencyLimit} ${entry.concurrencyLimit === 1 ? 'slot' : 'slots'}`);
+        const changeSlots = (offset: number): void => {
+          entry.concurrencyLimit += offset; markDirty(); render();
+          editor.querySelector<HTMLButtonElement>(`[aria-label="${offset > 0 ? 'Increase' : 'Decrease'} slots for rank ${index + 1}"]`)?.focus();
+        };
+        const less = button('−', () => changeSlots(-1));
+        const more = button('+', () => changeSlots(1));
+        less.disabled = entry.concurrencyLimit <= 1; more.disabled = entry.concurrencyLimit >= 100;
+        less.setAttribute('aria-label', `Decrease slots for rank ${index + 1}`); more.setAttribute('aria-label', `Increase slots for rank ${index + 1}`);
+        capacity.title = 'Maximum simultaneous generations'; capacity.append(less, slots, more);
+        const pause = button(entry.enabled ? 'Active' : 'Paused', () => {
+          entry.enabled = !entry.enabled; markDirty(); render(); editor.querySelector<HTMLButtonElement>(`[data-entry-id="${entry.id}"] .router-entry-toggle`)?.focus();
+        });
+        pause.className = 'router-entry-toggle router-toggle'; pause.setAttribute('aria-pressed', String(entry.enabled));
+        const up = button('↑', () => moveTo(index - 1)); up.disabled = index === 0; up.setAttribute('aria-label', `Move rank ${index + 1} up`);
+        const down = button('↓', () => moveTo(index + 1)); down.disabled = index === router.entries.length - 1; down.setAttribute('aria-label', `Move rank ${index + 1} down`);
+        const order = node('div', '', 'router-order-actions'); order.append(up, down);
+        const details = node('details', '', 'router-entry-details');
+        details.open = expandedEntries.has(entry.id);
+        details.append(node('summary', 'More'));
+        details.ontoggle = () => { if (!details.isConnected) return; if (details.open) expandedEntries.add(entry.id); else expandedEntries.delete(entry.id); };
+        const controls = node('div', '', 'router-entry-settings');
+        const limit = node('input'); limit.type = 'number'; limit.min = '1'; limit.max = '100'; limit.step = '1'; limit.value = String(entry.concurrencyLimit);
+        limit.setAttribute('aria-label', `Concurrent generations for rank ${index + 1}`);
+        limit.onchange = () => {
+          if (!Number.isInteger(Number(limit.value)) || Number(limit.value) < 1 || Number(limit.value) > 100) { limit.reportValidity(); return; }
+          entry.concurrencyLimit = Number(limit.value); markDirty(); render();
+        };
+        const remove = button('Remove from pool', () => { router.entries.splice(index, 1); expandedEntries.delete(entry.id); markDirty(); render(); });
+        remove.className = 'router-remove'; controls.append(field('Concurrent generations', limit), remove);
+        details.append(controls);
+        row.append(handle, node('span', String(index + 1).padStart(2, '0'), 'router-rank'), identity);
+        if (auto) {
+          const tier = node('select'); tier.setAttribute('aria-label', `Tier for rank ${index + 1}`);
+          tier.append(new Option(`Auto: ${formatRouterTierLabel(guessRouterTier(routerEntryModelLabel(entry, library)))}`, ''),
+            ...ROUTER_TIERS.map((value) => new Option(formatRouterTierLabel(value), value)));
+          tier.value = entry.tier || '';
+          tier.onchange = () => { if (tier.value) entry.tier = tier.value as RouterEntry['tier']; else delete entry.tier; markDirty(); };
+          row.append(field('Tier', tier));
+        }
+        row.append(capacity, pause, order, details); list.append(row);
+      });
+      lineup.append(list);
+      if (!router.entries.length) {
+        const empty = node('div', '', 'router-lineup-empty');
+        empty.append(node('strong', 'Start with a model you trust'), node('p', 'Add local or connected models. You can mix providers and change the order anytime.'));
+        lineup.append(empty);
+      }
+      if (router.entries.length && !router.entries.some((entry) => entry.enabled)) lineup.append(node('p', 'All models are paused. Activate a model so this pool can answer requests.', 'router-warning'));
+      lineup.append(node('p', auto
+        ? 'Chats keep their chosen model and reasoning. Use Re-evaluate in the composer model menu to choose again. If evaluation fails, your lineup is the fallback.'
+        : 'Assigned chats keep their model and wait when it is busy. If it fails, another model takes over.', 'router-caption'));
+      editor.append(lineup);
+      const footer = node('div', '', 'router-pool-footer');
+      footer.append(node('span', 'Changes save automatically for this workspace.', 'router-caption'));
+      const remove = button('Delete pool', () => {
+        footer.replaceChildren(node('span', `Delete “${router.name}”? Models stay in your library.`, 'router-caption'),
+          button('Cancel', () => render()), button('Delete pool permanently', () => {
+            config.routers = config.routers.filter((item) => item !== router);
+            if (config.defaultRouterId === router.id) config.defaultRouterId = null;
+            selected = config.routers[0]?.id || ''; adding = false; markDirty(); render();
+          }));
+      });
+      remove.className = 'router-remove'; footer.append(remove); editor.append(footer);
       void refresh();
     }
 
@@ -366,10 +504,11 @@ export async function mountRoutersPanel(): Promise<void> {
         }
         const override = node('select'); override.setAttribute('aria-label', 'Persistent model override');
         override.title = 'Applies to the next generation. Choose model pool assignment to clear.';
-        override.append(new Option('Model pool assignment', ''), ...router.entries.filter((e) => e.enabled).map((e) => new Option(`${routerEntryProviderLabel(e, providerChoices)} / ${routerEntryModelLabel(e, library)}`, e.id)));
+        const reset = new Option('Model pool assignment', ''); reset.dataset.modelSelectReset = 'true';
+        override.append(reset, ...router.entries.filter((e) => e.enabled).map((e) => new Option(`${routerEntryProviderLabel(e, providerChoices)} / ${routerEntryModelLabel(e, library)}`, e.id)));
         override.value = assignment.overrideEntryId || '';
         override.onchange = () => { void routerApi(`/${router.id}/override`, { chatId: assignment.chatId, entryId: override.value || null }, 'POST').then(() => { override.blur(); void refresh(); }).catch((error) => { message.textContent = error.message; }); };
-        row.append(override); chats.append(row);
+        row.append(override); chats.append(row); mountAuxiliaryModelSelectCombobox(override, { searchable: true });
       }
       for (const [index, entry] of router.entries.entries()) {
         const activityEntry = activity.entries.find((e) => e.entryId === entry.id);
@@ -404,7 +543,7 @@ export async function mountRoutersPanel(): Promise<void> {
         models.append(card);
       }
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.classList.add('router-connections'); svg.setAttribute('aria-hidden', 'true');
-      graph.append(svg, chats, models); live.replaceChildren(node('h2', 'Live routing'), graph);
+      graph.append(svg, chats, models); releasePickers(live); live.replaceChildren(node('h2', 'Live routing'), graph);
       const recentFailure = [...activity.events].reverse().find((e) => e.status === 'failover');
       if (recentFailure) live.append(node('p', `Last failover: ${recentFailure.error || 'Previous model unavailable'}`, 'router-message'));
       requestAnimationFrame(() => {
