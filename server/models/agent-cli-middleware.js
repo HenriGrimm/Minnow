@@ -5,6 +5,7 @@ import {
 } from '../providers/store.js';
 import { detectAgentCli, verifyAgentCliAuth } from './agent-cli-detect.js';
 import { getAgentCliAccountUsage } from './agent-cli-usage.js';
+import { createAgentCliLoginService } from './agent-cli-login.js';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { getCliCapability } from '../generations/agent-cli/lifecycle.js';
 import {
@@ -13,6 +14,17 @@ import {
   getAgentCliInstallCommand,
   clearAgentCliModelCatalogCache,
 } from './agent-cli-catalog.js';
+
+const login = createAgentCliLoginService({
+  verify: (kind) => getAgentCliStatus(kind, { verify: true }),
+  onSignedIn: async (kind) => {
+    clearAgentCliModelCatalogCache(kind);
+    await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId
+      && !session.active && !session.waiting);
+  },
+});
+
+export function shutdownAgentCliLogins() { return login.shutdown(); }
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -114,11 +126,38 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     return true;
   }
 
-  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage|prepare-update)$/);
+  const match = pathname.match(/^\/api\/models\/agent-clis\/([^/]+)\/(verify|enable|settings|usage|prepare-update|login)$/);
   if (!match) return false;
   try {
     const kind = getAgentCliDefinition(decodeURIComponent(match[1])).kind;
     const action = match[2];
+    if (action === 'login') {
+      res.setHeader('Cache-Control', 'no-store');
+      if (req.method === 'GET') {
+        const id = new URL(req.url ?? pathname, 'http://localhost').searchParams.get('id');
+        sendJson(res, 200, { login: login.poll(kind, id) });
+        return true;
+      }
+      if (req.method === 'POST') {
+        const body = await readJsonBody(req);
+        let flow;
+        if (body.action === 'cancel') flow = await login.cancel(kind, body.id);
+        else if (body.action === 'code') flow = login.submit(kind, body.id, body.code);
+        else if (body.action === 'start') {
+          const { profile, secrets } = await getAgentCliProviderConfig(kind);
+          const status = await getAgentCliStatus(kind);
+          if (!status.installed) throw new Error('Install the CLI before signing in.');
+          if (status.authStatus === 'token' || secrets.cliToken) {
+            throw new Error('This CLI uses a configured token. Manage that token before using browser sign-in.');
+          }
+          flow = await login.start(kind, { binPath: profile?.agentCli?.binPath });
+        } else throw new Error('Invalid sign-in action');
+        sendJson(res, 200, { login: flow });
+        return true;
+      }
+      sendJson(res, 405, { error: 'Method not allowed' });
+      return true;
+    }
     if (action === 'usage' && req.method === 'GET') {
       const query = new URL(req.url ?? pathname, 'http://localhost').searchParams;
       res.setHeader('Cache-Control', 'no-store');

@@ -7,6 +7,7 @@ import {
   updateAgentCliSettings,
   verifyAgentCli,
   fetchAgentCliAccountUsage,
+  agentCliLoginRequest,
   type AgentCliKind,
   type AgentCliSettingsPatch,
   type AgentCliStatus,
@@ -16,6 +17,7 @@ import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
 import { accountUsageSummary, createAccountUsageView } from '../cli-account-usage';
+import { createAgentCliSignIn } from '../agent-cli-sign-in';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
 const LOGIN_COMMANDS: Record<AgentCliKind, string> = {
@@ -38,12 +40,13 @@ const CURSOR_INSTALL_CMD =
   "powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm 'https://cursor.com/install?win32=true' | iex\"";
 
 interface CliPanelDeps {
+  login: typeof agentCliLoginRequest;
   usage: typeof fetchAgentCliAccountUsage;
   list: typeof listAgentClis;
   verify: typeof verifyAgentCli;
   setEnabled: typeof setAgentCliEnabled;
   updateSettings: typeof updateAgentCliSettings;
-  launchSignIn: (status: AgentCliStatus) => Promise<void>;
+  launchSignIn: (status: AgentCliStatus) => Promise<boolean | void>;
   launchInstall: (status: AgentCliStatus) => Promise<void>;
   prepareUpdate: typeof prepareAgentCliUpdate;
   launchUpdate: (status: AgentCliStatus) => Promise<void>;
@@ -131,8 +134,10 @@ async function runCommandInNewTerminal(
   terminalXterm.insertTextAtTerminalInput(`${buildCommand(shell)}\r`);
 }
 
-async function defaultLaunchSignIn(status: AgentCliStatus): Promise<void> {
-  await runCommandInNewTerminal((shell) => buildAgentCliLoginCommand(status, shell));
+async function defaultLaunchSignIn(status: AgentCliStatus): Promise<boolean> {
+  const result = views.get(status.kind)?.signIn.start();
+  render();
+  return await result ?? false;
 }
 
 async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
@@ -144,6 +149,7 @@ async function defaultLaunchUpdate(status: AgentCliStatus): Promise<void> {
 }
 
 const defaultDeps: CliPanelDeps = {
+  login: agentCliLoginRequest,
   usage: fetchAgentCliAccountUsage,
   list: listAgentClis,
   verify: verifyAgentCli,
@@ -172,6 +178,7 @@ const pending = new Map<AgentCliKind, string>();
 const itemErrors = new Map<AgentCliKind, string>();
 const openSettings = new Set<AgentCliKind>();
 interface CliView {
+  signIn: ReturnType<typeof createAgentCliSignIn>;
   dispose: () => void;
   row: HTMLElement;
   update: (status: AgentCliStatus) => void;
@@ -481,14 +488,21 @@ function renderCli(status: AgentCliStatus): CliView {
   const error = el('p', 'models-cli-row__error');
   error.setAttribute('role', 'alert');
   const settings = renderSettingsForm(status);
-  body.append(connection, info, path, error, settings.form);
-  connection.after(usage.root);
+  const signInView = createAgentCliSignIn(status.kind, status.label, {
+    request: deps.login, retry: () => void launchSignIn(status.kind),
+  });
+  body.append(connection, signInView.root, info, path, error, settings.form);
+  signInView.root.after(usage.root);
   details.append(summary, body);
   row.append(details);
 
   const update = (next: AgentCliStatus): void => {
-    usageSummary.hidden = !next.installed;
-    usage.root.hidden = !next.installed;
+    const signingIn = pending.get(next.kind) === 'Signing in';
+    usageSummary.hidden = !next.installed || signingIn;
+    usage.root.hidden = !next.installed || signingIn;
+    connection.hidden = signingIn;
+    settings.form.hidden = signingIn;
+    info.hidden = signingIn;
     if (next.installed && row.isConnected) usage.start();
     else usage.stop();
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
@@ -513,13 +527,14 @@ function renderCli(status: AgentCliStatus): CliView {
     install.hidden = next.installed;
     install.disabled = busy;
     install.textContent = pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
-    signIn.hidden = !next.installed || next.authStatus === 'signed-in' || next.authStatus === 'token';
+    signIn.hidden = !next.installed || next.authStatus === 'signed-in' || next.authStatus === 'token'
+      || !signInView.root.hidden;
     signIn.disabled = busy;
     for (const input of settings.form.querySelectorAll('input')) {
       input.disabled = pending.has(next.kind) || Boolean(loadController);
     }
     path.textContent = next.binPath ?? '';
-    path.hidden = !next.binPath;
+    path.hidden = !next.binPath || signingIn;
     path.title = next.binPath ?? '';
     const sessionHint = next.fallbackReason || (next.kind === 'cursor' && next.transport !== 'acp'
       ? 'Minnow checks persistent-session support before sending a prompt. Unsupported Cursor versions use isolated replay.'
@@ -527,13 +542,14 @@ function renderCli(status: AgentCliStatus): CliView {
     info.textContent = !next.installed
       ? 'Install in Terminal, then scan again. You can also set a binary path in Advanced settings.'
       : next.kind === 'codex'
-        ? `Sign in creates a file-backed Codex login for Minnow’s isolated runs. ${sessionHint}`
+        ? `Sign in with your ChatGPT account to use Codex in Minnow. ${sessionHint}`
         : sessionHint;
     error.textContent = itemErrors.get(next.kind) ?? '';
     error.hidden = !error.textContent;
   };
   update(status);
-  return { row, update, flush: settings.flush, busy: settings.busy, dispose: () => usage.stop() };
+  return { row, signIn: signInView, update, flush: settings.flush, busy: settings.busy,
+    dispose: () => { usage.stop(); signInView.dispose(); } };
 }
 
 function render(): void {
@@ -679,23 +695,31 @@ async function launchSignIn(kind: AgentCliKind): Promise<void> {
   if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
   itemErrors.delete(kind);
   notice = '';
-  pending.set(kind, 'Opening terminal');
+  pending.set(kind, 'Signing in');
+  const view = views.get(kind);
+  const controller = new AbortController();
+  actionControllers.set(kind, controller);
   render();
   try {
     const status = statuses.find((row) => row.kind === kind);
     if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
-    if (showCommandInstructions) {
-      const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
-      notice = `Run ${buildAgentCliLoginCommand(status, shell)} in your terminal. Finish sign-in, then verify here.`;
-      return;
+    const connected = await deps.launchSignIn(status);
+    if (!mounted || views.get(kind) !== view || controller.signal.aborted) return;
+    if (connected) {
+      const next = await deps.verify(kind, controller.signal);
+      if (!mounted || views.get(kind) !== view || controller.signal.aborted) return;
+      replaceStatus(next);
+      notice = `${status.label} is signed in. ${next.enabled ? 'Your account is ready to use.' : 'Enable the provider to use it in Minnow.'}`;
+      void refreshNormalModelPicker().catch(() => {});
     }
-    await deps.launchSignIn(status);
-    notice = `${LOGIN_COMMANDS[kind]} opened in Terminal. Finish sign-in there, then return and verify.`;
   } catch (error) {
-    itemErrors.set(kind, errorMessage(error));
+    if (!controller.signal.aborted) itemErrors.set(kind, errorMessage(error));
   } finally {
-    pending.delete(kind);
-    render();
+    if (actionControllers.get(kind) === controller) {
+      actionControllers.delete(kind);
+      pending.delete(kind);
+      render();
+    }
   }
 }
 

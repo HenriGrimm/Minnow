@@ -2,6 +2,29 @@ export type AgentCliKind = 'claude' | 'codex' | 'cursor';
 
 export type AgentCliAuthStatus = 'signed-in' | 'token' | 'unknown' | 'signed-out';
 
+export interface AgentCliLogin {
+  id: string;
+  state: 'starting' | 'waiting' | 'verifying' | 'signed-in' | 'failed' | 'cancelled';
+  verificationUrl: string | null;
+  code: string | null;
+  acceptsCode: boolean;
+  error: string | null;
+}
+
+export async function agentCliLoginRequest(
+  kind: AgentCliKind,
+  action: 'start' | 'poll' | 'cancel' | 'code',
+  options: { id?: string; code?: string; signal?: AbortSignal } = {},
+): Promise<AgentCliLogin> {
+  const body = await requestJson<{ login: AgentCliLogin }>(
+    `${cliUrl(kind, 'login')}${action === 'poll' ? `?id=${encodeURIComponent(options.id ?? '')}` : ''}`,
+    { method: action === 'poll' ? 'GET' : 'POST', cache: 'no-store', signal: options.signal,
+      ...(action === 'poll' ? {} : { headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, id: options.id, code: options.code }) }) },
+  );
+  return body.login;
+}
+
 export interface AgentCliUsageWindow {
   id: string;
   label: string;

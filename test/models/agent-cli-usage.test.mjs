@@ -142,6 +142,9 @@ test('Claude credentials follow inference auth configuration and expired logins 
     }
     await fs.writeFile(file, JSON.stringify({ claudeAiOauth: { accessToken: 'expired-token', expiresAt: 1 } }));
     await assert.rejects(readClaudeUsageCredentials(options), error => error.status === 'signed-out' && !error.message.includes('expired-token'));
+    await fs.writeFile(file, JSON.stringify({ claudeAiOauth: { accessToken: 'expired-token', refreshToken: 'native-refresh-token', expiresAt: 1 } }));
+    await assert.rejects(readClaudeUsageCredentials(options), error => error.status === 'unavailable'
+      && !/sign in|expired-token|native-refresh-token/i.test(error.message));
     const keychain = await readClaudeUsageCredentials({ env: {}, homeDir: path.join(root, 'missing'), platform: 'darwin', runProcess: async (command, args) => {
       assert.equal(command, '/usr/bin/security');
       assert.deepEqual(args, ['find-generic-password', '-s', 'Claude Code-credentials', '-w']);
@@ -161,7 +164,7 @@ test('Claude endpoint uses bounded authenticated GET, never follows redirects, a
     return new Response('{"seven_day":{"utilization":33,"resets_at":null}}');
   } });
   assert.equal(result.windows[0].usedPercent, 33);
-  for (const [status, expected] of [[401, 'signed-out'], [403, 'signed-out'], [429, 'error'], [500, 'error']]) {
+  for (const [status, expected] of [[401, 'unavailable'], [403, 'unavailable'], [429, 'error'], [500, 'error']]) {
     await assert.rejects(readClaudeAccountUsage(login, { fetch: async () => new Response('secret-token', { status, headers: { 'Retry-After': '120' } }) }),
       error => error.status === expected && !error.message.includes('secret-token'));
   }

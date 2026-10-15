@@ -11,6 +11,7 @@ import { attachAgentsWebSocketServer } from './server/sub-agents/ws.js';
 import { destroyAllPtySessions } from './server/terminal/pty-host.js';
 import { deleteGenerationsForProviderShutdown } from './server/generations/store.js';
 import { disposeCodexSessions } from './server/generations/codex-app-server/lifecycle.js';
+import { shutdownAgentCliLogins } from './server/models/agent-cli-middleware.js';
 import { getAppRoot } from './server/workspace/root.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
@@ -200,6 +201,7 @@ async function main() {
   await startSchedulerForHost(localUrl);
   await startReefForHost(localUrl);
   const onShutdown = async () => {
+    await shutdownAgentCliLogins();
     await shutdownLocalActions();
     clearDevHostState();
     stopSchedulerForHost();
@@ -214,6 +216,7 @@ async function main() {
     await stopIsolatedPreviewHost();
   };
   const onShutdownSync = () => {
+    void shutdownAgentCliLogins();
     clearDevHostState();
     stopSchedulerForHost();
     stopReefForHost();

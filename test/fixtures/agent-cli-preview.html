@@ -25,6 +25,9 @@
       { ...shared, kind: 'codex', providerId: 'codex-cli', label: 'Codex CLI', installed: true, enabled: false, authStatus: 'unknown', version: '0.153.4', binPath: 'C:\\Users\\Developer\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe', installCommand: 'npm install -g @openai/codex', loginCommand: 'codex login' },
       { ...shared, kind: 'cursor', providerId: 'cursor-agent-cli', label: 'Cursor Agent', installed: false, enabled: false, authStatus: 'signed-out', installCommand: 'curl https://cursor.com/install -fsS | bash', loginCommand: 'cursor-agent login' },
     ];
+    if (params.has('login')) {
+      rows = rows.map(row => ({ ...row, installed: true, authStatus: 'signed-out' }));
+    }
     const update = async (kind, patch) => { const row = { ...rows.find(row => row.kind === kind), ...patch }; rows = rows.map(old => old.kind === kind ? row : old); return row; };
     const saveSettings = async (kind, patch) => update(kind, {
       ...patch,
@@ -33,7 +36,18 @@
       contextWindowTokens: patch.contextWindowTokens ?? undefined,
       maxBudgetUsd: patch.maxBudgetUsd ?? undefined,
     });
-    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: saveSettings, launchSignIn: async () => {}, launchInstall: async () => {} });
+    let loginState = 'waiting';
+    const login = async (kind, action) => {
+      if (action === 'start') loginState = params.get('state') || 'waiting';
+      if (action === 'cancel') loginState = 'cancelled';
+      if (action === 'code') loginState = 'signed-in';
+      return { id: 'preview', state: loginState, verificationUrl: 'https://claude.ai/oauth/authorize?preview=1',
+        acceptsCode: kind === 'claude' && loginState === 'waiting', code: kind === 'codex' ? 'ABCD-1234' : null,
+        error: loginState === 'failed' ? 'Sign-in timed out. Start again when you are ready.' : null };
+    };
+    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: saveSettings, login,
+      usage: async kind => ({ kind, status: 'unavailable', windows: [], plan: null, fetchedAt: null, checkedAt: new Date().toISOString(), retryAt: null, message: 'Connect your account to see usage.' }),
+      launchInstall: async () => {} });
     await mountCliPanel();
   </script>
 </body>

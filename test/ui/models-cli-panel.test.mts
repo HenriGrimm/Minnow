@@ -124,7 +124,7 @@ describe('Models CLI panel', () => {
     assert.ok([...rows[0].querySelectorAll('button')].some((button) => button.textContent === 'Install'));
     assert.equal(rows[0].querySelector('.models-cli-install'), null);
     assert.match(rows[1].textContent ?? '', /Token configured/);
-    assert.match(rows[1].textContent ?? '', /file-backed Codex login/);
+    assert.match(rows[1].textContent ?? '', /Sign in with your ChatGPT account/);
     assert.equal(rows[1].querySelector<HTMLInputElement>('input[aria-label="Enable Codex CLI provider"]')?.checked, true);
     assert.match(rows[2].textContent ?? '', /Signed out/);
     assert.ok(rows[0].querySelector('input[name="maxBudgetUsd"]'));
@@ -264,7 +264,7 @@ describe('Models CLI panel', () => {
     assert.equal(details.open, false);
     assert.ok(details.querySelector('summary .models-cli-logo svg'));
     assert.match(details.querySelector('summary')!.textContent!, /Claude Code.*Signed in.*Disabled/);
-    assert.equal(details.querySelector('button[type="submit"]'), null);
+    assert.equal(details.querySelector('.models-cli-settings__form button[type="submit"]'), null);
     assert.ok(details.querySelector('.models-cli-advanced input[name="binPath"]'));
     assert.equal(details.querySelector('input[role="switch"]')?.getAttribute('aria-label'), 'Enable Claude Code provider');
   });
@@ -422,12 +422,13 @@ describe('Models CLI panel', () => {
     assert.equal(document.querySelector('.models-cli-save-status')!.textContent, 'Changes save automatically.');
   });
 
-  test('launches sign-in through the terminal dependency and ignores results after disposal', async () => {
+  test('verifies completed sign-in without terminal navigation and ignores results after disposal', async () => {
     const signIns: AgentCliKind[] = [];
     let resolveList!: (rows: AgentCliStatus[]) => void;
     setCliPanelDepsForTests({
       list: async () => [cli('cursor', { authStatus: 'signed-out' })],
-      launchSignIn: async (status) => { signIns.push(status.kind); },
+      launchSignIn: async (status) => { signIns.push(status.kind); return true; },
+      verify: async kind => cli(kind, { authStatus: 'signed-in' }),
     });
     await mountCliPanel();
     const signIn = [...document.querySelectorAll<HTMLButtonElement>('button')]
@@ -436,7 +437,8 @@ describe('Models CLI panel', () => {
     signIn.click();
     await tick();
     assert.deepEqual(signIns, ['cursor']);
-    assert.match(document.body.textContent ?? '', /cursor-agent login opened in Terminal/);
+    assert.match(document.body.textContent ?? '', /Cursor Agent is signed in/);
+    assert.doesNotMatch(document.body.textContent ?? '', /opened in Terminal/);
 
     teardownCliPanel();
     setCliPanelDepsForTests({
@@ -463,6 +465,36 @@ describe('Models CLI panel', () => {
     await tick();
     assert.deepEqual(installs, ['cursor']);
     assert.match(document.body.textContent ?? '', /Cursor Agent install started in Terminal/);
+  });
+
+  test('onboarding uses inline browser sign-in and updates readiness automatically', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    let complete!: (value: import('../../src/models/agent-clis.ts').AgentCliLogin) => void;
+    const requests: string[] = [];
+    const changes: string[] = [];
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude', { authStatus: 'signed-out', enabled: true })],
+      verify: async kind => cli(kind, { authStatus: 'signed-in', enabled: true }),
+      login: async (_kind, action) => {
+        requests.push(action);
+        if (action === 'poll') return new Promise(resolve => { complete = resolve; });
+        return { id: 'attempt', state: 'waiting', verificationUrl: 'https://claude.ai/oauth/authorize',
+          code: null, acceptsCode: true, error: null };
+      },
+    });
+    await mountCliPanel({ container, showCommandInstructions: true,
+      onStatusChange: rows => { if (rows[0]) changes.push(rows[0].authStatus); } });
+    [...container.querySelectorAll('button')].find(button => button.textContent === 'Sign in')!.click();
+    await tick();
+    assert.equal(container.querySelector<HTMLElement>('.cli-sign-in')!.hidden, false);
+    assert.equal(container.querySelector<HTMLElement>('.models-cli-settings__form')!.hidden, true);
+    assert.doesNotMatch(container.querySelector('.models-cli-notice')!.textContent!, /terminal/i);
+    complete({ id: 'attempt', state: 'signed-in', verificationUrl: null, code: null, acceptsCode: false, error: null });
+    await tick();
+    assert.equal(changes.at(-1), 'signed-in');
+    assert.equal(container.querySelector<HTMLElement>('.models-cli-settings__form')!.hidden, false);
+    assert.deepEqual(requests, ['start', 'poll']);
   });
 
   test('runs each CLI self-updater through the detected executable', () => {

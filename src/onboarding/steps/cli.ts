@@ -19,7 +19,7 @@ export const providerCliStep: OnboardingStep = {
     container.className = 'mn-onboarding-step';
     renderStepHeader(container, providerCliStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(el('p', 'mn-onboarding-step-desc',
-      'Install or sign in to a CLI agent, then enable it and verify its status.'));
+      'Connect your account in the browser, then enable the agent you want to use.'));
     const label = el('label', 'mn-onboarding-muted', 'Default CLI agent');
     const select = el('select', 'mn-onboarding-field') as HTMLSelectElement;
     select.setAttribute('aria-label', 'Default CLI agent');

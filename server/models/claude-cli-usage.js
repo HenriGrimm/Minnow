@@ -70,6 +70,9 @@ export async function readClaudeUsageCredentials(options = {}) {
     throw new CliUsageError('signed-out', 'Sign in to Claude Code to see account usage.');
   }
   if (typeof oauth.expiresAt === 'number' && oauth.expiresAt <= (options.now ?? Date.now)()) {
+    if (typeof oauth.refreshToken === 'string' && oauth.refreshToken.trim()) {
+      throw new CliUsageError('unavailable', 'Claude will renew its login on the next request. Send a message, then refresh usage.');
+    }
     throw new CliUsageError('signed-out', 'Claude login has expired. Verify or sign in to the CLI, then refresh.');
   }
   return { token: oauth.accessToken, plan: oauth.subscriptionType ?? null };
@@ -83,7 +86,7 @@ export async function readClaudeAccountUsage(credentials, options = {}) {
     redirect: 'error', signal: AbortSignal.timeout(10_000),
   });
   if (response.status === 401 || response.status === 403) {
-    throw new CliUsageError('signed-out', 'Claude account usage needs a current subscription login. Verify or sign in to the CLI.');
+    throw new CliUsageError('unavailable', 'Claude account usage could not be authorized. Check the CLI connection and try again.');
   }
   if (!response.ok) throw usageHttpError(response, 'Claude');
   const normalized = normalizeClaudeUsage(await readBoundedUsageJson(response, 'Claude'), credentials.plan);

@@ -39,6 +39,14 @@ after(async () => {
 });
 
 describe('agent CLI model routes', () => {
+  test('login rejects invalid methods, actions and stale attempt ids without launching a process', async () => {
+    const get = await httpRequest(baseUrl, 'GET', '/api/models/agent-clis/claude/login?id=stale');
+    assert.equal(get.status, 400);
+    const post = await httpRequest(baseUrl, 'POST', '/api/models/agent-clis/claude/login', { action: 'execute', command: 'whoami' });
+    assert.equal(post.status, 400);
+    const put = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/login');
+    assert.equal(put.status, 405);
+  });
   test('usage is read-only, query-compatible, and unsupported providers return no invented measurements', async () => {
     // An API-key login has no subscription meter; never reach the developer's real Cursor login.
     const previousKey = process.env.CURSOR_API_KEY;

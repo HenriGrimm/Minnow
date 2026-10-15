@@ -7,6 +7,7 @@ import {
   updateAgentCliSettings,
   verifyAgentCli,
   fetchAgentCliAccountUsage,
+  agentCliLoginRequest,
 } from '../../src/models/agent-clis.ts';
 
 const originalFetch = globalThis.fetch;
@@ -16,6 +17,24 @@ afterEach(() => {
 });
 
 describe('agent CLI client', () => {
+  test('login uses bounded action bodies and a non-cached poll tied to the attempt', async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = (async (input, init) => {
+      requests.push({ url: String(input), init });
+      return new Response(JSON.stringify({ login: { id: 'attempt', state: 'waiting' } }));
+    }) as typeof fetch;
+    await agentCliLoginRequest('claude', 'start');
+    await agentCliLoginRequest('claude', 'poll', { id: 'a/b' });
+    await agentCliLoginRequest('claude', 'code', { id: 'attempt', code: 'one-time-code' });
+    await agentCliLoginRequest('claude', 'cancel', { id: 'attempt' });
+    assert.equal(requests[0].url, '/api/models/agent-clis/claude/login');
+    assert.equal(requests[1].url, '/api/models/agent-clis/claude/login?id=a%2Fb');
+    assert.equal(requests[1].init?.method, 'GET');
+    assert.equal(requests[1].init?.body, undefined);
+    assert.equal(requests[1].init?.cache, 'no-store');
+    assert.deepEqual(JSON.parse(String(requests[2].init?.body)), { action: 'code', id: 'attempt', code: 'one-time-code' });
+    assert.deepEqual(JSON.parse(String(requests[3].init?.body)), { action: 'cancel', id: 'attempt' });
+  });
   test('usage preserves the normalized snapshot and forwards refresh and cancellation', async () => {
     const controller = new AbortController();
     const usage = { kind: 'codex', status: 'stale', windows: [], fetchedAt: '2026-10-03T00:00:00Z' };

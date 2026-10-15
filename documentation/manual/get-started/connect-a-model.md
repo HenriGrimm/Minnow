@@ -56,7 +56,7 @@ Using a cloud provider, including a cloud-connected agent CLI, sends prompts and
 
 ## Agent CLIs
 
-Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. Use **Sign in** and **Verify** to connect your vendor account.
+Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. **Sign in** opens an inline connection flow: approve access in your browser and Minnow verifies the login automatically. **Verify** checks an existing login.
 
 The CLI's models appear in the normal picker and can be assigned to chats and work agents. Minnow applies its mode restrictions and tool permissions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
 
