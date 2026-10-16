@@ -20,6 +20,8 @@ import {
   resolveCompressAtTokens,
   resolveContextLimit,
 } from '../../src/chat/context-usage.ts';
+import { budgetModelId } from '../../src/chat/context-usage.ts';
+import { noteRouterAssignment, ROUTER_PROVIDER_ID } from '../../src/models/routers.ts';
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
   resolveContextBudget,
@@ -608,5 +610,30 @@ describe('context trim ceiling', () => {
     const budget = budgetAt(500_000, null);
     assert.equal(budget.compressAtTokens, null);
     assert.equal(budget.willCompress, false);
+  });
+});
+
+describe('budgetModelId', () => {
+  test('uses the model the task evaluator picked for an Auto pool', () => {
+    const scope = globalThis as { window?: unknown };
+    const previousWindow = scope.window;
+    scope.window = { dispatchEvent: () => true, Event: globalThis.Event };
+    try {
+      const pool = { id: 'chat-pool', providerId: ROUTER_PROVIDER_ID, modelId: 'pool-1' } as unknown as Chat;
+      assert.equal(budgetModelId(pool, 'pool-1'), 'pool-1', 'no decision yet: the pool id stays');
+      noteRouterAssignment('chat-pool', 'llama-cpp-local', 'qwen-3', 'pool-1');
+      assert.equal(
+        budgetModelId(pool, 'pool-1'),
+        encodeModelSelectKey('llama-cpp-local', 'qwen-3'),
+      );
+    } finally {
+      if (previousWindow === undefined) delete scope.window;
+      else scope.window = previousWindow;
+    }
+  });
+
+  test('leaves a plain model chat on its own model', () => {
+    const chat = { id: 'chat-plain', providerId: 'openai', modelId: 'gpt-x' } as unknown as Chat;
+    assert.equal(budgetModelId(chat, 'gpt-x'), 'gpt-x');
   });
 });

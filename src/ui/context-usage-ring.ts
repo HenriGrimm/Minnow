@@ -304,6 +304,8 @@ export function initContextUsageRing(): void {
 
   const modelSelect = document.getElementById('modelSelect');
   modelSelect?.addEventListener('change', () => refreshContextUsageRing());
+  // An Auto pool's window is known only once the task evaluator picks a model.
+  window.addEventListener('minnow-router-assignment', () => refreshContextUsageRing());
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') refreshContextUsageRing();

@@ -55,6 +55,7 @@ export interface RouterActivity {
 const empty = (): RouterConfig => ({ routers: [], defaultRouterId: null, revision: 0 });
 const cache = new Map<string, RouterConfig>();
 const assignments = new Map<string, string>();
+const assignedModels = new Map<string, { providerId: string; modelId: string }>();
 const routeStates = new Map<string, RouterRouteState>();
 const routeKey = (routerId: string, chatId: string): string => JSON.stringify([routerId, chatId]);
 const notifyRoute = (): void => { window.dispatchEvent(new window.Event('minnow-router-assignment')); };
@@ -125,8 +126,15 @@ export function remapRouterEntriesToLibrary(
 }
 
 export function noteRouterAssignment(chatId: string, providerId: string, modelId: string, routerId: string): void {
-  assignments.set(JSON.stringify([routerId, chatId]), `${providerId} / ${modelId}`);
+  const key = JSON.stringify([routerId, chatId]);
+  assignments.set(key, `${providerId} / ${modelId}`);
+  assignedModels.set(key, { providerId, modelId });
   window.dispatchEvent(new window.Event('minnow-router-assignment'));
+}
+
+/** The model the task evaluator picked for a chat's pool, as provider and model ids. */
+export function routerAssignedModel(chatId: string, routerId: string): { providerId: string; modelId: string } | undefined {
+  return assignedModels.get(JSON.stringify([routerId, chatId]));
 }
 
 export function routerRouteState(chatId: string, routerId: string): RouterRouteState | undefined {
@@ -199,7 +207,10 @@ export async function loadRouterConfig(): Promise<RouterConfig> {
   cache.set(key, config);
   for (const assignment of config.assignments || []) {
     const entry = config.routers.find((r) => r.id === assignment.routerId)?.entries.find((e) => e.id === assignment.assignedEntryId);
-    if (entry) assignments.set(JSON.stringify([assignment.routerId, assignment.chatId]), `${entry.providerId} / ${entry.modelId}`);
+    if (!entry) continue;
+    const key = JSON.stringify([assignment.routerId, assignment.chatId]);
+    assignments.set(key, `${entry.providerId} / ${entry.modelId}`);
+    assignedModels.set(key, { providerId: entry.providerId, modelId: entry.modelId });
   }
   for (const saved of config.decisions || []) {
     if (!saved.display || routerRouteState(saved.chatId, saved.routerId)?.phase === 'deciding') continue;

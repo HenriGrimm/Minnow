@@ -1,5 +1,6 @@
 import { getModelRowForSelectOrCanonicalId } from '../api/models';
 import { getGlobalContextCompactionSync } from '../agents/sub-agent-config';
+import { ROUTER_PROVIDER_ID, routerAssignedModel } from '../models/routers';
 import {
   DEFAULT_CONTEXT_ENFORCEMENT_POLICY,
   resolveContextBudget,
@@ -338,6 +339,16 @@ export function resolveContextLimit(modelId: string, chat: Chat): number | null 
 }
 
 /**
+ * The model whose window budgets a chat. An Auto pool has no window of its own;
+ * once the task evaluator has picked a model for the chat, that model's window applies.
+ */
+export function budgetModelId(chat: Chat, modelId: string): string {
+  if (chat.providerId !== ROUTER_PROVIDER_ID || !chat.modelId) return modelId;
+  const routed = routerAssignedModel(chat.id, chat.modelId);
+  return routed ? encodeModelSelectKey(routed.providerId, routed.modelId) : modelId;
+}
+
+/**
  * The trim ceiling for a model window, in whole-prompt tokens.
  *
  * Derived from the enforcement module itself so the ring and the runner cannot
@@ -461,7 +472,7 @@ export async function getContextBudget(
   return assembleContextBudget({
     modelId,
     modelDisplayName: modelId ? resolveModelDisplayName(modelId) : 'No model',
-    limit: modelId ? resolveContextLimit(modelId, chat) : null,
+    limit: modelId ? resolveContextLimit(budgetModelId(chat, modelId), chat) : null,
     estimate,
     composerTokens,
     attachmentTokens,
