@@ -13,7 +13,7 @@ describe('resolveSettingsSectionNavigation', () => {
     for (const [key, area] of [
       ['general.backup', 'data'], ['general.network.mode', 'data'],
       ['general.filesystem', 'data'], ['general.chat.terminal.defaultShell', 'terminal'],
-      ['general.updates.channel', 'updates'],
+      ['general.updates.channel', 'general'],
     ]) {
       assert.deepEqual(resolveSettingsSectionNavigation('general', key), { sectionId: area, searchKey: key });
     }
