@@ -341,6 +341,7 @@ function syncReusedLiveTail(
     return;
   }
   if (phase === 'tools') {
+    syncGeneratingPartial(tail, live);
     const toolName = live.currentToolName?.trim();
     const label = tail.querySelector('.tool-start-indicator__label');
     if (label && toolName) {
@@ -388,6 +389,7 @@ function fillLiveTail(
     tail.appendChild(createTranscriptStreamStatus('generating'));
     appendGeneratingPartial(tail, live);
   } else if (phase === 'tools' && toolName) {
+    appendGeneratingPartial(tail, live);
     tail.appendChild(createTranscriptToolIndicator(toolName));
   } else if (live.isLive) {
     tail.dataset.livePhase = 'generating';

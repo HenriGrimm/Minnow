@@ -1,11 +1,6 @@
 import {
-  cancelSubAgent,
-  getSubAgentRun,
-  honestTerminalSummary,
-  hydrateSubAgentRunsForParentChat,
-  hydrateSubAgentTranscript,
-  lastNonSystemPreview,
-  listSubAgentRunsForParentChat,
+  cancelSubAgent, getSubAgentRun, hydrateSubAgentRunsForParentChat,
+  hydrateSubAgentTranscript, listSubAgentRunsForParentChat, restartSubAgent,
 } from '../agents/orchestrator';
 import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
 import type { SubAgentRun } from '../agents/types';
@@ -14,22 +9,26 @@ import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome
 import type { SubAgentStructuredOutcome } from '../agents/sub-agent-structured-outcome';
 import type { PersistedSubAgentRun } from '../types';
 import { resolveSubAgentOverlayMount } from './chat-mount';
+import { appendTranscriptLiveTail } from './transcript-view';
+import { subAgentLiveStatusLine, subAgentTranscriptLiveFromRun } from './sub-agent-live-status';
+import { createIcon, type IconName } from './icon';
+import { setAssistantBubbleContent } from '../markdown/renderer';
+import { formatWorkDuration } from '../chat/transcript-turns';
 import {
-  appendTranscriptLiveTail,
-  renderTranscriptView,
-} from './transcript-view.ts';
-import {
-  subAgentLiveStatusLine,
-  subAgentTranscriptLiveFromRun,
-} from './sub-agent-live-status';
-import { iconHtml } from './icon';
+  formatSubAgentProse, renderSubAgentConversation, subAgentFinalResponse,
+  type SubAgentConversationDisclosures,
+} from './sub-agent-conversation';
 
 type AnyRun = SubAgentRun | PersistedSubAgentRun;
-
-/** Status tone drives the dot color and chip/label semantics. */
-type StatusTone = 'working' | 'queued' | 'done' | 'failed' | 'cancelled';
-
-/** DOM refs for the open overlay so run updates + switching can refresh in place. */
+type View = 'conversation' | 'result';
+interface RunView {
+  tab: View;
+  thoughts: Map<string, boolean>;
+  tools: Map<string, boolean>;
+  groups: Map<string, boolean>;
+  scroll: number;
+  assignmentOpen: boolean;
+}
 interface OverlayState {
   root: HTMLElement;
   sheet: HTMLElement;
@@ -39,699 +38,448 @@ interface OverlayState {
   returnFocus: HTMLElement | null;
   onKey: (e: KeyboardEvent) => void;
   switcher: HTMLElement;
-  headingType: HTMLElement;
-  statusDot: HTMLElement;
-  statusText: HTMLElement;
-  runIdEl: HTMLElement;
-  endedEl: HTMLElement;
+  mobileSelect: HTMLSelectElement;
+  count: HTMLElement;
+  title: HTMLElement;
+  meta: HTMLElement;
+  assignment: HTMLDetailsElement;
   promptText: HTMLElement;
-  promptToggle: HTMLButtonElement;
   scroll: HTMLElement;
+  tabs: HTMLButtonElement[];
   structuredRoot: HTMLElement;
-  transcriptDetails: HTMLDetailsElement;
   transcriptBody: HTMLElement;
+  notice: HTMLElement;
+  details: HTMLElement;
   footer: HTMLElement;
-  renderedTask: string | null;
-  renderedMessages: unknown[] | null;
+  views: Map<string, RunView>;
   transcriptKey: string | null;
-  structuredKey: string | null;
+  resultKey: string | null;
   footerKey: string | null;
   switcherKey: string | null;
-  activityInitialized: boolean;
+  loadingRunId: string | null;
   refreshFrame: number | null;
 }
-
 let overlay: OverlayState | null = null;
-let subscriptionBound = false;
+let unsubscribe: (() => void) | null = null;
 let openRequest = 0;
 
-// ── Status helpers ───────────────────────────────────────────────────────────
-
-/** Terminal-state check shared by cancel-affordance and details defaults. */
-function isTerminal(status: string): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
+const terminal = (status: string) => ['completed', 'failed', 'cancelled'].includes(status);
+function statusMeta(status: string): { label: string; tone: string; icon: IconName } {
+  if (status === 'completed') return { label: 'Complete', tone: 'done', icon: 'statusPass' };
+  if (status === 'failed') return { label: 'Failed', tone: 'failed', icon: 'statusFail' };
+  if (status === 'cancelled') return { label: 'Stopped', tone: 'cancelled', icon: 'stop' };
+  if (status === 'queued') return { label: 'Queued', tone: 'queued', icon: 'clock' };
+  return { label: 'Working', tone: 'working', icon: 'appAgentActivity' };
 }
-
-/** Human label + tone for a run status. */
-function statusMeta(status: string): { label: string; tone: StatusTone } {
-  if (status === 'completed') return { label: 'Complete', tone: 'done' };
-  if (status === 'failed') return { label: 'Failed', tone: 'failed' };
-  if (status === 'cancelled') return { label: 'Cancelled', tone: 'cancelled' };
-  if (status === 'queued') return { label: 'Queued', tone: 'queued' };
-  if (status === 'running') return { label: 'Running', tone: 'working' };
-  return { label: status, tone: 'working' };
+function agentLabel(type: string): string {
+  const text = type.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
-
-/** Parse ISO or epoch time to ms for stable ordering; NaN sorts last. */
-function timeKey(v: string | number | null | undefined): number {
-  if (v == null || v === '') return Number.POSITIVE_INFINITY;
-  const ms = typeof v === 'number' ? v : Date.parse(String(v));
-  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+function taskTitle(task: string): string {
+  const first = task.split('\n').map((line) => line.replace(/^\s*(?:#+|[-*>]|\d+[.)])\s*/, '').trim()).find(Boolean) || 'Untitled assignment';
+  return first.length > 110 ? `${first.slice(0, 110)}…` : first;
 }
-
-/** Format ISO or epoch ended time for display. */
-function formatEndedAt(endedAt: string | number | null | undefined): string | null {
-  if (endedAt == null || endedAt === '') return null;
-  const ms = typeof endedAt === 'number' ? endedAt : Date.parse(String(endedAt));
-  if (!Number.isFinite(ms)) return null;
-  return new Date(ms).toLocaleString();
+function badge(run: AnyRun): HTMLElement {
+  const { label, tone, icon } = statusMeta(run.status);
+  const span = document.createElement('span');
+  span.className = `sub-agent-overlay__status sub-agent-overlay__status--${tone}`;
+  span.append(createIcon(icon, { size: 13 }), document.createTextNode(label));
+  return span;
 }
-
-function taskPreview(task: string, max = 90): string {
-  const t = (task ?? '').trim();
-  return t.length > max ? `${t.slice(0, max)}…` : t;
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
 }
-
-function contentShape(content: unknown): string {
-  if (typeof content === 'string') return `s${content.length}`;
-  if (Array.isArray(content)) return `a${content.length}`;
-  if (content == null) return 'n';
-  return 'o';
+function action(label: string, icon?: IconName): HTMLButtonElement {
+  const button = el('button', 'sub-agent-overlay__action');
+  button.type = 'button';
+  if (icon) button.appendChild(createIcon(icon, { size: 14 }));
+  button.appendChild(document.createTextNode(label));
+  return button;
 }
-
-/** Transcript structure excluding live reasoning, which updates in place. */
-function transcriptRenderKey(messages: unknown[]): string {
-  return messages.map((raw) => {
-    if (!raw || typeof raw !== 'object') return typeof raw;
-    const msg = raw as Record<string, unknown>;
-    const role = String(msg.role ?? '');
-    const calls = Array.isArray(msg.tool_calls)
-      ? msg.tool_calls.map((entry) => {
-          if (!entry || typeof entry !== 'object') return '';
-          const call = entry as {
-            id?: unknown;
-            function?: { name?: unknown; arguments?: unknown };
-          };
-          return `${String(call.id ?? '')}:${String(call.function?.name ?? '')}:${String(call.function?.arguments ?? '').length}`;
-        }).join(',')
-      : '';
-    const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0;
-    return `${role}:${contentShape(msg.content)}:${String(msg.tool_call_id ?? '')}:${calls}:${attachments}`;
-  }).join('|');
-}
-
-function resetRenderCache(state: OverlayState): void {
-  state.renderedTask = null;
-  state.renderedMessages = null;
-  state.transcriptKey = null;
-  state.structuredKey = null;
-  state.footerKey = null;
-  state.switcherKey = null;
-  state.activityInitialized = false;
-}
-
-// ── Run list ─────────────────────────────────────────────────────────────────
-
-/** All runs for a chat (persisted + live store), de-duped, ordered by start time. */
-function listChatRuns(chatId: string): Array<{ run: AnyRun; live: boolean }> {
-  const byId = new Map<string, { run: AnyRun; live: boolean }>();
-  const chat = findChatById(chatId);
-  for (const row of chat?.subAgentRuns ?? []) {
-    byId.set(row.runId, { run: row, live: false });
+function viewFor(state: OverlayState): RunView {
+  let view = state.views.get(state.activeRunId);
+  if (!view) {
+    view = { tab: 'conversation', thoughts: new Map(), tools: new Map(), groups: new Map(), scroll: 0, assignmentOpen: false };
+    state.views.set(state.activeRunId, view);
   }
-  for (const run of listSubAgentRunsForParentChat(chatId)) {
-    const live = run.status === 'running' || run.status === 'queued';
-    byId.set(run.runId, { run, live });
-  }
-  return [...byId.values()].sort(
-    (a, b) => timeKey(a.run.startedAt) - timeKey(b.run.startedAt),
-  );
+  return view;
 }
-
-/** Resolve a single run from live orchestrator state or persisted snapshot. */
-function resolveRunSnapshot(
-  runId: string,
-  chatId: string,
-): { run: AnyRun; live: boolean } | null {
-  const live = getSubAgentRun(runId);
-  if (live && live.parentChatId === chatId) return { run: live, live: true };
-  const persisted = findChatById(chatId)?.subAgentRuns?.find((r) => r.runId === runId);
+function resolveRun(runId: string, chatId: string): { run: AnyRun; live: boolean } | null {
+  const current = getSubAgentRun(runId);
+  if (current?.parentChatId === chatId) return { run: current, live: !terminal(current.status) };
+  const persisted = findChatById(chatId)?.subAgentRuns?.find((run) => run.runId === runId);
   return persisted ? { run: persisted, live: false } : null;
 }
-
-/** Real structured answer only — same rule as spawn cards. */
+function chatRuns(chatId: string): AnyRun[] {
+  const runs = new Map<string, AnyRun>();
+  for (const run of findChatById(chatId)?.subAgentRuns ?? []) runs.set(run.runId, run);
+  for (const run of listSubAgentRunsForParentChat(chatId)) runs.set(run.runId, run);
+  return [...runs.values()].sort((a, b) => Date.parse(a.startedAt ?? '') - Date.parse(b.startedAt ?? ''));
+}
 export function resolveOutcome(run: AnyRun, _live = false): SubAgentStructuredOutcome | null {
-  if (run.structuredOutcome) return run.structuredOutcome;
-  if (run.summary?.trim()) return legacyOutcomeFromSummary(run.summary);
-  return null;
+  return run.structuredOutcome ?? (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
 }
 
-/** Activity stays open unless a real fold outcome exists on a terminal run. */
-export function shouldExpandSubAgentActivity(run: AnyRun): boolean {
-  return !resolveOutcome(run) || !isTerminal(run.status);
-}
-
-/** Live status line when a structured outcome is not ready yet. */
-function liveStatusLine(run: SubAgentRun): string {
-  return subAgentLiveStatusLine(run, true);
-}
-
-// ── Render ───────────────────────────────────────────────────────────────────
-
-/** Structured summary / findings / artifacts above the activity stream. */
-function renderStructuredBlock(root: HTMLElement, run: AnyRun, live: boolean): void {
-  root.replaceChildren();
-  const outcome = resolveOutcome(run, live);
-  if (!outcome) {
-    const line = !isTerminal(run.status)
-      ? live
-        ? liveStatusLine(run as SubAgentRun)
-        : ''
-      : lastNonSystemPreview(run.messages) || honestTerminalSummary(run);
-    if (line) {
-      const p = document.createElement('p');
-      p.className = 'sub-agent-overlay__summary';
-      p.textContent = line;
-      root.appendChild(p);
-    }
-    return;
+function renderSwitcher(state: OverlayState): void {
+  const runs = chatRuns(state.chatId);
+  const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.task])]);
+  if (key === state.switcherKey) return;
+  state.switcherKey = key;
+  const focusedRun = state.switcher.contains(document.activeElement)
+    ? (document.activeElement as HTMLElement).dataset.runId : null;
+  state.switcher.replaceChildren(el('p', 'sub-agent-overlay__rail-label', 'This conversation'));
+  state.mobileSelect.replaceChildren();
+  const working = runs.filter((run) => run.status === 'running').length;
+  state.count.textContent = `${runs.length} ${runs.length === 1 ? 'agent' : 'agents'}${working ? ` · ${working} working` : ''}`;
+  for (const run of runs) {
+    const button = el('button', 'sub-agent-overlay__chip');
+    button.type = 'button';
+    button.dataset.runId = run.runId;
+    button.setAttribute('aria-pressed', String(run.runId === state.activeRunId));
+    button.title = run.task;
+    button.append(el('span', 'sub-agent-overlay__chip-label', taskTitle(run.task)), el('span', 'sub-agent-overlay__chip-role', agentLabel(run.type)), badge(run));
+    button.addEventListener('click', () => setActiveRun(run.runId));
+    state.switcher.appendChild(button);
+    const option = document.createElement('option');
+    option.value = run.runId;
+    option.textContent = `${taskTitle(run.task)} · ${statusMeta(run.status).label}`;
+    option.selected = run.runId === state.activeRunId;
+    state.mobileSelect.appendChild(option);
   }
+  if (focusedRun) [...state.switcher.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.dataset.runId === focusedRun)?.focus();
+}
 
-  const summary = document.createElement('p');
-  summary.className = 'sub-agent-overlay__summary';
-  summary.textContent = outcome.summary;
-  root.appendChild(summary);
-
-  if (outcome.findings.length > 0) {
-    const list = document.createElement('ul');
-    list.className = 'sub-agent-overlay__findings';
-    for (const f of outcome.findings) {
-      const li = document.createElement('li');
-      li.className = 'sub-agent-overlay__finding';
-      const title = document.createElement('strong');
-      title.textContent = f.title;
-      li.appendChild(title);
-      if (f.severity) {
-        const sev = document.createElement('span');
-        sev.className = `sub-agent-overlay__severity sub-agent-overlay__severity--${f.severity}`;
-        sev.textContent = f.severity;
-        li.appendChild(sev);
-      }
-      const detail = document.createElement('p');
-      detail.textContent = f.detail;
-      li.appendChild(detail);
-      if (f.paths?.length) {
-        const paths = document.createElement('p');
-        paths.className = 'sub-agent-overlay__paths';
-        paths.textContent = f.paths.join(', ');
-        li.appendChild(paths);
-      }
-      list.appendChild(li);
+function renderResult(root: HTMLElement, run: AnyRun): void {
+  root.replaceChildren();
+  const response = terminal(run.status) ? subAgentFinalResponse(run.messages) : '';
+  const outcome = resolveOutcome(run);
+  const text = response || (terminal(run.status) ? outcome?.summary ?? '' : '');
+  if (text) {
+    const heading = el('h3', 'sub-agent-conversation__speaker', run.status === 'completed' ? 'Final response' : 'Partial response');
+    const prose = el('div', 'sub-agent-overlay__answer');
+    setAssistantBubbleContent(prose, text);
+    root.append(heading, prose);
+  } else {
+    const empty = run.status === 'queued' ? 'No response yet. The agent is waiting to start.'
+      : run.status === 'running' ? 'No final response yet. Follow the Conversation tab for live thoughts and messages.'
+      : 'No final response was recorded. The available conversation and tool activity are preserved.';
+    root.appendChild(el('p', 'sub-agent-overlay__empty', empty));
+  }
+  if (!terminal(run.status) || !outcome) return;
+  if (outcome.findings.length) {
+    const list = el('ul', 'sub-agent-overlay__findings');
+    for (const finding of outcome.findings) {
+      const item = document.createElement('li');
+      item.appendChild(el('strong', '', finding.title));
+      if (finding.severity) item.appendChild(el('span', 'sub-agent-overlay__severity', finding.severity));
+      item.appendChild(el('p', '', finding.detail));
+      if (finding.paths?.length) item.appendChild(el('p', 'sub-agent-overlay__paths', finding.paths.join(', ')));
+      list.appendChild(item);
     }
     root.appendChild(list);
   }
-
-  if (outcome.artifacts.length > 0) {
-    const chips = document.createElement('div');
-    chips.className = 'sub-agent-overlay__artifacts';
-    for (const a of outcome.artifacts) {
-      const chip = document.createElement('span');
-      chip.className = 'sub-agent-overlay__artifact';
-      chip.textContent = `${a.kind}: ${a.label}`;
-      chip.title = a.ref;
-      chips.appendChild(chip);
+  if (outcome.artifacts.length) {
+    const artifacts = el('div', 'sub-agent-overlay__artifacts');
+    for (const artifact of outcome.artifacts) {
+      const span = el('span', 'sub-agent-overlay__artifact', `${artifact.kind}: ${artifact.label}`);
+      span.title = artifact.ref;
+      artifacts.appendChild(span);
     }
-    root.appendChild(chips);
+    root.appendChild(artifacts);
   }
-
-  const liveRun = run as SubAgentRun;
-  if (liveRun.budgetEvents?.length) {
-    const budget = document.createElement('ul');
-    budget.className = 'sub-agent-overlay__budget-events';
-    for (const ev of liveRun.budgetEvents) {
-      const li = document.createElement('li');
-      li.textContent = ev.label;
-      budget.appendChild(li);
-    }
-    root.appendChild(budget);
+  if (run.budgetEvents?.length) {
+    const events = el('ul', 'sub-agent-overlay__budget-events');
+    for (const event of run.budgetEvents) events.appendChild(el('li', '', event.label));
+    root.appendChild(events);
   }
 }
 
-/** Rebuild the run switcher rail (hidden when the chat has one run). */
-function renderSwitcher(state: OverlayState): void {
-  const runs = listChatRuns(state.chatId);
-  const key = runs.map(({ run }) => `${run.runId}:${run.status}:${run.type}:${run.task}`).join('|');
-  if (state.switcherKey === key) return;
-  state.switcherKey = key;
-  state.switcher.replaceChildren();
-  state.switcher.hidden = runs.length <= 1;
-  if (runs.length <= 1) return;
-
-  for (const { run } of runs) {
-    const { tone, label } = statusMeta(run.status);
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'sub-agent-overlay__chip';
-    chip.dataset.runId = run.runId;
-    chip.title = `${run.type} · ${label}\n${taskPreview(run.task, 140)}`;
-    const active = run.runId === state.activeRunId;
-    chip.classList.toggle('is-active', active);
-    if (active) chip.setAttribute('aria-current', 'true');
-
-    const dot = document.createElement('span');
-    dot.className = `sub-agent-overlay__dot sub-agent-overlay__dot--${tone}`;
-    dot.setAttribute('aria-hidden', 'true');
-    const text = document.createElement('span');
-    text.className = 'sub-agent-overlay__chip-label';
-    text.textContent = run.type;
-
-    chip.appendChild(dot);
-    chip.appendChild(text);
-    chip.addEventListener('click', () => setActiveRun(run.runId));
-    state.switcher.appendChild(chip);
+function renderFooter(state: OverlayState, run: AnyRun, live: boolean): void {
+  const text = subAgentFinalResponse(run.messages) || resolveOutcome(run)?.summary || '';
+  const line = live ? subAgentLiveStatusLine(run, true) : run.status === 'completed' ? (text ? 'Agent complete' : 'Agent finished without a response') : 'Available conversation saved';
+  const key = JSON.stringify([run.runId, run.status, line, text]);
+  if (key === state.footerKey) return;
+  state.footerKey = key;
+  state.footer.replaceChildren(el('span', 'sub-agent-overlay__footer-status', line));
+  if (live) {
+    const stop = action('Stop agent', 'stop');
+    stop.addEventListener('click', () => cancelSubAgent(run.runId, 'user_cancel'));
+    state.footer.appendChild(stop);
+  } else if (run.status === 'failed' || run.status === 'cancelled') {
+    const retry = action('Retry agent', 'refresh');
+    retry.addEventListener('click', async () => {
+      retry.disabled = true;
+      try {
+        const next = await restartSubAgent(run.runId, { type: run.type, task: run.task, parentChatId: state.chatId, parentTurnId: run.parentTurnId });
+        if (overlay === state) setActiveRun(next.runId);
+      } catch {
+        retry.textContent = 'Retry failed. Try again';
+        retry.disabled = false;
+      }
+    });
+    state.footer.appendChild(retry);
+  }
+  if (terminal(run.status) && text) {
+    const copy = action('Copy response', 'copy');
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
+      catch { copy.textContent = 'Could not copy'; }
+    });
+    state.footer.appendChild(copy);
   }
 }
 
-/** Fill header, prompt, outcome, activity, and footer for the active run. */
-function renderActiveRun(state: OverlayState, opts: { scroll: 'end' | 'sticky' }): void {
-  const resolved = resolveRunSnapshot(state.activeRunId, state.chatId);
-  if (!resolved) {
-    closeSubAgentDrawer();
-    return;
-  }
+function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'sticky'): void {
+  const resolved = resolveRun(state.activeRunId, state.chatId);
+  if (!resolved) return;
   const { run, live } = resolved;
-  const { label, tone } = statusMeta(run.status);
-
-  const wasNearBottom =
-    state.scroll.scrollHeight - state.scroll.scrollTop - state.scroll.clientHeight <
-    48;
-
-  state.sheet.setAttribute('aria-label', `Sub-agent ${run.type}, ${label}`);
-  if (state.headingType.textContent !== run.type) state.headingType.textContent = run.type;
-  const liveRunHeader = run as SubAgentRun;
-  if (live && liveRunHeader.startError) {
-    const next = `Start failed (${liveRunHeader.startError.consecutive})`;
-    if (state.statusText.textContent !== next) state.statusText.textContent = next;
-  } else {
-    if (state.statusText.textContent !== label) state.statusText.textContent = label;
+  const view = viewFor(state);
+  const wasNearBottom = state.scroll.scrollHeight - state.scroll.scrollTop - state.scroll.clientHeight < 56;
+  state.sheet.setAttribute('aria-label', `Subagent ${taskTitle(run.task)}, ${statusMeta(run.status).label}`);
+  state.title.textContent = taskTitle(run.task);
+  state.title.title = run.task;
+  const duration = run.startedAt && run.endedAt ? formatWorkDuration(Date.parse(run.endedAt) - Date.parse(run.startedAt)) : '';
+  state.meta.replaceChildren(badge(run), el('span', '', agentLabel(run.type)));
+  if (duration) state.meta.appendChild(el('span', '', duration));
+  if (run.toolTurns) state.meta.appendChild(el('span', '', `${run.toolTurns} tool ${run.toolTurns === 1 ? 'call' : 'calls'}`));
+  state.promptText.textContent = run.task || 'No assignment was recorded.';
+  state.assignment.open = view.assignmentOpen;
+  state.details.textContent = `Run ${run.runId}${run.startedAt ? ` · Started ${new Date(run.startedAt).toLocaleString()}` : ''}${run.endedAt ? ` · Ended ${new Date(run.endedAt).toLocaleString()}` : ''}${'modelId' in run && run.modelId ? ` · ${run.modelId}` : ''}`;
+  for (const tab of state.tabs) {
+    const selected = tab.dataset.view === view.tab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
   }
-  const statusClass = `sub-agent-overlay__dot sub-agent-overlay__dot--${tone}`;
-  if (state.statusDot.className !== statusClass) state.statusDot.className = statusClass;
-  if (state.runIdEl.textContent !== run.runId) state.runIdEl.textContent = run.runId;
+  state.transcriptBody.hidden = view.tab !== 'conversation';
+  state.structuredRoot.hidden = view.tab !== 'result';
+  state.scroll.setAttribute('aria-labelledby', `sub-agent-tab-${view.tab}`);
 
-  const ended = formatEndedAt(run.endedAt);
-  const endedText = ended ? `Ended ${ended}` : '';
-  if (state.endedEl.textContent !== endedText) state.endedEl.textContent = endedText;
-  state.endedEl.hidden = !ended;
+  const active = run as SubAgentRun;
+  const error = active.startError?.message || run.error;
+  state.notice.hidden = !error && run.status !== 'queued' && run.status !== 'cancelled';
+  const notice = error || (run.status === 'queued' ? 'Waiting for an available agent slot. The conversation will appear when this agent starts.' : run.status === 'cancelled' ? 'Agent stopped. Its available thoughts, responses and tool activity are preserved below.' : '');
+  if (state.notice.textContent !== notice) state.notice.textContent = notice;
+  state.notice.classList.toggle('sub-agent-overlay__notice--error', Boolean(error));
 
-  const task = run.task?.trim() || '(no task provided)';
-  if (state.renderedTask !== task) {
-    state.renderedTask = task;
-    state.promptText.textContent = task;
-    state.promptText.classList.add('is-clamped');
-    state.promptToggle.hidden = true;
-    state.promptToggle.textContent = 'Show more';
-    state.promptToggle.setAttribute('aria-expanded', 'false');
-    requestAnimationFrame(() => {
-      if (!overlay || overlay !== state) return;
-      const overflowing =
-        state.promptText.scrollHeight - state.promptText.clientHeight > 2;
-      state.promptToggle.hidden = !overflowing;
-    });
-  }
-
-  const liveRun = run as SubAgentRun;
-  const structuredKey = JSON.stringify([
-    run.status,
-    run.summary,
-    run.error,
-    live ? liveStatusLine(liveRun) : '',
-    liveRun.startError?.message ?? '',
-    liveRun.startError?.consecutive ?? 0,
-    liveRun.budgetEvents?.length ?? 0,
-    run.structuredOutcome ?? null,
-  ]);
-  if (state.structuredKey !== structuredKey) {
-    state.structuredKey = structuredKey;
-    renderStructuredBlock(state.structuredRoot, run, live);
-    if (live && liveRun.startError) {
-      const err = document.createElement('p');
-      err.className = 'sub-agent-overlay__error';
-      err.textContent = `${liveRun.startError.message} (${liveRun.startError.consecutive})`;
-      state.structuredRoot.appendChild(err);
-    }
-  }
-
-  if (!state.activityInitialized) {
-    state.transcriptDetails.open = shouldExpandSubAgentActivity(run);
-    state.activityInitialized = true;
-  }
-  const messages = run.messages as unknown[];
   const liveTail = subAgentTranscriptLiveFromRun(run, live);
-  if (messages !== state.renderedMessages) {
-    const nextTranscriptKey = transcriptRenderKey(messages);
-    if (state.transcriptKey !== nextTranscriptKey) {
-      renderTranscriptView(state.transcriptBody, messages, liveTail);
-      state.transcriptKey = nextTranscriptKey;
-    } else {
-      appendTranscriptLiveTail(state.transcriptBody, liveTail, messages);
-    }
-    state.renderedMessages = messages;
+  const disclosures: SubAgentConversationDisclosures = {
+    groups: view.groups,
+    isThoughtExpanded: (key) => view.thoughts.get(key) ?? true,
+    onThoughtExpandedChange: (key, value) => view.thoughts.set(key, value),
+    isToolExpanded: (key) => view.tools.get(key) ?? false,
+    onToolExpandedChange: (key, value) => view.tools.set(key, value),
+  };
+  if (liveTail) {
+    liveTail.thoughtsExpanded = view.thoughts.get('live') ?? true;
+    liveTail.onThoughtsExpandedChange = (open) => view.thoughts.set('live', open);
+  }
+  // Patch a growing thought in place. Equal-length hydrated corrections must
+  // still invalidate every other settled message in the conversation.
+  const last = run.messages.length - 1;
+  const key = JSON.stringify([run.status, liveTail?.phase, run.messages.map((raw, i) => {
+    if (i !== last || liveTail?.phase !== 'thinking' || !raw || typeof raw !== 'object') return raw;
+    const row = raw as Record<string, unknown>;
+    return { ...row, reasoning: row.reasoning ? true : undefined, reasoning_content: row.reasoning_content ? true : undefined };
+  })]);
+  if (state.transcriptKey !== key) {
+    state.transcriptKey = key;
+    renderSubAgentConversation(state.transcriptBody, run.messages, liveTail, run.status, disclosures);
   } else {
-    appendTranscriptLiveTail(state.transcriptBody, liveTail, messages);
+    appendTranscriptLiveTail(state.transcriptBody, liveTail, run.messages);
+    formatSubAgentProse(state.transcriptBody, liveTail?.partialText);
   }
-
-  const cancellable = live && (run.status === 'running' || run.status === 'queued');
-  const footerLine = cancellable
-    ? liveRun.startError
-      ? `${liveRun.startError.message} (${liveRun.startError.consecutive})`
-      : liveStatusLine(liveRun) || 'Working…'
-    : '';
-  const footerKey = `${cancellable}:${footerLine}`;
-  if (state.footerKey !== footerKey) {
-    state.footerKey = footerKey;
-    state.footer.replaceChildren();
-    state.footer.hidden = !cancellable;
+  if (!run.messages.length && !liveTail && state.transcriptBody.childElementCount === 0) {
+    state.transcriptBody.appendChild(el('p', 'sub-agent-overlay__empty', state.loadingRunId === run.runId ? 'Loading conversation…' : run.status === 'queued' ? 'No messages yet.' : 'No conversation was recorded for this run.'));
   }
-  if (cancellable && state.footer.childElementCount === 0) {
-    const line = document.createElement('span');
-    line.className = 'sub-agent-overlay__footer-status';
-    line.textContent = footerLine;
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'sub-agent-overlay__cancel';
-    cancelBtn.textContent = 'Cancel run';
-    cancelBtn.addEventListener('click', () => {
-      cancelSubAgent(state.activeRunId, 'user_cancel');
-    });
-    state.footer.appendChild(line);
-    state.footer.appendChild(cancelBtn);
+  const resultKey = JSON.stringify([run.status, run.summary, run.structuredOutcome, run.budgetEvents, subAgentFinalResponse(run.messages)]);
+  if (state.resultKey !== resultKey) {
+    state.resultKey = resultKey;
+    renderResult(state.structuredRoot, run);
   }
-
+  let fallback = state.transcriptBody.querySelector<HTMLElement>('.sub-agent-conversation__reported-result');
+  const fallbackText = terminal(run.status) && !subAgentFinalResponse(run.messages) ? resolveOutcome(run)?.summary : '';
+  if (fallbackText) {
+    state.transcriptBody.querySelector('.sub-agent-overlay__empty')?.remove();
+    if (!fallback) { fallback = el('section', 'sub-agent-conversation__reported-result'); state.transcriptBody.appendChild(fallback); }
+    if (fallback.dataset.text !== fallbackText) {
+      fallback.dataset.text = fallbackText;
+      fallback.replaceChildren(el('h3', 'sub-agent-conversation__speaker', run.status === 'completed' ? 'Final response' : 'Reported result'));
+      const prose = el('div', 'sub-agent-overlay__answer');
+      setAssistantBubbleContent(prose, fallbackText);
+      fallback.appendChild(prose);
+    }
+  } else fallback?.remove();
+  renderFooter(state, run, live);
   renderSwitcher(state);
-
-  const shouldScroll = opts.scroll === 'end' || (opts.scroll === 'sticky' && wasNearBottom);
-  if (shouldScroll && state.transcriptDetails.open) {
-    state.scroll.scrollTop = state.scroll.scrollHeight;
-  }
+  if (scroll === 'initial') state.scroll.scrollTop = view.scroll || (live ? state.scroll.scrollHeight : 0);
+  else if (wasNearBottom && view.tab === 'conversation') state.scroll.scrollTop = state.scroll.scrollHeight;
 }
 
-// ── Overlay ──────────────────────────────────────────────────────────────────
-
-/** Switch the overlay to a different run in the same chat without reopening. */
+async function loadTranscript(state: OverlayState, runId: string): Promise<void> {
+  state.loadingRunId = runId;
+  await hydrateSubAgentTranscript(runId);
+  if (overlay !== state || state.activeRunId !== runId) return;
+  state.loadingRunId = null;
+  state.transcriptKey = null;
+  renderActiveRun(state);
+}
 function setActiveRun(runId: string): void {
   if (!overlay || overlay.activeRunId === runId) return;
-  overlay.activeRunId = runId;
-  resetRenderCache(overlay);
-  renderActiveRun(overlay, { scroll: 'end' });
-  void hydrateSubAgentTranscript(runId).then(() => {
-    if (!overlay || overlay.activeRunId !== runId) return;
-    renderActiveRun(overlay, { scroll: 'end' });
-  });
+  const state = overlay;
+  viewFor(state).scroll = state.scroll.scrollTop;
+  state.activeRunId = runId;
+  state.transcriptKey = state.resultKey = state.footerKey = null;
+  renderActiveRun(state, 'initial');
+  void loadTranscript(state, runId);
 }
-
-/** Toggle inset ↔ full-column presentation. */
-function toggleExpanded(btn: HTMLButtonElement): void {
-  if (!overlay) return;
-  overlay.expanded = !overlay.expanded;
-  overlay.root.classList.toggle('sub-agent-overlay--expanded', overlay.expanded);
-  btn.setAttribute('aria-pressed', String(overlay.expanded));
-  btn.setAttribute('aria-label', overlay.expanded ? 'Collapse' : 'Expand');
-  btn.title = overlay.expanded ? 'Collapse' : 'Expand';
-}
-
-/** Trap Tab focus within the sheet; Esc closes. */
 function handleKey(e: KeyboardEvent): void {
   if (!overlay) return;
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    closeSubAgentDrawer();
-    return;
-  }
+  if (e.key === 'Escape') { e.preventDefault(); closeSubAgentDrawer(); return; }
   if (e.key !== 'Tab') return;
-  const focusables = overlay.sheet.querySelectorAll<HTMLElement>(
-    'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])',
-  );
-  const visible = [...focusables].filter(
-    (el) => !el.hidden && el.offsetParent !== null,
-  );
-  if (visible.length === 0) return;
-  const first = visible[0];
-  const last = visible[visible.length - 1];
-  const active = document.activeElement as HTMLElement | null;
-  if (e.shiftKey && active === first) {
-    e.preventDefault();
-    last.focus();
-  } else if (!e.shiftKey && active === last) {
-    e.preventDefault();
-    first.focus();
-  } else if (active && !overlay.sheet.contains(active)) {
-    e.preventDefault();
-    first.focus();
-  }
+  const visible = [...overlay.sheet.querySelectorAll<HTMLElement>('button:not(:disabled), select, summary, [href], [tabindex="0"]')]
+    .filter((node) => !node.hidden && node.offsetParent !== null && !node.closest('[hidden]'));
+  const first = visible[0], last = visible.at(-1);
+  if (!first || !last) return;
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
-
 function bindSubscription(): void {
-  if (subscriptionBound) return;
-  subscriptionBound = true;
-  subscribeSubAgentRuns((run) => {
-    if (!overlay || run.parentChatId !== overlay.chatId) return;
+  unsubscribe?.();
+  unsubscribe = subscribeSubAgentRuns((run) => {
     const state = overlay;
-    if (state.refreshFrame != null) return;
+    if (!state || run.parentChatId !== state.chatId || state.refreshFrame != null) return;
     state.refreshFrame = -1;
     const handle = requestAnimationFrame(() => {
       state.refreshFrame = null;
-      if (overlay !== state) return;
-      renderActiveRun(state, { scroll: 'sticky' });
+      if (overlay === state) renderActiveRun(state);
     });
     if (state.refreshFrame === -1) state.refreshFrame = handle;
   });
 }
-
-// ── Open drawer ──────────────────────────────────────────────────────────────
-
-/** Wire overlay refresh to orchestrator pub/sub (called from initSubAgentUi). */
-export function initSubAgentDrawerLiveUpdates(): void {
-  bindSubscription();
-}
-
+export function initSubAgentDrawerLiveUpdates(): void { bindSubscription(); }
 export function closeSubAgentDrawer(): void {
   openRequest += 1;
   if (!overlay) return;
   const state = overlay;
   overlay = null;
   document.removeEventListener('keydown', state.onKey, true);
-
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const cleanup = (): void => {
-    state.root.remove();
-    if (state.returnFocus?.isConnected) state.returnFocus.focus();
-  };
-  if (reduce) {
-    cleanup();
-    return;
-  }
-  state.root.classList.remove('is-open');
-  state.root.classList.add('is-closing');
-  let done = false;
-  const finish = (): void => {
-    if (done) return;
-    done = true;
-    cleanup();
-  };
-  state.sheet.addEventListener('transitionend', finish, { once: true });
-  window.setTimeout(finish, 260);
+  if (state.refreshFrame != null && state.refreshFrame >= 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.refreshFrame);
+  state.root.remove();
+  if (state.returnFocus?.isConnected) state.returnFocus.focus();
 }
-
-/** Opens the overlay for one sub-agent run (live or persisted on the given chat). */
 export async function openSubAgentDrawer(runId: string, chatId: string): Promise<void> {
-  bindSubscription();
   closeSubAgentDrawer();
-  // Paint the existing snapshot before any network work, including in another window.
-  if (resolveRunSnapshot(runId, chatId)) mountSubAgentDrawer(runId, chatId);
+  bindSubscription();
+  if (resolveRun(runId, chatId)) mountSubAgentDrawer(runId, chatId);
   const request = ++openRequest;
-  // Opening the drawer is an explicit request for the current state, so bypass the hydrate TTL.
   await hydrateSubAgentRunsForParentChat(chatId, { force: true });
   if (request !== openRequest) return;
   if (!overlay) mountSubAgentDrawer(runId, chatId);
-  await hydrateSubAgentTranscript(runId);
-  if (overlay?.activeRunId === runId && overlay.chatId === chatId) {
-    renderActiveRun(overlay, { scroll: 'sticky' });
-  }
+  const state = overlay;
+  if (state) await loadTranscript(state, runId);
 }
-
 function mountSubAgentDrawer(runId: string, chatId: string): void {
-  const returnFocus = (document.activeElement as HTMLElement | null) ?? null;
-  closeSubAgentDrawer();
-  if (!resolveRunSnapshot(runId, chatId)) return;
-
-  const main = resolveSubAgentOverlayMount();
-  if (!main) return;
-
-  const root = document.createElement('div');
-  root.className = 'sub-agent-overlay';
-
-  const scrim = document.createElement('div');
-  scrim.className = 'sub-agent-overlay__scrim';
-  scrim.setAttribute('role', 'presentation');
-  scrim.addEventListener('click', () => closeSubAgentDrawer());
-
-  const sheet = document.createElement('div');
-  sheet.className = 'sub-agent-overlay__sheet';
+  const mount = resolveSubAgentOverlayMount();
+  if (!mount || !resolveRun(runId, chatId)) return;
+  const returnFocus = document.activeElement as HTMLElement | null;
+  const root = el('div', 'sub-agent-overlay');
+  const scrim = el('div', 'sub-agent-overlay__scrim');
+  scrim.addEventListener('click', closeSubAgentDrawer);
+  const sheet = el('div', 'sub-agent-overlay__sheet');
   sheet.setAttribute('role', 'dialog');
   sheet.setAttribute('aria-modal', 'true');
-
-  const header = document.createElement('header');
-  header.className = 'sub-agent-overlay__header';
-
-  const heading = document.createElement('div');
-  heading.className = 'sub-agent-overlay__heading';
-  const kicker = document.createElement('span');
-  kicker.className = 'sub-agent-overlay__kicker';
-  kicker.textContent = 'Sub-agent';
-  const headingType = document.createElement('h2');
-  headingType.className = 'sub-agent-overlay__title';
-  const status = document.createElement('span');
-  status.className = 'sub-agent-overlay__status';
-  const statusDot = document.createElement('span');
-  statusDot.className = 'sub-agent-overlay__dot';
-  statusDot.setAttribute('aria-hidden', 'true');
-  const statusText = document.createElement('span');
-  statusText.className = 'sub-agent-overlay__status-text';
-  status.appendChild(statusDot);
-  status.appendChild(statusText);
-  heading.appendChild(kicker);
-  heading.appendChild(headingType);
-  heading.appendChild(status);
-
-  const tools = document.createElement('div');
-  tools.className = 'sub-agent-overlay__tools';
-  const expandBtn = document.createElement('button');
-  expandBtn.type = 'button';
-  expandBtn.className = 'sub-agent-overlay__icon-btn';
-  expandBtn.setAttribute('aria-pressed', 'false');
-  expandBtn.setAttribute('aria-label', 'Expand');
-  expandBtn.title = 'Expand';
-  expandBtn.innerHTML = expandIconSvg();
-  expandBtn.addEventListener('click', () => toggleExpanded(expandBtn));
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'sub-agent-overlay__icon-btn';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.title = 'Close';
-  closeBtn.innerHTML = closeIconSvg();
-  closeBtn.addEventListener('click', () => closeSubAgentDrawer());
-  tools.appendChild(expandBtn);
-  tools.appendChild(closeBtn);
-
-  header.appendChild(heading);
-  header.appendChild(tools);
-
-  const meta = document.createElement('div');
-  meta.className = 'sub-agent-overlay__meta';
-  const runIdEl = document.createElement('span');
-  runIdEl.className = 'sub-agent-overlay__run-id';
-  const endedEl = document.createElement('span');
-  endedEl.className = 'sub-agent-overlay__ended';
-  endedEl.hidden = true;
-  meta.appendChild(runIdEl);
-  meta.appendChild(endedEl);
-
-  const switcher = document.createElement('nav');
-  switcher.className = 'sub-agent-overlay__switcher';
-  switcher.setAttribute('aria-label', 'Sub-agents in this chat');
-
-  const promptWrap = document.createElement('section');
-  promptWrap.className = 'sub-agent-overlay__prompt';
-  const promptLabel = document.createElement('span');
-  promptLabel.className = 'sub-agent-overlay__prompt-label';
-  promptLabel.textContent = 'Task';
-  const promptText = document.createElement('p');
-  promptText.className = 'sub-agent-overlay__prompt-text is-clamped';
-  const promptToggle = document.createElement('button');
-  promptToggle.type = 'button';
-  promptToggle.className = 'sub-agent-overlay__prompt-toggle';
-  promptToggle.hidden = true;
-  promptToggle.textContent = 'Show more';
-  promptToggle.setAttribute('aria-expanded', 'false');
-  promptToggle.addEventListener('click', () => {
-    const clamped = promptText.classList.toggle('is-clamped');
-    promptToggle.textContent = clamped ? 'Show more' : 'Show less';
-    promptToggle.setAttribute('aria-expanded', String(!clamped));
+  const header = el('header', 'sub-agent-overlay__header');
+  const heading = el('h2', 'sub-agent-overlay__heading', 'Subagents');
+  heading.prepend(createIcon('gitBranch', { size: 16 }));
+  const count = el('span', 'sub-agent-overlay__count');
+  const expand = action('Expand', 'expand');
+  expand.className = 'sub-agent-overlay__icon-btn';
+  expand.setAttribute('aria-label', 'Expand panel');
+  expand.setAttribute('aria-pressed', 'false');
+  expand.replaceChildren(createIcon('expand', { size: 16 }));
+  expand.addEventListener('click', () => {
+    if (!overlay) return;
+    overlay.expanded = !overlay.expanded;
+    root.classList.toggle('sub-agent-overlay--expanded', overlay.expanded);
+    expand.setAttribute('aria-pressed', String(overlay.expanded));
+    expand.setAttribute('aria-label', overlay.expanded ? 'Restore panel size' : 'Expand panel');
+    expand.replaceChildren(createIcon(overlay.expanded ? 'compress' : 'expand', { size: 16 }));
   });
-  promptWrap.appendChild(promptLabel);
-  promptWrap.appendChild(promptText);
-  promptWrap.appendChild(promptToggle);
-
-  const scroll = document.createElement('div');
-  scroll.className = 'sub-agent-overlay__scroll';
-  const structuredRoot = document.createElement('div');
-  structuredRoot.className = 'sub-agent-overlay__structured';
-  const transcriptDetails = document.createElement('details');
-  transcriptDetails.className = 'sub-agent-overlay__activity';
-  const transcriptSummary = document.createElement('summary');
-  transcriptSummary.textContent = 'Activity';
-  const transcriptBody = document.createElement('div');
-  transcriptBody.className = 'sub-agent-overlay__body';
-  transcriptDetails.appendChild(transcriptSummary);
-  transcriptDetails.appendChild(transcriptBody);
-  scroll.appendChild(structuredRoot);
-  scroll.appendChild(transcriptDetails);
-
-  const footer = document.createElement('footer');
-  footer.className = 'sub-agent-overlay__footer';
-  footer.hidden = true;
-
-  sheet.appendChild(header);
-  sheet.appendChild(meta);
-  sheet.appendChild(switcher);
-  sheet.appendChild(promptWrap);
-  sheet.appendChild(scroll);
-  sheet.appendChild(footer);
-
-  root.appendChild(scrim);
-  root.appendChild(sheet);
-  main.appendChild(root);
-
-  const onKey = (e: KeyboardEvent): void => handleKey(e);
+  const close = action('Close', 'close');
+  close.className = 'sub-agent-overlay__icon-btn';
+  close.setAttribute('aria-label', 'Close subagents');
+  close.replaceChildren(createIcon('close', { size: 16 }));
+  close.addEventListener('click', closeSubAgentDrawer);
+  header.append(heading, count, expand, close);
+  const layout = el('div', 'sub-agent-overlay__layout');
+  const switcher = el('nav', 'sub-agent-overlay__switcher');
+  switcher.setAttribute('aria-label', 'Subagents in this chat');
+  const main = el('div', 'sub-agent-overlay__main');
+  const top = el('div', 'sub-agent-overlay__top');
+  const mobileSelect = el('select', 'sub-agent-overlay__mobile-select');
+  mobileSelect.setAttribute('aria-label', 'Choose agent');
+  mobileSelect.addEventListener('change', () => setActiveRun(mobileSelect.value));
+  const title = el('h3', 'sub-agent-overlay__title');
+  const meta = el('div', 'sub-agent-overlay__meta');
+  const tabsRoot = el('div', 'sub-agent-overlay__tabs');
+  tabsRoot.setAttribute('role', 'tablist');
+  tabsRoot.setAttribute('aria-label', 'Agent view');
+  const tabs = (['conversation', 'result'] as const).map((view) => {
+    const tab = action(view === 'conversation' ? 'Conversation' : 'Result');
+    tab.className = 'sub-agent-overlay__tab';
+    tab.id = `sub-agent-tab-${view}`;
+    tab.dataset.view = view;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', 'sub-agent-view');
+    tab.addEventListener('click', () => {
+      if (!overlay) return;
+      viewFor(overlay).tab = view;
+      renderActiveRun(overlay);
+      overlay.scroll.scrollTop = 0;
+    });
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = tabs[event.key === 'Home' ? 0 : event.key === 'End' ? 1 : view === 'conversation' ? 1 : 0];
+      next.click(); next.focus();
+    });
+    tabsRoot.appendChild(tab);
+    return tab;
+  });
+  top.append(mobileSelect, title, meta, tabsRoot);
+  const scroll = el('div', 'sub-agent-overlay__scroll');
+  scroll.id = 'sub-agent-view';
+  scroll.setAttribute('role', 'tabpanel');
+  const assignment = el('details', 'sub-agent-overlay__prompt');
+  const summary = el('summary', '', 'Assignment');
+  summary.prepend(createIcon('fileText', { size: 14 }));
+  const promptText = el('p', 'sub-agent-overlay__prompt-text');
+  assignment.append(summary, promptText);
+  assignment.addEventListener('toggle', () => { if (overlay) viewFor(overlay).assignmentOpen = assignment.open; });
+  const notice = el('div', 'sub-agent-overlay__notice');
+  notice.setAttribute('role', 'status');
+  const transcriptBody = el('div', 'sub-agent-overlay__body');
+  const structuredRoot = el('div', 'sub-agent-overlay__structured');
+  const runDetails = el('details', 'sub-agent-overlay__run-details');
+  const details = el('p', 'sub-agent-overlay__run-id');
+  runDetails.append(el('summary', '', 'Run details'), details);
+  scroll.append(assignment, notice, transcriptBody, structuredRoot, runDetails);
+  main.append(top, scroll);
+  layout.append(switcher, main);
+  const footer = el('footer', 'sub-agent-overlay__footer');
+  sheet.append(header, layout, footer);
+  root.append(scrim, sheet);
+  mount.appendChild(root);
+  const onKey = (event: KeyboardEvent) => handleKey(event);
   document.addEventListener('keydown', onKey, true);
-
-  overlay = {
-    root,
-    sheet,
-    chatId,
-    activeRunId: runId,
-    expanded: false,
-    returnFocus,
-    onKey,
-    switcher,
-    headingType,
-    statusDot,
-    statusText,
-    runIdEl,
-    endedEl,
-    promptText,
-    promptToggle,
-    scroll,
-    structuredRoot,
-    transcriptDetails,
-    transcriptBody,
-    footer,
-    renderedTask: null,
-    renderedMessages: null,
-    transcriptKey: null,
-    structuredKey: null,
-    footerKey: null,
-    switcherKey: null,
-    activityInitialized: false,
-    refreshFrame: null,
-  };
-
-  renderActiveRun(overlay, { scroll: 'end' });
-
-  requestAnimationFrame(() => {
-    if (overlay?.root === root) root.classList.add('is-open');
-  });
-
-  closeBtn.focus();
-}
-
-/** Diagonal expand icon for full-column toggle. */
-function expandIconSvg(): string {
-  return iconHtml('expand', { size: 16 });
-}
-
-/** Close icon for overlay dismiss. */
-function closeIconSvg(): string {
-  return iconHtml('close', { size: 16 });
+  overlay = { root, sheet, chatId, activeRunId: runId, expanded: false, returnFocus, onKey,
+    switcher, mobileSelect, count, title, meta, assignment, promptText, scroll, tabs,
+    structuredRoot, transcriptBody, notice, details, footer, views: new Map(),
+    transcriptKey: null, resultKey: null, footerKey: null, switcherKey: null, loadingRunId: runId, refreshFrame: null };
+  renderActiveRun(overlay, 'initial');
+  requestAnimationFrame(() => root.classList.add('is-open'));
+  close.focus();
 }

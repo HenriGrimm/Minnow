@@ -147,8 +147,13 @@ export function applyTurnEventToMessages(messages, event) {
 
   if (type === 'round_end') {
     const text = typeof rec.text === 'string' ? rec.text.trim() : '';
-    if (!text) return list;
-    return [...list, { role: 'assistant', content: text }];
+    // Some providers only supply reasoning on the settled round. Do not rely
+    // on having received a live thinking frame before this checkpoint.
+    const reasoning = typeof rec.reasoning === 'string' ? rec.reasoning.trim() : '';
+    let next = list;
+    if (reasoning) next = applyTurnEventToMessages(next, { type: 'thinking', text: reasoning });
+    if (!text) return next;
+    return [...next, { role: 'assistant', content: text }];
   }
 
   if (type === 'thinking') {
@@ -243,4 +248,59 @@ export function countToolCalls(messages) {
     }
   }
   return n;
+}
+
+/**
+ * Reconcile an authoritative transcript with frames received while it loaded.
+ * Tool ids anchor overlapping history; cumulative prose/thoughts match by
+ * prefix. Message counts cannot distinguish complete history from tool stubs.
+ * @param {unknown[]} history
+ * @param {unknown[]} recent
+ * @returns {unknown[]}
+ */
+export function mergeTranscriptMessages(history, recent) {
+  const result = history.slice();
+  let cursor = 0;
+  let pending = [];
+  for (const raw of recent) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = /** @type {Record<string, unknown>} */ (raw);
+    const match = result.findIndex((candidate, index) => index >= cursor && sameMessage(candidate, row));
+    if (match < 0) {
+      pending.push(row);
+      continue;
+    }
+    result.splice(match, 0, ...pending);
+    const position = match + pending.length;
+    pending = [];
+    const old = /** @type {Record<string, unknown>} */ (result[position]);
+    const merged = { ...old, ...row };
+    for (const key of ['content', 'reasoning', 'reasoning_content']) {
+      if (typeof old[key] === 'string' && typeof row[key] === 'string' && old[key].startsWith(row[key])) {
+        merged[key] = old[key];
+      }
+    }
+    result[position] = merged;
+    cursor = position + 1;
+  }
+  result.push(...pending);
+  return result;
+}
+
+/** @param {unknown} candidate @param {unknown} raw @returns {boolean} */
+function sameMessage(candidate, raw) {
+  if (!candidate || typeof candidate !== 'object' || !raw || typeof raw !== 'object') return false;
+  const a = /** @type {Record<string, any>} */ (candidate);
+  const b = /** @type {Record<string, any>} */ (raw);
+  if (a.role !== b.role) return false;
+  if (a.role === 'tool') return Boolean(a.tool_call_id) && a.tool_call_id === b.tool_call_id;
+  if (a.tool_calls?.length || b.tool_calls?.length) {
+    return Boolean(a.tool_calls?.[0]?.id) && a.tool_calls[0].id === b.tool_calls?.[0]?.id;
+  }
+  for (const key of ['content', 'reasoning', 'reasoning_content']) {
+    if (typeof a[key] === 'string' && a[key] && typeof b[key] === 'string' && b[key]) {
+      if (a[key].startsWith(b[key]) || b[key].startsWith(a[key])) return true;
+    }
+  }
+  return a.role === 'context' && JSON.stringify(a) === JSON.stringify(b);
 }

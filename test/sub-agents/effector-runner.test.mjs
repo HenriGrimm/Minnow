@@ -27,6 +27,8 @@ import {
 } from '../../server/generations/store.js';
 import { createEngine, disposeEngines, getEngine } from '../../server/orchestrator/engine.js';
 import { subscribeLive } from '../../server/orchestrator/live-events.js';
+import { flushTranscripts, readTranscript, recordTranscriptEvent } from '../../server/orchestrator/transcripts.js';
+import { agentsDir } from '../../server/sub-agents/journal.js';
 import { attemptLimits } from '../../server/orchestrator/attempt-limits.js';
 import { derive } from '../../server/sub-agents/derive.js';
 import { makeEvent, SUB_AGENT_ROLE, validateEvent } from '../../server/sub-agents/events.js';
@@ -92,7 +94,7 @@ function functionCallChunks(name, args, toolCallId = 'call_report') {
 function longThenReportChunks(payload) {
 /** @type {string[]} */
   const chunks = [];
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 140; i += 1) {
     chunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: `tok${i} ` } }] })}\n\n`);
   }
   chunks.push(...functionCallChunks(DEFAULT_REPORT_TOOL_NAME, payload, 'call_after_tokens'));
@@ -705,6 +707,10 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
         live.some((row) => row.event?.type === 'delta' || row.event?.type === 'tool_call'),
         'live bus must see tokens or tool calls',
       );
+      const longest = live.filter((row) => row.event?.type === 'delta')
+        .map((row) => row.event.text).sort((a, b) => b.length - a.length)[0];
+      assert.ok(longest?.startsWith('tok0 '), 'live prose retains the beginning');
+      assert.ok(longest?.includes('tok139 '), 'live prose retains the end beyond 400 characters');
     } finally {
       unsubLive();
       engine.dispose();
@@ -919,6 +925,40 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
       await hang.close().catch(() => {});
       await restoreFake();
     }
+  });
+
+  test('Stop records the full response even when interrupted during tool argument streaming', async () => {
+    const parentChatId = 'chat-interrupted-prose';
+    const journal = createMemoryAgentsJournal();
+    await journal.appendEvent(parentChatId, runRequested(parentChatId, PROJECT_ROOT));
+    const state = await journal.loadState(parentChatId);
+    const text = 'Beginning of actual response. ' + 'Verified evidence. '.repeat(60) + ' End of response.';
+    let streaming = false;
+    const effector = makeEffector({ parentChatId, getState: () => state,
+      runTurn: async (options) => {
+        options.onEvent({ type: 'delta', text });
+        options.onEvent({ type: 'tool_streaming', name: 'read_file' });
+        streaming = true;
+        await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+        return { outcome: 'crashed', error: 'aborted' };
+      },
+    });
+    const { attemptId } = await effector.start({ taskId: 'run-1', role: SUB_AGENT_ROLE, seedKind: 'initial' });
+    await waitFor(() => streaming);
+    await effector.stop(attemptId);
+    await flushTranscripts(parentChatId, attemptId, { entryDir: agentsDir(parentChatId) });
+    const { events } = await readTranscript(parentChatId, attemptId, { entryDir: agentsDir(parentChatId) });
+    assert.ok(events.some((event) => event.type === 'round_end' && event.text === text));
+  });
+
+  test('settled reasoning uses the prose budget rather than the tool-payload budget', async () => {
+    const parentChatId = 'chat-settled-reasoning';
+    const reasoning = 'Settled provider reasoning. '.repeat(500);
+    const entryDir = agentsDir(parentChatId);
+    recordTranscriptEvent({ entryDir, attemptId: 'settled-only', event: { type: 'round_end', text: 'Answer.', reasoning } });
+    await flushTranscripts(parentChatId, 'settled-only', { entryDir });
+    const { events } = await readTranscript(parentChatId, 'settled-only', { entryDir });
+    assert.equal(events[0].reasoning, reasoning);
   });
 
   test(

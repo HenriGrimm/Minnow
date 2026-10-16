@@ -24,7 +24,7 @@ const MAX_LINE_BYTES = 8_000;
 const MAX_PROSE_BYTES = 64_000;
 
 /** Fields billed against `MAX_PROSE_BYTES` rather than the tool-payload cap. */
-const PROSE_KEYS = new Set(['text', 'summary']);
+const PROSE_KEYS = new Set(['text', 'summary', 'reasoning']);
 
 /**
  * Attempts folder under an already-resolved journal directory.

@@ -75,11 +75,11 @@ export function subAgentTranscriptLiveFromRun(
   run: SubAgentRun | PersistedSubAgentRun,
   live: boolean,
 ): SubAgentTranscriptLive | undefined {
-  if (!live || run.status !== 'running' && run.status !== 'queued') return undefined;
+  if (!live || run.status !== 'running') return undefined;
   const active = run as SubAgentRun;
   return {
     isLive: true,
-    phase: active.livePhase ?? (run.status === 'queued' ? null : 'generating'),
+    phase: active.livePhase ?? 'generating',
     currentToolName: active.liveCurrentToolName ?? null,
     partialReasoning: active.livePartialReasoning,
     partialText: active.livePartialText,

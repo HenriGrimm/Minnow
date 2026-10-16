@@ -54,7 +54,7 @@ A connection that accumulates more than 4 MiB of pending stream data or stalls f
 
 - **Inference metrics** — tokens, tok/s and totals for the turn. In Code, the strip at the bottom of the chat column.
 - **Agent activity** — a panel of what sub-agents are doing right now: thinking, generating, or which tool they are running.
-- **Sub-agent cards and drawer** — every spawned agent gets a card in the transcript; open it for the full activity transcript, live.
+- **Sub-agent cards and inspector** — every spawned agent gets a card in the transcript. Open it for its Conversation: available thoughts, responses, grouped tool calls, and a Result tab. Conversations remain accessible after reopening the chat.
 
 A background sub-agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model sees it without a wall of text appearing in your transcript.
 

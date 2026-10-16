@@ -295,6 +295,58 @@ describe('stale attemptId does not paint (P10-M)', () => {
 });
 
 describe('live frames after cancel vs genuine end (P10-L)', () => {
+  test('full cumulative prose and thoughts survive live frames and a terminal transition', () => {
+    const stream = new FakeStream();
+    const client = createSubAgentRunClient(RUN_A, { openStream: () => stream });
+    client.connect();
+    stream.emit('snapshot', runningSnapshot(RUN_A, [{ attemptId: ATTEMPT_A1, ended: false }]));
+    const thought = 'Start of thoughts. ' + 'Detailed evidence. '.repeat(60) + ' End of thoughts.';
+    const text = 'Start of response. ' + 'Verified results. '.repeat(60) + ' End of response.';
+    const live = (event: unknown) => stream.emit('live', { taskId: RUN_A, attemptId: ATTEMPT_A1, event });
+    live({ type: 'thinking', text: thought });
+    assert.equal(client.getLive().thinking, thought);
+    live({ type: 'delta', text });
+    assert.equal(client.getLive().partialText, text);
+    stream.emit('event', { type: 'run.cancelled', runId: RUN_A, reason: 'user', seq: 2 });
+    stream.emit('event', { type: 'attempt.ended', runId: RUN_A, attemptId: ATTEMPT_A1, outcome: 'crashed', seq: 3 });
+    assert.ok(client.getLive().messages.some((row) => (row as { reasoning?: string }).reasoning === thought));
+    assert.ok(client.getLive().messages.some((row) => (row as { content?: string }).content === text));
+    client.close();
+  });
+
+  test('a fetched history fills missing text without losing frames received while loading', () => {
+    const stream = new FakeStream();
+    const client = createSubAgentRunClient(RUN_A, { openStream: () => stream });
+    client.connect();
+    stream.emit('snapshot', runningSnapshot(RUN_A, [{ attemptId: ATTEMPT_A1, ended: false }]));
+    stream.emit('live', { taskId: RUN_A, attemptId: ATTEMPT_A1, event: { type: 'tool_call', name: 'read_file', id: 'read' } });
+    client.seedMessages([
+      { role: 'assistant', content: '', reasoning: 'Earlier thoughts, fetched from disk.' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'read', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+    ]);
+    stream.emit('live', { taskId: RUN_A, attemptId: ATTEMPT_A1, event: { type: 'tool_result', id: 'read', content: 'source' } });
+    const messages = client.getLive().messages as Array<{ reasoning?: string; role?: string }>;
+    assert.equal(messages[0].reasoning, 'Earlier thoughts, fetched from disk.');
+    assert.equal(messages.at(-1)?.role, 'tool');
+    assert.equal(messages.length, 3);
+    client.close();
+  });
+
+  test('prose stays visible while tool arguments stream and is retained on the tool call', () => {
+    const stream = new FakeStream();
+    const client = createSubAgentRunClient(RUN_A, { openStream: () => stream });
+    client.connect();
+    stream.emit('snapshot', runningSnapshot(RUN_A, [{ attemptId: ATTEMPT_A1, ended: false }]));
+    const live = (event: unknown) => stream.emit('live', { taskId: RUN_A, attemptId: ATTEMPT_A1, event });
+    live({ type: 'delta', text: 'Here is the actual progress response.' });
+    live({ type: 'tool_streaming', name: 'read_file' });
+    assert.equal(client.getLive().partialText, 'Here is the actual progress response.');
+    live({ type: 'tool_call', id: 'read', name: 'read_file' });
+    const messages = client.getLive().messages as Array<{ content?: string }>;
+    assert.equal(messages[0].content, 'Here is the actual progress response.');
+    assert.equal(client.getLive().partialText, '');
+    client.close();
+  });
   test('paints a live frame during an open attempt after cancel is journaled', () => {
     const stream = new FakeStream();
     const client = createSubAgentRunClient(RUN_A, { openStream: () => stream });

@@ -37,6 +37,8 @@ Three at once globally by default, with per-type caps. There is no wall-clock ti
 
 While a sub-agent runs you see live status — thinking, generating, or the tool it is running — on its card in the transcript and in the drawer. A background agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model has it without a wall of text appearing in your transcript.
 
+Open an agent's card to inspect its **Conversation**. The agent list identifies each run by its assignment, with its role and status underneath. Thoughts supplied by the model start expanded; responses stay in reading order, with consecutive tool calls grouped in expandable rows. **Result** shows the returned response and structured findings. The assignment and run details expand separately. Available thoughts, responses, and tool activity remain accessible when you reopen the chat. Running agents offer **Stop agent**; stopped or failed agents offer **Retry agent**.
+
 Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
 
 In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.

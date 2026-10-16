@@ -19,7 +19,7 @@ import {
 } from './sub-agent-events';
 import { withSessionToken } from '../api/session-token';
 import { createSubAgentRunClient, type EventStream, type DeliverFrame } from './sub-agent-client';
-import { countToolCalls, turnEventsToMessages } from '../../server/orchestrator/transcript-messages.js';
+import { applyTurnEventToMessages, countToolCalls, turnEventsToMessages, mergeTranscriptMessages } from '../../server/orchestrator/transcript-messages.js';
 import type { PersistedSubAgentRun } from '../types';
 import type {
   AggregateResult,
@@ -124,7 +124,7 @@ function preferNonEmptyString(fold: unknown, prev: unknown): string {
 function pickMessages(live: unknown[] | undefined, prev: unknown[] | undefined): SubAgentRun['messages'] {
   const a = Array.isArray(live) ? live : [];
   const b = Array.isArray(prev) ? prev : [];
-  const chosen = a.length >= b.length ? a : b;
+  const chosen = a.length > 0 ? a : b;
   return chosen as SubAgentRun['messages'];
 }
 
@@ -251,9 +251,9 @@ function mergeClientView(runId: string): void {
       : stopping
         ? 'stopping'
         : ((live?.phase as SubAgentRun['livePhase']) ?? prev?.livePhase),
-    liveCurrentToolName: terminal ? undefined : (live?.toolName ?? prev?.liveCurrentToolName),
-    livePartialReasoning: terminal ? undefined : (live?.thinking || prev?.livePartialReasoning),
-    livePartialText: terminal ? undefined : (live?.partialText || prev?.livePartialText),
+    liveCurrentToolName: terminal ? undefined : (live ? live.toolName : prev?.liveCurrentToolName),
+    livePartialReasoning: terminal ? undefined : (live ? live.thinking : prev?.livePartialReasoning),
+    livePartialText: terminal ? undefined : (live ? live.partialText : prev?.livePartialText),
     startError: terminal
       ? null
       : err
@@ -272,6 +272,7 @@ function mergeClientView(runId: string): void {
   if (terminal) {
     if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
     releaseClient(runId);
+    hydrateFinishedTranscript(runId);
     if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
   }
 }
@@ -422,6 +423,7 @@ function ensureClient(
     initialSeq,
   });
   clients.set(runId, client);
+  if (existing?.messages.length) client.seedMessages(existing.messages);
   client.subscribe(() => mergeClientView(runId));
   client.connect();
 }
@@ -439,7 +441,10 @@ export function subscribeSubAgentDeliver(
 
 function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
   const runId = String(raw.runId ?? '');
-  const prev = runs.get(runId);
+  const persisted = typeof raw.parentChatId === 'string'
+    ? findChatById(raw.parentChatId)?.subAgentRuns?.find((run) => run.runId === runId)
+    : undefined;
+  const prev = runs.get(runId) ?? (persisted as Partial<SubAgentRun> | undefined);
   publish(subAgentRunFromFold(raw, prev ?? {}));
   const next = runs.get(runId);
   if (next && isSubAgentRunTerminal(next.status)) {
@@ -447,9 +452,7 @@ function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
     if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
     else if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
     releaseClient(runId);
-    if ((next.messages?.length ?? 0) === 0) {
-      void hydrateSubAgentTranscript(runId);
-    }
+    hydrateFinishedTranscript(runId);
     return;
   }
   ensureClient(runId, raw, seq);
@@ -507,12 +510,25 @@ export async function hydrateSubAgentTranscript(runId: string): Promise<void> {
   return work;
 }
 
+/** A fetch begun mid-run cannot certify that the final round reached disk. */
+function hydrateFinishedTranscript(runId: string): void {
+  const pending = transcriptHydrating.get(runId);
+  if (pending) {
+    void pending.then(() => hydrateSubAgentTranscript(runId));
+  } else {
+    void hydrateSubAgentTranscript(runId);
+  }
+}
+
 async function hydrateSubAgentTranscriptNow(runId: string): Promise<void> {
+  const startedTerminal = isSubAgentRunTerminal(runs.get(runId)?.status ?? 'running');
+  const attemptCount = runs.get(runId)?.foldAttemptCount;
   try {
     const body = await request(`/${encodeURIComponent(runId)}/transcript`);
     const events = Array.isArray(body?.events) ? body.events : [];
     const mapped = turnEventsToMessages(events);
-    transcriptHydrateAttempted.add(runId);
+    if (runs.get(runId)?.foldAttemptCount !== attemptCount) return;
+    if (startedTerminal) transcriptHydrateAttempted.add(runId);
     if (mapped.length === 0) return;
     const client = clients.get(runId);
     if (client) {
@@ -522,10 +538,9 @@ async function hydrateSubAgentTranscriptNow(runId: string): Promise<void> {
     }
     const prev = runs.get(runId);
     if (!prev) return;
-    if ((prev.messages?.length ?? 0) >= mapped.length) return;
     publish({
       ...prev,
-      messages: mapped as SubAgentRun['messages'],
+      messages: mergeTranscriptMessages(mapped, prev.messages) as SubAgentRun['messages'],
       toolTurns: Math.max(countToolCalls(mapped), prev.toolTurns),
     });
   } catch (err) {
@@ -706,8 +721,12 @@ export function cancelAllForParentTurn(parentTurnId: string): void {
 function optimisticallyCancelSubAgent(runId: string): void {
   const prev = runs.get(runId);
   if (!prev || isSubAgentRunTerminal(prev.status)) return;
+  let messages: unknown[] = prev.messages;
+  if (prev.livePartialReasoning) messages = applyTurnEventToMessages(messages, { type: 'thinking', text: prev.livePartialReasoning });
+  if (prev.livePartialText) messages = applyTurnEventToMessages(messages, { type: 'round_end', text: prev.livePartialText });
   publish({
     ...prev,
+    messages: messages as SubAgentRun['messages'],
     status: 'cancelled',
     cancelled: true,
     endedAt: new Date().toISOString(),

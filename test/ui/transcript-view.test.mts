@@ -29,6 +29,16 @@ function expandedThoughtText(body: HTMLElement): string {
 }
 
 describe('renderTranscriptView', () => {
+  test('keeps the actual response visible while tool arguments stream', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const text = 'I found the source. Now I am checking it. '.repeat(20);
+    renderTranscriptView(body, [], { isLive: true, phase: 'tools', currentToolName: 'read_file', partialText: text });
+    assert.equal(body.querySelector('.transcript-view__assistant--partial')?.textContent, text.trim());
+    assert.ok(body.querySelector('.tool-start-indicator'));
+    appendTranscriptLiveTail(body, { isLive: true, phase: 'tools', currentToolName: 'read_file', partialText: text + ' New detail.' });
+    assert.equal(body.querySelector('.transcript-view__assistant--partial')?.textContent, (text + ' New detail.').trim());
+  });
   afterEach(() => {
     document.body.replaceChildren();
   });

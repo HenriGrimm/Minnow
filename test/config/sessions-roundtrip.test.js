@@ -68,4 +68,29 @@ describe('sessions SQLite whole-blob roundtrip', () => {
     }
     assert.deepEqual(got, expected);
   });
+
+  test('subagent thoughts and full responses survive validation and SQLite close/reopen', () => {
+    const raw = JSON.parse(fs.readFileSync(KITCHEN_SINK, 'utf8'));
+    const chat = raw.chats[0];
+    const thought = 'Start of reasoning. ' + 'Provider reasoning retained. '.repeat(60) + ' End of reasoning.';
+    const response = 'Start of response. ' + 'Actual assistant response retained. '.repeat(60) + ' End of response.';
+    chat.subAgentRuns = [{
+      runId: 'complete-subagent-roundtrip', parentTurnId: 'turn-1', type: 'researcher',
+      task: 'Verify source compatibility', status: 'completed', summary: 'Short handoff.',
+      error: null, startedAt: '2026-10-15T12:00:00Z', endedAt: '2026-10-15T12:02:00Z', toolTurns: 1,
+      messages: [
+        { role: 'assistant', content: '', reasoning: thought },
+        { role: 'assistant', content: null, tool_calls: [{ id: 'read', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: 'read', content: 'source' },
+        { role: 'assistant', content: response },
+      ],
+    }];
+    const expected = validateSessionState(raw);
+    writeWholeSessionState(expected);
+    closeSessionsDb();
+    const restored = readWholeSessionState().chats.find((entry) => entry.id === chat.id);
+    assert.deepEqual(restored.subAgentRuns, expected.chats[0].subAgentRuns);
+    assert.equal(restored.subAgentRuns[0].messages[0].reasoning, thought);
+    assert.equal(restored.subAgentRuns[0].messages[3].content, response);
+  });
 });

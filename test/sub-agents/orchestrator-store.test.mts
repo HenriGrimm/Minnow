@@ -190,6 +190,19 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
     assert.equal(cancel.method, 'POST');
   });
 
+  test('Stop retains the current partial response before the server acknowledges it', async () => {
+    const response = 'The actual partial response. '.repeat(30);
+    const reasoning = 'The actual provider reasoning. '.repeat(30);
+    adoptSubAgentRunForTests({ ...runningRun(), livePhase: 'generating', livePartialText: response, livePartialReasoning: reasoning });
+    cancelSubAgent(FIXED_RUN_ID);
+    const stopped = getSubAgentRun(FIXED_RUN_ID)!;
+    assert.equal(stopped.status, 'cancelled');
+    const messages = stopped.messages as Array<{ content?: string; reasoning?: string }>;
+    assert.equal(messages[0].reasoning, reasoning.trim());
+    assert.equal(messages[1].content, response.trim());
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  });
+
   test('waitForSubAgent rejects AbortError and POSTs cancel when the passed signal aborts', async () => {
     // chatSignal shape: the same AbortSignal runChatTurn passes to executeTool.
     // This listener is the cancel origin WHEN a signal is actually passed
@@ -673,6 +686,36 @@ describe('transcript hydrate fills Activity without the empty placeholder', () =
     const payload = buildSubAgentStatusPayload(run);
     assert.equal(payload.summary, 'Here is what I found in src/.');
     assert.notEqual(payload.summary, PLACEHOLDER);
+  });
+
+  test('a live empty transcript does not prevent the completed transcript being fetched', async () => {
+    let reads = 0;
+    setSubAgentApiFetchForTests(async () => Response.json({ ok: true, events: ++reads === 1 ? [] : [
+      { type: 'thinking', text: 'Reasoning stored at completion.' },
+      { type: 'round_end', text: 'The complete answer.' },
+    ] }));
+    adoptSubAgentRunForTests(runningRun());
+    await hydrateSubAgentTranscript(FIXED_RUN_ID);
+    adoptSubAgentRunForTests({ ...runningRun(), status: 'completed', endedAt: '2026-05-19T12:01:00Z' });
+    await hydrateSubAgentTranscript(FIXED_RUN_ID);
+    assert.equal(reads, 2);
+    const messages = getSubAgentRun(FIXED_RUN_ID)!.messages as Array<{ reasoning?: string; content?: string }>;
+    assert.equal(messages[0].reasoning, 'Reasoning stored at completion.');
+    assert.equal(messages[1].content, 'The complete answer.');
+  });
+
+  test('same-count fetched rows replace a tool-only snapshot with complete reasoning', async () => {
+    setSubAgentApiFetchForTests(async () => Response.json({ ok: true, events: [
+      { type: 'round_end', text: 'Real response', reasoning: 'Full settled reasoning.' },
+    ] }));
+    adoptSubAgentRunForTests({ ...runningRun(), status: 'completed', messages: [
+      { role: 'assistant', content: '', reasoning: 'Full' },
+      { role: 'assistant', content: 'Real response' },
+    ] as SubAgentRun['messages'] });
+    await hydrateSubAgentTranscript(FIXED_RUN_ID);
+    const messages = getSubAgentRun(FIXED_RUN_ID)!.messages as Array<{ reasoning?: string }>;
+    assert.equal(messages.length, 2);
+    assert.equal(messages[0].reasoning, 'Full settled reasoning.');
   });
 });
 

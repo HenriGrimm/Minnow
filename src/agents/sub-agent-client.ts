@@ -1,6 +1,6 @@
 import { foldInto, emptyState } from '../../server/sub-agents/derive.js';
 import type { RunState } from '../../server/sub-agents/types';
-import { applyTurnEventToMessages } from '../../server/orchestrator/transcript-messages.js';
+import { applyTurnEventToMessages, mergeTranscriptMessages } from '../../server/orchestrator/transcript-messages.js';
 import { openSubAgentStream } from './sub-agent-stream';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -166,6 +166,10 @@ export function createSubAgentRunClient(
     foldInto(state, [event]);
     const next = state.runs.get(runId);
     if (next) raw = runToRaw(next);
+    if (next && ['passed', 'cancelled', 'abandoned'].includes(next.phase) && livePartialText) {
+      liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
+      livePartialText = '';
+    }
     if (Number.isSafeInteger(eventSeq)) seq = eventSeq;
     return true;
   };
@@ -186,6 +190,10 @@ export function createSubAgentRunClient(
       const at = Number(payload.seq) || 0;
       if (raw !== null && at < seq) return;
       raw = payload.run && typeof payload.run === 'object' ? payload.run : null;
+      if (raw && ['passed', 'cancelled', 'abandoned'].includes(String(raw.phase)) && livePartialText) {
+        liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
+        livePartialText = '';
+      }
       seq = at;
       drainPending();
       emit();
@@ -238,15 +246,16 @@ export function createSubAgentRunClient(
       }
       if (inner.type === 'delta') {
         livePhase = 'generating';
-        if (typeof inner.text === 'string') livePartialText = inner.text.slice(-400);
+        if (typeof inner.text === 'string') livePartialText = inner.text;
         emit();
         return;
       }
       if (inner.type === 'tool_call' || inner.type === 'tool_streaming') {
         livePhase = 'tools';
         liveTool = typeof inner.name === 'string' ? inner.name : liveTool;
-        livePartialText = '';
         if (inner.type === 'tool_call') {
+          if (livePartialText) liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
+          livePartialText = '';
           liveMessages = applyTurnEventToMessages(liveMessages, inner);
         }
         emit();
@@ -261,6 +270,8 @@ export function createSubAgentRunClient(
       }
       if (inner.type === 'round_end') {
         livePartialText = '';
+        liveThinking = '';
+        liveTool = null;
         livePhase = 'generating';
         liveMessages = applyTurnEventToMessages(liveMessages, inner);
         emit();
@@ -269,7 +280,7 @@ export function createSubAgentRunClient(
       if (inner.type === 'thinking') {
         livePhase = 'thinking';
         if (typeof inner.text === 'string') {
-          liveThinking = inner.text.slice(-400);
+          liveThinking = inner.text;
           liveMessages = applyTurnEventToMessages(liveMessages, inner);
         }
         emit();
@@ -310,9 +321,8 @@ export function createSubAgentRunClient(
       messages: liveMessages,
     }),
     seedMessages(messages) {
-      if (liveMessages.length > 0) return;
       if (!Array.isArray(messages) || messages.length === 0) return;
-      liveMessages = messages.slice();
+      liveMessages = mergeTranscriptMessages(messages, liveMessages);
       emit();
     },
     subscribe(listener) {

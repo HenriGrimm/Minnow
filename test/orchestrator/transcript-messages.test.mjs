@@ -9,9 +9,35 @@ import {
   applyTurnEventToMessages,
   countToolCalls,
   turnEventsToMessages,
+  mergeTranscriptMessages,
 } from '../../server/orchestrator/transcript-messages.js';
 
 describe('turnEventsToMessages', () => {
+  test('retains settled reasoning even when no live thinking event arrived', () => {
+    const reasoning = 'Full reasoning from the provider. '.repeat(40);
+    const messages = turnEventsToMessages([{ type: 'round_end', text: 'The actual answer.', reasoning }]);
+    assert.equal(messages[0].reasoning, reasoning.trim());
+    assert.equal(messages[1].content, 'The actual answer.');
+    assert.deepEqual(turnEventsToMessages([{ type: 'round_end', text: '', reasoning }]), [
+      { role: 'assistant', content: '', reasoning: reasoning.trim() },
+    ]);
+  });
+  test('reconciles tool-only live frames with full fetched thoughts and prose', () => {
+    const events = [
+      { type: 'thinking', text: 'Read the source first.' },
+      { type: 'tool_call', id: 'read', name: 'read_file' },
+      { type: 'tool_result', id: 'read', content: 'source' },
+      { type: 'round_end', text: 'The complete response.' },
+    ];
+    const full = turnEventsToMessages(events);
+    const tools = turnEventsToMessages(events.slice(1, 3));
+    assert.deepEqual(mergeTranscriptMessages(full, tools), full);
+    const newer = applyTurnEventToMessages(tools, { type: 'thinking', text: 'A newer live observation.' });
+    const merged = mergeTranscriptMessages(full.slice(0, 3), newer);
+    assert.equal(merged.length, 4);
+    assert.equal(merged[0].reasoning, 'Read the source first.');
+    assert.equal(merged[3].reasoning, 'A newer live observation.');
+  });
   test('maps tool_call + tool_result + round_end onto API messages', () => {
     const messages = turnEventsToMessages([
       { type: 'delta', text: 'ignored' },

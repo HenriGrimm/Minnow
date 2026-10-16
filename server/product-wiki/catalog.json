@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "32741cd410cdb453e7c3e0bc7cb7ad0427d0990b628b61b213b5ff78d0fd8513"
+      "hash": "09483be8b46daeb042d98c216906387e90478d830f846158adc0f7427d01b741"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -396,7 +396,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "4767ccecd852a4e5670811fad08f120caeaa2768eb909f45df4ff78118dbc391"
+      "hash": "a5eb993a5bba9f72a62913cf2e0880764063734675dcf6168fc56692ae3e1ac6"
     },
     {
       "path": "documentation/manual/extend/integrations.md",

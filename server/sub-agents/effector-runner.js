@@ -57,12 +57,11 @@ import {
 } from '../browser-agent-api.js';
 
 const LIVE_DELTA_MS = 80;
-const LIVE_PARTIAL_CAP = 400;
 
 /**
  * Pending cumulative assistant text per attempt, flushed on a timer.
  *
- * @type {Map<string, { text: string, timer: ReturnType<typeof setTimeout> | null, parentChatId: string, runId: string, attemptId: string }>}
+ * @type {Map<string, { text: string, pendingText: string, timer: ReturnType<typeof setTimeout> | null, parentChatId: string, runId: string, attemptId: string }>}
  */
 const liveDeltaByAttempt = new Map();
 
@@ -221,7 +220,7 @@ function emitPartialDelta(buf) {
     attemptId: buf.attemptId,
     taskId: buf.runId,
     role: SUB_AGENT_ROLE,
-    event: { type: 'delta', text: buf.text.slice(-LIVE_PARTIAL_CAP) },
+    event: { type: 'delta', text: buf.text },
   });
 }
 
@@ -235,10 +234,11 @@ function emitPartialDelta(buf) {
 function noteLiveDelta(meta, text) {
   let buf = liveDeltaByAttempt.get(meta.attemptId);
   if (!buf) {
-    buf = { text: '', timer: null, ...meta };
+    buf = { text: '', pendingText: '', timer: null, ...meta };
     liveDeltaByAttempt.set(meta.attemptId, buf);
   }
   buf.text = text;
+  buf.pendingText = text;
   if (buf.timer) return;
   buf.timer = setTimeout(() => {
     buf.timer = null;
@@ -261,6 +261,7 @@ function flushLiveDelta(attemptId) {
     buf.timer = null;
   }
   emitPartialDelta(buf);
+  buf.text = '';
 }
 
 /**
@@ -270,6 +271,18 @@ function flushLiveDelta(attemptId) {
 function clearLiveDelta(attemptId) {
   flushLiveDelta(attemptId);
   liveDeltaByAttempt.delete(attemptId);
+}
+
+/** Preserve an interrupted response that never reached a settled round. */
+function recordPendingResponse(parentChatId, runId, attemptId) {
+  const buf = liveDeltaByAttempt.get(attemptId);
+  const text = buf?.pendingText;
+  if (!text) return;
+  recordTranscriptEvent({
+    entryDir: agentsDir(parentChatId), attemptId, taskId: runId,
+    role: SUB_AGENT_ROLE, event: { type: 'round_end', text },
+  });
+  buf.pendingText = '';
 }
 
 /**
@@ -798,6 +811,7 @@ export function createSubAgentEffector(options = {}) {
             ...(prior ? { messages: prior, seedKind: 'continue' } : seedKind === 'continue' ? { seedKind: 'continue' } : {}),
             onEvent: (event) => {
               if (!parentChatId) return;
+              if (event?.type === 'tool_call') recordPendingResponse(parentChatId, runId, attemptId);
               recordTranscriptEvent({
                 entryDir: agentsDir(parentChatId),
                 attemptId,
@@ -812,8 +826,12 @@ export function createSubAgentEffector(options = {}) {
                 return;
               }
               if (!shouldEmitSubAgentLiveTurnEvent(event?.type)) return;
-              if (event?.type === 'tool_call' || event?.type === 'round_end') {
+              if (event?.type === 'tool_call' || event?.type === 'tool_streaming' || event?.type === 'round_end') {
                 flushLiveDelta(attemptId);
+              }
+              if (event?.type === 'round_end') {
+                const buf = liveDeltaByAttempt.get(attemptId);
+                if (buf) buf.pendingText = '';
               }
               emitLive({
                 key: parentChatId,
@@ -837,6 +855,7 @@ export function createSubAgentEffector(options = {}) {
 
         const incomingOutcome = result?.outcome;
         result = degradeNoReportIfProse(result, rec?.messages, schemaId);
+        if (parentChatId) recordPendingResponse(parentChatId, runId, attemptId);
         clearLiveDelta(attemptId);
         if (parentChatId) {
           if (
@@ -877,6 +896,7 @@ export function createSubAgentEffector(options = {}) {
       if (!entry) return;
       entry.stopped = true;
       entry.controller.abort();
+      if (parentChatId) recordPendingResponse(parentChatId, entry.runId, attemptId);
       entry.browserRuntime?.close();
       running.delete(attemptId);
       liveAttemptIds.delete(attemptId);
