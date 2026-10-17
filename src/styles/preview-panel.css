@@ -140,10 +140,15 @@
 }
 
 .preview-header__tools {
-  display: none;
+  margin-left: 2px;
+  padding-left: 6px;
+  border-left: 1px solid var(--mn-border);
 }
 
-.preview-header .preview-overflow-control {
+/* Design Mode, Annotations and DevTools stay in the header (MIN-550); the rest live in the Browser menu. */
+.preview-header .preview-overflow-control,
+.preview-header__tools .preview-autoreload,
+.preview-header__tools #btnPreviewDevToolsDock {
   display: none;
 }
 

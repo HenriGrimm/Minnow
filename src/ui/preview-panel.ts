@@ -1645,9 +1645,6 @@ function bindPreviewControls(): void {
       toolbarControls: [
         { id: 'btnPreviewHistory', label: 'History' },
         { id: 'previewAutoReload', label: 'Auto-reload saved files' },
-        { id: 'btnPreviewDesignToggle', label: 'Design Mode' },
-        { id: 'btnPreviewAnnotationsToggle', label: 'Annotations panel' },
-        { id: 'btnPreviewDevTools', label: 'DevTools (F12)' },
         { id: 'btnPreviewDevToolsDock', label: () => getDevToolsDockButton()?.title ?? 'Dock DevTools' },
         { id: 'btnPreviewPaneSplit', label: 'Split right' },
       ],
