@@ -742,7 +742,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   let uiDesignerActive = false;
   let sendModelId = '';
   let sendProviderId = '';
-  let ownsComposer = false;
   let sentAttachments: Attachment[] = [];
   let releaseTickedMotion: (() => void) | null = null;
   let streamingStatsPublisher: ReturnType<typeof createStreamingStatsPublisher> | null = null;
@@ -864,6 +863,14 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           clearComposerInput(
             resolveComposerSurface(options.composerSurface).inputEl,
           );
+          // The turn owns the active composer: clear its attachment tray now,
+          // while the user bubble (which already carries `validAttachments`) is
+          // painted. Clearing here instead of after the turn setup keeps the
+          // chips from lingering while a slow CLI agent finishes provisioning.
+          sentAttachments = getPendingAttachments();
+          if (sentAttachments.length > 0) {
+            clearAttachments();
+          }
         }
       }
     }
@@ -1419,12 +1426,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         await capturePreTurnSnapshot(chat, turnRunId);
       }
       scheduleSaveSessions();
-    }
-
-    ownsComposer = pushUser && !hideUserEcho && useActiveChatDom;
-    sentAttachments = ownsComposer ? getPendingAttachments() : [];
-    if (sentAttachments.length > 0) {
-      clearAttachments();
     }
 
     let tools: RunTurnOptions['tools'] = [];

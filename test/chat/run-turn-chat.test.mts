@@ -44,6 +44,12 @@ import type { RunTurnOptions, TurnResult } from '../../server/runner/run-turn';
 import { getSubAgentExecutorContext } from '../../src/tools/sub-agent-executor.ts';
 import type { SubAgentExecutorContext } from '../../src/agents/types.ts';
 import { parallelToolsActivityLabel } from '../../src/tools/parallel-tool-policy.ts';
+import {
+  clearAttachments,
+  getPendingAttachments,
+  pushAttachment,
+} from '../../src/attachments/store.ts';
+import type { Attachment } from '../../src/attachments/types.ts';
 
 const CHAT_ID = '11111111-1111-1111-1111-111111111111';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -72,6 +78,17 @@ function makeChat(): Chat {
   chat.providerId = 'vite-fallback';
   chat.modelId = 'm1';
   return chat;
+}
+
+function textAttachment(id = 'att-1'): Attachment {
+  return {
+    id,
+    name: `${id}.txt`,
+    kind: 'text',
+    mimeType: 'text/plain',
+    size: 12,
+    text: 'hello world!',
+  };
 }
 
 const SIMPLE_TURN = {
@@ -156,7 +173,55 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.equal(modelCalls, 2);
   });
 
+  test('a user send clears the composer attachment tray when the turn takes ownership', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+
+    const sent = textAttachment('sent');
+    pushAttachment(sent);
+    assert.equal(getPendingAttachments().length, 1);
+
+    setRunTurnForTests(async () => ({ outcome: 'no_report' } satisfies TurnResult));
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({
+      chat,
+      ...SIMPLE_TURN,
+      validAttachments: [sent],
+    });
+
+    assert.deepEqual(getPendingAttachments(), [], 'the tray clears as soon as the turn owns the composer');
+  });
+
+  test('a failed turn hands the sent attachments back to the composer', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+
+    const sent = textAttachment('sent');
+    pushAttachment(sent);
+
+    setRunTurnForTests(async () => {
+      throw new Error('provider exploded');
+    });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({
+      chat,
+      ...SIMPLE_TURN,
+      validAttachments: [sent],
+    });
+
+    assert.deepEqual(
+      getPendingAttachments().map((a) => a.id),
+      ['sent'],
+      'a failed send hands the attachment back to the composer',
+    );
+  });
+
   afterEach(() => {
+    clearAttachments();
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();
     setChatAbort(CHAT_ID, null);
