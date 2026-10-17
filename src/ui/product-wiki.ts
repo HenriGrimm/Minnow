@@ -10,6 +10,7 @@ import {
 import { iconHtml } from './icon';
 import { compareProductWikiEntries } from '../product-wiki/nav-order.mjs';
 import { renderProductWikiMarkdown } from './product-wiki-markdown';
+import { closeShellOverlay, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 
 const DEFAULT_PAGE_PATH = 'documentation/manual/README.md';
 const REPOSITORY_EDIT_BASE =
@@ -87,7 +88,6 @@ function renderArticleToc(articleBody: HTMLElement): void {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      history.replaceState(null, '', `#${id}`);
     });
     li.append(link);
     list.append(li);
@@ -153,9 +153,6 @@ function ensureProductWikiRoot(): HTMLElement {
         <input id="productWikiSearch" type="search" autocomplete="off" placeholder="Search setup, apps, settings, troubleshooting…" />
         <kbd>Ctrl K</kbd>
       </label>
-      <div class="product-wiki__header-actions">
-        <button id="productWikiClose" class="product-wiki__icon-button" type="button" aria-label="Close Minnow wiki">${iconHtml('close', { size: 17 })}</button>
-      </div>
     </header>
     <div class="product-wiki__body">
       <nav id="productWikiNav" class="product-wiki__nav" aria-label="Wiki pages">
@@ -333,7 +330,6 @@ function closeMobileNavigation(): void {
 
 /** Bind overlay controls once. */
 function bindProductWiki(root: HTMLElement): void {
-  root.querySelector('#productWikiClose')?.addEventListener('click', closeProductWiki);
   root.querySelector('#productWikiNavScrim')?.addEventListener('click', closeMobileNavigation);
   root.querySelector('#productWikiNavToggle')?.addEventListener('click', () => {
     const open = root.classList.toggle('is-nav-open');
@@ -351,10 +347,12 @@ async function syncProductWikiFromHash(): Promise<void> {
   const path = productWikiPathFromHash(window.location.hash);
   const root = ensureProductWikiRoot();
   if (!path) {
+    shellOverlayClosed('wiki');
     root.classList.add('hidden');
     void import('./preview-electron-visibility').then((m) => m.scheduleElectronPreviewHostVisibilitySync());
     return;
   }
+  if (!isShellOverlayOpen('wiki')) openShellOverlay('wiki', closeProductWiki);
   root.classList.remove('hidden');
   void import('./preview-electron-visibility').then((m) => m.scheduleElectronPreviewHostVisibilitySync());
   if (!catalog.length) {
@@ -376,24 +374,42 @@ export function initProductWiki(): void {
   ensureProductWikiRoot();
   window.addEventListener('hashchange', () => void syncProductWikiFromHash());
   document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented) return;
+    if (event.key === 'Escape' && isShellOverlayOpen('wiki')) {
+      event.preventDefault();
+      closeProductWiki();
+      document.querySelector<HTMLElement>('[data-shell-overlay="wiki"]')?.focus();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 'k') return;
     if (productWikiPathFromHash(window.location.hash) === null) return;
     event.preventDefault();
     document.getElementById('productWikiSearch')?.focus();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!isShellOverlayOpen('wiki')) return;
+    const target = event.target as Element | null;
+    if (target?.closest('#productWikiOverlay, [data-shell-overlay]')) return;
+    closeProductWiki();
   });
   void syncProductWikiFromHash();
 }
 
 /** Open the official product wiki from any Minnow surface. */
 export function openProductWiki(path = DEFAULT_PAGE_PATH): void {
+  if (!isShellOverlayOpen('wiki')) closeShellOverlay();
   if (productWikiPathFromHash(window.location.hash) === null) {
     returnHash = window.location.hash || '#/desktop';
   }
+  openShellOverlay('wiki', closeProductWiki);
   navigateToProductWikiPage(path);
 }
 
 /** Close the overlay and restore the surface that opened it. */
 export function closeProductWiki(): void {
+  shellOverlayClosed('wiki');
+  document.getElementById('productWikiOverlay')?.classList.add('hidden');
   closeMobileNavigation();
-  window.location.hash = returnHash;
+  if (productWikiPathFromHash(window.location.hash) !== null) window.location.hash = returnHash;
+  void import('./preview-electron-visibility').then((m) => m.scheduleElectronPreviewHostVisibilitySync());
 }

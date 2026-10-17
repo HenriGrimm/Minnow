@@ -9,7 +9,6 @@ import { getUnreadNotificationCount } from './notifications-menu';
 import { onNewNotification } from '../notifications/push';
 import { subscribeNotifications } from '../notifications/store';
 import { iconHtml } from '../ui/icon';
-import { launchApp } from './router';
 import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { createAppIcon, createOsIcon } from './icons';
 import { chatToggleAriaLabel, isChatToggleVisible } from './menubar-visibility';
@@ -18,6 +17,7 @@ import { initShellMenubarChrome } from './menubar-window-controls';
 import { initMenubarModelChip } from './menubar-model-chip';
 import { initUpdateMenubarPill } from './update-menubar';
 import { openProductWiki } from '../ui/product-wiki';
+import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import { initAgentActivityMenubar } from '../ui/agent-activity-panel';
 import { initMenubarCapture } from './menubar-capture';
 import { buildMenuItems, openRegisteredMenu, subscribeMenuRegistry } from '../ui/menu-registry';
@@ -101,9 +101,13 @@ export function renderMenubar(root: HTMLElement): () => void {
   pluginMenu.appendChild(createOsIcon('grid', { size: 16 }));
   const pluginMenuTarget = { kind: 'menubar.plugins' };
   const syncPluginMenu = () => { pluginMenu.hidden = buildMenuItems(pluginMenuTarget).length === 0; };
-  pluginMenu.addEventListener('click', () => openRegisteredMenu({
-    target: pluginMenuTarget, label: 'Plugin commands', anchor: pluginMenu, restoreFocus: pluginMenu,
-  }));
+  const cleanupPluginState = bindShellOverlayTrigger(pluginMenu, 'plugins');
+  pluginMenu.addEventListener('click', () => {
+    if (isShellOverlayOpen('plugins')) closeShellOverlay();
+    else openRegisteredMenu({
+      target: pluginMenuTarget, label: 'Plugin commands', anchor: pluginMenu, restoreFocus: pluginMenu,
+    });
+  });
   syncPluginMenu();
   const cleanupPluginMenu = subscribeMenuRegistry(syncPluginMenu);
 
@@ -129,8 +133,12 @@ export function renderMenubar(root: HTMLElement): () => void {
   searchBtn.title = 'Search chats and commands (Ctrl/Cmd+Shift+P)';
   searchBtn.innerHTML = iconHtml('search', { size: 16 });
   searchBtn.addEventListener('click', () => {
-    void import('../ui/command-palette').then((m) => m.openCommandPalette());
+    void import('../ui/command-palette').then((m) => {
+      if (m.isCommandPaletteOpen()) m.closeCommandPalette();
+      else m.openCommandPalette();
+    });
   });
+  const cleanupSearchState = bindShellOverlayTrigger(searchBtn, 'search');
 
   const bell = document.createElement('button');
   bell.type = 'button';
@@ -154,7 +162,14 @@ export function renderMenubar(root: HTMLElement): () => void {
   settingsBtn.className = 'mn-os-mb-icon';
   settingsBtn.setAttribute('aria-label', 'Settings');
   settingsBtn.appendChild(createOsIcon('gear', { size: 16 }));
-  settingsBtn.addEventListener('click', () => launchApp('settings'));
+  const cleanupSettingsState = bindShellOverlayTrigger(settingsBtn, 'settings');
+  settingsBtn.setAttribute('aria-controls', 'settingsView');
+  settingsBtn.addEventListener('click', () => {
+    void import('../ui/settings-page').then((m) => {
+      if (isShellOverlayOpen('settings')) m.closeSettings();
+      else { closeShellOverlay(); m.openSettingsFromTopbar(); }
+    });
+  });
 
   const wikiBtn = document.createElement('button');
   wikiBtn.type = 'button';
@@ -162,7 +177,12 @@ export function renderMenubar(root: HTMLElement): () => void {
   wikiBtn.setAttribute('aria-label', 'Minnow wiki — User manual');
   wikiBtn.title = 'Minnow wiki — User manual';
   wikiBtn.innerHTML = iconHtml('help', { size: 16 });
-  wikiBtn.addEventListener('click', () => openProductWiki());
+  const cleanupWikiState = bindShellOverlayTrigger(wikiBtn, 'wiki');
+  wikiBtn.setAttribute('aria-controls', 'productWikiOverlay');
+  wikiBtn.addEventListener('click', () => {
+    if (isShellOverlayOpen('wiki')) closeShellOverlay();
+    else openProductWiki();
+  });
 
   right.append(
     pluginMenu,
@@ -237,6 +257,10 @@ export function renderMenubar(root: HTMLElement): () => void {
   });
 
   return () => {
+    cleanupPluginState();
+    cleanupSearchState();
+    cleanupSettingsState();
+    cleanupWikiState();
     unsub();
     unsubInbox();
     unsubPrefs();

@@ -16,12 +16,39 @@ import {
 import {
   buildMenuItems,
   MENU_ORDER,
+  openRegisteredMenu,
   registerMenuContributor,
   resetMenuRegistryForTests,
 } from '../../src/ui/menu-registry';
+import { isShellOverlayOpen, openShellOverlay } from '../../src/ui/shell-overlay-state';
 
 describe('shared context menu', () => {
   const windows: Window[] = [];
+
+  test('plugin commands coordinate dismissal, anchor toggles and stale handles', () => {
+    const doc = installDom();
+    const anchor = doc.createElement('button');
+    doc.body.appendChild(anchor);
+    let previousClosed = false;
+    openShellOverlay('model', () => { previousClosed = true; });
+    const options = { target: { kind: 'menubar.plugins' }, label: 'Plugins', anchor, items: [] };
+    const first = openRegisteredMenu(options);
+    assert.equal(previousClosed, true);
+    assert.equal(isShellOverlayOpen('plugins'), true);
+    anchor.dispatchEvent(new (doc.defaultView as unknown as typeof globalThis).PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(isContextMenuOpen(), true);
+    const second = openRegisteredMenu(options);
+    first.close();
+    assert.equal(isShellOverlayOpen('plugins'), true);
+    assert.equal(second.root.isConnected, true);
+    openShellOverlay('model', () => {});
+    assert.equal(isContextMenuOpen(), false);
+    closeContextMenu();
+    assert.equal(isShellOverlayOpen('model'), true);
+    // Return the coordinator to an idle state without relying on DOM teardown.
+    openRegisteredMenu(options).close();
+    assert.equal(isShellOverlayOpen('plugins'), false);
+  });
 
   afterEach(() => {
     closeContextMenu();

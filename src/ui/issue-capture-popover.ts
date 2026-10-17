@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import '../styles/issue-capture.css';
 
 import { openContextMenu } from './context-menu';
@@ -103,6 +104,7 @@ export function closeIssueCapture(options?: {
   const restore = options?.restoreFocus === false ? null : current.restoreFocus;
   if (restore?.isConnected) restore.focus();
   current.root.remove();
+  shellOverlayClosed('capture');
   if (chromePopoverRegistered) {
     unregisterChromePopover();
     chromePopoverRegistered = false;
@@ -582,6 +584,7 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     submitting: false,
     expanding: null,
   };
+  openShellOverlay('capture', closeIssueCapture);
   session = current;
 
   destinationBtn?.addEventListener('click', () => {

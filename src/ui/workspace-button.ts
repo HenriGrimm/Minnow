@@ -11,6 +11,7 @@ import { clearCachesForWorkspace } from '../tools/result-cache';
 import { setStatus } from './status';
 import { applyWorkspaceScopedSession } from './sidebar';
 import { openWorkspaceFolderPicker } from './workspace-folder-picker';
+import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from './shell-overlay-state';
 import {
   closeWorkspaceMenu,
   configureWorkspaceRecentMenu,
@@ -35,7 +36,7 @@ export function updateWorkspaceButtonLabel(label: string, fullPath: string): voi
   const pathTooltip = path || 'Choose workspace folder';
   btn.title = pathTooltip;
   btn.setAttribute('aria-label', `Workspace: ${short}. Click to open recent workspaces.`);
-  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-haspopup', isOsShellEnabled() ? 'dialog' : 'menu');
 
   const pathLabel = getWorkspacePathLabel();
   const control = (pathLabel?.closest('.workspace-control') as HTMLElement | null) ?? null;
@@ -169,6 +170,8 @@ export function initWorkspaceButton(): void {
   const btn = getWorkspaceButton();
   if (!btn) return;
 
+  bindShellOverlayTrigger(btn, 'workspace');
+  btn.setAttribute('aria-controls', 'osWorkspaceGate');
   setWorkspaceMenuDeps({
     isServerAvailable: getLocalServerAvailable,
     reportStatus: setStatus,
@@ -186,7 +189,10 @@ export function initWorkspaceButton(): void {
 
   btn.addEventListener('click', () => {
     if (isOsShellEnabled()) {
-      void import('../os/workspace-gate').then((m) => m.openWorkspaceGate({ switch: true }));
+      void import('../os/workspace-gate').then((m) => {
+        if (isShellOverlayOpen('workspace')) closeShellOverlay();
+        else m.openWorkspaceGate({ switch: true });
+      });
       return;
     }
     void toggleWorkspaceMenu(btn);

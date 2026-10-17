@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed, isShellOverlayOpen, closeShellOverlay } from './shell-overlay-state';
 import { createIssueChatActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { formatIssueAge } from '../issues/age';
@@ -2094,6 +2095,7 @@ export function openQuickIssueForm(payload: CapturePayload, restoreFocus: HTMLEl
     document.getElementById('issuesNewTitle')?.focus();
     return false;
   }
+  if (isShellOverlayOpen('capture')) closeShellOverlay();
   quickIssuePayload = payload;
   quickIssueRestoreFocus = restoreFocus;
   quickIssueFormSession = session ?? null;
@@ -2160,6 +2162,8 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
     if (!liveForm?.classList.contains('is-open')) return;
     const target = event.target as Node | null;
     if (liveForm.contains(target) || anchor?.contains(target ?? null)) return;
+    // Leave the menubar click to toggle capture instead of closing on pointerdown.
+    if (quickIssuePayload && quickIssueRestoreFocus?.contains(target)) return;
     if (isIssuesLabelsFieldFocused()) return;
     if (isContextMenuOpen()) return;
     setNewFormOpen(false);
@@ -2534,6 +2538,7 @@ function setNewFormOpen(open: boolean): void {
     setNewIssuePanelOpen(false, form, backdrop);
     anchor?.setAttribute('aria-expanded', 'false');
     detachNewFormListeners();
+    if (quickIssuePayload) shellOverlayClosed('capture');
     quickIssuePayload = null;
     const restore = quickIssueRestoreFocus;
     quickIssueRestoreFocus = null;
@@ -2545,6 +2550,7 @@ function setNewFormOpen(open: boolean): void {
   ensureNewIssueLabelsField();
   syncNewIssuePropertyFields();
   void refreshNewIssueWorkspaceField(quickIssuePayload ? 'current_workspace' : filters.scope);
+  if (quickIssuePayload) openShellOverlay('capture', () => setNewFormOpen(false));
   setNewIssuePanelOpen(true, form, backdrop);
   anchor?.setAttribute('aria-expanded', 'true');
 

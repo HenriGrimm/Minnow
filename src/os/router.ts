@@ -1,6 +1,7 @@
 import { getAppById, isAppId } from './app-registry';
 import { getAppUnavailableReason, isAppAvailable } from './app-preferences';
 import { DEFAULT_MODELS_SECTION } from '../ui/models-section-ids';
+import { closeShellOverlay, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
 import {
   getForegroundAppId,
   getInstanceSnapshot,
@@ -253,6 +254,7 @@ function syncForegroundLifecycle(nextApp: AppId | null): void {
 // ── Apply route ──────────────────────────────────────────────────────────────
 
 function applyRoute(route: OsRoute, options?: LaunchOptions): void {
+  if (route.appId !== 'settings') shellOverlayClosed('settings');
   if (route.view === 'workspaces') {
     syncForegroundLifecycle(null);
     showWorkspaces();
@@ -372,6 +374,7 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
   const bound = getAppWindowId();
   if (bound && appId !== bound) return;
   if (rejectUnavailableApp(appId)) return;
+  if (appId !== 'settings' || !isShellOverlayOpen('settings')) closeShellOverlay();
 
   if (options?.settingsSection) {
     pendingSettingsSection = options.settingsSection;

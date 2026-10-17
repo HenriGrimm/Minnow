@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed, bindShellOverlayTrigger } from '../ui/shell-overlay-state';
 /**
  * Menubar update pill + popover (MIN-384). Hidden when up to date; `↓ N%` while an
  * update downloads; accent "Restart · x.y.z" when ready. Mirrors the notifications
@@ -47,6 +48,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
   pill.setAttribute('aria-expanded', 'false');
   pill.setAttribute('aria-live', 'polite');
   slot.appendChild(pill);
+  const unbindTrigger = bindShellOverlayTrigger(pill, 'update');
 
   function detachGlobalListeners(): void {
     if (outsideHandler) {
@@ -62,6 +64,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
   function closeMenu(): void {
     if (!menuOpen) return;
     menuOpen = false;
+    shellOverlayClosed('update');
     unregisterChromePopover();
     detachGlobalListeners();
     panel?.remove();
@@ -148,6 +151,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
   function openMenu(): void {
     if (!latest || (latest.state !== 'ready' && latest.state !== 'downloading')) return;
     closeMenu();
+    openShellOverlay('update', closeMenu);
     panel = buildPanel(latest);
     document.body.appendChild(panel);
     menuOpen = true;
@@ -224,6 +228,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
   return () => {
     stopWatching();
     closeMenu();
+    unbindTrigger();
     pill.remove();
     slot.hidden = true;
   };
