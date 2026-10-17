@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed, bindShellOverlayTrigger } from '../ui/shell-overlay-state';
 /**
  * OS menubar notifications popover — per-event inbox rows with chat deep-links.
  */
@@ -155,6 +156,7 @@ function detachGlobalListeners(): void {
 export function closeOsNotificationsMenu(): void {
   if (!menuOpen) return;
   menuOpen = false;
+  shellOverlayClosed('notifications');
   unregisterChromePopover();
   detachGlobalListeners();
   panelEl?.classList.add('hidden');
@@ -260,7 +262,7 @@ function ensurePanel(): HTMLDivElement {
 function openMenu(): void {
   const bell = anchorBell;
   if (!bell) return;
-  void import('../ui/agent-activity-panel').then((m) => m.closeAgentActivityPanel());
+  openShellOverlay('notifications', closeOsNotificationsMenu);
   closeComposerModelMenu();
   closeAppSwitcherMenu();
   const panel = ensurePanel();
@@ -291,6 +293,7 @@ export function initOsNotificationsMenu(bell: HTMLButtonElement): () => void {
   bell.setAttribute('aria-expanded', 'false');
   bell.setAttribute('aria-controls', 'osNotificationsMenu');
 
+  const unbindTrigger = bindShellOverlayTrigger(bell, 'notifications');
   const onBellClick = () => {
     void import('../notifications/sound').then((m) => m.unlockNotificationAudio());
     toggleMenu();
@@ -313,6 +316,7 @@ export function initOsNotificationsMenu(bell: HTMLButtonElement): () => void {
     unsubPrefs?.();
     unsubPrefs = null;
     closeOsNotificationsMenu();
+    unbindTrigger();
     panelEl?.remove();
     panelEl = null;
     listEl = null;

@@ -1,4 +1,5 @@
-import { openContextMenu, type ContextMenuHandle, type MenuItem } from './context-menu';
+import { closeContextMenu, openContextMenu, type ContextMenuHandle, type MenuItem } from './context-menu';
+import { openShellOverlay } from './shell-overlay-state';
 
 /** What a menu was opened on. */
 export interface MenuTarget {
@@ -124,8 +125,17 @@ export interface OpenRegisteredMenuOptions {
 export function openRegisteredMenu(
   options: OpenRegisteredMenuOptions,
 ): ContextMenuHandle {
-  return openContextMenu({
-    items: buildMenuItems(options.target, options.items ?? []),
+  const items = buildMenuItems(options.target, options.items ?? []);
+  const isPluginMenu = options.target.kind === 'menubar.plugins';
+  let handle: ContextMenuHandle | undefined;
+  if (isPluginMenu) {
+    // Retire the previous instance before registering this one's lifecycle.
+    closeContextMenu({ restoreFocus: false });
+    openShellOverlay('plugins', () => handle?.close());
+  }
+  handle = openContextMenu({
+    items,
+    shellOverlayId: isPluginMenu ? 'plugins' : undefined,
     label: options.label,
     clientX: options.clientX,
     clientY: options.clientY,
@@ -133,6 +143,7 @@ export function openRegisteredMenu(
     restoreFocus: options.restoreFocus,
     mount: options.mount,
   });
+  return handle;
 }
 
 /** Drop every registration (tests). */

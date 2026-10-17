@@ -1200,3 +1200,25 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
     filter: brightness(0.6);
   }
 }
+
+/* Shell overlay state is independent of app selection and unread/activity badges. */
+/* Keep shell toggles reachable above body-portaled search and capture scrims. */
+html.minnow-os-enabled [data-shell-palette='search'],
+html.minnow-os-enabled:has([data-shell-overlay='capture'].is-overlay-open) .issues-new-form__backdrop {
+  top: calc(var(--os-menubar-h, 46px) + env(safe-area-inset-top, 0px));
+}
+
+.mn-os-menubar button.is-overlay-open,
+.mn-os-app-rail__btn.is-overlay-open {
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent-ink);
+  box-shadow: inset 0 -2px 0 var(--mn-accent);
+}
+
+@media (forced-colors: active) {
+  .mn-os-menubar button.is-overlay-open,
+  .mn-os-app-rail__btn.is-overlay-open {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed, bindShellOverlayTrigger } from './shell-overlay-state';
 import { listActiveSubAgentRuns } from '../agents/orchestrator';
 import { getSubAgentTypeConfig } from '../agents/sub-agent-config';
 import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
@@ -34,7 +35,6 @@ import {
   registerChromePopover,
   unregisterChromePopover,
 } from './preview-electron-visibility';
-import { closeOsNotificationsMenu } from '../os/notifications-menu';
 import { iconHtml } from './icon';
 import { openSubAgentDrawer } from './sub-agent-drawer';
 import { switchChat } from './sidebar';
@@ -168,6 +168,8 @@ export function setAgentActivityPanelOpen(open: boolean): void {
   const panel = ensureAgentActivityPanelDom();
   const btn = getToggleBtn();
 
+  if (open) openShellOverlay('agents', closeAgentActivityPanel);
+  else shellOverlayClosed('agents');
   panelOpen = open;
   panel.classList.toggle('is-open', open);
   panel.hidden = !open;
@@ -180,7 +182,6 @@ export function setAgentActivityPanelOpen(open: boolean): void {
   }
 
   if (open) {
-    closeOsNotificationsMenu();
     if (btn) positionAgentActivityPanel(btn, panel);
     detachGlobalListeners();
     attachGlobalListeners();
@@ -537,6 +538,7 @@ export function initAgentActivityMenubar(btn: HTMLButtonElement): () => void {
 
   ensureAgentActivityPanelDom();
 
+  const unbindTrigger = bindShellOverlayTrigger(btn, 'agents');
   toggleClickHandler = () => toggleAgentActivityPanel();
   btn.addEventListener('click', toggleClickHandler);
   void refreshAgentActivityPanel(true);
@@ -547,6 +549,7 @@ export function initAgentActivityMenubar(btn: HTMLButtonElement): () => void {
       toggleClickHandler = null;
     }
     closeAgentActivityPanel();
+    unbindTrigger();
     anchorToggleBtn = null;
   };
 }

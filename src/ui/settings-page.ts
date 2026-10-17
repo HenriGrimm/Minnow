@@ -50,6 +50,7 @@ import { resolveSettingsSectionNavigation } from './settings-section-navigation'
 import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
 import type { LaunchOptions } from '../os/types';
+import { isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 
 export type { SettingsSectionId, SettingsCategoryId } from './settings-page-types';
 export { categoryForArea } from './settings-page-types';
@@ -458,6 +459,7 @@ export function openSettings(
     clearSettingsPageFilter();
   }
 
+  openShellOverlay('settings', () => closeSettings());
   root.classList.add('is-open');
   syncSettingsOsWindowChrome();
   requestAnimationFrame(() => syncSettingsOsWindowChrome());
@@ -513,6 +515,7 @@ export function openSettings(
 
 /** Close settings and return to Code, the window stack, or desktop. */
 export function closeSettings(options?: { skipNavigate?: boolean }): void {
+  shellOverlayClosed('settings');
   if (!options?.skipNavigate && isOsEmbedded() && closeSettingsAndReturnToCaller()) {
     return;
   }
@@ -530,9 +533,12 @@ export function closeSettings(options?: { skipNavigate?: boolean }): void {
       window.location.hash = '#/';
     }
   } else if (!options?.skipNavigate && wasOpen) {
-    if (!requestCloseWindowApp('settings')) {
-      navigateToDesktop();
-    }
+    requestCloseWindowApp('settings');
+    // Closing the last instance does not update the hash. Do not leave a stale
+    // Settings route that can reopen it when another overlay returns to caller.
+    const foreground = getForegroundAppId();
+    if (foreground && foreground !== 'settings') launchApp(foreground);
+    else navigateToDesktop();
   }
   void import('./preview-electron-visibility').then((m) =>
     m.syncElectronPreviewHostVisibility(),
@@ -597,6 +603,12 @@ export function initSettingsPage(): void {
     });
 
   initSettingsMobileNav();
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.key !== 'Escape' || !isShellOverlayOpen('settings')) return;
+    event.preventDefault();
+    closeSettings();
+    document.querySelector<HTMLElement>('[data-shell-overlay="settings"]')?.focus();
+  });
 
   window.addEventListener('hashchange', onHashChange);
   if (window.location.hash.startsWith('#/settings')) {
@@ -608,6 +620,7 @@ export function initSettingsPage(): void {
 
 /** Reset page init guards (tests). */
 export function resetSettingsPageForTests(): void {
+  shellOverlayClosed('settings');
   pageInitialized = false;
   staticBindingsDone = false;
 }
