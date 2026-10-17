@@ -16,6 +16,8 @@ import { saveToolConfig, setLocalServerAvailableForTests } from '../../src/tools
 import { setWorkspaceFromServer, resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
 import { resetViewerTabStoreForTests, getViewerTab } from '../../src/ui/file-viewer-tab-store.ts';
 import { resetFilePanelStateForTests } from '../../src/state/file-panel.ts';
+import { listPreviewTabs, resetPreviewTabStoreForTests } from '../../src/ui/preview-tab-store.ts';
+import { resolveIsolatedPreviewLoadUrl, resolvePreviewLoadUrl } from '../../src/ui/preview-load-url.ts';
 
 let win: Window;
 let mount: HTMLElement;
@@ -34,6 +36,7 @@ beforeEach(() => {
   resetWorkspaceStateForTests();
   resetFilePanelStateForTests();
   resetViewerTabStoreForTests();
+  resetPreviewTabStoreForTests();
   globalThis.fetch = async () => new Response('[]', { headers: { 'Content-Type': 'application/json' } });
   mount = document.createElement('div');
   mount.id = 'chatArea';
@@ -122,14 +125,46 @@ test('download uses the recorded source workspace and original filename; failure
   assert.equal((cards.querySelectorAll('button')[1] as HTMLButtonElement).disabled, false);
 });
 
-test('Open forwards the original workspace and absolute file to Code without opening files during render', async () => {
+test('Open stays in this window and reads the worktree copy without switching workspace', async () => {
+  setWorkspaceFromServer({ path: 'C:/main-checkout', label: 'Main', isDefault: false });
   const commands: unknown[] = [];
   (win as any).minnow = { window: { sendCodeCommand: async (command: unknown) => { commands.push(command); return { ok: true }; } } };
   const file = parsePresentedFiles(content)[1];
   createPresentedFileCards([file]);
   assert.equal(commands.length, 0);
   await openPresentedFile(file);
-  assert.deepEqual(commands, [{ kind: 'file', workspacePath: 'C:/source-worktree', path: 'C:/source-worktree/exports/report.pdf' }]);
+  assert.deepEqual(commands, []);
+  assert.equal(getViewerTab('C:/source-worktree/exports/report.pdf')?.workspaceRoot, 'C:/source-worktree');
+  const { getWorkspacePath } = await import('../../src/state/workspace.ts');
+  assert.equal(getWorkspacePath(), 'C:/main-checkout');
+});
+
+test('HTML opens in a preview tab scoped to the worktree and keeps a Source action', async () => {
+  setWorkspaceFromServer({ path: 'C:/main-checkout', label: 'Main', isDefault: false });
+  const commands: unknown[] = [];
+  (win as any).minnow = { window: { sendCodeCommand: async (command: unknown) => { commands.push(command); return { ok: true }; } } };
+  const html = { ...parsePresentedFiles(content)[0], path: 'site/index.html', name: 'index.html', title: 'Landing page' };
+  const cards = createPresentedFileCards([html])!;
+  assert.deepEqual([...cards.querySelectorAll('button')].map(b => b.textContent), ['Open', 'Source', 'Download']);
+  await openPresentedFile(html).catch(() => {});
+  assert.deepEqual(commands, []);
+  const source = listPreviewTabs().map(tab => tab.source).find(s => s?.kind === 'workspace');
+  assert.deepEqual(source, { kind: 'workspace', path: 'site/index.html', workspaceRoot: 'C:/source-worktree' });
+  assert.equal(getViewerTab('C:/source-worktree/site/index.html'), undefined);
+  const pdfCards = createPresentedFileCards([parsePresentedFiles(content)[1]])!;
+  assert.deepEqual([...pdfCards.querySelectorAll('button')].map(b => b.textContent), ['Open', 'Download']);
+});
+
+test('workspace preview sources with their own root override the window root', async () => {
+  const url = new URL(resolvePreviewLoadUrl({ kind: 'workspace', path: 'a.html', workspaceRoot: 'C:/wt' }, undefined, 'C:/main'));
+  assert.equal(url.searchParams.get('workspaceRoot'), 'C:/wt');
+  const roots: string[] = [];
+  globalThis.fetch = async input => {
+    roots.push(new URL(String(input)).searchParams.get('workspaceRoot') ?? '');
+    return new Response(JSON.stringify({ origin: 'http://127.0.0.1:9999', token: 't', expiresAt: Date.now() + 600_000 }));
+  };
+  await resolveIsolatedPreviewLoadUrl({ kind: 'workspace', path: 'a.html', workspaceRoot: 'C:/wt-iso' }, undefined, 'C:/main');
+  assert.deepEqual(roots, ['C:/wt-iso']);
 });
 
 test('Download saves a binary blob with the real filename rather than a custom display title', async () => {
