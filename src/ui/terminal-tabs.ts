@@ -1,5 +1,6 @@
 import { fetchShellProfiles, type ShellProfile } from '../api/terminal-pty';
 import { randomUUID } from '../lib/random-id.ts';
+import { openContextMenu } from './context-menu';
 import {
   formatTerminalTabTitle,
   formatTerminalTabTooltip,
@@ -31,7 +32,7 @@ export const AGENT_TAB_ID = '__minnow_agent__';
 export type TerminalTabKind = 'agent' | 'pty';
 
 let tabBarEl: HTMLElement | null = null;
-let shellSelectEl: HTMLSelectElement | null = null;
+let defaultShellProfileId: string | undefined;
 let profiles: ShellProfile[] = [];
 const liveTabs = new Map<string, TerminalTabSession>();
 let tabsInitialized = false;
@@ -223,25 +224,35 @@ function renderTabBar(activeId: string | null): void {
   addBtn.addEventListener('click', () => {
     void addTab();
   });
-  list.appendChild(addBtn);
+  const newTab = document.createElement('div');
+  newTab.className = 'terminal-new-tab';
+  newTab.appendChild(addBtn);
+
+  const shellMenuBtn = document.createElement('button');
+  shellMenuBtn.type = 'button';
+  shellMenuBtn.className = 'terminal-tab-shell-menu';
+  shellMenuBtn.setAttribute('aria-label', 'New terminal tab with shell');
+  shellMenuBtn.setAttribute('aria-haspopup', 'menu');
+  shellMenuBtn.title = 'New terminal tab with shell';
+  shellMenuBtn.disabled = profiles.length === 0;
+  shellMenuBtn.innerHTML = '<i class="fi fi-rr-angle-small-down icon-svg" aria-hidden="true"></i>';
+  shellMenuBtn.addEventListener('click', () => {
+    openContextMenu({
+      anchor: shellMenuBtn,
+      restoreFocus: shellMenuBtn,
+      label: 'New terminal tab with shell',
+      items: profiles.map((profile) => ({
+        id: profile.id,
+        label: profile.label,
+        onSelect: async () => { await addTab(profile.id); },
+      })),
+    });
+  });
+  newTab.appendChild(shellMenuBtn);
 
   tabBarEl.appendChild(list);
+  tabBarEl.appendChild(newTab);
   syncAgentTabActivityBadge();
-}
-
-function fillShellSelect(): void {
-  if (!shellSelectEl) return;
-  const meta = getTerminalMetaCached();
-  const selected =
-    meta.defaultShellProfileId ?? profiles[0]?.id ?? 'powershell';
-  shellSelectEl.innerHTML = '';
-  for (const p of profiles) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.label;
-    shellSelectEl.appendChild(opt);
-  }
-  shellSelectEl.value = selected;
 }
 
 async function switchTab(tabId: string): Promise<void> {
@@ -281,8 +292,8 @@ export async function addTab(shellProfileId?: string): Promise<string> {
   const meta = getTerminalMetaCached();
   const profileId =
     shellProfileId ??
-    shellSelectEl?.value ??
     meta.defaultShellProfileId ??
+    defaultShellProfileId ??
     profiles[0]?.id ??
     'powershell';
   const profile = profiles.find((p) => p.id === profileId) ?? profiles[0];
@@ -363,11 +374,9 @@ export async function detachAllTerminalTabs(): Promise<void> {
 /** Initialize tab UI and restore persisted tabs. */
 export async function initTerminalTabs(
   tabBar: HTMLElement,
-  shellSelect: HTMLSelectElement,
 ): Promise<void> {
   if (tabsInitialized) return;
   tabBarEl = tabBar;
-  shellSelectEl = shellSelect;
 
   setTerminalSessionEndedHandler((tabId) => {
     const tab = liveTabs.get(tabId);
@@ -377,21 +386,14 @@ export async function initTerminalTabs(
     void persistTabs(activeId);
   });
 
-  shellSelect.addEventListener('change', () => {
-    const profileId = shellSelect.value;
-    void (async () => {
-      await saveTerminalMeta({ defaultShellProfileId: profileId });
-      await addTab(profileId);
-    })();
-  });
-
   try {
-    const { profiles: list } = await fetchShellProfiles();
+    const { profiles: list, defaultShellProfileId: defaultId } = await fetchShellProfiles();
     profiles = list;
+    defaultShellProfileId = defaultId;
   } catch {
     profiles = [];
+    defaultShellProfileId = undefined;
   }
-  fillShellSelect();
 
   await loadTerminalMeta();
   const meta = getTerminalMetaCached();
