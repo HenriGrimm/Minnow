@@ -51,13 +51,25 @@ This is what the app is for.
 |--------|--------------|
 | **Expand** | Sparkles on peek, board cards, the row menu, or **E**. Rewrites the title and description and suggests labels and priority from what is already on the card. You review and edit in an overlay; nothing is saved until you apply. Uses the prompt expander model when one is set. |
 | **Expand with agent** | An agent researches the workspace and fills in a real description (triage notes), from the detail panel or the row menu |
-| **Send to chat** | Opens a chat seeded with the issue, in a mode you choose, then the same run-target panel as the composer: the current workspace shown by name, an existing worktree, or New worktree |
+| **Send to chat** | Starts a linked chat inside Issues, seeded with the issue, in a mode you choose. The run-target panel offers the current workspace shown by name, an existing worktree, or New worktree. |
 | **Send to board** | When the issue has a plan, hands it to an orchestrate board |
 | **Open plan** | Opens the issue's plan document in the editor |
 
 Activity chips in the detail header are live; clicking one opens the agent drawer or board chat behind it.
 
 **General**, **Build**, **Plan**, and **Debug** all expose `issue_*` tools. Debug also has local diagnostics. Plan can file, update, and attach a plan path to a card; it still cannot edit application code.
+
+## Reviewing and delivering agent work
+
+The dense list and board keep the existing filters, grouping, inline properties, and bulk actions. The **Agent** column shows linked chat activity, including Running, Needs input, completed turns, and failures. The **Agent work** view includes issues with linked chats as well as assigned agents and boards.
+
+The detail panel has four tabs. **Issue** keeps the description, attachments, code and Git links, sub-issues, linked chats, and comments. **Work** shows changed files, the diff, source and destination branches, and delivery actions. **Chat** shows the linked conversation, live output, tool results, and agent questions; reply there to request changes. **Activity** shows the issue's recorded events. **Open in Code** opens the full chat workspace.
+
+Starting a Build or Debug chat moves the issue to **In progress**. When its implementation turn completes successfully, it moves to **Review**, provided another linked chat is not still running and the issue has not been moved to another status. Failed, stopped, General, and Plan turns do not perform that handoff.
+
+Choose **Review work** to inspect the checkout. **Commit** commits the listed changes, including staged and untracked files. For an isolated worktree, **Commit & merge** or **Merge** delivers into the issue workspace's checked-out branch. Review the commit message and cleanup choice before confirming. Local workspace work offers commit only. A destination with uncommitted changes must be committed or stashed first; changes to either reviewed branch or the source files require a refresh and another review.
+
+**Remove worktree and branch after merge** is selected initially for worktrees created for the chat. Successful delivery moves the issue to **Done**, records the commit, and retains the conversation and activity. Cleanup removes only clean, merged work; failures show **Retry cleanup**. Conflicts preserve the committed source work and its worktree. **Resolve in chat** prepares a request for the agent; review and send it, then inspect the resulting changes again. Verification details remain in the linked chat.
 
 ## Git conventions
 

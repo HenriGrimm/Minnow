@@ -10,6 +10,52 @@ export interface GitFileEntry {
   status: string;
 }
 
+export interface IssueWorkSnapshot {
+  ok: boolean;
+  error?: string;
+  source?: string;
+  isolated?: boolean;
+  sourceBranch?: string;
+  targetBranch?: string;
+  sourceHead?: string;
+  targetHead?: string;
+  fingerprint?: string;
+  dirty?: boolean;
+  ahead?: number;
+  files?: string[];
+  patch?: string;
+  truncated?: boolean;
+  conflict?: boolean;
+  conflictedFiles?: string[];
+  sha?: string;
+  mergeSha?: string;
+  merged?: boolean;
+  worktreePath?: string;
+  worktreeRemoved?: boolean;
+  branchRemoved?: boolean;
+  cleanupError?: string;
+}
+
+export interface IssueWorkRequest {
+  cwd: string;
+  worktreePath?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
+  sourceHead?: string;
+  targetHead?: string;
+  fingerprint?: string;
+  message?: string;
+  cleanup?: boolean;
+  sha?: string;
+}
+
+export async function issueWorkOperation(
+  action: 'Inspect' | 'Commit' | 'Merge' | 'Cleanup',
+  input: IssueWorkRequest,
+): Promise<IssueWorkSnapshot> {
+  return await postGit(`issueWork${action}`, input as unknown as Record<string, unknown>) as unknown as IssueWorkSnapshot;
+}
+
 export interface GitCommitEntry {
   hash: string;
   parents: string[];

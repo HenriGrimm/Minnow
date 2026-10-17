@@ -1207,7 +1207,7 @@
    * id priority type title labels project agent rollup counts status updated
    * (assignee column hidden for now — see .issues-list-head__assignee below)
    */
-  --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 4rem 3.5rem 2.5rem 2.5rem minmax(5rem, max-content) 4rem;
+  --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 4rem 6.25rem 2.5rem 2.5rem minmax(5rem, max-content) 4rem;
   display: grid;
   grid-template-columns: var(--issues-list-cols);
   gap: 8px 10px;
@@ -4116,16 +4116,14 @@ button.issues-detail__row:focus-visible {
 @container issues-list (max-width: 1100px) {
   .issues-list-head,
   .issues-row {
-    /* id, priority, type, title, labels, status, created */
-    --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content minmax(5rem, max-content) 4rem;
+    /* id, priority, type, title, labels, agent, status, created */
+    --issues-list-cols: 4.25rem minmax(4.5rem, max-content) 1.75rem minmax(0, 1fr) max-content 6.25rem minmax(5rem, max-content) 4rem;
   }
 
   .issues-list-head__project,
-  .issues-list-head__agent,
   .issues-list-head__rollup,
   .issues-list-head__counts,
   .issues-row__project,
-  .issues-row__agent,
   .issues-row__rollup,
   .issues-row__counts {
     display: none;
@@ -4159,14 +4157,13 @@ button.issues-detail__row:focus-visible {
 
   .issues-list-head,
   .issues-row {
-    /* Compact identity: id, priority, title, status. Type and metadata hide. */
-    --issues-list-cols: 3.5rem minmax(4rem, max-content) minmax(0, 1fr) minmax(4.5rem, max-content);
+    /* Compact identity keeps the agent outcome beside the issue. */
+    --issues-list-cols: 3.5rem minmax(4rem, max-content) minmax(0, 1fr) 6.25rem minmax(4.5rem, max-content);
   }
 
   .issues-list-head__type,
   .issues-list-head__assignee,
   .issues-list-head__project,
-  .issues-list-head__agent,
   .issues-list-head__rollup,
   .issues-list-head__counts,
   .issues-list-head__labels,
@@ -4176,7 +4173,6 @@ button.issues-detail__row:focus-visible {
   .issues-row__created,
   .issues-row__assignee,
   .issues-row__project,
-  .issues-row__agent,
   .issues-row__rollup,
   .issues-row__counts {
     display: none;
@@ -4566,4 +4562,26 @@ button.issues-detail__row:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .issues-chat-activity.is-running::before { animation: none; }
+}
+
+@container issues-list (max-width: 650px) {
+  .issues-list-head, .issues-row {
+    --issues-list-cols: 3.5rem 4rem minmax(0, 1fr) 6.25rem 4.5rem;
+  }
+  .issues-list-head__type, .issues-row__type,
+  .issues-list-head__labels, .issues-row__labels,
+  .issues-list-head__created, .issues-row__created { display: none; }
+}
+@container issues-list (max-width: 480px) {
+  .issues-list-head, .issues-row {
+    --issues-list-cols: 3.5rem minmax(0, 1fr) 6.25rem 4.5rem;
+  }
+  .issues-list-head__priority, .issues-row__priority { display: none; }
+}
+@container issues (max-width: 600px) {
+  .issues-list-head, .issues-row {
+    --issues-list-cols: 3.5rem minmax(0, 1fr) 5.5rem;
+  }
+  .issues-list-head__priority, .issues-row__priority,
+  .issues-list-head__status, .issues-row__status { display: none; }
 }

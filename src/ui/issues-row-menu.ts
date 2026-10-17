@@ -1,5 +1,6 @@
 import type { IssueCard } from '../types';
-import { canRunIssueWorkflow, ISSUE_FOREGROUND_CHAT_MODES, runIssueForegroundChat } from '../chat/issues/pipeline';
+import { runIssueWorkspaceChat } from '../chat/issues/workspace-chat';
+import { canRunIssueWorkflow, ISSUE_FOREGROUND_CHAT_MODES } from '../chat/issues/pipeline';
 import { getMode } from '../chat/modes/registry';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
@@ -203,7 +204,7 @@ async function runIssueWorkflowFromMenu(
   workflowBusyIds.add(issueId);
   const { showToast } = await import('./toast');
   try {
-    const result = await runIssueForegroundChat(issueId, modeId, runTarget);
+    const result = await runIssueWorkspaceChat(issueId, modeId, runTarget);
     if (!result.ok) {
       showToast(result.error || 'Send to chat failed', 'error');
       return;

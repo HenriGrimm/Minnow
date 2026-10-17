@@ -285,6 +285,7 @@ export async function listWorktrees(): Promise<WorktreeOpResult> {
 /** Create a managed per-chat worktree (MIN-276). */
 export function createChatWorktree(input: {
   chatId: string;
+  cwd?: string;
   branch: string;
   baseRef?: string;
   checkoutExisting?: boolean;

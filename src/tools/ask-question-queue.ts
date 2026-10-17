@@ -1,4 +1,5 @@
 import { getChatAbort } from '../app-state';
+import { resolveIssueChatQuestionHost, setIssueChatQuestionPending } from '../chat/issue-chat-host';
 import {
   pauseMainTurnActivityForQuestion,
   resumeMainTurnActivityFromQuestion,
@@ -70,13 +71,14 @@ async function drainQueue(chatId: string): Promise<void> {
   const next = q?.shift();
   if (!next) return;
   draining.add(chatId);
+  setIssueChatQuestionPending(chatId, true);
   try {
     const abortSignal = getChatAbort(chatId)?.signal;
     if (abortSignal?.aborted) {
       next.resolve(stringifyAskQuestionResult({ status: 'cancelled', answers: [] }));
       return;
     }
-    const planHost = resolveOrchestratePlanScreenQuestionHost(chatId);
+    const planHost = resolveIssueChatQuestionHost(chatId) ?? resolveOrchestratePlanScreenQuestionHost(chatId);
     const boardHost = planHost ? null : resolveBoardOnboardingQuestionHost(chatId);
     const embedHost = planHost ?? boardHost;
     const modalOptions: QuestionCardsModalOptions = embedHost
@@ -116,6 +118,7 @@ async function drainQueue(chatId: string): Promise<void> {
   } finally {
     resumeMainTurnActivityFromQuestion(chatId);
     draining.delete(chatId);
+    setIssueChatQuestionPending(chatId, false);
     if ((queues.get(chatId)?.length ?? 0) > 0) {
       void drainQueue(chatId);
     } else {
@@ -126,6 +129,7 @@ async function drainQueue(chatId: string): Promise<void> {
 
 /** Drop queued entries so tests do not leak across cases. */
 export function resetAskQuestionQueueForTests(): void {
+  for (const id of draining) setIssueChatQuestionPending(id, false);
   queues.clear();
   draining.clear();
 }

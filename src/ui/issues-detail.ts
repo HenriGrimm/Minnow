@@ -1,4 +1,6 @@
 import { createIssueChatActivity } from './issues-chat-activity';
+import { mountIssueWorkspace, type IssueWorkspaceTab } from './issues-work-panel';
+import { runIssueWorkspaceChat } from '../chat/issues/workspace-chat';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { setAssistantBubbleContent } from '../markdown/renderer';
@@ -27,7 +29,6 @@ import {
   issueActivityTarget,
   openIssueActivity,
   runIssueExpandWithAgent,
-  runIssueForegroundChat,
   runIssueSendToBoard,
   openIssuePlanInEditor,
   ISSUE_FOREGROUND_CHAT_MODES,
@@ -105,6 +106,7 @@ import {
   resolveIssueTypeIcon,
 } from '../issues/type-icons';
 import {
+  isReviewStatus,
   sortedPriorities,
   sortedStatuses,
   sortedTypes,
@@ -182,6 +184,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   let detailEditor: IssueEditorHandle | null = null;
   /** Guards flush → store emit → refresh from rebuilding the panel mid-paint. */
   let paintingDetail = false;
+  const workspaceTabs = new Map<string, IssueWorkspaceTab>();
+  let workspacePanel: ReturnType<typeof mountIssueWorkspace> | undefined;
 
   const unsubscribeReviews = subscribePrReviews(() => {
     if (selectedIssueId) refreshIssueDetailIfOpen();
@@ -254,6 +258,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         el.closest('.issues-detail__desc-wrap') ||
         el.closest('.mn-editor') ||
         el.closest('.issues-detail__add-code') ||
+        el.closest('.issues-work-field') ||
+        el.closest('.issues-work-chat__composer') ||
         el.closest('.issues-expand-form'),
     );
   }
@@ -279,6 +285,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   /** Close the detail panel and clear selection. */
   function closeIssueDetail(): void {
+    workspacePanel?.dispose();
+    workspacePanel = undefined;
     const id = selectedIssueId;
     selectedIssueId = undefined;
     teardownDetailEditor();
@@ -330,9 +338,9 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (!host) return;
     syncDetailLayoutClass(true);
     host.classList.add('is-open');
-    const scrollTop = sameIssue ? host.querySelector('.issues-detail__scroll')?.scrollTop ?? 0 : 0;
+    const scrollTop = sameIssue ? host.querySelector('.issues-detail__scroll:not([hidden])')?.scrollTop ?? 0 : 0;
     renderIssueDetail(host, issue);
-    const scroll = host.querySelector('.issues-detail__scroll');
+    const scroll = host.querySelector('.issues-detail__scroll:not([hidden])');
     if (scroll) scroll.scrollTop = scrollTop;
     if (!options) refreshIssuesPeekLayoutChrome();
   }
@@ -571,6 +579,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (paintingDetail) return;
     paintingDetail = true;
     try {
+      workspacePanel?.dispose();
+      workspacePanel = undefined;
       teardownDetailEditor();
       host.querySelector('.issues-detail')?.remove();
 
@@ -809,6 +819,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     scroll.append(doc, rail, talk);
 
     panel.appendChild(scroll);
+    workspacePanel = mountIssueWorkspace({
+      panel, sticky, document: doc, issueBody: scroll, issue,
+      tab: workspaceTabs.get(issue.id) ?? 'Issue',
+      onTab: (tab) => workspaceTabs.set(issue.id, tab),
+      onStartChat: () => { sticky.querySelector<HTMLButtonElement>('.issues-detail__workflow-secondary button')?.click(); },
+    });
     bindIssueDropTarget(panel, issue.id, () => refreshIssueDetailIfOpen());
     host.appendChild(panel);
     } finally {
@@ -1842,10 +1858,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         ariaLabel: 'Send issue to chat — choose mode',
         icon: 'appChat',
         disabled: !workflowOk || busy,
-        primary: true,
+        primary: !issue.chatIds?.length,
         items: foregroundItems,
       }),
     );
+    if (issue.chatIds?.length || issue.agent) secondary.append(createDetailTextButton({
+      label: isReviewStatus(getIssuesTaxonomySync(), issue.status) ? 'Review work' : 'View work',
+      icon: 'gitWorktree', primary: true,
+      onClick: () => workspacePanel?.select('Work'),
+    }));
 
     row.appendChild(secondary);
     return row;
@@ -1866,7 +1887,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     refreshIssueDetailIfOpen();
     try {
       if (action === 'foreground' && modeId) {
-        const result = await runIssueForegroundChat(
+        const result = await runIssueWorkspaceChat(
           issueId,
           modeId as IssueForegroundChatMode,
           runTarget,
@@ -1875,6 +1896,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           showIssuesToast(result.error || 'Send to chat failed', 'error');
           return;
         }
+        workspaceTabs.set(issueId, 'Chat');
         if (modeId === 'plan') {
           showIssuesToast(
             result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',

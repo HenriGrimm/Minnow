@@ -29,6 +29,8 @@ import {
   verifyIntegrationMerge,
   workspaceLandingStats,
 } from './worktree-ops.js';
+import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
+import { runWithToolContext } from '../runtime/path-access.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -100,7 +102,11 @@ export async function handleWorktreeRequest(req, res, pathname) {
       sendJson(res, 400, { error: `Unknown worktree op: ${op || '(none)'}` });
       return true;
     }
-    const result = await handler(body ?? {});
+    let result;
+    if (body.cwd !== undefined) {
+      const cwd = await validateAllowedWorkspaceRoot(body.cwd);
+      result = await runWithToolContext(() => handler(body ?? {}), { workspaceRoot: cwd });
+    } else result = await handler(body ?? {});
     sendJson(res, result?.ok === false ? 200 : 200, result);
     return true;
   } catch (err) {

@@ -14,7 +14,8 @@ import {
 import type { Chat, IssueCard } from '../types';
 import { createDetailIconButton } from './issues-detail-section';
 import { openIssuesContextMenu, type IssuesContextMenuItem } from './issues-context-menu';
-import { canRunIssueWorkflow, runIssueForegroundChat } from '../chat/issues/pipeline';
+import { canRunIssueWorkflow } from '../chat/issues/pipeline';
+import { runIssueWorkspaceChat } from '../chat/issues/workspace-chat';
 import { getAppWindowId } from '../os/app-window';
 import { paintLinkedChatActivity } from './issues-chat-activity';
 
@@ -90,7 +91,7 @@ async function startNewIssueChat(issueId: string): Promise<void> {
     toast('Issue is closed', 'error');
     return;
   }
-  const result = await runIssueForegroundChat(issueId, 'general');
+  const result = await runIssueWorkspaceChat(issueId, 'general');
   if (!result.ok) {
     toast(result.error || 'Send to chat failed', 'error');
     return;

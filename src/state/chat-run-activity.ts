@@ -1,4 +1,5 @@
 import { randomUUID } from '../lib/random-id';
+import { reportBackgroundError } from '../boot/report-background-error';
 import type { Chat } from '../types';
 
 export type ChatRunActivityStatus = 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted';
@@ -99,6 +100,11 @@ export function setChatRunActivity(id: string, status: ChatRunActivityStatus): v
   }
   publish();
   emit();
+  if (status === 'completed') {
+    void import('../chat/issues/chat-review').then((m) => {
+      if (local.get(id) === activity) m.markIssuesReviewForChatComplete(id, status);
+    }).catch((error: unknown) => reportBackgroundError('issue-chat-review', error));
+  }
 }
 export function getChatRunActivity(id: string, chat?: Chat): ChatRunActivityStatus | null {
   init();

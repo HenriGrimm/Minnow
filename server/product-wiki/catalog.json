@@ -313,13 +313,14 @@
         "Views",
         "Working with issues",
         "Handing an issue to an agent",
+        "Reviewing and delivering agent work",
         "Git conventions",
         "Taxonomy",
         "Automatic bug filing",
         "Related"
       ],
       "section": "Apps",
-      "hash": "782e3efae8edc0534735c3ad54cd5d71602fabda0c3a4d6752a76a3683d23140"
+      "hash": "0593e92065fb9ad822302723a55a5dd007f6986f65240b1839549b595e41e38c"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",

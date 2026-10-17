@@ -1,4 +1,4 @@
-import { createIssueChatActivity } from './issues-chat-activity';
+import { createIssueChatActivity, createIssueAgentActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { formatIssueAge } from '../issues/age';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
@@ -1048,7 +1048,7 @@ function buildIssueRow(
   title.className = 'issues-row__title';
   title.textContent = issue.title;
   title.title = issue.title;
-  title.prepend(createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
+  title.prepend(createIssueExpansionActivity(issue.id, issue.workspacePath));
 
   // Comments are the only way an agent reports back in prose; without a mark on
   // the row there is nothing to tell the user a reply is waiting inside.
@@ -1119,8 +1119,9 @@ function buildIssueRow(
       });
     }
   } else {
-    agent.textContent = '—';
+    agent.appendChild(createIssueAgentActivity(issue));
   }
+  if (issue.agent) agent.replaceChildren(createIssueAgentActivity(issue));
   row.classList.toggle('is-agent-waiting', issue.agent?.phase === 'awaiting_input');
 
   const rollup = document.createElement('span');
@@ -1664,7 +1665,7 @@ function renderViewSelector(): void {
   const descriptions: Record<string, string> = {
     [SESSION_VIEW_ALL]: 'All issues in the selected workspace scope, including completed issues.',
     [BUILTIN_VIEW_TRIAGE]: 'Unreviewed issues from agents, crashes, and GitHub. Accept with Y or decline with N.',
-    [BUILTIN_VIEW_AGENTS]: 'Issues with an assigned agent, including completed work.',
+    [BUILTIN_VIEW_AGENTS]: 'Issues with linked chats, boards, or assigned agents, including completed work.',
     [BUILTIN_VIEW_MY_OPEN]: 'Open issues assigned to you or left unassigned.',
   };
   const description = document.getElementById('issuesViewDescription');

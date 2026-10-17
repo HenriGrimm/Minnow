@@ -12,6 +12,7 @@ import {
   parseChatRunTargetChoice,
   applyChatRunTargetChoice,
   resolveChatSpawnCwd,
+  resolveChatToolWorkspaceRoot,
   suggestChatWorktreeBranchName,
 } from '../../src/state/chat-worktree.ts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
@@ -123,5 +124,18 @@ describe('chat-worktree helpers', () => {
       '/repo/main',
     );
     assert.equal(resolveChatSpawnCwd(undefined), undefined);
+  });
+
+  test('background issue chats keep their own workspace and explicit checkout when Code uses another folder', async () => {
+    setWorkspaceFromServer({ path: '/repo/main', label: 'main', isDefault: false });
+    const chat = { id: 'issue-chat', workspacePath: '/repo/issue-workspace', background: true, worktreeRoot: undefined as string | undefined };
+    assert.equal(resolveChatToolWorkspaceRoot(chat), '/repo/issue-workspace');
+    await applyChatRunTargetChoice(chat as never, { kind: 'attach', path: '/repo/main', branch: 'main' });
+    assert.equal(chat.worktreeRoot, '/repo/main');
+    assert.equal(resolveChatToolWorkspaceRoot(chat), '/repo/main');
+    assert.equal(isChatWorktreeMode(chat), true);
+    await applyChatRunTargetChoice(chat as never, { kind: 'attach', path: '/repo/issue-workspace', branch: 'issue-base' });
+    assert.equal(chat.worktreeRoot, undefined);
+    assert.equal(resolveChatToolWorkspaceRoot(chat), '/repo/issue-workspace');
   });
 });
