@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
@@ -97,7 +98,6 @@ import { dismissDevServerScreenForNavigation } from './dev-server-screen';
 import { isBoardViewActive, syncBoardViewChrome } from './view-mode-toggle';
 import { closeDrawer } from './settings';
 import { appConfirm } from './app-dialog';
-import { setStatus } from './status';
 import { refreshMetricsStripForChat } from './stats';
 import { refreshContextUsageRing } from './context-usage-ring';
 import { resetCodeChangeTotals, recomputeWorkspaceCodeChangeTotals } from '../usage/code-change-ledger';
@@ -1350,7 +1350,7 @@ export function appendStats(
 /** Clear the active chat's message history (session row remains). */
 export function clearChat(): void {
   if (isActiveChatStreaming()) {
-    setStatus('spin', 'Finish the current reply first');
+    showToast('Finish the current reply first');
     return;
   }
   void (async () => {

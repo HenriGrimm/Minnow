@@ -728,7 +728,8 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
       assistantRows[1]?.querySelector('.message-actions__trigger'),
       'message actions present on the live final row',
     );
-    assert.equal(document.getElementById('sText')?.textContent, 'Ready');
+    assert.equal(document.getElementById('sText')?.textContent, '');
+    assert.equal(document.querySelector('.mn-toast--success'), null);
   });
 
   test('P10-G three-round turn: live stats, lastStats, per-message footer, main ledger', async () => {

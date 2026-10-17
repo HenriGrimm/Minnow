@@ -54,18 +54,16 @@ describe('topbar layout (feature-01)', () => {
     assert.doesNotMatch(actionsBlock, /id="modelSelect"/);
   });
 
-  test('T4–T5: model and status inside topbar-end before spacer', () => {
+  test('T4–T5: model controls without a status pill inside topbar-end before spacer', () => {
     const endBlock = sliceBetween(html, 'class="topbar-end"', `class="${fixture.spacer}"`);
     for (const id of fixture.endIds) {
       assert.match(endBlock, new RegExp(`id="${id}"`));
     }
-    assert.match(endBlock, /class="status-pill"/);
+    assert.doesNotMatch(endBlock, /status-pill|id="sDot"|id="sText"/);
     assert.match(endBlock, /class="model-wrap"/);
     const refreshIdx = endBlock.indexOf('id="btnRefreshModels"');
     const selectIdx = endBlock.indexOf('id="modelSelectRoot"');
-    const statusIdx = endBlock.indexOf('class="status-pill"');
     assert.ok(refreshIdx >= 0 && selectIdx > refreshIdx, 'refresh precedes model select');
-    assert.ok(statusIdx > refreshIdx, 'status-pill follows refresh button');
     assert.match(endBlock, /data-model-state/);
     assert.match(endBlock, /class="model-state-dot model-load-dot"/);
     assert.match(endBlock, /id="modelSelectTrigger"/);

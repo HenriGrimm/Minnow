@@ -98,7 +98,6 @@ function appendSigilSetting(
     const sigil = input.value.trim();
     input.value = sigil;
     void saveEditorIntentModeConfig({ sigil }).then(() => {
-      setStatus('ok', sigil ? `Intent prefix set to “${sigil}”` : 'Intent prefix cleared');
       refresh();
     });
   });
@@ -161,7 +160,6 @@ function appendModelPin(
     const modelId = modelSelect.value.trim();
     if (!providerId || !modelId) return;
     void saveEditorIntentModeConfig({ providerId, modelId }).then(() => {
-      setStatus('ok', 'Intent model pinned');
       refresh();
     });
   };
@@ -170,7 +168,6 @@ function appendModelPin(
     if (!sharedRadio.checked) return;
     panel.hidden = true;
     void saveEditorIntentModeConfig({ providerId: '', modelId: '' }).then(() => {
-      setStatus('ok', 'Intent follows the inline completion model');
       refresh();
     });
   });
@@ -215,7 +212,6 @@ function renderIntentSettingsGroup(
     ariaLabel: 'Enable Intent mode by default when opening files',
     onChange: async (enabled) => {
       await saveEditorIntentModeConfig({ enabledByDefault: enabled });
-      setStatus('ok', enabled ? 'Intent mode default on' : 'Intent mode default off');
       refresh();
     },
   });
@@ -239,7 +235,6 @@ function renderIntentSettingsGroup(
     'ms',
     (ms) => {
       void saveEditorIntentModeConfig({ debounceMs: ms }).then(() => {
-        setStatus('ok', 'Intent debounce saved');
         refresh();
       });
     },
@@ -265,7 +260,6 @@ function renderIntentSettingsGroup(
     'tokens',
     (n) => {
       void saveEditorIntentModeConfig({ maxTokens: n }).then(() => {
-        setStatus('ok', 'Intent token budget saved');
         refresh();
       });
     },

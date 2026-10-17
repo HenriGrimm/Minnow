@@ -49,6 +49,7 @@ import { analyzeSttFit, analyzeTtsFit, VOICE_FIT_BADGE_CLASS } from '../../voice
 import { fetchSttStatus, fetchTtsStatus, synthesizeSpeech } from '../voice-controls';
 import { createSettingsActionsRow } from '../settings-controls';
 import { appendSettingsCrosslinks, appendSettingsGroup } from '../settings-layout';
+import { withButtonBusy } from './dom';
 
 type VoiceSubSection = 'stt' | 'tts';
 
@@ -260,6 +261,21 @@ function beginInstallProgressStream(): void {
   });
 }
 
+async function runRuntimeAction(name: string, label: string, action: () => Promise<unknown>): Promise<void> {
+  const button = document.querySelector<HTMLButtonElement>(`#modelsVoiceRuntime [data-voice-action="${name}"]`);
+  if (!button) return;
+  await withButtonBusy(button, label, async () => {
+    try {
+      await action();
+      await refreshRuntimeStatus();
+    } catch (err) {
+      setStatus('err', err instanceof Error ? err.message : 'Voice runtime action failed');
+    }
+  });
+  // Status refresh owns persistent disabled states (installed/running/installing).
+  updateRuntimeCardUi();
+}
+
 function renderRuntimeCard(mount: HTMLElement): void {
   const card = el('div', 'settings-voice-runtime');
   card.id = 'modelsVoiceRuntime';
@@ -292,42 +308,34 @@ function renderRuntimeCard(mount: HTMLElement): void {
           variant: 'primary',
           dataset: { voiceAction: 'install' },
           onClick: () => {
-            void (async () => {
+            void runRuntimeAction('install', 'Installing…', async () => {
               beginInstallProgressStream();
               await installRuntime();
-              await refreshRuntimeStatus();
-            })();
+            });
           },
         },
         {
           label: 'Repair',
           dataset: { voiceAction: 'repair' },
           onClick: () => {
-            void (async () => {
+            void runRuntimeAction('repair', 'Repairing…', async () => {
               beginInstallProgressStream();
               await repairRuntime();
-              await refreshRuntimeStatus();
-            })();
+            });
           },
         },
         {
           label: 'Start',
           dataset: { voiceAction: 'start' },
           onClick: () => {
-            void (async () => {
-              await startVoiceWorker();
-              await refreshRuntimeStatus();
-            })();
+            void runRuntimeAction('start', 'Starting…', startVoiceWorker);
           },
         },
         {
           label: 'Stop',
           dataset: { voiceAction: 'stop' },
           onClick: () => {
-            void (async () => {
-              await stopVoiceWorker();
-              await refreshRuntimeStatus();
-            })();
+            void runRuntimeAction('stop', 'Stopping…', stopVoiceWorker);
           },
         },
       ],
@@ -417,7 +425,7 @@ function renderCatalogRowActions(
     const downloadBtn = voiceActionButton(installed ? 'Installed' : 'Download', installed ? undefined : 'primary');
     downloadBtn.disabled = installed;
     downloadBtn.addEventListener('click', () => {
-      void (async () => {
+      void withButtonBusy(downloadBtn, 'Starting download…', async () => {
         try {
           const job = await downloadVoiceModel(entry.modelId, kind);
           activeDownloads.set(job.id, job);
@@ -427,7 +435,7 @@ function renderCatalogRowActions(
           const message = err instanceof Error ? err.message : 'Download failed';
           setStatus('err', message);
         }
-      })();
+      });
     });
     actions.appendChild(downloadBtn);
   }
@@ -506,7 +514,6 @@ async function applySttModelSelection(modelId: string): Promise<void> {
     voiceConfig = saved;
     sttBackend = 'local';
     renderSttSettingsSection();
-    setStatus('ok', `STT model set to ${modelId}`);
     await refreshActiveBackendSummary();
   }
 }
@@ -570,7 +577,6 @@ async function saveSttSettings(): Promise<void> {
     return;
   }
   voiceConfig = saved;
-  setStatus('ok', 'STT settings saved');
   await refreshActiveBackendSummary();
 }
 
@@ -832,7 +838,6 @@ async function applyTtsModelSelection(modelId: string): Promise<void> {
     voiceConfig = saved;
     ttsBackend = 'local';
     await renderTtsSettingsSection();
-    setStatus('ok', `TTS model set to ${modelId}`);
     await refreshActiveBackendSummary();
   }
 }
@@ -892,6 +897,12 @@ async function saveTtsSettings(): Promise<void> {
   let local = readTtsLocalFromForm(voiceConfig.tts.local);
   const refUpload = getTtsRefAudioUpload();
   if (refUpload) {
+    const fileInput = document.querySelector<HTMLInputElement>('#modelsVoiceTtsSettings input[type="file"]');
+    const progress = el('p', 'settings-field-hint', 'Uploading reference audio…');
+    progress.setAttribute('role', 'status');
+    fileInput?.insertAdjacentElement('afterend', progress);
+    fileInput?.setAttribute('aria-busy', 'true');
+    if (fileInput) fileInput.disabled = true;
     try {
       const ref = await uploadRefAudio(refUpload);
       local = { ...local, voiceClone: { ...local.voiceClone, refAudioPath: ref.path } };
@@ -904,6 +915,10 @@ async function saveTtsSettings(): Promise<void> {
       const message = err instanceof Error ? err.message : 'Reference upload failed';
       setStatus('err', message);
       return;
+    } finally {
+      progress.remove();
+      fileInput?.removeAttribute('aria-busy');
+      if (fileInput) fileInput.disabled = false;
     }
   }
   const provider = readTtsProviderFromForm(voiceConfig);
@@ -926,7 +941,6 @@ async function saveTtsSettings(): Promise<void> {
     return;
   }
   voiceConfig = saved;
-  setStatus('ok', 'TTS settings saved');
   await refreshActiveBackendSummary();
 }
 

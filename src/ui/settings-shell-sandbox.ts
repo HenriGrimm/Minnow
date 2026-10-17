@@ -143,7 +143,6 @@ export async function renderShellSandboxSettings(mount: HTMLElement): Promise<vo
     refreshHints(mode);
     try {
       await saveToolSecurityMeta({ shellSandbox: mode });
-      setStatus('ok', 'Agent shell sandbox saved');
     } catch {
       selectedMode = prev;
       setActiveSegment(segmentGroup, prev);

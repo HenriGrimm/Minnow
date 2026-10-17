@@ -33,7 +33,8 @@ import {
 } from '../../servers/client';
 import { appConfirm } from '../app-dialog';
 import { setStatus } from '../status';
-import { chip, el, emptyState, formatElapsed, textButton } from './dom';
+import { showToast } from '../toast';
+import { chip, el, emptyState, formatElapsed, textButton, withButtonBusy } from './dom';
 
 type Backend = CustomLlamaForkInput['backend'];
 
@@ -354,12 +355,12 @@ function engineActions(engine: LlamaEngineStatus): HTMLElement[] {
     } else {
       const toolsMissing = engine.origin === 'approved' && engine.prereqs?.ok === false;
       const label = !engine.installed ? 'Build' : engine.pinUpdateAvailable ? 'Update' : 'Rebuild';
-      const primary = textButton(label, () => void startBuild(engine, 'pinned'), engine.installed ? undefined : 'primary');
+      const primary = textButton(label, () => void withButtonBusy(primary, 'Starting build…', () => startBuild(engine, 'pinned')), engine.installed ? undefined : 'primary');
       primary.disabled = running || toolsMissing;
       if (running) primary.title = 'Another build is running';
       out.push(primary);
       if (engine.origin === 'approved' && engine.commitsBehind) {
-        const head = textButton('Build latest', () => void startBuild(engine, 'head'));
+        const head = textButton('Build latest', () => void withButtonBusy(head, 'Starting build…', () => startBuild(engine, 'head')));
         head.title = `Build the tip of ${engine.branch ?? 'the branch'} instead of the commit Minnow tested`;
         head.disabled = running || toolsMissing;
         out.push(head);
@@ -368,9 +369,11 @@ function engineActions(engine: LlamaEngineStatus): HTMLElement[] {
   }
 
   if (engine.origin === 'custom') {
-    out.push(textButton('Remove', () => void removeEngine(engine), 'danger'));
+    const remove = textButton('Remove', () => void withButtonBusy(remove, 'Removing…', () => removeEngine(engine)), 'danger');
+    out.push(remove);
   } else if (engine.installed) {
-    out.push(textButton('Uninstall', () => void removeEngine(engine), 'danger'));
+    const uninstall = textButton('Uninstall', () => void withButtonBusy(uninstall, 'Uninstalling…', () => removeEngine(engine)), 'danger');
+    out.push(uninstall);
   }
   return out;
 }
@@ -411,12 +414,9 @@ async function selectEngine(engine: LlamaEngineStatus): Promise<void> {
     notifyLlamaEngineChanged();
     await loadRuntime();
     renderEngineList();
-    setStatus(
-      'ok',
-      llamaServes.length
-        ? `Using ${engine.label} for the next load. Loaded models keep running on their current engine.`
-        : `Using ${engine.label} for llama.cpp models.`,
-    );
+    if (llamaServes.length) {
+      showToast(`Using ${engine.label} for the next load. Loaded models keep running on their current engine.`);
+    }
   } catch (err) {
     setStatus('err', errMessage(err, 'Could not switch engine'));
     renderEngineList();
@@ -444,7 +444,7 @@ async function removeEngine(engine: LlamaEngineStatus): Promise<void> {
     notifyLlamaEngineChanged();
     await loadRuntime();
     renderEngineList();
-    setStatus('ok', custom ? `${engine.label} removed` : `${engine.label} uninstalled`);
+    showToast(custom ? `${engine.label} removed` : `${engine.label} uninstalled`);
   } catch (err) {
     setStatus('err', errMessage(err, 'Could not remove engine'));
   }
@@ -462,7 +462,7 @@ async function installUpstream(variant: string, label: string, btn: HTMLButtonEl
   });
   try {
     await installLlamaRuntime({ variant, reinstall: label !== 'Install' });
-    setStatus('ok', label === 'Upgrade' ? 'llama.cpp upgraded' : 'llama.cpp installed');
+    showToast(label === 'Upgrade' ? 'llama.cpp upgraded' : 'llama.cpp installed');
   } catch (err) {
     setStatus('err', errMessage(err, 'Install failed'));
   } finally {
@@ -528,7 +528,7 @@ function onBuildEvent(job: LlamaEngineBuildJob): void {
 
   if (TERMINAL_BUILD.has(job.phase) && phaseChanged) {
     if (job.phase === 'completed') {
-      setStatus('ok', job.message);
+      showToast(job.message);
       notifyLlamaEngineChanged();
     }
     else if (job.phase === 'failed') setStatus('err', `Build failed: ${job.error ?? job.message}`);
@@ -678,8 +678,7 @@ function customForkBlock(): HTMLElement {
         form.reset();
         backendSelect.value = initialBackend;
         syncSource();
-        setStatus(
-          'ok',
+        showToast(
           input.source === 'local'
             ? `${input.label} added. Select it to use it.`
             : `${input.label} added. Build it, then select it.`,
@@ -718,14 +717,17 @@ function renderServes(): void {
     );
     const stop = textButton('Unload', () => {
       stop.disabled = true;
+      stop.setAttribute('aria-busy', 'true');
+      stop.textContent = 'Unloading…';
       void stopModelServe(serve.id)
         .then(async () => {
-          setStatus('ok', `${serve.modelLabel} unloaded`);
           await loadServes();
           renderServes();
         })
         .catch((err: unknown) => {
           stop.disabled = false;
+          stop.removeAttribute('aria-busy');
+          stop.textContent = 'Unload';
           setStatus('err', errMessage(err, 'Could not unload'));
         });
     });
@@ -784,15 +786,12 @@ function renderMlxInto(block: HTMLElement): void {
     install.dataset.serverInstall = server.id;
     actions.appendChild(install);
   } else {
-    if (server.running) {
-      actions.appendChild(
-        textButton('Stop', () => void runMlxAction(() => stopManagedServer(server.id), 'MLX stopped')),
+    const toggle = textButton(server.running ? 'Stop' : 'Start', () => {
+      void withButtonBusy(toggle, server.running ? 'Stopping…' : 'Starting…', () =>
+        runMlxAction(() => server.running ? stopManagedServer(server.id) : startManagedServer(server.id)),
       );
-    } else {
-      actions.appendChild(
-        textButton('Start', () => void runMlxAction(() => startManagedServer(server.id), 'MLX started')),
-      );
-    }
+    });
+    actions.appendChild(toggle);
 
     const port = el('input', 'models-field__input models-engine__port') as HTMLInputElement;
     port.type = 'number';
@@ -805,7 +804,6 @@ function renderMlxInto(block: HTMLElement): void {
       textButton('Set port', () => {
         void setManagedServerPort(server.id, Number(port.value)).then((result) => {
           if (result.ok) {
-            setStatus('ok', `MLX port set to ${result.port}`);
             void refreshMlx();
           } else {
             setStatus('err', result.error);
@@ -820,8 +818,7 @@ function renderMlxInto(block: HTMLElement): void {
     autoInput.checked = server.autoStart;
     autoInput.addEventListener('change', () => {
       void setManagedServerAutoStart(server.id, autoInput.checked).then((ok) => {
-        if (ok) setStatus('ok', autoInput.checked ? 'MLX starts with Minnow' : 'MLX no longer starts with Minnow');
-        else {
+        if (!ok) {
           autoInput.checked = !autoInput.checked;
           setStatus('err', 'Could not save auto-start');
         }
@@ -830,24 +827,27 @@ function renderMlxInto(block: HTMLElement): void {
     auto.append(autoInput, el('span', undefined, 'Start with Minnow'));
     actions.appendChild(auto);
 
-    actions.appendChild(
-      textButton(
-        'Uninstall',
-        () => {
-          void (async () => {
+    const uninstall = textButton(
+      'Uninstall',
+      () => {
+        void withButtonBusy(uninstall, 'Uninstalling…', async () => {
+          try {
             const ok = await appConfirm('Uninstall MLX? This removes its files under ~/.minnow/servers/.', {
               confirmLabel: 'Uninstall',
               danger: true,
             });
             if (!ok) return;
-            if (await uninstallManagedServer(server.id)) setStatus('ok', 'MLX uninstalled');
+            if (await uninstallManagedServer(server.id)) showToast('MLX uninstalled');
             else setStatus('err', 'Uninstall failed');
-            void refreshMlx();
-          })();
-        },
-        'danger',
-      ),
+            await refreshMlx();
+          } catch (err) {
+            setStatus('err', errMessage(err, 'Uninstall failed'));
+          }
+        });
+      },
+      'danger',
     );
+    actions.appendChild(uninstall);
   }
   block.append(actions, progress);
 
@@ -868,37 +868,41 @@ function renderMlxInto(block: HTMLElement): void {
 
 async function runMlxAction(
   action: () => Promise<{ ok: true } | { ok: false; error: string }>,
-  okMessage: string,
 ): Promise<void> {
-  const result = await action();
-  if (result.ok) setStatus('ok', okMessage);
-  else setStatus('err', result.error);
-  await refreshMlx();
+  try {
+    const result = await action();
+    if (!result.ok) setStatus('err', result.error);
+    await refreshMlx();
+  } catch (err) {
+    setStatus('err', errMessage(err, 'Could not change MLX runtime state'));
+  }
 }
 
 async function installMlx(btn: HTMLButtonElement, progress: HTMLElement): Promise<void> {
-  btn.disabled = true;
-  progress.hidden = false;
-  progress.textContent = 'Starting install…';
-  const kick = await installManagedServer('mlx-lm');
-  if (!kick.ok) {
-    btn.disabled = false;
-    progress.hidden = true;
-    setStatus('err', kick.error);
-    return;
-  }
-  if (!kick.alreadyInstalled) {
-    const deadline = Date.now() + 15 * 60_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 750));
-      const job = await fetchServerInstallStatus('mlx-lm');
-      if (job?.phase === 'done') break;
-      if (job?.phase === 'error') {
-        setStatus('err', `Install failed: ${job.error ?? job.message}`);
-        break;
+  await withButtonBusy(btn, 'Installing…', async () => {
+    progress.hidden = false;
+    progress.textContent = 'Starting install…';
+    try {
+      const kick = await installManagedServer('mlx-lm');
+      if (!kick.ok) throw new Error(kick.error);
+      if (!kick.alreadyInstalled) {
+        const deadline = Date.now() + 15 * 60_000;
+        let completed = false;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 750));
+          const job = await fetchServerInstallStatus('mlx-lm');
+          if (job?.phase === 'done') { completed = true; break; }
+          if (job?.phase === 'error') throw new Error(job.error ?? job.message);
+          if (job) progress.textContent = job.message || `Installing… ${job.percent}%`;
+        }
+        if (!completed) throw new Error('Install timed out. Check the MLX runtime status.');
+        showToast('MLX installed');
       }
-      if (job) progress.textContent = job.message || `Installing… ${job.percent}%`;
+    } catch (err) {
+      setStatus('err', errMessage(err, 'Install failed'));
+    } finally {
+      progress.hidden = true;
+      await refreshMlx().catch(() => undefined);
     }
-  }
-  await refreshMlx();
+  });
 }

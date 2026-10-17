@@ -35,7 +35,6 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
     ariaLabel: 'Wrap long lines in the file editor',
     onChange: async (wordWrap) => {
       await saveEditorSettings({ wordWrap });
-      setStatus('ok', wordWrap ? 'Word wrap on' : 'Word wrap off');
     },
   });
   group.append(wrapRow);
@@ -45,7 +44,6 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
     ariaLabel: 'Highlight spaces and tabs in the file editor',
     onChange: async (renderWhitespace) => {
       await saveEditorSettings({ renderWhitespace });
-      setStatus('ok', renderWhitespace ? 'Whitespace visible' : 'Whitespace hidden');
     },
   });
   group.append(wsRow);
@@ -67,7 +65,7 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
       ? Math.min(24, Math.max(10, Math.round(raw)))
       : settings.fontSize;
     fontInput.value = String(fontSize);
-    void saveEditorSettings({ fontSize }).then(() => setStatus('ok', 'Font size saved'));
+    void saveEditorSettings({ fontSize }).then(() => setStatus('idle', 'Font size saved'));
   });
   fontDd.append(fontInput, el('span', 'settings-kv-suffix', 'px'));
   grid.append(fontDd);
@@ -88,7 +86,7 @@ export async function appendEditorFundamentalsSettings(mount: HTMLElement): Prom
       ? Math.min(8, Math.max(1, Math.round(raw)))
       : settings.tabSize;
     tabInput.value = String(tabSize);
-    void saveEditorSettings({ tabSize }).then(() => setStatus('ok', 'Tab size saved'));
+    void saveEditorSettings({ tabSize }).then(() => setStatus('idle', 'Tab size saved'));
   });
   tabDd.append(tabInput, el('span', 'settings-kv-suffix', 'spaces'));
   grid.append(tabDd);

@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import {
   canUndoTurn,
   getUndoEligibility,
@@ -14,6 +15,7 @@ import { runHadCodeChanges } from '../usage/code-change-ledger';
 import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
 import { setStatus } from './status';
+import { runSettingsAction } from './settings-controls';
 import { findPrimaryTurnChangesCard } from './chat-turn-changes';
 
 const TITLE_ENABLED = 'Undo last agent turn';
@@ -110,7 +112,7 @@ async function onUndoClick(): Promise<void> {
   const result = await undoLastAgentTurn(chat.id);
   if (!result.ok) {
     if (result.error === 'cancelled') {
-      setStatus('ok', UNDO_STATUS.cancelled);
+      showToast(UNDO_STATUS.cancelled);
       syncComposerUndoFromActiveChat();
       return;
     }
@@ -118,7 +120,8 @@ async function onUndoClick(): Promise<void> {
       result.error === 'streaming'
         ? undoBlockMessage('streaming')
         : UNDO_STATUS.failed;
-    setStatus(result.error === 'streaming' ? 'spin' : 'err', msg);
+    if (result.error === 'streaming') showToast(msg);
+    else setStatus('err', msg);
     syncComposerUndoFromActiveChat();
     return;
   }
@@ -132,9 +135,7 @@ async function onUndoClick(): Promise<void> {
   const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
   input?.focus();
 
-  setStatus(
-    'ok',
-    result.filesRestored ? UNDO_STATUS.successFiles : UNDO_STATUS.successChat,
+  showToast(result.filesRestored ? UNDO_STATUS.successFiles : UNDO_STATUS.successChat,
   );
 }
 
@@ -149,7 +150,7 @@ export function initComposerUndo(): void {
   }
   btn.dataset.undoBound = '1';
   btn.addEventListener('click', () => {
-    void onUndoClick();
+    void runSettingsAction(btn, 'Undoing…', onUndoClick);
   });
   syncComposerUndoFromActiveChat();
 }

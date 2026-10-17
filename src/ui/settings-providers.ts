@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-providers.css';
 
@@ -1434,7 +1436,6 @@ function bindProvidersAddForm(): void {
       if (errEl) errEl.classList.add('hidden');
       resetProvidersAddFlow();
       closeProvidersAddPanel();
-      setStatus('ok', `Added provider ${result.provider.label}`);
       await fetchModels();
       await renderProvidersSettingsSection();
     });
@@ -1575,7 +1576,6 @@ async function saveProviderEditForm(form: HTMLFormElement): Promise<void> {
   }
   savedDefaults.forEach((apply) => apply());
   if (statusEl) statusEl.textContent = isProviderFormDirty(form) ? 'Changes pending…' : 'Saved';
-  setStatus('ok', `Updated provider ${result.provider.label}`);
   await fetchModels();
 }
 
@@ -1646,7 +1646,7 @@ function bindProvidersListActions(listEl: HTMLElement): void {
 
     const modelProbeId = target.dataset.providerModelProbe;
     if (modelProbeId) {
-      void (async () => {
+      void runSettingsAction(target, `Probing models for ${modelProbeId}…`, async () => {
         try {
           const { providers } = await listProviders();
           const provider = providers.find((p) => p.id === modelProbeId);
@@ -1664,7 +1664,6 @@ function bindProvidersListActions(listEl: HTMLElement): void {
             }
           }
           setProviderEditFormError(modelProbeId, null);
-          setStatus('spin', `Probing models for ${modelProbeId}…`);
           const { runCapabilityProbeForProvider } = await import(
             '../providers/model-capabilities'
           );
@@ -1673,7 +1672,7 @@ function bindProvidersListActions(listEl: HTMLElement): void {
             apiKind: provider?.apiKind,
             manual: true,
           });
-          setStatus('ok', `Model capabilities probed for ${modelProbeId}`);
+          showToast(`Model capabilities probed for ${modelProbeId}`);
           await renderProvidersSettingsSection();
           await fetchModels();
         } catch (err) {
@@ -1681,13 +1680,13 @@ function bindProvidersListActions(listEl: HTMLElement): void {
           setProviderEditFormError(modelProbeId, msg);
           setStatus('err', msg);
         }
-      })();
+      });
       return;
     }
 
     const structuredProbeId = target.dataset.providerStructuredProbe;
     if (structuredProbeId) {
-      void (async () => {
+      void runSettingsAction(target, 'Probing structured output…', async () => {
         try {
           const { providers } = await listProviders();
           const provider = providers.find((p) => p.id === structuredProbeId);
@@ -1703,26 +1702,20 @@ function bindProvidersListActions(listEl: HTMLElement): void {
             return;
           }
           setProviderEditFormError(structuredProbeId, null);
-          setStatus(
-            'spin',
-            modelId
-              ? `Probing structured output for ${structuredProbeId} (${modelId})…`
-              : `Probing structured output for ${structuredProbeId}…`,
-          );
           await probeProviderCapabilities(structuredProbeId, {
             ...(modelId ? { modelId } : {}),
             ...(selectedModelId || modelId
               ? { selectedModelId: selectedModelId ?? modelId ?? undefined }
               : {}),
           });
-          setStatus('ok', `Structured output probed for ${structuredProbeId}`);
+          showToast(`Structured output probed for ${structuredProbeId}`);
           await renderProvidersSettingsSection();
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           setProviderEditFormError(structuredProbeId, msg);
           setStatus('err', msg);
         }
-      })();
+      });
       return;
     }
 
@@ -1743,7 +1736,6 @@ function bindProvidersListActions(listEl: HTMLElement): void {
         setStatus('err', result.error);
         return;
       }
-      setStatus('ok', `Removed provider ${removeId}`);
       await fetchModels();
       await renderProvidersSettingsSection();
     })();

@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 /**
  * Settings → General → Backup and restore (MIN-16).
  *
@@ -225,7 +226,7 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
   async function act(run: () => Promise<unknown>, okMessage: string): Promise<void> {
     try {
       await run();
-      setStatus('ok', okMessage);
+      showToast(okMessage);
     } catch (err) {
       setStatus('err', errorText(err, 'That did not work'));
     }
@@ -262,7 +263,6 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
         }
         try {
           applySettings(await saveBackupSettings({ categories: [...selected] }));
-          setStatus('ok', 'Backup contents saved');
         } catch (err) {
           if (input.checked) selected.delete(category.id);
           else selected.add(category.id);
@@ -401,7 +401,6 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
         passInput.value = '';
         confirmInput.value = '';
         syncCredentialNote();
-        setStatus('ok', 'Backup created');
         await refresh();
       } catch (err) {
         createFeedback.replaceChildren(backupNote('danger', errorText(err, 'The backup failed.')));
@@ -427,7 +426,6 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
   ): Promise<boolean> {
     try {
       applySettings(await saveBackupSettings({ schedule: patch }));
-      setStatus('ok', okMessage);
       renderSnapshotStatus();
       return true;
     } catch (err) {
@@ -644,7 +642,6 @@ export async function renderBackupSettings(mount: HTMLElement): Promise<void> {
         snapshotFeedback.appendChild(
           backupNote('ok', `Snapshot saved to ${finished.result?.file ?? status.settings.schedule.destDir}.`),
         );
-        setStatus('ok', 'Snapshot taken');
       } catch (err) {
         snapshotFeedback.replaceChildren(backupNote('danger', errorText(err, 'The snapshot failed.')));
         setStatus('err', 'Snapshot failed');

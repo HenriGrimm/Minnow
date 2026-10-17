@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import {
   getPendingMessageQueue,
   getPendingMessageQueueCount,
@@ -11,7 +12,6 @@ import { getActiveChat } from '../state/sessions';
 import { getActiveComposerSurface } from './composer-surface';
 import { createIcon, type IconName } from './icon';
 import { autoResize } from './input';
-import { setStatus } from './status';
 import { refreshComposerStreamingAffordance } from './composer-send';
 
 const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Steer the run, or queue a follow-up…';
@@ -129,7 +129,7 @@ function renderQueueItem(item: { id: string; text: string }): HTMLElement {
       const chat = getActiveChat();
       if (!removeQueuedMessage(chat, item.id)) return;
       loadQueueItemIntoComposer(item.text);
-      setStatus('ok', 'Edit queued message and send again');
+      showToast('Edit queued message and send again');
       syncComposerMessageQueue();
     }),
   );
@@ -139,9 +139,7 @@ function renderQueueItem(item: { id: string; text: string }): HTMLElement {
       const chat = getActiveChat();
       const result = pushQueuedMessageNow(chat, item.id);
       if (!result) return;
-      setStatus(
-        'ok',
-        result === 'deferred'
+      showToast(result === 'deferred'
           ? 'Compaction will run after this reply'
           : isChatTurnInProgress(chat.id)
             ? 'Steering at next step…'

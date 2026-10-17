@@ -23,7 +23,7 @@ async function waitFor(check: () => boolean): Promise<void> {
     if (check()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.fail(`UI operation did not settle: ${document.getElementById('sText')?.textContent}`);
+  assert.fail(`UI operation did not settle: ${document.querySelector('.mn-toast__message')?.textContent}`);
 }
 
 beforeEach(async () => {
@@ -128,7 +128,7 @@ test('confirmation identifies the chosen quantization and path, then removes onl
   assert.match(message, /Q8_0/);
   assert.match(message, /\/models\/test--delete\/Model-7B-Q8_0.gguf/);
   await answerDialog('confirm');
-  await waitFor(() => document.getElementById('sText')?.textContent === 'Model deleted');
+  await waitFor(() => document.querySelector('.mn-toast__message')?.textContent === 'Model deleted');
   assert.deepEqual(requests, [{ libraryId: quant.value, modelPath: '/models/test--delete/Model-7B-Q8_0.gguf' }]);
   assert.equal(getModelsState().library.length, 1);
   assert.equal(getModelsState().library[0].quant, 'Q4_K_M');
@@ -140,7 +140,7 @@ test('delete failures keep the model visible and report the server error', async
   failDelete = true;
   deleteButton().click();
   await answerDialog('confirm');
-  await waitFor(() => document.getElementById('sText')?.textContent === 'Permission denied deleting weights');
+  await waitFor(() => document.querySelector('.mn-toast__message')?.textContent === 'Permission denied deleting weights');
   assert.equal(getModelsState().library.length, 2);
   assert.equal(deleteButton().disabled, false);
 });

@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import {
   fetchLspBundles,
   fetchLspBundleProgress,
@@ -231,10 +232,7 @@ function bindBundleInstallActions(
     showProgress(job.percent, job.message || job.phase);
 
     if (job.phase === 'done') {
-      setStatus(
-        'ok',
-        alreadyInstalled ? `${bundle.label} already installed` : `${bundle.label} installed`,
-      );
+      if (!alreadyInstalled) showToast(`${bundle.label} installed`);
       finishBundleUiOperation();
       return true;
     }
@@ -302,8 +300,10 @@ function bindBundleInstallActions(
 
         beginLspBundleUiOperation();
         setActionButtonsDisabled(true);
+        showProgress(0, `Removing ${bundle.label}…`);
         const ok = await uninstallLspBundle(bundle.id);
-        setStatus(ok ? 'ok' : 'err', ok ? `Removed ${bundle.label}` : 'Uninstall failed');
+        if (ok) showToast(`Removed ${bundle.label}`);
+        else setStatus('err', 'Uninstall failed');
         finishBundleUiOperation();
       })();
     });
@@ -514,7 +514,6 @@ function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<t
       void (async () => {
         install.disabled = true;
         install.textContent = 'Installing…';
-        setStatus('ok', 'Downloading and verifying the latest stable Godot 4 build…');
         const result = await installGodotRuntime();
         if (!result.ok) {
           install.disabled = false;
@@ -522,7 +521,7 @@ function appendGodotRuntimeCard(mount: HTMLElement, status: Awaited<ReturnType<t
           setStatus('err', result.error ?? 'Godot installation failed');
           return;
         }
-        setStatus('ok', 'Godot is installed and ready');
+        showToast('Godot is installed and ready');
         await renderLspSection();
       })();
     });
@@ -696,7 +695,7 @@ function buildCustomServerForm(onAdded: () => void): HTMLFormElement {
         setStatus('err', 'Could not save custom language server. Open or restart Minnow.');
         return;
       }
-      setStatus('ok', `Added ${id}`);
+      setStatus('idle', `Added ${id}`);
       form.reset();
       onAdded();
     });
@@ -772,7 +771,7 @@ export async function renderLspSection(): Promise<void> {
     onMasterChange: (checked) => {
       void saveLspConfig({ enabled: checked }).then((ok) => {
         setStatus(
-          ok ? 'ok' : 'err',
+          ok ? 'idle' : 'err',
           ok ? 'Language servers updated' : 'Could not save. Open or restart Minnow and try again.',
         );
         if (ok) void renderLspSection();
@@ -798,7 +797,7 @@ export async function renderLspSection(): Promise<void> {
       lsp: { [id]: { disabled: !enabled } },
     });
     if (ok) {
-      setStatus('ok', enabled ? `${id} enabled` : `${id} disabled`);
+      setStatus('idle', enabled ? `${id} enabled` : `${id} disabled`);
       await renderLspSection();
       return;
     }
@@ -817,7 +816,7 @@ export async function renderLspSection(): Promise<void> {
     }
     const ok = await saveLspConfig({ removeLspIds: [id] });
     if (ok) {
-      setStatus('ok', `Removed ${id}`);
+      setStatus('idle', `Removed ${id}`);
       await renderLspSection();
       return;
     }

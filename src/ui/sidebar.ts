@@ -1,3 +1,5 @@
+import { showToast } from './toast';
+import { runSettingsAction } from './settings-controls';
 ﻿import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
 import { clearAttachments } from '../attachments/store';
@@ -1168,12 +1170,11 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
     brainItem.title = 'No eligible chats (must have messages and not be streaming)';
   }
   brainItem.addEventListener('click', () => {
-    menu.remove();
-    clearChatSelection();
-    void import('./chat-brain-capture').then(async (m) => {
-      for (const chat of eligible) {
-        await m.runChatBrainCapture(chat);
-      }
+    void runSettingsAction(brainItem, 'Adding to Brain…', async () => {
+      const m = await import('./chat-brain-capture');
+      for (const chat of eligible) await m.runChatBrainCapture(chat);
+      menu.remove();
+      clearChatSelection();
     });
   });
 
@@ -1324,9 +1325,12 @@ export function showChatItemContextMenu(
   brainItem.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    closeMenu();
     if (brainState.disabled) return;
-    void import('./chat-brain-capture').then((m) => m.runChatBrainCapture(chat));
+    void runSettingsAction(brainItem, 'Adding to Brain…', async () => {
+      const m = await import('./chat-brain-capture');
+      await m.runChatBrainCapture(chat);
+      closeMenu();
+    });
   });
 
   const isPlannerChat = normalizeModeId(chat.modeId) === 'orchestrate';
@@ -1492,7 +1496,7 @@ function paintActiveChatInForegroundShell(chat: Chat): void {
 export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
   if (evt) evt.stopPropagation();
   if (isChatStreaming(chatId)) {
-    setStatus('spin', 'Finish the current reply first');
+    showToast('Finish the current reply first');
     return;
   }
   const idx = sessionState!.chats.findIndex((c) => c.id === chatId);

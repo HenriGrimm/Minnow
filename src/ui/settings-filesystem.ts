@@ -124,7 +124,6 @@ export async function renderFilesystemAccessSettings(mount: HTMLElement): Promis
 
     try {
       await saveToolSecurityMeta({ filesystemAccess: mode });
-      setStatus('ok', 'Filesystem access saved');
     } catch {
       selectedMode = prev;
       setActiveSegment(segmentGroup, prev);

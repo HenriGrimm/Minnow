@@ -13,7 +13,7 @@ import { renderContextDocumentsInjectionSection } from './settings-context-docum
 import { appendSettingsGroup } from './settings-layout';
 import { createSettingsToggleRow } from './settings-switch';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 function refreshComposerInjectionControls(): void {
   void Promise.all([
@@ -75,7 +75,6 @@ export async function renderInjectionSettingsSection(
             return;
           }
           brainNotesDefault = checked;
-          setStatus('ok', 'Brain notes injection setting saved');
           refreshComposerInjectionControls();
         })();
       },
@@ -99,7 +98,6 @@ export async function renderInjectionSettingsSection(
             return;
           }
           codeMapDefault = checked;
-          setStatus('ok', 'Code-map injection setting saved');
           refreshComposerInjectionControls();
         })();
       },

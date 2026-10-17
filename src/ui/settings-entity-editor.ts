@@ -199,7 +199,7 @@ export function mountCompactionKnobs(
       const budgetTokens = readKnob(budget.input);
       if (budgetTokens != null) knobs.summaryBudgetTokens = Math.floor(budgetTokens);
       const ok = await onSave(Object.keys(knobs).length ? knobs : null);
-      setStatus(ok ? 'ok' : 'err', ok ? 'Compaction tuning saved' : 'Could not save. Open or restart Minnow and try again.');
+      setStatus(ok ? 'idle' : 'err', ok ? 'Compaction tuning saved' : 'Could not save. Open or restart Minnow and try again.');
     })();
   };
   for (const input of [high.input, low.input, working.input, recent.input, budget.input]) {
@@ -357,7 +357,6 @@ export function mountPromptFileEditor(
         saved.source === 'override' ? 'Custom override' : 'Built-in default';
       lastSavedContent = ta.value;
       diffControls.refresh();
-      setStatus('ok', `Prompt saved (${currentProfile})`);
     })();
   });
 
@@ -381,7 +380,6 @@ export function mountPromptFileEditor(
       lastSavedContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
       await reloadBaseline();
-      setStatus('ok', 'Prompt reset to built-in');
     })();
   });
 
@@ -474,7 +472,7 @@ export function mountWorkAgentPromptEditor(
         ta.value,
       );
       setStatus(
-        ok ? 'ok' : 'err',
+        ok ? 'idle' : 'err',
         ok ? `Prompt saved (${currentProfile})` : 'Save failed',
       );
       if (ok) {
@@ -504,7 +502,6 @@ export function mountWorkAgentPromptEditor(
       lastSavedPromptContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
       await reloadBaseline();
-      setStatus('ok', 'Prompt reset to built-in');
     })();
   });
 
@@ -546,7 +543,6 @@ export function mountWorkAgentConfigEditor(
         setStatus('err', 'Could not save work agent settings');
         return;
       }
-      setStatus('ok', 'Work agent settings saved');
       options.onModelSaved?.();
     })();
   };
@@ -681,7 +677,7 @@ export function mountWorkAgentEditor(
         ta.value,
       );
       setStatus(
-        ok ? 'ok' : 'err',
+        ok ? 'idle' : 'err',
         ok ? `Prompt saved (${currentProfile})` : 'Save failed',
       );
       if (ok) {
@@ -707,7 +703,6 @@ export function mountWorkAgentEditor(
         setStatus('err', 'Could not save binding');
         return;
       }
-      setStatus('ok', 'Model binding saved');
       options.onModelSaved?.();
     })();
   });
@@ -731,7 +726,6 @@ export function mountWorkAgentEditor(
       lastSavedPromptContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
       await reloadBaseline();
-      setStatus('ok', 'Prompt reset to built-in');
     })();
   });
 
@@ -803,7 +797,7 @@ export function mountSubAgentTypeEditor(
         contextEnforcementPolicy: contextPolicyFromSelect(contextPolicySel),
         summarySchema: summarySchemaSel.value,
       });
-      setStatus(ok ? 'ok' : 'err', ok ? `${label} settings saved` : 'Save failed');
+      setStatus(ok ? 'idle' : 'err', ok ? `${label} settings saved` : 'Save failed');
     })();
   };
   enabledCb.addEventListener('change', persist);

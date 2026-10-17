@@ -1,3 +1,4 @@
+import { runSettingsAction } from './settings-controls';
 import '../styles/settings-general.css';
 import '../styles/settings-about.css';
 import { detectConfigServer } from '../config/storage-mode';
@@ -167,39 +168,35 @@ export async function renderBoardTestingSettingsSection(): Promise<void> {
         label: 'Start',
         variant: 'primary',
         onClick: () => {
-          void (async () => {
+          void runSettingsAction(fakeActions.querySelector('button'), 'Starting fake model…', async () => {
             if (!serverUp) {
               setStatus('err', 'Tool server offline');
               return;
             }
             try {
-              setStatus('spin', 'Starting fake model…');
               await startFakeModel();
-              setStatus('ok', 'Fake model running');
               await refreshStatus();
             } catch (err) {
               setStatus('err', err instanceof Error ? err.message : 'Start failed');
             }
-          })();
+          });
         },
       },
       {
         label: 'Stop',
         onClick: () => {
-          void (async () => {
+          void runSettingsAction(fakeActions.querySelector('button:nth-child(2)'), 'Stopping fake model…', async () => {
             if (!serverUp) {
               setStatus('err', 'Tool server offline');
               return;
             }
             try {
-              setStatus('spin', 'Stopping fake model…');
               await stopFakeModel();
-              setStatus('ok', 'Fake model stopped');
               await refreshStatus();
             } catch (err) {
               setStatus('err', err instanceof Error ? err.message : 'Stop failed');
             }
-          })();
+          });
         },
       },
       {
@@ -295,13 +292,12 @@ export async function renderBoardTestingSettingsSection(): Promise<void> {
         label: 'Seed board',
         variant: 'primary',
         onClick: () => {
-          void (async () => {
+          void runSettingsAction(seedActions.querySelector('button'), 'Seeding test board…', async () => {
             if (!serverUp) {
               setStatus('err', 'Tool server offline');
               return;
             }
             try {
-              setStatus('spin', 'Seeding test board…');
               const result = await seedTestBoard({
                 workspacePath: workspacePath.trim() || undefined,
                 preset,
@@ -322,13 +318,12 @@ export async function renderBoardTestingSettingsSection(): Promise<void> {
                 '',
                 'Restart Minnow or re-open the workspace if the board was already open.',
               ].join('\n');
-              setStatus('ok', 'Test board seeded');
               await refreshStatus();
             } catch (err) {
               seedResultHost.textContent = '';
               setStatus('err', err instanceof Error ? err.message : 'Seed failed');
             }
-          })();
+          });
         },
       },
     ],

@@ -157,6 +157,16 @@ function setMicButtonsState(state: MicState): void {
   }
 }
 
+/** Keep first-use download/finishing detail on the busy mic, not in a toast. */
+function setMicBusyLabel(label: string): void {
+  for (const id of MIC_BUTTON_IDS) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  }
+}
+
 /** Toggle the short “hearing audio” accent while the mic is open. */
 function setMicDetecting(active: boolean): void {
   if (micDetecting === active) return;
@@ -194,10 +204,6 @@ function startSilenceMonitor(stream: MediaStream): void {
       },
       onSilenceTimeout: () => {
         if (micState !== 'recording') return;
-        setStatus(
-          'spin',
-          useStreamingStt ? 'Pause detected — finishing…' : 'Pause detected — transcribing…',
-        );
         stopRecording();
       },
     });
@@ -276,12 +282,11 @@ async function handleBatchRecordingStop(): Promise<void> {
   }
 
   setMicButtonsState('transcribing');
-  setStatus('spin', 'Transcribing…');
   const progressTimer = useBuiltinStt ? setInterval(() => {
     void fetchSttStatus().then((status) => {
       if (micState !== 'transcribing' || status?.builtin?.phase !== 'loading') return;
       const percent = status.builtin.progress;
-      setStatus('spin', percent == null
+      setMicBusyLabel(percent == null
         ? 'Preparing speech model for first use…'
         : `Downloading speech model… ${percent}%`);
     });
@@ -291,7 +296,6 @@ async function handleBatchRecordingStop(): Promise<void> {
     const inputEl = resolveDictationInput();
     if (text && inputEl) {
       insertTranscript(inputEl, text);
-      setStatus('ok', 'Transcribed');
     } else {
       setStatus('err', 'No speech detected');
     }
@@ -329,7 +333,8 @@ async function handleStreamingRecordingStop(): Promise<void> {
     return;
   }
 
-  setStatus('spin', 'Finishing dictation…');
+  setMicButtonsState('transcribing');
+  setMicBusyLabel('Finishing dictation…');
   try {
     const finalText = await client.stop();
     if (range) {
@@ -338,9 +343,7 @@ async function handleStreamingRecordingStop(): Promise<void> {
       inputEl.dispatchEvent(new Event('input', { bubbles: true }));
       autoResize(inputEl);
     }
-    if (finalText.trim()) {
-      setStatus('ok', 'Transcribed');
-    } else {
+    if (!finalText.trim()) {
       range?.restore(inputEl);
       setStatus('err', 'No speech detected');
     }
@@ -393,7 +396,6 @@ async function startStreamingRecording(): Promise<void> {
   });
   sttStreamClient = client;
 
-  setStatus('spin', 'Loading model…');
   await client.start();
 
   recordingStream = client.getMediaStream();
@@ -402,12 +404,6 @@ async function startStreamingRecording(): Promise<void> {
   if (recordingStream) {
     startSilenceMonitor(recordingStream);
   }
-  setStatus(
-    'ok',
-    silenceTimeoutSeconds > 0
-      ? `Listening… stop talking for ${silenceTimeoutSeconds}s to finish`
-      : 'Listening… click mic to stop',
-  );
   armRecordingTimer();
 }
 
@@ -441,12 +437,6 @@ async function startBatchRecording(): Promise<void> {
   recordingStartedAt = Date.now();
   setMicButtonsState('recording');
   startSilenceMonitor(recordingStream);
-  setStatus(
-    'ok',
-    silenceTimeoutSeconds > 0
-      ? `Listening… stop talking for ${silenceTimeoutSeconds}s to transcribe`
-      : 'Listening… click mic to stop',
-  );
   armRecordingTimer();
 }
 
@@ -473,7 +463,6 @@ async function startRecording(): Promise<void> {
 
   if (!status.healthy && status.backend === 'local') {
     setMicButtonsState('starting');
-    setStatus('spin', 'Starting voice…');
     try {
       await ensureVoiceWorker();
       status = await fetchSttStatus();

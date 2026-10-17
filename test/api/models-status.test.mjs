@@ -7,10 +7,11 @@ import { describe, test } from 'node:test';
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const source = readFileSync(join(root, 'src/api/models.ts'), 'utf8');
 
-describe('fetchModels status pill (feature 12–13)', () => {
+describe('fetchModels feedback', () => {
   test('does not set model inventory count on success', () => {
     assert.doesNotMatch(source, /\$\{models\.length\}\s*models/);
     assert.doesNotMatch(source, /nLoaded/);
-    assert.match(source, /setReadyStatus\(\)/);
+    assert.doesNotMatch(source, /setReadyStatus\(\)/);
+    assert.match(source, /sel\.setAttribute\('aria-busy', 'true'\)/);
   });
 });

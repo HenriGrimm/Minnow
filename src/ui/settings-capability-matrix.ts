@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-capability-matrix.css';
 import { detectConfigServer } from '../config/storage-mode';
@@ -145,16 +147,15 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
       {
         label: 'Export .xlsx',
         variant: 'default',
-        onClick: async () => {
+        onClick: () => runSettingsAction(exportBtn, 'Exporting workbook…', async () => {
           try {
-            setStatus('spin', 'Exporting workbook…');
             const { downloadCapabilityMatrixXlsx } = await import('./capability-matrix/export-xlsx.ts');
             downloadCapabilityMatrixXlsx(viewModel, roster, latestManualStore);
-            setStatus('ok', 'Workbook downloaded');
+            showToast('Workbook downloaded');
           } catch (err) {
             setStatus('err', err instanceof Error ? err.message : 'Export failed');
           }
-        },
+        }),
       },
     ],
     { searchKey: 'advanced.capabilityMatrix.export' },
@@ -437,12 +438,13 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
 
   async function persistRoster(next: CapabilityMatrixRosterEntry[]): Promise<void> {
     roster = next;
+    rosterHost.setAttribute('aria-busy', 'true');
     try {
-      setStatus('spin', 'Saving roster…');
       await saveCapabilityMatrixRoster(roster);
-      setStatus('ok', 'Roster saved');
     } catch (err) {
       setStatus('err', err instanceof Error ? err.message : 'Roster save failed');
+    } finally {
+      rosterHost.removeAttribute('aria-busy');
     }
     await refreshView();
   }
@@ -489,17 +491,13 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
     const file = importInput.files?.[0];
     importInput.value = '';
     if (!file) return;
-    void (async () => {
+    void runSettingsAction(importLabel, 'Importing workbook…', async () => {
       try {
-        setStatus('spin', 'Importing workbook…');
         const { importCapabilityMatrixXlsxFile } = await import('./capability-matrix/import-xlsx.ts');
         const result = await importCapabilityMatrixXlsxFile(file, roster);
         const warn =
           result.warnings.length > 0 ? ` (${result.warnings.length} warnings)` : '';
-        setStatus(
-          'ok',
-          `Imported ${result.importedCount} manual cell${result.importedCount === 1 ? '' : 's'}${warn}`,
-        );
+        showToast(`Imported ${result.importedCount} manual cell${result.importedCount === 1 ? '' : 's'}${warn}`);
         if (result.warnings.length > 0) {
           console.warn('[capability-matrix] import warnings', result.warnings);
         }
@@ -507,7 +505,7 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
       } catch (err) {
         setStatus('err', err instanceof Error ? err.message : 'Import failed');
       }
-    })();
+    });
   });
 
   const clearManualBtn = el(
@@ -518,7 +516,7 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
   clearManualBtn.type = 'button';
   clearManualBtn.dataset.settingsSearchKey = 'advanced.capabilityMatrix.danger';
   clearManualBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(clearManualBtn, 'Clearing manual verdicts…', async () => {
       if (
         !(await appConfirm(
           'Clear all manual capability verdicts? Auto probe results in run history are kept.',
@@ -528,14 +526,12 @@ export async function renderCapabilityMatrixSettingsSection(): Promise<void> {
         return;
       }
       try {
-        setStatus('spin', 'Clearing manual verdicts…');
         await clearManualVerdicts();
-        setStatus('ok', 'Manual verdicts cleared');
         await refreshView();
       } catch (err) {
         setStatus('err', err instanceof Error ? err.message : 'Clear failed');
       }
-    })();
+    });
   });
 
   appendSettingsDangerZone(shell, 'Danger zone', clearManualBtn, {

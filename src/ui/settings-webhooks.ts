@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * Settings → Webhooks — outgoing HMAC-signed event subscriptions.
@@ -179,7 +180,6 @@ async function renderSubscriptionList(
             body: JSON.stringify({ enabled: enabledCb.checked }),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          setStatus('ok', 'Webhook subscription updated');
           await onChange();
         } catch {
           enabledCb.checked = !enabledCb.checked;
@@ -199,7 +199,7 @@ async function renderSubscriptionList(
             method: 'POST',
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          setStatus('ok', 'Test delivery request submitted');
+          showToast('Test delivery request submitted');
           await onChange();
         } catch {
           setStatus('err', 'Test fire failed');
@@ -217,7 +217,6 @@ async function renderSubscriptionList(
             method: 'DELETE',
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          setStatus('ok', 'Webhook deleted');
           await onChange();
         } catch {
           setStatus('err', 'Could not delete subscription');
@@ -284,7 +283,6 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
     secretInput.value = generateSigningSecret();
     secretInput.focus();
     secretInput.select();
-    setStatus('ok', 'Secure signing secret generated and selected');
   });
   secretField.append(secretInput, generateSecretBtn);
 
@@ -355,7 +353,6 @@ function renderAddForm(mount: HTMLElement, onSaved: () => Promise<void>): void {
         labelInput.value = '';
         urlInput.value = '';
         secretInput.value = '';
-        setStatus('ok', 'Webhook subscription added');
         await onSaved();
       } catch (err) {
         errorEl.textContent = err instanceof Error ? err.message : 'Could not save subscription';

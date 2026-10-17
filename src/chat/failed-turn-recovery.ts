@@ -1,3 +1,4 @@
+import { showToast } from '../ui/toast';
 import { parseSkillTagFromHistory } from '../skills/history-content';
 import { parseSlashCommand } from '../skills/parse-slash';
 import { isChatStreaming } from './streaming-state';
@@ -17,7 +18,7 @@ import { indexOfLastUserMessage } from './history-truncate-core';
 /** Replay the failed turn without truncating the visible transcript. */
 export async function continueFailedTurn(chatId: string): Promise<void> {
   if (isChatStreaming(chatId)) {
-    setStatus('spin', 'Finish or stop the current reply first');
+    showToast('Finish or stop the current reply first');
     return;
   }
 
@@ -80,7 +81,7 @@ export async function clearFailedAssistantTurn(
   forkHistoryIndex: number,
 ): Promise<void> {
   if (isChatStreaming(chatId)) {
-    setStatus('spin', 'Finish or stop the current reply first');
+    showToast('Finish or stop the current reply first');
     return;
   }
 

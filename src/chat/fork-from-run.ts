@@ -1,3 +1,4 @@
+import { showToast } from '../ui/toast';
 import { isChatTurnInProgress } from './chat-turn-guard';
 import { clearAttachments } from '../attachments/store';
 import { parseSlashCommand } from '../skills/parse-slash';
@@ -45,7 +46,7 @@ export async function forkFromUserIndex(
   overrides?: ForkOverrides,
 ): Promise<void> {
   if (isChatTurnInProgress(chatId)) {
-    setStatus('spin', 'Finish or stop the current reply first');
+    showToast('Finish or stop the current reply first');
     return;
   }
 
@@ -65,7 +66,7 @@ export async function forkFromUserIndex(
   }
 
   if (isChatTurnInProgress(chatId)) {
-    setStatus('spin', 'Finish or stop the current reply first');
+    showToast('Finish or stop the current reply first');
     return;
   }
 
@@ -90,7 +91,7 @@ export async function forkFromUserIndex(
   const truncated = truncateChatHistory(chatId, userHistoryIndex, 'inclusive');
   if (!truncated.ok) {
     if (truncated.error === 'streaming') {
-      setStatus('spin', 'Finish or stop the current reply first');
+      showToast('Finish or stop the current reply first');
     } else {
       setStatus('err', 'Could not update history');
     }

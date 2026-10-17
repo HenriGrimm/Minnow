@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-issues.css';
 
@@ -98,12 +99,7 @@ async function persistTaxonomy(
     setIssuesTaxonomy(next);
     await saveIssuesTaxonomyNow();
     const mode = await detectConfigServer();
-    setStatus(
-      'ok',
-      mode === 'server'
-        ? okMessage
-        : 'Saved locally — open Minnow to persist to ~/.minnow',
-    );
+    if (mode !== 'server') showToast('Saved locally — open Minnow to persist to ~/.minnow');
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Save failed';
@@ -673,12 +669,7 @@ function renderIssueIdsPanel(mount: HTMLElement, onChange: () => void): void {
       try {
         await saveIssuesNow();
         const mode = await detectConfigServer();
-        setStatus(
-          'ok',
-          mode === 'server'
-            ? 'Issue ID settings saved'
-            : 'Saved locally — open Minnow to persist to ~/.minnow',
-        );
+        if (mode !== 'server') showToast('Saved locally — open Minnow to persist to ~/.minnow');
         refreshPreviewFromStore();
         onChange();
       } catch {

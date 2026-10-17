@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { streaming } from '../app-state';
 import {
   enqueueComposerMessage,
@@ -13,7 +14,6 @@ import { clearComposerAfterSend } from './composer-draft';
 import { getActiveComposerSurface } from './composer-surface';
 import { refreshModeSelectorDisabled } from './mode-selector';
 import { isChatAppForeground } from './chat-mount';
-import { setStatus } from './status';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
 import { syncComposerWave } from './composer-wave';
 import { syncGoalActiveHint } from './goal-active-hint';
@@ -193,9 +193,7 @@ function submitQueueFromComposer(): void {
   const chat = getActiveChat();
   if (!enqueueComposerMessage(chat, text)) return;
   clearComposerAfterSend(chat, input);
-  setStatus(
-    'ok',
-    parseCompactSlashInput(text)
+  showToast(parseCompactSlashInput(text)
       ? 'Compaction queued for after this reply'
       : 'Follow-up queued',
   );
@@ -209,9 +207,7 @@ function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): 
   if (!first) return false;
   const result = pushQueuedMessageNow(chat, first.id);
   if (!result) return false;
-  setStatus(
-    'ok',
-    result === 'deferred'
+  showToast(result === 'deferred'
       ? 'Compaction will run after this reply'
       : 'Steering at next step…',
   );

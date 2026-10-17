@@ -1,3 +1,5 @@
+import { showToast } from '../toast';
+import { runSettingsAction } from '../settings-controls';
 import { appAlert, appConfirm, appPrompt } from '../app-dialog';
 /**
  * Brain app — Proposals section: reuse memory/skill synthesis review panel.
@@ -6,7 +8,7 @@ import { appAlert, appConfirm, appPrompt } from '../app-dialog';
 import { mountMemoryProposalsPanel } from '../memory-proposals-panel';
 import { renderBrainEmptyState } from './empty-state';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 const setProposalsStatus: StatusFn = (kind, message) => {
   const el = document.getElementById('brainProposalsStatus');
@@ -25,19 +27,18 @@ export async function renderProposalsSection(): Promise<void> {
   if (!clearPendingBound) {
     clearPendingBound = true;
     document.getElementById('brainProposalsClearPending')?.addEventListener('click', () => {
-      void (async () => {
+      void runSettingsAction(document.getElementById('brainProposalsClearPending'), 'Clearing…', async () => {
         const ok = await appConfirm('Clear all pending memory and skill proposals?');
         if (!ok) return;
-        setProposalsStatus('spin', 'Clearing…');
         const { clearBrainProposals } = await import('../../brain/client');
         const result = await clearBrainProposals('pending');
         if (!result.ok) {
           setProposalsStatus('err', result.error ?? 'Clear failed');
           return;
         }
-        setProposalsStatus('ok', `Cleared ${result.removed ?? 0} proposal(s).`);
+        showToast(`Cleared ${result.removed ?? 0} proposal(s).`);
         await renderProposalsSection();
-      })();
+      });
     });
   }
 

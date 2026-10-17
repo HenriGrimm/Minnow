@@ -29,105 +29,22 @@ export function parseServerBaseUrl(raw: string): string | null {
   return parseServerBaseUrlImpl(raw);
 }
 
-/** Topbar pill states — operational feedback only, not model inventory. */
+/** Compatibility bridge for callers that previously wrote to the header. */
 export type StatusState = 'idle' | 'ok' | 'err' | 'spin';
 
-/** Legacy topbar and Minnow menubar status targets (same pill semantics). */
-const STATUS_PILL_TARGETS: ReadonlyArray<{ dotId: string; textId: string }> = [
-  { dotId: 'sDot', textId: 'sText' },
-  { dotId: 'osStatusDot', textId: 'osStatusText' },
-];
-
-/** Last status message — used so error clicks can copy even when the pill truncates or uses title. */
-let lastStatusState: StatusState | string = 'idle';
-let lastStatusMsg = '';
-
-const COPYABLE_CLASS = 'status-pill__text--copyable';
-
-/** Copy the current error status text to the clipboard (skips when the user is selecting text). */
-function copyStatusErrorIfIdleSelection(): void {
-  if (lastStatusState !== 'err' || !lastStatusMsg.trim()) return;
-  const selected = window.getSelection()?.toString() ?? '';
-  if (selected.length > 0) return;
-
-  void navigator.clipboard.writeText(lastStatusMsg).then(
-    () => showToast('Error copied'),
-    () => showToast('Could not copy error', 'error'),
-  );
-}
-
-/** Bind one-shot click / keyboard copy handlers on status text nodes as they appear. */
-function ensureStatusCopyHandlers(): void {
-  for (const { textId } of STATUS_PILL_TARGETS) {
-    const text = document.getElementById(textId);
-    if (!text || text.dataset.statusCopyBound === '1') continue;
-    text.dataset.statusCopyBound = '1';
-    text.addEventListener('click', () => {
-      copyStatusErrorIfIdleSelection();
-    });
-    text.addEventListener('keydown', (ev) => {
-      if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      if (lastStatusState !== 'err') return;
-      ev.preventDefault();
-      copyStatusErrorIfIdleSelection();
-    });
-  }
-}
-
-function applyStatusPill(
-  dot: HTMLElement,
-  text: HTMLElement,
-  state: StatusState | string,
-  msg: string,
-): void {
-  dot.className = `s-dot ${state}`;
-  text.textContent = msg;
-  const trimmed = msg.trim();
-  const isErr = state === 'err';
-
-  text.classList.toggle(COPYABLE_CLASS, isErr);
-  if (isErr) {
-    text.setAttribute('role', 'button');
-    text.setAttribute('tabindex', '0');
-    const hint = trimmed ? `${trimmed} (click to copy)` : 'Click to copy error';
-    text.setAttribute('title', hint);
-    text.setAttribute('aria-label', hint);
-  } else {
-    text.removeAttribute('role');
-    text.removeAttribute('tabindex');
-    text.removeAttribute('aria-label');
-    if (trimmed.length > 24) {
-      text.setAttribute('title', trimmed);
-    } else {
-      text.removeAttribute('title');
-    }
-  }
-}
-
-/** Update status pills in the legacy topbar and OS menubar (connection, streaming, workspace). */
+/**
+ * Only errors interrupt globally. Visible results and routine saves stay quiet;
+ * meaningful completions opt in through showToast, and progress belongs inline.
+ */
 export function setStatus(state: StatusState | string, msg: string): void {
-  lastStatusState = state;
-  lastStatusMsg = msg;
-  ensureStatusCopyHandlers();
-  for (const { dotId, textId } of STATUS_PILL_TARGETS) {
-    const dot = document.getElementById(dotId);
-    const text = document.getElementById(textId);
-    if (!dot || !text) continue;
-    applyStatusPill(dot, text, state, msg);
-  }
+  if (state === 'err' || state === 'error') showToast(msg, 'error');
 }
 
-/** Clear an orphaned chat progress pill after the last stream has ended. */
-export function clearStaleGenerationStatus(anyChatStreaming: boolean): void {
-  if (anyChatStreaming || lastStatusState !== 'spin') return;
-  if (lastStatusMsg !== 'Generating reply…' && lastStatusMsg !== 'Running tools…') return;
-  setReadyStatus();
-}
+/** @deprecated Progress is owned by the initiating control, not the header. */
+export function clearStaleGenerationStatus(_anyChatStreaming: boolean): void {}
 
-/** Default idle success after model list refresh (matches chat loop). */
-export function setReadyStatus(): void {
-  setStatus('ok', 'Ready');
-}
+/** @deprecated Idle readiness is not a notification. */
+export function setReadyStatus(): void {}
 
 /** Close settings drawer, Research embed, or mobile chat/file overlays when Escape is pressed. */
 export function dismissOpenLayers(): void {

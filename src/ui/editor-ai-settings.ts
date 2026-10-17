@@ -182,7 +182,6 @@ function mountModelSourceBlock(
       modelId,
       useChatModel: false,
     }).then(() => {
-      setStatus('ok', 'Pinned model saved');
       onRefresh();
     });
   };
@@ -208,7 +207,6 @@ function mountModelSourceBlock(
       providerId: '',
       modelId: '',
     }).then(() => {
-      setStatus('ok', 'Using active chat model');
       onRefresh();
     });
   });
@@ -217,7 +215,6 @@ function mountModelSourceBlock(
     if (!pinRadio.checked) return;
     syncPinnedVisibility();
     void saveEditorAiCompletionConfig({ useChatModel: false }).then(() => {
-      setStatus('ok', 'Choose a provider and model below');
       onRefresh();
     });
   });
@@ -309,7 +306,6 @@ function renderEditorSettingsBody(
     ariaLabel: 'Enable AI inline completion in the file editor',
     onChange: async (enabled) => {
       await saveEditorAiCompletionConfig({ enabled });
-      setStatus('ok', enabled ? 'Inline completion on' : 'Inline completion off');
       refresh();
     },
   });
@@ -358,7 +354,6 @@ function renderEditorSettingsBody(
       : config.debounceMs;
     debounceInput.value = String(ms);
     void saveEditorAiCompletionConfig({ debounceMs: ms }).then(() => {
-      setStatus('ok', 'Debounce saved');
       refresh();
     });
   });
@@ -409,7 +404,6 @@ function renderEditorSettingsBody(
       ariaLabel: toggle.aria,
       onChange: async (enabled) => {
         await saveEditorAiCompletionConfig({ [toggle.key]: enabled });
-        setStatus('ok', `${toggle.label} ${enabled ? 'on' : 'off'}`);
         refresh();
       },
     });
@@ -439,7 +433,6 @@ function renderEditorSettingsBody(
       : config.maxTokens;
     tokensInput.value = String(n);
     void saveEditorAiCompletionConfig({ maxTokens: n }).then(() => {
-      setStatus('ok', 'Max tokens saved');
       refresh();
     });
   });

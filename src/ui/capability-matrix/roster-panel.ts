@@ -1,10 +1,11 @@
+import { showToast } from '../toast';
 import type { CapabilityMatrixRosterEntry } from '../../benchmark/capabilities/roster-store.ts';
 import { groupRosterByHost } from '../../benchmark/capabilities/view-model.ts';
 import { fillModelSelect, fillProviderSelect, fetchAllCatalogRosterTargets } from '../settings-model-binding.ts';
 import { mountAuxiliaryModelSelectCombobox } from '../model-select-picker.ts';
 import { LIBRARY_MODEL_PROVIDER_ID } from '../../models/model-select-library.ts';
 import { targetKeyFromTarget } from '../../benchmark/model-key.ts';
-import { createSettingsActionsRow } from '../settings-controls';
+import { createSettingsActionsRow, runSettingsAction } from '../settings-controls';
 import { setStatus } from '../status';
 
 export type CapabilityRosterPanelOptions = {
@@ -118,9 +119,9 @@ export function renderCapabilityRosterPanel(options: CapabilityRosterPanelOption
         label: 'Add all catalog',
         variant: 'default',
         onClick: () => {
-          void (async () => {
+          const button = actions.querySelectorAll<HTMLButtonElement>('button')[1];
+          void runSettingsAction(button, 'Loading catalogs…', async () => {
             try {
-              setStatus('spin', 'Loading provider catalogs…');
               const catalog = await fetchAllCatalogRosterTargets();
               const existing = new Set(roster.map((row) => targetKeyFromTarget(row)));
               const additions: CapabilityMatrixRosterEntry[] = [];
@@ -136,7 +137,7 @@ export function renderCapabilityRosterPanel(options: CapabilityRosterPanelOption
                 additions.push(row);
               }
               if (!additions.length) {
-                setStatus('ok', 'Roster already includes all catalog models');
+                showToast('Roster already includes all catalog models');
                 return;
               }
               await onRosterChange([...roster, ...additions]);
@@ -149,7 +150,7 @@ export function renderCapabilityRosterPanel(options: CapabilityRosterPanelOption
             } catch (err) {
               setStatus('err', err instanceof Error ? err.message : 'Bulk add failed');
             }
-          })();
+          });
         },
       },
     ],
