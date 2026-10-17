@@ -4,8 +4,9 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
  * Editable file viewer (CodeMirror 6) with multi-tab strip and per-tab in-memory state.
  */
 
-import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { applyPendingViewerSelection } from './file-viewer-initial-selection';
 import { isImageFilePath } from '../attachments/image-path';
 import {
   documentPreviewViewMode,
@@ -778,31 +779,7 @@ function mountEditor(tab: ViewerTabState, content: string): void {
     }
     syncIntentToolbarAvailability(tab);
 
-    if (tab.pendingInitialLineRange && editorView) {
-      const { startLine, endLine } = tab.pendingInitialLineRange;
-      tab.pendingInitialLineRange = null;
-      const doc = editorView.state.doc;
-      const fromLine = Math.max(1, Math.min(startLine, doc.lines));
-      const toLine = Math.max(fromLine, Math.min(endLine, doc.lines));
-      const from = doc.line(fromLine).from;
-      const to = doc.line(toLine).to;
-      editorView.dispatch({
-        selection: EditorSelection.range(from, to),
-        scrollIntoView: true,
-      });
-    } else if (tab.pendingInitialSelection && editorView) {
-      const { line, character } = tab.pendingInitialSelection;
-      tab.pendingInitialSelection = null;
-      const doc = editorView.state.doc;
-      const lineNumber = Math.min(line + 1, doc.lines);
-      const lineInfo = doc.line(lineNumber);
-      const col = Math.min(character, lineInfo.length);
-      const anchor = lineInfo.from + col;
-      editorView.dispatch({
-        selection: EditorSelection.cursor(anchor),
-        scrollIntoView: true,
-      });
-    }
+    applyPendingViewerSelection(editorView, tab);
     if (focusRequest?.()) editorView.focus();
 
     if (useLsp) {
@@ -1105,6 +1082,7 @@ export function renderActiveViewerTab(): void {
   }
 
   if (primaryRenderIsCurrent(tab)) {
+    if (editorView && editorViewPath === tab.path) applyPendingViewerSelection(editorView, tab);
     updateViewerChrome();
     return;
   }
