@@ -42,6 +42,7 @@ import {
   unstage,
   worktreeAdd,
   worktreeRemove,
+  worktreeStatus,
 } from './git-ops.js';
 import {
   forgeStatus,
@@ -116,6 +117,7 @@ const OPS = {
   log: (a) => log(a),
   branches: (a) => branches(a),
   branchTree: (a) => branchTree(a),
+  worktreeStatus: (a) => worktreeStatus(a),
   checkout: (a) => checkout(a),
   checkoutDetach: (a) => checkoutDetach(a),
   createTag: (a) => createTag(a),

@@ -97,11 +97,3 @@ export function syncWorkAgentDevFromActiveChat(): void {
     select.value = id;
   }
 }
-
-/** Abbreviation for sidebar badge (first 3 letters uppercase). */
-export function workAgentSidebarAbbrev(agentId: string | null | undefined): string {
-  if (!agentId || agentId === 'default') return '';
-  const agent = listWorkAgents().find((a) => a.id === agentId);
-  const label = agent?.label ?? agentId;
-  return label.slice(0, 3).toUpperCase();
-}
