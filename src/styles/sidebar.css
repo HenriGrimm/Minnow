@@ -37,7 +37,9 @@
 }
 
 .sidebar-resizer:hover,
-.sidebar-resizer.dragging {
+.sidebar-resizer.dragging,
+.terminal-resize-handle:hover,
+.terminal-resize-handle.dragging {
   background: var(--mn-accent-soft);
 }
 

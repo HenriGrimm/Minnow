@@ -63,6 +63,7 @@ import {
   terminalCwdsEqual,
 } from './terminal-worktree-cwd';
 import { resolveTerminalPanelMinHeightPx } from './terminal-layout';
+import { bindTerminalResizeHandle } from './terminal-resize';
 import { notifyChatStreamActivity } from '../chat/streaming-state';
 const MAX_HEIGHT_RATIO = 0.5;
 const MAIN_COLUMN_TERMINAL_MAX_CLASS = 'main-column--terminal-maximized';
@@ -436,12 +437,8 @@ async function ensureTerminalTabsWhenOpen(): Promise<void> {
   if (!isTerminalPanelOpen()) return;
 
   const tabBar = document.getElementById('terminalTabBar');
-  const shellSelect = document.getElementById(
-    'terminalShellSelect',
-  ) as HTMLSelectElement | null;
   if (
     !tabBar ||
-    !shellSelect ||
     !getLocalServerAvailable() ||
     !isTerminalXtermReady()
   ) {
@@ -449,7 +446,7 @@ async function ensureTerminalTabsWhenOpen(): Promise<void> {
   }
 
   try {
-    await initTerminalTabs(tabBar, shellSelect);
+    await initTerminalTabs(tabBar);
   } catch (err) {
     console.error('Terminal tabs failed to initialize', err);
   }
@@ -734,27 +731,7 @@ export async function refreshTerminalHistoryForActiveChat(): Promise<void> {
 function setupResizeHandle(): void {
   const handle = document.getElementById('terminalResize');
   if (!handle || !panelEl) return;
-
-  let dragging = false;
-  let startY = 0;
-  let startHeight = 0;
-
-  handle.addEventListener('mousedown', (e) => {
-    dragging = true;
-    startY = e.clientY;
-    startHeight = panelEl!.getBoundingClientRect().height;
-    e.preventDefault();
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging || !panelEl) return;
-    const delta = startY - e.clientY;
-    applyPanelHeight(startHeight + delta);
-  });
-
-  window.addEventListener('mouseup', () => {
-    dragging = false;
-  });
+  bindTerminalResizeHandle(handle, panelEl, applyPanelHeight);
 }
 
 function setupOutputScroll(): void {
