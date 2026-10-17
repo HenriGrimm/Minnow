@@ -167,7 +167,12 @@ function ensureIssueWorkflowChat(issue: IssueCard, namePrefix: string): Chat | n
   return chat;
 }
 
-/** Foreground Code (no seed) then apply seeded launch; returns new chat id when created. */
+/**
+ * Create the seeded Code chat and auto-send it without leaving the current app.
+ * Issues stays foregrounded (MIN-560); the chat DOM is part of the shell and
+ * issue handoffs send through `sendProgrammaticChatText`, so Code need not be visible.
+ * Returns the new chat id when created.
+ */
 async function launchCodeSeededChat(options: {
   issueId?: string;
   issue?: IssueMessageSnapshot;
@@ -180,14 +185,7 @@ async function launchCodeSeededChat(options: {
   if (await routeCodeWindowCommand({ kind: 'seed', ...options, workspacePath: options.workspacePath || '' })) return {};
   const { ensureCodeWorkspaceModules } = await import('../../boot/code-workspace-modules.ts');
   await ensureCodeWorkspaceModules();
-  const { launchApp } = await import('../../os/router.ts');
   const { applyCodeLaunchOptions } = await import('../../os/code-launch.ts');
-
-  launchApp('code', {
-    codeSection: 'chat',
-    workspacePath: options.workspacePath,
-  });
-  await new Promise((r) => setTimeout(r, 0));
 
   return applyCodeLaunchOptions({
     issue: options.issue,

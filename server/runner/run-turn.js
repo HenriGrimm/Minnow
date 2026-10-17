@@ -2,7 +2,8 @@ import { sumUsageSegments } from './stats-math.js';
 import { createProgressBudget } from './progress-budget.js';
 import { createRoundShapeGuard } from './round-shape.js';
 import { createRunnerTiming } from './timing.js';
-import { createLazyToolSession, SEARCH_TOOLS_NAME } from './lazy-tools.js';
+import { SEARCH_TOOLS_NAME } from './lazy-tools.js';
+import { createToolExposure, SEARCH_MCP_TOOLS_NAME, CALL_MCP_TOOL_NAME } from './tool-exposure.js';
 import { createTurnRunner } from './turn-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
@@ -469,17 +470,13 @@ export async function runTurn(options) {
     injectReportTool: options.injectReportTool,
     ask: options.ask,
   });
-  // CLI MCP catalogs are fixed for the native conversation. Discovering another
-  // schema mid-turn otherwise tears it down and replays the entire transcript.
-  let useLazyTools = options.lazyTools === true;
-  if (useLazyTools) {
-    try { useLazyTools = (await deps.resolveProvider(model.providerId))?.apiKind !== 'agent-cli-v1'; }
-    catch (error) { return { outcome: 'crashed', error: errorMessage(error) }; }
-  }
-  let lazyTools = !useLazyTools ? null : createLazyToolSession(
-    catalog, [...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
-  );
-  let tools = lazyTools?.tools ?? catalog;
+  let apiKind;
+  try { apiKind = (await deps.resolveProvider(model.providerId))?.apiKind; }
+  catch (error) { return { outcome: 'crashed', error: errorMessage(error) }; }
+  const exposureOptions = { apiKind, lazyTools: options.lazyTools === true };
+  let { tools, lazyTools, cliMcpTools } = createToolExposure(catalog, { ...exposureOptions,
+    alwaysLoaded: [...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
+  });
   const seed = typeof options.seed === 'string' ? options.seed : '';
   const limits = options.limits ?? {};
   const transcript = options.transcript ?? deps.transcriptStore;
@@ -594,6 +591,15 @@ export async function runTurn(options) {
     const callableNames = new Set(tools.map(tool => tool.function.name));
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
+      if (cliMcpTools && (inspected.name === SEARCH_MCP_TOOLS_NAME || inspected.name.startsWith('mcp__'))) {
+        const content = inspected.name === SEARCH_MCP_TOOLS_NAME
+          ? cliMcpTools.search(inspected.arguments)
+          : 'Error: invoke MCP tools through call_mcp_tool. Use search_mcp_tools to discover their schemas.';
+        emit(onEvent, { type: 'tool_result', name: inspected.name, id: inspected.id,
+          content, ...(content.startsWith('Error:') ? { isError: true } : {}) });
+        outcomes.push({ toolCall, result: { content } });
+        continue;
+      }
       if (inspected.name === RECALL_HISTORY_TOOL_NAME && (recallActive || recallRows)) {
         // Answered from the runner's unprojected rows. Offered once a checkpoint
         // exists, but a call reached through search_tools is answered too.
@@ -690,6 +696,12 @@ export async function runTurn(options) {
     const roundNoteId = roundNote ? inspectToolCall(otherCalls[otherCalls.length - 1]).id : undefined;
 
     const execute = async (name, args, ctx) => {
+      if (cliMcpTools && name === CALL_MCP_TOOL_NAME) {
+        const call = cliMcpTools.resolveCall(args);
+        if (call.error) return { content: call.error };
+        name = call.name;
+        args = call.arguments;
+      }
       if (typeof options.execute === 'function') {
         // The inner loop's arg adjustments (read budget) apply here because this
         // execute replaces the one the loop passed.
@@ -806,10 +818,9 @@ export async function runTurn(options) {
             ask: options.ask,
           });
           const loadedToolNames = lazyTools?.tools.map(tool => tool.function.name) ?? [];
-          lazyTools = !useLazyTools ? null : createLazyToolSession(
-            catalog, [...loadedToolNames, ...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
-          );
-          tools = lazyTools?.tools ?? catalog;
+          ({ tools, lazyTools, cliMcpTools } = createToolExposure(catalog, { ...exposureOptions,
+            alwaysLoaded: [...loadedToolNames, ...(options.alwaysLoadedToolNames ?? []), ...(reportToolName ? [reportToolName] : [])],
+          }));
           if (recallActive) tools = withRecallTool(tools);
           return { systemPrompt: updated.systemPrompt, tools };
         } finally { timing.end('refresh_config', started); }

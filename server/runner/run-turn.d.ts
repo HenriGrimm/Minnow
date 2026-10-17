@@ -166,7 +166,7 @@ export interface RunTurnOptions {
   }) => string | Promise<string>;
   seedKind?: TurnSeedKind;
   tools: TurnToolDefinition[];
-  /** Opt into search_tools discovery. Product callers pass the persisted setting (default on). */
+  /** Opt into API search_tools discovery. CLI MCP schemas always use stable discovery/call tools. */
   lazyTools?: boolean;
   /** Schemas to expose immediately when lazy discovery is enabled, if present in the catalog. */
   alwaysLoadedToolNames?: string[];

@@ -204,8 +204,10 @@ describe('applyCodeLaunchOptions', () => {
       const input = document.getElementById('msgInput') as HTMLTextAreaElement;
       const composerValues: string[] = [];
       input.addEventListener('input', () => composerValues.push(input.value));
+      window.location.hash = '#/app/issues';
       const result = await runIssueForegroundChat(issue.id, 'build');
       assert.equal(result.ok, true);
+      assert.equal(window.location.hash, '#/app/issues', 'Send to chat must keep the Issues app foregrounded');
       const { getActiveChat } = await import('../../src/state/sessions.ts');
       const message = getActiveChat().history.find((row) => row.role === 'user');
       assert.equal(message?.role, 'user');

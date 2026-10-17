@@ -95,7 +95,7 @@ async function startNewIssueChat(issueId: string): Promise<void> {
     toast(result.error || 'Send to chat failed', 'error');
     return;
   }
-  toast('General chat opened', 'success');
+  toast('General chat started in Code', 'success');
   refreshOpenPeek();
 }
 

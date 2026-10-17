@@ -1877,11 +1877,11 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         }
         if (modeId === 'plan') {
           showIssuesToast(
-            result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat opened',
+            result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat started in Code',
             'success',
           );
         } else {
-          showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat opened`, 'success');
+          showIssuesToast(`${getMode(modeId as IssueForegroundChatMode).label} chat started in Code`, 'success');
         }
         return;
       }
