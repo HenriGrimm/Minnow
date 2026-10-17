@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-agent-packs.css';
 import {
@@ -94,7 +96,6 @@ function buildPackRow(
             setStatus('err', 'Could not update pack (Minnow must be running)');
             return;
           }
-          setStatus('ok', `Pack "${pack.label}" ${enabled ? 'enabled' : 'disabled'}`);
           onChange();
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Update failed';
@@ -231,7 +232,7 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
             void (async () => {
               const result = await downloadAgentPackTemplate();
               if (result === true) {
-                setStatus('ok', 'Agent pack template downloaded');
+                showToast('Agent pack template downloaded');
                 return;
               }
               setStatus('err', result.message);
@@ -245,7 +246,7 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
             void (async () => {
               const result = await downloadBuiltinAgentPack();
               if (result === true) {
-                setStatus('ok', 'Default Minnow agent pack downloaded');
+                showToast('Default Minnow agent pack downloaded');
                 return;
               }
               setStatus('err', result.message);
@@ -304,8 +305,7 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
     uploadInput.value = '';
     if (!file) return;
 
-    void (async () => {
-      setStatus('spin', `Installing ${file.name}…`);
+    void runSettingsAction(authorBody.querySelector('button'), `Installing ${file.name}…`, async () => {
       const result = await uploadAgentPackZip(file);
       if (result.ok === false) {
         setStatus('err', result.error);
@@ -313,18 +313,12 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
       }
       const { pack, filesWritten } = result;
       if (pack.valid) {
-        setStatus(
-          'ok',
-          `Installed "${pack.label}" (${filesWritten} files). Enable it in Installed packs when ready.`,
-        );
+        showToast(`Installed "${pack.label}" (${filesWritten} files). Enable it in Installed packs when ready.`);
       } else {
-        setStatus(
-          'ok',
-          `Installed "${pack.label}" with validation issues — fix the listed errors before enabling.`,
-        );
+        showToast(`Installed "${pack.label}" with validation issues — fix the listed errors before enabling.`);
       }
       refreshPackList?.();
-    })();
+    });
   });
 
   if (!isLocalServerAvailable()) {
@@ -390,7 +384,6 @@ export async function renderAgentPacksSettingsSection(content: HTMLElement): Pro
           label: 'Refresh pack list',
           onClick: () => {
             void renderList();
-            setStatus('ok', 'Agent pack list refreshed');
           },
         },
       ],

@@ -324,7 +324,6 @@ function bindStaticSections(): void {
           (t as HTMLButtonElement).dataset.profileTab === profile,
         ),
       );
-      setStatus('ok', `Prompt profile: ${profile}`);
       await refreshSettingsSection('agent-center');
       schedulePromptTokenEstimateRefresh();
     });

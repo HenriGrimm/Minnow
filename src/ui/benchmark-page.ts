@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import '../styles/benchmark-page.css';
 import '../styles/transcript-view.css';
 import '../styles/sub-agent-drawer.css';
@@ -1378,7 +1379,7 @@ function onCampaignProgress(event: CampaignProgressEvent): void {
     }
     finishLiveRunUI();
     void refreshHistorySelect();
-    setStatus('ok', `Benchmark finished · ${event.campaign.targets.length} models`);
+    showToast(`Benchmark finished · ${event.campaign.targets.length} models`);
     return;
   }
   if (event.type === 'campaign-cancelled') {
@@ -1618,7 +1619,7 @@ async function onClearHistoryClick(): Promise<void> {
   }
   updateBackToCurrentControl();
   await refreshHistorySelect();
-  setStatus('ok', 'Benchmark history cleared.');
+  showToast('Benchmark history cleared.');
 }
 
 /** Load a saved run into the main panel for viewing. */
@@ -1847,7 +1848,7 @@ async function executeLegacyBenchmarkRun(options: {
     renderSuites(run);
     await refreshHistorySelect();
     if (generation !== benchmarkRunGeneration) return;
-    setStatus('ok', `Benchmark done · ${formatScore(run.totalScore)}`);
+    showToast(`Benchmark done · ${formatScore(run.totalScore)}`);
   } catch (err) {
     if (generation !== benchmarkRunGeneration) return;
     const aborted = runSignal.aborted;

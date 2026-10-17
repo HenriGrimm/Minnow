@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import type { TestResult } from '../benchmark/types.ts';
 import { SUITE_LABELS } from './benchmark-transcript-labels.ts';
 import {
@@ -219,7 +220,7 @@ export function openBenchmarkTranscriptDrawer(
       suiteLabel: openLayer.suiteLabel,
     });
     void navigator.clipboard.writeText(text).then(
-      () => setStatus('ok', 'Transcript copied'),
+      () => showToast('Transcript copied'),
       () => setStatus('err', 'Could not copy transcript'),
     );
   });

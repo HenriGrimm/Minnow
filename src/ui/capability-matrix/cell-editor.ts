@@ -119,7 +119,9 @@ export function mountCapabilityCellEditor(
   saveBtn.addEventListener('click', () => {
     void (async () => {
       try {
-        setStatus('spin', 'Saving verdict…');
+        saveBtn.disabled = true;
+        saveBtn.setAttribute('aria-busy', 'true');
+        saveBtn.textContent = 'Saving verdict…';
         await upsertManualVerdict({
           targetKey: cell.targetKey,
           capabilityId: cell.capabilityId,
@@ -131,6 +133,10 @@ export function mountCapabilityCellEditor(
         await onSaved();
       } catch (err) {
         setStatus('err', err instanceof Error ? err.message : 'Save failed');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.removeAttribute('aria-busy');
+        saveBtn.textContent = 'Save manual verdict';
       }
     })();
   });

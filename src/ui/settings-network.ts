@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { detectConfigServer } from '../config/storage-mode';
 import {
   fetchNetworkStatus,
@@ -73,7 +74,7 @@ function renderLanUrls(mount: HTMLElement, urls: string[]): void {
     copyBtn.type = 'button';
     copyBtn.addEventListener('click', () => {
       void navigator.clipboard.writeText(url).then(
-        () => setStatus('ok', 'Link copied'),
+        () => showToast('Link copied'),
         () => setStatus('err', 'Could not copy link'),
       );
     });
@@ -181,7 +182,7 @@ export async function renderNetworkAccessSettings(mount: HTMLElement): Promise<v
         }
         restartEl.hidden = false;
       }
-      setStatus('ok', 'Network access saved — restart required to apply');
+      showToast('Network access saved — restart required to apply');
     } catch {
       selectedMode = prev;
       setActiveSegment(segmentGroup, prev);

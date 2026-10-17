@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import {
   computeUserRulesTotalBytes,
   createUserRuleGroup,
@@ -28,7 +29,7 @@ import {
   saveReplayPriorReasoningEnabled,
 } from '../chat/context/reasoning-replay-config';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 function rulePreview(title: string, text: string, max = 120): string | null {
   const trimmed = text.trim().replace(/\s+/g, ' ');
@@ -52,12 +53,7 @@ async function persistRules(
   try {
     await saveUserRules(settings);
     const mode = await detectConfigServer();
-    setStatus(
-      'ok',
-      mode === 'server'
-        ? okMessage
-        : 'Saved locally — open Minnow to persist to disk',
-    );
+    if (mode !== 'server') showToast('Saved locally — open Minnow to persist to disk');
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Save failed';
@@ -382,7 +378,6 @@ async function renderReasoningReplaySection(
           setStatus('err', 'Could not save reasoning replay setting');
           return;
         }
-        setStatus('ok', 'Reasoning replay saved');
       })();
     },
   });

@@ -1,105 +1,43 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, mock, test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
-const { setStatus, setReadyStatus } = await import('../../src/ui/status.ts');
+const { setStatus, setReadyStatus, clearStaleGenerationStatus } = await import('../../src/ui/status.ts');
+let dom;
+beforeEach(() => {
+  dom = new Window();
+  globalThis.window = dom;
+  globalThis.document = dom.document;
+  globalThis.HTMLElement = dom.HTMLElement;
+  globalThis.requestAnimationFrame = (cb) => { cb(0); return 0; };
+});
+afterEach(() => dom.close());
 
-function setupDom() {
-  const window = new Window();
-  globalThis.window = window;
-  globalThis.document = window.document;
-  globalThis.HTMLElement = window.HTMLElement;
-
-  document.body.innerHTML = `
-    <div class="status-pill">
-      <div class="s-dot" id="sDot"></div>
-      <span id="sText"></span>
-    </div>
-    <div class="mn-os-mb-status status-pill">
-      <div class="s-dot" id="osStatusDot"></div>
-      <span id="osStatusText"></span>
-    </div>
-  `;
-  return window;
-}
-
-describe('status', () => {
-  afterEach(() => {
-    document.body.replaceChildren();
-    mock.restoreAll();
-  });
-
-  test('setStatus updates legacy topbar and OS menubar pills', () => {
-    setupDom();
-    setStatus('spin', 'Loading models…');
-
-    const sDot = document.getElementById('sDot');
-    const sText = document.getElementById('sText');
-    const osDot = document.getElementById('osStatusDot');
-    const osText = document.getElementById('osStatusText');
-
-    assert.equal(sDot?.className, 's-dot spin');
-    assert.equal(sText?.textContent, 'Loading models…');
-    assert.equal(osDot?.className, 's-dot spin');
-    assert.equal(osText?.textContent, 'Loading models…');
-  });
-
-  test('setStatus sets title on long non-error messages for both pills', () => {
-    setupDom();
-    const longMsg = 'Loading models from every configured provider right now…';
-    setStatus('spin', longMsg);
-
-    assert.equal(document.getElementById('sText')?.getAttribute('title'), longMsg);
-    assert.equal(document.getElementById('osStatusText')?.getAttribute('title'), longMsg);
-  });
-
-  test('setStatus marks errors copyable with click-to-copy title hint', () => {
-    setupDom();
-    const longMsg = 'Cannot reach one or more providers. Check Settings → Providers.';
-    setStatus('err', longMsg);
-
-    const osText = document.getElementById('osStatusText');
-    const sText = document.getElementById('sText');
-    assert.ok(osText?.classList.contains('status-pill__text--copyable'));
-    assert.ok(sText?.classList.contains('status-pill__text--copyable'));
-    assert.equal(osText?.getAttribute('role'), 'button');
-    assert.equal(osText?.getAttribute('title'), `${longMsg} (click to copy)`);
-    assert.equal(sText?.getAttribute('title'), `${longMsg} (click to copy)`);
-  });
-
-  test('clicking an error status copies the full message', async () => {
-    const win = setupDom();
-    const errMsg = 'Cannot reach one or more providers. Check Settings → Providers.';
-    let copied = '';
-    Object.defineProperty(globalThis.navigator, 'clipboard', {
-      configurable: true,
-      value: {
-        writeText: async (text) => {
-          copied = text;
-        },
-      },
-    });
-
-    setStatus('err', errMsg);
-    document.getElementById('osStatusText')?.dispatchEvent(new win.Event('click'));
-
-    // Clipboard write is async; yield a tick for the promise.
-    await Promise.resolve();
-    assert.equal(copied, errMsg);
-  });
-
-  test('setReadyStatus marks both pills ok and clears copyable affordance', () => {
-    setupDom();
-    setStatus('err', 'Something failed');
+describe('header-free status routing', () => {
+  test('idle, routine success, readiness and progress are silent', () => {
+    for (const [state, message] of [['idle', ''], ['ok', 'Ready'], ['ok', 'Saved'], ['spin', 'Generating reply…']]) {
+      setStatus(state, message);
+    }
     setReadyStatus();
-
-    assert.equal(document.getElementById('sDot')?.className, 's-dot ok');
-    assert.equal(document.getElementById('osStatusDot')?.className, 's-dot ok');
-    assert.equal(document.getElementById('sText')?.textContent, 'Ready');
-    assert.equal(document.getElementById('osStatusText')?.textContent, 'Ready');
-    assert.equal(
-      document.getElementById('osStatusText')?.classList.contains('status-pill__text--copyable'),
-      false,
-    );
+    clearStaleGenerationStatus(false);
+    assert.equal(document.querySelector('.mn-toast'), null);
+  });
+  test('both legacy error spellings produce persistent deduplicated error toasts', () => {
+    setStatus('err', 'Could not save');
+    setStatus('error', 'Could not save');
+    setReadyStatus();
+    assert.equal(document.querySelectorAll('.mn-toast--error').length, 1);
+    assert.equal(document.querySelector('.mn-toast__message').textContent, 'Could not save');
+    assert.equal(document.querySelector('[role="alert"]').getAttribute('aria-live'), 'assertive');
+    assert.equal(document.querySelector('.mn-toast__count').textContent, '×2');
+    document.querySelector('.mn-toast__dismiss').click();
+    assert.equal(document.querySelector('.mn-toast'), null);
+  });
+  test('neither header constructs a status text or dot', () => {
+    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+    const menubar = readFileSync(new URL('../../src/os/menubar.ts', import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /id="(?:sDot|sText)"/);
+    assert.doesNotMatch(menubar, /osStatusDot|osStatusText|statusPill|statusSep/);
   });
 });

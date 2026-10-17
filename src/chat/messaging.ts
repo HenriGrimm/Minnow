@@ -1,3 +1,4 @@
+import { showToast } from '../ui/toast';
 import type { Attachment } from '../attachments/types';
 import {
   getAttachmentEpoch,
@@ -302,7 +303,7 @@ export async function sendMessageWithTools(
   // A selected file is already visible but is not usable until extraction finishes.
   // Keep both the text and the queue intact so a send cannot clear and cancel the read.
   if (getPendingAttachments().some((attachment) => attachment.pendingRead)) {
-    setStatus('spin', 'Still reading attached files. Wait for them to finish or remove them.');
+    showToast('Still reading attached files. Wait for them to finish or remove them.');
     return;
   }
   const rawTextEarly = input.value.trim();
@@ -311,7 +312,7 @@ export async function sendMessageWithTools(
     try {
       await dispatchPluginSlashCommand(rawTextEarly, { chatId: chat.id, workspacePath: chat.workspacePath ?? getWorkspacePath() });
       if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) clearComposerAfterSend(chat, input);
-      setStatus('ok', 'Plugin command complete');
+      showToast('Plugin command complete');
     } catch (error) {
       setStatus('err', error instanceof Error ? error.message : String(error));
     }
@@ -336,9 +337,7 @@ export async function sendMessageWithTools(
     const chat = getActiveChat();
     if (enqueueComposerMessage(chat, rawTextEarly)) {
       clearComposerAfterSend(chat, input);
-      setStatus(
-        'ok',
-        parseCompactSlashInput(rawTextEarly)
+      showToast(parseCompactSlashInput(rawTextEarly)
           ? 'Compaction queued for after this reply'
           : 'Follow-up queued',
       );
@@ -349,7 +348,7 @@ export async function sendMessageWithTools(
   }
   if (isChatTurnSetupPending(getActiveChat().id)) return;
   if (isBackgroundStreamBlockingSend()) {
-    setStatus('spin', 'Stop or wait for the reply in the other chat first');
+    showToast('Stop or wait for the reply in the other chat first');
     return;
   }
   const rawText = input.value.trim();

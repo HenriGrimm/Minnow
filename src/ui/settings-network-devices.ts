@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { toCanvas } from 'qrcode';
 import {
   createPairing,
@@ -118,7 +119,7 @@ export function renderCompanionDevices(mount: HTMLElement, lanActive: boolean): 
         if (paired) {
           knownDeviceIds.add(paired.id);
           stopPairingPoll();
-          setStatus('ok', `${paired.name} paired`);
+          showToast(`${paired.name} paired`);
         }
       } catch {
         listState.hidden = false;
@@ -164,7 +165,6 @@ export function renderCompanionDevices(mount: HTMLElement, lanActive: boolean): 
       try {
         await revokeCompanionDevice(device.id);
         await refreshDevices();
-        setStatus('ok', `${device.name} revoked`);
       } catch {
         revoke.disabled = false;
         setStatus('err', `Could not revoke ${device.name}`);
@@ -205,14 +205,13 @@ export function renderCompanionDevices(mount: HTMLElement, lanActive: boolean): 
       copyCodeButton.onclick = async () => {
         try {
           await navigator.clipboard.writeText(pairing.code);
-          setStatus('ok', 'Pairing code copied');
+          showToast('Pairing code copied');
         } catch {
           setStatus('err', 'Could not copy pairing code');
         }
       };
       qrRegion.hidden = false;
       startPairingPoll(pairing.expiresAt);
-      setStatus('ok', 'Pairing QR ready');
     } catch {
       qrRegion.hidden = true;
       setStatus('err', 'Could not create pairing QR');

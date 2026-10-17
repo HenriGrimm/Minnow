@@ -143,7 +143,6 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
         input.value === 'side' ? 'side' : input.value === 'popout' ? 'popout' : 'bottom';
       patchFilePanelState({ previewDevToolsDock: dock });
       void syncPreviewDevToolsDockToHost();
-      setStatus('ok', `DevTools dock: ${dock}`);
     });
   }
 
@@ -182,7 +181,6 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
         lastSavedPatterns = patterns;
         invalidateBrowserMetaCache();
         await loadBrowserMeta();
-        setStatus('ok', 'Browser settings saved');
       } catch {
         setStatus('err', 'Could not save browser settings');
       }
@@ -193,7 +191,6 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
     void (async () => {
       try {
         await saveBrowserMeta({ allowNavigate: allowNavCb.checked });
-        setStatus('ok', 'Browser navigation setting saved');
       } catch {
         setStatus('err', 'Could not save browser settings');
         allowNavCb.checked = !allowNavCb.checked;
@@ -205,7 +202,6 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
     void (async () => {
       try {
         await saveBrowserMeta({ restoreBrowserTabs: restoreTabsCb.checked });
-        setStatus('ok', 'Browser tab restore setting saved');
       } catch {
         setStatus('err', 'Could not save browser settings');
         restoreTabsCb.checked = !restoreTabsCb.checked;

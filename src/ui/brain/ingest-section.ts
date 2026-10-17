@@ -1,8 +1,9 @@
+import { runSettingsAction } from '../settings-controls';
 import { ingestBrainSource } from '../../brain/client';
 
 let bindingsDone = false;
 
-function setIngestStatus(kind: 'ok' | 'err' | 'spin', message: string): void {
+function setIngestStatus(kind: 'idle' | 'ok' | 'err' | 'spin', message: string): void {
   const el = document.getElementById('brainIngestStatus');
   if (!el) return;
   el.textContent = message;
@@ -14,7 +15,7 @@ function bindIngestSection(): void {
   bindingsDone = true;
 
   document.getElementById('brainIngestSubmit')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainIngestSubmit'), 'Ingesting…', async () => {
       const titleEl = document.getElementById('brainIngestTitle') as HTMLInputElement | null;
       const fileEl = document.getElementById('brainIngestFilename') as HTMLInputElement | null;
       const bodyEl = document.getElementById('brainIngestBody') as HTMLTextAreaElement | null;
@@ -26,8 +27,6 @@ function bindIngestSection(): void {
         setIngestStatus('err', 'Paste source content first.');
         return;
       }
-
-      setIngestStatus('spin', 'Ingesting…');
       resultEl.replaceChildren();
 
       const result = await ingestBrainSource({
@@ -41,7 +40,7 @@ function bindIngestSection(): void {
         return;
       }
 
-      setIngestStatus('ok', `Created or updated ${result.pages.length} page(s).`);
+      setIngestStatus('idle', `Created or updated ${result.pages.length} page(s).`);
       const list = document.createElement('ul');
       list.className = 'brain-ingest-result';
       for (const path of result.pages) {
@@ -63,7 +62,7 @@ function bindIngestSection(): void {
       source.className = 'brain-muted';
       source.textContent = `Stored source: ${result.sourcePath}`;
       resultEl.append(source, list);
-    })();
+    });
   });
 }
 

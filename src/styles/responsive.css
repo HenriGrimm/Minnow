@@ -50,11 +50,6 @@
     min-width: 0;
   }
 
-  .status-pill {
-    font-size: 11px;
-    gap: 6px;
-  }
-
   .chat-area,
   .board-init-split__chat {
     padding: 16px 12px;

@@ -1425,7 +1425,6 @@ function renderInferenceTab(model: LibraryModel, body: HTMLElement): void {
     })
       .then(() => {
         if (samplerDrafts.get(model.id) === patch) samplerDrafts.delete(model.id);
-        setStatus('ok', 'Sampling settings saved');
       })
       .catch((err: unknown) => {
         setStatus('err', err instanceof Error ? err.message : 'Could not save sampling settings');

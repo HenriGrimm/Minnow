@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { isChatStreaming } from '../chat/streaming-state';
 import { formatHistoryWithSkillTag } from '../skills/parse-slash';
 import { gitLog, gitStage } from '../state/git-api';
@@ -12,6 +13,7 @@ import {
 import { buildHistoryUserContent } from '../chat/build-api-messages';
 import { runChatTurn } from '../chat/run-turn-chat';
 import { setStatus } from './status';
+import { runSettingsAction } from './settings-controls';
 import { findPrimaryTurnChangesCard } from './chat-turn-changes';
 
 const GIT_COMMIT_SKILL_ID = 'git-commit';
@@ -88,10 +90,12 @@ function setButtonsBusy(on: boolean): void {
   if (commitBtn) {
     commitBtn.disabled = on;
     commitBtn.setAttribute('aria-disabled', on ? 'true' : 'false');
+    commitBtn.setAttribute('aria-busy', on ? 'true' : 'false');
   }
   if (prBtn) {
     prBtn.disabled = on;
     prBtn.setAttribute('aria-disabled', on ? 'true' : 'false');
+    prBtn.setAttribute('aria-busy', on ? 'true' : 'false');
   }
 }
 
@@ -220,7 +224,7 @@ async function runSkillTurn(
 async function onCommitClick(): Promise<void> {
   const chat = getActiveChat();
   if (busy || isChatStreaming(chat.id)) {
-    setStatus('spin', 'Wait for the current turn to finish');
+    showToast('Wait for the current turn to finish');
     return;
   }
   if (chat.codeChangeShipHandled) return;
@@ -268,7 +272,7 @@ async function onCommitClick(): Promise<void> {
       (headBefore && headAfter && headBefore !== headAfter);
     if (committed) {
       markShipHandled(chat);
-      setStatus('ok', 'Committed chat changes');
+      showToast('Committed chat changes');
     } else {
       setStatus('err', 'Commit did not complete — check the assistant reply');
     }
@@ -283,7 +287,7 @@ async function onCommitClick(): Promise<void> {
 async function onCreatePrClick(): Promise<void> {
   const chat = getActiveChat();
   if (busy || isChatStreaming(chat.id)) {
-    setStatus('spin', 'Wait for the current turn to finish');
+    showToast('Wait for the current turn to finish');
     return;
   }
   if (chat.codeChangeShipHandled) return;
@@ -305,7 +309,7 @@ async function onCreatePrClick(): Promise<void> {
     const { historyStart } = await runSkillTurn(chat, CREATE_PR_SKILL_ID, userText);
     if (historyHasSuccessfulPr(chat, historyStart)) {
       markShipHandled(chat);
-      setStatus('ok', 'Pull request created');
+      showToast('Pull request created');
     } else {
       setStatus('err', 'PR was not created — check the assistant reply');
     }
@@ -323,8 +327,8 @@ function wireActionButtons(): void {
   if (commit.dataset.stripActionBound === '1') return;
   commit.dataset.stripActionBound = '1';
   pr.dataset.stripActionBound = '1';
-  commit.addEventListener('click', () => void onCommitClick());
-  pr.addEventListener('click', () => void onCreatePrClick());
+  commit.addEventListener('click', () => void runSettingsAction(commit, 'Committing…', onCommitClick));
+  pr.addEventListener('click', () => void runSettingsAction(pr, 'Creating PR…', onCreatePrClick));
 }
 
 /** Show Commit / Create PR when the primary turn card exists, git is available, and not yet shipped. */

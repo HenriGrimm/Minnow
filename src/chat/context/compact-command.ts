@@ -1,3 +1,4 @@
+import { showToast } from '../../ui/toast';
 import { resolveChatContextBudget } from './chat-context-budget';
 import { resolveContextLimit } from '../context-usage';
 import { renderChatFromHistory } from '../../ui/messages';
@@ -97,6 +98,6 @@ export async function handleCompactCommand(
   }
   scheduleSaveSessions();
   if (getActiveChat()?.id === chat.id) renderChatFromHistory(getActiveChat());
-  setStatus('ok', result.status);
+  showToast(result.status);
   return 'handled';
 }

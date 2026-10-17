@@ -20,6 +20,7 @@ import { ariaSortValue as libraryAriaSortValue } from '../../models/library-sort
 import type { ServeRecord } from '../../models/api-client';
 import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { setStatus } from '../status';
+import { showToast } from '../toast';
 import { appConfirm } from '../app-dialog';
 import {
   el,
@@ -327,7 +328,7 @@ function renderRowActions(model: LibraryModel): HTMLElement {
         });
         if (!confirmed) return;
         await deleteModel(model);
-        setStatus('ok', 'Model deleted');
+        showToast('Model deleted');
       } catch (err) {
         setStatus('err', err instanceof Error ? err.message : 'Delete failed');
       } finally {

@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { applyModelSelectValueToChat } from '../lib/model-select-key';
 import { isChatStreaming } from '../chat/streaming-state';
 import { stopGeneration } from '../chat/stop-generation';
@@ -9,7 +10,6 @@ import {
 } from '../state/sessions';
 import { syncComposerModelTriggers } from './composer-model-trigger';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
-import { setStatus } from './status';
 import { syncAgentCliView } from './agent-cli-view';
 import {
   applyModelReasoningDefaultToChat,
@@ -32,7 +32,7 @@ export function onActiveChatModelChange(selectValue: string): void {
 
   if (isChatStreaming(chat.id)) {
     stopGeneration(chat.id, 'user');
-    setStatus('ok', 'Stopped — model changed');
+    showToast('Stopped — model changed');
   }
 
   applyModelSelectValueToChat(chat, raw);

@@ -156,7 +156,6 @@ async function saveAdvanced(
       else chat.thinkingMode = mode;
       touchChat(chat);
       scheduleSaveSessions();
-      setStatus('ok', 'Main chat thinking updated');
       if (refresh) void refreshModelRoutingSectionMount();
       break;
     }
@@ -174,7 +173,7 @@ async function saveAdvanced(
           : {}),
       });
       setStatus(
-        agent ? 'ok' : 'err',
+        agent ? 'idle' : 'err',
         agent ? `${row.label} advanced settings updated` : 'Save failed',
       );
       if (agent && refresh) void refreshModelRoutingSectionMount();
@@ -206,7 +205,7 @@ async function saveAdvanced(
           },
         },
       });
-      setStatus(ok ? 'ok' : 'err', ok ? `${row.label} advanced settings updated` : 'Save failed');
+      setStatus(ok ? 'idle' : 'err', ok ? `${row.label} advanced settings updated` : 'Save failed');
       if (ok && refresh) void refreshModelRoutingSectionMount();
       break;
     }
@@ -355,7 +354,6 @@ function wireRoutingRowAutoSave(controls: RowControls): void {
     controls.fallbackEditor.onCandidatesChange = () => {
       if (hydrating) return;
       void saveRowFallbackChain(controls.fallbackEditor!);
-      setStatus('ok', 'Fallback chain updated');
     };
   }
 
@@ -424,7 +422,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
         setStatus('err', 'Could not save work agent binding');
         return;
       }
-      setStatus('ok', `${row.label} binding updated`);
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -445,7 +442,7 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
           },
         },
       });
-      setStatus(ok ? 'ok' : 'err', ok ? `${row.label} binding updated` : 'Save failed');
+      setStatus(ok ? 'idle' : 'err', ok ? `${row.label} binding updated` : 'Save failed');
       if (ok) {
         if (refresh) void refreshModelRoutingSectionMount();
         else syncRowBindingFromControls(controls);
@@ -458,7 +455,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
         modelId,
         fallbackToChatModel: fallbackCb?.checked !== false,
       });
-      setStatus('ok', 'UI Designer binding updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -468,7 +464,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
       await saveTitlesConfig({
         enabled: enabledCb?.checked !== false,
       });
-      setStatus('ok', 'Utility model updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -478,7 +473,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
         providerId,
         modelId,
       });
-      setStatus('ok', 'Goal evaluator binding updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -491,7 +485,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
           ? { useChatModel: true, providerId: '', modelId: '' }
           : { useChatModel: false, providerId, modelId },
       );
-      setStatus('ok', 'Editor completion binding updated');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -503,7 +496,6 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
       chat.modelId = modelId || chat.modelId;
       touchChat(chat);
       scheduleSaveSessions();
-      setStatus('ok', 'Main chat model updated for active session');
       if (refresh) void refreshModelRoutingSectionMount();
       else syncRowBindingFromControls(controls);
       break;
@@ -708,7 +700,6 @@ async function saveGlobalFallbackSettings(): Promise<void> {
     cooldownSeconds: Number(globalFallbackCooldownInput?.value ?? config.cooldownSeconds),
     roles: rolesPatch,
   });
-  setStatus('ok', 'Fallback settings updated');
   if (globalFallbackHealthHost) {
     void refreshHostHealthPanel(globalFallbackHealthHost);
   }
@@ -1177,7 +1168,6 @@ export async function mountStandaloneRoutingEditor(
           setStatus('err', 'Could not reset agent model binding');
           return;
         }
-        setStatus('ok', `${row.label} now uses the current chat model`);
         await mountStandaloneRoutingEditor(container, rowId);
         container.querySelector<HTMLButtonElement>('.settings-routing-reset')?.focus();
       } catch (err) {
