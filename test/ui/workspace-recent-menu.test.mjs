@@ -124,4 +124,28 @@ describe('workspace-recent-menu', { concurrency: false }, () => {
     assert.equal(btn.getAttribute('aria-expanded'), 'false');
     closeWorkspaceMenu();
   });
+
+  test('pointerdown on the folder-name label keeps the menu open; outside closes it', async () => {
+    setupDom();
+    const control = document.createElement('div');
+    control.className = 'workspace-control';
+    const btn = document.createElement('button');
+    btn.id = 'btnWorkspace';
+    const label = document.createElement('span');
+    label.id = 'workspacePathLabel';
+    label.textContent = 'current';
+    control.append(btn, label);
+    const outside = document.createElement('div');
+    document.body.append(control, outside);
+
+    await toggleWorkspaceMenu(btn);
+    assert.equal(isWorkspaceMenuOpen(), true);
+
+    const winView = document.defaultView;
+    label.dispatchEvent(new winView.PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(isWorkspaceMenuOpen(), true, 'label press is handled by the control click');
+
+    outside.dispatchEvent(new winView.PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(isWorkspaceMenuOpen(), false);
+  });
 });

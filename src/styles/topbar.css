@@ -261,6 +261,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  cursor: pointer;
+}
+
+.workspace-path-label:hover {
+  color: var(--mn-fg);
 }
 
 .workspace-btn .icon-svg {
