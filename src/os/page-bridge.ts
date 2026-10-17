@@ -13,10 +13,13 @@ export function isOsShellEnabled(): boolean {
   return true;
 }
 
-/** Whether the hash belongs to the Minnow Shell (workspace gate or foreground app). */
+/** Whether the hash belongs to the Minnow Shell, including its Wiki overlay. */
 export function isOsAppHash(hash?: string): boolean {
   const h = hash ?? window.location.hash;
-  return h === '#/workspaces' || h === '#/desktop' || h.startsWith('#/app/');
+  // Legacy page listeners must not close their app (and navigate away) when
+  // the Wiki opens over it. The OS router leaves these routes to the overlay.
+  return h === '#/workspaces' || h === '#/desktop' || h.startsWith('#/app/') ||
+    h === '#/wiki' || h.startsWith('#/wiki/');
 }
 
 /** Settings embedded in the OS apps layer (not legacy full-page swap). */

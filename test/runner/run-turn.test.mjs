@@ -340,7 +340,62 @@ test('CLI turns keep the permitted catalog stable across tool rounds and refresh
     assert.deepEqual(executed, ['git_log']);
     const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
     assert.equal(requests.length, 2);
-    for (const request of requests) assert.deepEqual(request.body.tools.map(t => t.function.name), ['git_log']);
+    for (const request of requests) assert.deepEqual(request.body.tools.map(t => t.function.name),
+      ['git_log', 'search_mcp_tools', 'call_mcp_tool']);
+  });
+});
+
+test('CLI MCP discovery and invocation keep schemas fixed and dispatch through the original executor', async () => {
+  const mcp = { type: 'function', function: { name: 'mcp__resend__list_domains', description: 'Find email domains',
+    parameters: { type: 'object', properties: { limit: { type: 'integer' } } } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('search_mcp_tools', { query: 'email domains', limit: 1 }, 'find') },
+    { match: { nth: 1 }, emit: functionCallChunks('call_mcp_tool', { name: mcp.function.name, arguments: { limit: 2 } }, 'invoke') },
+    { match: { nth: 2 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const deps = stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch });
+    const provider = await deps.resolveProvider();
+    deps.resolveProvider = async () => ({ ...provider, apiKind: 'agent-cli-v1' });
+    const executed = [];
+    const result = await runTurn({ chatId: CHAT_UUID, seed: 'Find email domains', tools: [mcp], lazyTools: true,
+      refreshRoundConfig: async () => ({ systemPrompt: 'Find email domains', tools: [mcp] }),
+      limits: { maxTurns: 4 }, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' }, deps,
+      execute: async (name, args, ctx) => { executed.push({ name, args, ctx }); return { content: 'Error: permission denied' }; },
+    });
+    assert.equal(result.outcome, 'no_report');
+    assert.deepEqual(executed, [{ name: mcp.function.name, args: { limit: 2 }, ctx: { toolCallId: 'invoke', chatId: CHAT_UUID, cwd: undefined } }]);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.deepEqual(request.body.tools.map(t => t.function.name), ['search_mcp_tools', 'call_mcp_tool']);
+      assert.deepEqual(request.body.tools, requests[0].body.tools);
+    }
+    assert.deepEqual(JSON.parse(requests[1].body.messages.find(row => row.tool_call_id === 'find').content).tools, [mcp.function]);
+    assert.equal(requests[2].body.messages.find(row => row.tool_call_id === 'invoke').content, 'Error: permission denied');
+  });
+});
+
+test('CLI MCP calls reject removed and direct tools without executing them', async () => {
+  const mcp = { type: 'function', function: { name: 'mcp__docs__read', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: functionCallChunks('search_mcp_tools', { query: mcp.function.name }, 'find') },
+    { match: { nth: 1 }, emit: functionCallChunks('call_mcp_tool', { name: mcp.function.name, arguments: {} }, 'removed') },
+    { match: { nth: 2 }, emit: functionCallChunks(mcp.function.name, {}, 'direct') },
+    { match: { nth: 3 }, emit: proseSseChunks('Unavailable.') },
+  ], async (baseUrl, fake) => {
+    const deps = stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch });
+    const provider = await deps.resolveProvider();
+    deps.resolveProvider = async () => ({ ...provider, apiKind: 'agent-cli-v1' });
+    let refreshes = 0;
+    await runTurn({ chatId: CHAT_UUID, seed: 'Read docs', tools: [mcp],
+      refreshRoundConfig: async () => ({ systemPrompt: 'Read docs', tools: ++refreshes <= 1 ? [mcp] : [] }),
+      limits: { maxTurns: 5 }, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fake-model' }, deps,
+      execute: async () => { assert.fail('Unavailable tools must not execute'); },
+    });
+    const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
+    for (const id of ['removed', 'direct']) assert.match(last.body.messages.find(row => row.tool_call_id === id).content, /^Error:/);
   });
 });
 

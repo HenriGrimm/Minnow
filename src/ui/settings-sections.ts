@@ -229,7 +229,7 @@ async function appendTerminalControls(mount: HTMLElement): Promise<void> {
         description:
           wslProfiles.length > 0
             ? 'Used for new terminal tabs and agent execute_command. Pick Git Bash or a WSL distro for Unix tooling, or PowerShell / Command Prompt for native Windows.'
-            : 'Used for new terminal tabs and agent execute_command. On Windows, Git Bash appears when Git for Windows is installed.',
+            : 'Used by + for new terminal tabs and by agent execute_command. The terminal arrow opens a one-off shell without changing this default.',
       },
     );
     mount.appendChild(shellRow);

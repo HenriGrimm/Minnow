@@ -14,6 +14,7 @@ import { getOsView, subscribeInstances } from './instances';
 import { launchApp } from './router';
 import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
+import { openShellOverlay, shellOverlayClosed } from '../ui/shell-overlay-state';
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ function showGateElement(): void {
 }
 
 function hideGateElement(): void {
+  shellOverlayClosed('workspace');
   const gate = getGateRoot();
   const welcome = getWelcomeRoot();
   gateOpen = false;
@@ -124,6 +126,7 @@ function hideGateElement(): void {
  */
 export function openWorkspaceGate(options?: { switch?: boolean }): void {
   if (!isOsShellEnabled()) return;
+  if (options?.switch) openShellOverlay('workspace', closeWorkspaceGate);
   mountWorkspaceGateDom();
   showGateElement();
   void import('../ui/welcome-page').then((m) => {
@@ -300,6 +303,7 @@ export function initWorkspaceGate(): void {
 
 /** Reset module state (tests). */
 export function resetWorkspaceGateForTests(): void {
+  shellOverlayClosed('workspace');
   gateOpen = false;
   gateMounted = false;
   holdGateUntilAppReady = false;

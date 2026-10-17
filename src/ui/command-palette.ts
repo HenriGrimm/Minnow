@@ -1,3 +1,4 @@
+import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import '../styles/command-palette.css';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { commandCategory, listCommands, type Command, type CommandCategory } from './command-registry';
@@ -24,6 +25,8 @@ export interface CommandPaletteOptions {
   listId?: string;
   /** Global search chrome; scoped palettes can retain their compact layout. */
   categories?: boolean;
+  /** Only the global palette participates in shell overlay coordination. */
+  shellOverlayId?: string;
 }
 
 const CATEGORIES = ['All', 'Chats', 'Code', 'Workspace', 'Models', 'Settings', 'Actions'] as const;
@@ -88,6 +91,7 @@ export function createCommandPalette(
   let category: typeof CATEGORIES[number] = 'All';
 
   const overlay = el('div', `${prefix}-overlay`);
+  if (options.shellOverlayId) overlay.dataset.shellPalette = options.shellOverlayId;
   overlay.hidden = true;
 
   const dialog = el('div', prefix);
@@ -330,6 +334,7 @@ export function createCommandPalette(
   function openPalette(): void {
     if (open) return;
     commands = options.getCommands();
+    if (options.shellOverlayId) openShellOverlay(options.shellOverlayId, close);
     open = true;
     registerChromePopover();
     const active = document.activeElement as HTMLElement | null;
@@ -345,6 +350,7 @@ export function createCommandPalette(
   function close(): void {
     if (!open) return;
     open = false;
+    if (options.shellOverlayId) shellOverlayClosed(options.shellOverlayId);
     unregisterChromePopover();
     overlay.hidden = true;
     input.value = '';
@@ -380,6 +386,7 @@ function ensureGlobalPalette(): CommandPaletteHandle {
     label: 'Search chats and commands',
     placeholder: 'Search chats and commands',
     categories: true,
+    shellOverlayId: 'search',
     classPrefix: 'mn-palette',
     listId: 'mnCommandPaletteList',
   });

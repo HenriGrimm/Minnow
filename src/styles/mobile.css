@@ -913,8 +913,7 @@ html.mn-phone .ov2__list {
 
 /* ---------- Code: terminal panel ---------- */
 
-/* Shell picker and panel actions share the first row; the tab strip (Agent,
-   each shell, +) gets the full second row instead of the 57px left beside them. */
+/* Worktree context and actions precede the full-width tab strip. */
 html.mn-phone .terminal-header {
   flex-wrap: wrap;
 }
@@ -926,9 +925,10 @@ html.mn-phone .terminal-header-shell {
   border-right: none;
 }
 
-html.mn-phone .terminal-header-shell .terminal-shell-select {
-  min-width: 0;
-  max-width: 100%;
+html.mn-phone .terminal-tab-add,
+html.mn-phone .terminal-tab-shell-menu {
+  width: var(--touch-min);
+  height: var(--touch-min);
 }
 
 html.mn-phone .terminal-header-actions {

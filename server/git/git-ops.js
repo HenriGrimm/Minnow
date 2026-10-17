@@ -683,6 +683,26 @@ export async function branches({ cwd } = {}) {
   return { ok: true, ...parsed };
 }
 
+/** Read the checkout's merge status against main (or master), without fetching. */
+export async function worktreeStatus({ cwd } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+  const snapshot = await status({ cwd: repo.cwd });
+  if (!snapshot.ok) return snapshot;
+  const dirty = [snapshot.staged, snapshot.unstaged, snapshot.untracked]
+    .some((files) => files?.length > 0);
+  for (const ref of ['refs/heads/main', 'refs/remotes/origin/main', 'refs/heads/master', 'refs/remotes/origin/master']) {
+    const target = await git(['rev-parse', '--verify', `${ref}^{commit}`], repo.cwd);
+    if (target.code !== 0) continue;
+    const ancestry = await git(['merge-base', '--is-ancestor', 'HEAD', target.stdout.trim()], repo.cwd);
+    if (ancestry.code !== 0 && ancestry.code !== 1) {
+      return { ok: false, error: processError(ancestry) };
+    }
+    return { ok: true, branch: snapshot.branch, trunk: ref.replace(/^refs\/(heads|remotes)\//, ''), merged: ancestry.code === 0, dirty };
+  }
+  return { ok: true, branch: snapshot.branch, dirty, merged: null, trunk: null };
+}
+
 const BRANCH_TREE_FIELD_SEP = '';
 
 /**

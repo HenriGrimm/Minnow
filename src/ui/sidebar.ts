@@ -121,7 +121,7 @@ import {
 import { exitBoardViewForNavigation } from './exit-board-view';
 import { isBoardChatEmbedOpenForChat } from './orchestrate-board-chat-state';
 import { onModelRoutingActiveChatChanged } from './settings-model-routing';
-import { syncWorkAgentDevFromActiveChat, workAgentSidebarAbbrev } from './work-agent-dev';
+import { syncWorkAgentDevFromActiveChat } from './work-agent-dev';
 import { updateModelLoadUnloadButtons } from '../api/models';
 import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import { restoreChatColumnOnChatSelect } from './workspace-split-resize';
@@ -152,7 +152,7 @@ import {
   syncChatItemLoopIconsInDom,
 } from './chat-item-loop-icon';
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
-import { createModeMaskIcon } from './mode-icons';
+import { syncChatItemWorktreeIcon } from './chat-item-worktree-icon';
 import { hasComposerDraft } from '../state/session-workspace-scope';
 import {
   flushActiveComposerDraftBeforeNewChat,
@@ -533,11 +533,6 @@ function buildChatRow(
 
   const boardCategory = inGroup ? boardCategoryForChat(chat, options?.group) : undefined;
 
-  if (!inGroup || !boardCategory) {
-    const icon = createModeMaskIcon(chat.modeId, 'chat-item-icon mode-mask-icon');
-    titleRow.appendChild(icon);
-  }
-
   const dotCtx = getChatItemDotContext(sessionState?.activeId ?? null);
   const dotState = resolveChatItemDotState(chat, dotCtx);
   if (!inGroup) {
@@ -566,17 +561,6 @@ function buildChatRow(
   const loopIcon = createChatItemLoopIcon();
   applyChatItemLoopIcon(loopIcon, resolveChatItemLoopIconState(chat), chat);
   titleRow.appendChild(loopIcon);
-
-  if (!inGroup) {
-    const agentAbbrev = workAgentSidebarAbbrev(chat.workAgentId);
-    if (agentAbbrev) {
-      const badge = document.createElement('span');
-      badge.className = 'chat-item-agent-badge';
-      badge.textContent = agentAbbrev;
-      badge.title = `Work agent: ${chat.workAgentId}`;
-      titleRow.appendChild(badge);
-    }
-  }
 
   head.appendChild(titleRow);
 
@@ -607,8 +591,8 @@ function buildChatRow(
     }
   }
   row.dataset.rowLayout = inGroup ? 'group' : 'flat';
-  row.dataset.modeId = chat.modeId ?? '';
   row.dataset.boardCategory = boardCategory ?? '';
+  syncChatItemWorktreeIcon(row, chat);
   return row;
 }
 
@@ -842,6 +826,7 @@ export function syncComposerDraftSidebarLabels(chat: Chat): void {
     row.classList.add('chat-item-row--draft');
     row.setAttribute('aria-label', `${displayName}, ${modelLabel}`);
     row.title = [displayName, modelLabel].filter(Boolean).join('\n');
+    syncChatItemWorktreeIcon(row, chat);
   }
 }
 
@@ -889,14 +874,7 @@ function syncChatRow(
     else nameSpan.removeAttribute('title');
   }
 
-  if (row.dataset.modeId !== (chat.modeId ?? '')) {
-    const titleRow = row.querySelector('.chat-item-title-row');
-    const oldIcon = titleRow?.querySelector('.chat-item-icon');
-    if (titleRow && oldIcon) {
-      oldIcon.replaceWith(createModeMaskIcon(chat.modeId, 'chat-item-icon mode-mask-icon'));
-    }
-    row.dataset.modeId = chat.modeId ?? '';
-  }
+  syncChatItemWorktreeIcon(row, chat);
 
   const modelEl = row.querySelector<HTMLElement>('.chat-item-model');
   if (modelEl) modelEl.textContent = routerChatModelLabel(chat) || '\u2014';
@@ -914,23 +892,6 @@ function syncChatRow(
     statsEl.appendChild(statsFrag);
   } else {
     statsEl?.remove();
-  }
-
-  const titleRow = row.querySelector('.chat-item-title-row');
-  const agentAbbrev = !inGroup ? workAgentSidebarAbbrev(chat.workAgentId) : '';
-  let badge = row.querySelector<HTMLElement>('.chat-item-agent-badge');
-  if (agentAbbrev) {
-    if (!badge && titleRow) {
-      badge = document.createElement('span');
-      badge.className = 'chat-item-agent-badge';
-      titleRow.appendChild(badge);
-    }
-    if (badge) {
-      badge.textContent = agentAbbrev;
-      badge.title = `Work agent: ${chat.workAgentId}`;
-    }
-  } else {
-    badge?.remove();
   }
 }
 

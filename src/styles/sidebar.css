@@ -37,7 +37,9 @@
 }
 
 .sidebar-resizer:hover,
-.sidebar-resizer.dragging {
+.sidebar-resizer.dragging,
+.terminal-resize-handle:hover,
+.terminal-resize-handle.dragging {
   background: var(--mn-accent-soft);
 }
 
@@ -588,14 +590,24 @@
   line-height: 1.25;
 }
 
-/* Mode glyph — mask rules in mode-icons.css */
+/* Worktree indicator; local chats have no leading icon. */
 .chat-item-icon {
   display: none;
 }
 
-/* Expanded sidebar + mobile overlay: compact mode marker beside chat name. */
+/* Expanded sidebar + mobile overlay: compact worktree marker beside chat name. */
 .chat-sidebar:not(.collapsed) .chat-item-icon {
   display: block;
+}
+
+.chat-item-row .chat-item-icon.chat-item-worktree-icon[data-worktree-state] {
+  flex-shrink: 0;
+  color: var(--mn-fg-muted);
+  opacity: 1;
+}
+
+.chat-item-row .chat-item-icon.chat-item-worktree-icon[data-worktree-state='merged'] {
+  color: var(--mn-accent-ink);
 }
 
 .chat-app-page:not(.is-rail-expanded) .chat-app-rail-list .chat-item-row[data-dot-state='working'] .chat-item-icon {

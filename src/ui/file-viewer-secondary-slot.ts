@@ -8,6 +8,7 @@ import {
   type ViewerTabState,
 } from './file-viewer-tab-store';
 import { editorCoreExtensions } from './editor-core-extensions';
+import { applyPendingViewerSelection } from './file-viewer-initial-selection';
 import { loadEditorSettings } from '../config/editor-settings';
 import {
   getEditorIntentModeConfigSync,
@@ -339,6 +340,7 @@ function mountEditor(host: HTMLElement, tab: ViewerTabState, content: string): v
     if (pendingMountPath === path) pendingMountPath = null;
     secondaryPath = path;
     secondaryView = new EditorView({ state, parent: mount });
+    applyPendingViewerSelection(secondaryView, tab);
     if (aiExts.length > 0) {
       mountEditorSuggestions(secondaryView, intentInitialEnabled);
     }
@@ -385,7 +387,10 @@ export function renderSecondaryViewerSlot(tabPath: string | null): void {
     return;
   }
 
-  if (renderIsCurrent(tab)) return;
+  if (renderIsCurrent(tab)) {
+    if (secondaryView && secondaryPath === tab.path) applyPendingViewerSelection(secondaryView, tab);
+    return;
+  }
   renderKey = renderKeyFor(tab);
 
   const content = tab.cachedEditorContent ?? tab.originalContent;

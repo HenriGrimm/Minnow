@@ -148,7 +148,7 @@
   padding: 6px 8px 10px;
 }
 
-/* Collapsed rail: status dots only (mode icon when expanded). */
+/* Collapsed rail: worktree indicators and local chat names. */
 .chat-app-rail-list .chat-item-row {
   position: relative;
   width: 34px;
@@ -179,8 +179,8 @@
   display: none;
 }
 
-.chat-app-rail-list .chat-item-agent-badge {
-  display: none;
+.chat-app-rail-list .chat-item-row:not(:has(.chat-item-icon)) .chat-item-name {
+  display: block;
 }
 
 .chat-app-rail-list .chat-item-loop-icon {

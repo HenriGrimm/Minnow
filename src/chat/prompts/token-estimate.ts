@@ -1,4 +1,7 @@
-import { createLazyToolSession } from '../../../server/runner/lazy-tools.js';
+import { createToolExposure } from '../../../server/runner/tool-exposure.js';
+import { resolveProvider } from '../../providers/store';
+import { decodeModelSelectKey } from '../../lib/model-select-key';
+import { LIBRARY_MODEL_PROVIDER_ID } from '../../models/model-select-library';
 import { loadToolConfig } from '../../tools/config';
 import {
   getPromptConfigEpoch,
@@ -94,7 +97,7 @@ function lastUserRouteText(chat: Chat): string {
   return last?.content?.slice(0, 500) ?? '';
 }
 
-function resolveEnabledToolsForEstimate(chat: Chat): OpenAIFunctionDefinition[] {
+function resolveEnabledToolsForEstimate(chat: Chat, apiKind?: string): OpenAIFunctionDefinition[] {
   const modeId = normalizeModeId(chat.modeId);
   let enabledTools = getEnabledToolDefinitionsForMode(modeId);
   const activeWorkAgent = resolveActiveWorkAgent(chat);
@@ -108,8 +111,8 @@ function resolveEnabledToolsForEstimate(chat: Chat): OpenAIFunctionDefinition[] 
     workAgentId: chat.workAgentId,
   });
   const filtered = applyUiDesignerToolFilter(enabledTools, uiDesignerCtx);
-  return loadToolConfig().lazyTools === false ? filtered :
-    createLazyToolSession(filtered).tools as OpenAIFunctionDefinition[];
+  return createToolExposure(filtered, { apiKind, lazyTools: loadToolConfig().lazyTools !== false })
+    .tools as OpenAIFunctionDefinition[];
 }
 
 function resolveModelLimitForEstimate(modelId: string | undefined, chat: Chat): number | null {
@@ -346,7 +349,13 @@ async function resolveCachedStaticOutboundEstimate(
   options: ResolveOutboundPromptEstimateOptions | undefined,
 ): Promise<CachedOutboundStaticEstimate> {
   const modelId = options?.modelId?.trim() ?? '';
-  const cacheKey = outboundStaticEstimateCacheKey(chat, modelId, options);
+  const providerId = decodeModelSelectKey(modelId)?.providerId ?? chat.providerId;
+  // The library is a local-model picker binding, not a registry provider. All
+  // of its runtimes use ordinary API tool exposure, including before loading.
+  const provider = providerId === LIBRARY_MODEL_PROVIDER_ID
+    ? { id: providerId, apiKind: 'openai-v1' }
+    : await resolveProvider(providerId);
+  const cacheKey = `${outboundStaticEstimateCacheKey(chat, modelId, options)}\0${provider.id}\0${provider.apiKind}`;
   if (cacheKey === cachedStaticEstimateKey && cachedStaticEstimate) {
     return cachedStaticEstimate;
   }
@@ -366,7 +375,7 @@ async function resolveCachedStaticOutboundEstimate(
     legacyFallback = !!composed.trim();
   }
 
-  const tools = resolveEnabledToolsForEstimate(chat);
+  const tools = resolveEnabledToolsForEstimate(chat, provider.apiKind);
   const partial = computeOutboundPromptEstimateFromParts({
     systemText: composed,
     history: [],

@@ -66,13 +66,8 @@ export function syncChatItemLoopIconsInDom(): void {
     if (!icon && loopState !== 'hidden') {
       icon = createChatItemLoopIcon();
       const titleRow = row.querySelector('.chat-item-title-row');
-      const agentBadge = titleRow?.querySelector('.chat-item-agent-badge');
       if (titleRow) {
-        if (agentBadge) {
-          titleRow.insertBefore(icon, agentBadge);
-        } else {
-          titleRow.appendChild(icon);
-        }
+        titleRow.appendChild(icon);
       } else {
         row.appendChild(icon);
       }

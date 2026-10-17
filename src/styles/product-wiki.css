@@ -5,7 +5,7 @@
 .product-wiki {
   position: absolute;
   inset: 0;
-  z-index: 45;
+  z-index: 60;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -133,13 +133,6 @@
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.02em;
-}
-
-.product-wiki__header-actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
 }
 
 .product-wiki__icon-button {
@@ -685,10 +678,6 @@
 
   .product-wiki__search kbd {
     display: none;
-  }
-
-  .product-wiki__header-actions {
-    margin-left: auto;
   }
 
   .product-wiki__body {

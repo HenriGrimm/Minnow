@@ -444,17 +444,6 @@
   white-space: nowrap;
 }
 
-.chat-item-agent-badge {
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 1px 4px;
-  border-radius: 4px;
-  background: var(--mn-surface-2);
-  color: var(--mn-fg-subtle);
-  margin-left: 6px;
-}
-
 .thinking-control-wrap {
   flex-shrink: 0;
   min-width: 0;

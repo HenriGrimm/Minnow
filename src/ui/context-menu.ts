@@ -1,5 +1,6 @@
 import '../styles/context-menu.css';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { shellOverlayClosed } from './shell-overlay-state';
 
 /** A selectable row. */
 export interface MenuActionItem {
@@ -52,6 +53,8 @@ export type MenuItem =
   | MenuHeadingItem;
 
 export interface OpenContextMenuOptions {
+  /** Shell lifecycle ownership is reserved for the plugin commands menu. */
+  shellOverlayId?: 'plugins';
   items: MenuItem[];
   /** Viewport coordinates for a pointer-opened menu. */
   clientX?: number;
@@ -90,6 +93,8 @@ const TYPEAHEAD_RESET_MS = 600;
 let levels: MenuLevel[] = [];
 let restoreFocusEl: HTMLElement | null = null;
 let scrollOriginEl: HTMLElement | null = null;
+let shellOverlayId: 'plugins' | undefined;
+let pluginAnchorEl: HTMLElement | null = null;
 /** Resolved on open, not at module load — importing this must not need a DOM. */
 let mountEl: HTMLElement | null = null;
 let listenersBound = false;
@@ -121,6 +126,10 @@ export function closeContextMenu(options?: { restoreFocus?: boolean }): void {
   const target = restoreFocusEl;
   restoreFocusEl = null;
   scrollOriginEl = null;
+  pluginAnchorEl = null;
+  const closedOverlayId = shellOverlayId;
+  shellOverlayId = undefined;
+  if (closedOverlayId) shellOverlayClosed(closedOverlayId);
   if (options?.restoreFocus !== false) target?.focus();
   queueMicrotask(() => {
     // Replacing one menu with another should keep the same refreshes deferred.
@@ -553,6 +562,8 @@ function onKeyDown(event: KeyboardEvent): void {
 
 function onPointerDown(event: PointerEvent): void {
   if (levelIndexForNode(event.target as Node) >= 0) return;
+  // The opener owns toggle clicks; dismissing on pointerdown would reopen it.
+  if (pluginAnchorEl?.contains(event.target as Node)) return;
   closeContextMenu();
 }
 
@@ -593,6 +604,8 @@ export function openContextMenu(options: OpenContextMenuOptions): ContextMenuHan
   mountEl = options.mount ?? null;
   restoreFocusEl = options.restoreFocus ?? null;
   scrollOriginEl = options.anchor ?? options.restoreFocus ?? null;
+  shellOverlayId = options.shellOverlayId;
+  pluginAnchorEl = shellOverlayId === 'plugins' ? options.anchor ?? null : null;
 
   const level = buildLevel(options.items, options.label ?? 'Menu', null);
   host().appendChild(level.root);
@@ -608,6 +621,9 @@ export function openContextMenu(options: OpenContextMenuOptions): ContextMenuHan
 
   return {
     root: level.root,
-    close: () => closeContextMenu(),
+    close: () => {
+      // A retained handle must never dismiss a replacement menu.
+      if (levels[0]?.root === level.root) closeContextMenu();
+    },
   };
 }

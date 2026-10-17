@@ -28,9 +28,17 @@ describe('shell-profiles', () => {
   });
 
   it('linux includes bash', () => {
-    const profiles = resolveProfiles('linux', {});
+    const profiles = resolveProfiles('linux', { systemShell: '/bin/bash' });
     assert.equal(profiles[0].id, 'bash');
     assert.deepEqual(profiles[0].args, ['-il']);
+  });
+
+  it('includes a nonstandard Unix login shell alongside explicit shell choices', () => {
+    const profiles = resolveProfiles('linux', { systemShell: '/usr/bin/fish' });
+    assert.equal(profiles.find((p) => p.id === 'system')?.shell, '/usr/bin/fish');
+    assert.ok(profiles.some((p) => p.id === 'bash'));
+    const mac = resolveProfiles('darwin', { systemShell: '/bin/zsh' });
+    assert.equal(mac.some((p) => p.id === 'system'), false);
   });
 
   it('win32 adds per-distro WSL profiles when wsl option true', () => {

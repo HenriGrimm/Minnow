@@ -231,6 +231,19 @@ export function gitBranches(cwd?: string): Promise<GitOpResult> {
   return postGit('branches', cwd ? { cwd } : {});
 }
 
+export interface GitWorktreeStatusResult {
+  ok: boolean;
+  error?: string;
+  branch?: string;
+  trunk?: string | null;
+  merged?: boolean | null;
+  dirty?: boolean;
+}
+
+export function gitWorktreeStatus(cwd: string): Promise<GitWorktreeStatusResult> {
+  return postGit('worktreeStatus', { cwd }) as Promise<GitWorktreeStatusResult>;
+}
+
 /** One local branch with its inferred parent (see server/git/branch-tree.js). */
 export interface GitBranchTreeEntry {
   name: string;

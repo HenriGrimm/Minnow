@@ -29,6 +29,7 @@ import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { isCoarsePointer } from '../ui/mobile-layout';
 import { isResearchPanelOpen, subscribeResearchPanel } from '../ui/research-panel';
 import { launchApp } from './router';
+import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import type { AppId } from './types';
 import type { IssueCard } from '../types';
 import { buildMenuItems } from '../ui/menu-registry';
@@ -175,6 +176,10 @@ function bindRailTooltip(btn: HTMLButtonElement, getText: () => string): void {
 // ── Buttons ──────────────────────────────────────────────────────────────────
 
 function handleRailClick(appId: AppId): void {
+  if (appId === 'settings' && isShellOverlayOpen('settings')) {
+    closeShellOverlay();
+    return;
+  }
   launchApp(appId);
 }
 
@@ -283,6 +288,10 @@ function buildRailButton(
   btn.type = 'button';
   btn.className = 'mn-os-app-rail__btn';
   btn.dataset.appId = appId;
+  if (appId === 'settings') {
+    disposers.push(bindShellOverlayTrigger(btn, 'settings'));
+    btn.setAttribute('aria-controls', 'settingsView');
+  }
   btn.setAttribute('aria-label', label);
   const icon = createAppIcon((def?.icon ?? 'code') as 'code');
   btn.appendChild(icon);

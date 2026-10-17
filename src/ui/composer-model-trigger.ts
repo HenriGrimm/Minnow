@@ -36,6 +36,7 @@ import {
 } from './preview-electron-visibility';
 
 import { iconHtml } from './icon';
+import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
 import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
 import { syncRouterReevaluateAction } from './router-reevaluate-action';
@@ -666,6 +667,8 @@ export function closeComposerModelMenu(): void {
   current.panel.classList.add('hidden');
   current.root.classList.remove('is-open');
   current.trigger.setAttribute('aria-expanded', 'false');
+  current.trigger.setAttribute('aria-pressed', 'false');
+  current.trigger.classList.remove('is-overlay-open');
   if (isMenubarStyleVariant(current.variant)) {
     collapseMenubarExpand(current);
   }
@@ -674,6 +677,7 @@ export function closeComposerModelMenu(): void {
     chromePopoverRegistered = false;
   }
   detachGlobalListeners();
+  shellOverlayClosed('model');
 }
 
 // ── Build ────────────────────────────────────────────────────────────────────
@@ -683,6 +687,7 @@ function openMenu(trigger: ComposerModelTrigger): void {
   if (!sel || trigger.trigger.disabled) return;
   closeModelSelectMenu();
   closeComposerModelMenu();
+  openShellOverlay('model', closeComposerModelMenu);
   openTrigger = trigger;
   if (isMenubarStyleVariant(trigger.variant)) {
     expandMenubarChip(trigger);
@@ -696,6 +701,8 @@ function openMenu(trigger: ComposerModelTrigger): void {
     positionMenubarExpandLabel(trigger);
   }
   trigger.trigger.setAttribute('aria-expanded', 'true');
+  trigger.trigger.setAttribute('aria-pressed', 'true');
+  trigger.trigger.classList.add('is-overlay-open');
   positionPanel(trigger);
   attachGlobalListeners();
   if (!chromePopoverRegistered) {

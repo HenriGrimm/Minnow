@@ -1,3 +1,4 @@
+import { bindShellOverlayTrigger, isShellOverlayOpen, closeShellOverlay } from '../ui/shell-overlay-state';
 /**
  * Menubar quick-capture button.
  *
@@ -43,7 +44,12 @@ export function initMenubarCapture(btn: HTMLButtonElement): () => void {
   const open = (): void => {
     openQuickCapture({ anchor: btn, restoreFocus: btn });
   };
-  btn.addEventListener('click', open);
+  const unbindTrigger = bindShellOverlayTrigger(btn, 'capture');
+  const onClick = (): void => {
+    if (isShellOverlayOpen('capture')) closeShellOverlay();
+    else open();
+  };
+  btn.addEventListener('click', onClick);
 
   const onDragOver = (event: DragEvent): void => {
     if (!dataTransferLooksCapturable(event.dataTransfer)) return;
@@ -81,7 +87,8 @@ export function initMenubarCapture(btn: HTMLButtonElement): () => void {
   return () => {
     unsubscribe();
     document.removeEventListener('keydown', onKeyDown);
-    btn.removeEventListener('click', open);
+    unbindTrigger();
+    btn.removeEventListener('click', onClick);
     btn.removeEventListener('dragover', onDragOver);
     btn.removeEventListener('dragleave', onDragLeave);
     btn.removeEventListener('drop', onDrop);

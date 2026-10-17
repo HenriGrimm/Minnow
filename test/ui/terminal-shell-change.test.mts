@@ -1,5 +1,5 @@
 /**
- * MIN-244: Changing the shell dropdown spawns a new PTY tab and saves the default.
+ * MIN-541: Shell menu creates tabs without changing the configured default.
  */
 
 import assert from 'node:assert/strict';
@@ -7,10 +7,11 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { resetTerminalMetaCache } from '../../src/config/terminal-meta.ts';
 import {
-  AGENT_TAB_ID,
   detachAllTerminalTabs,
   initTerminalTabs,
 } from '../../src/ui/terminal-tabs.ts';
+import { closeContextMenu } from '../../src/ui/context-menu.ts';
+import { saveTerminalMeta, getTerminalMetaCached } from '../../src/config/terminal-meta.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 const PTY_TAB_ID = '11111111-1111-1111-1111-111111111111';
@@ -18,6 +19,8 @@ const NEW_SESSION_ID = '22222222-2222-2222-2222-222222222222';
 
 let prevFetch: typeof fetch | undefined;
 let putBodies: unknown[] = [];
+let configuredDefault: string | undefined = 'powershell';
+let apiDefault = 'powershell';
 
 /** Stub config, shell profiles, and PTY session creation. */
 function installFetchMock(): void {
@@ -46,6 +49,7 @@ function installFetchMock(): void {
           },
         ],
         ptyAvailable: true,
+        defaultShellProfileId: apiDefault,
       });
     }
 
@@ -74,7 +78,7 @@ function installFetchMock(): void {
             },
           ],
           activeTabId: PTY_TAB_ID,
-          defaultShellProfileId: 'powershell',
+          defaultShellProfileId: configuredDefault,
         },
       });
     }
@@ -134,7 +138,6 @@ function setupDom(): void {
   document.body.innerHTML = `
     <div id="terminalXtermHost"></div>
     <div id="terminalTabBar"></div>
-    <select id="terminalShellSelect"></select>
   `;
 }
 
@@ -144,9 +147,11 @@ function countPtyTabs(tabBar: HTMLElement): number {
   ).length;
 }
 
-describe('terminal shell dropdown change (MIN-244)', () => {
+describe('terminal new-tab shell menu (MIN-541)', () => {
   beforeEach(() => {
     resetTerminalMetaCache();
+    configuredDefault = 'powershell';
+    apiDefault = 'powershell';
     installFetchMock();
     installWebSocketMock();
     setLocalServerAvailableForTests(true);
@@ -154,60 +159,72 @@ describe('terminal shell dropdown change (MIN-244)', () => {
   });
 
   afterEach(async () => {
+    closeContextMenu();
     await detachAllTerminalTabs();
     resetTerminalMetaCache();
     setLocalServerAvailableForTests(false);
     restoreFetchMock();
   });
 
-  test('changing shell spawns a new tab, preserves the old tab, and saves default', async () => {
+  async function initTabs(): Promise<HTMLElement> {
     const tabBar = document.getElementById('terminalTabBar')!;
-    const shellSelect = document.getElementById(
-      'terminalShellSelect',
-    ) as HTMLSelectElement;
-    const xtermHost = document.getElementById('terminalXtermHost')!;
-
     const { initTerminalXterm } = await import('../../src/ui/terminal-xterm.ts');
-    initTerminalXterm(xtermHost);
+    initTerminalXterm(document.getElementById('terminalXtermHost')!);
+    await initTerminalTabs(tabBar);
+    return tabBar;
+  }
 
-    await initTerminalTabs(tabBar, shellSelect);
-
-    assert.equal(countPtyTabs(tabBar), 1, 'starts with one restored PTY tab');
-    const initialTab = tabBar.querySelector(
-      `.terminal-tab[data-tab-id="${PTY_TAB_ID}"]`,
-    );
-    assert.ok(initialTab, 'initial PTY tab is present');
-
-    shellSelect.value = 'bash';
-    shellSelect.dispatchEvent(
-      new (globalThis.window as Window).Event('change', { bubbles: true }),
-    );
-
-    // Allow async save + addTab to complete.
+  async function settle(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
+  }
 
-    assert.equal(countPtyTabs(tabBar), 2, 'shell change adds a second PTY tab');
-    assert.ok(
-      tabBar.querySelector(`.terminal-tab[data-tab-id="${PTY_TAB_ID}"]`),
-      'previous PTY tab remains until closed',
-    );
+  test('menu lists shells and opens a new tab without changing the default or existing tabs', async () => {
+    const tabBar = await initTabs();
+    assert.equal(countPtyTabs(tabBar), 1);
+    assert.equal(document.querySelector('select'), null);
+    tabBar.querySelector<HTMLButtonElement>('.terminal-tab-shell-menu')!.click();
+    const rows = [...document.querySelectorAll<HTMLButtonElement>('.mn-menu__item')];
+    assert.deepEqual(rows.map((row) => row.textContent), ['PowerShell', 'bash']);
+    rows[1].click();
+    await settle();
+    assert.equal(countPtyTabs(tabBar), 2);
+    const tabs = getTerminalMetaCached().tabs!;
+    assert.equal(tabs.find((tab) => tab.id === PTY_TAB_ID)?.shellProfileId, 'powershell');
+    assert.equal(tabs.find((tab) => tab.id !== PTY_TAB_ID)?.shellProfileId, 'bash');
+    assert.equal(getTerminalMetaCached().defaultShellProfileId, 'powershell');
+    assert.ok(!putBodies.some((body: any) => body.terminal?.defaultShellProfileId === 'bash'));
 
-    const savedDefault = putBodies.find(
-      (body) =>
-        typeof body === 'object' &&
-        body !== null &&
-        'terminal' in body &&
-        (body as { terminal: { defaultShellProfileId?: string } }).terminal
-          .defaultShellProfileId === 'bash',
-    );
-    assert.ok(savedDefault, 'default shell profile is persisted');
+    tabBar.querySelector<HTMLButtonElement>('.terminal-tab-add')!.click();
+    await settle();
+    assert.equal(getTerminalMetaCached().tabs!.at(-1)?.shellProfileId, 'powershell');
+  });
 
-    const activeTab = tabBar.querySelector(
-      '.terminal-tab[aria-selected="true"]',
-    ) as HTMLButtonElement | null;
-    assert.ok(activeTab, 'a tab is active after shell change');
-    assert.notEqual(activeTab?.dataset.tabId, AGENT_TAB_ID);
-    assert.notEqual(activeTab?.dataset.tabId, PTY_TAB_ID);
+  test('+ reads the latest default saved in Settings', async () => {
+    const tabBar = await initTabs();
+    await saveTerminalMeta({ defaultShellProfileId: 'bash' });
+    tabBar.querySelector<HTMLButtonElement>('.terminal-tab-add')!.click();
+    await settle();
+    assert.equal(getTerminalMetaCached().tabs!.at(-1)?.shellProfileId, 'bash');
+  });
+
+  for (const shell of ['powershell', 'bash']) {
+    test('+ uses the server platform default when no preference is saved: ' + shell, async () => {
+      configuredDefault = undefined;
+      apiDefault = shell;
+      const tabBar = await initTabs();
+      tabBar.querySelector<HTMLButtonElement>('.terminal-tab-add')!.click();
+      await settle();
+      assert.equal(getTerminalMetaCached().tabs!.at(-1)?.shellProfileId, shell);
+    });
+  }
+
+  test('shell menu supports keyboard dismissal and restores focus', async () => {
+    const tabBar = await initTabs();
+    const trigger = tabBar.querySelector<HTMLButtonElement>('.terminal-tab-shell-menu')!;
+    trigger.click();
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(document.querySelector('[role="menu"]'), null);
+    assert.equal(document.activeElement, trigger);
   });
 });

@@ -146,11 +146,25 @@ function wslDistroProfile(distro, isDefault) {
 /**
  * Build profiles for a platform (pure, testable).
  * @param {string} platform - Node `process.platform`
- * @param {{ wsl?: boolean; wslDistros?: string[]; wslDefaultDistro?: string | null; gitBashPath?: string | null }} [options]
+ * @param {{ wsl?: boolean; wslDistros?: string[]; wslDefaultDistro?: string | null; gitBashPath?: string | null; systemShell?: string }} [options]
  * @returns {ShellProfile[]}
  */
 export function resolveProfiles(platform, options = {}) {
   const profiles = [];
+  const systemShell = options.systemShell ?? process.env.SHELL;
+  if (platform !== 'win32' && systemShell?.startsWith('/')) {
+    const name = systemShell.split('/').pop();
+    if (systemShell !== '/bin/bash' && !(platform === 'darwin' && systemShell === '/bin/zsh')) {
+      profiles.push({
+        id: 'system',
+        label: `${name} (system default)`,
+        shell: systemShell,
+        args: ['-il'],
+        platform,
+        runtime: 'native',
+      });
+    }
+  }
 
   if (platform === 'win32') {
     const pwsh = resolveOnPath(['pwsh.exe', 'powershell.exe']);
@@ -310,7 +324,7 @@ export function resolvePtySpawnForProfile(profile, cwd) {
 }
 
 /**
- * Default shell profile id for the current OS (PowerShell on Windows, bash elsewhere).
+ * Default shell profile id for the current OS (PowerShell on Windows, login shell elsewhere).
  */
 export function getDefaultShellProfileId() {
   const available = getAvailableShellProfiles();
@@ -318,6 +332,7 @@ export function getDefaultShellProfileId() {
   const preferred =
     process.platform === 'win32'
       ? available.find((p) => p.id === 'powershell')
-      : available.find((p) => p.id === 'bash' || p.id === 'zsh');
+      : available.find((p) => p.shell === process.env.SHELL) ??
+        available.find((p) => p.id === 'bash' || p.id === 'zsh');
   return preferred?.id ?? available[0].id;
 }

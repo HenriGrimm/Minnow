@@ -203,6 +203,19 @@ describe('code app settings (MIN-417)', () => {
     assert.equal(getOsView(), 'app');
   });
 
+  test('closing Settings without a caller clears the route before another overlay returns', async () => {
+    const { closeInstance } = await import('../../src/os/instances.ts');
+    for (const instance of getInstanceSnapshot().instances) closeInstance(instance.id);
+    launchApp('settings');
+    syncOsRouteFromHashForTests();
+    syncAppHostForTests();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    closeSettings();
+    syncOsRouteFromHashForTests();
+    assert.equal(window.location.hash, '#/workspaces');
+    assert.notEqual(getForegroundAppId(), 'settings');
+  });
+
   test('reopens settings when stale openAppPage left the layer without content', async () => {
     openSettingsFromTopbar();
     syncOsRouteFromHashForTests();

@@ -9,7 +9,8 @@ import { getWorkspacePath } from './workspace';
 
 /** Workspace file or arbitrary URL shown in the preview panel. */
 export type PreviewSource =
-  | { kind: 'workspace'; path: string }
+  /** `workspaceRoot` scopes the file to another root (e.g. a chat's worktree) instead of the window's. */
+  | { kind: 'workspace'; path: string; workspaceRoot?: string }
   | { kind: 'url'; url: string };
 
 /** Which pane occupies the right split (null = closed). */
@@ -190,7 +191,8 @@ function normalizePreviewSource(raw: unknown): PreviewSource | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Record<string, unknown>;
   if (row.kind === 'workspace' && typeof row.path === 'string' && row.path.trim()) {
-    return { kind: 'workspace', path: row.path };
+    const root = typeof row.workspaceRoot === 'string' ? row.workspaceRoot.trim() : '';
+    return root ? { kind: 'workspace', path: row.path, workspaceRoot: root } : { kind: 'workspace', path: row.path };
   }
   if (row.kind === 'url' && typeof row.url === 'string' && row.url.trim()) {
     return { kind: 'url', url: row.url };

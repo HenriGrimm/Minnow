@@ -69,7 +69,7 @@ export function syncModeIconInDom(
   const iconName = chatListModeIconName(modeId);
   const normalized = normalizeModeId(modeId);
   document
-    .querySelectorAll<HTMLElement>(`.chat-item-row[data-chat-id="${chatId}"] .chat-item-icon`)
+    .querySelectorAll<HTMLElement>(`.chat-item-row[data-chat-id="${chatId}"] .mode-mask-icon`)
     .forEach((icon) => {
       icon.dataset.modeId = normalized;
       applyIcon(icon, iconName);

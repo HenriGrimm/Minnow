@@ -793,17 +793,24 @@ function appendFlatFileRow(host: HTMLElement, fullPath: string, contentMatch?: F
 
   const drag = wireTreeRowDrag(row, fullPath);
 
+  const openResult = () => {
+    void import('./file-viewer').then((m) => m.openFileInViewer(fullPath, contentMatch ? {
+      asCode: true,
+      initialLineRange: { startLine: contentMatch.line, endLine: contentMatch.line },
+    } : undefined));
+  };
+
   row.addEventListener('click', (e) => {
     e.stopPropagation();
     setFocusedRow(fullPath, 'file', row);
     if (drag.consumeClickAfterDrag()) return;
     if (applyRowClickSelection(fullPath, 'file', e) === 'selection-only') return;
-    void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
+    openResult();
   });
   row.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      void import('./file-viewer').then((m) => m.openFileInViewer(fullPath));
+      openResult();
     }
   });
 
