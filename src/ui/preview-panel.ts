@@ -582,7 +582,8 @@ function sourcesEqual(a: PreviewSource | null, b: PreviewSource | null): boolean
   if (a.kind !== b.kind) return false;
   if (a.kind === 'url' && b.kind === 'url') return a.url === b.url;
   if (a.kind === 'workspace' && b.kind === 'workspace') {
-    return normalizeWorkspacePath(a.path) === normalizeWorkspacePath(b.path);
+    return normalizeWorkspacePath(a.path) === normalizeWorkspacePath(b.path)
+      && (a.workspaceRoot ?? '') === (b.workspaceRoot ?? '');
   }
   return false;
 }
@@ -1860,5 +1861,18 @@ export function openWorkspacePathInPreview(relativePath: string): void {
   void openPreviewTabFromUi({
     kind: 'workspace',
     path: normalizeWorkspacePath(relativePath),
+  });
+}
+
+/**
+ * Open a file from a specific workspace root (e.g. a chat's worktree) in a new
+ * preview tab without changing the window's workspace. Absolute paths are kept.
+ */
+export async function openScopedWorkspaceFileInPreview(path: string, workspaceRoot: string): Promise<void> {
+  const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(path);
+  await openPreviewTabFromUi({
+    kind: 'workspace',
+    path: absolute ? path : normalizeWorkspacePath(path),
+    workspaceRoot,
   });
 }

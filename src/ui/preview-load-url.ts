@@ -128,7 +128,7 @@ export function resolvePreviewLoadUrl(
   if (source.kind === 'url') return resolveRootRelativeUrl(source.url);
   const path = workspacePreviewUrl(source.path, {
     cacheBust,
-    workspaceRoot,
+    workspaceRoot: source.workspaceRoot?.trim() || workspaceRoot,
     raw: options?.raw,
   });
   return `${window.location.origin}${path}`;
@@ -141,10 +141,11 @@ export async function resolveIsolatedPreviewLoadUrl(
   workspaceRoot?: string,
 ): Promise<string> {
   if (source.kind === 'url') return resolveRootRelativeUrl(source.url);
-  const path = workspacePreviewUrl(source.path, { cacheBust, workspaceRoot });
+  const root = source.workspaceRoot?.trim() || workspaceRoot;
+  const path = workspacePreviewUrl(source.path, { cacheBust, workspaceRoot: root });
   const parsed = new URL(path, window.location.origin);
   parsed.searchParams.delete('token');
   parsed.searchParams.delete('workspace');
   parsed.searchParams.delete('workspaceRoot');
-  return isolatedUrl(parsed.pathname + parsed.search, workspaceRoot);
+  return isolatedUrl(parsed.pathname + parsed.search, root);
 }

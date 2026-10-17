@@ -4,12 +4,28 @@ import { workspacePreviewUrl } from './preview-load-url';
 import { createIcon } from './icon';
 import '../styles/presented-file-cards.css';
 
-/** Open in the originating workspace, including worktrees and the chat sandbox. */
+/** True for files Open should render in preview rather than as source. */
+export function isPresentedHtmlFile(file: PresentedFile): boolean {
+  return /\.html?$/i.test(file.name || file.path);
+}
+
+/**
+ * Open in this window, scoped to the originating workspace (including worktrees and
+ * the chat sandbox) without switching the window's workspace. HTML opens in preview.
+ */
 export async function openPresentedFile(file: PresentedFile): Promise<void> {
-  const { routeCodeWindowCommand } = await import('../os/code-window-command');
+  if (isPresentedHtmlFile(file)) {
+    const { openScopedWorkspaceFileInPreview } = await import('./preview-panel');
+    await openScopedWorkspaceFileInPreview(file.path, file.workspaceRoot);
+    return;
+  }
+  await openPresentedFileSource(file);
+}
+
+/** Open the file's contents in Code's viewer, read from its originating workspace. */
+export async function openPresentedFileSource(file: PresentedFile): Promise<void> {
   const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(file.path)
     ? file.path : `${file.workspaceRoot.replace(/[\\/]$/, '')}/${file.path}`;
-  if (await routeCodeWindowCommand({ kind: 'file', workspacePath: file.workspaceRoot, path: absolute })) return;
   const { getFileTreeListingWorkspaceRoot } = await import('./file-tree-listing-root');
   const { getWorkspacePath } = await import('../state/workspace');
   const { panelPathsEqual } = await import('./panel-worktree-cwd');
@@ -71,18 +87,21 @@ export function createPresentedFileCards(files: PresentedFile[]): HTMLElement | 
     status.className = 'presented-file__status';
     status.setAttribute('role', 'status');
     status.hidden = true;
-    for (const [label, action] of [['Open', openPresentedFile], ['Download', downloadPresentedFile]] as const) {
+    const buttons: Array<readonly [string, (file: PresentedFile) => Promise<void>, string?]> = [['Open', openPresentedFile]];
+    if (isPresentedHtmlFile(file)) buttons.push(['Source', openPresentedFileSource, 'View source of']);
+    buttons.push(['Download', downloadPresentedFile]);
+    for (const [label, action, ariaVerb] of buttons) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'presented-file__action';
       button.textContent = label;
-      button.setAttribute('aria-label', `${label} ${file.title}`);
+      button.setAttribute('aria-label', `${ariaVerb ?? label} ${file.title}`);
       button.addEventListener('click', async () => {
         button.disabled = true;
         status.hidden = true;
         try { await action(file); }
         catch (error) {
-          status.textContent = error instanceof Error ? error.message : `Could not ${label.toLowerCase()} file`;
+          status.textContent = error instanceof Error ? error.message : `Could not ${(ariaVerb ?? label).toLowerCase()} file`;
           status.hidden = false;
         } finally { button.disabled = false; }
       });
