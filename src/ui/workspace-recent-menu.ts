@@ -156,7 +156,9 @@ function attachGlobalListeners(): void {
   outsidePointerHandler = (e: PointerEvent) => {
     const target = e.target as Node | null;
     if (!menuEl || !anchorBtn) return;
-    if (menuEl.contains(target) || anchorBtn.contains(target)) return;
+    // The folder-name label toggles the menu too; let its click close it instead.
+    const control = anchorBtn.closest('.workspace-control') ?? anchorBtn;
+    if (menuEl.contains(target) || control.contains(target)) return;
     closeWorkspaceMenu();
   };
   document.addEventListener('pointerdown', outsidePointerHandler, true);
