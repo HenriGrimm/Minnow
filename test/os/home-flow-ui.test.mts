@@ -1,19 +1,28 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals, seedMinimalSession, teardownHappyDomAsync } from './dom-helpers.mts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
-import { setIssuesStateForTests, addIssue, setIssueLabelColor } from '../../src/state/issues-store.ts';
+import { setIssuesStateForTests, addIssue, setIssueLabelColor, collectIssues, deleteIssues } from '../../src/state/issues-store.ts';
 import { closeIssueLabelPopovers } from '../../src/ui/issues-label-chip.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
-import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
+import { getForegroundAppId, launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
+import { sessionState } from '../../src/state/sessions.ts';
 
-test('Home mounts before issues load, captures real issues, selects a column and clears with Escape', async () => {
+const goals: string[] = [];
+mock.module('../../src/home/plan-goal.ts', { namedExports: {
+  planHomeGoal: async (goal: string) => {
+    goals.push(goal);
+    return [{ title: 'Build release view', description: 'Show releases for this project.', files: [] }];
+  },
+} });
+
+test('Dashboard loads, offers an empty goal state, and keeps Code intact through issue capture and review', async () => {
   const win = new Window();
   const fetcher = async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes('/boards') ? [] : String(url).includes('/scheduler') ? { jobs: [] } : { ok: true, local: ['main'], jobs: [], boards: [] }), { headers: { 'Content-Type': 'application/json' } });
   installHappyDomGlobals(win, { fetch: fetcher as typeof fetch });
-  seedMinimalSession('keep-active'); setStorageModeForTests('localStorage'); setLocalServerAvailableForTests(false);
+  const codeChat = seedMinimalSession('keep-active'); setStorageModeForTests('localStorage'); setLocalServerAvailableForTests(false);
   setWorkspaceFromServer({ path: '/repo', label: 'Project', userChosen: true } as Parameters<typeof setWorkspaceFromServer>[0]);
   document.body.innerHTML = '<div id="osAppsLayer"></div><div id="chatArea"><p>Keep this conversation</p></div>';
   setIssuesStateForTests(null);
@@ -22,11 +31,26 @@ test('Home mounts before issues load, captures real issues, selects a column and
   try {
     launchInstance('home'); await home.openHome();
     assert.ok(document.querySelector('.home-flow-board'));
+    assert.equal(document.querySelector('.home-empty-state'), null, 'loading is not an empty project');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(document.querySelectorAll('.home-flow-column').length, 0);
+    assert.match(document.querySelector('.home-empty-state')!.textContent!, /What’s next for this project\?/);
+    assert.ok(document.querySelector('.home-empty-state .home-goal-bar'));
+    assert.equal(document.querySelectorAll('.home-goal-bar').length, 1);
+    document.querySelector<HTMLButtonElement>('.home-empty-code')!.click();
+    assert.equal(getForegroundAppId(), 'code');
+    assert.equal(sessionState.activeId, codeChat.id);
+    assert.equal(sessionState.chats.length, 1);
+    assert.equal(sessionState.chats[0], codeChat);
+    assert.equal(document.querySelector('#chatArea p'), transcript);
+    launchInstance('home'); await home.openHome();
     await new Promise(resolve => setTimeout(resolve, 50));
     const input = document.querySelector<HTMLInputElement>('.home-goal-bar input')!;
     input.value = 'Fix the docking error'; input.dispatchEvent(new win.Event('input', { bubbles: true }));
-    const capture = [...document.querySelectorAll<HTMLButtonElement>('.home-goal-bar button')].find(b => b.textContent === 'Capture')!;
+    const capture = [...document.querySelectorAll<HTMLButtonElement>('.home-goal-bar button')].find(b => b.textContent === 'Add issue')!;
     capture.click(); await Promise.resolve();
+    assert.equal(document.querySelector('.home-empty-state'), null);
+    assert.equal(document.querySelector('.home-header .home-goal-bar input'), input, 'capture reuses the same form');
     assert.match(document.querySelector('[data-column=triage]')!.textContent!, /Fix the docking error/);
     const keyboard = addIssue({ title: 'Add keyboard navigation', type: 'bug', labels: ['accessibility', 'keyboard', 'desktop', 'polish'], workspacePath: '/repo', status: 'triage' });
     await Promise.resolve();
@@ -55,6 +79,23 @@ test('Home mounts before issues load, captures real issues, selects a column and
     assert.match(document.querySelector('[data-column=done]')!.textContent!, /Done today · 1/);
     document.querySelector<HTMLButtonElement>('.home-done-toggle')!.click();
     assert.match(document.querySelector('[data-column=done]')!.textContent!, /Completed work/);
+    deleteIssues(collectIssues({ workspacePath: '/repo', scope: 'current_workspace', hideDone: false }).map(issue => issue.id));
+    await Promise.resolve();
+    assert.ok(document.querySelector('.home-empty-state'));
+    assert.equal(document.querySelector('.home-empty-state input'), input);
+    input.value = 'Build a release view'; input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    [...document.querySelectorAll<HTMLButtonElement>('.home-goal-bar button')].find(b => b.textContent === 'Plan a goal')!.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(goals, ['Build a release view']);
+    assert.match(document.querySelector('.home-empty-drafts')!.textContent!, /Build release view/);
+    assert.equal(document.querySelectorAll('.home-flow-column').length, 0, 'drafts stay in the empty state until accepted');
+    assert.equal(input.value, 'Build a release view');
+    [...document.querySelectorAll<HTMLButtonElement>('.home-draft-actions button')].find(b => b.textContent === 'Add to Ready')!.click();
+    await Promise.resolve();
+    assert.equal(document.querySelector('.home-empty-state'), null);
+    assert.match(document.querySelector('[data-column=ready]')!.textContent!, /Build release view/);
+    assert.equal(sessionState.activeId, codeChat.id);
+    assert.equal(sessionState.chats.length, 1);
   } finally {
     launchInstance('code'); resetInstancesForTests(); setStorageModeForTests(null); setIssuesStateForTests(null);
     await teardownHappyDomAsync(win);

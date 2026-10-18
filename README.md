@@ -89,9 +89,9 @@ idea  →  Plan mode          →  a spec in documentation/plans/
 
 You can also just open a repo and start typing.
 
-### Home
+### Dashboard
 
-Home brings project issues through Triage, Ready, In Progress, Review, and Done. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations and approve queued merges in the bottom dock, alongside Terminal, Git, Plans, and Scheduled work. [Home guide](documentation/manual/apps/home.md).
+Code opens after you choose a project, keeping your existing session. Dashboard brings project issues through Triage, Ready, In Progress, Review, and Done. Projects without issues show a goal field with Plan a goal and Add issue actions. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations and approve queued merges in the bottom dock, alongside Terminal, Git, Plans, and Scheduled work. [Dashboard guide](documentation/manual/apps/home.md).
 
 ### Code
 

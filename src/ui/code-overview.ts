@@ -1,4 +1,4 @@
-/** Compatibility entry points for the overview moved to the Home app. */
+/** Compatibility entry points for the overview moved to the Dashboard app. */
 import { launchApp } from '../os/router';
 
 export function isCodeOverviewOpen(): boolean { return false; }

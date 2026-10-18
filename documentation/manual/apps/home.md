@@ -1,10 +1,10 @@
-# Home
+# Dashboard
 
-Home runs your project's issues through **Triage**, **Ready**, **In Progress**, **Review**, and **Done**. It uses the same issues, chats, models, and worktrees as Code and Issues.
+Dashboard runs your project's issues through **Triage**, **Ready**, **In Progress**, **Review**, and **Done**. It uses the same issues, chats, models, and worktrees as Code and Issues.
 
 ## Capture and plan
 
-Enter a goal or an error in the header. **Capture** creates an issue in Triage. **Plan into tasks** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files.
+When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
 
 Select **Accept to Ready** to accept a triage issue. Existing issue statuses follow the roles configured in Settings → Issues. Closed and canceled issues retain their existing meaning.
 
@@ -30,4 +30,4 @@ Preview uses an explicit handoff to Code. The dock also contains a scoped comman
 
 ## Refresh
 
-Project data refreshes every 10 seconds while Home is visible. Conversation updates preserve the message draft and scroll position. A failed refresh retains the last successful data with a retry action. The shell's workspace picker switches projects; **Open Code** opens the development workspace.
+Project data refreshes every 10 seconds while Dashboard is visible. Conversation updates preserve the message draft and scroll position. A failed refresh retains the last successful data with a retry action. The shell's workspace picker switches projects; **Open Code** opens the development workspace.

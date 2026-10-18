@@ -166,7 +166,7 @@ async function completeWorkspaceActivation(): Promise<void> {
     const gate = await import('../os/workspace-gate');
     if (gateSwitchMode) {
       gateSwitchMode = false;
-      await gate.finishWorkspaceGateSwitch();
+      await gate.onWorkspaceGateChosen();
       return;
     }
     await setWorkspaceGateOpening(true);

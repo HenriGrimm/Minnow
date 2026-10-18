@@ -5,8 +5,8 @@ import { listRailApps } from '../../src/os/app-preferences.ts';
 import { parseOsHash, hashForRoute } from '../../src/os/router.ts';
 import { installHappyDomGlobals, seedMinimalSession, teardownHappyDomAsync } from './dom-helpers.mts';
 
-test('Source Control is beside Code in the rail and has its own route', () => {
-  assert.deepEqual(listRailApps().slice(0, 3).map((app) => app.id), ['home', 'code', 'source-control']);
+test('Source Control follows Code and Dashboard in the rail and has its own route', () => {
+  assert.deepEqual(listRailApps().slice(0, 3).map((app) => app.id), ['code', 'home', 'source-control']);
   const route = parseOsHash('#/app/source-control');
   assert.equal(route.appId, 'source-control');
   assert.equal(hashForRoute(route), '#/app/source-control');

@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "244c7c5a9e3fec0a8ff742da8de94ede13d3bea9d30825153a280a55fd0a2537"
+      "hash": "57c440828477db4507ae31ebe90450e5ac2d5be2483a247cc7cc645a40875ba2"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -90,7 +90,7 @@
     {
       "path": "documentation/manual/get-started/first-chat.md",
       "title": "Your first chat",
-      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Home . Select New chat to enter Code with the chat rail beside your repo. To start from a remote repository, choose Create From Remote , paste its HTTPS or SSH clone link, and review the suggested folder nam",
+      "summary": "You start at the workspaces picker — open a project folder. Minnow opens Code with the chat rail beside your repo. Your existing project conversation stays selected. An empty chat shows the hub, where you can describe what to build, browse files, or open a terminal. To start from",
       "headings": [
         "Code with chat open",
         "Send something",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "eccbecc614b16b45914ff055755a12ffc307def7c73ad3c0c76f1fc70c09bc42"
+      "hash": "5886bba569c855c843ae5673c9f410269f09a6d85887295ca659c57000cce60a"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -219,10 +219,10 @@
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Home, Code, Source Control, Models,",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Dashboard, Source Control, Mo",
       "headings": [
-        "Home",
         "Code",
+        "Dashboard",
         "The supporting surfaces",
         "Source Control history",
         "Models",
@@ -234,12 +234,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "688fdec6bdf9581b79604f954834580e4e7ee4cf0ace8d019bb372291a91153d"
+      "hash": "7d20dc74dc75377ad1174492b6f418ee129c493246b8c7c6ddee52faa5e085d5"
     },
     {
       "path": "documentation/manual/apps/code.md",
       "title": "Code",
-      "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Open it from the app rail or Open Code in ",
+      "summary": "Code is the development environment: a file tree, an editor with AI completion and language server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are. Code opens after you choose a project. You",
       "headings": [
         "Pin a chat",
         "Share a chat",
@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "d0201f1b516630fa65f8703cedb3f29e58ce5c1d2ec2aaace79d4d1c0e60e889"
+      "hash": "fd220b2b5a274ef71bb5823f2d5ece7477bfc608d80115a1a8278032feb425bf"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -606,8 +606,8 @@
     },
     {
       "path": "documentation/manual/apps/home.md",
-      "title": "Home",
-      "summary": "Home runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Capture and plan Enter a goal or an error in the header. Capture creates an issue in Triage. Plan into tasks asks y",
+      "title": "Dashboard",
+      "summary": "Dashboard runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Capture and plan When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter ",
       "headings": [
         "Capture and plan",
         "Send issues to agents",
@@ -615,7 +615,7 @@
         "Refresh"
       ],
       "section": "Apps",
-      "hash": "2b8761409f60a89558c7944ec6b411b7058e9e31a8c11d281d5d3fe05a224af9"
+      "hash": "3431d741ef784211b7d6c0c16eb8969bd12ce6dee5070482da8d67ebe96b52c9"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",
