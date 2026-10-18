@@ -4,6 +4,7 @@ import type { BoardState } from '../../server/orchestrator/core/types.d.ts';
 import { boardUsage, roundSpeed } from '../../src/orchestrator/board-usage.ts';
 
 const stateWith = (...attempts: Record<string, unknown>[]): BoardState => ({
+  status: 'running',
   tasks: new Map([['A', { attempts }]]),
 } as unknown as BoardState);
 
@@ -64,4 +65,16 @@ test('round speed uses generation time and excludes hidden reasoning from timing
 test('board metrics never reuse another chat when no attempt reports usage', () => {
   const state = stateWith({ attemptId: 'a', role: 'builder', ended: false });
   assert.deepEqual(boardUsage(state), { usage: {}, stats: {}, measured: 0, active: 1 });
+});
+
+
+test('pause and stop exclude held attempts from active counts while preserving their usage', () => {
+  const state = stateWith({ attemptId: 'a', role: 'builder', ended: false });
+  const rounds = new Map([['a', new Map([[0, { usage: { total_tokens: 42 } }]])]]);
+  for (const reason of ['paused', 'user'] as const) {
+    const held = { ...state, status: 'stopped' as const, stopReason: reason };
+    assert.equal(boardUsage(held, rounds).active, 0);
+    assert.equal(boardUsage(held, rounds).usage.total_tokens, 42);
+  }
+  assert.equal(boardUsage(state, rounds).active, 1);
 });

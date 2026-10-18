@@ -1,4 +1,5 @@
 import type { BoardState, TaskEditChanges, TaskState } from '../../server/orchestrator/core/types';
+import { attemptInterruption } from './attempt-status';
 import { reopenTargets } from '../../server/orchestrator/core/plan.js';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
 import { satisfiesDependents } from '../../server/orchestrator/core/derive.js';
@@ -102,6 +103,9 @@ export const OUTCOME_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> =
 };
 
 export function phaseLabel(state: BoardState, task: TaskState): string {
+  const attempt = runningAttempt(task);
+  const interruption = attempt ? attemptInterruption(state, attempt) : null;
+  if (interruption) return interruption;
   if (task.phase === 'idle' && isBlocked(state, task)) return 'blocked';
   if (task.phase === 'idle' && task.attempts.length > 0) return 'waiting';
   return task.phase;
@@ -222,10 +226,10 @@ function renderHeaderTelemetry(state: BoardState): HTMLElement {
     countPhase(state, 'merged') +
     countPhase(state, 'abandoned') +
     countPhase(state, 'skipped');
-  const active =
-    countPhase(state, 'building') +
-    countPhase(state, 'testing') +
-    countPhase(state, 'merging');
+  const active = [...state.tasks.values()].filter((task) => {
+    const attempt = runningAttempt(task);
+    return attempt && !attemptInterruption(state, attempt);
+  }).length;
   const totalWaves = Math.max(state.waves.length, groupByWave(state).length);
   const wavesComplete = countWavesComplete(state);
 
@@ -450,6 +454,8 @@ function renderTaskCard(
   const blocked = isBlocked(state, task);
   if (blocked) card.classList.add('ov2-task--blocked');
   const activeAttempt = runningAttempt(task);
+  const interruption = activeAttempt ? attemptInterruption(state, activeAttempt) : null;
+  if (interruption) card.dataset.interruption = interruption;
 
   const head = el('button', 'ov2-task__head');
   head.type = 'button';
@@ -468,7 +474,7 @@ function renderTaskCard(
   head.appendChild(el('span', 'ov2-task__id', task.id));
   head.appendChild(el('span', 'ov2-task__title', task.title));
   const badges = el('span', 'ov2-task__badges');
-  badges.appendChild(pill(phaseLabel(state, task), blocked ? 'warn' : PHASE_TONE[task.phase]));
+  badges.appendChild(pill(phaseLabel(state, task), interruption ? 'neutral' : blocked ? 'warn' : PHASE_TONE[task.phase]));
   // `task.outcome` describes the previous ended attempt. Once a retry has
   // started, showing that stale failure beside the live phase makes the new
   // attempt look crashed too.
@@ -499,7 +505,7 @@ function renderTaskCard(
     card.appendChild(el('p', 'ov2-task__blocked', `waiting on ${waiting.join(', ')}`));
   }
 
-  if (activeAttempt) {
+  if (activeAttempt && !interruption) {
     card.appendChild(
       renderActivity(
         options.liveActivity?.get(task.id) ?? null,
@@ -664,6 +670,7 @@ export function syncTaskCardActivity(
   startedAt: number | null,
   now?: number,
 ): void {
+  if (card.dataset.interruption) return;
   let row = card.querySelector<HTMLElement>('.ov2-activity');
   if (!row) {
     const controls = card.querySelector('.ov2-task__controls');
