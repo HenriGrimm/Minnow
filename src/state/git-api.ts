@@ -10,6 +10,57 @@ export interface GitFileEntry {
   status: string;
 }
 
+export interface IssueWorkSnapshot {
+  ok: boolean;
+  error?: string;
+  source?: string;
+  isolated?: boolean;
+  sourceBranch?: string;
+  targetBranch?: string;
+  sourceHead?: string;
+  targetHead?: string;
+  fingerprint?: string;
+  dirty?: boolean;
+  ahead?: number;
+  files?: string[];
+  patch?: string;
+  truncated?: boolean;
+  conflict?: boolean;
+  conflictedFiles?: string[];
+  sha?: string;
+  mergeSha?: string;
+  merged?: boolean;
+  worktreePath?: string;
+  worktreeRemoved?: boolean;
+  branchRemoved?: boolean;
+  cleanupError?: string;
+}
+
+export interface IssueWorkRequest {
+  cwd: string;
+  worktreePath?: string;
+  sourceBranch?: string;
+  targetBranch?: string;
+  sourceHead?: string;
+  targetHead?: string;
+  fingerprint?: string;
+  message?: string;
+  cleanup?: boolean;
+  sha?: string;
+}
+
+export async function issueWorkOperation(
+  action: 'Inspect' | 'Commit' | 'Merge' | 'Cleanup',
+  input: IssueWorkRequest,
+): Promise<IssueWorkSnapshot> {
+  const op = `issueWork${action}`;
+  const result = await postGit(op, input as unknown as Record<string, unknown>) as unknown as IssueWorkSnapshot;
+  if (!result.ok && result.error === `Unknown git op: ${op}`) {
+    return { ok: false, error: 'The running Minnow server does not support issue work operations. Restart Minnow (including the tool server), then refresh this tab.' };
+  }
+  return result;
+}
+
 export interface GitCommitEntry {
   hash: string;
   parents: string[];

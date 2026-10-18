@@ -129,9 +129,22 @@ function openMenuForTrigger(
   document.addEventListener('pointerdown', outsideHandler, true);
 
   escapeHandler = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    closeIssuesWorkflowMenu();
-    trigger.focus();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeIssuesWorkflowMenu();
+      trigger.focus();
+      return;
+    }
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const enabled = buttons.filter((button) => !button.disabled);
+    if (!enabled.length) return;
+    const index = enabled.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? enabled.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length;
+    enabled[next]?.focus();
   };
   document.addEventListener('keydown', escapeHandler, true);
 

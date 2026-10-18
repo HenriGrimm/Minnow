@@ -51,8 +51,7 @@ export function isDetailRowExpanded(key: string): boolean {
 
 function setDetailRowExpanded(key: string, expanded: boolean): void {
   const map = { ...readExpanded() };
-  if (expanded) map[key] = true;
-  else delete map[key];
+  map[key] = expanded;
   writeExpanded(map);
 }
 
@@ -147,6 +146,7 @@ export interface DetailRowOptions {
   summary?: DetailRowSummaryPart[];
   /** Detail under the row; only set when there is something to show. */
   expandable?: boolean;
+  defaultExpanded?: boolean;
   /** Primary action for an empty row, and for the trailing control. */
   onAdd?: (anchor: HTMLElement) => void;
   /** Accessible name for the trailing control. */
@@ -241,8 +241,9 @@ export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
   let expand = (): void => {};
 
   if (expandable) {
+    const isOpen = (): boolean => readExpanded()[options.key] ?? options.defaultExpanded ?? false;
     const paint = (): void => {
-      const open = isDetailRowExpanded(options.key);
+      const open = isOpen();
       section.classList.toggle('is-open', open);
       body.hidden = !open;
       rowButton?.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -250,12 +251,12 @@ export function createDetailRow(options: DetailRowOptions): DetailRowHandle {
       if (rowButton) rowButton.title = open ? `Hide ${options.label}` : `Show ${options.label}`;
     };
     rowButton?.addEventListener('click', () => {
-      setDetailRowExpanded(options.key, !isDetailRowExpanded(options.key));
+      setDetailRowExpanded(options.key, !isOpen());
       paint();
     });
     paint();
     expand = (): void => {
-      if (isDetailRowExpanded(options.key)) return;
+      if (isOpen()) return;
       setDetailRowExpanded(options.key, true);
       paint();
     };

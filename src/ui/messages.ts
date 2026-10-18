@@ -182,6 +182,7 @@ export { resolveModelInfo, showCachedModelInfo } from '../api/models';
 
 /** Suppress per-bubble scroll while bulk-rendering history (renderChatFromHistory). */
 let suppressBubbleScroll = false;
+let embeddedHistoryPaint = false;
 
 /** Remove landing placeholders before the first live bubble mounts. */
 function clearTranscriptEmptyState(mount: HTMLElement): void {
@@ -296,6 +297,72 @@ interface HistoryRenderContext {
   fold: ReturnType<typeof compactionFoldView>;
 }
 
+function historyRenderContext(chat: Chat): HistoryRenderContext {
+  const toolResultMap: ToolResultLookup = new Map();
+  for (const msg of chat.history) {
+    if (msg?.role !== 'tool') continue;
+    toolResultMap.set(msg.tool_call_id, {
+      content: msg.content,
+      attachments: msg.attachments,
+      ...(msg.codeChange ? { codeChange: msg.codeChange } : {}),
+    });
+  }
+  return { chat, toolResultMap, fold: compactionFoldView(chat.history) };
+}
+
+/** Paint the shared transcript in a secondary surface without selecting or repainting Code. */
+export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>): { liveBubble: HTMLDivElement | null; dispose: () => void } {
+  disposeChatWorkView(area);
+  const host = document.createElement('div');
+  const ctx = historyRenderContext(chat);
+  const tailStart = Math.max(0, chat.history.length - HISTORY_SYNC_TAIL);
+  let end = tailStart;
+  let disposed = false;
+  let cancelBackfill = () => {};
+  let liveBubble: HTMLDivElement | null = null;
+
+  function paint(target: HTMLElement, callback: () => void): void {
+    const wasSuppressed = suppressBubbleScroll;
+    const wasEmbedded = embeddedHistoryPaint;
+    suppressBubbleScroll = true;
+    embeddedHistoryPaint = true;
+    try { runWithChatMount(target, callback); }
+    finally { suppressBubbleScroll = wasSuppressed; embeddedHistoryPaint = wasEmbedded; }
+  }
+  function backfill(): void {
+    if (disposed || !area.isConnected) return;
+    const chunk = document.createElement('div');
+    const started = performance.now();
+    let start = end;
+    do {
+      start -= 1;
+      const row = document.createElement('div');
+      paint(row, () => appendHistoryMessageAt(row, ctx, start));
+      chunk.prepend(...row.childNodes);
+    } while (start > 0 && end - start < HISTORY_BACKFILL_CHUNK && performance.now() - started < HISTORY_BACKFILL_BUDGET_MS);
+    const scrollRoot = area.parentElement;
+    const prevTop = scrollRoot?.scrollTop ?? 0;
+    const prevHeight = scrollRoot?.scrollHeight ?? 0;
+    area.prepend(...chunk.childNodes);
+    if (scrollRoot) scrollRoot.scrollTop = prevTop + scrollRoot.scrollHeight - prevHeight;
+    end = start;
+    if (end > 0) cancelBackfill = scheduleBackfillStep(backfill);
+  }
+
+  paint(host, () => {
+    for (let i = tailStart; i < chat.history.length; i += 1) appendHistoryMessageAt(host, ctx, i);
+    if (isChatStreaming(chat.id)) {
+      liveBubble = appendBubble('assistant', '', {
+        historyIndex: chat.history.length, turnKind: 'assistant', chatId: chat.id, modeId: chat.modeId,
+      }).bubble;
+    }
+  });
+  area.replaceChildren(...host.childNodes);
+  installChatWorkView(area, chat, () => isChatStreaming(chat.id), { view: 'compact', expanded, isolated: true });
+  if (end > 0) cancelBackfill = scheduleBackfillStep(backfill);
+  return { liveBubble, dispose: () => { disposed = true; cancelBackfill(); disposeChatWorkView(area); } };
+}
+
 /**
  * Render one history entry into `host`. Split out of `renderChatFromHistory` so the transcript
  * can be built in chunks across frames instead of one unbroken task (MIN-793).
@@ -401,7 +468,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     const toolItems: ToolCallBatchItem[] = [];
     for (const tc of msg.tool_calls) {
       const argsObj = parseToolArgsForDisplay(tc.function.arguments);
-      const toolWrap = renderToolCall(tc.function.name, argsObj);
+      const toolWrap = renderToolCall(tc.function.name, argsObj, { standalone: embeddedHistoryPaint });
       toolWrap.dataset.toolCallId = tc.id;
       toolWrap.dataset.historyIndex = String(i);
       toolWrap.dataset.turnKind = 'assistant-tools';
@@ -719,25 +786,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   // Paint off-DOM and swap so the previous transcript stays until the new one is ready (MIN-584).
   const transcriptHost = document.createElement('div');
-  const toolResultMap = new Map<
-    string,
-    {
-      content: string;
-      attachments?: ToolResultMessage['attachments'];
-      codeChange?: ToolResultMessage['codeChange'];
-    }
-  >();
-  for (const msg of chat.history) {
-    if (msg?.role !== 'tool') continue;
-    const toolMsg = msg as ToolResultMessage;
-    toolResultMap.set(toolMsg.tool_call_id, {
-      content: toolMsg.content,
-      attachments: toolMsg.attachments,
-      ...(toolMsg.codeChange ? { codeChange: toolMsg.codeChange } : {}),
-    });
-  }
-
-  const renderCtx: HistoryRenderContext = { chat, toolResultMap, fold: compactionFoldView(chat.history) };
+  const renderCtx = historyRenderContext(chat);
   const total = chat.history.length;
   const tailStart = Math.max(0, total - HISTORY_SYNC_TAIL);
   runWithChatMount(transcriptHost, () => {
@@ -1049,16 +1098,16 @@ export function appendBubble(
 ): { wrap: HTMLDivElement; bubble: HTMLDivElement } {
   const active = getActiveChat();
   const targetId = meta?.chatId?.trim() || active.id;
-  if (targetId !== active.id && !isStreamDomVisible(targetId)) {
+  if (!embeddedHistoryPaint && targetId !== active.id && !isStreamDomVisible(targetId)) {
     return bubbleDomStub();
   }
   const chat = resolveBubbleTargetChat(meta);
-  if (shouldStubOrchestrateStreamDom(chat)) {
+  if (!embeddedHistoryPaint && shouldStubOrchestrateStreamDom(chat)) {
     return bubbleDomStub();
   }
   const mount = getActiveChatMountElement();
-  clearTranscriptEmptyState(mount);
-  if (isHubMounted()) {
+  if (!embeddedHistoryPaint) clearTranscriptEmptyState(mount);
+  if (!embeddedHistoryPaint && isHubMounted()) {
     teardownHub();
   }
 

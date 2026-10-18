@@ -34,15 +34,15 @@ export function sanitizeRefFragment(raw: string | number): string {
 
 /**
  * Tool workspace root for a chat: isolated worktree when present, otherwise the
- * chat's bound sandbox (~/.minnow/workspace or ~/.minnow/chats) or leftover
- * board-folder workspace. Plain Code chats without a worktree return undefined
+ * chat's bound sandbox, background-work folder, or leftover board-folder
+ * workspace. Plain Code chats without a worktree return undefined
  * so callers fall back to the live top-bar workspace.
  *
  * Does not look up V1 board-task `worktreePath` — that engine is gone. Chats
  * that still have `worktreeRoot` stamped keep using it.
  */
 export function resolveChatToolWorkspaceRoot(
-  chat: Pick<Chat, 'worktreeRoot' | 'boardGroupId' | 'workspacePath'>,
+  chat: Pick<Chat, 'worktreeRoot' | 'boardGroupId' | 'workspacePath' | 'background'>,
   groups?: ChatGroup[],
 ): string | undefined {
   const direct = resolveChatWorktreeRoot(chat, groups);
@@ -53,34 +53,35 @@ export function resolveChatToolWorkspaceRoot(
   const normalized = normalizeWorkspacePath(ws);
 
   if (chat.boardGroupId?.trim()) return normalized;
+  if (chat.background) return normalized;
   if (isMinnowSandboxWorkspacePath(normalized)) return normalized;
   return undefined;
 }
 
 /**
  * Direct chat worktree path (no leftover board-task fallback).
- * A worktreeRoot that is only a case/slash variant of the Code workspace is
+ * A worktreeRoot that is only a case/slash variant of the chat workspace is
  * treated as Local so path-normalization drift cannot stick a chat in
  * “Worktree” mode on the principal checkout (MIN-780).
  */
 export function resolveChatWorktreeRoot(
-  chat: Pick<Chat, 'worktreeRoot'>,
+  chat: Pick<Chat, 'worktreeRoot'> & Partial<Pick<Chat, 'workspacePath'>>,
   _groups?: ChatGroup[],
 ): string | undefined {
   const direct = chat.worktreeRoot?.trim();
   if (!direct) return undefined;
-  const ws = getWorkspacePath().trim();
+  const ws = chat.workspacePath?.trim() || getWorkspacePath().trim();
   if (ws && worktreePathsEqual(direct, ws)) return undefined;
   return direct;
 }
 
 /** True when the chat runs tools inside an isolated git worktree. */
-export function isChatWorktreeMode(chat: Pick<Chat, 'worktreeRoot'>): boolean {
+export function isChatWorktreeMode(chat: Pick<Chat, 'worktreeRoot'> & Partial<Pick<Chat, 'workspacePath'>>): boolean {
   return Boolean(resolveChatWorktreeRoot(chat));
 }
 
 /** Short label for the composer run-target button. */
-export function formatComposerRunTargetLabel(chat: Pick<Chat, 'worktreeRoot'>): string {
+export function formatComposerRunTargetLabel(chat: Pick<Chat, 'worktreeRoot'> & Partial<Pick<Chat, 'workspacePath'>>): string {
   return isChatWorktreeMode(chat) ? 'Worktree' : 'Local';
 }
 
@@ -168,6 +169,7 @@ export async function createManagedChatWorktree(
     : slugifyGitRefName(branch, GIT_REF_FALLBACK_WORKTREE);
   const res = await createChatWorktree({
     chatId: chat.id,
+    cwd: chat.workspacePath?.trim() || composerGitRepoRoot(),
     branch: branchName,
     baseRef,
     checkoutExisting,
@@ -181,10 +183,10 @@ export async function createManagedChatWorktree(
   return { ok: true };
 }
 
-/** Switch chat back to the main Code workspace (Local target). */
+/** Switch chat back to its bound workspace (Local target). */
 export async function setChatRunTargetLocal(chat: Chat): Promise<void> {
   await detachChatWorktree(chat);
-  const res = await gitBranches(composerGitRepoRoot());
+  const res = await gitBranches(chat.workspacePath?.trim() || composerGitRepoRoot());
   if (res.ok && res.current?.trim()) {
     chat.gitBranch = res.current.trim();
   } else {
@@ -247,7 +249,7 @@ export function parseChatRunTargetChoice(value: unknown): ChatRunTargetChoice | 
 
 /**
  * Apply a run-target pick to an existing chat before tools or a seed turn run.
- * Attach of the principal checkout collapses to Local (MIN-780).
+ * Attach of the chat's bound checkout collapses to Local (MIN-780).
  */
 export async function applyChatRunTargetChoice(
   chat: Chat,
@@ -259,7 +261,7 @@ export async function applyChatRunTargetChoice(
   }
 
   if (choice.kind === 'attach') {
-    const repoRoot = composerGitRepoRoot();
+    const repoRoot = chat.workspacePath?.trim() || composerGitRepoRoot();
     if (repoRoot && worktreePathsEqual(choice.path, repoRoot)) {
       await setChatRunTargetLocal(chat);
       return { ok: true };

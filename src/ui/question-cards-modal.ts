@@ -1,4 +1,5 @@
 import { getChatAbort } from '../app-state';
+import { resolveIssueChatQuestionHost } from '../chat/issue-chat-host';
 import {
   isAskQuestionDomVisible,
   notifyAskQuestionDisplayContextChanged,
@@ -252,7 +253,7 @@ function unparkQuestionModal(state: ActiveQuestionModalState): void {
   if (!state.parked) return;
   if (!isAskQuestionDomVisible(state.chatId)) return;
 
-  const planHost = resolveOrchestratePlanScreenQuestionHost(state.chatId);
+  const planHost = resolveIssueChatQuestionHost(state.chatId) ?? resolveOrchestratePlanScreenQuestionHost(state.chatId);
   if (planHost) {
     attachPanelToHost(state, planHost);
     activateEmbeddedQuestionChrome(state);
@@ -420,7 +421,7 @@ export function showQuestionCardsModal(
     let embedded = options.embedded === true;
     let host = options.host;
     if (!host && options.chatId) {
-      const planHost = resolveOrchestratePlanScreenQuestionHost(options.chatId);
+      const planHost = resolveIssueChatQuestionHost(options.chatId) ?? resolveOrchestratePlanScreenQuestionHost(options.chatId);
       if (planHost) {
         host = planHost;
         embedded = true;

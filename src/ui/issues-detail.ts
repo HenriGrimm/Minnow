@@ -1,4 +1,7 @@
 import { createIssueChatActivity } from './issues-chat-activity';
+import { mountIssueWorkspace, type IssueWorkspaceTab } from './issues-work-panel';
+import { issueWorkChat } from '../issues/work-state';
+import { runIssueWorkspaceChat } from '../chat/issues/workspace-chat';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { setAssistantBubbleContent } from '../markdown/renderer';
@@ -27,7 +30,6 @@ import {
   issueActivityTarget,
   openIssueActivity,
   runIssueExpandWithAgent,
-  runIssueForegroundChat,
   runIssueSendToBoard,
   openIssuePlanInEditor,
   ISSUE_FOREGROUND_CHAT_MODES,
@@ -105,6 +107,7 @@ import {
   resolveIssueTypeIcon,
 } from '../issues/type-icons';
 import {
+  isReviewStatus,
   sortedPriorities,
   sortedStatuses,
   sortedTypes,
@@ -172,6 +175,11 @@ export interface IssueDetailMountOptions {
   onNavigate: (issueId: string) => void;
 }
 
+export interface IssueDetailNavigation {
+  issueIds: () => string[];
+  onNavigate: (issueId: string) => void;
+}
+
 const mountedDetailRefreshes = new Set<() => void>();
 
 /** Independent selection and editor lifecycle for each Issues surface. */
@@ -182,6 +190,28 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   let detailEditor: IssueEditorHandle | null = null;
   /** Guards flush → store emit → refresh from rebuilding the panel mid-paint. */
   let paintingDetail = false;
+  const workspaceTabs = new Map<string, IssueWorkspaceTab>();
+  let workspacePanel: ReturnType<typeof mountIssueWorkspace> | undefined;
+  let navigation: IssueDetailNavigation | undefined;
+
+  function setIssueDetailNavigation(next: IssueDetailNavigation): void {
+    navigation = next;
+  }
+
+  function navigateIssueDetail(delta: -1 | 1): boolean {
+    if (!selectedIssueId || !navigation) return false;
+    const ids = [...new Set(navigation.issueIds())];
+    const index = ids.indexOf(selectedIssueId);
+    const next = index >= 0 ? ids[index + delta] : undefined;
+    if (!next) return false;
+    const tab = workspaceTabs.get(selectedIssueId);
+    if (tab) workspaceTabs.set(next, tab);
+    navigation.onNavigate(next);
+    const control = detailHost?.querySelector<HTMLButtonElement>(`[data-issue-step="${delta}"]`);
+    if (control && !control.disabled) control.focus({ preventScroll: true });
+    else detailHost?.focus({ preventScroll: true });
+    return true;
+  }
 
   const unsubscribeReviews = subscribePrReviews(() => {
     if (selectedIssueId) refreshIssueDetailIfOpen();
@@ -229,7 +259,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       body.appendChild(host);
     }
     detailHost = host;
-    ensureIssuesPeekLayout(host);
+    ensureIssuesPeekLayout(host, () => {
+      closeIssueDetail();
+      void import('./issues-page').then((m) => m.setIssuesRouteHash('#/app/issues'));
+    });
     return host;
   }
 
@@ -254,6 +287,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         el.closest('.issues-detail__desc-wrap') ||
         el.closest('.mn-editor') ||
         el.closest('.issues-detail__add-code') ||
+        el.closest('.issues-work-field') ||
+        el.closest('.issues-work-chat__composer') ||
         el.closest('.issues-expand-form'),
     );
   }
@@ -279,6 +314,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   /** Close the detail panel and clear selection. */
   function closeIssueDetail(): void {
+    workspacePanel?.dispose();
+    workspacePanel = undefined;
     const id = selectedIssueId;
     selectedIssueId = undefined;
     teardownDetailEditor();
@@ -323,6 +360,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       options?.onClose();
       return;
     }
+    const wasOpen = Boolean(selectedIssueId);
     const sameIssue = selectedIssueId === issue.id;
     if (!sameIssue) teardownDetailEditor();
     selectedIssueId = issue.id;
@@ -330,11 +368,13 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (!host) return;
     syncDetailLayoutClass(true);
     host.classList.add('is-open');
-    const scrollTop = sameIssue ? host.querySelector('.issues-detail__scroll')?.scrollTop ?? 0 : 0;
+    host.setAttribute('aria-label', `Issue ${issue.id}: ${issue.title}`);
+    const scrollTop = sameIssue ? host.querySelector('.issues-detail__scroll:not([hidden])')?.scrollTop ?? 0 : 0;
     renderIssueDetail(host, issue);
-    const scroll = host.querySelector('.issues-detail__scroll');
+    const scroll = host.querySelector('.issues-detail__scroll:not([hidden])');
     if (scroll) scroll.scrollTop = scrollTop;
     if (!options) refreshIssuesPeekLayoutChrome();
+    if (!options && !wasOpen) host.focus({ preventScroll: true });
   }
 
   /** Re-render detail if the selected issue is still open. */
@@ -443,12 +483,13 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   /** Icon button used for Close and the more menu — 28px visual, 44px on coarse pointers. */
   function detailIconButton(
     label: string,
-    iconName: 'close' | 'more' | 'expand',
+    iconName: 'close' | 'more' | 'expand' | 'arrowUp' | 'arrowDown' | 'edit',
   ): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'issues-detail__icon-btn';
     btn.setAttribute('aria-label', label);
+    btn.title = label;
     btn.appendChild(createIcon(iconName, { size: 16 }));
     return btn;
   }
@@ -531,6 +572,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   /** Description: the WYSIWYG editor over canonical markdown. */
   function buildDescriptionSection(issue: IssueCard): HTMLElement {
     const descSection = section('document');
+    const heading = document.createElement('div');
+    heading.className = 'issues-detail__zone-head';
+    const caption = document.createElement('h3');
+    caption.className = 'issues-detail__section-title';
+    caption.textContent = 'Description';
+    const edit = detailIconButton('Edit description', 'edit');
+    edit.addEventListener('click', () => host.querySelector<HTMLElement>('[contenteditable="true"]')?.focus());
+    heading.append(caption, edit);
+    descSection.section.prepend(heading);
     const host = document.createElement('div');
     host.className = 'issues-detail__desc-wrap';
 
@@ -571,6 +621,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (paintingDetail) return;
     paintingDetail = true;
     try {
+      workspacePanel?.dispose();
+      workspacePanel = undefined;
       teardownDetailEditor();
       host.querySelector('.issues-detail')?.remove();
 
@@ -637,8 +689,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       });
     });
 
-    // Docked vs overlay: this control grows the same peek, it does not close it.
-    const layoutBtn = detailIconButton('Open issue in a larger sheet', 'expand');
+    const layoutBtn = detailIconButton('Maximize issue panel', 'expand');
     layoutBtn.classList.add('issues-detail__layout-expand');
     layoutBtn.setAttribute('aria-pressed', isIssueDetailSheetExpanded() ? 'true' : 'false');
     layoutBtn.addEventListener('click', (event) => {
@@ -654,10 +705,35 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       else void import('./issues-page').then((m) => m.setIssuesRouteHash('#/app/issues'));
     });
 
+    if (!options) {
+      const nav = document.createElement('nav');
+      nav.className = 'issues-detail__navigation';
+      nav.setAttribute('aria-label', 'Browse issues');
+      const ids = [...new Set(navigation?.issueIds() ?? [])];
+      const index = ids.indexOf(issue.id);
+      const position = document.createElement('span');
+      position.className = 'issues-detail__position';
+      position.setAttribute('role', 'status');
+      position.setAttribute('aria-label', index < 0 ? 'Issue outside the current list' : `Issue ${index + 1} of ${ids.length}`);
+      position.textContent = index < 0 ? '' : `${index + 1} / ${ids.length}`;
+      nav.appendChild(position);
+      for (const delta of [-1, 1] as const) {
+        const button = detailIconButton(delta < 0 ? 'Previous issue (↑)' : 'Next issue (↓)', delta < 0 ? 'arrowUp' : 'arrowDown');
+        button.dataset.issueStep = String(delta);
+        button.setAttribute('aria-keyshortcuts', delta < 0 ? 'ArrowUp' : 'ArrowDown');
+        button.disabled = index < 0 || !ids[index + delta];
+        button.addEventListener('click', () => navigateIssueDetail(delta));
+        nav.appendChild(button);
+      }
+      headerActions.appendChild(nav);
+    }
     headerActions.append(createIssueExpandButton(issue, 'peek'), moreBtn);
     if (!options) headerActions.append(layoutBtn);
     headerActions.append(closeBtn);
-    header.append(idEl, createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
+    const breadcrumb = document.createElement('span');
+    breadcrumb.className = 'issues-detail__breadcrumb';
+    breadcrumb.append(createIcon('appIssues', { size: 16 }), document.createTextNode('Issues /'));
+    header.append(breadcrumb, idEl);
     const githubBadge = createIssueGithubSyncBadge(
       issue, getIssuesGithubMode() === 'mirror', hasGithubSyncConflict(issue.id),
     );
@@ -738,8 +814,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     );
 
     for (const [label, chip] of [
-      ['Type', typeChip],
       ['Status', statusChip],
+      ['Type', typeChip],
       ['Priority', priorityChip],
     ] as const) {
       const property = document.createElement('div');
@@ -750,7 +826,6 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       property.append(caption, chip);
       props.appendChild(property);
     }
-    sticky.appendChild(props);
 
     const labelsField = createIssuesLabelsField({
       issueId: issue.id,
@@ -764,7 +839,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     });
     const footer = document.createElement('div');
     footer.className = 'issues-detail__footer';
-    footer.append(labelsField, buildWorkflowToolbar(issue));
+    const activity = document.createElement('div');
+    activity.className = 'issues-detail__run-state';
+    activity.append(createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
+    footer.append(activity, buildWorkflowToolbar(issue));
     sticky.appendChild(footer);
     panel.appendChild(sticky);
 
@@ -783,6 +861,20 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const rail = document.createElement('div');
     rail.className = 'issues-detail__rail';
+    const railHeading = (label: string): HTMLElement => {
+      const heading = document.createElement('h3');
+      heading.className = 'issues-detail__rail-heading';
+      heading.textContent = label;
+      return heading;
+    };
+    const properties = document.createElement('section');
+    properties.className = 'issues-detail__properties';
+    properties.setAttribute('aria-label', 'Issue properties');
+    const labelsCaption = document.createElement('span');
+    labelsCaption.className = 'issues-detail__property-label';
+    labelsCaption.textContent = 'Labels';
+    properties.append(railHeading('Properties'), props, labelsCaption, labelsField);
+    rail.append(properties, railHeading('Resources'));
 
     const planPath = inferIssuePlanPath(issue);
     if (planPath) rail.appendChild(buildPlanSection(issue, planPath));
@@ -800,6 +892,18 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     if (related) rail.appendChild(related);
 
     rail.appendChild(buildChatsSection(issue));
+    const worktreePath = issueWorkChat(issue)?.worktreeRoot;
+    if (worktreePath) {
+      const worktree = document.createElement('details');
+      worktree.className = 'issues-detail__worktree';
+      const summary = document.createElement('summary');
+      summary.append(createIcon('gitWorktree', { size: 14 }), document.createTextNode('Worktree'));
+      const path = document.createElement('p');
+      path.className = 'issues-work-path';
+      path.textContent = worktreePath;
+      worktree.append(summary, path);
+      rail.appendChild(worktree);
+    }
 
     const talk = document.createElement('div');
     talk.className = 'issues-detail__talk';
@@ -809,6 +913,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     scroll.append(doc, rail, talk);
 
     panel.appendChild(scroll);
+    workspacePanel = mountIssueWorkspace({
+      panel, sticky, document: doc, issueBody: scroll, issue, summaryInHeader: true,
+      tab: workspaceTabs.get(issue.id) ?? 'Issue',
+      onTab: (tab) => workspaceTabs.set(issue.id, tab),
+      onStartChat: () => { sticky.querySelector<HTMLButtonElement>('.issues-detail__workflow-secondary button')?.click(); },
+    });
     bindIssueDropTarget(panel, issue.id, () => refreshIssueDetailIfOpen());
     host.appendChild(panel);
     } finally {
@@ -1033,6 +1143,9 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       countEl.appendChild(part);
       head.appendChild(countEl);
     }
+    const viewAll = createDetailTextButton({ label: 'View all', icon: 'clock', onClick: () => workspacePanel?.select('Activity') });
+    viewAll.classList.add('issues-detail__view-activity');
+    head.appendChild(viewAll);
     sectionEl.appendChild(head);
 
     const body = document.createElement('div');
@@ -1174,6 +1287,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const sec = createDetailRow({
       key: 'git',
+      defaultExpanded: true,
       icon: 'gitBranch',
       label: 'Git',
       summary,
@@ -1555,6 +1669,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const sec = createDetailRow({
       key: 'chats',
+      defaultExpanded: true,
       icon: 'appChat',
       label: 'Chats',
       summary,
@@ -1581,6 +1696,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const sec = createDetailRow({
       key: 'related',
+      defaultExpanded: true,
       icon: 'link',
       label: 'Related',
       summary: [{ text: String(refs.length), mono: true }],
@@ -1760,7 +1876,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const primary = document.createElement('div');
     primary.className = 'issues-detail__workflow-primary';
 
-    if (activity) {
+    if (activity && activityTarget) {
       const chip = document.createElement(
         activityTarget ? 'button' : 'span',
       ) as HTMLButtonElement | HTMLSpanElement;
@@ -1842,10 +1958,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
         ariaLabel: 'Send issue to chat — choose mode',
         icon: 'appChat',
         disabled: !workflowOk || busy,
-        primary: true,
+        primary: !issue.chatIds?.length,
         items: foregroundItems,
       }),
     );
+    if (issue.chatIds?.length || issue.agent) secondary.append(createDetailTextButton({
+      label: isReviewStatus(getIssuesTaxonomySync(), issue.status) ? 'Review work' : 'View work',
+      icon: 'gitWorktree', primary: true,
+      onClick: () => workspacePanel?.select('Work'),
+    }));
 
     row.appendChild(secondary);
     return row;
@@ -1866,7 +1987,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     refreshIssueDetailIfOpen();
     try {
       if (action === 'foreground' && modeId) {
-        const result = await runIssueForegroundChat(
+        const result = await runIssueWorkspaceChat(
           issueId,
           modeId as IssueForegroundChatMode,
           runTarget,
@@ -1875,6 +1996,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
           showIssuesToast(result.error || 'Send to chat failed', 'error');
           return;
         }
+        workspaceTabs.set(issueId, 'Chat');
         if (modeId === 'plan') {
           showIssuesToast(
             result.planPath ? `Plan chat · ${result.planPath}` : 'Plan chat started in Code',
@@ -1923,6 +2045,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   return {
     openIssueDetail, closeIssueDetail, refreshIssueDetailIfOpen,
+    setIssueDetailNavigation, navigateIssueDetail,
     getSelectedIssueId, isIssuesDetailEditing, isIssueExpanding, expandIssueFromUi,
     dispose: () => {
       closeIssueDetail();
@@ -1936,6 +2059,7 @@ const defaultDetail = createIssueDetailController();
 export const {
   openIssueDetail, closeIssueDetail,
   getSelectedIssueId, isIssuesDetailEditing, isIssueExpanding, expandIssueFromUi,
+  setIssueDetailNavigation, navigateIssueDetail,
 } = defaultDetail;
 
 /** Shared actions such as Expand update every mounted detail surface. */

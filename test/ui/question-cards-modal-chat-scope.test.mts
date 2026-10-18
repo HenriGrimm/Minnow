@@ -75,6 +75,37 @@ describe('question-cards-modal chat scope', () => {
     }
   });
 
+  test('answers questions in an issue chat while Code keeps a different active chat', async () => {
+    const { registerIssueChatHost, isIssueChatQuestionPending } = await import('../../src/chat/issue-chat-host.ts');
+    const { notifyAskQuestionDisplayContextChanged } = await import('../../src/chat/ask-question-display.ts');
+    const { enqueueAskQuestion } = await import('../../src/tools/ask-question-queue.ts');
+    const tab = document.createElement('section');
+    const host = document.createElement('div');
+    tab.append(host); document.body.append(tab);
+    const unregister = registerIssueChatHost('chat-b', host);
+    launchInstance('issues');
+    try {
+      for (let turn = 0; turn < 2; turn++) {
+        const answer = enqueueAskQuestion({ questions: [{ id: 'q1', prompt: 'Choose a scope', options: [{ id: 'a', label: 'Small' }, { id: 'b', label: 'Large' }] }] }, {}, 'chat-b');
+        assert.equal(isIssueChatQuestionPending('chat-b'), true);
+        assert.equal(Boolean(host.querySelector('.question-cards-panel')), true);
+        if (turn === 1) {
+          tab.hidden = true;
+          notifyAskQuestionDisplayContextChanged();
+          assert.equal(Boolean(host.querySelector('.question-cards-panel')), false);
+          tab.hidden = false;
+          notifyAskQuestionDisplayContextChanged();
+          assert.equal(Boolean(host.querySelector('.question-cards-panel')), true);
+        }
+        const radio = host.querySelector<HTMLInputElement>('input[type="radio"]');
+        assert.equal(Boolean(radio), true);
+        radio!.click();
+        assert.equal(JSON.parse(await answer).status, 'answered');
+        assert.equal(isIssueChatQuestionPending('chat-b'), false);
+      }
+    } finally { unregister(); tab.remove(); }
+  });
+
   test('parks strip when switching away from owning chat', async () => {
     const {
       showQuestionCardsModal,

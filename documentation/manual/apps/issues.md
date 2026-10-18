@@ -23,11 +23,11 @@ Right-click blank space in the list or board for **Filters** (type, status, prio
 
 The **Created** column shows issue age, such as **1hr**, **3 days**, or **1 month**. Hover for the exact creation time; select the column heading to sort by creation time.
 
-**j** / **k** (or the arrows) move the focused row. **Enter** opens the peek panel for the description and history — you do not need peek to change a field. Drag the peek's left edge to widen it (remembered per workspace). The header control next to Close opens a larger centered sheet over the list; click the dim area, Restore, or Escape to return to the docked peek. The peek **Sub-issues** section lists children: **New** creates one from a title, **Existing** attaches another issue, and **Remove** unparents without deleting. A child peek shows a Parent chip that opens the parent. **Chats** lists sessions started or attached from the issue (title, Running or Done, mode). Open jumps to that chat in Code. A board tied to the issue or to one of those chats is a sibling row. **New** starts a General chat the same way Send to chat does; **Existing** attaches a session you already have. **Remove** unlinks only.
+**j** / **k** (or the arrows) move the focused row. **Enter** opens a floating issue panel over the list for the description and history. Use the header **↑ / ↓** buttons or **Up / Down** keys to browse the current filtered and sorted list without closing the panel. Navigation stops at either end, and arrow keys keep their normal behavior while editing or using menus. The position indicator shows the issue’s place in the list. The header control next to Close maximizes the panel; select it again to restore its size. Click the dim area or press **Escape** to close the panel and return to the list. The peek **Sub-issues** section lists children: **New** creates one from a title, **Existing** attaches another issue, and **Remove** unparents without deleting. A child peek shows a Parent chip that opens the parent. **Chats** lists sessions started or attached from the issue (title, Running or Done, mode). Open jumps to that chat in Code. A board tied to the issue or to one of those chats is a sibling row. **New** starts a General chat the same way Send to chat does; **Existing** attaches a session you already have. **Remove** unlinks only.
 
 **Edit** labels inline on the row: up to three chips stay visible, a caret opens the rest, and **+** opens a typeahead. Type a name and press **Enter** (or comma) to add it; the popover stays open so you can add more. Click away or press **Escape** when you are done. The chip **×** removes it from that issue. Right-click a chip to pick a color; that color applies to every issue with the same name.
 
-The peek keeps identity, type/status/priority chips, labels, and Send to chat pinned. The description is the page. Empty code links, attachments, and git collapse to one add row each; Plan and Related appear only when they have something to show. Sub-issues and Chats stay visible so you can add a child or attach a session on an empty card. The more menu next to Close holds **Copy issue** — the whole card as Markdown (fields, description, notes, code and git links, related issues, sub-issues, attachments, and comments) for pasting elsewhere — plus sub-issue actions and Delete.
+The floating panel keeps the issue title, chat activity, workflow actions, and **Issue / Work / Chat / Activity** tabs pinned. The **Issue** tab places the description and comments beside a rail of properties, labels, and linked resources; narrow panels stack these sections. **Review work** opens the Work tab, while **View all** in the comments section opens Activity. Delivery controls appear in the Work tab. Empty code links, attachments, and git collapse to one add row each; Plan and Related appear only when they have something to show. Sub-issues and Chats stay visible so you can add a child or attach a session on an empty card. The more menu next to Close holds **Copy issue** — the whole card as Markdown (fields, description, notes, code and git links, related issues, sub-issues, attachments, and comments) for pasting elsewhere — plus sub-issue actions and Delete.
 
 Label suggestions come from issues in the same workspace, including completed issues. In **All workspaces**, each issue keeps its own workspace's suggestions; a new issue uses the destination selected in its **Workspace** picker. **Expand** uses the same workspace label suggestions.
 
@@ -51,13 +51,25 @@ This is what the app is for.
 |--------|--------------|
 | **Expand** | Sparkles on peek, board cards, the row menu, or **E**. Rewrites the title and description and suggests labels and priority from what is already on the card. You review and edit in an overlay; nothing is saved until you apply. Uses the prompt expander model when one is set. |
 | **Expand with agent** | An agent researches the workspace and fills in a real description (triage notes), from the detail panel or the row menu |
-| **Send to chat** | Opens a chat seeded with the issue, in a mode you choose, then the same run-target panel as the composer: the current workspace shown by name, an existing worktree, or New worktree |
+| **Send to chat** | Starts a linked chat inside Issues, seeded with the issue, in a mode you choose. The run-target panel offers the current workspace shown by name, an existing worktree, or New worktree. |
 | **Send to board** | When the issue has a plan, hands it to an orchestrate board |
 | **Open plan** | Opens the issue's plan document in the editor |
 
 Activity chips in the detail header are live; clicking one opens the agent drawer or board chat behind it.
 
 **General**, **Build**, **Plan**, and **Debug** all expose `issue_*` tools. Debug also has local diagnostics. Plan can file, update, and attach a plan path to a card; it still cannot edit application code.
+
+## Reviewing and delivering agent work
+
+The dense list and board keep the existing filters, grouping, inline properties, and bulk actions. The **Agent** column shows linked chat activity, including Running, Needs input, completed turns, and failures. The **Agent work** view includes issues with linked chats as well as assigned agents and boards.
+
+The detail panel has four tabs. **Issue** keeps the description, attachments, code and Git links, sub-issues, linked chats, and comments. **Work** shows changed files, the diff, source and destination branches, and delivery actions. **Chat** shows the linked conversation, live output, tool results, and agent questions; reply there to request changes. **Activity** shows the issue's recorded events. **Open in Code** opens the full chat workspace.
+
+Starting a Build or Debug chat moves the issue to **In progress**. When its implementation turn completes successfully, it moves to **Review**, provided another linked chat is not still running and the issue has not been moved to another status. Failed, stopped, General, and Plan turns do not perform that handoff.
+
+Choose **Review work** to inspect the checkout. **Commit** commits the listed changes, including staged and untracked files. For an isolated worktree, **Commit & merge** or **Merge** delivers into the issue workspace's checked-out branch. Review the commit message and cleanup choice before confirming. Local workspace work offers commit only. A destination with uncommitted changes must be committed or stashed first; changes to either reviewed branch or the source files require a refresh and another review.
+
+**Remove worktree and branch after merge** is selected initially for worktrees created for the chat. Successful delivery moves the issue to **Done**, records the commit, and retains the conversation and activity. Cleanup removes only clean, merged work; failures show **Retry cleanup**. Conflicts preserve the committed source work and its worktree. **Resolve in chat** prepares a request for the agent; review and send it, then inspect the resulting changes again. Verification details remain in the linked chat.
 
 ## Git conventions
 

@@ -87,7 +87,6 @@ describe('issues list CSS contract', () => {
     assert.match(css, /--issues-row-h:\s*36px/);
     assert.match(css, /id priority type title labels/);
     assert.match(css, /minmax\(0, 1fr\).*max-content.*minmax\(5rem, max-content\)/);
-    assert.match(css, /Compact identity: id, priority, title, status/);
     assert.match(
       chrome,
       /sortHead\('title'[\s\S]*?sortHead\('labels'[\s\S]*?sortHead\('status'[\s\S]*?sortHead\('created'/,
@@ -98,5 +97,7 @@ describe('issues list CSS contract', () => {
     assert.match(compact, /issues-list-head__type/);
     assert.doesNotMatch(compact, /issues-row__priority/);
     assert.doesNotMatch(compact, /issues-list-head__priority/);
+    assert.doesNotMatch(compact, /issues-row__agent/);
+    assert.doesNotMatch(compact, /issues-list-head__agent/);
   });
 });

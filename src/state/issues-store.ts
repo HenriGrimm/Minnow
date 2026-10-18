@@ -2401,7 +2401,7 @@ export function collectIssues(options: CollectIssuesOptions = {}): IssueCard[] {
       continue;
     }
     if (options.unreviewed && !isUnreviewedTriageIssue(issue)) continue;
-    if (options.hasAgent && !issue.agent) continue;
+    if (options.hasAgent && !issue.agent && !issue.chatIds?.length && !issue.boardChatId) continue;
     if (options.mine) {
       const assigneeId = issue.assignee?.id;
       if (assigneeId && assigneeId !== LOCAL_ASSIGNEE_ID) continue;
