@@ -70,6 +70,8 @@ function buildChatToolExecuteContext(
 }
 
 export function resolveLiveToolWrap(toolCallId: string, captured: HTMLElement): HTMLElement {
+  const visible = findToolWrapInDom(toolCallId, getActiveChatMountElement());
+  if (visible) return visible;
   if (captured.isConnected) return captured;
   return findToolWrapInDom(toolCallId) ?? captured;
 }

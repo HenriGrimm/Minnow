@@ -1,3 +1,4 @@
+import { setSharedChatHost } from '../../src/ui/shared-chat-host-state.ts';
 /**
  * P6-A / P7-B onEvent → existing chat DOM helpers, coalesced onto one paint tick.
  */
@@ -772,4 +773,38 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     });
     assert.equal(nextBubble.textContent, 'Hello from A still streaming');
   });
+});
+
+
+test('a background tool result settles the row mounted when its chat is opened', () => {
+  let visible = false;
+  const stub = hostStub({ isDomVisible: () => visible });
+  const painter = createChatTurnEventPainter(stub.host);
+  painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'background-read', arguments: '{"path":"README.md"}' });
+  assert.equal(stub.mount.querySelector('.tool-call-msg'), null);
+  const restored = renderToolCall('read_file', { path: 'README.md' });
+  restored.dataset.toolCallId = 'background-read';
+  stub.mount.append(restored);
+  visible = true;
+  painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'background-read', content: 'Completed background read' });
+  assert.match(restored.textContent!, /Completed background read/);
+  assert.equal(restored.querySelector('.tool-call-spinner'), null);
+  stub.mount.remove();
+});
+
+
+test('tool completion updates the shared surface when the old Code row is still connected', () => {
+  const stub = hostStub();
+  const painter = createChatTurnEventPainter(stub.host);
+  painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'moved-read', arguments: '{"path":"README.md"}' });
+  const shared = document.createElement('section'); document.body.append(shared);
+  const restored = renderToolCall('read_file', { path: 'README.md' });
+  restored.dataset.toolCallId = 'moved-read'; shared.append(restored);
+  setSharedChatHost({ chatId: 'shared', transcript: shared, shell: shared });
+  try {
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'moved-read', content: 'Result in the visible conversation' });
+    assert.equal(stub.mount.isConnected, true);
+    assert.match(restored.textContent!, /Result in the visible conversation/);
+    assert.equal(restored.hasAttribute('aria-busy'), false);
+  } finally { setSharedChatHost(null); shared.remove(); stub.mount.remove(); }
 });

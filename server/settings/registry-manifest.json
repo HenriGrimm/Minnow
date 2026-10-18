@@ -36,13 +36,13 @@
       "auto-update"
     ],
     "category": "general",
-    "area": "updates",
+    "area": "general",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "updates"
+      "general"
     ]
   },
   {
@@ -56,13 +56,13 @@
       "channel"
     ],
     "category": "general",
-    "area": "updates",
+    "area": "general",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "updates"
+      "general"
     ]
   },
   {

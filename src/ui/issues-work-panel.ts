@@ -1,20 +1,19 @@
-import type { Chat, IssueCard } from '../types';
+import { mountSharedChatHost } from './shared-chat-host';
+import type { IssueCard } from '../types';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
-import { registerIssueChatHost, subscribeIssueChatQuestions } from '../chat/issue-chat-host';
+import { subscribeIssueChatQuestions } from '../chat/issue-chat-host';
 import { linkedIssueChats, issueWorkChat, issueAgentCaption, issueDelivery } from '../issues/work-state';
-import { isClosedStatus, statusIdForRole } from '../issues/taxonomy';
+import { statusIdForRole } from '../issues/taxonomy';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { appendIssueActivity, appendIssueLinks, findIssueById, updateIssue } from '../state/issues-store';
-import { ensureChatHistoryLoaded, findChatById, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
+import { findChatById, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
 import { worktreePathsEqual } from '../lib/worktree-list-parse';
 import { resetRegisteredWorktreePathCache } from '../lib/worktree-allowlist-client';
 import { issueWorkOperation, type IssueWorkRequest, type IssueWorkSnapshot } from '../state/git-api';
 import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
-import { isChatStreaming, readChatStreamText, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
-import { setAssistantBubbleContent } from '../markdown/renderer';
+import { isChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { createIcon } from './icon';
 import { createDetailTextButton } from './issues-detail-section';
-import { renderEmbeddedChatTranscript } from './messages';
 import '../styles/issues-work.css';
 
 export type IssueWorkspaceTab = 'Issue' | 'Work' | 'Chat' | 'Activity';
@@ -27,12 +26,12 @@ interface MountOptions {
   tab: IssueWorkspaceTab;
   onTab: (tab: IssueWorkspaceTab) => void;
   onStartChat: () => void;
+  onOpenPlan?: (path: string, workspaceRoot: string) => void;
   summaryInHeader?: boolean;
 }
 
 const operations = new Set<string>();
 const commitDrafts = new Map<string, string>();
-const replyDrafts = new Map<string, string>();
 let mountSequence = 0;
 const text = (tag: string, value: string, className = ''): HTMLElement => {
   const node = document.createElement(tag);
@@ -75,35 +74,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   content.className = 'issues-detail__scroll issues-work-content';
   const footer = document.createElement('footer');
   footer.className = 'issues-work-footer';
-  const transcript = document.createElement('div');
-  transcript.className = 'issues-work-chat__transcript';
-  transcript.setAttribute('role', 'log');
-  transcript.setAttribute('aria-label', 'Linked issue conversation');
-  const expandedWork = new Map<string, Set<number>>();
-  let paintedChat = '';
-  let paintedHistoryLength = -1;
-  let liveBubble: HTMLDivElement | null = null;
-  let disposeTranscript = () => {};
-  const questions = document.createElement('div');
-  questions.className = 'issues-work-questions';
-  let unregisterQuestions = () => {};
-  const composer = document.createElement('form');
-  composer.className = 'issues-work-chat__composer';
-  composer.hidden = true;
-  const reply = document.createElement('textarea');
-  reply.setAttribute('aria-label', 'Message the issue chat');
-  reply.placeholder = 'Ask about the work or request changes…';
-  reply.value = replyDrafts.get(id) ?? '';
-  reply.rows = 3;
-  reply.addEventListener('input', () => replyDrafts.set(id, reply.value));
-  const replyActions = document.createElement('div');
-  replyActions.className = 'issues-work-actions';
-  const send = document.createElement('button');
-  send.type = 'submit';
-  send.className = 'issues-btn issues-btn--primary';
-  send.textContent = 'Send';
-  replyActions.append(send);
-  composer.append(reply, replyActions);
+  let sharedChat: ReturnType<typeof mountSharedChatHost> | undefined;
 
   function action(label: string, icon: 'appChat' | 'gitMerge' | 'gitCommit' | 'refresh' | 'arrowUp' | 'close' | 'gitWorktree', handler: () => void, primary = false, disabled = false): HTMLButtonElement {
     return createDetailTextButton({ label, icon, onClick: handler, primary, disabled });
@@ -257,11 +228,8 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   }
   async function paintChat(): Promise<void> {
     const linked = chat();
-    composer.hidden = true;
-    disposeTranscript();
-    paintedChat = '';
-    liveBubble = null;
-    transcript.replaceChildren();
+    sharedChat?.dispose();
+    sharedChat = undefined;
     content.replaceChildren();
     const picker = document.createElement('select');
     picker.className = 'issues-filter';
@@ -284,51 +252,11 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
       });
     }));
     else tools.append(text('p', 'No chat attached yet.'), action('Send to chat', 'appChat', options.onStartChat, true));
-    unregisterQuestions();
-    content.append(tools, transcript, questions);
-    if (linked) unregisterQuestions = registerIssueChatHost(linked.id, questions);
-    queueMicrotask(notifyAskQuestionDisplayContextChanged);
-    if (!linked) { transcript.replaceChildren(); return; }
-    await ensureChatHistoryLoaded(linked.id);
-    if (disposed || tab !== 'Chat' || chat()?.id !== linked.id) return;
-    paintTranscript(linked);
-    composer.hidden = isClosedStatus(getIssuesTaxonomySync(), current().status);
-    send.disabled = isChatStreaming(linked.id) || busy();
-    paintLive();
-  }
-  function paintTranscript(linked: Chat): void {
-    const expanded = expandedWork.get(linked.id) ?? new Set<number>();
-    expandedWork.set(linked.id, expanded);
-    disposeTranscript();
-    ({ liveBubble, dispose: disposeTranscript } = renderEmbeddedChatTranscript(linked, transcript, expanded));
-    paintedChat = linked.id;
-    paintedHistoryLength = linked.history.length;
-  }
-  function paintLive(): void {
-    if (tab !== 'Chat') return;
-    const linked = chat();
-    const stream = linked ? readChatStreamText(linked.id) : null;
-    if (linked && (paintedChat !== linked.id || paintedHistoryLength !== linked.history.length || Boolean(liveBubble) !== isChatStreaming(linked.id))) paintTranscript(linked);
-    if (liveBubble) setAssistantBubbleContent(liveBubble, stream?.lastDelta || '', { streaming: true, modeId: linked?.modeId });
-    send.disabled = Boolean(linked && isChatStreaming(linked.id)) || busy();
-  }
-  composer.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const linked = chat();
-    const value = reply.value.trim();
-    if (!linked || !value || isChatStreaming(linked.id) || busy()) return;
-    reply.value = '';
-    replyDrafts.delete(id);
-    appendIssueActivity(id, { kind: 'chat-started', actorKind: 'user', data: { chatId: linked.id, modeId: linked.modeId || 'general' } });
-    if (linked.modeId === 'build' || linked.modeId === 'debug') {
-      const active = statusIdForRole(getIssuesTaxonomySync(), 'in_progress');
-      if (active) updateIssue(id, { status: active });
-    }
-    void import('../chat/messaging').then(({ sendProgrammaticChatText }) => sendProgrammaticChatText(linked, value, { ownsGlobalStreaming: false, requireCompletedTurn: true })).catch((reason: unknown) => {
-      replyDrafts.set(id, value);
-      if (!disposed) { reply.value = value; error = reason instanceof Error ? reason.message : String(reason); paintFooter(); }
+    content.append(tools);
+    if (linked && !disposed && tab === 'Chat') sharedChat = mountSharedChatHost(content, linked, 'issues', {
+      openPlan: options.onOpenPlan ? path => { select('Issue'); options.onOpenPlan?.(path, linked.worktreeRoot || linked.workspacePath); } : undefined,
     });
-  });
+  }
   function paintActivity(): void {
     content.replaceChildren(text('h3', 'Activity'));
     for (const entry of [...(current().activity ?? [])].reverse()) {
@@ -369,7 +297,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
       row.append(action('Refresh', 'refresh', () => void inspect(), false, loading));
       if (reviewed.dirty) row.append(action('Commit', 'gitCommit', () => { confirming = true; select('Work'); paintFooter(); }, false, reviewed.sourceBranch === 'HEAD'));
       if (reviewed.isolated) row.append(action(reviewed.dirty ? 'Commit & merge' : 'Merge', 'gitMerge', () => { confirming = true; select('Work'); paintFooter(); }, true, loading || reviewed.sourceBranch === 'HEAD' || reviewed.targetBranch === 'HEAD' || Boolean(reviewed.conflict) || !reviewed.dirty && !reviewed.ahead));
-      if (reviewed.conflict) row.append(action('Resolve in chat', 'appChat', () => { select('Chat'); reply.value = `Resolve the merge conflicts with ${reviewed?.targetBranch} in this issue worktree, rerun verification, and return the work for review. Do not merge or remove the worktree.`; replyDrafts.set(id, reply.value); reply.focus(); }));
+      if (reviewed.conflict) row.append(action('Resolve in chat', 'appChat', () => { select('Chat'); sharedChat?.focus(`Resolve the merge conflicts with ${reviewed?.targetBranch} in this issue worktree, rerun verification, and return the work for review. Do not merge or remove the worktree.`); }));
       return;
     }
     const label = document.createElement('label');
@@ -400,12 +328,11 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     footer.append(confirm);
   }
   function select(next: IssueWorkspaceTab): void {
-    if (next !== 'Chat') { disposeTranscript(); unregisterQuestions(); unregisterQuestions = () => {}; }
+    if (next !== 'Chat') { sharedChat?.dispose(); sharedChat = undefined; }
     tab = next;
     options.onTab(next);
     issueBody.hidden = next !== 'Issue';
     content.hidden = next === 'Issue';
-    if (next !== 'Chat') composer.hidden = true;
     for (const button of tablist.querySelectorAll<HTMLButtonElement>('button')) {
       button.setAttribute('aria-selected', String(button.dataset.tab === next));
       button.tabIndex = button.dataset.tab === next ? 0 : -1;
@@ -443,28 +370,25 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   issueBody.setAttribute('role', 'tabpanel');
   content.setAttribute('role', 'tabpanel');
   sticky.append(tablist);
-  panel.append(content, composer, footer);
+  panel.append(content, footer);
   const unsubscribe = subscribeChatRunActivity(() => {
     if (disposed) return;
     paintSummary();
-    if (tab === 'Chat' && chat()) { paintTranscript(chat()!); paintLive(); }
     if (tab === 'Work' && !isChatStreaming(chat()?.id ?? '')) { reviewed = undefined; void inspect(); }
     paintFooter();
   });
-  const unsubscribeStream = subscribeChatStreamActivity((chatId) => { if (chatId === chat()?.id) paintLive(); });
   const unsubscribeQuestions = subscribeIssueChatQuestions(paintSummary);
   const unsubscribeEnd = subscribeChatStreamEnd((chatId) => {
     if (chatId !== chat()?.id) return;
     queueMicrotask(() => {
       if (disposed) return;
       paintSummary();
-      if (tab === 'Chat' && chat()) { paintTranscript(chat()!); paintLive(); }
-      if (tab === 'Work') { reviewed = undefined; void inspect(); }
+        if (tab === 'Work') { reviewed = undefined; void inspect(); }
       paintFooter();
     });
   });
   cleanup = chat()?.chatWorktreeManaged === true;
   paintSummary();
   select(tab);
-  return { select, dispose: () => { disposed = true; generation++; disposeTranscript(); replyDrafts.set(id, reply.value); unregisterQuestions(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeStream(); unsubscribeEnd(); unsubscribeQuestions(); } };
+  return { select, dispose: () => { disposed = true; generation++; sharedChat?.dispose(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeEnd(); unsubscribeQuestions(); } };
 }

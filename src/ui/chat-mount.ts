@@ -1,3 +1,4 @@
+import { getSharedChatHost } from './shared-chat-host-state';
 import { getForegroundAppId } from '../os/instances';
 import { queryCodeMapChatHost } from './code-map/chat-state';
 import { getOrchestrateChatMountElement } from './orchestrate-board-init-split';
@@ -47,6 +48,7 @@ function getChatAppMessageCol(): HTMLElement | null {
 
 /** Column shell for inset overlays (sub-agent drawer, goal eval) on the active chat surface. */
 export function resolveSubAgentOverlayMount(): HTMLElement | null {
+  if (getSharedChatHost()) return getSharedChatHost()!.shell;
   if (isChatAppForeground()) {
     return (
       document.querySelector<HTMLElement>('.chat-app-main') ??
@@ -59,11 +61,12 @@ export function resolveSubAgentOverlayMount(): HTMLElement | null {
 /** Active transcript root: override, desktop column, Chat app column, or Code orchestrate mount. */
 export function getActiveChatMountElement(): HTMLElement {
   if (mountOverride) return mountOverride;
+  if (getSharedChatHost()) return getSharedChatHost()!.transcript;
   const mapChatHost = queryCodeMapChatHost();
   if (mapChatHost) return mapChatHost;
   const boardChatHost = isBoardChatEmbedOpen() ? queryBoardChatTranscriptHost() : null;
   if (boardChatHost) return boardChatHost;
-  if (turnMount) return turnMount;
+  if (turnMount?.isConnected) return turnMount;
   if (isChatAppForeground()) {
     const col = getChatAppMessageCol();
     if (col) return col;

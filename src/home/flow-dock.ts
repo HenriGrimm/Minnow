@@ -1,5 +1,8 @@
+import { mountIssuePlanPreview } from '../ui/issues-plan-preview';
+import type { SavedIssuePlan } from '../issues/saved-plan';
+import { mountSharedChatHost } from '../ui/shared-chat-host';
 import type { Chat, IssueCard, TerminalRunRecord } from '../types';
-import { sessionState, ensureChatHistoryLoaded } from '../state/sessions';
+import { sessionState } from '../state/sessions';
 import { findIssueById } from '../state/issues-store';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import type { IssueWorkSnapshot } from '../state/git-api';
@@ -7,12 +10,10 @@ import { launchApp } from '../os/router';
 import { listMainTurnActivity } from '../chat/main-turn-activity';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { setAssistantBubbleContent } from '../markdown/renderer';
-import { renderEmbeddedChatTranscript } from '../ui/messages';
-import { isChatStreaming, readChatStreamText, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
+import { isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { createIcon } from '../ui/icon';
 import { blockers, issueChat } from './flow-model';
-import { approveHomeIssue, pauseHomeIssue, replyHomeIssue } from './flow-actions';
-import { clearHomeQuestionHost, setHomeQuestionHost } from './question-host';
+import { approveHomeIssue, approveHomePlan, pauseHomeIssue, replyHomeIssue } from './flow-actions';
 import { button, el } from './dom';
 import { updateHomeStatus } from './status-chip';
 import { createHomeIssueStatus, updateHomeIssueStatus } from './issue-status';
@@ -42,12 +43,12 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   let { issue } = options;
   const chat = issueChat(issue, sessionState?.chats ?? []);
   const memoryKey = JSON.stringify([options.workspace, issue.id]);
-  const memory: DockMemory = memories.get(memoryKey) ?? { draft: '', view: issue.agent?.home?.state === 'ready' ? 'changes' : 'conversation', sideChat: true, scroll: 0, brief: false, mode: 'build', expanded: new Set<number>() };
+  const memory: DockMemory = memories.get(memoryKey) ?? { draft: '', view: issue.agent?.home?.state === 'ready' ? 'changes' : 'conversation', sideChat: true, scroll: 0, brief: issue.agent?.home?.state === 'planned', mode: 'build', expanded: new Set<number>() };
   // Pre-start instructions are already in the first user message once a chat is attached.
   if (chat && !memory.chatId) { memory.draft = ''; memory.chatId = chat.id; }
   memories.set(memoryKey, memory);
-  let disposed = false, busy = false, historyReady = false, transcriptSignature = '', liveBubble: HTMLDivElement | null = null;
-  let disposeTranscript = () => {};
+  let disposed = false, busy = false;
+  let sharedChat: ReturnType<typeof mountSharedChatHost> | undefined;
   let snapshot: IssueWorkSnapshot | undefined, runs: TerminalRunRecord[] = [], runSignature = '';
   let lastQuestion = false, lastAgentError = '';
   const tabButtons = new Map<DockView, HTMLButtonElement>();
@@ -86,6 +87,9 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const briefHeading = el('div', '', 'home-brief-heading');
   briefHeading.append(el('strong', 'Issue details'), button('Close', () => briefToggle.click(), false, 'close'));
   briefBody.append(description());
+  let savedPlan: SavedIssuePlan | null = null;
+  const planPreview = mountIssuePlanPreview(briefBody, plan => { savedPlan = plan; updateActions(); });
+  let wasPlanned = issue.agent?.home?.state === 'planned';
   const resources = el('div', '', 'home-context-chips');
   for (const ref of issue.codeRefs ?? []) resources.append(el('span', ref.path));
   if (issue.notes) {
@@ -108,7 +112,6 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const conversation = el('section', '', 'home-conversation'); conversation.id = 'home-view-conversation'; conversation.setAttribute('aria-label', 'Conversation');
   const heading = el('div', '', 'home-chat-heading'); heading.append(el('strong', 'Conversation')); heading.hidden = true;
   const content = el('div', '', 'home-chat-history'); content.tabIndex = 0; content.setAttribute('role', 'log'); content.setAttribute('aria-label', 'Issue conversation');
-  const transcript = el('div', '', 'home-chat-transcript');
   const latest = button('New activity ↓', () => { content.scrollTop = content.scrollHeight; latest.hidden = true; }); latest.classList.add('home-new-activity'); latest.hidden = true;
   content.onscroll = () => { memory.scroll = content.scrollTop; if (content.scrollHeight - content.scrollTop - content.clientHeight < 64) latest.hidden = true; };
   const questionHost = el('div', '', 'home-questions'); questionHost.id = 'homeFlowQuestions';
@@ -138,11 +141,12 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const footer = el('footer', '', 'home-workspace-footer');
   const footerContext = el('div', '', 'home-footer-context'); const footerTitle = el('strong'), footerDetail = el('p', '', 'home-muted'); footerContext.append(footerTitle, footerDetail);
   const actions = el('div', '', 'home-review-actions');
-  const request = button('Request changes', () => { memory.sideChat = true; selectView('conversation'); input.focus(); }, false, 'comment');
+  const request = button('Request changes', () => { memory.sideChat = true; selectView('conversation'); sharedChat?.focus(); }, false, 'comment');
   const pause = button('Pause', () => { if (issue.agent?.home?.state === 'paused') void perform(() => replyHomeIssue(issue, 'Continue from where you stopped.')); else pauseHomeIssue(issue); });
   const primary = button('Merge into main', () => {
-    if (issue.agent?.home?.state === 'failed') void perform(() => replyHomeIssue(issue, 'Retry the unfinished work. Address the last failure, run the relevant checks, commit the changes, and stop for review. Do not merge.'));
-    else if (chat?.modeId === 'plan') void perform(() => replyHomeIssue(issue, 'The plan is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.', true));
+    if (issue.agent?.home?.boardId) void perform(() => approveHomePlan(issue));
+    else if (issue.agent?.home?.state === 'failed') void perform(() => replyHomeIssue(issue, chat?.modeId === 'plan' ? 'Retry the unfinished planning work. Address the last failure and finish the plan in its selected format. Stay in Plan mode.' : 'Retry the unfinished work. Address the last failure, run the relevant checks, commit the changes, and stop for review. Do not merge.'));
+    else if (chat?.modeId === 'plan') void perform(() => approveHomePlan(issue));
     else if (!snapshot) { selectView('changes'); changeView.refresh(true); }
     else if (snapshot?.dirty) void perform(() => replyHomeIssue(issue, 'Review and commit the changes in this worktree, then stop for review. Do not merge.'));
     else void perform(() => approveHomeIssue(issue));
@@ -205,9 +209,11 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   input.onkeydown = event => { if (chat && event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
   function updateActions(): void {
     const state = issue.agent?.home?.state;
+    const boardId = issue.agent?.home?.boardId;
+    const planning = chat?.modeId === 'plan' && !boardId;
     const active = Boolean(chat && (isChatStreaming(chat.id) || listMainTurnActivity().some(turn => turn.chatId === chat.id)));
     if (active) snapshot = undefined;
-    const ready = ['ready', 'conflict'].includes(state || '');
+    const ready = ['planned', 'ready', 'conflict'].includes(state || '');
     commandDetails.hidden = state === 'done';
     const group = (options.currentIssues?.() ?? options.issues).filter(i => issue.agent?.home?.groupId ? i.agent?.home?.groupId === issue.agent.home.groupId : i.id === issue.id);
     const count = Math.max(1, group.length);
@@ -223,13 +229,13 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
     hint.textContent = active ? 'You can draft a message while the agent works. Pause to send it now.' : state === 'done' ? 'Merged. Open in Code or create an issue for further work.' : ''; hint.hidden = !hint.textContent;
     footer.hidden = !chat || !issue.agent?.home; scope.hidden = !chat;
     pause.hidden = !issue.agent?.home || !['working', 'paused', 'rebasing'].includes(state || ''); pause.disabled = busy && !active; pause.querySelector('span')!.textContent = state === 'paused' ? 'Resume' : 'Pause';
-    request.hidden = !chat || !ready;
+    request.hidden = !chat || !ready || Boolean(boardId);
     primary.hidden = !chat || !issue.agent?.home || !ready && state !== 'failed';
-    primary.disabled = busy || active;
-    primary.querySelector('span')!.textContent = state === 'failed' ? 'Retry agent' : chat?.modeId === 'plan' ? 'Approve plan & build' : !snapshot ? 'Review changes' : snapshot.dirty ? 'Ask agent to commit' : state === 'conflict' ? 'Retry merge' : count > 1 ? `Merge ${count} issues into ${target() || 'main'}` : `Merge into ${target() || 'main'}`;
+    primary.disabled = busy || active || planning && state !== 'failed' && (!savedPlan || savedPlan.type === 'invalid');
+    primary.querySelector('span')!.textContent = boardId ? 'Open orchestrator board' : state === 'failed' ? 'Retry agent' : planning ? !savedPlan ? 'Load plan to continue' : savedPlan.type === 'invalid' ? 'Revise plan type' : savedPlan.type === 'orchestrate' ? 'Orchestrate' : 'Approve plan & build' : !snapshot ? 'Review changes' : snapshot.dirty ? 'Ask agent to commit' : state === 'conflict' ? 'Retry merge' : count > 1 ? `Merge ${count} issues into ${target() || 'main'}` : `Merge into ${target() || 'main'}`;
     conflict.hidden = state !== 'conflict';
-    const captions: Record<string, string> = { working: 'Agent is working', paused: 'Work is paused', ready: chat?.modeId === 'plan' ? 'Plan ready for approval' : `Ready to merge into ${target() || 'main'}`, conflict: 'Merge needs attention', merging: 'Merging changes…', mergequeued: 'Queued to merge', done: 'Work merged', failed: 'Work needs attention', held: 'Waiting on blockers', waitslot: 'Waiting for an agent slot' };
-    footerTitle.textContent = issue.agent?.phase === 'awaiting_input' ? 'The agent needs your answer' : captions[state || ''] || (chat ? 'Linked conversation' : 'Start work on this issue');
+    const captions: Record<string, string> = { working: 'Agent is working', paused: 'Work is paused', planned: 'Planned · ready to build', ready: chat?.modeId === 'plan' ? 'Plan ready for approval' : `Ready to merge into ${target() || 'main'}`, conflict: 'Merge needs attention', merging: 'Merging changes…', mergequeued: 'Queued to merge', done: 'Work merged', failed: 'Work needs attention', held: 'Waiting on blockers', waitslot: 'Waiting for an agent slot' };
+    footerTitle.textContent = boardId ? 'Execution handed to the orchestrator board' : planning && ready ? savedPlan?.type === 'orchestrate' ? 'Plan ready to orchestrate' : 'Plan ready for approval' : issue.agent?.phase === 'awaiting_input' ? 'The agent needs your answer' : captions[state || ''] || (chat ? 'Linked conversation' : 'Start work on this issue');
     footerDetail.textContent = count > 1 ? `Actions apply to ${group.map(i => i.id).join(', ')} in the shared worktree.` : snapshot?.dirty && ready ? 'Uncommitted changes must be committed before merging.' : state === 'done' ? 'The conversation and command history remain available.' : 'Applies to this issue’s worktree.';
     if (!busy && (issue.agent?.error || '') !== lastAgentError) {
       if (issue.agent?.error) error.textContent = issue.agent.error;
@@ -241,6 +247,10 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   function update(): void {
     if (disposed) return;
     issue = findIssueById(issue.id) ?? issue; title.textContent = issue.title;
+    planPreview.update(issue);
+    const planned = issue.agent?.home?.state === 'planned';
+    if (planned && !wasPlanned) { memory.brief = true; brief.hidden = false; briefToggle.setAttribute('aria-expanded', 'true'); }
+    wasPlanned = planned;
     updateHomeIssueStatus(issueStatus, issue);
     updateHomeStatus(status, issue.agent?.home?.state, issue.agent?.phase); updateActions();
     const asking = issue.agent?.phase === 'awaiting_input';
@@ -248,32 +258,16 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
     runView.update(); if (memory.view === 'changes') changeView.refresh();
     const nextRuns = JSON.stringify(chat?.terminalHistory);
     if (runSignature !== nextRuns) { runSignature = nextRuns; tabButtons.get('runs')!.querySelector('span')!.textContent = `Runs${chat?.terminalHistory?.length ? ` · ${chat.terminalHistory.length}` : ''}`; }
-    if (!chat || !historyReady) return;
-    if (conversation.hidden || memory.view !== 'conversation' && shell.clientWidth > 0 && shell.clientWidth <= 1050 || host.closest('[hidden]')) return;
-    const signature = JSON.stringify([chat.history, isChatStreaming(chat.id)]);
-    const first = !transcriptSignature;
-    const follow = first && !memory.scroll || content.scrollHeight - content.scrollTop - content.clientHeight < 64;
-    const scroll = first ? memory.scroll : content.scrollTop;
-    if (signature !== transcriptSignature) {
-      disposeTranscript(); content.replaceChildren(transcript);
-      ({ liveBubble, dispose: disposeTranscript } = renderEmbeddedChatTranscript(chat, transcript, memory.expanded));
-      transcriptSignature = signature;
-      if (!chat.history.length && !liveBubble) transcript.append(el('p', 'No messages yet.', 'home-muted'));
-    }
-    if (liveBubble) setAssistantBubbleContent(liveBubble, readChatStreamText(chat.id)?.lastDelta || '', { streaming: true, modeId: chat.modeId });
-    if (follow) content.scrollTop = content.scrollHeight; else { content.scrollTop = scroll; if (isChatStreaming(chat.id)) latest.hidden = false; }
-  }
-  async function loadHistory(): Promise<void> {
-    if (!chat) return;
-    try { await ensureChatHistoryLoaded(chat.id); if (!disposed) { historyReady = true; update(); runView.refresh(); } }
-    catch { if (!disposed) content.replaceChildren(el('p', 'Could not load the conversation.', 'home-muted'), button('Retry', () => { void loadHistory(); })); }
   }
   if (chat) {
-    content.append(el('p', 'Loading conversation…', 'home-muted'));
-    setHomeQuestionHost(chat.id, questionHost); notifyAskQuestionDisplayContextChanged(); void loadHistory();
+    content.remove(); latest.remove(); form.remove();
+    sharedChat = mountSharedChatHost(conversation, chat, 'home', { openPlan(path) {
+      memory.brief = true; brief.hidden = false; briefToggle.setAttribute('aria-expanded', 'true');
+      planPreview.open(issue, path, checkout());
+    } });
   }
   const unsubscribeStream = subscribeChatStreamActivity(id => { if (id === chat?.id) update(); });
   const unsubscribeEnd = subscribeChatStreamEnd(id => { if (id === chat?.id) queueMicrotask(() => { if (!disposed) { update(); changeView.refresh(true); runView.refresh(); } }); });
   selectView(memory.view); update();
-  return { update, dispose() { disposed = true; memory.draft = input.value; memory.scroll = content.scrollTop; unsubscribeStream(); unsubscribeEnd(); disposeTranscript(); changeView.dispose(); runView.dispose(); terminalCleanup?.(); clearHomeQuestionHost(); notifyAskQuestionDisplayContextChanged(); } };
+  return { update, dispose() { disposed = true; planPreview.dispose(); memory.draft = input.value; memory.scroll = content.scrollTop; unsubscribeStream(); unsubscribeEnd(); sharedChat?.dispose(); changeView.dispose(); runView.dispose(); terminalCleanup?.(); notifyAskQuestionDisplayContextChanged(); } };
 }

@@ -84,13 +84,18 @@ export function buildIssueContextBlock(issue: IssueCard): string {
 /** Seed for interactive Plan-mode Code chat. */
 export function buildIssuePlanSeed(issue: IssueCard, planPath?: string): string {
   const path = planPath?.trim() || issuePlanPathForId(issue.id);
+  return buildIssuesPlanSeed([issue], path);
+}
+
+/** Shared interactive planning contract for one issue or a Dashboard batch. */
+export function buildIssuesPlanSeed(issues: IssueCard[], path: string): string {
   return [
-    'Plan work for this issue. Stay in Plan mode — do not implement.',
+    'Plan work for these issues. Stay in Plan mode — do not implement.',
     '',
-    buildIssueContextBlock(issue),
+    ...issues.map(buildIssueContextBlock),
     '',
     `Save the executable plan to exactly \`${path}\` (create documentation/plans/issues/ if needed).`,
-    'Use planner structure with Context, Key Files, Waves, and todos front-matter.',
+    'Follow the regular Plan-mode execution-format choice: ask Build or Orchestrate before exploring or drafting a new plan. Wait for the answer and use the chosen format. For revisions, read the saved plan and preserve its type unless the user requests conversion.',
     'When the plan is saved, stop and summarize the path.',
   ].join('\n');
 }

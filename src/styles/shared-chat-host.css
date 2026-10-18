@@ -1,0 +1,27 @@
+.shared-chat-host {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.shared-chat-host .shared-chat-host__transcript {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.shared-chat-host > .input-bar { flex-shrink: 0; }
+.issues-work-content:has(> .shared-chat-host) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.home-conversation:has(> .shared-chat-host) { min-height: 0; }
+
+/* Prompt hosts move with the composer, including a prompt already awaiting input. */
+:is(#mainColumn, .shared-chat-host):has(> #questionHost:not([hidden]), > #toolApprovalHost:not([hidden])) > .input-bar {
+  display: none;
+}

@@ -800,8 +800,10 @@ export interface IssueAgentRun {
 }
 
 export interface HomeIssueRun {
+  /** Orchestrate approval transfers execution to this board. */
+  boardId?: string;
   groupId: string;
-  state: 'held' | 'waitslot' | 'working' | 'paused' | 'ready' | 'conflict' | 'rebasing' | 'mergequeued' | 'merging' | 'done' | 'failed';
+  state: 'held' | 'waitslot' | 'working' | 'paused' | 'planned' | 'ready' | 'conflict' | 'rebasing' | 'mergequeued' | 'merging' | 'done' | 'failed';
   mode: 'build' | 'plan';
   modelId: string;
   providerId?: string;

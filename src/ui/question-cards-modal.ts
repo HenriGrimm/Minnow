@@ -471,7 +471,7 @@ export function showQuestionCardsModal(
         composerShell?.classList.add('main-column--question-pending');
       }
       addSidebarInputPendingChatId(chatIdForAbort);
-      if (!embedded) host.hidden = false;
+      host.hidden = false;
     } else {
       addSidebarInputPendingChatId(chatIdForAbort);
     }

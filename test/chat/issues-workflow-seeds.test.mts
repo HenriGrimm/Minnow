@@ -10,6 +10,7 @@ import {
   buildIssueForegroundModeSeed,
   buildIssueForegroundSeed,
   buildIssuePlanSeed,
+  buildIssuesPlanSeed,
   canRunIssueWorkflow,
   canSendIssueToBoard,
   formatIssueCodeRefLine,
@@ -71,6 +72,18 @@ describe('issues workflow seeds', () => {
     assert.match(seed, /Plan mode/);
     assert.match(seed, /documentation\/plans\/issues\/ISS-42\.md/);
     assert.match(seed, /do not implement/i);
+    assert.match(seed, /ask Build or Orchestrate before exploring or drafting/);
+    assert.doesNotMatch(seed, /Include Context, Key Files, Waves|Use planner structure/);
+  });
+
+  test('Dashboard batches use the same interactive plan contract as single issues', () => {
+    const issue = makeIssue();
+    const path = 'documentation/plans/issues/ISS-42.md';
+    assert.equal(buildIssuesPlanSeed([issue], path), buildIssuePlanSeed(issue, path));
+    const seed = buildIssuesPlanSeed([issue, makeIssue({ id: 'ISS-43', title: 'Second issue' })], path);
+    assert.match(seed, /Second issue/);
+    assert.equal(seed.match(/ask Build or Orchestrate/g)?.length, 1);
+    assert.match(seed, /For revisions, read the saved plan and preserve its type/);
   });
 
   test('buildIssueDebugSeed carries full context', () => {

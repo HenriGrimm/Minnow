@@ -1,3 +1,4 @@
+import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
@@ -216,7 +217,8 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
       ? queryBoardChatTranscriptHost()
       : null;
   const mapChatHost = mount == null ? queryCodeMapChatHost(getActiveChat().id) : null;
-  const embeddedHost = boardChatHost ?? mapChatHost;
+  const sharedHost = mount == null ? getSharedChatHost(getActiveChat().id)?.transcript : null;
+  const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
   disposeChatWorkView(area);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
@@ -225,7 +227,7 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
     return;
   }
 
-  const boardGroup = codeMount && !boardChatHost ? getActiveBoardGroup() : null;
+  const boardGroup = codeMount && !embeddedHost ? getActiveBoardGroup() : null;
   if (boardGroup?.viewMode === 'board') {
     return;
   }
@@ -689,7 +691,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
       ? queryBoardChatTranscriptHost()
       : null;
   const mapChatHost = mount == null ? queryCodeMapChatHost(chat.id) : null;
-  const embeddedHost = boardChatHost ?? mapChatHost;
+  const sharedHost = mount == null ? getSharedChatHost(chat.id)?.transcript : null;
+  const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
   const scrollAnchor = captureChatScrollAnchor();
@@ -749,7 +752,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   } else if (codeMount && isOrchestratePlanScreenMounted()) {
     teardownOrchestratePlanScreenDom();
   }
-  const boardGroup = codeMount && !boardChatHost ? getActiveBoardGroup() : null;
+  const boardGroup = codeMount && !embeddedHost ? getActiveBoardGroup() : null;
   if (boardGroup?.viewMode === 'board') {
     teardownHub();
     syncBoardViewChrome();
@@ -757,7 +760,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     void import('../os/router').then((m) => m.navigateToCodeBoards());
     return;
   }
-  if (codeMount && !boardChatHost && isBoardOwnedChat(chat)) {
+  if (codeMount && !embeddedHost && isBoardOwnedChat(chat)) {
     const owner = getBoardGroupForChat(chat);
     if (owner?.viewMode === 'board') {
       void import('../state/chat-groups').then((m) => m.openBoardGroup(owner.id));
@@ -767,7 +770,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   clearSubAgentCardDomRegistry();
   if (!chat.history.length) {
-    if (mapChatHost) {
+    if (mapChatHost || sharedHost) {
       area.replaceChildren();
     } else if (boardChatHost) {
       area.replaceChildren(buildBoardChatEmptyState());

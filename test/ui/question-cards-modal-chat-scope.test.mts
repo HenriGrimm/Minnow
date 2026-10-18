@@ -89,6 +89,7 @@ describe('question-cards-modal chat scope', () => {
         const answer = enqueueAskQuestion({ questions: [{ id: 'q1', prompt: 'Choose a scope', options: [{ id: 'a', label: 'Small' }, { id: 'b', label: 'Large' }] }] }, {}, 'chat-b');
         assert.equal(isIssueChatQuestionPending('chat-b'), true);
         assert.equal(Boolean(host.querySelector('.question-cards-panel')), true);
+        assert.equal(host.hidden, false, `Question ${turn + 1} must be visible`);
         if (turn === 1) {
           tab.hidden = true;
           notifyAskQuestionDisplayContextChanged();
@@ -102,6 +103,7 @@ describe('question-cards-modal chat scope', () => {
         radio!.click();
         assert.equal(JSON.parse(await answer).status, 'answered');
         assert.equal(isIssueChatQuestionPending('chat-b'), false);
+        assert.equal(host.hidden, true);
       }
     } finally { unregister(); tab.remove(); }
   });

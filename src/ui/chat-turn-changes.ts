@@ -5,6 +5,7 @@ import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
 import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon } from './icon';
+import { getSharedChatHost } from './shared-chat-host-state';
 
 export interface TurnChangesOptions {
   /** Latest turn card: hosts Commit, Create PR, and Undo controls. */
@@ -200,6 +201,8 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
     return el;
   };
   button('Open plan', planPath, () => {
+    const host = getSharedChatHost(chat.id);
+    if (host?.openPlan && host.transcript.contains(actions)) { host.openPlan(planPath); return; }
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
   const build = button('Build here', 'Switch this chat to Build and implement the plan', async () => {

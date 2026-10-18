@@ -1,3 +1,4 @@
+import { getSharedChatHost } from './shared-chat-host-state';
 import { isChatAppForeground } from './chat-mount';
 import { queryCodeMapChatHost } from './code-map/chat-state';
 import { OB_CHAT_SCROLL_SELECTOR } from './orchestrate-board-chat-state';
@@ -49,6 +50,7 @@ export function invalidateChatScrollRootCache(): void {
 }
 
 function resolveChatScrollRoot(): HTMLElement | null {
+  if (getSharedChatHost()) return getSharedChatHost()!.transcript;
   const mapChatHost = queryCodeMapChatHost();
   if (mapChatHost) return mapChatHost;
   const boardChatPane = document.querySelector<HTMLElement>(OB_CHAT_SCROLL_SELECTOR);
@@ -183,6 +185,7 @@ export function isChatAtBottom(el?: HTMLElement): boolean {
 
 /** Board view replaces chat scroll UX; jump chip is chat-only. */
 function isBoardViewChromeActive(): boolean {
+  if (getSharedChatHost()) return false;
   return (
     document.getElementById('mainColumn')?.classList.contains('main-column--board-view') ??
     false
@@ -426,4 +429,9 @@ export function initChatScroll(): void {
     document.addEventListener('pointercancel', onPointerScrubEnd, true);
   }
   updateJumpChipVisibility();
+}
+
+export function bindSharedChatScroll(): void {
+  invalidateChatScrollRootCache();
+  bindScrollTarget(getSharedChatHost()?.transcript ?? null);
 }

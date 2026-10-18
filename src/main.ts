@@ -248,8 +248,9 @@ let bootPrerequisitesLoaded = false;
 
 /** Boot app: sessions, settings, sidebar, models, first paint. */
 export async function initApp(): Promise<void> {
-  // Dedicated app windows share data/config, but do not own a chat renderer or its timers.
+  // Issues windows also host the shared chat composer; other app windows only share data/config.
   const hasChatSurface = !isAppWindowRenderer();
+  const hasComposerSurface = hasChatSurface || window.minnow?.viewContext?.appId === 'issues';
   const releaseFirstRunReveal = hasChatSurface ? holdAppReveal() : () => {};
   let workspaceGatePending: Promise<void> | null = null;
   let workspaceGateModule: typeof import('./os/workspace-gate') | null = null;
@@ -315,7 +316,7 @@ export async function initApp(): Promise<void> {
     }
   }
   registerToolHandlers();
-  if (hasChatSurface) {
+  if (hasComposerSurface) {
     initSubAgentUi();
     initGoalEvalUi();
     initLoopStatusUi();
@@ -375,6 +376,8 @@ export async function initApp(): Promise<void> {
     } else {
       document.documentElement.classList.remove('welcome-pending');
     }
+  }
+  if (hasComposerSurface) {
     initModelSelectPicker();
     initComposerModelTriggers();
     await refreshSkillCatalog();
@@ -409,7 +412,7 @@ export async function initApp(): Promise<void> {
       'minnow:boot:config-done',
     );
   } catch {}
-  if (hasChatSurface) {
+  if (hasComposerSurface) {
     initStatsStrip();
     initChatScroll();
   }
@@ -447,7 +450,7 @@ export async function initApp(): Promise<void> {
     './os/app-modules'
   );
   await ensureBootAppsInitialized();
-  if (hasChatSurface) {
+  if (hasComposerSurface) {
     initAgentCliView();
     syncModelSelectForActiveChat();
     syncModelSelectPicker();
@@ -483,7 +486,7 @@ export async function initApp(): Promise<void> {
   startSessionLiveSync((activeChanged) => {
     renderSidebar();
     refreshHubLiveData();
-    if (activeChanged && hasChatSurface) {
+    if (activeChanged && hasComposerSurface) {
       renderChatFromHistory(getActiveChat());
       renderStatsForChat(getActiveChat());
       syncModelSelectForActiveChat();
