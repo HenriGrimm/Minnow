@@ -254,6 +254,16 @@
   max-width: min(28rem, 42vw);
 }
 
+.workspace-btn.icon-btn {
+  width: auto;
+  min-width: 40px;
+  max-width: 100%;
+  min-height: 40px;
+  gap: 6px;
+  padding: 0 10px;
+  flex-shrink: 1;
+}
+
 .workspace-path-label {
   font-size: 12px;
   color: var(--mn-fg-muted);
@@ -261,15 +271,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  cursor: pointer;
 }
 
-.workspace-path-label:hover {
-  color: var(--mn-fg);
+.workspace-btn:hover .workspace-path-label {
+  color: inherit;
 }
 
 .workspace-btn .icon-svg {
   --mn-icon-size: 18px;
+  flex-shrink: 0;
 }
 
 /* Raster topbar icons (e.g. Benchmark) — dark glyph on light chrome, inverted on dark */

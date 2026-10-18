@@ -225,7 +225,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   appConsole: 'fi-rr-terminal',
   appServers: 'fi-rr-database',
   appAgentActivity: 'fi-rr-user-robot',
-  appCodeOverview: 'fi-sr-dashboard-panel',
+  appCodeOverview: 'fi-rr-square-kanban',
   appCodeBrainMap: 'fi-rr-sitemap',
   appDevServer: 'fi-rr-cloud-code',
 

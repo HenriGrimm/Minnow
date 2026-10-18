@@ -202,11 +202,6 @@ export function initWorkspaceButton(): void {
     void toggleWorkspaceMenu(btn);
   });
 
-  // The folder name is part of the control: pressing it runs the button's action.
-  getWorkspacePathLabel()?.addEventListener('click', () => {
-    btn.click();
-  });
-
   void refreshWorkspaceUi();
 }
 

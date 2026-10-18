@@ -88,7 +88,7 @@ describe('hub teardown', () => {
     assert.ok(Array.from(inner.children).indexOf(actions) <
       Array.from(inner.children).indexOf(inner.querySelector('.hub-status')!),
     'manual workspace actions precede model status and metrics');
-    assert.ok(document.querySelector('.hub-recent-row'), 'recent threads remain');
+    assert.equal(document.querySelector('.hub-recent-row'), null, 'recent threads are removed');
   });
 
   test('teardownHub before chatArea.replaceChildren keeps composer in the document', () => {

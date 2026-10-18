@@ -1,20 +1,14 @@
 import '../styles/hub.css';
 
-import { EMPTY_STATE_HTML, PLACEHOLDER_CHAT_NAME } from '../constants';
-import { listModes } from '../chat/modes/registry';
-import { normalizeModeId } from '../chat/modes/types';
+import { EMPTY_STATE_HTML } from '../constants';
 import { modelCache } from '../api/models';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
-import { getChatsForWorkspace, getChatLastMessageAt } from '../state/session-workspace-scope';
-import { getChatMessageCount, sessionState } from '../state/sessions';
-import type { LastStats } from '../types';
+import { getChatsForWorkspace } from '../state/session-workspace-scope';
+import { sessionState } from '../state/sessions';
 import type { Chat } from '../types';
-import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
 import { formatCompactCount } from '../usage/format-compact-count';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
-import { createModeMaskIcon } from './mode-icons';
-import { switchChat } from './sidebar';
 import { createCodeReadinessActions } from './code-readiness-actions';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
 import {
@@ -29,8 +23,6 @@ import {
 } from './orchestrate-plan-screen';
 
 export const HUB_ROOT_ID = 'vibeHub';
-/** Max recent workspace chats shown on the hub (excluding the active empty chat). */
-export const HUB_RECENT_CHAT_LIMIT = 6;
 
 let hubChatId: string | null = null;
 let composerRestoreParent: HTMLElement | null = null;
@@ -93,50 +85,6 @@ function restoreComposer(): void {
   }
   composerRestoreParent = null;
   composerRestoreNext = null;
-}
-
-function formatRelativeTime(ts: number): string {
-  if (!ts) return '—';
-  const delta = Date.now() - ts;
-  const mins = Math.floor(delta / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 48) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-/** Compact metric labels for recent-thread tiles (one item per stat). */
-function buildHubTileMetrics(ls: LastStats | null | undefined): string[] {
-  if (!ls) return [];
-  const items: string[] = [];
-  if (ls.tokens_per_second != null) {
-    items.push(`${Number(ls.tokens_per_second).toFixed(1)} tok/s`);
-  }
-  if (ls.time_to_first_token != null) {
-    items.push(`TTFT ${Number(ls.time_to_first_token).toFixed(2)}s`);
-  }
-  if (ls.total_tokens != null) {
-    items.push(`${formatCompactCount(ls.total_tokens)} tok`);
-  }
-  return items;
-}
-
-function appendHubTileMetrics(parent: HTMLElement, metrics: string[]): void {
-  if (!metrics.length) {
-    const empty = document.createElement('span');
-    empty.className = 'hub-tile__metric hub-tile__metric--empty';
-    empty.textContent = '—';
-    parent.appendChild(empty);
-    return;
-  }
-  for (const label of metrics) {
-    const span = document.createElement('span');
-    span.className = 'hub-tile__metric';
-    span.textContent = label;
-    parent.appendChild(span);
-  }
 }
 
 function getSelectedModelLabel(): string {
@@ -217,69 +165,6 @@ async function fetchHubServerMetrics(): Promise<void> {
   }
 }
 
-function getRecentChats(workspacePath: string, activeChat: Chat): Chat[] {
-  if (!sessionState) return [];
-  return getChatsForWorkspace(workspacePath, sessionState)
-    .filter((c) => getChatMessageCount(c) > 0 && c.id !== activeChat.id)
-    .slice(0, HUB_RECENT_CHAT_LIMIT);
-}
-
-function renderRecentTiles(container: HTMLElement, activeChat: Chat): void {
-  container.replaceChildren();
-  const workspacePath = getWorkspacePath();
-  const recent = getRecentChats(workspacePath, activeChat);
-  const countEl = document.querySelector('.hub-recent-count');
-  const total = sessionState
-    ? getChatsForWorkspace(workspacePath, sessionState).filter((c) => getChatMessageCount(c) > 0)
-        .length
-    : 0;
-  if (countEl) countEl.textContent = `All ${total} chat${total === 1 ? '' : 's'}`;
-
-  if (!recent.length) {
-    const tile = document.createElement('button');
-    tile.type = 'button';
-    tile.className = 'hub-tile hub-tile--solo';
-    tile.innerHTML =
-      '<div class="hub-tile__head"><span class="hub-tile__title">Start your first chat</span></div>' +
-      '<div class="hub-tile__meta"><span class="hub-tile__when">Type above to begin</span></div>';
-    tile.addEventListener('click', () => {
-      document.getElementById('msgInput')?.focus();
-    });
-    container.appendChild(tile);
-    return;
-  }
-
-  for (const chat of recent) {
-    const tile = document.createElement('button');
-    tile.type = 'button';
-    tile.className = 'hub-tile';
-    const modeId = normalizeModeId(chat.modeId);
-    const modeLabel = listModes().find((m) => m.id === modeId)?.label ?? modeId;
-    const title =
-      chat.name && chat.name !== PLACEHOLDER_CHAT_NAME ? chat.name : PLACEHOLDER_CHAT_NAME;
-    const whenFull = formatRelativeTime(getChatLastMessageAt(chat));
-    const when = whenFull.replace(/ ago$/, '');
-    const metrics = buildHubTileMetrics(resolveLastTurnMetrics(chat));
-    // One row per thread: mode glyph · title · token count · age. Full stats stay in the label.
-    tile.innerHTML = `
-      <span class="hub-tile__icon" aria-hidden="true"></span>
-      <span class="hub-tile__title"></span>
-      <span class="hub-tile__metrics" aria-hidden="true"></span>
-      <span class="hub-tile__when"></span>
-    `;
-    tile.querySelector('.hub-tile__icon')!.append(createModeMaskIcon(modeId, 'mode-mask-icon'));
-    tile.querySelector('.hub-tile__title')!.textContent = title;
-    tile.querySelector('.hub-tile__when')!.textContent = when;
-    const metricsEl = tile.querySelector('.hub-tile__metrics') as HTMLElement;
-    appendHubTileMetrics(metricsEl, metrics.filter((m) => m.endsWith(' tok')));
-    const statsSummary = metrics.length ? metrics.join(', ') : 'no stats';
-    tile.title = `${modeLabel} · ${statsSummary}`;
-    tile.setAttribute('aria-label', `${title}, ${modeLabel}, ${whenFull}, ${statsSummary}`);
-    tile.addEventListener('click', () => switchChat(chat.id));
-    container.appendChild(tile);
-  }
-}
-
 function updateHubDom(activeChat: Chat): void {
   const statusEl = document.querySelector('.hub-status__text');
   if (statusEl) {
@@ -320,8 +205,6 @@ function updateHubDom(activeChat: Chat): void {
 
   updateHubDevServer();
 
-  const recentRow = document.getElementById('hubRecentRow');
-  if (recentRow) renderRecentTiles(recentRow, activeChat);
 }
 
 function buildHubDom(activeChat: Chat): HTMLElement {
@@ -373,17 +256,7 @@ function buildHubDom(activeChat: Chat): HTMLElement {
     </div>
   `;
 
-  const recentHead = document.createElement('div');
-  recentHead.className = 'hub-recent-head';
-  recentHead.innerHTML =
-    '<span class="hub-strip__label">Recent</span>' +
-    '<span class="hub-recent-count">0 chats</span>';
-
-  const recentRow = document.createElement('div');
-  recentRow.className = 'hub-recent-row';
-  recentRow.id = 'hubRecentRow';
-
-  inner.append(heading, createCodeReadinessActions(), status, composerSlot, strip, recentHead, recentRow);
+  inner.append(heading, createCodeReadinessActions(), status, composerSlot, strip);
   root.appendChild(inner);
 
   const serverCell = strip.querySelector('#hubDevServerCell') as HTMLElement | null;
