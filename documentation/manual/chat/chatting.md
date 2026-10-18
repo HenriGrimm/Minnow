@@ -9,7 +9,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 | Control | What it does |
 |---------|--------------|
 | **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
-| **Run target** | The current workspace, shown by name, or a git worktree for this chat, with its branch |
+| **Run target** | **Enable worktree** automatically names and prepares an isolated checkout for this chat; its branch appears alongside it |
 | **Reasoning** | Thinking on or off, and effort where the model supports it |
 | **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. On a narrow column, run target and reasoning move in here too. |
 | **Context ring** | Window usage; click for the breakdown |
@@ -21,6 +21,16 @@ The composer is a card at the bottom of the chat column: the message field on to
 **Enter** sends, **Shift+Enter** adds a line. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
 
 Drafts survive switching chats.
+
+**Enable worktree** creates a named branch from the current commit and prepares
+project dependencies automatically. Uncommitted edits stay in the original
+checkout. Wait for **Setting up…** to finish before sending. If setup fails, the
+checkout is kept so you can fix the reported dependency error and choose **Retry worktree**. Sending stays blocked until setup succeeds or you explicitly choose Local from Worktree options, including after a reload.
+
+Click **Worktree** to return to Local. The **Worktree options** button offers existing checkouts, custom names and start
+branches, and a return to the local workspace. Returning to Local preserves the
+worktree and its files; enabling it again reuses that chat's managed checkout.
+Use Source Control or issue delivery controls for cleanup.
 
 **Link a tab to this chat.** Drag a Code editor tab or an in-app browser tab onto the transcript or composer. Minnow pins a link chip on that chat — the file or URL, not a one-turn attachment. The chip stays after reload; click it to open the file or page. Dragging from the file tree still attaches for the next message only.
 

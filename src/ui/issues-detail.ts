@@ -38,7 +38,7 @@ import {
 } from '../chat/issues/pipeline';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { createIssuesWorkflowDropdown, closeIssuesWorkflowMenu } from './issues-workflow-menu';
-import { promptIssueChatRunTarget } from './issues-chat-run-target';
+import { promptIssueChatRunTarget, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import {
   createBranchFromIssue,
@@ -1937,6 +1937,18 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
     const secondary = document.createElement('div');
     secondary.className = 'issues-detail__workflow-secondary';
+    const useWorktree = createDetailTextButton({
+      label: issueUsesWorktree(issue.id)
+        ? workflowBusyIds.has(issue.id) ? 'Setting up…' : 'Worktree on'
+        : 'Use worktree',
+      icon: 'gitWorktree',
+      disabled: !workflowOk || busy,
+      title: 'Automatically name and prepare a separate checkout when this issue starts a chat',
+      onClick: () => { toggleIssueWorktree(issue.id); refreshIssueDetailIfOpen(); },
+    });
+    useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
+    useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
+    secondary.appendChild(useWorktree);
 
     const foregroundHints: Record<IssueForegroundChatMode, string> = {
       general: 'Triage and discuss with full tool access',

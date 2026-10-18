@@ -1260,9 +1260,11 @@ export interface Chat {
   gitBranch?: string;
   /**
    * True when Minnow created the chat worktree at the managed slot (cleanup on
-   * delete / detach to Local). False when attached to an existing worktree.
+   * delete). Detaching to Local keeps files. False for an existing worktree.
    */
   chatWorktreeManaged?: boolean;
+  /** Automatic isolation was requested but has not finished. Blocks sends across reloads. */
+  worktreeSetupRequired?: boolean;
   /** @deprecated Migrated to ~/.minnow/bugs/state.json — stripped on load. */
   bugBoard?: BugBoardState;
   /**

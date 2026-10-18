@@ -80,7 +80,8 @@ async function postWorktree(
       body: JSON.stringify({ op, ...args }),
     });
     if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status}` };
+      const body = await res.json().catch(() => null) as { error?: string } | null;
+      return { ok: false, error: body?.error || `HTTP ${res.status}` };
     }
     return (await res.json()) as WorktreeOpResult;
   } catch (err) {
@@ -271,8 +272,8 @@ export function openIntegrationPr(input: {
 // ── List chats ───────────────────────────────────────────────────────────────
 
 /** List all git worktrees for the active repo (`git worktree list --porcelain`). */
-export async function listWorktrees(): Promise<WorktreeOpResult> {
-  const result = await postWorktree('list', {});
+export async function listWorktrees(cwd?: string): Promise<WorktreeOpResult> {
+  const result = await postWorktree('list', cwd ? { cwd } : {});
   if (result.ok) {
     const paths =
       result.worktrees?.map((wt) => wt.path) ??
@@ -280,6 +281,10 @@ export async function listWorktrees(): Promise<WorktreeOpResult> {
     if (paths.length) noteRegisteredWorktreePaths(paths);
   }
   return result;
+}
+
+export function enableChatWorktree(input: { chatId: string; cwd: string; title: string }): Promise<WorktreeOpResult> {
+  return postWorktree('enable_chat', input);
 }
 
 /** Create a managed per-chat worktree (MIN-276). */
