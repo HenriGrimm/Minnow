@@ -2,9 +2,9 @@
 .home-page { --mn-fg-subtle: var(--mn-fg-muted); display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; font: 14px/1.45 var(--font-ui); outline: none; }
 .home-page *, .home-page *::before, .home-page *::after { box-sizing: border-box; }
 .home-page [hidden] { display: none !important; }
-.home-page h1, .home-page h2, .home-page h3, .home-page p { margin: 0; }
-.home-page button, .home-page input, .home-page textarea { font: inherit; }
-.home-page .icon-svg { --mn-icon-size: 14px; flex: 0 0 auto; }
+:where(.home-page) h1, :where(.home-page) h2, :where(.home-page) h3, :where(.home-page) p { margin: 0; }
+:where(.home-page) button, :where(.home-page) input, :where(.home-page) textarea { font: inherit; }
+:where(.home-page) .icon-svg { --mn-icon-size: 14px; flex: 0 0 auto; }
 .home-muted { color: var(--mn-fg-muted); font-size: 12px; }
 .home-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; }
 .home-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 5px 12px; border: 1px solid var(--mn-border); border-radius: 7px; background: transparent; color: var(--mn-fg); font: 13px/1.4 var(--font-ui); white-space: nowrap; cursor: pointer; transition: background var(--duration-fast), border-color var(--duration-fast); }
@@ -143,22 +143,14 @@
 .home-dock-tablist > [aria-selected=true] { border-bottom-color: var(--mn-accent); color: var(--mn-fg); }
 .home-workspace-scope { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mn-fg-muted); }
 .home-workspace-navigation > .home-button { font-size: 12px; border: 0; padding-inline: 6px; }
-/* The details rail never takes vertical space from the transcript. */
 .home-workspace-stage { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.home-issue-brief { flex: 0 0 300px; min-width: 0; overflow: auto; border-left: 1px solid var(--mn-border); background: var(--mn-surface-1); }
-.home-brief-heading { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; font-size: 12px; }
-.home-brief-heading .home-button { border: 0; padding: 4px; min-height: 24px; }
-.home-brief-heading .home-button span { display: none; }
-.home-brief-body { padding: 0 16px 20px; font-size: 13px; }
-.home-brief-body > h3 { margin-top: 20px; font-size: 13px; }
-.home-brief-body .home-button { margin-top: 16px; }
 .home-brief-markdown { line-height: 1.65; overflow-wrap: anywhere; }
 .home-page .home-brief-markdown p { margin-block: 0 12px; }
 .home-brief-markdown :is(ul, ol) { padding-left: 22px; margin-block: 8px 16px; }
 .home-brief-markdown :is(h1, h2, h3) { font-size: 15px; margin-block: 20px 8px; }
 .home-brief-markdown pre { overflow: auto; }
 .home-workspace-body { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
-.home-workspace--side-chat:not([data-view=conversation]) .home-workspace-body { grid-template-columns: minmax(0, 1fr) minmax(310px, 32%); }
+.home-details-view { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; container: issue-detail / inline-size; background: var(--mn-surface-1); }
 .home-review-work { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .home-changes-view { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; padding: 14px 20px 0; gap: 8px; }
 .home-changes-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
@@ -180,11 +172,6 @@
 .home-diff-line--remove { background: var(--mn-danger-soft); }
 .home-diff-line--hunk { color: var(--mn-fg-muted); background: var(--mn-surface-1); }
 .home-diff-notice { padding: 18px 12px; }
-.home-evidence-strip { display: flex; flex-wrap: wrap; align-items: center; flex: 0 0 auto; gap: 7px 10px; padding: 8px 20px; font-size: 12px; }
-.home-evidence-strip > .home-muted { flex-basis: 100%; }
-.home-evidence-strip .home-button { border: 0; padding: 2px 6px; min-height: 26px; color: var(--mn-accent-ink); font-size: 12px; }
-.home-runs-view { flex: 1; overflow: auto; padding: 14px 20px; }
-.home-runs-view > div > .home-muted { margin-block: 6px 12px; }
 .home-run { border-bottom: 1px solid var(--mn-border); }
 .home-run > summary { cursor: pointer; display: flex; align-items: baseline; gap: 10px; padding: 12px 0; }
 .home-run > summary > .home-mono { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
@@ -194,16 +181,11 @@
 .home-command-disclosure > summary { cursor: pointer; padding-block: 14px; font-size: 13px; }
 .home-conversation { display: flex; flex-direction: column; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .home-workspace:not([data-view=conversation]) .home-conversation { border-left: 1px solid var(--mn-border); }
-.home-chat-heading { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; min-height: 44px; padding: 8px 20px; font-size: 12px; }
-.home-chat-heading > .home-muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-chat-heading > .home-button { border: 0; margin-left: auto; padding: 4px; font-size: 11px; }
 .home-chat-history { flex: 1; min-height: 0; overflow: auto; padding: 24px 20px; overscroll-behavior: contain; }
 .home-chat-transcript { display: flex; flex-direction: column; min-width: 0; }
 .home-workspace[data-view=conversation] .home-chat-transcript { max-width: 780px; width: 100%; margin-inline: auto; }
 .home-chat-history > h3 { margin: 8px 0; font-size: 14px; font-weight: 600; }
 .home-issue-description { max-width: 72ch; white-space: pre-wrap; margin-bottom: 14px !important; }
-.home-context-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.home-context-chips span { padding: 4px 8px; border: 1px solid var(--mn-border); border-radius: 5px; font-size: 12px; overflow-wrap: anywhere; }
 .home-new-activity { align-self: center; font-size: 12px; margin-bottom: 6px; }
 .home-chat-composer { flex: 0 0 auto; padding: 12px 20px 20px; }
 .home-chat-input { display: flex; align-items: flex-end; gap: 8px; }
@@ -240,7 +222,7 @@
   .home-selection-bar { gap: 8px; padding-inline: 16px; }
   .home-flow-board { gap: 10px; padding-inline: 16px; }
   .home-flow-card { padding: 10px; }
-  .home-chat-heading, .home-chat-history, .home-chat-composer { padding-inline: 16px; }
+  .home-chat-history, .home-chat-composer { padding-inline: 16px; }
 }
 @container home (max-width: 900px) {
   .home-header { grid-template-columns: minmax(0, 1fr) auto; }
@@ -269,10 +251,8 @@
 @media (prefers-reduced-motion: reduce) { .home-page *, .home-page *::before, .home-page *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 
 @container home-workspace (max-width: 1050px) {
-  .home-workspace--side-chat:not([data-view=conversation]) .home-workspace-body { grid-template-columns: minmax(0, 1fr); }
   .home-workspace:not([data-view=conversation]) .home-conversation { display: none; }
   .home-workspace-scope { font-size: 10px; }
-  .home-workspace-navigation > .home-button[aria-pressed] { display: none; }
 }
 @container home-workspace (max-width: 650px) {
   .home-workspace-header { padding-inline: 12px; gap: 8px; flex-wrap: wrap; }
@@ -281,14 +261,12 @@
   .home-workspace-navigation { flex-wrap: wrap; gap: 0 8px; padding-inline: 4px 12px; }
   .home-workspace-scope { order: 3; flex-basis: 100%; padding: 4px 8px; font-size: 11px; }
   .home-workspace-navigation > .home-button { margin-left: auto; }
-  .home-issue-brief > summary { padding-inline: 12px; gap: 8px; }
-  .home-brief-body, .home-changes-view, .home-runs-view, .home-chat-heading, .home-chat-history { padding-inline: 12px; }
+  .home-changes-view, .home-chat-history { padding-inline: 12px; }
   .home-diff-number { font-size: 10px; }
   .home-diff-line { grid-template-columns: 28px 28px minmax(max-content, 1fr); }
   .home-workspace-footer { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
   .home-footer-context { flex-basis: 100%; }
   .home-review-actions { margin-left: auto; }
-  .home-evidence-strip { padding-inline: 12px; }
 }
 
 /* Starting an issue is a single readable document with its action directly below. */
@@ -306,7 +284,6 @@
 .home-workspace--start .home-workspace-navigation > .home-button:last-child { margin-left: auto; }
 @container home-workspace (max-width: 800px) {
   .home-workspace-stage { position: relative; }
-  .home-issue-brief { position: absolute; z-index: 2; inset: 0 0 0 auto; width: min(340px, 100%); }
   .home-workspace-navigation { gap: 4px; }
   .home-workspace-navigation > .home-button { font-size: 11px; }
   .home-workspace--start[data-view=conversation] .home-conversation { padding: 24px 20px; }

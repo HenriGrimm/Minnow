@@ -96,6 +96,15 @@ test('Dashboard approval follows the saved type, including revisions, and invoke
     dock.update(); assert.equal(primary.disabled, true);
     await flush();
     assert.equal(primary.textContent, 'Orchestrate'); assert.equal(primary.disabled, false);
+    host.querySelector<HTMLButtonElement>('#home-tab-conversation')!.click();
+    const { getSharedChatHost } = await import('../../src/ui/shared-chat-host-state.ts');
+    markdown = '---\nplanType: build\n---\n# Another chat artifact';
+    getSharedChatHost()!.openPlan!('documentation/plans/another-artifact.md');
+    await flush();
+    assert.equal(host.querySelector<HTMLElement>('#home-view-details')!.hidden, false);
+    assert.equal(host.querySelector('.issues-plan-preview__path')!.textContent, 'documentation/plans/another-artifact.md');
+    assert.equal(primary.textContent, 'Orchestrate', 'previewing another artifact preserves the approval plan');
+    markdown = '---\nplanType: orchestrate\n---\n# Revised board plan';
     primary.click(); await flush();
     assert.equal(launches.length, 1); assert.equal(sends.length, 0);
     assert.equal(primary.textContent, 'Open orchestrator board');

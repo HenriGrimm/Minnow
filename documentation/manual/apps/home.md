@@ -22,13 +22,13 @@ Blocked groups are held until their blockers close or merge. **Start from main**
 
 ## Review in the dock
 
-Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Open **Issue details** to read the formatted description, notes, and linked files in a side pane. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
+Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Open **Details** to view and edit the full issue with the same layout as the Issues app popover, including its description, saved plan, properties, resources, and comments. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
 
 **Conversation** uses the same message and tool rendering as Code. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. You can draft a message while the agent works, then pause or wait before sending. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it. **Open in Code** opens the linked chat.
 
 For a new issue, the formatted brief and start controls share one reading column. Add optional instructions, choose Build or Plan first, then select **Start build** or **Start planning**. **Approve plan & build** switches a completed Plan first chat to Build.
 
-**Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. On wide windows, the conversation can stay beside the changes. **Runs** lists recorded commands, their exit results, and expandable output. A successful exit records command execution; review the conversation and changes to assess whether the requested behavior works. Expand **Run a command in this checkout** for a scoped command console. Switching views retains its output and running command controls.
+**Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. The diff occupies the workspace; use **Conversation** to review the agent’s messages or request changes. **Details** keeps issue editing in the dock and opens automatically when a plan is ready for approval.
 
 **Merge into main** (or the configured target) queues the merge. Shared work shows every affected issue beside the action. If changes remain uncommitted, **Ask agent to commit** sends them back for preparation. Minnow verifies that the managed worktree is committed and checks the merge in a temporary checkout before updating the target. Conflicts keep the branch and worktree. Ask the agent to resolve them or inspect them in Code. Git refuses a landing that overlaps uncommitted changes in the target checkout. After a successful merge, Minnow removes the clean agent worktree and moves the issues to Done.
 
