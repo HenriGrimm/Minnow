@@ -43,7 +43,7 @@ The reference point is **Blender**, not a SaaS product: one complete suite cover
 | Surface | Role |
 |----------|----------------|
 | **Workspace picker** | Choose the folder root for tools, git, and Brain indexing before you build. |
-| **Home** | Project overview: chats, boards, repository changes, issues, recent files, scheduled work, and recorded AI edit activity. |
+| **Home** | Project issue flow: goal capture, draft tasks, grouped agent chats in worktrees, conversation review, and queued merges, with terminal, git, plans, and scheduled work in the dock. |
 | **Code** | The product. File tree, CodeMirror + LSP, terminal, git, dev servers, preview, chat rail beside the repo, inline completion and Quick Edit. Where sessions start and end. |
 | **Source Control Center** | Dedicated Source Control app on the navigation rail: changes, history, branches, stashes, worktrees, plus pull requests and CI through the user's own `gh` CLI. No stored tokens. |
 | **Orchestrator boards** | Plan → kanban → Builder/Tester work agents → worktree isolation → merge and ship. Manual through AFK autonomy. |

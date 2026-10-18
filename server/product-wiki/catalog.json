@@ -320,7 +320,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "01a6c413117bafc510a4a7732d1670d04d9d3c3aaaf686d17d561b72597fd914"
+      "hash": "9be5e66dfdadf43055e6f76d35ea6a37e754c2941985fa8b632eecfa1c34369f"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -607,14 +607,15 @@
     {
       "path": "documentation/manual/apps/home.md",
       "title": "Home",
-      "summary": "Home is your project overview. Open it from the app rail to resume chats and boards, review repository changes, and see issues and recent files for the selected workspace. Pick up your work Needs attention brings together pending chat questions, board tasks needing attention, fai",
+      "summary": "Home runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Capture and plan Enter a goal or an error in the header. Capture creates an issue in Triage. Plan into tasks asks y",
       "headings": [
-        "Pick up your work",
-        "AI code edits",
-        "Refresh and availability"
+        "Capture and plan",
+        "Send issues to agents",
+        "Review in the dock",
+        "Refresh"
       ],
       "section": "Apps",
-      "hash": "68f6f2fd9ec994a28f5013f14408220873aded5a847c25bc103a9cd7006b9f20"
+      "hash": "2b8761409f60a89558c7944ec6b411b7058e9e31a8c11d281d5d3fe05a224af9"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

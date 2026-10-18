@@ -31,6 +31,12 @@ import {
 } from './worktree-ops.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { runWithToolContext } from '../runtime/path-access.js';
+import { mergeChatWorktree } from './merge-chat.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { getChatWorktreePath } from './paths.js';
+import { refreshDependencies } from './dep-install.js';
+import { ECOSYSTEM_ENTRIES } from './dep-symlinks.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -55,6 +61,14 @@ function readJsonBody(req) {
 }
 
 const OPS = {
+  prepare_chat: async (a) => {
+    if (typeof a.chatId !== 'string' || !a.chatId.trim()) throw new Error('chatId is required');
+    const root = getChatWorktreePath(a.chatId);
+    await fs.access(path.join(root, '.git'));
+    const result = await refreshDependencies(root, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]));
+    return { ok: result.failed.length === 0, ...result, error: result.failed.length ? `Dependency install failed: ${result.failed.join(', ')}. The worktree has been kept.` : undefined };
+  },
+  merge_chat: (a) => mergeChatWorktree(a),
   ensure_integration: (a) => ensureIntegration(a),
   create: (a) => createWorktree(a),
   merge: (a) => mergeIntoIntegration(a),

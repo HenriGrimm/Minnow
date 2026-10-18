@@ -1,5 +1,6 @@
 import { expertsPageOpen } from '../app-state';
 import { resolveIssueChatQuestionHost } from './issue-chat-host';
+import { resolveHomeQuestionHost } from '../home/question-host';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
 import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from '../ui/chat-mount';
@@ -60,6 +61,7 @@ export function isAskQuestionDomVisible(chatId: string): boolean {
   const trimmed = chatId.trim();
   if (!trimmed) return false;
   if (resolveIssueChatQuestionHost(trimmed)) return true;
+  if (resolveHomeQuestionHost(trimmed)) return true;
 
   if (planScreenHooks.resolveQuestionHost?.(trimmed)) {
     return true;

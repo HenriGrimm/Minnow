@@ -91,7 +91,7 @@ You can also just open a repo and start typing.
 
 ### Home
 
-The project overview brings together chats, boards, repository changes, issues, recent files, scheduled work, and recorded AI code activity. Open the work directly from its row, or select **Open Code** to build. [Home guide](documentation/manual/apps/home.md).
+Home brings project issues through Triage, Ready, In Progress, Review, and Done. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations and approve queued merges in the bottom dock, alongside Terminal, Git, Plans, and Scheduled work. [Home guide](documentation/manual/apps/home.md).
 
 ### Code
 

@@ -1,32 +1,33 @@
 # Home
 
-Home is your project overview. Open it from the app rail to resume chats and boards, review repository changes, and see issues and recent files for the selected workspace.
+Home runs your project's issues through **Triage**, **Ready**, **In Progress**, **Review**, and **Done**. It uses the same issues, chats, models, and worktrees as Code and Issues.
 
-## Pick up your work
+## Capture and plan
 
-**Needs attention** brings together pending chat questions, board tasks needing attention, failed board final checks, issue-agent failures, and merge conflicts. Select a row to open the work that needs you.
+Enter a goal or an error in the header. **Capture** creates an issue in Triage. **Plan into tasks** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files.
 
-**Continue working** lists recent chats and boards. Running chats show their current phase; boards show merged tasks and progress. **New chat**, **New board**, and **Open Code** start or resume work in Code.
+Select **Accept to Ready** to accept a triage issue. Existing issue statuses follow the roles configured in Settings → Issues. Closed and canceled issues retain their existing meaning.
 
-**Repository** shows the current branch, ahead/behind counts, changed files, and tracked line additions/deletions, including staged changes. Untracked files appear in the file count; their lines are excluded from the totals. **Review changes** opens Source Control.
+## Send issues to agents
 
-**Issues**, **Recent files**, **Scheduled work**, and **Project resources** open the corresponding project records, files, jobs, Brain, and model usage. Jobs without this project's explicit workspace are excluded.
+Use card checkboxes to select issues. Shift-click selects a range within a column; **Select all** selects a column. Escape clears the selection.
 
-## AI code edits
+The send bar groups issues **By files**, **Each**, or in **One chat**. File grouping uses actual linked file paths, including overlapping groups. Issues without linked files remain separate. **Options** selects the model and Build or Plan first mode. Plan first requires approval before implementation.
 
-The calendar shows recorded AI additions plus deletions over the past 12 months or 90 days. Filter by **All AI**, **Completions**, or **Agent**. Select a day for its recent recorded edits, file links, and chat links when available. Use arrow keys to move through the calendar, or expand **Daily activity list**.
+Each group gets a background chat and a managed worktree branched from the local `main` branch (`master` is the fallback). Minnow installs project dependencies in that worktree. The active chat and your checkout remain available.
 
-- **Completions** counts accepted inline suggestions, including partial accepts.
-- **Agent** counts applied file-tool edits from chats and agents, accepted Quick Edit replacements, and accepted intent proposals.
-- Editor suggestions count when accepted into the buffer. Saving the buffer does not count again.
-- Shell-command changes, external editor changes, and git commits are excluded. Linked Git worktrees share the project's history.
+Blocked groups are held until their blockers close or merge. **Start from main** explicitly skips that wait. Groups beyond the configured agent capacity wait for a slot. A batch shares one chat and worktree. Adding issues to a running isolated chat shares that chat's worktree; blocked issues stay selected. Instructions enter the running chat through its existing steering queue.
 
-This is editing activity, not net code growth or a productivity score. Repeated edits can count repeatedly. Days use UTC. Streaks cover the selected period; a current streak stays active until the end of today.
+## Review in the dock
 
-**Tracking since** marks the start of recorded history. Dotted cells indicate dates before tracking began; empty filled cells indicate tracked days with zero edits. Git history is not used to infer AI authorship. Activity stays locally under the Minnow data directory. File links can fail if a file or its worktree has since been removed.
+Select a card to open the bottom dock. It shows the issue, chat, worktree, branch, and target, along with the latest conversation. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it.
 
-## Refresh and availability
+For a new issue, review its description and linked context, add optional instructions, and start a chat. **Approve plan · build** switches a completed Plan first chat to Build.
 
-Project summaries refresh while Home is visible. Code activity refreshes every 30 seconds. **Refresh** reloads the page's data immediately. If a section cannot refresh, its last successful content stays visible with a retry message.
+Review the agent's reported checks in the conversation. **Approve · queue merge** serializes approvals, verifies that the managed worktree is committed, and checks the merge in a temporary checkout before updating the target. Conflicts keep the branch and worktree. Ask the agent to rebase or resolve in Code. Git refuses a landing that overlaps uncommitted changes in the target checkout. After a successful merge, Minnow removes the clean agent worktree and moves the issues to Done.
 
-**Switch project** opens the workspace picker. Home scopes its lists to the chosen project; restored app destinations stay intact on reload.
+Preview uses an explicit handoff to Code. The dock also contains a scoped command console under **Terminal**, repository status under **Git**, linked plans and boards under **Plans**, and project jobs under **Scheduled**.
+
+## Refresh
+
+Project data refreshes every 10 seconds while Home is visible. Conversation updates preserve the message draft and scroll position. A failed refresh retains the last successful data with a retry action. The shell's workspace picker switches projects; **Open Code** opens the development workspace.

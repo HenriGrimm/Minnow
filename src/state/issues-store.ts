@@ -4,6 +4,7 @@
  */
 
 import { mergeIssuesState } from '../issues/state-merge.ts';
+import { parseHomeIssueRun } from '../home/flow-run.ts';
 import { maxIssueNumberForProjectKey, reconcileDuplicateIssueIds } from '../lib/issue-id-uniqueness.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path.ts';
 import {
@@ -444,6 +445,7 @@ const ISSUE_SOURCES = new Set<IssueSource>(['user', 'agent', 'crash', 'github'])
 
 const NORMALIZED_ASSIGNEE_KEYS = new Set(['id', 'label', 'assignedAt']);
 const NORMALIZED_AGENT_KEYS = new Set([
+  'home',
   'agentId',
   'phase',
   'step',
@@ -499,6 +501,8 @@ function parseIssueAgent(raw: unknown): IssueAgentRun | undefined {
     startedAt,
     updatedAt,
   };
+  const home = parseHomeIssueRun(row.home);
+  if (home) out.home = home;
   if (typeof row.step === 'string' && row.step.trim()) out.step = row.step.trim();
   if (typeof row.boardGroupId === 'string' && row.boardGroupId.trim()) {
     out.boardGroupId = row.boardGroupId.trim();

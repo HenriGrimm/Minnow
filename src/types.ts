@@ -772,6 +772,8 @@ export type IssueAgentPhase =
 
 /** The `agent` slot on a card: which agent, what it is doing, and where its work lives. */
 export interface IssueAgentRun {
+  /** Home flow shares the ordinary issue/chat stores; no parallel task database. */
+  home?: HomeIssueRun;
   /** Work agent id from the agents registry. */
   agentId: string;
   phase: IssueAgentPhase;
@@ -795,6 +797,17 @@ export interface IssueAgentRun {
   /** Plain-words failure reason; `envBlocked` separates broken env from broken code. */
   error?: string;
   envBlocked?: boolean;
+}
+
+export interface HomeIssueRun {
+  groupId: string;
+  state: 'held' | 'waitslot' | 'working' | 'paused' | 'ready' | 'conflict' | 'rebasing' | 'mergequeued' | 'merging' | 'done' | 'failed';
+  mode: 'build' | 'plan';
+  modelId: string;
+  providerId?: string;
+  instructions?: string;
+  baseBranch: string;
+  startNow?: boolean;
 }
 
 /** One entry on an issue's comment timeline (appended, never overwritten). */
