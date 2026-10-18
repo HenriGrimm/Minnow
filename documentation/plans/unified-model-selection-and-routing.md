@@ -1,6 +1,6 @@
 # Unified model selection and routing
 
-**Status:** proposed implementation plan; no product changes implemented  
+**Status:** implemented; release validation recorded in §13
 **Register:** product  
 **Date:** 2026-10-18
 
@@ -10,7 +10,7 @@ Give users one place to select a conversation's model: the composer. New indepen
 
 Model routing remains available for auxiliary work. Model pools become global. Issues and Dashboard expose explicit launch pickers, onboarding introduces routing, and sub-agents inherit their parent model unless the user configures a routing override.
 
-This document records the planning discussion and its latest corrections. It is an implementation specification, not documentation of shipped behavior. Update the manual and architecture reference only when the corresponding behavior ships.
+This document records the agreed specification and its implementation. The manual and architecture reference now describe the implemented behavior. Section 13 records storage choices, upgrade notes, and validation evidence.
 
 ## Decisions and scope
 
@@ -168,12 +168,12 @@ This is a storage and scheduler migration, not only a picker change.
 - One shared scheduler/admission owner per server runtime, with provider/model capacity accounting across workspaces.
 - Sticky assignments, explicit chat overrides, evaluator decisions, and telemetry retain conversation/run identity. Sharing definitions must not merge independent conversations' state.
 - Workspace/file-tool context remains request-specific. Global pool lookup must not replace the originating workspace for model execution, callbacks, tools, or local load requests.
-- Use versioned files under the existing `model-routers/` directory, such as `global-v2.json` for definitions/migration aliases and a separate runtime-state file for durable assignments/decisions. Final filenames can follow surrounding conventions.
+- Use one atomic `model-routers/global-v2.json` snapshot for definitions, aliases, durable assignments, and decisions. Keeping those records together makes migration a single durable commit. Only definition edits increment the configuration revision; assignment/decision updates preserve it.
 - Keep definitions revisioned independently of routine assignment writes, preventing generation activity from producing editor conflicts.
 
 ### Migration
 
-1. Before accepting pool configuration edits/generations, run a serialized, idempotent server migration. Retain the legacy source files and a migration manifest until the new catalog and runtime state have both been durably committed.
+1. Before accepting pool configuration edits/generations, run a serialized, idempotent server migration. Retain the legacy source files as the recovery inputs; commit definitions, aliases, assignments, and decisions together in the atomic global snapshot.
 2. Scan all legacy workspace files, including workspaces not currently open. Validate each source and report corrupt inputs without replacing them with empty configuration.
 3. Import distinct definitions. Deduplicate only genuinely equivalent definitions, accounting for entry identity needed by assignments. Preserve entry order, strategy, tiers, evaluator, pause flags, and concurrency settings.
 4. Resolve colliding IDs deterministically. Keep an unambiguous existing ID when possible; otherwise generate a stable valid global ID. Same-name/different-definition pools remain separate with distinguishable display names. Never merge by name alone.
@@ -183,7 +183,7 @@ This is a storage and scheduler migration, not only a picker change.
 8. A lazy compatibility resolver must work for unopened legacy chats/boards using their own workspace identity. Canonicalize bindings when saved. Aliases remain available while old references can still load.
 9. The existing global remembered pool string may lack its source workspace. Map it only when uniquely resolvable or supported by reliable source context. Ambiguous cases show a choice rather than selecting the wrong pool.
 10. Do not promote every legacy `defaultRouterId` to an active default. Preserve definitions, use the remembered-selection migration rules above, and retire independent pool-default controls.
-11. Crash recovery resumes from the manifest without double importing or losing state. New writes use the global catalog only after migration commits. Preserve unmigrated sources if an input needs repair.
+11. Crash recovery reruns deterministically from retained sources if the atomic snapshot has not committed, without double importing or losing state. New writes use the global catalog only after migration commits. Preserve unmigrated sources if an input needs repair.
 
 The existing `model-routers` backup root covers nested files, but verify catalog/restore behavior and restore from a backup that contains only legacy workspace files. Use scratch Minnow homes for every migration/restore test.
 
@@ -353,57 +353,57 @@ Each phase should include its focused tests. Keep compatibility adapters until d
 
 ### Phase A — shared selection state
 
-- [ ] Add typed DOM-independent selection/catalog interfaces and remembered preference subscriptions.
-- [ ] Implement server revision/write ordering, browser cache migration, and cross-window refresh.
-- [ ] Wire composer writes and independent-chat initialization.
-- [ ] Convert runtime `#modelSelect` readers and remove competing router-default precedence.
-- [ ] Verify existing chats, provider-qualified IDs, ephemeral reuse, and library/pool identity.
+- [x] Add typed DOM-independent selection/catalog interfaces and remembered preference subscriptions.
+- [x] Implement server revision/write ordering, browser cache migration, and cross-window refresh.
+- [x] Wire composer writes and independent-chat initialization.
+- [x] Convert runtime `#modelSelect` readers and remove competing router-default precedence.
+- [x] Verify existing chats, provider-qualified IDs, ephemeral reuse, and library/pool identity.
 
 ### Phase B — authoritative foreground binding
 
-- [ ] Remove work-agent model/provider controls, persistence writes, and execution precedence.
-- [ ] Remove competing foreground UI Designer model override.
-- [ ] Retain legacy read compatibility, prompts/tools, and board/CLI explicit bindings.
-- [ ] Remove the editable Chat model row from Routing.
+- [x] Remove work-agent model/provider controls, persistence writes, and execution precedence.
+- [x] Remove competing foreground UI Designer model override.
+- [x] Retain legacy read compatibility, prompts/tools, and board/CLI explicit bindings.
+- [x] Remove the editable Chat model row from Routing.
 
 ### Phase C — global pools
 
-- [ ] Implement global store, migration manifest/aliases, and crash-safe import.
-- [ ] Migrate definitions, assignments, decisions, and reference resolution.
-- [ ] Switch client cache and pool API ownership to global scope.
-- [ ] Remove pool-save/default-selection coupling.
-- [ ] Verify cross-workspace admission, assignment isolation, existing board references, and backup restore.
+- [x] Implement global store, migration manifest/aliases, and crash-safe import.
+- [x] Migrate definitions, assignments, decisions, and reference resolution.
+- [x] Switch client cache and pool API ownership to global scope.
+- [x] Remove pool-save/default-selection coupling.
+- [x] Verify cross-workspace admission, assignment isolation, existing board references, and backup restore.
 
 ### Phase D — shared routing and sub-agents
 
-- [ ] Extract mount-independent routing data/controller/form components.
-- [ ] Add general sub-agent routing and advanced per-type inheritance.
-- [ ] Capture and persist selected bindings/source at run creation on all launch paths.
-- [ ] Add sub-agent model/source display and selected-versus-actual pool display.
-- [ ] Keep agent-selected per-run models and natural-language preference persistence deferred.
+- [x] Extract mount-independent routing data/controller/form components.
+- [x] Add general sub-agent routing and advanced per-type inheritance.
+- [x] Capture and persist selected bindings/source at run creation on all launch paths.
+- [x] Add sub-agent model/source display and selected-versus-actual pool display.
+- [x] Keep agent-selected per-run models and natural-language preference persistence deferred.
 
 ### Phase E — issue/Dashboard launch controls
 
-- [ ] Add shared follow-last-selected/explicit picker state.
-- [ ] Wire issue detail, row/context menus, and all applicable batch launch paths.
-- [ ] Replace Dashboard's DOM-derived menu/default wording and cover single-card starts.
-- [ ] Persist dispatch snapshots before setup/queueing and retain them on retry.
-- [ ] Verify existing-chat additions and plan-to-board handoff.
+- [x] Add shared follow-last-selected/explicit picker state.
+- [x] Wire issue detail, row/context menus, and all applicable batch launch paths.
+- [x] Replace Dashboard's DOM-derived menu/default wording and cover single-card starts.
+- [x] Persist dispatch snapshots before setup/queueing and retain them on retry.
+- [x] Verify existing-chat additions and plan-to-board handoff.
 
 ### Phase F — shell and onboarding
 
-- [ ] Replace menubar default chip with Models popover and remove Models from project rail.
-- [ ] Preserve management routes/shortcuts and add popover dismissal/focus/lazy-loading behavior.
-- [ ] Add skippable routing onboarding for every provider branch and safe old-state resume.
-- [ ] Verify workspace-picker access, multi-window behavior, narrow layouts, and keyboard navigation.
+- [x] Replace menubar default chip with Models popover and remove Models from project rail.
+- [x] Preserve management routes/shortcuts and add popover dismissal/focus/lazy-loading behavior.
+- [x] Add skippable routing onboarding for every provider branch and safe old-state resume.
+- [x] Verify workspace-picker access, multi-window behavior, narrow layouts, and keyboard navigation.
 
 ### Phase G — documentation and release validation
 
-- [ ] Update architecture/storage/API ownership in `documentation/context.md` after implementation.
-- [ ] Update manual Models, chat model selection, onboarding/connect-a-model, configuration, Scheduler, and applicable issue/Dashboard/sub-agent pages to describe shipped behavior.
-- [ ] Refresh product-wiki generated content/inventories through their documented generator where affected; do not hand-edit generated catalogs.
-- [ ] Add release migration notes for removed agent model settings and shared pools.
-- [ ] Complete automated and manual acceptance checks below.
+- [x] Update architecture/storage/API ownership in `documentation/context.md` after implementation.
+- [x] Update manual Models, chat model selection, onboarding/connect-a-model, configuration, Scheduler, and applicable issue/Dashboard/sub-agent pages to describe shipped behavior.
+- [x] Refresh product-wiki generated content/inventories through their documented generator where affected; do not hand-edit generated catalogs.
+- [x] Add release migration notes for removed agent model settings and shared pools.
+- [ ] Release gate: the entire repository test suite is green. Task-specific automated checks and the manual scenarios recorded in §13 pass; unrelated failures are recorded there.
 
 ## 11. Validation plan
 
@@ -456,3 +456,30 @@ Use `MINNOW_HOME` scratch directories for every persistence/migration/backup tes
 - Autonomous sub-agent model selection and conversational model preference persistence remain deferred.
 - Routing onboarding, full Models, and the top-bar popover edit the same underlying settings and work without an active chat.
 - Documentation, focused regression coverage, migration/restore checks, and required build/performance checks match the shipped implementation.
+
+
+## 13. Implementation record and release validation
+
+### Upgrade and operational notes
+
+- `default-model.json` and its API remain compatible; the value now means the last explicit composer selection. Writes receive a server revision and are serialized. New independent chat creation refreshes the preference before capturing it. Opening existing chats, launch overrides, loading models, editing routing, saving pools, and selecting board models do not remember a new preference.
+- Old work-agent provider/model fields are ignored at execution and omitted from the editable agent UI. Saving an agent override removes that row's retired model/provider fields. Prompts, tool permissions, sampler, thinking, context controls, and disabled state remain available. Re-select the desired foreground model in its chat; configure sub-agent alternatives under Models → Routing.
+- Pool definitions, assignments, evaluation decisions, and migration aliases live in `model-routers/global-v2.json`. The complete snapshot is written through a temporary file and atomic rename. Original workspace-hashed files are retained; malformed inputs prevent a partial import and remain repairable. Opening the store again retries a failed migration deterministically.
+- Pool IDs are deterministic for an identical validated legacy definition. Same-name/different-definition pools are retained separately with distinguishable names. Workspace-scoped aliases preserve existing chat, board, and configuration references; chat and board origin paths handle execution from worktrees. Ambiguous references without an origin remain unavailable rather than choosing another project's pool.
+- A single home-scoped scheduler shares capacity across workspaces and pools. Where the same provider/model has conflicting configured limits, the strictest enabled limit applies. Assignment writes do not invalidate an open pool editor. Concurrent definition edits use revision checks and serialized writes.
+- The existing recursive `model-routers` backup category includes the global snapshot and retained legacy inputs. Migration tests initialize homes containing only legacy files, including conflicting definitions and malformed-input recovery; backup tests use scratch homes.
+- Sub-agent precedence is type override, general sub-agent routing, then the captured parent pair. The selected pair and source are journaled at admission; actual execution model is recorded separately. Child pool assignments use the child run ID, independently of the parent's assignment. Agent-selected per-call models and natural-language model policies remain deferred as agreed.
+- The hidden native model select remains a catalog/picker compatibility adapter. Foreground turns, remembered selection, editor binding, standalone launch capture, scheduler admission, headless runs, and sub-agent execution resolve through state/API bindings.
+
+### Validation evidence
+
+All persistence, migration, backup, and UI setup checks used scratch Minnow homes. The developer's live profile was not migrated or restored.
+
+- TypeScript checking, production build, bundle performance budgets, headless bundling, packaged-runtime file validation, test-discovery coverage, and generated product-wiki validation pass.
+- Focused pool/config/sub-agent/headless engine regression set: 171 tests passed. Focused launch, composer, routing, settings, issue/worktree, and sidebar regression set: 55 tests passed. Final targeted checks cover subsequent compatibility changes, onboarding staging, global admission, migration beyond the former workspace pool limit, concurrent pool saves, and Models popover Escape/focus/disposal behavior. Existing per-type routing and agent concurrency controls also use partial config updates to preserve other roles and settings.
+- Onboarding suite: 55 tests passed before the additional routing-step tests; the new step tests pass separately. Scheduler suite: 82 tests passed. Backup suite: 89 passed, one skipped. Product wiki: 13 tests passed after regenerating the catalog.
+- Manual UI checks confirmed Models access before project selection, routing changes, shared pool creation, composer pool selection surviving refresh/new chat, Models removed from the project rail, searchable nested pickers, narrow-screen layout, and full management navigation.
+- Live scratch-server checks completed a generation through the shared pool and a sub-agent inheriting that pool through the real runtime. The child completed and reported its actual provider/model separately from its pool binding.
+- The last broad run completed 12,797 tests: 12,753 passed, 37 skipped, and seven failed. Its benchmark cancellation regression was corrected and passes its focused test; six unrelated failures remain. The broad repository suite is not a clean release gate. Five failures reproduce against an isolated archive of the starting Git revision: `file-tree-batch-ops`, `issues-app`, two tool-start-indicator assertions, and the `git-panel-publish` module fixture. A long-transcript performance assertion passed on a focused retry. The Activity-panel popover assertion fails with concurrent Activity changes in this workspace and passes on the starting revision. These files were not changed to conceal their failures.
+
+Implementation is complete. A release should wait for the remaining unrelated repository failures to be resolved and the full suite to be rerun on the final combined tree.

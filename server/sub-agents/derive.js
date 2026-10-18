@@ -80,6 +80,8 @@ export function serializeState(state) {
       parentTurnId: run.parentTurnId,
       parentToolCallId: run.parentToolCallId,
       model: run.model,
+      modelSource: run.modelSource,
+      resolvedModel: run.resolvedModel,
       attempts: run.attempts.map((a) => ({
         attemptId: a.attemptId,
         seedKind: a.seedKind,
@@ -181,6 +183,7 @@ function apply(state, event) {
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
       attempt.usage = event.usage ?? null;
+      if (event.resolvedModel) run.resolvedModel = readModel(event.resolvedModel);
       run.endedAt = typeof event.ts === 'number' ? event.ts : run.endedAt;
       return;
     }
@@ -263,6 +266,7 @@ function newRun(event) {
         ? event.parentToolCallId
         : null,
     model: readModel(event.model),
+    modelSource: typeof event.modelSource === 'string' ? event.modelSource : undefined,
   };
 }
 

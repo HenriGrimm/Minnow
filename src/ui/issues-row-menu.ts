@@ -4,7 +4,7 @@ import { canRunIssueWorkflow, ISSUE_FOREGROUND_CHAT_MODES } from '../chat/issues
 import { getMode } from '../chat/modes/registry';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
-import { lastIssueMenuOrigin, promptIssueChatRunTarget, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
+import { lastIssueMenuOrigin, promptIssueChatRunTarget, pickIssueLaunchModel, issueLaunchModelLabel, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
 import { canExpandIssueDraft } from '../chat/issues/expand-issue-guards';
 import { canExpandIssueWithAgent } from '../chat/issues/expand-task';
 import { sortedPriorities, sortedTypes } from '../issues/taxonomy';
@@ -234,7 +234,7 @@ async function runIssueWorkflowFromMenu(
 function buildForegroundChatSubmenuItems(issue: IssueCard, render: () => void): IssuesContextMenuItem[] {
   const workflowOk = canRunIssueWorkflow(issue);
   const busy = workflowBusyIds.has(issue.id);
-  return ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
+  return [{ id: 'launch-model', label: `Model: ${issueLaunchModelLabel(issue.id)}`, disabled: busy, onSelect: () => { const origin = lastIssueMenuOrigin(); pickIssueLaunchModel(issue.id, origin.anchor || document.body, render); } }, ...ISSUE_FOREGROUND_CHAT_MODES.map((modeId) => ({
     id: modeId,
     label: getMode(modeId).label,
     hint: FOREGROUND_CHAT_HINTS[modeId],
@@ -250,7 +250,7 @@ function buildForegroundChatSubmenuItems(issue: IssueCard, render: () => void): 
           void runIssueWorkflowFromMenu(issue.id, modeId, choice, render),
       });
     },
-  }));
+  }))];
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {

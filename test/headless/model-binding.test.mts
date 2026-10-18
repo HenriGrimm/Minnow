@@ -49,10 +49,10 @@ test('explicit CLI provider and model take precedence over work-agent overrides'
   const result = await resolveHeadlessModelBinding(chat(), cli({ providerId: 'minnow-library', modelId: 'mtplx:Org/Qwen' }), agent, signal());
   assert.equal(result.providerId, 'mtplx-local'); assert.equal(result.modelId, 'served-model');
 });
-test('work-agent binding remains authoritative when no CLI selection is supplied', async () => {
+test('chat binding remains authoritative when no CLI selection is supplied', async () => {
   const agent = { id: 'builder', providerId: 'mtplx-local', modelId: 'agent-default' } as WorkAgentDefinition;
-  const result = await resolveHeadlessModelBinding(chat(), cli(), agent, signal());
-  assert.equal(result.providerId, 'mtplx-local'); assert.equal(result.modelId, 'agent-default'); assert.deepEqual(loads, []);
+  const result = await resolveHeadlessModelBinding(chat({ providerId: 'lm-studio-local', modelId: 'chat-model' }), cli(), agent, signal());
+  assert.equal(result.providerId, 'lm-studio-local'); assert.equal(result.modelId, 'chat-model'); assert.deepEqual(loads, []);
 });
 test('persisted direct bindings pass through and unknown providers cannot fall back', async () => {
   const result = await resolveHeadlessModelBinding(chat({ providerId: 'mtplx-local', modelId: 'saved' }), cli(), null, signal());

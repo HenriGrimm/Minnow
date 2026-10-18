@@ -1,3 +1,4 @@
+import { readDefaultModelBinding } from '../models/selection';
 /**
  * Create-or-reuse the chat that owns one source of background work (MIN-637).
  *
@@ -33,16 +34,6 @@ export interface EnsureBackgroundChatOptions {
   /** Model binding override; defaults to the global model picker. */
   modelId?: string;
   providerId?: string;
-}
-
-/** Global default model without requiring a DOM (node tests, headless callers). */
-function readDefaultModelBinding(): { modelId: string; providerId?: string } {
-  if (typeof document === 'undefined') return { modelId: '' };
-  const raw =
-    (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ??
-    '';
-  const parsed = decodeModelSelectKey(raw);
-  return { modelId: parsed?.modelId ?? raw, providerId: parsed?.providerId };
 }
 
 /** Existing background chat for this work source, if one is still around. */

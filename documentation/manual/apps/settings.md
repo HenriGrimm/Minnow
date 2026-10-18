@@ -25,7 +25,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Appearance** includes interface zoom in the desktop app, Compact or Full chat view, eight theme families with dark and light variants, fonts, and custom colors. Changes apply immediately. In a browser, use the browser's zoom controls.
 
-**Notifications** controls bell alerts, desktop notifications, and sound packs. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
+**Notifications** controls desktop notifications and sound packs. The menubar **Activity** dropdown keeps live work and session outcomes visible even when alerts are muted or disabled. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
 
 **Audio** selects input and output devices and microphone processing. Speech recognition and read-aloud models live in **Models → Voice**.
 

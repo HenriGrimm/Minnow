@@ -43,7 +43,7 @@ export async function openCodeMapChat(request: CodeMapChatRequest): Promise<void
   const { createChatWithMode } = await import('./sidebar');
   if (!isCodeBrainMapOpen()) return;
   closeCodeMapChat();
-  const result = createChatWithMode({ modeId: 'general', forceNewChat: true });
+  const result = await createChatWithMode({ modeId: 'general', forceNewChat: true });
   if (!result.ok || !result.chatId) return;
   const root = document.getElementById('codeBrainMapRoot');
   if (!root) return;

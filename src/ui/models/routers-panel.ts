@@ -175,7 +175,7 @@ export async function mountRoutersPanel(): Promise<void> {
     const current = (): ModelRouter | undefined => config.routers.find((r) => r.id === selected);
     picker.onchange = () => { selected = picker.value; adding = false; render(); };
     const heading = node('div', '', 'router-heading');
-    heading.append(node('h2', 'Model pools'), node('p', 'Bring your models together. Choose how they take on the work.'));
+    heading.append(node('h2', 'Model pools'), node('p', 'Shared across projects. Choose how your models take on the work.'));
     const create = button('New model pool', () => {
       const router: ModelRouter = { id: randomUUID(), name: 'New model pool', enabled: true, policy: 'priority', entries: [] };
       config.routers.push(router); selected = router.id; adding = true; searchQuery = ''; markDirty(); render();
@@ -317,7 +317,7 @@ export async function mountRoutersPanel(): Promise<void> {
       const router = current();
       if (!router) {
         const empty = node('div', '', 'router-empty');
-        empty.append(node('h3', 'A model lineup for your workspace'),
+        empty.append(node('h3', 'A shared model lineup'),
           node('p', 'Pool local and connected models, arrange your favorites, and let chats share their capacity.'),
           button('Create your first pool', () => create.click()));
         editor.append(empty); return;
@@ -332,13 +332,7 @@ export async function mountRoutersPanel(): Promise<void> {
         markDirty(); render(); editor.querySelector<HTMLButtonElement>('.router-pool-enabled')?.focus();
       });
       enabled.className = 'router-pool-enabled router-toggle'; enabled.setAttribute('aria-pressed', String(router.enabled));
-      const defaultToggle = button(config.defaultRouterId === router.id ? '✓ Default for new chats' : 'Use for new chats', () => {
-        config.defaultRouterId = config.defaultRouterId === router.id ? null : router.id;
-        markDirty(); render(); editor.querySelector<HTMLButtonElement>('.router-default-toggle')?.focus();
-      });
-      defaultToggle.className = 'router-default-toggle router-toggle'; defaultToggle.disabled = !router.enabled;
-      defaultToggle.setAttribute('aria-pressed', String(config.defaultRouterId === router.id));
-      header.append(name, enabled, defaultToggle); editor.append(header);
+      header.append(name, enabled); editor.append(header);
 
       const routing = node('section', '', 'router-routing');
       routing.append(node('h3', 'How should this pool choose?'));
@@ -416,7 +410,9 @@ export async function mountRoutersPanel(): Promise<void> {
         const more = button('+', () => changeSlots(1));
         less.disabled = entry.concurrencyLimit <= 1; more.disabled = entry.concurrencyLimit >= 100;
         less.setAttribute('aria-label', `Decrease slots for rank ${index + 1}`); more.setAttribute('aria-label', `Increase slots for rank ${index + 1}`);
-        capacity.title = 'Maximum simultaneous generations'; capacity.append(less, slots, more);
+        const sharedLimit = Math.min(...config.routers.filter((pool) => pool.enabled).flatMap((pool) => pool.entries.filter((candidate) => candidate.enabled && key(candidate) === key(entry)).map((candidate) => candidate.concurrencyLimit)), entry.concurrencyLimit);
+        capacity.title = `Shared across projects and pools: ${sharedLimit} simultaneous generations`; capacity.append(less, slots, more);
+        if (sharedLimit < entry.concurrencyLimit) capacity.append(node('small', `Shared limit ${sharedLimit}`, 'router-caption'));
         const pause = button(entry.enabled ? 'Active' : 'Paused', () => {
           entry.enabled = !entry.enabled; markDirty(); render(); editor.querySelector<HTMLButtonElement>(`[data-entry-id="${entry.id}"] .router-entry-toggle`)?.focus();
         });
@@ -461,7 +457,7 @@ export async function mountRoutersPanel(): Promise<void> {
         : 'Assigned chats keep their model and wait when it is busy. If it fails, another model takes over.', 'router-caption'));
       editor.append(lineup);
       const footer = node('div', '', 'router-pool-footer');
-      footer.append(node('span', 'Changes save automatically for this workspace.', 'router-caption'));
+      footer.append(node('span', 'Changes save automatically across projects.', 'router-caption'));
       const remove = button('Delete pool', () => {
         footer.replaceChildren(node('span', `Delete “${router.name}”? Models stay in your library.`, 'router-caption'),
           button('Cancel', () => render()), button('Delete pool permanently', () => {

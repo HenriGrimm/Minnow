@@ -319,7 +319,7 @@ async function executeToolInner(
           'Error: tool "create_chat_with_mode" is disabled in Settings (enable it to fork chats by mode).',
       };
     }
-    return { content: executeCreateChatWithMode(args) };
+    return { content: await executeCreateChatWithMode(args) };
   }
 
   if (name === 'propose_mode_switch') {

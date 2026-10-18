@@ -16,7 +16,7 @@ let models: LmModelRecord[] = [];
 
 export const modelPickStep: OnboardingStep = {
   id: 'model-pick',
-  title: 'Pick your default model',
+  title: 'Pick your chat model',
   canSkip: true,
 
   isApplicable(ctx) {
@@ -31,7 +31,7 @@ export const modelPickStep: OnboardingStep = {
 
     renderStepHeader(container, modelPickStep, actions.stepIndex, actions.totalSteps);
     container.appendChild(
-      el('p', 'mn-onboarding-step-desc', 'This model loads in the top bar for new chats.'),
+      el('p', 'mn-onboarding-step-desc', 'New chats start with this model. Change it any time in the composer.'),
     );
 
     const list = el('div', 'mn-onboarding-model-list');

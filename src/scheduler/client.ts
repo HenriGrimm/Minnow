@@ -82,6 +82,11 @@ export interface SchedulerNotification {
   message: string;
   createdAt: string;
   acked: boolean;
+  runId?: string;
+  chatId?: string;
+  workspacePath?: string;
+  status?: SchedulerRunStatus;
+  silent?: boolean;
 }
 
 export interface SchedulerDefaultWorkspace {

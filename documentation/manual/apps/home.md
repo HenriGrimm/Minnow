@@ -6,7 +6,7 @@ Change an issue's status using the status dropdown on its card or in the issue w
 
 ## Capture and plan
 
-When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
+When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or last selected chat model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
 
 Select **Accept to Ready** to accept a triage issue. Existing issue statuses follow the roles configured in Settings → Issues. Closed and canceled issues retain their existing meaning.
 
@@ -35,3 +35,5 @@ For a new issue, the formatted brief and start controls share one reading column
 ## Refresh
 
 Project data refreshes every 10 seconds while Dashboard is visible. Conversation updates preserve the message draft and scroll position. A failed refresh retains the last successful data with a retry action. The shell's workspace picker switches projects; **Open Code** opens the development workspace.
+
+Use **Model** in the launch controls to choose a model or pool for new chats. It follows the last composer selection until you choose an override. The choice applies to that dispatch without changing the remembered chat model; adding work to an existing chat keeps its model.

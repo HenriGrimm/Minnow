@@ -383,7 +383,7 @@ function findReusableEmptyPlanChat(excludeChatId?: string): Chat | null {
   return hit ?? null;
 }
 
-function resolveOrCreatePlanChat(excludeChatId?: string): Chat {
+async function resolveOrCreatePlanChat(excludeChatId?: string): Promise<Chat> {
   const targetMode = 'plan';
   const active = getActiveChat();
   const activeIsSpare =
@@ -403,7 +403,7 @@ function resolveOrCreatePlanChat(excludeChatId?: string): Chat {
     setChatMode(targetMode);
     return getActiveChat();
   }
-  const created = createChatWithMode({ modeId: targetMode });
+  const created = await createChatWithMode({ modeId: targetMode });
   if (created.ok && created.chatId && sessionState) {
     if (sessionState.activeId !== created.chatId) {
       switchChat(created.chatId);
@@ -467,7 +467,7 @@ async function startPlanningFromPrompt(
   options?: StartPlanningFromPromptOptions,
 ): Promise<void> {
   teardownOrchestrateHub();
-  const chat = options?.useActiveChat ? getActiveChat() : resolveOrCreatePlanChat();
+  const chat = options?.useActiveChat ? getActiveChat() : await resolveOrCreatePlanChat();
 
   ensureStreamEndListener();
 
@@ -535,16 +535,16 @@ export function buildRevisePlanComposerDraft(planPath: string, savedPrompt?: str
 }
 
 /** Tear down the preview screen and open a normal Plan chat with an editable revise draft. */
-function startRevisePlanFromPath(
+async function startRevisePlanFromPath(
   planPath: string,
   options: { savedPrompt?: string } = {},
-): void {
+): Promise<void> {
   const trimmed = planPath.trim();
   if (!trimmed) return;
 
   teardownOrchestratePlanScreen();
 
-  const created = createChatWithMode({
+  const created = await createChatWithMode({
     modeId: 'plan',
     orchestratePlanPath: trimmed,
   });
@@ -573,10 +573,10 @@ function buildPlanPreviewActionHandlers(
     onStartOrchestrator: () => {
       if (planPath) openBoardWithPlan(planPath);
     },
-    onBuild: () => {
+    onBuild: async () => {
       if (!planPath) return;
       teardownOrchestratePlanScreen();
-      createChatWithMode(buildPlanChatOptions(planPath, opts.chatId ? findChatById(opts.chatId) : undefined));
+      await createChatWithMode(buildPlanChatOptions(planPath, opts.chatId ? findChatById(opts.chatId) : undefined));
     },
   };
 }

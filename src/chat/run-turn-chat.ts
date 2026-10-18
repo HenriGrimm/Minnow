@@ -919,9 +919,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     try {
       const initialSendProvider = await getActiveProvider(chat.providerId);
       if (uiDesignerCtx.active) {
-        const binding = await resolveUiDesignerBinding(chat, {
-          providerId: initialSendProvider.id,
-          modelId: sendModelId,
+        const binding = await resolveWorkAgentBinding(activeWorkAgent, chat, {
+          providerId: initialSendProvider.id, modelId: sendModelId,
         });
         sendModelId = binding.modelId;
         sendProviderId = binding.providerId;

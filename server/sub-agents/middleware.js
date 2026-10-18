@@ -1,3 +1,7 @@
+import { resolveRouterId } from '../model-routers/store.js';
+import { resolveSubAgentBinding } from '../../src/agents/sub-agent-binding.mjs';
+import { readChatModelBinding, readChatWorkspacePath, useJsonSessionsStore } from '../config/sessions-repo.js';
+import { readResource } from '../config/store.js';
 import { randomUUID } from 'node:crypto';
 
 import { AGENTS_NAMESPACE, isTerminal, lastEndedAttempt, stateToJSON } from './derive.js';
@@ -511,7 +515,19 @@ async function spawnRun(req, res) {
   };
   if (parentTurnId) payload.parentTurnId = parentTurnId;
   if (parentToolCallId) payload.parentToolCallId = parentToolCallId;
-  if (providerId && modelId) payload.model = { providerId, id: modelId };
+  let selected;
+  try {
+    if (providerId && modelId && (!body.modelSource || body.modelSource === 'explicit')) selected = { providerId, modelId, source: 'explicit' };
+    else {
+      const parent = body.parentModel?.providerId && body.parentModel?.modelId ? body.parentModel : useJsonSessionsStore()
+        ? (await readResource('sessions'))?.chats?.find((chat) => chat.id === parentChatId)
+        : readChatModelBinding(parentChatId);
+      selected = resolveSubAgentBinding(typeRow, parent, file.defaultModel);
+    }
+  } catch (error) { return json(res, 400, { ok: false, error: error.message }); }
+  if (selected.providerId === 'minnow-router') selected.modelId = await resolveRouterId(selected.modelId, body.parentWorkspace || readChatWorkspacePath(parentChatId) || cwd);
+  payload.model = { providerId: selected.providerId, id: selected.modelId };
+  payload.modelSource = selected.source;
 
   await engine.append([makeEvent('run.requested', payload)]);
   await engine.tick();

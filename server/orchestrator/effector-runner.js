@@ -727,7 +727,7 @@ export function createRunnerEffector(options = {}) {
      */
     async preflight() {
       const state = boardId || options.getState ? await currentState() : null;
-      const model = await resolveAttemptModel(options.model ?? state?.model ?? null);
+      const model = await resolveAttemptModel(options.model ?? state?.model ?? null, state?.workspacePath);
       await resolveLibraryAttemptBinding(model);
       await loadRolePrompt('builder', promptVariant);
       await loadRolePrompt('tester', promptVariant);
@@ -781,7 +781,7 @@ export function createRunnerEffector(options = {}) {
         ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const model = await resolveLibraryAttemptBinding(
-        await resolveAttemptModel(options.model ?? state.model),
+        await resolveAttemptModel(options.model ?? state.model, state.workspacePath),
       );
       const reasoning = options.model ? null : state.model?.reasoning ?? null;
       const thinkingOn = reasoning === 'on' || isComposerReasoningLevel(reasoning);

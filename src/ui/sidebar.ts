@@ -1,3 +1,4 @@
+import { loadDefaultModelValue } from '../models/selection';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { runSettingsAction } from './settings-controls';
@@ -338,13 +339,6 @@ export { onActiveChatModelChange };
 /** Global default model changed via header picker or menubar chip. */
 export async function onModelSelectChange(): Promise<void> {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement;
-  const config = getRouterConfigSync();
-  const selected = decodeModelSelectKey(sel.value);
-  const routerId = selected?.providerId === 'minnow-router' ? selected.modelId : null;
-  if (routerId !== config.defaultRouterId) {
-    try { await saveRouterConfig({ ...config, defaultRouterId: routerId }); }
-    catch (error) { setStatus('err', (error as Error).message); return; }
-  }
   const savingDefault = persistDefaultModelValue(sel.value).catch((error) => {
     setStatus('err', (error as Error).message);
   });
@@ -1758,9 +1752,14 @@ export interface CreateChatWithModeResult {
 }
 
 /** Create and activate a chat with a preset operating mode (tool handoff). */
-export function createChatWithMode(
+export async function createChatWithMode(
   options: CreateChatWithModeOptions,
-): CreateChatWithModeResult {
+): Promise<CreateChatWithModeResult> {
+  const originWorkspace = getWorkspacePath();
+  const originChatId = sessionState?.activeId;
+  try { await loadDefaultModelValue(); }
+  catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Could not read the last selected model' }; }
+  if (!options.workspacePath && (originWorkspace !== getWorkspacePath() || originChatId !== sessionState?.activeId)) return { ok: false, error: 'The chat context changed. Try New chat again.' };
   if (document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
   }
@@ -1886,11 +1885,12 @@ export function createChatWithMode(
   };
 }
 
-export function createChat(): void {
+export async function createChat(): Promise<void> {
   const active = getActiveChat();
   const leavingOrchestrate =
     isBoardViewActive() || normalizeModeId(active.modeId) === 'orchestrate';
-  createChatWithMode({
+  const result = await createChatWithMode({
     modeId: leavingOrchestrate ? 'general' : normalizeModeId(active.modeId),
   });
+  if (!result.ok) setStatus('err', result.error || 'Could not create chat');
 }

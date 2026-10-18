@@ -126,7 +126,7 @@ export async function sendGitErrorToChat(
   await ensureCodeChatSurface();
   const { createChatWithMode } = await import('./sidebar');
   const seed = buildGitErrorFixSeedMessage(kind, error, ctx);
-  createChatWithMode({
+  await createChatWithMode({
     modeId: 'build',
     initialUserMessage: seed,
   });

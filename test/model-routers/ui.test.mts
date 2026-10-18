@@ -2,7 +2,7 @@ import '../tools/install-dom-before-imports.mts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { saveRouterConfig, routerOptions } from '../../src/models/routers.ts';
-import { readDefaultModelBinding, applyDefaultModelToChat, resolveEffectiveChatModelBinding } from '../../src/ui/default-model.ts';
+import { readDefaultModelBinding, applyDefaultModelToChat, resolveEffectiveChatModelBinding, persistDefaultModelValue } from '../../src/ui/default-model.ts';
 import { createChatTurnEventPainter } from '../../src/chat/run-turn-chat-paint.ts';
 
 test('router is a distinct picker option and default changes do not mutate existing chat bindings', async () => {
@@ -10,6 +10,8 @@ test('router is a distinct picker option and default changes do not mutate exist
   globalThis.fetch = (async (_url, init) => new Response(String(init?.body), { headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
   try {
     const config = { revision: 0, defaultRouterId: 'router', routers: [{ id: 'router', name: 'Build', policy: 'priority' as const, enabled: true, entries: [] }] };
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: window.localStorage });
+    await persistDefaultModelValue('minnow-router\u001frouter');
     await saveRouterConfig(config);
     const select = document.createElement('select'); select.id = 'modelSelect'; document.body.append(select);
     routerOptions(select, config);

@@ -256,6 +256,7 @@
       "src/state/session-schema.mjs",
       "src/product-wiki/path-filter.mjs",
       "src/agents/defaults/sub-agents.json",
+      "src/agents/sub-agent-binding.mjs",
       "src/evals/packs/**",
       "build/icon.ico",
       "build/tray/**",

@@ -44,7 +44,7 @@ const CHAT_BASE = {
 };
 
 describe('resolveWorkAgentBinding', () => {
-  test('builder with explicit providerId and modelId', async () => {
+  test('builder model configuration is ignored in favor of the chat', async () => {
     const agent = {
       id: 'builder',
       label: 'Builder',
@@ -63,8 +63,8 @@ describe('resolveWorkAgentBinding', () => {
     );
     assert.deepEqual(binding, {
       agentId: 'builder',
-      providerId: 'openai',
-      modelId: 'gpt-4o',
+      providerId: 'lm-studio-local',
+      modelId: 'local-model',
       baseUrl: '',
       headers: {},
     });
@@ -92,7 +92,7 @@ describe('resolveWorkAgentBinding', () => {
     assert.equal(binding.baseUrl, '');
   });
 
-  test('override sets model only', async () => {
+  test('legacy override cannot replace chat binding', async () => {
     const agent = {
       id: 'builder',
       label: 'Builder',
@@ -112,8 +112,8 @@ describe('resolveWorkAgentBinding', () => {
         userOverride: { modelId: 'override-model' },
       },
     );
-    assert.equal(binding.providerId, 'openai');
-    assert.equal(binding.modelId, 'override-model');
+    assert.equal(binding.providerId, 'lm-studio-local');
+    assert.equal(binding.modelId, 'local-model');
   });
 
   test('invalid provider id throws WorkAgentConfigError', async () => {
@@ -129,7 +129,7 @@ describe('resolveWorkAgentBinding', () => {
     };
     await assert.rejects(
       () =>
-        resolveWorkAgentBinding(agent, CHAT_BASE, {
+        resolveWorkAgentBinding(agent, { ...CHAT_BASE, providerId: 'does-not-exist' }, {
           providerId: 'lm-studio-local',
           modelId: 'm',
         }, { providers: MOCK_PROVIDERS }),

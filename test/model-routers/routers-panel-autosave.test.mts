@@ -202,7 +202,7 @@ describe('Models model pools panel auto-save', () => {
     const evaluator = win.document.querySelector<HTMLSelectElement>('[aria-label="Task evaluator model"]')!;
     assert.match(evaluator.selectedOptions[0].textContent || '', /unlisted-judge.*unavailable/);
     win.document.querySelector<HTMLButtonElement>('.router-pool-enabled')!.click();
-    assert.equal(win.document.querySelector<HTMLButtonElement>('.router-default-toggle')!.disabled, true);
+    assert.equal(win.document.querySelector('.router-default-toggle'), null);
     await new Promise((resolve) => setTimeout(resolve, 600));
     assert.equal(saves.at(-1)?.defaultRouterId, null);
     assert.equal(saves.at(-1)?.routers[0].evaluator?.modelId, 'unlisted-judge');

@@ -973,8 +973,15 @@ export function resolveBoardTaskPorts({ chatId, cwd } = {}) {
  * @returns {{ chatId: string, providerId: string, modelId: string } | null}
  */
 export function readActiveChatModelBinding() {
+  return readChatModelBinding(readSessionMeta(getSessionsDb(), 'activeId'));
+}
+
+export function readChatWorkspacePath(chatId) {
+  return getSessionsDb().prepare('SELECT workspace_path FROM chats WHERE id = ?').get(chatId)?.workspace_path || '';
+}
+
+export function readChatModelBinding(activeId) {
   const db = getSessionsDb();
-  const activeId = readSessionMeta(db, 'activeId');
   if (typeof activeId !== 'string' || !activeId) return null;
   const chat = db
     .prepare('SELECT id, provider_id, model_id FROM chats WHERE id = ?')

@@ -1,3 +1,4 @@
+import { captureLaunchModel, issueLaunchModel, clearIssueLaunchModel } from '../../models/launch-selection';
 import { ensureBackgroundChat } from '../../state/background-chat';
 import { applyChatRunTargetChoice, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
 import { appendIssueActivity, appendIssueLinks, defaultIssuePlanPath, findIssueById, requireIssueStatusForRole, updateIssue } from '../../state/issues-store';
@@ -14,15 +15,17 @@ export async function runIssueWorkspaceChat(
   issueId: string,
   modeId: IssueForegroundChatMode,
   runTarget?: ChatRunTargetChoice,
+  selectedModel?: { modelId: string; providerId?: string },
 ): Promise<{ ok: boolean; chatId?: string; error?: string; planPath?: string }> {
   try {
     const issue = findIssueById(issueId);
     if (!issue || !canRunIssueWorkflow(issue)) return { ok: false, error: 'Issue is unavailable or closed' };
+    const binding = selectedModel ?? await captureLaunchModel(issueLaunchModel(`${issue.workspacePath}\0${issueId}`));
     await ensureSessionsReady();
     const key = runTarget?.kind === 'automatic'
       ? `issue-chat-setup:${issue.workspacePath}:${issue.id}:${modeId}`
       : `issue-chat:${issue.id}:${randomUUID()}`;
-    const chat = ensureBackgroundChat({ key, name: `${issue.id}: ${issue.title}`, workspacePath: issue.workspacePath, modeId });
+    const chat = ensureBackgroundChat({ key, name: `${issue.id}: ${issue.title}`, workspacePath: issue.workspacePath, modeId, ...binding });
     if (!chat) return { ok: false, error: 'Chats are not ready yet' };
     if (isChatWorktreeSetupPending(chat.id)) return { ok: false, error: 'Worktree setup is already running', chatId: chat.id };
     if (isChatStreaming(chat.id) || getChatRunActivity(chat.id, chat) === 'running') return { ok: false, error: 'This issue chat is already running', chatId: chat.id };
@@ -57,6 +60,7 @@ export async function runIssueWorkspaceChat(
       const { showToast } = await import('../../ui/toast');
       showToast(error instanceof Error ? error.message : String(error), 'error');
     });
+    clearIssueLaunchModel(`${issue.workspacePath}\0${issueId}`);
     return { ok: true, chatId: chat.id, planPath: modeId === 'plan' ? findIssueById(issue.id)?.planPath : undefined };
   } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
 }

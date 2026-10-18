@@ -54,13 +54,11 @@ export function resolveModelSelectValueForChat(
 
   if (pid) {
     const want = encodeModelSelectKey(pid, mid);
-    if (values.includes(want)) return want;
+    return want;
   }
 
-  const match = values.find(
-    (v) => decodeModelSelectKey(v)?.modelId === mid || v === mid,
-  );
-  return match ?? '';
+  const matches = values.filter((v) => decodeModelSelectKey(v)?.modelId === mid || v === mid);
+  return matches.length === 1 ? matches[0] : mid;
 }
 
 /** Copy provider/model binding from one chat row onto another (desktop composer handoff). */

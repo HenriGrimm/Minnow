@@ -398,7 +398,6 @@ export async function sendMessageWithTools(
 
   const sendModelId =
     chat.modelId?.trim() ||
-    (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ||
     '';
 
   const compactDispatch = await handleCompactCommand(chat, rawText, sendModelId);

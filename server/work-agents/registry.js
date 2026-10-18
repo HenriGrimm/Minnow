@@ -125,8 +125,8 @@ function parseWorkAgentMeta(raw, relativePath) {
     description: parsed.description ?? '',
     kind: 'work-agent',
     version: String(parsed.version),
-    providerId: parseNullableString(ext.providerId),
-    modelId: parseNullableString(ext.modelId),
+    providerId: null,
+    modelId: null,
     allowedTools,
     defaultForModes,
     disabled: ext.disabled === true,
@@ -136,12 +136,11 @@ function parseWorkAgentMeta(raw, relativePath) {
 }
 
 function mergeDefinition(builtin, override) {
-  if (!override) return { ...builtin };
+  if (!override) return { ...builtin, providerId: null, modelId: null };
   return {
     ...builtin,
-    providerId:
-      override.providerId !== undefined ? override.providerId : builtin.providerId,
-    modelId: override.modelId !== undefined ? override.modelId : builtin.modelId,
+    providerId: null,
+    modelId: null,
     disabled: override.disabled !== undefined ? override.disabled : builtin.disabled,
     maxInputTokens:
       override.maxInputTokens !== undefined
@@ -289,6 +288,8 @@ export async function patchWorkAgentOverride(agentId, patch) {
   }
   // Brain archive tuning retired with the archive policy.
   delete next.archive;
+  delete next.providerId;
+  delete next.modelId;
   overrides[agentId] = next;
   await saveUserOverrides(overrides);
   return overrides[agentId];

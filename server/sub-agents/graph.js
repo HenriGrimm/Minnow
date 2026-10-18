@@ -113,6 +113,7 @@ export function eventsForAttemptEnd(end) {
     attemptId: end.attemptId,
     outcome: end.outcome,
   };
+  if (end.resolvedModel) payload.resolvedModel = end.resolvedModel;
   if (end.summary !== undefined) payload.summary = end.summary;
   if (end.evidence !== undefined) payload.evidence = end.evidence;
   if (end.usage !== undefined) payload.usage = end.usage;

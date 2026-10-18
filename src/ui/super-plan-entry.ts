@@ -180,7 +180,7 @@ async function resolveOrCreateComposeChat(excludeChatId?: string): Promise<Chat 
   );
   if (spare) return spare;
   const { createChatWithMode } = await import('./sidebar');
-  const created = createChatWithMode({ modeId: 'super-plan' });
+  const created = await createChatWithMode({ modeId: 'super-plan' });
   if (!created.ok || !created.chatId) return null;
   return findChatById(created.chatId) ?? null;
 }
@@ -257,7 +257,7 @@ export async function closeSuperPlanScreen(): Promise<void> {
     // Every chat here is a plan. Land on a fresh chat, or the Code view would
     // paint the active plan chat and bring the surface straight back.
     const { createChatWithMode } = await import('./sidebar');
-    createChatWithMode({ modeId: DEFAULT_MODE_ID });
+    await createChatWithMode({ modeId: DEFAULT_MODE_ID });
     navigateToCodeChatIfCurrentSection('chat');
     return;
   }
@@ -427,7 +427,7 @@ function revisePlanFile(path: string): void {
         import('./sidebar'),
         import('./orchestrate-plan-screen'),
       ]);
-      const created = createChatWithMode({ modeId: 'plan', orchestratePlanPath: path });
+      const created = await createChatWithMode({ modeId: 'plan', orchestratePlanPath: path });
       const chat = created.ok && created.chatId ? findChatById(created.chatId) : undefined;
       if (!chat) return;
       persistComposerDraftOnChat(chat, buildRevisePlanComposerDraft(path));

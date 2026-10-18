@@ -1,3 +1,4 @@
+import { readRememberedModel } from './model-selection.js';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import {
@@ -12,11 +13,13 @@ import {
   patchResource,
   readConfigJson,
   writeConfigJson,
+  updateConfigJson,
   configFileExists,
 } from './store.js';
 import {
   validateSessionState,
   normalizeToolConfig,
+  normalizeSubAgentsConfig,
   validateSystemPromptSettings,
   mergeConfigMeta,
 } from './validators.js';
@@ -203,7 +206,7 @@ export async function handleConfigRequest(req, res, pathname) {
     }
     if (pathname === '/api/config/default-model') {
       if (req.method === 'GET') {
-        sendJson(res, 200, (await readConfigJson('default-model.json')) ?? { value: null });
+        sendJson(res, 200, await readRememberedModel());
         return true;
       }
       if (req.method === 'PUT') {
@@ -212,8 +215,9 @@ export async function handleConfigRequest(req, res, pathname) {
           sendJson(res, 400, { error: 'Expected a model selection string' });
           return true;
         }
-        const saved = { value: body.value.trim() };
-        await writeConfigJson('default-model.json', saved);
+        const saved = await updateConfigJson('default-model.json', (previous) => ({
+          value: body.value.trim(), revision: (Number(previous?.revision) || 0) + 1,
+        }));
         sendJson(res, 200, saved);
         return true;
       }
@@ -513,6 +517,23 @@ export async function handleConfigRequest(req, res, pathname) {
           return true;
         }
         sendJson(res, 200, data);
+        return true;
+      }
+
+      if (resource === 'sub-agents' && req.method === 'PATCH') {
+        const patch = await readJsonBody(req);
+        const saved = await updateConfigJson('sub-agents.json', (current) => {
+          const merged = { ...(current || {}), ...patch };
+          for (const [key, value] of Object.entries(patch)) if (value === null) delete merged[key];
+          if (patch.types) {
+            merged.types = { ...(current?.types || {}) };
+            for (const [id, row] of Object.entries(patch.types)) merged.types[id] = { ...merged.types[id], ...row };
+          }
+          return normalizeSubAgentsConfig(merged).config;
+        });
+        const { resetSubAgentServerConfigCache } = await import('../sub-agents/config.js');
+        resetSubAgentServerConfigCache();
+        sendJson(res, 200, { ok: true, data: saved });
         return true;
       }
 

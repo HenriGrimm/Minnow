@@ -4,17 +4,17 @@ Minnow does not have one assistant. It has a system of them, and the differences
 
 | Kind | What it is | Where it runs |
 |------|------------|---------------|
-| **Work agent** | A role with its own prompt and model binding | The main chat, or a board chat |
+| **Work agent** | A role with its own prompt and tool settings | The main chat, or a board chat |
 | **Sub-agent** | A nested agent spawned for one job, reporting back | In the background |
 | **Board member** | A builder, tester or fixer bound to one task | Its own board chat |
 
 ## Work agents
 
-A work agent is the *role* the assistant is playing: its system prompt, its sampler settings, its thinking mode, and optionally its own model.
+A work agent is the *role* the assistant is playing: its system prompt, its sampler settings, its thinking mode, using the model selected in its chat.
 
 Shipped roles: `default`, `general`, `desktop`, `planner`, `orchestrator`, `builder`, `verifier`, `tester`, `reviewer`, `researcher`, `ui-designer`, `expert-panel`.
 
-Edit them under **Settings → Agents**. The most useful thing you can do there is bind different models to different roles — see [Routing](../apps/models.md#routing). A reviewer that finds real problems is worth a better model than a builder writing boilerplate.
+Edit prompts, tools and generation settings under **Settings → Agents**. Work agents use the chat model; changing a role does not replace the composer selection.
 
 ## Sub-agents
 
@@ -41,9 +41,7 @@ Open an agent's card to inspect its **Conversation**. The agent list identifies 
 
 Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
 
-In a work agent or sub-agent's model binding panel, **Use current chat model** clears both the provider and model overrides. The agent then follows its chat's model, or the default when no chat model is set. Other agent settings stay as configured.
-
-For roles on **Models → Routing**, choose **(use current model)** in the model dropdown to clear an explicit model and provider. The role resumes using its current chat or task model, or the default. This option stays available when the model list is filtered.
+Use **Models** in the top bar for general sub-agent routing: **Follow parent chat** or a fixed model/pool. Advanced per-type routing takes precedence over that general rule. **Use sub-agent routing** in a type's binding panel clears its fixed override. Runs capture their selection before queueing; later routing or parent-model changes apply to subsequent launches. Agents cannot choose a different model through the delegation tool.
 
 ### Delegating well
 

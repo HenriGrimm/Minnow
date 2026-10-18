@@ -294,8 +294,7 @@ html.mn-phone .brain-page-header.brain-overlay-surface {
    intrinsic width so the clamp has something reachable to work with. */
 html.mn-phone .composer-tools-popover,
 html.mn-phone .composer-model-menu,
-html.mn-phone .mn-os-notif-menu,
-html.mn-phone .agent-activity-panel,
+html.mn-phone .activity-dropdown,
 html.mn-phone .workspace-menu,
 html.mn-phone .skill-picker,
 html.mn-phone .branch-picker__menu,

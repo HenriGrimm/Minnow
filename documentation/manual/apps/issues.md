@@ -108,3 +108,9 @@ Keep the taxonomy small. Humans and agents share this vocabulary, and every extr
 - [Orchestrate boards](../orchestrate/boards.md)
 
 When Issues is open in a separate window, **Send to chat**, linked chats, plans, and files open in the Code window for that workspace. **Files** opens the workspace file tree inside Issues.
+
+## Models for issue chats
+
+The model control beside **Send to chat**, and the **Model** action in chat launch menus, starts with the last model selected in a chat composer. Choose a different model or pool for that launch. Worktree setup and queued runs keep the captured choice. Adding an issue to an existing chat retains that chat's model.
+
+Dashboard's send options use the same rule for single issues and bulk dispatches. Changing a dispatch model leaves the remembered composer choice unchanged.

@@ -46,6 +46,7 @@ export function mergeSubAgentConfig(
 
   const merged: SubAgentsFile = {
     version: user?.version ?? defaults.version,
+    defaultModel: user?.defaultModel ?? defaults.defaultModel ?? null,
     enabled: user?.enabled ?? defaults.enabled,
     globalMaxConcurrent: user?.globalMaxConcurrent ?? defaults.globalMaxConcurrent,
     checkInNudgeMs: clampSubAgentCheckInNudgeMs(
@@ -193,10 +194,24 @@ export async function saveSubAgentConfigToServer(
  * file, so saving one field alone used to erase the rest (a policy change dropped
  * every per-type override).
  */
-export async function patchSubAgentUserOverrides(patch: Partial<SubAgentsFile>): Promise<boolean> {
-  await loadSubAgentConfig();
+export type SubAgentConfigPatch = Omit<Partial<SubAgentsFile>, 'types'> & { types?: Record<string, Partial<SubAgentTypeConfig>> };
+export async function patchSubAgentUserOverrides(patch: SubAgentConfigPatch): Promise<boolean> {
+  await detectConfigServer();
+  if (isServerStorageMode()) {
+    const response = await fetch('/api/config/sub-agents', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    if (!response.ok) return false;
+    const saved = await response.json() as { data: Partial<SubAgentsFile> };
+    setRuntimeSubAgentOverrides(saved.data);
+    return true;
+  }
+  const merged = await loadSubAgentConfig();
   const current = getSubAgentUserOverridesSync() ?? {};
-  const next: Partial<SubAgentsFile> = { ...current, ...patch };
+  const { types, ...fields } = patch;
+  const next: Partial<SubAgentsFile> = { ...current, ...fields };
+  if (types) {
+    next.types = { ...current.types };
+    for (const [id, row] of Object.entries(types)) next.types[id] = { ...merged.types[id], ...row };
+  }
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) delete (next as Record<string, unknown>)[key];
   }

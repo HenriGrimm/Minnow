@@ -76,8 +76,6 @@ export async function saveWorkAgentPromptOverride(
 export async function patchWorkAgentOverride(
   agentId: string,
   patch: {
-    providerId?: string | null;
-    modelId?: string | null;
     disabled?: boolean;
     maxInputTokens?: number | null;
     contextEnforcementPolicy?: ContextEnforcementPolicy | null;

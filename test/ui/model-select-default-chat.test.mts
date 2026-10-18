@@ -26,6 +26,7 @@ describe('onModelSelectChange', () => {
       <span id="modelSelectTriggerText"></span>
     `;
 
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: win.localStorage });
     const prevDocument = globalThis.document;
     const prevWindow = globalThis.window;
     (globalThis as { document: Document }).document = doc as unknown as Document;
@@ -41,7 +42,7 @@ describe('onModelSelectChange', () => {
       sel.value = deepseekKey;
 
       const { onModelSelectChange } = await import('../../src/ui/sidebar.ts');
-      onModelSelectChange();
+      await onModelSelectChange();
 
       assert.equal(chat.modelId, 'deepseek-v4-flash');
       assert.equal(chat.providerId, 'opencode');
@@ -84,6 +85,7 @@ describe('onModelSelectChange', () => {
       <span id="modelSelectTriggerText"></span>
     `;
 
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: win.localStorage });
     const prevDocument = globalThis.document;
     const prevWindow = globalThis.window;
     (globalThis as { document: Document }).document = doc as unknown as Document;
@@ -100,7 +102,7 @@ describe('onModelSelectChange', () => {
       sel.value = deepseekKey;
 
       const { onModelSelectChange } = await import('../../src/ui/sidebar.ts');
-      onModelSelectChange();
+      await onModelSelectChange();
 
       assert.equal(chat.modelId, 'grok-4.5');
       assert.equal(chat.providerId, 'opencode');

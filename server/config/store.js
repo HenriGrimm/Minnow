@@ -83,7 +83,7 @@ export async function configFileExists(relativeKey) {
   }
 }
 
-const SERIALIZED_CONFIG_KEYS = new Set(['config.json', 'skills.json']);
+const SERIALIZED_CONFIG_KEYS = new Set(['config.json', 'skills.json', 'default-model.json', 'sub-agents.json']);
 
 /** @type {Map<string, Promise<void>>} */
 const configJsonQueues = new Map();
@@ -489,9 +489,7 @@ export async function writeResource(resource, body) {
     return validated;
   }
   if (resource === 'meta') {
-    const existing = (await readConfigJson(key)) ?? {};
-    const merged = mergeConfigMeta(existing, body);
-    await writeConfigJson(key, merged);
+    const merged = await updateConfigJson(key, (existing) => mergeConfigMeta(existing ?? {}, body));
     if (body && typeof body === 'object' && 'browser' in /** @type {Record<string, unknown>} */ (body)) {
       const { resetBrowserConfigCache } = await import('../cdp/browser-config.js');
       resetBrowserConfigCache();

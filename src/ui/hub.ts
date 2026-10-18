@@ -5,7 +5,7 @@ import { modelCache } from '../api/models';
 import { isLocalServerAvailable } from '../tools/config';
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
 import { getChatsForWorkspace } from '../state/session-workspace-scope';
-import { sessionState } from '../state/sessions';
+import { sessionState, getActiveChat } from '../state/sessions';
 import type { Chat } from '../types';
 import { formatCompactCount } from '../usage/format-compact-count';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
@@ -88,13 +88,8 @@ function restoreComposer(): void {
 }
 
 function getSelectedModelLabel(): string {
-  const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  if (!sel?.value) return 'no model';
-  const opt = sel.selectedOptions[0];
-  if (opt?.textContent?.trim()) return opt.textContent.trim();
-  const cached = modelCache.get(sel.value);
-  if (cached?.id) return cached.id;
-  return sel.value;
+  const chat = getActiveChat();
+  return chat.modelId || 'no model';
 }
 
 function buildAmbientStatusLine(): string {

@@ -1,5 +1,5 @@
 import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
-import { getRouterWorkspace } from './store.js';
+import { getRouterWorkspace, resolveRouterId } from './store.js';
 import { routerAvailability, invalidateRouterProvider, routerCatalogModel } from './availability.js';
 import { bindRouterLibraryEntry } from './library-serve.js';
 import { findLibraryCachedRow, isLibraryModelBinding } from '../models/library-binding.js';
@@ -99,7 +99,7 @@ export function pumpRouterGeneration(state) {
 
 export async function runRouterGeneration(state) {
   const workspace = await getRouterWorkspace();
-  const routerId = JSON.parse(state.requestBody.toString()).model;
+  const routerId = await resolveRouterId(JSON.parse(state.requestBody.toString()).model, undefined, state.chatId);
   const body = JSON.parse(state.requestBody.toString());
   const chatId = state.chatId || state.id;
   const attempted = new Set();

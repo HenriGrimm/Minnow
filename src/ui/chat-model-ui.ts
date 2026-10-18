@@ -1,3 +1,4 @@
+import { persistDefaultModelValue } from '../models/selection';
 import { showToast } from './toast';
 import { applyModelSelectValueToChat } from '../lib/model-select-key';
 import { isChatStreaming } from '../chat/streaming-state';
@@ -16,7 +17,7 @@ import {
   resolveEffectiveChatModelBinding,
 } from './default-model';
 
-/** Refresh composer model UI from the active chat (default #modelSelect stays put). */
+/** Refresh composer model UI from the saved chat binding. */
 export function syncActiveChatModelUi(): void {
   syncAgentCliView();
   syncComposerModelTriggers();
@@ -24,7 +25,7 @@ export function syncActiveChatModelUi(): void {
   void import('./context-usage-ring').then((m) => m.refreshContextUsageRing());
 }
 
-/** Per-chat model changed via composer picker — does not alter the global default. */
+/** Bind the chat and remember an explicit composer selection for future chats. */
 export function onActiveChatModelChange(selectValue: string): void {
   const chat = getActiveChat();
   const raw = selectValue.trim();
@@ -36,6 +37,7 @@ export function onActiveChatModelChange(selectValue: string): void {
   }
 
   applyModelSelectValueToChat(chat, raw);
+  void persistDefaultModelValue(raw).catch((error) => showToast(`${error.message}. Select the model again to retry.`, 'error'));
   applyModelReasoningDefaultToChat(chat, raw);
   syncAgentCliView();
   touchChat(chat);

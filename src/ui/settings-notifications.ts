@@ -32,15 +32,15 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
 
   const alerts = appendSettingsGroup(
     mount,
-    'Bell alerts',
-    'Show alerts in the menubar bell for background chats, tasks, and jobs.',
+    'Activity alerts',
+    'Activity keeps live work and session history. Choose which events also play sounds or send desktop alerts.',
     'general.notifications',
     { emphasis: true },
   );
 
   const { row: enabledRow } = createSettingsToggleRow('Enable notifications', {
     checked: prefs.enabled,
-    description: 'Master switch for bell alerts, desktop notifications, and sounds.',
+    description: 'Enable desktop notifications and sounds. Activity remains available when alerts are disabled.',
     searchKey: 'general.notifications.enabled',
     onChange: (next) => saveNotificationPref('enabled', next),
   });
@@ -88,7 +88,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   desktopTest.addEventListener('click', async () => {
     const current = loadNotificationPrefs();
     if (!current.enabled || current.muted || !current.osEnabled) {
-      desktopStatus.textContent = 'Enable desktop notifications and unsilence the menubar bell before testing.';
+      desktopStatus.textContent = 'Enable desktop notifications and unsilence Activity alerts before testing.';
       return;
     }
     desktopTest.disabled = true;
@@ -123,7 +123,7 @@ export function renderNotificationsSettingsSection(mount: HTMLElement): void {
   const { row: activeChatSoundRow } = createSettingsToggleRow('Sounds in active chat', {
     checked: prefs.soundOnActiveChat,
     description:
-      'Play turn and tool cues while you watch the chat in Code, without adding bell alerts.',
+      'Play turn and tool cues while you watch the chat in Code. These outcomes are already marked seen in Activity.',
     searchKey: 'general.notifications.soundOnActiveChat',
     onChange: (next) => saveNotificationPref('soundOnActiveChat', next),
   });

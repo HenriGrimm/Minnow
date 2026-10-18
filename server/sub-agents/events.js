@@ -28,6 +28,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       parentTurnId: 'str',
       parentToolCallId: 'str',
       model: 'obj',
+      modelSource: 'str',
     },
   },
   'attempt.started': {
@@ -40,7 +41,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       attemptId: 'id',
       outcome: { enum: ATTEMPT_OUTCOMES },
     },
-    optional: { summary: 'str', evidence: 'obj', usage: 'obj' },
+    optional: { summary: 'str', evidence: 'obj', usage: 'obj', resolvedModel: 'obj' },
   },
   'run.abandoned': {
     required: { runId: 'id', reason: 'id' },

@@ -79,6 +79,7 @@ describe('sub-agent status tools', () => {
   beforeEach(() => {
     resetSubAgentOrchestrator();
     resetSubAgentConfigCache();
+    setRuntimeSubAgentOverrides({ defaultModel: { providerId: 'fixture', modelId: 'fixture-model' } });
     resetSubAgentRunIdFactory();
     resetRunIdCounter();
     setSubAgentRunIdFactory(() => FIXED_RUN_ID);
@@ -260,7 +261,7 @@ describe('sub-agent status tools', () => {
     setSubAgentRunIdFactory(() => nextFixedRunId());
     resetRunIdCounter();
 
-    setRuntimeSubAgentOverrides({ globalMaxConcurrent: 1 });
+    setRuntimeSubAgentOverrides({ globalMaxConcurrent: 1, defaultModel: { providerId: 'fixture', modelId: 'fixture-model' } });
 
     setSubAgentExecutorContext({
       parentTurnId: 'turn-parallel',

@@ -309,7 +309,7 @@
       <button class="icon-btn model-refresh-btn" type="button" id="btnRefreshModels" aria-label="Refresh models" title="Refresh model list">
         <i class="fi fi-rr-refresh icon-svg" aria-hidden="true"></i>
       </button>
-      <div class="model-select-inner" id="modelSelectRoot">
+      <div class="model-select-inner" id="modelSelectRoot" hidden>
         <span class="model-state-dot model-load-dot" id="modelStateDot" aria-hidden="true"></span>
         <select id="modelSelect" class="model-select-native" tabindex="-1" aria-hidden="true"></select>
         <button type="button" class="model-select-trigger" id="modelSelectTrigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="modelSelectMenu">
@@ -2477,11 +2477,11 @@
           <div class="input-wrap input-wrap--inset-actions">
             <label for="msgInput" class="visually-hidden">Message</label>
             <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-            <div class="input-inset-actions" id="composerInsetActions" aria-label="Voice and prompt actions"></div>
           </div>
         </div>
       </div>
       <div class="input-bar-send-stack">
+        <div class="input-inset-actions" id="composerInsetActions" aria-label="Voice and prompt actions"></div>
         <button class="send-btn" id="sendBtn" type="button" aria-label="Send message" data-mode="send">
           <span id="sendIcon"><i class="fi fi-rr-arrow-small-up icon-svg send-btn__arrow" aria-hidden="true"></i></span>
           <span id="sendStopIcon" class="hidden"><span class="send-btn__stop" aria-hidden="true"></span></span>

@@ -6,8 +6,6 @@ import { findRunById } from '../state/runs-store';
 import { findChatById } from '../state/sessions';
 import type { Chat, Message, TurnRunRecord } from '../types';
 import { appIdForChat } from './app-for-chat';
-import { shouldNotifyForChatTurn } from './background';
-import { loadNotificationPrefs } from './prefs';
 import {
   formatToolFailurePreview,
   lastAssistantPreview,
@@ -40,13 +38,19 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
   const title = chatTitle(chat);
   const output = runOutputMessages(chat, run);
   const dedupeKey = `chat:${chatId}:${run.runId}`;
-  const background = shouldNotifyForChatTurn(chatId);
   const appId = appIdForChat(chat);
+  const source = { activityId: `turn:${run.runId}`, workspacePath: chat.workspacePath };
 
-  if (run.status === 'stopped') return;
+  if (run.status === 'stopped') {
+    pushNotificationOrActiveChatSound({
+      ...source, kind: 'chat_turn_complete', activityStatus: 'stopped', title,
+      preview: run.stopReason === 'user' ? 'Stopped by you' : 'Run stopped',
+      chatId, appId, dedupeKey: `${dedupeKey}:stopped`, silent: true,
+    });
+    return;
+  }
 
   if (run.status === 'failed') {
-    if (!background && !loadNotificationPrefs().soundOnActiveChat) return;
     const errPreview =
       run.errorMessage?.trim() ||
       lastAssistantPreview(output) ||
@@ -55,6 +59,7 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
           'Turn failed',
       );
     pushNotificationOrActiveChatSound({
+      ...source,
       kind: 'chat_turn_error',
       title,
       preview: errPreview || 'Turn failed',
@@ -70,7 +75,9 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
     const toolPreview = formatToolFailurePreview(output);
     if (toolPreview) {
       pushNotificationOrActiveChatSound({
+        ...source,
         kind: 'chat_tool_failure',
+        silent: true,
         title,
         preview: toolPreview,
         chatId,
@@ -79,10 +86,9 @@ export function notifyChatTurnEnded(chatId: string, runId: string): void {
       });
     }
 
-    if (!background && !loadNotificationPrefs().soundOnActiveChat) return;
-
     const preview = lastAssistantPreview(output) || 'Turn finished';
     pushNotificationOrActiveChatSound({
+      ...source,
       kind: 'chat_turn_complete',
       title,
       preview,

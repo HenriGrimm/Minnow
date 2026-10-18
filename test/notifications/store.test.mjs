@@ -41,6 +41,16 @@ describe('notification store', () => {
     assert.equal(store.getUnreadNotificationCount(), 0);
   });
 
+  test('mark seen does not resolve failures; explicit resolution retains the record', () => {
+    store.appendNotification({ id: 'failure', kind: 'task_failed', title: 'Build', preview: 'Failed', appId: 'code', createdAt: 1, read: false });
+    store.markAllNotificationsRead();
+    assert.equal(store.getNotifications()[0].resolved, undefined);
+    store.resolveActivityNotifications(['failure']);
+    assert.equal(store.getNotifications()[0].resolved, true);
+    assert.equal(store.getNotifications()[0].read, true);
+    assert.equal(store.getNotifications().length, 1);
+  });
+
   test('caps inbox at 100 items', () => {
     for (let i = 0; i < 105; i += 1) {
       store.appendNotification({
@@ -55,6 +65,16 @@ describe('notification store', () => {
     }
     assert.equal(store.getNotifications().length, 100);
     assert.equal(store.getNotifications()[0]?.id, 'n-104');
+  });
+
+  test('history churn retains live jobs and their completion replaces the running record', () => {
+    const base = { kind: 'scheduler', title: 'Job', preview: 'Working', appId: 'scheduler', read: true };
+    store.appendNotification({ ...base, id: 'running', activityId: 'scheduler:r1', activityStatus: 'running', createdAt: 0 });
+    for (let i = 1; i <= 105; i++) store.appendNotification({ ...base, id: String(i), createdAt: i });
+    assert.ok(store.getNotifications().some((row) => row.id === 'running'));
+    store.appendNotification({ ...base, id: 'completed', activityId: 'scheduler:r1', activityStatus: 'completed', createdAt: 106 });
+    assert.equal(store.getNotifications().some((row) => row.id === 'running'), false);
+    assert.equal(store.getNotifications().length, 100);
   });
 
   test('subscribe receives updates', () => {

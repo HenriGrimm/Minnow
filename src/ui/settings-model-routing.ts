@@ -3,7 +3,7 @@ import '../styles/settings-routing.css';
 
 import { patchWorkAgentOverride } from '../agents/work-agent-prompt-api';
 import type { ThinkingTriState } from '../agents/thinking-types';
-import { saveSubAgentConfigToServer, loadSubAgentConfig } from '../agents/sub-agent-config';
+import { patchSubAgentUserOverrides, loadSubAgentConfig } from '../agents/sub-agent-config';
 import { buildThinkingBudgetFieldInputs } from './settings-thinking-budget-fields';
 import { saveUiDesignerConfig } from '../agents/ui-designer/config';
 import { saveTitlesConfig } from '../config/titles-meta';
@@ -78,7 +78,7 @@ type RoutingPersistOptions = {
 };
 
 /** Routing groups shown on Models → Routing (agent roles live in Agents center). */
-const ROUTING_PAGE_GROUPS: ModelRoutingGroup[] = ['main-chat', 'background'];
+const ROUTING_PAGE_GROUPS: ModelRoutingGroup[] = ['background'];
 
 interface RowControls {
   row: ModelRoutingRow;
@@ -188,10 +188,9 @@ async function saveAdvanced(
         return;
       }
       const samplerPatch = samplerFields.readPatch();
-      const ok = await saveSubAgentConfigToServer({
+      const ok = await patchSubAgentUserOverrides({
         types: {
           [row.id]: {
-            ...existing,
             ...(samplerPatch != null ? { sampler: samplerPatch } : {}),
             thinkingMode: thinkingSelect.value as ThinkingTriState,
             ...(thinkingBudgetFields
@@ -413,19 +412,8 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
   }
 
   switch (row.persistKind) {
-    case 'work-agent': {
-      const agent = await patchWorkAgentOverride(row.id, {
-        providerId: providerId || null,
-        modelId: modelId || null,
-      });
-      if (!agent) {
-        setStatus('err', 'Could not save work agent binding');
-        return;
-      }
-      if (refresh) void refreshModelRoutingSectionMount();
-      else syncRowBindingFromControls(controls);
+    case 'work-agent':
       break;
-    }
     case 'sub-agent': {
       const config = await loadSubAgentConfig();
       const existing = config.types[row.id];
@@ -433,10 +421,9 @@ async function saveRow(controls: RowControls, options?: RoutingPersistOptions): 
         setStatus('err', 'Unknown sub-agent type');
         return;
       }
-      const ok = await saveSubAgentConfigToServer({
+      const ok = await patchSubAgentUserOverrides({
         types: {
           [row.id]: {
-            ...existing,
             providerId,
             modelId,
           },
@@ -617,7 +604,7 @@ function appendRoutingRole(
     });
     panel.appendChild(thinkingSettingsRow);
 
-    if (row.persistKind === 'work-agent' || row.persistKind === 'sub-agent') {
+    if (row.persistKind === 'sub-agent') {
       const budgetFields = buildThinkingBudgetFieldInputs(row.thinkingBudgetTokens ?? null);
       controls.thinkingBudgetFields = budgetFields;
       panel.appendChild(budgetFields.root);
@@ -1013,82 +1000,16 @@ function createRoutingTabs(shell: HTMLElement): Record<RoutingTab, HTMLElement> 
 }
 
 /** Render the model routing settings section into #settingsModelRoutingBody. */
+let routingFormCleanup: (() => void) | undefined;
 export async function renderModelRoutingSection(mount: HTMLElement): Promise<void> {
-  mountedRows = [];
-  routingModelOptionsPromise = null;
+  routingFormCleanup?.();
   mount.replaceChildren();
-  mount.dataset.settingsSearchKey = 'models.routing';
-
-  const shell = el('div', 'settings-general settings-routing');
-  mount.appendChild(shell);
-
-  const lead = el('p', 'settings-section-lead');
-  lead.textContent = 'Choose which model handles each part of your work. Model choices save automatically.';
-  shell.appendChild(lead);
-  const loading = el('p', 'settings-routing-loading', 'Loading model assignments…');
-  loading.setAttribute('role', 'status');
-  shell.appendChild(loading);
-
-  const storageMode = await detectConfigServer();
-  refreshConfigStorageBanner();
-
-  if (!isConfigServerMode(storageMode)) {
-    appendSettingsOfflineHint(
-      shell,
-      'Model routing needs Minnow running locally. Values below are read-only until then.',
-      { searchKey: 'models.routing' },
-    );
-  }
-
-  try {
-    const { providers } = await listProviders();
-    const activeProvider =
-      providers.find((p) => p.enabled !== false)?.id ?? 'lm-studio-local';
-
-    const catalog = await loadModelRoutingCatalog({
-      providerId: activeProvider,
-      modelId: '',
-    });
-
-    lastCatalogChatId = catalog.activeChat.id;
-
-    if (catalog.offline) {
-      loading.remove();
-      appendSettingsOfflineHint(
-        shell,
-        'Open Minnow to load bindings from <code>~/.minnow</code>.',
-        { searchKey: 'models.routing' },
-      );
-      return;
-    }
-
-    loadedFallbackConfig = await loadFallbackChainsConfig();
-    loading.remove();
-    const panels = createRoutingTabs(shell);
-    const content = panels.tasks;
-    content.classList.add('settings-routing__content');
-
-    for (const group of ROUTING_PAGE_GROUPS) {
-      const groupRows = catalog.rows.filter((r) => r.group === group);
-      if (groupRows.length === 0) continue;
-      renderGroup(content, group, groupRows);
-    }
-    const related = el('div', 'settings-routing-related');
-    related.append(el('span', '', 'More model settings'), linkToSettingsSection('Agent models', 'agent-center'), linkToSettingsSection('Sampler defaults', 'sampler'), linkToSettingsSection('Thinking defaults', 'thinking'), linkToSettingsSection('Providers', 'providers'));
-    content.appendChild(related);
-  } catch (err) {
-    loading.remove();
-    console.error('[model-routing] render failed', err);
-    appendSettingsOfflineHint(
-      shell,
-      'Could not load model assignments.',
-      { searchKey: 'models.routing' },
-    );
-    const retry = el('button', 'settings-action-btn', 'Try again');
-    retry.type = 'button';
-    retry.addEventListener('click', () => void renderModelRoutingSection(mount));
-    shell.appendChild(retry);
-  }
+  const { mountRoutingForm } = await import('./routing-form');
+  loadedFallbackConfig = await loadFallbackChainsConfig();
+  const panels = createRoutingTabs(mount);
+  const form = mountRoutingForm(panels.tasks, { autosave: true });
+  routingFormCleanup = form.dispose;
+  await form.ready;
 }
 
 /** Mount provider/model binding (+ advanced + fallback) for one routing row in a panel. */
@@ -1138,28 +1059,23 @@ export async function mountStandaloneRoutingEditor(
     'stacked',
   );
   const controls: RowControls = { row, providerSelect, modelSelect };
-  panel.appendChild(bindingHost);
+  if (row.persistKind !== 'work-agent') panel.appendChild(bindingHost);
 
-  if (row.persistKind === 'work-agent' || row.persistKind === 'sub-agent') {
-    const reset = el('button', 'settings-action-btn', 'Use current chat model');
+  if (row.persistKind === 'sub-agent') {
+    const reset = el('button', 'settings-action-btn', 'Use sub-agent routing');
     reset.type = 'button';
-    reset.title = 'Clear the provider and model overrides. Use the current chat model, or the default when no chat model is set.';
+    reset.title = 'Clear the provider and model overrides. Use general sub-agent routing, then the captured parent chat model.';
     reset.addEventListener('click', async () => {
       reset.disabled = true;
       try {
         let ok = false;
-        if (row.persistKind === 'work-agent') {
-          ok = !!(await patchWorkAgentOverride(row.id, {
-            providerId: null,
-            modelId: null,
-          }));
-        } else {
+        {
           const config = await loadSubAgentConfig();
           const existing = config.types[row.id];
           if (existing) {
-            ok = await saveSubAgentConfigToServer({
+            ok = await patchSubAgentUserOverrides({
               types: {
-                [row.id]: { ...existing, providerId: '', modelId: '' },
+                [row.id]: { providerId: '', modelId: '' },
               },
             });
           }
@@ -1187,7 +1103,7 @@ export async function mountStandaloneRoutingEditor(
   effective.appendChild(document.createTextNode(' '));
   effective.appendChild(value);
   controls.effectiveEl = value;
-  panel.appendChild(effective);
+  if (row.persistKind !== 'work-agent') panel.appendChild(effective);
 
   if (supportsAdvancedPanel(row)) {
     const advanced = document.createElement('details');
@@ -1214,7 +1130,7 @@ export async function mountStandaloneRoutingEditor(
     });
     advancedBody.appendChild(thinkingSettingsRow);
 
-    if (row.persistKind === 'work-agent' || row.persistKind === 'sub-agent') {
+    if (row.persistKind === 'sub-agent') {
       const budgetFields = buildThinkingBudgetFieldInputs(row.thinkingBudgetTokens ?? null);
       controls.thinkingBudgetFields = budgetFields;
       advancedBody.appendChild(budgetFields.root);
@@ -1224,12 +1140,10 @@ export async function mountStandaloneRoutingEditor(
     panel.appendChild(advanced);
   }
 
-  appendRowFallbackEditor(panel, controls, fallbackConfig);
-
-  await wireProviderModelSelects(
-    controls,
-    row.persistKind === 'work-agent' || row.persistKind === 'sub-agent',
-  );
+  if (row.persistKind !== 'work-agent') {
+    appendRowFallbackEditor(panel, controls, fallbackConfig);
+    await wireProviderModelSelects(controls, row.persistKind === 'sub-agent');
+  }
   wireRoutingRowAutoSave(controls);
   setEffectiveText(controls);
   return true;

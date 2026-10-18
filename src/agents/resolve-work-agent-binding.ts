@@ -28,22 +28,9 @@ export async function resolveWorkAgentBinding(
   defaults: GlobalBindingDefaults,
   options?: ResolveWorkAgentBindingOptions,
 ): Promise<WorkAgentBinding> {
-  const override = options?.userOverride;
   const agentId = agent?.id ?? 'default';
-
-  let providerId =
-    override?.providerId !== undefined
-      ? override.providerId
-      : agent?.providerId ?? null;
-  let modelId =
-    override?.modelId !== undefined ? override.modelId : agent?.modelId ?? null;
-
-  if (providerId === null || providerId === '') {
-    providerId = chat.providerId ?? defaults.providerId;
-  }
-  if (modelId === null || modelId === '') {
-    modelId = chat.modelId || defaults.modelId;
-  }
+  const providerId = (chat.modelId?.trim() ? chat.providerId?.trim() : undefined) || defaults.providerId;
+  const modelId = chat.modelId?.trim() || defaults.modelId;
 
   if (!modelId) {
     throw new WorkAgentConfigError('No model selected for this chat');

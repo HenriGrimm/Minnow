@@ -2,7 +2,6 @@
  * Session in-memory notification inbox with pub/sub.
  */
 
-import { randomUUID } from '../lib/random-id.ts';
 import type { NotificationRecord } from './types';
 
 const MAX_ITEMS = 100;
@@ -24,10 +23,6 @@ function emit(): void {
       fn(snap);
     } catch {}
   }
-}
-
-function newId(): string {
-  return randomUUID();
 }
 
 /** All inbox rows, newest first. */
@@ -65,9 +60,17 @@ export function rememberDedupeKey(key: string): void {
 
 /** Append a notification row (caller handles dedupe + cap). */
 export function appendNotification(record: NotificationRecord): NotificationRecord {
+  if (record.activityId) {
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].activityId === record.activityId && items[i].activityStatus === 'running') items.splice(i, 1);
+    }
+  }
   items.unshift(record);
   while (items.length > MAX_ITEMS) {
-    items.pop();
+    let index = items.length - 1;
+    while (index >= 0 && items[index].activityStatus === 'running') index--;
+    if (index < 0) break;
+    items.splice(index, 1);
   }
   emit();
   return record;
@@ -102,6 +105,19 @@ export function markAllNotificationsRead(): void {
     row.read = true;
   }
   emit();
+}
+
+/** Resolve an alert without deleting its outcome from session history. */
+export function resolveActivityNotifications(ids: readonly string[]): void {
+  const selected = new Set(ids);
+  let changed = false;
+  for (const row of items) {
+    if (!selected.has(row.id) || row.resolved) continue;
+    row.resolved = true;
+    row.read = true;
+    changed = true;
+  }
+  if (changed) emit();
 }
 
 /** Reset store (tests). */

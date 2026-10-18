@@ -94,3 +94,7 @@ Brain pages are the exception — they are ordinary markdown and editing them di
 - [Privacy and security](privacy-and-security.md)
 - [Brain app](../apps/brain.md)
 - [Troubleshooting](troubleshooting.md)
+
+## Model selections and shared pools
+
+`default-model.json` stores the last composer-selected chat model. It is shared across workspaces; each saved chat keeps its own model. `model-routers/global-v2.json` stores shared pool definitions, catalog revision, migration aliases, assignments and evaluator decisions. Older workspace pool files are retained after migration so existing chat and board references remain recoverable.

@@ -55,6 +55,8 @@ export interface Attempt {
 }
 
 export interface RunState {
+  modelSource?: string;
+  resolvedModel?: { providerId: string; id: string } | null;
   runId: string;
   type: string;
   task: string;

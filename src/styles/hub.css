@@ -480,60 +480,6 @@ html.minnow-os-enabled:has(.main-column--hub) .chat-area--hub {
   .hub-strip__value {
     font-size: 14px;
   }
-
-  .input-bar--hub {
-    padding: 8px 8px 8px 10px;
-    column-gap: 8px;
-  }
-
-  .input-bar--hub .composer-controls {
-    gap: 6px;
-    flex-wrap: nowrap;
-  }
-
-  .input-bar--hub .composer-controls .mode-segmented {
-    flex: 1 1 auto;
-    width: auto;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .input-bar--hub .composer-controls--compact .mode-segmented,
-  .input-bar--hub .composer-controls--compact #modeSelectorDropdown {
-    flex: 0 0 auto;
-    width: max-content;
-    min-width: max-content;
-    max-width: none;
-    overflow: visible;
-  }
-
-  .input-bar--hub .composer-run-target-wrap {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-
-  .input-bar--hub .composer-run-target-btn {
-    max-width: 7rem;
-    font-size: 0.7rem;
-    padding-inline: 6px;
-  }
-
-  .input-bar--hub .input-inset-btn {
-    --input-inset-btn-size: 40px;
-  }
-
-  .input-bar--hub .input-bar-send-stack .send-btn {
-    width: var(--touch-min, 44px);
-    height: var(--touch-min, 44px);
-  }
-
-  .input-bar--hub .composer-controls__trail .view-mode-toggle-btn--to-board,
-  .input-bar--hub .composer-controls__trail .composer-tools-btn--toolbar,
-  .input-bar--hub .composer-controls--compact .composer-overflow-btn {
-    width: var(--touch-min, 44px);
-    height: var(--touch-min, 44px);
-  }
-
 }
 
 @container hub (max-width: 560px) {

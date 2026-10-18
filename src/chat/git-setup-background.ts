@@ -1,3 +1,4 @@
+import { applyDefaultModelToChat } from '../models/selection';
 /**
  * Background /git-setup from the no-repo empty state (SCC, git panel, overview).
  *
@@ -38,13 +39,7 @@ function resolveWorkspacePath(workspacePath?: string): string {
 /** Bind the picker model if this chat was created before a model was selected. */
 function applyDefaultModelIfMissing(chat: Chat): void {
   if (chat.modelId?.trim()) return;
-  if (typeof document === 'undefined') return;
-  const raw =
-    (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ?? '';
-  if (!raw) return;
-  const parsed = decodeModelSelectKey(raw);
-  chat.modelId = parsed?.modelId ?? raw;
-  if (parsed?.providerId) chat.providerId = parsed.providerId;
+  applyDefaultModelToChat(chat);
   touchChat(chat);
 }
 

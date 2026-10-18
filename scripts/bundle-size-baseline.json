@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-10-18T00:57:36.077Z",
+  "generatedAt": "2026-10-18T17:55:02.275Z",
   "metrics": {
-    "entryJsKb": 334.5,
-    "entryCssKb": 718.8,
-    "largestLazyJsKb": 3312.3,
-    "eagerJsKb": 4484,
-    "totalAssetsKb": 11409
+    "entryJsKb": 328.4,
+    "entryCssKb": 756.9,
+    "largestLazyJsKb": 3319.9,
+    "eagerJsKb": 4342.2,
+    "totalAssetsKb": 11437.5
   }
 }

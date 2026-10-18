@@ -2380,8 +2380,7 @@ export function registerSessionPersistenceShutdownHandler(): void {
 export function createAndActivateChat(modelId: string): Chat {
   const state = requireSessionState();
   const chat = createEmptyChatObject(modelId);
-  const routerDefault = getRouterConfigSync().defaultRouterId;
-  if (routerDefault) { chat.providerId = 'minnow-router'; chat.modelId = routerDefault; }
+
   state.chats.unshift(chat);
   state.activeId = chat.id;
   markSessionScalarsDirty();

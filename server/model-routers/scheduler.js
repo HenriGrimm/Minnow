@@ -13,8 +13,8 @@ function validateEvaluator(value) {
   return { providerId, modelId };
 }
 
-export function validateRouters(value) {
-  if (!value || !Array.isArray(value.routers) || value.routers.length > 100) throw new Error('Invalid routers');
+export function validateRouters(value, { maxRouters = 100 } = {}) {
+  if (!value || !Array.isArray(value.routers) || value.routers.length > maxRouters) throw new Error('Invalid routers');
   const ids = new Set();
   const routers = value.routers.map((router) => {
     if (!router || typeof router.id !== 'string' || !/^[\w-]{1,100}$/.test(router.id) || ids.has(router.id)) throw new Error('Invalid or duplicate router id');
@@ -92,7 +92,7 @@ export class RouterScheduler {
     const assignment = this.assignments[key];
     const sticky = assignment?.assignedEntryId;
     let chosen = candidates.find((e) => e.id === sticky);
-    const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < e.concurrencyLimit && !(this.queues.get(entryKey(e)) || []).length);
+    const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < (this.capacityLimit?.(e) ?? e.concurrencyLimit) && !(this.queues.get(entryKey(e)) || []).length);
     // Workers may move between rounds when their previous model is occupied.
     // Explicit overrides retain their queueing semantics.
     if (preferAvailable && assignment?.assignmentMode !== 'override' && free.length && !free.includes(chosen)) chosen = undefined;
@@ -141,7 +141,7 @@ export class RouterScheduler {
 
   drain(key) {
     const queue = this.queues.get(key) || [];
-    while (queue.length && (this.active.get(key) || 0) < queue[0].entry.concurrencyLimit) {
+    while (queue.length && (this.active.get(key) || 0) < (this.capacityLimit?.(queue[0].entry) ?? queue[0].entry.concurrencyLimit)) {
       const request = queue.shift();
       request.signal?.removeEventListener('abort', request.abort);
       this.active.set(key, (this.active.get(key) || 0) + 1);

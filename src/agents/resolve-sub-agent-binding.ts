@@ -1,3 +1,4 @@
+import { resolveSubAgentBinding } from './sub-agent-binding.mjs';
 import type { Chat } from '../types';
 
 export interface SubAgentTypeBindingInput {
@@ -15,21 +16,6 @@ export function resolveSubAgentModelBinding(
   parentChat: Chat | undefined,
   globalDefaults?: SubAgentBindingDefaults,
 ): { providerId: string; modelId: string } {
-  let providerId = typeConfig.providerId?.trim() ?? '';
-  let modelId = typeConfig.modelId?.trim() ?? '';
-
-  if (!providerId) {
-    providerId =
-      parentChat?.providerId?.trim() ||
-      globalDefaults?.providerId?.trim() ||
-      '';
-  }
-  if (!modelId) {
-    modelId =
-      parentChat?.modelId?.trim() ||
-      globalDefaults?.modelId?.trim() ||
-      '';
-  }
-
-  return { providerId, modelId };
+  const binding = resolveSubAgentBinding(typeConfig, parentChat, globalDefaults);
+  return { providerId: binding.providerId, modelId: binding.modelId };
 }

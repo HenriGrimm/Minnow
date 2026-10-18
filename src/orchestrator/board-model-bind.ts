@@ -1,6 +1,7 @@
+import { readDefaultModelBinding } from '../models/selection';
 /**
  * Seed a V2 board's journaled model from the pair the header chip already shows.
- * Start reads `state.model`; the chip falls back to `#modelSelect`, so they can
+ * Start reads `state.model`; the chip falls back to the remembered chat selection, so they can
  * disagree until this writes `board.model.set`.
  */
 
@@ -15,19 +16,15 @@ const LIBRARY_PROVIDER_ID = 'minnow-library';
 
 export type BoardModelPair = { providerId: string; id: string };
 
-/** Menubar `#modelSelect` value: composite key, or a bare canonical id. */
-function readMenubarSelectPair(): { providerId: string; modelId: string } {
-  if (typeof document === 'undefined') return { providerId: '', modelId: '' };
-  const raw =
-    (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ?? '';
-  const decoded = decodeModelSelectKey(raw);
-  if (decoded) return decoded;
-  return { providerId: '', modelId: raw };
+/** Remembered selection value: composite key, or a bare canonical id. */
+function readRememberedPair(): { providerId: string; modelId: string } {
+  const binding = readDefaultModelBinding();
+  return { providerId: binding.providerId || '', modelId: binding.modelId };
 }
 
 /**
  * Resolve the provider/model pair currently shown on the board chip (journal
- * override, then `#modelSelect`, then the in-memory catalog).
+ * override, then the remembered chat selection, then the in-memory catalog).
  * Returns null when there is no complete pair yet (catalog still loading).
  */
 export function resolveDisplayedBoardModel(state: BoardState | null): BoardModelPair | null {
@@ -38,7 +35,7 @@ export function resolveDisplayedBoardModel(state: BoardState | null): BoardModel
     return { providerId: boundProvider, id: boundId };
   }
 
-  const shown = readMenubarSelectPair();
+  const shown = readRememberedPair();
   let providerId = shown.providerId.trim();
   let id = shown.modelId.trim();
   if (!id) return null;
@@ -60,7 +57,7 @@ export function resolveDisplayedBoardModel(state: BoardState | null): BoardModel
   return { providerId, id };
 }
 
-/** Menubar/chip pair to send on `POST /api/boards` when the caller did not pin one. */
+/** Remembered/chip pair to send on `POST /api/boards` when the caller did not pin one. */
 export function readDisplayedBoardModelSeed(): BoardModelPair | null {
   return resolveDisplayedBoardModel(null);
 }

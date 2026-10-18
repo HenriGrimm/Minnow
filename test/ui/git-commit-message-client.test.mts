@@ -408,6 +408,7 @@ describe('resolveGitCommitMessageBinding', () => {
     globalThis.HTMLElement = window.HTMLElement;
 
     const chat = createEmptyChatObject('');
+    chat.providerId = 'lm-studio-local'; chat.modelId = 'glm-5.2';
     setSessionStateForTests({ chats: [chat], activeId: chat.id });
 
     const sel = document.createElement('select');

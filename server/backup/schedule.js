@@ -192,6 +192,7 @@ export async function runScheduledSnapshot(options = {}) {
     }).catch(() => {});
     await enqueueSchedulerNotification({
       jobId: BACKUP_NOTIFICATION_JOB_ID,
+      status: 'failed',
       label: 'Backup',
       message: `Scheduled snapshot failed: ${error.slice(0, 240)}`,
     }).catch((notifyErr) => {

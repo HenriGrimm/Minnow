@@ -71,6 +71,7 @@ export interface SubAgentTypeConfig {
 }
 
 export interface SubAgentsFile {
+  defaultModel?: { providerId: string; modelId: string } | null;
   version: number;
   enabled: boolean;
   globalMaxConcurrent: number;
@@ -84,6 +85,8 @@ export interface SubAgentsFile {
 }
 
 export interface SubAgentRun {
+  modelSource?: string;
+  resolvedModel?: { providerId: string; id: string } | null;
   runId: string;
   type: string;
   task: string;

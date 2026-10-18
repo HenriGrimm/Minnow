@@ -20,6 +20,8 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 Drafts survive switching chats.
 
+Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. Changing the model during a response stops that generation; the next turn uses the new selection.
+
 Clicking the **branch icon** enables Worktree for this chat without creating a
 checkout. Send your message to create a named branch from the current commit and
 prepare project dependencies. A **Setting up your worktree** panel appears in chat;
@@ -69,7 +71,7 @@ A connection that accumulates more than 4 MiB of pending stream data or stalls f
 ## Watching what agents do
 
 - **Inference metrics** — tokens, tok/s and totals for the turn. In Code, the strip at the bottom of the chat column.
-- **Agent activity** — a panel of what sub-agents are doing right now: thinking, generating, or which tool they are running.
+- **Activity** — the menubar dropdown shows what needs your input, what is running, and recent outcomes across the current workspace. Expand a running item to inspect its sub-agents, model, and context usage.
 - **Sub-agent cards and inspector** — every spawned agent gets a card in the transcript. Open it for its Conversation: available thoughts, responses, grouped tool calls, and a Result tab. Conversations remain accessible after reopening the chat.
 
 A background sub-agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model sees it without a wall of text appearing in your transcript.
@@ -113,7 +115,11 @@ Chats with an active `/loop` show a rotating icon in the rail — spinning while
 
 ## Notifications
 
-The menubar bell collects what happened while you were not looking: a chat that finished, a task that needs you, a scheduled job that ran. **Settings → General → Notifications** controls the categories and sounds, including whether cues play while you are already watching the active chat.
+The menubar **Activity** icon appears before Models and opens live work and notifications for the current workspace. While agents are running, a spinning wheel shows their count, including nested sub-agents. Paused agents and background title jobs are excluded from that count. When no agents are running, only the icon is shown. Inside the dropdown, running work counts each parent once and nests its sub-agents.
+
+**Needs you** holds unanswered questions, tool approvals, failures, and review requests. Opening the dropdown or choosing **Mark seen** does not resolve them. **Reply / review** opens the owning chat. Failures can be inspected and dismissed into **Recent**; failed scheduled jobs also offer **Retry run**. **Running** shows current work, including timer waits and queued work. Background title tasks are collapsed. **Recent** retains completed, failed, and stopped outcomes for the session, including replies you watched finish.
+
+**Mute alerts** silences sounds and desktop notifications while Activity keeps updating. **Settings → General → Notifications** controls delivery categories and sounds, including whether cues play while you are already watching the active chat. **Stop all…** cancels chats, their sub-agents, and title jobs in the current workspace after confirmation.
 
 Desktop notifications appear when an agent asks a question or finishes its turn while Minnow is in the background. Use **Test desktop notification** in notification settings to check delivery without starting a chat. In a browser, the test requests notification permission if needed. If the test reports that it was sent but no banner appears, check your system's notification settings and Do not disturb. On Windows, development builds appear separately as **Minnow Dev**.
 

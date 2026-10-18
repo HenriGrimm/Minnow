@@ -1,3 +1,4 @@
+import { captureLaunchModel, launchModelLabel } from '../models/launch-selection';
 import '../styles/home.css';
 import '../styles/issues.css';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
@@ -50,11 +51,7 @@ function issues(): IssueCard[] { return isIssuesStoreLoaded() ? collectIssues({ 
 function current(version: number, workspace: string): boolean { return version === generation && workspacePathsEqual(getWorkspacePath(), workspace) && getForegroundAppId() === 'home'; }
 function report(error: unknown): void { showToast(error instanceof Error ? error.message : String(error), 'error'); }
 function binding(): { modelId: string; providerId?: string } { return sendModel ? decodeModelSelectKey(sendModel) ?? { modelId: sendModel } : readDefaultModelBinding(); }
-function modelLabel(): string {
-  if (!sendModel) return readDefaultModelBinding().modelId || 'Model router default';
-  const options = (document.getElementById('modelSelect') as HTMLSelectElement | null)?.options;
-  return [...options ?? []].find(o => o.value === sendModel)?.label || binding().modelId;
-}
+function modelLabel(): string { return launchModelLabel(sendModel); }
 function selectable(issue: IssueCard): boolean { return !issue.agent?.home && !issue.agent?.chatId && ['triage', 'ready'].includes(flowColumn(issue, getIssuesTaxonomySync()) ?? ''); }
 function toggleSelection(issue: IssueCard, shift = false): void {
   if (!selectable(issue)) return;
@@ -93,9 +90,7 @@ function renderSelection(): void {
   actions.append(button('Clear', () => { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); }), options, send); selectionHost.append(count, segments, summary, actions);
 }
 function openSendOptions(anchor: HTMLElement): void {
-  const catalog = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  const items: MenuItem[] = [{ kind: 'heading', label: 'Model' }, { id: 'default', label: 'Model router default', checked: !sendModel, onSelect: () => { sendModel = ''; renderSelection(); } },
-    ...[...catalog?.options ?? []].filter(o => o.value && !o.disabled).map(o => ({ id: o.value, label: o.label, checked: sendModel === o.value, onSelect: () => { sendModel = o.value; renderSelection(); } })),
+  const items: MenuItem[] = [{ id: 'model', label: `Model: ${modelLabel()}`, onSelect: () => { void import('./launch-model-picker').then(({ openLaunchModelPicker }) => openLaunchModelPicker(anchor, sendModel, (value) => { sendModel = value; renderSelection(); })); } },
     { kind: 'separator' }, { kind: 'heading', label: 'Mode' }, ...(['build', 'plan'] as const).map(mode => ({ id: mode, label: mode === 'build' ? 'Build' : 'Plan first', hint: mode === 'plan' ? 'Approve before it edits' : undefined, checked: mode === sendMode, onSelect: () => { sendMode = mode; renderSelection(); } })),
   ];
   const chats = (sessionState?.chats ?? []).filter(c => c.worktreeRoot && workspacePathsEqual(c.workspacePath, mountedWorkspace) && listMainTurnActivity().some(t => t.chatId === c.id));
@@ -109,11 +104,13 @@ async function sendSelection(single?: IssueCard, mode = sendMode, instructions =
   const groups = single ? [[single]] : selectedGroups(); if (!groups.length) return;
   sending = true; renderSelection(); const version = generation, workspace = mountedWorkspace;
   try {
+    const selectedBinding = await captureLaunchModel(sendModel);
     const ids: string[] = [];
-    for (const group of groups) ids.push(...await sendHomeIssues([group], { ...binding(), mode, baseBranch, instructions, startNow: group.some(i => startNow.has(i.id)) }));
+    for (const group of groups) ids.push(...await sendHomeIssues([group], { ...selectedBinding, mode, baseBranch, instructions, startNow: group.some(i => startNow.has(i.id)) }));
     if (!current(version, workspace)) return;
     for (const id of ids) selected.delete(id);
     if (ids[0]) { focusedId = ids[0]; dockOpen = true; }
+    sendModel = '';
     showToast(`${ids.length} issue${ids.length === 1 ? '' : 's'} sent to agent chats`, 'success');
   } catch (error) { if (current(version, workspace)) report(error); }
   finally { sending = false; if (current(version, workspace)) { renderSelection(); renderBoard(); renderDock(); } }

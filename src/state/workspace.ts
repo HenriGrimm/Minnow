@@ -11,6 +11,12 @@ let workspacePath = '';
 let workspaceLabel = '';
 let workspaceIsDefault = true;
 let workspaceRecent: WorkspaceRecentItem[] = [];
+const listeners = new Set<() => void>();
+
+export function subscribeWorkspace(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 /** Absolute path of the AI workspace folder. */
 export function getWorkspacePath(): string {
@@ -56,6 +62,7 @@ function applyWorkspaceInfo(info: WorkspaceInfo): void {
   workspacePath = info.path ?? '';
   workspaceLabel = info.label ?? '';
   workspaceIsDefault = info.isDefault === true;
+  for (const listener of listeners) listener();
   notifyPluginContextChanged();
   if (Array.isArray(info.recent)) {
     workspaceRecent = info.recent;

@@ -146,7 +146,7 @@ export async function applyCodeLaunchOptions(
   }
 
   const modeId = normalizeModeId(options.modeId ?? DEFAULT_MODE_ID);
-  const created = createChatWithMode({ modeId });
+  const created = await createChatWithMode({ modeId });
   if (!created.ok || !seed) return {};
   if (created.chatId) onChatCreated?.(created.chatId);
 

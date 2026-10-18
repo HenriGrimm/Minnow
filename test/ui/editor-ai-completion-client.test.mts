@@ -463,7 +463,7 @@ describe('editor AI model binding (MIN-133)', () => {
     );
   });
 
-  test('resolveEditorAiBinding uses top-bar model when following chat', async () => {
+  test('resolveEditorAiBinding follows the saved chat instead of the hidden catalog selection', async () => {
     const window = new Window();
     domWindow = window;
     globalThis.window = window;
@@ -471,8 +471,8 @@ describe('editor AI model binding (MIN-133)', () => {
     globalThis.HTMLElement = window.HTMLElement;
 
     const chat = createEmptyChatObject('');
-    chat.providerId = 'stale-provider';
-    chat.modelId = '';
+    chat.providerId = 'chat-provider';
+    chat.modelId = 'chat-model';
     setSessionStateForTests({ chats: [chat], activeId: chat.id });
 
     const select = document.createElement('select');
@@ -494,8 +494,8 @@ describe('editor AI model binding (MIN-133)', () => {
       '../../src/config/editor-ai-completion.ts'
     );
     const resolved = await resolveEditorAiBinding(getEditorAiCompletionConfigSync());
-    assert.equal(resolved.providerId, 'ollama-local');
-    assert.equal(resolved.modelId, 'qwen2.5-coder');
+    assert.equal(resolved.providerId, 'chat-provider');
+    assert.equal(resolved.modelId, 'chat-model');
   });
 
   test('resolveEditorAiBinding requires explicit model when pinned', async () => {

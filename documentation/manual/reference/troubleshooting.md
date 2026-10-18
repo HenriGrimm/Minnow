@@ -52,7 +52,7 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 | Task quarantined | It exhausted its retries. Open the task chat to read what happened, fix the cause, then **Requeue**. |
 | Board never starts | Is the workspace a git repository? Boards need one. Minnow offers to set it up during board creation. |
 | Parallel tasks conflicting | Turn worktree isolation on. Auto and AFK use per-task worktrees by default. |
-| Sub-agent seems stuck | The agent activity panel shows live phase and current tool. Timeouts are per type in **Settings → Agents → Sub-agents**. |
+| Sub-agent seems stuck | Expand its parent in the menubar **Activity** dropdown to see its live phase and current tool. Timeouts are per type in **Settings → Agents → Sub-agents**. |
 | Undo control is missing | It only appears in a git repository, and only when that turn changed files. The message **⋮ → Undo turn** still does a chat-only rewind. |
 
 ## Scheduler

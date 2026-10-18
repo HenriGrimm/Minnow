@@ -38,7 +38,7 @@ import {
 } from '../chat/issues/pipeline';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { createIssuesWorkflowDropdown, closeIssuesWorkflowMenu } from './issues-workflow-menu';
-import { promptIssueChatRunTarget, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
+import { promptIssueChatRunTarget, pickIssueLaunchModel, issueLaunchModelLabel, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import {
   createBranchFromIssue,
@@ -1949,6 +1949,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
     useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
     secondary.appendChild(useWorktree);
+    const modelButton = createDetailTextButton({ label: issueLaunchModelLabel(issue.id), icon: 'appModels', disabled: !workflowOk || busy, title: 'Model for a new issue chat', onClick: () => pickIssueLaunchModel(issue.id, modelButton, refreshIssueDetailIfOpen) });
+    secondary.appendChild(modelButton);
 
     const foregroundHints: Record<IssueForegroundChatMode, string> = {
       general: 'Triage and discuss with full tool access',

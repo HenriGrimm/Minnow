@@ -55,7 +55,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "917a51557e9529c141a58e039ed06dc06b4a3aef383d3123246633196dda8a66"
+      "hash": "1cbf627da72f7d8727ae4609675ba2e3127283d4939d1af613e6796f7fa9bda0"
     },
     {
       "path": "documentation/manual/get-started/costs-and-providers.md",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "5886bba569c855c843ae5673c9f410269f09a6d85887295ca659c57000cce60a"
+      "hash": "eec468260faa1350d82ddabef40a6c28c8e33e00c8a0800f67779ea9b8391fbb"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "a0b4ca8d4b0154aeb1a0f5c4e7fd3566d1a2b48d6f6d3f72f660bdc6af85942f"
+      "hash": "f46c5191a9fc770172c38570eae1a8addf139f85983ef2390d5c40170b9ebd45"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fd220b2b5a274ef71bb5823f2d5ece7477bfc608d80115a1a8278032feb425bf"
+      "hash": "d8181ef2ab64be78a6797f1893207de70c33ba0242050fdde42b3b024408b5f9"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -277,12 +277,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "1ad2265cd67c314a78e7f52c970b07d1b5fe4f23a7f188c71ff84e899771f0ae"
+      "hash": "f0fc1a92b3a0580547b89adbc147bba7c2ed2b97c47d3250125fc1c7dc935c32"
     },
     {
       "path": "documentation/manual/apps/models.md",
       "title": "Models",
-      "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open it from th",
+      "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open Models in ",
       "headings": [
         "Local Server",
         "Discover",
@@ -303,7 +303,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "0488056cdc977072039973cac9ae05c8ce31d3ec10cf00cf9f77430308f44f1f"
+      "hash": "ef3774040473a35bc626f487aa32d76bad1ca22af8e9f44952678471a2504be5"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -317,10 +317,11 @@
         "Git conventions",
         "Taxonomy",
         "Automatic bug filing",
-        "Related"
+        "Related",
+        "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "0445ce967ae4030f7c5b19548f03816ac32dd1584c78277ea44e54a77b009830"
+      "hash": "ad0302462a8175154e7453e2ad55eabb2277a76ef3d47d4863e39a78f3706e12"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -338,7 +339,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "3b84019a6caab5458a91f2bba4b7a43371f1fc4be7a2da2d187a28caf77a01ae"
+      "hash": "68a30a1e57ff2281fa2c10ac627c93479aae466392906cc2c5488d8aac404a8c"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -356,7 +357,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "cc7f791215504f4de5447e09d2be291e9dfbe1a000c5928d51c847d8822dbada"
+      "hash": "9ac1eb52f8c1ad97ae7c26633faf40b19abce59bac6130f270133745153af6b6"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -384,7 +385,7 @@
     {
       "path": "documentation/manual/orchestrate/agents.md",
       "title": "Agents, sub-agents, and packs",
-      "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and model binding The main chat, or a board chat Sub agent A nested a",
+      "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and tool settings The main chat, or a board chat Sub agent A nested a",
       "headings": [
         "Work agents",
         "Sub-agents",
@@ -397,7 +398,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "a5eb993a5bba9f72a62913cf2e0880764063734675dcf6168fc56692ae3e1ac6"
+      "hash": "7eea6409d5a74c33a23f7745d4bafd5ae40c70ec9225fa08d32935451e444af0"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -480,10 +481,11 @@
         "Encrypted secrets",
         "A clean profile",
         "Editing files by hand",
-        "Related"
+        "Related",
+        "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "7e79ade55c0e57e7dc473f03f88a619933c1f081445cb3b384d133a896d6fecf"
+      "hash": "474059544d716932d8933720de2820095e4833b4b6352e5340f47c1debe731af"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -521,7 +523,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "74321873c604f98ce8f07df18101e8342d466136f7b2e3677e03af98f30b210f"
+      "hash": "f12b2704ca19b996edfd06280a0ec3bd13bf95edbb943fcf289f218481156662"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -615,7 +617,7 @@
         "Refresh"
       ],
       "section": "Apps",
-      "hash": "7f1bbfb444f7e6eb6fa5c74380300ed959f0f08bb3c0a73c6f57561a6fd06eb1"
+      "hash": "d76df538c4c9673b6a4d39aa00db5b74b82e9df1d291e5ac3324fe8513e740ce"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",
@@ -649,7 +651,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "04374ebd1ebb25790b6b3dcbaff389d06ffd96f7f9c093677b38e30e8a0e6fb1"
+      "hash": "91f4439e9bd0241575c51c38aa5ec94c09919969a7b24ab9e11d56cc7039df28"
     }
   ]
 }

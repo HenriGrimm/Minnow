@@ -160,29 +160,12 @@ export async function loadModelRoutingCatalog(
 
   const rows: ModelRoutingRow[] = [];
 
-  rows.push({
-    id: 'main-chat',
-    group: 'main-chat',
-    label: 'Chat model',
-    description: 'The model you are talking to in the active conversation.',
-    providerId: chatCtx.providerId,
-    modelId: chatCtx.modelId,
-    usesChatDefault: false,
-    persistKind: 'main-chat',
-    advancedSettingsHash: '#/settings/sampler',
-    effectiveProviderId: chatCtx.providerId,
-    effectiveModelId: chatCtx.modelId,
-    activeChatName,
-    sampler: samplerMeta,
-    chatThinkingMode: activeChat.thinkingMode ?? 'inherit',
-  });
-
   for (const agent of workAgentsRes?.agents ?? []) {
     rows.push(rowFromWorkAgent(agent, chatCtx, defaults));
   }
 
   for (const [typeId, typeCfg] of Object.entries(subAgentConfig.types)) {
-    const effective = resolveSubAgentModelBinding(typeCfg, activeChat);
+    const effective = resolveSubAgentModelBinding(typeCfg, activeChat, subAgentConfig.defaultModel ?? undefined);
     rows.push({
       id: typeId,
       group: 'sub-agents',
@@ -203,33 +186,6 @@ export async function loadModelRoutingCatalog(
       thinkingBudgetTokens: typeCfg.thinkingBudgetTokens ?? null,
     });
   }
-
-  const uiResolved = resolveUiDesignerModel({
-    uiDesigner: uiDesignerConfig,
-    chatProviderId: chatCtx.providerId,
-    chatModelId: chatCtx.modelId,
-  });
-  const uiEffective =
-    'error' in uiResolved
-      ? { providerId: '', modelId: '' }
-      : { providerId: uiResolved.providerId, modelId: uiResolved.modelId };
-
-  rows.push({
-    id: 'ui-designer',
-    group: 'background',
-    label: 'UI design',
-    description:
-      'Design turns started with the /ui-designer skill.',
-    providerId: uiDesignerConfig.providerId ?? '',
-    modelId: uiDesignerConfig.modelId ?? '',
-    usesChatDefault:
-      !uiDesignerConfig.providerId?.trim() || !uiDesignerConfig.modelId?.trim(),
-    persistKind: 'ui-designer',
-    advancedSettingsHash: '#/settings/work-agents',
-    effectiveProviderId: uiEffective.providerId,
-    effectiveModelId: uiEffective.modelId,
-    fallbackToChatModel: uiDesignerConfig.fallbackToChatModel !== false,
-  });
 
   const utilityUsesCurrentModel = !utilityModelConfig.modelId.trim();
   rows.push({

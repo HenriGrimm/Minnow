@@ -497,6 +497,10 @@ export type PersistedSubAgentStatus =
  * terminal state (for drawer restore after session reload).
  */
 export interface PersistedSubAgentRun {
+  modelSource?: string;
+  resolvedModel?: { providerId: string; id: string } | null;
+  providerId?: string;
+  modelId?: string;
   runId: string;
   parentTurnId: string;
   /** Parent assistant tool_call id when known (optional). */

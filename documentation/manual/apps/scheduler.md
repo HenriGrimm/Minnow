@@ -4,6 +4,8 @@ Scheduler runs a prompt on a schedule, without a conversation. Each job is a hea
 
 Open it from the app rail or the menubar. Scheduler opens as the foreground **main app**. Creating or editing a job opens an editor overlay within that app.
 
+Unpinned jobs capture the globally remembered chat model when a run starts. Changing the composer later does not redirect that run; the next scheduled occurrence resolves again.
+
 ## The one rule
 
 **Jobs only run while Minnow is running.** Hidden in the system tray counts as running — that is the normal case, since closing the window hides to tray by default. Fully quitting stops the scheduler.
@@ -19,7 +21,7 @@ Minnow does not install an OS-level scheduled task, and it does not backfill run
 | **Schedule** | Interval or cron |
 | **Mode** | The operating mode the run uses |
 | **Work agent** | Optional role — researcher, reviewer, and so on |
-| **Provider / model** | Which model runs it |
+| **Provider / model** | Pin a model for this job, or use the last selected chat model when each run starts |
 | **Workspace** | The project folder. Defaults to a scheduler workspace in your Minnow home. |
 | **Channels** | Where results are announced |
 | **Enabled** | Pause without deleting |
@@ -92,7 +94,7 @@ Each job keeps its runs: start and finish times, status (running, completed, fai
 
 Run history retains the most recent 16,000 characters of output and errors. Earlier verbose output is discarded while the job runs, so a noisy child process cannot grow Minnow's memory without bound.
 
-Notifications reach the menubar bell; **Settings → General → Notifications** controls whether background-job notifications appear and whether they make a sound.
+Running jobs and their outcomes appear in the menubar **Activity** dropdown for their workspace. Failed jobs offer **Retry run**. **Settings → General → Notifications** controls sounds and desktop delivery; muted alerts still leave activity visible.
 
 Jobs live in `scheduler.json` and runs under `scheduler-runs/` in your Minnow home.
 

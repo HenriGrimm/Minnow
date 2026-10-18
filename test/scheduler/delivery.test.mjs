@@ -36,12 +36,20 @@ describe('scheduler delivery', () => {
       jobId: 'job-1',
       label: 'Nightly',
       message: 'Done',
+      runId: 'run-1',
+      workspacePath: '/work/minnow',
+      status: 'failed',
+      silent: true,
     });
     assert.equal(row.acked, false);
 
     const pending = await listUnackedNotifications();
     assert.equal(pending.length, 1);
     assert.equal(pending[0].id, row.id);
+    assert.equal(pending[0].runId, 'run-1');
+    assert.equal(pending[0].workspacePath, '/work/minnow');
+    assert.equal(pending[0].status, 'failed');
+    assert.equal(pending[0].silent, true);
 
     await ackNotification(row.id);
     const afterAck = await listUnackedNotifications();

@@ -32,7 +32,7 @@ describe('computeEffectiveWorkAgentBinding', () => {
     assert.equal(out.usesChatDefault, true);
   });
 
-  test('agent override wins over chat', () => {
+  test('legacy agent override cannot replace chat', () => {
     const agent: WorkAgentDefinition = {
       id: 'builder',
       label: 'Builder',
@@ -44,9 +44,9 @@ describe('computeEffectiveWorkAgentBinding', () => {
       allowedTools: null,
     };
     const out = computeEffectiveWorkAgentBinding(agent, CHAT, DEFAULTS);
-    assert.equal(out.modelId, 'agent-model');
-    assert.equal(out.providerId, 'agent-prov');
-    assert.equal(out.usesChatDefault, false);
+    assert.equal(out.modelId, 'chat-model');
+    assert.equal(out.providerId, 'chat-provider');
+    assert.equal(out.usesChatDefault, true);
   });
 });
 
@@ -64,7 +64,7 @@ describe('resolveSubAgentModelBinding', () => {
       },
     );
     assert.equal(out.modelId, 'parent-model');
-    assert.equal(out.providerId, 'type-prov');
+    assert.equal(out.providerId, 'parent-prov');
   });
 
   test('empty type provider falls back to parent chat', () => {

@@ -113,13 +113,15 @@ const { LIBRARY_MODEL_NOT_LOADED_MESSAGE } = await import(
 const { DEFAULT_EDITOR_AI_COMPLETION } = await import(
   '../../src/config/editor-ai-completion.ts'
 );
-const { createEmptyChatObject, setSessionStateForTests } = await import(
+const { createEmptyChatObject, setSessionStateForTests, getActiveChat } = await import(
   '../../src/state/sessions.ts'
 );
 
 const CONFIG = { ...DEFAULT_EDITOR_AI_COMPLETION, useChatModel: true };
 
 function mountTopBarSelect(value: string): void {
+  const [providerId, modelId] = value.split('\u001f');
+  getActiveChat().providerId = providerId; getActiveChat().modelId = modelId;
   const window = new Window();
   const document = window.document;
   const select = document.createElement('select');

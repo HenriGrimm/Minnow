@@ -186,7 +186,7 @@ const KIND_GROUP: Record<NotificationKind, NotificationKindGroup> = {
   issue_triage: 'background',
 };
 
-/** True when prefs allow pushing this notification kind. */
+/** Delivery preference only; Activity captures events independently. */
 export function isNotificationKindEnabled(kind: NotificationKind, prefs = loadNotificationPrefs()): boolean {
   if (!prefs.enabled || prefs.muted) return false;
   const group = KIND_GROUP[kind];

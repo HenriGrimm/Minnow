@@ -9,7 +9,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
-import { writeResource } from '../../server/config/store.js';
+import { writeResource, writeConfigJson } from '../../server/config/store.js';
 import { createJob, getStoredJobById, mutateStoredJob } from '../../server/scheduler/store.js';
 import { appendOutputTail, listRunsForJob, runStoredJob, getActiveRunCount } from '../../server/scheduler/runner.js';
 import { getSchedulerWorkspacePath } from '../../server/scheduler-workspace/paths.js';
@@ -276,7 +276,7 @@ describe('scheduler runner', () => {
     assert.equal(capturedArgs?.[modelIndex + 1], 'qwen/qwen3-8b');
   });
 
-  test('falls back to active chat model when job has no pinned model', async () => {
+  test('falls back to the remembered composer model when the job has no pinned model', async () => {
     await writeResource('sessions', {
       version: 5,
       activeId: 'chat-fallback',
@@ -298,6 +298,8 @@ describe('scheduler runner', () => {
         },
       ],
     });
+
+    await writeConfigJson('default-model.json', { value: 'ollama\u001fllama3.2:latest', revision: 1 });
 
     const payload = {
       version: 1,

@@ -30,13 +30,7 @@ const resumingChatIds = new Set<string>();
 
 
 
-function getSelectedModelIdFromDom(): string {
 
-  const el = document.getElementById('modelSelect') as HTMLSelectElement | null;
-
-  return el?.value?.trim() ?? '';
-
-}
 
 
 
@@ -191,7 +185,7 @@ export async function resumeIncompleteToolBatch(
 
 
 
-    const modelId = getSelectedModelIdFromDom();
+    const modelId = chat.modelId?.trim() || '';
 
     if (!modelId) {
 

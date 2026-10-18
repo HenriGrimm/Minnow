@@ -173,7 +173,6 @@ async function handleCompactNow(button: HTMLButtonElement): Promise<void> {
     const { compactChatHistory } = await import('../chat/context/compact-command');
     const modelId =
       chat.modelId?.trim() ||
-      (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ||
       '';
     const result = compactChatHistory(chat, { modelId });
     if (!result.ok) {

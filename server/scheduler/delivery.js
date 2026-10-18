@@ -57,7 +57,7 @@ async function writeStore(store) {
 
 /**
  * Queue an in-app reminder after a job finishes.
- * @param {{ jobId: string; label: string; message: string }} input
+ * @param {{ jobId: string; label: string; message: string; runId?: string; chatId?: string; workspacePath?: string; status?: string; silent?: boolean }} input
  */
 export async function enqueueSchedulerNotification(input) {
   return withWriteLock(async () => {
@@ -69,6 +69,11 @@ export async function enqueueSchedulerNotification(input) {
       message: input.message,
       createdAt: new Date().toISOString(),
       acked: false,
+      runId: input.runId,
+      chatId: input.chatId,
+      workspacePath: input.workspacePath,
+      status: input.status,
+      silent: input.silent,
     };
     store.notifications.unshift(row);
     if (store.notifications.length > MAX_NOTIFICATIONS) {

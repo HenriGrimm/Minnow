@@ -2,7 +2,7 @@
 
 This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs.
 
-You come here to configure, then go back to Code and work. Open it from the app rail.
+You come here to configure, then go back to Code and work. Open **Models** in the top bar for quick routing controls, then choose **Manage models…** for the full screen.
 
 | Section | What it is |
 |---------|------------|
@@ -159,18 +159,15 @@ If your login expires, verify or sign in through the CLI and refresh usage.
 
 ## Routing
 
-Open **Models → Routing**. **Models by task** shows the active conversation and dedicated models for utility tasks, UI design, goal evaluation, and editor assistance. Each row shows whether it uses a dedicated model or follows the chat or task. Choose a model in the shared searchable dropdown, or use **Follow chat model** / **Follow each task’s model** to clear an override. Saved models remain visible when a provider is offline. Changes save automatically.
+Open **Models** in the top bar to choose dedicated models for **Sub-agents**, **Utility tasks**, **Editor assistance**, and **Goal evaluation**. The same settings appear on **Models → Routing** and during optional routing setup in onboarding. Changes save automatically; failed saves offer a retry.
 
-**Options** holds task-specific settings and fallback models. The **Fallbacks** tab controls shared backup models, whether fallback is enabled, and cooldown after a host fails. Use the arrows to set backup order and **Remove** to remove an entry. The add control disables at the chain limit. Switching tabs preserves the controls and edits already on the page.
+Sub-agents start on **Follow parent chat**. A fixed model or pool applies to new sub-agent runs. **Advanced sub-agent routing** keeps per-type choices; a type override takes precedence over the general sub-agent setting. Existing and queued runs keep the binding captured when they started. Run details identify the selected model and routing source.
 
-Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
+Utility tasks cover chat titles, prompt and issue expansion, and git commit messages. Leave the override empty to follow the originating task. Editor assistance and goal evaluation can follow their chat or use a dedicated model. Unavailable saved choices remain visible so you can repair them.
 
-Two bindings are worth setting deliberately:
+Work agents and foreground skills use the chat's composer model. Their prompts, tool permissions, sampling and thinking settings remain configurable. Orchestrator boards retain their own model controls.
 
-- **Utility tasks.** One shared model handles chat titles, prompt and issue expansion, and git commit messages. Leave it unset to keep using the current composer, top-bar, or editor model for each task. A small fast model is often enough.
-- **Goal evaluator.** This one judges whether your `/goal` condition is genuinely met. A weak evaluator rubber-stamps broken work, which is worse than no goal at all.
-
-A common arrangement is a fast local model for routine turns and a capable cloud model bound to review, research and evaluation.
+The full Routing screen also has a **Fallbacks** tab for shared backup models, enablement, cooldown, and backup order. Configuring a fallback is separate from selecting the chat model.
 
 ## Model pools
 
@@ -187,15 +184,15 @@ When a chat is assigned a My Models entry that is not loaded, Minnow loads it be
 
 While the evaluator runs, the composer's model label shows **Evaluating**. Its choice appears immediately, for example **High reasoning · deepseek-v4**. During re-evaluation, the current model and reasoning remain visible until the new choice arrives. If the provider does not advertise reasoning levels, the label shows the requested effort, for example **High requested**, and the provider uses its default. Models known to lack reasoning show **No reasoning**. Hover the label for the evaluator, confidence, tier, requested effort, and explanation. The live view shows each chat's last judgment.
 
-Pools appear in the normal model picker with a **Model pool** label. **Use for new chats** sets the workspace's default pool; existing chat bindings stay unchanged. A chat's picker shows the router and its current provider/model assignment after a request starts.
+Pools appear in the normal model picker with a **Model pool** label. Selecting a pool in the composer remembers it for new chats across projects; existing chats keep their selection. A chat's picker shows the router and its current provider/model assignment after a request starts.
 
 The live view shows active and queued chats, their target models, and slot usage. Inspect a model card for average generation latency, error rate, reported tokens, and estimated cost when provider pricing and token counts are available. The chat's override selector pins an entry until you choose **Model pool assignment** to clear it. An override can fail over if its model fails; the replacement becomes sticky while the override remains marked until cleared.
 
 Provider errors and unavailable models trigger failover. A response interrupted partway through restarts on another eligible entry with a visible warning; failed text, reasoning, and incomplete tool calls are discarded. Each request attempts a provider/model pair at most once. **Stop** cancels the request without failover. If no eligible entries remain, Minnow asks you to check the router's entries and provider configuration.
 
-Pool configurations, defaults, and chat assignments are saved per workspace. Activity and telemetry last for the current server session. On narrow screens the activity and model views stack; reduced-motion settings replace moving connections with static indicators.
+Pool configurations are shared across all workspaces. Assignments and evaluator decisions retain their individual chat or run identity. When enabled pools contain the same provider/model with different concurrency limits, admission uses the lowest configured limit across those pools. Activity and telemetry last for the current server session. On narrow screens the activity and model views stack; reduced-motion settings replace moving connections with static indicators.
 
-**Pool active / Pool paused** enables or pauses the whole pool. Pausing the default pool clears that default. **Delete pool** asks you to confirm before removing the pool; it keeps the models in your library.
+**Pool active / Pool paused** enables or pauses the whole pool. Chats referencing a paused pool keep their selection and show its unavailable state. **Delete pool** asks you to confirm before removing the pool; it keeps the models in your library.
 
 ## Sampler
 
@@ -211,7 +208,7 @@ For example, **Thinking / precise coding** for Qwen3.6 sets temperature **0.6**,
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
 
-For models that expose named reasoning levels, open the default-model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. Open the composer’s model menu to override reasoning for the current chat. Its current level appears beside the model name.
+For models that expose named reasoning levels, open the composer model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. Open the composer’s model menu to override reasoning for the current chat. Its current level appears beside the model name.
 
 ## Usage & cost
 
@@ -227,8 +224,9 @@ See [Voice](../extend/voice.md).
 
 | Control | Scope |
 |---------|-------|
-| **Menubar model chip** | Global default — what new chats start with |
-| **Composer picker, Ctrl+M / Cmd+M** | This chat only |
+| **Composer picker, Ctrl+M / Cmd+M** | Selects this chat's model and remembers it for new chats across projects |
+| **Issue / Dashboard launch picker** | Overrides the model for that dispatch |
+| **Board model picker** | Selects that board's model |
 
 Local runtimes expose **Load** and **Unload** in the composer picker, acting on the model that chat is bound to. The tray menu can unload local models without opening the window — useful when you want your VRAM back. Live load and inference numbers live on **Local Server**.
 

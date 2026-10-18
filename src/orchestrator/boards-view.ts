@@ -1,3 +1,4 @@
+import { subscribeModelSelection } from '../models/selection';
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import '../styles/orchestrator-boards.css';
 import '../styles/transcript-view.css';
@@ -1976,6 +1977,7 @@ function watchModelSelectForSeed(): void {
     void seedBoardModelNow(boardId, state);
   };
 
+  const unsubscribe = subscribeModelSelection(retry);
   sel.addEventListener('change', retry);
   const observer = new MutationObserver(retry);
   observer.observe(sel, {
@@ -1985,6 +1987,7 @@ function watchModelSelectForSeed(): void {
     attributeFilter: ['value'],
   });
   stopModelSelectSeedWatch = () => {
+    unsubscribe();
     sel.removeEventListener('change', retry);
     observer.disconnect();
   };

@@ -38,7 +38,7 @@ import {
 
 import { iconHtml } from './icon';
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
-import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
+import { canonicalRouterBinding, routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
 import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
 import { syncRouterReevaluateAction } from './router-reevaluate-action';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
@@ -202,7 +202,7 @@ function selectedOptionForValue(
   const trimmed = value.trim();
   if (trimmed) {
     const match = [...sel.options].find((o) => o.value === trimmed);
-    if (match) return match;
+    return match;
   }
   return sel.options[sel.selectedIndex];
 }
@@ -215,18 +215,18 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
   }
   if (trigger.variant === 'board' && boardModelTriggerContext) {
     const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(boardModelTriggerContext.resolveBinding(), values);
+    return resolveModelSelectValueForChat(canonicalRouterBinding(boardModelTriggerContext.resolveBinding()), values);
   }
   if (trigger.variant === 'research') {
     const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(getActiveChat(), values);
+    return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
   }
   if (trigger.app) {
     const values = [...sel.options].map((o) => o.value);
     return resolveModelSelectValueForChat(trigger.app.resolveBinding(), values);
   }
   const values = [...sel.options].map((o) => o.value);
-  return resolveModelSelectValueForChat(getActiveChat(), values);
+  return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
 }
 
 /** True while fetchModels has the select parked on its "Loading models…" placeholder. */
@@ -285,11 +285,11 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   // An app binding outside the catalog names its own model, never the global selection.
   const appModelId = trigger.app && !selectValue ? trigger.app.resolveBinding().modelId.trim() : '';
   const selectedOpt = sel && !appModelId ? selectedOptionForValue(sel, selectValue) : undefined;
-  const { model, provider } = appModelId
-    ? { model: appModelId, provider: '' }
-    : parseModelOptionLabels(selectedOpt);
-
   const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : appModelId;
+  const { model, provider } = selectedOpt
+    ? parseModelOptionLabels(selectedOpt)
+    : { model: modelId || 'Select model', provider: decodeModelSelectKey(selectValue)?.providerId || '' };
+
   const router = decodeModelSelectKey(selectValue)?.providerId === 'minnow-router'
     ? getRouterConfigSync().routers.find((r) => r.id === modelId)
     : undefined;
@@ -360,7 +360,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
   }
 
-  if (!isMenubarStyleVariant(trigger.variant) && !trigger.app && !router) {
+  if (selectValue && !isMenubarStyleVariant(trigger.variant) && !trigger.app && !router) {
     const reasoning = getComposerReasoningState();
     if (reasoning.label) {
       const suffix = document.createElement('span');

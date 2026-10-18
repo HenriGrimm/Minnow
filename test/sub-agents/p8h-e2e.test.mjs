@@ -184,6 +184,7 @@ async function call(method, pathname, body) {
  */
 async function spawn(extra = {}) {
   const created = await call('POST', '/api/agents', {
+    parentModel: { providerId: MODEL.providerId, modelId: MODEL.id },
     type: extra.type ?? 'explore',
     task: extra.task ?? 'scan the sandbox and report pass',
     parentChatId: extra.parentChatId ?? nextId('chat'),
