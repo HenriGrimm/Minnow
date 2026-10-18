@@ -98,8 +98,9 @@ Shortcuts apply when Issues is open and you are not typing in a field.
 | Keys | Action |
 |------|--------|
 | **j** / **k** / **Arrow keys** | Move the focused issue |
-| **Enter** | Open peek |
-| **Escape** | Restore the expanded peek, then close peek, or clear the multi-select |
+| **Enter** | Open the floating issue panel |
+| **↑** / **↓** | Browse the current issue list while the floating panel is open (except while editing or using menus) |
+| **Escape** | Close the issue panel, or clear the multi-select |
 | **s** | Change status |
 | **p** | Change priority |
 | **u** | Change assignee |

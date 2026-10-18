@@ -32,14 +32,12 @@
  * @container rules never match the container element itself.
  */
 .issues-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* Wide peek; @container below narrows this because the page itself cannot match. */
-  --issues-peek-w: 520px;
-  --issues-peek-cols: minmax(0, 1fr) minmax(380px, var(--issues-peek-w));
   /* Row and sticky group offset; 4pt scale, a step above the old 28px density. */
   --issues-row-h: 36px;
   --issues-list-head-h: 32px;
@@ -2278,72 +2276,36 @@
   color: var(--mn-accent);
 }
 
-/* ---------- detail slide-over ---------- */
+/* ---------- floating issue detail ---------- */
 
-.issues-shell.is-detail .issues-body {
-  display: grid;
-  grid-template-columns: var(--issues-peek-cols);
-  grid-template-rows: auto 1fr;
-}
-
-.issues-shell.is-detail .issues-selection-bar {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.issues-shell.is-detail .issues-list-pane {
-  grid-column: 1;
-  grid-row: 2;
-  min-height: 0;
-}
-
-.issues-shell.is-detail .issues-list-head {
-  grid-column: auto;
-  grid-row: auto;
-}
+.issues-shell.is-detail .issues-body { position: static; }
 
 .issues-detail-host {
   display: none;
   flex-direction: column;
+  position: absolute;
+  inset: 20px 0;
+  width: min(1120px, calc(100% - 48px));
+  min-width: 0;
   min-height: 0;
-  position: relative;
-  border-left: 1px solid var(--mn-border);
-  background: var(--mn-surface-1, var(--mn-bg));
+  margin-inline: auto;
+  z-index: 9;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--mn-surface-1);
   overflow: hidden;
+  container: issue-detail / inline-size;
 }
 
-.issues-detail-host.is-open {
-  display: flex;
-}
-
-.issues-shell.is-detail .issues-detail-host {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-}
-
-/* Overlay sheet: list goes full width; peek sits on a dim scrim. */
-.issues-shell.is-detail.is-detail-expanded {
-  --issues-peek-cols: minmax(0, 1fr);
-}
-
-.issues-shell.is-detail-expanded .issues-body {
-  display: flex;
-  flex-direction: column;
-}
-
-.issues-shell.is-detail-expanded .issues-selection-bar,
-.issues-shell.is-detail-expanded .issues-list-pane {
-  grid-column: auto;
-  grid-row: auto;
-}
-
-.issues-shell.is-detail-expanded .issues-list-pane {
-  flex: 1;
-  min-height: 0;
+.issues-detail-host.is-open { display: flex; }
+.issues-detail-host:focus { outline: none; }
+.issues-shell.is-detail-maximized .issues-detail-host {
+  inset: 0;
+  width: 100%;
+  border-radius: 0;
 }
 
 .issues-detail-scrim {
-  display: none;
   position: absolute;
   inset: 0;
   z-index: 8;
@@ -2351,70 +2313,15 @@
   padding: 0;
   border: 0;
   background: var(--mn-overlay);
-  cursor: pointer;
+  cursor: default;
 }
-
-.issues-shell.is-detail-expanded .issues-detail-scrim:not([hidden]) {
-  display: block;
-}
-
-/* Centered popover: inset + auto margins, not a second docked column. */
-.issues-shell.is-detail-expanded .issues-detail-host {
-  position: absolute;
-  top: 24px;
-  bottom: 24px;
-  left: 0;
-  right: 0;
-  width: min(1100px, calc(100% - 48px));
-  max-width: none;
-  height: auto;
-  margin-inline: auto;
-  z-index: 9;
-  grid-column: auto;
-  grid-row: auto;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md, 10px);
-}
-
-.issues-detail-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 6px;
-  z-index: 2;
-  cursor: col-resize;
-  background: transparent;
-  touch-action: none;
-  flex: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .issues-detail-resizer:hover {
-    background: var(--mn-accent-soft);
-  }
-}
-
-.issues-detail-resizer.dragging {
-  background: var(--mn-accent-soft);
-}
-
-.issues-detail-resizer[hidden] {
-  display: none;
-}
-
-.issues-shell.is-peek-compact .issues-detail-resizer,
-.issues-shell.is-peek-compact .issues-detail__layout-expand,
-.issues-shell.is-detail-expanded .issues-detail-resizer {
-  display: none;
-}
+.issues-detail-scrim[hidden] { display: none; }
 
 .issues-detail {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  gap: 0;
   min-height: 0;
   height: 100%;
 }
@@ -2424,91 +2331,86 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 12px 20px 16px;
+  padding: 16px 28px 0;
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-surface-1, var(--mn-bg));
+  background: var(--mn-surface-1);
 }
 
 .issues-detail__scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 8px 20px 24px;
-}
-
-/*
- * Three zones. Docked they stack; expanded they become a document column and a
- * links sidebar, so the description keeps a readable measure at 1100px wide.
- */
-/*
- * The description takes the leftover height: a short issue then reads as a
- * document with room to write in, not as a panel that stops halfway down.
- */
-.issues-detail__doc {
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
+  padding: 20px 24px 28px;
 }
 
-.issues-detail__doc > .issues-detail__section--document {
-  flex: 1 0 auto;
-}
-
-.issues-detail__doc .issues-detail__section-body,
-.issues-detail__doc .issues-detail__desc-wrap,
-.issues-detail__doc .mn-editor {
-  display: flex;
-  flex-direction: column;
-  flex: 1 0 auto;
-}
-
+.issues-detail__doc, .issues-detail__talk { min-width: 0; }
 .issues-detail__rail {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 0 10px;
+  padding: 20px 0;
   border-top: 1px solid var(--mn-border);
 }
+.issues-detail__properties { padding-bottom: 24px; }
+.issues-detail__rail-heading {
+  margin: 0 0 16px;
+  font: 600 13px/1.5 var(--font-ui);
+  color: var(--mn-fg);
+}
+.issues-detail__properties > .issues-detail__property-label { display: block; margin: 20px 0 10px; }
 
-.issues-detail__talk {
-  min-width: 0;
+@container issue-detail (min-width: 780px) {
+  .issues-detail__scroll:not(.issues-work-content) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-rows: auto auto 1fr;
+    column-gap: 28px;
+    align-items: start;
+    padding: 24px 28px 32px;
+  }
+  .issues-detail__doc { grid-area: 1 / 1; }
+  .issues-detail__talk { grid-area: 2 / 1; }
+  .issues-detail__rail {
+    grid-area: 1 / 2 / span 3 / 3;
+    align-self: stretch;
+    padding: 0 0 0 24px;
+    border-top: 0;
+    border-left: 1px solid var(--mn-border);
+  }
 }
 
-.issues-shell.is-detail-expanded .issues-detail__scroll {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  grid-template-rows: auto auto 1fr;
-  column-gap: 40px;
-  align-items: start;
-  padding: 12px 28px 32px;
-}
-
-.issues-shell.is-detail-expanded .issues-detail__doc {
-  grid-area: 1 / 1;
-  max-width: 76ch;
-}
-
-.issues-shell.is-detail-expanded .issues-detail__talk {
-  grid-area: 2 / 1;
-  max-width: 76ch;
-}
-
-/* Grid items no longer stack, so the document keeps its own height here. */
-.issues-shell.is-detail-expanded .issues-detail__doc > .issues-detail__section--document {
-  flex: 0 0 auto;
-}
-
-/* Sidebar rail: its own hairline is the left edge, not a top rule. */
-.issues-shell.is-detail-expanded .issues-detail__rail {
-  grid-area: 1 / 2 / span 3 / 3;
-  position: sticky;
-  top: 0;
-  padding: 2px 0 0 28px;
-  border-top: none;
-  border-left: 1px solid var(--mn-border);
+.issues-detail__breadcrumb { display: inline-flex; align-items: center; gap: 8px; color: var(--mn-fg-muted); font-size: 12px; }
+.issues-detail__navigation { display: flex; align-items: center; gap: 2px; margin-right: 12px; }
+.issues-detail__position { padding-inline: 8px; color: var(--mn-fg-muted); font: 11px var(--font-mono); white-space: nowrap; }
+.issues-detail__run-state { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.issues-detail__run-state .issues-chat-activity { margin: 0; font-size: 12px; }
+.issues-detail__icon-btn:disabled { opacity: 0.3; cursor: default; }
+.issues-detail__zone-head > .issues-detail__icon-btn { margin-left: auto; }
+.issues-detail__section--document > .issues-detail__zone-head { margin-bottom: 12px; }
+.issues-detail__section--document > .issues-detail__zone-head .issues-detail__section-title { font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.issues-detail__rail > .issues-detail__section--rail { border-bottom: 1px solid var(--mn-border); padding-block: 6px; }
+.issues-detail__rail .issues-detail__row { grid-template-columns: 16px auto minmax(0, 1fr) 28px; min-height: 36px; }
+.issues-detail__rail .issues-detail__row-trailing { grid-column: 4; }
+.issues-detail__rail .issues-detail__section-title { color: var(--mn-fg); font-size: 12px; font-weight: 500; }
+.issues-detail__rail .issues-detail__section-body { padding-block: 4px 8px; }
+.issues-detail__doc .mn-editor__body { font-size: 14px; line-height: 1.65; }
+.issues-detail__doc .mn-editor__heading { margin-top: 20px; margin-bottom: 8px; }
+.issues-detail__doc .mn-editor__heading:first-child { margin-top: 0; }
+.issues-detail__doc .mn-editor h3.mn-editor__heading { font-size: 15px; }
+.issues-detail__view-activity { margin-left: auto; }
+.issues-detail__worktree { padding-block: 16px; }
+.issues-detail__worktree summary { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--mn-fg-muted); cursor: pointer; }
+.issues-detail__worktree summary::after { content: '+'; margin-left: auto; }
+.issues-detail__worktree[open] summary::after { content: '−'; }
+.issues-detail__talk { margin-top: 4px; }
+.issues-detail__talk .issues-comments__composer .issues-btn--primary {
+  color: var(--mn-fg);
+  background: var(--mn-surface-2);
+  border-color: var(--mn-border-strong);
 }
 
 .issues-detail__header {
@@ -2612,7 +2514,7 @@
   field-sizing: content;
   resize: none;
   font-family: var(--font-ui);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
@@ -2628,21 +2530,10 @@
   box-shadow: 0 1px 0 var(--mn-accent);
 }
 
-.issues-detail__props {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.issues-detail__property {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  max-width: 100%;
-  gap: 6px;
-}
+.issues-detail__props { display: flex; flex-direction: column; gap: 10px; }
+.issues-detail__property { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.issues-detail__props .issues-detail__property > .issues-detail__prop { width: 160px; min-width: 0; min-height: 34px; font-weight: 500; }
+.issues-detail__property > .issues-detail__prop > .issues-detail__prop-chevron { margin-left: auto; }
 
 .issues-detail__property-label {
   color: var(--mn-fg-muted);
@@ -2810,9 +2701,6 @@
   gap: 12px;
 }
 
-.issues-shell.is-detail-expanded .issues-detail__sticky {
-  padding-inline: 28px;
-}
 
 /* Workflow toolbar — primary + secondary actions on one row */
 .issues-detail__workflow {
@@ -4135,25 +4023,6 @@ button.issues-detail__row:focus-visible {
  * Vars and hide/show rules therefore live on .issues-shell and below.
  */
 @container issues (max-width: 900px) {
-  .issues-shell {
-    --issues-peek-cols: minmax(0, 1fr);
-  }
-
-  .issues-shell.is-detail .issues-list-pane,
-  .issues-shell.is-detail .issues-selection-bar {
-    display: none;
-  }
-
-  .issues-shell.is-detail .issues-detail-host {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-    border-left: none;
-  }
-
-  .issues-detail-resizer,
-  .issues-detail__layout-expand {
-    display: none;
-  }
 
   .issues-list-head,
   .issues-row {
@@ -4584,4 +4453,35 @@ button.issues-detail__row:focus-visible {
   }
   .issues-list-head__priority, .issues-row__priority,
   .issues-list-head__status, .issues-row__status { display: none; }
+}
+
+@container issue-detail (max-width: 779px) {
+  .issues-detail__scroll:not(.issues-work-content) { display: flex; }
+  .issues-detail__doc { order: 0; }
+  .issues-detail__talk { order: 1; }
+  .issues-detail__rail { order: 2; margin-top: 24px; }
+  .issues-detail__properties { padding-bottom: 20px; }
+  .issues-detail__title { font-size: 21px; }
+}
+@container issue-detail (max-width: 520px) {
+  .issues-detail__sticky { padding: 12px 16px 0; gap: 12px; }
+  .issues-detail__scroll { padding: 16px; }
+  .issues-detail__breadcrumb { display: none; }
+  .issues-detail__header { gap: 0; }
+  .issues-detail__header-actions { gap: 0; }
+  .issues-detail__navigation { margin-right: 4px; }
+  .issues-detail__position { padding-inline: 4px; }
+  .issues-detail__footer { gap: 8px; }
+  .issues-detail__run-state { flex-basis: 100%; }
+  .issues-detail__workflow { margin-left: 0; width: 100%; justify-content: flex-start; }
+}
+@container issue-detail (max-width: 360px) {
+  .issues-detail__header-actions { flex-wrap: wrap; }
+  .issues-detail__navigation { flex-basis: 100%; justify-content: flex-end; }
+}
+@container issues (max-width: 600px) {
+  .issues-detail-host { inset: 8px 0; width: calc(100% - 16px); }
+}
+@media (pointer: coarse) {
+  .issues-detail__navigation .issues-detail__icon-btn, .issues-detail__property > .issues-detail__prop { min-width: 44px; min-height: 44px; }
 }

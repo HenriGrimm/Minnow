@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { gitStatus } from '../../src/state/git-api.ts';
+import { gitStatus, issueWorkOperation } from '../../src/state/git-api.ts';
 import { isLocalServerAvailable, setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 const originalFetch = globalThis.fetch;
@@ -30,4 +30,16 @@ test('Git errors preserve the server explanation instead of only the HTTP status
   globalThis.fetch = async () => new Response('Unavailable', { status: 503 });
   assert.deepEqual(await gitStatus(), { ok: false, error: 'HTTP 503' });
   assert.equal(isLocalServerAvailable(), true);
+});
+
+test('issue work requests explain how to recover from an older running server', async () => {
+  setLocalServerAvailableForTests(true);
+  for (const action of ['Inspect', 'Commit', 'Merge', 'Cleanup'] as const) {
+    globalThis.fetch = async () => Response.json({ error: `Unknown git op: issueWork${action}` }, { status: 400 });
+    const result = await issueWorkOperation(action, { cwd: '/project' });
+    assert.equal(result.ok, false);
+    assert.match(result.error!, /Restart Minnow \(including the tool server\)/);
+  }
+  globalThis.fetch = async () => Response.json({ ok: false, error: 'The worktree is no longer registered' });
+  assert.deepEqual(await issueWorkOperation('Inspect', { cwd: '/project' }), { ok: false, error: 'The worktree is no longer registered' });
 });

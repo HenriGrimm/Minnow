@@ -186,20 +186,20 @@ describe('issues detail display', () => {
     );
     assert.equal(sticky.querySelector('.issues-detail__delete'), null);
     assert.equal(sticky.querySelectorAll('select').length, 0);
-    assert.ok(sticky.querySelector('.issues-detail__prop[aria-label="Type: Task"]'));
-    assert.ok(sticky.querySelector('.issues-detail__prop[aria-haspopup="menu"]'));
+    assert.ok(scroll.querySelector('.issues-detail__prop[aria-label="Type: Task"]'));
+    assert.ok(scroll.querySelector('.issues-detail__prop[aria-haspopup="menu"]'));
     assert.deepEqual(
-      [...sticky.querySelectorAll('.issues-detail__property-label')].map((el) => el.textContent),
-      ['Type', 'Status', 'Priority'],
+      [...scroll.querySelectorAll('.issues-detail__props .issues-detail__property-label')].map((el) => el.textContent),
+      ['Status', 'Type', 'Priority'],
     );
     const workflowMenus = sticky.querySelectorAll('.issues-workflow-menu-wrap');
     assert.equal(workflowMenus.length, 1);
     assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
-    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__labels'));
+    assert.ok(scroll.querySelector('.issues-detail__properties .issues-detail__labels'));
     assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__workflow'));
     assert.equal(sticky.textContent?.includes('Send to background'), false);
     // Priority is a picker like the others, so it carries a glyph too.
-    assert.ok(sticky.querySelector('.issues-priority-chip .issues-priority-chip__icon'));
+    assert.ok(scroll.querySelector('.issues-priority-chip .issues-priority-chip__icon'));
 
     // Three zones: document, links rail, conversation.
     assert.ok(scroll.querySelector('.issues-detail__doc'));
@@ -207,7 +207,7 @@ describe('issues detail display', () => {
     assert.ok(scroll.querySelector('.issues-detail__talk'));
 
     const titles = headingTexts(scroll);
-    assert.equal(titles.includes('Description'), false);
+    assert.equal(titles.includes('Description'), true);
     assert.equal(titles.includes('Plan'), false, 'no plan file, no Plan section');
     assert.equal(titles.includes('Related'), false, 'no refs, no Related section');
     // Everything else is one labelled row, so nothing is an orphan form control.
@@ -284,7 +284,7 @@ describe('issues detail display', () => {
     assert.ok(titles.includes('Code'));
     assert.ok(titles.includes('Plan'));
     assert.ok(titles.includes('Related'));
-    assert.equal(titles.includes('Description'), false);
+    assert.equal(titles.includes('Description'), true);
 
     assert.equal(sectionCount(scroll, 'code'), 'issues-detail.ts');
     assert.equal(sectionCount(scroll, 'related'), '1');

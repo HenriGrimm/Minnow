@@ -53,7 +53,12 @@ export async function issueWorkOperation(
   action: 'Inspect' | 'Commit' | 'Merge' | 'Cleanup',
   input: IssueWorkRequest,
 ): Promise<IssueWorkSnapshot> {
-  return await postGit(`issueWork${action}`, input as unknown as Record<string, unknown>) as unknown as IssueWorkSnapshot;
+  const op = `issueWork${action}`;
+  const result = await postGit(op, input as unknown as Record<string, unknown>) as unknown as IssueWorkSnapshot;
+  if (!result.ok && result.error === `Unknown git op: ${op}`) {
+    return { ok: false, error: 'The running Minnow server does not support issue work operations. Restart Minnow (including the tool server), then refresh this tab.' };
+  }
+  return result;
 }
 
 export interface GitCommitEntry {

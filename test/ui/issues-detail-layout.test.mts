@@ -13,17 +13,8 @@ const { setIssuesStateForTests } = await import('../../src/state/issues-store.ts
 const { closeIssueDetail, openIssueDetail, refreshIssueDetailIfOpen } = await import(
   '../../src/ui/issues-detail.ts'
 );
-const {
-  ISSUES_PEEK_DEFAULT_W,
-  ISSUES_PEEK_MIN_W,
-  ISSUES_PEEK_WIDTH_STORAGE_KEY,
-  clampIssuesPeekWidth,
-  isIssueDetailSheetExpanded,
-  persistIssuesPeekWidth,
-  readIssuesPeekWidth,
-  resetIssuesDetailLayoutForTests,
-  setIssueDetailSheetExpanded,
-} = await import('../../src/ui/issues-detail-layout.ts');
+const { resetIssuesDetailLayoutForTests, isIssueDetailSheetExpanded, setIssueDetailSheetExpanded } = await import('../../src/ui/issues-detail-layout.ts');
+const { setIssueDetailNavigation, navigateIssueDetail, getSelectedIssueId } = await import('../../src/ui/issues-detail.ts');
 const { resetGhAvailableCache } = await import('../../src/chat/issues/git-actions.ts');
 const { resetIssuesGithubForTests, setIssuesGithubMode } = await import(
   '../../src/state/issues-github.ts'
@@ -49,6 +40,7 @@ function setupDom(): void {
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.Node = window.Node;
+  globalThis.Element = window.Element;
   globalThis.localStorage = window.localStorage;
   setLocalServerAvailableForTests(false);
   setToolConfigForTests(defaultToolConfig());
@@ -93,62 +85,67 @@ afterEach(() => {
   resetIssuesGithubForTests();
   setIssuesStateForTests(null);
   resetWorkspaceStateForTests();
-  try {
-    localStorage.removeItem(ISSUES_PEEK_WIDTH_STORAGE_KEY);
-  } catch {
-    /* missing in some DOM stubs */
-  }
   domWindow?.close();
   domWindow = null;
 });
 
-describe('issues peek layout', () => {
-  test('clamp keeps 380–70% of the Issues body', () => {
-    assert.equal(clampIssuesPeekWidth(200, 1000), ISSUES_PEEK_MIN_W);
-    assert.equal(clampIssuesPeekWidth(800, 1000), 700);
-    assert.equal(clampIssuesPeekWidth(Number.NaN, 1000), ISSUES_PEEK_DEFAULT_W);
-  });
-
-  test('peek width persists per workspace', () => {
-    setupDom();
-    setWorkspaceFromServer({ path: WS_A, label: 'A', isDefault: false });
-    persistIssuesPeekWidth(640);
-    assert.equal(readIssuesPeekWidth(), 640);
-    setWorkspaceFromServer({ path: WS_B, label: 'B', isDefault: false });
-    assert.equal(readIssuesPeekWidth(), ISSUES_PEEK_DEFAULT_W);
-    persistIssuesPeekWidth(480);
-    setWorkspaceFromServer({ path: WS_A, label: 'A', isDefault: false });
-    assert.equal(readIssuesPeekWidth(), 640);
-  });
-
-  test('open peek mounts a left-edge resizer and a larger-view control', () => {
-    setupDom();
-    seedIssue();
+describe('floating issue panel', () => {
+  test('opens over the list as a dialog, with no dock resizer', () => {
+    setupDom(); seedIssue();
+    const trigger = document.createElement('button'); document.body.append(trigger); trigger.focus();
     openIssueDetail('VIN-10');
-
-    const resizer = document.getElementById('issuesDetailResizer');
-    assert.ok(resizer);
-    assert.equal(resizer.getAttribute('role'), 'separator');
-    assert.equal(
-      document.querySelector('.issues-detail__layout-expand')?.getAttribute('aria-label'),
-      'Open issue in a larger sheet',
-    );
-
+    const host = document.getElementById('issuesDetailHost')!;
+    assert.equal(host.getAttribute('role'), 'dialog');
+    assert.equal(host.getAttribute('aria-modal'), 'true');
+    assert.equal(document.activeElement, host);
+    assert.equal(document.getElementById('issuesDetailResizer'), null);
+    assert.equal(document.getElementById('issuesDetailScrim')!.hidden, false);
+    assert.ok(document.querySelector('.issues-shell.is-detail-expanded'));
     refreshIssueDetailIfOpen();
-    assert.equal(document.getElementById('issuesDetailResizer'), resizer);
+    assert.equal(document.getElementById('issuesDetailHost'), host);
+    closeIssueDetail();
+    assert.equal(document.getElementById('issuesDetailScrim')!.hidden, true);
+    assert.equal(document.activeElement, trigger);
   });
 
-  test('expand control overlays the Issues body without closing the issue', () => {
-    setupDom();
-    seedIssue();
-    openIssueDetail('VIN-10');
+  test('maximize stays floating and closing clears maximize state', () => {
+    setupDom(); seedIssue(); openIssueDetail('VIN-10');
     setIssueDetailSheetExpanded(true);
     assert.equal(isIssueDetailSheetExpanded(), true);
-    assert.ok(document.querySelector('.issues-shell')?.classList.contains('is-detail-expanded'));
-    assert.equal(
-      document.querySelector('.issues-detail__layout-expand')?.getAttribute('aria-label'),
-      'Restore issue peek',
-    );
-    assert.equal(document.getElementById('issuesDetailHost')?.classList.contains('is-open'), true);
+    assert.ok(document.querySelector('.issues-shell.is-detail-maximized'));
+    assert.equal(document.querySelector('.issues-detail__layout-expand')?.getAttribute('aria-label'), 'Restore issue panel size');
+    closeIssueDetail(); openIssueDetail('VIN-10');
+    assert.equal(isIssueDetailSheetExpanded(), false);
+  });
+
+  test('scrim closes the panel rather than restoring a docked view', () => {
+    setupDom(); seedIssue(); openIssueDetail('VIN-10');
+    (document.getElementById('issuesDetailScrim') as HTMLButtonElement).click();
+    assert.equal(getSelectedIssueId(), undefined);
+    assert.equal(document.querySelector('.issues-detail-host.is-open'), null);
+  });
+
+  test('navigation honors supplied list order, endpoints and editor flush', () => {
+    setupDom(); seedIssue();
+    const { issues } = { issues: ['VIN-10', 'VIN-11', 'VIN-12'].map((id) => ({
+      id, type: 'task', title: id, description: 'Original description', status: 'backlog', priority: 'none', labels: [],
+      workspacePath: WS_A, createdAt: FIXED_NOW, updatedAt: FIXED_NOW, source: 'user',
+    } as IssueCard)) };
+    setIssuesStateForTests({ version: ISSUES_COMPAT_VERSION, schemaRevision: ISSUES_SCHEMA_VERSION, nextId: 13, issues, workspaces: {} });
+    setIssueDetailNavigation({ issueIds: () => ['VIN-12', 'VIN-10', 'VIN-12'], onNavigate: openIssueDetail });
+    openIssueDetail('VIN-12');
+    assert.equal(document.querySelector<HTMLButtonElement>('[data-issue-step="-1"]')!.disabled, true);
+    assert.equal(document.querySelector('.issues-detail__position')!.textContent, '1 / 2');
+    const editor = document.querySelector<HTMLElement>('[contenteditable="true"]')!;
+    assert.ok(editor);
+    editor.querySelector('p')!.textContent = 'Edited before navigation';
+    assert.equal(navigateIssueDetail(1), true);
+    assert.equal(getSelectedIssueId(), 'VIN-10');
+    assert.equal(document.querySelector<HTMLButtonElement>('[data-issue-step="1"]')!.disabled, true);
+    assert.equal(navigateIssueDetail(1), false);
+    navigateIssueDetail(-1);
+    assert.match(document.querySelector('.mn-editor')!.textContent!, /Edited before navigation/);
+    openIssueDetail('VIN-11');
+    assert.equal(navigateIssueDetail(1), false, 'issues outside the visible list have no adjacent issue');
   });
 });

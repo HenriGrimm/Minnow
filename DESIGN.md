@@ -189,7 +189,7 @@ Flat-by-default. Surfaces share `--surface` / `--bg`; separation is borders, not
 - **Columns:** ID, priority, type, title, labels, then metadata and status. Priority is an identity field, not a trailing chip.
 - **Width:** title takes leftover space (`1fr`). Labels are `max-content`: up to three chips, then a caret for the rest, with **+** hugging the last chip.
 - **Density:** `--issues-row-h: 36px` with 8px vertical padding; `--issues-list-head-h: 32px`. Compact (≤900px container) keeps ID, priority, title, status.
-- **Peek:** docked width `--issues-peek-w` (default 520px, drag 380px–70% of the Issues body, persisted per workspace). A header control opens a centered sheet over a dim scrim; compact Issues hides the handle and control.
+- **Details:** a centered floating panel (up to 1120px wide) over a dim scrim, with a maximized-size toggle and previous/next issue controls. Title, workflow, and tabs stay pinned. At panel widths of 780px and above, description and comments sit beside a 280px properties/resources rail; narrower containers stack these sections. Escape or the scrim closes the panel and restores list focus.
 
 ### Cards / Containers
 

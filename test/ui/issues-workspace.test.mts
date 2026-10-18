@@ -8,6 +8,9 @@ import { findIssueById, setIssuesStateForTests } from '../../src/state/issues-st
 import { disposeChatRunActivity, setChatRunActivity } from '../../src/state/chat-run-activity.ts';
 import type { IssueCard } from '../../src/types.ts';
 import type { IssueWorkSnapshot } from '../../src/state/git-api.ts';
+import { APPEARANCE_STORAGE_KEYS } from '../../src/appearance/types.ts';
+import { streamingChatIds } from '../../src/app-state.ts';
+import { notifyChatStreamActivity, notifyChatStreamEnded, registerChatStreamText } from '../../src/chat/streaming-state.ts';
 
 let calls: Array<{ action: string; input: any }> = [];
 let inspect: IssueWorkSnapshot = {} as IssueWorkSnapshot;
@@ -25,7 +28,7 @@ const click = (label: string) => {
 
 beforeEach(() => {
   dom = new Window({ url: 'http://localhost/' });
-  Object.assign(globalThis, { window: dom, document: dom.document, HTMLElement: dom.HTMLElement, Element: dom.Element, Node: dom.Node, NodeFilter: dom.NodeFilter });
+  Object.assign(globalThis, { window: dom, document: dom.document, localStorage: dom.localStorage, HTMLElement: dom.HTMLElement, Element: dom.Element, Node: dom.Node, NodeFilter: dom.NodeFilter });
   DOMPurify.sanitize = DOMPurify(dom as any).sanitize;
   setLocalServerAvailableForTests(true);
   globalThis.fetch = async (_url, init) => {
@@ -51,7 +54,112 @@ beforeEach(() => {
   editor.value = 'Unsubmitted editor contents'; doc.append(editor); body.append(doc); panel.append(sticky, body); document.body.append(panel);
   mounted = mountIssueWorkspace({ panel, sticky, document: doc, issueBody: body, issue, tab: 'Issue', onTab: () => {}, onStartChat: () => {} });
 });
-afterEach(() => { mounted?.dispose(); mounted = undefined; disposeChatRunActivity(); setIssuesStateForTests(null); setLocalServerAvailableForTests(false); globalThis.fetch = originalFetch; dom.happyDOM.abort(); });
+afterEach(() => { mounted?.dispose(); mounted = undefined; streamingChatIds.clear(); notifyChatStreamEnded('issue-chat'); disposeChatRunActivity(); setIssuesStateForTests(null); setLocalServerAvailableForTests(false); globalThis.fetch = originalFetch; dom.happyDOM.abort(); });
+
+function toolHistory() {
+  return [
+    { role: 'user' as const, content: 'Fix the header' },
+    { role: 'assistant' as const, content: 'Checking the header.', thinking: ['Inspect the existing layout.'], tool_calls: [
+      { id: 'read', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"src/header.ts"}' } },
+    ] },
+    { role: 'tool' as const, tool_call_id: 'read', content: 'Original header contents' },
+    { role: 'assistant' as const, content: 'The header is **fixed**.' },
+  ];
+}
+
+test('work inspection failures show recovery without the start-chat empty state', async () => {
+  globalThis.fetch = async () => Response.json({ error: 'Unknown git op: issueWorkInspect' }, { status: 400 });
+  click('Work'); await flush();
+  const content = document.querySelector('.issues-work-content')!;
+  assert.match(content.textContent!, /Restart Minnow \(including the tool server\)/);
+  assert.doesNotMatch(content.textContent!, /Start a linked chat/);
+  assert.equal(calls.length, 0);
+});
+
+test('linked chats reuse the compact main transcript without changing the active Code chat', async () => {
+  const linked = sessionState!.chats[0];
+  linked.history = toolHistory();
+  const active = createEmptyChatObject('model', 'C:/other');
+  active.id = 'code-chat';
+  sessionState!.chats.push(active);
+  sessionState!.activeId = active.id;
+  localStorage.setItem(APPEARANCE_STORAGE_KEYS.chatView, 'full');
+  const main = document.createElement('div');
+  main.id = 'chatArea'; main.textContent = 'Keep Code here';
+  const empty = document.createElement('div'); empty.id = 'emptyState';
+  const status = document.createElement('div'); status.id = 'composerRunStatus'; status.hidden = false;
+  document.body.append(main, empty, status);
+  click('Chat'); await flush();
+  const transcript = document.querySelector<HTMLElement>('.issues-work-chat__transcript')!;
+  assert.equal(transcript.dataset.chatView, 'compact');
+  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'false');
+  assert.equal(transcript.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), true);
+  assert.equal(transcript.querySelector('.chat-turn-final strong')!.textContent, 'fixed');
+  assert.match(transcript.querySelector('.tool-call-msg')!.textContent!, /Original header contents/);
+  assert.equal(sessionState!.activeId, active.id);
+  assert.equal(main.textContent, 'Keep Code here');
+  assert.equal(empty.isConnected, true);
+  assert.equal(status.hidden, false);
+  assert.equal(localStorage.getItem(APPEARANCE_STORAGE_KEYS.chatView), 'full');
+});
+
+test('work disclosures retain the reader choice across transcript updates and tab changes', async () => {
+  sessionState!.chats[0].history = toolHistory();
+  click('Chat'); await flush();
+  document.querySelector<HTMLButtonElement>('.issues-work-chat__transcript .chat-work')!.click();
+  setChatRunActivity('issue-chat', 'completed');
+  assert.equal(document.querySelector('.issues-work-chat__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
+  click('Issue'); click('Chat'); await flush();
+  assert.equal(document.querySelector('.issues-work-chat__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
+});
+
+test('long issue chats backfill in order and cancel pending work when leaving Chat', async () => {
+  const pending = new Map<number, IdleRequestCallback>();
+  let handle = 0;
+  dom.requestIdleCallback = (callback) => { pending.set(++handle, callback); return handle; };
+  dom.cancelIdleCallback = (id) => { pending.delete(id); };
+  sessionState!.chats[0].history = Array.from({ length: 80 }, (_, index) => ({ role: 'user', content: `Message ${index}` }));
+  click('Chat'); await flush();
+  const transcript = document.querySelector('.issues-work-chat__transcript')!;
+  assert.equal(transcript.querySelectorAll('.msg.user').length, 30);
+  while (pending.size) {
+    const [id, callback] = pending.entries().next().value!;
+    pending.delete(id);
+    callback({ didTimeout: false, timeRemaining: () => 50 });
+  }
+  const messages = [...transcript.querySelectorAll('.msg-bubble')].map((node) => node.textContent);
+  assert.equal(messages.length, 80);
+  assert.equal(messages[0], 'Message 0');
+  assert.equal(messages.at(-1), 'Message 79');
+  click('Issue'); click('Chat'); await flush();
+  assert.equal(pending.size, 1);
+  click('Issue');
+  assert.equal(pending.size, 0);
+});
+
+test('streaming prose stays inside the shared work disclosure and settles into a visible reply', async () => {
+  const linked = sessionState!.chats[0];
+  linked.history = toolHistory().slice(0, 3);
+  streamingChatIds.add(linked.id);
+  let delta = 'Checking **verification**.';
+  registerChatStreamText(linked.id, () => ({ lastDelta: delta, lastThinking: '', toolCallCount: 1 }));
+  click('Chat'); await flush();
+  const transcript = document.querySelector<HTMLElement>('.issues-work-chat__transcript')!;
+  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'false');
+  const live = transcript.querySelector<HTMLElement>('.msg.assistant:last-child')!;
+  assert.equal(live.classList.contains('chat-work-hidden'), true);
+  assert.equal(live.querySelector('strong')!.textContent, 'verification');
+  transcript.querySelector<HTMLButtonElement>('.chat-work')!.click();
+  delta = 'Verification **passed**.';
+  notifyChatStreamActivity(linked.id); await flush();
+  assert.equal(live.querySelector('strong')!.textContent, 'passed');
+  assert.equal(live.classList.contains('chat-work-hidden'), false);
+  linked.history.push({ role: 'assistant', content: 'The header is **fixed**.' });
+  streamingChatIds.delete(linked.id);
+  notifyChatStreamEnded(linked.id); await flush();
+  assert.equal(transcript.querySelector('.chat-turn-final strong')!.textContent, 'fixed');
+  assert.equal(transcript.querySelector('.chat-turn-final')!.classList.contains('chat-work-hidden'), false);
+});
 
 test('tabs preserve the existing issue editor and show the same linked chat', async () => {
   const editor = document.querySelector('textarea')!;
@@ -59,7 +167,12 @@ test('tabs preserve the existing issue editor and show the same linked chat', as
   assert.equal(editor.value, 'Unsubmitted editor contents');
   click('Chat'); await flush();
   assert.match(document.querySelector('.issues-work-content')!.textContent!, /Fixed\. The regression test passed/);
+  const composer = document.querySelector<HTMLFormElement>('.issues-work-chat__composer')!;
+  assert.equal(composer.hidden, false);
+  assert.equal(composer.previousElementSibling, document.querySelector('.issues-work-content'));
+  assert.equal(composer.nextElementSibling, document.querySelector('.issues-work-footer'));
   click('Issue');
+  assert.equal(composer.hidden, true);
   assert.equal(document.querySelector('textarea') === editor, true);
   assert.equal(editor.value, 'Unsubmitted editor contents');
 });

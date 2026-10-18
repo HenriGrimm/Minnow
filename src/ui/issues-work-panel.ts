@@ -14,6 +14,7 @@ import { isChatStreaming, readChatStreamText, subscribeChatStreamActivity, subsc
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import { createIcon } from './icon';
 import { createDetailTextButton } from './issues-detail-section';
+import { renderEmbeddedChatTranscript } from './messages';
 import '../styles/issues-work.css';
 
 export type IssueWorkspaceTab = 'Issue' | 'Work' | 'Chat' | 'Activity';
@@ -26,6 +27,7 @@ interface MountOptions {
   tab: IssueWorkspaceTab;
   onTab: (tab: IssueWorkspaceTab) => void;
   onStartChat: () => void;
+  summaryInHeader?: boolean;
 }
 
 const operations = new Set<string>();
@@ -38,12 +40,6 @@ const text = (tag: string, value: string, className = ''): HTMLElement => {
   node.className = className;
   return node;
 };
-function messageText(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (!Array.isArray(value)) return '';
-  return value.map((part) => part && typeof part === 'object' && 'text' in part ? String(part.text ?? '') : '').filter(Boolean).join('\n');
-}
-
 /** Tabs wrap the existing editor and property rail; none of its features are replaced. */
 export function mountIssueWorkspace(options: MountOptions): { dispose: () => void; select: (tab: IssueWorkspaceTab) => void } {
   const { panel, sticky, document: issueDocument, issueBody } = options;
@@ -80,13 +76,20 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   const footer = document.createElement('footer');
   footer.className = 'issues-work-footer';
   const transcript = document.createElement('div');
+  transcript.className = 'issues-work-chat__transcript';
+  transcript.setAttribute('role', 'log');
+  transcript.setAttribute('aria-label', 'Linked issue conversation');
+  const expandedWork = new Map<string, Set<number>>();
+  let paintedChat = '';
+  let paintedHistoryLength = -1;
+  let liveBubble: HTMLDivElement | null = null;
+  let disposeTranscript = () => {};
   const questions = document.createElement('div');
   questions.className = 'issues-work-questions';
   let unregisterQuestions = () => {};
-  const live = document.createElement('div');
-  live.className = 'issues-work-chat__live';
   const composer = document.createElement('form');
   composer.className = 'issues-work-chat__composer';
+  composer.hidden = true;
   const reply = document.createElement('textarea');
   reply.setAttribute('aria-label', 'Message the issue chat');
   reply.placeholder = 'Ask about the work or request changes…';
@@ -113,7 +116,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   function paintSummary(): void {
     const issue = current();
     const state = issueAgentCaption(issue);
-    summary.hidden = !chat() && !issue.agent && !issueDelivery(issue);
+    summary.hidden = Boolean(options.summaryInHeader) || !chat() && !issue.agent && !issueDelivery(issue);
     summary.replaceChildren();
     const heading = document.createElement('div');
     heading.className = 'issues-work-summary__heading';
@@ -231,7 +234,10 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     content.append(heading);
     if (loading) { content.append(text('p', 'Reading the worktree and destination branch…', 'issues-work-note')); return; }
     paintError(content);
-    if (!reviewed) { content.append(text('p', 'Start a linked chat or refresh to inspect workspace changes.', 'issues-work-note')); return; }
+    if (!reviewed) {
+      if (!error) content.append(text('p', 'Start a linked chat or refresh to inspect workspace changes.', 'issues-work-note'));
+      return;
+    }
     content.append(text('p', `${reviewed.sourceBranch} → ${reviewed.targetBranch}${reviewed.isolated ? '' : ' · local workspace'}`, 'issues-work-path'));
     if (reviewed.sourceBranch === 'HEAD' || reviewed.targetBranch === 'HEAD') content.append(text('p', 'Detached HEAD: check out a branch in Source Control before committing or merging.', 'issues-work-note'));
     content.append(text('p', `${reviewed.files?.length || 0} changed files · ${reviewed.ahead || 0} unmerged commits${reviewed.dirty ? ' · uncommitted changes' : ''}`));
@@ -251,6 +257,11 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   }
   async function paintChat(): Promise<void> {
     const linked = chat();
+    composer.hidden = true;
+    disposeTranscript();
+    paintedChat = '';
+    liveBubble = null;
+    transcript.replaceChildren();
     content.replaceChildren();
     const picker = document.createElement('select');
     picker.className = 'issues-filter';
@@ -274,41 +285,31 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     }));
     else tools.append(text('p', 'No chat attached yet.'), action('Send to chat', 'appChat', options.onStartChat, true));
     unregisterQuestions();
-    content.append(tools, transcript, live, questions);
+    content.append(tools, transcript, questions);
     if (linked) unregisterQuestions = registerIssueChatHost(linked.id, questions);
     queueMicrotask(notifyAskQuestionDisplayContextChanged);
     if (!linked) { transcript.replaceChildren(); return; }
     await ensureChatHistoryLoaded(linked.id);
     if (disposed || tab !== 'Chat' || chat()?.id !== linked.id) return;
     paintTranscript(linked);
-    if (!isClosedStatus(getIssuesTaxonomySync(), current().status)) content.append(composer);
+    composer.hidden = isClosedStatus(getIssuesTaxonomySync(), current().status);
     send.disabled = isChatStreaming(linked.id) || busy();
     paintLive();
   }
   function paintTranscript(linked: Chat): void {
-    transcript.replaceChildren();
-    for (const message of linked.history.slice(-60)) {
-      if (message.role !== 'user' && message.role !== 'assistant' && message.role !== 'tool') continue;
-      const body = messageText(message.content);
-      const calls = 'tool_calls' in message ? message.tool_calls : undefined;
-      if (!body && !calls?.length) continue;
-      const entry = document.createElement(message.role === 'tool' ? 'details' : 'section');
-      entry.className = 'issues-work-message';
-      const label = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Assistant' : 'Tool result';
-      entry.append(text(message.role === 'tool' ? 'summary' : 'h3', label));
-      const prose = document.createElement('div');
-      if (message.role === 'assistant') setAssistantBubbleContent(prose, body);
-      else prose.textContent = message.role === 'user' && message.issue ? `${message.issue.id}: ${message.issue.title}` : body;
-      entry.append(prose);
-      if (calls?.length) entry.append(text('p', calls.map((tool) => tool.function.name).join(' · '), 'issues-work-note'));
-      transcript.append(entry);
-    }
+    const expanded = expandedWork.get(linked.id) ?? new Set<number>();
+    expandedWork.set(linked.id, expanded);
+    disposeTranscript();
+    ({ liveBubble, dispose: disposeTranscript } = renderEmbeddedChatTranscript(linked, transcript, expanded));
+    paintedChat = linked.id;
+    paintedHistoryLength = linked.history.length;
   }
   function paintLive(): void {
     if (tab !== 'Chat') return;
     const linked = chat();
     const stream = linked ? readChatStreamText(linked.id) : null;
-    live.textContent = stream?.lastDelta || (linked && isChatStreaming(linked.id) ? `Working${stream ? ` · ${stream.toolCallCount} tool calls` : ''}…` : '');
+    if (linked && (paintedChat !== linked.id || paintedHistoryLength !== linked.history.length || Boolean(liveBubble) !== isChatStreaming(linked.id))) paintTranscript(linked);
+    if (liveBubble) setAssistantBubbleContent(liveBubble, stream?.lastDelta || '', { streaming: true, modeId: linked?.modeId });
     send.disabled = Boolean(linked && isChatStreaming(linked.id)) || busy();
   }
   composer.addEventListener('submit', (event) => {
@@ -340,6 +341,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     if (!current().activity?.length) content.append(text('p', 'No recorded work events yet.', 'issues-work-note'));
   }
   function paintFooter(): void {
+    footer.hidden = Boolean(options.summaryInHeader) && tab !== 'Work';
     footer.replaceChildren();
     const issue = current();
     const linked = chat();
@@ -398,11 +400,12 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
     footer.append(confirm);
   }
   function select(next: IssueWorkspaceTab): void {
-    if (next !== 'Chat') { unregisterQuestions(); unregisterQuestions = () => {}; }
+    if (next !== 'Chat') { disposeTranscript(); unregisterQuestions(); unregisterQuestions = () => {}; }
     tab = next;
     options.onTab(next);
     issueBody.hidden = next !== 'Issue';
     content.hidden = next === 'Issue';
+    if (next !== 'Chat') composer.hidden = true;
     for (const button of tablist.querySelectorAll<HTMLButtonElement>('button')) {
       button.setAttribute('aria-selected', String(button.dataset.tab === next));
       button.tabIndex = button.dataset.tab === next ? 0 : -1;
@@ -440,7 +443,7 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   issueBody.setAttribute('role', 'tabpanel');
   content.setAttribute('role', 'tabpanel');
   sticky.append(tablist);
-  panel.append(content, footer);
+  panel.append(content, composer, footer);
   const unsubscribe = subscribeChatRunActivity(() => {
     if (disposed) return;
     paintSummary();
@@ -463,5 +466,5 @@ export function mountIssueWorkspace(options: MountOptions): { dispose: () => voi
   cleanup = chat()?.chatWorktreeManaged === true;
   paintSummary();
   select(tab);
-  return { select, dispose: () => { disposed = true; generation++; replyDrafts.set(id, reply.value); unregisterQuestions(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeStream(); unsubscribeEnd(); unsubscribeQuestions(); } };
+  return { select, dispose: () => { disposed = true; generation++; disposeTranscript(); replyDrafts.set(id, reply.value); unregisterQuestions(); queueMicrotask(notifyAskQuestionDisplayContextChanged); unsubscribe(); unsubscribeStream(); unsubscribeEnd(); unsubscribeQuestions(); } };
 }

@@ -1,5 +1,5 @@
 import type { Chat } from '../types';
-import { CHAT_VIEW_CHANGED, getChatView } from '../appearance/chat-view';
+import { CHAT_VIEW_CHANGED, getChatView, type ChatView } from '../appearance/chat-view';
 import { collectTranscriptTurns, formatWorkDuration, type TranscriptTurn } from '../chat/transcript-turns';
 import { formatTurnSummary, narrationSentence, summarizeTurn, type TurnSummary } from '../chat/turn-summary';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
@@ -43,16 +43,20 @@ let nextId = 0;
  * history backfill, and message actions all retain the same nodes and indices.
  * The disclosure controls those rows via aria-controls and a visibility class.
  */
-export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming: () => boolean): void {
+export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming: () => boolean, options: { view?: ChatView; expanded?: Set<number>; isolated?: boolean } = {}): void {
   const view = mount.ownerDocument.defaultView;
   if (!view) return;
   const previous = controllers.get(mount);
   if (previous?.chat === chat) { previous.sync(); return; }
   previous?.dispose();
-  const disposeScrollLayout = observeChatScrollLayout(mount);
+  const disposeScrollLayout = options.isolated ? () => {} : observeChatScrollLayout(mount);
   const groups = new Map<number, WorkGroup>();
-  const expanded = expandedByChat.get(chat) ?? new Set<number>();
-  expandedByChat.set(chat, expanded);
+  const expanded = options.expanded ?? expandedByChat.get(chat) ?? new Set<number>();
+  if (!options.expanded) expandedByChat.set(chat, expanded);
+  const chatView = () => options.view ?? getChatView();
+  const syncRunStatus = (duration: string | null, toolCount?: number) => {
+    if (!options.isolated) paintRunStatus(duration, toolCount);
+  };
   let closedToolDetails = new WeakSet<Element>();
   let closedThoughts = new WeakSet<Element>();
   let frame: number | undefined;
@@ -122,6 +126,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
   }
 
   function syncTurnChangeActions(): void {
+    if (options.isolated) return;
     void import('./code-change-strip-actions').then((m) => m.syncCodeChangeStripActionsVisibility(chat));
     void import('./composer-undo').then((m) => m.syncComposerUndoFromActiveChat());
   }
@@ -169,8 +174,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     // A live turn draws its steps in place; the composer status line carries elapsed time.
-    const show = full || group.expanded || live;
-    group.button.classList.toggle('chat-work--live-hidden', live);
+    const show = full || group.expanded || live && !options.isolated;
+    group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
     group.button.setAttribute('aria-expanded', String(show));
     // Full view is deliberately always open; no misleading collapse affordance.
     group.button.disabled = full;
@@ -219,7 +224,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     // Thousands of ids on a long run; rewriting them each sync churns the accessibility tree.
     setAttr(group.button, 'aria-controls', controlled.join(' '));
     paintSteps(activity, full, live);
-    if (live) paintRunStatus(duration, turn.toolCount);
+    if (live) syncRunStatus(duration, turn.toolCount);
     for (const row of rows) {
       const toolDetails = [
         ...(row.matches('.tool-call-batch') ? [row as HTMLDetailsElement] : []),
@@ -268,7 +273,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     observer.disconnect();
     if (timer) { clearTimeout(timer); timer = undefined; }
     liveView = null;
-    const full = getChatView() === 'full';
+    const full = chatView() === 'full';
     mount.classList.add('chat-thread');
     mount.dataset.chatView = full ? 'full' : 'compact';
     const turns = collectTranscriptTurns(chat);
@@ -288,7 +293,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       buckets.set(current, bucket);
     }
     const streaming = isStreaming();
-    if (!streaming) paintRunStatus(null);
+    if (!streaming) syncRunStatus(null);
     const primaryFork = primaryTurnFork(turns, streaming);
     const activeCompactions = new Set(Array.from(
       mount.querySelectorAll<HTMLElement>(':scope > .compaction-divider:not(.compaction-divider--superseded)'),
@@ -336,15 +341,16 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     setText(view.group.label, workingLabel(duration));
     setText(view.group.activity, liveActivityText(mount, view.rows, view.assistants));
     setAttr(view.group.button, 'aria-label', workAriaLabel(view.group, view.ariaTail));
-    paintRunStatus(duration, view.turn.toolCount);
+    syncRunStatus(duration, view.turn.toolCount);
     scheduleTick();
   }
 
   function onPreference(): void {
+    if (options.view) return;
     if (!mount.isConnected) { dispose(); return; }
     closedToolDetails = new WeakSet<Element>();
     closedThoughts = new WeakSet<Element>();
-    if (getChatView() === 'compact') {
+    if (chatView() === 'compact') {
       expanded.clear();
       for (const group of groups.values()) group.expanded = false;
     }
@@ -357,7 +363,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     for (const group of groups.values()) { group.button.remove(); group.card?.remove(); group.presentedFiles?.remove(); group.foot?.remove(); group.todos?.remove(); }
     for (const row of mount.querySelectorAll('.chat-work-hidden')) row.classList.remove('chat-work-hidden');
     clearSteps(mount);
-    paintRunStatus(null);
+    syncRunStatus(null);
     if (frame !== undefined) view!.cancelAnimationFrame(frame);
     if (timer) clearTimeout(timer);
     view!.removeEventListener(CHAT_VIEW_CHANGED, onPreference);

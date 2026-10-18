@@ -120,8 +120,9 @@ import {
   isIssuesDetailEditing,
   openIssueDetail,
   refreshIssueDetailIfOpen,
+  setIssueDetailNavigation,
+  navigateIssueDetail,
 } from './issues-detail';
-import { collapseIssueDetailSheet } from './issues-detail-layout';
 import {
   closeIssueExpandOverlay,
   createIssueExpandButton,
@@ -1989,7 +1990,7 @@ export function setIssuesRouteHash(next: string): void {
 /** Navigate hash + open detail for an issue. */
 function navigateToIssueDetail(issueId: string): void {
   focusedIssueId = issueId;
-  pendingIssueId = issueId;
+  pendingIssueId = undefined;
   openIssueDetail(issueId);
   setIssuesRouteHash(`#/app/issues/${issueId}`);
   document.querySelectorAll('.issues-row.is-selected, .issues-card.is-selected').forEach((el) => {
@@ -2741,16 +2742,32 @@ async function openIssueAgentChat(issueId: string): Promise<void> {
   switchChat(chatId);
 }
 
-/** Issues keyboard map (suppressed by isTypingTarget): j/k or arrows — move selection Enter — peek; Escape — restore expanded peek, then close peek / clear multi-select s status, p priority, u assignee, l labels, g project A — assign an agent (plan, board, worktree, PR); answer it when it is waiting Y — accept triage (backlog + triagedAt) N or Backspace — decline triage when the focused card is unreviewed C — new issue E — expand focused issue (sparkles rewrite) Alt+↑/↓ — rank within the group/column Shift+←/→ — move board column (status) / */
+/** List shortcuts move focus; an open detail panel turns plain arrows/j/k into issue browsing. Editors and menus retain their keyboard controls. */
 function onIssuesKeydown(event: KeyboardEvent): void {
   if (!isIssuesPageOpen()) return;
-  if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+  if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey) return;
+  if (isContextMenuOpen() || isAppDialogOpen() || isNewFormOpen()) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], .issues-labels-popover, .issues-labels-add-popover, .issues-labels-overflow, .issues-label-color-picker')) return;
+  if (getSelectedIssueId() && event.key === 'Escape' && !isIssueExpandOverlayOpen()) {
+    event.preventDefault();
+    closeIssueDetail();
+    setIssuesRouteHash('#/app/issues');
+    renderIssuesPanel();
+    return;
+  }
   if (isTypingTarget(event.target)) return;
-  if (isContextMenuOpen() || isAppDialogOpen()) return;
   if (isIssueExpandOverlayOpen()) {
     if (event.key === 'Escape') {
       event.preventDefault();
       closeIssueExpandOverlay();
+    }
+    return;
+  }
+  if (getSelectedIssueId()) {
+    if (!event.altKey && !event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'j' || event.key === 'k')) {
+      event.preventDefault();
+      navigateIssueDetail(event.key === 'ArrowUp' || event.key === 'k' ? -1 : 1);
     }
     return;
   }
@@ -2785,16 +2802,6 @@ function onIssuesKeydown(event: KeyboardEvent): void {
     if (isNewFormOpen()) {
       event.preventDefault();
       setNewFormOpen(false);
-      return;
-    }
-    if (collapseIssueDetailSheet()) {
-      event.preventDefault();
-      return;
-    }
-    if (getSelectedIssueId()) {
-      closeIssueDetail();
-      setIssuesRouteHash('#/app/issues');
-      renderIssuesPanel();
       return;
     }
     if (selectedIssueIds.size > 0) {
@@ -2914,6 +2921,7 @@ function unbindIssuesCommands(): void {
 let staticBindingsDone = false;
 
 function bindStaticControls(): void {
+  setIssueDetailNavigation({ issueIds: () => visibleIssueOrder().map((issue) => issue.id), onNavigate: navigateToIssueDetail });
   const root = getRoot();
   if (!root || staticBindingsDone) return;
   staticBindingsDone = true;
@@ -3145,6 +3153,7 @@ function onHashChange(): void {
   if (hash === '#/app/issues' || hash.startsWith('#/app/issues/')) {
     const match = hash.match(/^#\/app\/issues\/([\w-]+)/);
     const segment = match?.[1];
+    if (isIssuesPageOpen() && segment && segment === getSelectedIssueId()) return;
     void openIssues({
       issueId: segment && segment !== 'projects' ? segment : undefined,
       screen: segment === 'projects' ? 'projects' : 'issues',
