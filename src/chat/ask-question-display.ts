@@ -1,3 +1,4 @@
+import { getSharedChatHost } from '../ui/shared-chat-host-state';
 import { expertsPageOpen } from '../app-state';
 import { resolveIssueChatQuestionHost } from './issue-chat-host';
 import { resolveHomeQuestionHost } from '../home/question-host';
@@ -60,6 +61,7 @@ export function subscribeAskQuestionDisplayContext(
 export function isAskQuestionDomVisible(chatId: string): boolean {
   const trimmed = chatId.trim();
   if (!trimmed) return false;
+  if (getSharedChatHost(trimmed)) return true;
   if (resolveIssueChatQuestionHost(trimmed)) return true;
   if (resolveHomeQuestionHost(trimmed)) return true;
 

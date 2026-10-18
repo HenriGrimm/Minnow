@@ -1,4 +1,5 @@
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
+import type { createBoardFromPlan } from '../orchestrator/client';
 
 /** What a plan launch resolved to. No chat row — V2 boards are journals. */
 export interface BoardLaunchResult {
@@ -8,12 +9,13 @@ export interface BoardLaunchResult {
 /** Create a V2 board from a plan file and open the Boards surface on it. */
 export async function launchBoardFromPlan(
   planPath: string,
+  options: Parameters<typeof createBoardFromPlan>[1] = {},
 ): Promise<BoardLaunchResult | null> {
   const norm = normalizeOrchestratePlanPath(planPath);
   if (!norm) return null;
 
   const { createAndShowBoardFromPlan } = await import('../orchestrator/boards-view');
-  const creation = createAndShowBoardFromPlan(norm);
+  const creation = createAndShowBoardFromPlan(norm, options);
   const { navigateToCodeBoards } = await import('../os/router');
   navigateToCodeBoards();
 

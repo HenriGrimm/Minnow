@@ -1,3 +1,5 @@
+import { findToolWrapInDom } from '../tools/tool-wrap-dom';
+import { getActiveChatMountElement } from '../ui/chat-mount';
 import type { TurnEvent } from '../../server/runner/run-turn';
 import {
   cancelAssistantBubbleRenderDebounce,
@@ -482,6 +484,10 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
           host.chatId,
         );
       }
+      if (host.chatId && sessionState && !host.isDomVisible && originStreamVisible()) {
+        const mount = getActiveChatMountElement();
+        if (mount !== host.mount) { roundToolItems = []; roundToolBatch = null; host.mount = mount; }
+      }
       const item = { name: event.name, wrap };
       roundToolItems.push(item);
       if (roundToolItems.length === 1) {
@@ -499,7 +505,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
         ? event.id
         : [...toolWraps.keys()].find((k) => k.startsWith(`${event.name}:`));
       const captured =
-        (event.id && toolWraps.get(event.id)) || (key ? toolWraps.get(key) : undefined);
+        (event.id && toolWraps.get(event.id)) || (key ? toolWraps.get(key) : undefined)
+        || (originStreamVisible() && event.id ? findToolWrapInDom(event.id, getActiveChatMountElement()) : null);
       const args =
         (event.id && argsById.get(event.id)) || (key ? argsById.get(key) : undefined);
       const content = displayToolResultContent(event);

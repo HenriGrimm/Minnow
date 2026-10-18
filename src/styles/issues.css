@@ -63,12 +63,12 @@
   width: 100%;
 }
 
-.main-column.main-column--issues .input-bar,
-.main-column.main-column--issues .tool-approval-host,
-.main-column.main-column--issues .question-host,
-.main-column.main-column--issues .code-change-strip-wrap,
-.main-column.main-column--issues .chat-jump-latest,
-.main-column.main-column--issues .stats-strip {
+.main-column.main-column--issues > .input-bar,
+.main-column.main-column--issues > .tool-approval-host,
+.main-column.main-column--issues > .question-host,
+.main-column.main-column--issues > .code-change-strip-wrap,
+.main-column.main-column--issues > .chat-viewport > .chat-viewport-dock .chat-jump-latest,
+.main-column.main-column--issues > .stats-strip {
   display: none;
 }
 
@@ -4485,3 +4485,7 @@ button.issues-detail__row:focus-visible {
 @media (pointer: coarse) {
   .issues-detail__navigation .issues-detail__icon-btn, .issues-detail__property > .issues-detail__prop { min-width: 44px; min-height: 44px; }
 }
+
+.issues-plan-preview { min-width: 0; margin-block: 20px; line-height: 1.65; overflow-wrap: anywhere; }
+.issues-plan-preview__path { color: var(--mn-fg-muted); font-size: 12px; }
+.issues-plan-preview__content pre { max-width: 100%; overflow: auto; }

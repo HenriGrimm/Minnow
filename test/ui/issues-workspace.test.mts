@@ -1,3 +1,7 @@
+import { installHappyDomGlobals } from '../os/dom-helpers.mts';
+import { renderChatFromHistory } from '../../src/ui/messages.ts';
+import { registerStreamDomRemount } from '../../src/tools/stream-chat-dom.ts';
+import { setAssistantBubbleContent } from '../../src/markdown/renderer.ts';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
@@ -19,7 +23,7 @@ const originalFetch = globalThis.fetch;
 const { mountIssueWorkspace } = await import('../../src/ui/issues-work-panel.ts');
 let dom: Window;
 let mounted: ReturnType<typeof mountIssueWorkspace> | undefined;
-const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 60));
 const click = (label: string) => {
   const button = [...document.querySelectorAll<HTMLButtonElement>('button')].find((node) => node.textContent?.trim() === label);
   assert.equal(Boolean(button), true, `Missing button: ${label}`);
@@ -29,6 +33,10 @@ const click = (label: string) => {
 beforeEach(() => {
   dom = new Window({ url: 'http://localhost/' });
   Object.assign(globalThis, { window: dom, document: dom.document, localStorage: dom.localStorage, HTMLElement: dom.HTMLElement, Element: dom.Element, Node: dom.Node, NodeFilter: dom.NodeFilter });
+  installHappyDomGlobals(dom);
+  globalThis.cancelAnimationFrame = dom.cancelAnimationFrame.bind(dom);
+  document.body.innerHTML = '<div id=mainColumn><div class=input-bar><textarea id=msgInput></textarea><button id=sendBtn></button></div></div>';
+  localStorage.setItem(APPEARANCE_STORAGE_KEYS.chatView, 'compact');
   DOMPurify.sanitize = DOMPurify(dom as any).sanitize;
   setLocalServerAvailableForTests(true);
   globalThis.fetch = async (_url, init) => {
@@ -54,7 +62,7 @@ beforeEach(() => {
   editor.value = 'Unsubmitted editor contents'; doc.append(editor); body.append(doc); panel.append(sticky, body); document.body.append(panel);
   mounted = mountIssueWorkspace({ panel, sticky, document: doc, issueBody: body, issue, tab: 'Issue', onTab: () => {}, onStartChat: () => {} });
 });
-afterEach(() => { mounted?.dispose(); mounted = undefined; streamingChatIds.clear(); notifyChatStreamEnded('issue-chat'); disposeChatRunActivity(); setIssuesStateForTests(null); setLocalServerAvailableForTests(false); globalThis.fetch = originalFetch; dom.happyDOM.abort(); });
+afterEach(() => { mounted?.dispose(); mounted = undefined; registerStreamDomRemount('issue-chat', null); streamingChatIds.clear(); notifyChatStreamEnded('issue-chat'); disposeChatRunActivity(); setIssuesStateForTests(null); setLocalServerAvailableForTests(false); globalThis.fetch = originalFetch; dom.happyDOM.abort(); });
 
 function toolHistory() {
   return [
@@ -76,7 +84,7 @@ test('work inspection failures show recovery without the start-chat empty state'
   assert.equal(calls.length, 0);
 });
 
-test('linked chats reuse the compact main transcript without changing the active Code chat', async () => {
+test('linked chats use the main transcript appearance and active composer context', async () => {
   const linked = sessionState!.chats[0];
   linked.history = toolHistory();
   const active = createEmptyChatObject('model', 'C:/other');
@@ -90,27 +98,25 @@ test('linked chats reuse the compact main transcript without changing the active
   const status = document.createElement('div'); status.id = 'composerRunStatus'; status.hidden = false;
   document.body.append(main, empty, status);
   click('Chat'); await flush();
-  const transcript = document.querySelector<HTMLElement>('.issues-work-chat__transcript')!;
-  assert.equal(transcript.dataset.chatView, 'compact');
-  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'false');
-  assert.equal(transcript.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), true);
+  const transcript = document.querySelector<HTMLElement>('.shared-chat-host__transcript')!;
+  assert.equal(transcript.dataset.chatView, 'full');
+  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'true');
+  assert.equal(transcript.querySelector('.tool-call-msg')!.classList.contains('chat-work-hidden'), false);
   assert.equal(transcript.querySelector('.chat-turn-final strong')!.textContent, 'fixed');
   assert.match(transcript.querySelector('.tool-call-msg')!.textContent!, /Original header contents/);
-  assert.equal(sessionState!.activeId, active.id);
+  assert.equal(sessionState!.activeId, linked.id);
   assert.equal(main.textContent, 'Keep Code here');
-  assert.equal(empty.isConnected, true);
-  assert.equal(status.hidden, false);
   assert.equal(localStorage.getItem(APPEARANCE_STORAGE_KEYS.chatView), 'full');
 });
 
 test('work disclosures retain the reader choice across transcript updates and tab changes', async () => {
   sessionState!.chats[0].history = toolHistory();
   click('Chat'); await flush();
-  document.querySelector<HTMLButtonElement>('.issues-work-chat__transcript .chat-work')!.click();
+  document.querySelector<HTMLButtonElement>('.shared-chat-host__transcript .chat-work')!.click();
   setChatRunActivity('issue-chat', 'completed');
-  assert.equal(document.querySelector('.issues-work-chat__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
+  assert.equal(document.querySelector('.shared-chat-host__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
   click('Issue'); click('Chat'); await flush();
-  assert.equal(document.querySelector('.issues-work-chat__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
+  assert.equal(document.querySelector('.shared-chat-host__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
 });
 
 test('long issue chats backfill in order and cancel pending work when leaving Chat', async () => {
@@ -120,7 +126,7 @@ test('long issue chats backfill in order and cancel pending work when leaving Ch
   dom.cancelIdleCallback = (id) => { pending.delete(id); };
   sessionState!.chats[0].history = Array.from({ length: 80 }, (_, index) => ({ role: 'user', content: `Message ${index}` }));
   click('Chat'); await flush();
-  const transcript = document.querySelector('.issues-work-chat__transcript')!;
+  const transcript = document.querySelector('.shared-chat-host__transcript')!;
   assert.equal(transcript.querySelectorAll('.msg.user').length, 30);
   while (pending.size) {
     const [id, callback] = pending.entries().next().value!;
@@ -143,37 +149,38 @@ test('streaming prose stays inside the shared work disclosure and settles into a
   streamingChatIds.add(linked.id);
   let delta = 'Checking **verification**.';
   registerChatStreamText(linked.id, () => ({ lastDelta: delta, lastThinking: '', toolCallCount: 1 }));
+  let liveRow: HTMLElement | undefined;
+  registerStreamDomRemount(linked.id, row => { liveRow = row.bubble; setAssistantBubbleContent(row.bubble, delta, { streaming: true }); });
   click('Chat'); await flush();
-  const transcript = document.querySelector<HTMLElement>('.issues-work-chat__transcript')!;
-  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'false');
+  const transcript = document.querySelector<HTMLElement>('.shared-chat-host__transcript')!;
+  assert.equal(transcript.querySelector('.chat-work')!.getAttribute('aria-expanded'), 'true');
   const live = transcript.querySelector<HTMLElement>('.msg.assistant:last-child')!;
-  assert.equal(live.classList.contains('chat-work-hidden'), true);
+  assert.equal(live.classList.contains('chat-work-hidden'), false);
   assert.equal(live.querySelector('strong')!.textContent, 'verification');
   transcript.querySelector<HTMLButtonElement>('.chat-work')!.click();
   delta = 'Verification **passed**.';
+  setAssistantBubbleContent(liveRow!, delta, { streaming: true });
   notifyChatStreamActivity(linked.id); await flush();
   assert.equal(live.querySelector('strong')!.textContent, 'passed');
   assert.equal(live.classList.contains('chat-work-hidden'), false);
   linked.history.push({ role: 'assistant', content: 'The header is **fixed**.' });
   streamingChatIds.delete(linked.id);
-  notifyChatStreamEnded(linked.id); await flush();
+  notifyChatStreamEnded(linked.id); renderChatFromHistory(linked); await flush();
   assert.equal(transcript.querySelector('.chat-turn-final strong')!.textContent, 'fixed');
   assert.equal(transcript.querySelector('.chat-turn-final')!.classList.contains('chat-work-hidden'), false);
 });
 
 test('tabs preserve the existing issue editor and show the same linked chat', async () => {
-  const editor = document.querySelector('textarea')!;
+  const editor = document.querySelector<HTMLTextAreaElement>('.issues-detail__document textarea') ?? [...document.querySelectorAll('textarea')].find(el => el.id !== 'msgInput')!;
   click('Work'); await flush();
   assert.equal(editor.value, 'Unsubmitted editor contents');
   click('Chat'); await flush();
   assert.match(document.querySelector('.issues-work-content')!.textContent!, /Fixed\. The regression test passed/);
-  const composer = document.querySelector<HTMLFormElement>('.issues-work-chat__composer')!;
-  assert.equal(composer.hidden, false);
-  assert.equal(composer.previousElementSibling, document.querySelector('.issues-work-content'));
-  assert.equal(composer.nextElementSibling, document.querySelector('.issues-work-footer'));
+  const composer = document.querySelector('.input-bar')!;
+  assert.equal(composer.parentElement?.classList.contains('shared-chat-host'), true);
   click('Issue');
-  assert.equal(composer.hidden, true);
-  assert.equal(document.querySelector('textarea') === editor, true);
+  assert.equal(composer.parentElement?.id, 'mainColumn');
+  assert.equal(editor.isConnected, true);
   assert.equal(editor.value, 'Unsubmitted editor contents');
 });
 
@@ -208,4 +215,25 @@ test('delivery waits for another chat working in the same checkout', async () =>
   assert.match(document.body.textContent!, /A chat is working in this checkout/);
   assert.equal([...document.querySelectorAll('button')].some((node) => node.textContent?.trim() === 'Commit & merge'), false);
   assert.equal(calls.some((entry) => entry.action === 'Merge'), false);
+});
+
+
+test('Chat borrows the wired composer and returns the same controls on close', async () => {
+  const bar = document.querySelector('.input-bar')!;
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+  const send = document.getElementById('sendBtn')!;
+  let clicks = 0;
+  send.addEventListener('click', () => clicks++);
+  click('Chat'); await flush();
+  assert.equal(document.querySelector('.shared-chat-host .input-bar'), bar);
+  assert.equal(document.querySelectorAll('#msgInput').length, 1);
+  send.click(); assert.equal(clicks, 1);
+  input.value = 'Unsent follow-up';
+  click('Issue');
+  assert.equal(bar.parentElement?.id, 'mainColumn');
+  assert.equal(input.value, 'Unsent follow-up');
+  click('Chat'); await flush();
+  assert.equal(document.querySelector('.shared-chat-host #msgInput'), input);
+  assert.equal(input.value, 'Unsent follow-up');
+  send.click(); assert.equal(clicks, 2);
 });

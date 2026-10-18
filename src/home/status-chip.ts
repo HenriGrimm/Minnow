@@ -9,7 +9,7 @@ import { el } from './dom';
 export function updateHomeStatus(chip: HTMLElement, state?: HomeIssueRun['state'], phase?: string): void {
   const current = phase === 'awaiting_input' ? 'asking' : state || phase || 'idle';
   const actions: Partial<Record<string, IconName>> = { asking: 'comment', conflict: 'gitMerge', rebasing: 'gitRebase', mergequeued: 'gitMerge', merging: 'gitMerge', paused: 'stop', canceled: 'stop', held: 'link', waitslot: 'clock', queued: 'clock', failed: 'statusFail' };
-  const role = current === 'done' ? 'done' : current === 'ready' || current === 'review' ? 'review' : current === 'working' || current === 'running' ? 'in_progress' : 'todo';
+  const role = current === 'done' ? 'done' : current === 'planned' ? 'planned' : current === 'ready' || current === 'review' ? 'review' : current === 'working' || current === 'running' ? 'in_progress' : 'todo';
   const status = getIssuesTaxonomySync().statuses.find(item => item.role === role);
   chip.dataset.state = current;
   chip.replaceChildren(actions[current] ? createIcon(actions[current]!) : createIssueTypeIconElement(resolveIssueStatusIcon(role, status)), el('span', stateLabel(state, phase)));

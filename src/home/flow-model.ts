@@ -12,6 +12,8 @@ export function flowColumn(issue: IssueCard, taxonomy: IssuesTaxonomy): FlowColu
   const status = taxonomy.statuses.find(s => s.id === issue.status);
   if (status?.role === 'canceled') return null;
   if (status?.role === 'done' || issue.agent?.home?.state === 'done') return 'done';
+  if (issue.agent?.home?.boardId) return status?.role === 'review' ? 'review' : 'progress';
+  if (issue.agent?.home?.state === 'planned') return 'ready';
   if (issue.agent?.home && ['ready', 'conflict', 'mergequeued', 'merging'].includes(issue.agent.home.state)) return 'review';
   if (status?.role === 'review') return 'review';
   if (issue.agent?.home && issue.agent.home.state !== 'held' || status?.role === 'in_progress') return 'progress';
@@ -57,7 +59,7 @@ export function batchIssues(issues: IssueCard[]): IssueCard[][] {
 
 export function stateLabel(state: HomeIssueRun['state'] | undefined, phase?: string): string {
   if (!state) return phase === 'awaiting_input' ? 'needs your answer' : phase === 'review' ? 'ready for review' : phase === 'running' ? 'working' : phase === 'failed' ? 'needs attention' : 'not started';
-  return ({ held: 'held', waitslot: 'queued · waiting for a slot', working: phase === 'awaiting_input' ? 'needs your answer' : 'working', paused: 'paused', ready: 'ready for review', conflict: 'merge conflict', rebasing: 'rebasing', mergequeued: 'queued to merge', merging: 'merging', done: 'merged', failed: 'needs attention' })[state];
+  return ({ held: 'held', waitslot: 'queued · waiting for a slot', working: phase === 'awaiting_input' ? 'needs your answer' : 'working', paused: 'paused', planned: 'Planned', ready: 'ready for review', conflict: 'merge conflict', rebasing: 'rebasing', mergequeued: 'queued to merge', merging: 'merging', done: 'merged', failed: 'needs attention' })[state];
 }
 
 export interface DraftTask { title: string; description: string; files: string[] }

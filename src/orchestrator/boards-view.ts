@@ -509,11 +509,11 @@ export async function mountBoardFromPlan(
   }
 }
 
-export async function createAndShowBoardFromPlan(planPath: string): Promise<{ boardId: string } | null> {
+export async function createAndShowBoardFromPlan(planPath: string, options: Parameters<typeof createBoardFromPlan>[1] = {}): Promise<{ boardId: string } | null> {
   await openBoardsView({ fromPlan: true });
   if (!surface) return null;
   selectBoard(null);
-  return mountBoardFromPlan(surface.boardPane, planPath, { onCreated: showBoard });
+  return mountBoardFromPlan(surface.boardPane, planPath, { onCreated: showBoard, createBoard: (path, overrides) => createBoardFromPlan(path, { ...options, ...overrides }) });
 }
 
 function openStream(url: string): EventSource {

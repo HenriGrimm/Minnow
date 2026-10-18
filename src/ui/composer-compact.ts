@@ -377,7 +377,7 @@ function positionFixedPanel(anchor: HTMLElement, panel: HTMLElement, align: 'sta
     top = rect.bottom + gap;
   }
 
-  const column = document.getElementById('mainColumn');
+  const column = getInputBar()?.closest('.main-column') ?? document.getElementById('mainColumn');
   const columnRect = column?.getBoundingClientRect();
   const preferredLeft = align === 'end' ? rect.right - width : rect.left;
   const placed = clampComposerOverflowPlacement(

@@ -1,3 +1,4 @@
+import { getSharedChatHost } from './shared-chat-host-state';
 import { getForegroundAppId } from '../os/instances';
 const GLOBAL_PROMPT_HOST_IDS = new Set(['globalToolApprovalHost', 'globalQuestionHost']);
 
@@ -13,6 +14,7 @@ export function isPromptHostVisible(host: HTMLElement | null): boolean {
 /** True when the host's owning chat shell is on screen. */
 export function isPromptHostShellVisible(host: HTMLElement): boolean {
   if (GLOBAL_PROMPT_HOST_IDS.has(host.id)) return true;
+  if (getSharedChatHost()?.shell.contains(host)) return true;
 
   const chatView = host.closest('#chatView');
   if (chatView) {
@@ -73,6 +75,7 @@ export function resolveQuestionHost(): HTMLElement | null {
 
 /** Composer shell that should hide its input row while a prompt strip is open. */
 export function resolvePromptComposerShell(): HTMLElement | null {
+  if (getSharedChatHost()) return getSharedChatHost()!.shell;
   if (isLegacyChatAppOpen()) {
     return document.querySelector('.chat-app-composer');
   }

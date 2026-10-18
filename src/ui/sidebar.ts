@@ -1,3 +1,4 @@
+import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { runSettingsAction } from './settings-controls';
 ﻿import { reportBackgroundError } from '../boot/report-background-error';
@@ -1481,6 +1482,7 @@ function paintActiveChatInForegroundShell(chat: Chat): void {
     renderChatFromHistory(chat, '#chatAppMessageCol');
     return;
   }
+  if (getSharedChatHost(chat.id)) { renderChatFromHistory(chat); return; }
   if (
     dismissCodeOverviewForNavigation() ||
     dismissDevServerScreenForNavigation()
@@ -1521,10 +1523,11 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
 }
 
 export async function switchChat(id: string): Promise<void> {
-  if (document.getElementById('codeMapChatSidebar')) {
+  const sharedHost = getSharedChatHost(id);
+  if (!sharedHost && document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
   }
-  restoreChatColumnOnChatSelect();
+  if (!sharedHost) restoreChatColumnOnChatSelect();
   void import('../ui/chat-scroll').then((m) => m.invalidateChatScrollRootCache());
   void import('../agents/sub-agent-completion-push')
     .then((m) => m.flushAllPendingSubAgentCompletions())
@@ -1532,7 +1535,7 @@ export async function switchChat(id: string): Promise<void> {
   void import('../agents/orchestrator')
     .then((m) => m.hydrateSubAgentRunsForParentChat(id))
     .catch((err) => reportBackgroundError('sub-agent-hydrate', err));
-  if (isOrchestrateHubMounted()) {
+  if (!sharedHost && isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
   }
   if (sessionState?.activeId) {
@@ -1545,13 +1548,13 @@ export async function switchChat(id: string): Promise<void> {
   }
 
   const boardChatEmbedOpen = isBoardChatEmbedOpenForChat(id);
-  const issuesEmbedded = document.getElementById('chatArea')?.classList.contains('chat-area--issues');
+  const issuesEmbedded = !sharedHost && document.getElementById('chatArea')?.classList.contains('chat-area--issues');
   if (issuesEmbedded) {
     const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
     teardownIssuesEmbedBeforeChatPaint();
   }
 
-  const boardRestoreGroup = boardChatEmbedOpen
+  const boardRestoreGroup = boardChatEmbedOpen || sharedHost
     ? undefined
     : resolveBoardRestoreGroupOnSwitch(id);
   if (boardRestoreGroup) {
@@ -1572,7 +1575,7 @@ export async function switchChat(id: string): Promise<void> {
     return;
   }
 
-  const boardWasOpen = boardChatEmbedOpen ? false : exitBoardViewForNavigation();
+  const boardWasOpen = boardChatEmbedOpen || sharedHost ? false : exitBoardViewForNavigation();
 
   if (id === sessionState.activeId) {
     acknowledgeChatViewed(id);
@@ -1583,6 +1586,7 @@ export async function switchChat(id: string): Promise<void> {
     const devServerScreenOpen = isDevServerScreenOpen();
     const chatSurfaceEmpty = document.getElementById('chatArea')?.childElementCount === 0;
     if (
+      sharedHost ||
       boardWasOpen ||
       planScreenSuspendedForSameChat ||
       codeOverviewOpen ||
@@ -1593,6 +1597,16 @@ export async function switchChat(id: string): Promise<void> {
       if (sameChat) {
         await ensureChatHistoryLoaded(id);
         if (sessionState.activeId !== id) return;
+        if (sharedHost) {
+          syncModelSelectForActiveChat();
+          syncModeSelectorFromActiveChat();
+          syncComposerReasoningEffortFromActiveChat();
+          syncComposerPinnedSkillFromActiveChat();
+          syncComposerRunTargetFromActiveChat();
+          syncChatLinkChipsFromActiveChat();
+          void bootGenerationResumeForChat(sameChat);
+          void resumeIncompleteToolBatchOnChatSwitch(sameChat);
+        }
         paintActiveChatInForegroundShell(sameChat);
         syncViewModeToggleFromActiveChat();
         syncComposerFromStreamingState();

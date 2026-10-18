@@ -1,3 +1,4 @@
+import { getSharedChatHost } from '../ui/shared-chat-host-state';
 import { expertsPageOpen, streamingChatIds } from '../app-state';
 import { getActiveChat } from '../state/sessions';
 import { isOrchestratePlanScreenSuppressingChatDom } from '../ui/orchestrate-plan-screen';
@@ -158,6 +159,7 @@ export function isBackgroundStreamBlockingSend(): boolean {
 export function isStreamDomVisible(chatId: string): boolean {
   const active = getActiveChat();
   if (active.id !== chatId) return false;
+  if (getSharedChatHost(chatId)) return true;
   if (isCodeMapChatOpenForChat(chatId)) return true;
   if (isBoardChatEmbedOpenForChat(chatId)) return true;
   if (isOrchestratePlanScreenSuppressingChatDom(chatId)) return false;

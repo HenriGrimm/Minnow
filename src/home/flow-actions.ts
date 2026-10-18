@@ -1,3 +1,4 @@
+import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
 import type { Chat, HomeIssueRun, IssueCard } from '../types';
 import { getChatAbort, streamingChatIds } from '../app-state';
 import { ensureSessionsReady, ensureChatHistoryLoaded, sessionState, scheduleSaveSessions, touchChat } from '../state/sessions';
@@ -10,12 +11,15 @@ import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { getAutopilotMetaSync, loadAutopilotMeta } from '../config/autopilot-meta';
 import { getRouterConfigSync } from '../models/routers';
 import { createManagedChatWorktree } from '../state/chat-worktree';
-import { buildIssueContextBlock } from '../chat/issues/workflow-seeds';
+import { findLastPlanSavePath } from '../chat/plans/plan-from-history';
+import { buildIssueContextBlock, buildIssuesPlanSeed, resolveIssuePlanPath } from '../chat/issues/workflow-seeds';
+import { readSavedIssuePlan } from '../issues/saved-plan';
 import { listMainTurnActivity } from '../chat/main-turn-activity';
 import { subscribeChatStreamEnd } from '../chat/streaming-state';
 import { batchIssues, blockers, flowColumn, issueChat } from './flow-model';
 
 const activeGroups = new Set<string>();
+const activeTurns = new Set<string>();
 let initialized = false, pumping = false;
 let mergeBusy = false;
 const listeners = new Set<() => void>();
@@ -28,8 +32,13 @@ function members(issue: IssueCard): IssueCard[] {
 function patchGroup(issue: IssueCard, state: HomeIssueRun['state'], error?: string): void {
   for (const item of members(issue)) {
     const home = item.agent!.home!;
-    updateIssueAgentRun(item.id, { home: { ...home, state }, phase: state === 'done' ? 'done' : state === 'ready' || state === 'conflict' ? 'review' : state === 'failed' ? 'failed' : state === 'held' || state === 'waitslot' ? 'queued' : state === 'paused' ? 'canceled' : 'running', error });
-    if (state === 'ready' || state === 'conflict' || state === 'mergequeued' || state === 'merging') updateIssue(item.id, { status: requireIssueStatusForRole('review') });
+    updateIssueAgentRun(item.id, { home: { ...home, state }, phase: state === 'done' ? 'done' : state === 'planned' || state === 'ready' || state === 'conflict' ? 'review' : state === 'failed' ? 'failed' : state === 'held' || state === 'waitslot' ? 'queued' : state === 'paused' ? 'canceled' : 'running', error });
+    if (state === 'planned') {
+      const chat = issueChat(item, sessionState?.chats ?? []);
+      const planPath = item.planPath || (chat && findLastPlanSavePath(chat.history));
+      updateIssue(item.id, { status: requireIssueStatusForRole('planned'), ...(planPath ? { planPath } : {}) });
+    }
+    else if (state === 'ready' || state === 'conflict' || state === 'mergequeued' || state === 'merging') updateIssue(item.id, { status: requireIssueStatusForRole('review') });
     else if (state === 'done') updateIssue(item.id, { status: requireIssueStatusForRole('done') });
     else if (state !== 'held') updateIssue(item.id, { status: requireIssueStatusForRole('in_progress') });
   }
@@ -46,6 +55,20 @@ export function homeAgentSlots(): number {
 export function initHomeFlow(): void {
   if (initialized) return;
   initialized = true;
+  const observed = new Map<string, string>();
+  subscribeChatRunActivity(() => {
+    if (!isIssuesStoreLoaded()) return;
+    for (const group of batchIssues(collectIssues({ scope: 'all', hideDone: false }).filter(i => i.agent?.home))) {
+      const issue = group[0], chat = issueChat(issue, sessionState?.chats ?? []);
+      if (!chat || issue.agent?.home?.boardId || ['done', 'merging', 'mergequeued'].includes(issue.agent!.home!.state)) continue;
+      const status = getChatRunActivity(chat.id, chat);
+      const previous = observed.get(chat.id);
+      if (!status || status === previous) continue;
+      observed.set(chat.id, status);
+      if (status === 'running') patchGroup(issue, 'working');
+      else if (previous === 'running') patchGroup(issue, status === 'completed' ? chat.modeId === 'plan' ? 'planned' : 'ready' : status === 'failed' ? 'failed' : 'paused');
+    }
+  });
   subscribeIssuesChanges(() => { queueMicrotask(() => void pumpHomeQueue()); });
   subscribeChatStreamEnd(() => { queueMicrotask(() => void pumpHomeQueue()); });
   void loadAutopilotMeta().then(() => pumpHomeQueue()).catch(() => {});
@@ -112,25 +135,29 @@ async function startGroup(group: IssueCard[]): Promise<void> {
     const prepared = await preparation.json() as { ok: boolean; error?: string };
     if (!preparation.ok || !prepared.ok) throw new Error(prepared.error || 'Could not install the project dependencies.');
     if (findIssueById(issue.id)?.agent?.home?.state === 'paused') return;
-    const text = [home.mode === 'plan' ? 'Plan these issues. Stop for approval before implementation.' : 'Implement these issues in this chat’s worktree. Run the relevant checks, report their actual results, and commit the completed changes. Stop for review. Do not merge or remove the worktree.', ...group.map(buildIssueContextBlock), home.instructions || ''].join('\n\n');
+    const planPath = home.mode === 'plan' ? resolveIssuePlanPath(issue) : undefined;
+    if (planPath) for (const item of group) updateIssue(item.id, { planPath });
+    const text = [planPath ? buildIssuesPlanSeed(group, planPath) : ['Implement these issues in this chat’s worktree. Run the relevant checks, report their actual results, and commit the completed changes. Stop for review. Do not merge or remove the worktree.', ...group.map(buildIssueContextBlock)].join('\n\n'), home.instructions || ''].join('\n\n');
     await runHomeTurn(issue, chat, text, true);
   } catch (error) { patchGroup(issue, 'failed', error instanceof Error ? error.message : String(error)); }
 }
 
 async function runHomeTurn(issue: IssueCard, chat: Chat, text: string, first = false): Promise<void> {
+  activeTurns.add(chat.id);
   try {
     await ensureChatHistoryLoaded(chat.id);
     const { sendProgrammaticChatText } = await import('../chat/messaging');
     const snapshot = first ? { id: issue.id, title: issue.title, type: issue.type, description: issue.description, status: issue.status, priority: issue.priority, labels: issue.labels, workspacePath: issue.workspacePath } : undefined;
     await sendProgrammaticChatText(chat, text, { requireCompletedTurn: true, ownsGlobalStreaming: false, parseSlash: false, issue: snapshot });
     if (findIssueById(issue.id)?.agent?.home?.state === 'paused') return;
-    patchGroup(issue, 'ready');
+    patchGroup(issue, chat.modeId === 'plan' ? 'planned' : 'ready');
   } catch (error) {
     if (findIssueById(issue.id)?.agent?.home?.state !== 'paused') patchGroup(issue, 'failed', error instanceof Error ? error.message : String(error));
-  } finally { await saveIssuesNow(); }
+  } finally { activeTurns.delete(chat.id); await saveIssuesNow(); }
 }
 
 export async function replyHomeIssue(issue: IssueCard, text: string, build = false): Promise<void> {
+  if (issue.agent?.home?.boardId) throw new Error('Open the orchestrator board to continue this work.');
   if (issue.agent?.home?.state === 'done') throw new Error('This work is merged. Start a new issue or open the chat in Code for further changes.');
   const chat = issueChat(issue, sessionState?.chats ?? []);
   if (!chat) throw new Error('Open the linked chat to continue this issue.');
@@ -162,7 +189,11 @@ export function reconcileHomeFlow(): void {
   const all = collectIssues({ workspacePath: getWorkspacePath(), scope: 'current_workspace' });
   for (const group of batchIssues(all.filter(i => i.agent?.home))) {
     const issue = group[0], home = issue.agent!.home!, chat = sessionState.chats.find(c => c.id === issue.agent?.chatId);
-    if (activeGroups.has(home.groupId)) continue;
+    if (home.boardId) continue;
+    if (activeGroups.has(home.groupId) || activeTurns.has(chat?.id || '')) continue;
+    const activity = chat ? getChatRunActivity(chat.id, chat) : null;
+    if (activity === 'running') continue;
+    if (home.mode === 'plan' && (home.state === 'ready' || ['working', 'paused'].includes(home.state) && activity === 'completed')) { patchGroup(issue, 'planned'); continue; }
     if (['working', 'rebasing'].includes(home.state) && !chat?.currentGenerationId && !streamingChatIds.has(chat?.id || '')) patchGroup(issue, 'paused');
     if (home.state === 'merging' && !mergeBusy) patchGroup(issue, 'conflict', 'The merge was interrupted. Inspect the target and worktree in Source Control before approving again.');
   }
@@ -194,8 +225,45 @@ export async function addToHomeChat(issues: IssueCard[], chat: Chat): Promise<st
   return accepted.map(i => i.id);
 }
 
+/** Approve the saved format, retaining the project as the board's workspace. */
+export async function approveHomePlan(issue: IssueCard): Promise<void> {
+  const home = issue.agent?.home;
+  const chat = issueChat(issue, sessionState?.chats ?? []);
+  if (!home || home.mode !== 'plan' || !chat || !['planned', 'ready'].includes(home.state)) throw new Error('Finish planning before approving the plan.');
+  if (!workspacePathsEqual(issue.workspacePath, getWorkspacePath())) throw new Error('Open this issue’s project before approving the plan.');
+  if (home.boardId) {
+    const { openBoardsView, showBoard } = await import('../orchestrator/boards-view');
+    const { navigateToCodeBoards } = await import('../os/router');
+    await openBoardsView();
+    navigateToCodeBoards();
+    showBoard(home.boardId);
+    return;
+  }
+  if (streamingChatIds.has(chat.id)) throw new Error('Wait for the planning turn to finish.');
+  const plan = await readSavedIssuePlan(issue);
+  if (plan.type === 'invalid') throw new Error('The saved plan has an invalid planType. Revise it to Build or Orchestrate.');
+  if (plan.type === 'build') {
+    await replyHomeIssue(issue, `The plan in \`${plan.path}\` is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.`, true);
+    return;
+  }
+  if (!workspacePathsEqual(plan.workspaceRoot, issue.workspacePath)) {
+    const { executeTool } = await import('../tools/client');
+    const saved = await executeTool('save_file', { path: plan.path, content: plan.markdown }, { workspaceRoot: issue.workspacePath, modeId: 'plan' });
+    if (saved.content.startsWith('Error:')) throw new Error(saved.content);
+  }
+  const { launchBoardFromPlan } = await import('../ui/orchestrate-launch');
+  const launched = await launchBoardFromPlan(plan.path, { baseBranch: home.baseBranch, providerId: chat.providerId, id: chat.modelId });
+  if (!launched) throw new Error('Could not create the orchestrator board. The plan is preserved; try again.');
+  for (const item of members(issue)) {
+    updateIssueAgentRun(item.id, { home: { ...item.agent!.home!, boardId: launched.boardId }, phase: 'queued' });
+    updateIssue(item.id, { status: requireIssueStatusForRole('in_progress') });
+  }
+  await saveIssuesNow();
+  notify();
+}
+
 export async function approveHomeIssue(issue: IssueCard): Promise<void> {
-  if (!['ready', 'conflict'].includes(issue.agent?.home?.state || '')) return;
+  if (issue.agent?.home?.mode === 'plan' || !['ready', 'conflict'].includes(issue.agent?.home?.state || '')) return;
   if (issue.agent?.chatId && streamingChatIds.has(issue.agent.chatId)) throw new Error('Wait for the agent to finish before approving.');
   patchGroup(issue, 'mergequeued'); await saveIssuesNow();
   void drainHomeMerges();

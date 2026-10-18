@@ -13,7 +13,7 @@ import { getForegroundAppId, launchInstance, resetInstancesForTests } from '../.
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { createEmptyChatObject, sessionState } from '../../src/state/sessions.ts';
 
-test('Home issue dock uses the collapsed shared transcript without changing Code chat', async () => {
+test('Home issue dock uses the main transcript and selects its composer context', async () => {
   const win = new Window(); installHappyDomGlobals(win);
   const originalSanitize = DOMPurify.sanitize;
   DOMPurify.sanitize = DOMPurify(win as unknown as globalThis.Window).sanitize;
@@ -30,24 +30,25 @@ test('Home issue dock uses the collapsed shared transcript without changing Code
   const issue = addIssue({ title: 'Renderer regression', description: '**Context**\n\n- Preserve the chat.' });
   issue.agent = { agentId: 'builder', phase: 'completed', startedAt: 1, updatedAt: 1, chatId: linked.id };
   document.body.innerHTML = '<div id="chatArea"><p>Keep this conversation</p></div><div id="dock"></div>';
+  localStorage.setItem('minnow.chatView', 'compact');
   const code = document.querySelector('#chatArea p');
   const { mountIssueDock } = await import('../../src/home/flow-dock.ts');
   const dock = mountIssueDock(document.getElementById('dock')!, { issue, issues: [issue], workspace: '/repo', modelLabel: 'Default', start() {}, select() {}, addToChat() {} });
   try {
-    await new Promise(resolve => setTimeout(resolve, 40));
+    await new Promise(resolve => setTimeout(resolve, 150));
     dock.update();
     assert.equal(document.querySelector('.home-brief-markdown strong')?.textContent, 'Context');
     assert.equal(document.querySelector('.home-brief-markdown li')?.textContent, 'Preserve the chat.');
     assert.equal((document.querySelector('.home-issue-brief') as HTMLElement).hidden, true);
-    const work = document.querySelector<HTMLButtonElement>('.home-chat-transcript .chat-work')!;
+    const work = document.querySelector<HTMLButtonElement>('.shared-chat-host__transcript .chat-work')!;
     assert.ok(work, 'shared work disclosure is rendered');
     assert.equal(work.getAttribute('aria-expanded'), 'false');
-    assert.match(document.querySelector('.home-chat-transcript .chat-turn-final')!.textContent!, /The fix is complete/);
+    assert.match(document.querySelector('.shared-chat-host__transcript .chat-turn-final')!.textContent!, /The fix is complete/);
     work.click();
     assert.equal(work.getAttribute('aria-expanded'), 'true');
     linked.history.push({ role: 'user', content: 'Thanks' }); dock.update();
-    assert.equal(document.querySelector('.home-chat-transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
-    assert.equal(sessionState!.activeId, 'keep-active');
+    assert.equal(document.querySelector('.shared-chat-host__transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
+    assert.equal(sessionState!.activeId, linked.id);
     assert.equal(document.querySelector('#chatArea p'), code);
     const statusControl = document.querySelector<HTMLButtonElement>('.home-workspace-header .home-issue-status')!;
     statusControl.click();
@@ -61,7 +62,7 @@ test('Home issue dock uses the collapsed shared transcript without changing Code
     assert.equal(issue.status, 'todo', 'completed issues can be reopened in the dock');
     assert.equal(issue.agent?.chatId, linked.id, 'status edits preserve the linked agent');
   } finally {
-    closeContextMenu(); dock.dispose(); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
+    closeContextMenu(); dock.dispose(); await new Promise(resolve => setTimeout(resolve, 30)); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
   }
 });
 

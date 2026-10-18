@@ -1,3 +1,4 @@
+import { mountIssuePlanPreview } from './issues-plan-preview';
 import { createIssueChatActivity } from './issues-chat-activity';
 import { mountIssueWorkspace, type IssueWorkspaceTab } from './issues-work-panel';
 import { issueWorkChat } from '../issues/work-state';
@@ -191,6 +192,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
   /** Guards flush → store emit → refresh from rebuilding the panel mid-paint. */
   let paintingDetail = false;
   const workspaceTabs = new Map<string, IssueWorkspaceTab>();
+  let planPreview: ReturnType<typeof mountIssuePlanPreview> | undefined;
   let workspacePanel: ReturnType<typeof mountIssueWorkspace> | undefined;
   let navigation: IssueDetailNavigation | undefined;
 
@@ -307,6 +309,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   /** Flush and drop the peek editor while its DOM is still mounted. */
   function teardownDetailEditor(): void {
+    planPreview?.dispose();
+    planPreview = undefined;
     const editor = detailEditor;
     detailEditor = null;
     editor?.destroy();
@@ -858,6 +862,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const parentLine = buildParentLine(issue);
     if (parentLine) doc.appendChild(parentLine);
     doc.appendChild(buildDescriptionSection(issue));
+    planPreview = mountIssuePlanPreview(doc);
+    planPreview.update(issue);
 
     const rail = document.createElement('div');
     rail.className = 'issues-detail__rail';
@@ -917,6 +923,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       panel, sticky, document: doc, issueBody: scroll, issue, summaryInHeader: true,
       tab: workspaceTabs.get(issue.id) ?? 'Issue',
       onTab: (tab) => workspaceTabs.set(issue.id, tab),
+      onOpenPlan: (path, workspaceRoot) => planPreview?.open(findIssueById(issue.id) ?? issue, path, workspaceRoot),
       onStartChat: () => { sticky.querySelector<HTMLButtonElement>('.issues-detail__workflow-secondary button')?.click(); },
     });
     bindIssueDropTarget(panel, issue.id, () => refreshIssueDetailIfOpen());
