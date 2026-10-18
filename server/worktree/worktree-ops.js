@@ -1320,7 +1320,7 @@ export function enableChatWorktree({ chatId, title }) {
     }
     const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]));
     if (preparation.failed.length) {
-      return { ok: false, path: wtPath, branch, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
+      return { ok: false, path: wtPath, branch, ...preparation, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
     }
     return { ok: true, path: wtPath, branch, ...preparation };
   })().finally(() => automaticChatSetups.delete(wtPath));

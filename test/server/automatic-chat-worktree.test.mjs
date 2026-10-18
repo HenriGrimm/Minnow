@@ -61,13 +61,16 @@ test('automatic chat setup isolates, coalesces, reuses the actual branch, and av
     // A failed package setup keeps the same checkout and retries after repair.
     await fs.writeFile(path.join(repo, 'package.json'), JSON.stringify({
       name: 'worktree-setup-test', version: '1.0.0', private: true,
-      scripts: { install: 'node -e "process.exit(1)"' },
+      scripts: { install: 'node -e "console.error(\'fixture dependency failure\'); process.exit(1)"' },
     }));
     await git(['add', 'package.json']);
     await git(['commit', '-m', 'dependency fixture']);
     const failed = await setup({ chatId: 'retry', title: 'Dependency setup' });
     assert.equal(failed.ok, false);
     assert.match(failed.error, /Setup failed/);
+    assert.match(failed.error, /fixture dependency failure/);
+    assert.match(failed.error, /exit 1/);
+    assert.equal(failed.failed.length, 1);
     await fs.writeFile(path.join(failed.path, 'package.json'), JSON.stringify({ name: 'worktree-setup-test', version: '1.0.0', private: true }));
     const repaired = await setup({ chatId: 'retry', title: 'Dependency setup' });
     assert.equal(repaired.ok, true, repaired.error);

@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, test } from 'node:test';
 import { ECOSYSTEM_ENTRIES } from '../../server/worktree/dep-symlinks.js';
+import { resolveUnixLoginShell } from '../../server/terminal/one-shot-spawn.js';
 
 const DEP_SYMLINKS = '../../server/worktree/dep-symlinks.js';
 const PROCESS_RUNNER = '../../server/process-runner.js';
@@ -42,8 +43,8 @@ describe('refreshDependencies + unremovable dep link', () => {
     });
     t.mock.module(PROCESS_RUNNER, {
       namedExports: {
-        runProcess: async (command, args) => {
-          spawned.push(`${command} ${args.join(' ')}`);
+        runProcess: async (command, args, options) => {
+          spawned.push({ command, args, shell: options.shell });
           return { code: 0, stdout: '', stderr: '' };
         },
         COMMAND_TIMEOUT_MS: 30_000,
@@ -89,10 +90,66 @@ describe('refreshDependencies + unremovable dep link', () => {
 
     const res = await refreshDependencies(root, ['package.json']);
 
-    assert.deepEqual(spawned, ['npm install']);
+    const login = resolveUnixLoginShell(process.platform);
+    assert.deepEqual(spawned, [process.platform === 'win32'
+      ? { command: 'npm', args: ['install'], shell: true }
+      : { command: login.shell, args: [...login.loginArgs, '-c', 'exec "$@"', 'minnow-dep-install', 'npm', 'install'], shell: false }]);
     assert.deepEqual(res.ran, ['npm install']);
     assert.deepEqual(res.failed, []);
 
     await fs.rm(root, { recursive: true, force: true });
+  });
+});
+
+describe('refreshDependencies failure details', () => {
+  for (const [name, result, expected] of [
+    ['stderr', { code: 1, stderr: 'npm error ERESOLVE dependency conflict', stdout: '' }, /exit 1: npm error ERESOLVE/],
+    ['stdout', { code: 2, stderr: '', stdout: 'install hook failed' }, /exit 2: install hook failed/],
+    ['spawn', new Error('spawn npm ENOENT'), /spawn npm ENOENT/],
+    ['timeout', new Error('Command timed out after 10s'), /timed out after 10s/],
+    ['long-output', { code: 1, stderr: 'x'.repeat(5000) + 'failure at end', stdout: '' }, /failure at end/],
+  ]) {
+    test(`reports ${name} errors without losing the command`, async (t) => {
+      t.mock.module(DEP_SYMLINKS, {
+        namedExports: { ECOSYSTEM_ENTRIES, materializeDepDirs: async () => ({ removed: [], failed: [] }) },
+      });
+      t.mock.module(PROCESS_RUNNER, {
+        namedExports: {
+          runProcess: async () => { if (result instanceof Error) throw result; return result; },
+          COMMAND_TIMEOUT_MS: 30_000,
+          formatProcessOutput: () => '',
+        },
+      });
+      const { refreshDependencies } = await loadDepInstall(name);
+      const root = await makeNodeProject();
+      try {
+        const res = await refreshDependencies(root, ['package.json']);
+        assert.deepEqual(res.ran, []);
+        assert.equal(res.failed.length, 1);
+        assert.match(res.failed[0], /^npm install /);
+        assert.match(res.failed[0], expected);
+        assert.ok(res.failed[0].length < 2100);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test('unexpected setup errors fail closed', async (t) => {
+    t.mock.module(DEP_SYMLINKS, {
+      namedExports: {
+        ECOSYSTEM_ENTRIES: [{ manifests: ['package.json'], resolveInstall: async () => { throw new Error('cannot read package manager'); } }],
+        materializeDepDirs: async () => ({ removed: [], failed: [] }),
+      },
+    });
+    const { refreshDependencies } = await loadDepInstall('unexpected');
+    const root = await makeNodeProject();
+    try {
+      const res = await refreshDependencies(root, ['package.json']);
+      assert.deepEqual(res.ran, []);
+      assert.match(res.failed[0], /cannot read package manager/);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });
