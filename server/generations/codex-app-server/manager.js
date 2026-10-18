@@ -128,9 +128,11 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     session.saved = checkpointMatches(saved, prepared.signature, prepared.messages) && saved.adapter === 'codex-app-server-v1' ? saved : null;
     if (saved && !session.saved) { await removeCliCache(session.cacheDir); session.method = 'rebuilt'; session.reason = 'Saved history or configuration changed.'; }
     const root = session.cacheDir || path.join(getMinnowHome(), 'tmp', 'codex-app-server');
-    session.homeRoot = root;
     await fs.mkdir(root, { recursive: true, mode: 0o700 });
-    session.home = persistent ? path.join(root, 'native') : await fs.mkdtemp(path.join(root, 'conversation-'));
+    // Native Codex returns canonical rollout paths (e.g. /private/var on macOS).
+    // Use the same root for containment checks and private-home cleanup.
+    session.homeRoot = await fs.realpath(root);
+    session.home = persistent ? path.join(session.homeRoot, 'native') : await fs.mkdtemp(path.join(session.homeRoot, 'conversation-'));
     await fs.mkdir(session.home, { recursive: true, mode: 0o700 });
     await syncCodexCredentials(session, runtime);
     const features = ['shell_tool', 'unified_exec', 'hooks', 'memories', 'multi_agent', 'skill_mcp_dependency_install',

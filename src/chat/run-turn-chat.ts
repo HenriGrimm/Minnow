@@ -1685,7 +1685,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'tool_streaming') {
           if (parallelSafeStreak <= 1) {
-            patchMainTurnActivity(chat.id, { currentTool: event.name });
+            patchMainTurnActivity(chat.id, { phase: 'tools', currentTool: event.name });
           }
         }
         if (event.type === 'tool_call') {

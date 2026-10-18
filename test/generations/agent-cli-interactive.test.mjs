@@ -100,7 +100,9 @@ test('early MCP dispatch releases before native commit and preserves late output
   const f = await fixture(t); await f.begin();
   const call = { function: { name: 'ping', arguments: '{"a":1}' } };
   const tool = id => ({ type: 'tool_use', id, name: 'mcp__minnow__ping', input: { a: 1 } });
+  const started = performance.now();
   assert.equal(await f.run.beforeHandoff(call), null, 'native Claude may wait for the tool result before persisting');
+  assert.ok(performance.now() - started < 750, 'uncommitted tool calls must not incur a multi-second transcript wait');
   f.run.pauseOutput();
   await f.append(f.row('api-1', [tool('tool-1'), { type: 'text', text: 'After dispatch.' }]));
   await delay(300);

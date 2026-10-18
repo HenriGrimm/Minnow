@@ -59,6 +59,8 @@ export declare class HarmonyChannelRouter {
     flush(): RoutedContentPart[];
     /** Buffered Harmony commentary segments (tool-call payloads). */
     getCommentaryParseText(): string;
+    /** Complete recipient name while commentary tool arguments are still arriving. */
+    peekStreamingToolName(): string;
     private appendText;
     private handleMarker;
     private drain;

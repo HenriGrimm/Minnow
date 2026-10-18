@@ -520,6 +520,8 @@ describe('TurnEvent members (P10-B)', () => {
   for (const [format, fragments] of [
     ['JSON', ['<tool_', 'call>{"name":"get_date', 'time","arguments":', '{}}</tool_call>']],
     ['Qwen XML', ['<tool_', 'call><function=get_date', 'time>', '</function></tool_call>']],
+    ['bare Qwen XML', ['<func', 'tion=get_date', 'time>', '{}</function>']],
+    ['Harmony', ['<|channel|>commentary to=functions.get_date', 'time<|message|>', '{}<|call|>']],
   ]) {
     test(`content ${format} signals tool streaming before the envelope closes`, { timeout: 20_000 }, async () => {
       const events = [];
@@ -855,5 +857,53 @@ describe('TurnEvent members (P10-B)', () => {
         );
       },
     );
+  });
+});
+
+test('identical tool and reasoning progress is emitted again in each model round', async () => {
+  await withFake([
+    { match: { nth: 0 }, emit: reasoningThenToolChunks('Checking.', 'get_datetime', {}, 'first') },
+    { match: { nth: 1 }, emit: reasoningThenToolChunks('Checking.', 'get_datetime', {}, 'second') },
+    { emit: proseSseChunks('Done.') },
+  ], async baseUrl => {
+    const events = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check twice.', tools: [DATETIME_TOOL],
+      model: { providerId: 'local-fake', id: 'fake-model' }, onEvent: event => events.push(event),
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: String(Date.now()) }), ...CHAT_SHAPED });
+    assert.equal(events.filter(e => e.type === 'tool_streaming' && e.name === 'get_datetime').length, 2);
+    assert.equal(events.filter(e => e.type === 'thinking' && e.text === 'Checking.').length, 2);
+  });
+});
+
+for (const [name, content] of [
+  ['Harmony analysis', '<|channel|>analysis<|message|>Checking.<tool_call>{"name":"get_datetime","arguments":{}}</tool_call><|end|>'],
+  ['bare Qwen function', '<think>Checking.<function=get_datetime>{}</function></think>'],
+]) test(`${name} keeps tool envelopes out of Thoughts`, async () => {
+  await withFake([{ match: { nth: 0 }, emit: proseSseChunks(content) }, { emit: proseSseChunks('Done.') }], async baseUrl => {
+    const events = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check.', tools: [DATETIME_TOOL],
+      model: { providerId: 'local-fake', id: 'fake-model' }, onEvent: event => events.push(event),
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      execute: async () => ({ content: 'noon' }), ...CHAT_SHAPED });
+    assert.equal(events.find(e => e.type === 'tool_streaming')?.name, 'get_datetime');
+    assert.equal(events.find(e => e.type === 'tool_call')?.name, 'get_datetime');
+    assert.ok(events.filter(e => e.type === 'thinking').every(e => !/<tool_call>|<function=/.test(e.text)));
+  });
+});
+
+
+test('interleaved reasoning gets an end event for each phase', async () => {
+  const emit = [
+    { reasoning_content: 'First.' }, { content: 'Checking.' },
+    { reasoning_content: ' Second.' }, { content: ' Done.' },
+  ].map(delta => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`);
+  await withFake([{ emit }], async baseUrl => {
+    const events = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check.', tools: [],
+      model: { providerId: 'local-fake', id: 'fake-model' }, onEvent: event => events.push(event),
+      deps: stubDeps(baseUrl), ...CHAT_SHAPED });
+    assert.equal(events.filter(e => e.type === 'reasoning_end').length, 2);
+    assert.equal(events.filter(e => e.type === 'thinking').at(-1).text, 'First. Second.');
   });
 });

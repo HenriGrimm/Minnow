@@ -1,9 +1,9 @@
 import { cliHash } from './checkpoints.js';
 
-/** UI reasoning/transport annotations are not part of the inference transcript. */
+/** Match runner-persisted assistant whitespace; preserve user/tool bytes and omit UI annotations. */
 export function canonicalCliMessages(messages) {
   if (!Array.isArray(messages) || !messages.length) throw new Error('CLI requires a conversation.');
-  return messages.map(row => ({ role: row.role, content: row.content ?? '',
+  return messages.map(row => ({ role: row.role, content: row.role === 'assistant' && typeof row.content === 'string' ? row.content.trim() : row.content ?? '',
     ...(row.role === 'tool' ? { tool_call_id: row.tool_call_id } : {}),
     ...(row.tool_calls?.length ? { tool_calls: row.tool_calls.map(call => ({ id: call.id, type: 'function',
       function: { name: call.function?.name, arguments: call.function?.arguments } })) } : {}) }));

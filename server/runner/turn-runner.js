@@ -458,6 +458,7 @@ function createTurnRunner(deps) {
       if (!text) {
         return;
       }
+      reasoningEnded = false;
       feedThinkingBudget(text);
       reasoningText += text;
       notifyReasoningDelta();
@@ -508,23 +509,22 @@ function createTurnRunner(deps) {
         if (isHarmonyThinking) {
           if (harmonyText) {
             noteThinkingChannel("inline");
-            feedThinkingBudget(harmonyText);
-            reasoningText += harmonyText;
-            notifyReasoningDelta();
+            emitThinking(thinkingToolCallRouter.feed(harmonyText));
+            noteEmbeddedToolProgress(thinkingToolCallRouter);
           }
           continue;
         }
         processRoutedParts(inlineRouter.feed(harmonyText));
       }
+      noteEmbeddedToolProgress(harmonyRouter);
     }
     function flushContentRouters() {
       for (const [harmonyText, isHarmonyThinking] of harmonyRouter.flush()) {
         if (isHarmonyThinking) {
           if (harmonyText) {
             noteThinkingChannel("inline");
-            feedThinkingBudget(harmonyText);
-            reasoningText += harmonyText;
-            notifyReasoningDelta();
+            emitThinking(thinkingToolCallRouter.feed(harmonyText));
+            noteEmbeddedToolProgress(thinkingToolCallRouter);
           }
           continue;
         }
@@ -633,10 +633,10 @@ function createTurnRunner(deps) {
         thinkingBudgetTracker?.endSession();
         emitReasoningEnd();
       }
-      const partialTools = finalizeToolCalls(toolAcc);
-      const streamingToolName = partialTools[0]?.function?.name?.trim();
-      if (streamingToolName) {
-        streamOptions?.onToolCallDelta?.(streamingToolName);
+      if (toolCallDeltas?.length) {
+        const activeToolIndex = toolCallDeltas.at(-1).index;
+        const streamingToolName = toolAcc[activeToolIndex]?.function?.name?.trim();
+        if (streamingToolName) streamOptions?.onToolCallDelta?.(streamingToolName);
       }
     }
     try {

@@ -1,0 +1,976 @@
+{
+  "startedAt": "2026-10-18T04:15:04.851Z",
+  "samples": 3,
+  "prompt": "Write exactly five short numbered lines explaining why small software changes are easier to review. No introduction or conclusion. Do not call tools.",
+  "reasoningEffort": "low",
+  "scope": "Production generation adapters to local stream subscriber; excludes browser paint. Synthetic prompts only.",
+  "rows": [
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 9417.6,
+      "firstTextMs": 9417.6,
+      "firstToolMs": null,
+      "completeMs": 10438.4,
+      "tailMs": 252.1,
+      "maxOutputGapMs": 167,
+      "outputChars": 440,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 941.8,
+      "firstTextMs": 941.8,
+      "firstToolMs": null,
+      "completeMs": 1507.9,
+      "tailMs": 263.7,
+      "maxOutputGapMs": 97.1,
+      "outputChars": 440,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 967.3,
+      "firstTextMs": 967.3,
+      "firstToolMs": 1524.6,
+      "completeMs": 1726,
+      "tailMs": 201.3,
+      "maxOutputGapMs": 407.2,
+      "outputChars": 45,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 572.3,
+      "firstTextMs": 572.3,
+      "firstToolMs": null,
+      "completeMs": 936.5,
+      "tailMs": 291.6,
+      "maxOutputGapMs": 49.9,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1892.8,
+      "firstTextMs": 1892.8,
+      "firstToolMs": null,
+      "completeMs": 2697.2,
+      "tailMs": 211.8,
+      "maxOutputGapMs": 217.5,
+      "outputChars": 498,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1332,
+        "completion_tokens": 169,
+        "total_tokens": 1501,
+        "prompt_tokens_details": {
+          "cached_tokens": 906,
+          "uncached_tokens": 2,
+          "cache_creation_tokens": 424
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 892.5,
+      "firstTextMs": 892.5,
+      "firstToolMs": null,
+      "completeMs": 1391.8,
+      "tailMs": 216.6,
+      "maxOutputGapMs": 159.7,
+      "outputChars": 498,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1617,
+        "completion_tokens": 169,
+        "total_tokens": 1786,
+        "prompt_tokens_details": {
+          "cached_tokens": 1314,
+          "uncached_tokens": 4,
+          "cache_creation_tokens": 299
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1021.5,
+      "firstTextMs": null,
+      "firstToolMs": 1021.5,
+      "completeMs": 1533.3,
+      "tailMs": 511.8,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1893,
+        "completion_tokens": 60,
+        "total_tokens": 1953,
+        "prompt_tokens_details": {
+          "cached_tokens": 1613,
+          "uncached_tokens": 4,
+          "cache_creation_tokens": 276
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 2690.2,
+      "firstTextMs": 2690.2,
+      "firstToolMs": null,
+      "completeMs": 2902.4,
+      "tailMs": 66.3,
+      "maxOutputGapMs": 146,
+      "outputChars": 36,
+      "reasoningChars": 150,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 2636,
+        "completion_tokens": 131,
+        "total_tokens": 2767,
+        "prompt_tokens_details": {
+          "cached_tokens": 1889,
+          "uncached_tokens": 2,
+          "cache_creation_tokens": 745
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 104
+        }
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 952.9,
+      "firstTextMs": 952.9,
+      "firstToolMs": null,
+      "completeMs": 1814.4,
+      "tailMs": 12.7,
+      "maxOutputGapMs": 158,
+      "outputChars": 453,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 473,
+        "completion_tokens": 154,
+        "total_tokens": 627
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 683.2,
+      "firstTextMs": 683.2,
+      "firstToolMs": null,
+      "completeMs": 1093.5,
+      "tailMs": 0.8,
+      "maxOutputGapMs": 170.2,
+      "outputChars": 453,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 672,
+        "completion_tokens": 154,
+        "total_tokens": 826
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1002.5,
+      "firstTextMs": null,
+      "firstToolMs": 1002.5,
+      "completeMs": 1012.3,
+      "tailMs": 2.2,
+      "maxOutputGapMs": 7,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 860,
+        "completion_tokens": 52,
+        "total_tokens": 912
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 790,
+      "firstTextMs": 790,
+      "firstToolMs": null,
+      "completeMs": 930.8,
+      "tailMs": 80.4,
+      "maxOutputGapMs": 59.8,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 945,
+        "completion_tokens": 30,
+        "total_tokens": 975
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 958.9,
+      "firstTextMs": 958.9,
+      "firstToolMs": null,
+      "completeMs": 1890,
+      "tailMs": 2,
+      "maxOutputGapMs": 302.5,
+      "outputChars": 440,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 473,
+        "completion_tokens": 156,
+        "total_tokens": 629
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1261.2,
+      "firstTextMs": 1261.2,
+      "firstToolMs": null,
+      "completeMs": 1685.8,
+      "tailMs": 8.6,
+      "maxOutputGapMs": 154.4,
+      "outputChars": 366,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 674,
+        "completion_tokens": 135,
+        "total_tokens": 809
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1111.6,
+      "firstTextMs": null,
+      "firstToolMs": 1111.6,
+      "completeMs": 1203,
+      "tailMs": 1,
+      "maxOutputGapMs": 88.2,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 843,
+        "completion_tokens": 52,
+        "total_tokens": 895
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 872.6,
+      "firstTextMs": 872.6,
+      "firstToolMs": null,
+      "completeMs": 921.4,
+      "tailMs": 19.7,
+      "maxOutputGapMs": 24.4,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 924,
+        "completion_tokens": 26,
+        "total_tokens": 950
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1999.2,
+      "firstTextMs": 1999.2,
+      "firstToolMs": null,
+      "completeMs": 3004,
+      "tailMs": 263.7,
+      "maxOutputGapMs": 220.7,
+      "outputChars": 488,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1337,
+        "completion_tokens": 167,
+        "total_tokens": 1504,
+        "prompt_tokens_details": {
+          "cached_tokens": 906,
+          "uncached_tokens": 2,
+          "cache_creation_tokens": 429
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1239.6,
+      "firstTextMs": 1239.6,
+      "firstToolMs": null,
+      "completeMs": 1868.4,
+      "tailMs": 207.3,
+      "maxOutputGapMs": 117.9,
+      "outputChars": 422,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1625,
+        "completion_tokens": 150,
+        "total_tokens": 1775,
+        "prompt_tokens_details": {
+          "cached_tokens": 1319,
+          "uncached_tokens": 4,
+          "cache_creation_tokens": 302
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1146.5,
+      "firstTextMs": null,
+      "firstToolMs": 1146.5,
+      "completeMs": 1551.9,
+      "tailMs": 405.5,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 3809.1,
+      "firstTextMs": 3809.1,
+      "firstToolMs": null,
+      "completeMs": 4016.9,
+      "tailMs": 105.6,
+      "maxOutputGapMs": 102.2,
+      "outputChars": 36,
+      "reasoningChars": 218,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 4510,
+        "completion_tokens": 211,
+        "total_tokens": 4721,
+        "prompt_tokens_details": {
+          "cached_tokens": 3501,
+          "uncached_tokens": 6,
+          "cache_creation_tokens": 1003
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 125
+        }
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 6473.4,
+      "firstTextMs": 6473.4,
+      "firstToolMs": null,
+      "completeMs": 7484.6,
+      "tailMs": 267.3,
+      "maxOutputGapMs": 178.3,
+      "outputChars": 397,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 991,
+      "firstTextMs": 991,
+      "firstToolMs": null,
+      "completeMs": 1594.2,
+      "tailMs": 244.3,
+      "maxOutputGapMs": 246.8,
+      "outputChars": 397,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1269.5,
+      "firstTextMs": 1269.5,
+      "firstToolMs": 2816.6,
+      "completeMs": 3017.9,
+      "tailMs": 201.3,
+      "maxOutputGapMs": 1326.1,
+      "outputChars": 31,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 734.1,
+      "firstTextMs": 734.1,
+      "firstToolMs": null,
+      "completeMs": 1180.5,
+      "tailMs": 355.1,
+      "maxOutputGapMs": 91,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 9517.5,
+      "firstTextMs": 9517.5,
+      "firstToolMs": null,
+      "completeMs": 10529.4,
+      "tailMs": 255.5,
+      "maxOutputGapMs": 145.3,
+      "outputChars": 428,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1055.8,
+      "firstTextMs": 1055.8,
+      "firstToolMs": null,
+      "completeMs": 1656.4,
+      "tailMs": 233.1,
+      "maxOutputGapMs": 158.7,
+      "outputChars": 428,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 969.8,
+      "firstTextMs": 969.8,
+      "firstToolMs": 1474.5,
+      "completeMs": 1676.1,
+      "tailMs": 201.5,
+      "maxOutputGapMs": 388.7,
+      "outputChars": 32,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 674.8,
+      "firstTextMs": 674.8,
+      "firstToolMs": null,
+      "completeMs": 1035.2,
+      "tailMs": 253.8,
+      "maxOutputGapMs": 44,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 2052.1,
+      "firstTextMs": 2052.1,
+      "firstToolMs": null,
+      "completeMs": 2899.9,
+      "tailMs": 212.7,
+      "maxOutputGapMs": 222.7,
+      "outputChars": 413,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1334,
+        "completion_tokens": 148,
+        "total_tokens": 1482,
+        "prompt_tokens_details": {
+          "cached_tokens": 906,
+          "uncached_tokens": 2,
+          "cache_creation_tokens": 426
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1208.8,
+      "firstTextMs": 1208.8,
+      "firstToolMs": null,
+      "completeMs": 1640.4,
+      "tailMs": 263.2,
+      "maxOutputGapMs": 100.4,
+      "outputChars": 413,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 1598,
+        "completion_tokens": 148,
+        "total_tokens": 1746,
+        "prompt_tokens_details": {
+          "cached_tokens": 1316,
+          "uncached_tokens": 4,
+          "cache_creation_tokens": 278
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 2218.1,
+      "firstTextMs": null,
+      "firstToolMs": 2218.1,
+      "completeMs": 2623.5,
+      "tailMs": 405.4,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      }
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "transport": "claude",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 2935.5,
+      "firstTextMs": 2935.5,
+      "firstToolMs": null,
+      "completeMs": 3142.4,
+      "tailMs": 94.4,
+      "maxOutputGapMs": 112.5,
+      "outputChars": 36,
+      "reasoningChars": 188,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "claude-interactive",
+        "model": "claude-haiku-5-5"
+      },
+      "usage": {
+        "prompt_tokens": 4468,
+        "completion_tokens": 204,
+        "total_tokens": 4672,
+        "prompt_tokens_details": {
+          "cached_tokens": 3446,
+          "uncached_tokens": 6,
+          "cache_creation_tokens": 1016
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 114
+        }
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 811.4,
+      "firstTextMs": 811.4,
+      "firstToolMs": null,
+      "completeMs": 1733.5,
+      "tailMs": 2.4,
+      "maxOutputGapMs": 214.7,
+      "outputChars": 497,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 473,
+        "completion_tokens": 166,
+        "total_tokens": 639
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 808.3,
+      "firstTextMs": 808.3,
+      "firstToolMs": null,
+      "completeMs": 1430.9,
+      "tailMs": 1.8,
+      "maxOutputGapMs": 154.5,
+      "outputChars": 488,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 684,
+        "completion_tokens": 202,
+        "total_tokens": 886
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 819.1,
+      "firstTextMs": null,
+      "firstToolMs": 819.1,
+      "completeMs": 972.8,
+      "tailMs": 151.7,
+      "maxOutputGapMs": 1.1,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 885,
+        "completion_tokens": 52,
+        "total_tokens": 937
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 787.6,
+      "firstTextMs": 787.6,
+      "firstToolMs": null,
+      "completeMs": 824.4,
+      "tailMs": 0.6,
+      "maxOutputGapMs": 22.1,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 968,
+        "completion_tokens": 28,
+        "total_tokens": 996
+      }
+    }
+  ],
+  "trials": [
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 3,
+      "status": "passed"
+    }
+  ],
+  "finishedAt": "2026-10-18T04:16:34.487Z"
+}

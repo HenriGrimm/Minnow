@@ -287,3 +287,15 @@ describe('extractReasoningDelta', () => {
     assert.equal(text, 'step one');
   });
 });
+
+
+test('Harmony progress waits for a complete recipient and follows each tool header', () => {
+  const router = new HarmonyChannelRouter();
+  router.feed('<|channel|>commentary to=functions.read_');
+  assert.equal(router.peekStreamingToolName(), '');
+  router.feed('file<|message|>{"path":"a"}<|call|>');
+  assert.equal(router.peekStreamingToolName(), 'read_file');
+  router.feed('<|channel|>commentary to=functions.grep ');
+  assert.equal(router.peekStreamingToolName(), 'grep');
+  assert.equal((router.getCommentaryParseText().match(/<\|channel\|>commentary/g) ?? []).length, 2);
+});

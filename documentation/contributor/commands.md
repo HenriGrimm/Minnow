@@ -76,6 +76,10 @@ Use `--provider minnow-library --model "mtplx:<repo-id>"` for an MTPLX row in My
 
 UI-only tools (e.g. `ask_question`) fail with a clear error in headless mode unless you opt into unsafe automation (`MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION`).
 
+## Account chat latency benchmark
+
+`node scripts/benchmark-chat-latency.mjs --account --samples 3 --output /tmp/chat-latency.json` runs synthetic cold/warm replies and a tool round through installed CLI adapters and configured API providers. `--account` explicitly enables billable inference using existing logins/keys. Override targets with `--targets '[{"providerId":"codex-cli","model":"gpt-6-luna","kind":"codex"},{"providerId":"opencode-go","model":"gpt-6-luna"}]'`; omit `kind` for API targets and use `"claude"` for Claude Code or `"cursor"` for Cursor Agent. `--restart` adds a CLI follow-up after closing its process to measure checkpoint recovery. The script uses a temporary workspace, cleans its native sessions, records failed targets, and does not save chats. Measurements end at the local generation subscriber, before browser paint. Compare distributions across runs: native instructions, account routing and upstream load differ even for the same model.
+
 ## Opt-in MTPLX lifecycle audit
 
 With a running scratch `MINNOW_HOME` host and an unused installed model/port:

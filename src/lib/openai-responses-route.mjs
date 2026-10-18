@@ -52,7 +52,7 @@ export function isMuseSparkModel(modelId) {
 }
 
 /**
- * True for Muse Spark 1.2/1.3, GPT 5.6 Luna, and Grok 4.6 — Go's Responses-only models.
+ * True for Muse Spark 1.2/1.3, GPT 5.6/6 Luna, and Grok 4.6 — Go's Responses-only models.
  *
  * @param {string} modelId
  * @returns {boolean}
@@ -61,7 +61,7 @@ export function modelLooksOpenAiResponses(modelId) {
   const id = bareModelId(modelId).replace(/[._]/g, '-');
   if (!id) return false;
   if (isMuseSparkModel(modelId)) return true;
-  if (id === 'gpt-5-6-luna') return true;
+  if (id === 'gpt-5-6-luna' || id === 'gpt-6-luna') return true;
   if (id === 'grok-4-6') return true;
   return false;
 }

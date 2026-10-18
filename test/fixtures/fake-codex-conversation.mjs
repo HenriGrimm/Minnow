@@ -16,6 +16,7 @@ async function step(tid, turnId) {
   if (script.error) { event('turn/completed', { threadId: tid, turn: { id: turnId, status: 'failed', error: { message: script.error } } }); return; }
   if (script.compact) { event('item/started', { threadId: tid, turnId, item: { id: 'compact', type: 'contextCompaction' } }); return; }
   if (script.calls) {
+    if (script.text) event('item/agentMessage/delta', { threadId: tid, turnId, itemId: `preface-${turnId}`, delta: script.text });
     for (const call of script.calls) {
       for (let i = 0; i < (call.activityCount ?? 0); i++) {
         await new Promise(resolve => setTimeout(resolve, call.activityIntervalMs ?? 100));
@@ -56,7 +57,8 @@ createInterface({ input: process.stdin }).on('line', async line => {
   else if (row.method === 'thread/start') { const id = `thread-${++thread}`; histories.set(id, []); turns.set(id, []); save(id); respond({ thread: { id } }); }
   else if (row.method === 'thread/read') {
     const record = JSON.parse(fs.readFileSync(store, 'utf8'));
-    respond({ thread: { id: record.id, turns: record.turns } });
+    respond({ thread: { id: record.id, turns: record.turns,
+      ...(process.env.MINNOW_CODEX_ROLLOUT_PATH ? { path: fs.realpathSync(store) } : {}) } });
   } else if (row.method === 'thread/resume') {
     const record = JSON.parse(fs.readFileSync(store, 'utf8'));
     histories.set(record.id, record.histories); turns.set(record.id, record.turns); turn = record.turn; total = record.total;

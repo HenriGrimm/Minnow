@@ -8,13 +8,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { prepareAgentCliInvocation } from '../../server/generations/agent-cli/invocation.js';
 import { pumpAgentCliSession, __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { pumpAgentCliUpstream } from '../../server/generations/agent-cli/pump.js';
-import { createGenerationState } from '../../server/generations/store.js';
+import { createGenerationState, addLocalSubscriber } from '../../server/generations/store.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-streaming-'));
 const previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
 const requests = [], observations = [], completions = [], helperInvocations = [];
+const timings = [];
+let offeredToolAt;
 let active, processes = 0, serverError;
 const payloads = () => Buffer.concat(active?.chunks ?? []).toString().split('\n')
   .filter(line => line.startsWith('data: {')).map(line => JSON.parse(line.slice(6)));
@@ -45,6 +47,7 @@ async function respond(req, res) {
   send({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Second line.\n' } });
   send({ type: 'content_block_stop', index: 1 });
   if (tool) {
+    offeredToolAt = performance.now();
     for (let i = 0; i < 2; i++) {
       send({ type: 'content_block_start', index: i + 2, content_block: { type: 'tool_use', id: 'native-' + i, name: 'mcp__minnow__ping', input: {} } });
       send({ type: 'content_block_delta', index: i + 2, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ value: i }) } });
@@ -81,13 +84,20 @@ try {
   } });
   const messages = [{ role: 'system', content: 'Use Minnow tools only.' }, { role: 'user', content: 'Call ping twice, then reply.' }];
   const generate = async () => {
+    const started = performance.now();
+    let firstToolMs;
     active = createGenerationState({ providerId: 'claude-code-cli', chatId: 'native-streaming', fallbackRole: 'default',
       body: { model: 'sonnet', stream: true, reasoning_effort: 'high', messages,
         tools: [{ type: 'function', function: { name: 'ping', parameters: { type: 'object', properties: { value: { type: 'number' } } } } }] } });
+    const unsubscribe = addLocalSubscriber(active, { onChunk: () => {
+      if (firstToolMs == null && deltas().some(d => d.tool_calls?.length)) firstToolMs = performance.now() - offeredToolAt;
+    }, onEnd: () => {} });
     await pumpAgentCliSession({ state: active,
       runtime: { profile: { agentCli: { kind: 'claude', interactive: true, maxConcurrent: 1 } }, secrets: { cliToken: 'fake-local-key' } },
       candidate: { providerId: 'claude-code-cli', modelId: 'sonnet' }, index: 0, idleMs: 15000, maxMs: 30000, canFailover: false });
     clearTimeout(active.evictTimer);
+    unsubscribe();
+    timings.push({ generationMs: performance.now() - started, toolOfferedToVisibleMs: firstToolMs });
     if (serverError) throw serverError;
     assert.equal(active.status, 'complete', `${active.errorMessage}\n${getAgentCliOutput('native-streaming')?.output?.slice(-4000)}`);
     const values = deltas();
@@ -109,7 +119,7 @@ try {
   }
   messages.push({ role: 'user', content: 'A follow-up in the same process.' });
   await generate();
-  console.log(JSON.stringify({ processes, requests: requests.length, thinking: requests.map(r => r.thinking), observations, completions }));
+  console.log(JSON.stringify({ processes, requests: requests.length, thinking: requests.map(r => r.thinking), observations, completions, timings }));
   assert.equal(toolCount, 2);
   assert.deepEqual(toolValues.sort(), [0, 1]);
   assert.equal(processes, 1, 'tool continuation and follow-up reuse the interactive process');

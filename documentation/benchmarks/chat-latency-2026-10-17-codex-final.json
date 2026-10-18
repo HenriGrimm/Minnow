@@ -1,0 +1,982 @@
+{
+  "startedAt": "2026-10-18T04:21:00.455Z",
+  "samples": 3,
+  "restart": true,
+  "prompt": "Write exactly five short numbered lines explaining why small software changes are easier to review. No introduction or conclusion. Do not call tools.",
+  "reasoningEffort": "low",
+  "scope": "Production generation adapters to local stream subscriber; excludes browser paint. Synthetic prompts only.",
+  "rows": [
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 2522,
+      "firstTextMs": 2522,
+      "firstToolMs": null,
+      "completeMs": 2969,
+      "tailMs": 61.5,
+      "maxOutputGapMs": 47.9,
+      "outputChars": 205,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 4.011042000000003,
+          "initialization_ms": 510.62358299999994,
+          "warm": false,
+          "first_delta_ms": 2006.574667,
+          "forwarding_max_ms": 0.38041700000030687
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2946,
+          "input": 2893,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2893,
+        "completion_tokens": 53,
+        "total_tokens": 2946,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2893
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1070.5,
+      "firstTextMs": 1070.5,
+      "firstToolMs": null,
+      "completeMs": 1342.1,
+      "tailMs": 75.9,
+      "maxOutputGapMs": 31.1,
+      "outputChars": 173,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.305499999999938,
+          "initialization_ms": 0.5587500000001455,
+          "warm": true,
+          "first_delta_ms": 1067.537667,
+          "forwarding_max_ms": 0.06420900000011898
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3025,
+          "input": 2978,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2978,
+        "completion_tokens": 47,
+        "total_tokens": 3025,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2978
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1102,
+      "firstTextMs": null,
+      "firstToolMs": 1102,
+      "completeMs": 1103.5,
+      "tailMs": 1.4,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.260582999999315,
+          "initialization_ms": 0.43595900000036636,
+          "warm": true,
+          "tool_handoff_ms": 1099.2452910000002,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 1.3112909999999829
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1119.9,
+      "firstTextMs": 1119.9,
+      "firstToolMs": null,
+      "completeMs": 1288.3,
+      "tailMs": 58.7,
+      "maxOutputGapMs": 37.2,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.191334000000097,
+          "initialization_ms": 0.4538750000001528,
+          "warm": true,
+          "tool_wait_ms": 5.239792000000307,
+          "tool_return_ms": 0.06966599999941536,
+          "first_delta_ms": 1117.2205410000006,
+          "forwarding_max_ms": 0.038333000000420725
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3140,
+          "input": 3116,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6166,
+        "completion_tokens": 47,
+        "total_tokens": 6213,
+        "prompt_tokens_details": {
+          "cached_tokens": 5504,
+          "uncached_tokens": 662
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "restarted-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 2039.3,
+      "firstTextMs": 2039.3,
+      "firstToolMs": null,
+      "completeMs": 2354.6,
+      "tailMs": 26.6,
+      "maxOutputGapMs": 62.1,
+      "outputChars": 191,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.063250000000153,
+          "initialization_ms": 62.01495800000066,
+          "warm": false,
+          "first_delta_ms": 1975.037875,
+          "forwarding_max_ms": 0.21591699999953562
+        },
+        "continuation": "resumed",
+        "transport": "app-server",
+        "context": {
+          "used": 3484,
+          "input": 3434,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 3434,
+        "completion_tokens": 50,
+        "total_tokens": 3484,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 3434
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 945.1,
+      "firstTextMs": 945.1,
+      "firstToolMs": null,
+      "completeMs": 1449.5,
+      "tailMs": 165.9,
+      "maxOutputGapMs": 35.8,
+      "outputChars": 219,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 54,
+        "total_tokens": 160
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1008.4,
+      "firstTextMs": 1008.4,
+      "firstToolMs": null,
+      "completeMs": 1423.4,
+      "tailMs": 170.7,
+      "maxOutputGapMs": 37.8,
+      "outputChars": 178,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 192,
+        "completion_tokens": 48,
+        "total_tokens": 240
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 741.8,
+      "firstTextMs": null,
+      "firstToolMs": 741.8,
+      "completeMs": 923,
+      "tailMs": 162.9,
+      "maxOutputGapMs": 11.7,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 265,
+        "completion_tokens": 18,
+        "total_tokens": 283
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 756.1,
+      "firstTextMs": 756.1,
+      "firstToolMs": null,
+      "completeMs": 1020.9,
+      "tailMs": 108.1,
+      "maxOutputGapMs": 24.7,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 316,
+        "completion_tokens": 26,
+        "total_tokens": 342
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 727.8,
+      "firstTextMs": 727.8,
+      "firstToolMs": null,
+      "completeMs": 1178.8,
+      "tailMs": 124.3,
+      "maxOutputGapMs": 26,
+      "outputChars": 214,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 53,
+        "total_tokens": 159
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 931.2,
+      "firstTextMs": 931.2,
+      "firstToolMs": null,
+      "completeMs": 1224,
+      "tailMs": 23.7,
+      "maxOutputGapMs": 83.9,
+      "outputChars": 193,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 191,
+        "completion_tokens": 50,
+        "total_tokens": 241
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1029.8,
+      "firstTextMs": null,
+      "firstToolMs": 1029.8,
+      "completeMs": 1310.2,
+      "tailMs": 243.6,
+      "maxOutputGapMs": 17.1,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 266,
+        "completion_tokens": 18,
+        "total_tokens": 284
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 829.1,
+      "firstTextMs": 829.1,
+      "firstToolMs": null,
+      "completeMs": 1148.4,
+      "tailMs": 73.1,
+      "maxOutputGapMs": 49.3,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 320,
+        "completion_tokens": 29,
+        "total_tokens": 349
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 2646.3,
+      "firstTextMs": 2646.3,
+      "firstToolMs": null,
+      "completeMs": 3046.9,
+      "tailMs": 85,
+      "maxOutputGapMs": 40.2,
+      "outputChars": 195,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.386459000001196,
+          "initialization_ms": 785.3904580000017,
+          "warm": false,
+          "first_delta_ms": 1857.286874999998,
+          "forwarding_max_ms": 0.1873749999977008
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2950,
+          "input": 2899,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2899,
+        "completion_tokens": 51,
+        "total_tokens": 2950,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2899
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 853.9,
+      "firstTextMs": 853.9,
+      "firstToolMs": null,
+      "completeMs": 1156.2,
+      "tailMs": 83.7,
+      "maxOutputGapMs": 28.6,
+      "outputChars": 199,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 4.2424580000006245,
+          "initialization_ms": 0.5712079999975685,
+          "warm": true,
+          "first_delta_ms": 848.8892500000002,
+          "forwarding_max_ms": 0.15125000000261934
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3035,
+          "input": 2982,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2982,
+        "completion_tokens": 53,
+        "total_tokens": 3035,
+        "prompt_tokens_details": {
+          "cached_tokens": 2688,
+          "uncached_tokens": 294
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1028.2,
+      "firstTextMs": null,
+      "firstToolMs": 1028.2,
+      "completeMs": 1029.5,
+      "tailMs": 1.3,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.1282500000015716,
+          "initialization_ms": 0.6729589999995369,
+          "warm": true,
+          "tool_handoff_ms": 1024.2332080000015,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 1.2383340000014869
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 704.5,
+      "firstTextMs": 704.5,
+      "firstToolMs": null,
+      "completeMs": 853.1,
+      "tailMs": 63.9,
+      "maxOutputGapMs": 42.4,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 1.9731250000004366,
+          "initialization_ms": 0.41195800000059535,
+          "warm": true,
+          "tool_wait_ms": 4.955541999999696,
+          "tool_return_ms": 0.028374999998050043,
+          "first_delta_ms": 701.9533749999973,
+          "forwarding_max_ms": 0.1526670000021113
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3163,
+          "input": 3135,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6195,
+        "completion_tokens": 56,
+        "total_tokens": 6251,
+        "prompt_tokens_details": {
+          "cached_tokens": 2944,
+          "uncached_tokens": 3251
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "restarted-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 2678.2,
+      "firstTextMs": 2678.2,
+      "firstToolMs": null,
+      "completeMs": 3009.8,
+      "tailMs": 82.1,
+      "maxOutputGapMs": 42.6,
+      "outputChars": 199,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.986084000000119,
+          "initialization_ms": 72.45979100000113,
+          "warm": false,
+          "first_delta_ms": 2601.590250000001,
+          "forwarding_max_ms": 0.0968749999992724
+        },
+        "continuation": "resumed",
+        "transport": "app-server",
+        "context": {
+          "used": 3521,
+          "input": 3469,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 3469,
+        "completion_tokens": 52,
+        "total_tokens": 3521,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 3469
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 2113.2,
+      "firstTextMs": 2113.2,
+      "firstToolMs": null,
+      "completeMs": 2566.3,
+      "tailMs": 57.5,
+      "maxOutputGapMs": 46.3,
+      "outputChars": 204,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.553874999997788,
+          "initialization_ms": 396.6712499999994,
+          "warm": false,
+          "first_delta_ms": 1713.880792,
+          "forwarding_max_ms": 0.103291999999783
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2949,
+          "input": 2896,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2896,
+        "completion_tokens": 53,
+        "total_tokens": 2949,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2896
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 763,
+      "firstTextMs": 763,
+      "firstToolMs": null,
+      "completeMs": 1201.6,
+      "tailMs": 50.3,
+      "maxOutputGapMs": 34.9,
+      "outputChars": 204,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 4.31516599999668,
+          "initialization_ms": 0.6980000000003201,
+          "warm": true,
+          "first_delta_ms": 757.7820840000022,
+          "forwarding_max_ms": 0.1599580000001879
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3035,
+          "input": 2981,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2981,
+        "completion_tokens": 54,
+        "total_tokens": 3035,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2981
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1666.8,
+      "firstTextMs": null,
+      "firstToolMs": 1666.8,
+      "completeMs": 1668.2,
+      "tailMs": 1.3,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 1.7599170000030426,
+          "initialization_ms": 0.3979169999984151,
+          "warm": true,
+          "tool_handoff_ms": 1664.5780830000003,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 1.300083000001905
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1355.6,
+      "firstTextMs": 1355.6,
+      "firstToolMs": null,
+      "completeMs": 1542,
+      "tailMs": 92,
+      "maxOutputGapMs": 25,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.7537910000028205,
+          "initialization_ms": 0.5214590000032331,
+          "warm": true,
+          "tool_wait_ms": 5.992040999997698,
+          "tool_return_ms": 0.03845900000305846,
+          "first_delta_ms": 1352.252499999995,
+          "forwarding_max_ms": 0.08020799999940209
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3150,
+          "input": 3126,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6186,
+        "completion_tokens": 47,
+        "total_tokens": 6233,
+        "prompt_tokens_details": {
+          "cached_tokens": 5504,
+          "uncached_tokens": 682
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "restarted-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1913.9,
+      "firstTextMs": 1913.9,
+      "firstToolMs": null,
+      "completeMs": 2307.8,
+      "tailMs": 60.8,
+      "maxOutputGapMs": 55.2,
+      "outputChars": 182,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.7583750000048894,
+          "initialization_ms": 70.97516699999687,
+          "warm": false,
+          "first_delta_ms": 1839.0015409999978,
+          "forwarding_max_ms": 0.11024999999790452
+        },
+        "continuation": "resumed",
+        "transport": "app-server",
+        "context": {
+          "used": 3497,
+          "input": 3450,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 3450,
+        "completion_tokens": 47,
+        "total_tokens": 3497,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 3450
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 808.3,
+      "firstTextMs": 808.3,
+      "firstToolMs": null,
+      "completeMs": 1280.4,
+      "tailMs": 127.4,
+      "maxOutputGapMs": 36.8,
+      "outputChars": 224,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 106,
+        "completion_tokens": 55,
+        "total_tokens": 161
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 745.6,
+      "firstTextMs": 745.6,
+      "firstToolMs": null,
+      "completeMs": 1226.3,
+      "tailMs": 136.8,
+      "maxOutputGapMs": 40.8,
+      "outputChars": 214,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 193,
+        "completion_tokens": 54,
+        "total_tokens": 247
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 810.6,
+      "firstTextMs": null,
+      "firstToolMs": 810.6,
+      "completeMs": 980,
+      "tailMs": 121.7,
+      "maxOutputGapMs": 31.2,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "usage": {
+        "prompt_tokens": 272,
+        "completion_tokens": 18,
+        "total_tokens": 290
+      }
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 897.1,
+      "firstTextMs": 897.1,
+      "firstToolMs": null,
+      "completeMs": 1130.2,
+      "tailMs": 188.4,
+      "maxOutputGapMs": 9.7,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "usage": {
+        "prompt_tokens": 321,
+        "completion_tokens": 24,
+        "total_tokens": 345
+      }
+    }
+  ],
+  "trials": [
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 3,
+      "status": "passed"
+    }
+  ],
+  "finishedAt": "2026-10-18T04:21:42.314Z"
+}

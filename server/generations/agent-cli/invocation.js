@@ -287,11 +287,14 @@ export async function prepareAgentCliInvocation(input) {
 
   const env = applyAgentNodeEnv(scopedEnv(input.bridgeConfig, kind, input.secrets), bin.command);
   if (kind === 'cursor' && input.acp) {
-    env.HOME = cwd; env.USERPROFILE = cwd;
+    // macOS security resolves the login keychain through the account home.
+    // Replacing HOME makes ACP authentication stall/fail, then every chat falls
+    // back to process replay. Config, chat data and permissions remain private.
+    if (process.platform !== 'darwin') { env.HOME = cwd; env.USERPROFILE = cwd; }
     // Cursor opens ~/.cursor/ai-tracking/ai-code-tracking.db during every
     // turn and SQLite does not create the folder, so each response otherwise
     // ends in "unable to open database file".
-    await fs.mkdir(path.join(cwd, '.cursor', 'ai-tracking'), { recursive: true, mode: 0o700 });
+    await fs.mkdir(path.join(process.platform === 'darwin' ? os.homedir() : cwd, '.cursor', 'ai-tracking'), { recursive: true, mode: 0o700 });
     env.CURSOR_DATA_DIR = path.join(path.dirname(cwd), 'cursor-data');
     if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
   }
@@ -316,7 +319,8 @@ export async function prepareAgentCliInvocation(input) {
   return {
     kind, command: bin.command, args, env, cwd, stdin, redactionSecrets,
     transport: input.interactive ? 'claude-interactive' : input.acp ? 'acp' : 'stream-json',
-    ...(input.acp ? { selectedModel: model } : {}),
+    ...(input.acp ? { selectedModel: model, mcpServers: [{ name: 'minnow', ...bridgeParts(input.bridgeConfig ?? {}),
+      env: Object.entries(input.bridgeConfig?.env ?? {}).map(([name, value]) => ({ name, value })) }] } : {}),
     keepStdinOpen: Boolean(input.acp) || kind === 'claude' && Boolean(input.sessionId || input.resumeId),
     shell: false, windowsHide: true, signal: input.signal,
     display: bin.display,

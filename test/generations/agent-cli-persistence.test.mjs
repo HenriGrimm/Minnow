@@ -72,6 +72,7 @@ test('interactive handoffs retain concurrent tool calls while later native commi
         void post(2);
       },
       async beforeHandoff(call) {
+        assert.ok(Buffer.concat(states.at(-1).chunks).toString().includes(call.id), 'tool progress is visible before waiting for native commit');
         if (JSON.parse(call.function.arguments).value === 1) await second;
         else { secondStarted(); await new Promise(resolve => setTimeout(resolve, 450)); }
         return null;
@@ -346,4 +347,25 @@ test('Claude preserves a verified handoff when inference is interrupted after to
   assert.ok(invocations.at(-1).prompt.includes('Recorded result'));
   assert.equal(invocations.at(-1).prompt.includes('expensive original context'), false);
   assert.equal((await fs.readFile(log, 'utf8')).trim(), 'read_file');
+});
+
+for (const handoff of [false, true]) test(`Claude retains its process with trimmed ${handoff ? 'tool' : 'reply'} history`, async () => {
+  setup('claude', { FAKE_CLAUDE_WHITESPACE: '1', FAKE_CLAUDE_STREAM_AFTER_TOOL: '1' });
+  const chat = `trimmed-${handoff}`, messages = [{ role: 'user', content: handoff ? 'TOOL' : 'Start.' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate(chat, messages, options);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.ok(first.text.endsWith('\n'));
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  messages.push({ role: 'assistant', content: first.text.trim(), ...(calls.length ? { tool_calls: calls } : {}) });
+  messages.push(handoff ? { role: 'tool', tool_call_id: calls[0].id, content: 'Read once.' } : { role: 'user', content: 'Next.' });
+  const second = await generate(chat, messages, options);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.rows.at(-1).minnow_cli.continuation, 'reused');
+  assert.equal(processes, 1);
+  await disposeCliSessions();
+  messages.push({ role: 'assistant', content: second.text.trim() }, { role: 'user', content: 'After restart.' });
+  const third = await generate(chat, messages, options);
+  assert.equal(third.state.status, 'complete', third.state.errorMessage);
+  assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
 });

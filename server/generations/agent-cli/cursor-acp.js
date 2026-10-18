@@ -119,7 +119,9 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
       clientInfo: { name: 'minnow', version: '1' } }, { signal });
     if (init.protocolVersion !== 1 || init.agentCapabilities?.loadSession !== true) throw new Error('Cursor ACP does not support verified session loading.');
     await rpc.request('authenticate', { methodId: 'cursor_login' }, { signal });
-    const params = { cwd: invocation.cwd, mcpServers: [] };
+    // ACP sessions must receive the bridge explicitly. Project MCP discovery
+    // can finish after the first prompt, leaving the model with no Minnow tools.
+    const params = { cwd: invocation.cwd, mcpServers: invocation.mcpServers ?? [] };
     let method = 'new';
     if (saved) {
       loading = true;

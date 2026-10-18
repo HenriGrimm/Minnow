@@ -30,9 +30,9 @@ createInterface({ input: process.stdin }).on('line', async line => {
     if (process.env.FAKE_CLAUDE_STREAM_AFTER_TOOL === '1') {
       send({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234 } });
       await new Promise(resolve => setTimeout(resolve, 650));
-      send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Still finishing the response.' } } });
+      send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Still finishing the response.' + (process.env.FAKE_CLAUDE_WHITESPACE ? '\n' : '') } } });
       send({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 12000, output_tokens_details: { thinking_tokens: 5400 } } } });
-      entries.at(-1).message.content.push({ type: 'text', text: 'Still finishing the response.' }); save();
+      entries.at(-1).message.content.push({ type: 'text', text: 'Still finishing the response.' + (process.env.FAKE_CLAUDE_WHITESPACE ? '\n' : '') }); save();
     }
     send({ type: 'stream_event', event: { type: 'message_stop' } });
     const response = await responsePending;
@@ -42,7 +42,7 @@ createInterface({ input: process.stdin }).on('line', async line => {
     if (process.env.FAKE_CLAUDE_HANG_AFTER_TOOL === '1') return;
   }
   const humanTurns = entries.filter(row => row.type === 'user' && (typeof row.message.content === 'string' || row.message.content.some(part => part.type === 'text'))).length;
-  const id = randomUUID(), text = toolResult ? `Used ${toolResult}` : `Reply ${humanTurns}.`;
+  const id = randomUUID(), text = (toolResult ? `Used ${toolResult}` : `Reply ${humanTurns}.`) + (process.env.FAKE_CLAUDE_WHITESPACE ? '\n' : '');
   send({ type: 'stream_event', event: { type: 'message_start', message: { id, model: 'resolved-claude-model', usage: { input_tokens: 2, cache_read_input_tokens: 8, cache_creation_input_tokens: 1 } } } });
   send({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } });
   send({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 3 } } });

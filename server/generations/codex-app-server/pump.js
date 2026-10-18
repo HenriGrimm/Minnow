@@ -12,6 +12,7 @@ import { codexIdentity, codexSessionKey, lockCodexChat, getCodexSession, createC
 import { updateAgentCliSessionOutput } from '../agent-cli/output.js';
 import { withCliTurnContext } from '../agent-cli/conversation.js';
 import { CODEX_READ_BATCH, expandCodexReadBatch } from './read-batch.js';
+import { isParallelSafeTool } from '../../runner/parallel-tool-policy.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
 const MAX_HANDOFF_CALLS = 8;
@@ -176,8 +177,9 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       tool(call) {
         metrics.tool_handoff_ms ??= performance.now() - initializedAt;
         this.batchStartedAt ??= performance.now();
-        // A validated transport batch is already complete; no quiet wait needed.
-        this.handoffReady ||= session.pending.get(call.id)?.group.tool === CODEX_READ_BATCH;
+        // Complete read batches and sequential tools need no collection window.
+        this.handoffReady ||= session.pending.get(call.id)?.group.tool === CODEX_READ_BATCH
+          || !isParallelSafeTool(call.function.name);
         clearTimeout(this.idleTimer); this.calls.push(call); this.choose();
         if (body.stream !== false) append(state, { choices: [{ index: 0, delta: { tool_calls: [{ index: this.calls.length - 1, ...call }] } }] });
         this.scheduleHandoff();
@@ -211,7 +213,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         } else appendChunk(state, Buffer.from(JSON.stringify({ id: state.id, object: 'chat.completion', model: candidate.modelId,
           choices: [{ index: 0, message: { role: 'assistant', content: this.content || null,
             ...(this.reasoning ? { reasoning: this.reasoning } : {}), ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata }))); };
-        session.accepted = [...prepared.messages, { role: 'assistant', content: this.content,
+        session.accepted = [...prepared.messages, { role: 'assistant', content: this.content.trim(),
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
         if (!session.waiting && !session.closed) {
