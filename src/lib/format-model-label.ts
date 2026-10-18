@@ -192,5 +192,5 @@ export function buildTopBarModelOptionHtml(input: TopBarModelOptionInput): strin
     isKnownLocalProviderId(input.providerId) ||
     (input.providerBaseUrl ? isLocalProviderBaseUrl(input.providerBaseUrl) : false);
   const hostAttr = ` data-provider-host="${isLocal ? 'local' : 'cloud'}"`;
-  return `<option value="${escapedValue}" title="${escapedTitle}" data-provider-id="${escapedPid}"${hostAttr}${loadAttr}>${escapedText}</option>`;
+  return `<option value="${escapedValue}" title="${escapedTitle}" data-provider-id="${escapedPid}" data-provider-label="${escapeHtml(pl)}"${hostAttr}${loadAttr}>${escapedText}</option>`;
 }

@@ -3,6 +3,18 @@ import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen, openShellOverlay } from '../../src/ui/shell-overlay-state.ts';
 import { isChromePopoverOpen, resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
+import type { RouterConfig } from '../../src/models/routers.ts';
+
+let pools: RouterConfig = { revision: 1, defaultRouterId: null, routers: [{
+  id: 'auto', name: 'Everyday work', policy: 'evaluate', enabled: true, entries: [
+    { id: 'coder', providerId: 'cloud', modelId: 'coder', enabled: true, concurrencyLimit: 1, taskTypes: ['coding', 'ux-design'], tier: 'frontier' },
+    { id: 'general', providerId: 'cloud', modelId: 'general', enabled: true, concurrencyLimit: 1 },
+  ],
+}] };
+mock.module('../../src/models/routers.ts', { namedExports: {
+  getRouterConfigSync: () => pools,
+  loadRouterConfig: async () => pools,
+} });
 
 let disposed = 0;
 mock.module('../../src/ui/routing-form.ts', { namedExports: {
@@ -13,7 +25,27 @@ mock.module('../../src/ui/routing-form.ts', { namedExports: {
 } });
 const { openModelsPopover } = await import('../../src/ui/models-popover.ts');
 
+test('Models shows pool coverage and per-model assignments, and refreshes while open', async () => {
+  const trigger = document.createElement('button'); document.body.append(trigger);
+  const close = openModelsPopover(trigger);
+  try {
+    const overview = document.querySelector<HTMLElement>('[aria-label="Pool task assignments"]')!;
+    assert.match(overview.textContent || '', /Everyday work.*Match the task.*2 models/s);
+    const card = overview.querySelector<HTMLDetailsElement>('[data-pool-id="auto"]')!;
+    assert.match(card.querySelector('summary')?.textContent || '', /Coder.*UX Design.*Any task/s);
+    card.open = true;
+    card.dispatchEvent(new window.Event('toggle'));
+    assert.match(card.querySelector('li')?.textContent || '', /Frontier tier.*Coder.*UX Design/s);
+    pools = structuredClone(pools); pools.routers[0].name = 'Design work';
+    window.dispatchEvent(new window.Event('minnow-routers-changed'));
+    assert.match(overview.textContent || '', /Design work/);
+    assert.equal(overview.querySelector('details')?.open, true, 'live updates retain expansion');
+    assert.ok(overview.querySelector('.models-system__edit-pools'));
+  } finally { close(); trigger.remove(); }
+});
+
 test('Models preserves nested picker dismissal, balances chrome registration and restores trigger focus', () => {
+  disposed = 0;
   resetChromePopoverRegistryForTests();
   const trigger = document.createElement('button'); document.body.append(trigger);
   const unbind = bindShellOverlayTrigger(trigger, 'models');

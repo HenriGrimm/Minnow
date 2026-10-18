@@ -7,6 +7,7 @@ import { noteRouterDecision, routerRouteState, loadRouterConfig } from '../../sr
 import type { RouterDecision, RouterRouteState } from '../../src/models/routers.ts';
 
 const decision: RouterDecision = {
+  taskType: 'coding',
   tier: 'frontier', effort: 'high', requestedEffort: 'high', reasoningStatus: 'applied', confidence: 0.91,
   reason: 'Multi-file refactor', judgedBy: 'Jev 1.13', source: 'evaluator', modelLabel: 'big-70b',
 };
@@ -38,6 +39,7 @@ test('the real evaluator phase ends immediately with the model and reasoning vis
   assert.equal(el.querySelector('.mn-route')!.getAttribute('aria-busy'), 'false');
   assert.match(el.title, /Judged by Jev 1.13 \(91%\)/);
   assert.match(el.title, /Frontier tier/);
+  assert.match(el.title, /Coder/);
   el.remove();
 });
 

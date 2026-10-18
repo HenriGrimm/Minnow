@@ -70,6 +70,10 @@ Issues and Dashboard show a model choice before starting chats. They initially u
 
 The top-bar **Models** icon opens routing controls and links to **Providers & connections**, **Model pools**, and **Manage models…**. Local runtimes expose **Load / Unload** in the composer picker for the selected model.
 
+The model picker keeps **Favorites** above the provider browser. Hover a provider to preview its models, or click it to keep the group open. The star beside a model adds or removes it from Favorites; the same model on another connection remains a separate choice. Search finds models and providers even when their groups are collapsed. **Smart order** puts providers with favorites first, then your most used providers; **Name A–Z** and **Local first** offer other orders. Favorites and the sort preference are saved on this device.
+
+Use **↑ / ↓** to browse providers, **→** to enter their models, **←** to return, and **Enter** to select. The **Reasoning** bar shows the levels supported by the selected model.
+
 ## Routing: which model does what
 
 **Models → Routing** binds models to *roles* instead of making one model do everything. The shared **Utility tasks** binding covers chat titles, prompt and issue expansion, and git commit messages. Leave it unset to follow each task's originating model. Sub-agents inherit their parent chat unless Routing supplies a fixed general or per-type override. Work agents use the chat model; boards retain their own bindings.

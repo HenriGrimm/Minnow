@@ -1,4 +1,5 @@
 import { isRouterTier } from '../../src/models/router-tiers.mjs';
+import { isRouterTaskType, ROUTER_TASK_TYPES } from '../../src/models/router-task-types.mjs';
 
 export const entryKey = (entry) => JSON.stringify([entry.providerId.trim(), entry.modelId.trim()]);
 
@@ -33,8 +34,9 @@ export function validateRouters(value, { maxRouters = 100 } = {}) {
         if (!Number.isInteger(entry.concurrencyLimit) || entry.concurrencyLimit < 1 || entry.concurrencyLimit > 100) throw new Error('Concurrency must be an integer from 1 to 100');
         if (pairs.has(entryKey(entry))) throw new Error('Provider/model pairs must be unique within a router');
         if (entry.tier != null && entry.tier !== '' && !isRouterTier(entry.tier)) throw new Error('Invalid model tier');
+        if (entry.taskTypes != null && (!Array.isArray(entry.taskTypes) || entry.taskTypes.length > ROUTER_TASK_TYPES.length || !entry.taskTypes.every(isRouterTaskType))) throw new Error('Invalid model task types');
         pairs.add(entryKey(entry)); entries.add(entry.id);
-        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit, ...(isRouterTier(entry.tier) ? { tier: entry.tier } : {}) };
+        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit, ...(isRouterTier(entry.tier) ? { tier: entry.tier } : {}), ...(entry.taskTypes?.length ? { taskTypes: [...new Set(entry.taskTypes)] } : {}) };
       }) };
   });
   const defaultRouterId = value.defaultRouterId || null;

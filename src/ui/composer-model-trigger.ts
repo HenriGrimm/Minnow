@@ -1,5 +1,6 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
 import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
+import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
@@ -18,6 +19,7 @@ import {
   clearModelSearchQuery,
   closeModelSelectMenu,
   focusModelHostFilterSearch,
+  getModelSearchQuery,
   mountModelHostFilterBar,
   mountModelMenuActions,
   registerModelSelectExternalCloser,
@@ -43,6 +45,7 @@ import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-la
 import { syncRouterReevaluateAction } from './router-reevaluate-action';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 import { applyModelProducerLogo, createComposerModelButton, parseModelOptionLabels } from './composer-model-button';
+import { leaveModelPoolPicker, mountModelPoolPickerHost } from './model-pool-picker-host';
 
 const MODEL_FALLBACK_ICON_SVG = iconHtml('appModels', { className: 'mn-os-mb-model-fallback-icon' });
 
@@ -623,7 +626,7 @@ function onDocumentPointerDown(e: PointerEvent): void {
   ) {
     return;
   }
-  closeComposerModelMenu();
+  if (!closeComposerModelMenu()) { e.preventDefault(); e.stopPropagation(); }
 }
 
 function onDocumentKeyDown(e: KeyboardEvent): void {
@@ -631,11 +634,13 @@ function onDocumentKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault();
     const trigger = openTrigger.trigger;
-    closeComposerModelMenu();
-    trigger.focus();
+    if (closeComposerModelMenu()) trigger.focus();
     return;
   }
+  if (openTrigger.panel.classList.contains('is-browsing-pools')) return;
   if (e.target instanceof HTMLElement && e.target.closest('.composer-model-reasoning, .model-menu-actions')) return;
+  if (handleModelProviderBrowserKeydown(openTrigger.menu, e)) return;
+  if (e.target instanceof HTMLElement && e.target.closest('button, select')) return;
   handleOpenMenuNavigation(e);
 }
 
@@ -643,7 +648,7 @@ function onDocumentKeyDown(e: KeyboardEvent): void {
 function handleOpenMenuNavigation(e: KeyboardEvent): void {
   const menu = openTrigger?.menu;
   if (!menu) return;
-  const rows = [...menu.querySelectorAll<HTMLLIElement>('.model-select-option[role="option"][data-value]')];
+  const rows = [...menu.querySelectorAll<HTMLElement>('.model-select-option[role="option"][data-value]')];
   if (!rows.length) return;
   if (e.key === 'Enter') {
     if (activeOptionIndex < 0) return;
@@ -715,10 +720,12 @@ export function initChatModelSelectShortcut(): void {
 }
 
 /** Close any open composer model menu popover. */
-export function closeComposerModelMenu(): void {
-  if (!openTrigger) return;
+export function closeComposerModelMenu(): boolean {
+  if (!openTrigger) return true;
+  if (!leaveModelPoolPicker(openTrigger.panel, () => { closeComposerModelMenu(); })) return false;
   clearModelSearchQuery();
   const current = openTrigger;
+  resetModelProviderBrowser(current.menu);
   openTrigger = null;
   current.panel.classList.add('hidden');
   current.root.classList.remove('is-open');
@@ -734,6 +741,7 @@ export function closeComposerModelMenu(): void {
   }
   detachGlobalListeners();
   shellOverlayClosed('model');
+  return true;
 }
 
 // ── Build ────────────────────────────────────────────────────────────────────
@@ -741,8 +749,7 @@ export function closeComposerModelMenu(): void {
 function openMenu(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   if (!sel || trigger.trigger.disabled) return;
-  closeModelSelectMenu();
-  closeComposerModelMenu();
+  if (!closeModelSelectMenu() || !closeComposerModelMenu()) return;
   openShellOverlay('model', closeComposerModelMenu);
   openTrigger = trigger;
   if (isMenubarStyleVariant(trigger.variant)) {
@@ -778,7 +785,7 @@ function ensureGlobals(): void {
   globalsBound = true;
 
   unregisterExternalCloser = registerModelSelectExternalCloser(() => {
-    closeComposerModelMenu();
+    return closeComposerModelMenu();
   });
 
   const sel = getModelSelect();
@@ -817,7 +824,7 @@ function createModelMenuPanel(
   panel.className = 'composer-model-menu hidden';
   panel.setAttribute('role', 'presentation');
 
-  mountModelHostFilterBar(
+  const filterBar = mountModelHostFilterBar(
     panel,
     {
       onFilterChange: () => rebuildOpenMenu(),
@@ -839,6 +846,19 @@ function createModelMenuPanel(
     onReasoningDefaultChange: (selectValue) => {
       refreshActiveChatReasoningDefault(selectValue);
     },
+  });
+  mountModelPoolPickerHost({
+    panel, menu, filterBar, select: getModelSelect,
+    selectedValue: resolveOpenMenuSelectValue, query: getModelSearchQuery,
+    pick: value => {
+      const trigger = openTrigger;
+      if (!trigger || trigger.panel !== panel) return;
+      handleComposerModelPick(trigger, value);
+      closeComposerModelMenu();
+    },
+    renderModels: rebuildOpenMenu,
+    closeMenu: () => { closeComposerModelMenu(); },
+    layout: () => { if (openTrigger?.panel === panel) positionPanel(openTrigger); },
   });
   document.body.appendChild(panel);
   return { panel, menu };

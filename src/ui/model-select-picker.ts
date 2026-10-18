@@ -9,10 +9,18 @@ import {
   formatCapabilityTooltip,
 } from '../providers/capability-badges';
 import { getLastCapabilitiesProbedAt } from '../providers/model-capabilities';
+import { resolveModelProducer } from '../providers/model-producer';
 import {
-  producerDisplayName,
-  resolveModelProducer,
-} from '../providers/model-producer';
+  readModelPickerPreferences,
+  recordModelPickerUse,
+  toggleModelPickerFavorite,
+} from '../models/model-picker-preferences';
+import {
+  handleModelProviderBrowserKeydown,
+  renderModelProviderBrowser,
+  resetModelProviderBrowser,
+  type ModelBrowserGroup,
+} from './model-provider-browser';
 import { isModelLoaded, resolveModelState, type ModelLoadState } from './model-state-dot';
 import {
   getModelLoadUnloadTargetSelectValue,
@@ -47,14 +55,11 @@ import {
 } from '../config/model-reasoning-defaults';
 import type { ReasoningEffortOption } from '../types';
 import { cursorVariantFamilyKey, cursorVariantParts } from '../models/cursor-variants.mjs';
+import { leaveModelPoolPicker, mountModelPoolPickerHost, refreshModelPoolPicker } from './model-pool-picker-host';
 
 /** Refresh icon reused for compact refresh controls in model picker filter bars. */
 const MODEL_REFRESH_ICON_HTML = iconHtml('refresh');
 
-/** Flat list when catalog is small; larger catalogs get collapsible producer headers. */
-const BROWSE_ALL_LIMIT = 12;
-
-const COLLAPSED_STORAGE_KEY = 'minnow-model-producer-collapsed';
 const HOST_FILTER_STORAGE_KEY = 'minnow-model-host-filter';
 const LOCAL_LOAD_FILTER_STORAGE_KEY = 'minnow-model-local-load-filter';
 const LIBRARY_FILTER_STORAGE_KEY = 'minnow-model-library-filter';
@@ -89,9 +94,9 @@ let modelSearchQuery = '';
 let modelSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let modelMenuActiveIndex = -1;
 
-/** List selectable option rows in an open model menu (skips producer headers). */
-function listModelMenuOptions(menu: HTMLUListElement): HTMLLIElement[] {
-  return [...menu.querySelectorAll<HTMLLIElement>('.model-select-option[role="option"]')];
+/** List selectable model rows, excluding provider navigation and stars. */
+function listModelMenuOptions(menu: HTMLUListElement): HTMLElement[] {
+  return [...menu.querySelectorAll<HTMLElement>('.model-select-option[role="option"]')];
 }
 
 function syncModelMenuActiveOption(menu: HTMLUListElement, index: number): void {
@@ -118,6 +123,9 @@ function handleTopBarModelMenuKeydown(event: KeyboardEvent): void {
   if (!open) return;
   const { menu, sel } = getElements();
   if (!menu || !sel) return;
+  if (menu.closest('.is-browsing-pools')) return;
+  if (event.defaultPrevented || handleModelProviderBrowserKeydown(menu, event)) return;
+  if ((event.target as HTMLElement).closest('button, select, .model-menu-actions')) return;
 
   const options = listModelMenuOptions(menu);
   if (options.length === 0) return;
@@ -154,21 +162,22 @@ function handleTopBarModelMenuKeydown(event: KeyboardEvent): void {
 }
 
 /** Optional close hooks for composer / OS model menus that share the #modelSelect catalog. */
-const externalModelMenuClosers = new Set<() => void>();
+const externalModelMenuClosers = new Set<() => boolean | void>();
 
 /** Register a handler that closes a secondary model menu when the top-bar picker opens. */
-export function registerModelSelectExternalCloser(close: () => void): () => void {
+export function registerModelSelectExternalCloser(close: () => boolean | void): () => void {
   externalModelMenuClosers.add(close);
   return () => externalModelMenuClosers.delete(close);
 }
 
-function closeExternalModelMenus(): void {
+function closeExternalModelMenus(): boolean {
   for (const close of externalModelMenuClosers) {
     try {
-      close();
+      if (close() === false) return false;
     } catch {
     }
   }
+  return true;
 }
 
 function getElements() {
@@ -178,24 +187,6 @@ function getElements() {
   const triggerText = document.getElementById('modelSelectTriggerText');
   const menu = document.getElementById('modelSelectMenu') as HTMLUListElement | null;
   return { root, sel, trigger, triggerText, menu };
-}
-
-function loadCollapsedProducers(): Set<string> {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed: unknown = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveCollapsedProducers(slugs: Set<string>): void {
-  try {
-    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...slugs]));
-  } catch {
-  }
 }
 
 function loadModelHostFilter(): ModelHostFilter {
@@ -317,7 +308,7 @@ export function focusModelHostFilterSearch(): void {
 function syncAllModelHostFilterSearchInputs(): void {
   const query = getModelSearchQuery();
   for (const input of document.querySelectorAll<HTMLInputElement>(
-    '.model-select-host-filter .model-host-filter-search',
+    '.model-select-host-filter .model-host-filter-search:not([data-model-search-isolated])',
   )) {
     if (input.value !== query) input.value = query;
   }
@@ -360,6 +351,10 @@ function providerIdForOption(opt: HTMLOptionElement): string {
   return decodeModelSelectKey(opt.value)?.providerId ?? '';
 }
 
+function modelIdForOption(opt: HTMLOptionElement): string {
+  return opt.dataset.modelId || decodeModelSelectKey(opt.value)?.modelId || opt.value;
+}
+
 function isLocalProviderId(providerId: string, opt?: HTMLOptionElement): boolean {
   const hostAttr = opt?.getAttribute('data-provider-host');
   if (hostAttr === 'local') return true;
@@ -391,7 +386,8 @@ function optionMatchesLocalLoadFilter(
 ): boolean {
   if (filter === 'all') return true;
   if (!isLocalProviderId(providerIdForOption(opt), opt)) return true;
-  const cached = modelCache.get(opt.value.trim());
+  const cached = modelCache.get(opt.value.trim())
+    ?? modelCache.get(encodeModelSelectKey(providerIdForOption(opt), opt.value));
   return cached ? resolveModelState(cached) === 'loaded' : false;
 }
 
@@ -422,7 +418,7 @@ function filterOptionsByLibrary(
 function optionMatchesSearch(opt: HTMLOptionElement, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const canonicalId = tooltipModelIdForOptionValue(opt.value);
+  const canonicalId = modelIdForOption(opt);
   const producer = producerForOptionValue(opt.value).displayName.toLowerCase();
   const haystack = [
     opt.text,
@@ -430,10 +426,11 @@ function optionMatchesSearch(opt: HTMLOptionElement, query: string): boolean {
     canonicalId,
     opt.title ?? '',
     producer,
+    providerLabelForOption(opt),
   ]
     .join(' ')
     .toLowerCase();
-  return haystack.includes(q);
+  return q.split(/\s+/).every(term => haystack.includes(term));
 }
 
 function filterOptionsBySearch(
@@ -530,8 +527,8 @@ function mountModelHostFilterSearch(
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
   searchInput.className = 'model-host-filter-search';
-  searchInput.placeholder = 'Search models…';
-  searchInput.setAttribute('aria-label', 'Search models');
+  searchInput.placeholder = 'Search models or providers…';
+  searchInput.setAttribute('aria-label', 'Search models or providers');
   searchInput.autocomplete = 'off';
   searchInput.spellcheck = false;
   searchInput.value = getModelSearchQuery();
@@ -668,6 +665,8 @@ export interface ModelMenuActionsOptions {
   ) => void;
   /** Board menus keep their run-specific reasoning control in the board header. */
   showReasoningDefault?: boolean;
+  /** Isolated settings pickers must not edit an unrelated global model when inheriting. */
+  fallbackToGlobal?: boolean;
 }
 
 function reasoningLevelsForSelectValue(selectValue: string): {
@@ -712,7 +711,7 @@ export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
   choices.replaceChildren();
 
   const entries: Array<{ effort: ReasoningEffortOption | null; label: string }> = [
-    { effort: null, label: 'Model' },
+    { effort: null, label: 'Default' },
     ...levels.map((level) => ({
       effort: level,
       label: formatReasoningEffortLabel(level),
@@ -783,7 +782,7 @@ export function mountModelMenuActions(
   row.className = 'model-menu-actions';
   row.setAttribute('role', 'group');
   row.setAttribute('aria-label', 'Model actions');
-  setModelMenuActionResolver(row, options.resolveSelectValue);
+  setModelMenuActionResolver(row, options.resolveSelectValue, options.fallbackToGlobal);
 
   const reasoningWrap = document.createElement('div');
   reasoningWrap.className = 'model-menu-reasoning-default';
@@ -795,7 +794,7 @@ export function mountModelMenuActions(
 
   const reasoningLabel = document.createElement('span');
   reasoningLabel.className = 'model-menu-reasoning-default__label';
-  reasoningLabel.textContent = 'Default reasoning';
+  reasoningLabel.textContent = 'Reasoning';
 
   const reasoningHint = document.createElement('span');
   reasoningHint.className = 'model-menu-reasoning-default__hint';
@@ -894,13 +893,15 @@ function getTopBarModelPopover(): HTMLElement | null {
 }
 
 /** Close the model list popover. */
-export function closeModelSelectMenu(): void {
+export function closeModelSelectMenu(): boolean {
+  if (!leaveModelPoolPicker(getTopBarModelPopover(), () => { closeModelSelectMenu(); })) return false;
   closeAuxiliaryModelSelectMenu();
   clearModelSearchQuery();
   const { root, trigger, menu } = getElements();
   open = false;
   modelMenuActiveIndex = -1;
   menu?.removeAttribute('aria-activedescendant');
+  if (menu) resetModelProviderBrowser(menu);
   root?.classList.remove('is-open');
   getTopBarModelPopover()?.classList.add('hidden');
   menu?.classList.add('hidden');
@@ -909,13 +910,16 @@ export function closeModelSelectMenu(): void {
     unregisterChromePopover();
     chromePopoverRegistered = false;
   }
+  return true;
 }
 
 function openModelSelectMenu(): void {
   const { root, trigger, menu, sel } = getElements();
   if (!root || !trigger || !menu || !sel || trigger.disabled) return;
   closeAuxiliaryModelSelectMenu();
-  closeExternalModelMenus();
+  if (!closeExternalModelMenus()) return;
+  resetModelProviderBrowser(menu);
+  renderModelSelectMenuRows(menu, sel);
   open = true;
   root.classList.add('is-open');
   getTopBarModelPopover()?.classList.remove('hidden');
@@ -979,7 +983,7 @@ export function selectModelInPicker(modelId: string): void {
   const { sel } = getElements();
   if (!sel || !modelId) return;
   const keepOpen = shouldKeepModelMenuOpenAfterSelect(modelId);
-  if (!keepOpen) closeModelSelectMenu();
+  if (!keepOpen && !closeModelSelectMenu()) return;
   if (sel.value === modelId) {
     syncModelSelectPicker();
     return;
@@ -1002,6 +1006,9 @@ interface AuxiliaryModelSelectPicker {
   composerButton?: ReturnType<typeof createComposerModelButton>;
   panel: HTMLElement;
   search?: HTMLInputElement;
+  hostFilter: ModelHostFilter;
+  position: () => void;
+  stopPositioning?: () => void;
   pick: (value: string) => void;
 }
 
@@ -1012,10 +1019,16 @@ let auxiliaryPickerId = 0;
 
 function closeAuxiliaryModelSelectMenu(): void {
   if (!openAuxiliaryPicker) return;
+  resetModelProviderBrowser(openAuxiliaryPicker.menu);
+  openAuxiliaryPicker.stopPositioning?.();
+  openAuxiliaryPicker.stopPositioning = undefined;
+  const panel = openAuxiliaryPicker.panel;
+  if (typeof panel.hidePopover === 'function' && panel.matches(':popover-open')) panel.hidePopover();
   openAuxiliaryPicker.root.classList.remove('is-open');
   openAuxiliaryPicker.panel.classList.add('hidden');
   openAuxiliaryPicker.trigger.setAttribute('aria-expanded', 'false');
   openAuxiliaryPicker.search?.setAttribute('aria-expanded', 'false');
+  if (openAuxiliaryPicker.search) openAuxiliaryPicker.search.value = '';
   openAuxiliaryPicker = null;
   if (auxiliaryChromePopoverRegistered) {
     unregisterChromePopover();
@@ -1085,7 +1098,9 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
     if (picker.trigger.isConnected) picker.trigger.focus();
   };
   renderModelSelectMenuRows(picker.menu, select, picker.pick, undefined,
-    picker.search ? { isolated: true, searchQuery: picker.search.value } : undefined);
+    { isolated: true, searchQuery: picker.search?.value ?? '', hostFilter: picker.hostFilter });
+  syncModelMenuReasoningDefaultAction(picker.panel.querySelector('.model-menu-actions')!);
+  if (openAuxiliaryPicker === picker) picker.position();
 }
 
 /** Wrap a native model &lt;select&gt; with the same custom list UI as the top-bar picker. */
@@ -1115,7 +1130,7 @@ export function mountAuxiliaryModelSelectCombobox(
   const trigger = composerButton?.trigger ?? document.createElement('button');
   trigger.type = 'button';
   if (!composerButton) trigger.className = 'model-select-trigger';
-  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
 
   const triggerText = composerButton?.labelEl ?? document.createElement('span');
@@ -1139,31 +1154,76 @@ export function mountAuxiliaryModelSelectCombobox(
   trigger.setAttribute('aria-controls', menu.id);
 
   root.appendChild(trigger);
-  let panel: HTMLElement = menu;
-  let search: HTMLInputElement | undefined;
-  if (typeof options !== 'string' && options.searchable) {
-    panel = document.createElement('div');
-    panel.className = 'model-select-popover auxiliary-model-popover hidden';
-    search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'model-host-filter-search-input';
-    search.placeholder = 'Search models…';
-    search.setAttribute('aria-label', `Search ${labelledBy || 'models'}`);
-    search.setAttribute('role', 'combobox');
-    search.setAttribute('aria-autocomplete', 'list');
-    search.setAttribute('aria-controls', menu.id);
-    search.setAttribute('aria-expanded', 'false');
-    menu.classList.remove('hidden');
-    panel.append(search, menu);
-    search.addEventListener('input', () => syncAuxiliaryModelSelectCombobox(select));
+  const panel = document.createElement('div');
+  panel.className = 'model-select-popover auxiliary-model-popover hidden';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', labelledBy || 'Choose a model');
+  // Top-layer rendering escapes scroll/transform clipping while retaining dialog ownership.
+  if (typeof panel.showPopover === 'function') panel.setAttribute('popover', 'manual');
+  const filters = document.createElement('div');
+  filters.className = 'model-select-host-filter';
+  filters.setAttribute('role', 'group');
+  filters.setAttribute('aria-label', 'Model filters');
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'model-host-filter-search-wrap';
+  const search = document.createElement('input');
+  search.dataset.modelSearchIsolated = 'true';
+  search.type = 'search';
+  search.className = 'model-host-filter-search model-host-filter-search-input';
+  search.placeholder = 'Search models or providers…';
+  search.setAttribute('aria-label', `Search ${labelledBy || 'models'}`);
+  search.setAttribute('role', 'combobox');
+  search.setAttribute('aria-autocomplete', 'list');
+  search.setAttribute('aria-controls', menu.id);
+  search.setAttribute('aria-expanded', 'false');
+  menu.classList.remove('hidden');
+  searchWrap.append(search);
+  filters.append(searchWrap);
+  const segments = document.createElement('div');
+  segments.className = 'model-host-filter-segmented';
+  for (const { id, label } of HOST_FILTER_CHOICES) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'model-host-filter-segment';
+    button.textContent = label; button.setAttribute('aria-pressed', String(id === 'all'));
+    button.addEventListener('click', () => {
+      picker.hostFilter = id;
+      segments.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      resetModelProviderBrowser(menu);
+      syncAuxiliaryModelSelectCombobox(select);
+    });
+    segments.append(button);
   }
+  filters.append(segments);
+  panel.append(filters, menu);
+  search.addEventListener('input', () => syncAuxiliaryModelSelectCombobox(select));
   root.appendChild(panel);
 
-  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, composerButton, pick: () => {} };
+  const position = () => {
+    const box = trigger.getBoundingClientRect();
+    const width = Math.min(620, Math.max(0, window.innerWidth - 16));
+    panel.style.width = `${width}px`;
+    panel.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
+    panel.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
+    const height = panel.getBoundingClientRect().height;
+    const below = window.innerHeight - box.bottom - 12;
+    const top = below >= height || below >= box.top - 12 ? box.bottom + 4 : box.top - height - 4;
+    panel.style.top = `${Math.max(8, Math.min(top, window.innerHeight - height - 8))}px`;
+  };
+  const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, hostFilter: 'all', position, composerButton, pick: () => {} };
   auxiliaryPickers.set(select, picker);
+  mountModelMenuActions(panel, {
+    fallbackToGlobal: false,
+    resolveSelectValue: () => {
+      const selected = selectedOptionForSelect(select);
+      return selected && providerIdForOption(selected) && !decodeModelSelectKey(selected.value)
+        ? encodeModelSelectKey(providerIdForOption(selected), modelIdForOption(selected)) : select.value;
+    },
+    closeMenu: closeAuxiliaryModelSelectMenu,
+  });
 
   select.addEventListener('change', () => {
     syncAuxiliaryModelSelectCombobox(select);
+
   });
 
   let activeIndex = -1;
@@ -1185,6 +1245,23 @@ export function mountAuxiliaryModelSelectCombobox(
       auxiliaryChromePopoverRegistered = true;
     }
     syncAuxiliaryModelSelectCombobox(select);
+    if (typeof panel.showPopover === 'function') panel.showPopover();
+    position();
+    const onScroll = (event: Event) => { if (!panel.contains(event.target as Node)) position(); };
+    window.addEventListener('resize', position);
+    document.addEventListener('scroll', onScroll, true);
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
+    observer?.observe(panel);
+    const removalObserver = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(() => {
+      if (!root.isConnected && openAuxiliaryPicker === picker) closeAuxiliaryModelSelectMenu();
+    });
+    removalObserver?.observe(document.body, { childList: true, subtree: true });
+    picker.stopPositioning = () => {
+      observer?.disconnect();
+      removalObserver?.disconnect();
+      window.removeEventListener('resize', position);
+      document.removeEventListener('scroll', onScroll, true);
+    };
     activeIndex = -1;
     menu.removeAttribute('aria-activedescendant');
     search?.removeAttribute('aria-activedescendant');
@@ -1192,7 +1269,6 @@ export function mountAuxiliaryModelSelectCombobox(
   });
 
   root.addEventListener('keydown', (event) => {
-    if (event.key === 'Tab') { closeAuxiliaryModelSelectMenu(); return; }
     if (event.key === 'Escape') {
       if (openAuxiliaryPicker === picker) { event.preventDefault(); closeAuxiliaryModelSelectMenu(); trigger.focus(); }
       return;
@@ -1201,11 +1277,15 @@ export function mountAuxiliaryModelSelectCombobox(
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault(); trigger.click(); activeIndex = -1;
     }
+    if ((event.target as HTMLElement).closest('.model-menu-actions')) return;
+    if (event.defaultPrevented || handleModelProviderBrowserKeydown(menu, event)) return;
+    if ((event.target as HTMLElement).closest('button, select')) return;
     const rows = listModelMenuOptions(menu);
     if (!rows.length) return;
     if ((event.key === 'Enter' || (event.key === ' ' && event.target === menu)) && activeIndex >= 0) {
       event.preventDefault(); picker.pick(rows[activeIndex]?.dataset.value || ''); return;
     }
+    if (event.key === 'Enter' && event.target === search) { event.preventDefault(); return; }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     if (event.target === search && ['Home', 'End'].includes(event.key)) return;
     event.preventDefault();
@@ -1264,18 +1344,25 @@ function appendModelOptionRow(
   onSelect?: ModelSelectPickHandler,
   displayLabel?: string,
   variantValues?: string[],
+  onFavoriteChange?: () => void,
+  favoriteKey = opt.value,
 ): void {
   const id = opt.value.trim();
   if (!id) return;
 
-  const cached = modelCache.get(id);
+  const cached = modelCache.get(id)
+    ?? modelCache.get(encodeModelSelectKey(providerIdForOption(opt), modelIdForOption(opt)));
   let loadState: ModelLoadState = cached ? resolveModelState(cached) : 'unknown';
   if (isModelLoadUnloadBusy() && id === getModelLoadUnloadTargetSelectValue()) {
     loadState = 'loading';
   }
-  const canonicalModelId = tooltipModelIdForOptionValue(id);
+  const canonicalModelId = modelIdForOption(opt);
 
-  const li = document.createElement('li');
+  const wrapper = document.createElement('li');
+  wrapper.className = 'model-select-row';
+  wrapper.setAttribute('role', 'presentation');
+  const li = document.createElement('button');
+  li.type = 'button';
   li.className = 'model-select-option';
   if (indented) li.classList.add('model-select-option--grouped');
   if (id === selectedValue || variantValues?.includes(selectedValue)) {
@@ -1304,8 +1391,16 @@ function appendModelOptionRow(
 
   const label = document.createElement('span');
   label.className = 'model-select-option-label';
-  label.textContent = displayLabel ?? opt.text;
+  const fullLabel = displayLabel ?? opt.text;
+  const suffix = fullLabel.lastIndexOf(' — ');
+  label.textContent = opt.dataset.modelLabel || (suffix >= 0 ? fullLabel.slice(0, suffix) : fullLabel);
   label.title = rowTitle;
+  const detail = document.createElement('span');
+  detail.className = 'model-select-option-detail';
+  detail.textContent = providerLabelForOption(opt);
+  const copy = document.createElement('span');
+  copy.className = 'model-select-option-copy';
+  copy.append(label, detail);
 
   const activityEl = document.createElement('span');
   activityEl.className = 'model-select-option-activity';
@@ -1326,12 +1421,12 @@ function appendModelOptionRow(
       badgeSpan.appendChild(chip);
     }
     li.appendChild(dot);
-    li.appendChild(label);
+    li.appendChild(copy);
     li.appendChild(activityEl);
-    li.appendChild(badgeSpan);
+    detail.appendChild(badgeSpan);
   } else {
     li.appendChild(dot);
-    li.appendChild(label);
+    li.appendChild(copy);
     li.appendChild(activityEl);
   }
 
@@ -1341,8 +1436,37 @@ function appendModelOptionRow(
     if (onSelect) onSelect(value);
     else pickModel(value);
   });
+  li.addEventListener('click', event => {
+    // Pointer selection runs on mousedown; native keyboard activation runs on click.
+    if (event.detail === 0) {
+      if (onSelect) onSelect(li.dataset.value ?? id);
+      else pickModel(li.dataset.value ?? id);
+    }
+  });
 
-  menu.appendChild(li);
+  const favorite = document.createElement('button');
+  favorite.type = 'button';
+  favorite.className = 'model-select-favorite';
+  favorite.dataset.favoriteKey = favoriteKey;
+  const starred = readModelPickerPreferences().favorites.includes(favoriteKey);
+  favorite.setAttribute('aria-pressed', String(starred));
+  favorite.setAttribute('aria-label', `${starred ? 'Unfavorite' : 'Favorite'} ${fullLabel}`);
+  favorite.title = starred ? 'Remove from favorites' : 'Add to favorites';
+  favorite.innerHTML = iconHtml(starred ? 'starFilled' : 'star');
+  favorite.addEventListener('mousedown', event => event.stopPropagation());
+  favorite.addEventListener('click', event => {
+    event.stopPropagation();
+    toggleModelPickerFavorite(favoriteKey);
+    const keyboard = event.detail === 0;
+    onFavoriteChange?.();
+    if (keyboard) {
+      [...(menu.closest('.model-select-menu, .model-provider-browser') ?? menu).querySelectorAll<HTMLButtonElement>('.model-select-favorite')]
+        .find(button => button.dataset.favoriteKey === favoriteKey)?.focus();
+    }
+  });
+
+  wrapper.append(li, favorite);
+  menu.appendChild(wrapper);
 }
 
 type ModelMenuEntry = { options: HTMLOptionElement[]; cursorFamily?: string };
@@ -1351,7 +1475,8 @@ function modelMenuEntries(options: HTMLOptionElement[]): ModelMenuEntry[] {
   const entries: ModelMenuEntry[] = [];
   const cursorGroups = new Map<string, ModelMenuEntry>();
   for (const option of options) {
-    if (providerIdForOption(option) !== 'cursor-agent-cli') {
+    if (providerIdForOption(option) !== 'cursor-agent-cli'
+      || (option.dataset.modelId && !decodeModelSelectKey(option.value))) {
       entries.push({ options: [option] });
       continue;
     }
@@ -1386,9 +1511,11 @@ function appendModelMenuEntry(
   selectedValue: string,
   indented: boolean,
   onSelect?: ModelSelectPickHandler,
+  onFavoriteChange?: () => void,
 ): void {
   if (!entry.cursorFamily || entry.options.length < 2) {
-    appendModelOptionRow(menu, entry.options[0], selectedValue, indented, onSelect);
+    appendModelOptionRow(menu, entry.options[0], selectedValue, indented, onSelect,
+      undefined, undefined, onFavoriteChange, favoriteKeyForEntry(entry));
     return;
   }
   const selected = entry.options.find((option) => option.value === selectedValue)
@@ -1401,6 +1528,7 @@ function appendModelMenuEntry(
   appendModelOptionRow(
     menu, selected, selectedValue, indented, onSelect,
     cursorGroupLabel(selected), entry.options.map((option) => option.value),
+    onFavoriteChange, favoriteKeyForEntry(entry),
   );
 }
 
@@ -1411,78 +1539,34 @@ function collectSelectOptions(sel: HTMLSelectElement): HTMLOptionElement[] {
     const tag = child.tagName;
     if (tag === 'OPTGROUP') {
       for (const el of [...child.children]) {
-        if (el.tagName === 'OPTION' && (el as HTMLOptionElement).value.trim()) {
+        if (el.tagName === 'OPTION' && (el as HTMLOptionElement).value.trim()
+          && !(el as HTMLOptionElement).disabled && !(child as HTMLOptGroupElement).disabled) {
           options.push(el as HTMLOptionElement);
         }
       }
-    } else if (tag === 'OPTION' && (child as HTMLOptionElement).value.trim()) {
+    } else if (tag === 'OPTION' && (child as HTMLOptionElement).value.trim() && !(child as HTMLOptionElement).disabled) {
       options.push(child as HTMLOptionElement);
     }
   }
   return options;
 }
 
-/** Sort producer slugs alphabetically by display name; `other` always last. */
-function sortProducerSlugs(slugs: string[]): string[] {
-  return [...slugs].sort((a, b) => {
-    if (a === 'other') return 1;
-    if (b === 'other') return -1;
-    return producerDisplayName(a).localeCompare(producerDisplayName(b));
-  });
+function providerLabelForOption(option: HTMLOptionElement): string {
+  const label = option.dataset.providerLabel?.trim();
+  if (label) return label;
+  const suffix = option.text.lastIndexOf(' — ');
+  if (suffix >= 0) return option.text.slice(suffix + 3).trim();
+  if (option.parentElement?.tagName === 'OPTGROUP') {
+    return (option.parentElement as HTMLOptGroupElement).label;
+  }
+  return providerIdForOption(option) || 'Local models';
 }
 
-/** Append a collapsible producer group header. */
-function appendProducerHeader(
-  menu: HTMLUListElement,
-  slug: string,
-  count: number,
-  sampleValue: string,
-  collapsed: Set<string>,
-  onToggle: () => void,
-): void {
-  const isCollapsed = collapsed.has(slug);
-  const producer = producerForOptionValue(sampleValue);
-
-  const header = document.createElement('li');
-  header.className = 'model-select-producer-header';
-  header.setAttribute('role', 'presentation');
-  header.dataset.producerSlug = slug;
-
-  const chevron = document.createElement('span');
-  chevron.className = 'model-select-producer-chevron';
-  if (isCollapsed) chevron.classList.add('model-select-producer-chevron--collapsed');
-  chevron.setAttribute('aria-hidden', 'true');
-  chevron.innerHTML = iconHtml('chevronDown', { size: 10 });
-
-  if (producer.logoSvg) {
-    const logo = document.createElement('span');
-    logo.className = 'model-producer-logo';
-    logo.setAttribute('aria-hidden', 'true');
-    logo.innerHTML = producer.logoSvg;
-    header.appendChild(chevron);
-    header.appendChild(logo);
-  } else {
-    header.appendChild(chevron);
-  }
-
-  const name = document.createElement('span');
-  name.className = 'model-select-producer-name';
-  name.textContent = producer.displayName;
-
-  const countEl = document.createElement('span');
-  countEl.className = 'model-select-producer-count';
-  countEl.textContent = String(count);
-
-  header.appendChild(name);
-  header.appendChild(countEl);
-
-  header.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onToggle();
-  });
-
-  menu.appendChild(header);
+function favoriteKeyForEntry(entry: ModelMenuEntry): string {
+  return entry.cursorFamily
+    ? encodeModelSelectKey(providerIdForOption(entry.options[0]), entry.cursorFamily)
+    : decodeModelSelectKey(entry.options[0].value) ? entry.options[0].value
+      : encodeModelSelectKey(providerIdForOption(entry.options[0]), modelIdForOption(entry.options[0]));
 }
 
 /** Rebuild model list rows into any menu element (shared by top bar and OS menubar). */
@@ -1491,19 +1575,24 @@ export function renderModelSelectMenuRows(
   sel: HTMLSelectElement,
   onSelect?: ModelSelectPickHandler,
   selectedValueOverride?: string,
-  filters?: { isolated?: boolean; searchQuery?: string },
+  filters?: { isolated?: boolean; searchQuery?: string; hostFilter?: ModelHostFilter },
 ): void {
   const selectedValue = selectedValueOverride?.trim() || sel.value;
+  if (refreshModelPoolPicker(menu)) return;
   const scrollTop = menu.scrollTop;
   menu.innerHTML = '';
+  menu.removeAttribute('aria-activedescendant');
 
   // Routing reset is an action, so model catalog filters must never hide it.
   const resetOption = [...sel.options].find((option) =>
     option.value === '' && option.dataset.modelSelectReset === 'true' && !option.disabled,
   );
   if (resetOption && onSelect) {
-    const reset = document.createElement('li');
-    reset.className = 'model-select-option';
+    const resetWrap = document.createElement('li');
+    resetWrap.setAttribute('role', 'presentation');
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'model-select-option model-select-reset';
     reset.dataset.value = '';
     reset.setAttribute('role', 'option');
     reset.setAttribute('aria-selected', String(selectedValue === ''));
@@ -1512,13 +1601,19 @@ export function renderModelSelectMenuRows(
       event.preventDefault();
       onSelect('');
     });
-    menu.appendChild(reset);
+    reset.addEventListener('click', event => { if (event.detail === 0) onSelect(''); });
+    resetWrap.append(reset);
+    menu.appendChild(resetWrap);
   }
 
   const allOptions = collectSelectOptions(sel);
-  if (allOptions.length === 0) return;
+  if (allOptions.length === 0) {
+    resetModelProviderBrowser(menu);
+    menu.classList.remove('model-provider-browser');
+    return;
+  }
 
-  const hostFilter = filters?.isolated ? 'all' : getModelHostFilter();
+  const hostFilter = filters?.hostFilter ?? (filters?.isolated ? 'all' : getModelHostFilter());
   const loadFilter = filters?.isolated ? 'all' : getModelLocalLoadFilter();
   const libraryFilter = filters?.isolated ? 'all' : getModelLibraryFilter();
   const searchQuery = filters?.searchQuery ?? getModelSearchQuery();
@@ -1529,6 +1624,8 @@ export function renderModelSelectMenuRows(
   options = filterOptionsByLibrary(options, libraryFilter);
   options = filterOptionsBySearch(options, searchQuery);
   if (options.length === 0) {
+    resetModelProviderBrowser(menu);
+    menu.classList.remove('model-provider-browser');
     const empty = document.createElement('li');
     empty.className = 'model-select-empty-filter';
     empty.setAttribute('role', 'presentation');
@@ -1538,47 +1635,40 @@ export function renderModelSelectMenuRows(
   }
 
   const entries = modelMenuEntries(options);
-  const collapsed = loadCollapsedProducers();
-
-  const toggleCollapse = (slug: string): void => {
-    if (collapsed.has(slug)) collapsed.delete(slug);
-    else collapsed.add(slug);
-    saveCollapsedProducers(collapsed);
-    renderModelSelectMenuRows(menu, sel, onSelect, selectedValueOverride, filters);
-    menu.scrollTop = scrollTop;
+  const preferences = readModelPickerPreferences();
+  const rerender = () => renderModelSelectMenuRows(menu, sel, onSelect, selectedValueOverride, filters);
+  const pick: ModelSelectPickHandler = value => {
+    const option = options.find(candidate => candidate.value === value);
+    if (!option || option.disabled) return;
+    recordModelPickerUse(providerIdForOption(option));
+    if (onSelect) onSelect(value);
+    else pickModel(value);
   };
-
-  if (entries.length <= BROWSE_ALL_LIMIT) {
+  const appendEntry = (list: HTMLUListElement, entry: ModelMenuEntry) => {
+    appendModelMenuEntry(list, entry, selectedValue, false, pick, rerender);
+  };
+  if (searchQuery.trim() || !options.some(option => providerIdForOption(option))) {
+    resetModelProviderBrowser(menu);
+    menu.classList.remove('model-provider-browser');
+    menu.setAttribute('role', 'listbox');
+    for (const entry of entries) appendEntry(menu, entry);
+  } else {
+    const groups = new Map<string, ModelBrowserGroup<ModelMenuEntry>>();
     for (const entry of entries) {
-      appendModelMenuEntry(menu, entry, selectedValue, false, onSelect);
-    }
-    void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());
-    return;
-  }
-
-  const groups = new Map<string, ModelMenuEntry[]>();
-  for (const entry of entries) {
-    const slug = producerForOptionValue(entry.options[0].value).slug;
-    const list = groups.get(slug);
-    if (list) list.push(entry);
-    else groups.set(slug, [entry]);
-  }
-
-  for (const slug of sortProducerSlugs([...groups.keys()])) {
-    const groupOptions = groups.get(slug);
-    if (!groupOptions?.length) continue;
-
-    const sampleValue = groupOptions[0].options[0].value;
-    appendProducerHeader(menu, slug, groupOptions.length, sampleValue, collapsed, () =>
-      toggleCollapse(slug),
-    );
-
-    if (!collapsed.has(slug)) {
-      for (const entry of groupOptions) {
-        appendModelMenuEntry(menu, entry, selectedValue, true, onSelect);
+      const option = entry.options[0];
+      const id = providerIdForOption(option);
+      let group = groups.get(id);
+      if (!group) {
+        group = { id, label: providerLabelForOption(option), local: isLocalProviderId(id, option), entries: [], hasFavorites: false };
+        groups.set(id, group);
       }
+      group.entries.push(entry);
+      if (preferences.favorites.includes(favoriteKeyForEntry(entry))) group.hasFavorites = true;
     }
+    renderModelProviderBrowser(menu, [...groups.values()],
+      entries.filter(entry => preferences.favorites.includes(favoriteKeyForEntry(entry))), appendEntry, rerender);
   }
+  menu.scrollTop = scrollTop;
   void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());
 }
 
@@ -1618,7 +1708,7 @@ function ensureTopBarHostFilterBar(): void {
   menu.parentNode?.insertBefore(shell, menu);
   shell.appendChild(menu);
 
-  mountModelHostFilterBar(shell, {
+  const filterBar = mountModelHostFilterBar(shell, {
     onFilterChange: () => {
       const { sel, menu: menuEl } = getElements();
       if (sel && menuEl) renderModelSelectMenuRows(menuEl, sel);
@@ -1640,6 +1730,19 @@ function ensureTopBarHostFilterBar(): void {
         m.refreshActiveChatReasoningDefault(selectValue);
       });
     },
+  });
+  mountModelPoolPickerHost({
+    panel: shell, menu: menu as HTMLUListElement, filterBar,
+    select: () => getElements().sel,
+    selectedValue: () => getElements().sel?.value || '',
+    query: getModelSearchQuery,
+    pick: pickModel,
+    renderModels: () => {
+      syncAllModelHostFilterBars();
+      const elements = getElements();
+      if (elements.sel && elements.menu) renderModelSelectMenuRows(elements.menu, elements.sel);
+    },
+    closeMenu: () => { closeModelSelectMenu(); },
   });
 }
 
@@ -1666,7 +1769,8 @@ export function initModelSelectPicker(): void {
   document.addEventListener('keydown', (e) => {
     if (!open) return;
     if (e.key === 'Escape') {
-      closeModelSelectMenu();
+      e.preventDefault();
+      if (closeModelSelectMenu()) getElements().trigger?.focus();
       return;
     }
     handleTopBarModelMenuKeydown(e);

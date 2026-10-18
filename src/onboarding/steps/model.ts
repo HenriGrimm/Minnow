@@ -10,6 +10,8 @@ import type { OnboardingContext, OnboardingStep } from '../types';
 import { recordStepProgress } from '../state-core';
 import { encodeModelSelectKey } from '../../lib/model-select-key';
 import { persistDefaultModelValue } from '../../ui/default-model';
+import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from '../../ui/model-select-picker';
+import { formatModelLabel } from '../../lib/format-model-label';
 
 let selectedModelId = '';
 let models: LmModelRecord[] = [];
@@ -47,7 +49,7 @@ export const modelPickStep: OnboardingStep = {
     actions.setPrimaryEnabled(false);
 
     void loadModels(ctx, list, search, actions, abort.signal);
-    return () => abort.abort();
+    return () => { abort.abort(); list.querySelectorAll<HTMLSelectElement>('select').forEach(unmountAuxiliaryModelSelectCombobox); };
   },
 
   async commit(ctx) {
@@ -102,41 +104,29 @@ async function loadModels(
       actions.setPrimaryEnabled(true);
     }
 
-    if (models.length > 8) search.hidden = false;
+    search.hidden = true;
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', 'Chat model');
+    if (!selectedModelId) {
+      const placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = 'Choose a model'; placeholder.disabled = true;
+      select.append(placeholder);
+    }
+    for (const model of models) {
+      const option = document.createElement('option');
+      option.value = model.id; option.textContent = formatModelLabel(model).optionText;
+      option.dataset.providerId = provider.id; option.dataset.providerLabel = provider.label || provider.id;
+      select.append(option);
+    }
+    select.value = selectedModelId;
+    select.addEventListener('change', () => {
+      selectedModelId = select.value;
+      actions.patchContext({ modelId: select.value, providerId: provider.id });
+      actions.setPrimaryEnabled(Boolean(select.value));
+    });
+    list.append(select);
+    mountAuxiliaryModelSelectCombobox(select);
 
-    const renderRows = (filter: string) => {
-      list.innerHTML = '';
-      const q = filter.trim().toLowerCase();
-      const rows = models.filter((m) => !q || m.id.toLowerCase().includes(q));
-      rows.forEach((model) => {
-        const row = el('button', 'mn-onboarding-model-row');
-        row.type = 'button';
-        row.dataset.modelId = model.id;
-        if (model.id === selectedModelId) row.classList.add('is-selected');
-
-        const name = el('span', 'mn-onboarding-model-row__name', model.id);
-        row.appendChild(name);
-
-        const badges = el('span', 'mn-onboarding-model-row__badges');
-        if (model.type === 'vlm' || model.catalogVision) {
-          badges.appendChild(el('span', 'mn-onboarding-chip', 'vision'));
-        }
-        row.appendChild(badges);
-
-        row.addEventListener('click', () => {
-          selectedModelId = model.id;
-          actions.patchContext({ modelId: model.id, providerId: provider.id });
-          actions.setPrimaryEnabled(true);
-          list.querySelectorAll<HTMLButtonElement>('.mn-onboarding-model-row').forEach((btn) => {
-            btn.classList.toggle('is-selected', btn.dataset.modelId === model.id);
-          });
-        });
-        list.appendChild(row);
-      });
-    };
-
-    search.addEventListener('input', () => renderRows(search.value));
-    renderRows('');
   } catch (err) {
     if (signal.aborted) return;
     list.innerHTML = '';

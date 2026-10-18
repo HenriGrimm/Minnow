@@ -2,6 +2,7 @@ import '../styles/model-routing-form.css';
 import { iconHtml, type IconName } from './icon';
 import { loadModelChoices, type ModelChoice } from '../models/model-choices';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
+import { isKnownLocalProviderId } from '../providers/provider-host';
 import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from './model-select-picker';
 import { patchSubAgentUserOverrides, loadSubAgentConfig, setRuntimeSubAgentOverrides } from '../agents/sub-agent-config';
 import { resetUtilityModelConfigCache } from '../config/utility-model-meta';
@@ -19,21 +20,27 @@ export function fillModelChoices(select: HTMLSelectElement, choices: ModelChoice
   for (const choice of choices) {
     let group = groups.get(choice.group);
     if (!group) { group = document.createElement('optgroup'); group.label = choice.group; groups.set(choice.group, group); select.append(group); }
-    group.append(option(choice.label, choice.value));
+    const model = option(choice.label, choice.value);
+    const providerId = decodeModelSelectKey(choice.value)?.providerId || '';
+    model.dataset.providerId = providerId; model.dataset.providerLabel = choice.group;
+    model.dataset.providerHost = choice.host ?? (isKnownLocalProviderId(providerId) ? 'local' : 'cloud');
+    group.append(model);
   }
   if (selected && !choices.some((choice) => choice.value === selected)) select.append(option(`${decodeModelSelectKey(selected)?.modelId || selected} (unavailable)`, selected));
   select.value = selected;
 }
 
 /** Independent mounts share config APIs, not singleton Settings DOM. */
-export function mountRoutingForm(host: HTMLElement, options: { autosave?: boolean; onReady?: () => void } = {}): RoutingForm {
+export function mountRoutingForm(host: HTMLElement, options: { autosave?: boolean; onReady?: () => void; layout?: 'page' | 'compact' } = {}): RoutingForm {
   const abort = new AbortController();
   let handle: RoutingForm;
   let rows: RoutingRow[] = [];
   let pending = Promise.resolve();
   const status = document.createElement('p'); status.className = 'model-routing-form__status'; status.setAttribute('role', 'status'); status.textContent = 'Loading routing…';
   const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'model-routing-form__retry'; retry.textContent = 'Retry saving'; retry.hidden = true;
-  host.classList.add('model-routing-form'); host.append(status, retry);
+  host.classList.add('model-routing-form');
+  host.classList.toggle('model-routing-form--page', options.layout === 'page');
+  host.append(status, retry);
   const valueOf = (block?: { providerId?: string; modelId?: string } | null) => block?.modelId ? encodeModelSelectKey(block.providerId || '', block.modelId) : '';
   const commit = async (): Promise<void> => {
     await ready;
@@ -85,14 +92,29 @@ export function mountRoutingForm(host: HTMLElement, options: { autosave?: boolea
     const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('settings', { size: 14 })}<span>Advanced sub-agent routing</span>${iconHtml('chevronRight', { size: 12, className: 'model-routing-form__advanced-arrow' })}`; advanced.append(summary);
     const basicCount = rows.length;
     for (const [typeId, type] of Object.entries(config.types)) rows.push({ label: type.label || typeId, kind: 'type', typeId, value: valueOf(type), saved: '' });
+    const pageDescriptions: Record<string, string> = {
+      subagents: 'Delegated work inherits the parent chat model unless you choose an override.',
+      utilityModel: 'Generate titles, expand prompts and issues, and write commit messages.',
+      editorAiCompletion: 'Power inline completions, quick edits, and editor assistance.',
+      goalEval: 'Check progress and decide whether a goal needs another iteration.',
+    };
+    if (options.layout === 'page') {
+      const columns = document.createElement('div'); columns.className = 'model-routing-form__columns'; columns.setAttribute('aria-hidden', 'true');
+      columns.innerHTML = '<span>Task</span><span>Assigned model</span>';
+      host.append(columns);
+      const hint = document.createElement('p'); hint.className = 'model-routing-form__advanced-hint';
+      hint.textContent = 'Set a model for an individual agent type. These choices take precedence over the general Sub-agents setting above.';
+      advanced.append(hint);
+    }
     rows.forEach((row, index) => {
       row.saved = row.value;
       const label = document.createElement('label'); label.className = 'model-routing-form__row';
       const text = document.createElement('span'); text.className = 'model-routing-form__label';
-      const icon = document.createElement('span'); icon.className = 'model-routing-form__icon'; icon.innerHTML = iconHtml(row.icon || 'appAgentActivity', { size: 16 });
+      const icon = document.createElement('span'); icon.className = 'model-routing-form__icon'; icon.innerHTML = iconHtml(row.icon || 'appAgentActivity', { size: options.layout === 'page' && index < basicCount ? 20 : 16 });
       const copy = document.createElement('span'); copy.className = 'model-routing-form__copy';
       const name = document.createElement('span'); name.textContent = row.label; copy.append(name);
-      if (row.description) { const description = document.createElement('small'); description.textContent = row.description; copy.append(description); }
+      const descriptionText = options.layout === 'page' ? pageDescriptions[row.kind] || row.description : row.description;
+      if (descriptionText) { const description = document.createElement('small'); description.textContent = descriptionText; copy.append(description); }
       text.append(icon, copy);
       const select = document.createElement('select'); select.setAttribute('aria-label', `${row.label} model`); row.select = select;
       fillModelChoices(select, choices, row.value, row.kind === 'type' ? 'Use sub-agent routing' : row.kind === 'subagents' ? 'Follow parent chat' : row.kind === 'utilityModel' ? 'Follow originating task' : 'Follow chat');

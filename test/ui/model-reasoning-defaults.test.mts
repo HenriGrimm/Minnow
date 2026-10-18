@@ -69,7 +69,7 @@ describe('model reasoning defaults', { concurrency: false }, () => {
     assert.equal(wrap?.hidden, false);
     assert.deepEqual(
       choiceButtons().map((choice) => choice.textContent),
-      ['Model', 'Low', 'Medium', 'High'],
+      ['Default', 'Low', 'Medium', 'High'],
     );
     assert.equal(hint?.textContent, 'Model default: Medium');
     assert.equal(choices?.getAttribute('role'), 'radiogroup');

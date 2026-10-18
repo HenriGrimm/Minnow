@@ -53,6 +53,7 @@ import {
 } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
 import { setStatus } from './status';
+import { iconHtml } from './icon';
 import {
   mountAuxiliaryModelSelectCombobox,
   syncAuxiliaryModelSelectCombobox,
@@ -1006,8 +1007,18 @@ export async function renderModelRoutingSection(mount: HTMLElement): Promise<voi
   mount.replaceChildren();
   const { mountRoutingForm } = await import('./routing-form');
   loadedFallbackConfig = await loadFallbackChainsConfig();
-  const panels = createRoutingTabs(mount);
-  const form = mountRoutingForm(panels.tasks, { autosave: true });
+  const page = el('div', 'settings-general settings-general--wide settings-routing settings-routing-page');
+  const header = el('header', 'settings-routing-page__header');
+  const heading = el('div', 'settings-routing-page__heading');
+  heading.append(el('h2', 'settings-routing-page__title', 'Model routing'),
+    el('p', 'settings-routing-page__description', 'Choose a dedicated model or pool for supporting tasks, or let them follow the chat. Chat models are selected in the composer.'));
+  const scope = el('span', 'settings-routing-page__scope');
+  scope.innerHTML = `${iconHtml('globe', { size: 14 })}<span>Shared across projects</span>`;
+  header.append(heading, scope);
+  page.append(header);
+  mount.append(page);
+  const panels = createRoutingTabs(page);
+  const form = mountRoutingForm(panels.tasks, { autosave: true, layout: 'page' });
   routingFormCleanup = form.dispose;
   await form.ready;
 }

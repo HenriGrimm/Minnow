@@ -97,7 +97,10 @@ describe('Models model pools panel auto-save', () => {
     }) as typeof fetch;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    win.document.body.replaceChildren();
+    const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
+    await mountRoutersPanel(); // Dispose the panel's polling and picker listeners.
     setStorageModeForTests(null);
     win.close();
     delete (globalThis as { window?: unknown }).window;
@@ -159,10 +162,13 @@ describe('Models model pools panel auto-save', () => {
     assert.equal(win.document.querySelector<HTMLButtonElement>('[aria-label="Included Fast mini from Sample Cloud"]')?.disabled, true);
     click('[aria-label="Add Balanced model from Sample Cloud"]');
     assert.equal(win.document.querySelectorAll('.router-entry').length, 2);
-    click('[aria-label="Move rank 2 up"]');
+    click('[aria-label="Actions for rank 2"]');
+    click('.mn-menu [data-id="up"]');
     assert.match(win.document.querySelector('.router-entry .model-select-trigger-text')?.textContent || '', /Balanced model/);
-    click('[aria-label="Increase slots for rank 1"]');
-    assert.equal(win.document.querySelector('.router-entry output')?.textContent, '2 slots');
+    const slots = win.document.querySelector<HTMLInputElement>('[aria-label="Concurrent slots for rank 1"]')!;
+    slots.value = '2'; slots.dispatchEvent(new win.Event('input'));
+    assert.equal(win.document.querySelectorAll('.router-entry input[type="number"]').length, 2, 'one capacity input per model');
+    assert.equal(win.document.querySelector('.router-entry-details'), null, 'no duplicate More section');
     click('.router-entry-toggle');
     assert.equal(win.document.querySelector('.router-entry-toggle')?.getAttribute('aria-pressed'), 'false');
     const select = win.document.querySelector<HTMLSelectElement>('[aria-label="Model for rank 1"]')!;
@@ -197,14 +203,26 @@ describe('Models model pools panel auto-save', () => {
     loadedConfig.defaultRouterId = 'r1';
     loadedConfig.routers[0].policy = 'evaluate';
     loadedConfig.routers[0].evaluator = { providerId: 'sample-cloud', modelId: 'unlisted-judge' };
+    loadedConfig.routers[0].entries = [{ id: 'model', providerId: 'sample-cloud', modelId: 'balanced-model', enabled: true, concurrencyLimit: 1 }];
     const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
     await mountRoutersPanel();
     const evaluator = win.document.querySelector<HTMLSelectElement>('[aria-label="Task evaluator model"]')!;
     assert.match(evaluator.selectedOptions[0].textContent || '', /unlisted-judge.*unavailable/);
+    const taskTypes = win.document.querySelector('[aria-label="Task types for rank 1"]')!;
+    assert.equal(taskTypes.closest('.router-entry-identity'), null, 'assignments sit below the model controls');
+    assert.ok(taskTypes.closest('.router-entry-routing')?.querySelector('[aria-label="Tier for rank 1"]'));
+    assert.equal(taskTypes.querySelector<HTMLElement>('.router-task-popover')?.hidden, true);
+    taskTypes.querySelector<HTMLButtonElement>('.router-task-types__trigger')!.click();
+    taskTypes.querySelector<HTMLInputElement>('[value="ux-design"]')!.click();
+    taskTypes.querySelector<HTMLInputElement>('[value="coding"]')!.click();
+    assert.match(taskTypes.querySelector('.router-task-types__value')?.textContent || '', /Coder, UX Design/);
+    taskTypes.querySelector<HTMLButtonElement>('.router-task-types__done')!.click();
+    assert.equal(taskTypes.querySelector<HTMLElement>('.router-task-popover')?.hidden, true);
     win.document.querySelector<HTMLButtonElement>('.router-pool-enabled')!.click();
     assert.equal(win.document.querySelector('.router-default-toggle'), null);
     await new Promise((resolve) => setTimeout(resolve, 600));
     assert.equal(saves.at(-1)?.defaultRouterId, null);
     assert.equal(saves.at(-1)?.routers[0].evaluator?.modelId, 'unlisted-judge');
+    assert.deepEqual(saves.at(-1)?.routers[0].entries[0].taskTypes, ['coding', 'ux-design']);
   });
 });

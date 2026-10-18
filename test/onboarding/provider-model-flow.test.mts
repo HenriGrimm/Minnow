@@ -10,6 +10,7 @@ let failSave = false;
 let providers: any[] = [];
 let modelRows = [{ id: 'model-a', type: 'llm' }, { id: 'model-b', type: 'llm' }];
 let modelRequest: (() => Promise<typeof modelRows>) | null = null;
+mock.module('../../src/ui/model-select-picker.ts', { namedExports: { mountAuxiliaryModelSelectCombobox() {}, unmountAuxiliaryModelSelectCombobox() {} } });
 mock.module('../../src/ui/default-model.ts', { namedExports: {
   persistDefaultModelValue: async (value: string) => { if (failSave) throw new Error('disk full'); savedDefault = value; },
 } });
@@ -46,7 +47,9 @@ test('model selection saves the global default and propagates save errors for re
   const cleanup = modelPickStep.render(container, ctx, actions);
   try {
     await flush();
-    container.querySelector<HTMLButtonElement>('[data-model-id="model-b"]')!.click();
+    const select = container.querySelector<HTMLSelectElement>('select')!;
+    select.value = 'model-b';
+    select.dispatchEvent(new win.Event('change'));
     failSave = true;
     await assert.rejects(modelPickStep.commit(ctx), /disk full/);
     assert.equal(ctx.state.steps['model-pick'], undefined);

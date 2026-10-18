@@ -1,0 +1,100 @@
+.pool-picker { color: var(--mn-fg); font: 400 13px/1.45 var(--font-ui); }
+.pool-picker * { box-sizing: border-box; }
+.pool-picker h3 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.pool-picker p { margin: 5px 0; }
+.pool-picker button, .pool-picker input, .pool-picker select { font: inherit; }
+.pool-picker button { color: var(--mn-fg); cursor: pointer; }
+.pool-picker button:disabled { opacity: .5; cursor: not-allowed; }
+.pool-picker-heading, .pool-picker-detail-heading, .pool-picker-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.pool-picker-heading { padding: 14px 16px; }
+.pool-picker-heading p, .pool-picker-caption, .pool-picker-description { color: var(--mn-fg-muted); font-size: 12px; }
+.pool-picker-caption { display: block; overflow-wrap: anywhere; }
+.pool-picker-action, .pool-picker-icon {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 6px 10px; border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm); background: transparent; flex: 0 0 auto;
+}
+.pool-picker-primary { background: var(--mn-accent-soft); border-color: var(--mn-accent-border); color: var(--mn-accent) !important; }
+.pool-picker-danger { color: var(--mn-danger) !important; }
+.pool-picker-columns { display: grid; grid-template-columns: minmax(155px, .8fr) minmax(0, 1.5fr); }
+.pool-picker-rail { padding: 4px 7px 14px; border-right: 1px solid var(--mn-border); }
+.pool-picker-row {
+  display: block; width: 100%; text-align: left; padding: 11px 10px; margin: 0 0 3px;
+  border: 0; border-radius: var(--mn-menu-item-radius); background: transparent;
+}
+.pool-picker-row[aria-pressed="true"] { background: var(--mn-menu-selected-bg); }
+.pool-picker-name { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; overflow-wrap: anywhere; }
+.pool-picker-selected { color: var(--mn-accent); font-size: 11px; }
+.pool-picker-detail { padding: 4px 16px 18px; min-width: 0; }
+.pool-picker-description { margin: 14px 0 !important; }
+.pool-picker-preview { padding: 0 0 0 22px; margin: 0 0 16px; }
+.pool-picker-preview li { padding: 10px 0; border-top: 1px solid var(--mn-border); overflow-wrap: anywhere; }
+.pool-picker-preview li::marker { color: var(--mn-fg-muted); }
+.pool-picker-preview strong { font-weight: 500; }
+.pool-picker-footer { border-top: 1px solid var(--mn-border); padding: 10px 16px; }
+.pool-picker-empty { padding: 26px 16px; text-align: center; }
+.pool-picker-empty p { margin: 8px 0 14px; color: var(--mn-fg-muted); }
+.pool-picker-empty button + button { margin-left: 8px; }
+.pool-picker-confirm-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pool-picker-confirm-actions button + button { margin-left: 0; }
+.pool-picker-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; margin: 0 16px 12px; }
+.pool-picker-field > span, .pool-picker-label { color: var(--mn-fg-muted); font-size: 12px; }
+.pool-picker-label { margin: 14px 16px 7px !important; }
+.pool-picker input, .pool-picker select {
+  min-width: 0; max-width: 100%; width: 100%; padding: 7px 9px; border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm); background: var(--mn-bg); color: var(--mn-fg);
+}
+.pool-picker .router-policy-choices { display: flex; gap: 6px; margin: 0 16px 16px; }
+.pool-picker .router-policy-choices button {
+  flex: 1; min-width: 0; text-align: left; padding: 8px;
+  border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: transparent;
+}
+.pool-picker .router-policy-choices strong { display: block; font-size: 12px; font-weight: 500; }
+.pool-picker .router-policy-choices span { display: block; color: var(--mn-fg-muted); font-size: 11px; margin-top: 4px; }
+.pool-picker .router-policy-choices [aria-pressed="true"] { border-color: var(--mn-accent-border); background: var(--mn-accent-soft); }
+.pool-picker-evaluator { margin-bottom: 14px; }
+.pool-picker-evaluator > p, .pool-picker-evaluator > details { margin: 6px 16px; }
+.pool-picker-evaluator details .pool-picker-field { margin: 8px 0; }
+.pool-picker summary { cursor: pointer; color: var(--mn-fg-muted); font-size: 12px; padding: 4px 0; }
+.pool-picker-lineup { padding: 0 16px 12px; }
+.pool-picker-lineup .pool-picker-heading { padding: 0 0 10px; }
+.pool-picker-lineup ol { list-style: none; padding: 0; margin: 0; }
+.pool-picker-entry { border-top: 1px solid var(--mn-border); padding: 10px 0; }
+.pool-picker-entry-main { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.pool-picker-entry-identity { min-width: 0; grid-column: 2; grid-row: 1; overflow-wrap: anywhere; }
+.pool-picker-entry-identity strong { font-weight: 500; }
+.pool-picker-rank { font-size: 12px; color: var(--mn-fg-muted); }
+.pool-picker-order { display: flex; grid-column: 3; grid-row: 1; gap: 3px; }
+.pool-picker-icon { padding: 5px; min-width: 28px; min-height: 28px; border: 0; }
+.pool-picker-tier { width: 125px !important; font-size: 12px !important; min-height: 30px; padding: 4px 6px !important; }
+.pool-picker-entry-routing { margin: 10px 0 0 24px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.pool-picker-entry-routing .pool-picker-field { display: flex; flex-direction: row; align-items: center; margin: 0; gap: 7px; }
+.pool-picker-entry-routing .pool-picker-field > span { font-size: 11px; }
+.pool-picker-entry-routing .pool-picker-entry-slots { margin-left: auto; }
+.pool-picker-entry-slots input { width: 48px; min-height: 30px; padding: 4px 6px; font-size: 12px; }
+.pool-picker .mn-select-button { min-height: 0; padding: 0; border: 0; background: transparent; }
+.pool-picker-options { margin: 0 16px 14px; border-top: 1px solid var(--mn-border); padding-top: 8px; }
+.pool-picker-options .pool-picker-action { margin: 7px 7px 0 0; }
+.pool-picker-save-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pool-picker-error { color: var(--mn-danger); padding: 8px 16px; overflow-wrap: anywhere; }
+.pool-picker-error + button { margin: 0 16px 12px; }
+.pool-picker-catalog { padding: 0 16px 16px; }
+.pool-picker-catalog-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--mn-border); background: transparent; padding: 11px 0; }
+.pool-picker-catalog-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pool-picker-catalog-row > span:last-child { flex: 0 0 auto; color: var(--mn-accent); font-size: 12px; }
+@media (hover: hover) and (pointer: fine) {
+  .pool-picker-action:hover, .pool-picker-icon:hover, .pool-picker-row:hover, .pool-picker-catalog-row:hover { background: var(--mn-menu-hover-bg); }
+}
+@media (max-width: 520px) {
+  .pool-picker-columns { grid-template-columns: 1fr; }
+  .pool-picker-rail { border-right: 0; border-bottom: 1px solid var(--mn-border); }
+  .pool-picker-detail { padding-top: 14px; }
+  .pool-picker .router-policy-choices { flex-direction: column; }
+  .pool-picker input, .pool-picker select { font-size: 16px; }
+}
+@media (pointer: coarse) {
+  .pool-picker button, .pool-picker summary { min-height: 44px; }
+  .pool-picker-icon { min-width: 40px; }
+}

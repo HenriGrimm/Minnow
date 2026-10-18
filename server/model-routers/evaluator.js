@@ -1,8 +1,8 @@
 /**
  * Task evaluator for Auto model pools (router policy `evaluate`).
  *
- * Once per chat (or explicit re-evaluation) the evaluator answers two typed
- * questions: which capability tier it needs and how much reasoning. The
+ * Once per chat (or explicit re-evaluation) the evaluator answers three typed
+ * questions: task type, capability tier, and how much reasoning. The
  * router maps that onto its entries. It never names a model, so the pool can
  * change without retraining a prompt.
  *
@@ -26,12 +26,13 @@ import {
   isRouterEffort,
   isRouterTier,
 } from '../../src/models/router-tiers.mjs';
+import { isRouterTaskType, ROUTER_TASK_CRITERIA, ROUTER_TASK_TYPES } from '../../src/models/router-task-types.mjs';
 
 export const EVALUATOR_TIMEOUT_MS = 4000;
 export const CHAT_EVALUATOR_TIMEOUT_MS = 30_000;
 // CLI admission, process startup and account initialization precede inference.
 export const CLI_EVALUATOR_TIMEOUT_MS = 60_000;
-/** Below this confidence a new decision does not move a chat off its current tier. */
+/** Below this confidence a new decision keeps the chat's current type and tier. */
 export const KEEP_BELOW_CONFIDENCE = 0.55;
 
 const REQUEST_CHARS = 6000;
@@ -118,6 +119,11 @@ export function decisionRequestBody(modelId, state) {
     model: modelId,
     state,
     questions: {
+      taskType: {
+        type: 'choice',
+        instructions: 'What is the primary kind of work requested? Choose the main deliverable; use previous_request to understand short follow-ups.',
+        criteria: ROUTER_TASK_CRITERIA,
+      },
       tier: {
         type: 'choice',
         instructions: 'How capable a model does this coding-assistant request need to be answered well?',
@@ -163,7 +169,7 @@ function choiceConfidence(answer) {
 
 /**
  * @param {unknown} json Decisions API response (Workers AI wraps it in `result`).
- * @returns {{ tier: string, effort: string, confidence: number }}
+ * @returns {{ tier: string, effort: string, taskType?: string, confidence: number }}
  */
 export function parseDecisionAnswers(json) {
   const root = /** @type {any} */ (json)?.result?.answers ? /** @type {any} */ (json).result : json;
@@ -171,10 +177,13 @@ export function parseDecisionAnswers(json) {
   const tier = answers?.tier?.choice;
   const effort = answers?.effort?.choice;
   if (!isRouterTier(tier)) throw new Error('The evaluator did not return a tier');
+  const taskType = answers?.taskType?.choice;
+  const confidence = choiceConfidence(answers.tier);
   return {
     tier,
+    ...(isRouterTaskType(taskType) ? { taskType } : {}),
     effort: isRouterEffort(effort) ? effort : 'medium',
-    confidence: Math.max(0, Math.min(1, choiceConfidence(answers.tier))),
+    confidence: Math.max(0, Math.min(1, isRouterTaskType(taskType) ? Math.min(confidence, choiceConfidence(answers.taskType)) : confidence)),
   };
 }
 
@@ -192,6 +201,7 @@ export function parseChatEvaluatorText(text) {
   const confidence = Number(value.confidence);
   return {
     tier: value.tier,
+    ...(isRouterTaskType(value.taskType) ? { taskType: value.taskType } : {}),
     effort: isRouterEffort(value.effort) ? value.effort : 'medium',
     confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence > 1 ? confidence / 100 : confidence)) : 0.6,
     reason: typeof value.reason === 'string' ? value.reason.trim().slice(0, 160) : '',
@@ -251,9 +261,10 @@ async function askChatModel(evaluator, state, signal) {
           role: 'system',
           content: [
             'You route requests for a coding assistant to the right model. Do not answer the request.',
+            `Task type (choose the primary deliverable; use previous_request for short follow-ups):\n${criteria(ROUTER_TASK_CRITERIA)}`,
             `Tier:\n${criteria(TIER_CRITERIA)}`,
             `Effort:\n${criteria(EFFORT_CRITERIA)}`,
-            'Reply with one JSON object only: {"tier":"fast|balanced|frontier","effort":"low|medium|high","confidence":0.0-1.0,"reason":"under 12 words"}',
+            `Reply with one JSON object only: {"taskType":"${ROUTER_TASK_TYPES.join('|')}","tier":"fast|balanced|frontier","effort":"low|medium|high","confidence":0.0-1.0,"reason":"under 12 words"}. Confidence is for the combined task type and tier choice.`,
           ].join('\n\n'),
         },
         { role: 'user', content: JSON.stringify(state) },
@@ -347,13 +358,14 @@ export async function decideRoute({ scheduler, router, chatId, body, signal, onD
     scheduler.setDecision(router.id, chatId, fallback);
     return fallback;
   }
-  if (previous?.tier && decision.tier !== previous.tier && decision.confidence < KEEP_BELOW_CONFIDENCE) {
+  if (previous?.tier && (decision.tier !== previous.tier || decision.taskType !== previous.taskType) && decision.confidence < KEEP_BELOW_CONFIDENCE) {
     decision = {
       ...decision,
       tier: previous.tier,
+      taskType: previous.taskType,
       effort: previous.effort,
       source: 'kept',
-      reason: `Unsure (${Math.round(decision.confidence * 100)}%), so it stayed on the ${formatRouterTierLabel(previous.tier).toLowerCase()} tier`,
+      reason: `Unsure (${Math.round(decision.confidence * 100)}%), so it kept the previous task type, tier, and reasoning`,
     };
   }
   scheduler.setDecision(router.id, chatId, { ...decision, reevaluate: false, decidedAt: new Date().toISOString() });

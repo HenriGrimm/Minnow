@@ -10,15 +10,17 @@ import {
 } from './model-select-library';
 import { getWorkspacePath } from '../state/workspace';
 import type { RouterTier } from './router-tiers.mjs';
+import type { RouterTaskType } from './router-task-types.mjs';
 
 export const ROUTER_PROVIDER_ID = 'minnow-router';
-/** `tier` only matters to Auto pools; unset means guessed from the model id. */
-export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier }
+/** Auto pools: unset tier is guessed; absent/empty task types accept any task. */
+export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier; taskTypes?: RouterTaskType[] }
 /** The model that judges a chat in an Auto pool. */
 export interface RouterEvaluator { providerId: string; modelId: string }
 export interface ModelRouter { id: string; name: string; enabled: boolean; policy: 'priority' | 'balance' | 'evaluate'; evaluator?: RouterEvaluator; entries: RouterEntry[] }
 /** The saved chat choice and the reasoning actually applied to the selected model. */
 export interface RouterDecision {
+  taskType?: RouterTaskType;
   tier: RouterTier | null;
   effort: string | null;
   requestedEffort?: string | null;
