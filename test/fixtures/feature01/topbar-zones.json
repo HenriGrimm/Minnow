@@ -8,6 +8,6 @@
     "btnSettings"
   ],
   "workspacePathLabelId": "workspacePathLabel",
-  "endIds": ["modelStateDot", "modelSelect", "modelSelectTrigger", "modelSelectMenu", "btnRefreshModels", "sDot", "sText"],
+  "endIds": ["modelStateDot", "modelSelect", "modelSelectTrigger", "modelSelectMenu", "btnRefreshModels"],
   "forbiddenPatterns": ["workspace-sep"]
 }

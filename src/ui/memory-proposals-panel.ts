@@ -1,4 +1,5 @@
 import { wrapUntrusted } from '../lib/untrusted.mjs';
+import { runSettingsAction } from './settings-controls';
 import {
   acceptMemoryProposal,
   acceptSkillProposal,
@@ -86,8 +87,7 @@ function renderMemoryProposalCard(
   rejectBtn.textContent = 'Reject';
 
   acceptBtn.addEventListener('click', () => {
-    void (async () => {
-      setStatus('spin', 'Saving memory…');
+    void runSettingsAction(acceptBtn, 'Saving memory…', async () => {
       const ok = await acceptMemoryProposal(proposal.id, {
         title: titleInput.value.trim(),
         body: bodyInput.value.trim(),
@@ -100,7 +100,7 @@ function renderMemoryProposalCard(
       setStatus('ok', 'Memory saved');
       onChange();
       await onMemoryAccepted?.();
-    })();
+    });
   });
 
   rejectBtn.addEventListener('click', () => {
@@ -169,8 +169,7 @@ function renderSkillProposalCard(
   rejectBtn.textContent = 'Reject';
 
   acceptBtn.addEventListener('click', () => {
-    void (async () => {
-      setStatus('spin', 'Saving skill…');
+    void runSettingsAction(acceptBtn, 'Saving skill…', async () => {
       const ok = await acceptSkillProposal(proposal.id, {
         skillMdDraft: draftInput.value,
       });
@@ -180,7 +179,7 @@ function renderSkillProposalCard(
       }
       setStatus('ok', 'Skill saved');
       onChange();
-    })();
+    });
   });
 
   rejectBtn.addEventListener('click', () => {

@@ -1,3 +1,4 @@
+import { showToast } from '../ui/toast';
 import { setChatRunActivity, type ChatRunActivityStatus } from '../state/chat-run-activity';
 import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming } from '../app-state';
 import {
@@ -669,7 +670,7 @@ export async function tryNonStreamingFallback(
 export async function sendMessage(): Promise<void> {
   if (isActiveChatStreaming()) return;
   if (isBackgroundStreamBlockingSend()) {
-    setStatus('spin', 'Stop or wait for the reply in the other chat first');
+    showToast('Stop or wait for the reply in the other chat first');
     return;
   }
   const input = document.getElementById('msgInput') as HTMLTextAreaElement;

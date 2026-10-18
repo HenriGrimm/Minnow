@@ -101,7 +101,6 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   const persist = async (patch: Parameters<typeof saveAutopilotMeta>[0]): Promise<void> => {
     try {
       await saveAutopilotMeta(patch);
-      setStatus('ok', 'Autopilot settings saved');
     } catch {
       setStatus('err', 'Could not save. Open or restart Minnow and try again.');
     }

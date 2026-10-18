@@ -1,46 +1,115 @@
-/* Ephemeral action toasts (git panel, etc.) */
-
-.mn-toast {
+/* Shared, interactive feedback above the viewport edge. */
+.mn-action-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-inline-end: 0.4rem;
+  border: 2px solid var(--mn-border-strong);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: mn-action-spin 0.7s linear infinite;
+}
+@keyframes mn-action-spin { to { transform: rotate(360deg); } }
+.mn-toast-stack {
   position: fixed;
-  left: 50%;
-  bottom: 1.25rem;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: 100010;
-  max-width: min(92vw, 28rem);
-  padding: 0.65rem 1rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--mn-border);
-  background: var(--mn-surface-2);
-  color: var(--mn-fg);
-  font-size: 0.875rem;
-  line-height: 1.35;
-  box-shadow: var(--shadow-lift);
-  opacity: 0;
-  transform: translateX(-50%) translateY(8px);
-  transition:
-    opacity 0.2s var(--ease-out),
-    transform 0.2s var(--ease-out);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   pointer-events: none;
 }
-
-.mn-toast--success {
-  border-color: var(--mn-success-border);
-  background: var(--mn-success-soft);
+.mn-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-2);
   color: var(--mn-fg);
+  box-shadow: 0 4px 16px var(--mn-shadow);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+  pointer-events: auto;
 }
-
-.mn-toast--error {
-  border-color: var(--mn-danger-border);
-  background: var(--mn-danger-soft);
+.mn-toast--error { border-color: var(--mn-danger-border); }
+.mn-toast--error .mn-toast__message { color: var(--mn-danger-ink); }
+.mn-toast--visible { opacity: 1; transform: translateY(0); }
+.mn-toast__body { flex: 1; min-width: 0; }
+.mn-toast__message {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 45dvh;
+  overflow-y: auto;
+  user-select: text;
+}
+.mn-toast__count {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  color: var(--mn-fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mn-toast__count[hidden] { display: none; }
+.mn-toast__dismiss,
+.mn-toast__expand {
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--mn-fg);
+  font: inherit;
+  cursor: pointer;
 }
-
-.mn-toast--visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+.mn-toast__dismiss {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
 }
-
+.mn-toast__expand {
+  display: block;
+  min-height: 32px;
+  padding: 0;
+  margin-top: 0.25rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mn-toast__dismiss:focus-visible,
+.mn-toast__expand:focus-visible {
+  outline: 2px solid var(--mn-focus-ring);
+  outline-offset: 2px;
+}
+.mn-toast__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  .mn-toast__dismiss:hover,
+  .mn-toast__expand:hover { background: var(--mn-surface-elevated); }
+}
+@media (pointer: coarse) {
+  .mn-toast__dismiss { width: 44px; height: 44px; }
+  .mn-toast__expand { min-height: 44px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .mn-toast {
-    transition: none;
-  }
+  .mn-action-spinner { animation: none; }
+  .mn-toast { transition: none; transform: none; }
 }

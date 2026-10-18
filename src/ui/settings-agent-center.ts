@@ -435,7 +435,7 @@ async function mountGlobalContextPolicy(mount: HTMLElement): Promise<void> {
         defaultContextEnforcementPolicy: policySel.value as ContextEnforcementPolicy,
       });
       setStatus(
-        ok ? 'ok' : 'err',
+        ok ? 'idle' : 'err',
         ok ? 'Global context policy updated' : 'Could not save. Open or restart Minnow and try again.',
       );
     })();
@@ -465,7 +465,7 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
   ): Promise<void> => {
     const fresh = await loadSubAgentConfig();
     const ok = await saveSubAgentConfigToServer({ ...fresh, ...patch });
-    setStatus(ok ? 'ok' : 'err', ok ? 'Sub-agents updated' : 'Could not save. Open or restart Minnow and try again.');
+    setStatus(ok ? 'idle' : 'err', ok ? 'Sub-agents updated' : 'Could not save. Open or restart Minnow and try again.');
   };
 
   const { root: enabledSwitch, input: enabledCb } = createSettingsSwitch({

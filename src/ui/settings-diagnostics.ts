@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import { appConfirm } from './app-dialog';
 /**
  * Settings → Advanced → Health & diagnostics — subsystem probes and local error viewer.
@@ -278,7 +280,7 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
               const body = (await res.json()) as { markdown?: string };
               const text = body.markdown ?? '';
               await navigator.clipboard.writeText(text);
-              setStatus('ok', 'Diagnostic report copied');
+              showToast('Diagnostic report copied');
             } catch {
               setStatus('err', 'Could not copy report');
             }
@@ -296,7 +298,7 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
         variant: 'danger',
         title: 'Delete local diagnostic logs under ~/.minnow/logs/',
         onClick: () => {
-          void (async () => {
+          void runSettingsAction(actions.querySelector('button:last-child'), 'Clearing diagnostics…', async () => {
             if (
               !await appConfirm(
                 'Clear all captured diagnostic errors and log tail?\n\nThis deletes local JSONL files under ~/.minnow/logs/ and cannot be undone.',
@@ -309,15 +311,13 @@ export async function renderDiagnosticsSettingsSection(): Promise<void> {
               return;
             }
             try {
-              setStatus('spin', 'Clearing diagnostics…');
               const res = await fetch('/api/diagnostics/clear', { method: 'POST' });
               if (!res.ok) throw new Error('Clear failed');
-              setStatus('ok', 'Diagnostics cleared');
               await refreshViewer();
             } catch {
               setStatus('err', 'Could not clear diagnostics');
             }
-          })();
+          });
         },
       },
     ],

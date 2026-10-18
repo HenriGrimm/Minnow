@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-servers.css';
 
@@ -261,7 +263,6 @@ function createServerRow(
     void (async () => {
       const ok = await setManagedServerEnabled(server.id, enableInput.checked);
       if (ok) {
-        setStatus('ok', enableInput.checked ? `${server.label} enabled` : `${server.label} disabled`);
         onRefresh();
         return;
       }
@@ -274,7 +275,6 @@ function createServerRow(
     void (async () => {
       const ok = await setManagedServerAutoStart(server.id, autoCb.checked);
       if (ok) {
-        setStatus('ok', autoCb.checked ? 'Auto-start enabled' : 'Auto-start disabled');
         return;
       }
       autoCb.checked = !autoCb.checked;
@@ -288,7 +288,6 @@ function createServerRow(
       const result = await setManagedServerPort(server.id, port);
       if (result.ok) {
         portInput.value = String(result.port);
-        setStatus('ok', `Port set to ${result.port}`);
         onRefresh();
         return;
       }
@@ -320,7 +319,6 @@ function createServerRow(
       if (result.alreadyInstalled) {
         installProgress.classList.add('hidden');
         installBtn.disabled = false;
-        setStatus('ok', 'Already installed');
         onRefresh();
         return;
       }
@@ -329,7 +327,7 @@ function createServerRow(
       installProgress.classList.add('hidden');
       installBtn.disabled = false;
       if (pollResult === 'done') {
-        setStatus('ok', `${server.label} installed`);
+        showToast(`${server.label} installed`);
         onRefresh();
         return;
       }
@@ -348,52 +346,49 @@ function createServerRow(
   actions.querySelector<HTMLButtonElement>(`[data-server-start="${server.id}"]`)?.addEventListener(
     'click',
     () => {
-      void (async () => {
+      void runSettingsAction(actions.querySelector(`[data-server-start="${server.id}"]`), 'Working…', async () => {
         const result = await startManagedServer(server.id);
         if (result.ok) {
-          setStatus('ok', `${server.label} started`);
           onRefresh();
           return;
         }
         setStatus('err', result.ok === false ? result.error : 'Start failed');
-      })();
+      });
     },
   );
 
   actions.querySelector<HTMLButtonElement>(`[data-server-stop="${server.id}"]`)?.addEventListener(
     'click',
     () => {
-      void (async () => {
+      void runSettingsAction(actions.querySelector(`[data-server-stop="${server.id}"]`), 'Working…', async () => {
         const result = await stopManagedServer(server.id);
         if (result.ok) {
-          setStatus('ok', `${server.label} stopped`);
           onRefresh();
           return;
         }
         setStatus('err', result.ok === false ? result.error : 'Stop failed');
-      })();
+      });
     },
   );
 
   actions.querySelector<HTMLButtonElement>(`[data-server-restart="${server.id}"]`)?.addEventListener(
     'click',
     () => {
-      void (async () => {
+      void runSettingsAction(actions.querySelector(`[data-server-restart="${server.id}"]`), 'Working…', async () => {
         const result = await restartManagedServer(server.id);
         if (result.ok) {
-          setStatus('ok', `${server.label} restarted`);
           onRefresh();
           return;
         }
         setStatus('err', result.ok === false ? result.error : 'Restart failed');
-      })();
+      });
     },
   );
 
   actions.querySelector<HTMLButtonElement>(`[data-server-uninstall="${server.id}"]`)?.addEventListener(
     'click',
     () => {
-      void (async () => {
+      void runSettingsAction(actions.querySelector(`[data-server-uninstall="${server.id}"]`), 'Working…', async () => {
         if (
           !(await appConfirm(
             `Uninstall ${server.label}? This removes files under ~/.minnow/servers/.`,
@@ -404,12 +399,12 @@ function createServerRow(
         }
         const ok = await uninstallManagedServer(server.id);
         if (ok) {
-          setStatus('ok', `${server.label} uninstalled`);
+          showToast(`${server.label} uninstalled`);
           onRefresh();
           return;
         }
         setStatus('err', 'Uninstall failed');
-      })();
+      });
     },
   );
 

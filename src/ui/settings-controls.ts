@@ -1,3 +1,34 @@
+import { showToast } from './toast';
+
+/** Keep action feedback on the initiating control, including failure cleanup. */
+export async function runSettingsAction(
+  control: HTMLElement | null,
+  label: string,
+  action: () => Promise<void>,
+): Promise<void> {
+  if (control?.getAttribute('aria-busy') === 'true') return;
+  const children = control ? [...control.childNodes] : [];
+  const disabled = control?.hasAttribute('disabled') ?? false;
+  control?.setAttribute('aria-busy', 'true');
+  control?.setAttribute('disabled', '');
+  if (control) control.textContent = label;
+  const spinner = document.createElement('span');
+  spinner.className = 'mn-action-spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  if (control?.tagName === 'BUTTON') control.prepend(spinner);
+  try {
+    await action();
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  } finally {
+    if (control) {
+      control.replaceChildren(...children);
+      control.toggleAttribute('disabled', disabled);
+      control.removeAttribute('aria-busy');
+    }
+  }
+}
+
 let rowLabelCounter = 0;
 
 export type SettingsRowOptions = {

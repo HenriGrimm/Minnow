@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 
 import { CONTEXT_DOCUMENT_PRESETS } from '../chat/context-documents/catalog';
 import {
@@ -14,7 +15,7 @@ import { appendSettingsOfflineHint } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -38,12 +39,7 @@ async function persistDocuments(
       return false;
     }
     const mode = await detectConfigServer();
-    setStatus(
-      'ok',
-      mode === 'server'
-        ? 'Context documents saved'
-        : 'Saved locally — open Minnow to persist to disk',
-    );
+    if (mode !== 'server') showToast('Saved locally — open Minnow to persist to disk');
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Save failed';
@@ -215,7 +211,6 @@ export async function renderContextDocumentsInjectionSection(
             setStatus('err', 'Could not save default');
             return;
           }
-          setStatus('ok', 'Default saved');
           void syncComposerContextDocumentsFromActiveChat();
         })();
       },

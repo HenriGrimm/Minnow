@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import type { ContextBudget, ContextUsageSection } from '../chat/context-usage';
 import {
   getPromptMetaSettingsSync,
@@ -244,7 +245,7 @@ async function handleCompactNow(button: HTMLButtonElement): Promise<void> {
     }
     scheduleSaveSessions();
     renderChatFromHistory(chat);
-    setStatus('ok', result.status);
+    showToast(result.status);
     const { refreshContextUsageRing } = await import('./context-usage-ring');
     refreshContextUsageRing();
   } finally {

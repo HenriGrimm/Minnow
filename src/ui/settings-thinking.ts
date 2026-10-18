@@ -74,7 +74,6 @@ export async function renderThinkingSettingsSection(mount: HTMLElement): Promise
         defaultMode: mode,
         thinkingBudgetTokens: budgetRead === undefined ? null : budgetRead,
       });
-      setStatus('ok', 'Thinking default updated');
     } catch {
       setStatus('err', 'Could not save thinking default');
     }

@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import {
   activateSetupProfile,
   captureSetupProfile,
@@ -19,7 +21,7 @@ import { schedulePromptTokenEstimateRefresh } from './settings-prompt-estimate';
 import { createSettingsToggleRow } from './settings-switch';
 import { appConfirm, appPrompt } from './app-dialog';
 
-type StatusFn = (kind: 'ok' | 'err', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err', message: string) => void;
 
 let profilesBound = false;
 
@@ -185,7 +187,7 @@ export function mountSetupProfilesPanel(
   void refreshActiveLabel();
 
   applyBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(applyBtn, 'Working…', async () => {
       const id = select.value;
       if (!id) {
         setStatus('err', 'Select a setup profile first');
@@ -210,15 +212,15 @@ export function mountSetupProfilesPanel(
         setStatus('err', result.message);
         return;
       }
-      setStatus('ok', `Applied profile at ${result.appliedAt}`);
+      showToast(`Applied profile at ${result.appliedAt}`);
       await refreshActiveLabel();
       await refreshSettingsSection('prompting');
       schedulePromptTokenEstimateRefresh();
-    })();
+    });
   });
 
   captureBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(captureBtn, 'Working…', async () => {
       const label = await appPrompt('Setup profile name:', 'My setup');
       if (!label?.trim()) return;
       const id = label
@@ -234,25 +236,24 @@ export function mountSetupProfilesPanel(
         return;
       }
       select.value = result.id;
-      setStatus('ok', `Saved setup profile "${result.label}"`);
       await refreshActiveLabel();
-    })();
+    });
   });
 
   exportBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(exportBtn, 'Working…', async () => {
       const id = select.value;
       if (!id) {
         setStatus('err', 'Select a profile to export');
         return;
       }
       const result = await exportSetupProfileFile(id);
-      setStatus(result instanceof Error ? 'err' : 'ok', result instanceof Error ? result.message : 'Export started');
-    })();
+      showToast(result instanceof Error ? result.message : 'Export started', result instanceof Error ? 'error' : 'success');
+    });
   });
 
   importInput.addEventListener('change', () => {
-    void (async () => {
+    void runSettingsAction(importLabel, 'Importing…', async () => {
       importErr.classList.add('hidden');
       const file = importInput.files?.[0];
       importInput.value = '';
@@ -271,13 +272,13 @@ export function mountSetupProfilesPanel(
         importErr.classList.remove('hidden');
         return;
       }
-      setStatus('ok', `Imported "${result.label}"`);
+      showToast(`Imported "${result.label}"`);
       await refreshActiveLabel();
-    })();
+    });
   });
 
   dupBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(dupBtn, 'Working…', async () => {
       const id = select.value;
       if (!id) return;
       const newLabel = await appPrompt('Duplicate as:', 'Copy');
@@ -288,14 +289,13 @@ export function mountSetupProfilesPanel(
         setStatus('err', result.message);
         return;
       }
-      setStatus('ok', 'Profile duplicated');
       await refreshActiveLabel();
       select.value = newId;
-    })();
+    });
   });
 
   delBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(delBtn, 'Working…', async () => {
       const id = select.value;
       if (!id) return;
       if (
@@ -311,9 +311,8 @@ export function mountSetupProfilesPanel(
         setStatus('err', result.message);
         return;
       }
-      setStatus('ok', 'Profile deleted');
       await refreshActiveLabel();
-    })();
+    });
   });
 
   wsCheck.addEventListener('change', () => {
@@ -331,7 +330,6 @@ export function mountSetupProfilesPanel(
         wsCheck.checked = false;
         return;
       }
-      setStatus('ok', profileId ? 'Workspace default saved' : 'Workspace default cleared');
     })();
   });
 
@@ -339,7 +337,6 @@ export function mountSetupProfilesPanel(
     void (async () => {
       try {
         await saveWorkspaceProfileAutoApply(autoApplyCheck.checked);
-        setStatus('ok', autoApplyCheck.checked ? 'Auto-apply enabled' : 'Auto-apply disabled');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setStatus('err', message);

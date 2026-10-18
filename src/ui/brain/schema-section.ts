@@ -1,9 +1,10 @@
+import { runSettingsAction } from '../settings-controls';
 import { fetchBrainSchema, saveBrainSchema } from '../../brain/client';
 
 let bindingsDone = false;
 let previewBound = false;
 
-function setSchemaStatus(kind: 'ok' | 'err' | 'spin', message: string): void {
+function setSchemaStatus(kind: 'idle' | 'ok' | 'err' | 'spin', message: string): void {
   const el = document.getElementById('brainSchemaStatus');
   if (!el) return;
   el.textContent = message;
@@ -27,15 +28,14 @@ function bindSchemaSection(): void {
   });
 
   document.getElementById('brainSchemaSave')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainSchemaSave'), 'Saving…', async () => {
       const editor = document.getElementById(
         'brainSchemaEditor',
       ) as HTMLTextAreaElement | null;
       if (!editor) return;
-      setSchemaStatus('spin', 'Saving…');
       const ok = await saveBrainSchema(editor.value);
-      setSchemaStatus(ok ? 'ok' : 'err', ok ? 'Schema saved.' : 'Save failed.');
-    })();
+      setSchemaStatus(ok ? 'idle' : 'err', ok ? 'Schema saved.' : 'Save failed.');
+    });
   });
 }
 
@@ -69,5 +69,5 @@ export async function renderSchemaSection(): Promise<void> {
   editor.disabled = false;
   editor.value = schema ?? '';
   refreshSchemaPreview();
-  setSchemaStatus('ok', 'Schema loaded.');
+  setSchemaStatus('idle', 'Schema loaded.');
 }

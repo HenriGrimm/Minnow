@@ -63,7 +63,7 @@ import {
   unloadLibraryModelFromPicker,
 } from '../models/model-select-library';
 import { renderSidebar } from '../ui/sidebar';
-import { setReadyStatus, setStatus } from '../ui/status';
+import { setStatus } from '../ui/status';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 
 export { modelCache };
@@ -267,11 +267,9 @@ export async function loadModelForSelectValue(selectValue: string): Promise<void
     updateModelLoadUnloadButtons();
     updateModelStateDot(raw);
     syncModelSelectPicker();
-    setStatus('spin', 'Loading model…');
     try {
       await loadLibraryModelFromPicker(libraryId);
       await fetchModels();
-      setStatus('ok', 'Model loaded');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setStatus('err', message);
@@ -294,10 +292,8 @@ export async function loadModelForSelectValue(selectValue: string): Promise<void
   updateModelLoadUnloadButtons();
   updateModelStateDot(raw);
   syncModelSelectPicker();
-  setStatus('spin', 'Loading model…');
   try {
     await loadModel(modelId, providerId);
-    setStatus('ok', 'Model loaded');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     setStatus('err', message);
@@ -327,11 +323,9 @@ export async function unloadModelForSelectValue(selectValue: string): Promise<vo
     updateModelLoadUnloadButtons();
     updateModelStateDot(raw);
     syncModelSelectPicker();
-    setStatus('spin', 'Unloading model…');
     try {
       await unloadLibraryModelFromPicker(libraryId);
       await fetchModels();
-      setStatus('ok', 'Model unloaded');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setStatus('err', message);
@@ -354,10 +348,8 @@ export async function unloadModelForSelectValue(selectValue: string): Promise<vo
   updateModelLoadUnloadButtons();
   updateModelStateDot(raw);
   syncModelSelectPicker();
-  setStatus('spin', 'Unloading model…');
   try {
     await unloadModel(modelId, providerId);
-    setStatus('ok', 'Model unloaded');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     setStatus('err', message);
@@ -643,10 +635,8 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
   const { signal } = controller;
 
   sel.innerHTML = '<option value="">Loading models…</option>';
+  sel.setAttribute('aria-busy', 'true');
   syncModelSelectPicker();
-  if (!isModelLoadUnloadBusy()) {
-    setStatus('spin', 'Loading models…');
-  }
   updateModelLoadUnloadButtons();
   if (isModelLoadUnloadBusy()) {
     updateModelStateDot();
@@ -714,19 +704,11 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
       sel.value = chosen || optionValues.find((v) => v.trim()) || '';
     }
 
-    const withModels = results.filter((r) => r.models.length > 0);
-    const okCount = withModels.length;
-    const totalModels = catalogCount;
     if (failures.length > 0) {
       const failedLabels = failures.map((f) => f.provider.label).join(', ');
-      setStatus('ok', `${totalModels} models · ${okCount} providers (${failedLabels} unreachable)`);
-    } else {
-      setStatus('ok', `${totalModels} models · ${okCount} provider${okCount === 1 ? '' : 's'}`);
+      setStatus('err', `Cannot reach providers (${failedLabels}). Check Settings → Providers.`);
     }
 
-    if (!isModelLoadUnloadBusy()) {
-      setReadyStatus();
-    }
     updateModelStateDot(sel.value);
     showCachedModelInfo();
     syncModelSelectPicker();
@@ -747,6 +729,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
   } finally {
     if (modelsFetchAbort && modelsFetchAbort.signal === signal) {
       setModelsFetchAbort(null);
+      sel.removeAttribute('aria-busy');
     }
     updateModelLoadUnloadButtons();
     updateModelStateDot(sel.value);

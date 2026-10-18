@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * Skills settings section: catalog list, enable toggles, custom skill authoring.
@@ -96,7 +97,6 @@ function mountSkillEditor(
       void (async () => {
         try {
           await saveSkillContent(skill.id, ta.value);
-          setStatus('ok', `Skill "${skill.id}" saved`);
           await refreshSkillCatalog();
           onSaved();
         } catch (err) {
@@ -135,7 +135,6 @@ function buildSkillRow(
   head.appendChild(
     createSwitch(isSkillEnabled(skill.id), (enabled) => {
       setSkillEnabled(skill.id, enabled);
-      setStatus('ok', enabled ? `${skill.label} enabled` : `${skill.label} disabled`);
       onCatalogChange();
     }),
   );
@@ -177,7 +176,6 @@ function buildCavemanDefaultsPanel(): HTMLDivElement {
     description: 'Automatically pin caveman when you start a new chat.',
     onChange: (enabled) => {
       saveCavemanSettings({ pinByDefault: enabled });
-      setStatus('ok', enabled ? 'New chats will pin caveman' : 'Caveman pin default off');
     },
   });
 
@@ -199,7 +197,6 @@ function buildCavemanDefaultsPanel(): HTMLDivElement {
     onChange: (value) => {
       if (!isCavemanIntensity(value)) return;
       saveCavemanSettings({ defaultIntensity: value });
-      setStatus('ok', `Default caveman intensity: ${value}`);
     },
   });
 
@@ -275,7 +272,7 @@ export async function renderSkillsSettingsSection(mount: HTMLElement): Promise<v
 
       try {
         await createCustomSkill(id, labelRaw.trim() || undefined);
-        setStatus('ok', `Custom skill "${id}" created. Expand to edit SKILL.md.`);
+        showToast(`Custom skill "${id}" created. Expand to edit SKILL.md.`);
         await redrawList();
         const card = list.querySelector(`[data-skill-id="${id}"]`);
         const details = card?.querySelector('details');

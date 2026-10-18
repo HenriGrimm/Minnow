@@ -327,7 +327,6 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
         const saved = await saveSearchConfig(readForm());
         applyToForm(saved);
         tavilyUsage.setSavedKey(saved.keys.tavilyApiKey);
-        setStatus('ok', 'Search settings saved');
       } catch {
         setStatus('err', 'Could not save search settings. Open or restart Minnow.');
       }

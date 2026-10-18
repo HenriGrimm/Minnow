@@ -146,7 +146,7 @@ describe('composer-voice mic boot states', () => {
       mic.click();
       await waitFor(() => sockets === 1 && getMicState() === 'idle');
       assert.equal(mic.getAttribute('aria-busy'), 'false');
-      assert.match(document.getElementById('sText')?.textContent ?? '', /closed before ready/);
+      assert.match(document.querySelector('.mn-toast--error .mn-toast__message')?.textContent ?? '', /closed before ready/);
       mic.click();
       await waitFor(() => sockets === 2 && getMicState() === 'idle');
     } finally {
@@ -237,7 +237,7 @@ describe('composer-voice mic boot states', () => {
     assert.equal(micBtn.classList.contains('composer-mic-btn--busy'), true);
     assert.equal(micBtn.getAttribute('aria-busy'), 'true');
     assert.equal(micBtn.title, 'Starting voice…');
-    assert.equal(document.getElementById('sText')?.textContent, 'Starting voice…');
+    assert.equal(document.querySelector('.mn-toast'), null, 'progress stays on the mic, not in a toast');
 
     resolveRuntimeReady?.();
     await waitFor(() => getMicState() === 'recording');
@@ -302,7 +302,7 @@ describe('composer-voice mic boot states', () => {
 
     assert.equal(getMicState(), 'idle');
     assert.equal(micBtn.classList.contains('composer-mic-btn--error'), true);
-    assert.match(document.getElementById('sText')?.textContent ?? '', /failed to start/i);
+    assert.match(document.querySelector('.mn-toast--error .mn-toast__message')?.textContent ?? '', /failed to start/i);
   });
 
   test('ignores mic clicks while voice server is starting', async () => {

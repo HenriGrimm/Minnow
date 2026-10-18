@@ -1,3 +1,5 @@
+import { showToast } from './toast';
+import { runSettingsAction } from './settings-controls';
 import '../styles/workspace-welcome-page.css';
 
 import {
@@ -283,7 +285,7 @@ function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pin
     newWindowBtn.setAttribute('aria-label', `Open ${item.label} in a new window`);
     newWindowBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      void openRecentWorkspaceInNewWindow(item.path);
+      void runSettingsAction(newWindowBtn, 'Opening…', () => openRecentWorkspaceInNewWindow(item.path));
     });
     actions.appendChild(newWindowBtn);
   }
@@ -372,7 +374,7 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
 
   btn.appendChild(copy);
   btn.addEventListener('click', () => {
-    void activateRecentWorkspace(item.path);
+    void runSettingsAction(btn, 'Opening workspace…', () => activateRecentWorkspace(item.path));
   });
 
   li.appendChild(btn);
@@ -396,7 +398,7 @@ async function openRecentWorkspaceInNewWindow(absPath: string): Promise<void> {
     setStatus('err', result.error);
     return;
   }
-  setStatus('ok', result.focused ? 'Focused the window already on that folder' : 'Opened a new window');
+  showToast(result.focused ? 'Focused the window already on that folder' : 'Opened a new window');
   await renderRecentsList();
 }
 
@@ -407,7 +409,7 @@ async function closeRecentWorkspaceWindow(item: WorkspaceRecentItem): Promise<vo
     setStatus('err', result.error);
     return;
   }
-  setStatus('ok', result.closed ? `Closed ${item.label}` : `${item.label} was not open`);
+  showToast(result.closed ? `Closed ${item.label}` : `${item.label} was not open`);
   await renderRecentsList();
 }
 
@@ -528,7 +530,7 @@ async function activateRecentWorkspace(absPath: string): Promise<void> {
   if (openWorkspace && openWindows.has(normalizeWorkspacePath(absPath))) {
     const result = await openWorkspace(absPath);
     if (!result.ok) setStatus('err', result.error);
-    else setStatus('ok', 'Focused the window already on that folder');
+    else showToast('Focused the window already on that folder');
     return;
   }
 
@@ -824,7 +826,9 @@ function bindStaticControls(): void {
 
   document
     .getElementById('btnWelcomeOpenProject')
-    ?.addEventListener('click', () => void onOpenProject());
+    ?.addEventListener('click', (event) => {
+      void runSettingsAction(event.currentTarget as HTMLElement, 'Opening workspace…', onOpenProject);
+    });
 
   document.getElementById('btnWelcomeCreateProject')?.addEventListener('click', () => {
     void loadWizardParentFromServer().then(() => showCreatePanel(true));

@@ -54,6 +54,16 @@ let currentTtsStreamClient: TtsStreamClient | null = null;
 let currentAudioQueue: AudioPlaybackQueue | null = null;
 let currentUtterance: SpeechSynthesisUtterance | null = null;
 let cancelCurrentStream: (() => void) | null = null;
+let playbackRequest = 0;
+
+/** Reuse the read-aloud control's loading treatment for synthesis and buffering. */
+function setPlayButtonState(button: HTMLButtonElement | undefined, busy: boolean, label: string): void {
+  if (!button) return;
+  button.classList.toggle('voice-play-btn--loading', busy);
+  button.setAttribute('aria-busy', String(busy));
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
 
 /** Fetch STT availability from the tool server. */
 export async function fetchSttStatus(): Promise<SttStatus | null> {
@@ -90,6 +100,7 @@ export function getCachedSttStatus(): SttStatus | null {
 }
 
 function stopCurrentPlayback(): void {
+  playbackRequest += 1;
   const cancel = cancelCurrentStream;
   cancelCurrentStream = null;
   cancel?.();
@@ -107,8 +118,7 @@ function stopCurrentPlayback(): void {
     currentAudio = null;
   }
   if (currentPlayButton) {
-    currentPlayButton.classList.remove('voice-play-btn--loading');
-    currentPlayButton.setAttribute('aria-label', 'Read aloud');
+    setPlayButtonState(currentPlayButton, false, 'Read aloud');
     currentPlayButton = null;
   }
 }
@@ -151,12 +161,10 @@ async function playAssistantTextStreaming(
     outputDeviceId: cachedOutputDeviceId,
     onPlaybackStart: () => {
       if (currentAudioQueue !== queue) return;
-      button?.classList.remove('voice-play-btn--loading');
-      button?.setAttribute('aria-label', 'Stop reading');
-      setStatus('ok', 'Reading aloud…');
+      setPlayButtonState(button, false, 'Stop reading');
     },
     onBuffering: () => {
-      if (currentAudioQueue === queue) setStatus('spin', 'Buffering speech…');
+      if (currentAudioQueue === queue) setPlayButtonState(button, true, 'Stop reading — buffering speech');
     },
   });
   currentAudioQueue = queue;
@@ -166,9 +174,9 @@ async function playAssistantTextStreaming(
     cancelCurrentStream = resolve;
     const client = new TtsStreamClient({
       onReady: (sampleRate) => {
+        if (currentAudioQueue !== queue) return;
         queue.setSampleRate(sampleRate);
-        button?.setAttribute('aria-label', 'Stop preparing speech');
-        setStatus('spin', 'Preparing smooth playback…');
+        setPlayButtonState(button, true, 'Stop preparing speech');
       },
       onChunk: (pcm) => {
         chunkCount += 1;
@@ -183,7 +191,6 @@ async function playAssistantTextStreaming(
           await queue.drain();
           if (currentAudioQueue !== queue) return;
           stopCurrentPlayback();
-          setStatus('ok', 'Finished reading');
           resolve();
         } catch (err) {
           reject(err instanceof Error ? err : new Error('Could not play audio'));
@@ -216,8 +223,7 @@ export function speakWithBrowser(
   currentUtterance = utterance;
   if (button) {
     currentPlayButton = button;
-    button.classList.remove('voice-play-btn--loading');
-    button.setAttribute('aria-label', 'Stop reading');
+    setPlayButtonState(button, false, 'Stop reading');
   }
   utterance.rate = Math.min(4, Math.max(0.25, rate));
   utterance.pitch = Math.min(2, Math.max(0, pitch));
@@ -233,7 +239,6 @@ export function speakWithBrowser(
   utterance.onend = () => {
     if (currentUtterance !== utterance) return;
     stopCurrentPlayback();
-    setStatus('ok', 'Finished reading');
   };
   utterance.onerror = () => {
     if (currentUtterance !== utterance) return;
@@ -241,7 +246,6 @@ export function speakWithBrowser(
     setStatus('err', 'System speech is unavailable. Choose a voice in Models → Voice.');
   };
   window.speechSynthesis.speak(utterance);
-  setStatus('ok', 'Reading aloud…');
 }
 
 /** Request synthesized audio bytes from the server. */
@@ -287,9 +291,8 @@ export async function playAssistantText(
   text: string,
   button?: HTMLButtonElement,
 ): Promise<void> {
-  if (button && currentPlayButton === button && (currentUtterance || currentAudioQueue)) {
+  if (button && currentPlayButton === button) {
     stopCurrentPlayback();
-    setStatus('ok', 'Stopped reading');
     return;
   }
   const plain = extractSpeechText(text);
@@ -298,18 +301,17 @@ export async function playAssistantText(
     return;
   }
 
+  stopCurrentPlayback();
+  let request = playbackRequest;
+  if (button) currentPlayButton = button;
+  setPlayButtonState(button, true, 'Stop preparing speech');
   let status = await fetchTtsStatus();
+  if (request !== playbackRequest) return;
   if (!status?.enabled) {
+    stopCurrentPlayback();
     setStatus('err', 'Text-to-speech is disabled. Open Models → Voice.');
     openModels('voice');
     return;
-  }
-
-  if (button) {
-    stopCurrentPlayback();
-    currentPlayButton = button;
-    button.classList.add('voice-play-btn--loading');
-    button.setAttribute('aria-label', 'Loading speech');
   }
 
   try {
@@ -317,6 +319,7 @@ export async function playAssistantText(
 
     if (backend === 'browser' || status.browser || status.providerId === 'browser') {
       const voiceMeta = await loadVoiceMeta();
+      if (request !== playbackRequest) return;
       speakWithBrowser(
         plain,
         voiceMeta.tts.browser.voiceUri || status.voice,
@@ -330,9 +333,10 @@ export async function playAssistantText(
 
     if (backend === 'local') {
       if (!status.healthy) {
-        setStatus('spin', 'Starting voice…');
         await ensureVoiceWorker();
+        if (request !== playbackRequest) return;
         status = await fetchTtsStatus();
+        if (request !== playbackRequest) return;
         if (!status?.healthy) throw new Error(status?.warning ?? 'Local voice could not start');
       }
       if (status.streamingSupported) {
@@ -340,25 +344,29 @@ export async function playAssistantText(
           await playAssistantTextStreaming(plain, button);
           return;
         } catch {
+          if (request !== playbackRequest) return;
           stopCurrentPlayback();
+          request = playbackRequest;
           if (button) {
             currentPlayButton = button;
-            button.classList.add('voice-play-btn--loading');
-            button.setAttribute('aria-label', 'Loading speech');
+            setPlayButtonState(button, true, 'Stop preparing speech');
           }
         }
       }
       const blob = await synthesizeSpeech(plain);
+      if (request !== playbackRequest) return;
       stopCurrentPlayback();
+      request = playbackRequest;
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudio = audio;
       if (button) currentPlayButton = button;
+      setPlayButtonState(button, true, 'Stop preparing speech');
       await applyOutputDevice(audio);
+      if (currentAudio !== audio) { URL.revokeObjectURL(url); return; }
       audio.onended = () => {
         URL.revokeObjectURL(url);
         stopCurrentPlayback();
-        setStatus('ok', 'Finished reading');
       };
       audio.onerror = () => {
         URL.revokeObjectURL(url);
@@ -366,11 +374,12 @@ export async function playAssistantText(
         setStatus('err', 'Could not play audio');
       };
       await audio.play();
-      setStatus('ok', 'Reading aloud…');
+      if (currentAudio === audio) setPlayButtonState(button, false, 'Stop reading');
       return;
     }
 
     if (!status.healthy) {
+      stopCurrentPlayback();
       setStatus('err', 'TTS provider is not configured. Open Models → Voice.');
       openModels('voice');
       return;
@@ -381,16 +390,19 @@ export async function playAssistantText(
       speed: status.speed,
       format: status.format,
     });
+    if (request !== playbackRequest) return;
     stopCurrentPlayback();
+    request = playbackRequest;
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     currentAudio = audio;
     if (button) currentPlayButton = button;
+    setPlayButtonState(button, true, 'Stop preparing speech');
     await applyOutputDevice(audio);
+    if (currentAudio !== audio) { URL.revokeObjectURL(url); return; }
     audio.onended = () => {
       URL.revokeObjectURL(url);
       stopCurrentPlayback();
-      setStatus('ok', 'Finished reading');
     };
     audio.onerror = () => {
       URL.revokeObjectURL(url);
@@ -398,8 +410,9 @@ export async function playAssistantText(
       setStatus('err', 'Could not play audio');
     };
     await audio.play();
-    setStatus('ok', 'Reading aloud…');
+    if (currentAudio === audio) setPlayButtonState(button, false, 'Stop reading');
   } catch (err) {
+    if (request !== playbackRequest) return;
     stopCurrentPlayback();
     const message = err instanceof Error ? err.message : 'Speech failed';
     setStatus('err', message);

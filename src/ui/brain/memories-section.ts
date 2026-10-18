@@ -1,3 +1,5 @@
+import { runSettingsAction } from '../settings-controls';
+import { showToast } from '../toast';
 import {
   readConfigFile,
   writeConfigFile,
@@ -20,7 +22,7 @@ import {
   showMemorySavedToast,
 } from '../memory-saved-toast';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 let bindingsDone = false;
 let listBindingsDone = false;
@@ -296,7 +298,7 @@ function bindMemoryListActions(): void {
       const ok = await deleteMemoryEntry(id);
       if (ok) {
         if (selectedMemoryId === id) selectedMemoryId = null;
-        setStatus('ok', 'Memory entry deleted');
+        setStatus('idle', 'Memory entry deleted');
         await refreshMemoryEntriesList();
         return;
       }
@@ -379,7 +381,7 @@ function bindMemoryAddForm(): void {
         const savedId = editingMemoryId;
         clearMemoryAddForm();
         selectedMemoryId = savedId;
-        setStatus('ok', `Updated memory “${updated.title}”`);
+        setStatus('idle', `Updated memory “${updated.title}”`);
         await refreshMemoryEntriesList();
         return;
       }
@@ -403,7 +405,7 @@ function bindMemoryAddForm(): void {
       if (errEl) errEl.classList.add('hidden');
       clearMemoryAddForm();
       selectedMemoryId = entry.id;
-      setStatus('ok', `Saved memory “${entry.title}”`);
+      setStatus('idle', `Saved memory “${entry.title}”`);
       await refreshMemoryEntriesList();
       showMemorySavedToast(memorySavedPayloadFromEntry(entry, body), {
         onReject: async () => {
@@ -449,21 +451,18 @@ function bindMemoriesSection(): void {
       enabled: enableEl.checked,
     };
     if (await writeConfigFile(config)) {
-      setStatus('ok', enableEl.checked ? 'Memory enabled' : 'Memory disabled');
+      setStatus('idle', enableEl.checked ? 'Memory enabled' : 'Memory disabled');
     } else {
       setStatus('err', 'Memory settings require Minnow running locally');
     }
   });
 
-  document.getElementById('brainMemoryBackup')?.addEventListener('click', async () => {
+  document.getElementById('brainMemoryBackup')?.addEventListener('click', () => runSettingsAction(document.getElementById('brainMemoryBackup'), 'Working…', async () => {
     const id = await backupMemory();
-    setStatus(
-      id ? 'ok' : 'err',
-      id ? `Memory backup: ${id}` : 'Backup failed. Open or restart Minnow.',
-    );
-  });
+    showToast(id ? `Memory backup: ${id}` : 'Backup failed. Open or restart Minnow.', id ? 'success' : 'error');
+  }));
 
-  document.getElementById('brainMemoryClear')?.addEventListener('click', async () => {
+  document.getElementById('brainMemoryClear')?.addEventListener('click', () => runSettingsAction(document.getElementById('brainMemoryClear'), 'Working…', async () => {
     if (
       !(await appConfirm('Clear all memory entries?', {
         confirmLabel: 'Clear',
@@ -473,15 +472,12 @@ function bindMemoriesSection(): void {
       return;
     }
     const ok = await clearMemory(true);
-    setStatus(
-      ok ? 'ok' : 'err',
-      ok ? 'Memory cleared (archived)' : 'Clear failed. Open or restart Minnow.',
-    );
+    showToast(ok ? 'Memory cleared (archived)' : 'Clear failed. Open or restart Minnow.', ok ? 'success' : 'error');
     if (ok) {
       selectedMemoryId = null;
       await refreshMemoryEntriesList();
     }
-  });
+  }));
 
   bindMemoryAddForm();
 }

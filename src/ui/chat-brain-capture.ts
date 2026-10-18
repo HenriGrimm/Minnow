@@ -4,6 +4,7 @@ import { pushNotification } from '../notifications/push';
 import { detectLocalServer } from '../tools/client';
 import type { Chat } from '../types';
 import { setStatus } from './status';
+import { showToast } from './toast';
 import { showMemorySavedToast } from './memory-saved-toast';
 
 type StatusFn = (state: string, msg: string) => void;
@@ -14,7 +15,8 @@ export async function runChatBrainCapture(
   setStatusFn: StatusFn = setStatus,
 ): Promise<BrainCaptureOutcome | null> {
   if (isChatStreaming(chat.id)) {
-    setStatusFn('spin', 'Finish the current reply first');
+    if (setStatusFn === setStatus) showToast('Finish the current reply first');
+    else setStatusFn('spin', 'Finish the current reply first');
     return null;
   }
   if (!chat.history.length) {

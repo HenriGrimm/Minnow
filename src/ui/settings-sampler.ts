@@ -72,7 +72,6 @@ export async function renderSamplerSettingsSection(mount: HTMLElement): Promise<
     try {
       const next = await saveSamplerMeta(patch);
       globalFields.setValues(next);
-      setStatus('ok', 'Sampler defaults updated');
     } catch {
       setStatus('err', 'Could not save sampler defaults');
     }

@@ -210,29 +210,6 @@ html.minnow-os-enabled {
   --mn-icon-size: 14px;
 }
 
-/* Operational status (Ready, loading models, errors) — mirrors legacy .status-pill */
-.mn-os-mb-status.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--os-text-dim);
-  white-space: nowrap;
-}
-
-.mn-os-mb-status #osStatusText {
-  overflow: visible;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-/* Error status: click copies the full message (see setStatus in status.ts). */
-.mn-os-mb-status #osStatusText.status-pill__text--copyable,
-.status-pill #sText.status-pill__text--copyable {
-  cursor: copy;
-}
-
 /* Shared spinner markup from model-load-unload-button.ts */
 .model-load-unload-spinner {
   flex-shrink: 0;
@@ -696,16 +673,8 @@ html.is-electron-shell .mn-os-menubar--shell-frameless input,
 html.is-electron-shell .mn-os-menubar--shell-frameless select,
 html.is-electron-shell .mn-os-menubar--shell-frameless textarea,
 html.is-electron-shell .mn-os-menubar--shell-frameless [contenteditable='true'],
-html.is-electron-shell .mn-os-menubar--shell-frameless .mn-os-mb-window-controls,
-html.is-electron-shell .mn-os-menubar--shell-frameless .status-pill {
+html.is-electron-shell .mn-os-menubar--shell-frameless .mn-os-mb-window-controls {
   -webkit-app-region: no-drag;
-}
-
-/* Status text must stay selectable/copyable — menubar drag chrome uses user-select: none. */
-html.is-electron-shell .mn-os-menubar--shell-frameless .status-pill,
-html.is-electron-shell .mn-os-menubar--shell-frameless .status-pill #osStatusText {
-  user-select: text;
-  -webkit-user-select: text;
 }
 
 html.is-electron-shell[data-platform='darwin']:not([data-window-full-screen='true']) .mn-os-mb-left {
@@ -1072,12 +1041,6 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
     display: none;
   }
 
-  /* App view: keep logo + nav affordances; drop desktop status chrome */
-  .mn-os-menubar[data-view='app'] .mn-os-mb-status,
-  .mn-os-menubar[data-view='app'] .mn-os-mb-status-sep {
-    display: none !important;
-  }
-
   /* App title collapses to icon-only on narrow menubar */
   .mn-os-mb-appname {
     flex-shrink: 0;
@@ -1113,10 +1076,6 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
 
   .mn-os-mb-workspace-slot {
     flex-shrink: 0;
-  }
-
-  .mn-os-mb-status #osStatusText {
-    display: none;
   }
 
   .mn-os-mb-icon,

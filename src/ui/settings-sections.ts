@@ -238,7 +238,6 @@ async function appendTerminalControls(mount: HTMLElement): Promise<void> {
       void (async () => {
         try {
           await saveTerminalMeta({ defaultShellProfileId: shellSelect.value });
-          setStatus('ok', 'Default shell updated');
         } catch {
           setStatus('err', 'Could not save default shell');
         }
@@ -284,7 +283,6 @@ async function appendTerminalControls(mount: HTMLElement): Promise<void> {
               }
               try {
                 await saveTerminalMeta({ workspaceShellProfiles: nextMap });
-                setStatus('ok', 'Workspace shell override updated');
               } catch {
                 setStatus('err', 'Could not save workspace shell override');
               }
@@ -326,7 +324,6 @@ async function appendTerminalControls(mount: HTMLElement): Promise<void> {
   ): Promise<void> => {
     try {
       await saveTerminalMeta(patch);
-      setStatus('ok', okMessage);
     } catch {
       setStatus('err', 'Could not save terminal setting');
     }
@@ -376,7 +373,6 @@ async function appendToolCallDefaults(mount: HTMLElement): Promise<void> {
     void (async () => {
       try {
         await saveToolCallsMeta({ useConstrainedDecoding: constrainedCb.checked });
-        setStatus('ok', 'Constrained tool calls setting updated');
       } catch {
         setStatus('err', 'Could not save constrained tool calls setting');
       }
@@ -766,7 +762,6 @@ function renderCustomPartEditors(mount: HTMLElement, config: PromptConfig): void
               return;
             }
             schedulePromptTokenEstimateRefresh();
-            setStatus('ok', `${PART_LABELS[partId]} reset to shipped default`);
           },
         });
         diffControls.setBaseline(builtinBaseline);
@@ -858,7 +853,6 @@ async function bindPromptingToolbar(): Promise<void> {
       await refreshCustomConfigSelect();
       select!.value = id;
       await syncCustomBarVisibility();
-      setStatus('ok', `Created ${label}`);
     })();
   });
 
@@ -873,7 +867,7 @@ async function bindPromptingToolbar(): Promise<void> {
         updatedAt: new Date().toISOString(),
       };
       const saved = await savePromptConfig(activeCustomConfig);
-      setStatus(saved instanceof Error ? 'err' : 'ok', saved instanceof Error ? saved.message : 'Configuration saved');
+      setStatus(saved instanceof Error ? 'err' : 'idle', saved instanceof Error ? saved.message : 'Configuration saved');
       if (!(saved instanceof Error)) schedulePromptTokenEstimateRefresh();
     })();
   });
@@ -900,7 +894,6 @@ async function bindPromptingToolbar(): Promise<void> {
       await savePromptMetaSettings({ activePromptConfigId: newId });
       select!.value = newId;
       await syncCustomBarVisibility();
-      setStatus('ok', 'Configuration duplicated');
     })();
   });
 
@@ -924,7 +917,6 @@ async function bindPromptingToolbar(): Promise<void> {
       await savePromptMetaSettings({ activePromptConfigId: null });
       await refreshCustomConfigSelect();
       await syncCustomBarVisibility();
-      setStatus('ok', 'Configuration deleted');
     })();
   });
 
@@ -970,7 +962,7 @@ async function renderAgentCenterBasePrompts(): Promise<void> {
               enabled = checked;
               schedulePromptTokenEstimateRefresh();
               setStatus(
-                'ok',
+                'idle',
                 checked
                   ? 'Flaticon icon guidance enabled'
                   : 'Flaticon icon guidance disabled',
@@ -1161,7 +1153,6 @@ async function appendGenerationTimeoutsSection(
             generationIdleTimeoutMs: idleMs,
             generationMaxDurationMs: maxMs,
           });
-          setStatus('ok', 'Generation timeouts enabled');
         } catch {
           setStatus('err', 'Could not save generation timeouts');
         }
@@ -1174,7 +1165,6 @@ async function appendGenerationTimeoutsSection(
           generationIdleTimeoutMs: 0,
           generationMaxDurationMs: 0,
         });
-        setStatus('ok', 'Generation timeouts disabled');
       } catch {
         setStatus('err', 'Could not save generation timeouts');
       }
@@ -1189,7 +1179,6 @@ async function appendGenerationTimeoutsSection(
         minutes === 0 ? 0 : clampGenerationIdleTimeoutMs(generationTimeoutMinutesToMs(minutes));
       try {
         await saveChatMeta({ generationIdleTimeoutMs: ms });
-        setStatus('ok', 'Generation idle timeout updated');
       } catch {
         setStatus('err', 'Could not save generation idle timeout');
       }
@@ -1204,7 +1193,6 @@ async function appendGenerationTimeoutsSection(
         minutes === 0 ? 0 : clampGenerationMaxDurationMs(generationTimeoutMinutesToMs(minutes));
       try {
         await saveChatMeta({ generationMaxDurationMs: ms });
-        setStatus('ok', 'Generation max duration updated');
       } catch {
         setStatus('err', 'Could not save generation max duration');
       }
@@ -1387,7 +1375,6 @@ async function renderToolsSection(): Promise<void> {
               if (!ok) return;
               try {
                 await setAllBuiltInToolPermissions('full', list);
-                setStatus('ok', 'All tools set to full permission');
               } catch {
                 setStatus('err', 'Could not save. Open or restart Minnow and try again.');
               }
@@ -1405,7 +1392,6 @@ async function renderToolsSection(): Promise<void> {
               if (!ok) return;
               try {
                 await resetBuiltInToolPermissionsToDefaults(list);
-                setStatus('ok', 'Tool permissions reset to defaults');
               } catch {
                 setStatus('err', 'Could not save. Open or restart Minnow and try again.');
               }
@@ -1629,7 +1615,6 @@ function createMcpSettingsRow(
         keyHint.textContent = flags.hasContext7ApiKey
           ? 'A key is saved on the server (not shown here). Encrypted at rest under ~/.minnow/mcp/secrets.json.'
           : 'No API key saved yet. Context7 works without one; a key raises rate limits.';
-        setStatus('ok', 'Context7 API key saved');
         await renderMcpSection();
       })();
     });
@@ -1804,7 +1789,6 @@ function bindMcpAddForm(): void {
 
       if (errEl) errEl.classList.add('hidden');
       clearMcpAddForm();
-      setStatus('ok', 'MCP servers added');
       await renderMcpSection();
     })();
   });
@@ -1871,7 +1855,7 @@ async function renderMcpSection(): Promise<void> {
       const ok = await setMcpServerEnabled(serverId, target.checked);
       if (ok) {
         setStatus(
-          'ok',
+          'idle',
           target.checked ? `${serverId} enabled` : `${serverId} disabled`,
         );
         await renderMcpSection();
@@ -1898,7 +1882,6 @@ async function renderMcpSection(): Promise<void> {
         }
         const ok = await deleteMcpServer(serverId);
         if (ok) {
-          setStatus('ok', `Removed ${serverId}`);
           await renderMcpSection();
           return;
         }

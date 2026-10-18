@@ -46,11 +46,11 @@ function restoreDraft(path: string): boolean {
   loadedEditRevision = draft.revision;
   baseline = draft.baseline;
   refreshEditPreview();
-  setEditStatus('ok', 'Restored unsaved draft.');
+  setEditStatus('idle', 'Restored unsaved draft.');
   return true;
 }
 
-function setEditStatus(kind: 'ok' | 'err' | 'spin', message: string): void {
+function setEditStatus(kind: 'idle' | 'ok' | 'err' | 'spin', message: string): void {
   const el = document.getElementById('brainEditStatus');
   if (!el) return;
   el.textContent = message;
@@ -223,7 +223,7 @@ async function loadEditForm(): Promise<void> {
     bodyEl.value = '';
     baseline = JSON.stringify(editValues());
     refreshEditPreview();
-    setEditStatus('ok', 'New page — fill in title and body, then save.');
+    setEditStatus('idle', 'New page — fill in title and body, then save.');
     return;
   }
 
@@ -234,7 +234,7 @@ async function loadEditForm(): Promise<void> {
   bodyEl.value = page.body;
   baseline = JSON.stringify(editValues());
   refreshEditPreview();
-  setEditStatus('ok', `Loaded ${relPath}`);
+  setEditStatus('idle', `Loaded ${relPath}`);
 }
 
 /** Reset the form for manual page creation. */
@@ -258,7 +258,7 @@ async function prepareNewPage(): Promise<void> {
   bodyEl.value = '';
   baseline = JSON.stringify(editValues());
   refreshEditPreview();
-  setEditStatus('ok', 'New page — enter a path, title, and body, then save.');
+  setEditStatus('idle', 'New page — enter a path, title, and body, then save.');
   pathEl.focus();
 }
 
@@ -326,7 +326,7 @@ async function saveEditForm(): Promise<void> {
   drafts.delete(displayedPath);
   displayedPath = saved.path;
   setGraphSelectedPath(relPath);
-  setEditStatus('ok', `Saved ${relPath}`);
+  setEditStatus('idle', `Saved ${relPath}`);
   showMemorySavedToast(memorySavedPayloadFromBrainPage(saved));
   refreshEditPreview();
 }
