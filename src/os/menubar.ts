@@ -19,7 +19,7 @@ import { initUpdateMenubarPill } from './update-menubar';
 import { openProductWiki } from '../ui/product-wiki';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import { initAgentActivityMenubar } from '../ui/agent-activity-panel';
-import { initMenubarCapture } from './menubar-capture';
+import { initQuickCaptureChord } from './quick-capture';
 import { buildMenuItems, openRegisteredMenu, subscribeMenuRegistry } from '../ui/menu-registry';
 
 /** Render the Minnow menubar. Returns cleanup function. */
@@ -122,8 +122,7 @@ export function renderMenubar(root: HTMLElement): () => void {
   agentsBtn.innerHTML = iconHtml('appAgentActivity', { size: 16 });
   const cleanupAgentActivity = initAgentActivityMenubar(agentsBtn);
 
-  const captureBtn = document.createElement('button');
-  const cleanupCapture = initMenubarCapture(captureBtn);
+  const cleanupQuickCapture = initQuickCaptureChord();
 
   const searchBtn = document.createElement('button');
   searchBtn.type = 'button';
@@ -188,7 +187,6 @@ export function renderMenubar(root: HTMLElement): () => void {
     pluginMenu,
     modelChipAnchor,
     agentsBtn,
-    captureBtn,
     searchBtn,
     bell,
     updateSlot,
@@ -267,7 +265,7 @@ export function renderMenubar(root: HTMLElement): () => void {
     unsubNotif();
     cleanupModelChip();
     cleanupAgentActivity();
-    cleanupCapture();
+    cleanupQuickCapture();
     cleanupNotifications();
     cleanupUpdatePill();
     cleanupShellChrome();

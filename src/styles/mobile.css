@@ -174,8 +174,7 @@ html.mn-phone .mn-os-mb-right {
 html.mn-phone .mn-os-menubar[data-view='app'] .mn-os-mb-logo,
 html.mn-phone .mn-os-mb-appname,
 html.mn-phone .mn-os-mb-model-static-role,
-html.mn-phone .mn-os-mb-chat-toggle,
-html.mn-phone .mn-os-mb-capture {
+html.mn-phone .mn-os-mb-chat-toggle {
   display: none !important;
 }
 

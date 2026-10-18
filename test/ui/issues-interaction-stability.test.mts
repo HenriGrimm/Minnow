@@ -6,7 +6,7 @@ import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/
 import { openIssuesEmbeddedInCode, renderIssuesPanel, teardownIssuesEmbedBeforeChatPaint } from '../../src/ui/issues-page';
 import { closeContextMenu, openContextMenu } from '../../src/ui/context-menu';
 import { closeIssuesLabelsSuggestionsMenu } from '../../src/ui/issues-labels-field';
-import { initMenubarCapture } from '../../src/os/menubar-capture';
+import { initQuickCaptureChord } from '../../src/os/quick-capture';
 
 test('Issues preserves copy shortcuts and open menus during background refreshes', async () => {
   const win = new Window({ url: 'http://localhost/' });
@@ -20,8 +20,7 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
   });
   document.body.innerHTML = `
     <div id="osAppsLayer"><main id="issuesView" class="issues-page"></main></div>
-    <div id="mainColumn"><div id="chatArea"></div><div id="backgroundChatArea"></div></div>
-    <button id="capture"></button>`;
+    <div id="mainColumn"><div id="chatArea"></div><div id="backgroundChatArea"></div></div>`;
   const chat = createEmptyChatObject('test-model');
   setSessionStateForTests({ version: 3, activeId: chat.id, chats: [chat], sidebarCollapsed: false });
   setIssuesStateForTests({
@@ -34,7 +33,7 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     }],
     workspaces: {},
   });
-  const cleanupCapture = initMenubarCapture(document.getElementById('capture') as HTMLButtonElement);
+  const cleanupCapture = initQuickCaptureChord();
   try {
     await openIssuesEmbeddedInCode();
     const issueRow = document.querySelector<HTMLElement>('.issues-row');
