@@ -18,13 +18,21 @@ function setup() {
   return { tab, view: view as unknown as EditorView, requests };
 }
 
-test('line navigation selects the complete matching line and requests scrolling without editing', () => {
+test('line navigation selects the complete matching line and centres it without editing', () => {
   const { tab, view, requests } = setup();
   tab.pendingInitialLineRange = { startLine: 2, endLine: 2 };
   applyPendingViewerSelection(view, tab);
   const selection = view.state.selection.main;
   assert.equal(view.state.sliceDoc(selection.from, selection.to), '  matching line');
-  assert.equal(requests[0]?.scrollIntoView, true);
+  const effects = requests[0]?.effects;
+  const scroll = (Array.isArray(effects) ? effects[0] : effects) as
+    | { value?: { y?: string; range?: { from: number; to: number } } }
+    | undefined;
+  assert.equal(scroll?.value?.y, 'center');
+  assert.deepEqual(
+    { from: scroll?.value?.range?.from, to: scroll?.value?.range?.to },
+    { from: selection.from, to: selection.to },
+  );
   assert.equal(tab.pendingInitialLineRange, null);
   assert.equal(view.state.doc.toString(), 'first\n  matching line\nlast');
   applyPendingViewerSelection(view, tab);
