@@ -96,7 +96,7 @@
   flex: 1;
   align-items: stretch;
   min-width: 0;
-  padding: 4px 8px 0;
+  padding: 0 8px;
 }
 
 .terminal-tab-bar {
@@ -207,8 +207,11 @@
 
 .terminal-new-tab {
   display: flex;
+  align-self: center;
   flex-shrink: 0;
-  margin: 0 0 1px 4px;
+  height: 32px;
+  box-sizing: border-box;
+  margin: 0 0 0 4px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -221,7 +224,7 @@
   justify-content: center;
   flex-shrink: 0;
   width: 28px;
-  height: 28px;
+  height: 100%;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -260,7 +263,7 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  padding: 6px 10px 6px 8px;
+  padding: 6px 8px;
   border-left: 1px solid var(--mn-border);
 }
 

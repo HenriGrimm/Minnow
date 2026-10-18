@@ -930,6 +930,10 @@ html.mn-phone .terminal-tab-shell-menu {
   height: var(--touch-min);
 }
 
+html.mn-phone .terminal-new-tab {
+  height: auto;
+}
+
 html.mn-phone .terminal-header-actions {
   order: 2;
 }
