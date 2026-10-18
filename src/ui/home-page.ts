@@ -18,7 +18,7 @@ import { readDefaultModelBinding } from './default-model';
 import { listMainTurnActivity, subscribeMainTurnActivity } from '../chat/main-turn-activity';
 import { listChatsAwaitingAnswers } from '../tools/ask-question-queue';
 import { createIcon } from './icon';
-import { openContextMenu, type MenuItem } from './context-menu';
+import { openContextMenu, closeContextMenu, deferUntilContextMenuClosed, type MenuItem } from './context-menu';
 import { showToast } from './toast';
 import { el, button, age } from '../home/dom';
 import { FLOW_COLUMNS, flowColumn, groupIssues, batchIssues, blockers, issueChat, type GroupMode, type DraftTask } from '../home/flow-model';
@@ -27,6 +27,7 @@ import { mountIssueDock } from '../home/flow-dock';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { planHomeGoal } from '../home/plan-goal';
 import { createHomeStatus } from '../home/status-chip';
+import { createHomeIssueStatus } from '../home/issue-status';
 import type { IssueCard } from '../types';
 
 let initialized = false, generation = 0, mountedWorkspace = '';
@@ -129,9 +130,10 @@ function card(group: IssueCard[], groupIndex: Map<string, number>): HTMLElement 
   top.append(el('span', group.map(i => i.id).join(' + '), 'home-mono home-card-id'));
   if (['urgent', 'high'].includes(issue.priority)) top.append(el('span', taxonomy.priorities.find(p => p.id === issue.priority)?.label || issue.priority, `home-priority home-priority--${issue.priority}`));
   node.append(top, el('h3', chat && group.length > 1 ? chat.name : issue.title));
+  if (group.length === 1) node.append(createHomeIssueStatus(issue));
   const labels = createIssueLabelsDisplay([...new Set(group.flatMap(item => item.labels))]);
   if (labels) { labels.classList.add('home-card-labels'); node.append(labels); }
-  if (group.length > 1) { const members = el('div', '', 'home-batch-members'); for (const member of group) { const row = el('div'); row.append(el('span', member.id, 'home-mono'), el('span', member.title)); members.append(row); } node.append(members); }
+  if (group.length > 1) { const members = el('div', '', 'home-batch-members'); for (const member of group) { const row = el('div'); row.append(el('span', member.id, 'home-mono'), el('span', member.title), createHomeIssueStatus(member)); members.append(row); } node.append(members); }
   if (selected.has(issue.id)) {
     const index = groupIndex.get(issue.id) ?? 0, selectedGroup = selectedGroups()[index], isHeld = selectedGroup && held(selectedGroup);
     const tag = el('div', '', 'home-group-tag'); tag.dataset.group = String(index % 5); tag.classList.toggle('is-held', Boolean(isHeld));
@@ -165,7 +167,7 @@ function renderDrafts(host: HTMLElement): void {
   const actions = el('div', '', 'home-draft-actions'); actions.append(button('Add to Ready', () => add(false), true), button('Add and select', () => add(true)), button('Discard', () => { draftTasks = []; renderBoard(); })); drafts.append(actions); host.append(drafts);
 }
 function renderBoard(): void {
-  if (!boardHost || deferUntilIssueLabelPopoverClosed(renderBoard)) return;
+  if (!boardHost || deferUntilIssueLabelPopoverClosed(renderBoard) || deferUntilContextMenuClosed(renderBoard)) return;
   const all = issues(), taxonomy = getIssuesTaxonomySync();
   for (const id of selected) if (!all.some(i => i.id === id && selectable(i))) selected.delete(id);
   const swatches = [...new Set(all.flatMap(issue => issue.labels))].map(name => [name, getIssueLabelSwatch(name)]);
@@ -312,6 +314,6 @@ export function initHomePage(): void {
   if (initialized) return; initialized = true; initHomeFlow();
   const update = () => { if (getForegroundAppId() === 'home' && page?.isConnected) { renderBoard(); renderSelection(); renderDock(); } };
   subscribeIssuesChanges(() => queueMicrotask(update)); subscribeIssuesTaxonomyChanges(() => queueMicrotask(update)); subscribeMainTurnActivity(update); subscribeHomeFlow(update);
-  subscribeInstances(() => { if (getForegroundAppId() !== 'home') { generation++; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); planAbort = undefined; dockCleanup?.(); dockCleanup = undefined; dockKey = ''; closeIssueLabelPopovers(); } });
+  subscribeInstances(() => { if (getForegroundAppId() !== 'home') { generation++; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); planAbort = undefined; dockCleanup?.(); dockCleanup = undefined; dockKey = ''; closeIssueLabelPopovers(); closeContextMenu({ restoreFocus: false }); } });
   document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(timer); else if (getForegroundAppId() === 'home') void refresh(); });
 }

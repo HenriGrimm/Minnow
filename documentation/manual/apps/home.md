@@ -2,6 +2,8 @@
 
 Dashboard runs your project's issues through **Triage**, **Ready**, **In Progress**, **Review**, and **Done**. It uses the same issues, chats, models, and worktrees as Code and Issues.
 
+Change an issue's status using the status dropdown on its card or in the issue workspace header. The menu includes your custom statuses. Grouped cards have a separate dropdown for each issue. Status changes save to the shared issue tracker; agent activity and merge controls continue to reflect the actual worktree run.
+
 ## Capture and plan
 
 When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
@@ -20,11 +22,11 @@ Blocked groups are held until their blockers close or merge. **Start from main**
 
 ## Review in the dock
 
-Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Expand **Issue brief** to read the description, notes, and linked files. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
+Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Open **Issue details** to read the formatted description, notes, and linked files in a side pane. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
 
 **Conversation** uses the same message and tool rendering as Code. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. You can draft a message while the agent works, then pause or wait before sending. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it. **Open in Code** opens the linked chat.
 
-For a new issue, review its brief and linked context, add optional instructions, and start a chat. **Approve plan & build** switches a completed Plan first chat to Build.
+For a new issue, the formatted brief and start controls share one reading column. Add optional instructions, choose Build or Plan first, then select **Start build** or **Start planning**. **Approve plan & build** switches a completed Plan first chat to Build.
 
 **Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. On wide windows, the conversation can stay beside the changes. **Runs** lists recorded commands, their exit results, and expandable output. A successful exit records command execution; review the conversation and changes to assess whether the requested behavior works. Expand **Run a command in this checkout** for a scoped command console. Switching views retains its output and running command controls.
 

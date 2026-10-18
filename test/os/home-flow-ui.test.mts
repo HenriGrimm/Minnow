@@ -6,6 +6,8 @@ import { installHappyDomGlobals, seedMinimalSession, teardownHappyDomAsync } fro
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { setIssuesStateForTests, addIssue, setIssueLabelColor, collectIssues, deleteIssues } from '../../src/state/issues-store.ts';
 import { closeIssueLabelPopovers } from '../../src/ui/issues-label-chip.ts';
+import { closeContextMenu } from '../../src/ui/context-menu.ts';
+import { getIssuesTaxonomySync, setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { getForegroundAppId, launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
@@ -25,7 +27,7 @@ test('Home issue dock uses the collapsed shared transcript without changing Code
   ];
   sessionState!.chats.push(linked);
   setIssuesStateForTests({ version: 2, issues: [] } as Parameters<typeof setIssuesStateForTests>[0]);
-  const issue = addIssue({ title: 'Renderer regression' });
+  const issue = addIssue({ title: 'Renderer regression', description: '**Context**\n\n- Preserve the chat.' });
   issue.agent = { agentId: 'builder', phase: 'completed', startedAt: 1, updatedAt: 1, chatId: linked.id };
   document.body.innerHTML = '<div id="chatArea"><p>Keep this conversation</p></div><div id="dock"></div>';
   const code = document.querySelector('#chatArea p');
@@ -34,6 +36,9 @@ test('Home issue dock uses the collapsed shared transcript without changing Code
   try {
     await new Promise(resolve => setTimeout(resolve, 40));
     dock.update();
+    assert.equal(document.querySelector('.home-brief-markdown strong')?.textContent, 'Context');
+    assert.equal(document.querySelector('.home-brief-markdown li')?.textContent, 'Preserve the chat.');
+    assert.equal((document.querySelector('.home-issue-brief') as HTMLElement).hidden, true);
     const work = document.querySelector<HTMLButtonElement>('.home-chat-transcript .chat-work')!;
     assert.ok(work, 'shared work disclosure is rendered');
     assert.equal(work.getAttribute('aria-expanded'), 'false');
@@ -44,8 +49,19 @@ test('Home issue dock uses the collapsed shared transcript without changing Code
     assert.equal(document.querySelector('.home-chat-transcript .chat-work')!.getAttribute('aria-expanded'), 'true');
     assert.equal(sessionState!.activeId, 'keep-active');
     assert.equal(document.querySelector('#chatArea p'), code);
+    const statusControl = document.querySelector<HTMLButtonElement>('.home-workspace-header .home-issue-status')!;
+    statusControl.click();
+    document.querySelector<HTMLButtonElement>('[role=menu] [data-id=done]')!.click();
+    await Promise.resolve(); dock.update();
+    assert.equal(issue.status, 'done');
+    assert.match(statusControl.getAttribute('aria-label')!, /Done/);
+    statusControl.click();
+    document.querySelector<HTMLButtonElement>('[role=menu] [data-id=todo]')!.click();
+    await Promise.resolve(); dock.update();
+    assert.equal(issue.status, 'todo', 'completed issues can be reopened in the dock');
+    assert.equal(issue.agent?.chatId, linked.id, 'status edits preserve the linked agent');
   } finally {
-    dock.dispose(); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
+    closeContextMenu(); dock.dispose(); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
   }
 });
 
@@ -59,6 +75,8 @@ mock.module('../../src/home/plan-goal.ts', { namedExports: {
 
 test('Dashboard loads, offers an empty goal state, and keeps Code intact through issue capture and review', async () => {
   const win = new Window();
+  const originalSanitize = DOMPurify.sanitize;
+  DOMPurify.sanitize = DOMPurify(win as unknown as globalThis.Window).sanitize;
   const fetcher = async (url: string | URL | Request) => new Response(JSON.stringify(String(url).includes('/boards') ? [] : String(url).includes('/scheduler') ? { jobs: [] } : { ok: true, local: ['main'], jobs: [], boards: [] }), { headers: { 'Content-Type': 'application/json' } });
   installHappyDomGlobals(win, { fetch: fetcher as typeof fetch });
   const codeChat = seedMinimalSession('keep-active'); setStorageModeForTests('localStorage'); setLocalServerAvailableForTests(false);
@@ -104,6 +122,20 @@ test('Dashboard loads, offers an empty goal state, and keeps Code intact through
     setIssueLabelColor('keyboard', 'tide'); closeIssueLabelPopovers();
     await Promise.resolve(); await Promise.resolve();
     assert.equal([...keyboardCard().querySelectorAll<HTMLElement>('.issues-label-chip')].find(chip => chip.textContent === 'keyboard')?.dataset.swatch, 'tide');
+    const statusControl = keyboardCard().querySelector<HTMLButtonElement>('.home-issue-status')!;
+    statusControl.click();
+    assert.equal((document.querySelector('.home-dock-content') as HTMLElement).hidden, true, 'editing status does not open the dock');
+    setIssueLabelColor('keyboard', 'fig'); await Promise.resolve(); await Promise.resolve();
+    assert.equal(keyboardCard().querySelector('.home-issue-status'), statusControl, 'updates preserve the open menu anchor');
+    document.querySelector<HTMLButtonElement>('[role=menu] [data-id=todo]')!.click();
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(keyboard.status, 'todo');
+    assert.ok(keyboard.triagedAt, 'changing status also accepts a triage issue');
+    assert.equal(keyboardCard().closest('[data-column]')?.getAttribute('data-column'), 'ready');
+    keyboardCard().querySelector<HTMLButtonElement>('.home-issue-status')!.click();
+    document.querySelector<HTMLButtonElement>('[role=menu] [data-id=triage]')!.click();
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(keyboardCard().closest('[data-column]')?.getAttribute('data-column'), 'triage');
     const selectAll = document.querySelector<HTMLButtonElement>('[data-column=triage] .home-column-heading button')!;
     selectAll.click();
     assert.match(document.querySelector('.home-selection-bar')!.textContent!, /2 selected/);
@@ -148,7 +180,31 @@ test('Dashboard loads, offers an empty goal state, and keeps Code intact through
     assert.equal(sessionState.activeId, codeChat.id);
     assert.equal(sessionState.chats.length, 1);
   } finally {
+    DOMPurify.sanitize = originalSanitize;
     launchInstance('code'); resetInstancesForTests(); setStorageModeForTests(null); setIssuesStateForTests(null);
     await teardownHappyDomAsync(win);
+  }
+});
+
+test('Dashboard status menu uses custom taxonomy and edits only the chosen issue', async () => {
+  const win = new Window(); installHappyDomGlobals(win);
+  seedMinimalSession('status-test'); setStorageModeForTests('localStorage');
+  const taxonomy = getIssuesTaxonomySync();
+  setIssuesTaxonomyForTests({ ...taxonomy, statuses: taxonomy.statuses.map(status => ({ ...status, id: `custom_${status.id}`, label: `Custom ${status.label}` })) });
+  setIssuesStateForTests({ version: 2, issues: [] } as Parameters<typeof setIssuesStateForTests>[0]);
+  const first = addIssue({ title: 'First', status: 'custom_triage' });
+  const second = addIssue({ title: 'Second', status: 'custom_triage' });
+  const { createHomeIssueStatus } = await import('../../src/home/issue-status.ts');
+  const control = createHomeIssueStatus(second); document.body.append(control);
+  try {
+    control.click();
+    assert.ok(document.querySelector('[role=menu] [data-id=custom_done]'));
+    document.querySelector<HTMLButtonElement>('[role=menu] [data-id=custom_todo]')!.click();
+    await Promise.resolve();
+    assert.equal(first.status, 'custom_triage');
+    assert.equal(second.status, 'custom_todo');
+    assert.match(control.textContent!, /Custom/);
+  } finally {
+    closeContextMenu(); setIssuesTaxonomyForTests(null); setIssuesStateForTests(null); setStorageModeForTests(null); await teardownHappyDomAsync(win);
   }
 });

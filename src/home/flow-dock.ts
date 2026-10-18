@@ -15,6 +15,7 @@ import { approveHomeIssue, pauseHomeIssue, replyHomeIssue } from './flow-actions
 import { clearHomeQuestionHost, setHomeQuestionHost } from './question-host';
 import { button, el } from './dom';
 import { updateHomeStatus } from './status-chip';
+import { createHomeIssueStatus, updateHomeIssueStatus } from './issue-status';
 import { mountWorkChanges } from './work-changes';
 import { mountRunEvidence } from './run-evidence';
 import { mountHomeTerminal } from './command-console';
@@ -41,7 +42,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   let { issue } = options;
   const chat = issueChat(issue, sessionState?.chats ?? []);
   const memoryKey = JSON.stringify([options.workspace, issue.id]);
-  const memory: DockMemory = memories.get(memoryKey) ?? { draft: '', view: issue.agent?.home?.state === 'ready' ? 'changes' : 'conversation', sideChat: true, scroll: 0, brief: !chat, mode: 'build', expanded: new Set<number>() };
+  const memory: DockMemory = memories.get(memoryKey) ?? { draft: '', view: issue.agent?.home?.state === 'ready' ? 'changes' : 'conversation', sideChat: true, scroll: 0, brief: false, mode: 'build', expanded: new Set<number>() };
   // Pre-start instructions are already in the first user message once a chat is attached.
   if (chat && !memory.chatId) { memory.draft = ''; memory.chatId = chat.id; }
   memories.set(memoryKey, memory);
@@ -53,30 +54,47 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const checkout = () => chat?.worktreeRoot || issue.agent?.worktreePath || options.workspace;
   const target = () => issue.agent?.home?.baseBranch;
   const openCode = () => launchApp('code', chat ? { chatId: chat.id } : {});
-  const shell = el('div', '', 'home-workspace'); shell.setAttribute('aria-label', 'Issue workspace');
+  const shell = el('div', '', 'home-workspace'); shell.classList.toggle('home-workspace--start', !chat); shell.setAttribute('aria-label', 'Issue workspace');
   const header = el('header', '', 'home-workspace-header');
   const title = el('h2', issue.title); title.id = 'home-dock-title';
   const status = el('span', '', 'home-status'); status.setAttribute('role', 'status');
+  const issueStatus = createHomeIssueStatus(issue);
   const chrome = el('div', '', 'home-workspace-chrome');
   const maximize = button('Maximize details', () => options.maximize?.(), false, 'expand'); maximize.setAttribute('aria-label', 'Maximize details');
   const collapse = button('Collapse details', () => options.collapse?.(), false, 'minimize'); collapse.setAttribute('aria-label', 'Collapse details');
   const close = button('Close details', () => options.close?.(), false, 'close'); close.setAttribute('aria-label', 'Close details');
   if (options.maximize) chrome.append(maximize); if (options.collapse) chrome.append(collapse); if (options.close) chrome.append(close);
-  header.append(el('span', issue.id, 'home-mono home-muted'), title, status, chrome);
+  header.append(el('span', issue.id, 'home-mono home-muted'), title, issueStatus, status, chrome);
   const navigation = el('div', '', 'home-workspace-navigation');
   const tablist = el('div', '', 'home-dock-tablist'); tablist.setAttribute('role', 'tablist'); tablist.setAttribute('aria-label', 'Issue workspace views');
   const scope = el('span', '', 'home-workspace-scope home-mono');
   const sideToggle = button('Show conversation', () => { if (shell.clientWidth <= 1050) selectView('conversation'); else { memory.sideChat = !memory.sideChat; selectView(memory.view); } }, false, 'comment');
   navigation.append(tablist, scope, sideToggle);
-  const brief = el('details', '', 'home-issue-brief'); brief.open = memory.brief;
-  const briefSummary = el('summary'); briefSummary.append(el('strong', 'Issue brief'), el('span', issue.description?.split('\n')[0] || issue.title, 'home-muted'));
+  const brief = el('aside', '', 'home-issue-brief'); brief.hidden = !memory.brief;
+  brief.setAttribute('aria-label', 'Issue details');
+  const briefToggle = button('Issue details', () => {
+    memory.brief = !memory.brief; brief.hidden = !memory.brief;
+    briefToggle.setAttribute('aria-expanded', String(memory.brief));
+  }, false, 'appIssues');
+  briefToggle.setAttribute('aria-expanded', String(memory.brief));
   const briefBody = el('div', '', 'home-brief-body');
-  briefBody.append(el('p', issue.description || 'No description was added.', 'home-issue-description'));
+  const description = () => {
+    const node = el('div', '', 'home-brief-markdown');
+    setAssistantBubbleContent(node, issue.description || 'No description was added.');
+    return node;
+  };
+  const briefHeading = el('div', '', 'home-brief-heading');
+  briefHeading.append(el('strong', 'Issue details'), button('Close', () => briefToggle.click(), false, 'close'));
+  briefBody.append(description());
   const resources = el('div', '', 'home-context-chips');
   for (const ref of issue.codeRefs ?? []) resources.append(el('span', ref.path));
-  if (issue.notes) briefBody.append(el('p', issue.notes, 'home-issue-description'));
+  if (issue.notes) {
+    const notes = el('div', '', 'home-brief-markdown');
+    setAssistantBubbleContent(notes, issue.notes); briefBody.append(el('h3', 'Notes'), notes);
+  }
   briefBody.append(resources, button('Open issue', () => { window.location.hash = `#/app/issues/${encodeURIComponent(issue.id)}`; }, false, 'appIssues'));
-  brief.append(briefSummary, briefBody); brief.ontoggle = () => { memory.brief = brief.open; };
+  brief.append(briefHeading, briefBody);
+  navigation.append(briefToggle, button('Open in Code', openCode, false, 'externalLink'));
   const body = el('div', '', 'home-workspace-body');
   const review = el('section', '', 'home-review-work');
   const changesHost = el('div', '', 'home-changes-view'); changesHost.id = 'home-view-changes'; changesHost.setAttribute('role', 'tabpanel'); changesHost.setAttribute('aria-labelledby', 'home-tab-changes');
@@ -88,7 +106,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   commandDetails.ontoggle = () => { if (commandDetails.open && !terminalCleanup) terminalCleanup = mountHomeTerminal(terminalHost, checkout(), chat); };
   runsHost.append(runsEvidence, commandDetails); review.append(changesHost, evidence, runsHost);
   const conversation = el('section', '', 'home-conversation'); conversation.id = 'home-view-conversation'; conversation.setAttribute('aria-label', 'Conversation');
-  const heading = el('div', '', 'home-chat-heading'); heading.append(el('strong', 'Conversation'), el('span', chat?.modelId || options.modelLabel, 'home-muted'), button('Open in Code', openCode, false, 'externalLink'));
+  const heading = el('div', '', 'home-chat-heading'); heading.append(el('strong', 'Conversation')); heading.hidden = true;
   const content = el('div', '', 'home-chat-history'); content.tabIndex = 0; content.setAttribute('role', 'log'); content.setAttribute('aria-label', 'Issue conversation');
   const transcript = el('div', '', 'home-chat-transcript');
   const latest = button('New activity ↓', () => { content.scrollTop = content.scrollHeight; latest.hidden = true; }); latest.classList.add('home-new-activity'); latest.hidden = true;
@@ -103,14 +121,14 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const sendRow = el('div', '', 'home-chat-input'); sendRow.append(input, submit); form.append(questionHost, sendRow, hint);
   if (!chat) {
     const waits = blockers(issue, options.issues, getIssuesTaxonomySync());
-    content.append(el('h3', 'Agent context'), el('p', 'The agent starts with the issue brief, linked files and notes. Each new chat uses an isolated worktree.', 'home-issue-description'));
+    content.append(el('span', 'READY TO START', 'home-start-eyebrow'), el('h3', issue.title), description());
     if (waits.length) content.append(el('p', `Waiting on ${waits.map(i => i.id).join(', ')}. Work is held until its blockers finish.`, 'home-blocked'));
     const controls = el('div', '', 'home-start-controls');
     const modes = el('div', '', 'home-segments'); modes.setAttribute('aria-label', 'Chat mode');
     for (const mode of ['build', 'plan'] as const) {
-      const pick = button(mode === 'build' ? 'Build' : 'Plan first', () => { memory.mode = mode; for (const item of modes.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === pick)); submit.querySelector('span')!.textContent = mode === 'plan' ? 'Start with a plan' : 'Start chat'; }); pick.setAttribute('aria-pressed', String(memory.mode === mode)); modes.append(pick);
+      const pick = button(mode === 'build' ? 'Build' : 'Plan first', () => { memory.mode = mode; for (const item of modes.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === pick)); updateActions(); }); pick.setAttribute('aria-pressed', String(memory.mode === mode)); modes.append(pick);
     }
-    controls.append(modes, el('span', `${options.modelLabel} · isolated worktree`, 'home-muted'), button('Add to selection', () => options.select(issue))); form.append(controls);
+    controls.append(modes, el('span', 'Runs in an isolated worktree', 'home-muted'), button('Add to selection', () => options.select(issue))); form.prepend(controls);
     const paths = new Set(issue.codeRefs?.map(ref => ref.path));
     const related = options.issues.find(i => i.id !== issue.id && i.agent?.chatId && i.codeRefs?.some(ref => paths.has(ref.path)));
     const relatedChat = related && issueChat(related, sessionState?.chats ?? []);
@@ -133,7 +151,8 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const conflict = el('div', '', 'home-conflict'); conflict.hidden = true;
   conflict.append(el('p', 'The merge stopped. Inspect the changes, or ask the agent to resolve the conflict.'), button('Ask agent to resolve', () => void perform(() => replyHomeIssue(issue, `Rebase your branch onto ${target() || 'main'}. Resolve conflicts preserving both intended changes, run checks, commit, and stop for review.`)), false, 'gitRebase'), button('Resolve in Code', openCode));
   footer.append(footerContext, actions);
-  shell.append(header, navigation, brief, conflict, body, error, footer); host.append(shell); host.setAttribute('aria-labelledby', title.id);
+  const stage = el('div', '', 'home-workspace-stage'); stage.append(body, brief);
+  shell.append(header, navigation, conflict, stage, error, footer); host.append(shell); host.setAttribute('aria-labelledby', title.id);
 
   const changeView = mountWorkChanges(changesHost, { workspace: options.workspace, checkout, target, openCode, isMerged: () => issue.agent?.home?.state === 'done', onSnapshot(value) { snapshot = value; if (!disposed) updateActions(); } });
   const runView = mountRunEvidence(runsEvidence, chat, value => { runs = value; renderEvidence(); });
@@ -159,7 +178,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
     conversation.hidden = view !== 'conversation' && !memory.sideChat;
     if (view === 'conversation') { conversation.setAttribute('role', 'tabpanel'); conversation.setAttribute('aria-labelledby', 'home-tab-conversation'); }
     else { conversation.removeAttribute('role'); conversation.removeAttribute('aria-labelledby'); }
-    sideToggle.hidden = view === 'conversation' || !chat; sideToggle.setAttribute('aria-pressed', String(memory.sideChat)); sideToggle.querySelector('span')!.textContent = memory.sideChat ? 'Hide conversation' : 'Show conversation';
+    sideToggle.hidden = view === 'conversation' || !chat; heading.hidden = view === 'conversation'; brief.hidden = !memory.brief; sideToggle.setAttribute('aria-pressed', String(memory.sideChat)); sideToggle.querySelector('span')!.textContent = memory.sideChat ? 'Hide conversation' : 'Show conversation';
     if (view === 'changes') changeView.refresh(); if (view === 'runs') runView.refresh();
     if (chat) notifyAskQuestionDisplayContextChanged();
     queueMicrotask(() => { if (!disposed) update(); });
@@ -194,13 +213,15 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
     const count = Math.max(1, group.length);
     scope.textContent = `${issue.agent?.branch || chat?.gitBranch || 'Workspace'}${target() ? ` → ${target()}` : ''} · ${count} issue${count === 1 ? '' : 's'}`;
     scope.title = `${checkout()}\n${group.map(i => `${i.id}: ${i.title}`).join('\n')}`;
-    input.disabled = state === 'done'; input.placeholder = !chat ? 'Instructions before starting…' : state === 'ready' ? 'Request a change…' : 'Message to the agent…';
+    input.disabled = state === 'done'; input.placeholder = !chat ? 'Add instructions (optional)…' : state === 'ready' ? 'Request a change…' : 'Message to the agent…';
     submit.disabled = busy || active || state === 'done' || Boolean(chat && !input.value.trim());
-    if (!chat && !issue.agent?.home) submit.querySelector('span')!.textContent = memory.mode === 'plan' ? 'Start with a plan' : 'Start chat';
+    if (!chat && !issue.agent?.home) submit.querySelector('span')!.textContent = memory.mode === 'plan' ? 'Start planning' : 'Start build';
     if (!chat && issue.agent?.home) {
       const retry = ['failed', 'paused'].includes(issue.agent.home.state); submit.disabled = busy || !retry; submit.querySelector('span')!.textContent = retry ? 'Retry chat' : 'Queued';
     }
-    hint.textContent = active ? 'You can draft a message while the agent works. Pause to send it now.' : state === 'done' ? 'Merged. Open in Code or create an issue for further work.' : 'Your draft stays here when you switch views.';
+    submit.setAttribute('aria-label', submit.querySelector('span')!.textContent || 'Send message');
+    hint.textContent = active ? 'You can draft a message while the agent works. Pause to send it now.' : state === 'done' ? 'Merged. Open in Code or create an issue for further work.' : ''; hint.hidden = !hint.textContent;
+    footer.hidden = !chat || !issue.agent?.home; scope.hidden = !chat;
     pause.hidden = !issue.agent?.home || !['working', 'paused', 'rebasing'].includes(state || ''); pause.disabled = busy && !active; pause.querySelector('span')!.textContent = state === 'paused' ? 'Resume' : 'Pause';
     request.hidden = !chat || !ready;
     primary.hidden = !chat || !issue.agent?.home || !ready && state !== 'failed';
@@ -220,6 +241,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   function update(): void {
     if (disposed) return;
     issue = findIssueById(issue.id) ?? issue; title.textContent = issue.title;
+    updateHomeIssueStatus(issueStatus, issue);
     updateHomeStatus(status, issue.agent?.home?.state, issue.agent?.phase); updateActions();
     const asking = issue.agent?.phase === 'awaiting_input';
     if (asking && !lastQuestion) selectView('conversation'); lastQuestion = asking;

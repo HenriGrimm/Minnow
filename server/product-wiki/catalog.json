@@ -607,7 +607,7 @@
     {
       "path": "documentation/manual/apps/home.md",
       "title": "Dashboard",
-      "summary": "Dashboard runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Capture and plan When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter ",
+      "summary": "Dashboard runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Change an issue's status using the status dropdown on its card or in the issue workspace header. The menu incl",
       "headings": [
         "Capture and plan",
         "Send issues to agents",
@@ -615,7 +615,7 @@
         "Refresh"
       ],
       "section": "Apps",
-      "hash": "703fd8a31530b5a9a34725859df78564a7f5430477e4ca6d9b6c3831d32798ef"
+      "hash": "5dd2ccbc4992219a852c2202caf2c1b1da3ece2ed4c1e61412ea35452cafb91c"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",
