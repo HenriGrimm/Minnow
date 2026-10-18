@@ -20,13 +20,15 @@ Blocked groups are held until their blockers close or merge. **Start from main**
 
 ## Review in the dock
 
-Select a card to open the bottom dock. It shows the issue, chat, worktree, branch, and target, along with the latest conversation. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it.
+Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Expand **Issue brief** to read the description, notes, and linked files. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
 
-For a new issue, review its description and linked context, add optional instructions, and start a chat. **Approve plan · build** switches a completed Plan first chat to Build.
+**Conversation** uses the same message and tool rendering as Code. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. You can draft a message while the agent works, then pause or wait before sending. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it. **Open in Code** opens the linked chat.
 
-Review the agent's reported checks in the conversation. **Approve · queue merge** serializes approvals, verifies that the managed worktree is committed, and checks the merge in a temporary checkout before updating the target. Conflicts keep the branch and worktree. Ask the agent to rebase or resolve in Code. Git refuses a landing that overlaps uncommitted changes in the target checkout. After a successful merge, Minnow removes the clean agent worktree and moves the issues to Done.
+For a new issue, review its brief and linked context, add optional instructions, and start a chat. **Approve plan & build** switches a completed Plan first chat to Build.
 
-Preview uses an explicit handoff to Code. The dock also contains a scoped command console under **Terminal**, repository status under **Git**, linked plans and boards under **Plans**, and project jobs under **Scheduled**.
+**Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. On wide windows, the conversation can stay beside the changes. **Runs** lists recorded commands, their exit results, and expandable output. A successful exit records command execution; review the conversation and changes to assess whether the requested behavior works. Expand **Run a command in this checkout** for a scoped command console. Switching views retains its output and running command controls.
+
+**Merge into main** (or the configured target) queues the merge. Shared work shows every affected issue beside the action. If changes remain uncommitted, **Ask agent to commit** sends them back for preparation. Minnow verifies that the managed worktree is committed and checks the merge in a temporary checkout before updating the target. Conflicts keep the branch and worktree. Ask the agent to resolve them or inspect them in Code. Git refuses a landing that overlaps uncommitted changes in the target checkout. After a successful merge, Minnow removes the clean agent worktree and moves the issues to Done.
 
 ## Refresh
 

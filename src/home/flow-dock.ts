@@ -1,209 +1,257 @@
-import type { Chat, IssueCard } from '../types';
+import type { Chat, IssueCard, TerminalRunRecord } from '../types';
 import { sessionState, ensureChatHistoryLoaded } from '../state/sessions';
 import { findIssueById } from '../state/issues-store';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
-import { gitDiffSummary, gitStatus } from '../state/git-api';
+import type { IssueWorkSnapshot } from '../state/git-api';
 import { launchApp } from '../os/router';
 import { listMainTurnActivity } from '../chat/main-turn-activity';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { setAssistantBubbleContent } from '../markdown/renderer';
-import { renderUserMessageBubble } from '../ui/user-message-bubble';
+import { renderEmbeddedChatTranscript } from '../ui/messages';
+import { isChatStreaming, readChatStreamText, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { createIcon } from '../ui/icon';
-import { showToast } from '../ui/toast';
-import { stripAnsi } from '../lib/strip-ansi';
-import { startTerminalRun, streamTerminalRun, cancelTerminalRun } from '../api/terminal';
 import { blockers, issueChat } from './flow-model';
 import { approveHomeIssue, pauseHomeIssue, replyHomeIssue } from './flow-actions';
 import { clearHomeQuestionHost, setHomeQuestionHost } from './question-host';
 import { button, el } from './dom';
 import { updateHomeStatus } from './status-chip';
+import { mountWorkChanges } from './work-changes';
+import { mountRunEvidence } from './run-evidence';
+import { mountHomeTerminal } from './command-console';
+
+export { mountHomeTerminal } from './command-console';
+type DockView = 'conversation' | 'changes' | 'runs';
+interface DockMemory { draft: string; view: DockView; sideChat: boolean; scroll: number; brief: boolean; mode: 'build' | 'plan'; expanded: Set<number>; chatId?: string }
+const memories = new Map<string, DockMemory>();
 
 export interface DockOptions {
   issue: IssueCard; issues: IssueCard[]; workspace: string; modelLabel: string;
   start: (issue: IssueCard, mode: 'build' | 'plan', instructions: string) => void;
   select: (issue: IssueCard) => void;
   addToChat: (issue: IssueCard, chat: Chat) => void;
+  currentIssues?: () => IssueCard[];
+  collapse?: () => void;
+  close?: () => void;
+  maximize?: () => void;
+  isMaximized?: () => boolean;
 }
 
+/** Selected issue, conversation and review share one persistent, scoped workspace. */
 export function mountIssueDock(host: HTMLElement, options: DockOptions): { update: () => void; dispose: () => void } {
   let { issue } = options;
-  const { issues } = options;
-  let disposed = false, transcriptSignature = '', historyReady = false;
   const chat = issueChat(issue, sessionState?.chats ?? []);
-  const shell = el('div', '', 'home-issue-detail');
-  const summary = el('aside', '', 'home-issue-summary');
-  const identity = el('div', '', 'home-inline');
-  const status = el('span', '', 'home-status');
-  identity.append(el('span', issue.id, 'home-mono home-muted'), status);
-  summary.append(identity, el('h2', issue.title));
-  const table = el('dl', '', 'home-relationships');
-  const relation = (label: string, value?: string) => { if (value) table.append(el('dt', label), el('dd', value)); };
-  relation('Issue', issue.id); relation('Chat', chat?.name); relation('Worktree', issue.agent?.worktreePath?.split(/[\\/]/).slice(-2).join('/')); relation('Branch', issue.agent?.branch || chat?.gitBranch); relation('Into', issue.agent?.home?.baseBranch);
-  summary.append(table);
-  const changes = el('div', '', 'home-changes-summary');
-  changes.append(el('p', chat?.worktreeRoot ? 'Loading changes…' : 'No worktree yet', 'home-mono home-muted'), button('Source Control', () => launchApp('source-control'), false, 'gitBranch'));
-  summary.append(changes, button('Open issue', () => { window.location.hash = `#/app/issues/${encodeURIComponent(issue.id)}`; }, false, 'appIssues'));
-  const conversation = el('section', '', 'home-conversation');
-  const heading = el('div', '', 'home-chat-heading');
-  heading.append(createIcon('comment'), el('span', chat ? `${chat.name} · ${chat.modelId || 'Default model'}` : 'No chat yet'), el('span', chat ? 'last 30 messages' : 'Ready to start', 'home-muted'));
+  const memoryKey = JSON.stringify([options.workspace, issue.id]);
+  const memory: DockMemory = memories.get(memoryKey) ?? { draft: '', view: issue.agent?.home?.state === 'ready' ? 'changes' : 'conversation', sideChat: true, scroll: 0, brief: !chat, mode: 'build', expanded: new Set<number>() };
+  // Pre-start instructions are already in the first user message once a chat is attached.
+  if (chat && !memory.chatId) { memory.draft = ''; memory.chatId = chat.id; }
+  memories.set(memoryKey, memory);
+  let disposed = false, busy = false, historyReady = false, transcriptSignature = '', liveBubble: HTMLDivElement | null = null;
+  let disposeTranscript = () => {};
+  let snapshot: IssueWorkSnapshot | undefined, runs: TerminalRunRecord[] = [], runSignature = '';
+  let lastQuestion = false, lastAgentError = '';
+  const tabButtons = new Map<DockView, HTMLButtonElement>();
+  const checkout = () => chat?.worktreeRoot || issue.agent?.worktreePath || options.workspace;
+  const target = () => issue.agent?.home?.baseBranch;
+  const openCode = () => launchApp('code', chat ? { chatId: chat.id } : {});
+  const shell = el('div', '', 'home-workspace'); shell.setAttribute('aria-label', 'Issue workspace');
+  const header = el('header', '', 'home-workspace-header');
+  const title = el('h2', issue.title); title.id = 'home-dock-title';
+  const status = el('span', '', 'home-status'); status.setAttribute('role', 'status');
+  const chrome = el('div', '', 'home-workspace-chrome');
+  const maximize = button('Maximize details', () => options.maximize?.(), false, 'expand'); maximize.setAttribute('aria-label', 'Maximize details');
+  const collapse = button('Collapse details', () => options.collapse?.(), false, 'minimize'); collapse.setAttribute('aria-label', 'Collapse details');
+  const close = button('Close details', () => options.close?.(), false, 'close'); close.setAttribute('aria-label', 'Close details');
+  if (options.maximize) chrome.append(maximize); if (options.collapse) chrome.append(collapse); if (options.close) chrome.append(close);
+  header.append(el('span', issue.id, 'home-mono home-muted'), title, status, chrome);
+  const navigation = el('div', '', 'home-workspace-navigation');
+  const tablist = el('div', '', 'home-dock-tablist'); tablist.setAttribute('role', 'tablist'); tablist.setAttribute('aria-label', 'Issue workspace views');
+  const scope = el('span', '', 'home-workspace-scope home-mono');
+  const sideToggle = button('Show conversation', () => { if (shell.clientWidth <= 1050) selectView('conversation'); else { memory.sideChat = !memory.sideChat; selectView(memory.view); } }, false, 'comment');
+  navigation.append(tablist, scope, sideToggle);
+  const brief = el('details', '', 'home-issue-brief'); brief.open = memory.brief;
+  const briefSummary = el('summary'); briefSummary.append(el('strong', 'Issue brief'), el('span', issue.description?.split('\n')[0] || issue.title, 'home-muted'));
+  const briefBody = el('div', '', 'home-brief-body');
+  briefBody.append(el('p', issue.description || 'No description was added.', 'home-issue-description'));
+  const resources = el('div', '', 'home-context-chips');
+  for (const ref of issue.codeRefs ?? []) resources.append(el('span', ref.path));
+  if (issue.notes) briefBody.append(el('p', issue.notes, 'home-issue-description'));
+  briefBody.append(resources, button('Open issue', () => { window.location.hash = `#/app/issues/${encodeURIComponent(issue.id)}`; }, false, 'appIssues'));
+  brief.append(briefSummary, briefBody); brief.ontoggle = () => { memory.brief = brief.open; };
+  const body = el('div', '', 'home-workspace-body');
+  const review = el('section', '', 'home-review-work');
+  const changesHost = el('div', '', 'home-changes-view'); changesHost.id = 'home-view-changes'; changesHost.setAttribute('role', 'tabpanel'); changesHost.setAttribute('aria-labelledby', 'home-tab-changes');
+  const evidence = el('div', '', 'home-evidence-strip');
+  const runsHost = el('div', '', 'home-runs-view'); runsHost.id = 'home-view-runs'; runsHost.setAttribute('role', 'tabpanel'); runsHost.setAttribute('aria-labelledby', 'home-tab-runs');
+  const runsEvidence = el('div');
+  const commandDetails = el('details', '', 'home-command-disclosure'); commandDetails.append(el('summary', 'Run a command in this checkout'));
+  const terminalHost = el('div'); commandDetails.append(terminalHost); let terminalCleanup: (() => void) | undefined;
+  commandDetails.ontoggle = () => { if (commandDetails.open && !terminalCleanup) terminalCleanup = mountHomeTerminal(terminalHost, checkout(), chat); };
+  runsHost.append(runsEvidence, commandDetails); review.append(changesHost, evidence, runsHost);
+  const conversation = el('section', '', 'home-conversation'); conversation.id = 'home-view-conversation'; conversation.setAttribute('aria-label', 'Conversation');
+  const heading = el('div', '', 'home-chat-heading'); heading.append(el('strong', 'Conversation'), el('span', chat?.modelId || options.modelLabel, 'home-muted'), button('Open in Code', openCode, false, 'externalLink'));
   const content = el('div', '', 'home-chat-history'); content.tabIndex = 0; content.setAttribute('role', 'log'); content.setAttribute('aria-label', 'Issue conversation');
+  const transcript = el('div', '', 'home-chat-transcript');
+  const latest = button('New activity ↓', () => { content.scrollTop = content.scrollHeight; latest.hidden = true; }); latest.classList.add('home-new-activity'); latest.hidden = true;
+  content.onscroll = () => { memory.scroll = content.scrollTop; if (content.scrollHeight - content.scrollTop - content.clientHeight < 64) latest.hidden = true; };
   const questionHost = el('div', '', 'home-questions'); questionHost.id = 'homeFlowQuestions';
   const form = el('form', '', 'home-chat-composer');
-  const input = el('textarea'); input.rows = 1;
+  const input = el('textarea'); input.rows = 1; input.value = memory.draft; input.oninput = () => { memory.draft = input.value; updateActions(); };
   input.setAttribute('aria-label', chat ? 'Message to the agent' : 'Instructions before starting');
-  const controls = el('div', '', 'home-start-controls');
-  const right = el('aside', '', 'home-review-panel');
-  const preview = el('div', '', 'home-preview-empty'); preview.append(createIcon('browser'), el('p', 'Preview'), el('span', 'Open the worktree in Code to run and preview the project.', 'home-muted'));
-  right.append(preview);
-  const checks = el('div', '', 'home-checks');
-  checks.append(el('h3', 'Checks'), el('p', 'Review the agent’s reported checks in the conversation. Merge verifies committed changes and conflicts.', 'home-muted'));
-  right.append(checks);
-  const actions = el('div', '', 'home-review-actions');
+  const submit = button(chat ? 'Send message' : 'Start chat', () => form.requestSubmit(), true, chat ? 'arrowUp' : 'send'); submit.setAttribute('aria-label', chat ? 'Send message' : 'Start chat');
+  const hint = el('p', '', 'home-composer-hint home-muted');
   const error = el('p', '', 'home-inline-error'); error.setAttribute('role', 'status');
-  const submit = button(chat ? 'Send message' : 'Start chat', () => form.requestSubmit(), true, chat ? 'arrowUp' : 'send');
-  submit.setAttribute('aria-label', chat ? 'Send message' : 'Start chat');
-  let mode: 'build' | 'plan' = 'build', busy = false;
-  const perform = async (action: () => Promise<void>) => {
-    if (busy) return; busy = true; submit.disabled = true; error.textContent = '';
+  const sendRow = el('div', '', 'home-chat-input'); sendRow.append(input, submit); form.append(questionHost, sendRow, hint);
+  if (!chat) {
+    const waits = blockers(issue, options.issues, getIssuesTaxonomySync());
+    content.append(el('h3', 'Agent context'), el('p', 'The agent starts with the issue brief, linked files and notes. Each new chat uses an isolated worktree.', 'home-issue-description'));
+    if (waits.length) content.append(el('p', `Waiting on ${waits.map(i => i.id).join(', ')}. Work is held until its blockers finish.`, 'home-blocked'));
+    const controls = el('div', '', 'home-start-controls');
+    const modes = el('div', '', 'home-segments'); modes.setAttribute('aria-label', 'Chat mode');
+    for (const mode of ['build', 'plan'] as const) {
+      const pick = button(mode === 'build' ? 'Build' : 'Plan first', () => { memory.mode = mode; for (const item of modes.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === pick)); submit.querySelector('span')!.textContent = mode === 'plan' ? 'Start with a plan' : 'Start chat'; }); pick.setAttribute('aria-pressed', String(memory.mode === mode)); modes.append(pick);
+    }
+    controls.append(modes, el('span', `${options.modelLabel} · isolated worktree`, 'home-muted'), button('Add to selection', () => options.select(issue))); form.append(controls);
+    const paths = new Set(issue.codeRefs?.map(ref => ref.path));
+    const related = options.issues.find(i => i.id !== issue.id && i.agent?.chatId && i.codeRefs?.some(ref => paths.has(ref.path)));
+    const relatedChat = related && issueChat(related, sessionState?.chats ?? []);
+    if (relatedChat?.worktreeRoot) content.append(el('p', `“${relatedChat.name}” is already working in linked files.`, 'home-muted'), button('Add to that chat', () => options.addToChat(issue, relatedChat)));
+  }
+  conversation.append(heading, content, latest, form); body.append(review, conversation);
+  const footer = el('footer', '', 'home-workspace-footer');
+  const footerContext = el('div', '', 'home-footer-context'); const footerTitle = el('strong'), footerDetail = el('p', '', 'home-muted'); footerContext.append(footerTitle, footerDetail);
+  const actions = el('div', '', 'home-review-actions');
+  const request = button('Request changes', () => { memory.sideChat = true; selectView('conversation'); input.focus(); }, false, 'comment');
+  const pause = button('Pause', () => { if (issue.agent?.home?.state === 'paused') void perform(() => replyHomeIssue(issue, 'Continue from where you stopped.')); else pauseHomeIssue(issue); });
+  const primary = button('Merge into main', () => {
+    if (issue.agent?.home?.state === 'failed') void perform(() => replyHomeIssue(issue, 'Retry the unfinished work. Address the last failure, run the relevant checks, commit the changes, and stop for review. Do not merge.'));
+    else if (chat?.modeId === 'plan') void perform(() => replyHomeIssue(issue, 'The plan is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.', true));
+    else if (!snapshot) { selectView('changes'); changeView.refresh(true); }
+    else if (snapshot?.dirty) void perform(() => replyHomeIssue(issue, 'Review and commit the changes in this worktree, then stop for review. Do not merge.'));
+    else void perform(() => approveHomeIssue(issue));
+  }, true, 'gitMerge'); primary.dataset.approve = '';
+  actions.append(pause, request, primary);
+  const conflict = el('div', '', 'home-conflict'); conflict.hidden = true;
+  conflict.append(el('p', 'The merge stopped. Inspect the changes, or ask the agent to resolve the conflict.'), button('Ask agent to resolve', () => void perform(() => replyHomeIssue(issue, `Rebase your branch onto ${target() || 'main'}. Resolve conflicts preserving both intended changes, run checks, commit, and stop for review.`)), false, 'gitRebase'), button('Resolve in Code', openCode));
+  footer.append(footerContext, actions);
+  shell.append(header, navigation, brief, conflict, body, error, footer); host.append(shell); host.setAttribute('aria-labelledby', title.id);
+
+  const changeView = mountWorkChanges(changesHost, { workspace: options.workspace, checkout, target, openCode, isMerged: () => issue.agent?.home?.state === 'done', onSnapshot(value) { snapshot = value; if (!disposed) updateActions(); } });
+  const runView = mountRunEvidence(runsEvidence, chat, value => { runs = value; renderEvidence(); });
+  function renderEvidence(): void {
+    const last = runs.at(-1); evidence.replaceChildren();
+    if (!last) { evidence.append(el('span', 'No command results recorded.', 'home-muted')); return; }
+    evidence.append(createIcon(last.exitCode === 0 && !last.timedOut ? 'statusPass' : 'statusFail'), el('span', last.timedOut ? 'Latest command timed out' : last.exitCode === null ? 'Latest command stopped' : `Latest command · exit ${last.exitCode}`), button('View output', () => selectView('runs')));
+    evidence.append(el('span', 'Command results are not tied to a reviewed revision.', 'home-muted'));
+  }
+  for (const [view, label] of [['conversation', 'Conversation'], ['changes', 'Changes'], ['runs', 'Runs']] as const) {
+    const tab = button(label, () => selectView(view)); tab.id = `home-tab-${view}`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `home-view-${view}`);
+    tab.onkeydown = event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault(); const views = [...tabButtons.keys()], index = views.indexOf(view);
+      const next = views[event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length]; selectView(next); tabButtons.get(next)?.focus();
+    };
+    tabButtons.set(view, tab); tablist.append(tab);
+  }
+  function selectView(view: DockView): void {
+    memory.view = view; shell.dataset.view = view; shell.classList.toggle('home-workspace--side-chat', memory.sideChat);
+    for (const [id, tab] of tabButtons) { tab.setAttribute('aria-selected', String(id === view)); tab.tabIndex = id === view ? 0 : -1; }
+    review.hidden = view === 'conversation'; changesHost.hidden = view !== 'changes'; evidence.hidden = view !== 'changes'; runsHost.hidden = view !== 'runs';
+    conversation.hidden = view !== 'conversation' && !memory.sideChat;
+    if (view === 'conversation') { conversation.setAttribute('role', 'tabpanel'); conversation.setAttribute('aria-labelledby', 'home-tab-conversation'); }
+    else { conversation.removeAttribute('role'); conversation.removeAttribute('aria-labelledby'); }
+    sideToggle.hidden = view === 'conversation' || !chat; sideToggle.setAttribute('aria-pressed', String(memory.sideChat)); sideToggle.querySelector('span')!.textContent = memory.sideChat ? 'Hide conversation' : 'Show conversation';
+    if (view === 'changes') changeView.refresh(); if (view === 'runs') runView.refresh();
+    if (chat) notifyAskQuestionDisplayContextChanged();
+    queueMicrotask(() => { if (!disposed) update(); });
+  }
+  async function perform(action: () => Promise<void>): Promise<void> {
+    if (busy) return; busy = true; error.textContent = ''; updateActions();
     try { await action(); } catch (err) { error.textContent = err instanceof Error ? err.message : String(err); }
     finally { busy = false; if (!disposed) update(); }
-  };
-  if (chat) {
-    input.placeholder = 'Adjust instructions…';
-    const sendRow = el('div', '', 'home-chat-input'); sendRow.append(input, submit); form.append(questionHost, sendRow, error);
-    actions.append(button('Open chat', () => launchApp('code', { chatId: chat.id }), false, 'externalLink'));
-    if (issue.agent?.home) {
-      const pause = button('Pause', () => { if (issue.agent?.home?.state === 'paused') void perform(() => replyHomeIssue(issue, 'Continue from where you stopped.')); else pauseHomeIssue(issue); }); pause.dataset.pause = ''; actions.prepend(pause);
-      const approve = button('Approve · queue merge', () => void perform(() => approveHomeIssue(issue)), true, 'gitMerge'); approve.dataset.approve = ''; actions.append(approve);
-      if (chat.modeId === 'plan') actions.append(button('Approve plan · build', () => void perform(() => replyHomeIssue(issue, 'The plan is approved. Implement it, run checks, commit the work, and stop for review. Do not merge.', true)), true, 'modeBuild'));
-      const conflict = el('div', '', 'home-conflict'); conflict.dataset.conflict = '';
-      conflict.append(el('p', 'The merge stopped. Your branch and worktree are preserved.'), button('Ask agent to rebase · keep both', () => void perform(() => replyHomeIssue(issue, `Rebase your branch onto ${issue.agent?.home?.baseBranch || 'main'}. Resolve conflicts preserving both intended changes, run checks, commit, and stop for review.`)), false, 'gitRebase'), button('Resolve in Code', () => launchApp('code', { chatId: chat.id })));
-      conversation.append(conflict);
-    }
-  } else {
-    input.placeholder = 'Anything the agent should know before it starts? (optional)';
-    content.append(el('h3', 'The issue'), el('p', issue.description || 'No description was added.', 'home-issue-description'));
-    const waits = blockers(issue, issues, getIssuesTaxonomySync());
-    if (waits.length) content.append(el('p', `Waits on ${waits.map(i => i.id).join(', ')}. This issue will be held until its blockers finish.`, 'home-blocked'));
-    content.append(el('h3', 'The agent starts with'));
-    const context = el('div', '', 'home-context-chips');
-    for (const label of ['Issue text', ...(issue.codeRefs ?? []).map(r => r.path), ...(issue.notes ? ['Brain notes'] : []), ...waits.map(i => `${i.id} summary`)]) context.append(el('span', label));
-    content.append(context);
-    const paths = new Set(issue.codeRefs?.map(r => r.path));
-    const related = issues.find(i => i.id !== issue.id && i.agent?.chatId && i.codeRefs?.some(r => paths.has(r.path)));
-    const relatedChat = related && issueChat(related, sessionState?.chats ?? []);
-    if (relatedChat?.worktreeRoot) {
-      const suggestion = el('div', '', 'home-related-chat'); suggestion.append(el('p', `“${relatedChat.name}” is already working in linked files. Adding this there shares its worktree.`), button('Add to that chat', () => options.addToChat(issue, relatedChat))); content.append(suggestion);
-    }
-    const modes = el('div', '', 'home-segments'); modes.setAttribute('aria-label', 'Chat mode');
-    for (const choice of ['build', 'plan'] as const) {
-      const pick = button(choice === 'build' ? 'Build' : 'Plan first', () => { mode = choice; for (const b of modes.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b === pick)); submit.querySelector('span')!.textContent = mode === 'plan' ? 'Start with a plan' : 'Start chat'; });
-      pick.setAttribute('aria-pressed', String(choice === mode)); modes.append(pick);
-    }
-    controls.append(modes, el('span', `${options.modelLabel} · isolated worktree`, 'home-mono home-muted'), button('Add to selection', () => options.select(issue)), submit);
-    form.append(input, controls, error);
-    preview.replaceChildren(createIcon('browser'), el('p', 'Preview and checks appear here once the agent makes its first change.', 'home-muted'));
   }
   form.onsubmit = event => {
-    event.preventDefault();
-    if (!chat) { options.start(issue, mode, input.value.trim()); return; }
+    event.preventDefault(); if (submit.disabled) return;
+    if (!chat) { options.start(issue, memory.mode, input.value.trim()); return; }
     const text = input.value.trim(); if (!text) return;
-    // A pending ask_question is answered through its shared question controls.
-    void perform(async () => { input.value = ''; await replyHomeIssue(issue, text); });
+    input.value = memory.draft = '';
+    void perform(async () => {
+      try {
+        await replyHomeIssue(issue, text);
+        const current = findIssueById(issue.id);
+        if (current?.agent?.home?.state === 'failed') throw new Error(current.agent.error || 'The agent could not complete the request. Your message has been restored.');
+      }
+      catch (error) { memory.draft = [text, memory.draft].filter(Boolean).join('\n\n'); input.value = memory.draft; throw error; }
+    });
   };
   input.onkeydown = event => { if (chat && event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
-  conversation.append(heading, content, form);
-  right.append(actions, el('p', issue.agent?.branch ? `Merges ${issue.agent.branch} into ${issue.agent.home?.baseBranch || 'main'}. The worktree is removed only after a clean merge.` : 'Each new chat runs in its own worktree.', 'home-affects'));
-  shell.append(summary, conversation, right); host.append(shell);
+  function updateActions(): void {
+    const state = issue.agent?.home?.state;
+    const active = Boolean(chat && (isChatStreaming(chat.id) || listMainTurnActivity().some(turn => turn.chatId === chat.id)));
+    if (active) snapshot = undefined;
+    const ready = ['ready', 'conflict'].includes(state || '');
+    commandDetails.hidden = state === 'done';
+    const group = (options.currentIssues?.() ?? options.issues).filter(i => issue.agent?.home?.groupId ? i.agent?.home?.groupId === issue.agent.home.groupId : i.id === issue.id);
+    const count = Math.max(1, group.length);
+    scope.textContent = `${issue.agent?.branch || chat?.gitBranch || 'Workspace'}${target() ? ` → ${target()}` : ''} · ${count} issue${count === 1 ? '' : 's'}`;
+    scope.title = `${checkout()}\n${group.map(i => `${i.id}: ${i.title}`).join('\n')}`;
+    input.disabled = state === 'done'; input.placeholder = !chat ? 'Instructions before starting…' : state === 'ready' ? 'Request a change…' : 'Message to the agent…';
+    submit.disabled = busy || active || state === 'done' || Boolean(chat && !input.value.trim());
+    if (!chat && !issue.agent?.home) submit.querySelector('span')!.textContent = memory.mode === 'plan' ? 'Start with a plan' : 'Start chat';
+    if (!chat && issue.agent?.home) {
+      const retry = ['failed', 'paused'].includes(issue.agent.home.state); submit.disabled = busy || !retry; submit.querySelector('span')!.textContent = retry ? 'Retry chat' : 'Queued';
+    }
+    hint.textContent = active ? 'You can draft a message while the agent works. Pause to send it now.' : state === 'done' ? 'Merged. Open in Code or create an issue for further work.' : 'Your draft stays here when you switch views.';
+    pause.hidden = !issue.agent?.home || !['working', 'paused', 'rebasing'].includes(state || ''); pause.disabled = busy && !active; pause.querySelector('span')!.textContent = state === 'paused' ? 'Resume' : 'Pause';
+    request.hidden = !chat || !ready;
+    primary.hidden = !chat || !issue.agent?.home || !ready && state !== 'failed';
+    primary.disabled = busy || active;
+    primary.querySelector('span')!.textContent = state === 'failed' ? 'Retry agent' : chat?.modeId === 'plan' ? 'Approve plan & build' : !snapshot ? 'Review changes' : snapshot.dirty ? 'Ask agent to commit' : state === 'conflict' ? 'Retry merge' : count > 1 ? `Merge ${count} issues into ${target() || 'main'}` : `Merge into ${target() || 'main'}`;
+    conflict.hidden = state !== 'conflict';
+    const captions: Record<string, string> = { working: 'Agent is working', paused: 'Work is paused', ready: chat?.modeId === 'plan' ? 'Plan ready for approval' : `Ready to merge into ${target() || 'main'}`, conflict: 'Merge needs attention', merging: 'Merging changes…', mergequeued: 'Queued to merge', done: 'Work merged', failed: 'Work needs attention', held: 'Waiting on blockers', waitslot: 'Waiting for an agent slot' };
+    footerTitle.textContent = issue.agent?.phase === 'awaiting_input' ? 'The agent needs your answer' : captions[state || ''] || (chat ? 'Linked conversation' : 'Start work on this issue');
+    footerDetail.textContent = count > 1 ? `Actions apply to ${group.map(i => i.id).join(', ')} in the shared worktree.` : snapshot?.dirty && ready ? 'Uncommitted changes must be committed before merging.' : state === 'done' ? 'The conversation and command history remain available.' : 'Applies to this issue’s worktree.';
+    if (!busy && (issue.agent?.error || '') !== lastAgentError) {
+      if (issue.agent?.error) error.textContent = issue.agent.error;
+      else if (error.textContent === lastAgentError) error.textContent = '';
+      lastAgentError = issue.agent?.error || '';
+    }
+    const maximized = options.isMaximized?.() ?? false; maximize.setAttribute('aria-label', maximized ? 'Restore details size' : 'Maximize details'); maximize.title = maximized ? 'Restore details size' : 'Maximize details'; maximize.setAttribute('aria-pressed', String(maximized));
+  }
   function update(): void {
     if (disposed) return;
-    issue = findIssueById(issue.id) ?? issue;
-    const state = issue.agent?.home?.state;
-    updateHomeStatus(status, state, issue.agent?.phase);
-    input.placeholder = issue.agent?.phase === 'awaiting_input' ? 'Answer using the question controls above…' : state === 'ready' ? 'Request changes…' : chat ? 'Adjust instructions…' : input.placeholder;
-    const active = Boolean(chat && listMainTurnActivity().some(t => t.chatId === chat.id));
-    submit.disabled = busy || active || state === 'done';
-    if (!chat && issue.agent?.home) {
-      const retry = ['failed', 'paused'].includes(issue.agent.home.state);
-      submit.disabled = busy || !retry; submit.querySelector('span')!.textContent = retry ? 'Retry chat' : 'Queued';
-      submit.setAttribute('aria-label', retry ? 'Retry chat' : 'Queued');
-    }
-    input.disabled = active || state === 'done';
-    const approve = actions.querySelector<HTMLButtonElement>('[data-approve]'); if (approve) { approve.hidden = !['ready', 'conflict'].includes(state || '') || chat?.modeId === 'plan'; approve.disabled = busy; approve.querySelector('span')!.textContent = state === 'conflict' ? 'Approve · retry merge' : 'Approve · queue merge'; }
-    const pause = actions.querySelector<HTMLButtonElement>('[data-pause]'); if (pause) { pause.hidden = !['working', 'paused', 'rebasing'].includes(state || ''); pause.querySelector('span')!.textContent = state === 'paused' ? 'Resume' : 'Pause'; }
-    const conflict = conversation.querySelector<HTMLElement>('[data-conflict]'); if (conflict) conflict.hidden = state !== 'conflict';
-    if (issue.agent?.error && !busy) error.textContent = issue.agent.error;
-    const commands = (chat?.terminalHistory ?? []).filter(run => run.source === 'agent').slice(-4);
-    if (commands.length) {
-      checks.replaceChildren(el('h3', 'Checks & commands'));
-      for (const run of commands) {
-        const line = el('div', '', 'home-check-row');
-        const passed = run.exitCode === 0 && !run.timedOut;
-        line.append(createIcon(passed ? 'statusPass' : 'statusFail'), el('span', run.command, 'home-mono'), el('span', run.timedOut ? 'timed out' : `exit ${run.exitCode ?? 'stopped'}`, 'home-muted'));
-        line.dataset.result = passed ? 'pass' : 'fail'; checks.append(line);
-      }
-    }
+    issue = findIssueById(issue.id) ?? issue; title.textContent = issue.title;
+    updateHomeStatus(status, issue.agent?.home?.state, issue.agent?.phase); updateActions();
+    const asking = issue.agent?.phase === 'awaiting_input';
+    if (asking && !lastQuestion) selectView('conversation'); lastQuestion = asking;
+    runView.update(); if (memory.view === 'changes') changeView.refresh();
+    const nextRuns = JSON.stringify(chat?.terminalHistory);
+    if (runSignature !== nextRuns) { runSignature = nextRuns; tabButtons.get('runs')!.querySelector('span')!.textContent = `Runs${chat?.terminalHistory?.length ? ` · ${chat.terminalHistory.length}` : ''}`; }
     if (!chat || !historyReady) return;
-    const history = chat.history.filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'tool').slice(-30);
-    const signature = JSON.stringify(history);
-    if (signature === transcriptSignature) return;
-    const follow = !transcriptSignature || content.scrollHeight - content.scrollTop - content.clientHeight < 64;
-    const scroll = content.scrollTop; transcriptSignature = signature; content.replaceChildren();
-    for (const message of history) {
-      if (message.role === 'tool') {
-        const line = el('details', '', 'home-tool-line'); line.append(el('summary', 'Tool result'), el('pre', typeof message.content === 'string' ? message.content : JSON.stringify(message.content))); content.append(line);
-      } else {
-        const row = el('div', '', `home-message home-message--${message.role}`);
-        if (message.role === 'assistant') setAssistantBubbleContent(row, message.content || '');
-        else renderUserMessageBubble(row, message.content, { issue: message.issue, persistedImages: message.images });
-        content.append(row);
-      }
+    if (conversation.hidden || memory.view !== 'conversation' && shell.clientWidth > 0 && shell.clientWidth <= 1050 || host.closest('[hidden]')) return;
+    const signature = JSON.stringify([chat.history, isChatStreaming(chat.id)]);
+    const first = !transcriptSignature;
+    const follow = first && !memory.scroll || content.scrollHeight - content.scrollTop - content.clientHeight < 64;
+    const scroll = first ? memory.scroll : content.scrollTop;
+    if (signature !== transcriptSignature) {
+      disposeTranscript(); content.replaceChildren(transcript);
+      ({ liveBubble, dispose: disposeTranscript } = renderEmbeddedChatTranscript(chat, transcript, memory.expanded));
+      transcriptSignature = signature;
+      if (!chat.history.length && !liveBubble) transcript.append(el('p', 'No messages yet.', 'home-muted'));
     }
-    if (!history.length) content.append(el('p', active ? 'Agent is starting…' : 'No messages yet.', 'home-muted'));
-    content.scrollTop = follow ? content.scrollHeight : scroll;
+    if (liveBubble) setAssistantBubbleContent(liveBubble, readChatStreamText(chat.id)?.lastDelta || '', { streaming: true, modeId: chat.modeId });
+    if (follow) content.scrollTop = content.scrollHeight; else { content.scrollTop = scroll; if (isChatStreaming(chat.id)) latest.hidden = false; }
+  }
+  async function loadHistory(): Promise<void> {
+    if (!chat) return;
+    try { await ensureChatHistoryLoaded(chat.id); if (!disposed) { historyReady = true; update(); runView.refresh(); } }
+    catch { if (!disposed) content.replaceChildren(el('p', 'Could not load the conversation.', 'home-muted'), button('Retry', () => { void loadHistory(); })); }
   }
   if (chat) {
-    setHomeQuestionHost(chat.id, questionHost); notifyAskQuestionDisplayContextChanged();
     content.append(el('p', 'Loading conversation…', 'home-muted'));
-    void ensureChatHistoryLoaded(chat.id).then(() => { if (!disposed) { historyReady = true; update(); } }).catch(() => { if (!disposed) content.replaceChildren(el('p', 'Could not load the conversation. Open the chat to retry.', 'home-muted')); });
-    if (chat.worktreeRoot) void Promise.all([gitStatus(chat.worktreeRoot), gitDiffSummary(chat.worktreeRoot)]).then(([status, diff]) => {
-      if (disposed) return;
-      const count = new Set([...(status.staged ?? []), ...(status.unstaged ?? []), ...(status.untracked ?? [])].map(f => f.path)).size;
-      changes.firstElementChild!.textContent = status.ok ? `${count} uncommitted files${diff.ok ? ` · +${diff.additions ?? 0} −${diff.deletions ?? 0}` : ''}` : 'Changes unavailable';
-    });
+    setHomeQuestionHost(chat.id, questionHost); notifyAskQuestionDisplayContextChanged(); void loadHistory();
   }
-  update();
-  return { update, dispose() { disposed = true; clearHomeQuestionHost(); notifyAskQuestionDisplayContextChanged(); } };
-}
-
-/** A scoped command console uses the same terminal service as Code. */
-export function mountHomeTerminal(host: HTMLElement, workspace: string, chat?: Chat): () => void {
-  let runId = '', disposed = false;
-  const abort = new AbortController();
-  const consoleHost = el('div', '', 'home-terminal');
-  const output = el('pre', 'Run a command in this checkout.\n', 'home-terminal-output'); output.tabIndex = 0; output.setAttribute('aria-label', 'Terminal output');
-  const form = el('form', '', 'home-terminal-form'); const input = el('input'); input.placeholder = 'Enter a command…'; input.setAttribute('aria-label', 'Terminal command');
-  const send = button('Run', () => form.requestSubmit(), true);
-  const stop = button('Stop', () => { if (runId) void cancelTerminalRun(runId); }); stop.disabled = true;
-  form.append(el('span', '›', 'home-mono'), input, send, stop);
-  form.onsubmit = event => {
-    event.preventDefault(); if (!input.value.trim() || runId) return;
-    const command = input.value.trim(); input.value = ''; output.textContent += `\n› ${command}\n`; send.disabled = true;
-    void (async () => {
-      try {
-        const run = await startTerminalRun({ command, shell: true, chatId: chat?.id || '', source: 'user', workspaceRoot: chat?.worktreeRoot || workspace });
-        runId = run.runId; stop.disabled = false;
-        await streamTerminalRun(runId, event => {
-          if (disposed) return;
-          if (event.type === 'stdout' || event.type === 'stderr') output.textContent = (output.textContent + stripAnsi(event.text)).slice(-100000);
-          else if (event.type === 'exit') output.textContent += `\nExited ${event.code ?? 'stopped'}\n`;
-          else if (event.type === 'error') output.textContent += `\n${event.message}\n`;
-          output.scrollTop = output.scrollHeight;
-        }, abort.signal);
-      } catch (error) { if (!disposed) showToast(error instanceof Error ? error.message : String(error), 'error'); }
-      finally { runId = ''; send.disabled = false; stop.disabled = true; }
-    })();
-  };
-  consoleHost.append(el('p', chat?.worktreeRoot || workspace, 'home-mono home-muted'), output, form); host.append(consoleHost);
-  return () => { disposed = true; abort.abort(); };
+  const unsubscribeStream = subscribeChatStreamActivity(id => { if (id === chat?.id) update(); });
+  const unsubscribeEnd = subscribeChatStreamEnd(id => { if (id === chat?.id) queueMicrotask(() => { if (!disposed) { update(); changeView.refresh(true); runView.refresh(); } }); });
+  selectView(memory.view); update();
+  return { update, dispose() { disposed = true; memory.draft = input.value; memory.scroll = content.scrollTop; unsubscribeStream(); unsubscribeEnd(); disposeTranscript(); changeView.dispose(); runView.dispose(); terminalCleanup?.(); clearHomeQuestionHost(); notifyAskQuestionDisplayContextChanged(); } };
 }

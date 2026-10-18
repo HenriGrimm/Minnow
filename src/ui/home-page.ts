@@ -1,7 +1,7 @@
 import '../styles/home.css';
 import '../styles/issues.css';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
-import { launchApp, navigateToCodeBoards, navigateToCodeOrchestrate } from '../os/router';
+import { launchApp, navigateToCodeOrchestrate } from '../os/router';
 import { getWorkspaceLabel, getWorkspacePath, loadWorkspaceFromServer } from '../state/workspace';
 import { ensureSessionsReady, sessionState } from '../state/sessions';
 import { collectIssues, addIssue, updateIssue, loadIssuesFromStorage, refreshIssuesFromStorage, isIssuesStoreLoaded, requireIssueStatusForRole, appendIssueLinks, saveIssuesNow, updateIssueAgentRun, getIssueLabelSwatch } from '../state/issues-store';
@@ -10,11 +10,9 @@ import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
 import { createIssueTypeChip, createIssueTypeIconElement, resolveIssueStatusIcon } from '../issues/type-icons';
 import { createIssueLabelsDisplay, deferUntilIssueLabelPopoverClosed, closeIssueLabelPopovers } from './issues-label-chip';
-import { listBoards, type BoardSummary } from '../orchestrator/client';
-import { fetchSchedulerJobs } from '../scheduler/client';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
 import { decodeModelSelectKey } from '../lib/model-select-key';
-import { gitStatus, gitDiffSummary, gitBranches, type GitOpResult } from '../state/git-api';
+import { gitBranches } from '../state/git-api';
 import { listRecentViewerFiles } from '../state/recent-viewer-files';
 import { readDefaultModelBinding } from './default-model';
 import { listMainTurnActivity, subscribeMainTurnActivity } from '../chat/main-turn-activity';
@@ -25,7 +23,8 @@ import { showToast } from './toast';
 import { el, button, age } from '../home/dom';
 import { FLOW_COLUMNS, flowColumn, groupIssues, batchIssues, blockers, issueChat, type GroupMode, type DraftTask } from '../home/flow-model';
 import { initHomeFlow, sendHomeIssues, addToHomeChat, homeAgentSlots, subscribeHomeFlow, pumpHomeQueue, drainHomeMerges, reconcileHomeFlow, retryHomeIssue } from '../home/flow-actions';
-import { mountIssueDock, mountHomeTerminal } from '../home/flow-dock';
+import { mountIssueDock } from '../home/flow-dock';
+import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { planHomeGoal } from '../home/plan-goal';
 import { createHomeStatus } from '../home/status-chip';
 import type { IssueCard } from '../types';
@@ -34,14 +33,15 @@ let initialized = false, generation = 0, mountedWorkspace = '';
 let timer: ReturnType<typeof setTimeout> | undefined, liveTimer: ReturnType<typeof setInterval> | undefined;
 let planAbort: AbortController | undefined;
 let dockCleanup: (() => void) | undefined, dockUpdate: (() => void) | undefined;
-let dockKey = '', dockOpen = false, dockTab = 'issue', focusedId = '';
+let dockKey = '', dockOpen = false, dockMaximized = false, focusedId = '';
+let dockHeight = 62;
+try { dockHeight = Math.max(30, Math.min(90, Number(localStorage.getItem('minnow.home.dockHeight')) || 62)); } catch {}
 let selected = new Set<string>(), startNow = new Set<string>(), lastSelected = '';
 let groupMode: GroupMode = 'files', sendMode: 'build' | 'plan' = 'build', sendModel = '';
 let doneExpanded = false, sending = false, loaded = false;
 let goalText = '', plannedGoal = '', draftTasks: DraftTask[] = [];
-let boardSignature = '', git: GitOpResult | undefined, diff: GitOpResult | undefined;
-let baseBranch = '', boards: BoardSummary[] = [];
-let jobs: Awaited<ReturnType<typeof fetchSchedulerJobs>> = [];
+let boardSignature = '';
+let baseBranch = '';
 let page: HTMLElement, boardHost: HTMLElement, selectionHost: HTMLElement, dockHost: HTMLElement, tabsHost: HTMLElement, errorHost: HTMLElement;
 
 function issues(): IssueCard[] { return isIssuesStoreLoaded() ? collectIssues({ workspacePath: mountedWorkspace, scope: 'current_workspace', hideDone: false }) : []; }
@@ -71,7 +71,7 @@ function counts(): { ready: number; held: number; queued: number } {
 }
 function openIssue(issue: IssueCard): void {
   if (selected.size && selectable(issue)) { toggleSelection(issue); return; }
-  focusedId = issue.id; dockOpen = true; dockTab = 'issue'; renderBoard(); renderDock();
+  focusedId = issue.id; dockOpen = true; renderBoard(); renderDock();
 }
 
 function renderSelection(): void {
@@ -111,7 +111,7 @@ async function sendSelection(single?: IssueCard, mode = sendMode, instructions =
     for (const group of groups) ids.push(...await sendHomeIssues([group], { ...binding(), mode, baseBranch, instructions, startNow: group.some(i => startNow.has(i.id)) }));
     if (!current(version, workspace)) return;
     for (const id of ids) selected.delete(id);
-    if (ids[0]) { focusedId = ids[0]; dockOpen = true; dockTab = 'issue'; }
+    if (ids[0]) { focusedId = ids[0]; dockOpen = true; }
     showToast(`${ids.length} issue${ids.length === 1 ? '' : 's'} sent to agent chats`, 'success');
   } catch (error) { if (current(version, workspace)) report(error); }
   finally { sending = false; if (current(version, workspace)) { renderSelection(); renderBoard(); renderDock(); } }
@@ -198,47 +198,53 @@ function renderBoard(): void {
 function renderDock(): void {
   if (!dockHost) return;
   const issue = issues().find(i => i.id === focusedId), chat = issue && issueChat(issue, sessionState?.chats ?? []);
-  page.classList.toggle('home-page--dock-open', dockOpen); tabsHost.replaceChildren();
-  const tablist = el('div', '', 'home-dock-tablist'); tablist.setAttribute('role', 'tablist'); tablist.setAttribute('aria-label', 'Project dock'); tabsHost.append(tablist);
-  const label = issue ? `${issue.id} · ${issue.agent?.phase === 'awaiting_input' ? 'Answer' : issue.agent?.home?.state === 'conflict' ? 'Resolve' : flowColumn(issue, getIssuesTaxonomySync()) === 'review' ? 'Review' : chat ? 'Agent' : 'Issue'}` : 'Issue';
-  for (const [tab, title, icon] of [['issue', label, 'appIssues'], ['terminal', 'Terminal', 'terminal'], ['git', 'Git', 'gitBranch'], ['plans', 'Plans', 'fileText'], ['scheduled', 'Scheduled', 'appScheduler']] as const) {
-    const pick = button(title, () => { dockOpen = !dockOpen || dockTab !== tab; dockTab = tab; renderDock(); renderBoard(); }, false, icon); pick.id = `home-tab-${tab}`; pick.setAttribute('role', 'tab'); pick.setAttribute('aria-selected', String(dockOpen && dockTab === tab)); pick.setAttribute('aria-controls', 'home-dock-content'); pick.tabIndex = dockTab === tab ? 0 : -1;
-    pick.onkeydown = event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault(); const tabs = [...tablist.querySelectorAll<HTMLButtonElement>('[role=tab]')], index = tabs.indexOf(pick);
-      const next = tabs[event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
-      const id = next.id; next.click(); document.getElementById(id)?.focus();
-    }; tablist.append(pick);
+  page.classList.toggle('home-page--dock-open', dockOpen);
+  page.classList.toggle('home-page--dock-maximized', dockOpen && dockMaximized);
+  page.style.setProperty('--home-dock-height', `${dockHeight}%`);
+  dockHost.hidden = !dockOpen;
+  tabsHost.hidden = dockOpen;
+  if (!dockOpen) {
+    const label = issue ? `${issue.id} · ${issue.title}` : 'Select an issue to open its workspace';
+    let expand = tabsHost.querySelector<HTMLButtonElement>('button');
+    if (!expand) { expand = button(label, () => { if (focusedId) { dockOpen = true; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); } }, false, 'chevronUp'); tabsHost.append(expand); }
+    expand.querySelector('span')!.textContent = label; expand.disabled = !issue; expand.setAttribute('aria-expanded', 'false');
+    return;
   }
-  tabsHost.append(el('span', `checkout: ${chat?.gitBranch || git?.branch || 'workspace'}`, 'home-dock-checkout home-mono'));
-  const toggle = button(dockOpen ? 'Collapse dock' : 'Expand dock', () => { dockOpen = !dockOpen; renderDock(); renderBoard(); }, false, dockOpen ? 'chevronDown' : 'chevronUp'); toggle.setAttribute('aria-label', dockOpen ? 'Collapse dock' : 'Expand dock'); toggle.setAttribute('aria-expanded', String(dockOpen)); toggle.classList.add('home-dock-toggle'); tabsHost.append(toggle);
-  dockHost.setAttribute('aria-labelledby', `home-tab-${dockTab}`);
-  const key = `${generation}:${dockOpen}:${dockTab}:${focusedId}:${chat?.id || ''}`;
+  const key = `${generation}:${focusedId}:${chat?.id || ''}`;
   if (key === dockKey) { dockUpdate?.(); return; }
-  dockKey = key; dockCleanup?.(); dockCleanup = undefined; dockUpdate = undefined; dockHost.replaceChildren(); dockHost.hidden = !dockOpen; if (!dockOpen) return;
-  if (dockTab === 'issue') {
-    if (!issue) { dockHost.append(el('p', 'Select an issue to see its context and agent conversation.', 'home-dock-empty')); return; }
-    const dock = mountIssueDock(dockHost, { issue, issues: issues(), workspace: mountedWorkspace, modelLabel: modelLabel(), start: (i, mode, instructions) => { void sendSelection(i, mode, instructions); }, select: i => { selected.add(i.id); renderSelection(); renderBoard(); }, addToChat: (i, chat) => { void addToHomeChat([i], chat).then(() => { renderBoard(); renderDock(); }).catch(report); } }); dockCleanup = dock.dispose; dockUpdate = dock.update;
-  } else if (dockTab === 'terminal') dockCleanup = mountHomeTerminal(dockHost, mountedWorkspace, chat);
-  else renderProjectTab(dockTab);
+  dockKey = key; dockCleanup?.(); dockCleanup = undefined; dockUpdate = undefined; dockHost.replaceChildren();
+  if (!issue) { dockHost.append(el('p', 'Select an issue to see its context and agent conversation.', 'home-dock-empty')); return; }
+  const dock = mountIssueDock(dockHost, {
+    issue, issues: issues(), currentIssues: issues, workspace: mountedWorkspace, modelLabel: modelLabel(),
+    start: (i, mode, instructions) => { void sendSelection(i, mode, instructions); },
+    select: i => { selected.add(i.id); renderSelection(); renderBoard(); },
+    addToChat: (i, chat) => { void addToHomeChat([i], chat).then(() => { renderBoard(); renderDock(); }).catch(report); },
+    collapse: () => { dockOpen = false; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); },
+    close: () => {
+      const id = focusedId; dockOpen = false; focusedId = ''; dockMaximized = false;
+      dockCleanup?.(); dockCleanup = undefined; dockUpdate = undefined; dockKey = ''; dockHost.replaceChildren();
+      renderDock(); renderBoard(); document.querySelector<HTMLElement>(`[data-issue-id="${CSS.escape(id)}"]`)?.focus();
+    },
+    maximize: () => { dockMaximized = !dockMaximized; renderDock(); }, isMaximized: () => dockMaximized,
+  });
+  dockCleanup = dock.dispose; dockUpdate = dock.update;
 }
-function renderProjectTab(tab: string): void {
-  const panel = el('div', '', 'home-project-panel');
-  const row = (title: string, detail: string, action: () => void) => { const item = button(title, action); item.append(el('span', detail, 'home-muted')); item.classList.add('home-project-row'); panel.append(item); };
-  if (tab === 'git') {
-    panel.append(el('h2', git?.branch || 'Repository'), el('p', git?.ok ? `${git.ahead || 0} ahead · ${git.behind || 0} behind${diff?.ok ? ` · +${diff.additions ?? 0} −${diff.deletions ?? 0} tracked lines` : ''}` : 'Repository status unavailable', 'home-mono home-muted'));
-    for (const file of [...git?.staged ?? [], ...git?.unstaged ?? [], ...git?.untracked ?? []]) row(file.path, file.status, () => launchApp('source-control'));
-    if (git?.ok && ![...git.staged ?? [], ...git.unstaged ?? [], ...git.untracked ?? []].length) panel.append(el('p', 'Working tree is clean.', 'home-muted')); panel.append(button('Open Source Control', () => launchApp('source-control'), true));
-  } else if (tab === 'plans') {
-    panel.append(el('h2', 'Plans & boards'));
-    for (const board of boards) row(board.name, `${board.status} · ${board.mergedCount ?? 0}/${board.taskCount} merged`, () => { navigateToCodeBoards(); void import('../orchestrator/boards-view').then(async m => { await m.openBoardsView(); m.showBoard(board.boardId); }); });
-    const planned = issues().filter(i => i.planPath); for (const issue of planned) row(`${issue.id} · ${issue.title}`, issue.planPath!, () => launchApp('code', { seed: `Review the plan at ${issue.planPath}`, modeId: 'plan' }));
-    if (!boards.length && !planned.length) panel.append(el('p', 'Plan an issue in Plan first mode, or create a board for a saved plan.', 'home-muted')); panel.append(button('New board', navigateToCodeOrchestrate));
-  } else {
-    panel.append(el('h2', 'Scheduled work')); for (const job of jobs) row(job.label, job.running ? 'Running now' : !job.enabled ? 'Paused' : job.nextRunAt ? `Next: ${new Date(job.nextRunAt).toLocaleString()}` : 'Scheduled', () => launchApp('scheduler'));
-    if (!jobs.length) panel.append(el('p', 'No scheduled jobs for this project.', 'home-muted')); panel.append(button('Open Scheduler', () => launchApp('scheduler'), true));
-  }
-  dockHost.append(panel);
+function mountDockResize(handle: HTMLElement): void {
+  const clamp = (value: number) => Math.max(30, Math.min(90, value));
+  const apply = (value: number) => { dockHeight = clamp(value); page.style.setProperty('--home-dock-height', `${dockHeight}%`); handle.setAttribute('aria-valuenow', String(Math.round(dockHeight))); };
+  const save = () => { try { localStorage.setItem('minnow.home.dockHeight', String(dockHeight)); } catch {} };
+  handle.onkeydown = event => {
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); apply(event.key === 'Home' ? 30 : event.key === 'End' ? 90 : dockHeight + (event.key === 'ArrowUp' ? 5 : -5)); save();
+  };
+  handle.onpointerdown = event => {
+    if (!dockOpen || dockMaximized || event.button !== 0) return;
+    event.preventDefault(); handle.setPointerCapture(event.pointerId);
+    const rect = page.getBoundingClientRect();
+    handle.onpointermove = next => { apply((rect.bottom - next.clientY) / rect.height * 100); };
+    const end = () => { handle.onpointermove = null; handle.onpointerup = null; handle.onpointercancel = null; save(); };
+    handle.onpointerup = end; handle.onpointercancel = end;
+  };
 }
 async function refresh(): Promise<void> {
   clearTimeout(timer); if (getForegroundAppId() !== 'home' || document.hidden) return;
@@ -248,14 +254,11 @@ async function refresh(): Promise<void> {
     await ensureSessionsReady(); if (!isIssuesStoreLoaded()) await loadIssuesFromStorage(); else await refreshIssuesFromStorage();
     if (!current(version, workspace)) return; loaded = true; errorHost.hidden = true; reconcileHomeFlow(); renderBoard(); renderSelection(); renderDock(); void pumpHomeQueue(); void drainHomeMerges();
   } catch { if (current(version, workspace)) showRefreshError(loaded ? 'Showing the last update. Could not refresh.' : 'Could not load project issues.'); }
-  const result = await Promise.allSettled([gitStatus(workspace), gitDiffSummary(workspace), gitBranches(workspace), listBoards(), fetchSchedulerJobs()]);
+  const result = await gitBranches(workspace);
   if (!current(version, workspace)) return;
-  if (result[0].status === 'fulfilled') git = result[0].value; if (result[1].status === 'fulfilled') diff = result[1].value;
-  if (result[2].status === 'fulfilled') { const local = result[2].value.local ?? []; baseBranch = local.includes('main') ? 'main' : local.includes('master') ? 'master' : ''; }
-  if (result[3].status === 'fulfilled') boards = result[3].value.filter(b => !b.workspacePath || workspacePathsEqual(b.workspacePath, workspace));
-  if (result[4].status === 'fulfilled') jobs = result[4].value.filter(j => j.workspacePath && workspacePathsEqual(j.workspacePath, workspace));
-  if (result.some(r => r.status === 'rejected') || git?.ok === false) showRefreshError('Showing the last update. Some project status could not refresh.');
-  renderSelection(); if (dockOpen && dockTab !== 'issue' && dockTab !== 'terminal') { dockHost.replaceChildren(); renderProjectTab(dockTab); } timer = setTimeout(() => void refresh(), 10000);
+  if (result.ok) { const local = result.local ?? []; baseBranch = local.includes('main') ? 'main' : local.includes('master') ? 'master' : ''; }
+  else showRefreshError('Showing the last update. Could not refresh project branches.');
+  renderSelection(); timer = setTimeout(() => void refresh(), 10000);
 }
 function showRefreshError(message: string): void { errorHost.hidden = false; errorHost.replaceChildren(el('span', message), button('Retry', () => void refresh())); }
 
@@ -263,10 +266,10 @@ export async function openHome(): Promise<void> {
   initHomePage(); generation++; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); dockCleanup?.(); dockCleanup = undefined; dockUpdate = undefined; dockKey = '';
   const version = generation; if (!getWorkspacePath()) await loadWorkspaceFromServer(); if (version !== generation || getForegroundAppId() !== 'home') return;
   const workspace = getWorkspacePath();
-  if (!workspacePathsEqual(workspace, mountedWorkspace)) { selected = new Set(); startNow = new Set(); focusedId = ''; goalText = ''; draftTasks = []; dockOpen = false; dockTab = 'issue'; sendModel = ''; boards = []; jobs = []; git = undefined; diff = undefined; baseBranch = ''; }
+  if (!workspacePathsEqual(workspace, mountedWorkspace)) { selected = new Set(); startNow = new Set(); focusedId = ''; goalText = ''; draftTasks = []; dockOpen = false; sendModel = ''; dockMaximized = false; baseBranch = ''; }
   mountedWorkspace = workspace; boardSignature = ''; loaded = false;
   const root = document.getElementById('homeView')!; root.classList.add('is-open'); root.replaceChildren();
-  page = el('div', '', 'home-page'); page.tabIndex = -1; page.setAttribute('role', 'region'); page.setAttribute('aria-label', 'Agentic project home'); page.onkeydown = event => { if (event.key === 'Escape' && selected.size) { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); } };
+  page = el('div', '', 'home-page'); page.tabIndex = -1; page.setAttribute('role', 'region'); page.setAttribute('aria-label', 'Agentic project home'); page.onkeydown = event => { if (event.defaultPrevented || event.key !== 'Escape') return; if (selected.size) { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); } else if (dockOpen) { dockOpen = false; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); document.querySelector<HTMLElement>(`[data-issue-id="${CSS.escape(focusedId)}"]`)?.focus(); } };
   const header = el('header', '', 'home-header'), title = el('h1', getWorkspaceLabel() || 'Your project'); title.title = workspace; header.append(title);
   const goal = el('form', '', 'home-goal-bar'), input = el('input'); input.value = goalText; input.placeholder = 'Describe a goal, paste an error, or capture an issue…'; input.setAttribute('aria-label', 'Project goal or issue'); input.oninput = () => { goalText = input.value; capture.disabled = plan.disabled = !input.value.trim() || !workspace; };
   const capture = button('Capture', () => { if (!input.value.trim() || !loaded) return; const text = input.value.trim(), issue = addIssue({ title: text.split(/\r?\n/)[0].slice(0, 240), description: text, status: requireIssueStatusForRole('triage'), workspacePath: workspace }); input.value = goalText = ''; capture.disabled = plan.disabled = true; showToast(`${issue.id} captured in Triage`, 'success'); renderBoard(); });
@@ -279,7 +282,9 @@ export async function openHome(): Promise<void> {
   header.append(goal); const actions = el('div', '', 'home-header-actions'); actions.append(button('New board', navigateToCodeOrchestrate), button('Open Code', () => launchApp('code'), true)); header.append(actions);
   selectionHost = el('div', '', 'home-selection-bar'); selectionHost.hidden = true; errorHost = el('div', '', 'home-refresh-error'); errorHost.hidden = true; errorHost.setAttribute('role', 'status');
   boardHost = el('div', '', 'home-flow-board'); boardHost.setAttribute('role', 'group'); boardHost.setAttribute('aria-label', 'Project issue flow');
-  const dock = el('section', '', 'home-dock'); dock.setAttribute('aria-label', 'Project context'); tabsHost = el('div', '', 'home-dock-tabs'); dockHost = el('div', '', 'home-dock-content'); dockHost.id = 'home-dock-content'; dockHost.setAttribute('role', 'tabpanel'); dock.append(tabsHost, dockHost);
+  const dock = el('section', '', 'home-dock'); dock.setAttribute('aria-label', 'Project context');
+  const resize = el('div', '', 'home-dock-resize'); resize.tabIndex = 0; resize.setAttribute('role', 'separator'); resize.setAttribute('aria-label', 'Resize issue details'); resize.setAttribute('aria-orientation', 'horizontal'); resize.setAttribute('aria-valuemin', '30'); resize.setAttribute('aria-valuemax', '90'); resize.setAttribute('aria-valuenow', String(Math.round(dockHeight))); mountDockResize(resize);
+  tabsHost = el('div', '', 'home-dock-collapsed'); dockHost = el('div', '', 'home-dock-content'); dockHost.id = 'home-dock-content'; dockHost.setAttribute('role', 'region'); dock.append(resize, tabsHost, dockHost);
   page.append(header, selectionHost, errorHost, boardHost, dock); root.append(page); renderSelection(); renderBoard(); renderDock();
   if (workspace) { void refresh(); liveTimer = setInterval(() => { if (current(version, workspace) && !document.hidden) { renderBoard(); dockUpdate?.(); } }, 1000); }
   else { loaded = true; showRefreshError('Choose a workspace to capture issues and start agent work.'); errorHost.append(button('Choose project', () => { void import('../os/workspace-gate').then(m => m.openWorkspaceGate({ switch: true })); })); renderBoard(); }

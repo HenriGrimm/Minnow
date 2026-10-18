@@ -54,6 +54,23 @@ test('commits and merges reviewed work, then removes the worktree and branch', a
   assert.equal(git(f.cwd, 'branch', '--list', 'issue/test'), '');
 });
 
+test('inspect compares against the requested local target while leaving the workspace checkout alone', async (t) => {
+  const f = await fixture(t);
+  await fs.writeFile(path.join(f.worktreePath, 'file.txt'), 'issue change\n');
+  git(f.worktreePath, 'commit', '-am', 'Issue change');
+  git(f.cwd, 'checkout', '-b', 'other-work');
+  git(f.cwd, 'merge', '--ff-only', 'issue/test');
+  const snapshot = await issueWorkInspect({ ...f, comparisonBranch: 'main' });
+  assert.equal(snapshot.ok, true, snapshot.error);
+  assert.equal(snapshot.targetBranch, 'main');
+  assert.match(snapshot.patch, /\+issue change/);
+  assert.deepEqual(snapshot.files, ['file.txt']);
+  assert.equal(snapshot.dirty, false, 'committed changes remain reviewable');
+  assert.equal(git(f.cwd, 'branch', '--show-current'), 'other-work');
+  const missing = await issueWorkInspect({ ...f, comparisonBranch: 'not-a-local-branch' });
+  assert.equal(missing.ok, false);
+});
+
 test('refuses edits made after review, including untracked file content changes', async (t) => {
   const f = await fixture(t);
   const file = path.join(f.worktreePath, 'new.txt');

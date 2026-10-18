@@ -91,7 +91,7 @@ You can also just open a repo and start typing.
 
 ### Home
 
-Home brings project issues through Triage, Ready, In Progress, Review, and Done. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations and approve queued merges in the bottom dock, alongside Terminal, Git, Plans, and Scheduled work. [Home guide](documentation/manual/apps/home.md).
+Home brings project issues through Triage, Ready, In Progress, Review, and Done. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations, inspect branch changes, read command output, and approve queued merges in the resizable bottom dock. [Home guide](documentation/manual/apps/home.md).
 
 ### Code
 

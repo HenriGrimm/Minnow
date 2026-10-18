@@ -38,6 +38,8 @@ export interface IssueWorkSnapshot {
 
 export interface IssueWorkRequest {
   cwd: string;
+  /** Inspect-only comparison against a local branch instead of the workspace HEAD. */
+  comparisonBranch?: string;
   worktreePath?: string;
   sourceBranch?: string;
   targetBranch?: string;

@@ -73,6 +73,12 @@ async function preflight(ctx) {
 export async function issueWorkInspect(input) {
   try {
     const ctx = await context(input);
+    if (ctx.isolated && input.comparisonBranch) {
+      if (typeof input.comparisonBranch !== 'string' || input.comparisonBranch.length > 512) throw new Error('Invalid comparison branch');
+      await read(ctx.cwd, ['check-ref-format', `refs/heads/${input.comparisonBranch}`]);
+      ctx.targetHead = (await read(ctx.cwd, ['rev-parse', '--verify', `refs/heads/${input.comparisonBranch}^{commit}`])).trim();
+      ctx.targetBranch = input.comparisonBranch;
+    }
     const state = await snapshot(ctx.source);
     const base = ctx.isolated ? (await read(ctx.cwd, ['merge-base', ctx.targetHead, ctx.sourceHead])).trim() : ctx.sourceHead;
     const changed = (await read(ctx.source, ['diff', '--name-only', '-z', base, '--'])).split('\0').filter(Boolean);
