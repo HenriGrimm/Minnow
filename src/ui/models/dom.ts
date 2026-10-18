@@ -159,6 +159,30 @@ export function textButton(
   return btn;
 }
 
+/** Local, reversible feedback for an asynchronous control action. */
+export async function withButtonBusy(
+  button: HTMLButtonElement,
+  label: string,
+  action: () => Promise<void>,
+): Promise<void> {
+  if (button.disabled || button.getAttribute('aria-busy') === 'true') return;
+  const children = [...button.childNodes];
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = label;
+  const spinner = document.createElement('span');
+  spinner.className = 'mn-action-spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  button.prepend(spinner);
+  try {
+    await action();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.replaceChildren(...children);
+  }
+}
+
 /** True when the models catalog/library search field has focus (call before replacing DOM). */
 export function isModelsSearchInputFocused(): boolean {
   const active = document.activeElement;

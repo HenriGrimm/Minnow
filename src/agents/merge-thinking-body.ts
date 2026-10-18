@@ -1,4 +1,4 @@
-import { setStatus } from '../ui/status';
+import { showToast } from '../ui/toast';
 import {
   mergeThinkingIntoCompletionBody as mergeThinkingIntoCompletionBodyShared,
   applyUtilityThinkingOff,
@@ -32,7 +32,7 @@ export function mergeThinkingIntoCompletionBody<T extends Record<string, unknown
     budgetTokens,
     {
       ...options,
-      onStatusHint: (message) => setStatus('ok', message),
+      onStatusHint: (message) => showToast(message),
     },
   );
 }

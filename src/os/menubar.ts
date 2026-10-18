@@ -39,27 +39,6 @@ export function renderMenubar(root: HTMLElement): () => void {
   brand.className = 'mn-os-mb-brand';
   brand.textContent = 'Minnow';
 
-  const statusPill = document.createElement('div');
-  statusPill.className = 'mn-os-mb-status status-pill';
-  statusPill.setAttribute('role', 'status');
-  statusPill.setAttribute('aria-live', 'polite');
-  const statusDot = document.createElement('div');
-  statusDot.className = 's-dot';
-  statusDot.id = 'osStatusDot';
-  statusDot.setAttribute('aria-hidden', 'true');
-  const statusText = document.createElement('span');
-  statusText.id = 'osStatusText';
-  statusText.textContent = 'Loading models…';
-  statusPill.append(statusDot, statusText);
-  const legacyDot = document.getElementById('sDot');
-  const legacyText = document.getElementById('sText');
-  if (legacyDot && legacyText) {
-    statusDot.className = legacyDot.className;
-    statusText.textContent = legacyText.textContent?.trim() || 'Loading models…';
-    const title = legacyText.getAttribute('title');
-    if (title) statusText.setAttribute('title', title);
-  }
-
   const workspaceSlot = document.createElement('div');
   workspaceSlot.id = 'osMenubarWorkspaceSlot';
   workspaceSlot.className = 'mn-os-mb-workspace-slot';
@@ -73,9 +52,6 @@ export function renderMenubar(root: HTMLElement): () => void {
   appName.className = 'mn-os-mb-appname';
   appName.hidden = true;
 
-  const statusSep = document.createElement('span');
-  statusSep.className = 'mn-os-mb-sep mn-os-mb-status-sep';
-
   const chatToggle = document.createElement('button');
   chatToggle.type = 'button';
   chatToggle.className = 'mn-os-mb-icon mn-os-mb-chat-toggle';
@@ -86,7 +62,7 @@ export function renderMenubar(root: HTMLElement): () => void {
     void import('../ui/layout').then((m) => m.toggleSidebarLayout());
   });
 
-  left.append(brand, workspaceSlot, sep, appName, statusSep, statusPill, chatToggle);
+  left.append(brand, workspaceSlot, sep, appName, chatToggle);
 
   const right = document.createElement('div');
   right.className = 'mn-os-mb-right';

@@ -9,6 +9,8 @@ import { joinTreePath, normalizeTreePath } from './file-tree-path';
 import { parseToolResult } from './file-tree-parse-result';
 import { refreshFileTreeViaBridge } from './file-tree-refresh-bridge';
 import { setStatus } from './status';
+import { showToast } from './toast';
+import { beginFileTreeActivity } from './file-tree-activity';
 
 /** Server tool name (UI-only; not exposed to the LLM tool list). */
 const IMPORT_TOOL = 'import_workspace_file';
@@ -118,50 +120,55 @@ export async function importDroppedEntriesToWorkspace(
 
   const spinCount = files.length || emptyDirs.length;
   const spinNoun = files.length ? 'file' : 'folder';
-  setStatus(
-    'spin',
+  const finishActivity = beginFileTreeActivity(
     `Importing ${spinCount} ${spinNoun}${spinCount === 1 ? '' : 's'}…`,
   );
+  try {
 
-  for (const relativePath of emptyDirs) {
-    const destPath = workspacePathForDroppedEntry(dir, relativePath);
-    const result = await importOneDirectory(destPath);
-    if (result.ok) {
-      directories += 1;
-    } else {
-      errors.push(result.message);
+    for (const relativePath of emptyDirs) {
+      const destPath = workspacePathForDroppedEntry(dir, relativePath);
+      const result = await importOneDirectory(destPath);
+      if (result.ok) {
+        directories += 1;
+      } else {
+        errors.push(result.message);
+      }
     }
-  }
 
-  for (const entry of files) {
-    const file = entry.file;
-    if (!file) continue;
-    const destPath = workspacePathForDroppedEntry(dir, entry.relativePath);
-    const result = await importOneFile(file, destPath);
-    if (result.ok) {
-      imported += 1;
-    } else {
-      errors.push(result.message);
+    for (const entry of files) {
+      const file = entry.file;
+      if (!file) continue;
+      const destPath = workspacePathForDroppedEntry(dir, entry.relativePath);
+      const result = await importOneFile(file, destPath);
+      if (result.ok) {
+        imported += 1;
+      } else {
+        errors.push(result.message);
+      }
     }
-  }
 
-  if (imported > 0 || directories > 0) {
-    await refreshFileTreeViaBridge();
-    if (imported > 0) {
-      setStatus(
-        'ok',
-        `Imported ${imported} file${imported === 1 ? '' : 's'} to ${destLabel(dir)}`,
-      );
+    if (imported > 0 || directories > 0) {
+      await refreshFileTreeViaBridge();
+      if (imported > 0) {
+        showToast(
+          `Imported ${imported} file${imported === 1 ? '' : 's'} to ${destLabel(dir)}`,
+        );
+      } else {
+        showToast(`Imported folder to ${destLabel(dir)}`);
+      }
+    } else if (errors.length) {
+      setStatus('err', errors[0] ?? 'Import failed');
     } else {
-      setStatus('ok', `Imported folder to ${destLabel(dir)}`);
+      setStatus('err', 'No files imported');
     }
-  } else if (errors.length) {
-    setStatus('err', errors[0] ?? 'Import failed');
-  } else {
-    setStatus('err', 'No files imported');
-  }
+    if ((imported > 0 || directories > 0) && errors.length) {
+      setStatus('err', `${errors.length} import(s) failed: ${errors[0]}`);
+    }
 
-  return { imported, directories, errors };
+    return { imported, directories, errors };
+  } finally {
+    finishActivity();
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import {
 import { getLocalServerAvailable } from '../tools/client';
 import { clearCachesForWorkspace } from '../tools/result-cache';
 import { setStatus } from './status';
+import { showToast } from './toast';
 import { applyWorkspaceScopedSession } from './sidebar';
 import { openWorkspaceFolderPicker } from './workspace-folder-picker';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from './shell-overlay-state';
@@ -174,7 +175,10 @@ export function initWorkspaceButton(): void {
   btn.setAttribute('aria-controls', 'osWorkspaceGate');
   setWorkspaceMenuDeps({
     isServerAvailable: getLocalServerAvailable,
-    reportStatus: setStatus,
+    reportStatus: (state, message) => {
+      if (state === 'err') setStatus(state, message);
+      else if (state === 'ok') showToast(message);
+    },
   });
 
   configureWorkspaceRecentMenu({
@@ -196,11 +200,6 @@ export function initWorkspaceButton(): void {
       return;
     }
     void toggleWorkspaceMenu(btn);
-  });
-
-  // The folder name is part of the control: pressing it runs the button's action.
-  getWorkspacePathLabel()?.addEventListener('click', () => {
-    btn.click();
   });
 
   void refreshWorkspaceUi();

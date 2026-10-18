@@ -1,3 +1,4 @@
+import { runSettingsAction } from './settings-controls';
 import { detectConfigServer } from '../config/storage-mode';
 import { loadVoiceMeta, saveVoiceMeta } from '../config/voice-meta';
 import { appendSettingsGroup } from './settings-layout';
@@ -8,7 +9,7 @@ import {
 } from './settings-controls';
 import { createSettingsToggleRow } from './settings-switch';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 /** Request mic permission so device labels are populated. */
 async function primeAudioDeviceLabels(): Promise<void> {
@@ -178,14 +179,12 @@ export async function renderAudioSettingsSection(
         label: 'Refresh devices',
         disabled: !serverUp,
         onClick: () => {
-          void (async () => {
-            setStatus('spin', 'Refreshing devices…');
+          void runSettingsAction(actions.querySelector('button'), 'Refreshing devices…', async () => {
             await primeAudioDeviceLabels();
             const config = await loadVoiceMeta();
             await populateDeviceSelect(inputSelect, 'audioinput', config.audio.inputDeviceId);
             await populateDeviceSelect(outputSelect, 'audiooutput', config.audio.outputDeviceId);
-            setStatus('ok', 'Device list refreshed');
-          })();
+          });
         },
       },
     ],

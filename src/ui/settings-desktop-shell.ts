@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { detectConfigServer } from '../config/storage-mode';
 import { appConfirm } from './app-dialog';
 import { setStatus } from './status';
@@ -124,7 +125,7 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
       try {
         select.value = await setWindowCloseAction!(next);
         setStatus(
-          'ok',
+          'idle',
           next === 'ask'
             ? 'Minnow will ask before closing a workspace'
             : next === 'close'
@@ -142,7 +143,6 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
       try {
         const next = await api.setCloseToTray(closeInput.checked);
         closeInput.checked = next;
-        setStatus('ok', next ? 'Minnow will stay running in the tray' : 'Closing the window will quit Minnow');
       } catch {
         closeInput.checked = !closeInput.checked;
         setStatus('err', 'Could not save desktop preference');
@@ -155,7 +155,6 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
       try {
         const next = await api.setLoginItem(loginInput.checked);
         loginInput.checked = next.openAtLogin;
-        setStatus('ok', next.openAtLogin ? 'Minnow will launch at startup' : 'Startup launch disabled');
       } catch {
         loginInput.checked = !loginInput.checked;
         setStatus('err', 'Could not update startup registration');
@@ -189,7 +188,7 @@ export async function renderDesktopShellSettings(mount: HTMLElement): Promise<vo
         },
       );
       if (!restartNow) {
-        setStatus('ok', 'Hardware acceleration applies after the next restart');
+        showToast('Hardware acceleration applies after the next restart');
         return;
       }
       try {

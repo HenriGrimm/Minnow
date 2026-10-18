@@ -580,7 +580,6 @@ export async function renderDeepResearchSettingsSection(mount: HTMLElement): Pro
 
         }
 
-        setStatus('ok', 'Deep Research settings saved');
 
       } catch {
 

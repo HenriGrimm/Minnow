@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
  * File tree CRUD — executes workspace tools, updates panel state, syncs viewer.
@@ -7,6 +8,7 @@ import { getActiveChat, scheduleSaveSessions } from '../state/sessions';
 import { isLocalServerAvailable } from '../tools/config';
 import { getFilePanelState, patchFilePanelState } from '../state/file-panel';
 import { setStatus } from './status';
+import { beginFileTreeActivity } from './file-tree-activity';
 import {
   clearFileTreeClipboard,
   getFileTreeClipboard,
@@ -53,8 +55,11 @@ export async function runFileTreeTool(
   args: Record<string, unknown>,
 ): Promise<{ ok: boolean; message: string }> {
   if (!isLocalServerAvailable()) {
-    return { ok: false, message: 'Open Minnow to use file tools.' };
+    const message = 'Open Minnow to use file tools.';
+    setStatus('err', message);
+    return { ok: false, message };
   }
+  const finishActivity = beginFileTreeActivity('Updating files…');
   try {
     const { executeTool } = await import('../tools/client');
     const { buildFileTreeToolContext } = await import('./file-tree-listing-root');
@@ -66,9 +71,7 @@ export async function runFileTreeTool(
     const { content } = await executeTool(name, args, toolContext);
     if (chatId) scheduleSaveSessions();
     const parsed = parseToolResult(content);
-    if (parsed.ok) {
-      setStatus('ok', parsed.message);
-    } else {
+    if (!parsed.ok) {
       setStatus('err', parsed.message);
     }
     return parsed;
@@ -76,6 +79,8 @@ export async function runFileTreeTool(
     const message = err instanceof Error ? err.message : String(err);
     setStatus('err', message);
     return { ok: false, message };
+  } finally {
+    finishActivity();
   }
 }
 
@@ -349,7 +354,7 @@ export async function movePaths(
     .filter((item): item is { path: string; destination: string } => item.destination !== null);
 
   if (targets.length === 0) {
-    setStatus('idle', 'Nothing to move there');
+    showToast('Nothing to move there');
     return 0;
   }
   if (targets.length === 1) {
@@ -465,7 +470,7 @@ export async function commitCreate(
 /** Copy path to in-memory clipboard. */
 export function copyPathToClipboard(path: string): void {
   setFileTreeClipboard('copy', [normalizeTreePath(path)]);
-  setStatus('ok', `Copied ${basename(path)}`);
+  showToast(`Copied ${basename(path)}`);
 }
 
 /** Copy a whole tree selection to the in-memory clipboard. */
@@ -476,7 +481,7 @@ export function copyPathsToClipboard(paths: string[]): void {
     return;
   }
   setFileTreeClipboard('copy', paths.map((path) => normalizeTreePath(path)));
-  setStatus('ok', `Copied ${paths.length} items`);
+  showToast(`Copied ${paths.length} items`);
 }
 
 /** Cut a whole tree selection to the in-memory clipboard (paste = batch move). */
@@ -487,20 +492,20 @@ export function cutPathsToClipboard(paths: string[]): void {
     return;
   }
   setFileTreeClipboard('cut', paths.map((path) => normalizeTreePath(path)));
-  setStatus('ok', `Cut ${paths.length} items`);
+  showToast(`Cut ${paths.length} items`);
 }
 
 /** Copy workspace-relative path string to the OS clipboard. */
 export async function copyWorkspacePathStringToClipboard(path: string): Promise<void> {
   const normalized = normalizeTreePath(path);
   await copyTextToClipboard(normalized);
-  setStatus('ok', `Copied path ${basename(path)}`);
+  showToast(`Copied path ${basename(path)}`);
 }
 
 /** Cut path to in-memory clipboard. */
 export function cutPathToClipboard(path: string): void {
   setFileTreeClipboard('cut', [normalizeTreePath(path)]);
-  setStatus('ok', `Cut ${basename(path)}`);
+  showToast(`Cut ${basename(path)}`);
 }
 
 export { pasteTargetDirForPath } from './file-tree-path';

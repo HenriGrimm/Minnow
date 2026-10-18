@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import { confirmAndRestoreTurnSnapshot, UNDO_STATUS } from '../chat/undo-turn';
 import {
@@ -128,7 +129,7 @@ export function attachBranchPicker(
   pill.addEventListener('click', (ev) => {
     ev.stopPropagation();
     if (isActiveChatStreaming()) {
-      setStatus('spin', 'Finish or stop the current reply first');
+      showToast('Finish or stop the current reply first');
       return;
     }
     if (openMenu) {
@@ -241,9 +242,7 @@ async function switchBranch(
   if (targetRun?.postTurnSnapshotSha?.trim() && targetRun.snapshotCwd?.trim()) {
     const fileResult = await confirmAndRestoreTurnSnapshot(targetRun, 'post');
     if (fileResult.cancelled) {
-      setStatus(
-        'ok',
-        isRedoRestore
+      showToast(isRedoRestore
           ? UNDO_STATUS.branchRestoredFilesSkipped
           : UNDO_STATUS.branchSwitchedFilesSkipped,
       );
@@ -253,15 +252,11 @@ async function switchBranch(
   }
 
   if (isRedoRestore) {
-    setStatus(
-      'ok',
-      filesRestored ? UNDO_STATUS.branchRestoredFiles : UNDO_STATUS.branchRestored,
+    showToast(filesRestored ? UNDO_STATUS.branchRestoredFiles : UNDO_STATUS.branchRestored,
     );
     return;
   }
 
-  setStatus(
-    'ok',
-    filesRestored ? UNDO_STATUS.branchSwitchedFiles : UNDO_STATUS.branchSwitched,
+  showToast(filesRestored ? UNDO_STATUS.branchSwitchedFiles : UNDO_STATUS.branchSwitched,
   );
 }

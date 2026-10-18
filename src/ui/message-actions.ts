@@ -1,3 +1,4 @@
+import { showToast } from './toast';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import {
   indexOfUserBeforeBlock,
@@ -56,7 +57,7 @@ export function closeMessageActionsMenu(): void {
 
 function guardStreaming(): boolean {
   if (!isActiveChatStreaming()) return false;
-  setStatus('spin', 'Finish or stop the current reply first');
+  showToast('Finish or stop the current reply first');
   return true;
 }
 
@@ -77,7 +78,7 @@ export function copyMessageRow(wrap: HTMLElement): void {
 export function copyMessageRows(rows: readonly HTMLElement[]): void {
   const text = rows.map(getCopyText).filter(Boolean).join('\n\n');
   void navigator.clipboard.writeText(text).then(
-    () => setStatus('ok', 'Copied'),
+    () => showToast('Copied'),
     () => setStatus('err', 'Could not copy'),
   );
 }
@@ -128,14 +129,15 @@ async function runUndoFromMenu(chatId: string): Promise<void> {
   const result = await undoLastAgentTurn(chatId);
   if (!result.ok) {
     if (result.error === 'cancelled') {
-      setStatus('ok', UNDO_STATUS.cancelled);
+      showToast(UNDO_STATUS.cancelled);
       return;
     }
     const msg =
       result.error === 'streaming'
         ? undoBlockMessage('streaming')
         : UNDO_STATUS.failed;
-    setStatus(result.error === 'streaming' ? 'spin' : 'err', msg);
+    if (result.error === 'streaming') showToast(msg);
+    else setStatus('err', msg);
     return;
   }
   const chat = getActiveChat();
@@ -145,9 +147,7 @@ async function runUndoFromMenu(chatId: string): Promise<void> {
   void import('./composer-undo').then((m) => m.syncComposerUndoFromActiveChat());
   const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
   input?.focus();
-  setStatus(
-    'ok',
-    result.filesRestored ? UNDO_STATUS.successFiles : UNDO_STATUS.successChat,
+  showToast(result.filesRestored ? UNDO_STATUS.successFiles : UNDO_STATUS.successChat,
   );
 }
 

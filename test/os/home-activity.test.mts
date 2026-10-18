@@ -5,10 +5,11 @@ import { getAppById } from '../../src/os/app-registry.ts';
 import { listRailApps } from '../../src/os/app-preferences.ts';
 import { resolveLegacyHash, hashForCodeSection } from '../../src/os/router.ts';
 
-test('Home is released, first on the rail, and receives old overview links', () => {
+test('Code leads the rail, followed by Dashboard with compatible overview links', () => {
+  assert.equal(getAppById('home')?.name, 'Dashboard');
   assert.equal(getAppById('home')?.releaseState, 'released');
   assert.equal(getAppById('home')?.availability, 'core');
-  assert.equal(listRailApps()[0].id, 'home');
+  assert.deepEqual(listRailApps().slice(0, 2).map(app => app.id), ['code', 'home']);
   assert.deepEqual(resolveLegacyHash('#/app/code/overview'), { hash: '#/app/home' });
   assert.equal(hashForCodeSection('overview'), '#/app/home');
 });

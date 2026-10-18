@@ -34,6 +34,19 @@
 .home-options-button span { overflow: hidden; text-overflow: ellipsis; }
 .home-refresh-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; padding: 6px 24px; color: var(--mn-warning); background: var(--mn-warning-soft); font-size: 12px; }
 .home-flow-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; flex: 1; min-height: 120px; min-width: 0; padding: 14px 24px 0; overflow: hidden; }
+.home-page--empty .home-header { grid-template-columns: minmax(0, 1fr) auto; }
+.home-flow-board.home-flow-board--empty { display: flex; overflow-y: auto; scroll-snap-type: none; padding-block: 32px; }
+.home-empty-state { width: 100%; max-width: 660px; margin: auto; padding-block: 24px; }
+.home-empty-state h2 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 600; }
+.home-empty-description { margin-top: 10px !important; color: var(--mn-fg-muted); line-height: 1.6; }
+.home-empty-state .home-goal-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; margin-top: 24px; padding: 12px; }
+.home-empty-state .home-goal-bar input { grid-column: 2 / -1; width: 100%; min-width: 0; height: 40px; }
+.home-empty-state .home-goal-bar > .home-button { grid-row: 2; min-height: 36px; }
+.home-empty-state .home-goal-bar > .home-button:first-of-type { grid-column: 2; justify-self: end; margin-left: 0; }
+.home-empty-state .home-goal-bar > .home-button:last-of-type { grid-column: 3; }
+.home-empty-code { margin-top: 16px; padding-inline: 0; border-color: transparent; color: var(--mn-fg-muted); }
+.home-empty-code .icon-svg { order: 1; }
+.home-empty-drafts:not(:empty) { margin-top: 24px; }
 .home-flow-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .home-column-heading { display: flex; align-items: center; gap: 8px; flex: 0 0 37px; padding-bottom: 9px; border-bottom: 1px solid var(--mn-border); color: var(--mn-fg-subtle); }
 .home-column-heading h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--mn-fg-muted); }

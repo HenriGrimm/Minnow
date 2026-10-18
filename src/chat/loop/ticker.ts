@@ -1,3 +1,4 @@
+import { showToast } from '../../ui/toast';
 import type { ActiveLoopState, Chat } from '../../types';
 import { isGoalEvaluating } from '../goal/evaluating-state';
 import {
@@ -189,7 +190,7 @@ export async function runLoopTick(options: {
   const report =
     options.reportStatus ??
     ((level: 'ok' | 'err', message: string) => {
-      setStatus(level, message);
+      level === 'err' ? setStatus('err', message) : showToast(message);
     });
 
   try {

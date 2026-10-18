@@ -1,3 +1,5 @@
+import { runSettingsAction } from './settings-controls';
+import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-skills-library.css';
 import { refreshSkillCatalog, getAllSkillCatalog } from '../skills/client';
@@ -270,15 +272,14 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       removeBtn.type = 'button';
       removeBtn.disabled = !isLocalServerAvailable();
       removeBtn.addEventListener('click', () => {
-        void (async () => {
+        void runSettingsAction(removeBtn, 'Working…', async () => {
           try {
             await removeInstalledLibrarySkill(skill.skillId);
-            setStatus('ok', `Removed /${skill.skillId}`);
             await refreshAfterMutation();
           } catch (err) {
             setStatus('err', err instanceof Error ? err.message : 'Remove failed');
           }
-        })();
+        });
       });
       actions.appendChild(removeBtn);
     } else {
@@ -286,15 +287,15 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       installBtn.type = 'button';
       installBtn.disabled = !isLocalServerAvailable();
       installBtn.addEventListener('click', () => {
-        void (async () => {
+        void runSettingsAction(installBtn, 'Working…', async () => {
           try {
             const result = await installPackSkills(pack.id, { skillIds: [skill.skillId] });
-            setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
+            showToast(installResultMessage(result), result.failed.length ? 'error' : 'success');
             await refreshAfterMutation();
           } catch (err) {
             setStatus('err', err instanceof Error ? err.message : 'Install failed');
           }
-        })();
+        });
       });
       actions.appendChild(installBtn);
     }
@@ -433,45 +434,44 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
     filterInput.addEventListener('input', redrawSkills);
 
     installSelectedBtn.addEventListener('click', () => {
-      void (async () => {
+      void runSettingsAction(installSelectedBtn, 'Working…', async () => {
         const ids = [...selected];
         if (ids.length === 0) return;
         try {
           const result = await installPackSkills(pack.id, { skillIds: ids });
-          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
+          showToast(installResultMessage(result), result.failed.length ? 'error' : 'success');
           for (const row of result.installed) selected.delete(row.skillId);
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
         }
-      })();
+      });
     });
 
     installAllBtn.addEventListener('click', () => {
-      void (async () => {
+      void runSettingsAction(installAllBtn, 'Working…', async () => {
         try {
           const result = await installPackSkills(pack.id, { all: true });
-          setStatus(result.failed.length ? 'err' : 'ok', installResultMessage(result));
+          showToast(installResultMessage(result), result.failed.length ? 'error' : 'success');
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Install failed');
         }
-      })();
+      });
     });
 
     removeAllBtn.addEventListener('click', () => {
-      void (async () => {
+      void runSettingsAction(removeAllBtn, 'Working…', async () => {
         try {
           const result = await removePackSkills(pack.id);
           const failures = result.failed.map((row) => `/${row.skillId} (${row.error})`).join('; ');
-          setStatus(result.failed.length ? 'err' : 'ok',
-            `Removed ${result.removed.length} skill(s) from ${pack.label}` +
-            (failures ? `; kept ${failures}` : ''));
+          showToast(`Removed ${result.removed.length} skill(s) from ${pack.label}` +
+            (failures ? `; kept ${failures}` : ''), result.failed.length ? 'error' : 'success');
           await refreshAfterMutation();
         } catch (err) {
           setStatus('err', err instanceof Error ? err.message : 'Remove failed');
         }
-      })();
+      });
     });
 
     redrawSkills();
@@ -524,7 +524,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
   });
 
   githubInstallBtn.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(githubInstallBtn, 'Working…', async () => {
       const repoUrl = repoInput.value.trim();
       if (!repoUrl) {
         setStatus('err', 'Enter a GitHub repository URL.');
@@ -533,14 +533,14 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       try {
         const installed = await installSkillFromGitHubUrl(repoUrl, subpathInput.value);
         const id = installed[0]?.skillId ?? 'skill';
-        setStatus('ok', `Installed /${id} from GitHub`);
+        showToast(`Installed /${id} from GitHub`);
         repoInput.value = '';
         subpathInput.value = '';
         await refreshAfterMutation();
       } catch (err) {
         setStatus('err', err instanceof Error ? err.message : 'Install failed');
       }
-    })();
+    });
   });
 
   packs = await fetchLibraryPacks();

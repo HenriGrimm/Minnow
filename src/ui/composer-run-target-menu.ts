@@ -173,7 +173,6 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
       if (!list.ok || !list.output) {
         const msg = list.error ?? 'Could not list worktrees';
         setStatus('error', msg);
-        showToast(msg, 'error');
         return;
       }
       const entries = filterUserFacingWorktrees(parsed, repoRoot).filter(
@@ -181,8 +180,7 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
       );
       if (!entries.length) {
         const msg = 'No extra worktrees found';
-        setStatus('error', msg);
-        showToast(msg, 'error');
+        showToast(msg);
         return;
       }
       menu.replaceChildren();

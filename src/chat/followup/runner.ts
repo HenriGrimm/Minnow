@@ -1,3 +1,4 @@
+import { showToast } from '../../ui/toast';
 /**
  * /followup chain runner (MIN-206).
  *
@@ -95,7 +96,7 @@ export async function runFollowupSweep(
   const generateTask = options.generateTask ?? generateFollowupTask;
   const shouldSyncHint = options.syncHint !== false;
   const report: FollowupReportFn =
-    options.reportStatus ?? ((level, message) => setStatus(level, message));
+    options.reportStatus ?? ((level, message) => level === 'err' ? setStatus('err', message) : showToast(message));
   const pending: Promise<boolean>[] = [];
   let skippedInFlight = false;
 

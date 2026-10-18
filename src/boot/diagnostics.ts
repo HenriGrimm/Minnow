@@ -129,7 +129,7 @@ function report(kind: string, message: string, stack?: string): void {
   }).catch(() => {
   });
 
-  setStatus('err', truncateStatus(message));
+  setStatus('err', message);
 
   if (!isIssuesStoreLoaded() || !isFileErrorsToIssuesEnabled()) return;
 

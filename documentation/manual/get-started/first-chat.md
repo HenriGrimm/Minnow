@@ -1,6 +1,6 @@
 # Your first chat
 
-You start at the **workspaces picker** — open a project folder. Minnow opens **Home**. Select **New chat** to enter Code with the chat rail beside your repo.
+You start at the **workspaces picker** — open a project folder. Minnow opens **Code** with the chat rail beside your repo. Your existing project conversation stays selected. An empty chat shows the hub, where you can describe what to build, browse files, or open a terminal.
 
 To start from a remote repository, choose **Create From Remote**, paste its HTTPS or SSH clone link, and review the suggested folder name and location. **Clone and open** downloads the repository and opens it as your workspace. New folders use the location in **Settings → General → New projects**; **Change location** overrides it for this project. Existing folders are never overwritten. Git must be installed, and private repositories use your Git credentials or SSH keys already configured on the device. Install the project's dependencies using its setup instructions after opening it.
 
@@ -10,7 +10,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 
 | Area | What it is |
 |------|------------|
-| **App rail** (left edge) | Switch between Home, Code, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
+| **App rail** (left edge) | Switch between Code, Dashboard, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace chip, model chip, notification bell, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
 | **Composer** (centre) | Where you type. Mode, run target, reasoning, settings, model, attachments, microphone, send. |

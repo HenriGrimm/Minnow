@@ -317,10 +317,6 @@
         </button>
         <ul class="model-select-menu hidden" id="modelSelectMenu" role="listbox" aria-labelledby="modelSelectLabel"></ul>
       </div>
-      <div class="status-pill" role="status" aria-live="polite">
-        <div class="s-dot" id="sDot" aria-hidden="true"></div>
-        <span id="sText">Loading models…</span>
-      </div>
     </div>
   </div>
 
@@ -334,8 +330,8 @@
       <div class="workspace-control">
         <button class="icon-btn workspace-btn" type="button" id="btnWorkspace" aria-describedby="workspacePathLabel" aria-label="Choose workspace folder" title="Choose workspace folder">
           <i class="fi fi-rr-folder icon-svg" aria-hidden="true"></i>
+          <span id="workspacePathLabel" class="workspace-path-label" hidden></span>
         </button>
-        <span id="workspacePathLabel" class="workspace-path-label" hidden></span>
       </div>
     </div>
     <button class="icon-btn" type="button" id="btnResearch" aria-label="Deep Research" title="Deep Research">

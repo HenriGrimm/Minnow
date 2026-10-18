@@ -1,3 +1,5 @@
+import { runSettingsAction } from '../settings-controls';
+import { showToast } from '../toast';
 import { appAlert, appConfirm, appPrompt } from '../app-dialog';
 /**
  * Brain app — Settings: synthesis, embeddings, and code index (config.brain.*).
@@ -30,7 +32,7 @@ import {
 } from '../../synthesis/client';
 import { fillProviderSelect } from '../settings-model-binding';
 
-type StatusFn = (kind: 'ok' | 'err' | 'spin', message: string) => void;
+type StatusFn = (kind: 'idle' | 'ok' | 'err' | 'spin', message: string) => void;
 
 let bindingsDone = false;
 
@@ -156,7 +158,7 @@ function bindSettingsSection(): void {
         skillMinToolCalls: Math.round(readNumberField('brainSkillMinToolCalls', 2)),
         skillMinOccurrences: Math.round(readNumberField('brainSkillMinOccurrences', 2)),
       });
-      setStatus(saved ? 'ok' : 'err', saved ? 'Synthesis settings saved' : 'Save failed');
+      setStatus(saved ? 'idle' : 'err', saved ? 'Synthesis settings saved' : 'Save failed');
       if (saved) await refreshSynthesisFields();
     })();
   });
@@ -187,14 +189,14 @@ function bindSettingsSection(): void {
         return;
       }
       const saved = await saveMemoryEmbeddingsConfig(partial);
-      setStatus(saved.kind === 'ok' ? 'ok' : 'err', saved.kind === 'ok' ? 'Embeddings settings saved' : saved.error);
+      setStatus(saved.kind === 'ok' ? 'idle' : 'err', saved.kind === 'ok' ? 'Embeddings settings saved' : saved.error);
       if (saved.kind === 'ok') await refreshEmbeddingsFields();
     })();
   });
 
   document.getElementById('brainEmbeddingsDownload')?.addEventListener('click', () => {
     const downloadBtn = document.getElementById('brainEmbeddingsDownload') as HTMLButtonElement | null;
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainEmbeddingsDownload'), 'Downloading embedding model…', async () => {
       downloadBtn?.setAttribute('disabled', 'true');
       try {
         const partial = readEmbeddingsForm();
@@ -203,32 +205,27 @@ function bindSettingsSection(): void {
           setStatus('err', validationError);
           return;
         }
-
-        setStatus('spin', 'Saving settings…');
         const saved = await saveMemoryEmbeddingsConfig(partial);
         if (saved.kind === 'err') {
           setStatus('err', saved.error);
           return;
         }
-
-        setStatus('spin', 'Downloading embedding model…');
         const result = await warmupMemoryEmbeddings();
         if (result.kind === 'err') {
           setStatus('err', result.error);
           return;
         }
         const readyMsg = `Model ready: ${result.value.model} (${result.value.dim} dims, ${result.value.durationMs} ms)`;
-        setStatus('ok', readyMsg);
+        showToast(readyMsg);
         await refreshEmbeddingsFields();
       } finally {
         downloadBtn?.removeAttribute('disabled');
       }
-    })();
+    });
   });
 
   document.getElementById('brainEmbeddingsReindex')?.addEventListener('click', () => {
-    void (async () => {
-      setStatus('spin', 'Reindexing vectors…');
+    void runSettingsAction(document.getElementById('brainEmbeddingsReindex'), 'Reindexing vectors…', async () => {
       const partial = readEmbeddingsForm();
       const validationError = validateEmbeddingsForm(partial);
       if (validationError) {
@@ -241,17 +238,13 @@ function bindSettingsSection(): void {
         return;
       }
       const result = await reindexMemoryEmbeddings();
-      setStatus(
-        result.kind === 'ok' ? 'ok' : 'err',
-        result.kind === 'ok' ? `Indexed ${result.value.indexed} pages` : result.error,
-      );
+      showToast(result.kind === 'ok' ? `Indexed ${result.value.indexed} pages` : result.error, result.kind === 'ok' ? 'success' : 'error');
       await refreshEmbeddingsFields();
-    })();
+    });
   });
 
   document.getElementById('brainCodeGitHookInstall')?.addEventListener('click', () => {
-    void (async () => {
-      setStatus('spin', 'Installing git hook…');
+    void runSettingsAction(document.getElementById('brainCodeGitHookInstall'), 'Installing git hook…', async () => {
       const result = await installBrainGitHook();
       if (!result) {
         setStatus('err', 'Git hook install failed — is Minnow running?');
@@ -262,26 +255,17 @@ function bindSettingsSection(): void {
         await refreshGitHookStatus();
         return;
       }
-      setStatus(
-        'ok',
-        result.alreadyPresent
-          ? 'Git hook already installed'
-          : 'Git post-commit hook installed',
-      );
+      if (!result.alreadyPresent) showToast('Git post-commit hook installed');
       await refreshGitHookStatus();
-    })();
+    });
   });
 
   document.getElementById('brainCodeGitHookUninstall')?.addEventListener('click', () => {
-    void (async () => {
-      setStatus('spin', 'Removing git hook…');
+    void runSettingsAction(document.getElementById('brainCodeGitHookUninstall'), 'Removing git hook…', async () => {
       const result = await uninstallBrainGitHook();
-      setStatus(
-        result?.removed ? 'ok' : 'err',
-        result?.removed ? 'Git hook removed' : 'Git hook was not installed',
-      );
+      showToast(result?.removed ? 'Git hook removed' : 'Git hook was not installed', result?.removed ? 'success' : 'error');
       await refreshGitHookStatus();
-    })();
+    });
   });
 
   document.getElementById('brainCodeSettingsSave')?.addEventListener('click', () => {
@@ -346,13 +330,13 @@ function bindSettingsSection(): void {
         codeEmbeddingsEnabled: embEl?.checked === true,
         autoScaffoldIndexConfig: scaffoldEl?.checked !== false,
       });
-      setStatus(saved ? 'ok' : 'err', saved ? 'Code index settings saved' : 'Save failed');
+      setStatus(saved ? 'idle' : 'err', saved ? 'Code index settings saved' : 'Save failed');
       if (saved) await refreshCodeSettingsFields();
     })();
   });
 
   document.getElementById('brainDangerClearWiki')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainDangerClearWiki'), 'Clearing wiki…', async () => {
       const backupEl = document.getElementById(
         'brainDangerWikiBackup',
       ) as HTMLInputElement | null;
@@ -361,35 +345,30 @@ function bindSettingsSection(): void {
         `Clear every wiki page${archive ? ' (after backup)' : ''}? This cannot be undone.`,
       );
       if (!ok) return;
-      setStatus('spin', 'Clearing wiki…');
       const result = await clearBrainWiki(archive);
       if (!result.ok) {
         setStatus('err', result.error ?? 'Clear failed');
         return;
       }
       const backupNote = result.archivePath ? ` Backup: ${result.archivePath}` : '';
-      setStatus('ok', `Cleared ${result.removed ?? 0} page(s).${backupNote}`);
+      showToast(`Cleared ${result.removed ?? 0} page(s).${backupNote}`);
       await Promise.all([refreshBrainStatusLine(), refreshCodeSettingsFields()]);
-    })();
+    });
   });
 
   document.getElementById('brainDangerClearProposals')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainDangerClearProposals'), 'Clearing proposals…', async () => {
       const ok = await appConfirm('Clear all pending memory and skill proposals?');
       if (!ok) return;
-      setStatus('spin', 'Clearing proposals…');
       const result = await clearBrainProposals('pending');
-      setStatus(
-        result.ok ? 'ok' : 'err',
-        result.ok
+      showToast(result.ok
           ? `Cleared ${result.removed ?? 0} proposal(s).`
-          : (result.error ?? 'Clear failed'),
-      );
-    })();
+          : (result.error ?? 'Clear failed'), result.ok ? 'success' : 'error');
+    });
   });
 
   document.getElementById('brainDangerClearSources')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainDangerClearSources'), 'Clearing sources…', async () => {
       const backupEl = document.getElementById(
         'brainDangerSourcesBackup',
       ) as HTMLInputElement | null;
@@ -398,31 +377,26 @@ function bindSettingsSection(): void {
         `Delete all raw ingest source files${archive ? ' (after backup)' : ''}? Wiki pages are kept.`,
       );
       if (!ok) return;
-      setStatus('spin', 'Clearing sources…');
       const result = await clearBrainSources(archive);
       if (!result.ok) {
         setStatus('err', result.error ?? 'Clear failed');
         return;
       }
       const backupNote = result.archivePath ? ` Backup: ${result.archivePath}` : '';
-      setStatus('ok', `Cleared ${result.removed ?? 0} source file(s).${backupNote}`);
-    })();
+      showToast(`Cleared ${result.removed ?? 0} source file(s).${backupNote}`);
+    });
   });
 
   document.getElementById('brainDangerClearCode')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainDangerClearCode'), 'Resetting code index…', async () => {
       const ok = await appConfirm('Reset the code index for this workspace?');
       if (!ok) return;
-      setStatus('spin', 'Resetting code index…');
       const result = await clearBrainCodeIndex();
-      setStatus(
-        result.ok ? 'ok' : 'err',
-        result.ok
+      showToast(result.ok
           ? `Reset code index (${result.removed ?? 0} database).`
-          : (result.error ?? 'Reset failed'),
-      );
+          : (result.error ?? 'Reset failed'), result.ok ? 'success' : 'error');
       if (result.ok) await refreshCodeSettingsFields();
-    })();
+    });
   });
 
   const clearAllConfirmEl = document.getElementById(
@@ -438,7 +412,7 @@ function bindSettingsSection(): void {
   });
 
   document.getElementById('brainDangerClearCodeAll')?.addEventListener('click', () => {
-    void (async () => {
+    void runSettingsAction(document.getElementById('brainDangerClearCodeAll'), 'Resetting all code indexes…', async () => {
       const confirmEl = document.getElementById(
         'brainDangerClearCodeAllConfirm',
       ) as HTMLInputElement | null;
@@ -448,7 +422,6 @@ function bindSettingsSection(): void {
       }
       const ok = await appConfirm('Reset code indexes for every workspace?');
       if (!ok) return;
-      setStatus('spin', 'Resetting all code indexes…');
       const result = await clearBrainCodeIndex({ all: true });
       if (!result.ok) {
         setStatus('err', result.error ?? 'Reset failed');
@@ -456,9 +429,11 @@ function bindSettingsSection(): void {
       }
       if (confirmEl) confirmEl.value = '';
       if (clearAllBtn) clearAllBtn.disabled = true;
-      setStatus('ok', `Reset ${result.removed ?? 0} code index database(s).`);
+      showToast(`Reset ${result.removed ?? 0} code index database(s).`);
       await refreshCodeSettingsFields();
-    })();
+    }).then(() => {
+      if (clearAllBtn) clearAllBtn.disabled = clearAllConfirmEl?.value.trim() !== 'CLEAR';
+    });
   });
 }
 

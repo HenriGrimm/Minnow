@@ -43,6 +43,7 @@ let goalText = '', plannedGoal = '', draftTasks: DraftTask[] = [];
 let boardSignature = '';
 let baseBranch = '';
 let page: HTMLElement, boardHost: HTMLElement, selectionHost: HTMLElement, dockHost: HTMLElement, tabsHost: HTMLElement, errorHost: HTMLElement;
+let goalForm: HTMLFormElement;
 
 function issues(): IssueCard[] { return isIssuesStoreLoaded() ? collectIssues({ workspacePath: mountedWorkspace, scope: 'current_workspace', hideDone: false }) : []; }
 function current(version: number, workspace: string): boolean { return version === generation && workspacePathsEqual(getWorkspacePath(), workspace) && getForegroundAppId() === 'home'; }
@@ -170,6 +171,23 @@ function renderBoard(): void {
   const swatches = [...new Set(all.flatMap(issue => issue.labels))].map(name => [name, getIssueLabelSwatch(name)]);
   const next = JSON.stringify([all, taxonomy, swatches, [...selected], [...startNow], groupMode, doneExpanded, focusedId, dockOpen, draftTasks, loaded, listMainTurnActivity().map(t => [t.chatId, t.phase, t.currentTool]), listChatsAwaitingAnswers()]);
   if (next === boardSignature) return; boardSignature = next;
+  const empty = loaded && !all.length;
+  page.classList.toggle('home-page--empty', empty);
+  boardHost.classList.toggle('home-flow-board--empty', empty);
+  if (empty) {
+    let state = boardHost.querySelector<HTMLElement>('.home-empty-state');
+    if (!state) {
+      state = el('section', '', 'home-empty-state'); state.setAttribute('aria-labelledby', 'home-empty-heading');
+      const heading = el('h2', 'What’s next for this project?'); heading.id = 'home-empty-heading';
+      state.append(heading, el('p', 'Describe a goal to break it into tasks, or add an issue yourself.', 'home-empty-description'), goalForm);
+      const code = button('Continue building in Code', () => launchApp('code'), false, 'chevronRight'); code.classList.add('home-empty-code');
+      state.append(code, el('div', '', 'home-empty-drafts')); boardHost.replaceChildren(state);
+    }
+    const drafts = state.querySelector<HTMLElement>('.home-empty-drafts')!; drafts.replaceChildren(); renderDrafts(drafts);
+    return;
+  }
+  // Keep the same form and draft when the first issue brings back the flow.
+  if (goalForm.parentElement !== page.querySelector('.home-header')) page.querySelector('.home-header-actions')!.before(goalForm);
   const active = document.activeElement as HTMLElement | null;
   const restoreId = boardHost.contains(active) ? active?.closest<HTMLElement>('[data-issue-id]')?.dataset.issueId : undefined;
   const scrolls = [...boardHost.querySelectorAll('.home-column-cards')].map(n => n.scrollTop); boardHost.replaceChildren();
@@ -269,15 +287,15 @@ export async function openHome(): Promise<void> {
   if (!workspacePathsEqual(workspace, mountedWorkspace)) { selected = new Set(); startNow = new Set(); focusedId = ''; goalText = ''; draftTasks = []; dockOpen = false; sendModel = ''; dockMaximized = false; baseBranch = ''; }
   mountedWorkspace = workspace; boardSignature = ''; loaded = false;
   const root = document.getElementById('homeView')!; root.classList.add('is-open'); root.replaceChildren();
-  page = el('div', '', 'home-page'); page.tabIndex = -1; page.setAttribute('role', 'region'); page.setAttribute('aria-label', 'Agentic project home'); page.onkeydown = event => { if (event.defaultPrevented || event.key !== 'Escape') return; if (selected.size) { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); } else if (dockOpen) { dockOpen = false; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); document.querySelector<HTMLElement>(`[data-issue-id="${CSS.escape(focusedId)}"]`)?.focus(); } };
+  page = el('div', '', 'home-page'); page.tabIndex = -1; page.setAttribute('role', 'region'); page.setAttribute('aria-label', 'Project dashboard'); page.onkeydown = event => { if (event.defaultPrevented || event.key !== 'Escape') return; if (selected.size) { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); } else if (dockOpen) { dockOpen = false; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); document.querySelector<HTMLElement>(`[data-issue-id="${CSS.escape(focusedId)}"]`)?.focus(); } };
   const header = el('header', '', 'home-header'), title = el('h1', getWorkspaceLabel() || 'Your project'); title.title = workspace; header.append(title);
-  const goal = el('form', '', 'home-goal-bar'), input = el('input'); input.value = goalText; input.placeholder = 'Describe a goal, paste an error, or capture an issue…'; input.setAttribute('aria-label', 'Project goal or issue'); input.oninput = () => { goalText = input.value; capture.disabled = plan.disabled = !input.value.trim() || !workspace; };
-  const capture = button('Capture', () => { if (!input.value.trim() || !loaded) return; const text = input.value.trim(), issue = addIssue({ title: text.split(/\r?\n/)[0].slice(0, 240), description: text, status: requireIssueStatusForRole('triage'), workspacePath: workspace }); input.value = goalText = ''; capture.disabled = plan.disabled = true; showToast(`${issue.id} captured in Triage`, 'success'); renderBoard(); });
-  const plan = button('Plan into tasks', () => goal.requestSubmit(), true); capture.disabled = plan.disabled = !input.value.trim() || !workspace; goal.append(createIcon('sparkles'), input, capture, plan);
+  const goal = goalForm = el('form', '', 'home-goal-bar'), input = el('input'); input.value = goalText; input.placeholder = 'Describe a goal, paste an error, or capture an issue…'; input.setAttribute('aria-label', 'Project goal or issue'); input.oninput = () => { goalText = input.value; capture.disabled = plan.disabled = !input.value.trim() || !workspace || Boolean(planAbort); };
+  const capture = button('Add issue', () => { if (!input.value.trim() || !loaded || planAbort) return; const text = input.value.trim(), issue = addIssue({ title: text.split(/\r?\n/)[0].slice(0, 240), description: text, status: requireIssueStatusForRole('triage'), workspacePath: workspace }); input.value = goalText = ''; capture.disabled = plan.disabled = true; showToast(`${issue.id} captured in Triage`, 'success'); renderBoard(); });
+  const plan = button('Plan a goal', () => goal.requestSubmit(), true); capture.disabled = plan.disabled = !input.value.trim() || !workspace; goal.append(createIcon('sparkles'), input, plan, capture);
   goal.onsubmit = event => {
     event.preventDefault(); const text = input.value.trim(); if (!text || !loaded || planAbort) return;
     const abort = new AbortController(); planAbort = abort; plan.disabled = capture.disabled = true; plan.querySelector('span')!.textContent = 'Planning…';
-    void planHomeGoal(text, [...new Set([...issues().flatMap(i => i.codeRefs?.map(r => r.path) ?? []), ...listRecentViewerFiles(workspace).map(f => f.path)])], abort.signal).then(tasks => { if (!current(version, workspace)) return; plannedGoal = text; draftTasks = tasks; renderBoard(); }).catch(error => { if (!abort.signal.aborted && current(version, workspace)) report(error); }).finally(() => { if (planAbort === abort) planAbort = undefined; if (current(version, workspace)) { capture.disabled = plan.disabled = !input.value.trim(); plan.querySelector('span')!.textContent = 'Plan into tasks'; } });
+    void planHomeGoal(text, [...new Set([...issues().flatMap(i => i.codeRefs?.map(r => r.path) ?? []), ...listRecentViewerFiles(workspace).map(f => f.path)])], abort.signal).then(tasks => { if (!current(version, workspace)) return; plannedGoal = text; draftTasks = tasks; renderBoard(); }).catch(error => { if (!abort.signal.aborted && current(version, workspace)) report(error); }).finally(() => { if (planAbort === abort) planAbort = undefined; if (current(version, workspace)) { capture.disabled = plan.disabled = !input.value.trim(); plan.querySelector('span')!.textContent = 'Plan a goal'; } });
   };
   header.append(goal); const actions = el('div', '', 'home-header-actions'); actions.append(button('New board', navigateToCodeOrchestrate), button('Open Code', () => launchApp('code'), true)); header.append(actions);
   selectionHost = el('div', '', 'home-selection-bar'); selectionHost.hidden = true; errorHost = el('div', '', 'home-refresh-error'); errorHost.hidden = true; errorHost.setAttribute('role', 'status');

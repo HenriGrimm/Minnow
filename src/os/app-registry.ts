@@ -29,20 +29,6 @@ export interface AppDefinition {
 /** Canonical app list — ported from Minnow prototype `data.jsx`. */
 export const APPS: readonly AppDefinition[] = [
   {
-    id: 'reef', name: 'Reef', icon: 'reef', tag: 'Make a utility from a prompt',
-    description: 'Build, run, refine and export your own small apps',
-    availability: 'core', releaseState: 'released',
-  },
-  {
-    id: 'home',
-    name: 'Home',
-    icon: 'home',
-    tag: 'Pick up where you left off',
-    description: 'Chats, boards, repository changes, issues, and project activity',
-    availability: 'core',
-    releaseState: 'released',
-  },
-  {
     id: 'code',
     name: 'Code',
     icon: 'code',
@@ -50,6 +36,20 @@ export const APPS: readonly AppDefinition[] = [
     description: 'IDE-side editor, dev server, files',
     availability: 'core',
     releaseState: 'released',
+  },
+  {
+    id: 'home',
+    name: 'Dashboard',
+    icon: 'home',
+    tag: 'Oversee project work',
+    description: 'Plan goals, dispatch issues to agents, review work, and merge changes',
+    availability: 'core',
+    releaseState: 'released',
+  },
+  {
+    id: 'reef', name: 'Reef', icon: 'reef', tag: 'Make a utility from a prompt',
+    description: 'Build, run, refine and export your own small apps',
+    availability: 'core', releaseState: 'released',
   },
   {
     id: 'source-control',

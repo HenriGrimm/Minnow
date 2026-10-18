@@ -286,7 +286,7 @@ describe('backup settings', () => {
     assert.equal(pass.value, '');
     assert.equal(confirm.value, '');
     assert.equal(mount.innerHTML.includes('long enough passphrase'), false);
-    assert.deepEqual(statusMessages.at(-1), ['ok', 'Backup created']);
+    assert.equal(statusMessages.length, 0, 'the saved path already confirms success inline');
   });
 
   test('a failed backup says why and re-enables the button', async () => {
@@ -316,7 +316,7 @@ describe('backup settings', () => {
       schedule: { enabled: true, destDir: 'C:/Users/me/Documents/Minnow Backups' },
     });
     assert.equal(mount.querySelector<HTMLButtonElement>('#settingsBackupSnapshotBtn')!.disabled, false);
-    assert.deepEqual(statusMessages.at(-1), ['ok', 'Scheduled snapshots are on']);
+    assert.equal(statusMessages.length, 0, 'the toggle already shows the saved state');
   });
 
   test('a rejected snapshot setting snaps back', async () => {
@@ -407,7 +407,7 @@ describe('backup settings', () => {
     await settle();
     await settle();
     assert.equal(/unpacked and checked/.test(notices.textContent!), false);
-    assert.deepEqual(statusMessages.at(-1), ['ok', 'Cancelled']);
+    assert.equal(document.querySelector('.mn-toast__message')?.textContent, 'Cancelled');
   });
 
   test('a restore that gave up shows the error and offers another try', async () => {

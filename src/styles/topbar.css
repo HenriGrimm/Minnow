@@ -254,6 +254,16 @@
   max-width: min(28rem, 42vw);
 }
 
+.workspace-btn.icon-btn {
+  width: auto;
+  min-width: 40px;
+  max-width: 100%;
+  min-height: 40px;
+  gap: 6px;
+  padding: 0 10px;
+  flex-shrink: 1;
+}
+
 .workspace-path-label {
   font-size: 12px;
   color: var(--mn-fg-muted);
@@ -261,15 +271,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  cursor: pointer;
 }
 
-.workspace-path-label:hover {
-  color: var(--mn-fg);
+.workspace-btn:hover .workspace-path-label {
+  color: inherit;
 }
 
 .workspace-btn .icon-svg {
   --mn-icon-size: 18px;
+  flex-shrink: 0;
 }
 
 /* Raster topbar icons (e.g. Benchmark) — dark glyph on light chrome, inverted on dark */
@@ -303,42 +313,4 @@ html[data-theme$='-dark'] .icon-btn .icon-img {
   html[data-theme$='-dark'] .icon-btn:hover .icon-img {
     filter: brightness(0) invert(1);
   }
-}
-
-.status-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--mn-fg-muted);
-  white-space: nowrap;
-  /* Keep full status copy visible; model picker shrinks first in .model-wrap */
-  flex-shrink: 0;
-}
-
-.status-pill #sText {
-  overflow: visible;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.s-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--mn-fg-muted);
-  flex-shrink: 0;
-  transition: background 0.25s var(--ease-out);
-}
-
-.s-dot.ok { background: var(--mn-success); }
-.s-dot.err { background: var(--mn-danger); }
-.s-dot.spin {
-  background: var(--mn-accent);
-  animation: status-pulse 1s var(--ease-out) infinite;
-}
-
-@keyframes status-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
 }

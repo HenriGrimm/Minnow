@@ -2,7 +2,7 @@
 
 Code is the development environment: a file tree, an editor with AI completion and language-server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are.
 
-Open it from the **app rail** or **Open Code** in Home. It takes the full screen.
+Code opens after you choose a project. You can also open it from the **app rail** or **Open Code** in Dashboard. It takes the full screen.
 
 Worktree chats show a branch icon in the chat list. It changes to a merge icon when the checkout is clean and its commits are included in the locally known `main` branch (`master` is used when `main` is absent). Hover over the icon for the branch and merge status. Local chats have no icon. Status refreshes while Minnow is visible; squash merges are not detected from Git ancestry.
 
@@ -16,7 +16,7 @@ Right-click a chat in the sidebar and choose **Copy chat transcript** to paste i
 
 ## Open a project
 
-Code opens on a welcome screen with **Open project**, **Create project**, and your recent workspaces.
+The workspace picker offers **Open project**, **Create project**, and your recent workspaces. Choosing a project opens Code.
 
 New projects default to your home folder's **Projects** directory. Change this in **Settings → General → New projects → Default project folder**, or use **Change default folder** beside the current location on the Choose workspace page. **Browse…** applies your folder choice immediately. Typed paths save when you leave the field or press Enter; Escape discards your edit. Clearing the field restores the original default. Existing projects are not moved. **Change location** in the creation form overrides the location for that project only.
 

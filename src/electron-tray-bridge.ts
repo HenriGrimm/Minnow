@@ -1,3 +1,4 @@
+import { showToast } from './ui/toast';
 /**
  * Renderer bridge for Electron system tray commands and status sync.
  */
@@ -90,7 +91,7 @@ async function handleUnloadLocalModels(): Promise<void> {
 
   const snapshot = await collectLocalModelTraySnapshot();
   if (!snapshot.rows.length) {
-    setStatus('ok', 'No local models to unload');
+    showToast('No local models to unload');
     await publishTrayStatus();
     return;
   }
@@ -101,7 +102,7 @@ async function handleUnloadLocalModels(): Promise<void> {
     const detail = result.failures.map((f) => `${f.label}: ${f.message}`).join('; ');
     setStatus('err', `Unloaded ${result.unloaded}; ${result.failures.length} failed (${detail})`);
   } else {
-    setStatus('ok', `Unloaded ${result.unloaded} local model${result.unloaded === 1 ? '' : 's'}`);
+    showToast(`Unloaded ${result.unloaded} local model${result.unloaded === 1 ? '' : 's'}`);
   }
   await publishTrayStatus();
 }

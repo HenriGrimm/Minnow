@@ -42,14 +42,13 @@ export async function mountModelsSettingsSection(): Promise<void> {
   let dirsSaveInFlight = false;
 
   /** Persist extra scan folders and refresh the library index. */
-  const persistDirs = async (okMessage: string): Promise<boolean> => {
+  const persistDirs = async (): Promise<boolean> => {
     if (dirsSaveInFlight) return false;
     dirsSaveInFlight = true;
     try {
       const next = await saveModelsConfig({ modelDirs: dirs });
       dirs = [...next.modelDirs];
       renderDirs();
-      setStatus('ok', okMessage);
       void refreshModels({ fresh: true });
       return true;
     } catch (err: unknown) {
@@ -93,7 +92,7 @@ export async function mountModelsSettingsSection(): Promise<void> {
         iconButton('cross-circle', `Remove ${dir}`, () => {
           dirs = dirs.filter((d) => d !== dir);
           renderDirs();
-          void persistDirs('Folder removed.');
+          void persistDirs();
         }),
       );
       dirsList.appendChild(row);
@@ -117,7 +116,7 @@ export async function mountModelsSettingsSection(): Promise<void> {
     dirs = [...dirs, value];
     dirInput.value = '';
     renderDirs();
-    void persistDirs('Folder added.');
+    void persistDirs();
   };
 
   const addDir = () => addDirFromPath(dirInput.value);
@@ -171,7 +170,6 @@ export async function mountModelsSettingsSection(): Promise<void> {
           hfInput.value = '';
           hfInput.placeholder = 'hf_…';
           clearHf.hidden = true;
-          setStatus('ok', 'Hugging Face token cleared.');
         })
         .catch((err: unknown) => {
           setStatus('err', err instanceof Error ? err.message : 'Clear failed');
@@ -191,7 +189,6 @@ export async function mountModelsSettingsSection(): Promise<void> {
         hfInput.value = '';
         hfInput.placeholder = `Stored (${next.hfTokenMasked}) — enter a new one to replace`;
         clearHf.hidden = !next.hfTokenConfigured;
-        setStatus('ok', 'Hugging Face token saved.');
       })
       .catch((err: unknown) => {
         setStatus('err', err instanceof Error ? err.message : 'Save failed');

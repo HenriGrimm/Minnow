@@ -471,20 +471,20 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   head.appendChild(el('span', 'models-loaded__name', serve.modelLabel));
 
   const actions = el('div', 'models-loaded__actions');
+  const copyId = iconButton('copy', 'Copy model identifier', (): void => {
+    void copyText(serve.modelLabel, copyId);
+  });
+  const copyCurl = iconButton('code-simple', 'Copy a cURL request', (): void => {
+    const curl = [
+      `curl ${serve.baseUrl}/v1/chat/completions \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '{"model":"${serve.modelLabel}","messages":[{"role":"user","content":"Hello"}]}'`,
+    ].join('\n');
+    void copyText(curl, copyCurl);
+  });
   actions.append(
-    iconButton('copy', 'Copy model identifier', (): void => {
-      void copyText(serve.modelLabel);
-    }),
-    iconButton('code-simple', 'Copy a cURL request', (): void => {
-      const curl = [
-        `curl ${serve.baseUrl}/v1/chat/completions \\`,
-        `  -H "Content-Type: application/json" \\`,
-        `  -d '{"model":"${serve.modelLabel}","messages":[{"role":"user","content":"Hello"}]}'`,
-      ].join('\n');
-      void copyText(curl).then((ok) => {
-        if (ok) setStatus('ok', 'cURL request copied.');
-      });
-    }),
+    copyId,
+    copyCurl,
     textButton(
       'Eject',
       () => {

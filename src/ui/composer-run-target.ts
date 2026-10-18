@@ -280,7 +280,6 @@ async function applyChoice(choice: ChatRunTargetChoice): Promise<void> {
     if (!res.ok) {
       const msg = res.error ?? 'Could not set run target';
       setStatus('error', msg);
-      showToast(msg, 'error');
       return;
     }
     touchChat(chat);

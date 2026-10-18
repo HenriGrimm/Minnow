@@ -1,3 +1,5 @@
+import { showToast } from '../ui/toast';
+import { runSettingsAction } from '../ui/settings-controls';
 /**
  * Research app controller — library-first workspace.
  *
@@ -351,7 +353,11 @@ function renderRunActions(researchId: string, status: ResearchStatus, query: str
     void startResearchRun({ continueFrom: researchId });
   });
   add('Add to Brain', () => {
-    void import('../ui/chat-brain-capture').then((m) => m.runResearchBrainCapture(researchId));
+    const button = host.querySelector<HTMLButtonElement>('button:last-child');
+    void runSettingsAction(button, 'Adding to Brain…', async () => {
+      const m = await import('../ui/chat-brain-capture');
+      await m.runResearchBrainCapture(researchId);
+    });
   });
 }
 
@@ -921,7 +927,7 @@ function finishRun(
   }
 
   if (status === 'done') {
-    setStatus('ok', 'Research complete');
+    showToast('Research complete');
     void fetchResearchResult(researchId).then((data) => {
       const sources = data.sources?.length ?? 0;
       const title = query.slice(0, 60);

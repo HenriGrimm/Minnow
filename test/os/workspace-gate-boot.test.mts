@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import { getForegroundAppId, launchInstance, resetInstancesForTests, showWorkspaces } from '../../src/os/instances.ts';
+import { resetOsRouterForTests } from '../../src/os/router.ts';
+import { seedMinimalSession } from './dom-helpers.mts';
+import { sessionState } from '../../src/state/sessions.ts';
 
 function setupShellDom() {
   const window = new Window();
@@ -14,12 +18,14 @@ function setupShellDom() {
 const { isPageReload } = await import('../../src/boot/page-navigation.ts');
 
 const {
+  beginWorkspaceGateForBoot,
   finishWorkspaceGateSwitch,
   isHoldingWorkspaceGateForAppReady,
   isWorkspaceGateOpen,
   mountWorkspaceGateDom,
   onWorkspaceGateChosen,
   openWorkspaceGate,
+  revealAppAfterWorkspaceGate,
   resetWorkspaceGateForTests,
   shouldBlockBootOnWorkspaceGate,
 } = await import('../../src/os/workspace-gate.ts');
@@ -114,5 +120,49 @@ describe('workspace-gate boot', { concurrency: false }, () => {
 
     assert.equal(isHoldingWorkspaceGateForAppReady(), false);
     assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(getForegroundAppId(), 'code');
+    assert.equal(window.location.hash, '#/app/code/chat');
+  });
+
+  test('cold project pick opens Code under the gate without replacing its saved session', async () => {
+    const window = setupShellDom();
+    resetWorkspaceGateForTests(); resetInstancesForTests(); resetOsRouterForTests();
+    const codeChat = seedMinimalSession('existing-project-chat');
+    codeChat.name = 'Work in progress';
+    window.requestAnimationFrame = globalThis.requestAnimationFrame = cb => { cb(0); return 1; };
+    globalThis.fetch = async () => new Response(JSON.stringify({ path: '/projects/app', label: 'app', isDefault: false }));
+    performance.getEntriesByType = () => [{ type: 'navigate' }];
+    window.location.hash = '#/workspaces'; showWorkspaces();
+    document.body.innerHTML = '<div id="osWorkspaceGate" hidden></div><div id="welcomeView" hidden></div>';
+    const gate = await beginWorkspaceGateForBoot();
+    assert.ok(gate);
+    await onWorkspaceGateChosen(); await gate.whenChosen;
+    assert.equal(getForegroundAppId(), 'code');
+    assert.equal(window.location.hash, '#/app/code/chat');
+    assert.equal(isHoldingWorkspaceGateForAppReady(), true);
+    assert.equal(sessionState.activeId, codeChat.id);
+    assert.deepEqual(sessionState.chats, [codeChat]);
+    await revealAppAfterWorkspaceGate();
+    assert.equal(isWorkspaceGateOpen(), false);
+    resetInstancesForTests(); resetOsRouterForTests();
+  });
+
+  test('switching project from Dashboard returns to Code without starting another chat', async () => {
+    const window = setupShellDom();
+    resetWorkspaceGateForTests(); resetInstancesForTests(); resetOsRouterForTests();
+    const codeChat = seedMinimalSession('existing-project-chat');
+    window.requestAnimationFrame = globalThis.requestAnimationFrame = cb => { cb(0); return 1; };
+    globalThis.fetch = async () => new Response('{}');
+    document.body.innerHTML = '<div id="osWorkspaceGate" hidden></div><div id="welcomeView" hidden></div>';
+    launchInstance('home'); window.location.hash = '#/app/home';
+    openWorkspaceGate({ switch: true });
+    await onWorkspaceGateChosen();
+    assert.equal(getForegroundAppId(), 'code');
+    assert.equal(window.location.hash, '#/app/code/chat');
+    assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(isHoldingWorkspaceGateForAppReady(), false);
+    assert.equal(sessionState.activeId, codeChat.id);
+    assert.deepEqual(sessionState.chats, [codeChat]);
+    resetInstancesForTests(); resetOsRouterForTests();
   });
 });
