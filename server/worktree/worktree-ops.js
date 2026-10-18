@@ -15,6 +15,7 @@ import {
   isPathUnderWorktreesRoot,
 } from './paths.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
+import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { worktreeAdd } from '../git/git-ops.js';
 import { runGh } from '../git/gh-cli.js';
 
@@ -1299,8 +1300,8 @@ export function enableChatWorktree({ chatId, title }) {
     if (await pathExists(wtPath)) {
       const registered = await git(['worktree', 'list', '--porcelain']);
       const paths = (registered.stdout ?? '').split('\n').filter(line => line.startsWith('worktree '))
-        .map(line => path.resolve(line.slice(9).trim()));
-      if (!ok(registered) || !paths.some(p => path.relative(p, wtPath) === '') || !(await isWorktreeCheckout(wtPath))) {
+        .map(line => normalizeWorkspacePathKey(line.slice(9).trim()));
+      if (!ok(registered) || !paths.includes(normalizeWorkspacePathKey(wtPath)) || !(await isWorktreeCheckout(wtPath))) {
         return { ok: false, error: 'The worktree folder exists but is not a registered checkout. Inspect it in Source Control before retrying.' };
       }
       const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);

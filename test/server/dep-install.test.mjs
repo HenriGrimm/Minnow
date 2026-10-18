@@ -21,6 +21,35 @@ describe('dep-install', () => {
     }
   });
 
+  test('finds package tooling through the login shell with a GUI PATH', { skip: process.platform === 'win32' }, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-dep-login-'));
+    const saved = Object.fromEntries(['PATH', 'SHELL', 'HOME', 'ZDOTDIR'].map(key => [key, process.env[key]]));
+    try {
+      const bin = path.join(root, 'bin');
+      const project = path.join(root, 'project with spaces');
+      await fs.mkdir(bin);
+      await fs.mkdir(project);
+      await fs.writeFile(path.join(project, 'package.json'), '{"name":"login-path-test"}');
+      await fs.writeFile(path.join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$@" > installed.txt\n', { mode: 0o755 });
+      const profile = `export PATH='${bin.replaceAll("'", "'\\''")}':/usr/bin:/bin\n`;
+      await fs.writeFile(path.join(root, '.zprofile'), profile);
+      await fs.writeFile(path.join(root, '.bash_profile'), profile);
+      process.env.PATH = '/usr/bin:/bin';
+      process.env.SHELL = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
+      process.env.HOME = root;
+      process.env.ZDOTDIR = root;
+      const result = await refreshDependencies(project, ['package.json'], { timeout: 10_000 });
+      assert.deepEqual(result.failed, []);
+      assert.deepEqual(result.ran, ['npm install']);
+      assert.equal(await fs.readFile(path.join(project, 'installed.txt'), 'utf8'), 'install\n');
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      await fs.rm(root, RM_OPTS);
+    }
+  });
+
   test('refreshDependencies runs node install when a manifest/lockfile changed', async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-dep-install-'));
     await fs.writeFile(

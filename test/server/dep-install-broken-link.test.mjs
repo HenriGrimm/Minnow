@@ -76,8 +76,8 @@ describe('refreshDependencies + unremovable dep link', () => {
     });
     t.mock.module(PROCESS_RUNNER, {
       namedExports: {
-        runProcess: async (command, args) => {
-          spawned.push(`${command} ${args.join(' ')}`);
+        runProcess: async (command, args, options) => {
+          spawned.push({ command, args, shell: options.shell });
           return { code: 0, stdout: '', stderr: '' };
         },
         COMMAND_TIMEOUT_MS: 30_000,
