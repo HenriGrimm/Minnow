@@ -1,4 +1,5 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
+import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
@@ -359,6 +360,17 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
   }
 
+  if (!isMenubarStyleVariant(trigger.variant) && !trigger.app && !router) {
+    const reasoning = getComposerReasoningState();
+    if (reasoning.label) {
+      const suffix = document.createElement('span');
+      suffix.className = 'composer-model-trigger__reasoning';
+      suffix.textContent = ` · ${reasoning.label}`;
+      trigger.labelEl.append(suffix);
+      trigger.trigger.setAttribute('aria-label', `Active model: ${trigger.labelEl.textContent}`);
+    }
+  }
+
   const hasSelectable =
     Boolean(sel) &&
     [...sel!.options].some((o) => o.value.trim() !== '') &&
@@ -407,6 +419,48 @@ function handleComposerModelPick(trigger: ComposerModelTrigger, modelId: string)
   onActiveChatModelChange(modelId);
 }
 
+function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
+  let section = trigger.panel.querySelector<HTMLElement>('.composer-model-reasoning');
+  if (isMenubarStyleVariant(trigger.variant) || trigger.app) return;
+  const binding = decodeModelSelectKey(resolveTriggerSelectValue(trigger));
+  const state = getComposerReasoningState();
+  if (binding?.providerId === 'minnow-router' || !state.choices.length) {
+    section?.remove();
+    return;
+  }
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'composer-model-reasoning';
+    const heading = document.createElement('div');
+    heading.className = 'composer-model-reasoning__heading';
+    heading.textContent = 'Reasoning';
+    const choices = document.createElement('div');
+    choices.className = 'composer-model-reasoning__choices';
+    choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Reasoning for this chat');
+    section.append(heading, choices);
+    trigger.menu.after(section);
+    choices.addEventListener('click', event => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-composer-reasoning]');
+      if (!button || button.disabled) return;
+      const value = button.dataset.composerReasoning!;
+      setComposerReasoningChoice(value);
+      section?.querySelector<HTMLButtonElement>(`[data-composer-reasoning="${value}"]`)?.focus();
+    });
+  }
+  const choices = section.querySelector('.composer-model-reasoning__choices')!;
+  choices.replaceChildren(...state.choices.map(choice => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'composer-model-reasoning__choice';
+    button.dataset.composerReasoning = choice.value;
+    button.textContent = choice.label;
+    button.setAttribute('aria-pressed', String(choice.value === state.selected));
+    button.disabled = state.disabled;
+    return button;
+  }));
+}
+
 function rebuildOpenMenu(): void {
   if (!openTrigger) return;
   const sel = getModelSelect();
@@ -428,6 +482,7 @@ function rebuildOpenMenu(): void {
     selectedValue,
   );
   syncAllModelMenuReasoningDefaults();
+  syncChatReasoningMenu(openTrigger);
   const binding = decodeModelSelectKey(selectedValue);
   const chat = getActiveChat();
   const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
@@ -580,6 +635,7 @@ function onDocumentKeyDown(e: KeyboardEvent): void {
     trigger.focus();
     return;
   }
+  if (e.target instanceof HTMLElement && e.target.closest('.composer-model-reasoning, .model-menu-actions')) return;
   handleOpenMenuNavigation(e);
 }
 
@@ -779,7 +835,7 @@ function createModelMenuPanel(
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
-    showReasoningDefault: variant !== 'board' && variant !== 'app',
+    showReasoningDefault: variant === 'menubar',
     onReasoningDefaultChange: (selectValue) => {
       refreshActiveChatReasoningDefault(selectValue);
     },

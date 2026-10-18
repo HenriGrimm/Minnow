@@ -1263,7 +1263,9 @@ export interface Chat {
    * delete). Detaching to Local keeps files. False for an existing worktree.
    */
   chatWorktreeManaged?: boolean;
-  /** Automatic isolation was requested but has not finished. Blocks sends across reloads. */
+  /** Defer automatic worktree creation until the next chat send. */
+  worktreeEnabled?: boolean;
+  /** Automatic isolation was attempted but has not finished. Never fall back to Local. */
   worktreeSetupRequired?: boolean;
   /** @deprecated Migrated to ~/.minnow/bugs/state.json — stripped on load. */
   bugBoard?: BugBoardState;

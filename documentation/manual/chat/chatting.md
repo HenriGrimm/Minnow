@@ -9,12 +9,10 @@ The composer is a card at the bottom of the chat column: the message field on to
 | Control | What it does |
 |---------|--------------|
 | **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
-| **Run target** | **Enable worktree** automatically names and prepares an isolated checkout for this chat; its branch appears alongside it |
-| **Reasoning** | Thinking on or off, and effort where the model supports it |
-| **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. On a narrow column, run target and reasoning move in here too. |
-| **Context ring** | Window usage; click for the breakdown |
-| **Model** | Per-chat model. **Ctrl+M** / **Cmd+M** opens it with search focused. |
-| **Attach** | Files onto the conversation, 10 MB each |
+| **Worktree** | Click the branch icon to enable an isolated checkout on send; click its name to change branch, switch worktrees, or go back to Local |
+| **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. |
+| **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, prompt profile, and compaction |
+| **Model · reasoning** | Per-chat model and reasoning level. Open the menu to change either. **Ctrl+M** / **Cmd+M** opens it with search focused. |
 | **Microphone** | Dictation — see [Voice](../extend/voice.md) |
 | **Send / Stop** | Enter sends; Enter again stops while streaming |
 
@@ -22,15 +20,23 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 Drafts survive switching chats.
 
-**Enable worktree** creates a named branch from the current commit and prepares
-project dependencies automatically. Uncommitted edits stay in the original
-checkout. Wait for **Setting up…** to finish before sending. If setup fails, the
-checkout is kept so you can fix the reported dependency error and choose **Retry worktree**. Sending stays blocked until setup succeeds or you explicitly choose Local from Worktree options, including after a reload.
+Clicking the **branch icon** enables Worktree for this chat without creating a
+checkout. Send your message to create a named branch from the current commit and
+prepare project dependencies. A **Setting up your worktree** panel appears in chat;
+your message runs in that checkout when setup finishes. Uncommitted edits stay in
+the original checkout. The selection survives a reload.
 
-Click **Worktree** to return to Local. The **Worktree options** button offers existing checkouts, custom names and start
-branches, and a return to the local workspace. Returning to Local preserves the
-worktree and its files; enabling it again reuses that chat's managed checkout.
-Use Source Control or issue delivery controls for cleanup.
+If setup fails, the checkout is kept and your draft and attachments stay in the
+composer. The setup panel shows the error with **Retry setup** and **Back to Local**
+actions. Send again to retry setup and run your message, or choose **Retry worktree
+setup** from the worktree menu to prepare it before sending. Minnow waits for setup
+to succeed before running the chat in the worktree.
+
+Click the **worktree name** to open its menu. Choose **Switch branch** for a different branch in that checkout, **Change worktree…** for an existing checkout, or **New worktree** for a custom name and start branch. **Back to Local** preserves the worktree and its files; enabling it again reuses that chat's managed checkout. Use Source Control or issue delivery controls for cleanup.
+
+Drag files onto the composer to attach them for the next message, up to 10 MB each. Pasting images also adds an attachment.
+
+The model label includes the current reasoning level, such as **GPT · Medium**. Its menu offers only the levels the model supports, including **Off** where available. Changes apply to this chat; **Default** restores the model's saved or inherited setting. Auto model pools continue to select reasoning through their task evaluator.
 
 **Link a tab to this chat.** Drag a Code editor tab or an in-app browser tab onto the transcript or composer. Minnow pins a link chip on that chat — the file or URL, not a one-turn attachment. The chip stays after reload; click it to open the file or page. Dragging from the file tree still attaches for the next message only.
 

@@ -1,13 +1,13 @@
 /* ─── INPUT BAR ───
  * A floating card in the reading column (20px wider than the transcript on each side):
  * strips on top, the message field, then one footer row — mode, run target,
- * branch and effort on the left; context, model, attach, mic and Send on the right.
+ * worktree and settings on the left; context, model, mic and Send on the right.
  * Grid order does the stacking; the DOM keeps its original order for the
  * composer modules that insert into it. */
 .input-bar {
   container: composer / inline-size;
-  /* Room the inset buttons need left of Send: attach + mic + expand, plus a gap. */
-  --composer-inset-w: 106px;
+  /* Room the inset buttons need left of Send: mic + expand, plus a gap. */
+  --composer-inset-w: 74px;
   position: relative;
   box-sizing: border-box;
   width: min(var(--chat-composer-max), calc(100% - 32px));
@@ -146,7 +146,7 @@
   box-shadow: none;
 }
 
-/* Attach, mic and expand ride the footer row, just left of Send. */
+/* Mic and prompt actions ride the footer row, just left of Send. */
 .input-inset-actions {
   position: absolute;
   right: 48px;
@@ -566,13 +566,17 @@
 
 .input-bar .composer-run-target-btn { gap: 6px; padding: 0 8px; }
 .input-bar .composer-branch-btn { font-family: var(--font-mono); font-size: 12px; }
-.input-bar .composer-run-target-btn .composer-run-target__icon { --mn-icon-size: 12px; }
+.input-bar .composer-run-target-btn .composer-run-target__icon { --mn-icon-size: 15px; }
+.input-bar .composer-run-target-btn--local { width: 28px; padding: 0; justify-content: center; }
+.input-bar .composer-run-target-btn--local .composer-run-target__label { display: none; }
+.input-bar .composer-run-target-btn[aria-pressed='true'] { color: var(--mn-accent-ink); }
+.input-bar #composerThinkingWrap[hidden] { display: none; }
 
-/* Reasoning reads as "💡 Low": the effort button opens a themed menu (composer-reasoning-effort.ts). */
+
+/* Internal reasoning controls keep their native state; the model menu owns their display. */
 .input-bar .thinking-control-wrap { gap: 0; }
 .input-bar .thinking-toggle-btn { width: 28px; padding: 0; }
 .input-bar .thinking-toggle-icon { --mn-icon-size: 12px; }
-.input-bar .thinking-control-wrap:has(.thinking-toggle-host:not(.hidden)) .composer-reasoning-effort-btn { padding-left: 2px; }
 .input-bar .composer-reasoning-effort-wrap { display: inline-flex; align-items: center; }
 
 .input-bar .composer-overflow-btn { width: 28px; }
@@ -609,7 +613,7 @@
 
 /* The prompt expander only has something to work on once there is text. */
 .input-bar:has(#msgInput:placeholder-shown) .composer-expand-btn { display: none; }
-.input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 74px; }
+.input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 42px; }
 
 .send-btn .send-btn__arrow { --mn-icon-size: 18px; }
 .send-btn__stop {
@@ -621,8 +625,8 @@
 }
 
 @media (pointer: coarse) {
-  .input-bar { --composer-inset-w: 144px; }
-  .input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 96px; }
+  .input-bar { --composer-inset-w: 96px; }
+  .input-bar:has(#msgInput:placeholder-shown) { --composer-inset-w: 48px; }
   .input-bar .input-inset-actions { right: 60px; bottom: 8px; gap: 4px; }
   .input-bar :is(.input-inset-btn, .send-btn, .composer-overflow-btn, .thinking-toggle-btn, .context-usage-ring) {
     min-width: 44px;

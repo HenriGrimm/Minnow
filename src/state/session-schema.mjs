@@ -1218,6 +1218,8 @@ export function normalizeChatRow(raw) {
       ? { gitBranch: row.gitBranch.trim() }
       : {}),
     ...(row.chatWorktreeManaged === true ? { chatWorktreeManaged: true } : {}),
+    ...(row.worktreeEnabled === true ? { worktreeEnabled: true } : {}),
+    ...(row.worktreeSetupRequired === true ? { worktreeSetupRequired: true } : {}),
     workAgentId:
       typeof row.workAgentId === 'string' && row.workAgentId.trim()
         ? row.workAgentId.trim()

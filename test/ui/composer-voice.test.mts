@@ -43,7 +43,7 @@ function setupDom(): void {
   Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
 
   document.body.innerHTML = `
-    <button type="button" id="attachBtn"></button>
+    <div id="composerInsetActions"></div>
     <textarea id="msgInput"></textarea>
     <div id="sDot"></div>
     <div id="sText"></div>

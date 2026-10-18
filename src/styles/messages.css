@@ -1625,3 +1625,82 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+
+/* Deferred chat worktree setup. */
+.chat-worktree-setup {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: min(100%, 560px);
+  box-sizing: border-box;
+  margin: 24px auto;
+  padding: 20px 0;
+  border-block: 1px solid var(--mn-border);
+  color: var(--mn-fg);
+}
+
+.chat-worktree-setup__icon {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  font-size: 22px;
+  line-height: 22px;
+  color: var(--mn-fg-muted);
+}
+
+.chat-worktree-setup__body { flex: 1; min-width: 0; }
+.chat-worktree-setup strong { font-size: 14px; font-weight: 600; }
+.chat-worktree-setup p {
+  margin: 6px 0 0;
+  color: var(--mn-fg-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-worktree-setup__progress {
+  position: relative;
+  height: 2px;
+  margin-top: 16px;
+  overflow: hidden;
+  background: var(--mn-border);
+  border-radius: 2px;
+}
+
+.chat-worktree-setup__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--mn-fg-muted);
+  animation: chat-worktree-progress 1.8s ease-in-out infinite;
+}
+
+.chat-worktree-setup__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chat-worktree-setup__actions button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: 6px;
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chat-worktree-setup__actions button:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+
+@keyframes chat-worktree-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-worktree-setup__progress::after { animation: none; width: 100%; opacity: 0.5; }
+}
+@media (pointer: coarse) {
+  .chat-worktree-setup__actions button { min-height: 44px; }
+}

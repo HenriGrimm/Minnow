@@ -5,6 +5,7 @@ import {
   getComposerReasoningLevelOptions,
   isComposerReasoningLevel,
   modelUsesAlwaysOnReasoning,
+  modelShowsComposerBrainToggle,
   modelUsesComposerReasoningLevelDropdown,
   normalizeReasoningAllowedOptions,
   resolveEffectiveReasoningEffort,
@@ -22,21 +23,15 @@ import { syncComposerCodeMapFromActiveChat } from './composer-code-map';
 import { syncComposerBrainNotesFromActiveChat } from './composer-brain-notes';
 import { syncComposerContextDocumentsFromActiveChat } from './composer-context-documents';
 import { isComposerRecoveryBlocked } from './composer-send';
-import { positionRunTargetMenu } from './composer-run-target-menu';
-import { createIcon } from './icon';
 import { modelCache } from '../app-state';
-import { decodeModelSelectKey } from '../lib/model-select-key';
+import { getModelReasoningDefault } from '../config/model-reasoning-defaults';
+import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId } from '../models/cursor-variants.mjs';
 import { syncComposerModelTriggers } from './composer-model-trigger';
 
 let selectEl: HTMLSelectElement | null = null;
 let wrapEl: HTMLElement | null = null;
 let segmentsEl: HTMLElement | null = null;
-/** Footer trigger + themed menu; the hidden native select stays the source of truth. */
-let triggerEl: HTMLButtonElement | null = null;
-let menuEl: HTMLElement | null = null;
-let menuOutsideHandler: ((event: PointerEvent) => void) | null = null;
-let menuEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
 let cursorFastButton: HTMLButtonElement | null = null;
 
 // ── Options ──────────────────────────────────────────────────────────────────
@@ -105,7 +100,7 @@ function populateSelect(options: EffortOption[], display: EffortOption | undefin
   if (display) selectEl.value = display;
 }
 
-/** Compact overflow uses a segmented control; the native select stays for the wide row. */
+/** Keep internal reasoning controls aligned with the chat binding. */
 function populateSegments(options: EffortOption[], display: EffortOption | undefined): void {
   if (!segmentsEl) return;
   segmentsEl.replaceChildren();
@@ -132,104 +127,65 @@ function onSegmentClick(event: Event): void {
   selectEl.dispatchEvent(new Event('change'));
 }
 
-// ── Footer menu ──────────────────────────────────────────────────────────────
+export interface ComposerReasoningChoice {
+  value: EffortOption | 'inherit';
+  label: string;
+}
 
-function ensureTrigger(): void {
-  if (!wrapEl || !selectEl || (triggerEl && wrapEl.contains(triggerEl))) return;
-  closeReasoningEffortMenu();
-  menuEl?.remove();
-  triggerEl = document.createElement('button');
-  triggerEl.type = 'button';
-  triggerEl.id = 'composerReasoningEffortBtn';
-  triggerEl.className = 'composer-reasoning-effort-btn';
-  triggerEl.setAttribute('aria-haspopup', 'menu');
-  triggerEl.setAttribute('aria-expanded', 'false');
-  const label = document.createElement('span');
-  label.className = 'composer-reasoning-effort-btn__label';
-  triggerEl.append(
-    createIcon('reasoning', { className: 'composer-reasoning-effort-btn__icon', size: 12 }),
-    label,
-    createIcon('chevronDown', { className: 'composer-reasoning-effort-btn__chevron', size: 12 }),
-  );
-  triggerEl.addEventListener('click', (event) => {
-    event.stopPropagation();
-    if (menuEl && !menuEl.classList.contains('hidden')) closeReasoningEffortMenu();
-    else openReasoningEffortMenu();
+/** Current chat reasoning, shared by the model label and its menu. */
+export function getComposerReasoningState() {
+  const caps = effectiveCapabilities();
+  const chat = getActiveChat();
+  const levels = getLevelOptions();
+  const toggle = modelShowsComposerBrainToggle(caps);
+  const agent = resolveActiveWorkAgent(chat);
+  const resolved = resolveThinkingMode({
+    kind: 'work-agent', agentKey: agent?.id ?? null, chatThinkingMode: chat.thinkingMode,
   });
-  wrapEl.insertBefore(triggerEl, selectEl);
-
-  menuEl = document.createElement('div');
-  menuEl.id = 'composerReasoningEffortMenu';
-  menuEl.className = 'composer-run-target-menu composer-reasoning-effort-menu hidden';
-  menuEl.setAttribute('role', 'menu');
-  menuEl.setAttribute('aria-label', 'Reasoning effort');
-  document.body.appendChild(menuEl);
-}
-
-function syncTrigger(): void {
-  if (!triggerEl || !selectEl) return;
-  const text = selectEl.options[selectEl.selectedIndex]?.textContent ?? '';
-  const label = triggerEl.querySelector('.composer-reasoning-effort-btn__label');
-  if (label && label.textContent !== text) label.textContent = text;
-  triggerEl.disabled = selectEl.disabled;
-  triggerEl.setAttribute('aria-label', `Reasoning effort, ${text}`);
-  if (selectEl.disabled) closeReasoningEffortMenu();
-}
-
-function openReasoningEffortMenu(): void {
-  if (!triggerEl || !menuEl || !selectEl || selectEl.disabled) return;
-  menuEl.replaceChildren();
-  for (const option of Array.from(selectEl.options)) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'composer-run-target-menu__item';
-    item.setAttribute('role', 'menuitemradio');
-    const checked = option.value === selectEl.value;
-    item.setAttribute('aria-checked', String(checked));
-    const text = document.createElement('span');
-    text.textContent = option.textContent ?? option.value;
-    item.append(text);
-    if (checked) item.append(createIcon('check', { className: 'composer-reasoning-effort-menu__check', size: 12 }));
-    item.addEventListener('click', () => {
-      closeReasoningEffortMenu();
-      if (!selectEl || selectEl.disabled || selectEl.value === option.value) return;
-      selectEl.value = option.value;
-      selectEl.dispatchEvent(new Event('change'));
-    });
-    menuEl.append(item);
+  const effective = resolveEffectiveReasoningEffort(chat, caps, resolved.mode) ?? resolved.mode;
+  const choices: ComposerReasoningChoice[] = [];
+  if (levels.length || toggle) {
+    choices.push({ value: 'inherit', label: 'Default' });
+    if (toggle) choices.push({ value: 'off', label: 'Off' });
+    if (levels.length) {
+      choices.push(...levels.map(value => ({ value, label: formatReasoningEffortLabel(value) })));
+    } else {
+      choices.push({ value: 'on', label: 'On' });
+    }
   }
-  menuEl.classList.remove('hidden');
-  triggerEl.setAttribute('aria-expanded', 'true');
-  positionRunTargetMenu(triggerEl, menuEl);
-  menuEl.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
-
-  menuOutsideHandler = (event: PointerEvent) => {
-    const target = event.target as Node | null;
-    if (menuEl?.contains(target) || triggerEl?.contains(target)) return;
-    closeReasoningEffortMenu();
+  const label = levels.length && effective !== 'off'
+    ? formatReasoningEffortLabel(resolveDisplayEffort(levels) ?? effective)
+    : `Reasoning ${effective === 'off' ? 'off' : 'on'}`;
+  return {
+    label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
+    selected: (chat.reasoningEffort ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
+    disabled: isActiveChatStreaming() || isComposerRecoveryBlocked(),
   };
-  menuEscapeHandler = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
-    closeReasoningEffortMenu();
-    triggerEl?.focus();
-  };
-  document.addEventListener('pointerdown', menuOutsideHandler, true);
-  document.addEventListener('keydown', menuEscapeHandler, true);
 }
 
-/** Close the footer effort menu (chat switch, streaming, outside click). */
-export function closeReasoningEffortMenu(): void {
-  menuEl?.classList.add('hidden');
-  triggerEl?.setAttribute('aria-expanded', 'false');
-  if (menuOutsideHandler) document.removeEventListener('pointerdown', menuOutsideHandler, true);
-  if (menuEscapeHandler) document.removeEventListener('keydown', menuEscapeHandler, true);
-  menuOutsideHandler = null;
-  menuEscapeHandler = null;
+/** Apply a chat override without changing the model's saved default. */
+export function setComposerReasoningChoice(value: string): void {
+  const state = getComposerReasoningState();
+  if (state.disabled || !state.choices.some(choice => choice.value === value)) return;
+  const chat = getActiveChat();
+  if (value === 'inherit') {
+    const saved = chat.providerId && chat.modelId
+      ? getModelReasoningDefault(encodeModelSelectKey(chat.providerId, chat.modelId)) : undefined;
+    if (saved) chat.reasoningEffort = saved;
+    else delete chat.reasoningEffort;
+    delete chat.thinkingMode;
+  } else if (getLevelOptions().length) {
+    chat.reasoningEffort = value as EffortOption;
+  } else {
+    delete chat.reasoningEffort;
+    chat.thinkingMode = value === 'off' ? 'off' : 'on';
+  }
+  touchChat(chat);
+  scheduleSaveSessions();
+  syncComposerReasoningEffortFromActiveChat();
 }
 
 function onSelectChange(): void {
-  syncTrigger();
   if (!selectEl || selectEl.disabled) return;
   const levels = getLevelOptions();
   const value = selectEl.value as EffortOption;
@@ -314,14 +270,13 @@ function isLevelDropdownVisible(): boolean {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-/** Wire composer reasoning effort select. */
+/** Wire native reasoning state used by the composer model menu. */
 export function initComposerReasoningEffort(): void {
   selectEl = document.getElementById('composerReasoningEffortSelect') as HTMLSelectElement | null;
   wrapEl = document.getElementById('composerReasoningEffortWrap');
   segmentsEl = document.getElementById('composerReasoningEffortSegments');
   selectEl?.addEventListener('change', onSelectChange);
   segmentsEl?.addEventListener('click', onSegmentClick);
-  ensureTrigger();
   ensureCursorFastButton();
   syncComposerReasoningEffortFromActiveChat();
 }
@@ -331,7 +286,6 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
   validateAndClearInvalidEffort();
   syncCursorModelVariant();
 
-  const caps = effectiveCapabilities();
   const visible = isLevelDropdownVisible();
   const disabled = isActiveChatStreaming() || isComposerRecoveryBlocked();
 
@@ -350,10 +304,10 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
       button.disabled = !visible || disabled;
     }
   }
-  syncTrigger();
   syncCursorFastButton();
 
   syncThinkingControlFromActiveChat();
+  syncComposerModelTriggers();
   void syncComposerCodeMapFromActiveChat();
   void syncComposerBrainNotesFromActiveChat();
   void syncComposerContextDocumentsFromActiveChat();

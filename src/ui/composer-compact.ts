@@ -5,20 +5,18 @@ import { closeComposerToolsPopover } from './composer-tools-popover';
 import { loadToolConfigIntoDrawer } from '../tools/config';
 import { ensureToolsSectionFilled } from './tools-list';
 
-/** Park run target and effort too at or below this controls-row width. */
+/** Park the Cursor Fast control at or below this controls-row width. */
 export const COMPOSER_COMPACT_ENTER_PX = 560;
 
 /** Bring them back only after the row grows past this, so the class does not flicker. */
 export const COMPOSER_COMPACT_LEAVE_PX = 600;
 
 /**
- * The footer row keeps mode, run target, branch and effort one click away;
+ * The footer row keeps mode, worktree, context and model one click away;
  * everything else lives in the cog sheet. Settings-page order follows this list.
  * Tools parks into the second page, not this list.
  */
 const SETTINGS_ITEM_IDS = [
-  'composerRunTargetWrap',
-  'composerThinkingWrap',
   'composerCursorFast',
   'composerContextDocumentsWrap',
   'composerCodeMapWrap',
@@ -29,7 +27,7 @@ const SETTINGS_ITEM_IDS = [
 ] as const;
 
 /** Footer-row controls that only park when the row is too narrow to hold them. */
-const NARROW_ITEM_IDS = new Set<string>(['composerRunTargetWrap', 'composerThinkingWrap', 'composerCursorFast']);
+const NARROW_ITEM_IDS = new Set<string>(['composerCursorFast']);
 
 const TOOLS_ITEM_ID = 'composerToolsAnchor';
 
@@ -37,7 +35,7 @@ const overflowHomes = new Map<string, { parent: Node; next: ChildNode | null }>(
 
 /** The footer row is on once the composer is initialized. */
 let compact = false;
-/** Row is too narrow for run target and effort. */
+/** Row is too narrow for secondary model controls. */
 let narrow = false;
 let overflowOpen = false;
 /** True while the cog sheet is showing the Tools drill-in, not this-turn settings. */
@@ -107,7 +105,7 @@ export function isComposerControlsCompact(): boolean {
   return compact;
 }
 
-/** True when run target and effort are parked in the cog because the row is narrow. */
+/** True when secondary model controls are parked in the cog. */
 export function isComposerControlsNarrow(): boolean {
   return narrow;
 }

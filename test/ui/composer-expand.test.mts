@@ -25,7 +25,6 @@ function setupDom(): void {
 
   document.body.innerHTML = `
     <div id="composerInsetActions">
-      <button type="button" id="attachBtn"></button>
       <button type="button" id="btnComposerMic"></button>
     </div>
     <textarea id="msgInput"></textarea>

@@ -2338,12 +2338,12 @@
         <div id="attachPreview" class="attach-preview hidden" aria-live="polite" aria-label="Attached files"></div>
         <div class="composer-controls" id="composerControls" role="toolbar" aria-label="Composer options">
           <div id="modeSelector" class="mode-segmented" role="radiogroup" aria-label="Operating mode"></div>
-          <div id="composerThinkingWrap" class="composer-control thinking-control-wrap">
+          <div id="composerThinkingWrap" class="composer-control thinking-control-wrap" hidden>
             <div id="composerThinkingControl" class="thinking-toggle-host"></div>
             <div id="composerReasoningEffortWrap" class="composer-reasoning-effort-wrap hidden">
               <label class="visually-hidden" for="composerReasoningEffortSelect">Reasoning effort</label>
               <select id="composerReasoningEffortSelect" class="composer-reasoning-effort-select" aria-label="Reasoning effort" disabled></select>
-              <!-- Compact overflow shows these segments; the native select backs the footer menu. -->
+              <!-- Internal controls share chat state with the model menu. -->
               <div id="composerReasoningEffortSegments" class="composer-reasoning-effort-segments" role="radiogroup" aria-label="Reasoning effort"></div>
             </div>
           </div>
@@ -2477,11 +2477,7 @@
           <div class="input-wrap input-wrap--inset-actions">
             <label for="msgInput" class="visually-hidden">Message</label>
             <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-            <div class="input-inset-actions" id="composerInsetActions" aria-label="Message attachments and voice">
-              <button type="button" class="input-inset-btn attach-btn" id="attachBtn" aria-label="Attach files">
-                <i class="fi fi-rr-clip icon-svg" aria-hidden="true"></i>
-              </button>
-            </div>
+            <div class="input-inset-actions" id="composerInsetActions" aria-label="Voice and prompt actions"></div>
           </div>
         </div>
       </div>

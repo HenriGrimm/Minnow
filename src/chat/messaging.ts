@@ -140,7 +140,7 @@ export async function sendProgrammaticChatText(
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
   if (isChatWorktreeSetupPending(chat.id)) throw new Error('Worktree setup is still running. Wait for it to finish.');
-  if (chat.worktreeSetupRequired) throw new Error('Retry worktree setup or explicitly choose Local before sending.');
+  if (chat.worktreeSetupRequired && !chat.worktreeEnabled) throw new Error('Retry worktree setup or explicitly choose Local before sending.');
   if (isChatStreaming(chat.id) || isChatTurnSetupPending(chat.id)) {
     if (options.requireCompletedTurn) throw new Error('Chat is already running');
     return;
@@ -315,7 +315,7 @@ export async function sendMessageWithTools(
     showToast('Setting up the worktree. Your message is kept here until setup finishes.');
     return;
   }
-  if (chat.worktreeSetupRequired) {
+  if (chat.worktreeSetupRequired && !chat.worktreeEnabled) {
     showToast('Retry worktree setup or choose Local from Worktree options before sending.', 'error');
     return;
   }
@@ -466,7 +466,7 @@ export async function sendMessageWithTools(
     setStatus('err', 'This model cannot read images — sending the text only');
   }
 
-  if (!goalDispatch) {
+  if (!goalDispatch && !chat.worktreeEnabled) {
     clearComposerAfterSend(chat, input);
   }
 

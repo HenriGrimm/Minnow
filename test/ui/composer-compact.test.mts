@@ -175,7 +175,7 @@ describe('composer compact overflow', () => {
     assert.equal(nextComposerCompactState(false, 0), false);
   });
 
-  test('footer row keeps mode, effort and wheel; the rest lives in the cog at every width', () => {
+  test('footer keeps worktree and model controls while secondary settings move into the cog', () => {
     const row = setupComposerDom();
     initModeSelector();
     initComposerCompact();
@@ -184,6 +184,9 @@ describe('composer compact overflow', () => {
     const bar = row.closest('.input-bar');
     const slot = document.getElementById('composerOverflowSlot');
     const thinking = document.getElementById('composerThinkingWrap');
+    const worktree = document.createElement('div');
+    worktree.id = 'composerRunTargetWrap';
+    row.append(worktree);
     const fast = document.getElementById('composerCursorFast');
     const contextDocs = document.getElementById('composerContextDocumentsWrap');
     const tools = document.getElementById('composerToolsAnchor');
@@ -209,7 +212,8 @@ describe('composer compact overflow', () => {
 
     syncComposerCompactFromWidth(500);
     assert.equal(isComposerControlsNarrow(), true);
-    assert.equal(thinking?.parentElement?.id, 'composerOverflowSettingsPage');
+    assert.equal(worktree.parentElement, row, 'single worktree control stays accessible at narrow widths');
+    assert.equal(thinking?.parentElement, row, 'internal reasoning state stays with the composer');
     assert.equal(fast?.parentElement?.id, 'composerOverflowSettingsPage');
     assert.ok(row.classList.contains('composer-controls--narrow'));
 

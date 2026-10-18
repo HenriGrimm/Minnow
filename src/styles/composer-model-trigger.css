@@ -402,3 +402,23 @@
     transition: none;
   }
 }
+
+.composer-model-trigger__reasoning { color: var(--mn-fg-muted); font-weight: 400; }
+.composer-model-reasoning { padding: 10px 12px; border-top: 1px solid var(--mn-border); }
+.composer-model-reasoning__heading { margin-bottom: 8px; color: var(--mn-fg-muted); font-size: 11px; }
+.composer-model-reasoning__choices { display: flex; flex-wrap: wrap; gap: 4px; }
+.composer-model-reasoning__choice {
+  flex: 1 0 auto;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.composer-model-reasoning__choice[aria-pressed='true'] { background: var(--mn-accent-soft); color: var(--mn-accent-ink); }
+.composer-model-reasoning__choice:hover:not(:disabled) { background: var(--mn-surface-2); color: var(--mn-fg); }
+.composer-model-reasoning__choice:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 1px; }
+.composer-model-reasoning__choice:disabled { opacity: 0.45; cursor: default; }

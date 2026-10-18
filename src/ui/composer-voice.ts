@@ -584,7 +584,8 @@ function ensureMicButton(id: string, anchorId: string): void {
     return;
   }
   const anchor = document.getElementById(anchorId);
-  if (!anchor?.parentElement) return;
+  const host = id === 'btnComposerMic' ? document.getElementById('composerInsetActions') : null;
+  if (!anchor?.parentElement && !host) return;
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -599,12 +600,13 @@ function ensureMicButton(id: string, anchorId: string): void {
   btn.innerHTML = MIC_BUTTON_MARKUP;
   btn.addEventListener('click', onMicClick);
   btn.dataset.micBound = '1';
-  anchor.insertAdjacentElement('afterend', btn);
+  if (host) host.prepend(btn);
+  else anchor!.insertAdjacentElement('afterend', btn);
 }
 
 /** Mount mic buttons on Code, Chat, and desktop composer surfaces. */
 export function initComposerVoice(): void {
-  ensureMicButton('btnComposerMic', 'attachBtn');
+  ensureMicButton('btnComposerMic', 'composerInsetActions');
   ensureMicButton('btnChatAppMic', 'btnChatAppAttach');
   ensureMicButton('btnDesktopMic', 'btnDesktopAttach');
 

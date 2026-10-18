@@ -211,7 +211,7 @@ For example, **Thinking / precise coding** for Qwen3.6 sets temperature **0.6**,
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
 
-For models that expose named reasoning levels, open the model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. The composer control can still override the level for the current chat.
+For models that expose named reasoning levels, open the default-model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. Open the composer’s model menu to override reasoning for the current chat. Its current level appears beside the model name.
 
 ## Usage & cost
 
