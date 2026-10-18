@@ -12,6 +12,7 @@ import {
   commitIntegration,
   commitWorktree,
   createChatWorktree,
+  enableChatWorktree,
   createWorktree,
   ensureIntegration,
   integrationStats,
@@ -61,6 +62,7 @@ function readJsonBody(req) {
 }
 
 const OPS = {
+  enable_chat: (a) => enableChatWorktree(a),
   prepare_chat: async (a) => {
     if (typeof a.chatId !== 'string' || !a.chatId.trim()) throw new Error('chatId is required');
     const root = getChatWorktreePath(a.chatId);

@@ -51,7 +51,8 @@ This is what the app is for.
 |--------|--------------|
 | **Expand** | Sparkles on peek, board cards, the row menu, or **E**. Rewrites the title and description and suggests labels and priority from what is already on the card. You review and edit in an overlay; nothing is saved until you apply. Uses the prompt expander model when one is set. |
 | **Expand with agent** | An agent researches the workspace and fills in a real description (triage notes), from the detail panel or the row menu |
-| **Send to chat** | Starts a linked chat inside Issues, seeded with the issue, in a mode you choose. The run-target panel offers the current workspace shown by name, an existing worktree, or New worktree. |
+| **Use worktree** | Enables automatic worktree setup for this issue's new chats. The choice is remembered for this session and is also available in the issue row menu. |
+| **Send to chat** | Starts a linked chat inside Issues, seeded with the issue, in a mode you choose. With **Worktree on**, Minnow names a branch from the issue title and prepares dependencies before the agent starts. Otherwise the chat uses the issue's local workspace. |
 | **Send to board** | When the issue has a plan, hands it to an orchestrate board |
 | **Open plan** | Opens the issue's plan document in the editor |
 

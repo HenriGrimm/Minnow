@@ -93,6 +93,17 @@ describe('composer run-target picker', () => {
     assert.deepEqual(picked, [{ kind: 'local' }]);
   });
 
+  test('Enable worktree emits an automatic choice without a name popover', async () => {
+    const picked: ChatRunTargetChoice[] = [];
+    const anchor = win.document.getElementById('anchor') as HTMLButtonElement;
+    await openRunTargetPicker({ anchor, repoRoot: '/repo/main', onPick: choice => { picked.push(choice); } });
+    const enable = [...win.document.querySelectorAll('button')].find(btn => btn.textContent === 'Enable worktree');
+    assert.ok(enable);
+    enable.click();
+    assert.deepEqual(picked, [{ kind: 'automatic' }]);
+    assert.equal(win.document.querySelector('.git-panel-name-popover'), null);
+  });
+
   test('openRunTargetPicker cancel (Escape) does not pick', async () => {
     const picked: ChatRunTargetChoice[] = [];
     let cancelled = false;

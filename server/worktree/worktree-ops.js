@@ -1285,6 +1285,49 @@ export async function listWorktrees() {
   return { ok: ok(r), output: out(r) };
 }
 
+const automaticChatSetups = new Map();
+
+/** One-click setup. Coalesce repeated clicks and retain failed slots for retry. */
+export function enableChatWorktree({ chatId, title }) {
+  if (typeof chatId !== 'string' || !chatId.trim()) {
+    return Promise.resolve({ ok: false, error: 'chatId is required' });
+  }
+  const wtPath = getChatWorktreePath(chatId.trim());
+  if (automaticChatSetups.has(wtPath)) return automaticChatSetups.get(wtPath);
+  const pending = (async () => {
+    let branch;
+    if (await pathExists(wtPath)) {
+      const registered = await git(['worktree', 'list', '--porcelain']);
+      const paths = (registered.stdout ?? '').split('\n').filter(line => line.startsWith('worktree '))
+        .map(line => path.resolve(line.slice(9).trim()));
+      if (!ok(registered) || !paths.some(p => path.relative(p, wtPath) === '') || !(await isWorktreeCheckout(wtPath))) {
+        return { ok: false, error: 'The worktree folder exists but is not a registered checkout. Inspect it in Source Control before retrying.' };
+      }
+      const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
+      if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD. Select a branch in Source Control first.' };
+      branch = head.stdout.trim();
+    } else {
+      if (!(await resolveRef('HEAD'))) {
+        return { ok: false, error: 'Worktrees need a Git repository with at least one commit. Create the first commit in Source Control, then retry.' };
+      }
+      const slug = slugifyGitRefName(typeof title === 'string' ? title : '', 'worktree').slice(0, 48).replace(/[./-]+$/, '') || 'worktree';
+      const suffix = createHash('sha256').update(chatId).digest('hex').slice(0, 10);
+      const stem = `minnow/${slug}-${suffix}`;
+      branch = stem;
+      for (let i = 2; await branchExists(branch); i++) branch = `${stem}-${i}`;
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD' });
+      if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
+    }
+    const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]));
+    if (preparation.failed.length) {
+      return { ok: false, path: wtPath, branch, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
+    }
+    return { ok: true, path: wtPath, branch, ...preparation };
+  })().finally(() => automaticChatSetups.delete(wtPath));
+  automaticChatSetups.set(wtPath, pending);
+  return pending;
+}
+
 /**
  * @param {{ chatId: string, branch: string, baseRef?: string, checkoutExisting?: boolean }} input
  */
@@ -1310,7 +1353,10 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   }
 
   if (exists) {
-    return { ok: true, path: wtPath, branch: branchName, created: false };
+    if (!(await isWorktreeCheckout(wtPath))) return { ok: false, error: 'The managed worktree folder is not a valid checkout. Inspect it in Source Control.' };
+    const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
+    if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD.' };
+    return { ok: true, path: wtPath, branch: head.stdout.trim(), created: false };
   }
 
   await fs.mkdir(path.dirname(wtPath), { recursive: true });

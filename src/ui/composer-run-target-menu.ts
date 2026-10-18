@@ -124,7 +124,7 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
   menu.replaceChildren();
 
   const repoRoot = options.repoRoot?.trim() || composerGitRepoRoot();
-  const list = await listWorktrees();
+  const list = await listWorktrees(repoRoot);
   const parsed =
     list.ok && list.output ? parseWorktreeListPorcelain(list.output) : [];
   const principal = getPrincipalWorktree(parsed);
@@ -167,6 +167,9 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
   menu.appendChild(runOn);
 
   const wtSection = menuSection('Worktree');
+  wtSection.appendChild(menuItem('Enable worktree', () => {
+    void options.onPick({ kind: 'automatic' });
+  }, { icon: 'worktree' }, options.closeMenu));
   const attachItem = menuItem(
     'Worktree…',
     async () => {

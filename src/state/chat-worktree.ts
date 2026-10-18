@@ -20,6 +20,7 @@ import { gitBranches } from './git-api.ts';
 import { getWorkspacePath } from './workspace.ts';
 import {
   createChatWorktree,
+  enableChatWorktree,
   removeChatWorktree,
 } from './worktree-service.ts';
 import type { Chat, ChatGroup } from '../types.ts';
@@ -131,17 +132,11 @@ export function isManagedChatWorktreePath(
   return wt.includes('/worktrees/') && wt.endsWith(`/chat/${slot}`);
 }
 
-/** Detach a chat from its worktree; remove the managed slot when Minnow created it. */
+/** Detach without deleting work. Cleanup is an explicit Source Control action. */
 export async function detachChatWorktree(chat: Chat): Promise<void> {
-  const managed = chat.chatWorktreeManaged === true;
-  const wt = chat.worktreeRoot?.trim();
-  if (managed) {
-    await removeChatWorktree({ chatId: chat.id });
-  }
+  delete chat.worktreeSetupRequired;
   delete chat.worktreeRoot;
   delete chat.chatWorktreeManaged;
-  if (!managed && wt) {
-  }
 }
 
 /** Point the chat at a worktree path + branch (existing attachment). */
@@ -154,6 +149,7 @@ export function attachChatToWorktree(
   chat.worktreeRoot = path;
   if (branch?.trim()) chat.gitBranch = branch.trim();
   chat.chatWorktreeManaged = isManagedChatWorktreePath(chat.id, path);
+  delete chat.worktreeSetupRequired;
 }
 
 /** Create a fresh managed worktree for this chat on `branch`. */
@@ -180,6 +176,7 @@ export async function createManagedChatWorktree(
   chat.worktreeRoot = res.path;
   chat.gitBranch = (res.branch ?? branchName).trim();
   chat.chatWorktreeManaged = true;
+  delete chat.worktreeSetupRequired;
   return { ok: true };
 }
 
@@ -211,6 +208,7 @@ export function composerGitRepoRoot(): string {
  */
 export type ChatRunTargetChoice =
   | { kind: 'local' }
+  | { kind: 'automatic' }
   | { kind: 'attach'; path: string; branch?: string }
   | {
       kind: 'create';
@@ -224,6 +222,7 @@ export function parseChatRunTargetChoice(value: unknown): ChatRunTargetChoice | 
   if (!value || typeof value !== 'object') return null;
   const rec = value as Record<string, unknown>;
   if (rec.kind === 'local') return { kind: 'local' };
+  if (rec.kind === 'automatic') return { kind: 'automatic' };
   if (rec.kind === 'attach' && typeof rec.path === 'string' && rec.path.trim()) {
     const branch = typeof rec.branch === 'string' ? rec.branch.trim() : '';
     return {
@@ -251,10 +250,40 @@ export function parseChatRunTargetChoice(value: unknown): ChatRunTargetChoice | 
  * Apply a run-target pick to an existing chat before tools or a seed turn run.
  * Attach of the chat's bound checkout collapses to Local (MIN-780).
  */
-export async function applyChatRunTargetChoice(
+const pendingTargets = new Map<string, Promise<{ ok: boolean; error?: string }>>();
+
+export function isChatWorktreeSetupPending(chatId: string): boolean {
+  return pendingTargets.has(chatId);
+}
+
+export function applyChatRunTargetChoice(
   chat: Chat,
   choice: ChatRunTargetChoice,
 ): Promise<{ ok: boolean; error?: string }> {
+  const existing = pendingTargets.get(chat.id);
+  if (existing) return existing;
+  const pending = applyRunTarget(chat, choice).finally(() => pendingTargets.delete(chat.id));
+  pendingTargets.set(chat.id, pending);
+  return pending;
+}
+
+async function applyRunTarget(
+  chat: Chat,
+  choice: ChatRunTargetChoice,
+): Promise<{ ok: boolean; error?: string }> {
+  if (choice.kind === 'automatic') {
+    if (isChatWorktreeMode(chat)) return { ok: true };
+    chat.worktreeSetupRequired = true;
+    const result = await enableChatWorktree({
+      chatId: chat.id,
+      cwd: chat.workspacePath?.trim() || composerGitRepoRoot(),
+      title: suggestChatWorktreeBranchName(chat, composerGitRepoRoot()),
+    });
+    if (!result.ok || !result.path) return { ok: false, error: result.error || 'Could not prepare worktree' };
+    attachChatToWorktree(chat, result.path, result.branch);
+    chat.chatWorktreeManaged = true;
+    return { ok: true };
+  }
   if (choice.kind === 'local') {
     await setChatRunTargetLocal(chat);
     return { ok: true };

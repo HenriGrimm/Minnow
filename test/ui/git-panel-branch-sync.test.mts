@@ -24,7 +24,7 @@ mock.module('../../src/state/worktree-service.ts', { namedExports: {
   cleanupBoardWorktrees: unused, cleanupBoardBranches: unused, integrationStats: unused,
   workspaceLandingStats: unused, mergeIntegrationIntoWorkspace: unused,
   openWorkspacePr: unused, commitIntegration: unused, pushIntegration: unused,
-  openIntegrationPr: unused, createChatWorktree: unused, removeChatWorktree: unused,
+  openIntegrationPr: unused, createChatWorktree: unused, enableChatWorktree: unused, removeChatWorktree: unused,
   listWorktrees: async () => ({ ok: true, output:
     `worktree /workspace\nHEAD abc\nbranch refs/heads/${workspaceBranch}\n\n` +
     (featureWorktreeExists ? 'worktree /selected-worktree\nHEAD def\nbranch refs/heads/feature\n\n' : ''),
@@ -40,7 +40,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     local: ['main', 'feature'], remote: [], lockedLocal: [],
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
-  gitDiff: unused, gitDiscard: unused,
+  gitDiff: unused, gitDiscard: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
   gitPull: unused, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused,
   gitWorktreeRemove: async (options: unknown) => {

@@ -1,14 +1,28 @@
 /**
- * After an Issues mode pick, open the composer run-target panel.
- * Cancel (Escape / outside) does not send the issue.
+ * Issue launches use the inline worktree preference without another picker.
  */
 
 import { findIssueById } from '../state/issues-store.ts';
 import type { ChatRunTargetChoice } from '../state/chat-worktree.ts';
-import { isLocalServerAvailable } from '../tools/config.ts';
 import { closeIssuesContextMenu } from './issues-context-menu.ts';
 import { closeIssuesWorkflowMenu } from './issues-workflow-menu.ts';
-import { closeRunTargetPicker, openRunTargetPicker } from './composer-run-target-menu.ts';
+import { closeRunTargetPicker } from './composer-run-target-menu.ts';
+
+const isolatedIssues = new Set<string>();
+
+function issueKey(issueId: string): string {
+  return `${findIssueById(issueId)?.workspacePath ?? ''}\0${issueId}`;
+}
+
+export function issueUsesWorktree(issueId: string): boolean {
+  return isolatedIssues.has(issueKey(issueId));
+}
+
+export function toggleIssueWorktree(issueId: string): void {
+  const key = issueKey(issueId);
+  if (isolatedIssues.has(key)) isolatedIssues.delete(key);
+  else isolatedIssues.add(key);
+}
 
 export interface PromptIssueChatRunTargetOptions {
   issueId: string;
@@ -46,8 +60,7 @@ export function lastIssueMenuOrigin(): {
 }
 
 /**
- * Open the composer run-target picker, or send Local immediately when the
- * tool server is down (composer hides worktree options in that case).
+ * Launch with the explicit preference. Setup errors must not fall back to Local.
  */
 export function promptIssueChatRunTarget(options: PromptIssueChatRunTargetOptions): void {
   const issue = findIssueById(options.issueId);
@@ -57,22 +70,5 @@ export function promptIssueChatRunTarget(options: PromptIssueChatRunTargetOption
   closeIssuesContextMenu();
   closeRunTargetPicker();
 
-  if (!isLocalServerAvailable()) {
-    void options.onPick({ kind: 'local' });
-    return;
-  }
-
-  const hasPoint =
-    typeof options.clientX === 'number' && typeof options.clientY === 'number';
-  void openRunTargetPicker({
-    // Pointer origin wins so the panel sits on the context menu, not the row.
-    anchor: hasPoint ? null : options.anchor,
-    clientX: hasPoint ? options.clientX : undefined,
-    clientY: hasPoint ? options.clientY : undefined,
-    repoRoot: issue.workspacePath,
-    defaultTitle: issue.title,
-    defaultPath: issue.workspacePath,
-    reserved: ['main', 'master'],
-    onPick: options.onPick,
-  });
+  void options.onPick({ kind: issueUsesWorktree(issue.id) ? 'automatic' : 'local' });
 }

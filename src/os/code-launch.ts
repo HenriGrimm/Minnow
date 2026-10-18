@@ -163,7 +163,10 @@ export async function applyCodeLaunchOptions(
   if (runTarget && created.chatId) {
     const chat = findChatById(created.chatId);
     if (chat) {
-      const applied = await applyChatRunTargetChoice(chat, runTarget);
+      const setup = applyChatRunTargetChoice(chat, runTarget);
+      touchChat(chat);
+      scheduleSaveSessions();
+      const applied = await setup;
       if (!applied.ok) {
         return { chatId: created.chatId, error: applied.error ?? 'Could not set run target' };
       }

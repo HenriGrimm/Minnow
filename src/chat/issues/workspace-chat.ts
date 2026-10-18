@@ -1,5 +1,5 @@
 import { ensureBackgroundChat } from '../../state/background-chat';
-import { applyChatRunTargetChoice, type ChatRunTargetChoice } from '../../state/chat-worktree';
+import { applyChatRunTargetChoice, isChatWorktreeSetupPending, type ChatRunTargetChoice } from '../../state/chat-worktree';
 import { appendIssueActivity, appendIssueLinks, defaultIssuePlanPath, findIssueById, requireIssueStatusForRole, updateIssue } from '../../state/issues-store';
 import { formatCodeRefLabel } from '../../attachments/code-ref-format';
 import type { Attachment } from '../../attachments/types';
@@ -19,14 +19,22 @@ export async function runIssueWorkspaceChat(
     const issue = findIssueById(issueId);
     if (!issue || !canRunIssueWorkflow(issue)) return { ok: false, error: 'Issue is unavailable or closed' };
     await ensureSessionsReady();
-    const chat = ensureBackgroundChat({ key: `issue-chat:${issue.id}:${randomUUID()}`, name: `${issue.id}: ${issue.title}`, workspacePath: issue.workspacePath, modeId });
+    const key = runTarget?.kind === 'automatic'
+      ? `issue-chat-setup:${issue.workspacePath}:${issue.id}:${modeId}`
+      : `issue-chat:${issue.id}:${randomUUID()}`;
+    const chat = ensureBackgroundChat({ key, name: `${issue.id}: ${issue.title}`, workspacePath: issue.workspacePath, modeId });
     if (!chat) return { ok: false, error: 'Chats are not ready yet' };
+    if (isChatWorktreeSetupPending(chat.id)) return { ok: false, error: 'Worktree setup is already running', chatId: chat.id };
     if (isChatStreaming(chat.id) || getChatRunActivity(chat.id, chat) === 'running') return { ok: false, error: 'This issue chat is already running', chatId: chat.id };
     if (runTarget) {
-      const result = await applyChatRunTargetChoice(chat, runTarget);
+      const setup = applyChatRunTargetChoice(chat, runTarget);
+      touchChat(chat);
+      scheduleSaveSessions();
+      const result = await setup;
       if (!result.ok) return { ok: false, error: result.error || 'Could not set run target', chatId: chat.id };
     }
     appendIssueLinks(issue.id, { chatId: chat.id });
+    chat.backgroundKey = `issue-chat:${issue.id}:${randomUUID()}`;
     if (modeId === 'build' || modeId === 'debug') updateIssue(issue.id, { status: requireIssueStatusForRole('in_progress') });
     if (modeId === 'plan') updateIssue(issue.id, { planPath: issue.planPath || defaultIssuePlanPath(issue.id), status: requireIssueStatusForRole('planned') });
     touchChat(chat);

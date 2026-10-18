@@ -1,4 +1,5 @@
 import { showToast } from '../ui/toast';
+import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import type { Attachment } from '../attachments/types';
 import {
   getAttachmentEpoch,
@@ -138,6 +139,8 @@ export async function sendProgrammaticChatText(
   text: string,
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
+  if (isChatWorktreeSetupPending(chat.id)) throw new Error('Worktree setup is still running. Wait for it to finish.');
+  if (chat.worktreeSetupRequired) throw new Error('Retry worktree setup or explicitly choose Local before sending.');
   if (isChatStreaming(chat.id) || isChatTurnSetupPending(chat.id)) {
     if (options.requireCompletedTurn) throw new Error('Chat is already running');
     return;
@@ -308,6 +311,14 @@ export async function sendMessageWithTools(
   }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
+  if (isChatWorktreeSetupPending(chat.id)) {
+    showToast('Setting up the worktree. Your message is kept here until setup finishes.');
+    return;
+  }
+  if (chat.worktreeSetupRequired) {
+    showToast('Retry worktree setup or choose Local from Worktree options before sending.', 'error');
+    return;
+  }
   if (isPluginSlashCommand(rawTextEarly)) {
     try {
       await dispatchPluginSlashCommand(rawTextEarly, { chatId: chat.id, workspacePath: chat.workspacePath ?? getWorkspacePath() });

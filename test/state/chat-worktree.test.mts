@@ -11,13 +11,57 @@ import {
   isManagedChatWorktreePath,
   parseChatRunTargetChoice,
   applyChatRunTargetChoice,
+  isChatWorktreeSetupPending,
   resolveChatSpawnCwd,
   resolveChatToolWorkspaceRoot,
   suggestChatWorktreeBranchName,
 } from '../../src/state/chat-worktree.ts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
+import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 describe('chat-worktree helpers', () => {
+  test('automatic setup coalesces, binds the originating repo, and Local preserves files', async () => {
+    const originalFetch = globalThis.fetch;
+    setLocalServerAvailableForTests(true);
+    const calls: any[] = [];
+    let complete!: (response: Response) => void;
+    globalThis.fetch = (async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      calls.push(body);
+      if (body.op === 'enable_chat') return new Promise<Response>(resolve => { complete = resolve; });
+      return Response.json({ ok: true, current: 'main' });
+    }) as typeof fetch;
+    const chat = { id: 'auto-test', name: 'Fix login', workspacePath: '/issue/repo', worktreeRoot: undefined as string | undefined, worktreeSetupRequired: undefined as boolean | undefined };
+    try {
+      assert.deepEqual(parseChatRunTargetChoice({ kind: 'automatic' }), { kind: 'automatic' });
+      const first = applyChatRunTargetChoice(chat as never, { kind: 'automatic' });
+      const duplicate = applyChatRunTargetChoice(chat as never, { kind: 'automatic' });
+      assert.equal(first, duplicate);
+      assert.equal(isChatWorktreeSetupPending(chat.id), true);
+      assert.equal(chat.worktreeRoot, undefined);
+      assert.equal(calls[0].cwd, '/issue/repo');
+      complete(Response.json({ ok: true, path: '/managed/chat/auto-test', branch: 'minnow/fix-login-123' }));
+      assert.equal((await first).ok, true);
+      assert.equal(isChatWorktreeSetupPending(chat.id), false);
+      assert.equal(chat.worktreeRoot, '/managed/chat/auto-test');
+      assert.equal(chat.worktreeSetupRequired, undefined);
+      await applyChatRunTargetChoice(chat as never, { kind: 'local' });
+      assert.equal(chat.worktreeRoot, undefined);
+      assert.equal(calls.some(c => c.op === 'remove_chat'), false);
+      globalThis.fetch = (async () => Response.json({ ok: false, error: 'Install failed; worktree kept' })) as typeof fetch;
+      assert.equal((await applyChatRunTargetChoice(chat as never, { kind: 'automatic' })).ok, false);
+      assert.equal(chat.worktreeRoot, undefined);
+      assert.equal(isChatWorktreeSetupPending(chat.id), false);
+      assert.equal(chat.worktreeSetupRequired, true);
+      const restored = JSON.parse(JSON.stringify(chat));
+      assert.equal(restored.worktreeSetupRequired, true);
+      await applyChatRunTargetChoice(restored, { kind: 'local' });
+      assert.equal(restored.worktreeSetupRequired, undefined);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setLocalServerAvailableForTests(false);
+    }
+  });
   test('isChatWorktreeMode is true when worktreeRoot is set', () => {
     setWorkspaceFromServer({ path: '/repo/main', label: 'main', isDefault: false });
     assert.equal(isChatWorktreeMode({ worktreeRoot: '/tmp/wt' }), true);

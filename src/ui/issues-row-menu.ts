@@ -4,7 +4,7 @@ import { canRunIssueWorkflow, ISSUE_FOREGROUND_CHAT_MODES } from '../chat/issues
 import { getMode } from '../chat/modes/registry';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
-import { lastIssueMenuOrigin, promptIssueChatRunTarget } from './issues-chat-run-target';
+import { lastIssueMenuOrigin, promptIssueChatRunTarget, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
 import { canExpandIssueDraft } from '../chat/issues/expand-issue-guards';
 import { canExpandIssueWithAgent } from '../chat/issues/expand-task';
 import { sortedPriorities, sortedTypes } from '../issues/taxonomy';
@@ -99,6 +99,13 @@ export function buildIssueRowMenuItems(
   }
 
   if (singleTarget) {
+    items.push({
+      id: 'use-worktree',
+      label: issueUsesWorktree(issue.id) ? 'Worktree on: use Local instead' : 'Use worktree',
+      hint: 'Automatically prepare a checkout for new issue chats',
+      disabled: !workflowOk || workflowBusy,
+      onSelect: () => { toggleIssueWorktree(issue.id); actions.render(); refreshIssueDetailIfOpen(); },
+    });
     items.push({
       id: 'send-to-chat',
       label: 'Send to chat',
