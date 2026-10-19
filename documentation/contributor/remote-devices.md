@@ -60,6 +60,21 @@ The binary is located from `MINNOW_TAILNET_BIN`, then packaged `resources/bin/`,
 
 The connection monitor ([`connection.ts`](../../src/companion/connection.ts)) probes every five seconds and on wake/online/pageshow. An outage never ends a pairing.
 
+### Phone app
+
+[`src/mobile/`](../../src/mobile/) is the phone UI. [`mode.ts`](../../src/mobile/mode.ts) decides once at boot: a non-Electron page whose viewport matches `PHONE_MQ` (or that was opened with `?mobile=1`, remembered in `localStorage`; `?mobile=0` opts out) stamps `html.mn-mobile-app`. Boot then skips the workspace gate, onboarding and the welcome page (phones follow the computer's current workspace), runs the normal `initApp()`, and mounts the shell before `markChromeReady()`. [`mobile-app.css`](../../src/styles/mobile-app.css) hides the desktop chrome but keeps the global approval and question hosts.
+
+The shell is four tabs, each with its own screen stack ([`nav.ts`](../../src/mobile/nav.ts)). Pushes add a `history` entry without touching the hash, which the OS router owns, so the back gesture pops one screen. Nothing forks the engine:
+
+| Tab | Data | Notes |
+|-----|------|-------|
+| Chats | `sessionState`, `subscribeSidebarRender`, chat dot states | A thread mounts the real Code transcript, composer and prompt hosts through `mountSharedChatHost`, so streaming, approvals, questions and queued messages behave as on the desktop. Model picks go through a phone sheet ([`models.ts`](../../src/mobile/models.ts)) over the same `#modelSelect` catalog. |
+| Boards | `createBoardListClient`, `createBoardClient` | Task actions come from `buildTaskCardMenuItems`, attempt transcripts from `adaptAttemptTranscript` + `renderTranscriptView`, diffs from `readTaskFileDiff`. |
+| Issues | `issues-store`, taxonomy | **Work on this** runs `runIssueWorkspaceChat`. |
+| Files | `list_directory`, falling back to `/api/brain/code/files` when agent file tools are off; `/api/preview/file` for content | Read-only. Large files show their first 2000 lines. |
+
+Notification taps route to phone screens through `openMobileNotificationTarget`. Tests: `test/mobile/`.
+
 Host side: **Settings → Devices** ([`settings-devices.ts`](../../src/ui/settings-devices.ts)), the Connect sheet ([`settings-devices-connect.ts`](../../src/ui/settings-devices-connect.ts)), and approval cards in any app ([`device-request-prompt.ts`](../../src/ui/device-request-prompt.ts), notification kind `device_request`).
 
 ## Testing

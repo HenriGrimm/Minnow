@@ -1,6 +1,6 @@
 # Use Minnow on your phone
 
-Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, check on a long agent run, approve a tool call, or add a scheduled job. Nothing needs to be installed on the phone.
+Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, follow a board, approve a tool call, file an issue, or read a file. Nothing needs to be installed on the phone.
 
 There are two ways for a phone to reach your computer. You can use either or both:
 
@@ -70,11 +70,19 @@ Disconnect a phone you have lost. Its saved sign-in stops working on its next re
 
 ## What you get on a phone
 
-On a phone-sized screen (640px and narrower), Minnow is a focused chat app: conversations, the composer, the mode picker, notifications, and Scheduler. The file explorer, terminal, browser automation, and app navigation are left out; they need a full screen and keyboard.
+On a phone-sized screen (640px and narrower), Minnow opens as a phone app with four tabs along the bottom. It uses the same chats, boards, issues and files as your computer, so work started on one continues on the other.
+
+- **Chats**: your conversations in the current workspace, newest first, with pinned chats on top. A dot shows a chat that is working, waiting for you, failed or has a new reply. Tap the workspace name to switch workspaces. The pencil button starts a new chat.
+- **Chat**: a conversation fills the screen. Tap the mode under the title to change it, and the model name above the keyboard to pick a model. The paperclip attaches photos and files. Tool approvals and questions appear above the composer, as on the computer. **⋯** renames, pins or deletes the chat.
+- **Boards**: your Orchestrate boards with their progress. Open one to follow its cards live, by wave or by column. Start, pause, stop or resume it from the bar at the bottom. Tap a card for its spec, its runs (each run opens as a readable transcript), its changed files with diffs, and the same Start, Retry, Skip, Reset and Rewind actions as on the computer.
+- **Issues**: open, in-progress, triage and done issues, grouped by status. Tap **+** to file one. An issue shows its status, priority and type (tap to change them), its description, sub-issues, linked chats and comments. **Work on this** starts a Build, Plan, Debug or Discuss chat for it.
+- **Files**: browse the workspace folder by folder, or search with **Go to file**. Recently opened files are listed first. Code opens with syntax highlighting and line numbers; the wrap button switches between wrapped lines and side-scrolling. Markdown opens formatted, with **⋯ → Show source** for the raw text, and images open full width. Files are read-only on a phone.
+
+The phone's back gesture goes back one screen. Tapping the current tab again returns to the top of that tab.
 
 **Mutating tools always ask for approval on a phone**, even when the computer has that tool set to Full.
 
-Tablets and laptop browsers on wide screens get the full app.
+Tablets and laptop browsers on wide screens get the full app. To use the full app on a phone, choose **⋯ → Settings → Use the desktop layout** in Chats; open Minnow with `?mobile=1` to switch back.
 
 Saved chats and chat folders update across open Minnow windows within about five seconds and refresh when you return to the app. Your current chat, unsaved edits, and running turns are protected. Swipe toward older messages to pause automatic scrolling; **Jump to latest** resumes it.
 
@@ -107,4 +115,4 @@ More on the overall model: [Privacy and security](../reference/privacy-and-secur
 
 - [Privacy and security](../reference/privacy-and-security.md)
 - [Settings app](../apps/settings.md)
-- [Scheduler app](../apps/scheduler.md)
+- [Issues app](../apps/issues.md)

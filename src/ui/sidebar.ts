@@ -979,8 +979,23 @@ function cancelScheduledSidebarRender(): void {
   sidebarRenderFrame = null;
 }
 
+const sidebarRenderListeners = new Set<() => void>();
+
+/** Called whenever the chat list re-renders: chats added, renamed, reordered or removed. */
+export function subscribeSidebarRender(listener: () => void): () => void {
+  sidebarRenderListeners.add(listener);
+  return () => sidebarRenderListeners.delete(listener);
+}
+
 export function renderSidebar(): void {
   cancelScheduledSidebarRender();
+  for (const listener of sidebarRenderListeners) {
+    try {
+      listener();
+    } catch (error) {
+      console.error('[sidebar] render listener threw', error);
+    }
+  }
   if (isExpertScopeActive() && sessionState) {
     const expertId = getExpertScopeId();
     if (expertId) {

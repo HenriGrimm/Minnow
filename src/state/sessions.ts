@@ -725,6 +725,14 @@ export function requireHistory(chat: Chat): Message[] {
   return chat.history;
 }
 
+/** Last-message previews from boot summaries, for lists drawn before history loads. Never persisted. */
+const summaryPreviewByChatId = new Map<string, string>();
+
+/** Server-side preview of a lazily loaded chat's last message, when boot supplied one. */
+export function getChatSummaryPreview(chatId: string): string {
+  return summaryPreviewByChatId.get(chatId) ?? '';
+}
+
 /**
  * Inflate a {@link ChatSummary} into a Chat placeholder (empty history).
  * Spreads cold meta_json fields + non-message children from the summary payload (C.2).
@@ -737,7 +745,9 @@ export function chatSummaryToChat(summary: ChatSummary): Chat {
     historyDigest: _historyDigest,
     ...cold
   } = summary as ChatSummary & Record<string, unknown>;
-  void _lastMessagePreview;
+  if (typeof _lastMessagePreview === 'string' && _lastMessagePreview.trim()) {
+    summaryPreviewByChatId.set(summary.id, _lastMessagePreview.trim());
+  }
   void _sortIndex;
   void _historyDigest;
 

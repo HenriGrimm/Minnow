@@ -15,6 +15,7 @@ import { launchApp } from './router';
 import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
 import { openShellOverlay, shellOverlayClosed } from '../ui/shell-overlay-state';
+import { isMobileShell } from '../mobile/mode';
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,8 @@ export function syncWorkspaceGateFromRoute(): void {
     if (gateOpen) closeWorkspaceGate();
     return;
   }
-  if (hasViewWorkspace()) {
+  // Phones use the computer's current workspace; their Chats tab switches it.
+  if (hasViewWorkspace() || isMobileShell()) {
     launchApp('code');
     return;
   }
@@ -237,6 +239,7 @@ function ensureBootGatePromise(): void {
  */
 export function shouldBlockBootOnWorkspaceGate(): boolean {
   if (!isOsShellEnabled()) return false;
+  if (isMobileShell()) return false;
   if (isPageReload()) return false;
   if (hasViewWorkspace()) return false;
   return true;
