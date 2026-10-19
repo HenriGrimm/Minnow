@@ -5,7 +5,7 @@ import { subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/str
 import { isChatPinned, isBoardOwnedChat } from '../state/chat-groups';
 import { getSidebarListedChatsForWorkspace, formatDraftChatSidebarName } from '../state/session-workspace-scope';
 import { getChatSummaryPreview, isHiddenFromMainSidebar, sessionState } from '../state/sessions';
-import { getWorkspaceLabel, getWorkspacePath, getWorkspaceRecentItems, subscribeWorkspace } from '../state/workspace';
+import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
 import { PLACEHOLDER_CHAT_NAME } from '../constants';
 import type { Chat } from '../types';
@@ -14,7 +14,8 @@ import { attachPullToRefresh, fab, screenHeader, searchField } from './chrome';
 import { el, emptyState, icon, iconButton, shortTime } from './dom';
 import { modeGlyph } from './modes';
 import type { MobileScreen } from './nav';
-import { openActionSheet, pickFromSheet } from './sheet';
+import { openActionSheet } from './sheet';
+import { switchWorkspaceFromSheet } from './workspace-switch';
 
 export interface ChatsScreenDeps {
   openChat(chatId: string): void;
@@ -79,23 +80,6 @@ function buildRow(chat: Chat, deps: ChatsScreenDeps, dot: string): HTMLElement {
   );
 }
 
-async function switchWorkspaceFromSheet(): Promise<void> {
-  const recent = getWorkspaceRecentItems().filter((item) => item.exists);
-  if (!recent.length) return;
-  const picked = await pickFromSheet(
-    'Workspace',
-    recent.map((item) => ({
-      value: item.path,
-      label: item.label,
-      description: item.path,
-      glyph: 'fi-rr-folder',
-      selected: item.isCurrent,
-    })),
-  );
-  if (!picked || picked === getWorkspacePath()) return;
-  const { executeWorkspaceSwitch } = await import('../ui/workspace-switch-guard');
-  await executeWorkspaceSwitch(picked);
-}
 
 export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
   let query = '';

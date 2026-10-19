@@ -9,6 +9,42 @@ import { Window } from 'happy-dom';
 
 let win: Window;
 
+test('workspace sheet refreshes recents, includes sandbox and browsing, and reports load failures', async () => {
+  const { switchWorkspaceFromSheet } = await import('../../src/mobile/workspace-switch.ts');
+  const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  const originalFetch = globalThis.fetch;
+  const row = (path: string) => ({ path, label: path, exists: true, isCurrent: false });
+  let reads = 0;
+  setWorkspaceFromServer({ path: '/current', label: 'Current', isDefault: false, recent: [] });
+  globalThis.fetch = (async () => {
+    reads++;
+    return new Response(JSON.stringify({
+      path: '/current', label: 'Current', isDefault: false,
+      recent: [row('/current'), row(`/fresh-${reads}`), { ...row('/missing'), exists: false }],
+      sandbox: row('/sandbox'),
+    }));
+  }) as typeof fetch;
+  try {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const pending = switchWorkspaceFromSheet();
+      for (let i = 0; i < 20 && !document.querySelector('.m-sheet:not(.test-closed)'); i++) await Promise.resolve();
+      const sheet = document.querySelector('.m-sheet:not(.test-closed)')!;
+      assert.ok(sheet, 'empty cached recents still opens a picker');
+      const labels = [...sheet.querySelectorAll('.m-pick__label')].map((el) => el.textContent);
+      assert.deepEqual(labels, ['/sandbox', '/current', `/fresh-${attempt}`, 'Browse folders…']);
+      (sheet.querySelector('[aria-selected="true"]') as HTMLButtonElement).click();
+      sheet.classList.add('test-closed');
+      await pending;
+    }
+    globalThis.fetch = (async () => new Response('', { status: 503 })) as typeof fetch;
+    await switchWorkspaceFromSheet();
+    assert.match(document.querySelector('.mn-toast--error')?.textContent ?? '', /Unable to load workspaces/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    document.querySelectorAll('.m-sheet, .mn-toast-stack').forEach((el) => el.remove());
+  }
+});
+
 function setMatchMedia(phone: boolean): void {
   Object.assign(win, {
     matchMedia: (query: string) => ({
