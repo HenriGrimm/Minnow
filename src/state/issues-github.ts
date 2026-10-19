@@ -273,7 +273,7 @@ function portableFields(issue: NonNullable<ReturnType<typeof findIssueById>>): S
   if (!type || !priority || !status) throw new Error('Issue categorization is missing from the taxonomy');
   const project = issue.projectId ? findIssueProject(issue.projectId) : undefined;
   const parent = issue.parentId ? findIssueById(issue.parentId) : undefined;
-  if (issue.parentId && (!parent?.github || parent.workspacePath !== issue.workspacePath)) {
+  if (issue.parentId && (!parent?.github || normalizeWorkspacePath(parent.workspacePath) !== normalizeWorkspacePath(issue.workspacePath))) {
     throw new Error('Sync the parent issue in the same workspace before syncing this sub-issue.');
   }
   const metadata: GithubIssueMetadata = {
@@ -400,11 +400,18 @@ async function runIssueSync(issueId: string, snapshot?: RemoteIssueSnapshot): Pr
   const mode = getIssuesGithubMode();
   if (mode === 'off') return { ok: true, action: 'noop' };
   const remote = snapshot ?? await readRemote(issueId);
-  const current = findIssueById(issueId);
+  let current = findIssueById(issueId);
   if (!current) return { ok: false, action: 'noop', error: 'Issue not found' };
-  const remoteParent = remote ? decodeGithubIssueBody(remote.body).metadata?.parent : null;
-  if (remoteParent && !listIssues().some((row) => row.workspacePath === current.workspacePath && row.github?.number === remoteParent)) {
-    return { ok: false, action: 'noop', error: `Import parent GitHub issue #${remoteParent} before syncing this sub-issue.` };
+  if (remote) {
+    const workspacePath = current.workspacePath;
+    const number = current.github?.number;
+    await ensureRemoteParent(remote, workspacePath);
+    // Parent discovery may take time; retain edits made while it was in flight.
+    const latest = findIssueById(issueId);
+    if (!latest || latest.workspacePath !== workspacePath || latest.github?.number !== number) {
+      return { ok: true, action: 'noop' };
+    }
+    current = latest;
   }
   // Freeze the sent revision: edits during network calls must remain pending.
   const issue = { ...current, labels: [...current.labels] };
@@ -548,7 +555,7 @@ async function pushSyncedFieldsToGithub(
 function applyRemoteToIssue(issueId: string, fields: SyncFields): void {
   const metadata = fields.metadata;
   const current = findIssueById(issueId);
-  const parent = metadata?.parent ? listIssues().find((row) => row.workspacePath === current?.workspacePath && row.github?.number === metadata.parent) : undefined;
+  const parent = metadata?.parent ? findLinkedGithubIssue(metadata.parent, current?.workspacePath ?? '') : undefined;
   if (metadata?.parent && !parent) throw new Error(`Import parent GitHub issue #${metadata.parent} before syncing this sub-issue.`);
   if (metadata) restoreCategories(metadata);
   const currentStatus = findIssueById(issueId)?.status;
@@ -597,6 +604,64 @@ function writeLink(
     gitLinks: [{ kind: 'github-issue', ref: `#${number}`, url }],
   });
   scheduleSaveIssues();
+}
+
+function findLinkedGithubIssue(number: number, workspacePath: string) {
+  return listIssues().find((row) => normalizeWorkspacePath(row.workspacePath) === normalizeWorkspacePath(workspacePath) && row.github?.number === number);
+}
+
+/** Restore an identity only after its parent is available; never watermark a partial import. */
+function importRemoteIssue(remote: RemoteIssueSnapshot, workspacePath: string) {
+  const decoded = decodeGithubIssueBody(remote.body);
+  const parent = decoded.metadata?.parent ? findLinkedGithubIssue(decoded.metadata.parent, workspacePath) : undefined;
+  if (decoded.metadata) restoreCategories(decoded.metadata);
+  const card = addIssue({
+    title: remote.title || `GitHub #${remote.number}`,
+    description: decoded.body,
+    labels: remote.labels,
+    workspacePath,
+    source: 'github',
+    ...(parent ? { parentId: parent.id } : {}),
+    ...(remote.state === 'closed' && statusForClosedRemote() ? { status: statusForClosedRemote() } : {}),
+  });
+  applyRemoteToIssue(card.id, {
+    title: remote.title || `GitHub #${remote.number}`, body: decoded.body,
+    labels: remote.labels, closed: remote.state === 'closed', metadata: decoded.metadata,
+  });
+  writeLink(card.id, remote.number, remote.url, remote.updatedAt);
+  return card;
+}
+
+/** Closed/older parents may be absent from discovery; read their exact identity. */
+async function ensureRemoteParent(
+  remote: RemoteIssueSnapshot,
+  workspacePath: string,
+  available = new Map<number, RemoteIssueSnapshot>(),
+  imported = new Set<string>(),
+): Promise<void> {
+  const number = decodeGithubIssueBody(remote.body).metadata?.parent;
+  if (!number) return;
+  if (number === remote.number) throw new Error('An issue cannot be its own parent.');
+  const existing = findLinkedGithubIssue(number, workspacePath);
+  if (existing) {
+    if (existing.parentId) throw new Error('Sub-issues nest one level only.');
+    return;
+  }
+  let parent = available.get(number);
+  if (!parent) {
+    const result = await forge('issueView', { number, cwd: workspacePath });
+    if (!result.ok || !result.issue || result.issue.number !== number) {
+      throw new Error(`Could not import parent GitHub issue #${number}: ${result.error ?? 'Could not read the GitHub issue'}`);
+    }
+    parent = result.issue;
+  }
+  if (decodeGithubIssueBody(parent.body).metadata?.parent) {
+    throw new Error('Sub-issues nest one level only.');
+  }
+  // Another worker may have imported this same parent while the read was pending.
+  const restored = findLinkedGithubIssue(number, workspacePath);
+  if (restored?.parentId) throw new Error('Sub-issues nest one level only.');
+  if (!restored) imported.add(importRemoteIssue(parent, workspacePath).id);
 }
 
 export interface ImportResult {
@@ -659,51 +724,25 @@ export async function importGithubIssues(options?: {
         .filter((n): n is number => typeof n === 'number'),
     );
 
-    let imported = 0;
+    const imported = new Set<string>();
     let skipped = 0;
-    const importedCards: Array<{ id: string; remote: RemoteIssueSnapshot }> = [];
-    const closedStatus = statusForClosedRemote();
-
-    for (const remote of res.issues) {
-      if (linked.has(remote.number)) {
-        skipped += 1;
-        continue;
+    const available = new Map(res.issues.map((remote) => [remote.number, remote]));
+    try {
+      for (const remote of res.issues) {
+        if (linked.has(remote.number)) {
+          skipped += 1;
+          continue;
+        }
+        await ensureRemoteParent(remote, workspacePath, available, imported);
+        if (!findLinkedGithubIssue(remote.number, workspacePath)) {
+          imported.add(importRemoteIssue(remote, workspacePath).id);
+        }
       }
-      try {
-        const decoded = decodeGithubIssueBody(remote.body);
-        if (decoded.metadata) restoreCategories(decoded.metadata);
-        const card = addIssue({
-          title: remote.title || `GitHub #${remote.number}`,
-          description: decoded.body,
-          labels: remote.labels,
-          workspacePath,
-          source: 'github',
-          ...(remote.state === 'closed' && closedStatus ? { status: closedStatus } : {}),
-        });
-        writeLink(card.id, remote.number, remote.url, remote.updatedAt);
-        importedCards.push({ id: card.id, remote });
-        linked.add(remote.number);
-        imported += 1;
-      } catch {}
+    } catch (err) {
+      return { ok: false, imported: imported.size, skipped,
+        error: userFacingGithubError(err instanceof Error ? err.message : String(err)) };
     }
-
-    // All identities must exist before resolving portable parent issue numbers.
-    for (const { id, remote } of importedCards) {
-      const decoded = decodeGithubIssueBody(remote.body);
-      try {
-        applyRemoteToIssue(id, {
-          title: remote.title || `GitHub #${remote.number}`, body: decoded.body,
-          labels: remote.labels, closed: remote.state === 'closed', metadata: decoded.metadata,
-        });
-        writeLink(id, remote.number, remote.url, remote.updatedAt);
-      } catch (err) {
-        scheduleSaveIssues();
-        return { ok: false, imported, skipped, error: userFacingGithubError(err instanceof Error ? err.message : String(err)) };
-      }
-    }
-
-    if (imported > 0) scheduleSaveIssues();
-    return { ok: true, imported, skipped };
+    return { ok: true, imported: imported.size, skipped };
   } catch (err) {
     return {
       ok: false,
