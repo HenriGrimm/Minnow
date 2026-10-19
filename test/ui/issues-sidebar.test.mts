@@ -223,3 +223,134 @@ test('sidebar filter menus combine properties, remove chips and retain workspace
   assert.equal(sidebar.querySelectorAll('[data-chip-id]').length, 0);
   assert.ok(rows().length > 1);
 });
+
+function fileDrag(type: string, files: File[] = [], types = ['Files']): Event {
+  const event = new dom.Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', { value: { files, types, dropEffect: '', getData: () => '' } });
+  return event as unknown as Event;
+}
+
+test('sidebar queues removable files, rejects folders and oversized files, and keeps files per workspace', async () => {
+  await openIssuesSidebar();
+  type('With attachments');
+  const form = document.querySelector<HTMLFormElement>('.issues-sidebar__capture')!;
+  const drag = fileDrag('dragover');
+  input().dispatchEvent(drag);
+  assert.equal(drag.defaultPrevented, true);
+  assert.ok(form.classList.contains('is-drop-target'));
+  const plain = fileDrag('dragover', [], ['text/plain']);
+  input().dispatchEvent(plain);
+  assert.equal(plain.defaultPrevented, false);
+  const large = new dom.File(['x'], 'large.png', { type: 'image/png' });
+  Object.defineProperty(large, 'size', { value: 13 * 1024 * 1024 });
+  const dropped = fileDrag('drop', [
+    new dom.File(['image'], 'screen.png', { type: 'image/png' }) as unknown as File,
+    new dom.File(['log'], 'debug.txt', { type: 'text/plain' }) as unknown as File,
+    new dom.File([], 'folder', { type: 'inode/directory' }) as unknown as File,
+    large as unknown as File,
+  ]);
+  input().dispatchEvent(dropped);
+  assert.equal(dropped.defaultPrevented, true);
+  assert.equal(form.classList.contains('is-drop-target'), false);
+  assert.equal(form.querySelectorAll('.issues-sidebar__file').length, 2);
+  assert.match(document.getElementById('issuesSidebarFeedback')!.textContent!, /folders.*12 MB/);
+  form.querySelector<HTMLButtonElement>('[aria-label="Remove debug.txt"]')!.click();
+  assert.equal(form.querySelectorAll('.issues-sidebar__file').length, 1);
+  setWorkspaceFromServer({ path: 'C:/Projects/Other', label: 'Other', isDefault: false });
+  await openIssuesSidebar();
+  assert.equal(form.querySelectorAll('.issues-sidebar__file').length, 0);
+  setWorkspaceFromServer({ path: 'C:/Projects/Minnow', label: 'Minnow', isDefault: false });
+  await openIssuesSidebar();
+  assert.equal(input().value, 'With attachments');
+  assert.match(form.querySelector('[data-draft-files]')!.textContent!, /screen.png/);
+});
+
+test('sidebar uploads images and files before clearing capture and retries without duplicates', async () => {
+  const previousFetch = globalThis.fetch;
+  const uploads: Array<{ issueId: string; name: string; mime: string; data: string }> = [];
+  let fail = true;
+  globalThis.fetch = (async (url, init) => {
+    if (url !== '/api/issues/attachments') return previousFetch(url, init);
+    const body = JSON.parse(String(init?.body));
+    uploads.push(body);
+    if (body.name === 'debug.txt' && fail) return new Response(JSON.stringify({ error: 'Upload interrupted' }), { status: 500 });
+    return new Response(JSON.stringify({ attachment: {
+      key: `${body.issueId}/${body.name}`, name: body.name, path: `/attachments/${body.issueId}/${body.name}`, mime: body.mime, bytes: 5,
+    } }));
+  }) as typeof fetch;
+  setLocalServerAvailableForTests(true);
+  try {
+    input().dispatchEvent(fileDrag('drop', [new dom.File(['log'], 'debug.txt', { type: 'text/plain' }) as unknown as File]));
+    const before = store.listIssues().length;
+    document.querySelector<HTMLButtonElement>('[data-create]')!.click();
+    await until(() => document.querySelector('[data-create]')!.textContent === 'Retry save');
+    assert.equal(store.listIssues().length, before + 1);
+    const issue = store.listIssues().find((entry) => entry.title === 'With attachments')!;
+    assert.deepEqual(issue.attachments?.map((entry) => entry.name), ['screen.png']);
+    assert.equal(input().value, 'With attachments');
+    assert.match(document.getElementById('issuesSidebarFeedback')!.textContent!, /Upload interrupted/);
+    assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 1);
+    fail = false;
+    document.querySelector<HTMLButtonElement>('[data-create]')!.click();
+    await until(() => input().value === '');
+    assert.equal(store.listIssues().length, before + 1);
+    assert.deepEqual(store.findIssueById(issue.id)?.attachments?.map((entry) => entry.name), ['screen.png', 'debug.txt']);
+    assert.deepEqual(uploads.map((entry) => entry.name), ['screen.png', 'debug.txt', 'debug.txt']);
+    assert.ok(uploads.every((entry) => entry.issueId === issue.id));
+    assert.equal(uploads[0].mime, 'image/png');
+    assert.equal(atob(uploads[0].data), 'image');
+    assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+    setLocalServerAvailableForTests(false);
+  }
+});
+
+test('Expand waits for attachments and upload completion preserves another workspace draft', async () => {
+  await openIssuesSidebar();
+  type('Expand attached issue');
+  input().dispatchEvent(fileDrag('drop', [new dom.File(['image'], 'expand.png', { type: 'image/png' }) as unknown as File]));
+  const previousFetch = globalThis.fetch;
+  const { setExpandIssueFetcherForTests } = await import('../../src/ui/issues-expand.ts');
+  let releaseUpload!: () => void;
+  let expanded = false;
+  globalThis.fetch = (async (url, init) => {
+    if (url !== '/api/issues/attachments') return previousFetch(url, init);
+    const body = JSON.parse(String(init?.body));
+    await new Promise<void>((resolve) => { releaseUpload = resolve; });
+    return new Response(JSON.stringify({ attachment: {
+      key: `${body.issueId}/${body.name}`, name: body.name, path: `/attachments/${body.issueId}/${body.name}`, mime: body.mime, bytes: 5,
+    } }));
+  }) as typeof fetch;
+  setExpandIssueFetcherForTests(async () => {
+    const issue = store.listIssues().find((entry) => entry.title === 'Expand attached issue')!;
+    assert.deepEqual(issue.attachments?.map((entry) => entry.name), ['expand.png']);
+    expanded = true;
+    return { draft: { title: 'Expanded with attachment', description: '', type: 'bug' } };
+  });
+  setLocalServerAvailableForTests(true);
+  try {
+    document.querySelector<HTMLButtonElement>('[data-expand]')!.click();
+    await until(() => Boolean(releaseUpload));
+    assert.equal(expanded, false);
+    assert.equal(input().disabled, true);
+    input().dispatchEvent(fileDrag('drop', [new dom.File(['x'], 'ignored.txt') as unknown as File]));
+    assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 1);
+    setWorkspaceFromServer({ path: 'C:/Projects/Other', label: 'Other', isDefault: false });
+    await openIssuesSidebar();
+    releaseUpload();
+    await until(() => expanded && !input().disabled);
+    type('Keep this other draft');
+    await until(() => store.listIssues().some((entry) => entry.title === 'Expanded with attachment'));
+    assert.equal(input().value, 'Keep this other draft');
+    assert.equal(store.listIssues().find((entry) => entry.title === 'Expanded with attachment')?.workspacePath, 'C:/Projects/Minnow');
+    setWorkspaceFromServer({ path: 'C:/Projects/Minnow', label: 'Minnow', isDefault: false });
+    await openIssuesSidebar();
+    assert.equal(input().value, '');
+    assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+    setLocalServerAvailableForTests(false);
+    setExpandIssueFetcherForTests(null);
+  }
+});

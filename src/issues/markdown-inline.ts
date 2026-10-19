@@ -129,6 +129,8 @@ export function inlineToHtml(markdown: string): string {
     );
   });
 
+  text = text.replace(/<br\s*\/?\s*>/gi, () => stash(vault, '<br>'));
+
   text = escapeHtml(text);
   text = text.replace(/~~([^~]+)~~/g, '<s>$1</s>');
   text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');

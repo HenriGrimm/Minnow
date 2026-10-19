@@ -210,7 +210,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
-  padding: 0 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--mn-border);
   min-height: 32px;
 }
@@ -228,22 +228,11 @@
   max-width: min(100%, 20rem);
 }
 
-.issues-view-description {
-  flex: 1 1 20rem;
-  min-width: 0;
-  margin: 5px 0;
-  color: var(--mn-fg-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .issues-view-search {
   flex: 1 1 14rem;
   min-width: 12rem;
   max-width: 28rem;
   margin-left: auto;
-  margin-top: 5px;
-  margin-bottom: 5px;
 }
 
 .issues-view-search .issues-search {
@@ -253,11 +242,11 @@
 
 .issues-chip-bar {
   display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--mn-border);
 }
 
 .issues-filter-chip {
@@ -4126,8 +4115,7 @@ button.issues-detail__row:focus-visible {
     justify-content: flex-start;
   }
 
-  .issues-view-bar,
-  .issues-chip-bar {
+  .issues-view-bar {
     padding-inline: var(--mn-phone-pad-left, 14px) var(--mn-phone-pad-right, 14px);
   }
 
