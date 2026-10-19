@@ -175,20 +175,61 @@ test('repeated delivery of the same prompt hook is acknowledged without starting
   assert.equal((await f.waitResult()).subtype, 'success');
 });
 
-test('prompt hook retries cannot change identity, prompt id or command, or replay a completed turn', async t => {
-  for (const change of [{ cwd: 'other-directory' }, { session_id: 'other-session' }, { prompt_id: 'other-prompt' },
-    { prompt_id: undefined }, { prompt: 'unrequested input' }, { completed: true }]) {
+test('prompt hook retries cannot change identity', async t => {
+  for (const change of [{ cwd: 'other-directory' }, { session_id: 'other-session' }]) {
     const f = await fixture(t); await f.begin();
     const prompt = f.commands.find(value => value.startsWith('\x1b[200~')).slice(6, -6);
-    if (change.completed) {
-      await f.append(f.row('done', [{ type: 'text', text: 'Done.' }], 'end_turn'));
-      await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Done.' });
-      await f.waitResult();
-    }
     const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt, ...change });
     assert.equal((await response.json()).decision, 'block');
     assert.ok(f.events.some(e => e.is_error), JSON.stringify(change));
   }
+});
+
+test('unsolicited submissions stay blocked without losing an active tool handoff', async t => {
+  const f = await fixture(t); await f.begin();
+  const prompt = f.commands.find(value => value.startsWith('\x1b[200~')).slice(6, -6);
+  await f.append(f.row('tool', [{ type: 'tool_use', id: 'pending-call', name: 'mcp__minnow__ping', input: {} }]));
+  await f.run.beforeHandoff({ function: { name: 'ping', arguments: '{}' } });
+  f.run.pauseOutput();
+  for (const change of [{ prompt_id: 'other-prompt' }, { prompt_id: undefined }, { prompt: 'unrequested input' }]) {
+    const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt, ...change });
+    assert.equal((await response.json()).decision, 'block');
+  }
+  f.run.resumeOutput();
+  assert.equal(f.events.some(e => e.type === 'result'), false);
+  assert.equal(f.events.filter(e => e.event?.type === 'content_block_start').length, 1);
+  assert.equal(f.commands.length, 2, 'a blocked submission must not write to the PTY');
+  await f.append(f.row('continued', [{ type: 'text', text: 'Tool result received.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Tool result received.' });
+  assert.equal((await f.waitResult()).subtype, 'success');
+  assert.equal(f.events.some(e => e.is_error), false);
+});
+
+test('completed-turn replay is blocked and a subsequent Minnow message can still complete', async t => {
+  const f = await fixture(t); await f.begin();
+  const prompt = f.commands.find(value => value.startsWith('\x1b[200~')).slice(6, -6);
+  await f.append(f.row('done', [{ type: 'text', text: 'Done.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Done.' });
+  await f.waitResult();
+  const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt });
+  assert.equal((await response.json()).decision, 'block');
+  assert.equal(f.events.some(e => e.is_error), false);
+  f.bridge.queuePrompt = () => `/mcp__minnow__message ${'b'.repeat(32)}`;
+  await f.run.send('Follow up');
+  await f.post({ hook_event_name: 'UserPromptSubmit', prompt: `/mcp__minnow__message ${'b'.repeat(32)}`, prompt_id: 'next-prompt' });
+  await f.append(f.row('follow-up', [{ type: 'text', text: 'Follow-up done.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Follow-up done.', prompt_id: 'next-prompt' });
+  const deadline = Date.now() + 2000;
+  while (f.events.filter(e => e.type === 'result').length < 2 && Date.now() < deadline) await delay(20);
+  assert.deepEqual(f.events.filter(e => e.type === 'result').map(e => e.subtype), ['success', 'success']);
+});
+
+test('a mismatched command for a pending Minnow message remains a failure', async t => {
+  const f = await fixture(t); f.ready(true);
+  await f.run.send('Pending message');
+  const response = await f.post({ hook_event_name: 'UserPromptSubmit', prompt: 'different command' });
+  assert.equal((await response.json()).decision, 'block');
+  assert.match((await f.waitResult()).error, /submitted command did not match/);
 });
 
 test('rate-limit failure is recorded without inventing a percentage or successful completion', async t => {

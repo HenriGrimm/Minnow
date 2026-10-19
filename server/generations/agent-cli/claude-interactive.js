@@ -221,6 +221,13 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
         if (!sameIdentity || !expectedCommand || event.prompt !== expectedCommand) {
           res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ decision: 'block', reason: 'Minnow did not submit this message.' }));
           const reason = !sameIdentity ? 'hook identity mismatch' : expectedCommand ? 'submitted command did not match' : 'no message was pending';
+          // Blocking the extra submission is sufficient when no input is queued.
+          // Do not discard the active response (or its pending MCP results) just
+          // because Claude delivered another submission while it was running.
+          if (sameIdentity && !expectedCommand) {
+            status(`Blocked an unexpected submission (${reason}).`);
+            return;
+          }
           fail(new Error(`Interactive Claude attempted an unexpected turn (${reason}).`)); return;
         }
         acceptedSubmission = { id: event.prompt_id, command: expectedCommand };

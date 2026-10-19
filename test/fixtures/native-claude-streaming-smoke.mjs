@@ -15,7 +15,7 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-streaming-'));
 const previous = { home: process.env.MINNOW_HOME, claude: process.env.CLAUDE_CONFIG_DIR };
 const requests = [], observations = [], completions = [], helperInvocations = [];
-let active, processes = 0, serverError;
+let active, processes = 0, serverError, interactiveInput, blockedSubmissions = 0;
 const payloads = () => Buffer.concat(active?.chunks ?? []).toString().split('\n')
   .filter(line => line.startsWith('data: {')).map(line => JSON.parse(line.slice(6)));
 const deltas = () => payloads().flatMap(row => row.choices ?? []).map(choice => choice.delta ?? {});
@@ -53,6 +53,15 @@ async function respond(req, res) {
   }
   if (tool) {
     await delay(2500);
+    // Exercise the real adapter while native Claude is streaming and awaiting
+    // MCP results: an unsolicited submission must not destroy that response.
+    const settings = JSON.parse(await fs.readFile(path.join(interactiveInput.tempDir, 'claude-interactive-settings.json'), 'utf8'));
+    const hook = settings.hooks.UserPromptSubmit[0].hooks[0];
+    const blocked = await fetch(hook.url, { method: 'POST', headers: hook.headers,
+      body: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: interactiveInput.sessionId,
+        cwd: interactiveInput.tempDir, prompt_id: 'unsolicited-prompt', prompt: 'Unrequested follow-up' }) }).then(r => r.json());
+    assert.equal(blocked.decision, 'block');
+    blockedSubmissions++;
     send({ type: 'content_block_start', index: 4, content_block: { type: 'text', text: '' } });
     send({ type: 'content_block_delta', index: 4, delta: { type: 'text_delta', text: 'After tool dispatch.\n' } });
     send({ type: 'content_block_stop', index: 4 });
@@ -68,6 +77,7 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
     processes++;
+    interactiveInput = input;
     const config = process.env.CLAUDE_CONFIG_DIR;
     await fs.mkdir(config, { recursive: true });
     await fs.writeFile(path.join(config, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, theme: 'dark',
@@ -109,7 +119,8 @@ try {
   }
   messages.push({ role: 'user', content: 'A follow-up in the same process.' });
   await generate();
-  console.log(JSON.stringify({ processes, requests: requests.length, thinking: requests.map(r => r.thinking), observations, completions }));
+  assert.equal(blockedSubmissions, 1);
+  console.log(JSON.stringify({ processes, requests: requests.length, blockedSubmissions, thinking: requests.map(r => r.thinking), observations, completions }));
   assert.equal(toolCount, 2);
   assert.deepEqual(toolValues.sort(), [0, 1]);
   assert.equal(processes, 1, 'tool continuation and follow-up reuse the interactive process');
