@@ -1,6 +1,6 @@
 import { showToast } from './toast';
 /**
- * Settings → General → Backup and restore (MIN-16).
+ * Settings → Data & privacy → Backups (MIN-16).
  *
  * One group, four parts: what a backup includes, a manual backup, scheduled
  * snapshots, and restore. The server owns every rule (what is secret, where a

@@ -478,6 +478,7 @@
       <button type="button" class="settings-nav__item" data-area-jump="notifications" data-settings-nav-area="notifications"><span class="settings-nav__item-label">Notifications</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="audio" data-settings-nav-area="audio"><span class="settings-nav__item-label">Audio</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="devices" data-settings-nav-area="devices"><span class="settings-nav__item-label">Devices</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="apps">
       <summary class="settings-nav-group__label">Code &amp; workspace</summary>
@@ -512,12 +513,12 @@
     </details>
     <details class="settings-nav-group" data-settings-nav-group="data">
       <summary class="settings-nav-group__label">Data &amp; privacy</summary>
-      <button type="button" class="settings-nav__item" data-area-jump="data" data-settings-nav-area="data"><span class="settings-nav__item-label">Backups &amp; access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="backups" data-settings-nav-area="backups"><span class="settings-nav__item-label">Backups</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="access" data-settings-nav-area="access"><span class="settings-nav__item-label">Access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="advanced">
       <summary class="settings-nav-group__label">About &amp; troubleshooting</summary>
       <button type="button" class="settings-nav__item" data-area-jump="about" data-settings-nav-area="about"><span class="settings-nav__item-label">About</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics"><span class="settings-nav__item-label">Health &amp; diagnostics</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     </nav>
@@ -533,9 +534,13 @@
         <h2>Terminal</h2>
         <div id="settingsTerminalBody" class="settings-section-body"></div>
       </section>
-      <section id="settingsSection-data" class="settings-section settings-area settings-area--title-suppressed" data-area="data">
-        <h2>Data &amp; privacy</h2>
-        <div id="settingsDataBody" class="settings-section-body"></div>
+      <section id="settingsSection-backups" class="settings-section settings-area settings-area--title-suppressed" data-area="backups">
+        <h2>Backups</h2>
+        <div id="settingsBackupsBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-access" class="settings-section settings-area settings-area--title-suppressed" data-area="access">
+        <h2>Access</h2>
+        <div id="settingsAccessBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-updates" class="settings-section settings-area settings-area--title-suppressed" data-area="updates">
         <h2>Updates</h2>

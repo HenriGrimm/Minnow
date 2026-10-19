@@ -113,6 +113,7 @@ test('Dashboard loads, offers an empty goal state, and keeps Code intact through
   try {
     launchInstance('home'); await home.openHome();
     assert.ok(document.querySelector('.home-flow-board'));
+    assert.equal(document.querySelector('.home-header'), null);
     assert.equal(document.querySelector('.home-empty-state'), null, 'loading is not an empty project');
     await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(document.querySelectorAll('.home-flow-column').length, 0);
@@ -132,7 +133,7 @@ test('Dashboard loads, offers an empty goal state, and keeps Code intact through
     const capture = [...document.querySelectorAll<HTMLButtonElement>('.home-goal-bar button')].find(b => b.textContent === 'Add issue')!;
     capture.click(); await Promise.resolve();
     assert.equal(document.querySelector('.home-empty-state'), null);
-    assert.equal(document.querySelector('.home-header .home-goal-bar input'), input, 'capture reuses the same form');
+    assert.equal(document.querySelector('.home-page > .home-goal-bar input'), input, 'capture reuses the same form');
     assert.match(document.querySelector('[data-column=triage]')!.textContent!, /Fix the docking error/);
     const keyboard = addIssue({ title: 'Add keyboard navigation', type: 'bug', labels: ['accessibility', 'keyboard', 'desktop', 'polish'], workspacePath: '/repo', status: 'triage' });
     await Promise.resolve();

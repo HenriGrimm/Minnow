@@ -17,7 +17,7 @@ describe('settings-search-index', () => {
     const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
     for (const [query, area] of [
       ['how do I change model', 'providers'], ['stop sounds', 'notifications'],
-      ['let agents edit files', 'tools'], ['backup', 'data'],
+      ['let agents edit files', 'tools'], ['backup', 'backups'], ['filesystem', 'access'], ['shell sandbox', 'access'],
     ]) {
       const matches = rankSettingsSearch(query, buildSettingsSearchIndex());
       assert.equal(matches[0]?.sectionId, area, query);

@@ -37,7 +37,8 @@ const SECTION_SEARCH_ALIASES: Partial<
 > = {
   general: ['startup', 'setup', 'onboarding', 'tray', 'login'],
   terminal: ['shell', 'powershell', 'bash', 'command', 'console'],
-  data: ['backup', 'restore', 'privacy', 'filesystem', 'disk access'],
+  backups: ['backup', 'restore', 'export', 'import'],
+  access: ['privacy', 'filesystem', 'disk access', 'shell sandbox'],
   devices: ['phone', 'tablet', 'iphone', 'ipad', 'android', 'network', 'lan', 'wifi', 'remote', 'tailscale', 'anywhere', 'qr', 'pair'],
   updates: ['update', 'version', 'upgrade', 'restart'],
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],

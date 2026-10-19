@@ -64,6 +64,33 @@ describe('settings-sections', () => {
     document.body.innerHTML = '';
   });
 
+  test('Backups and Access mount independently with their own controls', async () => {
+    const { Window } = await import('happy-dom');
+    const window = new Window();
+    globalThis.window = window;
+    globalThis.document = window.document;
+    document.body.innerHTML = '<div id="settingsBackupsBody"></div><div id="settingsAccessBody"></div>';
+    const { setStorageModeForTests } = await import('../../src/config/storage-mode.ts');
+    const { refreshSettingsSection } = await import('../../src/ui/settings-sections.ts');
+    setStorageModeForTests('localStorage');
+    try {
+      await refreshSettingsSection('backups');
+      const backups = document.getElementById('settingsBackupsBody');
+      const access = document.getElementById('settingsAccessBody');
+      assert.ok(backups.querySelector('#settingsBackup'));
+      assert.equal(backups.querySelector('#settingsFilesystemAccess'), null);
+      assert.equal(access.childElementCount, 0);
+      await refreshSettingsSection('access');
+      assert.ok(access.querySelector('#settingsFilesystemAccess'));
+      assert.ok(access.querySelector('#settingsShellSandbox'));
+      assert.equal(access.querySelector('#settingsBackup'), null);
+      assert.ok(backups.querySelector('#settingsBackup'));
+    } finally {
+      setStorageModeForTests(null);
+      document.body.innerHTML = '';
+    }
+  });
+
   test("concurrent refreshSettingsSection('general') does not duplicate groups", async () => {
     const { Window } = await import('happy-dom');
     const window = new Window();

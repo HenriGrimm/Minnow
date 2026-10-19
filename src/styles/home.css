@@ -11,15 +11,12 @@
 .home-button--primary { background: var(--mn-accent-ink); color: var(--mn-bg); border-color: transparent; font-weight: 600; }
 .home-button:disabled { opacity: .45; cursor: default; }
 .home-page :is(button, input, textarea, article, [tabindex]):focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 3px; }
-.home-header { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 860px) minmax(220px, 1fr); align-items: center; flex: 0 0 auto; gap: 20px; padding: 14px 24px; border-bottom: 1px solid var(--mn-border); }
-.home-header h1 { min-width: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-goal-bar { display: flex; align-items: center; min-width: 0; width: 100%; gap: 8px; padding: 4px 4px 4px 14px; border: 1px solid var(--mn-border-strong); border-radius: 10px; background: var(--mn-surface-1); }
+.home-page > .home-goal-bar { flex: 0 0 auto; width: auto; margin: 14px 24px; }
 .home-goal-bar > .icon-svg { color: var(--mn-accent-ink); }
 .home-goal-bar input { flex: 1; min-width: 60px; width: 0; height: 32px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--mn-fg); font-size: 14px; }
 .home-goal-bar input::placeholder { color: var(--mn-fg-subtle); }
 .home-page .home-goal-bar input:focus { outline: 0; box-shadow: none; }
-.home-header-actions { display: flex; gap: 8px; justify-self: end; }
-.home-header-actions .home-button { min-height: 38px; padding-inline: 14px; }
 .home-selection-bar { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; min-height: 52px; padding: 8px 24px; background: color-mix(in srgb, var(--mn-accent) 7%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--mn-accent) 35%, transparent); }
 .home-selected-count { display: flex; align-items: center; gap: 8px; padding-right: 14px; border-right: 1px solid var(--mn-border-strong); font-size: 13px; white-space: nowrap; }
 .home-selected-count .icon-svg { color: var(--mn-accent-ink); }
@@ -121,7 +118,7 @@
 .home-card-skeleton::after { width: 75%; }
 .home-dock { display: flex; flex-direction: column; flex: 0 0 auto; min-height: 38px; overflow: hidden; border-top: 1px solid var(--mn-border-strong); }
 .home-page--dock-open .home-dock { flex-basis: var(--home-dock-height, 62%); min-height: min(300px, 70%); }
-.home-page--dock-maximized > :is(.home-header, .home-selection-bar, .home-refresh-error, .home-flow-board) { display: none; }
+.home-page--dock-maximized > :is(.home-goal-bar, .home-selection-bar, .home-refresh-error, .home-flow-board) { display: none; }
 .home-page--dock-maximized .home-dock { flex: 1; min-height: 0; }
 .home-dock-collapsed { display: flex; min-height: 38px; padding-inline: 16px; background: var(--mn-surface-1); }
 .home-dock-collapsed .home-button { border: 0; min-width: 0; }
@@ -217,7 +214,7 @@
   .home-flow-card:hover .home-card-meta { display: flex; }
 }
 @container home (max-width: 1200px) {
-  .home-header { gap: 12px; padding-inline: 16px; }
+  .home-page > .home-goal-bar { margin-inline: 16px; }
   .home-send-summary { display: none; }
   .home-selection-bar { gap: 8px; padding-inline: 16px; }
   .home-flow-board { gap: 10px; padding-inline: 16px; }
@@ -225,8 +222,6 @@
   .home-chat-history, .home-chat-composer { padding-inline: 16px; }
 }
 @container home (max-width: 900px) {
-  .home-header { grid-template-columns: minmax(0, 1fr) auto; }
-  .home-goal-bar { grid-column: 1 / -1; grid-row: 2; }
   .home-selection-bar { flex-wrap: wrap; }
   .home-send-actions { flex: 1; justify-content: flex-end; }
   .home-options-button { max-width: 180px; }
@@ -234,9 +229,7 @@
   .home-flow-column { flex: 0 0 min(280px, 80cqw); scroll-snap-align: start; }
 }
 @container home (max-width: 600px) {
-  .home-header { padding: 12px; }
-  .home-header h1 { font-size: 18px; }
-  .home-header-actions .home-button { min-height: 36px; padding: 5px 9px; font-size: 12px; }
+  .home-page > .home-goal-bar { margin: 12px; }
   .home-goal-bar { flex-wrap: wrap; padding: 8px; gap: 6px; }
   .home-goal-bar input { flex-basis: calc(100% - 30px); }
   .home-goal-bar > .home-button:first-of-type { margin-left: auto; }

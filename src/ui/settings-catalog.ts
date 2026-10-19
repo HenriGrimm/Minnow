@@ -50,7 +50,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'devices', 'about'],
+  general: ['general', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
   apps: ['plugins', 'github', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],

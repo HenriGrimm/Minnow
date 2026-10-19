@@ -31,12 +31,12 @@ The sidebar has six independently expandable groups. Each destination opens one 
 
 | Group | Pages |
 |-------|-------|
-| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
 | **Code & workspace** | Editor, Terminal, Language servers, Browser, Issues |
 | **AI & agents** | Models & connections (opens Models), Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
-| **Data & privacy** | Backups & access |
-| **About & troubleshooting** | About, Updates, Health & diagnostics |
+| **Data & privacy** | Backups, Access |
+| **About & troubleshooting** | About, Health & diagnostics |
 
 Source: `SETTINGS_NAV_GROUPS` in `src/ui/settings-page-types.ts`, matched by `index.html`. Skills and Skills Library have distinct integration hubs. Legacy section and field links resolve through `settings-section-navigation.ts`. Interface zoom lives in Appearance; legacy `general.desktop.zoom` links follow it there.
 

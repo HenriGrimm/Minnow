@@ -79,7 +79,7 @@ function getChatShell(): HTMLElement | null {
 }
 
 function isSettingsSectionId(value: string): value is SettingsSectionId {
-  return CATEGORIES.some((cat) =>
+  return value === 'data' || CATEGORIES.some((cat) =>
     SETTINGS_CATEGORY_AREAS[cat].includes(value as SettingsSectionId),
   );
 }

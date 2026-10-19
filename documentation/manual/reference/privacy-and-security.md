@@ -45,7 +45,7 @@ Minnow's own API is protected by a per-boot token that is injected only into pag
 
 Five mechanisms, in rough order of importance:
 
-**1. The workspace boundary.** File, git and search tools resolve under one folder: your open project in Code, **Sandbox** when you have no project, or a board task's git worktree. Paths outside it are rejected before anything runs, and symlinks pointing outside are rejected too. **Settings → Data & privacy → Filesystem access** can lift this to full disk; understand that this is the main *file-tool* containment in the product before you do.
+**1. The workspace boundary.** File, git and search tools resolve under one folder: your open project in Code, **Sandbox** when you have no project, or a board task's git worktree. Paths outside it are rejected before anything runs, and symlinks pointing outside are rejected too. **Settings → Data & privacy → Access → Filesystem access** can lift this to full disk; understand that this is the main *file-tool* containment in the product before you do.
 
 This boundary does **not** apply to shell strings. With `execute_command` on Full and no OS sandbox, the process has the same filesystem authority as Minnow itself — `cat ~/.minnow/.key` is not stopped by the workspace root check. See mechanism 5.
 

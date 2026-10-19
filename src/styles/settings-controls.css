@@ -555,6 +555,7 @@
   border: 0;
 }
 
+.settings-segment:focus-visible,
 .settings-segment:has(.settings-segment__input:focus-visible) {
   outline: 2px solid var(--mn-accent);
   outline-offset: -2px;
@@ -562,16 +563,17 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .settings-segment:hover:not(:has(input:disabled)):not(.is-active) {
+  .settings-segment:hover:not(:disabled):not(:has(input:disabled)):not(.is-active) {
     color: var(--mn-fg);
     background: color-mix(in srgb, var(--mn-fg) 4%, var(--mn-bg));
   }
 }
 
-.settings-segment:active:not(:has(input:disabled)) {
+.settings-segment:active:not(:disabled):not(:has(input:disabled)) {
   background: color-mix(in srgb, var(--mn-fg) 8%, var(--mn-bg));
 }
 
+.settings-segment:disabled,
 .settings-segment:has(.settings-segment__input:disabled) {
   opacity: 0.45;
   cursor: not-allowed;
@@ -980,7 +982,7 @@ label.settings-action-btn {
   outline-offset: 2px;
 }
 
-.settings-area :is(button, summary, a):focus-visible {
+.settings-area :is(button, summary, a):not(.settings-segment):focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
   border-radius: var(--radius-sm);

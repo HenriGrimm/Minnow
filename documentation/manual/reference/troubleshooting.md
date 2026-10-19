@@ -23,7 +23,7 @@ Nothing on that page is transmitted. Minnow sends no telemetry.
 
 | Symptom | Fix |
 |---------|-----|
-| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Filesystem access** if you genuinely need full disk. |
+| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Access → Filesystem access** if you genuinely need full disk. |
 | A tool says it needs the server | That tool runs server-side. In the packaged app the server is always up; check Health & diagnostics. |
 | Web search does nothing | **Settings → Integrations → Search**. Add an API key for the default Tavily provider, or choose DuckDuckGo without a key. If you selected local SearXNG, check it under **Servers**. |
 | `browser_*` tools missing | Browser automation needs the Electron desktop app. |
@@ -76,7 +76,7 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 
 | Symptom | Fix |
 |---------|-----|
-| No update pill | You may be current. **Settings → About & troubleshooting → Updates → Check for updates**. |
+| No update pill | You may be current. **Settings → General → Updates → Check for updates**. |
 | Download seems stuck | Wait for the next automatic cycle or check manually. A completed download stays ready even if a later check fails. |
 | Update does not apply | Closing the window hides to tray. Quit properly from the tray menu. |
 | SmartScreen warning | Expected for unsigned Windows builds: **More info → Run anyway**, once. |

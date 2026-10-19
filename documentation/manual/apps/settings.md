@@ -12,12 +12,12 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 | Group | Pages |
 |-------|-------|
-| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
 | **Code & workspace** | Editor, Terminal, Language servers, Browser, GitHub, Issues |
 | **AI & agents** | Models & connections, Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
-| **Data & privacy** | Backups & access |
-| **About & troubleshooting** | About, Updates, Health & diagnostics |
+| **Data & privacy** | Backups, Access |
+| **About & troubleshooting** | About, Health & diagnostics |
 
 ### General
 
@@ -57,7 +57,7 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 ### Data & privacy
 
-**Backups & access** manages [backups and restore](../reference/backup-and-restore.md), filesystem access, and the agent shell sandbox.
+**Backups** manages [backups and restore](../reference/backup-and-restore.md). **Access** controls filesystem access and the agent shell sandbox.
 
 File and git tools stay inside open workspaces by default. See [Tools and permissions](../concepts/tools-and-permissions.md).
 
