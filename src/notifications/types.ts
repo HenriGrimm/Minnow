@@ -28,7 +28,8 @@ export type NotificationKind =
   | 'issue_agent_question'
   | 'issue_agent_pr'
   | 'issue_agent_failed'
-  | 'issue_triage';
+  | 'issue_triage'
+  | 'device_request';
 
 /** One row in the session notification inbox. */
 export interface NotificationRecord {

@@ -338,20 +338,55 @@
     ]
   },
   {
+    "key": "general.devices",
+    "label": "Devices",
+    "description": "Use Minnow from your phone or tablet, on your Wi-Fi or from anywhere.",
+    "keywords": [
+      "phone",
+      "tablet",
+      "iphone",
+      "ipad",
+      "android",
+      "mobile",
+      "remote",
+      "companion",
+      "lan",
+      "wifi",
+      "local network",
+      "network access",
+      "home network",
+      "tailscale",
+      "anywhere",
+      "qr",
+      "pair",
+      "connect",
+      "home screen"
+    ],
+    "category": "general",
+    "area": "devices",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "devices"
+    ]
+  },
+  {
     "key": "general.network",
-    "label": "Network access",
-    "description": "Let other devices on your Wi-Fi open Minnow in a browser while this PC runs the app.",
+    "label": "Home network access",
+    "description": "Let phones and tablets on your Wi-Fi connect to Minnow. Applies immediately.",
     "keywords": [
       "lan",
       "wifi",
       "local network",
-      "remote",
+      "network access",
       "phone",
       "tablet",
       "0.0.0.0"
     ],
     "category": "general",
-    "area": "data",
+    "area": "devices",
     "storage": "meta",
     "path": "server.networkAccess",
     "type": "enum",
@@ -362,7 +397,7 @@
     "sensitivity": "dangerous",
     "writable": true,
     "refreshAreas": [
-      "data"
+      "devices"
     ]
   },
   {

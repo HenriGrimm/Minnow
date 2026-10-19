@@ -1,3 +1,3 @@
 # MCP servers
 
-Set the Context7 API key in Settings → MCP or save it to mcp/secrets.json.
+Context7 works without an API key. Add one in Settings → MCP for higher rate limits.

@@ -1,69 +1,107 @@
-# Use Minnow from another device
+# Use Minnow on your phone
 
-Minnow can serve an authenticated companion to a phone or tablet on the same network — pick up a conversation from the sofa, check on a long agent run, add a scheduled job.
+Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, check on a long agent run, approve a tool call, or add a scheduled job. Nothing needs to be installed on the phone.
 
-It is deliberately a local-network feature. It is not a way to expose Minnow to the internet, and port-forwarding it is unsupported.
+There are two ways for a phone to reach your computer. You can use either or both:
 
-## Turn it on and pair
+| | Home network | Anywhere |
+|---|---|---|
+| Works | While the phone is on the same Wi-Fi | At home, at work, on mobile data |
+| Setup | One click | One-time free Tailscale sign-in on the computer |
+| On the phone | Nothing to install | Nothing to install |
+| Home Screen app, microphone | Limited (plain HTTP) | Full (HTTPS) |
 
-1. On the computer running Minnow, open **Settings → Data & privacy → Network access**.
-2. Choose **Local network** and **restart Minnow**. The restart is required — the server has to rebind.
-3. Come back to Network access, type a name for the device, and choose **Create pairing QR**.
-4. On the phone, scan the QR within five minutes, or type the **6-digit code** shown under it.
-5. Leave the host running while you use the companion.
+## Connect a phone
 
-Each QR and each code works exactly once.
+1. On your computer, open **Settings → Devices** and choose **Connect a phone**.
+2. The first time, choose where the phone should work: **On my Wi-Fi** or **Anywhere**. You can change this later.
+3. Open the phone's Camera app, point it at the QR, and tap the link.
+4. On the phone, tap **Connect**.
 
-The phone stores its own credential. The host stores only a SHA-256 hash of it — the token itself is never written to disk on the host.
+Minnow opens on the phone, and the computer shows the phone's name in the sheet. That's it. There is no code to type and nothing to name in advance; the phone suggests a name, which you can change.
 
-Pairing is remembered across workspace changes, page reloads, and Minnow restarts. After a Wi-Fi interruption or host outage, the companion reconnects automatically using the saved pairing. You only need another code if the device is revoked or its saved browser credential is removed. Reopening a used QR link on an already paired browser keeps the existing pairing.
+The phone stays connected through computer restarts, Minnow updates, Wi-Fi changes, and phone restarts. If the computer is asleep or Minnow is closed, the phone shows **Can't reach** with a likely reason and reconnects on its own when the computer is back.
 
-To install on your phone, pair in the browser and wait for Minnow to open, then choose **Add to Home Screen**. New installations carry that pairing into the app. An older installation may need one code entered inside the app, or you can remove it and install again from the connected browser.
+## Make it work anywhere
 
-Use the same host address each time. A different browser or host address may have separate storage. Revoking the device also revokes its installed app.
+**Settings → Devices → Anywhere → Make it work anywhere** sets up a private, secure address for your computer, such as `https://minnow-studio.example.ts.net`. Minnow includes Tailscale for this, so you install nothing:
 
-Saved chats and chat folders update in other visible Minnow windows within about five seconds, and refresh when you return to the app. This keeps your current chat open and protects unsaved edits and running turns. Swipe toward older messages to pause automatic scrolling; **Jump to latest** resumes following new messages.
+1. Choose **Sign in with Tailscale**. A browser page opens; sign in with Google, Apple, Microsoft, or GitHub. The personal plan is free.
+2. If your Tailscale account requires new devices to be approved, choose **Approve this computer** and approve it on the Machines page that opens. If it asks you to allow HTTPS or public access, choose the button Minnow shows and approve it the same way. Then come back.
+3. The Anywhere card shows **On** and the address.
 
-## What you get
+New QR codes now use the Anywhere address. It works on home Wi-Fi too, so each phone needs only one address.
 
-On a phone-sized screen (640px and narrower) the companion is a focused chat shell: conversations, the composer, the mode picker, notifications, and Scheduler.
+The Anywhere address can be reached from the internet, the same way a website can. Only devices you connect can use Minnow there. Anything else sees only the connect page. Choose **Only devices with the Tailscale app** if you prefer the address to be reachable only from devices signed in to your Tailscale account; those phones then need the Tailscale app.
 
-Deliberately absent: the file explorer, terminal, browser automation, and app navigation. Those need a real screen and a keyboard.
+A phone connected on the home network sees **Use Minnow away from home** once Anywhere is on. **Switch** moves it to the Anywhere address without approving it again.
 
-**Mutating tools always ask for approval on the companion**, even when the host has that tool set to Full. A phone in your pocket should not be able to silently authorize a file deletion.
+**Sign out of Tailscale** removes this computer from your Tailscale account. Phones using the Anywhere address stop working until you set it up again.
 
-Tablets and laptop browsers on wide screens get the full app shell.
+## Add Minnow to your Home Screen
 
-## Revoking a device
+After connecting, the phone offers **Add Minnow to your Home Screen**:
 
-**Settings → Data & privacy → Network access → Paired devices → Revoke**. The token is rejected on its next request. An open companion polls every five seconds and switches to the pairing screen shortly after.
+- **iPhone and iPad:** tap **Share**, then **Add to Home Screen**, then open Minnow from your Home Screen.
+- **Android:** tap **Install app**.
 
-Revoke a device you have lost. There is no remote wipe of the phone's stored credential, but it stops working immediately.
+The Home Screen app signs itself in. If it ever opens to **Connect this device**, tap **Request access** and approve it on your computer.
 
-## The security boundary
+A Home Screen app belongs to the address it was added from. After moving a phone to the Anywhere address, add Minnow to the Home Screen again from there.
 
-- Only devices on the same local network can reach it.
-- Pairing requires all of: LAN mode active, a request from a private address, a valid host header, the one-time secret, and a same-origin request.
-- A device token cannot create pairings, list devices, or revoke anything. Device management is host-only.
-- Every other API request needs either the host's per-boot token or an active device token.
-- Do not share a QR screenshot. If a link expires or was opened, make a new one.
+## Request access
+
+A device that is not connected shows **Connect this device** with:
+
+- **Scan QR** (Android, on the Anywhere address): scan the code from **Settings → Devices → Connect a phone** without leaving the app.
+- **Request access**: the phone shows a 4-digit number. Your computer shows a card with the same number; check that they match and choose **Approve**. A phone that is already connected in its browser can be approved as that same device.
+- **Enter a code instead** (home network only): type the 6-digit code shown under **Can't scan?** in the Connect sheet.
+
+On the Anywhere address, requests are accepted only while the Connect sheet is open on your computer.
+
+## Manage devices
+
+**Settings → Devices → Your devices** lists every connected phone and tablet with when it was last used, how it connected, and whether it has a Home Screen app.
+
+- **Rename** changes the name shown on the computer.
+- **Disconnect** removes the device and its Home Screen app immediately. The phone shows **This device was disconnected** within a few seconds and can ask for access again.
+
+Disconnect a phone you have lost. Its saved sign-in stops working on its next request.
+
+## What you get on a phone
+
+On a phone-sized screen (640px and narrower), Minnow is a focused chat app: conversations, the composer, the mode picker, notifications, and Scheduler. The file explorer, terminal, browser automation, and app navigation are left out; they need a full screen and keyboard.
+
+**Mutating tools always ask for approval on a phone**, even when the computer has that tool set to Full.
+
+Tablets and laptop browsers on wide screens get the full app.
+
+Saved chats and chat folders update across open Minnow windows within about five seconds and refresh when you return to the app. Your current chat, unsaved edits, and running turns are protected. Swipe toward older messages to pause automatic scrolling; **Jump to latest** resumes it.
+
+## Security
+
+- Every device signs in with its own revocable credential, kept in a secure cookie the phone's web pages cannot read. The computer stores only a SHA-256 hash of it.
+- The computer's own sign-in works only in the desktop app. It is never accepted from the home network or the Anywhere address.
+- Connected devices cannot connect, list, rename, or disconnect other devices.
+- Requests that use a device's sign-in must come from Minnow's own page; other websites, including other programs on the same computer, cannot use it.
+- Anywhere traffic is encrypted end to end between the phone and your computer.
 
 More on the overall model: [Privacy and security](../reference/privacy-and-security.md).
-
-## Limits worth knowing
-
-`http://<lan-ip>` is not a browser secure context. Browsers therefore refuse to install it as an app or cache it offline, and microphone capture may be blocked. The companion works fine while connected to the host; installable and offline behaviour needs HTTPS, which is not part of this version.
 
 ## When it does not work
 
 | Symptom | Check |
 |---------|-------|
-| Phone cannot reach the host | Same Wi-Fi, and not a guest network that isolates clients |
-| Connection refused | Host firewall — allow inbound traffic on Minnow's port |
-| Setting had no effect | Restart after changing Network access |
-| QR does not load | It may have chosen a VPN or virtual adapter address. Copy the Wi-Fi URL listed above the QR instead, or regenerate. |
-| Reconnect banner stuck | Host still running? Did the machine's LAN address change? |
-| Link expired | Create a new pairing challenge; they last five minutes and work once |
+| **Can't reach** on home Wi-Fi | The phone is on the same Wi-Fi, not a guest network that isolates devices. The computer is awake and Minnow is open. |
+| Home network card shows a busy port | Another program is using port 9480. Quit it and choose **Try again**. |
+| Phone can't open the home-network address | The computer's firewall allows Minnow. |
+| **Can't reach** away from home | The phone has internet. The computer is awake, online, and Minnow is open. |
+| Anywhere card is stuck on a step | Finish the Tailscale page that opened, or choose **Cancel** and start again. |
+| Set up with the wrong Tailscale account | Choose **Use a different account** on the Anywhere card, then sign in with the right one. |
+| The QR link says it was used or expired | Codes work once and last ten minutes. Choose **Make a new code**. |
+| Home Screen app asks to connect | Tap **Request access** and approve it on your computer. |
+| A phone set up with an older version of Minnow can't reach it | Phones now use their own address (port 9480). Connect the phone again from **Settings → Devices**, and replace an old Home Screen app with a new one. |
+| No microphone on the home network | Plain HTTP blocks the microphone. Use the Anywhere address. |
 
 ## Related
 

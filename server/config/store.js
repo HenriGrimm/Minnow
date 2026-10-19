@@ -48,6 +48,7 @@ import {
   useJsonSessionsStore,
   writeWholeSessionState,
 } from './sessions-repo.js';
+import { mergeOmittedChatDetail } from './chat-detail.js';
 import { sessionsJsonPath } from './sessions-paths.js';
 import {
   defaultAppearanceConfig,
@@ -495,8 +496,16 @@ export async function writeResource(resource, body) {
       resetBrowserConfigCache();
     }
     if (body && typeof body === 'object' && 'server' in /** @type {Record<string, unknown>} */ (body)) {
-      const { setConfigNetworkAccess, resolveConfigNetworkAccess } = await import('../network/access.js');
-      setConfigNetworkAccess(resolveConfigNetworkAccess(merged));
+      const { setConfigNetworkAccess, normalizeNetworkAccess } = await import('../network/access.js');
+      const requested = normalizeNetworkAccess(
+        /** @type {{ server?: { networkAccess?: unknown } }} */ (body).server?.networkAccess,
+      );
+      if (requested) {
+        setConfigNetworkAccess(requested);
+        // The legacy field now drives the live home-network listener.
+        const { setLanEnabled } = await import('../remote/ingress-manager.js');
+        await setLanEnabled(requested === 'lan');
+      }
     }
     return merged;
   }
@@ -588,7 +597,8 @@ async function mergeJsonSessionHistories(key, validated, rawChats, options = {})
       console.warn(`[sessions] refusing to create chat ${id} from a history-omitting write`);
       continue;
     }
-    chats.push({ ...chat, history: Array.isArray(prior.history) ? prior.history : [] });
+    // An unopened chat was saved from its summary: keep the detail it never loaded.
+    chats.push({ ...mergeOmittedChatDetail(chat, prior), history: Array.isArray(prior.history) ? prior.history : [] });
   }
 
   if (!options.pruneMissingChats) {

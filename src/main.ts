@@ -635,6 +635,10 @@ async function startApp(): Promise<void> {
   initWindowClosePromptBridge();
   initElectronTrayBridge();
   await initApp();
+  // Devices asking to connect get an approval card in the main host window.
+  if (!isAppWindowRenderer()) {
+    void import('./ui/device-request-prompt').then(({ initDeviceRequestPrompt }) => initDeviceRequestPrompt());
+  }
 }
 
 function startAppWithRecovery(): void {

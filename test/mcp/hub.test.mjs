@@ -277,8 +277,8 @@ test('MCP hub: authenticated HTTP and stdio share live workspace Issues and Brai
     const create = async (body, authHeaders = headers) => fetch(endpoint, {
       method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, workspaceScope: 'workspace' }),
     });
-    const { createDevice } = await import('../../server/auth/device-store.js');
-    const device = createDevice('Companion');
+    const { addCredential, createDevice } = await import('../../server/auth/device-store.js');
+    const device = addCredential(createDevice({ name: 'Companion' }).device.id);
     const deviceHeaders = { ...headers, 'X-Minnow-Token': device.token };
     assert.equal((await fetch(endpoint, { headers: deviceHeaders })).status, 403);
     assert.equal((await create({ name: 'Device-created', access: 'write' }, deviceHeaders)).status, 403);

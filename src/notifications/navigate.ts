@@ -36,6 +36,12 @@ export async function openNotificationTarget(record: NotificationRecord): Promis
     return;
   }
 
+  if (record.kind === 'device_request') {
+    const { openSettings } = await import('../ui/settings-page');
+    openSettings('devices');
+    return;
+  }
+
   if (record.kind === 'synthesis') {
     launchApp('brain', { brainSection: 'proposals' });
     return;

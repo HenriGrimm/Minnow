@@ -28,6 +28,7 @@ export type SettingsSectionId =
   | 'data'
   | 'updates'
   | 'notifications'
+  | 'devices'
   | 'plugins'
   | 'issues'
   | 'github'
@@ -73,6 +74,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   data: 'Data & privacy',
   updates: 'Updates',
   notifications: 'Notifications',
+  devices: 'Devices',
   plugins: 'Plugins',
   issues: 'Issues',
   github: 'GitHub',
@@ -128,7 +130,7 @@ export type SettingsNavGroup = {
 
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
-  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio'] },
+  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices'] },
   { id: 'apps', label: 'Code & workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'github', 'issues'] },
   {
     id: 'agents',

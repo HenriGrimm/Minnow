@@ -6,124 +6,54 @@ declare global {
   }
 }
 
-const DEVICE_TOKEN_STORAGE_KEY = 'minnow.auth.deviceToken';
-const DEVICE_TOKEN_COOKIE_NAME = 'minnow_device';
-const DEVICE_TOKEN_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 365;
-// Browser storage can become temporarily unavailable when a mobile page wakes.
-// Keep the current page authorized independently of those storage reads.
-const deviceTokens = new WeakMap<Window, { token: string; stored: string }>();
+/** Where builds before the cookie-based pairing kept the device credential. */
+const LEGACY_DEVICE_TOKEN_STORAGE_KEY = 'minnow.auth.deviceToken';
 
-function rememberDeviceToken(token: string, stored: string): void {
-  deviceTokens.set(window, { token, stored });
+let pairedDevice = false;
+
+/**
+ * A paired phone or tablet authenticates with a server-set HttpOnly cookie, so
+ * page scripts never hold its secret. This flag only records that boot
+ * confirmed the pairing.
+ */
+export function setPairedDevice(paired: boolean): void {
+  pairedDevice = paired;
 }
 
-function isValidDeviceToken(token: string): boolean {
-  return token.startsWith('minnow_device_');
+/** Whether this page is a paired device (not the host desktop). */
+export function isPairedDevice(): boolean {
+  return pairedDevice && !hasHostSessionToken();
 }
 
-/** Parse the companion device cookie when localStorage is empty. */
-function readDeviceTokenCookie(): string {
-  if (typeof document === 'undefined') return '';
-  const prefix = `${DEVICE_TOKEN_COOKIE_NAME}=`;
+/**
+ * Move a pairing saved by an older build (localStorage) into the HttpOnly
+ * cookie. Keeps the old value through network failures, drops it once the host
+ * accepts or rejects it.
+ * @returns whether a legacy credential was adopted
+ */
+export async function migrateLegacyDeviceToken(): Promise<boolean> {
+  if (typeof window === 'undefined' || hasHostSessionToken()) return false;
+  let token = '';
   try {
-    for (const part of document.cookie.split(';')) {
-      const trimmed = part.trim();
-      if (!trimmed.startsWith(prefix)) continue;
-      const value = decodeURIComponent(trimmed.slice(prefix.length));
-      return isValidDeviceToken(value) ? value : '';
-    }
-  } catch {}
-  return '';
-}
-
-/** Mirror the device token into a first-party cookie for cross-context hydration. */
-function writeDeviceTokenCookie(token: string): void {
-  if (typeof document === 'undefined') return;
-  const secure = window.isSecureContext ? '; Secure' : '';
-  document.cookie = [
-    `${DEVICE_TOKEN_COOKIE_NAME}=${encodeURIComponent(token)}`,
-    'Path=/',
-    'SameSite=Lax',
-    `Max-Age=${DEVICE_TOKEN_COOKIE_MAX_AGE_SEC}`,
-    secure,
-  ].join('; ');
-}
-
-/** Drop the mirrored cookie when the device credential is cleared. */
-function clearDeviceTokenCookie(): void {
-  if (typeof document === 'undefined') return;
-  const secure = window.isSecureContext ? '; Secure' : '';
-  document.cookie = [
-    `${DEVICE_TOKEN_COOKIE_NAME}=`,
-    'Path=/',
-    'Max-Age=0',
-    secure,
-  ].join('; ');
-}
-
-/** Read the paired-device credential without throwing in private storage modes. */
-export function getDeviceToken(): string {
-  if (typeof window === 'undefined') return '';
-  const remembered = deviceTokens.get(window);
-  if (remembered?.token === '') return '';
-  let stored = '';
+    token = window.localStorage.getItem(LEGACY_DEVICE_TOKEN_STORAGE_KEY) ?? '';
+  } catch {
+    return false;
+  }
+  if (!token.startsWith('minnow_device_')) return false;
+  let response: Response;
   try {
-    stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? '';
-    // Check for a newer pairing even before its cross-tab storage event fires.
-    // An unchanged stale store must not override a successful cookie-only save.
-    if (remembered && (stored === remembered.stored || !isValidDeviceToken(stored))) {
-      return remembered.token;
-    }
-    if (isValidDeviceToken(stored)) {
-      // Safari copies cookies, rather than localStorage, into Home Screen apps.
-      // Repair older pairings and cookies that have expired or been removed.
-      if (readDeviceTokenCookie() !== stored) {
-        try { writeDeviceTokenCookie(stored); } catch {}
-      }
-      rememberDeviceToken(stored, stored);
-      return stored;
-    }
-  } catch {}
-  if (remembered) return remembered.token;
-  const fromCookie = readDeviceTokenCookie();
-  if (fromCookie) {
-    try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, fromCookie); } catch {}
-    rememberDeviceToken(fromCookie, stored);
+    response = await fetch('/api/auth/adopt', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-Minnow-Token': token },
+    });
+  } catch {
+    return false;
   }
-  return fromCookie;
-}
-
-/** Persist the credential returned by a successful one-time pairing exchange. */
-export function saveDeviceToken(token: string): void {
-  if (typeof window === 'undefined' || !isValidDeviceToken(token)) {
-    throw new Error('Invalid companion device token');
+  if (response.ok || response.status === 401 || response.status === 403) {
+    try { window.localStorage.removeItem(LEGACY_DEVICE_TOKEN_STORAGE_KEY); } catch {}
   }
-  // Either first-party store can persist pairing when the other is restricted.
-  try { window.localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, token); } catch {}
-  try { writeDeviceTokenCookie(token); } catch {}
-  let stored = '';
-  try { stored = window.localStorage.getItem(DEVICE_TOKEN_STORAGE_KEY) ?? ''; } catch {}
-  // Verify each store separately: a failed localStorage write may leave an old
-  // token there even though the cookie has successfully saved the new pairing.
-  if (stored !== token && readDeviceTokenCookie() !== token) {
-    throw new Error('Allow browser storage to remember this device');
-  }
-  if (stored && stored !== token) {
-    // Quota failures can block writes while still allowing removal. Leave the
-    // cookie as the durable source on the next launch instead of the old token.
-    try { window.localStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY); } catch {}
-  }
-  rememberDeviceToken(token, stored);
-}
-
-/** Remove a revoked or rejected paired-device credential. */
-export function clearDeviceToken(): void {
-  if (typeof window === 'undefined') return;
-  rememberDeviceToken('', '');
-  try {
-    window.localStorage.removeItem(DEVICE_TOKEN_STORAGE_KEY);
-  } catch {}
-  try { clearDeviceTokenCookie(); } catch {}
+  return response.ok;
 }
 
 /** Whether this page received the local host's per-boot credential. */
@@ -131,17 +61,17 @@ export function hasHostSessionToken(): boolean {
   return typeof window !== 'undefined' && Boolean(window.__MINNOW_SESSION_TOKEN__);
 }
 
-/** The host or paired-device token, or empty string when authentication is required. */
+/** The host's per-boot token, or empty string (paired devices use their cookie). */
 export function getSessionToken(): string {
   if (typeof window === 'undefined') return '';
-  return window.__MINNOW_SESSION_TOKEN__ ?? getDeviceToken();
+  return window.__MINNOW_SESSION_TOKEN__ ?? '';
 }
 
 /**
  * Append `?token=`/`&token=` and, in a workspace-bound view, `&workspace=` to a
  * same-origin URL. This is the choke point for every `EventSource` and the
  * PTY/STT/TTS sockets — neither transport can set request headers, so the
- * workspace rides the query string there.
+ * workspace rides the query string there. Paired devices send their cookie.
  */
 export function withSessionToken(url: string): string {
   const token = getSessionToken();

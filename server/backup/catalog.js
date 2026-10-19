@@ -222,6 +222,9 @@ export const NEVER_BACKED_UP = [
   'voice',
   'benchmark-workspace',
   'session-token',
+  // The built-in Tailscale node's identity is bound to this machine; restoring
+  // it elsewhere would put two computers on one tailnet name.
+  'tailnet',
   'scheduler-notifications.json',
   'webhooks-deliveries.json',
 ];

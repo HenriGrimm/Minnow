@@ -57,9 +57,13 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 ### Data & privacy
 
-**Backups & access** manages [backups and restore](../reference/backup-and-restore.md), filesystem access, the agent shell sandbox, and network access.
+**Backups & access** manages [backups and restore](../reference/backup-and-restore.md), filesystem access, and the agent shell sandbox.
 
-File and git tools stay inside open workspaces by default. Network access is local to this computer by default; enabling LAN access requires a restart. See [Tools and permissions](../concepts/tools-and-permissions.md) and [Use Minnow from another device](../extend/companion.md).
+File and git tools stay inside open workspaces by default. See [Tools and permissions](../concepts/tools-and-permissions.md).
+
+### Devices
+
+**Devices** connects phones and tablets. **Connect a phone** shows a QR to scan. The **Home network** and **Anywhere** cards turn each kind of connection on or off without a restart, and **Your devices** lists connected devices with **Rename** and **Disconnect**. See [Use Minnow on your phone](../extend/companion.md).
 
 ### About & troubleshooting
 

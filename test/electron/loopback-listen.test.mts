@@ -11,7 +11,7 @@ import {
   initNetworkAccess,
   isClientAllowed,
   isNetworkRestartRequired,
-  setConfigNetworkAccess,
+  setActiveNetworkAccess,
 } from '../../server/network/access.js';
 
 function closeServer(server: http.Server): Promise<void> {
@@ -96,25 +96,21 @@ describe('packaged network mode', () => {
     }
   });
 
-  test('saved mode change takes effect after restart, including pairing revocation', () => {
+  test('phone access follows the live home-network listener, never a restart', () => {
     const previous = process.env.MINNOW_NETWORK;
     delete process.env.MINNOW_NETWORK;
     const remote = { socket: { remoteAddress: '192.168.1.20' } };
     try {
-      initNetworkAccess({ server: { networkAccess: 'local' } });
+      // A saved "lan" setting reaches nobody until the listener actually starts.
+      initNetworkAccess({ server: { networkAccess: 'lan' } });
       assert.equal(getNetworkAccess(), 'local');
+      assert.equal(isNetworkRestartRequired(), false);
       assert.equal(isClientAllowed(remote), false);
 
-      setConfigNetworkAccess('lan');
-      assert.equal(isNetworkRestartRequired(), true);
-      assert.equal(getNetworkAccess(), 'local');
-      initNetworkAccess({ server: { networkAccess: 'lan' } });
-      assert.equal(getNetworkAccess(), 'lan');
+      setActiveNetworkAccess('lan');
       assert.equal(isClientAllowed(remote), true);
 
-      setConfigNetworkAccess('local');
-      assert.equal(isNetworkRestartRequired(), true);
-      initNetworkAccess({ server: { networkAccess: 'local' } });
+      setActiveNetworkAccess('local');
       assert.equal(isClientAllowed(remote), false);
       assert.equal(isNetworkRestartRequired(), false);
     } finally {

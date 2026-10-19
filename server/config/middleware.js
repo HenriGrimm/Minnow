@@ -1,6 +1,8 @@
 import { readRememberedModel } from './model-selection.js';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import { promisify } from 'node:util';
+import zlib from 'node:zlib';
 import {
   ensureMinnowLayout,
   ensureMinnowLayoutInitialized,
@@ -25,8 +27,10 @@ import {
 } from './validators.js';
 import { resolveConfigPath, ALLOWED_CONFIG_FILES } from './paths.js';
 import { handleRunsConfigRequest } from '../runs/middleware.js';
+import { pickChatDetail, slimChatSummary } from './chat-detail.js';
 import {
   exportSessionStateToJson,
+  readChatDetail,
   readChatHistory,
   recallChatHistory,
   readSessionRevision,
@@ -70,6 +74,30 @@ function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
+}
+
+const gzipAsync = promisify(zlib.gzip);
+
+/**
+ * Gzip large answers for clients that accept it: session summaries and a busy
+ * chat's transcript run to megabytes, and phones fetch them over Tailscale.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {number} status
+ * @param {unknown} payload
+ */
+async function sendJsonCompressed(req, res, status, payload) {
+  const body = JSON.stringify(payload);
+  const accepts = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Vary', 'Accept-Encoding');
+  if (!accepts || body.length < 64 * 1024) {
+    res.end(body);
+    return;
+  }
+  res.setHeader('Content-Encoding', 'gzip');
+  res.end(await gzipAsync(body, { level: 1 }));
 }
 
 /**
@@ -319,21 +347,21 @@ export async function handleConfigRequest(req, res, pathname) {
             if (last && typeof last === 'object' && typeof last.content === 'string') {
               lastMessagePreview = last.content.slice(0, 240);
             }
-            const { history: _drop, ...rest } = chat;
+            const { history: _drop, ...rest } = slimChatSummary(chat);
             return {
               ...rest,
               messageCount: history.length,
               lastMessagePreview,
             };
           });
-        sendJson(res, 200, { ...full, chats: summaries });
+        await sendJsonCompressed(req, res, 200, { ...full, chats: summaries });
         return true;
       }
       const url = new URL(req.url ?? '', 'http://localhost');
       const workspace = url.searchParams.get('workspace') ?? undefined;
       const sinceRaw = url.searchParams.get('sinceRevision');
       const sinceRevision = sinceRaw && /^\d+$/.test(sinceRaw) ? Number(sinceRaw) : undefined;
-      sendJson(res, 200, readSessionSummariesState({ workspace, sinceRevision }));
+      await sendJsonCompressed(req, res, 200, readSessionSummariesState({ workspace, sinceRevision }));
       return true;
     }
 
@@ -347,6 +375,8 @@ export async function handleConfigRequest(req, res, pathname) {
       const opts = {};
       if (offsetRaw != null && offsetRaw !== '') opts.offset = Number(offsetRaw);
       if (limitRaw != null && limitRaw !== '') opts.limit = Number(limitRaw);
+      // `detail=1`: also send what summaries leave out (full runs, ledgers, sub-agent runs).
+      const withDetail = url.searchParams.get('detail') === '1';
 
       if (useJsonSessionsStore()) {
         const full = (await readConfigJson('sessions/state.json')) ?? (await readResource('sessions'));
@@ -359,11 +389,15 @@ export async function handleConfigRequest(req, res, pathname) {
         if (offset || limit != null) {
           history = limit != null ? history.slice(offset, offset + limit) : history.slice(offset);
         }
-        sendJson(res, 200, { chatId, history });
+        await sendJsonCompressed(req, res, 200, { chatId, history, ...(withDetail ? { detail: pickChatDetail(chat) } : {}) });
         return true;
       }
 
-      sendJson(res, 200, { chatId, history: readChatHistory(chatId, opts) });
+      await sendJsonCompressed(req, res, 200, {
+        chatId,
+        history: readChatHistory(chatId, opts),
+        ...(withDetail ? { detail: readChatDetail(chatId) } : {}),
+      });
       return true;
     }
 

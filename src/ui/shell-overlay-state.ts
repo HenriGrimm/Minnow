@@ -16,7 +16,8 @@ function bindDismissal(doc: Document): void {
   doc.addEventListener('pointerdown', (event) => {
     if (!active || !panels[active.id]) return;
     const target = event.target as Element | null;
-    if (target?.closest('[data-shell-overlay]')) return;
+    // Dialogs, sheets and prompts layered above an open overlay belong to it.
+    if (target?.closest('[data-shell-overlay], [data-above-shell-overlay]')) return;
     if (doc.getElementById(panels[active.id])?.contains(target)) return;
     closeShellOverlay();
   });

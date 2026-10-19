@@ -70,7 +70,8 @@ import { bootAgentsRuntime } from '../sub-agents/runtime.js';
 import { createBoardTestingMiddleware } from '../orchestrate/board-testing/middleware.js';
 import { createToolsMiddleware } from './tools-middleware.js';
 import { createAgentBrowserMiddleware } from '../browser-agent-api.js';
-import { createAuthMiddleware } from './auth-middleware.js';
+import { createAuthMiddleware, createRemoteResponseHeadersMiddleware } from './auth-middleware.js';
+import { createRemoteMiddleware } from '../remote/middleware.js';
 import { createWorkspaceScopeMiddleware } from './workspace-scope-middleware.js';
 import { createAuthRoutesMiddleware } from '../auth/routes.js';
 import { createDiagnosticsMiddleware } from '../diagnostics/middleware.js';
@@ -96,6 +97,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   // every non-terminal run so an open stage replans itself after a restart.
   setSuperPlanEffectorFactory(createProductionSuperPlanEffector);
   void bootSuperPlanRuntime();
+  connectApp.use(createRemoteResponseHeadersMiddleware());
   connectApp.use(createAuthMiddleware());
   // Authenticate first, then scope: every downstream handler runs inside the
   // requesting view's workspace.
@@ -104,6 +106,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
   connectApp.use(createAuthRoutesMiddleware());
+  connectApp.use(createRemoteMiddleware());
   connectApp.use(createDiagnosticsMiddleware());
   connectApp.use(createConfigMiddleware());
   connectApp.use(createIssueAttachmentsMiddleware());

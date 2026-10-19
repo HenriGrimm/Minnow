@@ -90,3 +90,19 @@ test('handled Escape leaves a nested control in charge', () => {
   win.document.dispatchEvent(event);
   assertState(settings, true);
 });
+
+test('dialogs and prompts layered above an open overlay do not dismiss it', () => {
+  button('settings');
+  let closed = 0;
+  openShellOverlay('settings', () => { closed++; shellOverlayClosed('settings'); });
+  const layer = win.document.createElement('div');
+  layer.dataset.aboveShellOverlay = '';
+  const confirm = win.document.createElement('button');
+  layer.append(confirm);
+  win.document.body.append(layer);
+  confirm.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
+  assert.equal(closed, 0);
+  assert.equal(isShellOverlayOpen('settings'), true);
+  win.document.body.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
+  assert.equal(closed, 1);
+});

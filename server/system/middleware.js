@@ -7,6 +7,7 @@ import { probeVram } from './vram.js';
 import { detectHardware } from './hardware.js';
 import { listDeadHosts } from '../generations/host-cooldown.js';
 import { getNetworkStatus } from './network.js';
+import { getLanStatus } from '../remote/ingress-manager.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -51,7 +52,7 @@ export async function handleSystemRequest(req, res, pathname) {
     const parsed = new URL(req.url ?? '/', 'http://127.0.0.1');
     const port = req.socket?.localPort || Number(parsed.searchParams.get('port')) || resolveMinnowPort();
     const localUrl = parsed.searchParams.get('localUrl') ?? undefined;
-    const payload = await getNetworkStatus({ port, localUrl: localUrl ?? undefined });
+    const payload = await getNetworkStatus({ port, localUrl: localUrl ?? undefined, lanUrls: getLanStatus().urls });
     sendJson(res, 200, payload);
     return true;
   }

@@ -38,7 +38,6 @@ import { renderProvidersSettingsSection } from './settings-providers';
 import { renderUsageSettingsSection } from './settings-usage';
 import { renderAudioSettingsSection } from './settings-audio';
 import { renderNotificationsSettingsSection } from './settings-notifications';
-import { renderNetworkAccessSettings } from './settings-network';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
 import { renderFilesystemAccessSettings } from './settings-filesystem';
 import { renderProjectLocationSettings } from './settings-project-location';
@@ -538,17 +537,6 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
     );
     shellSandbox.id = 'settingsShellSandbox';
     await renderShellSandboxSettings(shellSandbox);
-    if (isAsyncSectionRenderStale(area, generation)) return;
-
-    const network = appendSettingsGroup(
-      shell,
-      'Network access',
-      'Let other devices on your Wi‑Fi open Minnow in a browser while this PC runs the app.',
-      'general.network',
-      { emphasis: true },
-    );
-    network.id = 'settingsNetworkAccess';
-    await renderNetworkAccessSettings(network);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
 
@@ -2078,6 +2066,15 @@ export async function refreshSettingsSection(
     case 'audio':
       await renderAudioSection();
       break;
+    case 'devices': {
+      const mount = clearMount('settingsDevicesBody');
+      if (mount) {
+        // Loaded on demand: most sessions never open it (MIN-400 eager budget).
+        const { renderDevicesSettings } = await import('./settings-devices');
+        await renderDevicesSettings(mount);
+      }
+      break;
+    }
     case 'about':
       await renderAboutSettingsSection();
       break;

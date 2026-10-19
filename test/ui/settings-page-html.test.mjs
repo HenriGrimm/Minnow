@@ -48,6 +48,7 @@ const SETTINGS_SECTION_IDS = [
 const DYNAMIC_SECTION_BODY_IDS = [
   'settingsGeneralBody',
   'settingsNotificationsBody',
+  'settingsDevicesBody',
   'settingsPluginsBody',
   'settingsAudioBody',
   'settingsModelRoutingBody',

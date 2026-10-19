@@ -184,6 +184,7 @@ const KIND_GROUP: Record<NotificationKind, NotificationKindGroup> = {
   issue_agent_pr: 'tasks',
   issue_agent_failed: 'tasks',
   issue_triage: 'background',
+  device_request: 'background',
 };
 
 /** Delivery preference only; Activity captures events independently. */

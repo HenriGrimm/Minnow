@@ -56,7 +56,9 @@ Copying by hand has two traps. `sessions/sessions.db` is a live database: copy i
 | `mcp.json`, `mcp/` | MCP server configuration |
 | `lsp.json`, `lsp/` | Language server configuration |
 | `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
-| `auth/devices.json` | Paired LAN companions — hashes only, never tokens |
+| `auth/devices.json` | Connected phones and tablets — credential hashes only, never tokens |
+| `auth/handoff.json` | Pending Home Screen sign-ins — hashes only |
+| `tailnet/` | The built-in Tailscale node's identity (never backed up) |
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |
 | `appearance.json` | Theme, custom colors, and fonts |

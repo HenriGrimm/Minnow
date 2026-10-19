@@ -70,7 +70,7 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 |---------|-----|
 | Speech fails | Choose **Built-in** dictation and **System voice** in **Models → Voice**. Built-in dictation needs internet for its first model download. Check microphone permission and system voice availability. Advanced local models use the optional Python runtime. |
 | Dictation hears my speakers | **Settings → General → Audio** — turn on echo cancellation |
-| No microphone on the LAN companion | Plain HTTP is not a secure context; browsers block capture there |
+| No microphone on a phone on the home network | Plain HTTP is not a secure context; browsers block capture there. Use the Anywhere address (HTTPS) |
 
 ## Updates and install
 

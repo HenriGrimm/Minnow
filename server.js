@@ -1,18 +1,24 @@
 import { createServer } from 'vite';
-import { attachStreamWebSocketServer } from './server/runtime/stream-ws.js';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { openBrowser } from './scripts/open-browser.mjs';
 import path from 'node:path';
-import { attachPtyWebSocketServer } from './server/terminal/pty-ws.js';
-import { attachSttWebSocketServer } from './server/stt/stt-ws.js';
-import { attachTtsWebSocketServer } from './server/tts/tts-ws.js';
-import { attachAgentsWebSocketServer } from './server/sub-agents/ws.js';
+import { attachMinnowWebSockets } from './server/runtime/ws-attach.js';
+import { tagServerIngress } from './server/network/ingress.js';
+import {
+  applyRemoteConfigAtBoot,
+  configureRemoteIngress,
+  getRemoteStatus,
+  shutdownRemoteIngress,
+} from './server/remote/ingress-manager.js';
+import { createDevRemoteBundle } from './server/remote/dev-remote-bundle.js';
+import { flushDeviceActivity } from './server/auth/device-store.js';
 import { destroyAllPtySessions } from './server/terminal/pty-host.js';
 import { deleteGenerationsForProviderShutdown } from './server/generations/store.js';
 import { disposeCodexSessions } from './server/generations/codex-app-server/lifecycle.js';
 import { shutdownAgentCliLogins } from './server/models/agent-cli-middleware.js';
 import { getAppRoot } from './server/workspace/root.js';
+import { createDevRemoteHandler } from './server/remote/dev-remote-filter.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
 import { getSessionToken } from './server/runtime/session-token.js';
@@ -33,7 +39,6 @@ import {
 import { readConfigJson } from './server/config/store.js';
 import {
   initNetworkAccess,
-  resolveNetworkAccess,
   resolveViteHost,
 } from './server/network/access.js';
 
@@ -112,7 +117,6 @@ async function main() {
 
   const appRoot = getAppRoot();
   const configMeta = (await readConfigJson('config.json')) ?? {};
-  const networkAccess = resolveNetworkAccess(configMeta);
   initNetworkAccess(configMeta);
   await startIsolatedPreviewHost();
 
@@ -121,18 +125,18 @@ async function main() {
     server: {
       port: PORT,
       strictPort: false,
-      host: resolveViteHost(networkAccess),
+      host: resolveViteHost(),
+      // Remote listeners reuse these middlewares with the phone's Host header.
+      allowedHosts: ['.local', '.ts.net'],
     },
     plugins: [
       {
         name: 'minnow-api',
         configureServer(server) {
           if (server.httpServer) {
-            attachPtyWebSocketServer(server.httpServer);
-            attachSttWebSocketServer(server.httpServer);
-            attachTtsWebSocketServer(server.httpServer);
-            attachAgentsWebSocketServer(server.httpServer);
-            attachStreamWebSocketServer(server.httpServer);
+            // The desktop listener is loopback-only; phones use the remote listeners.
+            tagServerIngress(server.httpServer, 'loopback');
+            attachMinnowWebSockets(server.httpServer);
           }
           applyMinnowMiddlewares(server.middlewares, {
             resolveSafePath,
@@ -168,18 +172,7 @@ async function main() {
   const boundPort = Number(new URL(localUrl).port) || PORT;
   writeDevHostState({ localUrl, port: boundPort });
   getSessionToken();
-  const networkUrls = vite.resolvedUrls?.network ?? [];
   console.log(`Minnow dev server: ${localUrl}`);
-  if (networkAccess === 'lan') {
-    if (networkUrls.length > 0) {
-      console.log(`LAN access enabled — open from other devices:`);
-      for (const url of networkUrls) {
-        console.log(`  ${url}`);
-      }
-    } else {
-      console.log('LAN access enabled — no external network interfaces detected');
-    }
-  }
   console.log(`Config API: ${localUrl.replace(/\/$/, '')}/api/config/ping`);
   console.log(`Providers API: ${localUrl.replace(/\/$/, '')}/api/providers`);
   console.log(`Generations API: ${localUrl.replace(/\/$/, '')}/api/generations`);
@@ -200,7 +193,30 @@ async function main() {
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
   await startSchedulerForHost(localUrl);
   await startReefForHost(localUrl);
+  // Phones get a bundled build kept current in the background, not ~1,600 live
+  // modules. MINNOW_REMOTE_LIVE_MODULES=1 serves them live modules instead.
+  const remoteBundle = process.env.MINNOW_REMOTE_LIVE_MODULES === '1'
+    ? undefined
+    : createDevRemoteBundle({
+      root: appRoot,
+      outDir: path.join(appRoot, 'node_modules', '.cache', 'minnow-remote-bundle'),
+    });
+  configureRemoteIngress({
+    requestHandler: createDevRemoteHandler(vite.middlewares, {
+      root: vite.config.root,
+      publicDir: vite.config.publicDir || undefined,
+      isImportedModule: (pathname) => vite.environments.client.moduleGraph.urlToModuleMap.has(pathname),
+      bundle: remoteBundle,
+    }),
+  });
+  await applyRemoteConfigAtBoot();
+  const remote = getRemoteStatus();
+  // Build ahead when phones can already connect; otherwise the first phone request starts it.
+  if (remote.lan.state === 'on' || !['off', 'unavailable'].includes(remote.anywhere.state)) remoteBundle?.start();
   const onShutdown = async () => {
+    flushDeviceActivity();
+    remoteBundle?.stop();
+    await shutdownRemoteIngress();
     await shutdownAgentCliLogins();
     await shutdownLocalActions();
     clearDevHostState();
@@ -216,6 +232,8 @@ async function main() {
     await stopIsolatedPreviewHost();
   };
   const onShutdownSync = () => {
+    flushDeviceActivity();
+    remoteBundle?.stop();
     void shutdownAgentCliLogins();
     clearDevHostState();
     stopSchedulerForHost();

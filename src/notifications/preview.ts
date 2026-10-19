@@ -121,6 +121,8 @@ export function kindLabel(kind: import('./types').NotificationKind): string {
       return 'Issue agent failed';
     case 'issue_triage':
       return 'Issue triage';
+    case 'device_request':
+      return 'Device wants to connect';
     case 'research':
       return 'Research';
     case 'synthesis':

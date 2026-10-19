@@ -1,0 +1,92 @@
+/* Host approval cards for devices asking to connect (bottom-right, any app). */
+
+.device-request-stack {
+  position: fixed;
+  /* Top-right, under the menu bar: clear of toasts and the bottom dock. */
+  top: calc(var(--os-menubar-h, 46px) + 12px);
+  right: 16px;
+  z-index: 100025;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(340px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.device-request-stack:empty {
+  display: none;
+}
+
+.device-request {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-lg);
+  background: var(--mn-bg);
+  box-shadow: var(--shadow-popover);
+  pointer-events: auto;
+  animation: device-request-in var(--duration-fast, 160ms) var(--ease-out, ease-out);
+}
+
+.device-request__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mn-fg);
+}
+
+.device-request__copy {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--mn-fg-muted);
+}
+
+.device-request__code {
+  margin: 2px 0;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--mn-fg);
+}
+
+.device-request__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--mn-fg-muted);
+}
+
+.device-request__select {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+}
+
+.device-request__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes device-request-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-request {
+    animation: none;
+  }
+}

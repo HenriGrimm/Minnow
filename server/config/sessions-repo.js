@@ -30,6 +30,7 @@ import {
   validateSessionState,
 } from './validators.js';
 
+import { CHAT_DETAIL_META_KEYS, isRunStub, mergeRunOverStored, RUN_DETAIL_KEYS, slimChatSummary } from './chat-detail.js';
 import { recallQueryTerms, runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
 
@@ -103,6 +104,8 @@ function readChatRevisions(db, ids) {
 /** @type {WeakMap<import('better-sqlite3').Database, Record<string, import('better-sqlite3').Statement>>} */
 const readStmtsByDb = new WeakMap();
 
+const RUN_STUB_PAYLOAD_SQL = `json_remove(payload_json, ${RUN_DETAIL_KEYS.map((key) => `'$.${key}'`).join(', ')})`;
+
 /**
  * @param {import('better-sqlite3').Database} db
  */
@@ -151,6 +154,14 @@ function getReadStmts(db) {
     loopsForChat: db.prepare(
       'SELECT payload_json FROM chat_loops WHERE chat_id = ? ORDER BY loop_id ASC',
     ),
+    // Summaries carry run stubs; SQLite drops the heavy fields before they are parsed.
+    runStubs: db.prepare(
+      `SELECT chat_id, run_id, ${RUN_STUB_PAYLOAD_SQL} AS payload_json FROM chat_runs ORDER BY chat_id ASC, run_id ASC`,
+    ),
+    runStubsForChat: db.prepare(
+      `SELECT ${RUN_STUB_PAYLOAD_SQL} AS payload_json FROM chat_runs WHERE chat_id = ? ORDER BY run_id ASC`,
+    ),
+    runForChat: db.prepare('SELECT payload_json FROM chat_runs WHERE chat_id = ? AND run_id = ?'),
   };
   readStmtsByDb.set(db, stmts);
   return stmts;
@@ -456,15 +467,18 @@ function readChatMessageDerived(db, chatId) {
  */
 function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory) {
   const chatId = String(chat.id);
+  // Nothing clears these on purpose, and a client that never fetched a chat's
+  // detail (or predates it) omits them: keep what is stored.
+  const keep = { keepPriorMetaKeys: CHAT_DETAIL_META_KEYS };
   if (syncHistory) {
     const history = Array.isArray(chat.history) ? chat.history : [];
     upsertChatRow(db, chat, sortIndex, {
       messageCount: history.length,
       lastMessagePreview: '',
       historyDigest: '',
-    });
+    }, keep);
     const derived = syncMessages(db, chatId, history);
-    upsertChatRow(db, chat, sortIndex, derived);
+    upsertChatRow(db, chat, sortIndex, derived, keep);
   } else {
     const existing = db.prepare('SELECT id FROM chats WHERE id = ?').get(chatId);
     if (!existing) {
@@ -474,10 +488,11 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory) {
       return false;
     }
     const derived = readChatMessageDerived(db, chatId);
-    upsertChatRow(db, chat, sortIndex, derived);
+    upsertChatRow(db, chat, sortIndex, derived, keep);
   }
-  syncChatRuns(db, chatId, Array.isArray(chat.runs) ? chat.runs : []);
-  syncSubAgentRuns(db, chatId, Array.isArray(chat.subAgentRuns) ? chat.subAgentRuns : []);
+  // Without history the runs and sub-agent runs are partial: update, never prune.
+  syncChatRuns(db, chatId, Array.isArray(chat.runs) ? chat.runs : [], { prune: syncHistory });
+  syncSubAgentRuns(db, chatId, Array.isArray(chat.subAgentRuns) ? chat.subAgentRuns : [], { prune: syncHistory });
   syncChatLoops(db, chatId, Array.isArray(chat.activeLoops) ? chat.activeLoops : []);
   return true;
 }
@@ -575,16 +590,22 @@ export function syncMessages(db, chatId, history) {
  * @param {import('better-sqlite3').Database} db
  * @param {string} chatId
  * @param {Record<string, any>[]} runs
+ * @param {{ prune?: boolean }} [opts] `prune: false` keeps stored runs the write did not list.
  */
-function syncChatRuns(db, chatId, runs) {
+function syncChatRuns(db, chatId, runs, { prune = true } = {}) {
   const list = Array.isArray(runs) ? runs : [];
   const keep = [];
   for (const run of list) {
     const runId = typeof run?.runId === 'string' ? run.runId : '';
     if (!runId) continue;
     keep.push(runId);
-    upsertChatRunRow(db, chatId, run);
+    // A stub (from summaries) must not erase the stored message copy and snapshot.
+    const stored = isRunStub(run)
+      ? parseJson(getReadStmts(db).runForChat.get(chatId, runId)?.payload_json, null)
+      : null;
+    upsertChatRunRow(db, chatId, mergeRunOverStored(stored, run));
   }
+  if (!prune) return;
   if (keep.length === 0) {
     db.prepare('DELETE FROM chat_runs WHERE chat_id = ?').run(chatId);
     return;
@@ -599,8 +620,9 @@ function syncChatRuns(db, chatId, runs) {
  * @param {import('better-sqlite3').Database} db
  * @param {string} chatId
  * @param {Record<string, any>[]} runs
+ * @param {{ prune?: boolean }} [opts] `prune: false` keeps stored runs the write did not list.
  */
-function syncSubAgentRuns(db, chatId, runs) {
+function syncSubAgentRuns(db, chatId, runs, { prune = true } = {}) {
   const list = Array.isArray(runs) ? runs : [];
   const keep = [];
   for (const run of list) {
@@ -609,6 +631,7 @@ function syncSubAgentRuns(db, chatId, runs) {
     keep.push(runId);
     upsertSubAgentRunRow(db, chatId, run);
   }
+  if (!prune) return;
   if (keep.length === 0) {
     db.prepare('DELETE FROM chat_sub_agent_runs WHERE chat_id = ?').run(chatId);
     return;
@@ -1001,17 +1024,17 @@ export function readAllChatIds() {
 
 /**
  * @param {Record<string, any>} row
- * @param {{ terminalHistory?: Record<string, unknown>[], runs?: unknown[], subAgentRuns?: unknown[], activeLoops?: unknown[], }} [children]
+ * @param {{ runs?: unknown[], activeLoops?: unknown[], }} [children] `runs` are stubs.
  */
 function chatRowToSummary(row, children = {}) {
   const stitched = stitchChat(row, {
     messages: [],
-    terminalHistory: children.terminalHistory ?? [],
+    terminalHistory: [],
     runs: children.runs ?? [],
-    subAgentRuns: children.subAgentRuns ?? [],
+    subAgentRuns: [],
     activeLoops: children.activeLoops ?? [],
   });
-  const { history: _history, ...rest } = stitched;
+  const { history: _history, ...rest } = slimChatSummary(stitched);
   void _history;
   /** @type {Record<string, unknown>} */
   const summary = {
@@ -1049,9 +1072,7 @@ export function readChatSummaries(filter = {}) {
       .filter((row) => !workspace || row.workspace_path === workspace)
       .map((row) =>
         chatRowToSummary(row, {
-          terminalHistory: stmts.terminalForChat.all(row.id).map(terminalRowToRecord),
-          runs: parsePayloadRows(stmts.runsForChat.all(row.id)),
-          subAgentRuns: parsePayloadRows(stmts.subAgentRunsForChat.all(row.id)),
+          runs: parsePayloadRows(stmts.runStubsForChat.all(row.id)),
           activeLoops: parsePayloadRows(stmts.loopsForChat.all(row.id)),
         }),
       );
@@ -1064,23 +1085,13 @@ export function readChatSummaries(filter = {}) {
         .all(workspace)
     : stmts.chats.all();
 
-  const terminalByChat = bucketBy(stmts.terminal.all(), (r) => r.chat_id);
-  const runsByChat = bucketBy(stmts.runs.all(), (r) => r.chat_id);
-  const subAgentsByChat = bucketBy(stmts.subAgentRuns.all(), (r) => r.chat_id);
+  const runsByChat = bucketBy(stmts.runStubs.all(), (r) => r.chat_id);
   const loopsByChat = bucketBy(stmts.loops.all(), (r) => r.chat_id);
 
   return rows.map((row) =>
     chatRowToSummary(row, {
-      terminalHistory: (terminalByChat.get(row.id) ?? []).map(terminalRowToRecord),
-      runs: (runsByChat.get(row.id) ?? [])
-        .map((r) => parseJson(r.payload_json, null))
-        .filter((r) => r && typeof r === 'object'),
-      subAgentRuns: (subAgentsByChat.get(row.id) ?? [])
-        .map((r) => parseJson(r.payload_json, null))
-        .filter((r) => r && typeof r === 'object'),
-      activeLoops: (loopsByChat.get(row.id) ?? [])
-        .map((r) => parseJson(r.payload_json, null))
-        .filter((r) => r && typeof r === 'object'),
+      runs: parsePayloadRows(runsByChat.get(row.id) ?? []),
+      activeLoops: parsePayloadRows(loopsByChat.get(row.id) ?? []),
     }),
   );
 }
@@ -1309,6 +1320,29 @@ export function readChatHistory(chatId, opts = {}) {
   return rows
     .map((row) => parseJson(row.payload_json, null))
     .filter((message) => message && typeof message === 'object');
+}
+
+/**
+ * Everything summaries leave out of one chat; sent with its history.
+ * @param {string} chatId
+ * @returns {Record<string, unknown>}
+ */
+export function readChatDetail(chatId) {
+  const id = typeof chatId === 'string' ? chatId.trim() : '';
+  const db = getSessionsDb();
+  const stmts = getReadStmts(db);
+  const row = id ? db.prepare('SELECT meta_json FROM chats WHERE id = ?').get(id) : null;
+  /** @type {Record<string, unknown>} */
+  const detail = {
+    runs: id ? parsePayloadRows(stmts.runsForChat.all(id)) : [],
+    subAgentRuns: id ? parsePayloadRows(stmts.subAgentRunsForChat.all(id)) : [],
+    terminalHistory: id ? stmts.terminalForChat.all(id).map(terminalRowToRecord) : [],
+  };
+  const meta = parseJson(row?.meta_json, {});
+  for (const key of CHAT_DETAIL_META_KEYS) {
+    if (meta && meta[key] !== undefined) detail[key] = meta[key];
+  }
+  return detail;
 }
 
 /**

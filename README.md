@@ -139,7 +139,7 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 | **Sub-agents** | Hand research, review, or a long grind to an agent with its own prompt, model, and context budget. |
 | **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
 | **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
-| **Companion access** | Reach your workspace from another device on your LAN, once you opt in. |
+| **Phone access** | Scan a QR and use your workspace from a phone, on your Wi-Fi or anywhere, with nothing to install. |
 
 Behind it, **110 built-in tools**: files, git, LSP, Godot control, terminal, web, browser automation, sub-agents, and plan checking. Each one can be Full, Ask, or Off, on the principle that a program able to run shell commands should occasionally check in.
 
@@ -167,7 +167,7 @@ The point of open source is not that you *could* read the source. It's that the 
 
 - Chats, config, Brain, models, and secrets live under `~/.minnow` on your disk.
 - Provider keys and passwords are encrypted at rest (AES-256-GCM).
-- Network access is loopback-only until you opt in.
+- Network access is loopback-only until you connect a phone.
 - File and git tools resolve under the folder you opened, not your whole drive.
 - Web search uses the provider you pick. There is no telemetry and no phone-home. Nobody here knows you installed it.
 

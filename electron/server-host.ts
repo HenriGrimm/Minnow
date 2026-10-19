@@ -4,7 +4,7 @@ import path from 'node:path';
 import connect from 'connect';
 import sirv from 'sirv';
 import { importServerModule } from './server-import.js';
-import { listenOnPreferredNetwork } from './loopback-listen.js';
+import { listenOnPreferredLoopback } from './loopback-listen.js';
 import { resolveMinnowPort } from './minnow-port.js';
 
 export interface InProcessServerHandle {
@@ -32,15 +32,14 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   const [
     { applyMinnowMiddlewares },
     { resolveSafePath, runWithPathAccess },
-    { attachPtyWebSocketServer },
-    { attachSttWebSocketServer },
-    { attachTtsWebSocketServer },
-    { attachAgentsWebSocketServer },
-    { attachStreamWebSocketServer },
+    { attachMinnowWebSockets },
+    { tagServerIngress },
+    { configureRemoteIngress, applyRemoteConfigAtBoot, shutdownRemoteIngress },
+    { flushDeviceActivity },
     { getAppRoot },
     { createSpaAuthHtmlMiddleware },
     { readConfigJson },
-    { initNetworkAccess, getNetworkAccess },
+    { initNetworkAccess },
     { startIsolatedPreviewHost, stopIsolatedPreviewHost },
     { startSchedulerForHost, stopSchedulerForHost },
     { startReefForHost, stopReefForHost },
@@ -59,19 +58,16 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       resolveSafePath: (userPath: string, options?: { write?: boolean }) => string;
       runWithPathAccess: <T>(fn: () => Promise<T>) => Promise<T>;
     }>('runtime/path-access.js'),
+    importServerModule<{ attachMinnowWebSockets: (server: http.Server) => void }>('runtime/ws-attach.js'),
     importServerModule<{
-      attachPtyWebSocketServer: (httpServer: http.Server) => void;
-    }>('terminal/pty-ws.js'),
+      tagServerIngress: (server: http.Server, kind: 'loopback') => http.Server;
+    }>('network/ingress.js'),
     importServerModule<{
-      attachSttWebSocketServer: (httpServer: http.Server) => void;
-    }>('stt/stt-ws.js'),
-    importServerModule<{
-      attachTtsWebSocketServer: (httpServer: http.Server) => void;
-    }>('tts/tts-ws.js'),
-    importServerModule<{
-      attachAgentsWebSocketServer: (httpServer: http.Server) => void;
-    }>('sub-agents/ws.js'),
-    importServerModule<{ attachStreamWebSocketServer: (server: http.Server) => void }>('runtime/stream-ws.js'),
+      configureRemoteIngress: (opts: { requestHandler: http.RequestListener }) => void;
+      applyRemoteConfigAtBoot: () => Promise<void>;
+      shutdownRemoteIngress: () => Promise<void>;
+    }>('remote/ingress-manager.js'),
+    importServerModule<{ flushDeviceActivity: () => void }>('auth/device-store.js'),
     importServerModule<{ getAppRoot: () => string }>('workspace/root.js'),
     importServerModule<{
       createSpaAuthHtmlMiddleware: (options: { indexPath: string }) => connect.HandleFunction;
@@ -79,7 +75,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     importServerModule<{ readConfigJson: (filename: string) => Promise<unknown> }>('config/store.js'),
     importServerModule<{
       initNetworkAccess: (configMeta: unknown) => void;
-      getNetworkAccess: () => 'local' | 'lan';
     }>('network/access.js'),
     importServerModule<{
       startIsolatedPreviewHost: () => Promise<void>;
@@ -95,7 +90,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
 
   const configMeta = (await readConfigJson('config.json')) ?? {};
   initNetworkAccess(configMeta);
-  const networkAccess = getNetworkAccess();
 
   const connectApp = connect();
   await startIsolatedPreviewHost();
@@ -118,16 +112,15 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   );
 
   const server = http.createServer(connectApp);
+  // The desktop window's listener is loopback-only; phones arrive on the
+  // separate home-network and tailnet listeners (server/remote/).
+  tagServerIngress(server, 'loopback');
   const closeHttpServer = createInProcessHttpServerCloser(server);
-  attachPtyWebSocketServer(server);
-  attachSttWebSocketServer(server);
-  attachTtsWebSocketServer(server);
-  attachAgentsWebSocketServer(server);
-  attachStreamWebSocketServer(server);
+  attachMinnowWebSockets(server);
 
   const preferredPort = resolveMinnowPort();
   // Prefer 9473 so Chromium localStorage (FOUC cache) keeps the same origin across launches.
-  const bound = await listenOnPreferredNetwork(server, preferredPort, networkAccess);
+  const bound = await listenOnPreferredLoopback(server, preferredPort);
   const url = `http://127.0.0.1:${bound.port}/`;
   if (bound.ephemeral) {
     console.warn(
@@ -135,8 +128,11 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     );
   }
   console.log(`Minnow in-process server: ${url}`);
-  if (networkAccess === 'lan') {
-    console.log(`Minnow LAN access enabled on port ${bound.port}`);
+  configureRemoteIngress({ requestHandler: connectApp as unknown as http.RequestListener });
+  try {
+    await applyRemoteConfigAtBoot();
+  } catch (err) {
+    console.warn('[remote] could not start remote access:', err);
   }
 
   // A scheduled run is a child process that calls back into this server, so the
@@ -155,7 +151,9 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       stopSchedulerForHost();
       stopReefForHost();
       stopExports();
+      flushDeviceActivity();
       try {
+        await shutdownRemoteIngress();
         await closeHttpServer();
       } finally {
         await stopIsolatedPreviewHost();

@@ -37,7 +37,7 @@ Two consequences fall out of that loop and explain most surprises:
 
 Traffic leaves your machine only when you send it somewhere: a cloud model provider you configured, a web search, a page fetch, a Hugging Face download, a webhook you set up. There is no analytics pipeline and no crash reporting service.
 
-The server binds to loopback. Other devices on your network cannot reach it until you explicitly enable LAN access and pair a device — see [Use Minnow from another device](../extend/companion.md).
+The server binds to loopback. Phones and tablets cannot reach it until you turn on a connection in **Settings → Devices** and connect them — see [Use Minnow on your phone](../extend/companion.md).
 
 Full detail: [Privacy and security](../reference/privacy-and-security.md).
 

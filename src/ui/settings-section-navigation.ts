@@ -35,7 +35,8 @@ export function resolveSettingsSectionNavigation(
   if (sectionId === 'general' && searchKey) {
     if (searchKey === 'general.desktop.zoom') return { sectionId: 'appearance', searchKey };
     if (searchKey.startsWith('general.chat.terminal')) return { sectionId: 'terminal', searchKey };
-    if (/^general\.(backup|filesystem|shellSandbox|network)(\.|$)/.test(searchKey)) {
+    if (/^general\.network(\.|$)/.test(searchKey)) return { sectionId: 'devices' };
+    if (/^general\.(backup|filesystem|shellSandbox)(\.|$)/.test(searchKey)) {
       return { sectionId: 'data', searchKey };
     }
   }

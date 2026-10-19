@@ -76,7 +76,7 @@ export function buildNetworkUrls(port) {
 
 /**
  * Snapshot for GET /api/system/network.
- * @param {{ port: number, localUrl?: string }} opts
+ * @param {{ port: number, localUrl?: string, lanUrls?: string[] }} opts
  * @returns {Promise<{
  *   networkAccess: string,
  *   port: number,
@@ -87,6 +87,7 @@ export function buildNetworkUrls(port) {
  * }>}
  */
 export async function getNetworkStatus(opts) {
+  // opts.lanUrls: addresses of the live home-network listener (it has its own port).
   const port = Number(opts.port) || resolveMinnowPort();
   const localUrl = opts.localUrl?.trim() || `http://localhost:${port}/`;
   const meta = (await readConfigJson('config.json')) ?? {};
@@ -97,7 +98,7 @@ export async function getNetworkStatus(opts) {
     configNetworkAccess: persisted,
     port,
     localUrl: localUrl.endsWith('/') ? localUrl : `${localUrl}/`,
-    lanUrls: buildNetworkUrls(port),
+    lanUrls: opts.lanUrls ?? buildNetworkUrls(port),
     restartRequired: isNetworkRestartRequired(),
   };
 }

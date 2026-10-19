@@ -1,7 +1,8 @@
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { getNetworkAccess, isClientAllowed, isHostAllowed } from '../network/access.js';
+import { authorizeUpgrade } from './request-auth.js';
 import { authenticateMinnowToken } from './authenticate-token.js';
+import { getRequestRelayHeaders } from '../network/ingress.js';
 
 /** Multiplex read-only API streams, keeping Chromium's HTTP pool free for RPCs.
  * Loopback requests deliberately traverse the existing auth/workspace middleware.
@@ -12,15 +13,13 @@ export function attachStreamWebSocketServer(server) {
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/api/streams/ws') return;
-    const token = url.searchParams.get('token') ?? '';
-    const access = getNetworkAccess();
     const origin = req.headers.origin;
-    const forbidden = !isClientAllowed(req, access) || !isHostAllowed(req.headers.host ?? '', access)
-      || (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`);
-    if (forbidden || !authenticateMinnowToken(token)) {
-      socket.end(`HTTP/1.1 ${forbidden ? '403 Forbidden' : '401 Unauthorized'}\r\nConnection: close\r\n\r\n`);
+    if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
     }
+    const access = authorizeUpgrade(req, socket);
+    if (!access) return;
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
       const channels = new Map();
@@ -66,13 +65,20 @@ export function attachStreamWebSocketServer(server) {
           || /[\r\n\\#]/.test(message.path)) {
           send({ id, type: 'error', error: 'Invalid stream path' }); return;
         }
-        if (!authenticateMinnowToken(token)) { ws.close(1008, 'Unauthorized'); return; }
+        if (!authenticateMinnowToken(access.token, { ingress: access.ingress })) { ws.close(1008, 'Unauthorized'); return; }
         const target = new URL(message.path, 'http://localhost');
         if (!target.pathname.startsWith('/api/')) {
           send({ id, type: 'error', error: 'Invalid stream path' }); return;
         }
         target.searchParams.delete('token');
-        const headers = { 'X-Minnow-Token': token, Accept: 'text/event-stream' };
+        // Re-enter through the same listener as the browser did, so the inner
+        // request authenticates against the same ingress.
+        const headers = {
+          Host: req.headers.host ?? '',
+          ...getRequestRelayHeaders(req),
+          'X-Minnow-Token': access.token,
+          Accept: 'text/event-stream',
+        };
         if (typeof message.workspace === 'string') headers['X-Minnow-Workspace'] = message.workspace;
         if (typeof message.lastEventId === 'string') headers['Last-Event-ID'] = message.lastEventId;
         const channel = { request: null, response: null, waiting: false };

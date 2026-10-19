@@ -131,6 +131,47 @@ describe('lazy history (C.2)', () => {
     assert.equal(fetchCalls, 1);
   });
 
+  test('opening a chat fills in the detail its summary left out, keeping what this window recorded', async () => {
+    setStorageModeForTests('server');
+    setSessionsLazyHistoryEnabledForTests(true);
+    const stub = { runId: 'run-1', branchId: 'b1', forkHistoryIndex: 0, status: 'running', createdAt: 1 };
+    const localRun = {
+      runId: 'run-2', branchId: 'b2', forkHistoryIndex: 2, status: 'running', createdAt: 2,
+      snapshot: { note: 'recorded here' },
+    };
+    const chat = makeChat(CHAT_A, {
+      historyLoaded: false,
+      runs: [stub, localRun] as unknown as Chat['runs'],
+      terminalHistory: [{ id: 't2', command: 'ls', startedAt: 20 }] as unknown as Chat['terminalHistory'],
+    });
+    setSessionStateForTests(makeState([chat]));
+
+    let requested = '';
+    globalThis.fetch = async (input) => {
+      requested = String(input);
+      return new Response(JSON.stringify({
+        chatId: CHAT_A,
+        history: [{ role: 'user', content: 'one' }],
+        detail: {
+          runs: [{ ...stub, status: 'completed', snapshot: { note: 'stored' }, outputMessages: [] }],
+          subAgentRuns: [{ runId: 'sub-1' }],
+          terminalHistory: [{ id: 't1', command: 'pwd', startedAt: 10 }],
+          injectedContext: { 'code-map': 'map' },
+        },
+      }), { status: 200 });
+    };
+
+    await ensureChatHistoryLoaded(CHAT_A);
+    assert.match(requested, /\?detail=1$/);
+    assert.equal(chat.historyLoaded, true);
+    const runs = chat.runs as unknown as Array<{ runId: string; status: string; snapshot?: { note: string } }>;
+    assert.deepEqual(runs.map((run) => [run.runId, run.status, run.snapshot?.note]),
+      [['run-1', 'completed', 'stored'], ['run-2', 'running', 'recorded here']]);
+    assert.deepEqual(chat.subAgentRuns?.map((run) => run.runId), ['sub-1']);
+    assert.deepEqual(chat.terminalHistory?.map((row) => row.id), ['t1', 't2']);
+    assert.deepEqual(chat.injectedContext, { 'code-map': 'map' });
+  });
+
   test('requireHistory throws while unloaded', () => {
     const chat = makeChat(CHAT_B, { historyLoaded: false });
     assert.throws(() => requireHistory(chat), /history not loaded/);
