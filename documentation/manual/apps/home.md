@@ -6,7 +6,7 @@ Change an issue's status using the status dropdown on its card or in the issue w
 
 ## Capture and plan
 
-When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or default model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
+When the project has no issues, Dashboard shows a goal field instead of empty columns. Enter a goal or an error, then choose **Add issue** to create an issue in Triage. **Plan a goal** asks your utility model (or last selected chat model) for draft tasks. Review the drafts, then choose **Add to Ready**, **Add and select**, or **Discard**. Planning drafts does not start agents or edit project files. The issue flow appears when issues are added; the goal field then stays in the header. **Continue building in Code** returns to your existing Code session.
 
 Select **Accept to Ready** to accept a triage issue. Existing issue statuses follow the roles configured in Settings → Issues. Closed and canceled issues retain their existing meaning.
 
@@ -22,16 +22,18 @@ Blocked groups are held until their blockers close or merge. **Start from main**
 
 ## Review in the dock
 
-Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Open **Issue details** to read the formatted description, notes, and linked files in a side pane. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
+Select a card to open its workspace in the bottom dock. The header shows the issue, agent state, branch, merge target, and number of issues sharing the worktree. Open **Details** to view and edit the full issue with the same layout as the Issues app popover, including its description, saved plan, properties, resources, and comments. Drag the divider or use its arrow keys to resize the dock; **Maximize details** gives it the full workspace. Collapse keeps your draft and current view.
 
 **Conversation** uses the same message and tool rendering as Code. Agent questions use the shared answer controls. Send a message to request changes; finished work returns to Review. You can draft a message while the agent works, then pause or wait before sending. **Pause** stops the current turn and keeps the chat and worktree. **Resume** continues it. **Open in Code** opens the linked chat.
 
 For a new issue, the formatted brief and start controls share one reading column. Add optional instructions, choose Build or Plan first, then select **Start build** or **Start planning**. **Approve plan & build** switches a completed Plan first chat to Build.
 
-**Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. On wide windows, the conversation can stay beside the changes. **Runs** lists recorded commands, their exit results, and expandable output. A successful exit records command execution; review the conversation and changes to assess whether the requested behavior works. Expand **Run a command in this checkout** for a scoped command console. Switching views retains its output and running command controls.
+**Changes** shows committed and uncommitted changes against the merge target. Select a file to inspect its diff. The diff occupies the workspace; use **Conversation** to review the agent’s messages or request changes. **Details** keeps issue editing in the dock and opens automatically when a plan is ready for approval.
 
 **Merge into main** (or the configured target) queues the merge. Shared work shows every affected issue beside the action. If changes remain uncommitted, **Ask agent to commit** sends them back for preparation. Minnow verifies that the managed worktree is committed and checks the merge in a temporary checkout before updating the target. Conflicts keep the branch and worktree. Ask the agent to resolve them or inspect them in Code. Git refuses a landing that overlaps uncommitted changes in the target checkout. After a successful merge, Minnow removes the clean agent worktree and moves the issues to Done.
 
 ## Refresh
 
 Project data refreshes every 10 seconds while Dashboard is visible. Conversation updates preserve the message draft and scroll position. A failed refresh retains the last successful data with a retry action. The shell's workspace picker switches projects; **Open Code** opens the development workspace.
+
+Use **Model** in the launch controls to choose a model or pool for new chats. It follows the last composer selection until you choose an override. The choice applies to that dispatch without changing the remembered chat model; adding work to an existing chat keeps its model.

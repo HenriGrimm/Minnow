@@ -1,3 +1,4 @@
+import { subscribeModelSelection } from '../models/selection';
 import { captureEditorFocusRequest } from './editor-focus-request';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
 /**
@@ -481,25 +482,18 @@ function snapshotOutgoingEditorTab(): void {
 }
 
 function detachEditorAiModelSelectListener(): void {
-  if (!editorAiModelSelectListener) return;
-  document
-    .getElementById('modelSelect')
-    ?.removeEventListener('change', editorAiModelSelectListener);
+  editorAiModelSelectListener?.();
   editorAiModelSelectListener = null;
 }
 
 /** Clear stale "no model" hint when the user picks a model while editing. */
 function attachEditorAiModelSelectListener(): void {
   detachEditorAiModelSelectListener();
-  editorAiModelSelectListener = () => {
-    if (!editorAiStatusEl || editorAiStatusEl.hidden) return;
-    if (editorAiStatusEl.textContent === EDITOR_AI_NO_MODEL_MESSAGE) {
+  editorAiModelSelectListener = subscribeModelSelection(() => {
+    if (editorAiStatusEl?.textContent === EDITOR_AI_NO_MODEL_MESSAGE) {
       editorAiStatusEl.hidden = true;
     }
-  };
-  document
-    .getElementById('modelSelect')
-    ?.addEventListener('change', editorAiModelSelectListener);
+  });
 }
 
 function destroyEditor(): void {

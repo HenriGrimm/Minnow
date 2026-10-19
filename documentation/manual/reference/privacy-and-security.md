@@ -24,11 +24,14 @@ The one that matters most: **using a cloud model means your prompts go to that c
 
 ## The network boundary
 
-The tool server binds to loopback. Other machines cannot reach it.
+The desktop app's server binds to loopback. Other machines cannot reach it.
 
-Turning on LAN access requires an explicit setting plus a restart, and then a device must pair through a one-time six-digit code or QR that expires in five minutes. Paired devices get a revocable token; the host stores only its SHA-256 hash. Device tokens cannot manage other devices. Pairing itself additionally requires a private source address, a valid host header, and a same-origin request.
+Phones and tablets reach Minnow only after you turn on a connection in **Settings → Devices**:
 
-This is a same-network feature. It is not built for internet exposure and port-forwarding it is unsupported. See [Use Minnow from another device](../extend/companion.md).
+- **Home network** opens a separate listener on your Wi-Fi (port 9480) that serves only private network addresses.
+- **Anywhere** runs a Tailscale node inside Minnow and serves an HTTPS address. With public access on, that address can be reached from the internet; only connected devices can use it.
+
+Either way, a device must be connected by you: a single-use QR that expires in ten minutes, a 6-digit code (home network only), or a request you approve after matching a 4-digit number. Each device gets its own revocable credential in an HttpOnly cookie; the host stores only its SHA-256 hash. The host's own credential is never accepted from these connections. Device credentials cannot manage devices, and cookie-authenticated requests must come from Minnow's own origin. Router port forwarding is unsupported. See [Use Minnow on your phone](../extend/companion.md).
 
 ## Secrets
 
@@ -36,13 +39,13 @@ API keys, OAuth tokens, mail passwords, webhook destinations and webhook signing
 
 Delete or rotate that file and the secrets become permanently unrecoverable. That is the intended property — but it means a backup of your Minnow home without `.key` is a backup that cannot restore your credentials. [Backup and restore](backup-and-restore.md) handles this for you: `.key` goes into a backup only when the backup itself is encrypted with a passphrase, and an unencrypted backup carries no secrets at all.
 
-Minnow's own API is protected by a per-boot token that is injected only into loopback page loads, never into anything served to a LAN address.
+Minnow's own API is protected by a per-boot token that is injected only into pages served by the desktop app's loopback listener, never into anything served to a phone.
 
 ## Containing agents
 
 Five mechanisms, in rough order of importance:
 
-**1. The workspace boundary.** File, git and search tools resolve under one folder: your open project in Code, **Sandbox** when you have no project, or a board task's git worktree. Paths outside it are rejected before anything runs, and symlinks pointing outside are rejected too. **Settings → Data & privacy → Filesystem access** can lift this to full disk; understand that this is the main *file-tool* containment in the product before you do.
+**1. The workspace boundary.** File, git and search tools resolve under one folder: your open project in Code, **Sandbox** when you have no project, or a board task's git worktree. Paths outside it are rejected before anything runs, and symlinks pointing outside are rejected too. **Settings → Data & privacy → Access → Filesystem access** can lift this to full disk; understand that this is the main *file-tool* containment in the product before you do.
 
 This boundary does **not** apply to shell strings. With `execute_command` on Full and no OS sandbox, the process has the same filesystem authority as Minnow itself — `cat ~/.minnow/.key` is not stopped by the workspace root check. See mechanism 5.
 
@@ -85,4 +88,4 @@ Brain content is retrieved into prompts, which means it goes wherever your promp
 
 - [Where your data lives](configuration.md)
 - [Tools and permissions](../concepts/tools-and-permissions.md)
-- [Use Minnow from another device](../extend/companion.md)
+- [Use Minnow on your phone](../extend/companion.md)

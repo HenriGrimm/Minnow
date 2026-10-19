@@ -78,9 +78,18 @@ export class ThoughtBubbleController {
 
   /** Point the controller at the active assistant row. */
   setAssistantWrap(wrap: HTMLElement): void {
+    if (this.assistantWrap === wrap) return;
+    const expanded = this.toggleBtn?.getAttribute('aria-expanded') === 'true'
+      || this.assistantWrap.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded') === 'true';
+    this.teardownStage();
     this.assistantWrap = wrap;
-    if (this.stageEl && !this.stageEl.isConnected) {
-      this.teardownStage();
+    this.expanded = expanded;
+    if (!this.getJoinedDisplayText()) return;
+    if (this.reasoningPhaseEnded) {
+      renderThoughtsToggle(wrap, this.getSegmentsNormalized(), { expanded, durationMs: this.elapsedMs ?? undefined });
+    } else {
+      this.ensureThinkingPanel();
+      this.syncFlowContent();
     }
   }
 
@@ -108,6 +117,13 @@ export class ThoughtBubbleController {
   /** Append streamed reasoning characters; splits on `\n\n` into discrete thoughts. */
   appendReasoningDelta(delta: string): void {
     if (this.disposed || !delta) return;
+    if (this.reasoningPhaseEnded) {
+      const panel = this.assistantWrap.querySelector('.thoughts-panel-wrap');
+      this.expanded = panel?.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded') === 'true';
+      panel?.remove();
+      this.reasoningPhaseEnded = false;
+      this.thinkingStartNotified = false;
+    }
     this.invalidateJoinedDisplayCache();
     if (!this.thinkingStartNotified) {
       this.thinkingStartNotified = true;

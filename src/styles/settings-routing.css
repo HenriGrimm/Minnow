@@ -500,3 +500,94 @@ details[open] > .settings-routing-fallback__summary::before {
     grid-column: 2;
   }
 }
+
+/* The full routing page owns its scale; the shared popover keeps its compact layout. */
+.settings-routing-page {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding-block: 8px 32px;
+  gap: 24px;
+}
+.settings-routing-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.settings-routing-page__heading { min-width: 0; }
+.settings-routing-page h2.settings-routing-page__title {
+  margin: 0 0 10px;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -.025em;
+  line-height: 1.25;
+}
+.settings-routing-page__description {
+  max-width: 64ch;
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.settings-routing-page__scope {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 7px;
+  margin-top: 6px;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.settings-routing-page .settings-routing-tabs { width: 100%; padding-bottom: 12px; }
+.settings-routing-page .settings-routing-tab { min-height: 42px; font-size: 14px; }
+.settings-routing-page .settings-routing-tabpanel { width: 100%; min-width: 0; }
+.settings-routing-page .model-routing-form--page { width: 100%; gap: 0; font-size: 14px; }
+.settings-routing-page .model-routing-form__columns,
+.settings-routing-page .model-routing-form__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  column-gap: clamp(24px, 5cqi, 64px);
+}
+.settings-routing-page .model-routing-form__columns {
+  padding: 0 0 12px;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.settings-routing-page .model-routing-form__row { min-height: 96px; padding: 20px 0; }
+.settings-routing-page .model-routing-form--page > .model-routing-form__row + .model-routing-form__row { border-top: 1px solid var(--mn-border); }
+.settings-routing-page .model-routing-form__label { align-items: flex-start; gap: 16px; }
+.settings-routing-page .model-routing-form__icon { flex-basis: 24px; padding-top: 2px; }
+.settings-routing-page .model-routing-form__copy { gap: 6px; }
+.settings-routing-page .model-routing-form__copy > span { font-size: 15px; font-weight: 500; }
+.settings-routing-page .model-routing-form__copy small { max-width: 43ch; font-size: 12px; line-height: 1.6; }
+.settings-routing-page .model-routing-form__row .model-select-trigger {
+  min-height: 44px;
+  padding: 11px 36px 11px 14px;
+  font-size: 14px;
+  background: var(--mn-bg);
+}
+.settings-routing-page .model-routing-form__advanced { margin-top: 20px; padding-top: 12px; }
+.settings-routing-page .model-routing-form__advanced > summary { min-height: 48px; padding: 12px 8px; font-size: 14px; gap: 10px; }
+.settings-routing-page .model-routing-form__advanced-hint { max-width: 70ch; margin: 8px 0 14px; color: var(--mn-fg-muted); font-size: 12px; line-height: 1.6; }
+.settings-routing-page .model-routing-form__advanced .model-routing-form__row { min-height: 64px; padding: 10px 0; }
+.settings-routing-page .model-routing-form__advanced .model-routing-form__copy > span { font-size: 14px; }
+.settings-routing-page .model-routing-form__status { margin: 16px 0 0; font-size: 12px; }
+.settings-routing-page .model-routing-form__retry { margin-top: 8px; }
+
+@container (max-width: 720px) {
+  .settings-routing-page__header { flex-direction: column; gap: 12px; }
+  .settings-routing-page__scope { margin-top: 0; }
+  .settings-routing-page .model-routing-form__row { column-gap: 24px; }
+}
+@container (max-width: 520px) {
+  .settings-routing-page { gap: 20px; }
+  .settings-routing-page h2.settings-routing-page__title { font-size: 23px; }
+  .settings-routing-page .model-routing-form__columns { display: none; }
+  .settings-routing-page .model-routing-form__row { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .settings-routing-page .model-routing-form__row .model-select-inner { margin-left: 40px; width: calc(100% - 40px); }
+}

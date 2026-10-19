@@ -19,6 +19,7 @@ let decisionMode = 'ok';
 let decisionCalls = [];
 let chatCalls = [];
 let smallReasoning = null;
+let taskType;
 
 before(async () => {
   home = setTestHome(process.env, 'minnow-test-model-routers-evaluate'); await ensureMinnowLayout();
@@ -42,6 +43,7 @@ before(async () => {
       res.end(JSON.stringify({
         model: body.model,
         answers: {
+          ...(taskType ? { taskType: { type: 'choice', choice: taskType, confidence: 0.9 } } : {}),
           tier: { type: 'choice', choice: hard ? 'frontier' : 'fast', confidence: 0.92, probabilities: {} },
           effort: { type: 'choice', choice: hard ? 'high' : 'low', confidence: 0.8, probabilities: {} },
         },
@@ -209,4 +211,55 @@ test('any chat model can judge when it answers as JSON', async () => {
   const generating = controls(text).find((c) => c.phase === 'generating');
   assert.equal(generating.decision.reason, 'Architecture question');
   assert.equal(generating.decision.judgedBy, 'judge-1b');
+});
+
+test('task specialties route before tiers, persist, and retain safe fallbacks and re-evaluation', async () => {
+  const original = structuredClone(workspace.routers[0]);
+  const save = async entries => workspace.save({ revision: workspace.revision, defaultRouterId: 'auto', routers: [{
+    ...original, evaluator: { providerId: 'router-eval', modelId: 'jev' }, entries,
+  }] });
+  const entries = original.entries.map(entry => ({ ...entry, taskTypes: entry.id === 'small-4b' ? ['ux-design', 'writing'] : ['coding'] }));
+  try {
+    decisionMode = 'ok'; taskType = 'ux-design'; decisionCalls = []; chatCalls = [];
+    await save(entries);
+    const text = await run('specialties', [{ role: 'user', content: 'refactor the visual design' }]);
+    assert.equal(chatCalls.at(-1).model, 'small-4b', 'a matching specialty wins over a different specialty at the exact tier');
+    assert.equal(controls(text).at(-1).decision.taskType, 'ux-design');
+    await workspace.flush();
+    const persisted = JSON.parse(await fs.readFile(path.join(home, 'model-routers/global-v2.json'), 'utf8'));
+    assert.deepEqual(persisted.routers[0].entries[0].taskTypes, ['ux-design', 'writing']);
+    const savedDecision = persisted.decisions[workspace.scheduler.assignmentKey('auto', 'specialties')];
+    assert.equal(savedDecision.taskType, 'ux-design');
+    assert.equal(savedDecision.display.taskType, 'ux-design');
+
+    taskType = 'coding'; chatCalls = [];
+    await run('specialties', [{ role: 'user', content: 'now implement it' }]);
+    assert.equal(chatCalls.at(-1).model, 'small-4b', 'follow-ups retain the assignment without re-evaluating');
+    assert.equal(decisionCalls.length, 1);
+    workspace.scheduler.requestReevaluation(workspace.routers[0], 'specialties');
+    const fresh = await run('specialties', [{ role: 'user', content: 'refactor the implementation' }]);
+    assert.equal(chatCalls.at(-1).model, 'big-70b');
+    assert.equal(controls(fresh).at(-1).decision.taskType, 'coding');
+
+    taskType = 'research'; chatCalls = [];
+    await save([{ ...entries[0], taskTypes: [] }, entries[1]]);
+    await run('unrestricted-fallback', [{ role: 'user', content: 'refactor research' }]);
+    assert.equal(chatCalls.at(-1).model, 'small-4b', 'unrestricted models precede nonmatching specialists');
+    await save(entries);
+    await run('specialty-fallback', [{ role: 'user', content: 'refactor research' }]);
+    assert.equal(chatCalls.at(-1).model, 'big-70b', 'with no match or unrestricted model, tier routing still works');
+
+    taskType = 'ux-design';
+    await save([{ ...entries[0], enabled: false }, entries[1]]);
+    await run('disabled-specialist', [{ role: 'user', content: 'refactor the design' }]);
+    assert.equal(chatCalls.at(-1).model, 'big-70b', 'disabled specialists cannot block a request');
+
+    taskType = 'coding'; decisionMode = 'model-error'; chatCalls = [];
+    await save(entries);
+    await run('specialist-failed', [{ role: 'user', content: 'refactor the implementation' }]);
+    assert.deepEqual(chatCalls.map(call => call.model), ['big-70b', 'small-4b'], 'failed specialists can fail over to the remaining lineup');
+  } finally {
+    taskType = undefined; decisionMode = 'ok';
+    await workspace.save({ revision: workspace.revision, defaultRouterId: 'auto', routers: [original] });
+  }
 });

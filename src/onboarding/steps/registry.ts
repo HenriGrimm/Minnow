@@ -1,3 +1,4 @@
+import { routingStep } from './routing';
 /**
  * Ordered onboarding step registry (MIN-233 flow).
  */
@@ -29,6 +30,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   providerCloudStep,
   providerCliStep,
   modelPickStep,
+  routingStep,
   apiKeysStep,
   extrasStep,
   githubStep,

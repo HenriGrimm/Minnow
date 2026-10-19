@@ -161,7 +161,9 @@ test('a missing remote parent reports an error without overwriting its relations
   };
   const result = await syncIssueWithGithub('MIN-1');
   assert.equal(result.ok, false);
-  assert.match(result.error!, /Import parent GitHub issue #999/);
+  assert.match(result.error!, /Could not import parent GitHub issue #999/);
+  assert.equal(findIssueById('MIN-1')?.description, 'Description');
+  assert.equal(findIssueById('MIN-1')?.github?.remoteUpdatedAt, 1000);
 });
 
 test('type-only edits and comment changes publish; parsed bodies subsequently stay in sync', async () => {
@@ -193,4 +195,119 @@ test('type-only edits and comment changes publish; parsed bodies subsequently st
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'pull');
   assert.equal(findIssueById('MIN-1')?.type, 'feature');
   assert.equal(findIssueById('MIN-1')?.description, 'Remote description');
+});
+
+
+test('single-issue sync restores a missing closed parent in the child workspace', async () => {
+  setWorkspaceFromServer({ path: '/other', label: 'other', isDefault: false });
+  const child = { number: 1, title: 'Child', body: encodeGithubIssueBody('Child body', { ...metadata(), parent: 197 }),
+    state: 'open', labels: [], url: 'https://github.com/o/r/issues/1', updatedAt: 2000 };
+  const parent = { ...child, number: 197, title: 'Closed parent', state: 'closed',
+    body: encodeGithubIssueBody('Parent body', metadata()), url: 'https://github.com/o/r/issues/197' };
+  const requests: number[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.op, 'issueView');
+    assert.equal(request.cwd, '/w');
+    requests.push(request.number);
+    return Response.json({ ok: true, issue: request.number === 197 ? parent : child });
+  };
+  assert.equal((await syncIssueWithGithub('MIN-1')).action, 'pull');
+  const restored = listIssues().find((issue) => issue.github?.number === 197)!;
+  assert.equal(restored.workspacePath, '/w');
+  assert.equal(restored.status, 'done');
+  assert.deepEqual(restored.comments, metadata().comments);
+  assert.equal(findIssueById('MIN-1')?.parentId, restored.id);
+  assert.equal((await syncIssueWithGithub('MIN-1')).action, 'noop');
+  assert.deepEqual(requests, [1, 197, 1]);
+});
+
+test('import fetches parents outside discovery and retries without partial child watermarks', async () => {
+  setIssuesStateForTests({ version: 2, nextId: 1, issues: [], workspaces: {} });
+  const child = { number: 11, title: 'Child', body: encodeGithubIssueBody('Child body', { ...metadata(), parent: 197 }),
+    state: 'open', labels: [], url: 'https://github.com/o/r/issues/11', updatedAt: 2000 };
+  const parent = { ...child, number: 197, title: 'Parent', state: 'closed',
+    body: encodeGithubIssueBody('Parent body', metadata()), url: 'https://github.com/o/r/issues/197' };
+  let fail = true;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    if (request.op === 'issueList') return Response.json({ ok: true, issues: [child] });
+    assert.equal(request.op, 'issueView');
+    assert.equal(request.number, 197);
+    return Response.json(fail ? { ok: false, error: 'Network unavailable' } : { ok: true, issue: parent });
+  };
+  const failed = await importGithubIssues({ limit: 1 });
+  assert.equal(failed.ok, false);
+  assert.match(failed.error!, /#197.*Network unavailable/);
+  assert.equal(listIssues().length, 0);
+  fail = false;
+  assert.deepEqual(await importGithubIssues({ limit: 1 }), { ok: true, imported: 2, skipped: 0 });
+  const rows = listIssues();
+  assert.equal(rows.find((row) => row.github?.number === 11)?.parentId,
+    rows.find((row) => row.github?.number === 197)?.id);
+  assert.equal((await importGithubIssues()).skipped, 1);
+});
+
+test('batch sync restores a shared missing parent without duplicate local cards', async () => {
+  const first = card();
+  const second = { ...card(), id: 'MIN-2', github: { ...card().github!, number: 2 } };
+  setIssuesStateForTests({ version: 2, nextId: 3, issues: [first, second], workspaces: {} });
+  const remote = (number: number) => ({ number, title: 'Child',
+    body: encodeGithubIssueBody('Child body', { ...metadata(), parent: 197 }),
+    state: 'open', labels: [], url: `https://github.com/o/r/issues/${number}`, updatedAt: 2000 });
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.op, 'issueView');
+    assert.equal(request.number, 197);
+    return Response.json({ ok: true, issue: { ...remote(197), title: 'Parent', body: encodeGithubIssueBody('Parent', metadata()) } });
+  };
+  const results = await Promise.all([first, second].map((issue) => syncIssueWithGithub(issue.id, {
+    remote: remote(issue.github!.number), workspacePath: '/w', syncedAt: 1000,
+  })));
+  assert.ok(results.every((result) => result.ok), JSON.stringify(results));
+  const parents = listIssues().filter((issue) => issue.github?.number === 197);
+  assert.equal(parents.length, 1);
+  assert.equal(findIssueById(first.id)?.parentId, parents[0].id);
+  assert.equal(findIssueById(second.id)?.parentId, parents[0].id);
+});
+
+test('invalid remote parent hierarchies fail without changing the child', async () => {
+  for (const parentNumber of [1, 197]) {
+    globalThis.fetch = async (_input, init) => {
+      const request = JSON.parse(String(init?.body));
+      return Response.json({ ok: true, issue: { number: request.number, title: 'Invalid',
+        body: encodeGithubIssueBody('Invalid', { ...metadata(), parent: parentNumber }),
+        state: 'open', labels: [], url: `https://github.com/o/r/issues/${request.number}`, updatedAt: 2000 } });
+    };
+    assert.equal((await syncIssueWithGithub('MIN-1')).ok, false);
+    assert.equal(listIssues().length, 1);
+    assert.equal(findIssueById('MIN-1')?.description, 'Description');
+  }
+});
+
+
+test('parent discovery respects workspace identity and keeps an already imported parent’s local edits', async () => {
+  const otherParent = { ...card(), id: 'OTHER-1', workspacePath: '/other', github: { ...card().github!, number: 197 } };
+  const localParent = { ...card(), id: 'MIN-2', title: 'Unsynced parent edit', updatedAt: 3000,
+    github: { ...card().github!, number: 198 } };
+  setIssuesStateForTests({ version: 2, nextId: 3, issues: [card(), otherParent, localParent], workspaces: {} });
+  let parentNumber = 197;
+  const parentReads: number[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body));
+    assert.equal(request.cwd, '/w');
+    if (request.number !== 1) parentReads.push(request.number);
+    return Response.json({ ok: true, issue: { number: request.number, title: 'Remote title',
+      body: encodeGithubIssueBody('Remote body', { ...metadata(), parent: request.number === 1 ? parentNumber : null }),
+      state: 'open', labels: [], url: `https://github.com/o/r/issues/${request.number}`, updatedAt: parentNumber * 1000 } });
+  };
+  assert.equal((await syncIssueWithGithub('MIN-1')).ok, true);
+  const restored = listIssues().find((row) => row.workspacePath === '/w' && row.github?.number === 197)!;
+  assert.equal(findIssueById('MIN-1')?.parentId, restored.id);
+  assert.notEqual(restored.id, otherParent.id);
+  parentNumber = 198;
+  assert.equal((await syncIssueWithGithub('MIN-1')).action, 'pull');
+  assert.equal(findIssueById('MIN-1')?.parentId, localParent.id);
+  assert.equal(findIssueById(localParent.id)?.title, 'Unsynced parent edit');
+  assert.deepEqual(parentReads, [197]);
 });

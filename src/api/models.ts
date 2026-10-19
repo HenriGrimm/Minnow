@@ -1,3 +1,4 @@
+import { setModelCatalogEntries } from '../models/selection';
 import { modelCache, modelsFetchAbort, setModelsFetchAbort } from '../app-state';
 import { isServerStorageMode } from '../config/storage-mode';
 import { buildTopBarModelOptionHtml, escapeHtml } from '../lib/format-model-label';
@@ -700,8 +701,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     if (savedDefault) {
       sel.value = savedDefault;
     } else {
-      const chosen = pickInitialSelectValue(results, ac);
-      sel.value = chosen || optionValues.find((v) => v.trim()) || '';
+      sel.value = '';
     }
 
     if (failures.length > 0) {
@@ -727,6 +727,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
     syncModelSelectPicker();
     setStatus('err', err instanceof Error ? err.message : 'Cannot reach providers. Check the host connection and retry.');
   } finally {
+    setModelCatalogEntries([...sel.options].map((option) => ({ value: option.value, label: option.label })));
     if (modelsFetchAbort && modelsFetchAbort.signal === signal) {
       setModelsFetchAbort(null);
       sel.removeAttribute('aria-busy');
@@ -738,7 +739,7 @@ export async function fetchModels(options: { refresh?: boolean } = {}): Promise<
 }
 
 /**
- * After serve, pick the new provider's model in the top bar.
+ * After an explicit serve action, bind an unconfigured chat to the served model.
  * @returns true when a matching option was found and selected.
  */
 export async function selectProviderModel(

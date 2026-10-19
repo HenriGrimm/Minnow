@@ -11,6 +11,7 @@ describe('pushNotification mute gate', () => {
     const win = new Window();
     const g = globalThis;
     g.window = win;
+    g.document = win.document;
     g.localStorage = win.localStorage;
     prefs = await import('../../src/notifications/prefs.ts');
     store = await import('../../src/notifications/store.ts');
@@ -25,17 +26,31 @@ describe('pushNotification mute gate', () => {
     store.resetNotificationStoreForTests();
   });
 
-  test('returns null when notifications are muted', () => {
+  test('captures activity while muted without delivering an alert', () => {
     prefs.saveNotificationPref('muted', true);
+    let alerts = 0;
+    const unsubscribe = push.onNewNotification(() => { alerts++; });
     const record = push.pushNotification({
       kind: 'chat_turn_complete',
       title: 'Chat',
       preview: 'Done',
       appId: 'code',
     });
-    assert.equal(record, null);
-    assert.equal(store.getUnreadNotificationCount(), 0);
+    unsubscribe();
+    assert.notEqual(record, null);
+    assert.equal(store.getUnreadNotificationCount(), 1);
+    assert.equal(alerts, 0);
     assert.equal(push.isPushEnabled(), false);
+  });
+
+  test('disabled categories retain outcomes without sound or OS delivery', () => {
+    prefs.saveNotificationPref('chatEnabled', false);
+    let delivered = 0;
+    window.minnow = { shell: { showNotification: async () => { delivered++; return { ok: true }; } } };
+    const record = push.pushNotification({ kind: 'chat_turn_error', title: 'Chat', preview: 'Failed', appId: 'code', os: true });
+    assert.equal(record.activityStatus, undefined);
+    assert.equal(store.getNotifications().length, 1);
+    assert.equal(delivered, 0);
   });
 
   test('pushes when notifications are not muted', () => {

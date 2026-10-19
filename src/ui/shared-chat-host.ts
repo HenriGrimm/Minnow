@@ -3,6 +3,7 @@ import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { getActiveChat } from '../state/sessions';
 import { teardownHub } from './hub';
 import type { Chat } from '../types';
+import type { AppId } from '../os/types';
 import { getSharedChatHost, setSharedChatHost } from './shared-chat-host-state';
 import { registerComposerSurface } from './composer-surface';
 import { bindSharedChatScroll, invalidateChatScrollRootCache } from './chat-scroll';
@@ -13,7 +14,7 @@ import '../styles/shared-chat-host.css';
 let releaseCurrent: (() => void) | undefined;
 
 /** Move the actual composer, approval slots and metrics; never clone controls or handlers. */
-export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: 'home' | 'issues', options: { openPlan?: (path: string) => void } = {}): { dispose: () => void; focus: (text?: string) => void } {
+export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<AppId, 'home' | 'issues' | 'code'>, options: { openPlan?: (path: string) => void } = {}): { dispose: () => void; focus: (text?: string) => void } {
   releaseCurrent?.();
   teardownHub();
   const shell = document.createElement('section');

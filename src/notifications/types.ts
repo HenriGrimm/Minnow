@@ -28,7 +28,8 @@ export type NotificationKind =
   | 'issue_agent_question'
   | 'issue_agent_pr'
   | 'issue_agent_failed'
-  | 'issue_triage';
+  | 'issue_triage'
+  | 'device_request';
 
 /** One row in the session notification inbox. */
 export interface NotificationRecord {
@@ -44,6 +45,14 @@ export interface NotificationRecord {
   appId: AppId;
   createdAt: number;
   read: boolean;
+  /** Stable work identity shared by live activity and its outcomes. */
+  activityId?: string;
+  parentActivityId?: string;
+  workspacePath?: string;
+  activityStatus?: 'running' | 'completed' | 'failed' | 'stopped' | 'blocked' | 'question';
+  jobId?: string;
+  /** Acknowledgment is separate from resolving an actionable failure. */
+  resolved?: boolean;
   /** Optional dedupe key (not persisted). */
   dedupeKey?: string;
 }
@@ -61,6 +70,8 @@ export type PushNotificationInput = Omit<NotificationRecord, 'id' | 'createdAt' 
    * earn a desktop toast. Gated globally by {@link NotificationPrefs.osEnabled}.
    */
   os?: boolean;
+  /** Capture in Activity without sound, desktop alerts, or unread indicators. */
+  silent?: boolean;
 };
 
 /** Per-kind enable groups for notification prefs. */
@@ -69,7 +80,7 @@ export type NotificationKindGroup = 'chat' | 'tasks' | 'background';
 /** User prefs persisted under `minnow.notifications.*`. */
 export interface NotificationPrefs {
   enabled: boolean;
-  /** Quick mute from the menubar dropdown; blocks new notifications until cleared. */
+  /** Silence sound and desktop delivery; Activity continues recording events. */
   muted: boolean;
   soundEnabled: boolean;
   /** Play cues while watching the active chat in Code (no bell alerts). */

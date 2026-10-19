@@ -3,6 +3,8 @@
  */
 
 import { randomUUID } from '../lib/random-id.ts';
+import { findChatById } from '../state/sessions';
+import { getWorkspacePath } from '../state/workspace';
 import { noteAgentMessage } from '../os/instances';
 import { shouldNotifyForChatTurn } from './background';
 import { notifyOs } from './os-notification';
@@ -40,17 +42,17 @@ function notifyNew(record: NotificationRecord): void {
 }
 
 /**
- * Insert a notification row when prefs allow it.
+ * Capture an Activity record; preferences only gate sound and desktop delivery.
  * Also updates legacy per-app unread badges via {@link noteAgentMessage}.
  */
 export function pushNotification(input: PushNotificationInput): NotificationRecord | null {
-  if (!isNotificationKindEnabled(input.kind)) return null;
-
   if (input.dedupeKey) {
     if (hasDedupeKey(input.dedupeKey)) return null;
     rememberDedupeKey(input.dedupeKey);
   }
 
+  const chat = input.chatId ? findChatById(input.chatId) : undefined;
+  const run = [...(chat?.runs ?? [])].reverse().find((candidate) => candidate.status === 'running') ?? chat?.runs?.at(-1);
   const record: NotificationRecord = {
     id: input.id ?? newId(),
     kind: input.kind,
@@ -59,11 +61,19 @@ export function pushNotification(input: PushNotificationInput): NotificationReco
     chatId: input.chatId,
     appId: input.appId,
     createdAt: input.createdAt ?? Date.now(),
-    read: false,
+    read: input.silent === true,
     dedupeKey: input.dedupeKey,
+    activityId: input.activityId ?? (run ? `turn:${run.runId}` : input.chatId ? `main:${input.chatId}` : undefined),
+    parentActivityId: input.parentActivityId,
+    workspacePath: input.workspacePath ?? chat?.workspacePath ?? getWorkspacePath(),
+    activityStatus: input.activityStatus,
+    jobId: input.jobId,
+    resolved: input.resolved,
   };
 
   appendNotification(record);
+
+  if (input.silent || !isNotificationKindEnabled(input.kind)) return record;
 
   const legacyMsg = input.preview.trim() || input.title;
   noteAgentMessage(input.appId, legacyMsg);
@@ -99,19 +109,13 @@ export function pushNotificationOrActiveChatSound(
   const onActiveChat = Boolean(input.chatId && !shouldNotifyForChatTurn(input.chatId));
   const prefs = loadNotificationPrefs();
 
-  if (onActiveChat && prefs.soundOnActiveChat) {
-    if (!isNotificationKindEnabled(input.kind)) return null;
+  if (onActiveChat) {
+    const record = pushNotification({ ...input, silent: true });
+    if (!record || input.silent || !prefs.soundOnActiveChat || !isNotificationKindEnabled(input.kind)) return record;
     if (shouldPlayNotificationSound(input.kind, input.chatId)) {
       playNotificationSound(input.kind);
     }
-    return null;
-  }
-
-  if (
-    onActiveChat &&
-    (input.kind === 'chat_turn_complete' || input.kind === 'chat_turn_error')
-  ) {
-    return null;
+    return record;
   }
 
   return pushNotification(input);

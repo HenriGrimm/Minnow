@@ -97,7 +97,7 @@ export async function mergeReviewedPr(
 export async function sendPrReviewToBuilder(record: PrReviewRecord): Promise<void> {
   await ensureCodeChatSurface();
   const { createChatWithMode } = await import('../../ui/sidebar.ts');
-  createChatWithMode({
+  await createChatWithMode({
     modeId: 'build',
     initialUserMessage: buildPrReviewFixSeed(record),
   });

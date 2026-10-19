@@ -86,6 +86,11 @@ describe('terminal cwd labels', () => {
 });
 
 describe('formatTerminalShellHint', () => {
+  test('is empty for a plain workspace tab', () => {
+    setWorkspaceFromServer({ path: MAIN_WS, label: 'minnow', isDefault: false });
+    assert.equal(formatTerminalShellHint(MAIN_WS), '');
+  });
+
   test('mentions worktree path when scoped', () => {
     setWorkspaceFromServer({ path: MAIN_WS, label: 'minnow', isDefault: false });
     const hint = formatTerminalShellHint(WORKTREE);

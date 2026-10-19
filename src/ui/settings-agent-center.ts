@@ -7,7 +7,6 @@ import {
   getSubAgentUserOverridesSync,
   loadSubAgentConfig,
   patchSubAgentUserOverrides,
-  saveSubAgentConfigToServer,
 } from '../agents/sub-agent-config';
 import type { SubAgentTypeConfig } from '../agents/types';
 import type { ContextEnforcementPolicy } from '../chat/context-budget';
@@ -219,7 +218,7 @@ function openModeLightbox(modeId: string, agents: WorkAgentDefinition[]): void {
           el(
             'p',
             'agent-center-section__lead',
-            'Modes use the active chat model from the top-bar picker.',
+            'Modes and work agents use the model selected in the composer.',
           ),
         );
       });
@@ -243,10 +242,7 @@ function openWorkAgentLightbox(agent: WorkAgentDefinition): void {
     subtitle: agent.description,
     badge: 'Work agent',
     render: (body) => {
-      appendAgentCenterSection(body, 'Model', (panel) => {
-        void mountStandaloneRoutingEditor(panel, agent.id);
-      });
-
+      appendAgentCenterSection(body, 'Generation settings', (panel) => { void mountStandaloneRoutingEditor(panel, agent.id); });
       appendAgentCenterSection(body, 'Agent settings', (panel) => {
         mountWorkAgentConfigEditor(panel, {
           agentId: agent.id,
@@ -394,7 +390,7 @@ const AGENT_CENTER_CARD_SECTIONS: {
   {
     id: 'work-agents',
     title: 'Work agents',
-    hint: 'Reusable agent profiles with their own model binding and prompt.',
+    hint: 'Reusable agent profiles with prompts and tool settings.',
     searchKey: 'agents.workAgents',
   },
   {
@@ -463,8 +459,7 @@ async function mountGlobalSubAgentLimits(mount: HTMLElement): Promise<void> {
       >
     >,
   ): Promise<void> => {
-    const fresh = await loadSubAgentConfig();
-    const ok = await saveSubAgentConfigToServer({ ...fresh, ...patch });
+    const ok = await patchSubAgentUserOverrides(patch);
     setStatus(ok ? 'idle' : 'err', ok ? 'Sub-agents updated' : 'Could not save. Open or restart Minnow and try again.');
   };
 

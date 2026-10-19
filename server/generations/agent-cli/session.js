@@ -104,7 +104,7 @@ function canResume(session, body) {
   const appended = after.slice(before.length);
   const assistant = appended[0];
   if (assistant?.role !== 'assistant' || !Array.isArray(assistant.tool_calls)
-    || (assistant.content ?? '') !== (session.handoffContent ?? '')
+    || (assistant.content ?? '') !== (session.handoffContent ?? '').trim()
     || assistant.tool_calls.length !== session.calls.length
     || !session.calls.every((call, index) => {
       const next = assistant.tool_calls[index];
@@ -186,6 +186,11 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       onCall: async call => {
         const round = session.active;
         if (!round || round.finished || round.controller.signal.aborted) return;
+        const index = round.calls.push(call) - 1;
+        round.choose();
+        // Show the completed call immediately; execution still waits for the
+        // native commit checks and the normal handoff boundary below.
+        if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
         if (session.transport === 'claude-interactive') {
           round.pendingNativeHandoffs++;
           round.scheduleHandoff();
@@ -194,9 +199,6 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
           finally { round.pendingNativeHandoffs--; }
           if (round.finished || round.controller.signal.aborted) return;
         }
-        const index = round.calls.push(call) - 1;
-        round.choose();
-        if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
         round.scheduleHandoff();
       },
     });
@@ -564,7 +566,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.release?.();
           session.release = null;
         } else if (kind === 'result' && completeGeneration && !controller.signal.aborted && session.invocation.keepStdinOpen && state.chatId && !session.closed) {
-          session.messages = [...canonicalCliMessages(body.messages), { role: 'assistant', content: this.content }];
+          session.messages = [...canonicalCliMessages(body.messages), { role: 'assistant', content: this.content.trim() }];
           session.calls = []; session.waiting = false;
           try {
             session.completedText = session.transport === 'claude-interactive' ? session.processRun.completedText ?? this.content : this.content;

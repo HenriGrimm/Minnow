@@ -155,6 +155,31 @@ export async function getChatHistory(
   return Array.isArray(body.history) ? body.history : [];
 }
 
+/**
+ * What session summaries leave out of a chat: full runs (summaries carry stubs
+ * without `outputMessages`/`snapshot`), sub-agent runs, terminal history,
+ * injected context and runner timings.
+ */
+export type ChatDetail = Pick<Chat, 'injectedContext' | 'runnerTiming'> & {
+  runs: NonNullable<Chat['runs']>;
+  subAgentRuns: NonNullable<Chat['subAgentRuns']>;
+  terminalHistory: NonNullable<Chat['terminalHistory']>;
+};
+
+/** GET /api/config/sessions/history/:chatId?detail=1 — the whole transcript plus {@link ChatDetail}. */
+export async function getChatTranscript(
+  chatId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<{ history: Message[]; detail: ChatDetail | null }> {
+  const path = `/api/config/sessions/history/${encodeURIComponent(chatId)}?detail=1`;
+  const res = await fetch(path, { cache: 'no-store', signal: opts?.signal });
+  const body = await parseJsonResponse<{ chatId: string; history: Message[]; detail?: ChatDetail }>(res);
+  return {
+    history: Array.isArray(body.history) ? body.history : [],
+    detail: body.detail && typeof body.detail === 'object' ? body.detail : null,
+  };
+}
+
 /** One hit from GET /api/config/sessions/search (FTS5 / JSON fallback). */
 export interface SessionSearchHit {
   chatId: string;

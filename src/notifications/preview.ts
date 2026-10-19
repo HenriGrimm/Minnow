@@ -97,12 +97,32 @@ export function kindLabel(kind: import('./types').NotificationKind): string {
       return 'Task complete';
     case 'task_failed':
       return 'Task failed';
+    case 'task_quarantined':
+      return 'Task blocked';
+    case 'board_complete':
+      return 'Board complete';
+    case 'board_blocked':
+      return 'Board blocked';
     case 'sub_agent_complete':
       return 'Sub-agent done';
     case 'sub_agent_failed':
       return 'Sub-agent failed';
     case 'scheduler':
       return 'Scheduler';
+    case 'provider_quota':
+      return 'Provider allowance';
+    case 'issue_agent_started':
+      return 'Issue agent started';
+    case 'issue_agent_question':
+      return 'Issue question';
+    case 'issue_agent_pr':
+      return 'Ready for review';
+    case 'issue_agent_failed':
+      return 'Issue agent failed';
+    case 'issue_triage':
+      return 'Issue triage';
+    case 'device_request':
+      return 'Device wants to connect';
     case 'research':
       return 'Research';
     case 'synthesis':

@@ -104,6 +104,10 @@ export async function runBenchmark(options: RunBenchmarkOptions = {}): Promise<B
   const startedAt = options.resume?.startedAt ?? new Date().toISOString();
   const runId = options.runId ?? options.resume?.runId ?? newRunId();
 
+  if (signal.aborted) {
+    notifyCancelled(onProgress);
+    throw benchmarkAbortError(signal);
+  }
   const binding = options.binding ?? (await resolveBenchmarkBinding());
   const localServer = await detectLocalServer();
   const ctx: BenchmarkRunContext = {

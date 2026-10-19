@@ -144,6 +144,7 @@ async function spawnOk(extra = {}) {
   const created = await call('POST', '/api/agents', {
     type: 'explore',
     task: 'list files',
+    parentModel: { providerId: 'fixture', modelId: 'fixture-model' },
     parentChatId: PARENT,
     cwd: CWD,
     ...extra,

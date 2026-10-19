@@ -1,3 +1,5 @@
+import { resolveSubAgentBinding } from './sub-agent-binding.mjs';
+import { loadSubAgentConfig } from './sub-agent-config';
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import { findChatById, getActiveChat } from '../state/sessions';
 import { resolveChatSpawnCwd } from '../state/chat-worktree';
@@ -194,6 +196,8 @@ export function subAgentRunFromFold(
     cancelled: status === 'cancelled',
     messages,
     delivered: raw.delivered === true,
+    resolvedModel: raw.resolvedModel as SubAgentRun['resolvedModel'],
+    modelSource: typeof raw.modelSource === 'string' ? raw.modelSource : extra.modelSource,
     providerId: model?.providerId ?? extra.providerId,
     modelId: model?.id ?? extra.modelId,
     foldAttemptCount,
@@ -611,15 +615,10 @@ export async function spawnSubAgent(
   const cwd = resolveSpawnCwd(parentChatId);
   let providerId = input.providerId?.trim() ?? '';
   let modelId = input.modelId?.trim() ?? '';
-  if (!providerId && !modelId) {
-    const typeCfg = await getSubAgentTypeConfig(input.type);
-    if (typeCfg) {
-      const parentChat = parentChatId ? findChatById(parentChatId) : undefined;
-      const binding = resolveSubAgentModelBinding(typeCfg, parentChat);
-      providerId = binding.providerId;
-      modelId = binding.modelId;
-    }
-  }
+  const modelSource = providerId && modelId ? 'explicit' : 'parent';
+  const parent = parentChatId ? findChatById(parentChatId) : undefined;
+  const parentModel = parent?.modelId ? { providerId: parent.providerId || '', modelId: parent.modelId } : undefined;
+  if (modelSource === 'parent' && parentModel) { providerId = parentModel.providerId; modelId = parentModel.modelId; }
   const spawnToken = Symbol(parentChatId);
   let pending = pendingSpawnTokens.get(parentChatId);
   if (!pending) {
@@ -640,6 +639,8 @@ export async function spawnSubAgent(
         ...(input.parentToolCallId ? { parentToolCallId: input.parentToolCallId } : {}),
         ...(providerId ? { providerId } : {}),
         ...(modelId ? { modelId } : {}),
+        modelSource,
+        ...(parentModel ? { parentModel, parentWorkspace: parent?.workspacePath } : {}),
       }),
     });
   } catch (err) {
@@ -1013,6 +1014,7 @@ export function buildSubAgentStatusPayload(run: SubAgentRun): Record<string, unk
   if (run.livePartialText) payload.livePartialText = run.livePartialText;
   if (run.startError) payload.startError = run.startError;
   if (run.modelId) payload.modelId = run.modelId;
+  if (run.modelSource) payload.modelSource = run.modelSource;
   if (run.providerId) payload.providerId = run.providerId;
   if (run.budgetEvents?.length) payload.budgetEvents = run.budgetEvents;
   const terminalReason = deriveSubAgentTerminalReason(run);

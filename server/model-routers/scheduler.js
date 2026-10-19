@@ -1,4 +1,5 @@
 import { isRouterTier } from '../../src/models/router-tiers.mjs';
+import { isRouterTaskType, ROUTER_TASK_TYPES } from '../../src/models/router-task-types.mjs';
 
 export const entryKey = (entry) => JSON.stringify([entry.providerId.trim(), entry.modelId.trim()]);
 
@@ -13,8 +14,8 @@ function validateEvaluator(value) {
   return { providerId, modelId };
 }
 
-export function validateRouters(value) {
-  if (!value || !Array.isArray(value.routers) || value.routers.length > 100) throw new Error('Invalid routers');
+export function validateRouters(value, { maxRouters = 100 } = {}) {
+  if (!value || !Array.isArray(value.routers) || value.routers.length > maxRouters) throw new Error('Invalid routers');
   const ids = new Set();
   const routers = value.routers.map((router) => {
     if (!router || typeof router.id !== 'string' || !/^[\w-]{1,100}$/.test(router.id) || ids.has(router.id)) throw new Error('Invalid or duplicate router id');
@@ -33,8 +34,9 @@ export function validateRouters(value) {
         if (!Number.isInteger(entry.concurrencyLimit) || entry.concurrencyLimit < 1 || entry.concurrencyLimit > 100) throw new Error('Concurrency must be an integer from 1 to 100');
         if (pairs.has(entryKey(entry))) throw new Error('Provider/model pairs must be unique within a router');
         if (entry.tier != null && entry.tier !== '' && !isRouterTier(entry.tier)) throw new Error('Invalid model tier');
+        if (entry.taskTypes != null && (!Array.isArray(entry.taskTypes) || entry.taskTypes.length > ROUTER_TASK_TYPES.length || !entry.taskTypes.every(isRouterTaskType))) throw new Error('Invalid model task types');
         pairs.add(entryKey(entry)); entries.add(entry.id);
-        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit, ...(isRouterTier(entry.tier) ? { tier: entry.tier } : {}) };
+        return { id: entry.id, providerId: entry.providerId, modelId: entry.modelId.trim(), enabled: entry.enabled !== false, concurrencyLimit: entry.concurrencyLimit, ...(isRouterTier(entry.tier) ? { tier: entry.tier } : {}), ...(entry.taskTypes?.length ? { taskTypes: [...new Set(entry.taskTypes)] } : {}) };
       }) };
   });
   const defaultRouterId = value.defaultRouterId || null;
@@ -92,7 +94,7 @@ export class RouterScheduler {
     const assignment = this.assignments[key];
     const sticky = assignment?.assignedEntryId;
     let chosen = candidates.find((e) => e.id === sticky);
-    const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < e.concurrencyLimit && !(this.queues.get(entryKey(e)) || []).length);
+    const free = candidates.filter((e) => (this.active.get(entryKey(e)) || 0) < (this.capacityLimit?.(e) ?? e.concurrencyLimit) && !(this.queues.get(entryKey(e)) || []).length);
     // Workers may move between rounds when their previous model is occupied.
     // Explicit overrides retain their queueing semantics.
     if (preferAvailable && assignment?.assignmentMode !== 'override' && free.length && !free.includes(chosen)) chosen = undefined;
@@ -141,7 +143,7 @@ export class RouterScheduler {
 
   drain(key) {
     const queue = this.queues.get(key) || [];
-    while (queue.length && (this.active.get(key) || 0) < queue[0].entry.concurrencyLimit) {
+    while (queue.length && (this.active.get(key) || 0) < (this.capacityLimit?.(queue[0].entry) ?? queue[0].entry.concurrencyLimit)) {
       const request = queue.shift();
       request.signal?.removeEventListener('abort', request.abort);
       this.active.set(key, (this.active.get(key) || 0) + 1);

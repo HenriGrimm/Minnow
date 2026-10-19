@@ -41,9 +41,10 @@ describe('syncModelSelectPicker', () => {
       const menu = doc.getElementById('menu') as HTMLUListElement;
       let picked = '';
       renderModelSelectMenuRows(menu, select, value => { picked = value; });
+      menu.querySelector<HTMLButtonElement>('.model-browser-provider')?.click();
       assert.equal(menu.querySelectorAll('.model-select-option').length, 2);
       const row = menu.querySelector<HTMLElement>('.model-select-option')!;
-      assert.match(row.textContent ?? '', /Claude opus 5 5 — Cursor Agent/);
+      assert.match(row.textContent ?? '', /Claude opus 5 5/);
       assert.equal(menu.querySelector('.model-select-cursor-variants'), null);
       row.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
       assert.equal(picked, 'cursor-agent-cli\u001fclaude-opus-5-5-medium');
@@ -82,10 +83,11 @@ describe('syncModelSelectPicker', () => {
       const menu = doc.getElementById('menu') as HTMLUListElement;
       let picked = '';
       renderModelSelectMenuRows(menu, select, value => { picked = value; });
+      menu.querySelector<HTMLButtonElement>('.model-browser-provider')?.click();
       const rows = menu.querySelectorAll<HTMLElement>('.model-select-option');
       assert.equal(rows.length, 2);
-      assert.match(rows[0].textContent ?? '', /Claude Opus 4\.8 1M — Cursor Agent/);
-      assert.match(rows[1].textContent ?? '', /Claude Opus 4\.8 1M Thinking — Cursor Agent/);
+      assert.match(rows[0].textContent ?? '', /Claude Opus 4\.8 1M/);
+      assert.match(rows[1].textContent ?? '', /Claude Opus 4\.8 1M Thinking/);
       assert.equal(menu.querySelector('.model-select-cursor-variants'), null);
       rows[1].dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
       assert.equal(picked, 'cursor-agent-cli\u001fclaude-opus-4-8-thinking-low');
@@ -96,7 +98,7 @@ describe('syncModelSelectPicker', () => {
     }
   });
 
-  test('Claude catalog aliases retain versions and render under Anthropic through the client pipeline', async () => {
+  test('Claude catalog aliases retain versions and render under their CLI connection', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
     const doc = win.document;
@@ -139,9 +141,10 @@ describe('syncModelSelectPicker', () => {
       syncModelSelectPicker();
 
       const menu = doc.getElementById('modelSelectMenu')!;
-      const header = menu.querySelector('[data-producer-slug="anthropic"]');
+      const header = menu.querySelector<HTMLButtonElement>('[data-provider-id="claude-code-cli"]');
       assert.ok(header);
-      assert.ok(header.querySelector('.model-producer-logo'));
+      assert.match(header.textContent ?? '', /Claude Code/);
+      header.click();
       const expectedLabels = new Map([
         ['sonnet', 'Claude Sonnet 5.5 (CLI default)'],
         ['opus', 'Claude Opus 5.5 (CLI default)'],
@@ -153,9 +156,7 @@ describe('syncModelSelectPicker', () => {
         assert.ok(row);
         assert.ok(row.querySelector('.model-producer-logo'));
         assert.match(row.textContent ?? '', new RegExp(label.replace(/[().]/g, '\\$&')));
-        let previous = row.previousElementSibling;
-        while (previous && !previous.hasAttribute('data-producer-slug')) previous = previous.previousElementSibling;
-        assert.equal((previous as HTMLElement)?.dataset.producerSlug, 'anthropic');
+        assert.ok(row.closest('.model-browser-pane'));
       }
       assert.match(doc.getElementById('modelSelectTriggerText')?.textContent ?? '', /Claude Opus 5\.5/);
       assert.equal(sel.value, encodeModelSelectKey(provider.id, 'opus'));
@@ -351,17 +352,19 @@ describe('syncModelSelectPicker', () => {
 
       setModelHostFilter('local');
       renderModelSelectMenuRows(menu, sel);
+      menu.querySelector<HTMLButtonElement>('.model-browser-provider')?.click();
       assert.equal(menu.querySelectorAll('.model-select-option').length, 1);
       assert.match(menu.textContent ?? '', /Local model/);
 
       setModelHostFilter('cloud');
       renderModelSelectMenuRows(menu, sel);
+      menu.querySelector<HTMLButtonElement>('.model-browser-provider')?.click();
       assert.equal(menu.querySelectorAll('.model-select-option').length, 1);
       assert.match(menu.textContent ?? '', /Cloud model/);
 
       setModelHostFilter('all');
       renderModelSelectMenuRows(menu, sel);
-      assert.equal(menu.querySelectorAll('.model-select-option').length, 2);
+      assert.equal(menu.querySelectorAll('.model-browser-provider').length, 2);
     } finally {
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;
@@ -477,7 +480,9 @@ describe('syncAuxiliaryModelSelectCombobox', () => {
         const trigger = document.querySelector<HTMLButtonElement>('.model-select-trigger, .composer-model-trigger')!;
         trigger.click();
         assert.equal(trigger.getAttribute('aria-label'), 'Pool model');
-        assert.equal(document.querySelectorAll('[role="option"]').length, 2, 'composer search does not filter pool models');
+        assert.equal(document.querySelectorAll('.model-browser-provider').length, 1, 'composer search does not filter pool models');
+        document.querySelector<HTMLButtonElement>('.model-browser-provider')!.click();
+        assert.equal(document.querySelectorAll('[role="option"]').length, 2);
         const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
         search.value = 'Model B'; search.dispatchEvent(new win.Event('input'));
         assert.equal(document.querySelectorAll('[role="option"]').length, 1);

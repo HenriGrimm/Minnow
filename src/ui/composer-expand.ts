@@ -19,7 +19,7 @@ interface ExpandTarget {
 }
 
 const TARGETS: readonly ExpandTarget[] = [
-  { btnId: 'btnComposerExpand', anchorIds: ['btnComposerMic', 'attachBtn'], inputId: 'msgInput' },
+  { btnId: 'btnComposerExpand', anchorIds: ['btnComposerMic'], inputId: 'msgInput' },
   {
     btnId: 'btnChatAppExpand',
     anchorIds: ['btnChatAppMic', 'btnChatAppAttach'],

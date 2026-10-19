@@ -76,6 +76,10 @@ Use `--provider minnow-library --model "mtplx:<repo-id>"` for an MTPLX row in My
 
 UI-only tools (e.g. `ask_question`) fail with a clear error in headless mode unless you opt into unsafe automation (`MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION`).
 
+## Account chat latency benchmark
+
+`node scripts/benchmark-chat-latency.mjs --account --samples 3 --output /tmp/chat-latency.json` runs synthetic cold/warm replies and a tool round through installed CLI adapters and configured API providers. `--account` explicitly enables billable inference using existing logins/keys. Override targets with `--targets '[{"providerId":"codex-cli","model":"gpt-6-luna","kind":"codex"},{"providerId":"opencode-go","model":"gpt-6-luna"}]'`; omit `kind` for API targets and use `"claude"` for Claude Code or `"cursor"` for Cursor Agent. `--restart` adds a CLI follow-up after closing its process to measure checkpoint recovery. The script uses a temporary workspace, cleans its native sessions, records failed targets, and does not save chats. Measurements end at the local generation subscriber, before browser paint. Compare distributions across runs: native instructions, account routing and upstream load differ even for the same model.
+
 ## Opt-in MTPLX lifecycle audit
 
 With a running scratch `MINNOW_HOME` host and an unused installed model/port:
@@ -196,7 +200,9 @@ Other `scripts/*.mjs` cover stepwise feature smokes, Electron launch, token/CSS 
 | `MINNOW_ELECTRON=1` | Internal flag set when running under Electron. |
 | `TOOLS_ALLOW_ALL_PATHS=1` | Let file/git tools resolve outside the workspace root (use with care). |
 | `MINNOW_OAUTH_REDIRECT_BASE` | Override the OAuth redirect base URL. |
-| `MINNOW_NETWORK` | `local` (default) or `lan` — bind dev server to loopback vs all interfaces. Overrides `config.json` → `server.networkAccess`. Restart after changing Settings. On Windows, allow inbound TCP on the dev port in Firewall if LAN clients cannot connect. See [lan-companion.md](lan-companion.md). |
+| `MINNOW_NETWORK` | `lan` forces the home-network listener on at boot (Settings → Devices toggles it live). The desktop server always binds loopback. On Windows, allow inbound TCP on the home-network port in Firewall if phones cannot connect. See [remote-devices.md](remote-devices.md). |
+| `MINNOW_LAN_PORT` | Home-network listener port (default 9480). It never falls back to another port. |
+| `MINNOW_TAILNET_BIN` | Path to the built-in Tailscale helper (or a `.mjs` stand-in in tests). |
 | `MINNOW_DEBUG` | Verbose server logging; enables Settings → Advanced → Board testing and `/api/orchestrate/board-testing/*` (with `MINNOW_TEST=1` for CI harnesses). |
 | `MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION` | Allow UI-only tools in headless runs. |
 | `MINNOW_PLUGIN_UNSAFE` | Allow unsigned/unsafe tool plugins. |

@@ -660,7 +660,7 @@ async function onKill(pid: number, port: number): Promise<void> {
 
 async function onDetect(): Promise<void> {
   const { createChatWithMode } = await import('./sidebar');
-  const created = createChatWithMode({ modeId: 'build' });
+  const created = await createChatWithMode({ modeId: 'build' });
   if (!created.ok || !created.chatId) {
     await appAlert(created.error || 'Could not create a detection chat.');
     return;

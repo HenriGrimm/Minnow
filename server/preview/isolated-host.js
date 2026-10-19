@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
-import { getNetworkAccess } from '../network/access.js';
+import { getConfigNetworkAccess } from '../network/access.js';
 import { getEffectiveWorkspaceRoot, resolveSafePath } from '../runtime/path-access.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
@@ -71,7 +71,9 @@ export async function startIsolatedPreviewHost() {
   const server = http.createServer((req, res) => {
     void servePreview(req, res).catch(() => reject(res, 500));
   });
-  const host = getNetworkAccess() === 'lan' ? '0.0.0.0' : '127.0.0.1';
+  // Tablets on the home network open previews too; this is decided at boot
+  // from the saved setting, before the home-network listener itself starts.
+  const host = getConfigNetworkAccess() === 'lan' ? '0.0.0.0' : '127.0.0.1';
   await new Promise((resolve, rejectStart) => {
     server.once('error', rejectStart);
     server.listen(0, host, resolve);

@@ -808,3 +808,63 @@ test('tool completion updates the shared surface when the old Code row is still 
     assert.equal(restored.hasAttribute('aria-busy'), false);
   } finally { setSharedChatHost(null); shared.remove(); stub.mount.remove(); }
 });
+
+test('switching back restores reasoning received while the chat was hidden', () => {
+  let visible = true;
+  const stub = hostStub({ isDomVisible: () => visible, schedulePaintTick: cb => cb(), scrollTranscript: () => {} });
+  const thoughts = new ThoughtBubbleController(stub.wrap);
+  const painter = createChatTurnEventPainter({ ...stub.host, thoughtController: thoughts });
+  painter.onEvent({ type: 'thinking', text: 'First.' });
+  visible = false;
+  stub.mount.replaceChildren();
+  painter.onEvent({ type: 'thinking', text: 'First. More reasoning while away.' });
+  visible = true;
+  const next = appendAssistantShell(stub.mount);
+  thoughts.setAssistantWrap(next.wrap);
+  painter.retarget({ ...next, thoughtController: thoughts });
+  next.wrap.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
+  assert.equal(next.wrap.querySelector('.thoughts-content')?.textContent?.trim(), 'First. More reasoning while away.');
+  assert.equal(next.wrap.querySelectorAll('.thoughts-toggle').length, 1);
+  thoughts.abort();
+  stub.mount.remove();
+});
+
+test('interleaved reasoning settles once with all text and preserves expansion', () => {
+  const stub = hostStub({ schedulePaintTick: cb => cb(), scrollTranscript: () => {}, scheduleMarkdown: () => {} });
+  let starts = 0, ends = 0;
+  const thoughts = new ThoughtBubbleController(stub.wrap, {
+    onThinkingStart: () => { starts++; }, onReasoningEnded: () => { ends++; },
+  });
+  const painter = createChatTurnEventPainter({ ...stub.host, thoughtController: thoughts });
+  painter.onEvent({ type: 'thinking', text: 'First.' });
+  stub.wrap.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
+  painter.onEvent({ type: 'reasoning_end' });
+  painter.onEvent({ type: 'delta', text: 'Checking.' });
+  painter.onEvent({ type: 'thinking', text: 'First.\n\nSecond.' });
+  painter.onEvent({ type: 'reasoning_end' });
+  assert.equal(stub.wrap.querySelectorAll('.thoughts-toggle').length, 1);
+  assert.equal(stub.wrap.querySelector('.thought-stage'), null);
+  assert.match(stub.wrap.querySelector('.thoughts-content')?.textContent ?? '', /Second/);
+  assert.equal(stub.wrap.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
+  assert.equal(starts, 2);
+  assert.equal(ends, 2);
+  stub.mount.remove();
+});
+
+
+test('reasoning that finished in the background restores a settled disclosure', () => {
+  let visible = false;
+  const stub = hostStub({ isDomVisible: () => visible, schedulePaintTick: cb => cb(), scrollTranscript: () => {} });
+  const thoughts = new ThoughtBubbleController(stub.wrap);
+  const painter = createChatTurnEventPainter({ ...stub.host, thoughtController: thoughts });
+  painter.onEvent({ type: 'thinking', text: 'Already thought through.' });
+  painter.onEvent({ type: 'reasoning_end' });
+  visible = true;
+  const next = appendAssistantShell(stub.mount);
+  thoughts.setAssistantWrap(next.wrap);
+  painter.retarget({ ...next, thoughtController: thoughts });
+  assert.equal(next.wrap.querySelector('.thought-stage'), null);
+  next.wrap.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
+  assert.equal(next.wrap.querySelector('.thoughts-content')?.textContent?.trim(), 'Already thought through.');
+  thoughts.abort(); stub.mount.remove();
+});

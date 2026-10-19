@@ -44,9 +44,9 @@ describe('resolveNetworkAccess', () => {
     }
   });
 
-  test('resolveViteHost maps modes to Vite host option', () => {
-    assert.equal(resolveViteHost('local'), 'localhost');
-    assert.equal(resolveViteHost('lan'), true);
+  test('the desktop dev server always binds loopback', () => {
+    // Phones reach Minnow through the separate home-network listener.
+    assert.equal(resolveViteHost(), 'localhost');
   });
 });
 

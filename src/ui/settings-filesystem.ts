@@ -34,7 +34,7 @@ function createSegmentButton(
 ): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'settings-network-segment settings-filesystem-segment';
+  btn.className = 'settings-segment settings-filesystem-segment';
   btn.dataset.fsAccess = mode;
   btn.textContent = label;
   btn.setAttribute('aria-pressed', 'false');
@@ -69,7 +69,7 @@ export async function renderFilesystemAccessSettings(mount: HTMLElement): Promis
   const section = el('section', 'settings-filesystem');
   section.dataset.settingsSearchKey = 'general.filesystem';
 
-  const segmentGroup = el('div', 'settings-network-segments settings-filesystem-segments');
+  const segmentGroup = el('div', 'settings-segments settings-filesystem-segments');
   segmentGroup.setAttribute('role', 'group');
   segmentGroup.setAttribute('aria-label', 'Filesystem access');
 

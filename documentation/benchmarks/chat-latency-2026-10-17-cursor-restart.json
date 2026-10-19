@@ -1,0 +1,124 @@
+{
+  "startedAt": "2026-10-18T04:16:42.591Z",
+  "samples": 1,
+  "restart": true,
+  "prompt": "Write exactly five short numbered lines explaining why small software changes are easier to review. No introduction or conclusion. Do not call tools.",
+  "reasoningEffort": "low",
+  "scope": "Production generation adapters to local stream subscriber; excludes browser paint. Synthetic prompts only.",
+  "rows": [
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 8362.4,
+      "firstTextMs": 8362.4,
+      "firstToolMs": null,
+      "completeMs": 9534.2,
+      "tailMs": 258.6,
+      "maxOutputGapMs": 175.3,
+      "outputChars": 417,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "new",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 820,
+      "firstTextMs": 820,
+      "firstToolMs": null,
+      "completeMs": 1413.1,
+      "tailMs": 253.6,
+      "maxOutputGapMs": 149.7,
+      "outputChars": 417,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1823.5,
+      "firstTextMs": 1823.5,
+      "firstToolMs": 2359.4,
+      "completeMs": 2561.5,
+      "tailMs": 202.1,
+      "maxOutputGapMs": 315.6,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1659.7,
+      "firstTextMs": 1659.7,
+      "firstToolMs": null,
+      "completeMs": 2035.5,
+      "tailMs": 281.5,
+      "maxOutputGapMs": 32.4,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "reused",
+        "transport": "acp"
+      }
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "transport": "cursor",
+      "scenario": "restarted-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 7273.4,
+      "firstTextMs": 7273.4,
+      "firstToolMs": null,
+      "completeMs": 7881.5,
+      "tailMs": 268.8,
+      "maxOutputGapMs": 233.3,
+      "outputChars": 417,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "continuation": "resumed",
+        "transport": "acp"
+      }
+    }
+  ],
+  "trials": [
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 1,
+      "status": "passed"
+    }
+  ],
+  "finishedAt": "2026-10-18T04:17:06.063Z"
+}

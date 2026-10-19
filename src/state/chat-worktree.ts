@@ -135,6 +135,7 @@ export function isManagedChatWorktreePath(
 /** Detach without deleting work. Cleanup is an explicit Source Control action. */
 export async function detachChatWorktree(chat: Chat): Promise<void> {
   delete chat.worktreeSetupRequired;
+  delete chat.worktreeEnabled;
   delete chat.worktreeRoot;
   delete chat.chatWorktreeManaged;
 }
@@ -150,6 +151,7 @@ export function attachChatToWorktree(
   if (branch?.trim()) chat.gitBranch = branch.trim();
   chat.chatWorktreeManaged = isManagedChatWorktreePath(chat.id, path);
   delete chat.worktreeSetupRequired;
+  delete chat.worktreeEnabled;
 }
 
 /** Create a fresh managed worktree for this chat on `branch`. */
@@ -177,6 +179,7 @@ export async function createManagedChatWorktree(
   chat.gitBranch = (res.branch ?? branchName).trim();
   chat.chatWorktreeManaged = true;
   delete chat.worktreeSetupRequired;
+  delete chat.worktreeEnabled;
   return { ok: true };
 }
 
@@ -251,6 +254,30 @@ export function parseChatRunTargetChoice(value: unknown): ChatRunTargetChoice | 
  * Attach of the chat's bound checkout collapses to Local (MIN-780).
  */
 const pendingTargets = new Map<string, Promise<{ ok: boolean; error?: string }>>();
+const setupErrors = new Map<string, string>();
+// UI modules may subscribe during the sessions import cycle.
+var setupListeners: Set<(chat: Chat) => void> | undefined;
+
+/** Enable isolation without creating a checkout or installing dependencies. */
+export function enableChatWorktreeOnSend(chat: Chat): void {
+  if (isChatWorktreeMode(chat)) return;
+  chat.workspacePath ||= composerGitRepoRoot();
+  chat.worktreeEnabled = true;
+}
+
+export function getChatWorktreeSetupError(chatId: string): string | undefined {
+  return setupErrors.get(chatId);
+}
+
+export function subscribeChatWorktreeSetup(listener: (chat: Chat) => void): () => void {
+  const listeners = setupListeners ??= new Set();
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notifyWorktreeSetup(chat: Chat): void {
+  for (const listener of setupListeners ?? []) listener(chat);
+}
 
 export function isChatWorktreeSetupPending(chatId: string): boolean {
   return pendingTargets.has(chatId);
@@ -262,8 +289,19 @@ export function applyChatRunTargetChoice(
 ): Promise<{ ok: boolean; error?: string }> {
   const existing = pendingTargets.get(chat.id);
   if (existing) return existing;
-  const pending = applyRunTarget(chat, choice).finally(() => pendingTargets.delete(chat.id));
+  setupErrors.delete(chat.id);
+  const pending = applyRunTarget(chat, choice).then(result => {
+    if (!result.ok) setupErrors.set(chat.id, result.error || 'Could not prepare worktree');
+    return result;
+  }, error => {
+    setupErrors.set(chat.id, error instanceof Error ? error.message : String(error));
+    throw error;
+  }).finally(() => {
+    pendingTargets.delete(chat.id);
+    notifyWorktreeSetup(chat);
+  });
   pendingTargets.set(chat.id, pending);
+  notifyWorktreeSetup(chat);
   return pending;
 }
 

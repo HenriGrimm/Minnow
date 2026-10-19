@@ -104,6 +104,27 @@ describe('composer run-target picker', () => {
     assert.equal(win.document.querySelector('.git-panel-name-popover'), null);
   });
 
+  test('the expanded composer menu exposes branch selection and marks the current worktree', async () => {
+    const menu = win.document.createElement('div');
+    win.document.body.append(menu);
+    let branchOpened = false;
+    await fillRunTargetMenu({
+      menu, repoRoot: '/repo/main', currentPath: '/repo/feature-wt',
+      currentName: 'Login worktree', currentBranch: 'feat/login',
+      popoverAnchor: win.document.getElementById('anchor') as HTMLButtonElement,
+      closeMenu: () => {}, reopenMenu: () => {}, onPick: () => {},
+      onSelectBranch: () => { branchOpened = true; },
+    });
+    const buttons = [...menu.querySelectorAll('button')];
+    assert.ok(buttons.some(button => button.textContent === 'Back to Local'));
+    assert.equal(buttons.some(button => button.textContent === 'Enable worktree'), false);
+    buttons.find(button => button.textContent === 'Switch branch · feat/login')!.click();
+    assert.equal(branchOpened, true);
+    buttons.find(button => button.textContent === 'Change worktree…')!.click();
+    const current = [...menu.querySelectorAll('button')].find(button => button.textContent?.includes('feat/login'))!;
+    assert.equal(current.disabled, true, 'the attached checkout cannot be selected again');
+  });
+
   test('openRunTargetPicker cancel (Escape) does not pick', async () => {
     const picked: ChatRunTargetChoice[] = [];
     let cancelled = false;

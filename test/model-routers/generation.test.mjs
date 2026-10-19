@@ -97,7 +97,7 @@ test('queued stop does not call a provider or fail over and does not leak capaci
 test('configuration and assignments are persisted; activity is session-only', async () => {
   await workspace.flush(); const directory = path.join(home, 'model-routers');
   const files = await fs.readdir(directory); const saved = JSON.parse(await fs.readFile(path.join(directory, files[0]), 'utf8'));
-  assert.equal(saved.defaultRouterId, 'test'); assert.equal(saved.routers[0].entries[0].modelId, 'primary');
+  assert.equal(saved.defaultRouterId, null); assert.equal(saved.routers[0].entries[0].modelId, 'primary');
   assert.ok(Object.values(saved.assignments).some((a) => a.chatId === 'failover' && a.assignedEntryId === 'backup'));
   assert.equal(saved.events, undefined);
   await assert.rejects(workspace.save({ ...saved, revision: -1 }), /another window/);

@@ -1,4 +1,5 @@
 const loadUnloadValueResolvers = new WeakMap<HTMLElement, () => string>();
+const isolatedTargets = new WeakSet<HTMLElement>();
 
 /** Register how a host filter bar resolves the model key for load/unload actions. */
 export function setModelHostFilterLoadUnloadResolver(
@@ -12,25 +13,26 @@ export function setModelHostFilterLoadUnloadResolver(
 export function setModelMenuActionResolver(
   el: HTMLElement,
   resolve: () => string,
+  fallbackToGlobal = true,
 ): void {
   loadUnloadValueResolvers.set(el, resolve);
+  if (!fallbackToGlobal) isolatedTargets.add(el);
+  else isolatedTargets.delete(el);
 }
 
 /** Resolve the select value for load/unload on a filter bar (falls back to #modelSelect). */
 export function resolveModelHostFilterLoadUnloadValue(from?: HTMLElement | null): string {
   const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  if (!sel) return '';
-
   let node: HTMLElement | null = from ?? null;
   while (node) {
     const resolve = loadUnloadValueResolvers.get(node);
     if (resolve) {
       const value = resolve().trim();
-      if (value) return value;
+      if (value || isolatedTargets.has(node)) return value;
       break;
     }
     node = node.parentElement;
   }
 
-  return sel.value.trim();
+  return sel?.value.trim() ?? '';
 }

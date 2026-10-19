@@ -23,6 +23,7 @@ import {
   type TranscriptView,
 } from './board-render';
 import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
+import { attemptInterruption } from './attempt-status';
 import { taskEditBlocker } from '../../server/orchestrator/core/task-edit.js';
 import type { TaskFileStat, LiveActivity } from './client';
 import { adaptAttemptTranscript, liveTailPhase, transcriptStructureKey } from './transcript-adapter';
@@ -147,12 +148,12 @@ export function renderTaskDetail(
   const rail = el('div', 'ov2-detail__rail');
   for (const alert of renderAlerts(task)) rail.appendChild(alert);
   rail.appendChild(renderFilesSection(task, actions, options));
-  rail.appendChild(renderWorkSection(task, actions, options));
+  rail.appendChild(renderWorkSection(state, task, actions, options));
   const spec = renderSpecPanel(state, task, actions);
   if (spec) rail.appendChild(spec);
   panes.appendChild(rail);
 
-  panes.appendChild(renderThreadPane(task, options));
+  panes.appendChild(renderThreadPane(state, task, options));
   detail.appendChild(panes);
 
   overlay.appendChild(detail);
@@ -192,12 +193,12 @@ export function syncTaskDetailOverlay(
   syncSpecPanel(overlay, state, task, actions);
 
   if (mode.syncWork !== false) {
-    syncWorkPanel(overlay, task, actions, options);
+    syncWorkPanel(overlay, state, task, actions, options);
   }
 
   const thread = overlay.querySelector('.ov2-thread');
   if (thread instanceof HTMLElement) {
-    syncThreadPane(thread, task, options, mode.thread ?? 'auto');
+    syncThreadPane(thread, state, task, options, mode.thread ?? 'auto');
   }
 }
 
@@ -260,6 +261,7 @@ function syncSpecPanel(
 
 function syncWorkPanel(
   overlay: HTMLElement,
+  state: BoardState,
   task: TaskState,
   actions: BoardActions,
   options: BoardViewOptions,
@@ -267,7 +269,7 @@ function syncWorkPanel(
   const rail = overlay.querySelector('.ov2-detail__rail');
   if (!(rail instanceof HTMLElement)) return;
   const current = findRailPanel(rail, 'Work');
-  const next = renderWorkSection(task, actions, options);
+  const next = renderWorkSection(state, task, actions, options);
   if (current) current.replaceWith(next);
   else rail.appendChild(next);
 }
@@ -282,6 +284,7 @@ function findRailPanel(rail: HTMLElement, title: string): HTMLElement | null {
 
 function syncThreadPane(
   pane: HTMLElement,
+  state: BoardState,
   task: TaskState,
   options: BoardViewOptions,
   threadMode: NonNullable<TaskDetailSyncMode['thread']>,
@@ -298,7 +301,9 @@ function syncThreadPane(
     return;
   }
 
+  const runState = attemptInterruption(state, attempt) ?? (attempt.ended ? 'ended' : 'running');
   let mode = threadMode;
+  if (pane.dataset.runState !== runState) mode = 'pane';
   if (view.status === 'loading' || view.status === 'error') {
     if (mode === 'tail') return;
     mode = 'pane';
@@ -316,7 +321,7 @@ function syncThreadPane(
   }
 
   if (mode === 'pane' || !body) {
-    const next = renderThreadPane(task, options);
+    const next = renderThreadPane(state, task, options);
     pane.replaceWith(next);
     return;
   }
@@ -338,7 +343,7 @@ function syncThreadPane(
     const { messages } = adaptAttemptTranscript(view.events);
     appendTranscriptLiveTail(
       body,
-      threadLive(attempt, view, options.liveActivity?.get(task.id) ?? null),
+      threadLive(state, attempt, view, options.liveActivity?.get(task.id) ?? null),
       messages,
     );
     if (body.querySelector('.transcript-view__live-tail')) {
@@ -347,7 +352,7 @@ function syncThreadPane(
     return;
   }
 
-  paintThread(body, view, attempt, options.liveActivity?.get(task.id) ?? null);
+  paintThread(body, state, view, attempt, options.liveActivity?.get(task.id) ?? null);
 }
 
 // ── Head ─────────────────────────────────────────────────────────────────────
@@ -370,7 +375,7 @@ function renderHead(
   top.appendChild(ident);
 
   const phase = phaseLabel(state, task);
-  top.appendChild(pill(phase, PHASE_TONE[task.phase]));
+  top.appendChild(pill(phase, phase === 'paused' || phase === 'stopped' ? 'neutral' : PHASE_TONE[task.phase]));
 
   const close = el('button', 'ov2-detail__close');
   close.type = 'button';
@@ -753,6 +758,7 @@ const SEED_LABEL: Record<string, string> = {
  * transcript and no agent, so they are rendered as the thinner thing they are.
  */
 function renderWorkSection(
+  state: BoardState,
   task: TaskState,
   actions: BoardActions,
   options: BoardViewOptions,
@@ -770,13 +776,14 @@ function renderWorkSection(
   }
   const list = el('ol', 'ov2-work');
   task.attempts.forEach((attempt, index) => {
-    list.appendChild(renderWorkRow(attempt, index + 1, actions, options));
+    list.appendChild(renderWorkRow(state, attempt, index + 1, actions, options));
   });
   wrap.appendChild(list);
   return wrap;
 }
 
 function renderWorkRow(
+  state: BoardState,
   attempt: Attempt,
   index: number,
   actions: BoardActions,
@@ -826,7 +833,7 @@ function renderWorkRow(
     if (clock) header.appendChild(clock);
   } else {
     header.appendChild(
-      renderRunningState(attempt, options.attemptStartedAt, options.now),
+      renderRunningState(state, attempt, options.attemptStartedAt, options.now),
     );
   }
 
@@ -842,10 +849,13 @@ function renderWorkRow(
 
 /** Spinner, the word, and how long — the three things "is it stuck?" needs. */
 function renderRunningState(
+  state: BoardState,
   attempt: Attempt,
   startedAtById?: ReadonlyMap<string, number>,
   now?: number,
 ): HTMLElement {
+  const interruption = attemptInterruption(state, attempt);
+  if (interruption) return pill(interruption, 'neutral');
   const wrap = el('span', 'ov2-work__running');
   wrap.setAttribute('role', 'status');
 
@@ -875,19 +885,20 @@ function renderRunningState(
  * renderer — tool cards, diffs, thought panels and all — rather than a second,
  * worse one that would drift from it.
  */
-function renderThreadPane(task: TaskState, options: BoardViewOptions): HTMLElement {
+function renderThreadPane(state: BoardState, task: TaskState, options: BoardViewOptions): HTMLElement {
   const pane = el('div', 'ov2-thread');
   const attempt = options.transcript
     ? task.attempts.find((a) => a.attemptId === options.transcript?.attemptId)
     : undefined;
   pane.dataset.attemptEnded = attempt && !attempt.ended ? '0' : attempt?.ended ? '1' : '';
+  pane.dataset.runState = attempt ? attemptInterruption(state, attempt) ?? (attempt.ended ? 'ended' : 'running') : '';
 
   if (!options.transcript || !attempt) {
     pane.appendChild(renderThreadPlaceholder(task));
     return pane;
   }
 
-  pane.appendChild(renderThreadHead(attempt, options));
+  pane.appendChild(renderThreadHead(state, attempt, options));
   pane.appendChild(renderAttemptContext(options.transcript.events));
 
   const body = el('div', 'ov2-thread__body transcript-view__body chat-thread');
@@ -906,11 +917,11 @@ function renderThreadPane(task: TaskState, options: BoardViewOptions): HTMLEleme
     return pane;
   }
 
-  paintThread(body, view, attempt, options.liveActivity?.get(task.id) ?? null);
+  paintThread(body, state, view, attempt, options.liveActivity?.get(task.id) ?? null);
   return pane;
 }
 
-function renderThreadHead(attempt: Attempt, options: BoardViewOptions): HTMLElement {
+function renderThreadHead(state: BoardState, attempt: Attempt, options: BoardViewOptions): HTMLElement {
   const head = el('div', 'ov2-thread__head');
   head.appendChild(
     createIcon(ROLE_ICON[attempt.role as keyof typeof ROLE_ICON] ?? 'boardBuild', {
@@ -931,7 +942,7 @@ function renderThreadHead(attempt: Attempt, options: BoardViewOptions): HTMLElem
   head.appendChild(
     attempt.ended
       ? pill(attempt.outcome ?? 'ended', OUTCOME_TONE[attempt.outcome ?? ''] ?? 'neutral')
-      : renderRunningState(attempt, options.attemptStartedAt, options.now),
+      : renderRunningState(state, attempt, options.attemptStartedAt, options.now),
   );
   if (attempt.ended) {
     const clock = renderCompletedAttemptClock(attempt.attemptId, options);
@@ -967,11 +978,12 @@ function renderThreadPlaceholder(task: TaskState): HTMLElement {
  * over the last coalesced disk event.
  */
 function threadLive(
+  state: BoardState,
   attempt: Attempt,
   view: TranscriptView,
   activity?: LiveActivity | null,
 ): SubAgentTranscriptLive | undefined {
-  if (attempt.ended) return undefined;
+  if (attempt.ended || attemptInterruption(state, attempt)) return undefined;
   const tail = liveTailPhase(view.events);
   const thinking = activity?.kind === 'thinking';
   const tool = activity?.kind === 'tool';
@@ -996,19 +1008,21 @@ function threadLive(
 
 function paintThread(
   body: HTMLElement,
+  state: BoardState,
   view: TranscriptView,
   attempt: Attempt,
   activity?: LiveActivity | null,
 ): void {
   const { messages, end } = adaptAttemptTranscript(view.events);
-  const live = !attempt.ended;
+  const interruption = attemptInterruption(state, attempt);
+  const live = !attempt.ended && !interruption;
   body.dataset.chatView = 'full';
   body.dataset.structureKey = transcriptStructureKey(view.events);
 
   if (messages.length === 0 && !end) {
     body.replaceChildren();
     if (live) {
-      appendTranscriptLiveTail(body, threadLive(attempt, view, activity), messages);
+      appendTranscriptLiveTail(body, threadLive(state, attempt, view, activity), messages);
       if (body.childNodes.length > 0) {
         restoreThreadScroll(body, true);
         return;
@@ -1031,8 +1045,9 @@ function paintThread(
   renderTranscriptView(
     body,
     messages,
-    live ? threadLive(attempt, view, activity) : undefined,
+    live ? threadLive(state, attempt, view, activity) : undefined,
     threadDisclosureState(attempt.attemptId),
+    { pendingToolStatus: interruption ?? (attempt.ended ? 'stopped' : undefined) },
   );
   renderThreadProse(body);
 

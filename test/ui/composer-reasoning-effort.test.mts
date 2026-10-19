@@ -28,6 +28,8 @@ const { initComposerModelTriggers, teardownComposerModelTriggers } = await impor
 const {
   initComposerReasoningEffort,
   syncComposerReasoningEffortFromActiveChat,
+  getComposerReasoningState,
+  setComposerReasoningChoice,
 } = await import('../../src/ui/composer-reasoning-effort.ts');
 
 function setupDom(): Window {
@@ -35,6 +37,11 @@ function setupDom(): Window {
   globalThis.document = win.document as unknown as Document;
   globalThis.window = win as unknown as Window & typeof globalThis.window;
   globalThis.HTMLElement = win.HTMLElement;
+  globalThis.HTMLButtonElement = win.HTMLButtonElement;
+  globalThis.HTMLInputElement = win.HTMLInputElement;
+  globalThis.HTMLSelectElement = win.HTMLSelectElement;
+  globalThis.MouseEvent = win.MouseEvent as typeof MouseEvent;
+  globalThis.CustomEvent = win.CustomEvent as typeof CustomEvent;
   globalThis.Node = win.Node;
   globalThis.Event = win.Event as typeof Event;
 
@@ -168,7 +175,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(chat.reasoningEffort, 'high');
     assert.equal(chat.modelId, 'claude-opus-5-5-high-fast');
     assert.equal(anchor.querySelector('.composer-model-trigger__label')?.textContent,
-      'claude-opus-5-5-high-fast — Cursor Agent');
+      'claude-opus-5-5-high-fast — Cursor Agent · High');
     assert.equal(resolveCursorVariantId(chat.modelId, ids, {
       effort: chat.reasoningEffort, fast: chat.cursorFast,
     }), 'claude-opus-5-5-high-fast');
@@ -244,6 +251,11 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.ok(dropdownWrap?.classList.contains('hidden'));
     assert.equal(select.options.length, 0);
     assert.ok(!thinkingControl?.classList.contains('hidden'));
+    assert.deepEqual(getComposerReasoningState().choices.map(choice => choice.value), ['inherit', 'off', 'on']);
+    setComposerReasoningChoice('off');
+    assert.equal(getComposerReasoningState().label, 'Reasoning off');
+    setComposerReasoningChoice('on');
+    assert.equal(getComposerReasoningState().label, 'Reasoning on');
   });
 
   test('shows brain and level dropdown when low/medium/high exist and reasoning is on', () => {
@@ -290,7 +302,7 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(chat.reasoningEffort, 'high');
   });
 
-  test('the footer trigger opens a themed menu that drives the hidden select', () => {
+  test('model menu changes chat reasoning and keeps its label synchronized', () => {
     setupDom();
     const chat = seedChat();
     modelCache.set(encodeModelSelectKey('openai', 'gpt-5-preview'), {
@@ -312,22 +324,28 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     initComposerReasoningEffort();
     syncComposerReasoningEffortFromActiveChat();
 
-    const trigger = document.getElementById('composerReasoningEffortBtn') as HTMLButtonElement;
-    const menu = document.getElementById('composerReasoningEffortMenu') as HTMLElement;
-    assert.ok(trigger && menu, 'trigger and menu mount');
-    assert.equal(trigger.textContent, 'Medium');
-    assert.ok(menu.classList.contains('hidden'));
-
+    document.body.insertAdjacentHTML('beforeend', `<select id="modelSelect"><option value="${encodeModelSelectKey('openai', 'gpt-5-preview')}">GPT 5 preview — OpenAI</option></select><div id="codeComposerModelAnchor"></div>`);
+    initComposerModelTriggers();
+    const trigger = document.querySelector<HTMLButtonElement>('#codeComposerModelAnchor .composer-model-trigger')!;
+    assert.equal(trigger.textContent, 'GPT 5 preview · Medium');
+    assert.equal(document.getElementById('composerReasoningEffortBtn'), null);
     trigger.click();
-    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
-    const items = [...menu.querySelectorAll('[role="menuitemradio"]')] as HTMLButtonElement[];
-    assert.deepEqual(items.map((item) => item.textContent), ['Low', 'Medium', 'High']);
-    assert.equal(items[1]?.getAttribute('aria-checked'), 'true');
-
-    items[0]?.click();
-    assert.ok(menu.classList.contains('hidden'));
+    const menu = document.querySelector<HTMLElement>('.composer-model-menu:not(.hidden)')!;
+    assert.ok(menu);
+    const choices = [...menu.querySelectorAll<HTMLButtonElement>('[data-composer-reasoning]')];
+    assert.deepEqual(choices.map(item => item.textContent), ['Default', 'Off', 'Low', 'Medium', 'High']);
+    choices.find(item => item.dataset.composerReasoning === 'low')!.click();
     assert.equal(chat.reasoningEffort, 'low');
-    assert.equal(trigger.textContent, 'Low');
+    assert.equal(trigger.textContent, 'GPT 5 preview · Low');
+    assert.equal(menu.querySelector('[data-composer-reasoning="low"]')?.getAttribute('aria-pressed'), 'true');
+    menu.querySelector<HTMLButtonElement>('[data-composer-reasoning="off"]')!.click();
+    assert.equal(chat.reasoningEffort, 'off');
+    assert.equal(trigger.textContent, 'GPT 5 preview · Reasoning off');
+    menu.querySelector<HTMLButtonElement>('[data-composer-reasoning="high"]')!.click();
+    assert.equal(chat.reasoningEffort, 'high');
+    assert.equal(trigger.textContent, 'GPT 5 preview · High');
+    assert.equal(chat.modelId, 'gpt-5-preview');
+    assert.equal(chat.providerId, 'openai');
   });
 
   test('brain off hides dropdown and sets reasoningEffort to off', () => {
@@ -463,6 +481,9 @@ describe('syncComposerReasoningEffortFromActiveChat', () => {
     assert.equal(select.value, 'max');
     assert.ok(thinkingControl?.classList.contains('hidden'));
     assert.equal(chat.reasoningEffort, undefined);
+    assert.deepEqual(getComposerReasoningState().choices.map(choice => choice.value), ['inherit', 'low', 'high', 'max']);
+    setComposerReasoningChoice('off');
+    assert.equal(chat.reasoningEffort, undefined, 'always-on models reject Off');
   });
 
   test('GLM-5.3 clears stored medium and shows Max', () => {

@@ -232,6 +232,7 @@ import { applyAppWindowBoot, isAppWindowRenderer } from './os/app-window';
 import { initElectronTrayBridge } from './electron-tray-bridge';
 import { installAppDialogs } from './ui/app-dialog';
 import { initializeCompanionAccess } from './companion/bootstrap';
+import { applyMobileShellRootClass, isMobileShell } from './mobile/mode';
 
 // ── Service worker ───────────────────────────────────────────────────────────
 
@@ -348,7 +349,8 @@ export async function initApp(): Promise<void> {
     initComposerCompact();
   }
   await bindExpertsSettingsCheckbox();
-  if (hasChatSurface) {
+  // First-run setup needs the computer: phones join a Minnow that is already set up.
+  if (hasChatSurface && !isMobileShell()) {
     const { shouldShowOnboardingOnBoot, mountOnboarding } = await import('./onboarding');
     const showOnboarding = await shouldShowOnboardingOnBoot();
     if (showOnboarding) {
@@ -371,7 +373,7 @@ export async function initApp(): Promise<void> {
     await refreshWorkspaceUi();
     markWelcomePendingIfNeeded();
     initWelcomePage();
-    if (shouldShowWelcomeOnBoot()) {
+    if (shouldShowWelcomeOnBoot() && !isMobileShell()) {
       openWelcome();
     } else {
       document.documentElement.classList.remove('welcome-pending');
@@ -480,6 +482,10 @@ export async function initApp(): Promise<void> {
 
   if (workspaceGateModule?.isHoldingWorkspaceGateForAppReady()) {
     await workspaceGateModule.revealAppAfterWorkspaceGate();
+  }
+  if (isMobileShell() && hasChatSurface) {
+    const { mountMobileShell } = await import('./mobile/shell');
+    mountMobileShell();
   }
   markChromeReady();
   window.addEventListener('minnow-host-reconnected', () => { void fetchModels(); });
@@ -620,7 +626,8 @@ async function startApp(): Promise<void> {
         hash === '#/desktop' ||
         hash.startsWith('#/app/'));
     if (bootToWorkspacePicker) {
-      window.location.replace('#/workspaces');
+      // Phones follow the computer's current workspace instead of picking one.
+      window.location.replace(isMobileShell() ? '#/app/code/chat' : '#/workspaces');
     }
   }
   await Promise.all([loadSessionsFromStorage(), detectLocalServer()]);
@@ -635,6 +642,10 @@ async function startApp(): Promise<void> {
   initWindowClosePromptBridge();
   initElectronTrayBridge();
   await initApp();
+  // Devices asking to connect get an approval card in the main host window.
+  if (!isAppWindowRenderer()) {
+    void import('./ui/device-request-prompt').then(({ initDeviceRequestPrompt }) => initDeviceRequestPrompt());
+  }
 }
 
 function startAppWithRecovery(): void {
@@ -653,6 +664,7 @@ registerServiceWorker();
 initTheme();
 initRenderIdleTracking();
 initMobileLayout();
+applyMobileShellRootClass();
 scheduleMarkAppReady();
 
 if (document.readyState === 'loading') {

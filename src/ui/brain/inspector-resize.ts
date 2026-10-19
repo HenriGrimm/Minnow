@@ -1,12 +1,12 @@
-const STORAGE_KEY = 'minnow-brain-inspector-width';
-const DEFAULT_WIDTH = 600;
-const MIN_WIDTH = 280;
+const STORAGE_KEY = 'minnow-brain-inspector-width-v2';
+const DEFAULT_WIDTH = 532;
+const MIN_WIDTH = 420;
 
 let bound = false;
 
 function clampWidth(px: number, stage?: HTMLElement | null): number {
-  const stageWidth = stage?.getBoundingClientRect().width ?? window.innerWidth;
-  const maxWidth = Math.max(MIN_WIDTH, Math.floor(stageWidth * 0.72));
+  const stageWidth = stage?.getBoundingClientRect().width || window.innerWidth;
+  const maxWidth = Math.max(MIN_WIDTH, Math.floor(stageWidth * 0.52));
   return Math.min(maxWidth, Math.max(MIN_WIDTH, Math.round(px)));
 }
 
@@ -14,7 +14,8 @@ function loadSavedWidth(): number {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return DEFAULT_WIDTH;
   const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : DEFAULT_WIDTH;
+  if (parsed === 760) return DEFAULT_WIDTH;
+  return Number.isFinite(parsed) && parsed >= MIN_WIDTH ? parsed : DEFAULT_WIDTH;
 }
 
 function saveWidth(px: number): void {
@@ -26,7 +27,12 @@ export function applyBrainInspectorWidth(px: number): void {
   const root = document.getElementById('brainView');
   if (!root) return;
   const stage = root.querySelector('.brain-stage') as HTMLElement | null;
-  root.style.setProperty('--brain-inspector-w', `${clampWidth(px, stage)}px`);
+  const width = clampWidth(px, stage);
+  root.style.setProperty('--brain-inspector-w', `${width}px`);
+  const handle = document.getElementById('brainInspectorResize');
+  handle?.setAttribute('aria-valuemin', String(MIN_WIDTH));
+  handle?.setAttribute('aria-valuemax', String(clampWidth(Number.MAX_SAFE_INTEGER, stage)));
+  handle?.setAttribute('aria-valuenow', String(width));
 }
 
 /** Restore saved inspector width when Brain mounts. */
@@ -96,4 +102,22 @@ export function initBrainInspectorResize(): void {
   });
 
   handle.addEventListener('lostpointercapture', stopDrag);
+
+  handle.title = 'Drag or use arrow keys to resize. Double-click to reset.';
+  handle.tabIndex = 0;
+  handle.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home') return;
+    e.preventDefault();
+    const next = e.key === 'Home'
+      ? DEFAULT_WIDTH
+      : inspector.getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 24 : -24);
+    applyBrainInspectorWidth(next);
+    const width = inspector.getBoundingClientRect().width;
+    handle.setAttribute('aria-valuenow', String(Math.round(width)));
+    saveWidth(width);
+  });
+  handle.addEventListener('dblclick', () => {
+    applyBrainInspectorWidth(DEFAULT_WIDTH);
+    saveWidth(DEFAULT_WIDTH);
+  });
 }

@@ -394,12 +394,17 @@ async function completeStoredJob(storedJob, options) {
       );
     }
 
-    if (parsedResult?.quiet !== true && Array.isArray(storedJob.channels) && storedJob.channels.includes('in_app')) {
+    {
       const message = summarizeRunForNotification(
         parsedResult ?? { ok: status === 'completed', error: errorText },
       );
       await enqueueSchedulerNotification({
         jobId,
+        runId,
+        chatId,
+        workspacePath: await resolveJobWorkspacePath(storedJob),
+        status,
+        silent: parsedResult?.quiet === true || !storedJob.channels?.includes('in_app'),
         label: storedJob.label,
         message,
       });

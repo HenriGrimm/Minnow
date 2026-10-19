@@ -11,12 +11,21 @@ const { resolveSettingsSectionNavigation } = await import(
 describe('resolveSettingsSectionNavigation', () => {
   test('old General field links follow their new pages', () => {
     for (const [key, area] of [
-      ['general.backup', 'data'], ['general.network.mode', 'data'],
-      ['general.filesystem', 'data'], ['general.chat.terminal.defaultShell', 'terminal'],
+      ['general.backup', 'backups'],
+      ['general.filesystem', 'access'], ['general.shellSandbox', 'access'], ['general.chat.terminal.defaultShell', 'terminal'],
       ['general.updates.channel', 'general'],
     ]) {
       assert.deepEqual(resolveSettingsSectionNavigation('general', key), { sectionId: area, searchKey: key });
     }
+  });
+  test('legacy Data links open the corresponding split page', () => {
+    assert.deepEqual(resolveSettingsSectionNavigation('data'), { sectionId: 'backups', searchKey: undefined });
+    for (const key of ['general.filesystem', 'general.shellSandbox']) {
+      assert.deepEqual(resolveSettingsSectionNavigation('data', key), { sectionId: 'access', searchKey: key });
+    }
+  });
+  test('the old Network access link opens Devices', () => {
+    assert.deepEqual(resolveSettingsSectionNavigation('general', 'general.network.mode'), { sectionId: 'devices' });
   });
   test('hidden developer pages redirect to diagnostics', () => {
     for (const section of ['board-testing', 'capability-matrix']) {

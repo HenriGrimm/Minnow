@@ -152,6 +152,30 @@ test('durable Codex resume verifies history and counts only the new turn', async
   assert.equal(processes, 2); assert.ok(next.wire.includes('Two.'));
 });
 
+test('canonical native rollout paths resume through an aliased Minnow home', async () => {
+  const alias = path.join(root, 'home-alias');
+  const home = path.join(root, 'aliased-home');
+  await fs.mkdir(home);
+  await fs.symlink(home, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  process.env.MINNOW_HOME = alias; resetMinnowHomeCache();
+  try {
+    setup([{ text: 'One.' }, { text: 'Two.' }], { MINNOW_CODEX_ROLLOUT_PATH: '1' });
+    const chatId = 'canonical-rollout', messages = [{ role: 'user', content: 'Start.' }];
+    await generate(messages, {}, { chatId });
+    const checkpoint = await readCliCheckpoint('codex-cli', chatId);
+    assert.equal(checkpoint.clean, true);
+    assert.equal(checkpoint.nativeFile, 'fixture-thread.json');
+    await shutdownCodexSessions();
+    messages.push({ role: 'assistant', content: 'One.' }, { role: 'user', content: 'Next.' });
+    const next = await generate(messages, {}, { chatId });
+    assert.equal(next.rows.at(-1).minnow_cli.continuation, 'resumed');
+    assert.ok(next.wire.includes('Two.'));
+  } finally {
+    await shutdownCodexSessions();
+    process.env.MINNOW_HOME = root; resetMinnowHomeCache();
+  }
+});
+
 test('tampered Codex native history reconstructs before starting a replacement turn', async () => {
   setup([{ text: 'One.' }, { text: 'Two.' }]); const chatId = 'codex-tampered';
   const messages = [{ role: 'user', content: 'Start.' }];
@@ -595,4 +619,40 @@ test('copied file credentials are redacted from native errors and retained raw o
     assert.match(result.state.errorMessage, /redacted/);
     assert.doesNotMatch(getAgentCliOutput('test-chat').output, new RegExp(secret));
   } finally { await shutdownCodexSessions(); await fs.rm(authPath); }
+});
+
+test('trimmed assistant history reuses the native process for tool rounds and follow-ups', async () => {
+  setup([{ text: 'Checking.\n', calls: [{ id: 'read', name: 'mn_tool_0' }] }, { text: 'Done.\n' }, { text: 'Again.\n' }]);
+  const messages = [{ role: 'user', content: 'Read.' }];
+  const first = await generate(messages);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.equal(calls.length, 1);
+  messages.push({ role: 'assistant', content: 'Checking.', tool_calls: calls },
+    { role: 'tool', tool_call_id: calls[0].id, content: 'Source.' });
+  const second = await generate(messages);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.rows.at(-1).minnow_cli.continuation, 'reused');
+  const answer = second.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join('').trim();
+  messages.push({ role: 'assistant', content: answer }, { role: 'user', content: 'Next.' });
+  const third = await generate(messages);
+  assert.equal(third.state.status, 'complete', third.state.errorMessage);
+  assert.equal(third.rows.at(-1).minnow_cli.continuation, 'reused');
+  assert.equal(processes, 1);
+});
+
+
+test('sequential tools bypass read collection and return results on the same native turn', async () => {
+  setup([{ calls: [{ id: 'write', name: 'mn_tool_0' }] }, { text: 'Applied.' }]);
+  const writeTools = [{ type: 'function', function: { name: 'apply_patch', parameters: { type: 'object', properties: {} } } }];
+  const messages = [{ role: 'user', content: 'Apply the edit.' }];
+  const first = await generate(messages, { tools: writeTools });
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.ok(first.rows.at(-1).minnow_cli.timings.tool_batch_collect_ms < 100);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Actual edit result.' });
+  const second = await generate(messages, { tools: writeTools });
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.ok(second.wire.includes('Applied.'));
+  assert.equal(processes, 1);
 });

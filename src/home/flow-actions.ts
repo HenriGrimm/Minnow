@@ -1,3 +1,4 @@
+import { readDefaultModelBinding } from '../models/selection';
 import { getChatRunActivity, subscribeChatRunActivity } from '../state/chat-run-activity';
 import type { Chat, HomeIssueRun, IssueCard } from '../types';
 import { getChatAbort, streamingChatIds } from '../app-state';
@@ -47,7 +48,7 @@ function patchGroup(issue: IssueCard, state: HomeIssueRun['state'], error?: stri
 
 export function homeAgentSlots(): number {
   const config = getRouterConfigSync();
-  const router = config.routers.find(r => r.id === config.defaultRouterId && r.enabled);
+  const router = config.routers.find(r => r.id === readDefaultModelBinding().modelId && r.enabled);
   const capacity = router?.entries.filter(e => e.enabled).reduce((sum, e) => sum + e.concurrencyLimit, 0);
   return Math.max(1, capacity || getAutopilotMetaSync().maxConcurrentTasks);
 }

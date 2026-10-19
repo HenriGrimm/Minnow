@@ -1,3 +1,4 @@
+import { getRouterWorkspace, resolveRouterId } from '../model-routers/store.js';
 import { listEnabledMcpTools } from '../mcp/registry.js';
 import { getPluginToolDefinitions } from '../tools/loader.js';
 import { randomUUID } from 'node:crypto';
@@ -619,7 +620,7 @@ export function createSubAgentEffector(options = {}) {
         await resolveLibraryAttemptBinding(options.model);
         return;
       }
-      await resolveLibraryAttemptBinding(await resolveAttemptModel(null));
+
     },
 
     /**
@@ -679,15 +680,8 @@ export function createSubAgentEffector(options = {}) {
         promptVariant,
       );
 
-      const bound =
-        options.model ??
-        run.model ??
-        (typeof typeRow.providerId === 'string' &&
-        typeRow.providerId.trim() &&
-        typeof typeRow.modelId === 'string' &&
-        typeRow.modelId.trim()
-          ? { providerId: typeRow.providerId.trim(), id: typeRow.modelId.trim() }
-          : await resolveAttemptModel(null));
+      const bound = options.model ?? run.model;
+      if (!bound) throw new Error('This legacy sub-agent has no captured model. Start a new sub-agent from its parent chat.');
       const globalSampler = await readGlobalSamplerForTurn();
       const model = bindTypeModel(
         await resolveLibraryAttemptBinding(bound),
@@ -784,7 +778,7 @@ export function createSubAgentEffector(options = {}) {
             },
             deps: {
               ...deps,
-              postChatCompletions: (provider, body, signal, options) => deps.postChatCompletions(provider, body, signal, { ...options, routerPreferAvailable: true }),
+              postChatCompletions: (provider, body, signal, options) => deps.postChatCompletions(provider, body, signal, { ...options, chatId: runId, routerPreferAvailable: true }),
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
               applyContextPolicy: async (input) =>
                 applyServerContextPolicy(
@@ -881,7 +875,15 @@ export function createSubAgentEffector(options = {}) {
         }
 
         if (entry.stopped) return;
-        await deliverEnd(entry, toAttemptEnd(attemptId, runId, result));
+        const end = toAttemptEnd(attemptId, runId, result);
+        if (bound.providerId === 'minnow-router') {
+          const pools = await getRouterWorkspace();
+          const poolId = await resolveRouterId(bound.id, cwd);
+          const assignment = pools.scheduler.assignments[pools.scheduler.assignmentKey(poolId, runId)];
+          const actual = pools.routers.find((pool) => pool.id === poolId)?.entries.find((candidate) => candidate.id === assignment?.assignedEntryId);
+          if (actual) end.resolvedModel = { providerId: actual.providerId, id: actual.modelId };
+        } else end.resolvedModel = { providerId: model.providerId, id: model.id };
+        await deliverEnd(entry, end);
       })();
 
       return { attemptId };

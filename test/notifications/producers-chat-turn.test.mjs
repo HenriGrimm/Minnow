@@ -52,7 +52,7 @@ describe('chat turn notification producer', () => {
     assert.equal(background.shouldNotifyForChatTurn('chat-a'), true);
   });
 
-  test('suppresses completion when Code app shows the same chat', () => {
+  test('records active completion as seen and never alerts again for the same run', () => {
     const chat = sessions.createEmptyChatObject('model-a');
     chat.id = 'chat-a';
     chat.name = 'Alpha';
@@ -91,10 +91,11 @@ describe('chat turn notification producer', () => {
 
     chatTurn.notifyChatTurnEnded('chat-a', 'run-1');
     assert.equal(store.getUnreadNotificationCount(), 0);
+    assert.equal(store.getNotifications().length, 1);
 
     instances.showDesktop();
     chatTurn.notifyChatTurnEnded('chat-a', 'run-1');
-    assert.equal(store.getUnreadNotificationCount(), 1);
+    assert.equal(store.getUnreadNotificationCount(), 0);
     assert.match(store.getNotifications()[0]?.preview ?? '', /Hello/);
   });
 
@@ -213,7 +214,7 @@ describe('chat turn notification producer', () => {
     chatTurn.notifyChatTurnEnded('chat-a', 'run-active');
 
     assert.equal(store.getUnreadNotificationCount(), 0);
-    assert.equal(store.getNotifications().length, 0);
+    assert.equal(store.getNotifications().length, 1);
   });
 
   test('pushes tool failure notification at end of completed turn', () => {

@@ -1,140 +1,138 @@
-import {
-  getDeviceToken,
-  hasHostSessionToken,
-  saveDeviceToken,
-} from './session-token.ts';
+/**
+ * Phone-side connection API: connect from a QR ticket, ask the host for access,
+ * and hand the sign-in to another address. The resulting credential is an
+ * HttpOnly cookie set by the host; nothing here stores a secret.
+ */
 
-export interface CompanionDevice {
+import { isInstalledPwa } from './pwa-context.ts';
+
+export interface HostInfo {
+  hostName: string;
+  ingress: 'loopback' | 'lan' | 'tailnet' | 'funnel';
+  /** Whether a 6-digit code can be typed (home network only). */
+  codeEntry: boolean;
+  /** Whether Request access is currently accepted. */
+  requestsOpen: boolean;
+  paired: boolean;
+}
+
+export interface ConnectedDevice {
   id: string;
   name: string;
-  createdAt: string;
 }
 
-export interface PairingChallenge {
-  code: string;
-  deviceName: string;
+export interface AccessRequest {
+  id: string;
+  secret: string;
+  verifyCode: string;
   expiresAt: string;
-  urls: string[];
 }
 
-interface PairingExchangeResponse {
-  token: string;
-  device: CompanionDevice;
+export type AccessRequestStatus = 'pending' | 'approved' | 'denied' | 'expired';
+
+const FALLBACK_HOST_INFO: HostInfo = {
+  hostName: 'your computer',
+  ingress: 'lan',
+  codeEntry: false,
+  requestsOpen: true,
+  paired: false,
+};
+
+async function readError(response: Response, fallback: string): Promise<Error & { code?: string }> {
+  try {
+    const payload = (await response.json()) as { error?: string; code?: string };
+    const err = new Error(payload.error || fallback) as Error & { code?: string };
+    err.code = payload.code;
+    return err;
+  } catch {
+    return new Error(fallback);
+  }
 }
 
-const PAIRING_FRAGMENT_KEY = 'pair';
-const PAIRING_CODE_DIGITS = 6;
+/** Unauthenticated description of the host this page was served by. */
+export async function fetchHostInfo(): Promise<HostInfo> {
+  try {
+    const response = await fetch('/api/auth/host-info', { cache: 'no-store', credentials: 'same-origin' });
+    if (!response.ok) return FALLBACK_HOST_INFO;
+    return { ...FALLBACK_HOST_INFO, ...((await response.json()) as Partial<HostInfo>) };
+  } catch {
+    return FALLBACK_HOST_INFO;
+  }
+}
 
-/** Keep only digits and require a six-digit LAN pairing code. */
-function normalizePairingCode(code: string): string {
+async function claim(body: Record<string, unknown>): Promise<ConnectedDevice> {
+  const response = await fetch('/api/auth/claim', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, installed: isInstalledPwa() }),
+  });
+  if (!response.ok) throw await readError(response, 'This connect link is invalid or has expired.');
+  return ((await response.json()) as { device: ConnectedDevice }).device;
+}
+
+/** Connect with the single-use ticket from a scanned QR. */
+export function claimConnectTicket(ticket: string, name: string): Promise<ConnectedDevice> {
+  return claim({ ticket, name });
+}
+
+/** Keep only digits and require a six-digit code. */
+export function normalizePairingCode(code: string): string {
   const digits = code.replace(/\D/g, '');
   return /^\d{6}$/.test(digits) ? digits : '';
 }
 
-function pairingCodeFromLocation(): string {
-  if (typeof window === 'undefined') return '';
-  const raw = window.location.hash.startsWith('#')
-    ? window.location.hash.slice(1)
-    : window.location.hash;
-  const fromFragment = new URLSearchParams(raw).get(PAIRING_FRAGMENT_KEY)?.trim() ?? '';
-  return normalizePairingCode(fromFragment);
-}
-
-function removePairingFragment(): void {
-  const url = `${window.location.pathname}${window.location.search}#/desktop`;
-  window.history.replaceState(null, '', url);
-}
-
-/** Give an installed app its pairing even when iOS creates an empty storage jar. */
-export function configureCompanionManifest(): void {
-  const token = getDeviceToken();
-  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-  if (!link || !token || hasHostSessionToken()) return;
-  link.href = `/api/auth/manifest?token=${encodeURIComponent(token)}`;
-}
-
-/** Exchange a one-time pairing secret for a named device credential. */
-export async function exchangePairingCode(code: string): Promise<PairingExchangeResponse> {
+/** Connect with the 6-digit code shown under the QR (home network only). */
+export function claimConnectCode(code: string, name: string): Promise<ConnectedDevice> {
   const normalized = normalizePairingCode(code);
-  if (!normalized) throw new Error('Enter the 6-digit pairing code from the host');
+  if (!normalized) return Promise.reject(new Error('Enter the 6-digit code from your computer.'));
+  return claim({ code: normalized, name });
+}
 
-  const response = await fetch('/api/auth/pair', {
+/** Ask the host to approve this device; show `verifyCode` while waiting. */
+export async function requestAccess(name: string): Promise<AccessRequest> {
+  const response = await fetch('/api/auth/requests', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: normalized }),
+    body: JSON.stringify({ name, installed: isInstalledPwa() }),
   });
-  const payload = (await response.json()) as Partial<PairingExchangeResponse> & {
-    error?: string;
-  };
-  if (!response.ok || typeof payload.token !== 'string' || !payload.device) {
-    throw new Error(payload.error ?? 'Pairing failed');
-  }
-  saveDeviceToken(payload.token);
-  return payload as PairingExchangeResponse;
+  if (!response.ok) throw await readError(response, 'Could not ask for access.');
+  return (await response.json()) as AccessRequest;
 }
 
-/** Exchange a URL-fragment pairing secret before authenticated app bootstrap. */
-export async function initializeDevicePairing(): Promise<
-  'host' | 'device' | 'pairing-required' | 'pairing-failed'
-> {
-  if (hasHostSessionToken()) return 'host';
-
-  const installToken = new URLSearchParams(window.location.hash.slice(1)).get('device');
-  if (installToken) {
-    removePairingFragment();
-    if (!getDeviceToken()) {
-      try { saveDeviceToken(installToken); } catch { return 'pairing-required'; }
-    }
-  }
-  const code = pairingCodeFromLocation();
-  // Bookmarked/scanned links often still contain the single-use code. An
-  // existing pairing belongs to the device, not to that expired challenge.
-  if (getDeviceToken()) {
-    if (code) removePairingFragment();
-    return 'device';
-  }
-  if (!code) return 'pairing-required';
-
-  try {
-    await exchangePairingCode(code);
-    removePairingFragment();
-    return 'device';
-  } catch {
-    return 'pairing-failed';
-  }
+/** Poll an access request; on `approved` the host has set this device's cookie. */
+export async function pollAccessRequest(request: Pick<AccessRequest, 'id' | 'secret'>): Promise<AccessRequestStatus> {
+  const response = await fetch(`/api/auth/requests/${encodeURIComponent(request.id)}`, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: { 'X-Minnow-Request-Secret': request.secret },
+  });
+  if (!response.ok) throw await readError(response, 'Could not check the request.');
+  const { status } = (await response.json()) as { status: AccessRequestStatus };
+  return status;
 }
 
-/** Create a short-lived, host-authorized pairing challenge. */
-export async function createPairing(deviceName: string): Promise<PairingChallenge> {
-  const response = await fetch('/api/auth/pairings', {
+/** A single-use ticket that signs this device in at another Minnow address. */
+export async function createHandoffTicket(purpose: 'install' | 'move'): Promise<string> {
+  const response = await fetch('/api/auth/handoff', {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceName }),
+    body: JSON.stringify({ purpose }),
   });
-  const payload = (await response.json()) as Partial<PairingChallenge> & { error?: string };
-  if (!response.ok || !payload.code || !payload.expiresAt || !Array.isArray(payload.urls)) {
-    throw new Error(payload.error ?? 'Could not create pairing link');
-  }
-  return payload as PairingChallenge;
+  if (!response.ok) throw await readError(response, 'Could not prepare the move.');
+  return ((await response.json()) as { ticket: string }).ticket;
 }
 
-/** List named devices from the host-only management endpoint. */
-export async function fetchCompanionDevices(): Promise<CompanionDevice[]> {
-  const response = await fetch('/api/auth/devices', { cache: 'no-store' });
-  const payload = (await response.json()) as { devices?: CompanionDevice[]; error?: string };
-  if (!response.ok) {
-    throw new Error(payload.error ?? 'Could not load paired devices');
-  }
-  return Array.isArray(payload.devices) ? payload.devices : [];
+/** The phone's own suggestion for its name, editable before connecting. */
+export function suggestedDeviceName(userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent): string {
+  if (/iPad/i.test(userAgent)) return 'iPad';
+  if (/iPhone|iPod/i.test(userAgent)) return 'iPhone';
+  // iPadOS Safari reports a Mac user agent; touch support gives it away.
+  if (/Macintosh/i.test(userAgent) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1) return 'iPad';
+  if (/Android/i.test(userAgent)) return /Mobile/i.test(userAgent) ? 'Android phone' : 'Android tablet';
+  if (/Macintosh/i.test(userAgent)) return 'Mac';
+  if (/Windows/i.test(userAgent)) return 'Windows PC';
+  return 'My device';
 }
-
-/** Revoke a device; its next API request receives 401. */
-export async function revokeCompanionDevice(deviceId: string): Promise<void> {
-  const response = await fetch(`/api/auth/devices/${encodeURIComponent(deviceId)}`, {
-    method: 'DELETE',
-  });
-  if (response.ok) return;
-  const payload = (await response.json()) as { error?: string };
-  throw new Error(payload.error ?? 'Could not revoke device');
-}
-

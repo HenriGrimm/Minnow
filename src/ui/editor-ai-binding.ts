@@ -1,5 +1,5 @@
+import { readPersistedDefaultModelValue, resolveEffectiveChatModelBinding } from '../models/selection';
 import type { EditorAiCompletionConfig } from '../config/editor-ai-completion';
-import { decodeModelSelectKey } from '../lib/model-select-key';
 import {
   LIBRARY_MODEL_NOT_LOADED_MESSAGE,
   resolveLibraryRequestBinding,
@@ -16,7 +16,7 @@ export interface EditorAiBinding {
 
 /** Shown in the file viewer status bar and Quick Edit panel when modelId is empty. */
 export const EDITOR_AI_NO_MODEL_MESSAGE =
-  'No model assigned — pick a model in the top bar or pin one in Settings → Editor.';
+  'No model assigned — pick a model in the composer or pin one in Settings → Editor.';
 
 /** Generic fallback when the backend fails without a specific message. */
 export const EDITOR_AI_REQUEST_FAILED_MESSAGE =
@@ -62,11 +62,9 @@ export function validateEditorAiBinding(
   return { ok: true };
 }
 
-/** Active top-bar model select value (same source as composer send / benchmark). */
+/** Compatibility accessor for the remembered chat selection. */
 export function getActiveModelIdFromDom(): string {
-  if (typeof document === 'undefined') return '';
-  const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  return sel?.value?.trim() ?? '';
+  return readPersistedDefaultModelValue();
 }
 
 /** Return a user-facing error when binding has no model; null when ready. */
@@ -100,13 +98,8 @@ export async function resolveEditorAiBinding(
     return applyLibraryBinding({ providerId: overrideProvider, modelId: overrideModel });
   }
 
-  const raw = getActiveModelIdFromDom();
-  const parsed = decodeModelSelectKey(raw);
-  const modelId =
-    (parsed?.modelId ?? raw).trim() || chat.modelId?.trim() || '';
-  const providerId =
-    parsed?.providerId?.trim() ||
-    chat.providerId?.trim() ||
-    (await resolveProvider()).id;
+  const binding = resolveEffectiveChatModelBinding(chat);
+  const modelId = binding.modelId;
+  const providerId = binding.providerId || (await resolveProvider()).id;
   return applyLibraryBinding({ providerId, modelId });
 }

@@ -26,6 +26,14 @@ const headlessRunner = spawnSync('node', ['scripts/build-headless-runner.mjs'], 
 });
 if (headlessRunner.status !== 0) process.exit(headlessRunner.status ?? 1);
 
+// Anywhere access ships a Go helper (tools/minnow-tailnet). CI fails without Go;
+// a local package build without Go ships without Anywhere access.
+const tailnetSidecar = spawnSync('node', ['scripts/build-tailnet-sidecar.mjs', '--package'], {
+  cwd: repoRoot,
+  stdio: 'inherit',
+});
+if (tailnetSidecar.status !== 0) process.exit(tailnetSidecar.status ?? 1);
+
 spawnSync('node', ['scripts/clean-release.mjs'], { cwd: repoRoot, stdio: 'inherit' });
 
 let outputDir = 'release/pkg';

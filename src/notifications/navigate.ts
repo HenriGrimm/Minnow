@@ -24,6 +24,11 @@ async function toastUnavailableApp(appId: AppId): Promise<void> {
 
 /** Launch the owning app and switch to the linked chat when present. */
 export async function openNotificationTarget(record: NotificationRecord): Promise<void> {
+  const { isMobileShell } = await import('../mobile/mode');
+  if (isMobileShell()) {
+    const { openMobileNotificationTarget } = await import('../mobile/shell');
+    if (await openMobileNotificationTarget(record)) return;
+  }
   if (record.chatId?.trim()) {
     acknowledgeChatViewed(record.chatId);
   } else {
@@ -33,6 +38,12 @@ export async function openNotificationTarget(record: NotificationRecord): Promis
   if (record.chatId) {
     const { launchCodeWithChat } = await import('../os/chat-launch');
     await launchCodeWithChat(record.chatId);
+    return;
+  }
+
+  if (record.kind === 'device_request') {
+    const { openSettings } = await import('../ui/settings-page');
+    openSettings('devices');
     return;
   }
 

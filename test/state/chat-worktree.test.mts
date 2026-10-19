@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
+  enableChatWorktreeOnSend,
   formatComposerBranchLabel,
   formatComposerRunTargetLabel,
   isChatWorktreeMode,
@@ -16,10 +17,26 @@ import {
   resolveChatToolWorkspaceRoot,
   suggestChatWorktreeBranchName,
 } from '../../src/state/chat-worktree.ts';
+import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 describe('chat-worktree helpers', () => {
+  test('deferred selection survives normalization without creating a checkout', () => {
+    setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
+    const chat = { id: 'deferred-chat', workspacePath: '' } as never;
+    enableChatWorktreeOnSend(chat);
+    const restored = normalizeChatRow(JSON.parse(JSON.stringify(chat)));
+    assert.equal(restored.worktreeEnabled, true);
+    assert.equal(restored.workspacePath, '/repo');
+    assert.equal(restored.worktreeRoot, undefined);
+    assert.equal(restored.worktreeSetupRequired, undefined);
+    restored.worktreeSetupRequired = true;
+    assert.equal(normalizeChatRow(restored).worktreeSetupRequired, true);
+    assert.equal(normalizeChatRow({ worktreeEnabled: 'true', worktreeSetupRequired: 1 }).worktreeEnabled, undefined);
+    assert.equal(normalizeChatRow({ worktreeSetupRequired: 1 }).worktreeSetupRequired, undefined);
+  });
+
   test('automatic setup coalesces, binds the originating repo, and Local preserves files', async () => {
     const originalFetch = globalThis.fetch;
     setLocalServerAvailableForTests(true);

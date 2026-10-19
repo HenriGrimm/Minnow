@@ -1,3 +1,4 @@
+import { resolveRouterId } from '../model-routers/store.js';
 /** Resolve the model a real attempt should use. */
 
 import { readConfigJson } from '../config/store.js';
@@ -7,9 +8,9 @@ import { MINNOW_LIBRARY_PROVIDER_ID } from '../providers/store.js';
  * @param {{ providerId?: string, id?: string } | null | undefined} override
  * @returns {Promise<{ providerId: string, id: string }>}
  */
-export async function resolveAttemptModel(override) {
+export async function resolveAttemptModel(override, workspacePath) {
   const fromOverride = await completePair(override?.providerId, override?.id);
-  if (fromOverride) return fromOverride;
+  if (fromOverride) return fromOverride.providerId === 'minnow-router' ? { ...fromOverride, id: await resolveRouterId(fromOverride.id, workspacePath || undefined) } : fromOverride;
 
   const cfg = (await readConfigJson('config.json')) ?? {};
   const autopilot =

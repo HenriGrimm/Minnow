@@ -1,0 +1,2359 @@
+{
+  "scope": "Production generation adapters to local SSE subscriber. Excludes browser paint. Synthetic prompts; low reasoning. Same model label, different account infrastructure and native instructions.",
+  "versions": {
+    "codex": "0.157.0",
+    "claude": "2.1.302",
+    "cursor": "2026.10.16-e3cb207"
+  },
+  "limitations": [
+    "Three samples per scenario in the final comparison; latency varies with upstream load.",
+    "Measurements end at the local generation subscriber, before browser paint.",
+    "Haiku comparison uses low effort; native prompts and reasoning behavior differ across Claude Code, Cursor and Go. Claude Code generated reasoning in tool continuations while Cursor no-thinking and the API did not.",
+    "OpenCode Zen could not be benchmarked because its account has insufficient funds. The funded Go endpoint supplied Haiku 5.5 for the live Claude/Cursor/API comparison."
+  ],
+  "runs": {
+    "before": [
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 3004.1,
+          "min": 2347,
+          "max": 3374
+        },
+        "firstTextMs": {
+          "median": 3004.1,
+          "min": 2347,
+          "max": 3374
+        },
+        "completeMs": {
+          "median": 3627.3,
+          "min": 2733.2,
+          "max": 3706.1
+        },
+        "tailMs": {
+          "median": 55,
+          "min": 52.3,
+          "max": 154
+        },
+        "maxOutputGapMs": {
+          "median": 80.1,
+          "min": 37.3,
+          "max": 110.5
+        },
+        "initialization_ms": {
+          "median": 459.52,
+          "min": 449.81,
+          "max": 555.12
+        },
+        "forwarding_max_ms": {
+          "median": 0.22,
+          "min": 0.19,
+          "max": 1.19
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1112.4,
+          "min": 966,
+          "max": 1133
+        },
+        "firstTextMs": {
+          "median": 1112.4,
+          "min": 966,
+          "max": 1133
+        },
+        "completeMs": {
+          "median": 1406.5,
+          "min": 1235.4,
+          "max": 1551.2
+        },
+        "tailMs": {
+          "median": 57,
+          "min": 22.5,
+          "max": 69
+        },
+        "maxOutputGapMs": {
+          "median": 40.3,
+          "min": 23.2,
+          "max": 64.9
+        },
+        "initialization_ms": {
+          "median": 0.58,
+          "min": 0.43,
+          "max": 0.74
+        },
+        "forwarding_max_ms": {
+          "median": 0.09,
+          "min": 0.05,
+          "max": 0.13
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1157.9,
+          "min": 1016.9,
+          "max": 2303.2
+        },
+        "firstToolMs": {
+          "median": 1157.9,
+          "min": 1016.9,
+          "max": 2303.2
+        },
+        "completeMs": {
+          "median": 1359.4,
+          "min": 1218.3,
+          "max": 2505.4
+        },
+        "tailMs": {
+          "median": 201.4,
+          "min": 201.4,
+          "max": 202.1
+        },
+        "initialization_ms": {
+          "median": 0.59,
+          "min": 0.35,
+          "max": 0.67
+        },
+        "tool_batch_collect_ms": {
+          "median": 201.25,
+          "min": 201.23,
+          "max": 201.43
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 662.3,
+          "min": 559.3,
+          "max": 723
+        },
+        "firstTextMs": {
+          "median": 662.3,
+          "min": 559.3,
+          "max": 723
+        },
+        "completeMs": {
+          "median": 789.3,
+          "min": 715.1,
+          "max": 895
+        },
+        "tailMs": {
+          "median": 77.2,
+          "min": 65.3,
+          "max": 78.7
+        },
+        "maxOutputGapMs": {
+          "median": 26.3,
+          "min": 23.3,
+          "max": 30.9
+        },
+        "initialization_ms": {
+          "median": 0.63,
+          "min": 0.45,
+          "max": 1.08
+        },
+        "forwarding_max_ms": {
+          "median": 0.17,
+          "min": 0.17,
+          "max": 0.18
+        }
+      }
+    ],
+    "go-routed": [
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 966,
+          "min": 791.9,
+          "max": 1928.5
+        },
+        "firstTextMs": {
+          "median": 966,
+          "min": 791.9,
+          "max": 1928.5
+        },
+        "completeMs": {
+          "median": 1623.7,
+          "min": 1173.2,
+          "max": 2288.4
+        },
+        "tailMs": {
+          "median": 87.5,
+          "min": 50.4,
+          "max": 138.3
+        },
+        "maxOutputGapMs": {
+          "median": 32.3,
+          "min": 30.9,
+          "max": 312.6
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 959.4,
+          "min": 786.1,
+          "max": 991.5
+        },
+        "firstTextMs": {
+          "median": 959.4,
+          "min": 786.1,
+          "max": 991.5
+        },
+        "completeMs": {
+          "median": 1571.7,
+          "min": 1136.4,
+          "max": 1713.5
+        },
+        "tailMs": {
+          "median": 138.4,
+          "min": 62.8,
+          "max": 533.3
+        },
+        "maxOutputGapMs": {
+          "median": 33,
+          "min": 29.1,
+          "max": 50.9
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 864,
+          "min": 841,
+          "max": 1167.6
+        },
+        "firstToolMs": {
+          "median": 864,
+          "min": 841,
+          "max": 1167.6
+        },
+        "completeMs": {
+          "median": 1065.2,
+          "min": 1013.9,
+          "max": 1365.2
+        },
+        "tailMs": {
+          "median": 180,
+          "min": 160.5,
+          "max": 186.1
+        },
+        "maxOutputGapMs": {
+          "median": 7.1,
+          "min": 3.2,
+          "max": 7.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 926.1,
+          "min": 719.6,
+          "max": 1395.8
+        },
+        "firstTextMs": {
+          "median": 926.1,
+          "min": 719.6,
+          "max": 1395.8
+        },
+        "completeMs": {
+          "median": 1409.3,
+          "min": 936.7,
+          "max": 1661.2
+        },
+        "tailMs": {
+          "median": 94.6,
+          "min": 18.9,
+          "max": 165.8
+        },
+        "maxOutputGapMs": {
+          "median": 134.4,
+          "min": 26,
+          "max": 173.1
+        }
+      }
+    ],
+    "after": [
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2589.3,
+          "min": 2090.1,
+          "max": 2932.8
+        },
+        "firstTextMs": {
+          "median": 2589.3,
+          "min": 2090.1,
+          "max": 2932.8
+        },
+        "completeMs": {
+          "median": 2933.5,
+          "min": 2561,
+          "max": 3344.7
+        },
+        "tailMs": {
+          "median": 90.5,
+          "min": 79.2,
+          "max": 115.1
+        },
+        "maxOutputGapMs": {
+          "median": 46.2,
+          "min": 39.7,
+          "max": 63.3
+        },
+        "initialization_ms": {
+          "median": 451.52,
+          "min": 397.44,
+          "max": 1124.27
+        },
+        "forwarding_max_ms": {
+          "median": 0.19,
+          "min": 0.14,
+          "max": 0.38
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1878.4,
+          "min": 756.1,
+          "max": 2683
+        },
+        "firstTextMs": {
+          "median": 1878.4,
+          "min": 756.1,
+          "max": 2683
+        },
+        "completeMs": {
+          "median": 2460.4,
+          "min": 1060,
+          "max": 2962.2
+        },
+        "tailMs": {
+          "median": 52.2,
+          "min": 44.4,
+          "max": 88.4
+        },
+        "maxOutputGapMs": {
+          "median": 35.5,
+          "min": 30.5,
+          "max": 119.1
+        },
+        "initialization_ms": {
+          "median": 0.63,
+          "min": 0.6,
+          "max": 0.8
+        },
+        "forwarding_max_ms": {
+          "median": 0.14,
+          "min": 0.06,
+          "max": 0.2
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1098.8,
+          "min": 949.2,
+          "max": 1159.9
+        },
+        "firstToolMs": {
+          "median": 1098.8,
+          "min": 949.2,
+          "max": 1159.9
+        },
+        "completeMs": {
+          "median": 1100.2,
+          "min": 950.5,
+          "max": 1161.2
+        },
+        "tailMs": {
+          "median": 1.3,
+          "min": 1.3,
+          "max": 1.4
+        },
+        "initialization_ms": {
+          "median": 0.38,
+          "min": 0.37,
+          "max": 0.59
+        },
+        "tool_batch_collect_ms": {
+          "median": 1.27,
+          "min": 1.26,
+          "max": 1.3
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 681.5,
+          "min": 678.1,
+          "max": 768.8
+        },
+        "firstTextMs": {
+          "median": 681.5,
+          "min": 678.1,
+          "max": 768.8
+        },
+        "completeMs": {
+          "median": 886.3,
+          "min": 861.1,
+          "max": 961.6
+        },
+        "tailMs": {
+          "median": 89.2,
+          "min": 84.8,
+          "max": 95.8
+        },
+        "maxOutputGapMs": {
+          "median": 21.7,
+          "min": 17.1,
+          "max": 39.4
+        },
+        "initialization_ms": {
+          "median": 0.41,
+          "min": 0.4,
+          "max": 0.43
+        },
+        "forwarding_max_ms": {
+          "median": 0.14,
+          "min": 0.14,
+          "max": 0.15
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 823,
+          "min": 723.8,
+          "max": 873.5
+        },
+        "firstTextMs": {
+          "median": 823,
+          "min": 723.8,
+          "max": 873.5
+        },
+        "completeMs": {
+          "median": 1276,
+          "min": 1196.8,
+          "max": 1298.9
+        },
+        "tailMs": {
+          "median": 131.6,
+          "min": 130.6,
+          "max": 140.3
+        },
+        "maxOutputGapMs": {
+          "median": 27.9,
+          "min": 25.5,
+          "max": 50.1
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 980.3,
+          "min": 902.5,
+          "max": 994.3
+        },
+        "firstTextMs": {
+          "median": 980.3,
+          "min": 902.5,
+          "max": 994.3
+        },
+        "completeMs": {
+          "median": 1358.6,
+          "min": 1271.1,
+          "max": 1374.8
+        },
+        "tailMs": {
+          "median": 148.2,
+          "min": 138.2,
+          "max": 162.2
+        },
+        "maxOutputGapMs": {
+          "median": 27.7,
+          "min": 17,
+          "max": 44.4
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 775.3,
+          "min": 759,
+          "max": 898.4
+        },
+        "firstToolMs": {
+          "median": 775.3,
+          "min": 759,
+          "max": 898.4
+        },
+        "completeMs": {
+          "median": 946.7,
+          "min": 900.5,
+          "max": 1114.4
+        },
+        "tailMs": {
+          "median": 140.9,
+          "min": 139.1,
+          "max": 188.8
+        },
+        "maxOutputGapMs": {
+          "median": 12,
+          "min": 0.3,
+          "max": 16.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 769.4,
+          "min": 720.3,
+          "max": 846.1
+        },
+        "firstTextMs": {
+          "median": 769.4,
+          "min": 720.3,
+          "max": 846.1
+        },
+        "completeMs": {
+          "median": 1020.2,
+          "min": 977.1,
+          "max": 1032.3
+        },
+        "tailMs": {
+          "median": 129.5,
+          "min": 124.7,
+          "max": 174.3
+        },
+        "maxOutputGapMs": {
+          "median": 14.7,
+          "min": 9.8,
+          "max": 39.2
+        }
+      }
+    ],
+    "claude-live": [
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-sonnet-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2604.1,
+          "min": 2580.2,
+          "max": 2676
+        },
+        "firstTextMs": {
+          "median": 2604.1,
+          "min": 2580.2,
+          "max": 2676
+        },
+        "completeMs": {
+          "median": 4169.6,
+          "min": 3890.8,
+          "max": 4250.8
+        },
+        "tailMs": {
+          "median": 267.6,
+          "min": 265.8,
+          "max": 271
+        },
+        "maxOutputGapMs": {
+          "median": 629.1,
+          "min": 464.3,
+          "max": 751.9
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-sonnet-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1863.1,
+          "min": 1616.9,
+          "max": 3260.5
+        },
+        "firstTextMs": {
+          "median": 1863.1,
+          "min": 1616.9,
+          "max": 3260.5
+        },
+        "completeMs": {
+          "median": 2790.4,
+          "min": 2456.3,
+          "max": 4234.5
+        },
+        "tailMs": {
+          "median": 267.2,
+          "min": 220.4,
+          "max": 267.8
+        },
+        "maxOutputGapMs": {
+          "median": 542.7,
+          "min": 418,
+          "max": 590.5
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-sonnet-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2342.7,
+          "min": 2284.3,
+          "max": 2354.6
+        },
+        "firstToolMs": {
+          "median": 2342.7,
+          "min": 2284.3,
+          "max": 2354.6
+        },
+        "completeMs": {
+          "median": 2543.2,
+          "min": 2485.8,
+          "max": 2637.4
+        },
+        "tailMs": {
+          "median": 201.5,
+          "min": 200.5,
+          "max": 282.8
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-sonnet-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1884.4,
+          "min": 1783.2,
+          "max": 1995.4
+        },
+        "firstTextMs": {
+          "median": 1884.4,
+          "min": 1783.2,
+          "max": 1995.4
+        },
+        "completeMs": {
+          "median": 2100.7,
+          "min": 2001.3,
+          "max": 2212.3
+        },
+        "tailMs": {
+          "median": 216.9,
+          "min": 216.3,
+          "max": 218.1
+        }
+      }
+    ],
+    "haiku-before": [
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2130.7,
+          "min": 2048.2,
+          "max": 2447
+        },
+        "firstTextMs": {
+          "median": 2130.7,
+          "min": 2048.2,
+          "max": 2447
+        },
+        "completeMs": {
+          "median": 3035.7,
+          "min": 3003.2,
+          "max": 3273.3
+        },
+        "tailMs": {
+          "median": 221.2,
+          "min": 221.1,
+          "max": 273.1
+        },
+        "maxOutputGapMs": {
+          "median": 189.3,
+          "min": 183.8,
+          "max": 198.9
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1178.2,
+          "min": 1127.9,
+          "max": 1423.9
+        },
+        "firstTextMs": {
+          "median": 1178.2,
+          "min": 1127.9,
+          "max": 1423.9
+        },
+        "completeMs": {
+          "median": 1770.7,
+          "min": 1735.6,
+          "max": 2062.9
+        },
+        "tailMs": {
+          "median": 260.9,
+          "min": 222.4,
+          "max": 263.8
+        },
+        "maxOutputGapMs": {
+          "median": 219.1,
+          "min": 102.6,
+          "max": 313
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1458.6,
+          "min": 1363,
+          "max": 1832
+        },
+        "firstToolMs": {
+          "median": 1458.6,
+          "min": 1363,
+          "max": 1832
+        },
+        "completeMs": {
+          "median": 1660,
+          "min": 1565.1,
+          "max": 2130.9
+        },
+        "tailMs": {
+          "median": 202.1,
+          "min": 201.4,
+          "max": 298.9
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2359.8,
+          "min": 2160.1,
+          "max": 2982.5
+        },
+        "firstTextMs": {
+          "median": 2359.8,
+          "min": 2160.1,
+          "max": 2982.5
+        },
+        "completeMs": {
+          "median": 2575.8,
+          "min": 2371.8,
+          "max": 3191.1
+        },
+        "tailMs": {
+          "median": 83.7,
+          "min": 59,
+          "max": 216
+        },
+        "maxOutputGapMs": {
+          "median": 138.8,
+          "min": 128.1,
+          "max": 149.5
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1050.4,
+          "min": 623.5,
+          "max": 3057.9
+        },
+        "firstTextMs": {
+          "median": 1050.4,
+          "min": 623.5,
+          "max": 3057.9
+        },
+        "completeMs": {
+          "median": 1920,
+          "min": 1431.1,
+          "max": 3874.6
+        },
+        "tailMs": {
+          "median": 11.1,
+          "min": 8.3,
+          "max": 11.5
+        },
+        "maxOutputGapMs": {
+          "median": 167.1,
+          "min": 164.5,
+          "max": 273.1
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1050.7,
+          "min": 788,
+          "max": 1978.7
+        },
+        "firstTextMs": {
+          "median": 1050.7,
+          "min": 788,
+          "max": 1978.7
+        },
+        "completeMs": {
+          "median": 1459.2,
+          "min": 1419.7,
+          "max": 2657.4
+        },
+        "tailMs": {
+          "median": 4.8,
+          "min": 2.9,
+          "max": 6.1
+        },
+        "maxOutputGapMs": {
+          "median": 180.9,
+          "min": 142.7,
+          "max": 188
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 808.2,
+          "min": 797.2,
+          "max": 1072.7
+        },
+        "firstToolMs": {
+          "median": 808.2,
+          "min": 797.2,
+          "max": 1072.7
+        },
+        "completeMs": {
+          "median": 896.9,
+          "min": 891.4,
+          "max": 1220.9
+        },
+        "tailMs": {
+          "median": 3.3,
+          "min": 1.6,
+          "max": 58.3
+        },
+        "maxOutputGapMs": {
+          "median": 87.9,
+          "min": 80.8,
+          "max": 95.9
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 746.2,
+          "min": 677.8,
+          "max": 1145
+        },
+        "firstTextMs": {
+          "median": 746.2,
+          "min": 677.8,
+          "max": 1145
+        },
+        "completeMs": {
+          "median": 843,
+          "min": 731.9,
+          "max": 1262
+        },
+        "tailMs": {
+          "median": 30.3,
+          "min": 3.3,
+          "max": 43.9
+        },
+        "maxOutputGapMs": {
+          "median": 35.5,
+          "min": 31,
+          "max": 46.2
+        }
+      }
+    ],
+    "haiku-after": [
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1888.4,
+          "min": 1794.1,
+          "max": 2066.5
+        },
+        "firstTextMs": {
+          "median": 1888.4,
+          "min": 1794.1,
+          "max": 2066.5
+        },
+        "completeMs": {
+          "median": 2760.5,
+          "min": 2725.1,
+          "max": 2961.8
+        },
+        "tailMs": {
+          "median": 261,
+          "min": 210.7,
+          "max": 262.7
+        },
+        "maxOutputGapMs": {
+          "median": 210.3,
+          "min": 183.7,
+          "max": 229
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 901.4,
+          "min": 829.7,
+          "max": 1454.2
+        },
+        "firstTextMs": {
+          "median": 901.4,
+          "min": 829.7,
+          "max": 1454.2
+        },
+        "completeMs": {
+          "median": 1455.7,
+          "min": 1320.5,
+          "max": 2005.2
+        },
+        "tailMs": {
+          "median": 260.4,
+          "min": 256.7,
+          "max": 267.8
+        },
+        "maxOutputGapMs": {
+          "median": 179.1,
+          "min": 106,
+          "max": 182.1
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 924.5,
+          "min": 917.7,
+          "max": 1588
+        },
+        "firstToolMs": {
+          "median": 924.5,
+          "min": 917.7,
+          "max": 1588
+        },
+        "completeMs": {
+          "median": 1328.8,
+          "min": 1322.1,
+          "max": 2032.9
+        },
+        "tailMs": {
+          "median": 404.4,
+          "min": 404.3,
+          "max": 444.9
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2872.5,
+          "min": 2581.3,
+          "max": 3021.2
+        },
+        "firstTextMs": {
+          "median": 2872.5,
+          "min": 2581.3,
+          "max": 3021.2
+        },
+        "completeMs": {
+          "median": 3085.2,
+          "min": 2795.8,
+          "max": 3231.5
+        },
+        "tailMs": {
+          "median": 79.7,
+          "min": 48.2,
+          "max": 95.4
+        },
+        "maxOutputGapMs": {
+          "median": 134.9,
+          "min": 115,
+          "max": 164.5
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 857.1,
+          "min": 673.8,
+          "max": 1117.2
+        },
+        "firstTextMs": {
+          "median": 857.1,
+          "min": 673.8,
+          "max": 1117.2
+        },
+        "completeMs": {
+          "median": 1699.1,
+          "min": 1543.5,
+          "max": 1957.2
+        },
+        "tailMs": {
+          "median": 6,
+          "min": 3.6,
+          "max": 15.3
+        },
+        "maxOutputGapMs": {
+          "median": 161.3,
+          "min": 160.4,
+          "max": 162.9
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 752.6,
+          "min": 692.8,
+          "max": 832.4
+        },
+        "firstTextMs": {
+          "median": 752.6,
+          "min": 692.8,
+          "max": 832.4
+        },
+        "completeMs": {
+          "median": 1205.1,
+          "min": 1111.6,
+          "max": 1529.4
+        },
+        "tailMs": {
+          "median": 9.2,
+          "min": 5.2,
+          "max": 25.2
+        },
+        "maxOutputGapMs": {
+          "median": 178.8,
+          "min": 161.9,
+          "max": 213.1
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 919,
+          "min": 838.9,
+          "max": 959
+        },
+        "firstToolMs": {
+          "median": 919,
+          "min": 838.9,
+          "max": 959
+        },
+        "completeMs": {
+          "median": 998.1,
+          "min": 985.5,
+          "max": 1047.3
+        },
+        "tailMs": {
+          "median": 57.2,
+          "min": 7.8,
+          "max": 66.1
+        },
+        "maxOutputGapMs": {
+          "median": 69.7,
+          "min": 11.4,
+          "max": 91.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 869.4,
+          "min": 765.8,
+          "max": 1050.3
+        },
+        "firstTextMs": {
+          "median": 869.4,
+          "min": 765.8,
+          "max": 1050.3
+        },
+        "completeMs": {
+          "median": 966.9,
+          "min": 824.9,
+          "max": 1174
+        },
+        "tailMs": {
+          "median": 2.7,
+          "min": 2.4,
+          "max": 28.2
+        },
+        "maxOutputGapMs": {
+          "median": 46.4,
+          "min": 23.1,
+          "max": 47.4
+        }
+      }
+    ],
+    "haiku-final": [
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 9417.6,
+          "min": 6473.4,
+          "max": 9517.5
+        },
+        "firstTextMs": {
+          "median": 9417.6,
+          "min": 6473.4,
+          "max": 9517.5
+        },
+        "completeMs": {
+          "median": 10438.4,
+          "min": 7484.6,
+          "max": 10529.4
+        },
+        "tailMs": {
+          "median": 255.5,
+          "min": 252.1,
+          "max": 267.3
+        },
+        "maxOutputGapMs": {
+          "median": 167,
+          "min": 145.3,
+          "max": 178.3
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 991,
+          "min": 941.8,
+          "max": 1055.8
+        },
+        "firstTextMs": {
+          "median": 991,
+          "min": 941.8,
+          "max": 1055.8
+        },
+        "completeMs": {
+          "median": 1594.2,
+          "min": 1507.9,
+          "max": 1656.4
+        },
+        "tailMs": {
+          "median": 244.3,
+          "min": 233.1,
+          "max": 263.7
+        },
+        "maxOutputGapMs": {
+          "median": 158.7,
+          "min": 97.1,
+          "max": 246.8
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 969.8,
+          "min": 967.3,
+          "max": 1269.5
+        },
+        "firstTextMs": {
+          "median": 969.8,
+          "min": 967.3,
+          "max": 1269.5
+        },
+        "firstToolMs": {
+          "median": 1524.6,
+          "min": 1474.5,
+          "max": 2816.6
+        },
+        "completeMs": {
+          "median": 1726,
+          "min": 1676.1,
+          "max": 3017.9
+        },
+        "tailMs": {
+          "median": 201.3,
+          "min": 201.3,
+          "max": 201.5
+        },
+        "maxOutputGapMs": {
+          "median": 407.2,
+          "min": 388.7,
+          "max": 1326.1
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 674.8,
+          "min": 572.3,
+          "max": 734.1
+        },
+        "firstTextMs": {
+          "median": 674.8,
+          "min": 572.3,
+          "max": 734.1
+        },
+        "completeMs": {
+          "median": 1035.2,
+          "min": 936.5,
+          "max": 1180.5
+        },
+        "tailMs": {
+          "median": 291.6,
+          "min": 253.8,
+          "max": 355.1
+        },
+        "maxOutputGapMs": {
+          "median": 49.9,
+          "min": 44,
+          "max": 91
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1999.2,
+          "min": 1892.8,
+          "max": 2052.1
+        },
+        "firstTextMs": {
+          "median": 1999.2,
+          "min": 1892.8,
+          "max": 2052.1
+        },
+        "completeMs": {
+          "median": 2899.9,
+          "min": 2697.2,
+          "max": 3004
+        },
+        "tailMs": {
+          "median": 212.7,
+          "min": 211.8,
+          "max": 263.7
+        },
+        "maxOutputGapMs": {
+          "median": 220.7,
+          "min": 217.5,
+          "max": 222.7
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1208.8,
+          "min": 892.5,
+          "max": 1239.6
+        },
+        "firstTextMs": {
+          "median": 1208.8,
+          "min": 892.5,
+          "max": 1239.6
+        },
+        "completeMs": {
+          "median": 1640.4,
+          "min": 1391.8,
+          "max": 1868.4
+        },
+        "tailMs": {
+          "median": 216.6,
+          "min": 207.3,
+          "max": 263.2
+        },
+        "maxOutputGapMs": {
+          "median": 117.9,
+          "min": 100.4,
+          "max": 159.7
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1146.5,
+          "min": 1021.5,
+          "max": 2218.1
+        },
+        "firstToolMs": {
+          "median": 1146.5,
+          "min": 1021.5,
+          "max": 2218.1
+        },
+        "completeMs": {
+          "median": 1551.9,
+          "min": 1533.3,
+          "max": 2623.5
+        },
+        "tailMs": {
+          "median": 405.5,
+          "min": 405.4,
+          "max": 511.8
+        }
+      },
+      {
+        "provider": "claude-code-cli",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2935.5,
+          "min": 2690.2,
+          "max": 3809.1
+        },
+        "firstTextMs": {
+          "median": 2935.5,
+          "min": 2690.2,
+          "max": 3809.1
+        },
+        "completeMs": {
+          "median": 3142.4,
+          "min": 2902.4,
+          "max": 4016.9
+        },
+        "tailMs": {
+          "median": 94.4,
+          "min": 66.3,
+          "max": 105.6
+        },
+        "maxOutputGapMs": {
+          "median": 112.5,
+          "min": 102.2,
+          "max": 146
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 952.9,
+          "min": 811.4,
+          "max": 958.9
+        },
+        "firstTextMs": {
+          "median": 952.9,
+          "min": 811.4,
+          "max": 958.9
+        },
+        "completeMs": {
+          "median": 1814.4,
+          "min": 1733.5,
+          "max": 1890
+        },
+        "tailMs": {
+          "median": 2.4,
+          "min": 2,
+          "max": 12.7
+        },
+        "maxOutputGapMs": {
+          "median": 214.7,
+          "min": 158,
+          "max": 302.5
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 808.3,
+          "min": 683.2,
+          "max": 1261.2
+        },
+        "firstTextMs": {
+          "median": 808.3,
+          "min": 683.2,
+          "max": 1261.2
+        },
+        "completeMs": {
+          "median": 1430.9,
+          "min": 1093.5,
+          "max": 1685.8
+        },
+        "tailMs": {
+          "median": 1.8,
+          "min": 0.8,
+          "max": 8.6
+        },
+        "maxOutputGapMs": {
+          "median": 154.5,
+          "min": 154.4,
+          "max": 170.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1002.5,
+          "min": 819.1,
+          "max": 1111.6
+        },
+        "firstToolMs": {
+          "median": 1002.5,
+          "min": 819.1,
+          "max": 1111.6
+        },
+        "completeMs": {
+          "median": 1012.3,
+          "min": 972.8,
+          "max": 1203
+        },
+        "tailMs": {
+          "median": 2.2,
+          "min": 1,
+          "max": 151.7
+        },
+        "maxOutputGapMs": {
+          "median": 7,
+          "min": 1.1,
+          "max": 88.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "claude-haiku-5-5",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 790,
+          "min": 787.6,
+          "max": 872.6
+        },
+        "firstTextMs": {
+          "median": 790,
+          "min": 787.6,
+          "max": 872.6
+        },
+        "completeMs": {
+          "median": 921.4,
+          "min": 824.4,
+          "max": 930.8
+        },
+        "tailMs": {
+          "median": 19.7,
+          "min": 0.6,
+          "max": 80.4
+        },
+        "maxOutputGapMs": {
+          "median": 24.4,
+          "min": 22.1,
+          "max": 59.8
+        }
+      }
+    ],
+    "cursor-probe": [
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "cold-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 29513.2,
+          "min": 29513.2,
+          "max": 29513.2
+        },
+        "firstTextMs": {
+          "median": 29513.2,
+          "min": 29513.2,
+          "max": 29513.2
+        },
+        "completeMs": {
+          "median": 31001.4,
+          "min": 31001.4,
+          "max": 31001.4
+        },
+        "tailMs": {
+          "median": 635.9,
+          "min": 635.9,
+          "max": 635.9
+        },
+        "maxOutputGapMs": {
+          "median": 191.3,
+          "min": 191.3,
+          "max": 191.3
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "warm-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 7418.1,
+          "min": 7418.1,
+          "max": 7418.1
+        },
+        "firstTextMs": {
+          "median": 7418.1,
+          "min": 7418.1,
+          "max": 7418.1
+        },
+        "completeMs": {
+          "median": 8329.9,
+          "min": 8329.9,
+          "max": 8329.9
+        },
+        "tailMs": {
+          "median": 539.5,
+          "min": 539.5,
+          "max": 539.5
+        },
+        "maxOutputGapMs": {
+          "median": 109.8,
+          "min": 109.8,
+          "max": 109.8
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-request",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 7362.4,
+          "min": 7362.4,
+          "max": 7362.4
+        },
+        "firstTextMs": {
+          "median": 7362.4,
+          "min": 7362.4,
+          "max": 7362.4
+        },
+        "firstToolMs": {
+          "median": 8003,
+          "min": 8003,
+          "max": 8003
+        },
+        "completeMs": {
+          "median": 8204.6,
+          "min": 8204.6,
+          "max": 8204.6
+        },
+        "tailMs": {
+          "median": 201.6,
+          "min": 201.6,
+          "max": 201.6
+        },
+        "maxOutputGapMs": {
+          "median": 603.1,
+          "min": 603.1,
+          "max": 603.1
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-result",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 813,
+          "min": 813,
+          "max": 813
+        },
+        "firstTextMs": {
+          "median": 813,
+          "min": 813,
+          "max": 813
+        },
+        "completeMs": {
+          "median": 1266.7,
+          "min": 1266.7,
+          "max": 1266.7
+        },
+        "tailMs": {
+          "median": 374.4,
+          "min": 374.4,
+          "max": 374.4
+        },
+        "maxOutputGapMs": {
+          "median": 47.4,
+          "min": 47.4,
+          "max": 47.4
+        }
+      }
+    ],
+    "cursor-fixed-probe": [
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "cold-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 7478.8,
+          "min": 7478.8,
+          "max": 7478.8
+        },
+        "firstTextMs": {
+          "median": 7478.8,
+          "min": 7478.8,
+          "max": 7478.8
+        },
+        "completeMs": {
+          "median": 9237.1,
+          "min": 9237.1,
+          "max": 9237.1
+        },
+        "tailMs": {
+          "median": 1083.9,
+          "min": 1083.9,
+          "max": 1083.9
+        },
+        "maxOutputGapMs": {
+          "median": 107.2,
+          "min": 107.2,
+          "max": 107.2
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "warm-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 2294.6,
+          "min": 2294.6,
+          "max": 2294.6
+        },
+        "firstTextMs": {
+          "median": 2294.6,
+          "min": 2294.6,
+          "max": 2294.6
+        },
+        "completeMs": {
+          "median": 2850.8,
+          "min": 2850.8,
+          "max": 2850.8
+        },
+        "tailMs": {
+          "median": 231.5,
+          "min": 231.5,
+          "max": 231.5
+        },
+        "maxOutputGapMs": {
+          "median": 92.9,
+          "min": 92.9,
+          "max": 92.9
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-request",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 2003.4,
+          "min": 2003.4,
+          "max": 2003.4
+        },
+        "firstTextMs": {
+          "median": 2003.4,
+          "min": 2003.4,
+          "max": 2003.4
+        },
+        "completeMs": {
+          "median": 2635.2,
+          "min": 2635.2,
+          "max": 2635.2
+        },
+        "tailMs": {
+          "median": 272.6,
+          "min": 272.6,
+          "max": 272.6
+        },
+        "maxOutputGapMs": {
+          "median": 102.8,
+          "min": 102.8,
+          "max": 102.8
+        }
+      }
+    ],
+    "cursor-mcp-probe": [
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "cold-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 6875.6,
+          "min": 6875.6,
+          "max": 6875.6
+        },
+        "firstTextMs": {
+          "median": 6875.6,
+          "min": 6875.6,
+          "max": 6875.6
+        },
+        "completeMs": {
+          "median": 7875.9,
+          "min": 7875.9,
+          "max": 7875.9
+        },
+        "tailMs": {
+          "median": 261.1,
+          "min": 261.1,
+          "max": 261.1
+        },
+        "maxOutputGapMs": {
+          "median": 134.1,
+          "min": 134.1,
+          "max": 134.1
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "warm-prose",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 874.1,
+          "min": 874.1,
+          "max": 874.1
+        },
+        "firstTextMs": {
+          "median": 874.1,
+          "min": 874.1,
+          "max": 874.1
+        },
+        "completeMs": {
+          "median": 1471.7,
+          "min": 1471.7,
+          "max": 1471.7
+        },
+        "tailMs": {
+          "median": 239.5,
+          "min": 239.5,
+          "max": 239.5
+        },
+        "maxOutputGapMs": {
+          "median": 173.4,
+          "min": 173.4,
+          "max": 173.4
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-request",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 1613.4,
+          "min": 1613.4,
+          "max": 1613.4
+        },
+        "firstToolMs": {
+          "median": 1613.4,
+          "min": 1613.4,
+          "max": 1613.4
+        },
+        "completeMs": {
+          "median": 1815.4,
+          "min": 1815.4,
+          "max": 1815.4
+        },
+        "tailMs": {
+          "median": 201.9,
+          "min": 201.9,
+          "max": 201.9
+        }
+      },
+      {
+        "provider": "cursor-agent-cli",
+        "model": "claude-haiku-5-5-low",
+        "scenario": "tool-result",
+        "samples": 1,
+        "firstVisibleMs": {
+          "median": 718.1,
+          "min": 718.1,
+          "max": 718.1
+        },
+        "firstTextMs": {
+          "median": 718.1,
+          "min": 718.1,
+          "max": 718.1
+        },
+        "completeMs": {
+          "median": 1022.1,
+          "min": 1022.1,
+          "max": 1022.1
+        },
+        "tailMs": {
+          "median": 265.7,
+          "min": 265.7,
+          "max": 265.7
+        },
+        "maxOutputGapMs": {
+          "median": 18.3,
+          "min": 18.3,
+          "max": 18.3
+        }
+      }
+    ],
+    "codex-final": [
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2522,
+          "min": 2113.2,
+          "max": 2646.3
+        },
+        "firstTextMs": {
+          "median": 2522,
+          "min": 2113.2,
+          "max": 2646.3
+        },
+        "completeMs": {
+          "median": 2969,
+          "min": 2566.3,
+          "max": 3046.9
+        },
+        "tailMs": {
+          "median": 61.5,
+          "min": 57.5,
+          "max": 85
+        },
+        "maxOutputGapMs": {
+          "median": 46.3,
+          "min": 40.2,
+          "max": 47.9
+        },
+        "initialization_ms": {
+          "median": 510.62,
+          "min": 396.67,
+          "max": 785.39
+        },
+        "forwarding_max_ms": {
+          "median": 0.19,
+          "min": 0.1,
+          "max": 0.38
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 853.9,
+          "min": 763,
+          "max": 1070.5
+        },
+        "firstTextMs": {
+          "median": 853.9,
+          "min": 763,
+          "max": 1070.5
+        },
+        "completeMs": {
+          "median": 1201.6,
+          "min": 1156.2,
+          "max": 1342.1
+        },
+        "tailMs": {
+          "median": 75.9,
+          "min": 50.3,
+          "max": 83.7
+        },
+        "maxOutputGapMs": {
+          "median": 31.1,
+          "min": 28.6,
+          "max": 34.9
+        },
+        "initialization_ms": {
+          "median": 0.57,
+          "min": 0.56,
+          "max": 0.7
+        },
+        "forwarding_max_ms": {
+          "median": 0.15,
+          "min": 0.06,
+          "max": 0.16
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1102,
+          "min": 1028.2,
+          "max": 1666.8
+        },
+        "firstToolMs": {
+          "median": 1102,
+          "min": 1028.2,
+          "max": 1666.8
+        },
+        "completeMs": {
+          "median": 1103.5,
+          "min": 1029.5,
+          "max": 1668.2
+        },
+        "tailMs": {
+          "median": 1.3,
+          "min": 1.3,
+          "max": 1.4
+        },
+        "initialization_ms": {
+          "median": 0.44,
+          "min": 0.4,
+          "max": 0.67
+        },
+        "tool_batch_collect_ms": {
+          "median": 1.3,
+          "min": 1.24,
+          "max": 1.31
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 1119.9,
+          "min": 704.5,
+          "max": 1355.6
+        },
+        "firstTextMs": {
+          "median": 1119.9,
+          "min": 704.5,
+          "max": 1355.6
+        },
+        "completeMs": {
+          "median": 1288.3,
+          "min": 853.1,
+          "max": 1542
+        },
+        "tailMs": {
+          "median": 63.9,
+          "min": 58.7,
+          "max": 92
+        },
+        "maxOutputGapMs": {
+          "median": 37.2,
+          "min": 25,
+          "max": 42.4
+        },
+        "initialization_ms": {
+          "median": 0.45,
+          "min": 0.41,
+          "max": 0.52
+        },
+        "forwarding_max_ms": {
+          "median": 0.08,
+          "min": 0.04,
+          "max": 0.15
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6-luna",
+        "scenario": "restarted-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 2039.3,
+          "min": 1913.9,
+          "max": 2678.2
+        },
+        "firstTextMs": {
+          "median": 2039.3,
+          "min": 1913.9,
+          "max": 2678.2
+        },
+        "completeMs": {
+          "median": 2354.6,
+          "min": 2307.8,
+          "max": 3009.8
+        },
+        "tailMs": {
+          "median": 60.8,
+          "min": 26.6,
+          "max": 82.1
+        },
+        "maxOutputGapMs": {
+          "median": 55.2,
+          "min": 42.6,
+          "max": 62.1
+        },
+        "initialization_ms": {
+          "median": 70.98,
+          "min": 62.01,
+          "max": 72.46
+        },
+        "forwarding_max_ms": {
+          "median": 0.11,
+          "min": 0.1,
+          "max": 0.22
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "cold-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 808.3,
+          "min": 727.8,
+          "max": 945.1
+        },
+        "firstTextMs": {
+          "median": 808.3,
+          "min": 727.8,
+          "max": 945.1
+        },
+        "completeMs": {
+          "median": 1280.4,
+          "min": 1178.8,
+          "max": 1449.5
+        },
+        "tailMs": {
+          "median": 127.4,
+          "min": 124.3,
+          "max": 165.9
+        },
+        "maxOutputGapMs": {
+          "median": 35.8,
+          "min": 26,
+          "max": 36.8
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "warm-prose",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 931.2,
+          "min": 745.6,
+          "max": 1008.4
+        },
+        "firstTextMs": {
+          "median": 931.2,
+          "min": 745.6,
+          "max": 1008.4
+        },
+        "completeMs": {
+          "median": 1226.3,
+          "min": 1224,
+          "max": 1423.4
+        },
+        "tailMs": {
+          "median": 136.8,
+          "min": 23.7,
+          "max": 170.7
+        },
+        "maxOutputGapMs": {
+          "median": 40.8,
+          "min": 37.8,
+          "max": 83.9
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-request",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 810.6,
+          "min": 741.8,
+          "max": 1029.8
+        },
+        "firstToolMs": {
+          "median": 810.6,
+          "min": 741.8,
+          "max": 1029.8
+        },
+        "completeMs": {
+          "median": 980,
+          "min": 923,
+          "max": 1310.2
+        },
+        "tailMs": {
+          "median": 162.9,
+          "min": 121.7,
+          "max": 243.6
+        },
+        "maxOutputGapMs": {
+          "median": 17.1,
+          "min": 11.7,
+          "max": 31.2
+        }
+      },
+      {
+        "provider": "opencode-go",
+        "model": "gpt-6-luna",
+        "scenario": "tool-result",
+        "samples": 3,
+        "firstVisibleMs": {
+          "median": 829.1,
+          "min": 756.1,
+          "max": 897.1
+        },
+        "firstTextMs": {
+          "median": 829.1,
+          "min": 756.1,
+          "max": 897.1
+        },
+        "completeMs": {
+          "median": 1130.2,
+          "min": 1020.9,
+          "max": 1148.4
+        },
+        "tailMs": {
+          "median": 108.1,
+          "min": 73.1,
+          "max": 188.4
+        },
+        "maxOutputGapMs": {
+          "median": 24.7,
+          "min": 9.7,
+          "max": 49.3
+        }
+      }
+    ]
+  },
+  "claudeLocalFirstToolOfferedToVisibleMs": {
+    "before": 1552.0,
+    "after": 223.3,
+    "afterProgress": 11.2
+  },
+  "latestComparison": "haiku-final",
+  "finalComparisonTrials": [
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "cursor-agent-cli",
+      "model": "claude-haiku-5-5-low",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-haiku-5-5",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "claude-haiku-5-5",
+      "sample": 3,
+      "status": "passed"
+    }
+  ],
+  "claudeAccountValidation": "Signed-in Sonnet 5 and Haiku 5.5 completed all cold, warm and synthetic tool-result trials.",
+  "cursorRestart": {
+    "status": "passed",
+    "continuation": "resumed",
+    "firstTextMs": 7273.4,
+    "completeMs": 7881.5,
+    "source": "chat-latency-2026-10-17-cursor-restart.json"
+  },
+  "codexFinalTrials": [
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 1,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 2,
+      "status": "passed"
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "sample": 3,
+      "status": "passed"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "gpt-6-luna",
+      "sample": 3,
+      "status": "passed"
+    }
+  ],
+  "codexRestart": {
+    "trials": 3,
+    "status": "passed",
+    "continuation": "resumed"
+  },
+  "latestCodexComparison": "codex-final",
+  "latestComparisons": [
+    "haiku-final",
+    "codex-final"
+  ]
+}

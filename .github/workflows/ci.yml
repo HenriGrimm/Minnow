@@ -34,6 +34,24 @@ jobs:
         env:
           MINNOW_CODEX_APP_SERVER_SMOKE: '1'
 
+  tailnet-sidecar:
+    name: tailnet sidecar
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/minnow-tailnet/go.mod
+          cache-dependency-path: tools/minnow-tailnet/go.sum
+
+      - name: Vet and test the built-in Tailscale helper
+        working-directory: tools/minnow-tailnet
+        run: |
+          go vet ./...
+          go test ./...
+
   product-wiki:
     name: product wiki
     runs-on: ubuntu-latest

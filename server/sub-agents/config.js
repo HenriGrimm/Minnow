@@ -96,6 +96,7 @@ export function mergeSubAgentFile(defaults, user) {
 
   const merged = {
     version: user?.version ?? defaults.version,
+    defaultModel: user?.defaultModel ?? defaults.defaultModel ?? null,
     enabled: user?.enabled ?? defaults.enabled,
     globalMaxConcurrent: user?.globalMaxConcurrent ?? defaults.globalMaxConcurrent,
     checkInNudgeMs: clampCheckInNudgeMs(

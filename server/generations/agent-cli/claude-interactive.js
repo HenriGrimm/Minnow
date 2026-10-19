@@ -11,7 +11,9 @@ import { detectAgentCli } from '../../models/agent-cli-detect.js';
 
 const MAX_TRANSCRIPT = 64 * 1024 * 1024;
 const MAX_HOOK = 16 * 1024 * 1024;
-const HANDOFF_COMMIT_WAIT_MS = 1500;
+// Give a just-written transcript time to settle. Uncommitted calls are retained
+// across the handoff; waiting longer can stall on Claude awaiting our result.
+const HANDOFF_COMMIT_WAIT_MS = 200;
 const textOf = blocks => (blocks ?? []).filter(b => b.type === 'text').map(b => b.text).join('');
 export function supportsClaudeInteractiveVersion(version) {
   const match = /\b(\d+)\.(\d+)\.(\d+)\b/.exec(version ?? '');
@@ -88,7 +90,7 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   let displayText = '', emittedText = '', committedText = '', lastCommitted;
   let output = '', trusted = false, themed = false, noted = false, startupComplete = false;
   bridge.ready.then(ready => { if (ready) startupComplete = true; });
-  let inFlight = false;
+  let inFlight = false, submitted = false;
   let transcriptTimer, transcriptEpoch = 0;
   const reasoningBlocks = new Map();
   const deferredCalls = [];
@@ -331,11 +333,12 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       clearTimeout(transcriptTimer);
       const epoch = ++transcriptEpoch;
       transcriptTimer = setTimeout(() => pollTranscript(epoch), 100);
-      await delay(200, undefined, { signal });
+      if (!submitted) await delay(200, undefined, { signal });
       terminal.write(`\x1b[200~${expectedCommand}\x1b[201~`);
       await delay(200, undefined, { signal });
       if (closed) throw new Error('Interactive Claude session closed.');
       terminal.write('\r');
+      submitted = true;
     },
     // Native Claude can await an MCP result before persisting its response.
     async beforeHandoff(call) {

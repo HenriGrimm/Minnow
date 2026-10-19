@@ -9,7 +9,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
-import { writeResource } from '../../server/config/store.js';
+import { writeResource, writeConfigJson } from '../../server/config/store.js';
 import { resolveJobRunModel } from '../../server/scheduler/resolve-job-model.js';
 
 describe('resolveJobRunModel', () => {
@@ -46,7 +46,7 @@ describe('resolveJobRunModel', () => {
     });
   });
 
-  test('falls back to the active chat model when the job has no model', async () => {
+  test('falls back to the remembered selection independently of the active chat', async () => {
     await writeResource('sessions', {
       version: 5,
       activeId: 'chat-active',
@@ -69,14 +69,16 @@ describe('resolveJobRunModel', () => {
       ],
     });
 
+    await writeConfigJson('default-model.json', { value: 'remembered\u001fselected', revision: 1 });
     const resolved = await resolveJobRunModel({ label: 'fallback job' });
     assert.deepEqual(resolved, {
-      providerId: 'ollama',
-      modelId: 'llama3.2:latest',
+      providerId: 'remembered',
+      modelId: 'selected',
     });
   });
 
-  test('returns empty bindings when job and active chat have no model', async () => {
+  test('returns empty bindings without a remembered choice', async () => {
+    await writeConfigJson('default-model.json', { value: '' });
     await writeResource('sessions', {
       version: 5,
       activeId: 'chat-empty',

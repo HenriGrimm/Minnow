@@ -18,16 +18,7 @@ export function computeEffectiveWorkAgentBinding(
   chat: ChatBindingContext,
   defaults: ChatBindingContext,
 ): { providerId: string; modelId: string; usesChatDefault: boolean } {
-  let providerId = agent.providerId ?? '';
-  let modelId = agent.modelId ?? '';
-  const usesChatDefault = !modelId.trim();
-  if (!providerId.trim()) {
-    providerId = chat.providerId || defaults.providerId;
-  }
-  if (!modelId.trim()) {
-    modelId = chat.modelId || defaults.modelId;
-  }
-  return { providerId, modelId, usesChatDefault };
+  return { providerId: chat.providerId || defaults.providerId, modelId: chat.modelId || defaults.modelId, usesChatDefault: true };
 }
 
 /** Pure title job model resolution (matches schedule.ts resolveTitleGenerationOptions). */

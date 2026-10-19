@@ -54,12 +54,12 @@ describe('pack-loader', () => {
     assert.ok(errors.some((e) => e.includes('collides')));
   });
 
-  test('user override wins over pack modelId', () => {
+  test('legacy pack and user model configuration is ignored', () => {
     const builtinIds = new Set<string>();
     const { agents } = agentsFromPackManifest(manifest, '/tmp/minimal', builtinIds);
     const base = agents[0];
     const merged = mergeWorkAgentDefinition(base, { modelId: 'user-model' });
-    assert.equal(merged.modelId, 'user-model');
+    assert.equal(merged.modelId, null);
   });
 
   test('mergePackAgentsIntoMap appends without replacing builtins', () => {

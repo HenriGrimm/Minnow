@@ -47,7 +47,10 @@ const SETTINGS_SECTION_IDS = [
 /** Sections populated by refreshSettingsSection via clearMount(). */
 const DYNAMIC_SECTION_BODY_IDS = [
   'settingsGeneralBody',
+  'settingsBackupsBody',
+  'settingsAccessBody',
   'settingsNotificationsBody',
+  'settingsDevicesBody',
   'settingsPluginsBody',
   'settingsAudioBody',
   'settingsModelRoutingBody',

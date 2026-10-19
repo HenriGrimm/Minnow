@@ -54,7 +54,7 @@ describe('work agent registry', () => {
     assert.equal(getWorkAgent('missing-agent'), null);
   });
 
-  test('mergeWorkAgentDefinition applies override model only', () => {
+  test('mergeWorkAgentDefinition discards legacy model overrides', () => {
     const base = {
       id: 'agent-beta',
       label: 'Agent Beta',
@@ -66,8 +66,8 @@ describe('work agent registry', () => {
       allowedTools: null,
     };
     const merged = mergeWorkAgentDefinition(base, { modelId: 'local-model' });
-    assert.equal(merged.providerId, 'openai');
-    assert.equal(merged.modelId, 'local-model');
+    assert.equal(merged.providerId, null);
+    assert.equal(merged.modelId, null);
   });
 
   test('getDefaultWorkAgentForMode matches defaultForModes', async () => {

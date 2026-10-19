@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cursorAcpModelMatches, cursorPermissionAllowed, cursorUnnamedMcpCall } from '../../server/generations/agent-cli/cursor-acp.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { openCursorAcp, cursorAcpModelMatches, cursorPermissionAllowed, cursorUnnamedMcpCall } from '../../server/generations/agent-cli/cursor-acp.js';
+
+test('Cursor ACP registers the authorized bridge before starting the session', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cursor-mcp-'));
+  const mcpServers = [{ name: 'minnow', command: process.execPath, args: ['bridge.mjs'], env: [{ name: 'FIXTURE', value: 'private' }] }];
+  let run;
+  try {
+    run = await openCursorAcp({ command: process.execPath,
+      args: [fileURLToPath(new URL('../fixtures/fake-cursor-acp.mjs', import.meta.url))], cwd: root,
+      env: { ...process.env, CURSOR_DATA_DIR: root, ACP_EXPECT_MCP: JSON.stringify(mcpServers) }, selectedModel: 'fixture', mcpServers });
+    assert.equal(run.method, 'new');
+  } finally { await run?.stop(); await fs.rm(root, { recursive: true, force: true }); }
+});
 
 test('Cursor MCP identity matches the rows the real CLI emits', () => {
   const names = new Set(['echo_value']);

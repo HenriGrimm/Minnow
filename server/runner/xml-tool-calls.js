@@ -2,7 +2,8 @@ import { extractBalancedJsonObject } from "./harmony-tool-calls.js";
 const TOOL_CALL_TAG_NAMES = ["tool_call", "tool_use", "function_call"];
 const TOOL_CALL_OPEN_TAGS = TOOL_CALL_TAG_NAMES.map((name) => `<${name}>`);
 const TOOL_CALL_CLOSE_TAGS = TOOL_CALL_TAG_NAMES.map((name) => `</${name}>`);
-const TOOL_CALL_TAGS = [...TOOL_CALL_OPEN_TAGS, ...TOOL_CALL_CLOSE_TAGS];
+const TOOL_CALL_TAGS = [...TOOL_CALL_OPEN_TAGS, ...TOOL_CALL_CLOSE_TAGS, "<function=", "</function>"];
+const STREAM_TOOL_MARKER_RE = /<\/?(?:tool_call|tool_use|function_call)>|<function=[^>\s]+\s*>|<\/function>/i;
 const MAX_TOOL_CALL_TAG_LEN = Math.max(...TOOL_CALL_TAGS.map((tag) => tag.length));
 const TOOL_CALL_MARKER_RE = new RegExp(`</?(?:${TOOL_CALL_TAG_NAMES.join("|")})>`, "i");
 const TOOL_CALL_BLOCK_RE = new RegExp(
@@ -183,9 +184,11 @@ function stripXmlToolCallBlocks(text) {
   if (!text || !hasXmlToolCallMarkup(text)) {
     return text;
   }
-  return text.replace(TOOL_CALL_BLOCK_RE, "").trim();
+  return text.replace(TOOL_CALL_BLOCK_RE, "").replace(/<function=[^>\s]+\s*>[\s\S]*?(?:<\/function>|$)/gi, "").trim();
 }
 function toolCallSuffixHoldLen(text) {
+  const opener = text.lastIndexOf("<");
+  if (opener >= 0 && /^<function=[^>\s]*\s*$/i.test(text.slice(opener))) return text.length - opener;
   const limit = Math.min(text.length, MAX_TOOL_CALL_TAG_LEN - 1);
   for (let n = limit; n > 0; n -= 1) {
     const suffix = text.slice(-n).toLowerCase();
@@ -230,10 +233,8 @@ class ContentToolCallRouter {
    * Empty until the envelope is unambiguous — used to leave the thinking timer.
    */
   peekStreamingToolName() {
-    const fromClosed = peekToolCallName(this.parseText);
-    if (fromClosed) return fromClosed;
-    if (!this.capturing) return "";
-    return peekToolCallName(this.captured + this.buffer);
+    if (this.capturing) return peekToolCallName(this.capturedOpenTag + this.captured + this.buffer);
+    return peekToolCallName(this.parseText.slice(this.parseText.lastIndexOf(CANONICAL_OPEN)));
   }
   /**
    * End the current block. Returns text to put back into prose when the payload
@@ -245,7 +246,7 @@ class ContentToolCallRouter {
     this.captured = "";
     this.capturedOpenTag = "";
     this.capturing = false;
-    const inner = raw.trim();
+    const inner = (openTag.toLowerCase().startsWith("<function=") ? `${openTag}${raw}${closeTag}` : raw).trim();
     if (inner && parseToolCallPayload(inner, 0)) {
       this.parseText += `${CANONICAL_OPEN}${inner}${CANONICAL_CLOSE}`;
       return "";
@@ -255,7 +256,7 @@ class ContentToolCallRouter {
   drain(final) {
     let visible = "";
     while (true) {
-      const match = TOOL_CALL_MARKER_RE.exec(this.buffer);
+      const match = STREAM_TOOL_MARKER_RE.exec(this.buffer);
       if (!match) {
         break;
       }
@@ -266,6 +267,11 @@ class ContentToolCallRouter {
         visible += before;
       }
       this.buffer = this.buffer.slice(match.index + match[0].length);
+      const functionMarker = /^<\/?function(?:=|>)/i.test(match[0]);
+      if (functionMarker && this.capturing && !this.capturedOpenTag.toLowerCase().startsWith("<function=")) {
+        this.captured += match[0];
+        continue;
+      }
       if (isOpenTag(match[0])) {
         if (this.capturing) {
           visible += this.closeBlock("");

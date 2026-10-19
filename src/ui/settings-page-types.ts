@@ -25,9 +25,12 @@ export {
 export type SettingsSectionId =
   | 'general'
   | 'terminal'
+  | 'backups'
+  | 'access'
   | 'data'
   | 'updates'
   | 'notifications'
+  | 'devices'
   | 'plugins'
   | 'issues'
   | 'github'
@@ -71,8 +74,11 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   general: 'Startup & setup',
   terminal: 'Terminal',
   data: 'Data & privacy',
+  backups: 'Backups',
+  access: 'Access',
   updates: 'Updates',
   notifications: 'Notifications',
+  devices: 'Devices',
   plugins: 'Plugins',
   issues: 'Issues',
   github: 'GitHub',
@@ -128,7 +134,7 @@ export type SettingsNavGroup = {
 
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
-  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio'] },
+  { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices', 'updates'] },
   { id: 'apps', label: 'Code & workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'github', 'issues'] },
   {
     id: 'agents',
@@ -149,11 +155,11 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     // has no other consumer, so the panel would configure nothing.
     sections: ['plugins', 'skills', 'skills-library', 'agent-packs', 'search', 'mcp', 'mcp-hub', 'servers', 'webhooks'],
   },
-  { id: 'data', label: 'Data & privacy', sections: ['data'] },
+  { id: 'data', label: 'Data & privacy', sections: ['backups', 'access'] },
   {
     id: 'advanced',
     label: 'About & troubleshooting',
-    sections: ['about', 'updates', 'diagnostics'],
+    sections: ['about', 'diagnostics'],
   },
 ];
 

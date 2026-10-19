@@ -50,7 +50,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsCategoryId,
   SettingsSectionId[]
 > = {
-  general: ['general', 'terminal', 'data', 'updates', 'notifications', 'audio', 'about'],
+  general: ['general', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
   apps: ['plugins', 'github', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
@@ -195,9 +195,17 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('general.notifications.sound', 'Notification sounds', 'general', 'notifications'),
   field('general.notifications.soundOnActiveChat', 'Sounds in active chat', 'general', 'notifications'),
-  field('general.network', 'Network access', 'general', 'general', {
-    keywords: ['lan', 'wifi', 'local network', 'remote', 'phone', 'tablet', '0.0.0.0'],
-    description: 'Let other devices on your Wi-Fi open Minnow in a browser while this PC runs the app.',
+  field('general.devices', 'Devices', 'general', 'devices', {
+    keywords: [
+      'phone', 'tablet', 'iphone', 'ipad', 'android', 'mobile', 'remote', 'companion',
+      'lan', 'wifi', 'local network', 'network access', 'home network', 'tailscale', 'anywhere',
+      'qr', 'pair', 'connect', 'home screen',
+    ],
+    description: 'Use Minnow from your phone or tablet, on your Wi-Fi or from anywhere.',
+  }),
+  field('general.network', 'Home network access', 'general', 'devices', {
+    keywords: ['lan', 'wifi', 'local network', 'network access', 'phone', 'tablet', '0.0.0.0'],
+    description: 'Let phones and tablets on your Wi-Fi connect to Minnow. Applies immediately.',
   }),
   field('general.filesystem', 'Filesystem access', 'general', 'general', {
     keywords: ['workspace', 'full disk', 'path', 'sandbox', 'file tools', 'git'],

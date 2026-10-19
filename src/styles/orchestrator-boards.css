@@ -1057,9 +1057,9 @@
   background: var(--mn-surface-1);
 }
 
-.ov2-task--building,
-.ov2-task--testing,
-.ov2-task--merging {
+.ov2-task--building:not([data-interruption]),
+.ov2-task--testing:not([data-interruption]),
+.ov2-task--merging:not([data-interruption]) {
   border-color: var(--mn-accent-border);
 }
 

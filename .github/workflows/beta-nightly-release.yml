@@ -116,6 +116,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/minnow-tailnet/go.mod
+          cache-dependency-path: tools/minnow-tailnet/go.sum
+
       - name: Set nightly beta version
         run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version
 

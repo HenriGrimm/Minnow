@@ -1,48 +1,12 @@
-/**
- * Resolve provider/model for a scheduled job run.
- * Jobs may pin a model; otherwise fall back to the active chat menubar selection.
- */
+/** Jobs capture their own binding, otherwise the globally remembered chat selection. */
+import { readRememberedModel } from '../config/model-selection.js';
 
-import {
-  readActiveChatModelBinding,
-  useJsonSessionsStore,
-} from '../config/sessions-repo.js';
-import { readResource } from '../config/store.js';
-
-/**
- * @param {object} storedJob
- * @returns {Promise<{ providerId?: string; modelId?: string }>}
- */
 export async function resolveJobRunModel(storedJob) {
-  const providerId = storedJob.providerId?.trim();
-  const modelId = storedJob.modelId?.trim();
-  if (modelId) {
-    return { providerId: providerId || undefined, modelId };
-  }
-
-  if (!useJsonSessionsStore()) {
-    const binding = readActiveChatModelBinding();
-    if (binding?.modelId?.trim()) {
-      return {
-        providerId: binding.providerId?.trim() || undefined,
-        modelId: binding.modelId.trim(),
-      };
-    }
-    return { providerId: undefined, modelId: undefined };
-  }
-
-  const sessions = await readResource('sessions');
-  const activeId = typeof sessions?.activeId === 'string' ? sessions.activeId : '';
-  const chats = Array.isArray(sessions?.chats) ? sessions.chats : [];
-  const active = chats.find(
-    (chat) => chat && typeof chat === 'object' && chat.id === activeId,
-  );
-  if (active?.modelId?.trim()) {
-    return {
-      providerId: active.providerId?.trim() || undefined,
-      modelId: active.modelId.trim(),
-    };
-  }
-
-  return { providerId: undefined, modelId: undefined };
+  if (storedJob.modelId?.trim()) return { providerId: storedJob.providerId?.trim() || undefined, modelId: storedJob.modelId.trim() };
+  const saved = await readRememberedModel();
+  const value = typeof saved?.value === 'string' ? saved.value.trim() : '';
+  const split = value.indexOf('\u001f');
+  return split > 0
+    ? { providerId: value.slice(0, split), modelId: value.slice(split + 1) }
+    : { providerId: undefined, modelId: value || undefined };
 }

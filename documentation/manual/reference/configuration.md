@@ -13,7 +13,7 @@ Minnow creates every folder it might need on first run, so empty directories in 
 
 ## Backup
 
-**Settings → Data & privacy → Backup and restore** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
+**Settings → Data & privacy → Backups** writes the parts of this folder worth keeping into one file, on demand or on a schedule, and restores them here or on another computer. It knows which folders are caches, copies databases safely while Minnow is running, and encrypts your credentials with a passphrase. See [Backup and restore](backup-and-restore.md).
 
 If you would rather copy files yourself, these are the ones that matter:
 
@@ -56,7 +56,9 @@ Copying by hand has two traps. `sessions/sessions.db` is a live database: copy i
 | `mcp.json`, `mcp/` | MCP server configuration |
 | `lsp.json`, `lsp/` | Language server configuration |
 | `webhooks.json` | Encrypted outgoing webhook configuration, including destination URLs |
-| `auth/devices.json` | Paired LAN companions — hashes only, never tokens |
+| `auth/devices.json` | Connected phones and tablets — credential hashes only, never tokens |
+| `auth/handoff.json` | Pending Home Screen sign-ins — hashes only |
+| `tailnet/` | The built-in Tailscale node's identity (never backed up) |
 | `oauth/` | Encrypted OAuth tokens |
 | `updater.json` | Your update channel |
 | `appearance.json` | Theme, custom colors, and fonts |
@@ -94,3 +96,7 @@ Brain pages are the exception — they are ordinary markdown and editing them di
 - [Privacy and security](privacy-and-security.md)
 - [Brain app](../apps/brain.md)
 - [Troubleshooting](troubleshooting.md)
+
+## Model selections and shared pools
+
+`default-model.json` stores the last composer-selected chat model. It is shared across workspaces; each saved chat keeps its own model. `model-routers/global-v2.json` stores shared pool definitions, catalog revision, migration aliases, assignments and evaluator decisions. Older workspace pool files are retained after migration so existing chat and board references remain recoverable.

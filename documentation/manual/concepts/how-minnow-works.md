@@ -37,7 +37,7 @@ Two consequences fall out of that loop and explain most surprises:
 
 Traffic leaves your machine only when you send it somewhere: a cloud model provider you configured, a web search, a page fetch, a Hugging Face download, a webhook you set up. There is no analytics pipeline and no crash reporting service.
 
-The server binds to loopback. Other devices on your network cannot reach it until you explicitly enable LAN access and pair a device — see [Use Minnow from another device](../extend/companion.md).
+The server binds to loopback. Phones and tablets cannot reach it until you turn on a connection in **Settings → Devices** and connect them — see [Use Minnow on your phone](../extend/companion.md).
 
 Full detail: [Privacy and security](../reference/privacy-and-security.md).
 
@@ -50,7 +50,7 @@ File, git, search and terminal tools resolve **under one folder**, not across yo
 | Code (chat included) | The project you opened |
 | A board task chat with isolation on | That task's own git worktree |
 
-An attempt to read outside the boundary fails. That is a feature, and it is the single most important safety property in Minnow. You can lift it — **Settings → Data & privacy → Filesystem access → full** — but then an agent can touch anything your user account can.
+An attempt to read outside the boundary fails. That is a feature, and it is the single most important safety property in Minnow. You can lift it — **Settings → Data & privacy → Access → Filesystem access → full** — but then an agent can touch anything your user account can.
 
 Legacy hashes like `#/desktop` redirect to `#/workspaces`. Old `#/app/chat` links land on Code chat.
 

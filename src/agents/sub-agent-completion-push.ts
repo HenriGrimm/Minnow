@@ -77,6 +77,10 @@ function foldRunToSubAgentRun(run: RunState): SubAgentRun {
   return {
     runId: run.runId,
     type: run.type,
+    modelSource: run.modelSource,
+    resolvedModel: run.resolvedModel,
+    providerId: run.model?.providerId,
+    modelId: run.model?.id,
     task: run.task,
     status,
     parentChatId: run.parentChatId,
@@ -131,13 +135,18 @@ function adapterNotify(chatId: string, run: RunState): void {
   void import('../notifications/push')
     .then(({ pushNotification }) => {
       const summary = live.summary?.trim() || live.error?.trim() || '';
+      const chat = findChatById(chatId);
+      const parent = live.parentTurnId ? chat?.runs?.find((candidate) => candidate.parentTurnId === live.parentTurnId) : undefined;
       pushNotification({
+        activityId: `sub:${live.runId}`,
+        parentActivityId: parent ? `turn:${parent.runId}` : undefined,
+        workspacePath: chat?.workspacePath,
         kind: live.status === 'completed' ? 'sub_agent_complete' : 'sub_agent_failed',
         title: `Background ${live.type} ${live.status}`,
         preview: summary.slice(0, 280) || 'Finished with no summary',
         chatId,
         appId: 'code',
-        dedupeKey: `sub-agent-completion:${live.runId}`,
+        dedupeKey: `subagent:${live.runId}`,
       });
     })
     .catch((err) => reportBackgroundError('sub-agent-completion-notify', err));
@@ -468,6 +477,10 @@ function persistedRowToSubAgentRun(
   return {
     runId: row.runId,
     type: row.type,
+    modelSource: row.modelSource,
+    resolvedModel: row.resolvedModel,
+    providerId: row.providerId,
+    modelId: row.modelId,
     task: row.task,
     status: row.status,
     parentChatId,

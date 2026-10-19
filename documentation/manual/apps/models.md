@@ -2,7 +2,7 @@
 
 This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs.
 
-You come here to configure, then go back to Code and work. Open it from the app rail.
+You come here to configure, then go back to Code and work. Open **Models** in the top bar for quick routing controls, then choose **Manage models…** for the full screen.
 
 | Section | What it is |
 |---------|------------|
@@ -159,43 +159,46 @@ If your login expires, verify or sign in through the CLI and refresh usage.
 
 ## Routing
 
-Open **Models → Routing**. **Models by task** shows the active conversation and dedicated models for utility tasks, UI design, goal evaluation, and editor assistance. Each row shows whether it uses a dedicated model or follows the chat or task. Choose a model in the shared searchable dropdown, or use **Follow chat model** / **Follow each task’s model** to clear an override. Saved models remain visible when a provider is offline. Changes save automatically.
+Open **Models** in the top bar to choose dedicated models for **Sub-agents**, **Utility tasks**, **Editor assistance**, and **Goal evaluation**. The same settings appear on **Models → Routing** and during optional routing setup in onboarding. Changes save automatically; failed saves offer a retry.
 
-**Options** holds task-specific settings and fallback models. The **Fallbacks** tab controls shared backup models, whether fallback is enabled, and cooldown after a host fails. Use the arrows to set backup order and **Remove** to remove an entry. The add control disables at the chain limit. Switching tabs preserves the controls and edits already on the page.
+Sub-agents start on **Follow parent chat**. A fixed model or pool applies to new sub-agent runs. **Advanced sub-agent routing** keeps per-type choices; a type override takes precedence over the general sub-agent setting. Existing and queued runs keep the binding captured when they started. Run details identify the selected model and routing source.
 
-Instead of one model doing everything, bind models to **roles**: main chat, utility tasks, the `/goal` evaluator, the UI Designer runtime, and each work agent and sub-agent type such as builder, planner, reviewer, and researcher.
+Utility tasks cover chat titles, prompt and issue expansion, and git commit messages. Leave the override empty to follow the originating task. Editor assistance and goal evaluation can follow their chat or use a dedicated model. Unavailable saved choices remain visible so you can repair them.
 
-Two bindings are worth setting deliberately:
+Work agents and foreground skills use the chat's composer model. Their prompts, tool permissions, sampling and thinking settings remain configurable. Orchestrator boards retain their own model controls.
 
-- **Utility tasks.** One shared model handles chat titles, prompt and issue expansion, and git commit messages. Leave it unset to keep using the current composer, top-bar, or editor model for each task. A small fast model is often enough.
-- **Goal evaluator.** This one judges whether your `/goal` condition is genuinely met. A weak evaluator rubber-stamps broken work, which is worse than no goal at all.
-
-A common arrangement is a fast local model for routine turns and a capable cloud model bound to review, research and evaluation.
+The full Routing screen also has a **Fallbacks** tab for shared backup models, enablement, cooldown, and backup order. Configuring a fallback is separate from selecting the chat model.
 
 ## Model pools
 
+The model picker has a **Pools** tab beside **All**, **Local**, and **Cloud**. Choose a pool in the list to inspect its strategy, model lineup, and capacity, then choose **Use pool**. Search matches pool, model, provider, and assigned task type names. For Match the task pools, the inspector shows each model’s tier and specialty badges. Paused pools stay visible for editing. On narrow screens, the list appears above the inspector.
+
+Choose **New pool** or **Edit** to configure a pool inside the picker. New pools start with the currently selected model when it is eligible. Add models, choose a strategy, and set **Slots** directly. Each model’s **⋯** menu offers reordering, pause, and removal. **Match the task** also exposes the evaluator, model tiers, and task type assignments. **Save** updates the shared pool without selecting it; **Save & use** saves and selects it. Changes stay in a draft until saved, and leaving an edited draft asks whether to discard it. Failed saves retain the draft. If another window changed the pools, **Reload pools** lets you discard the draft and review the latest configuration. **Pool options** contains enablement and deletion; deleting a pool asks for confirmation and keeps its models connected.
+
+**Manage pools** opens the full Models page for pool configuration and live activity. The full page saves edits automatically; the picker uses explicit saves.
+
 Open **Models → Model pools** and choose **New model pool**. Name the pool, then use **Add models** to browse and search models from **My Models** and your connected providers. Choose **Add** beside each model you want; models already in the pool show **Added**. Choose **Done** to return to the lineup. Local llama.cpp and MLX runtime catalogs are represented by their weights in My Models, just as in the chat picker.
 
-The **Model lineup** stays visible. Drag a model's handle to change its rank, use the arrow buttons, or press **Alt+↑ / Alt+↓** while a row has focus. Choose the model dropdown to replace an entry; it uses the shared searchable model picker. A provider/model pair can appear only once in a pool. **Active / Paused** controls whether a model receives work. The **− / +** buttons adjust concurrent generation slots; **More** offers an exact limit (1–100) and **Remove from pool**. Removing an entry keeps the model in your library. Changes save automatically, with **Retry save** available if saving fails.
+The **Model lineup** uses compact rows. Choose a model’s name to replace it through the shared searchable picker. A provider/model pair can appear only once in a pool. Drag its handle or press **Alt+↑ / Alt+↓** to change rank; the **⋯** actions menu also offers **Move up**, **Move down**, and **Remove from pool**. **Enabled / Paused** controls whether a model receives work. Set concurrent generation **Slots** directly (1–100). Removing an entry keeps the model in your library. Changes save automatically, with **Retry save** available if saving fails.
 
 
 When a chat is assigned a My Models entry that is not loaded, Minnow loads it before generating. If another local model is still producing a response, the router waits for that work to finish, then unloads it if residency requires and loads the assigned weights. Idle TTL (twenty minutes) still applies. Cloud and LM Studio entries are unchanged.
 
 **Prefer first** prefers the first eligible model with free capacity. **Share work** assigns new chats using rank weights: a three-entry router uses weights 3, 2, and 1. Once assigned, a chat keeps that model. If its model is busy, the chat waits in a FIFO queue even when another entry has capacity. If all entries are busy, new chats queue too. Streaming and non-streaming generations each occupy one slot.
 
-**Match the task** chooses a model and reasoning level once for each chat. Choose a model in the shared **Task evaluator** dropdown. For an unlisted ID, expand **Use a model ID not listed here**, select its provider, enter its ID, and choose **Use evaluator**. A decision model such as TypeSafe Jev (`typesafe/jev-1.13` on OpenRouter) or Cloudflare Clef (on Workers AI or OpenRouter) answers through the Decisions API with real confidence scores, and any other chat model can judge too by answering as JSON — pick something small and fast. Each entry gets a **Tier** (Fast, Balanced, or Frontier); **Auto** guesses it from the model name. On your first message, the evaluator reads your request and chooses a tier and a reasoning level. The chat keeps that choice for follow-ups and tool rounds, including after a reload or restart. Open the composer model menu and choose **Re-evaluate** to request a fresh choice on your next message. The router runs the highest-ranked eligible entry in that tier, or the nearest tier when none is eligible, preferring a stronger one, and sets the reasoning level to the closest one the model offers. The model stays assigned while eligible; an unavailable or failed model can still move to another entry. When a re-evaluation is unsure (below 55% confidence) the chat keeps its current tier and reasoning. The evaluator has up to four seconds for a decision model, 30 seconds for a chat model, or 60 seconds for a CLI model, including CLI startup. CLI evaluators require background use to be enabled in **Models → CLIs**. If the evaluator is unset, fails, or exceeds its time limit, the router keeps the last choice or uses rank order. That fallback stays in place until you choose Re-evaluate. A pinned override skips the evaluator.
+**Match the task** chooses a model and reasoning level once for each chat. Choose a model in the shared **Task evaluator** dropdown. For an unlisted ID, expand **Use a model ID not listed here**, select its provider, enter its ID, and choose **Use evaluator**. A decision model such as TypeSafe Jev (`typesafe/jev-1.13` on OpenRouter) or Cloudflare Clef (on Workers AI or OpenRouter) answers through the Decisions API with real confidence scores, and any other chat model can judge too by answering as JSON — pick something small and fast. Each entry gets a **Tier** (Fast, Balanced, or Frontier); **Auto** guesses it from the model name. Each model’s compact settings row contains **Tier**, **Tasks**, and **Slots**. Open **Tasks** to assign one or more specialties: **General**, **Coder**, **UX Design**, **Debugging**, **Code Review**, **Planning**, **Research**, or **Writing**. Choose **Any task** to clear the specialties and accept every task type. **Done** closes the task selector; the row shows a summary of the assignments. General covers everyday questions and conversation; Any task allows the model to handle every category. On your first message, the evaluator reads your request and chooses a task type, tier, and reasoning level. The chat keeps that choice for follow-ups and tool rounds, including after a reload or restart. Open the composer model menu and choose **Re-evaluate** to request a fresh choice on your next message. The router prefers models assigned to that task type, then models accepting any task, then the remaining lineup. Within that group it uses the requested tier, or the nearest tier when none is eligible, preferring a stronger one, and sets reasoning to the closest level the model offers. The model stays assigned while eligible; an unavailable or failed model can still move to another entry. When a re-evaluation is unsure (below 55% confidence) the chat keeps its current task type, tier, and reasoning. The evaluator has up to four seconds for a decision model, 30 seconds for a chat model, or 60 seconds for a CLI model, including CLI startup. CLI evaluators require background use to be enabled in **Models → CLIs**. If the evaluator is unset, fails, or exceeds its time limit, the router keeps the last choice or uses rank order. That fallback stays in place until you choose Re-evaluate. A pinned override skips the evaluator.
 
-While the evaluator runs, the composer's model label shows **Evaluating**. Its choice appears immediately, for example **High reasoning · deepseek-v4**. During re-evaluation, the current model and reasoning remain visible until the new choice arrives. If the provider does not advertise reasoning levels, the label shows the requested effort, for example **High requested**, and the provider uses its default. Models known to lack reasoning show **No reasoning**. Hover the label for the evaluator, confidence, tier, requested effort, and explanation. The live view shows each chat's last judgment.
+While the evaluator runs, the composer's model label shows **Evaluating**. Its choice appears immediately, for example **High reasoning · deepseek-v4**. During re-evaluation, the current model and reasoning remain visible until the new choice arrives. If the provider does not advertise reasoning levels, the label shows the requested effort, for example **High requested**, and the provider uses its default. Models known to lack reasoning show **No reasoning**. Hover the label for the task type, evaluator, confidence, tier, requested effort, and explanation. The live view shows each chat's last judgment. The top-bar **Models** popover also shows pool coverage; expand a pool to inspect each model’s tier and task assignments, or choose **Manage pools** to edit them.
 
-Pools appear in the normal model picker with a **Model pool** label. **Use for new chats** sets the workspace's default pool; existing chat bindings stay unchanged. A chat's picker shows the router and its current provider/model assignment after a request starts.
+Pools appear in the normal model picker with a **Model pool** label. Selecting a pool in the composer remembers it for new chats across projects; existing chats keep their selection. A chat's picker shows the router and its current provider/model assignment after a request starts.
 
 The live view shows active and queued chats, their target models, and slot usage. Inspect a model card for average generation latency, error rate, reported tokens, and estimated cost when provider pricing and token counts are available. The chat's override selector pins an entry until you choose **Model pool assignment** to clear it. An override can fail over if its model fails; the replacement becomes sticky while the override remains marked until cleared.
 
 Provider errors and unavailable models trigger failover. A response interrupted partway through restarts on another eligible entry with a visible warning; failed text, reasoning, and incomplete tool calls are discarded. Each request attempts a provider/model pair at most once. **Stop** cancels the request without failover. If no eligible entries remain, Minnow asks you to check the router's entries and provider configuration.
 
-Pool configurations, defaults, and chat assignments are saved per workspace. Activity and telemetry last for the current server session. On narrow screens the activity and model views stack; reduced-motion settings replace moving connections with static indicators.
+Pool configurations are shared across all workspaces. Assignments and evaluator decisions retain their individual chat or run identity. When enabled pools contain the same provider/model with different concurrency limits, admission uses the lowest configured limit across those pools. Activity and telemetry last for the current server session. On narrow screens the activity and model views stack; reduced-motion settings replace moving connections with static indicators.
 
-**Pool active / Pool paused** enables or pauses the whole pool. Pausing the default pool clears that default. **Delete pool** asks you to confirm before removing the pool; it keeps the models in your library.
+**Pool active / Pool paused** enables or pauses the whole pool. Chats referencing a paused pool keep their selection and show its unavailable state. **Delete pool** asks you to confirm before removing the pool; it keeps the models in your library.
 
 ## Sampler
 
@@ -211,7 +214,7 @@ For example, **Thinking / precise coding** for Qwen3.6 sets temperature **0.6**,
 
 Reasoning mode and token budget for models that expose reasoning. Minnow displays reasoning separately from the answer and times it — the "Thinking…" clock covers reasoning only, stopping when tool calls begin, so the number means something.
 
-For models that expose named reasoning levels, open the model picker and set **Reasoning default** below the model list. The choice is saved for that provider and model, then applied when you select it in a chat. Choose **Model default** to use the level advertised by the provider again. The composer control can still override the level for the current chat.
+For models that expose named reasoning levels, the model menu shows the available options in a **Reasoning** bar below the provider browser. The composer’s bar changes reasoning for the current chat, and its current level appears beside the model name. The default-model picker saves the choice for that provider and model, then applies it when you select it in a chat; choose **Default** to use the level advertised by the provider again.
 
 ## Usage & cost
 
@@ -227,8 +230,9 @@ See [Voice](../extend/voice.md).
 
 | Control | Scope |
 |---------|-------|
-| **Menubar model chip** | Global default — what new chats start with |
-| **Composer picker, Ctrl+M / Cmd+M** | This chat only |
+| **Composer picker, Ctrl+M / Cmd+M** | Selects this chat's model and remembers it for new chats across projects |
+| **Issue / Dashboard launch picker** | Overrides the model for that dispatch |
+| **Board model picker** | Selects that board's model |
 
 Local runtimes expose **Load** and **Unload** in the composer picker, acting on the model that chat is bound to. The tray menu can unload local models without opening the window — useful when you want your VRAM back. Live load and inference numbers live on **Local Server**.
 

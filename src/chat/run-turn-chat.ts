@@ -210,7 +210,7 @@ import {
   parallelToolsActivityLabel,
 } from '../tools/parallel-tool-policy';
 import { assertUiDesignerToolAllowed } from '../agents/ui-designer/tools';
-import { resolveChatToolWorkspaceRoot } from '../state/chat-worktree';
+import { applyChatRunTargetChoice, resolveChatToolWorkspaceRoot } from '../state/chat-worktree';
 import {
   recordChatCompletionUsage,
   recordMainChatTurnUsage,
@@ -806,6 +806,34 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
 
     if (chatSignal.aborted) throw new DOMException('Chat turn stopped', 'AbortError');
+    if (chat.worktreeEnabled || chat.worktreeSetupRequired) {
+      try {
+        const setup = applyChatRunTargetChoice(chat, { kind: 'automatic' });
+        if (getActiveChat().id === chat.id) syncComposerFromStreamingState();
+        touchChat(chat);
+        scheduleSaveSessions();
+        const result = await setup;
+        if (!result.ok) {
+          setStatus('err', result.error || 'Could not prepare worktree');
+          return false;
+        }
+      } catch (error) {
+        setStatus('err', error instanceof Error ? error.message : String(error));
+        return false;
+      } finally {
+        touchChat(chat);
+        scheduleSaveSessions();
+        if (getActiveChat().id === chat.id) syncComposerFromStreamingState();
+      }
+      if (chatSignal.aborted) throw new DOMException('Chat turn stopped', 'AbortError');
+      if (isStreamDomVisible(chat.id)) {
+        void import('../ui/git-panel').then(panel => {
+          if (!isStreamDomVisible(chat.id)) return;
+          panel.clearPanelCwdUserOverride();
+          panel.syncPanelFromActiveChat({ forceFileTree: true });
+        });
+      }
+    }
     if (pushUser) {
       // Only unpaired tool chains go; a Stop mid tool batch leaves a paired tail
       // that is the whole point of the turn the user is following up on.
@@ -859,7 +887,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             turnKind: 'user',
           });
         }
-        if (useActiveChatDom) {
+        if (useActiveChatDom && getActiveChat().id === chat.id) {
           clearComposerInput(
             resolveComposerSurface(options.composerSurface).inputEl,
           );
@@ -891,9 +919,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     try {
       const initialSendProvider = await getActiveProvider(chat.providerId);
       if (uiDesignerCtx.active) {
-        const binding = await resolveUiDesignerBinding(chat, {
-          providerId: initialSendProvider.id,
-          modelId: sendModelId,
+        const binding = await resolveWorkAgentBinding(activeWorkAgent, chat, {
+          providerId: initialSendProvider.id, modelId: sendModelId,
         });
         sendModelId = binding.modelId;
         sendProviderId = binding.providerId;
@@ -1685,7 +1712,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'tool_streaming') {
           if (parallelSafeStreak <= 1) {
-            patchMainTurnActivity(chat.id, { currentTool: event.name });
+            patchMainTurnActivity(chat.id, { phase: 'tools', currentTool: event.name });
           }
         }
         if (event.type === 'tool_call') {

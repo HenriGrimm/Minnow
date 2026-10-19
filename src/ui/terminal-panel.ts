@@ -226,6 +226,15 @@ function updateTerminalShellHintText(cwd: string): void {
     scopeChanged: terminalScopeChangePending,
     activeShellDiffers,
   });
+  refreshTerminalShellHintVisibility();
+}
+
+/** Hide the cwd hint bar when it has nothing to say (or an agent tab is active). */
+function refreshTerminalShellHintVisibility(): void {
+  const hintEl = document.getElementById('terminalShellHint');
+  if (!hintEl) return;
+  const isEmpty = (hintEl.textContent ?? '').trim() === '';
+  hintEl.classList.toggle('hidden', activeTabKind === 'agent' || isEmpty);
 }
 
 function maybeClearScopeChangePending(): void {
@@ -260,7 +269,7 @@ function applyActiveTabView(kind: TerminalTabKind): void {
   agentPaneEl?.classList.toggle('hidden', !isAgent);
   ptyPaneEl?.classList.toggle('hidden', !isPty);
 
-  document.getElementById('terminalShellHint')?.classList.toggle('hidden', isAgent);
+  refreshTerminalShellHintVisibility();
   document.getElementById('terminalHeaderShell')?.classList.toggle('hidden', isAgent);
   const clearBtn = document.getElementById('btnTerminalClear');
   clearBtn?.classList.toggle('hidden', !isAgent);

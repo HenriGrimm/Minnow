@@ -27,6 +27,7 @@ export function installHappyDomGlobals(
   };
   g.window = win as unknown as Window & typeof globalThis.window;
   g.document = win.document;
+  g.Element = win.Element;
   g.HTMLElement = win.HTMLElement;
   g.HTMLButtonElement = win.HTMLButtonElement;
   g.Document = win.Document;

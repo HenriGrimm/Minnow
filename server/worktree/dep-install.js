@@ -7,9 +7,26 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { killProcessTree } from '../terminal-runner.js';
+import { resolveUnixLoginShell } from '../terminal/one-shot-spawn.js';
 import { ECOSYSTEM_ENTRIES, materializeDepDirs } from './dep-symlinks.js';
 
 const INSTALL_TIMEOUT_MS = 600_000;
+
+function installFailure(label, reason) {
+  const detail = String(reason).trim();
+  return `${label} (${detail.length > 2000 ? `…${detail.slice(-2000)}` : detail})`;
+}
+
+/** GUI launches need the login PATH; pass argv separately from shell source. */
+function installSpawnTarget(install) {
+  if (process.platform === 'win32') return { ...install, shell: true };
+  const login = resolveUnixLoginShell(process.platform);
+  return {
+    command: login.shell,
+    args: [...login.loginArgs, '-c', 'exec "$@"', 'minnow-dep-install', install.command, ...install.args],
+    shell: false,
+  };
+}
 
 async function pathExists(targetPath) {
   try {
@@ -65,29 +82,31 @@ export async function refreshDependencies(root, changedFiles, { timeout = INSTAL
       }
 
       try {
-        const result = await runProcess(install.command, install.args, {
+        const target = installSpawnTarget(install);
+        const result = await runProcess(target.command, target.args, {
           cwd: root,
           timeout,
-          shell: process.platform === 'win32',
+          shell: target.shell,
           killTree: killProcessTree,
         });
         if (result.code === 0) {
           ran.push(label);
         } else {
-          failed.push(label);
           const detail = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim();
+          failed.push(installFailure(label, `exit ${result.code}${detail ? `: ${detail}` : ''}`));
           console.warn(
             `[dep-install] ${label} exited ${result.code}${detail ? `: ${detail}` : ''}`,
           );
         }
       } catch (err) {
-        failed.push(label);
         const message = err instanceof Error ? err.message : String(err);
+        failed.push(installFailure(label, message));
         console.warn(`[dep-install] ${label} failed: ${message}`);
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    failed.push(installFailure('Dependency setup', message));
     console.warn(`[dep-install] unexpected error: ${message}`);
   }
 

@@ -34,6 +34,7 @@ describe('modelLooksOpenAiResponses', () => {
 
   test('matches GPT 5.6 Luna and Grok 4.6', () => {
     assert.equal(modelLooksOpenAiResponses('gpt-5.6-luna'), true);
+    assert.equal(modelLooksOpenAiResponses('gpt-6-luna'), true);
     assert.equal(modelLooksOpenAiResponses('grok-4.6'), true);
   });
 
@@ -80,6 +81,7 @@ describe('resolveGenerationApi', () => {
       'openai-responses',
     );
     assert.equal(resolveGenerationApi(go, 'gpt-5.6-luna', null), 'openai-responses');
+    assert.equal(resolveGenerationApi(go, 'gpt-6-luna', null), 'openai-responses');
     assert.equal(resolveGenerationApi(go, 'grok-4.6', null), 'openai-responses');
   });
 

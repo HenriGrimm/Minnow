@@ -893,6 +893,7 @@ export async function runTurn(options) {
       },
       onTurnEvent: (event) => {
         if (event.type === 'round_start') {
+          lastDelta = ''; lastThinking = ''; lastStreamingTool = ''; lastPhase = '';
           if (roundEnded === null) timing.end('setup', turnStarted);
           if (roundEnded !== null) timing.end('between_rounds', roundEnded, { index: event.index });
           roundStarted = timing.start();

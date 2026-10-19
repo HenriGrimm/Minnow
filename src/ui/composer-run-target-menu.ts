@@ -26,6 +26,14 @@ import { showToast } from './toast.ts';
 
 export interface FillRunTargetMenuOptions {
   menu: HTMLElement;
+  currentPath?: string;
+  currentName?: string;
+  localLabel?: string;
+  automaticLabel?: string;
+  automaticDisabled?: boolean;
+  currentBranch?: string;
+  onSelectBranch?: () => void;
+  isCurrent?: () => boolean;
   /** Repo root used for principal / extra-worktree filtering. */
   repoRoot?: string;
   /** Composer disables the current workspace when the active chat is already Local. */
@@ -125,14 +133,25 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
 
   const repoRoot = options.repoRoot?.trim() || composerGitRepoRoot();
   const list = await listWorktrees(repoRoot);
+  if (options.isCurrent && !options.isCurrent()) return;
   const parsed =
     list.ok && list.output ? parseWorktreeListPorcelain(list.output) : [];
   const principal = getPrincipalWorktree(parsed);
 
-  const runOn = menuSection('Run on');
+  if (options.onSelectBranch) {
+    const current = menuSection(options.currentPath ? 'Current worktree' : 'Local workspace');
+    const name = document.createElement('p');
+    name.className = 'composer-run-target-menu__current';
+    name.textContent = options.currentPath ? options.currentName || options.currentPath.replace(/\\/g, '/').split('/').pop() || 'Worktree' : getWorkspaceLabel();
+    name.title = options.currentPath || repoRoot;
+    current.append(name, menuItem(options.currentBranch ? `Switch branch · ${options.currentBranch}` : 'Select branch…', options.onSelectBranch,
+      { icon: 'branch', keepOpen: true }, options.closeMenu));
+    menu.append(current);
+  }
+  const runOn = menuSection(options.onSelectBranch ? 'Workspace' : 'Run on');
   runOn.appendChild(
     menuItem(
-      getWorkspaceLabel().trim() || 'Current workspace',
+      options.localLabel || (options.currentPath ? 'Back to Local' : getWorkspaceLabel().trim() || 'Current workspace'),
       () => {
         void options.onPick({ kind: 'local' });
       },
@@ -167,11 +186,11 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
   menu.appendChild(runOn);
 
   const wtSection = menuSection('Worktree');
-  wtSection.appendChild(menuItem('Enable worktree', () => {
+  if (!options.currentPath) wtSection.appendChild(menuItem(options.automaticLabel || 'Enable worktree', () => {
     void options.onPick({ kind: 'automatic' });
-  }, { icon: 'worktree' }, options.closeMenu));
+  }, { icon: 'worktree', disabled: options.automaticDisabled }, options.closeMenu));
   const attachItem = menuItem(
-    'Worktree…',
+    options.currentPath ? 'Change worktree…' : 'Worktree…',
     async () => {
       if (!list.ok || !list.output) {
         const msg = list.error ?? 'Could not list worktrees';
@@ -211,7 +230,7 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
                 branch: wt.branch,
               });
             },
-            { icon: 'worktree' },
+            { icon: 'worktree', disabled: Boolean(options.currentPath && worktreePathsEqual(wt.path, options.currentPath)) },
             options.closeMenu,
           ),
         );

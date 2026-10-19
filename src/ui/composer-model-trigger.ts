@@ -1,4 +1,6 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
+import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
+import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
@@ -17,6 +19,7 @@ import {
   clearModelSearchQuery,
   closeModelSelectMenu,
   focusModelHostFilterSearch,
+  getModelSearchQuery,
   mountModelHostFilterBar,
   mountModelMenuActions,
   registerModelSelectExternalCloser,
@@ -37,11 +40,12 @@ import {
 
 import { iconHtml } from './icon';
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
-import { routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
+import { canonicalRouterBinding, routerAssignmentLabel, getRouterConfigSync, routerRouteState } from '../models/routers';
 import { clearRouterRouteLabel, renderRouterRouteLabel } from './router-route-label';
 import { syncRouterReevaluateAction } from './router-reevaluate-action';
 import { createAccountUsageTrigger } from './cli-account-usage-trigger';
 import { applyModelProducerLogo, createComposerModelButton, parseModelOptionLabels } from './composer-model-button';
+import { leaveModelPoolPicker, mountModelPoolPickerHost } from './model-pool-picker-host';
 
 const MODEL_FALLBACK_ICON_SVG = iconHtml('appModels', { className: 'mn-os-mb-model-fallback-icon' });
 
@@ -201,7 +205,7 @@ function selectedOptionForValue(
   const trimmed = value.trim();
   if (trimmed) {
     const match = [...sel.options].find((o) => o.value === trimmed);
-    if (match) return match;
+    return match;
   }
   return sel.options[sel.selectedIndex];
 }
@@ -214,18 +218,18 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
   }
   if (trigger.variant === 'board' && boardModelTriggerContext) {
     const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(boardModelTriggerContext.resolveBinding(), values);
+    return resolveModelSelectValueForChat(canonicalRouterBinding(boardModelTriggerContext.resolveBinding()), values);
   }
   if (trigger.variant === 'research') {
     const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(getActiveChat(), values);
+    return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
   }
   if (trigger.app) {
     const values = [...sel.options].map((o) => o.value);
     return resolveModelSelectValueForChat(trigger.app.resolveBinding(), values);
   }
   const values = [...sel.options].map((o) => o.value);
-  return resolveModelSelectValueForChat(getActiveChat(), values);
+  return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
 }
 
 /** True while fetchModels has the select parked on its "Loading models…" placeholder. */
@@ -284,11 +288,11 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   // An app binding outside the catalog names its own model, never the global selection.
   const appModelId = trigger.app && !selectValue ? trigger.app.resolveBinding().modelId.trim() : '';
   const selectedOpt = sel && !appModelId ? selectedOptionForValue(sel, selectValue) : undefined;
-  const { model, provider } = appModelId
-    ? { model: appModelId, provider: '' }
-    : parseModelOptionLabels(selectedOpt);
-
   const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : appModelId;
+  const { model, provider } = selectedOpt
+    ? parseModelOptionLabels(selectedOpt)
+    : { model: modelId || 'Select model', provider: decodeModelSelectKey(selectValue)?.providerId || '' };
+
   const router = decodeModelSelectKey(selectValue)?.providerId === 'minnow-router'
     ? getRouterConfigSync().routers.find((r) => r.id === modelId)
     : undefined;
@@ -359,6 +363,17 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
   }
 
+  if (selectValue && !isMenubarStyleVariant(trigger.variant) && !trigger.app && !router) {
+    const reasoning = getComposerReasoningState();
+    if (reasoning.label) {
+      const suffix = document.createElement('span');
+      suffix.className = 'composer-model-trigger__reasoning';
+      suffix.textContent = ` · ${reasoning.label}`;
+      trigger.labelEl.append(suffix);
+      trigger.trigger.setAttribute('aria-label', `Active model: ${trigger.labelEl.textContent}`);
+    }
+  }
+
   const hasSelectable =
     Boolean(sel) &&
     [...sel!.options].some((o) => o.value.trim() !== '') &&
@@ -407,6 +422,48 @@ function handleComposerModelPick(trigger: ComposerModelTrigger, modelId: string)
   onActiveChatModelChange(modelId);
 }
 
+function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
+  let section = trigger.panel.querySelector<HTMLElement>('.composer-model-reasoning');
+  if (isMenubarStyleVariant(trigger.variant) || trigger.app) return;
+  const binding = decodeModelSelectKey(resolveTriggerSelectValue(trigger));
+  const state = getComposerReasoningState();
+  if (binding?.providerId === 'minnow-router' || !state.choices.length) {
+    section?.remove();
+    return;
+  }
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'composer-model-reasoning';
+    const heading = document.createElement('div');
+    heading.className = 'composer-model-reasoning__heading';
+    heading.textContent = 'Reasoning';
+    const choices = document.createElement('div');
+    choices.className = 'composer-model-reasoning__choices';
+    choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Reasoning for this chat');
+    section.append(heading, choices);
+    trigger.menu.after(section);
+    choices.addEventListener('click', event => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-composer-reasoning]');
+      if (!button || button.disabled) return;
+      const value = button.dataset.composerReasoning!;
+      setComposerReasoningChoice(value);
+      section?.querySelector<HTMLButtonElement>(`[data-composer-reasoning="${value}"]`)?.focus();
+    });
+  }
+  const choices = section.querySelector('.composer-model-reasoning__choices')!;
+  choices.replaceChildren(...state.choices.map(choice => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'composer-model-reasoning__choice';
+    button.dataset.composerReasoning = choice.value;
+    button.textContent = choice.label;
+    button.setAttribute('aria-pressed', String(choice.value === state.selected));
+    button.disabled = state.disabled;
+    return button;
+  }));
+}
+
 function rebuildOpenMenu(): void {
   if (!openTrigger) return;
   const sel = getModelSelect();
@@ -428,6 +485,7 @@ function rebuildOpenMenu(): void {
     selectedValue,
   );
   syncAllModelMenuReasoningDefaults();
+  syncChatReasoningMenu(openTrigger);
   const binding = decodeModelSelectKey(selectedValue);
   const chat = getActiveChat();
   const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
@@ -568,7 +626,7 @@ function onDocumentPointerDown(e: PointerEvent): void {
   ) {
     return;
   }
-  closeComposerModelMenu();
+  if (!closeComposerModelMenu()) { e.preventDefault(); e.stopPropagation(); }
 }
 
 function onDocumentKeyDown(e: KeyboardEvent): void {
@@ -576,10 +634,13 @@ function onDocumentKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault();
     const trigger = openTrigger.trigger;
-    closeComposerModelMenu();
-    trigger.focus();
+    if (closeComposerModelMenu()) trigger.focus();
     return;
   }
+  if (openTrigger.panel.classList.contains('is-browsing-pools')) return;
+  if (e.target instanceof HTMLElement && e.target.closest('.composer-model-reasoning, .model-menu-actions')) return;
+  if (handleModelProviderBrowserKeydown(openTrigger.menu, e)) return;
+  if (e.target instanceof HTMLElement && e.target.closest('button, select')) return;
   handleOpenMenuNavigation(e);
 }
 
@@ -587,7 +648,7 @@ function onDocumentKeyDown(e: KeyboardEvent): void {
 function handleOpenMenuNavigation(e: KeyboardEvent): void {
   const menu = openTrigger?.menu;
   if (!menu) return;
-  const rows = [...menu.querySelectorAll<HTMLLIElement>('.model-select-option[role="option"][data-value]')];
+  const rows = [...menu.querySelectorAll<HTMLElement>('.model-select-option[role="option"][data-value]')];
   if (!rows.length) return;
   if (e.key === 'Enter') {
     if (activeOptionIndex < 0) return;
@@ -659,10 +720,12 @@ export function initChatModelSelectShortcut(): void {
 }
 
 /** Close any open composer model menu popover. */
-export function closeComposerModelMenu(): void {
-  if (!openTrigger) return;
+export function closeComposerModelMenu(): boolean {
+  if (!openTrigger) return true;
+  if (!leaveModelPoolPicker(openTrigger.panel, () => { closeComposerModelMenu(); })) return false;
   clearModelSearchQuery();
   const current = openTrigger;
+  resetModelProviderBrowser(current.menu);
   openTrigger = null;
   current.panel.classList.add('hidden');
   current.root.classList.remove('is-open');
@@ -678,6 +741,7 @@ export function closeComposerModelMenu(): void {
   }
   detachGlobalListeners();
   shellOverlayClosed('model');
+  return true;
 }
 
 // ── Build ────────────────────────────────────────────────────────────────────
@@ -685,8 +749,7 @@ export function closeComposerModelMenu(): void {
 function openMenu(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   if (!sel || trigger.trigger.disabled) return;
-  closeModelSelectMenu();
-  closeComposerModelMenu();
+  if (!closeModelSelectMenu() || !closeComposerModelMenu()) return;
   openShellOverlay('model', closeComposerModelMenu);
   openTrigger = trigger;
   if (isMenubarStyleVariant(trigger.variant)) {
@@ -722,7 +785,7 @@ function ensureGlobals(): void {
   globalsBound = true;
 
   unregisterExternalCloser = registerModelSelectExternalCloser(() => {
-    closeComposerModelMenu();
+    return closeComposerModelMenu();
   });
 
   const sel = getModelSelect();
@@ -761,7 +824,7 @@ function createModelMenuPanel(
   panel.className = 'composer-model-menu hidden';
   panel.setAttribute('role', 'presentation');
 
-  mountModelHostFilterBar(
+  const filterBar = mountModelHostFilterBar(
     panel,
     {
       onFilterChange: () => rebuildOpenMenu(),
@@ -779,10 +842,23 @@ function createModelMenuPanel(
   mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
-    showReasoningDefault: variant !== 'board' && variant !== 'app',
+    showReasoningDefault: variant === 'menubar',
     onReasoningDefaultChange: (selectValue) => {
       refreshActiveChatReasoningDefault(selectValue);
     },
+  });
+  mountModelPoolPickerHost({
+    panel, menu, filterBar, select: getModelSelect,
+    selectedValue: resolveOpenMenuSelectValue, query: getModelSearchQuery,
+    pick: value => {
+      const trigger = openTrigger;
+      if (!trigger || trigger.panel !== panel) return;
+      handleComposerModelPick(trigger, value);
+      closeComposerModelMenu();
+    },
+    renderModels: rebuildOpenMenu,
+    closeMenu: () => { closeComposerModelMenu(); },
+    layout: () => { if (openTrigger?.panel === panel) positionPanel(openTrigger); },
   });
   document.body.appendChild(panel);
   return { panel, menu };

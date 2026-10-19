@@ -27,7 +27,7 @@ function createSegmentButton(
 ): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'settings-network-segment settings-filesystem-segment';
+  btn.className = 'settings-segment settings-filesystem-segment';
   btn.dataset.shellSandbox = mode;
   btn.textContent = label;
   btn.setAttribute('aria-pressed', 'false');
@@ -83,7 +83,7 @@ export async function renderShellSandboxSettings(mount: HTMLElement): Promise<vo
     section.appendChild(winNote);
   }
 
-  const segmentGroup = el('div', 'settings-network-segments settings-filesystem-segments');
+  const segmentGroup = el('div', 'settings-segments settings-filesystem-segments');
   segmentGroup.setAttribute('role', 'group');
   segmentGroup.setAttribute('aria-label', 'Agent shell sandbox');
 

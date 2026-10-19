@@ -692,7 +692,7 @@ export async function startFollowUp(
   const text = buildBoardFollowUpContext(state, markdown);
   const { closeBoardsView } = await import('./boards-view.ts');
   await closeBoardsView({ restoreChat: false });
-  createChatWithMode({ modeId: 'general' });
+  await createChatWithMode({ modeId: 'general' });
   attachBoardFollowUpChip({ name: title, text });
 }
 

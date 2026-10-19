@@ -1,5 +1,6 @@
 import type { BoardState } from '../../server/orchestrator/core/types';
 import type { Stats, Usage } from '../types';
+import { attemptInterruption } from './attempt-status';
 
 export interface RoundMetrics {
   usage?: Record<string, unknown>;
@@ -89,7 +90,7 @@ export function boardUsage(state: BoardState, liveRounds?: LiveRoundMetrics): Bo
         addSpeed(attempt.speed);
         continue;
       }
-      active += 1;
+      if (!attemptInterruption(state, attempt)) active += 1;
       for (const round of liveRounds?.get(attempt.attemptId)?.values() ?? []) {
         addUsage(round.usage);
         addSpeed(roundSpeed(round));

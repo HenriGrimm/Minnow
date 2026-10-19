@@ -23,6 +23,12 @@ Brain is **not** this manual. The manual ships with the build and is read-only; 
 
 Memory settings live here, not in the main Settings app. Searching "memory" in Settings deep-links you into Brain.
 
+## Reading the graph
+
+Select a page in the list or graph to open its details. The reading panel shows the page before its connections, with **Edit page** and **Delete page** always available at the bottom. On smaller windows, details open as a sheet over the graph.
+
+Drag the divider beside the page list or details to resize it. You can also focus a divider and use the left and right arrow keys. Double-click a divider or press Home to reset its width.
+
 ## How things get in
 
 **You write them.** Brain → Edit. Frontmatter and markdown. Nothing clever.
@@ -61,11 +67,11 @@ The index is per workspace and lives in your Minnow home.
 
 A wiki nobody prunes becomes a wiki nobody trusts. **Lint** helps you fix that without guessing.
 
-1. **Generate plan** — Minnow scans your wiki read-only (orphan and stale pages, broken wikilinks, code anchor drift, and weak `similarTo` links). It uses the **model in the top bar** (same picker as chat) to draft a markdown cleanup plan plus summary chips (deletes, merges, link fixes, and so on).
+1. **Generate plan** — Minnow scans your wiki read-only (orphan and stale pages, broken wikilinks, code anchor drift, and weak `similarTo` links). It uses the **last selected chat model** to draft a markdown cleanup plan plus summary chips (deletes, merges, link fixes, and so on).
 2. **Review** — Read the plan before anything changes. The planner is conservative; destructive steps should cite evidence in the plan text.
 3. **Run cleanup** — After you confirm, a server agent executes only that plan (edits, merges, link fixes, pruning weak links, anchor drift handling). A live log shows progress; when it finishes, check **Graph** for the updated wiki.
 
-You need the Minnow tool server running and a model selected in the top bar. Run this occasionally. A small accurate Brain beats a large stale one.
+You need the Minnow tool server running and a model selected in the composer. Run this occasionally. A small accurate Brain beats a large stale one.
 
 For scripted lint (including optional contradiction detection) without the planner UI, the server still exposes `POST /api/brain/lint` for automation and tests.
 

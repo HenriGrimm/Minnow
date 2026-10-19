@@ -10,15 +10,17 @@ import {
 } from './model-select-library';
 import { getWorkspacePath } from '../state/workspace';
 import type { RouterTier } from './router-tiers.mjs';
+import type { RouterTaskType } from './router-task-types.mjs';
 
 export const ROUTER_PROVIDER_ID = 'minnow-router';
-/** `tier` only matters to Auto pools; unset means guessed from the model id. */
-export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier }
+/** Auto pools: unset tier is guessed; absent/empty task types accept any task. */
+export interface RouterEntry { id: string; providerId: string; modelId: string; enabled: boolean; concurrencyLimit: number; tier?: RouterTier; taskTypes?: RouterTaskType[] }
 /** The model that judges a chat in an Auto pool. */
 export interface RouterEvaluator { providerId: string; modelId: string }
 export interface ModelRouter { id: string; name: string; enabled: boolean; policy: 'priority' | 'balance' | 'evaluate'; evaluator?: RouterEvaluator; entries: RouterEntry[] }
 /** The saved chat choice and the reasoning actually applied to the selected model. */
 export interface RouterDecision {
+  taskType?: RouterTaskType;
   tier: RouterTier | null;
   effort: string | null;
   requestedEffort?: string | null;
@@ -43,7 +45,7 @@ export interface RouterRouteState {
   reevaluate?: boolean;
 }
 interface SavedRouterDecision { chatId: string; routerId: string; reevaluate?: boolean; display?: RouterDecision }
-export interface RouterConfig { routers: ModelRouter[]; defaultRouterId: string | null; revision: number; assignments?: RouterActivity['assignments']; decisions?: SavedRouterDecision[] }
+export interface RouterConfig { routers: ModelRouter[]; defaultRouterId: string | null; revision: number; aliases?: Record<string, string>; legacyAliases?: Record<string, string>; assignments?: RouterActivity['assignments']; decisions?: SavedRouterDecision[] }
 export interface RouterActivity {
   assignments: { chatId: string; routerId: string; assignmentMode: 'router' | 'override'; assignedEntryId: string; overrideEntryId?: string }[];
   requests: { chatId: string; entryId: string; status: string; requestId: string }[];
@@ -54,15 +56,13 @@ export interface RouterActivity {
 }
 const empty = (): RouterConfig => ({ routers: [], defaultRouterId: null, revision: 0 });
 const cache = new Map<string, RouterConfig>();
+const aliasesByWorkspace = new Map<string, Record<string, string>>();
 const assignments = new Map<string, string>();
 const assignedModels = new Map<string, { providerId: string; modelId: string }>();
 const routeStates = new Map<string, RouterRouteState>();
 const routeKey = (routerId: string, chatId: string): string => JSON.stringify([routerId, chatId]);
 const notifyRoute = (): void => { window.dispatchEvent(new window.Event('minnow-router-assignment')); };
-const workspaceKey = (root = getWorkspacePath()): string => {
-  const normalized = root.replace(/\\/g, '/').replace(/\/$/, '');
-  return /^[a-z]:/i.test(normalized) ? normalized.toLowerCase() : normalized;
-};
+const workspaceKey = (_root?: string): string => 'global-v2';
 
 export function getRouterConfigSync(root?: string): RouterConfig {
   const key = workspaceKey(root);
@@ -73,10 +73,15 @@ export function getRouterConfigSync(root?: string): RouterConfig {
   } catch {}
   return empty();
 }
+export function canonicalRouterBinding<T extends { providerId?: string; modelId?: string }>(binding: T): T {
+  if (binding.providerId !== ROUTER_PROVIDER_ID || !binding.modelId) return binding;
+  const modelId = aliasesByWorkspace.get(getWorkspacePath())?.[binding.modelId] || binding.modelId;
+  return { ...binding, modelId };
+}
 export function routerAssignmentLabel(chatId: string, routerId: string): string { return assignments.get(JSON.stringify([routerId, chatId])) || ''; }
 export function routerChatModelLabel(chat: { providerId?: string; modelId?: string }): string {
   if (chat.providerId !== ROUTER_PROVIDER_ID) return chat.modelId || '';
-  const router = getRouterConfigSync().routers.find((r) => r.id === chat.modelId);
+  const router = getRouterConfigSync().routers.find((r) => r.id === canonicalRouterBinding(chat).modelId);
   return router ? `${router.name} · Model pool` : 'Unavailable model pool';
 }
 /** Provider label for a router entry (My Models instead of llama.cpp / mlx-lm). */
@@ -202,9 +207,11 @@ export async function routerApi<T>(suffix = '', body?: unknown, method = 'GET'):
   return value as T;
 }
 export async function loadRouterConfig(): Promise<RouterConfig> {
+  const root = getWorkspacePath();
   const key = workspaceKey();
   const config = await routerApi<RouterConfig>();
   cache.set(key, config);
+  aliasesByWorkspace.set(root, config.legacyAliases || {});
   for (const assignment of config.assignments || []) {
     const entry = config.routers.find((r) => r.id === assignment.routerId)?.entries.find((e) => e.id === assignment.assignedEntryId);
     if (!entry) continue;
@@ -239,13 +246,7 @@ export async function saveRouterConfig(config: RouterConfig): Promise<RouterConf
   if (select) {
     const previous = select.value;
     routerOptions(select, saved);
-    let desired = saved.defaultRouterId ? encodeModelSelectKey(ROUTER_PROVIDER_ID, saved.defaultRouterId) : previous;
-    if (!saved.defaultRouterId && decodeModelSelectKey(previous)?.providerId === ROUTER_PROVIDER_ID) {
-      desired = [...select.options].find((o) => o.value && decodeModelSelectKey(o.value)?.providerId !== ROUTER_PROVIDER_ID)?.value || '';
-    }
-    select.value = desired;
-    const { persistDefaultModelValue } = await import('../ui/default-model');
-    if (desired !== previous) await persistDefaultModelValue(desired);
+    select.value = previous;
     const { syncModelSelectPicker } = await import('../ui/model-select-picker');
     syncModelSelectPicker();
     const { syncComposerModelTriggers } = await import('../ui/composer-model-trigger');

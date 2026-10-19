@@ -2,7 +2,7 @@
 
 Everything you own in Minnow lives in one folder, and the key that protects your credentials sits in that same folder. A disk failure takes both. Backup writes the parts worth keeping into one file you can put somewhere else, and restore brings them back — on this computer or a new one.
 
-Find it under **Settings → Data & privacy → Backup and restore**.
+Find it under **Settings → Data & privacy → Backups**.
 
 ## What goes into a backup
 
@@ -62,7 +62,7 @@ Turn on **Take snapshots automatically** and choose daily or weekly, a folder, a
 - A snapshot is skipped when nothing has changed since the last one.
 - Snapshots run while Minnow is running, including when it is in the tray. If Minnow was closed when one was due, it runs a few minutes after the next start.
 - **Snapshot passphrase** works like the manual one: set it and snapshots are encrypted and include credentials; leave it unset and they are plain and leave credentials out. Because snapshots run unattended, this passphrase is saved — encrypted with `.key`, like your other secrets. Write it down somewhere else: you need it to restore, and a dead disk takes the saved copy with it.
-- **A failed snapshot is never silent.** It raises a notification in the bell and shows its reason in Settings. Minnow retries after an hour, then after six, then at the normal interval.
+- **A failed snapshot is visible.** It appears in Activity and shows its reason in Settings. Minnow retries after an hour, then after six, then at the normal interval.
 
 ## Restore
 

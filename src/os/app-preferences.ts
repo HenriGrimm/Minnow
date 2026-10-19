@@ -170,7 +170,6 @@ const RAIL_PRIMARY_APP_IDS: AppId[] = [
   'research',
   'issues',
   'brain',
-  'models',
   'scheduler',
   'reef',
 ];

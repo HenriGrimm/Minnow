@@ -5,12 +5,13 @@ import { isPlaceholderChatName } from '../chat/titles/placeholder';
 import { setSaveTimer, saveTimer, streamingChatIds } from '../app-state';
 import {
   flushSessionsOnShutdown,
-  getChatHistory,
+  getChatTranscript,
   getSessions,
   getSessionSummaries,
   patchSessions,
   putSessions,
   SessionsRevisionConflictError,
+  type ChatDetail,
   type SessionsPatchDelta,
 } from '../config/api-client';
 import { defaultSessionState } from '../config/defaults';
@@ -724,6 +725,14 @@ export function requireHistory(chat: Chat): Message[] {
   return chat.history;
 }
 
+/** Last-message previews from boot summaries, for lists drawn before history loads. Never persisted. */
+const summaryPreviewByChatId = new Map<string, string>();
+
+/** Server-side preview of a lazily loaded chat's last message, when boot supplied one. */
+export function getChatSummaryPreview(chatId: string): string {
+  return summaryPreviewByChatId.get(chatId) ?? '';
+}
+
 /**
  * Inflate a {@link ChatSummary} into a Chat placeholder (empty history).
  * Spreads cold meta_json fields + non-message children from the summary payload (C.2).
@@ -736,7 +745,9 @@ export function chatSummaryToChat(summary: ChatSummary): Chat {
     historyDigest: _historyDigest,
     ...cold
   } = summary as ChatSummary & Record<string, unknown>;
-  void _lastMessagePreview;
+  if (typeof _lastMessagePreview === 'string' && _lastMessagePreview.trim()) {
+    summaryPreviewByChatId.set(summary.id, _lastMessagePreview.trim());
+  }
   void _sortIndex;
   void _historyDigest;
 
@@ -800,7 +811,7 @@ function installUnloadedHistoryTrap(chat: Chat): void {
  * transcript that no longer contained them. Splice the local tail onto the fetched
  * history instead of choosing one side and dropping the other.
  */
-function materializeChatHistory(chat: Chat, messages: Message[]): void {
+function materializeChatHistory(chat: Chat, messages: Message[], detail: ChatDetail | null): void {
   const desc = Object.getOwnPropertyDescriptor(chat, 'history');
   if (desc && (desc.get || desc.set)) {
     delete (chat as { history?: Message[] }).history;
@@ -809,6 +820,7 @@ function materializeChatHistory(chat: Chat, messages: Message[]): void {
   const current = Array.isArray(chat.history) ? chat.history : [];
 
   chat.history = current.length > 0 ? [...incoming, ...current] : incoming;
+  if (detail) applyChatDetail(chat, detail);
   chat.historyLoaded = true;
   chat.messageCount = chat.history.length;
   if (current.length > 0) {
@@ -817,6 +829,35 @@ function materializeChatHistory(chat: Chat, messages: Message[]): void {
   if (sessionState) {
     captureDirtyTrackingShadow(sessionState);
   }
+}
+
+/**
+ * Merge the detail summaries left out into a chat. Fetched records win over the
+ * summary's run stubs; anything this window already holds in full — a run or
+ * terminal row it recorded while the fetch was in flight — wins over the fetch.
+ */
+export function applyChatDetail(chat: Chat, detail: ChatDetail): void {
+  const merge = <T>(fetched: readonly T[], local: readonly T[] | undefined, key: (item: T) => string,
+    localWins: (item: T) => boolean): T[] => {
+    const byKey = new Map(fetched.map((item) => [key(item), item]));
+    for (const item of local ?? []) {
+      if (!byKey.has(key(item)) || localWins(item)) byKey.set(key(item), item);
+    }
+    return [...byKey.values()];
+  };
+  const runs = merge(Array.isArray(detail.runs) ? detail.runs : [], chat.runs, (run) => run.runId,
+    (run) => Object.prototype.hasOwnProperty.call(run, 'snapshot'));
+  if (runs.length) chat.runs = runs;
+  const subAgentRuns = merge(Array.isArray(detail.subAgentRuns) ? detail.subAgentRuns : [], chat.subAgentRuns,
+    (run) => run.runId, () => true);
+  if (subAgentRuns.length) chat.subAgentRuns = subAgentRuns;
+  const terminalHistory = merge(Array.isArray(detail.terminalHistory) ? detail.terminalHistory : [],
+    chat.terminalHistory, (row) => row.id, () => true).sort((a, b) => a.startedAt - b.startedAt);
+  if (terminalHistory.length) chat.terminalHistory = terminalHistory;
+  if (chat.injectedContext === undefined && detail.injectedContext !== undefined) {
+    chat.injectedContext = detail.injectedContext;
+  }
+  if (chat.runnerTiming === undefined && detail.runnerTiming !== undefined) chat.runnerTiming = detail.runnerTiming;
 }
 
 /** Mark every chat as fully loaded (whole-blob boot / flag-off path). */
@@ -884,12 +925,12 @@ export async function ensureChatHistoryLoaded(chatId: string): Promise<void> {
       if (local) local.historyLoaded = true;
       return;
     }
-    const messages = await getChatHistory(id);
+    const { history: messages, detail } = await getChatTranscript(id);
     const target = findChatById(id);
     if (!target || target.historyLoaded !== false) return;
-    // Keep the summary's chat revision: this fetch refreshes messages but not
-    // metadata, which may have changed in another viewer since summary load.
-    materializeChatHistory(target, messages);
+    // Keep the summary's chat revision: this fetch refreshes messages and the
+    // detail summaries omit, not metadata another viewer may have changed since.
+    materializeChatHistory(target, messages, detail);
   })().finally(() => {
     historyLoadInflight.delete(id);
   });
@@ -1664,7 +1705,10 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     }
     if (local && sameRevision) continue;
     if (chat.id === activeId || !sessionsLazyHistoryEnabled) {
-      chat.history = await getChatHistory(chat.id, { signal });
+      // A loaded chat must hold its full detail: its next save prunes to what it lists.
+      const { history, detail } = await getChatTranscript(chat.id, { signal });
+      chat.history = history;
+      if (detail) applyChatDetail(chat, detail);
       chat.historyLoaded = true;
       chat.messageCount = chat.history.length;
     }
@@ -2380,8 +2424,7 @@ export function registerSessionPersistenceShutdownHandler(): void {
 export function createAndActivateChat(modelId: string): Chat {
   const state = requireSessionState();
   const chat = createEmptyChatObject(modelId);
-  const routerDefault = getRouterConfigSync().defaultRouterId;
-  if (routerDefault) { chat.providerId = 'minnow-router'; chat.modelId = routerDefault; }
+
   state.chats.unshift(chat);
   state.activeId = chat.id;
   markSessionScalarsDirty();

@@ -446,3 +446,27 @@ describe('mergeContentJsonToolCalls with thinkingXmlParseText', () => {
     assert.deepEqual(JSON.parse(calls[0].function.arguments), { path: 'real.ts' });
   });
 });
+
+
+test('bare function envelopes stream character by character without leaking into visible text', () => {
+  const router = new ContentToolCallRouter();
+  let visible = '';
+  for (const char of 'Reading.<function=read_file>') visible += router.feed(char);
+  assert.equal(visible, 'Reading.');
+  assert.equal(router.peekStreamingToolName(), 'read_file');
+  for (const char of '{"path":"a.ts"}</function>Done.') visible += router.feed(char);
+  visible += router.flush();
+  assert.equal(visible, 'Reading.Done.');
+  const calls = tryParseXmlToolCallsFromText(router.getToolCallParseText());
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.arguments, '{"path":"a.ts"}');
+});
+
+test('progress follows the active embedded call instead of the first completed call', () => {
+  const router = new ContentToolCallRouter();
+  router.feed('<tool_call>{"name":"read_file","arguments":{}}</tool_call>');
+  router.feed('<tool_call>{"name":"grep","arguments":');
+  assert.equal(router.peekStreamingToolName(), 'grep');
+  router.feed('{}}</tool_call>');
+  assert.equal(router.peekStreamingToolName(), 'grep');
+});

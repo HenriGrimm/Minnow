@@ -112,6 +112,10 @@
   margin-top: 0;
 }
 
+.settings-general .settings-filesystem-segments {
+  margin-bottom: 10px;
+}
+
 .settings-general .settings-actions,
 .settings-general .settings-form-actions {
   margin-top: 4px;

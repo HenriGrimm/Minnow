@@ -2,6 +2,7 @@
  * Resolve provider + model for benchmark runs (same source as composer send).
  */
 
+import { resolveEffectiveChatModelBinding } from '../models/selection';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { resolveProvider } from '../providers/store.ts';
 import { getActiveChat } from '../state/sessions';
@@ -13,24 +14,23 @@ export interface BenchmarkBinding {
   provider: ProviderPublic;
 }
 
-function readModelSelectFromDom(): string {
-  const sel = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  return sel?.value?.trim() ?? '';
+function readChatSelection(): string {
+  return resolveEffectiveChatModelBinding(getActiveChat()).selectValue;
 }
 
-let benchmarkModelSource: () => string = readModelSelectFromDom;
+let benchmarkModelSource: () => string = readChatSelection;
 
-/** Override DOM read (Settings capability matrix / tests). */
+/** Override the selected binding (Settings capability matrix / tests). */
 export function setBenchmarkModelSource(source: () => string): void {
   benchmarkModelSource = source;
 }
 
-/** Reset to the default top-bar model select. */
+/** Reset to the active chat selection. */
 export function resetBenchmarkModelSource(): void {
-  benchmarkModelSource = readModelSelectFromDom;
+  benchmarkModelSource = readChatSelection;
 }
 
-/** Active top-bar model select value, matching the chat send path. */
+/** Effective chat selection, matching the chat send path. */
 export function getActiveModelIdFromDom(): string {
   return benchmarkModelSource();
 }
@@ -43,7 +43,7 @@ export async function resolveBenchmarkBinding(): Promise<BenchmarkBinding> {
   const modelId = parsed?.modelId ?? raw;
   const providerId = parsed?.providerId ?? chat.providerId?.trim();
   if (!modelId) {
-    throw new Error('No model selected. Load a model in the top bar before running Benchmark.');
+    throw new Error('No model selected. Choose a model in the composer before running Benchmark.');
   }
   const provider = await resolveProvider(providerId || undefined);
   return {

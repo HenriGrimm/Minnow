@@ -107,7 +107,7 @@ export function codeCommands(inCode = getForegroundAppId() === 'code'): Command[
       group: 'Chat',
       keywords: `${modeId} conversation create session`,
       run: async () => {
-        (await import('./sidebar')).createChatWithMode({ modeId, forceNewChat: true });
+        await (await import('./sidebar')).createChatWithMode({ modeId, forceNewChat: true });
       },
     })),
     {

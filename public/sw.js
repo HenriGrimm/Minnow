@@ -1,4 +1,4 @@
-const CACHE = 'minnow-v8';
+const CACHE = 'minnow-v9';
 
 /** Shell files precached on install for offline fallback only (not served stale when online). */
 const SHELL = ['./index.html', './manifest.json'];
@@ -17,9 +17,22 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-/** LM Studio runs on localhost; never intercept those requests. */
-function isLocalApi(url) {
-  return url.includes('localhost') || url.includes('127.0.0.1');
+/**
+ * Requests the server must see unaltered: other origins (LM Studio, providers),
+ * every API call, the connect page, and a Home Screen app's `?handoff=` start
+ * URL, which the server exchanges for the device's sign-in cookie.
+ */
+function bypassesWorker(request) {
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return true;
+  }
+  if (url.origin !== self.location.origin) return true;
+  if (url.pathname.startsWith('/api/')) return true;
+  if (url.pathname === '/connect') return true;
+  return url.searchParams.has('handoff');
 }
 
 /** Resolve shell cache key for index.html or manifest.json requests. */
@@ -58,7 +71,7 @@ function networkFirstShell(request, cacheKey) {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (isLocalApi(request.url)) return;
+  if (bypassesWorker(request)) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstShell(request, './index.html'));

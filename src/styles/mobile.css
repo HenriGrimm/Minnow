@@ -294,34 +294,17 @@ html.mn-phone .brain-page-header.brain-overlay-surface {
    intrinsic width so the clamp has something reachable to work with. */
 html.mn-phone .composer-tools-popover,
 html.mn-phone .composer-model-menu,
-html.mn-phone .mn-os-notif-menu,
-html.mn-phone .agent-activity-panel,
+html.mn-phone .activity-dropdown,
 html.mn-phone .workspace-menu,
 html.mn-phone .skill-picker,
 html.mn-phone .branch-picker__menu,
 html.mn-phone .chat-search-popover,
-html.mn-phone .context-usage-breakdown,
 html.mn-phone .file-tree-context-menu,
 html.mn-phone .model-select-menu,
 html.mn-phone .model-select-popover {
   max-width: calc(100vw - var(--mn-phone-pad-left) - var(--mn-phone-pad-right));
   max-height: min(60dvh, calc(100dvh - 140px));
   overscroll-behavior: contain;
-}
-
-/* The context breakdown opens upward from its ring, which assumes the composer
-   sits at the bottom. On an empty chat it sits near the top, and the sheet ran
-   400px off-screen. On a phone, pin it to the stage between the menubar and the
-   tab bar instead. */
-html.mn-phone .context-usage-breakdown {
-  position: fixed;
-  top: calc(var(--os-menubar-h, 46px) + var(--mn-safe-top) + 8px);
-  right: var(--mn-phone-pad-right);
-  bottom: auto;
-  left: var(--mn-phone-pad-left);
-  width: auto;
-  max-height: calc(100dvh - var(--os-menubar-h, 46px) - var(--mn-safe-top) - 52px - var(--mn-safe-bottom) - 24px);
-  z-index: 60;
 }
 
 html.mn-phone .app-dialog-panel {

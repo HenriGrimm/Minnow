@@ -1,3 +1,6 @@
+import { issueLaunchModel as readIssueModel, clearIssueLaunchModel as clearIssueModel, setIssueLaunchModel, launchModelLabel } from '../models/launch-selection';
+import { readDefaultModelBinding } from '../models/selection';
+import { decodeModelSelectKey } from '../lib/model-select-key';
 /**
  * Issue launches use the inline worktree preference without another picker.
  */
@@ -7,6 +10,13 @@ import type { ChatRunTargetChoice } from '../state/chat-worktree.ts';
 import { closeIssuesContextMenu } from './issues-context-menu.ts';
 import { closeIssuesWorkflowMenu } from './issues-workflow-menu.ts';
 import { closeRunTargetPicker } from './composer-run-target-menu.ts';
+
+export function issueLaunchModel(issueId: string): string { return readIssueModel(issueKey(issueId)); }
+export function clearIssueLaunchModel(issueId: string): void { clearIssueModel(issueKey(issueId)); }
+export function issueLaunchModelLabel(issueId: string): string { return launchModelLabel(issueLaunchModel(issueId)); }
+export function pickIssueLaunchModel(issueId: string, anchor: HTMLElement, onChanged: () => void): void {
+  void import('./launch-model-picker').then(({ openLaunchModelPicker }) => openLaunchModelPicker(anchor, issueLaunchModel(issueId), (value) => { setIssueLaunchModel(issueKey(issueId), value); onChanged(); }));
+}
 
 const isolatedIssues = new Set<string>();
 

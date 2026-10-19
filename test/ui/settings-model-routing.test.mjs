@@ -18,11 +18,9 @@ describe('settings model routing HTML', () => {
 });
 
 describe('settings model routing catalog', () => {
-  test('catalog source defines main-chat row', () => {
+  test('routing contains auxiliary roles without a second chat-model selector', () => {
     const source = readFileSync(join(root, 'src/settings/model-routing-catalog.ts'), 'utf8');
-    assert.match(source, /id: 'main-chat'/);
-    assert.match(source, /group: 'main-chat'/);
-    assert.match(source, /persistKind: 'main-chat'/);
+    assert.doesNotMatch(source, /id: 'main-chat'/);
     assert.match(source, /id: 'utility-tasks'/);
     const uiSource = readFileSync(join(root, 'src/ui/settings-model-routing.ts'), 'utf8');
     assert.match(uiSource, /combinedModelPicker: true/);

@@ -38,7 +38,6 @@ import { renderProvidersSettingsSection } from './settings-providers';
 import { renderUsageSettingsSection } from './settings-usage';
 import { renderAudioSettingsSection } from './settings-audio';
 import { renderNotificationsSettingsSection } from './settings-notifications';
-import { renderNetworkAccessSettings } from './settings-network';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
 import { renderFilesystemAccessSettings } from './settings-filesystem';
 import { renderProjectLocationSettings } from './settings-project-location';
@@ -426,15 +425,15 @@ function appendGeneralSectionLead(shell: HTMLElement): void {
   shell.appendChild(lead);
 }
 
-async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'updates' = 'general'): Promise<void> {
+async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | 'access' | 'updates' = 'general'): Promise<void> {
   const generation = beginAsyncSectionRender(area);
-  const mount = clearMount({ general: 'settingsGeneralBody', terminal: 'settingsTerminalBody', data: 'settingsDataBody', updates: 'settingsUpdatesBody' }[area]);
+  const mount = clearMount({ general: 'settingsGeneralBody', terminal: 'settingsTerminalBody', backups: 'settingsBackupsBody', access: 'settingsAccessBody', updates: 'settingsUpdatesBody' }[area]);
   if (!mount) return;
 
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
   if (area === 'general') appendGeneralSectionLead(shell);
-  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', data: 'Manage backups and control access to your files and network.', updates: 'Check for new versions and choose when to restart.' }[area]));
+  else shell.appendChild(el('p', 'settings-section-lead', { terminal: 'Choose how terminals open and which shell your projects use.', backups: 'Back up your data and restore it on this or another computer.', access: 'Control how agents access files and run commands on this computer.', updates: 'Check for new versions and choose when to restart.' }[area]));
   if (area === 'general') {
     const links = el('nav', 'settings-quick-links');
     links.setAttribute('aria-label', 'Common settings');
@@ -442,7 +441,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
       linkToModelsSection('Connect a model', 'providers'),
       linkToSettingsSection('Change appearance', 'appearance'),
       linkToSettingsSection('Agent permissions', 'tools'),
-      linkToSettingsSection('Back up your data', 'data'),
+      linkToSettingsSection('Back up your data', 'backups'),
     );
     shell.appendChild(links);
   }
@@ -502,7 +501,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
 
   }
 
-  if (area === 'data') {
+  if (area === 'backups') {
     const backup = appendSettingsGroup(
       shell,
       'Backup and restore',
@@ -518,6 +517,9 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
     await renderBackupSettings(backup);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
+  }
+
+  if (area === 'access') {
     const filesystem = appendSettingsGroup(
       shell,
       'Filesystem access',
@@ -538,17 +540,6 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'data' | 'upd
     );
     shellSandbox.id = 'settingsShellSandbox';
     await renderShellSandboxSettings(shellSandbox);
-    if (isAsyncSectionRenderStale(area, generation)) return;
-
-    const network = appendSettingsGroup(
-      shell,
-      'Network access',
-      'Let other devices on your Wi‑Fi open Minnow in a browser while this PC runs the app.',
-      'general.network',
-      { emphasis: true },
-    );
-    network.id = 'settingsNetworkAccess';
-    await renderNetworkAccessSettings(network);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
 
@@ -2056,7 +2047,8 @@ export async function refreshSettingsSection(
       break;
     }
     case 'terminal':
-    case 'data':
+    case 'backups':
+    case 'access':
     case 'updates':
       await renderGeneralSection(section);
       break;
@@ -2078,6 +2070,15 @@ export async function refreshSettingsSection(
     case 'audio':
       await renderAudioSection();
       break;
+    case 'devices': {
+      const mount = clearMount('settingsDevicesBody');
+      if (mount) {
+        // Loaded on demand: most sessions never open it (MIN-400 eager budget).
+        const { renderDevicesSettings } = await import('./settings-devices');
+        await renderDevicesSettings(mount);
+      }
+      break;
+    }
     case 'about':
       await renderAboutSettingsSection();
       break;

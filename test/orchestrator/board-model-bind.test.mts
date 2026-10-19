@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_STORAGE_KEY } from '../../src/models/selection.ts';
 /**
  * Client seed: the board chip's menubar value becomes board.model.set.
  */
@@ -18,6 +19,8 @@ function setupDom(selectValue: string): void {
   const win = new Window();
   activeWindow = win;
   installHappyDomGlobals(win);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: win.localStorage });
+  localStorage.setItem(DEFAULT_MODEL_STORAGE_KEY, selectValue);
   const sel = document.createElement('select');
   sel.id = 'modelSelect';
   const opt = document.createElement('option');

@@ -1,0 +1,352 @@
+{
+  "scope": "Installed Claude 2.1.302 using local synthetic inference; each run verifies exact text, thinking, usage, two tool calls, warm follow-up and isolated utility sessions.",
+  "before": [
+    {
+      "processes": 1,
+      "requests": 3,
+      "thinking": [
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        }
+      ],
+      "observations": [
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        }
+      ],
+      "completions": [
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": ""
+        },
+        {
+          "text": "After tool dispatch.\n",
+          "thinking": "Checking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 30,
+            "total_tokens": 32,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 2,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10
+            }
+          }
+        },
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 30,
+            "total_tokens": 32,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 2,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10
+            }
+          }
+        },
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 30,
+            "total_tokens": 32,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 2,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10
+            }
+          }
+        }
+      ],
+      "timings": [
+        {
+          "generationMs": 5165.630375,
+          "toolOfferedToVisibleMs": 1552.006958
+        },
+        {
+          "generationMs": 1196.4146249999994,
+          "toolOfferedToVisibleMs": 2747.601541
+        },
+        {
+          "generationMs": 2460.8590829999994
+        },
+        {
+          "generationMs": 2916.228041999999
+        }
+      ]
+    },
+    {
+      "utilityProcesses": 2,
+      "utilityRequests": 2,
+      "transport": "claude-interactive",
+      "cleaned": true
+    }
+  ],
+  "after": [
+    {
+      "processes": 1,
+      "requests": 3,
+      "thinking": [
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        }
+      ],
+      "observations": [
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": true
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        }
+      ],
+      "completions": [
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": ""
+        },
+        {
+          "text": "",
+          "thinking": ""
+        },
+        {
+          "text": "After tool dispatch.\nFirst line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\nChecking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 60,
+            "total_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 4,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 20
+            }
+          }
+        },
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 30,
+            "total_tokens": 32,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 2,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10
+            }
+          }
+        }
+      ],
+      "timings": [
+        {
+          "generationMs": 3871.15125,
+          "toolOfferedToVisibleMs": 223.28929100000005
+        },
+        {
+          "generationMs": 421.25824999999986,
+          "toolOfferedToVisibleMs": 646.3855409999996
+        },
+        {
+          "generationMs": 4123.0113329999995
+        },
+        {
+          "generationMs": 2703.0758339999993
+        }
+      ]
+    },
+    {
+      "utilityProcesses": 2,
+      "utilityRequests": 2,
+      "transport": "claude-interactive",
+      "cleaned": true
+    }
+  ],
+  "afterProgress": [
+    {
+      "processes": 1,
+      "requests": 3,
+      "thinking": [
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        },
+        {
+          "type": "adaptive",
+          "display": "summarized"
+        }
+      ],
+      "observations": [
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": true
+        },
+        {
+          "phase": "text",
+          "visible": true
+        },
+        {
+          "phase": "thinking",
+          "visible": false
+        },
+        {
+          "phase": "text",
+          "visible": true
+        }
+      ],
+      "completions": [
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": ""
+        },
+        {
+          "text": "",
+          "thinking": ""
+        },
+        {
+          "text": "After tool dispatch.\nFirst line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\nChecking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 4,
+            "completion_tokens": 60,
+            "total_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 4,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 20
+            }
+          }
+        },
+        {
+          "text": "First line.\nSecond line.\n",
+          "thinking": "Checking the fixture.\n",
+          "usage": {
+            "prompt_tokens": 2,
+            "completion_tokens": 30,
+            "total_tokens": 32,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 2,
+              "cache_creation_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10
+            }
+          }
+        }
+      ],
+      "timings": [
+        {
+          "generationMs": 3832.7891670000004,
+          "toolOfferedToVisibleMs": 11.248250000000098
+        },
+        {
+          "generationMs": 412.49749999999995,
+          "toolOfferedToVisibleMs": 428.5582089999998
+        },
+        {
+          "generationMs": 4115.835125
+        },
+        {
+          "generationMs": 2695.320417000001
+        }
+      ]
+    },
+    {
+      "utilityProcesses": 2,
+      "utilityRequests": 2,
+      "transport": "claude-interactive",
+      "cleaned": true
+    }
+  ]
+}

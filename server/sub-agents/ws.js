@@ -1,6 +1,5 @@
 import { WebSocketServer } from 'ws';
-import { getNetworkAccess, isClientAllowed, isHostAllowed } from '../network/access.js';
-import { authenticateMinnowToken } from '../runtime/authenticate-token.js';
+import { authorizeUpgrade } from '../runtime/request-auth.js';
 import { subscribeAgentEvents } from './middleware.js';
 
 /** Agent streams use upgraded sockets so additional windows cannot fill the HTTP pool. */
@@ -9,14 +8,9 @@ export function attachAgentsWebSocketServer(httpServer) {
   httpServer.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/api/agents/ws') return;
-    const access = getNetworkAccess();
-    const status = !isClientAllowed(req, access) || !isHostAllowed(req.headers.host ?? '', access)
-      ? '403 Forbidden'
-      : !authenticateMinnowToken(url.searchParams.get('token') ?? '')
-        ? '401 Unauthorized'
-        : !url.searchParams.get('runId') ? '400 Bad Request' : null;
-    if (status) {
-      socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    if (!authorizeUpgrade(req, socket)) return;
+    if (!url.searchParams.get('runId')) {
+      socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {

@@ -1,3 +1,4 @@
+import { pickIssueLaunchModel, issueLaunchModelLabel } from './issues-chat-run-target';
 /**
  * Peek Chats: linked sessions and boards, New / Existing, unlink without delete.
  */
@@ -193,6 +194,7 @@ export function issueChatsMenuItems(issue: IssueCard): IssuesContextMenuItem[] {
   const canRun = canRunIssueWorkflow(issue);
   const attachable = eligibleIssuePeekChats(issue);
   return [
+    { id: 'issue-chat-model', label: `Model: ${issueLaunchModelLabel(issue.id)}`, disabled: !canRun, onSelect: () => pickIssueLaunchModel(issue.id, document.activeElement as HTMLElement || document.body, refreshOpenPeek) },
     {
       id: 'new-issue-chat',
       label: 'New chat',

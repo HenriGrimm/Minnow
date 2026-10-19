@@ -2,6 +2,7 @@
 import '../styles/router-route.css';
 import { formatReasoningEffortLabel, isReasoningEffortOption } from '../lib/reasoning-effort';
 import { formatRouterTierLabel } from '../models/router-tiers.mjs';
+import { formatRouterTaskTypeLabel } from '../models/router-task-types.mjs';
 import type { RouterRouteState } from '../models/routers';
 
 export interface RouterRouteLabelInput {
@@ -104,6 +105,7 @@ export function routerDecisionTitle(route: RouterRouteState | undefined, poolNam
   if (!decision) return poolName;
   const details = [poolName, routerDecisionLevelLabel(decision)];
   if (decision.source === 'fallback') details.push('Task evaluator unavailable');
+  if (decision.taskType) details.push(formatRouterTaskTypeLabel(decision.taskType));
   if (decision.tier) details.push(`${formatRouterTierLabel(decision.tier)} tier`);
   if (decision.requestedEffort && decision.requestedEffort !== decision.effort) details.push(`Evaluator requested ${decision.requestedEffort} reasoning`);
   if (decision.reasoningStatus === 'default') details.push('Provider does not advertise reasoning levels; using its default');

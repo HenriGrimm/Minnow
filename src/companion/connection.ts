@@ -1,12 +1,16 @@
-import { clearDeviceToken, getDeviceToken } from '../api/session-token.ts';
-
 const RECONNECT_INTERVAL_MS = 5_000;
 const PROBE_TIMEOUT_MS = 4_000;
 
-/** Keep device authorization independent of workspace, viewport, and network loss. */
+/**
+ * Keep a paired device's view of the host current: connected, unreachable, or
+ * revoked. The credential is an HttpOnly cookie, so only the host can end a
+ * pairing; an outage never does.
+ */
 export function startCompanionConnectionMonitor(callbacks: {
   onConnectionChange: (connected: boolean) => void;
   onRevoked: () => void;
+  /** Each successful probe's `/api/auth/session` payload. */
+  onSession?: (session: { hostName?: string; device?: { id: string; name: string } }) => void;
 }): { ready: Promise<boolean>; stop: () => void } {
   let stopped = false;
   let inFlight = false;
@@ -44,31 +48,30 @@ export function startCompanionConnectionMonitor(callbacks: {
   const probe = () => { void check(); };
   const check = async () => {
     if (stopped || inFlight) return;
-    const token = getDeviceToken();
-    if (!token) return;
     inFlight = true;
     controller = new AbortController();
     const timeout = window.setTimeout(() => controller?.abort(), PROBE_TIMEOUT_MS);
     try {
       const response = await fetch('/api/auth/session', {
         cache: 'no-store',
-        headers: { 'X-Minnow-Token': token },
+        credentials: 'same-origin',
         signal: controller.signal,
       });
-      // A late reply from an old credential cannot revoke a newer pairing.
-      if (stopped || token !== getDeviceToken()) return;
+      if (stopped) return;
       if (response.status === 401 && response.headers.get('X-Minnow-Auth') === 'required') {
-        clearDeviceToken();
         stop();
         callbacks.onRevoked();
         return;
+      }
+      if (response.ok && callbacks.onSession) {
+        try { callbacks.onSession(await response.clone().json()); } catch { /* not JSON */ }
       }
       callbacks.onConnectionChange(response.ok);
       if (response.ok && wasConnected === false) window.dispatchEvent(new Event('minnow-host-reconnected'));
       wasConnected = response.ok;
       if (response.ok) resolveReady(true);
     } catch {
-      if (!stopped && token === getDeviceToken()) {
+      if (!stopped) {
         wasConnected = false;
         callbacks.onConnectionChange(false);
       }

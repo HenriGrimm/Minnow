@@ -14,6 +14,16 @@ let inputPendingChatId: string | null = null;
 
 /** Chats with a parked or visible ask_question strip (independent of tool approval). */
 const questionPendingChatIds = new Set<string>();
+const inputPendingListeners = new Set<() => void>();
+
+export function subscribeChatInputPending(listener: () => void): () => void {
+  inputPendingListeners.add(listener);
+  return () => inputPendingListeners.delete(listener);
+}
+
+function notifyInputPending(): void {
+  for (const listener of inputPendingListeners) listener();
+}
 
 export type ChatItemDotState = 'idle' | 'unread' | 'needs-input' | 'error' | 'working';
 
@@ -252,6 +262,7 @@ export function setSidebarStreamPhase(
 export function setSidebarInputPendingChatId(chatId: string | null): void {
   inputPendingChatId = chatId;
   syncChatItemDotsInDom();
+  notifyInputPending();
 }
 
 /** True when a visible or parked ask_question strip is blocking this chat. */
@@ -266,6 +277,7 @@ export function addSidebarInputPendingChatId(chatId: string): void {
   if (!trimmed || questionPendingChatIds.has(trimmed)) return;
   questionPendingChatIds.add(trimmed);
   syncChatItemDotsInDom();
+  notifyInputPending();
 }
 
 /** Clear the ask_question pending mark for one chat without touching others. */
@@ -273,6 +285,7 @@ export function removeSidebarInputPendingChatId(chatId: string): void {
   const trimmed = chatId.trim();
   if (!trimmed || !questionPendingChatIds.delete(trimmed)) return;
   syncChatItemDotsInDom();
+  notifyInputPending();
 }
 
 /** Convenience: mark pending for the active chat, or clear. */

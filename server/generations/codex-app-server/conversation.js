@@ -22,7 +22,7 @@ export function normalizeMessages(messages) {
       content = parts.some(part => part.type === 'image_url') ? parts : parts.map(part => part.text).join('\n');
     }
     if (typeof content !== 'string' && !Array.isArray(content)) throw new Error('Unsupported Codex message content.');
-    return { role: row.role, content, ...(row.role === 'tool' ? { tool_call_id: row.tool_call_id } : {}),
+    return { role: row.role, content: row.role === 'assistant' && typeof content === 'string' ? content.trim() : content, ...(row.role === 'tool' ? { tool_call_id: row.tool_call_id } : {}),
       ...(row.role === 'user' && row.toolImageFollowUp === true ? { toolImageFollowUp: true } : {}),
       ...(row.tool_calls?.length ? { tool_calls: row.tool_calls.map(call => ({ id: call.id, type: 'function',
         function: { name: call.function?.name, arguments: call.function?.arguments } })) } : {}) };

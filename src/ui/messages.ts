@@ -1,3 +1,4 @@
+import { syncChatWorktreeSetup } from './chat-worktree-setup';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
@@ -770,7 +771,10 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   clearSubAgentCardDomRegistry();
   if (!chat.history.length) {
-    if (mapChatHost || sharedHost) {
+    if (chat.worktreeSetupRequired) {
+      if (codeMount) teardownHub();
+      area.replaceChildren();
+    } else if (mapChatHost || sharedHost) {
       area.replaceChildren();
     } else if (boardChatHost) {
       area.replaceChildren(buildBoardChatEmptyState());
@@ -819,6 +823,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   } finally {
     suppressBubbleScroll = false;
+    syncChatWorktreeSetup(chat, area);
     void import('./loop-active-hint').then(({ syncLoopStatusUi }) => {
       syncLoopStatusUi(chat.id);
     });

@@ -18,6 +18,7 @@ import {
   routerEntryTier,
   routerTierFallbackOrder,
 } from '../../src/models/router-tiers.mjs';
+import { ROUTER_TASK_TYPES } from '../../src/models/router-task-types.mjs';
 
 test('tiers are guessed from parameter counts first, then name families', () => {
   assert.equal(guessRouterTier('qwen3-4b-instruct'), 'fast');
@@ -63,11 +64,43 @@ test('decision endpoints follow the provider host', () => {
     { url: 'http://127.0.0.1:9000/v1/decisions', model: 'jev' });
 });
 
-test('the decision request asks typed tier and effort questions', () => {
+test('the decision request asks typed task type, tier, and effort questions', () => {
   const body = decisionRequestBody('typesafe/jev-1.13', { request: 'hi' });
   assert.equal(body.questions.tier.type, 'choice');
   assert.deepEqual(Object.keys(body.questions.tier.criteria), ['fast', 'balanced', 'frontier']);
   assert.deepEqual(Object.keys(body.questions.effort.criteria), ['low', 'medium', 'high']);
+  assert.equal(body.questions.taskType.type, 'choice');
+  assert.deepEqual(Object.keys(body.questions.taskType.criteria), [...ROUTER_TASK_TYPES]);
+});
+
+test('task type parses from both evaluator transports and limits combined confidence', () => {
+  const answers = { tier: { choice: 'balanced', confidence: 0.9 }, effort: { choice: 'high' }, taskType: { choice: 'ux-design', probabilities: { 'ux-design': 0.45, coding: 0.4 } } };
+  assert.deepEqual(parseDecisionAnswers({ result: { answers } }), { taskType: 'ux-design', tier: 'balanced', effort: 'high', confidence: 0.45 });
+  assert.equal(parseChatEvaluatorText('{"taskType":"coding","tier":"balanced"}').taskType, 'coding');
+  assert.equal(parseChatEvaluatorText('{"taskType":"unknown","tier":"balanced"}').taskType, undefined);
+  assert.equal(parseDecisionAnswers({ answers: { ...answers, taskType: { choice: 'unknown' } } }).taskType, undefined);
+});
+
+test('model specialties validate, deduplicate, and preserve legacy unrestricted entries', () => {
+  const entry = { id: 'a', providerId: 'p', modelId: 'm', concurrencyLimit: 1 };
+  const config = taskTypes => ({ routers: [{ id: 'r', name: 'Auto', policy: 'evaluate', entries: [{ ...entry, taskTypes }] }] });
+  assert.deepEqual(validateRouters(config(['coding', 'ux-design', 'coding'])).routers[0].entries[0].taskTypes, ['coding', 'ux-design']);
+  for (const value of [undefined, null, []]) assert.equal('taskTypes' in validateRouters(config(value)).routers[0].entries[0], false);
+  for (const value of ['coding', ['unknown'], [1], {}, Array(9).fill('coding')]) {
+    assert.throws(() => validateRouters(config(value)), /task types/);
+  }
+});
+
+test('an unsure specialty change keeps the previous task type even at the same tier', async () => {
+  const scheduler = new RouterScheduler();
+  const router = { id: 'auto', policy: 'evaluate', evaluator: { providerId: 'or', modelId: 'jev' } };
+  scheduler.setDecision('auto', 'c', { taskType: 'coding', tier: 'balanced', effort: 'medium', source: 'evaluator' });
+  scheduler.requestReevaluation(router, 'c');
+  const decision = await decideRoute({ scheduler, router, chatId: 'c', body: { messages: [{ role: 'user', content: 'redesign the layout' }] },
+    evaluate: async () => ({ taskType: 'ux-design', tier: 'balanced', effort: 'high', confidence: 0.4 }) });
+  assert.equal(decision.source, 'kept');
+  assert.equal(decision.taskType, 'coding');
+  assert.equal(decision.effort, 'medium');
 });
 
 test('decision answers parse from OpenRouter and Workers AI shapes', () => {

@@ -50,6 +50,7 @@
     "preview": "vite preview",
     "electron:build": "node scripts/build-electron.mjs",
     "headless:build": "node scripts/build-headless-runner.mjs",
+    "tailnet:build": "node scripts/build-tailnet-sidecar.mjs",
     "electron:dev": "concurrently -k -n server,electron \"cross-env BROWSER=none MINNOW_ELECTRON=1 node scripts/dev-server.mjs\" \"node scripts/electron-dev.mjs\"",
     "desktop": "npm run electron:dev",
     "electron:prod": "npm run build && npm run electron:build && cross-env MINNOW_ELECTRON=1 electron electron/dist/main.js",
@@ -79,6 +80,7 @@
     "test:issues": "node test/run-all.mjs --suite issues",
     "test:scheduler": "node test/run-all.mjs --suite scheduler",
     "test:backup": "node test/run-all.mjs --suite backup",
+    "test:remote": "node test/run-all.mjs --suite remote",
     "test:voice": "node test/run-all.mjs --suite voice",
     "test:settings": "node test/run-all.mjs --suite settings",
     "test:engine": "node test/run-all.mjs --suite engine",
@@ -256,6 +258,7 @@
       "src/state/session-schema.mjs",
       "src/product-wiki/path-filter.mjs",
       "src/agents/defaults/sub-agents.json",
+      "src/agents/sub-agent-binding.mjs",
       "src/evals/packs/**",
       "build/icon.ico",
       "build/tray/**",
@@ -289,6 +292,14 @@
           "harness-commands.json",
           "reference/**",
           "scripts/**"
+        ]
+      },
+      {
+        "from": "resources/bin/${os}-${arch}",
+        "to": "bin",
+        "filter": [
+          "minnow-tailnet",
+          "minnow-tailnet.exe"
         ]
       },
       {

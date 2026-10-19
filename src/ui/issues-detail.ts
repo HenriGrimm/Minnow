@@ -1,4 +1,5 @@
 import { mountIssuePlanPreview } from './issues-plan-preview';
+import type { SavedIssuePlan } from '../issues/saved-plan';
 import { createIssueChatActivity } from './issues-chat-activity';
 import { mountIssueWorkspace, type IssueWorkspaceTab } from './issues-work-panel';
 import { issueWorkChat } from '../issues/work-state';
@@ -37,7 +38,7 @@ import {
 } from '../chat/issues/pipeline';
 import type { IssueForegroundChatMode } from '../chat/issues/workflow-seeds';
 import { createIssuesWorkflowDropdown, closeIssuesWorkflowMenu } from './issues-workflow-menu';
-import { promptIssueChatRunTarget, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
+import { promptIssueChatRunTarget, pickIssueLaunchModel, issueLaunchModelLabel, issueUsesWorktree, toggleIssueWorktree } from './issues-chat-run-target';
 import type { ChatRunTargetChoice } from '../state/chat-worktree';
 import {
   createBranchFromIssue,
@@ -174,6 +175,8 @@ export interface IssueDetailMountOptions {
   host: HTMLElement;
   onClose: () => void;
   onNavigate: (issueId: string) => void;
+  workspaceTabs?: boolean;
+  onPlanChange?: (plan: SavedIssuePlan | null) => void;
 }
 
 export interface IssueDetailNavigation {
@@ -862,7 +865,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const parentLine = buildParentLine(issue);
     if (parentLine) doc.appendChild(parentLine);
     doc.appendChild(buildDescriptionSection(issue));
-    planPreview = mountIssuePlanPreview(doc);
+    planPreview = mountIssuePlanPreview(doc, options?.onPlanChange);
     planPreview.update(issue);
 
     const rail = document.createElement('div');
@@ -919,7 +922,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     scroll.append(doc, rail, talk);
 
     panel.appendChild(scroll);
-    workspacePanel = mountIssueWorkspace({
+    if (options?.workspaceTabs !== false) workspacePanel = mountIssueWorkspace({
       panel, sticky, document: doc, issueBody: scroll, issue, summaryInHeader: true,
       tab: workspaceTabs.get(issue.id) ?? 'Issue',
       onTab: (tab) => workspaceTabs.set(issue.id, tab),
@@ -1946,6 +1949,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
     useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
     secondary.appendChild(useWorktree);
+    const modelButton = createDetailTextButton({ label: issueLaunchModelLabel(issue.id), icon: 'appModels', disabled: !workflowOk || busy, title: 'Model for a new issue chat', onClick: () => pickIssueLaunchModel(issue.id, modelButton, refreshIssueDetailIfOpen) });
+    secondary.appendChild(modelButton);
 
     const foregroundHints: Record<IssueForegroundChatMode, string> = {
       general: 'Triage and discuss with full tool access',
@@ -2064,6 +2069,10 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   return {
     openIssueDetail, closeIssueDetail, refreshIssueDetailIfOpen,
+    openPlan: (path: string, workspaceRoot: string) => {
+      const issue = selectedIssueId && findIssueById(selectedIssueId);
+      if (issue) planPreview?.open(issue, path, workspaceRoot);
+    },
     setIssueDetailNavigation, navigateIssueDetail,
     getSelectedIssueId, isIssuesDetailEditing, isIssueExpanding, expandIssueFromUi,
     dispose: () => {

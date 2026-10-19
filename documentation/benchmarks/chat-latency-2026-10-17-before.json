@@ -1,0 +1,706 @@
+{
+  "startedAt": "2026-10-18T03:56:22.494Z",
+  "samples": 3,
+  "prompt": "Write exactly five short numbered lines explaining why small software changes are easier to review. No introduction or conclusion. Do not call tools.",
+  "reasoningEffort": "low",
+  "scope": "Production generation adapters to local stream subscriber; excludes browser paint. Synthetic prompts only.",
+  "rows": [
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 3374,
+      "firstTextMs": 3374,
+      "firstToolMs": null,
+      "completeMs": 3706.1,
+      "tailMs": 52.3,
+      "maxOutputGapMs": 80.1,
+      "outputChars": 207,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.828792000000007,
+          "initialization_ms": 555.1194999999999,
+          "warm": false,
+          "first_delta_ms": 2813.708,
+          "forwarding_max_ms": 1.1916670000000522
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2948,
+          "input": 2895,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2895,
+        "completion_tokens": 53,
+        "total_tokens": 2948,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2895
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 1133,
+      "firstTextMs": 1133,
+      "firstToolMs": null,
+      "completeMs": 1551.2,
+      "tailMs": 69,
+      "maxOutputGapMs": 64.9,
+      "outputChars": 179,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.9488750000000437,
+          "initialization_ms": 0.7407499999999345,
+          "warm": true,
+          "first_delta_ms": 1128.1453340000003,
+          "forwarding_max_ms": 0.09183299999949668
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3028,
+          "input": 2980,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2980,
+        "completion_tokens": 48,
+        "total_tokens": 3028,
+        "prompt_tokens_details": {
+          "cached_tokens": 2688,
+          "uncached_tokens": 292
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 2303.2,
+      "firstTextMs": null,
+      "firstToolMs": 2303.2,
+      "completeMs": 2505.4,
+      "tailMs": 202.1,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 4.226582999999664,
+          "initialization_ms": 0.6735420000004524,
+          "warm": true,
+          "tool_handoff_ms": 2298.191667,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 201.43358400000034
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 1,
+      "status": "complete",
+      "firstVisibleMs": 559.3,
+      "firstTextMs": 559.3,
+      "firstToolMs": null,
+      "completeMs": 715.1,
+      "tailMs": 78.7,
+      "maxOutputGapMs": 26.3,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 5.816291999999521,
+          "initialization_ms": 1.0792080000001079,
+          "warm": true,
+          "tool_wait_ms": 212.04070800000045,
+          "tool_return_ms": 0.17162499999994907,
+          "first_delta_ms": 552.1306669999994,
+          "forwarding_max_ms": 0.1696250000004511
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3150,
+          "input": 3125,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6178,
+        "completion_tokens": 53,
+        "total_tokens": 6231,
+        "prompt_tokens_details": {
+          "cached_tokens": 5632,
+          "uncached_tokens": 546
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 439.2,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-sonnet-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "error",
+      "error": "Agent CLI authentication failed. Sign in from Models → CLIs. Claude authentication_failed: Login expired · Please run /login",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 2754.8,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "claude-sonnet-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 1,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 487.2,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "claude-sonnet-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 290.9,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-sonnet-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "error",
+      "error": "Agent CLI authentication failed. Sign in from Models → CLIs. Claude authentication_failed: Login expired · Please run /login",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 1194.9,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 286.7,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 3004.1,
+      "firstTextMs": 3004.1,
+      "firstToolMs": null,
+      "completeMs": 3627.3,
+      "tailMs": 154,
+      "maxOutputGapMs": 110.5,
+      "outputChars": 210,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 5.3883329999989655,
+          "initialization_ms": 449.81016699999964,
+          "warm": false,
+          "first_delta_ms": 2548.612083,
+          "forwarding_max_ms": 0.21916699999928824
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2949,
+          "input": 2895,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2895,
+        "completion_tokens": 54,
+        "total_tokens": 2949,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2895
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1112.4,
+      "firstTextMs": 1112.4,
+      "firstToolMs": null,
+      "completeMs": 1406.5,
+      "tailMs": 22.5,
+      "maxOutputGapMs": 40.3,
+      "outputChars": 155,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.9506250000013097,
+          "initialization_ms": 0.5780000000013388,
+          "warm": true,
+          "first_delta_ms": 1107.8128749999996,
+          "forwarding_max_ms": 0.049000000002706656
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3024,
+          "input": 2981,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2981,
+        "completion_tokens": 43,
+        "total_tokens": 3024,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2981
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 1157.9,
+      "firstTextMs": null,
+      "firstToolMs": 1157.9,
+      "completeMs": 1359.4,
+      "tailMs": 201.4,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.5903330000001006,
+          "initialization_ms": 0.5914169999996375,
+          "warm": true,
+          "tool_handoff_ms": 1153.6599580000002,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 201.23420800000167
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 2,
+      "status": "complete",
+      "firstVisibleMs": 723,
+      "firstTextMs": 723,
+      "firstToolMs": null,
+      "completeMs": 895,
+      "tailMs": 77.2,
+      "maxOutputGapMs": 30.9,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.4663330000003043,
+          "initialization_ms": 0.6307919999999285,
+          "warm": true,
+          "tool_wait_ms": 207.35241700000188,
+          "tool_return_ms": 0.04779199999757111,
+          "first_delta_ms": 718.6621249999989,
+          "forwarding_max_ms": 0.17166700000234414
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3139,
+          "input": 3115,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6164,
+        "completion_tokens": 47,
+        "total_tokens": 6211,
+        "prompt_tokens_details": {
+          "cached_tokens": 5504,
+          "uncached_tokens": 660
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 2347,
+      "firstTextMs": 2347,
+      "firstToolMs": null,
+      "completeMs": 2733.2,
+      "tailMs": 55,
+      "maxOutputGapMs": 37.3,
+      "outputChars": 161,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 2.520042000000103,
+          "initialization_ms": 459.5202500000014,
+          "warm": false,
+          "first_delta_ms": 1884.6755000000012,
+          "forwarding_max_ms": 0.18649999999979627
+        },
+        "continuation": "new",
+        "transport": "app-server",
+        "context": {
+          "used": 2941,
+          "input": 2897,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2897,
+        "completion_tokens": 44,
+        "total_tokens": 2941,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 2897
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "warm-prose",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 966,
+      "firstTextMs": 966,
+      "firstToolMs": null,
+      "completeMs": 1235.4,
+      "tailMs": 57,
+      "maxOutputGapMs": 23.2,
+      "outputChars": 143,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 3.392374999999447,
+          "initialization_ms": 0.4315840000017488,
+          "warm": true,
+          "first_delta_ms": 961.9882499999985,
+          "forwarding_max_ms": 0.13108400000055553
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3014,
+          "input": 2973,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 2973,
+        "completion_tokens": 41,
+        "total_tokens": 3014,
+        "prompt_tokens_details": {
+          "cached_tokens": 2688,
+          "uncached_tokens": 285
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-request",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 1016.9,
+      "firstTextMs": null,
+      "firstToolMs": 1016.9,
+      "completeMs": 1218.3,
+      "tailMs": 201.4,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 1,
+      "metadata": {
+        "timings": {
+          "queue_ms": 1.8071659999986878,
+          "initialization_ms": 0.35425000000032014,
+          "warm": true,
+          "tool_handoff_ms": 1014.6681250000001,
+          "tool_batch_count": 1,
+          "tool_batch_collect_ms": 201.25466600000073
+        },
+        "continuation": "reused",
+        "transport": "app-server"
+      },
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "uncached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "codex-cli",
+      "model": "gpt-6-luna",
+      "transport": "codex",
+      "scenario": "tool-result",
+      "sample": 3,
+      "status": "complete",
+      "firstVisibleMs": 662.3,
+      "firstTextMs": 662.3,
+      "firstToolMs": null,
+      "completeMs": 789.3,
+      "tailMs": 65.3,
+      "maxOutputGapMs": 23.3,
+      "outputChars": 36,
+      "reasoningChars": 0,
+      "toolCalls": 0,
+      "metadata": {
+        "timings": {
+          "queue_ms": 1.852999999999156,
+          "initialization_ms": 0.44991700000173296,
+          "warm": true,
+          "tool_wait_ms": 204.76974999999948,
+          "tool_return_ms": 0.02862499999901047,
+          "first_delta_ms": 659.807166999999,
+          "forwarding_max_ms": 0.17695800000001327
+        },
+        "continuation": "reused",
+        "transport": "app-server",
+        "context": {
+          "used": 3135,
+          "input": 3108,
+          "limit": 258400
+        }
+      },
+      "usage": {
+        "prompt_tokens": 6147,
+        "completion_tokens": 50,
+        "total_tokens": 6197,
+        "prompt_tokens_details": {
+          "cached_tokens": 5632,
+          "uncached_tokens": 515
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "gpt-6-luna",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 228.6,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "claude-code-cli",
+      "model": "claude-sonnet-5",
+      "transport": "claude",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "error",
+      "error": "Agent CLI authentication failed. Sign in from Models → CLIs. Claude authentication_failed: Login expired · Please run /login",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 1182.6,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    },
+    {
+      "provider": "opencode-zen",
+      "model": "claude-sonnet-5",
+      "transport": "api",
+      "scenario": "cold-prose",
+      "sample": 3,
+      "status": "error",
+      "error": "Upstream HTTP 402: Upstream request failed: Insufficient account funds",
+      "firstVisibleMs": null,
+      "firstTextMs": null,
+      "firstToolMs": null,
+      "completeMs": 399.9,
+      "tailMs": null,
+      "maxOutputGapMs": null,
+      "outputChars": 0,
+      "reasoningChars": 0,
+      "toolCalls": 0
+    }
+  ],
+  "finishedAt": "2026-10-18T03:56:53.969Z"
+}

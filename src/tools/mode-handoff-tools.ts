@@ -109,7 +109,7 @@ export function executeSetChatMode(args: Record<string, unknown>, chatId?: strin
 // ── Create ───────────────────────────────────────────────────────────────────
 
 /** Create a new chat with a given mode and optional plan path (browser). */
-export function executeCreateChatWithMode(args: Record<string, unknown>): string {
+export async function executeCreateChatWithMode(args: Record<string, unknown>): Promise<string> {
   const modeRaw = typeof args.mode_id === 'string' ? args.mode_id : typeof args.modeId === 'string' ? args.modeId : '';
   const modeId = normalizeModeId(modeRaw || undefined);
   if (!HANDOFF_MODES.has(modeId)) {
@@ -150,7 +150,7 @@ export function executeCreateChatWithMode(args: Record<string, unknown>): string
     });
   }
 
-  const result = createChatWithMode({
+  const result = await createChatWithMode({
     modeId,
     orchestratePlanPath: normalizedPlan ?? undefined,
     initialUserMessage: initialUserMessage || undefined,

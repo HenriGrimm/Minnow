@@ -1,3 +1,4 @@
+import { readDefaultModelBinding } from '../models/selection';
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { decodeModelSelectKey } from '../lib/model-select-key.ts';
 import type { BoardReasoningPatch } from './board-journal-reasoning.ts';
@@ -35,12 +36,8 @@ export function resolveV2BoardModelBinding(state: BoardState | null): {
   if (bound?.providerId && bound.id) {
     return { providerId: bound.providerId, modelId: bound.id };
   }
-  if (typeof document === 'undefined') return { providerId: '', modelId: '' };
-  const raw =
-    (document.getElementById('modelSelect') as HTMLSelectElement | null)?.value?.trim() ?? '';
-  const decoded = decodeModelSelectKey(raw);
-  if (decoded) return decoded;
-  return { providerId: '', modelId: raw };
+  const binding = readDefaultModelBinding();
+  return { providerId: binding.providerId || '', modelId: binding.modelId };
 }
 
 export function detachV2BoardHeaderInstruments(): void {

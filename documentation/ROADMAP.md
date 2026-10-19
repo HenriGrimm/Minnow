@@ -11,7 +11,7 @@ This is the one page that talks about work not yet shipped. The manual describes
 - **Planning and delivery** — Plan mode, Orchestrator boards, work agents, isolated worktrees, and test/fix loops.
 - **Knowledge** — Brain, official Minnow wiki, chat retrieval, code index, and web RAG.
 - **Operations** — Models, providers, routing, Scheduler, Issues, settings, diagnostics, skills, MCP, and local tool plugins.
-- **Local-first foundations** — encrypted secrets, on-disk state, optional LAN companion access, and Electron packaging.
+- **Local-first foundations** — encrypted secrets, on-disk state, optional phone access (home network or anywhere), and Electron packaging.
 
 ## Active direction
 

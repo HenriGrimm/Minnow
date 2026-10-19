@@ -14,6 +14,7 @@ let status: string;
 const parent = { providerId: 'chat-host', modelId: 'chat-model' };
 const advanced = { sampler: { temperature: 0.3 }, thinkingMode: 'off', maxConcurrent: 2 };
 
+mock.module('../../src/models/model-choices.ts', { namedExports: { loadModelChoices: async () => [] } });
 mock.module('../../src/agents/work-agent-prompt-api.ts', {
   namedExports: {
     patchWorkAgentOverride: async (_id: string, patch: typeof binding) => {
@@ -27,10 +28,11 @@ mock.module('../../src/agents/work-agent-prompt-api.ts', {
 mock.module('../../src/agents/sub-agent-config.ts', {
   namedExports: {
     loadSubAgentConfig: async () => ({ types: { builder: { ...binding, ...advanced } } }),
-    saveSubAgentConfigToServer: async (patch: any) => {
+    setRuntimeSubAgentOverrides: () => {},
+    patchSubAgentUserOverrides: async (patch: any) => {
       writes.push(patch);
       if (fail) return false;
-      binding = patch.types.builder;
+      binding = { ...binding, ...patch.types.builder };
       return true;
     },
   },
@@ -62,7 +64,7 @@ mock.module('../../src/api/models.ts', {
   } },
 });
 mock.module('../../src/config/goal-eval-meta.ts', {
-  namedExports: { saveGoalEvalConfig: async (patch: typeof binding) => {
+  namedExports: { resetGoalEvalConfigCache: () => {}, saveGoalEvalConfig: async (patch: typeof binding) => {
     writes.push(patch);
     binding = patch;
   } },
@@ -88,7 +90,7 @@ mock.module('../../src/ui/settings-model-binding.ts', {
   },
 });
 mock.module('../../src/ui/model-select-picker.ts', {
-  namedExports: { mountAuxiliaryModelSelectCombobox: () => {}, syncAuxiliaryModelSelectCombobox: () => {} },
+  namedExports: { unmountAuxiliaryModelSelectCombobox: () => {}, mountAuxiliaryModelSelectCombobox: () => {}, syncAuxiliaryModelSelectCombobox: () => {} },
 });
 mock.module('../../src/ui/status.ts', {
   namedExports: { setStatus: (_level: string, message: string) => { status = message; } },
@@ -123,7 +125,7 @@ describe('agent routing reset', () => {
     document.body.appendChild(host);
     assert.equal(await mountStandaloneRoutingEditor(host, 'builder'), true);
     const button = host.querySelector<HTMLButtonElement>('.settings-routing-reset')!;
-    assert.equal(button.textContent, 'Use current chat model');
+    assert.equal(button.textContent, 'Use sub-agent routing');
     button.click();
     for (let i = 0; i < 30 && button.disabled; i++) {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -131,81 +133,6 @@ describe('agent routing reset', () => {
     assert.equal(button.disabled, false, 'reset settles');
     return host;
   }
-
-  test('Models Routing clears a pinned role and refreshes its effective model', async () => {
-    kind = 'goal-eval';
-    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    await renderModelRoutingSection(host);
-    const select = host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')!;
-    for (let i = 0; i < 30 && select.value !== 'pinned-host\u001fpinned-model'; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    assert.equal(select.value, 'pinned-host\u001fpinned-model');
-    assert.equal(select.options[0].dataset.modelSelectReset, 'true');
-    select.value = '';
-    select.dispatchEvent(new window.Event('change', { bubbles: true }));
-    for (let i = 0; i < 30 && binding.modelId; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.deepEqual(binding, { providerId: '', modelId: '' });
-    assert.equal(host.querySelector('.settings-routing-effective__value')?.textContent, 'chat-model · chat-host');
-    await renderModelRoutingSection(host);
-    assert.equal(host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')?.value, '');
-  });
-
-  test('routing tabs support keyboard navigation and preserve the task form', async () => {
-    kind = 'goal-eval';
-    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    await renderModelRoutingSection(host);
-    const tasks = host.querySelector<HTMLButtonElement>('#routing-tab-tasks')!;
-    const fallbacks = host.querySelector<HTMLButtonElement>('#routing-tab-fallbacks')!;
-    const select = host.querySelector('#modelRouting-builder-model');
-    assert.equal(tasks.getAttribute('aria-selected'), 'true');
-    assert.equal(host.querySelector<HTMLElement>('#routing-panel-fallbacks')?.hidden, true);
-    assert.equal(host.querySelectorAll('[role=tab]').length, 2, 'only available routing features are exposed');
-    tasks.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    assert.equal(document.activeElement, fallbacks);
-    assert.equal(fallbacks.getAttribute('aria-selected'), 'true');
-    assert.equal(host.querySelector<HTMLElement>('#routing-panel-tasks')?.hidden, true);
-    fallbacks.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    assert.equal(tasks.getAttribute('aria-selected'), 'true');
-    assert.equal(host.querySelector('#modelRouting-builder-model'), select, 'switching tabs retains edits and control identity');
-    assert.equal(writes.length, 0, 'navigation does not save a binding');
-  });
-
-  test('a saved model missing from the live catalog remains selected', async () => {
-    kind = 'goal-eval';
-    binding = { providerId: 'offline-host', modelId: 'offline-model' };
-    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    await renderModelRoutingSection(host);
-    const select = host.querySelector<HTMLSelectElement>('#modelRouting-builder-model')!;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(select.value, 'offline-host\u001foffline-model');
-    assert.match(select.selectedOptions[0].textContent!, /saved model/);
-    assert.equal(writes.length, 0);
-  });
-
-  test('the explicit follow action clears the binding and updates its source label', async () => {
-    kind = 'goal-eval';
-    const { renderModelRoutingSection } = await import('../../src/ui/settings-model-routing.ts');
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    await renderModelRoutingSection(host);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const reset = host.querySelector<HTMLButtonElement>('.settings-routing-follow')!;
-    reset.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.deepEqual(binding, { providerId: '', modelId: '' });
-    assert.equal(host.querySelector('.settings-routing-source')?.textContent, 'Follows chat');
-    assert.equal(reset.hidden, true);
-  });
 
   test('fallback order controls persist the displayed order and honor the chain limit', async () => {
     kind = 'goal-eval';
@@ -238,7 +165,7 @@ describe('agent routing reset', () => {
     host.querySelector<HTMLButtonElement>('#routing-tab-tasks')!.click();
   });
 
-  for (const agentKind of ['work-agent', 'sub-agent']) {
+  for (const agentKind of ['sub-agent']) {
     test(`${agentKind} clears both overrides and displays inherited routing`, async () => {
       kind = agentKind;
       const host = await mountAndReset();
@@ -249,7 +176,7 @@ describe('agent routing reset', () => {
         assert.equal(computeEffectiveWorkAgentBinding(agent, parent, parent).modelId, 'chat-model');
         assert.equal(computeEffectiveWorkAgentBinding(agent, { providerId: '', modelId: '' }, parent).providerId, 'chat-host');
       } else {
-        assert.deepEqual(writes[0], { types: { builder: { ...advanced, providerId: '', modelId: '' } } });
+        assert.deepEqual(writes[0], { types: { builder: { providerId: '', modelId: '' } } });
         assert.deepEqual(resolveSubAgentModelBinding(binding as any, parent as any), parent);
         assert.deepEqual(resolveSubAgentModelBinding(binding as any, undefined, parent), parent);
       }

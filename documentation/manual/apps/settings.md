@@ -12,12 +12,12 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 | Group | Pages |
 |-------|-------|
-| **General** | Startup & setup, Appearance, Notifications, Audio |
+| **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
 | **Code & workspace** | Editor, Terminal, Language servers, Browser, GitHub, Issues |
 | **AI & agents** | Models & connections, Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
-| **Data & privacy** | Backups & access |
-| **About & troubleshooting** | About, Updates, Health & diagnostics |
+| **Data & privacy** | Backups, Access |
+| **About & troubleshooting** | About, Health & diagnostics |
 
 ### General
 
@@ -25,7 +25,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Appearance** includes interface zoom in the desktop app, Compact or Full chat view, eight theme families with dark and light variants, fonts, and custom colors. Changes apply immediately. In a browser, use the browser's zoom controls.
 
-**Notifications** controls bell alerts, desktop notifications, and sound packs. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
+**Notifications** controls desktop notifications and sound packs. The menubar **Activity** dropdown keeps live work and session outcomes visible even when alerts are muted or disabled. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
 
 **Audio** selects input and output devices and microphone processing. Speech recognition and read-aloud models live in **Models → Voice**.
 
@@ -57,9 +57,13 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 ### Data & privacy
 
-**Backups & access** manages [backups and restore](../reference/backup-and-restore.md), filesystem access, the agent shell sandbox, and network access.
+**Backups** manages [backups and restore](../reference/backup-and-restore.md). **Access** controls filesystem access and the agent shell sandbox.
 
-File and git tools stay inside open workspaces by default. Network access is local to this computer by default; enabling LAN access requires a restart. See [Tools and permissions](../concepts/tools-and-permissions.md) and [Use Minnow from another device](../extend/companion.md).
+File and git tools stay inside open workspaces by default. See [Tools and permissions](../concepts/tools-and-permissions.md).
+
+### Devices
+
+**Devices** connects phones and tablets. **Connect a phone** shows a QR to scan. The **Home network** and **Anywhere** cards turn each kind of connection on or off without a restart, and **Your devices** lists connected devices with **Rename** and **Disconnect**. See [Use Minnow on your phone](../extend/companion.md).
 
 ### About & troubleshooting
 

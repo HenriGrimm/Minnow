@@ -34,10 +34,18 @@ function handleSubAgentRun(run: SubAgentRun): void {
   const chat = parentChatId ? findChatById(parentChatId) : undefined;
   const title = chat ? chatTitle(chat) : 'Sub-agent';
   const dedupeKey = `subagent:${run.runId}`;
+  const parent = run.parentTurnId ? chat?.runs?.find((candidate) => candidate.parentTurnId === run.parentTurnId) : undefined;
+  const source = {
+    activityId: `sub:${run.runId}`,
+    parentActivityId: parent ? `turn:${parent.runId}` : undefined,
+    workspacePath: chat?.workspacePath,
+    silent: parent?.status === 'running' || (!run.parentTurnId && chat?.runs?.some((candidate) => candidate.status === 'running')),
+  };
 
   if (run.status === 'completed') {
     const preview = truncatePreview(run.summary || 'Sub-agent completed');
     pushNotification({
+      ...source,
       kind: 'sub_agent_complete',
       title,
       preview,
@@ -50,6 +58,8 @@ function handleSubAgentRun(run: SubAgentRun): void {
 
   const preview = truncatePreview(run.error || run.summary || `Sub-agent ${run.status}`);
   pushNotification({
+    ...source,
+    activityStatus: run.status === 'cancelled' ? 'stopped' : 'failed',
     kind: 'sub_agent_failed',
     title,
     preview,

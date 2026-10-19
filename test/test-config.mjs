@@ -317,6 +317,14 @@ export const SCOPED_SUITES = {
   backup: {
     patterns: ['test/backup/**/*.test.mjs', 'test/backup/**/*.test.mts'],
   },
+  remote: {
+    patterns: [
+      'test/remote/**/*.test.mjs',
+      'test/remote/**/*.test.mts',
+      'test/security/device-auth.test.mjs',
+      'test/network/**/*.test.mjs',
+    ],
+  },
   scheduler: {
     patterns: [
       'test/scheduler/**/*.test.mjs',

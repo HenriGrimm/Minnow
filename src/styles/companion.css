@@ -2,48 +2,58 @@
  * Narrow authenticated companion shell. Desktop-only chrome never appears.
  */
 
+/* ── Access screens (connect, request access, waiting, disconnected) ───────── */
+
 .companion-access {
   position: fixed;
   inset: 0;
   z-index: 100040;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    max(28px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  overflow-y: auto;
+  padding: max(28px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   background: var(--mn-bg);
   color: var(--mn-fg);
   font-family: var(--font-ui);
 }
 
+.companion-access__card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(26rem, 100%);
+}
+
+.companion-access__title,
 .companion-access h1 {
   max-width: 24ch;
   margin: 0;
   font-size: 24px;
-  letter-spacing: -0.03em;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
+.companion-access__copy,
 .companion-access p {
   max-width: 52ch;
   margin: 0;
   color: var(--mn-fg-muted);
+  font-size: 15px;
   line-height: 1.55;
   text-wrap: pretty;
 }
 
-.companion-access__hint {
-  padding-top: 8px;
-  font-size: 12px;
+.companion-access__muted {
+  font-size: 13px;
 }
 
-.companion-access__form {
+.companion-access__field {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: 28rem;
-  margin-top: 8px;
+  gap: 6px;
 }
 
 .companion-access__label {
@@ -53,13 +63,19 @@
 
 .companion-access__input {
   width: 100%;
-  max-width: 12rem;
-  padding: 12px 14px;
+  min-height: 48px;
+  padding: 10px 14px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-bg-elevated);
+  background: var(--mn-surface-elevated);
   color: var(--mn-fg);
-  font: 600 20px/1.3 var(--font-ui);
+  font: 500 16px/1.3 var(--font-ui);
+}
+
+.companion-access__input--code {
+  max-width: 11rem;
+  font-weight: 600;
+  font-size: 20px;
   letter-spacing: 0.18em;
   text-align: center;
 }
@@ -69,55 +85,252 @@
   outline-offset: 1px;
 }
 
-.companion-access__error {
-  margin: 0;
-  color: var(--mn-danger);
-  font-size: 13px;
-  line-height: 1.45;
+.companion-access__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.companion-access__error[hidden] {
-  display: none;
-}
-
+.companion-access__btn,
 .companion-access__submit {
-  align-self: flex-start;
-  padding: 10px 16px;
-  border: 0;
+  min-height: 48px;
+  padding: 12px 18px;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--mn-accent);
-  color: var(--mn-accent-fg);
-  font: 600 14px/1 var(--font-ui);
+  font: 600 15px/1.2 var(--font-ui);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
+.companion-access__btn--primary,
+.companion-access__submit {
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent);
+}
+
+.companion-access__btn--secondary {
+  border-color: var(--mn-border-strong);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+}
+
+.companion-access__btn--link {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--mn-accent-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.companion-access__btn:focus-visible,
+.companion-access__submit:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.companion-access__btn:disabled,
 .companion-access__submit:disabled {
   opacity: 0.6;
   cursor: wait;
 }
 
-html.minnow-companion-access body > :not(#companionAccess):not(#companionReconnect) {
+.companion-access__btn[hidden] {
+  display: none;
+}
+
+.companion-access__error {
+  margin: 0;
+  color: var(--mn-danger);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.companion-access__error[hidden],
+.companion-access__code-form[hidden] {
+  display: none;
+}
+
+.companion-access__verify {
+  margin: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 44px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--mn-fg);
+  text-align: center;
+}
+
+.companion-access .companion-access__verify {
+  color: var(--mn-fg);
+  font-size: 44px;
+}
+
+.companion-access__code-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+html.minnow-companion-access body > :not(#companionAccess):not(#companionReconnect):not(.companion-scanner) {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* ── Can't reach the host ──────────────────────────────────────────────────── */
 
 .companion-reconnect {
   position: fixed;
   z-index: 100020;
   top: max(8px, env(safe-area-inset-top));
   left: 50%;
-  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: min(30rem, calc(100vw - 24px));
   transform: translateX(-50%);
-  padding: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--mn-warning-border);
   border-radius: var(--radius-md);
   background: var(--mn-warning-soft);
-  color: var(--mn-warning);
-  font: 600 12px/1.3 var(--font-ui);
+  color: var(--mn-fg);
+  font: 400 12.5px/1.4 var(--font-ui);
   box-shadow: var(--shadow-popover-soft);
+}
+
+.companion-reconnect__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.companion-reconnect__hint {
+  color: var(--mn-fg-muted);
 }
 
 .companion-reconnect[hidden] {
   display: none;
+}
+
+/* ── In-app QR scanner ─────────────────────────────────────────────────────── */
+
+.companion-scanner {
+  position: fixed;
+  inset: 0;
+  z-index: 100050;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  background: var(--mn-bg);
+}
+
+.companion-scanner__video {
+  width: min(22rem, 100%);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+  background: var(--mn-surface-1);
+}
+
+.companion-scanner__hint {
+  max-width: 22rem;
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font: 400 14px/1.5 var(--font-ui);
+  text-align: center;
+}
+
+/* ── After connecting: Home Screen tip and the move to Anywhere ────────────── */
+
+.companion-install,
+.companion-move {
+  position: fixed;
+  z-index: 100035;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 30rem;
+  margin-inline: auto;
+  padding: 18px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-lg);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  box-shadow: var(--shadow-popover-tall);
+}
+
+.companion-install__eyebrow {
+  margin: 0;
+  color: var(--mn-success-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.companion-install__title,
+.companion-move__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.companion-install__copy,
+.companion-move__copy {
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.companion-install__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.companion-install__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.companion-install__step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.companion-install__actions,
+.companion-move__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.companion-install__actions .companion-access__btn,
+.companion-move__actions .companion-access__btn {
+  min-height: 44px;
 }
 
 .companion-mode-select {
@@ -185,7 +398,9 @@ html.minnow-companion .chat-app-composer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .companion-reconnect {
+  .companion-reconnect,
+  .companion-install,
+  .companion-move {
     transition: none;
   }
 }

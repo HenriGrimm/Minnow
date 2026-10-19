@@ -5,19 +5,15 @@ import {
   getOsView,
   subscribeInstances,
 } from './instances';
-import { getUnreadNotificationCount } from './notifications-menu';
-import { onNewNotification } from '../notifications/push';
-import { subscribeNotifications } from '../notifications/store';
 import { iconHtml } from '../ui/icon';
 import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { createAppIcon, createOsIcon } from './icons';
 import { chatToggleAriaLabel, isChatToggleVisible } from './menubar-visibility';
-import { initOsNotificationsMenu } from './notifications-menu';
 import { initShellMenubarChrome } from './menubar-window-controls';
-import { initMenubarModelChip } from './menubar-model-chip';
+import { loadDefaultModelValue } from '../models/selection';
 import { initUpdateMenubarPill } from './update-menubar';
 import { openProductWiki } from '../ui/product-wiki';
-import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
+import { bindShellOverlayTrigger, openShellOverlay, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import { initAgentActivityMenubar } from '../ui/agent-activity-panel';
 import { initQuickCaptureChord } from './quick-capture';
 import { buildMenuItems, openRegisteredMenu, subscribeMenuRegistry } from '../ui/menu-registry';
@@ -87,16 +83,32 @@ export function renderMenubar(root: HTMLElement): () => void {
   syncPluginMenu();
   const cleanupPluginMenu = subscribeMenuRegistry(syncPluginMenu);
 
-  const modelChipAnchor = document.createElement('div');
-  modelChipAnchor.id = 'osMenubarModelChip';
-  modelChipAnchor.className = 'mn-os-mb-model-slot';
-  const cleanupModelChip = initMenubarModelChip(modelChipAnchor);
+  const modelChipAnchor = document.createElement('button');
+  modelChipAnchor.type = 'button'; modelChipAnchor.className = 'mn-os-mb-icon';
+  modelChipAnchor.title = 'Models'; modelChipAnchor.setAttribute('aria-label', 'Models');
+  modelChipAnchor.setAttribute('aria-haspopup', 'dialog'); modelChipAnchor.setAttribute('aria-controls', 'modelsSystemPopover');
+  modelChipAnchor.innerHTML = iconHtml('appModels', { size: 16 });
+  const unbindModels = bindShellOverlayTrigger(modelChipAnchor, 'models');
+  let closeModels: (() => void) | undefined;
+  let modelsRequest = 0;
+  modelChipAnchor.onclick = () => {
+    if (isShellOverlayOpen('models')) closeShellOverlay();
+    else {
+      const request = ++modelsRequest;
+      openShellOverlay('models', () => { modelsRequest++; });
+      void import('../ui/models-popover').then((module) => {
+        if (request === modelsRequest && isShellOverlayOpen('models')) closeModels = module.openModelsPopover(modelChipAnchor);
+      }).catch(() => { if (request === modelsRequest) closeShellOverlay(); });
+    }
+  };
+  const refreshSelection = () => { if (!document.hidden) void loadDefaultModelValue().catch(() => {}); };
+  window.addEventListener('focus', refreshSelection);
+  const selectionTimer = window.setInterval(refreshSelection, 5000);
+  const cleanupModelChip = () => { modelsRequest++; if (isShellOverlayOpen('models')) closeShellOverlay(); closeModels?.(); unbindModels(); window.clearInterval(selectionTimer); window.removeEventListener('focus', refreshSelection); };
 
-  const agentsBtn = document.createElement('button');
-  agentsBtn.type = 'button';
-  agentsBtn.className = 'mn-os-mb-icon mn-os-mb-agents';
-  agentsBtn.innerHTML = iconHtml('appAgentActivity', { size: 16 });
-  const cleanupAgentActivity = initAgentActivityMenubar(agentsBtn);
+  const activityBtn = document.createElement('button');
+  activityBtn.type = 'button';
+  const cleanupActivity = initAgentActivityMenubar(activityBtn);
 
   const cleanupQuickCapture = initQuickCaptureChord();
 
@@ -114,17 +126,6 @@ export function renderMenubar(root: HTMLElement): () => void {
     });
   });
   const cleanupSearchState = bindShellOverlayTrigger(searchBtn, 'search');
-
-  const bell = document.createElement('button');
-  bell.type = 'button';
-  bell.className = 'mn-os-mb-bell';
-  bell.setAttribute('aria-label', 'Notifications');
-  bell.appendChild(createOsIcon('bell', { size: 16 }));
-  const bellBadge = document.createElement('span');
-  bellBadge.className = 'mn-os-bell-badge';
-  bellBadge.hidden = true;
-  bell.appendChild(bellBadge);
-  const cleanupNotifications = initOsNotificationsMenu(bell);
 
   const updateSlot = document.createElement('div');
   updateSlot.id = 'osMenubarUpdateSlot';
@@ -160,11 +161,10 @@ export function renderMenubar(root: HTMLElement): () => void {
   });
 
   right.append(
+    activityBtn,
     pluginMenu,
     modelChipAnchor,
-    agentsBtn,
     searchBtn,
-    bell,
     updateSlot,
     wikiBtn,
     settingsBtn,
@@ -202,33 +202,11 @@ export function renderMenubar(root: HTMLElement): () => void {
     settingsBtn.hidden = Boolean(document.documentElement.dataset.appWindow);
 
     void import('./workspace-menubar').then((m) => m.syncWorkspaceMenubarPlacement());
-
-    const unread = getUnreadNotificationCount();
-    bell.classList.toggle('is-on', unread > 0);
-    if (unread > 0) {
-      bellBadge.hidden = false;
-      bellBadge.textContent = unread > 99 ? '99+' : String(unread);
-    } else {
-      bellBadge.hidden = true;
-      bellBadge.textContent = '';
-    }
-  }
-
-  function ringBell(): void {
-    bell.classList.remove('is-ringing');
-    void bell.offsetWidth;
-    bell.classList.add('is-ringing');
-    window.setTimeout(() => bell.classList.remove('is-ringing'), 1200);
   }
 
   syncMenubar();
   const unsub = subscribeInstances(syncMenubar);
-  const unsubInbox = subscribeNotifications(syncMenubar);
   const unsubPrefs = subscribeAppPreferences(syncMenubar);
-  const unsubNotif = onNewNotification((record) => {
-    syncMenubar();
-    if (!record.read) ringBell();
-  });
 
   return () => {
     cleanupPluginState();
@@ -236,13 +214,10 @@ export function renderMenubar(root: HTMLElement): () => void {
     cleanupSettingsState();
     cleanupWikiState();
     unsub();
-    unsubInbox();
     unsubPrefs();
-    unsubNotif();
     cleanupModelChip();
-    cleanupAgentActivity();
+    cleanupActivity();
     cleanupQuickCapture();
-    cleanupNotifications();
     cleanupUpdatePill();
     cleanupShellChrome();
     cleanupPluginMenu();

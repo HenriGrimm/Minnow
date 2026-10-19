@@ -61,22 +61,20 @@ export interface TerminalShellHintOptions {
   activeShellDiffers?: boolean;
 }
 
-/** Shell policy hint text; reflects file-explorer worktree cwd and scope-change guidance. */
+/** Shell cwd hint text; reflects file-explorer worktree cwd and scope-change guidance. Empty when there is nothing to say. */
 export function formatTerminalShellHint(
   cwd: string,
   options?: TerminalShellHintOptions,
 ): string {
-  const baseHint =
-    'Shell has full access on your machine (not limited by workspace tool policy).';
   if (options?.scopeChanged && options?.activeShellDiffers) {
     const suffix = getTerminalCwdLabelSuffix(cwd);
     const label = suffix ? suffix.slice(3) : formatTerminalCwdHeader(cwd);
     return `File root changed — open a new terminal tab (+) to start in ${label}. Current shell keeps its directory.`;
   }
   if (isTerminalWorktreeCwd(cwd)) {
-    return `Shell cwd: ${cwd} (file explorer worktree). ${baseHint}`;
+    return `Shell cwd: ${cwd} (file explorer worktree).`;
   }
-  return baseHint;
+  return '';
 }
 
 /** Compare two terminal cwd paths (undefined-safe via panel normalization). */

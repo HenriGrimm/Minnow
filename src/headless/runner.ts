@@ -322,7 +322,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
 
     if (!sendModelId) {
       throw new Error(
-        'No model configured. Set --model or configure a work agent / active provider model.',
+        'No model configured. Set --model or select a chat model in Minnow.',
       );
     }
 

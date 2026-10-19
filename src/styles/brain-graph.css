@@ -21,9 +21,9 @@
   --brain-edge-tag: color-mix(in oklch, var(--brain-node-tag) 34%, transparent);
   --brain-grid: color-mix(in oklch, var(--mn-fg) 22%, transparent);
   --brain-glow: color-mix(in oklch, var(--mn-accent) 48%, transparent);
-  --brain-inspector-w: min(600px, 48vw);
-  --brain-graph-overlay-pad: 12px;
-  --brain-graph-overlay-gap: 10px;
+  --brain-inspector-w: 532px;
+  --brain-graph-overlay-pad: 0px;
+  --brain-graph-overlay-gap: 0px;
   /* Measured from toolbar height in graph-section.ts; fallback fits one toolbar row. */
   --brain-graph-below-toolbar: 92px;
   --brain-graph-sidebar-w: 300px;
@@ -69,14 +69,16 @@
 /* Graph canvas: compact floating rail over the stage. */
 .brain-page.is-graph-canvas-bg .brain-rail.brain-overlay-surface {
   flex: 0 0 auto;
-  align-self: flex-start;
   width: auto;
-  margin: 8px 0 8px 8px;
+  margin: 0;
   padding: 6px;
-  max-height: calc(100% - 16px);
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  align-self: stretch;
+  max-height: none;
+  border: none;
+  border-right: 1px solid var(--mn-border);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--mn-surface-1);
 }
 
 .brain-rail__btn {
@@ -193,21 +195,20 @@
 
 .brain-page.is-graph-canvas-bg .brain-inspector {
   position: absolute;
+  z-index: 6;
   right: var(--brain-graph-overlay-pad);
   top: var(--brain-graph-below-toolbar);
   bottom: var(--brain-graph-overlay-pad);
   flex: none;
   border-left: none;
-  border-radius: var(--radius-md);
-  transition:
-    width 0.22s var(--brain-ease-out),
-    opacity 0.22s var(--brain-ease-out);
+  border-radius: 0;
+  transition: opacity 0.18s var(--brain-ease-out);
 }
 
 .brain-inspector.is-open {
   flex: 0 0 var(--brain-inspector-w);
   width: var(--brain-inspector-w);
-  overflow-y: auto;
+  overflow: hidden;
   border-left-color: var(--mn-border);
   padding: 0;
   position: relative;
@@ -250,27 +251,38 @@
   flex: none;
   border-left-color: transparent;
   background: var(--mn-surface-1);
-  border: 1px solid var(--mn-border);
-  box-shadow: var(--shadow-drawer);
+  width: min(var(--brain-inspector-w), max(420px, 52%));
+  border: none;
+  border-left: 1px solid var(--mn-border);
+  box-shadow: none;
 }
 
 .brain-inspector__inner {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  padding: 16px 14px 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.brain-inspector__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
 }
 
 .brain-inspector__close {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: -8px;
+  right: -12px;
   z-index: 1;
 }
 
 .brain-inspector__head {
-  padding-right: 36px;
-  margin-bottom: 12px;
+  position: relative;
+  padding-right: 44px;
+  margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--mn-border);
 }
@@ -300,10 +312,11 @@
 
 .brain-inspector__title {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 21px;
   font-weight: 600;
   letter-spacing: -0.015em;
-  line-height: 1.25;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .brain-inspector__path {
@@ -441,21 +454,21 @@
 
 /* Inspector preview uses full panel width (global .brain-markdown caps at 72ch). */
 .brain-inspector__markdown.brain-markdown {
-  max-width: none;
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .brain-inspector__actions {
-  position: sticky;
-  bottom: 0;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: auto;
-  margin-left: -14px;
-  margin-right: -14px;
-  padding: 12px 14px 16px;
+  padding: 12px 24px;
   border-top: 1px solid var(--mn-border);
-  background: color-mix(in srgb, var(--mn-surface-1) 94%, transparent);
+  background: var(--mn-surface-1);
 }
 
 .brain-inspector__actions .brain-action-btn {
@@ -550,6 +563,24 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+}
+
+.brain-page.is-graph-canvas-bg .brain-graph-toolbar.brain-overlay-card,
+.brain-page.is-graph-canvas-bg .brain-graph-sidebar > .brain-overlay-card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--mn-surface-1);
+}
+
+.brain-page.is-graph-canvas-bg .brain-graph-toolbar.brain-overlay-card {
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.brain-page.is-graph-canvas-bg .brain-graph-sidebar > .brain-graph-readout {
+  max-height: 35%;
+  overflow: auto;
+  border-top: 1px solid var(--mn-border);
 }
 
 .brain-graph-toolbar__group {
@@ -647,11 +678,14 @@
 }
 
 .brain-graph-dense {
-  position: relative;
+  position: absolute;
+  top: calc(var(--brain-graph-below-toolbar) + 12px);
+  left: calc(var(--brain-graph-sidebar-w) + 16px);
   z-index: 3;
   flex-shrink: 0;
   align-self: center;
-  max-width: min(520px, calc(100% - 24px));
+  max-width: min(380px, calc(100% - var(--brain-graph-sidebar-w) - 24px));
+  font-size: 12px;
   margin: 0;
   padding: 8px 12px;
   text-align: center;
@@ -664,7 +698,11 @@
  * zero height whenever the readout grew.
  */
 .brain-graph-sidebar {
-  position: relative;
+  position: absolute;
+  top: var(--brain-graph-below-toolbar);
+  left: 0;
+  bottom: 0;
+  height: calc(100% - var(--brain-graph-below-toolbar));
   z-index: 3;
   /* Fill the overlay column below the toolbar so the tree scrolls instead of
      stretching the stage (and pushing Structure off-screen). */
@@ -674,13 +712,14 @@
   flex-direction: column;
   gap: var(--brain-graph-overlay-gap);
   width: var(--brain-graph-sidebar-w);
-  max-width: calc(100% - 2 * var(--brain-graph-overlay-pad));
+  max-width: 30%;
   min-width: 200px;
+  background: var(--mn-surface-1);
+  border-right: 1px solid var(--mn-border);
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
   pointer-events: none;
-  transition: width 0.22s var(--brain-ease-out);
 }
 
 .brain-graph-sidebar.is-resizing {
@@ -1130,6 +1169,28 @@
   }
 }
 
+.brain-page.is-graph-canvas-bg .brain-stage {
+  container: brain-workspace / inline-size;
+}
+
+@container brain-workspace (max-width: 1000px) {
+  .brain-page.is-graph-canvas-bg .brain-inspector.is-open {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    height: min(70dvh, 640px);
+    max-height: calc(100% - var(--brain-graph-below-toolbar));
+    border-top: 1px solid var(--mn-border);
+    border-left: none;
+  }
+
+  .brain-inspector__resize {
+    display: none !important;
+  }
+}
+
 @media (max-width: 900px) {
   .brain-graph-toolbar__primary {
     margin-left: 0;
@@ -1155,7 +1216,8 @@
     top: auto;
     bottom: var(--brain-graph-overlay-pad);
     width: auto;
-    max-height: min(52vh, 420px);
+    height: min(70dvh, 640px);
+    max-height: calc(100% - var(--brain-graph-below-toolbar));
   }
 
   .brain-inspector__resize {
@@ -1171,12 +1233,18 @@
   .brain-page.is-graph-canvas-bg .brain-rail.brain-overlay-surface {
     flex: none;
     flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
     align-self: stretch;
-    margin: 8px 10px 0;
+    margin: 0;
     max-height: none;
-    border-right: 1px solid var(--mn-border);
+    border-right: none;
+    border-bottom: 1px solid var(--mn-border);
+  }
+
+  .brain-page.is-graph-canvas-bg .brain-rail__btn {
+    flex-shrink: 0;
   }
 
   .brain-page.is-graph-canvas-bg .brain-rail__label {
@@ -1227,18 +1295,20 @@
   }
 
   .brain-graph-overlays {
-    padding: 8px;
+    padding: 0;
   }
 
-  /* Narrow screens: the rail becomes a bottom sheet under the toolbar. */
+  .brain-graph-dense {
+    display: none;
+  }
+
+  /* Narrow screens keep a short page list above the reading sheet. */
   .brain-graph-sidebar,
   .brain-graph-stage.is-tree-layout .brain-graph-sidebar {
-    margin-top: auto;
-    align-self: stretch;
-    width: auto;
+    width: 100% !important;
     max-width: none;
-    flex: 0 1 auto;
-    max-height: min(52vh, 420px);
+    bottom: auto;
+    height: min(30dvh, 240px);
   }
 
   .brain-graph-readout__metrics {
@@ -1257,8 +1327,13 @@
     right: var(--brain-graph-overlay-pad);
     top: auto;
     bottom: var(--brain-graph-overlay-pad);
-    max-height: min(62dvh, 480px);
+    height: min(78dvh, 640px);
+    max-height: calc(100% - var(--brain-graph-below-toolbar));
     overscroll-behavior: contain;
+  }
+
+  .brain-inspector__scroll {
+    padding: 16px;
   }
 
   .brain-inspector__close {

@@ -26,6 +26,7 @@ export interface Effector {
 }
 
 export interface AttemptEnd {
+  resolvedModel?: { providerId: string; id: string };
   attemptId: string;
   taskId: string | null;
   role: string;

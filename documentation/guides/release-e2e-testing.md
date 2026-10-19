@@ -432,7 +432,7 @@ Open Settings → use search (**Mod+K**) for spot checks. Visit each sidebar sec
 - [ ] Plan mode cannot write outside `documentation/plans/`
 - [ ] Path escape blocked: tool cannot read `C:\Windows\...` outside workspace (default policy)
 - [ ] LAN mode off: cannot bind companion without opt-in (default loopback)
-- [ ] LAN mode on: pair device flow (see [lan-companion.md](lan-companion.md)) — optional tier
+- [ ] Settings → Devices: connect a phone on the home network and through Anywhere (see [remote-devices.md](../contributor/remote-devices.md)) — optional tier
 
 ---
 

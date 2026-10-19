@@ -8,7 +8,7 @@ import type {
 } from '../types';
 import { normalizeCodeChangePayload } from '../usage/code-change-payload';
 import { humanizeToolName } from './tool-messages';
-import { renderToolCall, renderToolResult } from './tool-messages';
+import { renderToolCall, renderToolInterruption, renderToolResult } from './tool-messages';
 import type { SubAgentTranscriptLive } from './sub-agent-live-status';
 import {
   STREAM_LABEL_GENERATING,
@@ -427,6 +427,7 @@ export function renderTranscriptView(
   messages: unknown[],
   live?: SubAgentTranscriptLive,
   disclosures?: TranscriptDisclosureState,
+  options: { pendingToolStatus?: 'paused' | 'stopped' } = {},
 ): void {
   body.replaceChildren();
   const toolResultMap = new Map<
@@ -529,6 +530,8 @@ export function renderTranscriptView(
               argsObj,
               stored.codeChange,
             );
+          } else if (options.pendingToolStatus) {
+            renderToolInterruption(wrap, options.pendingToolStatus);
           }
           const details = wrap.querySelector<HTMLDetailsElement>('.tool-call-details');
           if (details && disclosures) {

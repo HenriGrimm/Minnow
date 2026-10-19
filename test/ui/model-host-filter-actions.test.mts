@@ -34,7 +34,7 @@ describe('model host filter actions', () => {
 
       const search = host.querySelector('.model-host-filter-search');
       assert.ok(search);
-      assert.equal(search?.getAttribute('aria-label'), 'Search models');
+      assert.equal(search?.getAttribute('aria-label'), 'Search models or providers');
 
       const libraryToggle = host.querySelector('.model-host-filter-library-toggle');
       assert.ok(libraryToggle);
@@ -126,6 +126,7 @@ describe('model host filter actions', () => {
       );
       setModelLibraryFilter('library');
       renderModelSelectMenuRows(menu, sel);
+      menu.querySelector<HTMLButtonElement>('.model-browser-provider')?.click();
       assert.equal(menu.querySelectorAll('.model-select-option').length, 1);
       assert.equal(
         menu.querySelector('.model-select-option-label')?.textContent,

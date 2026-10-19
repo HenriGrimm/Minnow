@@ -165,10 +165,10 @@ export async function renderBrainInspector(
   closeBtn.innerHTML =
     iconHtml('close');
   closeBtn.addEventListener('click', () => closeBrainInspector(mount));
-  inner.append(closeBtn);
 
   const head = document.createElement('header');
   head.className = 'brain-inspector__head';
+  head.append(closeBtn);
 
   const kindLine = document.createElement('p');
   kindLine.className = 'brain-inspector__kind';
@@ -261,7 +261,6 @@ export async function renderBrainInspector(
   } else {
     relations.append(...groups);
   }
-  inner.append(relations);
 
   const bodyWrap = document.createElement('div');
   bodyWrap.className = 'brain-inspector__body';
@@ -272,7 +271,10 @@ export async function renderBrainInspector(
   bodyMarkdown.className = 'brain-inspector__markdown';
   renderBrainMarkdown(bodyMarkdown, page.body, navigate);
   bodyWrap.append(bodyTitle, bodyMarkdown);
-  inner.append(bodyWrap);
+  const scroll = document.createElement('div');
+  scroll.className = 'brain-inspector__scroll';
+  scroll.append(head, metrics, bodyWrap, relations);
+  inner.append(scroll);
 
   const actions = document.createElement('div');
   actions.className = 'brain-inspector__actions';

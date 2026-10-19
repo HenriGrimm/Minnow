@@ -23,7 +23,7 @@ Nothing on that page is transmitted. Minnow sends no telemetry.
 
 | Symptom | Fix |
 |---------|-----|
-| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Filesystem access** if you genuinely need full disk. |
+| Cannot read a file outside the project | By design — file and git tools stay under the workspace root. Change it in **Settings → Data & privacy → Access → Filesystem access** if you genuinely need full disk. |
 | A tool says it needs the server | That tool runs server-side. In the packaged app the server is always up; check Health & diagnostics. |
 | Web search does nothing | **Settings → Integrations → Search**. Add an API key for the default Tavily provider, or choose DuckDuckGo without a key. If you selected local SearXNG, check it under **Servers**. |
 | `browser_*` tools missing | Browser automation needs the Electron desktop app. |
@@ -52,7 +52,7 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 | Task quarantined | It exhausted its retries. Open the task chat to read what happened, fix the cause, then **Requeue**. |
 | Board never starts | Is the workspace a git repository? Boards need one. Minnow offers to set it up during board creation. |
 | Parallel tasks conflicting | Turn worktree isolation on. Auto and AFK use per-task worktrees by default. |
-| Sub-agent seems stuck | The agent activity panel shows live phase and current tool. Timeouts are per type in **Settings → Agents → Sub-agents**. |
+| Sub-agent seems stuck | Expand its parent in the menubar **Activity** dropdown to see its live phase and current tool. Timeouts are per type in **Settings → Agents → Sub-agents**. |
 | Undo control is missing | It only appears in a git repository, and only when that turn changed files. The message **⋮ → Undo turn** still does a chat-only rewind. |
 
 ## Scheduler
@@ -70,13 +70,13 @@ If the ring shows no cap, the model did not report a context length. See [Contex
 |---------|-----|
 | Speech fails | Choose **Built-in** dictation and **System voice** in **Models → Voice**. Built-in dictation needs internet for its first model download. Check microphone permission and system voice availability. Advanced local models use the optional Python runtime. |
 | Dictation hears my speakers | **Settings → General → Audio** — turn on echo cancellation |
-| No microphone on the LAN companion | Plain HTTP is not a secure context; browsers block capture there |
+| No microphone on a phone on the home network | Plain HTTP is not a secure context; browsers block capture there. Use the Anywhere address (HTTPS) |
 
 ## Updates and install
 
 | Symptom | Fix |
 |---------|-----|
-| No update pill | You may be current. **Settings → About & troubleshooting → Updates → Check for updates**. |
+| No update pill | You may be current. **Settings → General → Updates → Check for updates**. |
 | Download seems stuck | Wait for the next automatic cycle or check manually. A completed download stays ready even if a later check fails. |
 | Update does not apply | Closing the window hides to tray. Quit properly from the tray menu. |
 | SmartScreen warning | Expected for unsigned Windows builds: **More info → Run anyway**, once. |

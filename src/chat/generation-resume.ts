@@ -6,10 +6,7 @@ import { setStatus } from '../ui/status';
 import { isResumeGateHeld } from './resume-gate';
 
 /** Read the composer model picker (empty when none selected). */
-function getSelectedModelIdFromDom(): string {
-  const el = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  return el?.value?.trim() ?? '';
-}
+
 
 /** Chats that still have a persisted backend generation id (boot resume candidates). */
 export function listChatsWithGenerationId(chats: Chat[]): Chat[] {
@@ -52,7 +49,7 @@ export async function bootGenerationResumeForChat(
     return;
   }
 
-  const modelId = getSelectedModelIdFromDom();
+  const modelId = chat.modelId?.trim() || '';
   if (!modelId) {
     setStatus('err', 'Select a model to resume this reply');
     return;

@@ -410,6 +410,8 @@ function foldRun(raw: Record<string, unknown>): RunState | null {
     nudged: raw.nudged === true,
     parentTurnId: typeof raw.parentTurnId === 'string' ? raw.parentTurnId : null,
     parentToolCallId: typeof raw.parentToolCallId === 'string' ? raw.parentToolCallId : null,
+    resolvedModel: raw.resolvedModel as RunState['resolvedModel'],
+    modelSource: typeof raw.modelSource === 'string' ? raw.modelSource : undefined,
     model:
       raw.model && typeof raw.model === 'object' && !Array.isArray(raw.model)
         ? (raw.model as { providerId: string; id: string })
@@ -437,5 +439,7 @@ function runToRaw(run: RunState): Record<string, unknown> {
     parentTurnId: run.parentTurnId,
     parentToolCallId: run.parentToolCallId,
     model: run.model,
+    modelSource: run.modelSource,
+    resolvedModel: run.resolvedModel,
   };
 }

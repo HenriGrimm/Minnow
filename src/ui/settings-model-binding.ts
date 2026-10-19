@@ -1,5 +1,8 @@
 import { isServerStorageMode } from '../config/storage-mode';
 import { formatModelLabel } from '../lib/format-model-label';
+import { encodeModelSelectKey } from '../lib/model-select-key';
+import { isKnownLocalProviderId, isLocalProviderBaseUrl } from '../providers/provider-host';
+import { modelCache } from '../app-state';
 import {
   omitLocalRuntimeCatalogModels,
   fetchLibraryModelSelectMerge,
@@ -111,6 +114,8 @@ async function fillLibraryModelSelect(
   select.innerHTML = '<option value="">Loading models…</option>';
   try {
     const merge = await fetchLibraryModelSelectMerge();
+    for (const { key, row } of merge?.cacheEntries ?? []) modelCache.set(key,
+      { ...row, capabilities: modelCache.get(key)?.capabilities ?? row.capabilities });
     select.replaceChildren();
     if (includeEmpty) {
       select.appendChild(empty);
@@ -164,86 +169,105 @@ export async function fillModelSelect(
   selectedModelId: string,
   options?: FillModelSelectOptions,
 ): Promise<void> {
-  const includeEmpty = options?.includeEmptyOption !== false;
-  select.replaceChildren();
-
-  const empty = document.createElement('option');
-  empty.value = '';
-  empty.textContent = MODEL_SELECT_EMPTY_LABEL;
-
-  if (!providerId) {
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select a provider';
-    select.appendChild(includeEmpty ? empty : placeholder);
-    select.disabled = true;
-    return;
-  }
-
-  if (providerId === LIBRARY_MODEL_PROVIDER_ID) {
-    await fillLibraryModelSelect(select, selectedModelId, includeEmpty);
-    return;
-  }
-
-  const { providers } = await listProviders();
-  const provider = providers.find((p) => p.id === providerId);
-  if (!provider) {
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Unknown provider';
-    select.appendChild(includeEmpty ? empty : placeholder);
-    select.disabled = true;
-    return;
-  }
-
-  select.disabled = true;
-  select.innerHTML = '<option value="">Loading models…</option>';
+  let resolvedProvider: ProviderPublic | undefined;
   try {
-    const controller = new AbortController();
-    const models = await fetchModelsForProvider(provider, controller.signal);
+    const includeEmpty = options?.includeEmptyOption !== false;
     select.replaceChildren();
-    if (includeEmpty) {
-      select.appendChild(empty);
-    }
-    let added = 0;
-    for (const m of models) {
-      if (m.type !== 'llm' && m.type !== 'vlm') continue;
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      const { optionText, title } = formatModelLabel({
-        id: m.id,
-        quantization: m.quantization,
-        state: m.state,
-      });
-      opt.textContent = optionText;
-      opt.title = title;
-      select.appendChild(opt);
-      added += 1;
-    }
-    if (!includeEmpty && added === 0) {
+
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = MODEL_SELECT_EMPTY_LABEL;
+
+    if (!providerId) {
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = 'No models found';
-      select.appendChild(placeholder);
+      placeholder.textContent = 'Select a provider';
+      select.appendChild(includeEmpty ? empty : placeholder);
       select.disabled = true;
       return;
     }
-    select.value = selectedModelId || '';
-    if (!select.value && !includeEmpty && select.options.length > 0) {
-      select.selectedIndex = 0;
+
+    if (providerId === LIBRARY_MODEL_PROVIDER_ID) {
+      await fillLibraryModelSelect(select, selectedModelId, includeEmpty);
+      return;
     }
-    select.disabled = false;
-  } catch {
-    select.replaceChildren();
-    if (includeEmpty) {
-      select.appendChild(empty);
-    } else {
+
+    const { providers } = await listProviders();
+    const provider = providers.find((p) => p.id === providerId);
+    resolvedProvider = provider;
+    if (!provider) {
       const placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = 'Could not load models';
-      select.appendChild(placeholder);
+      placeholder.textContent = 'Unknown provider';
+      select.appendChild(includeEmpty ? empty : placeholder);
+      select.disabled = true;
+      return;
     }
-    select.disabled = !includeEmpty;
+
+    select.disabled = true;
+    select.innerHTML = '<option value="">Loading models…</option>';
+    try {
+      const controller = new AbortController();
+      const models = await fetchModelsForProvider(provider, controller.signal);
+      const { catalogCapabilitiesFromRow, mergeModelCapabilities } = await import('../providers/model-capabilities');
+      select.replaceChildren();
+      if (includeEmpty) {
+        select.appendChild(empty);
+      }
+      let added = 0;
+      for (const m of models) {
+        if (m.type !== 'llm' && m.type !== 'vlm') continue;
+        const key = encodeModelSelectKey(providerId, m.id);
+        modelCache.set(key, { ...m, capabilities: mergeModelCapabilities(m,
+          modelCache.get(key)?.capabilities ?? catalogCapabilitiesFromRow(m, provider.apiKind)) });
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        const { optionText, title } = formatModelLabel({
+          id: m.id,
+          quantization: m.quantization,
+          state: m.state,
+        });
+        opt.textContent = optionText;
+        opt.title = title;
+        select.appendChild(opt);
+        added += 1;
+      }
+      if (!includeEmpty && added === 0) {
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'No models found';
+        select.appendChild(placeholder);
+        select.disabled = true;
+        return;
+      }
+      select.value = selectedModelId || '';
+      if (!select.value && !includeEmpty && select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
+      select.disabled = false;
+    } catch {
+      select.replaceChildren();
+      if (includeEmpty) {
+        select.appendChild(empty);
+      } else {
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Could not load models';
+        select.appendChild(placeholder);
+      }
+      select.disabled = !includeEmpty;
+    }
+  } finally {
+    const provider = resolvedProvider;
+    for (const option of select.options) {
+      option.dataset.providerId = providerId;
+      option.dataset.providerLabel = providerId === LIBRARY_MODEL_PROVIDER_ID ? LIBRARY_MODEL_OPTGROUP_LABEL : provider?.label || providerId;
+      option.dataset.providerHost = isKnownLocalProviderId(providerId) || (provider?.baseUrl && isLocalProviderBaseUrl(provider.baseUrl)) ? 'local' : 'cloud';
+      if (!option.value && options?.includeEmptyOption !== false) option.dataset.modelSelectReset = 'true';
+    }
+    const { mountAuxiliaryModelSelectCombobox, syncAuxiliaryModelSelectCombobox } = await import('./model-select-picker');
+    mountAuxiliaryModelSelectCombobox(select);
+    syncAuxiliaryModelSelectCombobox(select);
   }
 }
 

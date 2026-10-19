@@ -25,6 +25,8 @@ Minnow is distributed under the **GNU Affero General Public License v3** (AGPL-3
 | **node-pty** / **@lydell/node-pty** | Interactive terminals | MIT | https://github.com/microsoft/node-pty |
 | **@vscode/ripgrep** | Fast repo search | MIT | https://github.com/microsoft/vscode-ripgrep |
 | Language servers (typescript-language-server, pyright, yaml-language-server, vscode-langservers-extracted, etc.) | Editor intelligence | MIT / Apache-2.0 | respective npm packages |
+| **qrcode** | Connect a phone QR codes | MIT | https://github.com/soldair/node-qrcode |
+| **Tailscale** (`tailscale.com/tsnet`, in `minnow-tailnet`) | Built-in Anywhere access for phones | BSD-3-Clause | https://github.com/tailscale/tailscale |
 
 Bundled language-server and model-weight downloads may carry additional licenses in their own packages or downloaded artifacts.
 

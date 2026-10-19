@@ -32,11 +32,21 @@ export function resolveSettingsSectionNavigation(
   if (sectionId === 'board-testing' || sectionId === 'capability-matrix') {
     return { sectionId: 'diagnostics' };
   }
+  if (sectionId === 'data') {
+    return {
+      sectionId: searchKey && /^general\.(filesystem|shellSandbox)(\.|$)/.test(searchKey) ? 'access' : 'backups',
+      searchKey,
+    };
+  }
   if (sectionId === 'general' && searchKey) {
     if (searchKey === 'general.desktop.zoom') return { sectionId: 'appearance', searchKey };
     if (searchKey.startsWith('general.chat.terminal')) return { sectionId: 'terminal', searchKey };
-    if (/^general\.(backup|filesystem|shellSandbox|network)(\.|$)/.test(searchKey)) {
-      return { sectionId: 'data', searchKey };
+    if (/^general\.network(\.|$)/.test(searchKey)) return { sectionId: 'devices' };
+    if (/^general\.backup(\.|$)/.test(searchKey)) {
+      return { sectionId: 'backups', searchKey };
+    }
+    if (/^general\.(filesystem|shellSandbox)(\.|$)/.test(searchKey)) {
+      return { sectionId: 'access', searchKey };
     }
   }
   const resolvedId = LEGACY_SECTION_ALIASES[sectionId] ?? sectionId;

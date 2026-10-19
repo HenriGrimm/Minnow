@@ -11,6 +11,10 @@ createInterface({ input: process.stdin }).on('line', async line => {
   const row = JSON.parse(line), p = row.params ?? {};
   if (process.env.ACP_CALL_LOG) fs.appendFileSync(process.env.ACP_CALL_LOG, `${row.method ?? 'response'}\n`);
   const respond = result => send({ id: row.id, result });
+  if (['session/new', 'session/load'].includes(row.method) && process.env.ACP_EXPECT_MCP
+    && JSON.stringify(p.mcpServers) !== process.env.ACP_EXPECT_MCP) {
+    send({ id: row.id, error: { code: -32602, message: 'Missing session MCP configuration' } }); return;
+  }
   if (row.method === 'initialize') {
     if (p.clientCapabilities.fs.readTextFile || p.clientCapabilities.fs.writeTextFile || p.clientCapabilities.terminal) process.exit(2);
     respond({ protocolVersion: 1, agentCapabilities: { loadSession: process.env.ACP_UNAVAILABLE !== '1' } });

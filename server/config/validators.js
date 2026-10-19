@@ -3455,6 +3455,11 @@ export function normalizeSubAgentsConfig(body) {
       ? { ...DEFAULT_SUB_AGENTS, .../** @type {Record<string, unknown>} */ (body) }
       : { ...DEFAULT_SUB_AGENTS };
 
+  if (base.defaultModel != null) {
+    const binding = base.defaultModel;
+    if (!binding || typeof binding.providerId !== 'string' || !binding.providerId.trim() || typeof binding.modelId !== 'string' || !binding.modelId.trim()) throw new Error('Sub-agent routing requires a provider and model');
+    base.defaultModel = { providerId: binding.providerId.trim(), modelId: binding.modelId.trim() };
+  }
   if (typeof base.enabled !== 'boolean') base.enabled = true;
   if (typeof base.globalMaxConcurrent !== 'number' || base.globalMaxConcurrent < 1) {
     base.globalMaxConcurrent = 3;

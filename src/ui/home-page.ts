@@ -1,8 +1,9 @@
+import { captureLaunchModel, launchModelLabel } from '../models/launch-selection';
 import '../styles/home.css';
 import '../styles/issues.css';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
-import { launchApp, navigateToCodeOrchestrate } from '../os/router';
-import { getWorkspaceLabel, getWorkspacePath, loadWorkspaceFromServer } from '../state/workspace';
+import { launchApp } from '../os/router';
+import { getWorkspacePath, loadWorkspaceFromServer } from '../state/workspace';
 import { ensureSessionsReady, sessionState } from '../state/sessions';
 import { collectIssues, addIssue, updateIssue, loadIssuesFromStorage, refreshIssuesFromStorage, isIssuesStoreLoaded, requireIssueStatusForRole, appendIssueLinks, saveIssuesNow, updateIssueAgentRun, getIssueLabelSwatch } from '../state/issues-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
@@ -50,11 +51,7 @@ function issues(): IssueCard[] { return isIssuesStoreLoaded() ? collectIssues({ 
 function current(version: number, workspace: string): boolean { return version === generation && workspacePathsEqual(getWorkspacePath(), workspace) && getForegroundAppId() === 'home'; }
 function report(error: unknown): void { showToast(error instanceof Error ? error.message : String(error), 'error'); }
 function binding(): { modelId: string; providerId?: string } { return sendModel ? decodeModelSelectKey(sendModel) ?? { modelId: sendModel } : readDefaultModelBinding(); }
-function modelLabel(): string {
-  if (!sendModel) return readDefaultModelBinding().modelId || 'Model router default';
-  const options = (document.getElementById('modelSelect') as HTMLSelectElement | null)?.options;
-  return [...options ?? []].find(o => o.value === sendModel)?.label || binding().modelId;
-}
+function modelLabel(): string { return launchModelLabel(sendModel); }
 function selectable(issue: IssueCard): boolean { return !issue.agent?.home && !issue.agent?.chatId && ['triage', 'ready'].includes(flowColumn(issue, getIssuesTaxonomySync()) ?? ''); }
 function toggleSelection(issue: IssueCard, shift = false): void {
   if (!selectable(issue)) return;
@@ -93,9 +90,7 @@ function renderSelection(): void {
   actions.append(button('Clear', () => { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); }), options, send); selectionHost.append(count, segments, summary, actions);
 }
 function openSendOptions(anchor: HTMLElement): void {
-  const catalog = document.getElementById('modelSelect') as HTMLSelectElement | null;
-  const items: MenuItem[] = [{ kind: 'heading', label: 'Model' }, { id: 'default', label: 'Model router default', checked: !sendModel, onSelect: () => { sendModel = ''; renderSelection(); } },
-    ...[...catalog?.options ?? []].filter(o => o.value && !o.disabled).map(o => ({ id: o.value, label: o.label, checked: sendModel === o.value, onSelect: () => { sendModel = o.value; renderSelection(); } })),
+  const items: MenuItem[] = [{ id: 'model', label: `Model: ${modelLabel()}`, onSelect: () => { void import('./launch-model-picker').then(({ openLaunchModelPicker }) => openLaunchModelPicker(anchor, sendModel, (value) => { sendModel = value; renderSelection(); })); } },
     { kind: 'separator' }, { kind: 'heading', label: 'Mode' }, ...(['build', 'plan'] as const).map(mode => ({ id: mode, label: mode === 'build' ? 'Build' : 'Plan first', hint: mode === 'plan' ? 'Approve before it edits' : undefined, checked: mode === sendMode, onSelect: () => { sendMode = mode; renderSelection(); } })),
   ];
   const chats = (sessionState?.chats ?? []).filter(c => c.worktreeRoot && workspacePathsEqual(c.workspacePath, mountedWorkspace) && listMainTurnActivity().some(t => t.chatId === c.id));
@@ -109,11 +104,13 @@ async function sendSelection(single?: IssueCard, mode = sendMode, instructions =
   const groups = single ? [[single]] : selectedGroups(); if (!groups.length) return;
   sending = true; renderSelection(); const version = generation, workspace = mountedWorkspace;
   try {
+    const selectedBinding = await captureLaunchModel(sendModel);
     const ids: string[] = [];
-    for (const group of groups) ids.push(...await sendHomeIssues([group], { ...binding(), mode, baseBranch, instructions, startNow: group.some(i => startNow.has(i.id)) }));
+    for (const group of groups) ids.push(...await sendHomeIssues([group], { ...selectedBinding, mode, baseBranch, instructions, startNow: group.some(i => startNow.has(i.id)) }));
     if (!current(version, workspace)) return;
     for (const id of ids) selected.delete(id);
     if (ids[0]) { focusedId = ids[0]; dockOpen = true; }
+    sendModel = '';
     showToast(`${ids.length} issue${ids.length === 1 ? '' : 's'} sent to agent chats`, 'success');
   } catch (error) { if (current(version, workspace)) report(error); }
   finally { sending = false; if (current(version, workspace)) { renderSelection(); renderBoard(); renderDock(); } }
@@ -189,7 +186,7 @@ function renderBoard(): void {
     return;
   }
   // Keep the same form and draft when the first issue brings back the flow.
-  if (goalForm.parentElement !== page.querySelector('.home-header')) page.querySelector('.home-header-actions')!.before(goalForm);
+  if (goalForm.parentElement !== page) page.prepend(goalForm);
   const active = document.activeElement as HTMLElement | null;
   const restoreId = boardHost.contains(active) ? active?.closest<HTMLElement>('[data-issue-id]')?.dataset.issueId : undefined;
   const scrolls = [...boardHost.querySelectorAll('.home-column-cards')].map(n => n.scrollTop); boardHost.replaceChildren();
@@ -290,7 +287,6 @@ export async function openHome(): Promise<void> {
   mountedWorkspace = workspace; boardSignature = ''; loaded = false;
   const root = document.getElementById('homeView')!; root.classList.add('is-open'); root.replaceChildren();
   page = el('div', '', 'home-page'); page.tabIndex = -1; page.setAttribute('role', 'region'); page.setAttribute('aria-label', 'Project dashboard'); page.onkeydown = event => { if (event.defaultPrevented || event.key !== 'Escape') return; if (selected.size) { selected.clear(); startNow.clear(); renderSelection(); renderBoard(); } else if (dockOpen) { dockOpen = false; renderDock(); renderBoard(); notifyAskQuestionDisplayContextChanged(); document.querySelector<HTMLElement>(`[data-issue-id="${CSS.escape(focusedId)}"]`)?.focus(); } };
-  const header = el('header', '', 'home-header'), title = el('h1', getWorkspaceLabel() || 'Your project'); title.title = workspace; header.append(title);
   const goal = goalForm = el('form', '', 'home-goal-bar'), input = el('input'); input.value = goalText; input.placeholder = 'Describe a goal, paste an error, or capture an issue…'; input.setAttribute('aria-label', 'Project goal or issue'); input.oninput = () => { goalText = input.value; capture.disabled = plan.disabled = !input.value.trim() || !workspace || Boolean(planAbort); };
   const capture = button('Add issue', () => { if (!input.value.trim() || !loaded || planAbort) return; const text = input.value.trim(), issue = addIssue({ title: text.split(/\r?\n/)[0].slice(0, 240), description: text, status: requireIssueStatusForRole('triage'), workspacePath: workspace }); input.value = goalText = ''; capture.disabled = plan.disabled = true; showToast(`${issue.id} captured in Triage`, 'success'); renderBoard(); });
   const plan = button('Plan a goal', () => goal.requestSubmit(), true); capture.disabled = plan.disabled = !input.value.trim() || !workspace; goal.append(createIcon('sparkles'), input, plan, capture);
@@ -299,13 +295,12 @@ export async function openHome(): Promise<void> {
     const abort = new AbortController(); planAbort = abort; plan.disabled = capture.disabled = true; plan.querySelector('span')!.textContent = 'Planning…';
     void planHomeGoal(text, [...new Set([...issues().flatMap(i => i.codeRefs?.map(r => r.path) ?? []), ...listRecentViewerFiles(workspace).map(f => f.path)])], abort.signal).then(tasks => { if (!current(version, workspace)) return; plannedGoal = text; draftTasks = tasks; renderBoard(); }).catch(error => { if (!abort.signal.aborted && current(version, workspace)) report(error); }).finally(() => { if (planAbort === abort) planAbort = undefined; if (current(version, workspace)) { capture.disabled = plan.disabled = !input.value.trim(); plan.querySelector('span')!.textContent = 'Plan a goal'; } });
   };
-  header.append(goal); const actions = el('div', '', 'home-header-actions'); actions.append(button('New board', navigateToCodeOrchestrate), button('Open Code', () => launchApp('code'), true)); header.append(actions);
   selectionHost = el('div', '', 'home-selection-bar'); selectionHost.hidden = true; errorHost = el('div', '', 'home-refresh-error'); errorHost.hidden = true; errorHost.setAttribute('role', 'status');
   boardHost = el('div', '', 'home-flow-board'); boardHost.setAttribute('role', 'group'); boardHost.setAttribute('aria-label', 'Project issue flow');
   const dock = el('section', '', 'home-dock'); dock.setAttribute('aria-label', 'Project context');
   const resize = el('div', '', 'home-dock-resize'); resize.tabIndex = 0; resize.setAttribute('role', 'separator'); resize.setAttribute('aria-label', 'Resize issue details'); resize.setAttribute('aria-orientation', 'horizontal'); resize.setAttribute('aria-valuemin', '30'); resize.setAttribute('aria-valuemax', '90'); resize.setAttribute('aria-valuenow', String(Math.round(dockHeight))); mountDockResize(resize);
   tabsHost = el('div', '', 'home-dock-collapsed'); dockHost = el('div', '', 'home-dock-content'); dockHost.id = 'home-dock-content'; dockHost.setAttribute('role', 'region'); dock.append(resize, tabsHost, dockHost);
-  page.append(header, selectionHost, errorHost, boardHost, dock); root.append(page); renderSelection(); renderBoard(); renderDock();
+  page.append(goal, selectionHost, errorHost, boardHost, dock); root.append(page); renderSelection(); renderBoard(); renderDock();
   if (workspace) { void refresh(); liveTimer = setInterval(() => { if (current(version, workspace) && !document.hidden) { renderBoard(); dockUpdate?.(); } }, 1000); }
   else { loaded = true; showRefreshError('Choose a workspace to capture issues and start agent work.'); errorHost.append(button('Choose project', () => { void import('../os/workspace-gate').then(m => m.openWorkspaceGate({ switch: true })); })); renderBoard(); }
 }

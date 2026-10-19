@@ -1,3 +1,4 @@
+import { subscribeModelSelection } from '../models/selection';
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import '../styles/orchestrator-boards.css';
 import '../styles/transcript-view.css';
@@ -78,6 +79,7 @@ import { gitBranches, type GitOpResult } from '../state/git-api';
 import { getActiveChat } from '../state/sessions';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 import { boardUsage } from './board-usage';
+import { attemptInterruption } from './attempt-status';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -1397,6 +1399,9 @@ function patchLiveUi(): void {
   const started = client.getAttemptStartedAt();
   const now = Date.now();
   for (const [taskId, activity] of live) {
+    const task = boardState?.tasks.get(taskId);
+    const attempt = task ? runningAttempt(task) : null;
+    if (!boardState || !attempt || attempt.attemptId !== activity.attemptId || attemptInterruption(boardState, attempt)) continue;
     const card = surface.root.querySelector<HTMLElement>(
       `.ov2-task[data-task-id="${CSS.escape(taskId)}"]`,
     );
@@ -1434,7 +1439,10 @@ function stopElapsedTicker(): void {
  * their own start time and only their text changes.
  */
 function syncElapsedTicker(state: BoardState): void {
-  const anyRunning = [...state.tasks.values()].some((task) => runningAttempt(task) !== null);
+  const anyRunning = [...state.tasks.values()].some((task) => {
+    const attempt = runningAttempt(task);
+    return attempt && !attemptInterruption(state, attempt);
+  });
   if (!anyRunning || !surface) {
     stopElapsedTicker();
     return;
@@ -1969,6 +1977,7 @@ function watchModelSelectForSeed(): void {
     void seedBoardModelNow(boardId, state);
   };
 
+  const unsubscribe = subscribeModelSelection(retry);
   sel.addEventListener('change', retry);
   const observer = new MutationObserver(retry);
   observer.observe(sel, {
@@ -1978,6 +1987,7 @@ function watchModelSelectForSeed(): void {
     attributeFilter: ['value'],
   });
   stopModelSelectSeedWatch = () => {
+    unsubscribe();
     sel.removeEventListener('change', retry);
     observer.disconnect();
   };

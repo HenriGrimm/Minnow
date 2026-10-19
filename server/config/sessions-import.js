@@ -72,8 +72,9 @@ export function messageTextContent(message) {
  * @param {Record<string, any>} chat
  * @param {number} sortIndex
  * @param {{ messageCount: number, lastMessagePreview: string, historyDigest: string }} derived
+ * @param {{ keepPriorMetaKeys?: readonly string[] }} [opts] meta keys to carry over when `chat` omits them
  */
-export function upsertChatRow(db, chat, sortIndex, derived) {
+export function upsertChatRow(db, chat, sortIndex, derived, opts = {}) {
   /** @type {Record<string, unknown>} */
   const meta = {};
   for (const [key, value] of Object.entries(chat)) {
@@ -83,6 +84,9 @@ export function upsertChatRow(db, chat, sortIndex, derived) {
   const priorRow = db.prepare('SELECT meta_json FROM chats WHERE id = ?').get(String(chat.id ?? ''));
   if (priorRow) {
     const prior = JSON.parse(priorRow.meta_json || '{}');
+    for (const key of opts.keepPriorMetaKeys ?? []) {
+      if (meta[key] === undefined && prior[key] !== undefined) meta[key] = prior[key];
+    }
     if (prior.superPlanRunId === meta.superPlanRunId && (prior.superPlanView?.seq ?? 0) > (meta.superPlanView?.seq ?? 0)) meta.superPlanView = prior.superPlanView;
   }
 

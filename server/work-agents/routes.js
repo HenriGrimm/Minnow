@@ -89,8 +89,7 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
       assertValidWorkAgentId(agentId);
       const body = await readJsonBody(req);
       const patch = {};
-      if ('providerId' in body) patch.providerId = body.providerId;
-      if ('modelId' in body) patch.modelId = body.modelId;
+
       if ('promptOverride' in body) patch.promptOverride = body.promptOverride;
       if ('disabled' in body) patch.disabled = body.disabled;
       if ('maxInputTokens' in body) patch.maxInputTokens = body.maxInputTokens;

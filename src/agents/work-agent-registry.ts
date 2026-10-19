@@ -100,13 +100,12 @@ export function mergeWorkAgentDefinition(
   builtin: WorkAgentDefinition,
   override: WorkAgentUserOverride | undefined,
 ): WorkAgentDefinition {
-  if (!override) return { ...builtin };
+  if (!override) return { ...builtin, providerId: null, modelId: null };
 
   return {
     ...builtin,
-    providerId:
-      override.providerId !== undefined ? override.providerId : builtin.providerId,
-    modelId: override.modelId !== undefined ? override.modelId : builtin.modelId,
+    providerId: null,
+    modelId: null,
     disabled: override.disabled !== undefined ? override.disabled : builtin.disabled,
     maxInputTokens:
       override.maxInputTokens !== undefined
@@ -167,6 +166,8 @@ export function mergeUserWorkAgentOverride(
   if (patch.contextEnforcementPolicy === null) {
     delete next.contextEnforcementPolicy;
   }
+  delete next.providerId;
+  delete next.modelId;
   userOverrides[agentId] = next;
 }
 

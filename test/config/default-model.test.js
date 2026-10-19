@@ -13,7 +13,7 @@ test('default model survives a server restart and is independent of workspace he
   const stop = () => new Promise((resolve) => server.close(resolve));
   try {
     let base = await start();
-    assert.deepEqual((await httpRequest(base, 'GET', '/api/config/default-model')).json, { value: null });
+    assert.deepEqual((await httpRequest(base, 'GET', '/api/config/default-model')).json, { value: null, revision: 0 });
     const value = 'provider\u001fchosen-model';
     assert.equal((await httpRequest(base, 'PUT', '/api/config/default-model', { value })).status, 200);
     await stop();
@@ -21,10 +21,10 @@ test('default model survives a server restart and is independent of workspace he
     base = await start();
     for (const workspace of ['C:/work/one', 'C:/work/two']) {
       const response = await fetch(`${base}/api/config/default-model`, { headers: { 'X-Minnow-Workspace': workspace } });
-      assert.deepEqual(await response.json(), { value });
+      assert.deepEqual(await response.json(), { value, revision: 1 });
     }
     assert.equal((await httpRequest(base, 'PUT', '/api/config/default-model', { value: {} })).status, 400);
-    assert.deepEqual((await httpRequest(base, 'GET', '/api/config/default-model')).json, { value });
+    assert.deepEqual((await httpRequest(base, 'GET', '/api/config/default-model')).json, { value, revision: 1 });
   } finally {
     await stop();
     await rmTestHome(home);

@@ -114,10 +114,13 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
 }
 
 .brain-page-header.brain-overlay-surface {
-  margin: 8px 10px 0;
-  padding: 9px 14px;
+  margin: 0;
+  padding: 12px 16px;
   min-height: 0;
-  border: 1px solid var(--mn-border);
+  border: none;
+  border-bottom: 1px solid var(--mn-border);
+  border-radius: 0;
+  box-shadow: none;
   border-radius: var(--radius-md);
   background: var(--mn-surface-1);
   box-shadow: var(--shadow-card);

@@ -68,12 +68,12 @@ afterEach(async () => {
 });
 
 describe('createChatWithMode workspace option', () => {
-  test('binds an explicit workspace and skips ephemeral reuse', () => {
+  test('binds an explicit workspace and skips ephemeral reuse', async () => {
     setup();
     setWorkspaceFromServer(workspaceInfo(WS_A));
     const active = seedActiveChat(WS_A);
 
-    const result = createChatWithMode({ modeId: 'build', workspacePath: WS_B });
+    const result = await createChatWithMode({ modeId: 'build', workspacePath: WS_B });
 
     assert.equal(result.ok, true);
     assert.notEqual(result.chatId, active.id);
@@ -82,12 +82,12 @@ describe('createChatWithMode workspace option', () => {
     assert.equal(created.workspacePath, WS_B);
   });
 
-  test('keeps the current workspace when no option is passed', () => {
+  test('keeps the current workspace when no option is passed', async () => {
     setup();
     setWorkspaceFromServer(workspaceInfo(WS_A));
     seedActiveChat(WS_A);
 
-    const result = createChatWithMode({ modeId: 'plan' });
+    const result = await createChatWithMode({ modeId: 'plan' });
 
     assert.equal(result.ok, true);
     const created = result.chatId ? findChatById(result.chatId) : null;
@@ -96,7 +96,7 @@ describe('createChatWithMode workspace option', () => {
     assert.equal(created.modeId, 'plan');
   });
 
-  test('a follow-up always creates a chat with the source model binding', () => {
+  test('a follow-up always creates a chat with the source model binding', async () => {
     setup();
     setWorkspaceFromServer(workspaceInfo(WS_A));
     const active = createEmptyChatObject('current-model', WS_A);
@@ -107,7 +107,7 @@ describe('createChatWithMode workspace option', () => {
       chats: [active],
     });
 
-    const result = createChatWithMode({
+    const result = await createChatWithMode({
       modeId: 'build',
       forceNewChat: true,
       modelId: 'source-model',

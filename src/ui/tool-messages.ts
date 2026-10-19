@@ -208,7 +208,7 @@ function normalizeArgsForPresentation(argsObj: unknown): unknown {
 }
 
 /** Accessible one-line description of the collapsed row. */
-function rowAriaLabel(row: ToolRow, status: 'running' | 'failed' | 'succeeded'): string {
+function rowAriaLabel(row: ToolRow, status: 'running' | 'failed' | 'succeeded' | 'paused' | 'stopped'): string {
   const parts = [row.action];
   if (row.target) parts.push(row.target);
   if (row.outcome) parts.push(row.outcome);
@@ -257,7 +257,7 @@ function paintTarget(el: HTMLElement, row: ToolRow): void {
 function paintRow(
   wrap: HTMLElement,
   row: ToolRow,
-  status: 'running' | 'failed' | 'succeeded',
+  status: 'running' | 'failed' | 'succeeded' | 'paused' | 'stopped',
 ): void {
   const summary = wrap.querySelector<HTMLElement>('.tool-call-summary');
   const action = wrap.querySelector<HTMLElement>('.tool-call-action');
@@ -766,6 +766,21 @@ function tryParseArgsFromToolWrap(wrap: HTMLElement): unknown {
   } catch {
     return undefined;
   }
+}
+
+/** Display an unfinished call without implying a result or keeping its spinner alive. */
+export function renderToolInterruption(wrap: HTMLElement, status: 'paused' | 'stopped'): void {
+  const name = wrap.dataset.toolName || 'tool';
+  wrap.removeAttribute('aria-busy');
+  wrap.querySelector('.tool-call-summary')?.classList.remove('tool-call-summary--running');
+  wrap.querySelector('.tool-call-status')?.replaceChildren(
+    createIcon(getToolIcon(name), { className: 'tool-call-icon', size: 15 }),
+  );
+  paintRow(wrap, {
+    ...buildToolRow(name, argsRecordFromUnknown(tryParseArgsFromToolWrap(wrap)), 'running'),
+    outcome: status === 'paused' ? 'Paused' : 'Stopped',
+  }, status);
+  syncToolCallBatchForRow(wrap);
 }
 
 /** Mark a tool-call row complete: swap the spinner for the tool glyph, fill the outcome zone, and build the expanded body. */

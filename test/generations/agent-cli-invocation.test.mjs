@@ -209,6 +209,22 @@ test('Cursor includes system prompt and partial output controls', async () => {
   assert.ok(result.args.includes('--trust'));
 });
 
+test('Cursor ACP retains the macOS account home while isolating config, data and permissions', async () => {
+  const work = path.join(tempDir, 'acp', 'work');
+  await fs.mkdir(work, { recursive: true });
+  const result = await prepareAgentCliInvocation({ ...common, tempDir: work, kind: 'cursor', acp: true });
+  try {
+    assert.equal(result.env.HOME, process.platform === 'darwin' ? process.env.HOME : work);
+    assert.equal(result.env.CURSOR_CONFIG_DIR, path.join(path.dirname(work), 'cursor-config'));
+    assert.equal(result.env.CURSOR_DATA_DIR, path.join(path.dirname(work), 'cursor-data'));
+    assert.deepEqual(result.mcpServers, [{ name: 'minnow', command: common.bridgeConfig.command, args: common.bridgeConfig.args,
+      env: Object.entries(common.bridgeConfig.env).map(([name, value]) => ({ name, value })) }]);
+    const config = JSON.parse(await fs.readFile(path.join(result.env.CURSOR_CONFIG_DIR, 'cli-config.json'), 'utf8'));
+    assert.deepEqual(config.permissions.allow, ['Mcp(minnow:*)']);
+    assert.ok(config.permissions.deny.includes('Shell(*)'));
+  } finally { await result.cleanup?.(); }
+});
+
 test('rejects NUL bytes in prompt', async () => {
   await assert.rejects(
     prepareAgentCliInvocation({ ...common, kind: 'claude', prompt: 'bad\0prompt' }),

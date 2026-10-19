@@ -58,26 +58,25 @@ Using a cloud provider, including a cloud-connected agent CLI, sends prompts and
 
 Open **Models → CLIs**, scan for installed **Claude Code**, **Codex**, or **Cursor CLI**, then expand a row and enable it. If it is missing, **Install** opens the vendor installer in Minnow Terminal, and **Update** runs the CLI's own updater there. **Sign in** opens an inline connection flow: approve access in your browser and Minnow verifies the login automatically. **Verify** checks an existing login.
 
-The CLI's models appear in the normal picker and can be assigned to chats and work agents. Minnow applies its mode restrictions and tool permissions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
+The CLI's models appear in the normal picker and can be selected in chats and configured for supporting tasks. Minnow applies its mode restrictions and tool permissions to their tool calls. Vendor account requirements, model access, and usage limits apply. Background helper tasks are off by default for CLI connections.
 
 See [Models → CLIs](../apps/models.md#clis) for supported CLI versions, conversation persistence, and usage displays.
 
 ## Choosing the model for a turn
 
-There are two different pickers, and confusing them causes a lot of "why is it using the wrong model?" confusion:
+Choose the model in the composer, or press **Ctrl+M / Cmd+M**. The choice applies to this chat and becomes the starting model for new chats across projects and restarts. Opening an older chat keeps its own model and does not change that remembered choice.
 
-| Control | Scope |
-|---------|-------|
-| **Menubar model chip** | The global default — what new chats start with |
-| **Composer picker / Ctrl+M / Cmd+M** | This chat only |
+Issues and Dashboard show a model choice before starting chats. They initially use the last composer-selected model; choosing another model there applies to that dispatch. Boards keep their own model picker.
 
-The list is whatever your enabled providers report on refresh. If it is empty, the provider is not reachable or has no model loaded.
+The top-bar **Models** icon opens routing controls and links to **Providers & connections**, **Model pools**, and **Manage models…**. Local runtimes expose **Load / Unload** in the composer picker for the selected model.
 
-Local runtimes usually expose **Load** / **Unload** controls in the composer picker, which act on the model that chat is bound to — not the global default.
+The model picker keeps **Favorites** above the provider browser. Hover a provider to preview its models, or click it to keep the group open. The star beside a model adds or removes it from Favorites; the same model on another connection remains a separate choice. Search finds models and providers even when their groups are collapsed. **Smart order** puts providers with favorites first, then your most used providers; **Name A–Z** and **Local first** offer other orders. Favorites and the sort preference are saved on this device.
+
+Use **↑ / ↓** to browse providers, **→** to enter their models, **←** to return, and **Enter** to select. The **Reasoning** bar shows the levels supported by the selected model.
 
 ## Routing: which model does what
 
-**Models → Routing** binds models to *roles* instead of making one model do everything. The shared **Utility tasks** binding covers chat titles, prompt and issue expansion, and git commit messages. Leave it unset to use each task's current composer, top-bar, or editor model. Evaluation, research, planning, review, and board work keep their own bindings.
+**Models → Routing** binds models to *roles* instead of making one model do everything. The shared **Utility tasks** binding covers chat titles, prompt and issue expansion, and git commit messages. Leave it unset to follow each task's originating model. Sub-agents inherit their parent chat unless Routing supplies a fixed general or per-type override. Work agents use the chat model; boards retain their own bindings.
 
 Two neighbouring sections shape how models behave:
 
@@ -88,7 +87,7 @@ Two neighbouring sections shape how models behave:
 
 ## Model routers
 
-**Models → Routers** groups models from My models and configured providers. Set each entry's concurrent slots, then select the router in the normal model picker. A chat keeps its assigned model while that model remains available; failures can move it to another entry.
+**Models → Model pools** groups models from My models and configured providers. Set each entry's concurrent slots, then select the router in the normal model picker. A chat keeps its assigned model while that model remains available; failures can move it to another entry.
 
 Router failover clears a failed partial reply before starting the replacement response. Local models can load on demand. Use **Default for new chats** to select a workspace default without changing existing chats.
 

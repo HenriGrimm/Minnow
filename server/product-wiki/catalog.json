@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "57c440828477db4507ae31ebe90450e5ac2d5be2483a247cc7cc645a40875ba2"
+      "hash": "9faa995d696f5146f55ec5431d0bb3ed9fe05cc3a7fff058c0bf58a78d73ec4c"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -55,7 +55,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "917a51557e9529c141a58e039ed06dc06b4a3aef383d3123246633196dda8a66"
+      "hash": "745a6e93141a1276de4fa5740fc2e8cc73904b4d1c3bc7c89df44115feee253a"
     },
     {
       "path": "documentation/manual/get-started/costs-and-providers.md",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "5886bba569c855c843ae5673c9f410269f09a6d85887295ca659c57000cce60a"
+      "hash": "eec468260faa1350d82ddabef40a6c28c8e33e00c8a0800f67779ea9b8391fbb"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -121,7 +121,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "9d2c9be169b3f992a76fd54fc096cb41982c0981537e04cfcd7f2bba516239dd"
+      "hash": "4681f6db6c3c8a7487bb29f9ea6d04b39688227dbc11dc01db0ec637d2725c58"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "d1e60b3931871d0c07349c45e0c935d15320bad116f518c5eb31f106c48c0f02"
+      "hash": "f46c5191a9fc770172c38570eae1a8addf139f85983ef2390d5c40170b9ebd45"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fd220b2b5a274ef71bb5823f2d5ece7477bfc608d80115a1a8278032feb425bf"
+      "hash": "d8181ef2ab64be78a6797f1893207de70c33ba0242050fdde42b3b024408b5f9"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -277,12 +277,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "1ad2265cd67c314a78e7f52c970b07d1b5fe4f23a7f188c71ff84e899771f0ae"
+      "hash": "f0fc1a92b3a0580547b89adbc147bba7c2ed2b97c47d3250125fc1c7dc935c32"
     },
     {
       "path": "documentation/manual/apps/models.md",
       "title": "Models",
-      "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open it from th",
+      "summary": "This is where you set up what the agents run on: what your machine can handle, what you have downloaded, what is serving, which endpoints Minnow talks to, which model does which job, and what it all costs. You come here to configure, then go back to Code and work. Open Models in ",
       "headings": [
         "Local Server",
         "Discover",
@@ -303,7 +303,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "b5fc17222451726ffad09bf65f3729603c5785de1511db05f8c5e51a21dc19ec"
+      "hash": "c3c5dce01e6c545d2d1c39cfd5dad87bfe6c3bf54b1df64bf65d4d7e6bc27792"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -317,10 +317,11 @@
         "Git conventions",
         "Taxonomy",
         "Automatic bug filing",
-        "Related"
+        "Related",
+        "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "0445ce967ae4030f7c5b19548f03816ac32dd1584c78277ea44e54a77b009830"
+      "hash": "ad0302462a8175154e7453e2ad55eabb2277a76ef3d47d4863e39a78f3706e12"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -338,7 +339,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "3b84019a6caab5458a91f2bba4b7a43371f1fc4be7a2da2d187a28caf77a01ae"
+      "hash": "68a30a1e57ff2281fa2c10ac627c93479aae466392906cc2c5488d8aac404a8c"
     },
     {
       "path": "documentation/manual/apps/settings.md",
@@ -352,11 +353,12 @@
         "AI & agents",
         "Extensions",
         "Data & privacy",
+        "Devices",
         "About & troubleshooting",
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "cc7f791215504f4de5447e09d2be291e9dfbe1a000c5928d51c847d8822dbada"
+      "hash": "d63bcef813f96b8c7d7b185dabb6c183ee4e921566a1ba23198ffc737e709098"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -384,7 +386,7 @@
     {
       "path": "documentation/manual/orchestrate/agents.md",
       "title": "Agents, sub-agents, and packs",
-      "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and model binding The main chat, or a board chat Sub agent A nested a",
+      "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and tool settings The main chat, or a board chat Sub agent A nested a",
       "headings": [
         "Work agents",
         "Sub-agents",
@@ -397,7 +399,7 @@
         "Related"
       ],
       "section": "Orchestrate",
-      "hash": "a5eb993a5bba9f72a62913cf2e0880764063734675dcf6168fc56692ae3e1ac6"
+      "hash": "7eea6409d5a74c33a23f7745d4bafd5ae40c70ec9225fa08d32935451e444af0"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -436,19 +438,21 @@
     },
     {
       "path": "documentation/manual/extend/companion.md",
-      "title": "Use Minnow from another device",
-      "summary": "Minnow can serve an authenticated companion to a phone or tablet on the same network — pick up a conversation from the sofa, check on a long agent run, add a scheduled job. It is deliberately a local network feature. It is not a way to expose Minnow to the internet, and port forw",
+      "title": "Use Minnow on your phone",
+      "summary": "Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, follow a board, approve a tool call, file an issue, or read a file. Nothing needs to be installed on the phone. There are two ways for a phone to reach your computer. You can use ",
       "headings": [
-        "Turn it on and pair",
-        "What you get",
-        "Revoking a device",
-        "The security boundary",
-        "Limits worth knowing",
+        "Connect a phone",
+        "Make it work anywhere",
+        "Add Minnow to your Home Screen",
+        "Request access",
+        "Manage devices",
+        "What you get on a phone",
+        "Security",
         "When it does not work",
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "a1cee4f4c702690f964598c1c11dcbd67cf616f6d2b788d58b3b5ab6b78c5cf0"
+      "hash": "f0b77364e73b85df593cd7a7b900fa4b641a26ba5635a467924277eed34aefe8"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -480,10 +484,11 @@
         "Encrypted secrets",
         "A clean profile",
         "Editing files by hand",
-        "Related"
+        "Related",
+        "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "7e79ade55c0e57e7dc473f03f88a619933c1f081445cb3b384d133a896d6fecf"
+      "hash": "aae571756a757a4793a4b68e72e7abe2ebee62d39efcb19318d5e359ed1ab8e2"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -501,7 +506,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "96a024d14f9992316489f8afa3d4cfc53b5be03eafbeb48ec94c6c6a3b97e921"
+      "hash": "3da8469cc29e296af75fab2f252b893309f4981d11b201c418493f5b29285afd"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -521,7 +526,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "74321873c604f98ce8f07df18101e8342d466136f7b2e3677e03af98f30b210f"
+      "hash": "37ff92998389d06799e381571d0f018b7dd3752b62161433239550d0b82dc2c9"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -570,7 +575,7 @@
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "542e3f373a96a54de7cd0525c590523f4b81a9ab5e1443764e5b97dae00d5de0"
+      "hash": "397ca79a1c50bf70873046d443868714a6e3330a39567863685b55cde6b34b5d"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",
@@ -583,7 +588,7 @@
         "Provider logos"
       ],
       "section": "Legal",
-      "hash": "8f85171f671ba3c3c77bf6a4c19b82f3dbe11ed375df6d9c144df7f238ca5886"
+      "hash": "d037aa93540a60e639ab00f677d9ce851fe1f978e0221abfdb27bdec999ce7d3"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -615,7 +620,7 @@
         "Refresh"
       ],
       "section": "Apps",
-      "hash": "5dd2ccbc4992219a852c2202caf2c1b1da3ece2ed4c1e61412ea35452cafb91c"
+      "hash": "d76df538c4c9673b6a4d39aa00db5b74b82e9df1d291e5ac3324fe8513e740ce"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",
@@ -649,7 +654,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "04374ebd1ebb25790b6b3dcbaff389d06ffd96f7f9c093677b38e30e8a0e6fb1"
+      "hash": "91f4439e9bd0241575c51c38aa5ec94c09919969a7b24ab9e11d56cc7039df28"
     }
   ]
 }

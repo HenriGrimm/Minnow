@@ -407,19 +407,14 @@ export function onFileSelected(event: Event): void {
 }
 
 /**
- * Wires attach button and file input when present in index.html (SA-15).
+ * Wires the shared file input and attachment actions on secondary surfaces.
  * Safe to call before markup exists — no-op until elements are added.
  */
 export function initAttachments(): void {
   const fileInput = document.getElementById('fileInput') as HTMLInputElement | null;
-  const attachBtn = document.getElementById('attachBtn');
 
   if (fileInput) {
     fileInput.addEventListener('change', onFileSelected);
-  }
-
-  if (attachBtn && fileInput) {
-    attachBtn.addEventListener('click', () => fileInput.click());
   }
 
   const chatAttachBtn = document.getElementById('btnChatAppAttach');

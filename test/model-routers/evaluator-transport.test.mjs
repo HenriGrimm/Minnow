@@ -10,7 +10,7 @@ import { deleteGenerationsForProviderShutdown } from '../../server/generations/s
 import { __setAgentCliPumpMocksForTests, __resetAgentCliPumpMocksForTests } from '../../server/generations/agent-cli/pump.js';
 import { evaluateTask } from '../../server/model-routers/evaluator.js';
 
-const verdict = { tier: 'balanced', effort: 'medium', confidence: 0.9, reason: 'Focused change' };
+const verdict = { taskType: 'debugging', tier: 'balanced', effort: 'medium', confidence: 0.9, reason: 'Focused change' };
 const body = { messages: [{ role: 'user', content: 'Fix a bug in one function' }] };
 const cli = { providerId: 'claude-code-cli', modelId: 'claude-haiku-5-5' };
 let home, upstream, httpDelay, cliRun, invocation;
@@ -71,6 +71,7 @@ test('an HTTP chat judge can finish after the decision-model four-second limit',
   const result = await evaluateTask({ providerId: 'judge-http', modelId: 'judge' }, body);
   assert.equal(result.source, 'evaluator');
   assert.equal(result.tier, 'balanced');
+  assert.equal(result.taskType, 'debugging');
 });
 
 test('a CLI judge has time to start and returns its actual judgment', async () => {
@@ -79,6 +80,8 @@ test('a CLI judge has time to start and returns its actual judgment', async () =
   assert.equal(result.source, 'evaluator');
   assert.equal(result.judgedBy, 'claude-haiku-5-5');
   assert.equal(result.reason, verdict.reason);
+  assert.equal(result.taskType, 'debugging');
+  assert.match(invocation.body.messages[0].content, /ux-design/);
   assert.equal(cliRun.stopped, true);
   assert.equal(invocation.body.tools, undefined);
   assert.equal(invocation.body.stream, false);

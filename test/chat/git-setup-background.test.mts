@@ -1,3 +1,4 @@
+import { DEFAULT_MODEL_STORAGE_KEY } from '../../src/models/selection.ts';
 /**
  * Background /git-setup launcher: one chat per workspace, no focus steal,
  * reuse, streaming guard, and the slash prompt.
@@ -82,6 +83,8 @@ const gitSetup = await import('../../src/chat/git-setup-background.ts');
 const { renderGitNoRepositoryState } = await import('../../src/ui/git-no-repo-state.ts');
 
 function ensureModelSelect(): void {
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: window.localStorage });
+  localStorage.setItem(DEFAULT_MODEL_STORAGE_KEY, 'm1');
   if (document.getElementById('modelSelect')) return;
   const sel = document.createElement('select');
   sel.id = 'modelSelect';

@@ -102,6 +102,7 @@
 })();
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Minnow">
 <link rel="manifest" href="/manifest.json">
@@ -309,7 +310,7 @@
       <button class="icon-btn model-refresh-btn" type="button" id="btnRefreshModels" aria-label="Refresh models" title="Refresh model list">
         <i class="fi fi-rr-refresh icon-svg" aria-hidden="true"></i>
       </button>
-      <div class="model-select-inner" id="modelSelectRoot">
+      <div class="model-select-inner" id="modelSelectRoot" hidden>
         <span class="model-state-dot model-load-dot" id="modelStateDot" aria-hidden="true"></span>
         <select id="modelSelect" class="model-select-native" tabindex="-1" aria-hidden="true"></select>
         <button type="button" class="model-select-trigger" id="modelSelectTrigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="modelSelectMenu">
@@ -476,6 +477,8 @@
       <button type="button" class="settings-nav__item" data-area-jump="appearance" data-settings-nav-area="appearance"><span class="settings-nav__item-label">Appearance</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="notifications" data-settings-nav-area="notifications"><span class="settings-nav__item-label">Notifications</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="audio" data-settings-nav-area="audio"><span class="settings-nav__item-label">Audio</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="devices" data-settings-nav-area="devices"><span class="settings-nav__item-label">Devices</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="apps">
       <summary class="settings-nav-group__label">Code &amp; workspace</summary>
@@ -510,12 +513,12 @@
     </details>
     <details class="settings-nav-group" data-settings-nav-group="data">
       <summary class="settings-nav-group__label">Data &amp; privacy</summary>
-      <button type="button" class="settings-nav__item" data-area-jump="data" data-settings-nav-area="data"><span class="settings-nav__item-label">Backups &amp; access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="backups" data-settings-nav-area="backups"><span class="settings-nav__item-label">Backups</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="access" data-settings-nav-area="access"><span class="settings-nav__item-label">Access</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     <details class="settings-nav-group" data-settings-nav-group="advanced">
       <summary class="settings-nav-group__label">About &amp; troubleshooting</summary>
       <button type="button" class="settings-nav__item" data-area-jump="about" data-settings-nav-area="about"><span class="settings-nav__item-label">About</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="updates" data-settings-nav-area="updates"><span class="settings-nav__item-label">Updates</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="diagnostics" data-settings-nav-area="diagnostics"><span class="settings-nav__item-label">Health &amp; diagnostics</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
     </nav>
@@ -531,9 +534,13 @@
         <h2>Terminal</h2>
         <div id="settingsTerminalBody" class="settings-section-body"></div>
       </section>
-      <section id="settingsSection-data" class="settings-section settings-area settings-area--title-suppressed" data-area="data">
-        <h2>Data &amp; privacy</h2>
-        <div id="settingsDataBody" class="settings-section-body"></div>
+      <section id="settingsSection-backups" class="settings-section settings-area settings-area--title-suppressed" data-area="backups">
+        <h2>Backups</h2>
+        <div id="settingsBackupsBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-access" class="settings-section settings-area settings-area--title-suppressed" data-area="access">
+        <h2>Access</h2>
+        <div id="settingsAccessBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-updates" class="settings-section settings-area settings-area--title-suppressed" data-area="updates">
         <h2>Updates</h2>
@@ -546,6 +553,10 @@
       <section id="settingsSection-audio" class="settings-section settings-area settings-area--title-suppressed" data-area="audio">
         <h2>Audio</h2>
         <div id="settingsAudioBody" class="settings-section-body"></div>
+      </section>
+      <section id="settingsSection-devices" class="settings-section settings-area settings-area--title-suppressed" data-area="devices">
+        <h2>Devices</h2>
+        <div id="settingsDevicesBody" class="settings-section-body"></div>
       </section>
       <section id="settingsSection-about" class="settings-section settings-area settings-area--title-suppressed" data-area="about">
         <h2>About</h2>
@@ -2338,12 +2349,12 @@
         <div id="attachPreview" class="attach-preview hidden" aria-live="polite" aria-label="Attached files"></div>
         <div class="composer-controls" id="composerControls" role="toolbar" aria-label="Composer options">
           <div id="modeSelector" class="mode-segmented" role="radiogroup" aria-label="Operating mode"></div>
-          <div id="composerThinkingWrap" class="composer-control thinking-control-wrap">
+          <div id="composerThinkingWrap" class="composer-control thinking-control-wrap" hidden>
             <div id="composerThinkingControl" class="thinking-toggle-host"></div>
             <div id="composerReasoningEffortWrap" class="composer-reasoning-effort-wrap hidden">
               <label class="visually-hidden" for="composerReasoningEffortSelect">Reasoning effort</label>
               <select id="composerReasoningEffortSelect" class="composer-reasoning-effort-select" aria-label="Reasoning effort" disabled></select>
-              <!-- Compact overflow shows these segments; the native select backs the footer menu. -->
+              <!-- Internal controls share chat state with the model menu. -->
               <div id="composerReasoningEffortSegments" class="composer-reasoning-effort-segments" role="radiogroup" aria-label="Reasoning effort"></div>
             </div>
           </div>
@@ -2477,15 +2488,11 @@
           <div class="input-wrap input-wrap--inset-actions">
             <label for="msgInput" class="visually-hidden">Message</label>
             <textarea id="msgInput" placeholder="Ask Minnow to plan, build, or debug…" rows="1" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-            <div class="input-inset-actions" id="composerInsetActions" aria-label="Message attachments and voice">
-              <button type="button" class="input-inset-btn attach-btn" id="attachBtn" aria-label="Attach files">
-                <i class="fi fi-rr-clip icon-svg" aria-hidden="true"></i>
-              </button>
-            </div>
           </div>
         </div>
       </div>
       <div class="input-bar-send-stack">
+        <div class="input-inset-actions" id="composerInsetActions" aria-label="Voice and prompt actions"></div>
         <button class="send-btn" id="sendBtn" type="button" aria-label="Send message" data-mode="send">
           <span id="sendIcon"><i class="fi fi-rr-arrow-small-up icon-svg send-btn__arrow" aria-hidden="true"></i></span>
           <span id="sendStopIcon" class="hidden"><span class="send-btn__stop" aria-hidden="true"></span></span>
@@ -2565,7 +2572,7 @@
         </div>
       </header>
       <p id="terminalOfflineBanner" class="tools-server-banner terminal-offline-banner hidden" role="status">Interactive terminal requires <code>npm start</code> (not <code>npm run dev</code>). Agent runs still need the local server.</p>
-      <p class="terminal-shell-hint" id="terminalShellHint">Shell has full access on your machine (not limited by workspace tool policy).</p>
+      <p class="terminal-shell-hint hidden" id="terminalShellHint"></p>
       <div class="terminal-body">
         <div class="terminal-pane terminal-agent-pane hidden" id="terminalAgentPane" role="tabpanel" aria-label="Agent command output">
           <div class="terminal-agent-toolbar">

@@ -1,3 +1,5 @@
+import { normalizeHarmonyToolName } from "./harmony-tool-calls.js";
+
 const THINK_TAG = "(?:(?:redacted_)?think(?:ing)?|thought)";
 const REDACTED_THINKING_OPEN = "<redacted_thinking>";
 const REDACTED_THINKING_CLOSE = "</redacted_thinking>";
@@ -627,6 +629,11 @@ class HarmonyChannelRouter {
   getCommentaryParseText() {
     return this.commentaryParseText;
   }
+  peekStreamingToolName() {
+    const segment = this.commentaryParseText.slice(this.commentaryParseText.lastIndexOf("<|channel|>commentary"));
+    const match = /\bto=([^\s<|]+)(?=[\s<|])/.exec(segment);
+    return match ? normalizeHarmonyToolName(match[1]) : "";
+  }
   appendText(out, text) {
     if (!text) {
       return;
@@ -648,10 +655,12 @@ class HarmonyChannelRouter {
     this.seenHarmony = true;
     if (marker.startsWith("<|channel|>")) {
       this.channel = match[1] ?? null;
+      if (this.channel === "commentary") this.commentaryParseText += marker;
       this.inMessage = false;
       return;
     }
     if (marker === "<|message|>") {
+      if (this.channel === "commentary") this.commentaryParseText += marker;
       this.inMessage = true;
       return;
     }

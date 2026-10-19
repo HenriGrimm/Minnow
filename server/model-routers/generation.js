@@ -1,5 +1,5 @@
 import { isLocalServeProviderId } from '../../src/models/engine-ids.mjs';
-import { getRouterWorkspace } from './store.js';
+import { getRouterWorkspace, resolveRouterId } from './store.js';
 import { routerAvailability, invalidateRouterProvider, routerCatalogModel } from './availability.js';
 import { bindRouterLibraryEntry } from './library-serve.js';
 import { findLibraryCachedRow, isLibraryModelBinding } from '../models/library-binding.js';
@@ -16,6 +16,7 @@ import {
   normalizeReasoningAllowedOptions,
 } from '../runner/reasoning-effort.js';
 import { routerEntryTier, routerTierFallbackOrder } from '../../src/models/router-tiers.mjs';
+import { isRouterTaskType } from '../../src/models/router-task-types.mjs';
 import { decideRoute } from './evaluator.js';
 
 function isLibraryRouterEntry(entry) {
@@ -44,7 +45,8 @@ async function entryLabels(router) {
 }
 
 /**
- * Eligibility filter for the decided tier: the nearest tier with an eligible
+ * Prefer matching specialties, then unrestricted models, then the remaining
+ * lineup. Within each group use the nearest tier with an eligible
  * entry, preferring already-loaded local models inside it so a decision does
  * not force a model swap when an equal one is resident.
  */
@@ -52,9 +54,14 @@ function tierFilter(router, decision, labels, availability, attempted, stickyEnt
   if (!decision?.tier) return null;
   const sticky = router.entries.find((e) => e.id === stickyEntryId && e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e)));
   if (sticky) return (e) => e.id === sticky.id;
+  let eligible = router.entries.filter((e) => e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e)));
+  if (isRouterTaskType(decision.taskType)) {
+    const matches = eligible.filter((e) => e.taskTypes?.includes(decision.taskType));
+    const unrestricted = eligible.filter((e) => !e.taskTypes?.length);
+    eligible = matches.length ? matches : unrestricted.length ? unrestricted : eligible;
+  }
   for (const tier of routerTierFallbackOrder(decision.tier)) {
-    const candidates = router.entries.filter((e) => e.enabled && availability[e.id]?.available && !attempted.has(entryKey(e))
-      && routerEntryTier({ ...e, label: labels[e.id] }) === tier);
+    const candidates = eligible.filter((e) => routerEntryTier({ ...e, label: labels[e.id] }) === tier);
     if (!candidates.length) continue;
     const loaded = candidates.filter((e) => availability[e.id].reason === 'Available');
     const allowed = new Set((loaded.length ? loaded : candidates).map((e) => e.id));
@@ -88,7 +95,7 @@ async function resolveEntryEffort(bound, effort) {
 /** What the composer shows for a decision. */
 function publicDecision(decision, effort, modelLabel, reasoningStatus) {
   if (!decision) return undefined;
-  return { tier: decision.tier, effort: effort || null, requestedEffort: decision.effort || null, reasoningStatus, confidence: decision.confidence, reason: decision.reason, judgedBy: decision.judgedBy, source: decision.source, modelLabel };
+  return { ...(decision.taskType ? { taskType: decision.taskType } : {}), tier: decision.tier, effort: effort || null, requestedEffort: decision.effort || null, reasoningStatus, confidence: decision.confidence, reason: decision.reason, judgedBy: decision.judgedBy, source: decision.source, modelLabel };
 }
 
 export function pumpRouterGeneration(state) {
@@ -99,7 +106,7 @@ export function pumpRouterGeneration(state) {
 
 export async function runRouterGeneration(state) {
   const workspace = await getRouterWorkspace();
-  const routerId = JSON.parse(state.requestBody.toString()).model;
+  const routerId = await resolveRouterId(JSON.parse(state.requestBody.toString()).model, undefined, state.chatId);
   const body = JSON.parse(state.requestBody.toString());
   const chatId = state.chatId || state.id;
   const attempted = new Set();

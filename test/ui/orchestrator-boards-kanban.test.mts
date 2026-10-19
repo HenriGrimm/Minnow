@@ -1403,3 +1403,96 @@ test('a paused board keeps its task attempts and announces Paused', () => {
   assert.match(node.textContent!, /Paused/);
   assert.equal(state.tasks.get('W1-B')!.attempts.at(-1)!.ended, false);
 });
+
+
+for (const reason of ['paused', 'user', 'quota'] as const) {
+  test(`${reason} updates open tasks and unfinished tools, and resume restores activity`, () => {
+    setupDom();
+    const running = board();
+    const inactive = board([{ v: 1, seq: 99, type: 'board.stopped', reason }]);
+    const label = reason === 'paused' ? 'paused' : 'stopped';
+    const options = {
+      ...OPTIONS,
+      attemptStartedAt: new Map([['b1', 1000]]),
+      now: 5000,
+      liveActivity: new Map([['W1-B', { attemptId: 'b1', kind: 'tool' as const, text: 'read_file' }]]),
+      transcript: {
+        attemptId: 'b1', status: 'ready' as const, truncated: false, capped: false,
+        events: [
+          { type: 'tool_call', id: 'done', name: 'read_file', arguments: { path: 'a.ts' } },
+          { type: 'tool_result', id: 'done', content: 'existing result' },
+          { type: 'round_end', index: 0, text: '' },
+          { type: 'thinking', text: 'Keep this reasoning visible.' },
+          { type: 'tool_call', id: 'pending', name: 'read_file', arguments: { path: 'b.ts' } },
+        ],
+      },
+    };
+    const task = running.tasks.get('W1-B')!;
+    const overlay = renderTaskDetail(running, task, NO_ACTIONS, options);
+    document.body.appendChild(overlay);
+    assert.ok(overlay.querySelector('.tool-call-msg[aria-busy]'));
+    const details = overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')!;
+    details.open = true;
+    details.dispatchEvent(new window.Event('toggle'));
+
+    const inactiveTask = inactive.tasks.get('W1-B')!;
+    syncTaskDetailOverlay(overlay, inactive, inactiveTask, NO_ACTIONS, options);
+    assert.equal(overlay.querySelector('.ov2-thread')?.getAttribute('data-run-state'), label);
+    assert.match(overlay.querySelector('.ov2-detail__top')!.textContent!, new RegExp(label));
+    assert.equal(overlay.querySelector('.ov2-work__running'), null);
+    assert.match(overlay.querySelector('.ov2-thread__head')!.textContent!, new RegExp(label));
+    assert.equal(overlay.querySelector('.tool-call-spinner'), null);
+    assert.equal(overlay.querySelector('.tool-call-msg[aria-busy]'), null);
+    assert.equal(overlay.querySelector('.transcript-view__live-tail'), null);
+    assert.equal(overlay.querySelector('[data-transcript-tool-call-id="pending"] .tool-call-outcome')?.textContent, label === 'paused' ? 'Paused' : 'Stopped');
+    assert.ok(overlay.querySelector('[data-transcript-tool-call-id="done"].tool-call-msg--ok'));
+    assert.equal(overlay.querySelector('[data-transcript-tool-call-id="pending"].tool-call-msg--ok'), null);
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')?.open, true);
+    assert.match(overlay.textContent!, /Keep this reasoning visible/);
+    assert.equal(inactiveTask.attempts.at(-1)!.ended, false);
+
+    const cards = renderTaskList(inactive, NO_ACTIONS, options);
+    const card = cards.querySelector<HTMLElement>('[data-task-id="W1-B"]')!;
+    assert.match(card.querySelector('.ov2-task__badges')!.textContent!, new RegExp(label));
+    assert.equal(card.querySelector('.ov2-activity'), null);
+    syncTaskCardActivity(card, options.liveActivity.get('W1-B')!, 1000, 6000);
+    assert.equal(card.querySelector('.ov2-activity'), null, 'late live frames cannot restart the card');
+    syncTaskDetailOverlay(overlay, inactive, inactiveTask, NO_ACTIONS, options, { syncWork: false, thread: 'tail' });
+    assert.equal(overlay.querySelector('.tool-call-spinner'), null, 'late live frames cannot restart the thread');
+    const header = renderBoardHeader(inactive, true);
+    assert.match(header.querySelector('[data-board-metric="running"]')!.textContent!, /0\/2/);
+
+    if (reason === 'paused') {
+      syncTaskDetailOverlay(overlay, running, task, NO_ACTIONS, options);
+      assert.ok(overlay.querySelector('.ov2-work__running'));
+      assert.ok(overlay.querySelector('[data-transcript-tool-call-id="pending"][aria-busy]'));
+      assert.ok(overlay.querySelector('.transcript-view__live-tail'));
+      assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')?.open, true);
+    }
+  });
+}
+
+test('an ended attempt with no tool result displays Stopped instead of a perpetual spinner', () => {
+  setupDom();
+  const state = board([{ v: 1, seq: 8, type: 'task.attempt.ended', taskId: 'W1-B', attemptId: 'b1', role: 'builder', outcome: 'no_report' }]);
+  const overlay = renderTaskDetail(state, state.tasks.get('W1-B')!, NO_ACTIONS, {
+    ...OPTIONS,
+    transcript: {
+      attemptId: 'b1', status: 'ready', truncated: false, capped: false,
+      events: [{ type: 'tool_call', id: 'pending', name: 'read_file' }],
+    },
+  });
+  assert.equal(overlay.querySelector('.tool-call-spinner'), null);
+  assert.equal(overlay.querySelector('.tool-call-outcome')?.textContent, 'Stopped');
+});
+
+test('manual tasks on a stopped board continue to show live activity', () => {
+  setupDom();
+  const state = board([
+    { v: 1, seq: 8, type: 'board.stopped', reason: 'user' },
+    { v: 1, seq: 9, type: 'task.attempt.started', taskId: 'W1-D', attemptId: 'manual', role: 'builder' },
+  ]);
+  const node = renderTaskList(state, NO_ACTIONS, OPTIONS);
+  assert.ok(node.querySelector('[data-task-id="W1-D"] .ov2-activity'));
+  assert.equal(node.querySelector('[data-task-id="W1-B"] .ov2-activity'), null);
+});

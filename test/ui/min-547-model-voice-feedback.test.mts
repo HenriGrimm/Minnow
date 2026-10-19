@@ -173,7 +173,7 @@ test('streaming dictation keeps the mic busy while final text is pending and res
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true, value: { getUserMedia: async () => null },
   });
-  document.body.innerHTML = '<button id="attachBtn"></button><textarea id="msgInput"></textarea>';
+  document.body.innerHTML = '<div id="composerInsetActions"></div><textarea id="msgInput"></textarea>';
   const inputEl = document.querySelector('textarea')!;
   globalThis.fetch = (async () => Response.json({
     enabled: true, backend: 'local', healthy: true, streamingSupported: true,

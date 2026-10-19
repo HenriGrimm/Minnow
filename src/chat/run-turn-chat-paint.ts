@@ -228,6 +228,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   let paintScheduled = false;
   let toolCallCount = 0;
   let proseRevealed = false;
+  let reasoningPhaseEnded = false;
   const toolWraps = new Map<string, HTMLElement>();
   const argsById = new Map<string, unknown>();
   let roundToolItems: ToolCallBatchItem[] = [];
@@ -290,8 +291,10 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
 
     if (thinkingSnap !== null) {
       const added = thinkingDeltaFromSnapshot(lastPaintedThinking, thinkingSnap);
-      lastPaintedThinking = thinkingSnap;
-      if (added && visible) host.thoughtController.appendReasoningDelta(added);
+      if (visible) {
+        lastPaintedThinking = thinkingSnap;
+        if (added) host.thoughtController.appendReasoningDelta(added);
+      }
     }
 
     if (deltaSnap !== null) {
@@ -332,6 +335,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     pendingDelta = null;
     pendingThinking = null;
     proseRevealed = false;
+    reasoningPhaseEnded = false;
   };
 
   const applyHostPatch = (next: Partial<ChatTurnPaintHost>): void => {
@@ -355,7 +359,9 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
 
   const retarget = (next: Partial<ChatTurnPaintHost>): void => {
     applyHostPatch(next);
+    if (lastThinking && originStreamVisible()) pendingThinking = lastThinking;
     flushPaint();
+    if (reasoningPhaseEnded && originStreamVisible()) host.thoughtController.endReasoningPhase?.();
     if (proseRevealed && lastDelta && next.bubble && originStreamVisible()) {
       scheduleMarkdown(next.bubble, lastDelta, next.cursor ?? host.cursor);
     }
@@ -414,6 +420,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     if (event.type === 'response_restart') {
       pendingDelta = null; pendingThinking = null;
       lastDelta = ''; lastThinking = ''; lastPaintedThinking = '';
+      reasoningPhaseEnded = false;
       clearToolStartIndicator();
       host.thoughtController.resetFailedResponse?.();
       scheduleMarkdown(host.bubble, '', host.cursor, { immediate: true });
@@ -430,12 +437,14 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'thinking') {
+      reasoningPhaseEnded = false;
       lastThinking = event.text;
       pendingThinking = event.text;
       schedulePaint();
       return;
     }
     if (event.type === 'reasoning_end') {
+      reasoningPhaseEnded = true;
       flushPaint();
       host.thoughtController.endReasoningPhase?.();
       return;

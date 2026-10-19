@@ -102,6 +102,7 @@ function ensureShell(): void {
   overlayEl = document.createElement('div');
   overlayEl.id = OVERLAY_ID;
   overlayEl.className = 'app-dialog-overlay hidden';
+  overlayEl.dataset.aboveShellOverlay = '';
   overlayEl.hidden = true;
 
   panelEl = document.createElement('div');

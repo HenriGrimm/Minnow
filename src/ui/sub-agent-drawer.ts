@@ -248,6 +248,8 @@ function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'st
   state.promptText.textContent = run.task || 'No assignment was recorded.';
   state.assignment.open = view.assignmentOpen;
   state.details.textContent = `Run ${run.runId}${run.startedAt ? ` · Started ${new Date(run.startedAt).toLocaleString()}` : ''}${run.endedAt ? ` · Ended ${new Date(run.endedAt).toLocaleString()}` : ''}${'modelId' in run && run.modelId ? ` · ${run.modelId}` : ''}`;
+  if ('modelSource' in run && run.modelSource) state.details.textContent += ` · ${({ parent: 'Following parent', routing: 'Sub-agent routing', type: 'Type override', explicit: 'Explicit model' } as Record<string, string>)[run.modelSource] || 'Recorded model'}`;
+  if (run.resolvedModel && run.resolvedModel.id !== run.modelId) state.details.textContent += ` · Ran on ${run.resolvedModel.id}`;
   for (const tab of state.tabs) {
     const selected = tab.dataset.view === view.tab;
     tab.setAttribute('aria-selected', String(selected));
