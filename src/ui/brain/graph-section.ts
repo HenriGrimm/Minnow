@@ -7,6 +7,7 @@ import { createForceGraph, type ForceGraphApi, type ForceGraphStats } from './gr
 import type { GraphEmphasisKey } from './graph/types';
 import { closeBrainInspector, renderBrainInspector } from './inspector';
 import { initBrainGraphSidebarResize } from './graph-sidebar-resize';
+import { restoreBrainInspectorWidth } from './inspector-resize';
 
 const SHOW_ARCHIVES_KEY = 'minnow.brain.showArchives';
 const READOUT_COLLAPSED_KEY = 'minnow.brain.readoutCollapsed';
@@ -65,8 +66,8 @@ function syncGraphOverlayOffsets(): void {
   if (!root || !toolbar) return;
 
   const styles = getComputedStyle(root);
-  const pad = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-pad')) || 12;
-  const gap = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-gap')) || 10;
+  const pad = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-pad')) || 0;
+  const gap = Number.parseFloat(styles.getPropertyValue('--brain-graph-overlay-gap')) || 0;
   const below = pad + toolbar.getBoundingClientRect().height + gap;
   root.style.setProperty('--brain-graph-below-toolbar', `${Math.ceil(below)}px`);
   syncGraphViewportInsets();
@@ -79,21 +80,33 @@ function syncGraphViewportInsets(): void {
   const canvasRect = canvas.getBoundingClientRect();
   if (!canvasRect.width || !canvasRect.height) return;
 
-  const overlap = (selector: string, edge: 'top' | 'right' | 'left'): number => {
+  const overlap = (selector: string, edge: 'top' | 'right' | 'left' | 'bottom'): number => {
     const el = document.querySelector(selector);
     if (!el || el.classList.contains('hidden') || el.classList.contains('is-collapsed')) return 0;
     const rect = el.getBoundingClientRect();
     if (!rect.width || !rect.height) return 0;
     if (edge === 'top') return Math.max(0, rect.bottom - canvasRect.top);
     if (edge === 'left') return Math.max(0, rect.right - canvasRect.left);
+    if (edge === 'bottom') return Math.max(0, canvasRect.bottom - rect.top);
     return Math.max(0, canvasRect.right - rect.left);
   };
 
+  const stageWidth = canvas.closest('#brainView')?.querySelector('.brain-stage')
+    ?.getBoundingClientRect().width ?? canvasRect.width;
+  const isSheet = (selector: string): boolean => {
+    const el = document.querySelector(selector);
+    return Boolean(el && el.getBoundingClientRect().width >= stageWidth * 0.8);
+  };
+  const readerSheet = isSheet('#brainInspector.is-open');
+  const listSheet = isSheet('.brain-graph-sidebar');
   graphApi.setViewportInsets({
-    top: overlap('.brain-graph-toolbar', 'top'),
-    left: overlap('.brain-graph-sidebar', 'left'),
-    right: overlap('#brainInspector.is-open', 'right'),
-    bottom: 0,
+    top: Math.max(
+      overlap('.brain-graph-toolbar', 'top'),
+      listSheet ? overlap('.brain-graph-sidebar', 'top') : 0,
+    ),
+    left: listSheet ? 0 : overlap('.brain-graph-sidebar', 'left'),
+    right: readerSheet ? 0 : overlap('#brainInspector.is-open', 'right'),
+    bottom: readerSheet ? overlap('#brainInspector.is-open', 'bottom') : 0,
   });
 }
 
@@ -112,6 +125,8 @@ function bindSidebarObserver(): void {
   if (!sidebar) return;
   sidebarObserver = new ResizeObserver(scheduleGraphLayoutSync);
   sidebarObserver.observe(sidebar);
+  const inspector = document.getElementById('brainInspector');
+  if (inspector) sidebarObserver.observe(inspector);
 }
 
 /** Lightweight selection path: reuses the existing simulation instead of rebuilding. */
@@ -536,6 +551,7 @@ function showFirstRunHint(): void {
 export async function renderGraphSection(): Promise<void> {
   bindGraphToolbar();
   initBrainGraphSidebarResize();
+  restoreBrainInspectorWidth();
 
   const treeMount = document.getElementById('brainGraphTree');
   const offlineEl = document.getElementById('brainGraphOffline');

@@ -7,15 +7,8 @@ const LEGACY_DEFAULT_WIDTH = 232;
 let listenersBound = false;
 
 function clampWidth(px: number, stage?: HTMLElement | null): number {
-  const stageWidth = stage?.getBoundingClientRect().width ?? window.innerWidth;
-  const pad =
-    Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--brain-graph-overlay-pad'),
-    ) || 12;
-  const maxWidth = Math.max(
-    MIN_WIDTH,
-    Math.min(Math.floor(stageWidth * 0.52), stageWidth - 2 * pad),
-  );
+  const stageWidth = stage?.getBoundingClientRect().width || window.innerWidth;
+  const maxWidth = Math.max(MIN_WIDTH, Math.floor(stageWidth * 0.3));
   return Math.min(maxWidth, Math.max(MIN_WIDTH, Math.round(px)));
 }
 
@@ -46,6 +39,9 @@ export function applyBrainGraphSidebarWidth(px: number): void {
   const w = clampWidth(px, stage);
   if (root) root.style.setProperty('--brain-graph-sidebar-w', `${w}px`);
   if (sidebar) sidebar.style.width = `${w}px`;
+  const handle = document.getElementById('brainGraphSidebarResize');
+  handle?.setAttribute('aria-valuemax', String(clampWidth(Number.MAX_SAFE_INTEGER, stage)));
+  handle?.setAttribute('aria-valuenow', String(w));
 }
 
 /** Restore saved sidebar width when Brain graph is shown. */
@@ -117,6 +113,24 @@ export function initBrainGraphSidebarResize(): void {
   });
 
   handle.addEventListener('lostpointercapture', stopDrag);
+
+  handle.title = 'Drag or use arrow keys to resize. Double-click to reset.';
+  handle.tabIndex = 0;
+  handle.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home') return;
+    e.preventDefault();
+    const next = e.key === 'Home'
+      ? DEFAULT_WIDTH
+      : sidebar.getBoundingClientRect().width + (e.key === 'ArrowRight' ? 24 : -24);
+    applyBrainGraphSidebarWidth(next);
+    const width = sidebar.getBoundingClientRect().width;
+    handle.setAttribute('aria-valuenow', String(Math.round(width)));
+    saveWidth(width);
+  });
+  handle.addEventListener('dblclick', () => {
+    applyBrainGraphSidebarWidth(DEFAULT_WIDTH);
+    saveWidth(DEFAULT_WIDTH);
+  });
 }
 
 /** Re-apply width after graph section render (tests). */

@@ -23,6 +23,12 @@ Brain is **not** this manual. The manual ships with the build and is read-only; 
 
 Memory settings live here, not in the main Settings app. Searching "memory" in Settings deep-links you into Brain.
 
+## Reading the graph
+
+Select a page in the list or graph to open its details. The reading panel shows the page before its connections, with **Edit page** and **Delete page** always available at the bottom. On smaller windows, details open as a sheet over the graph.
+
+Drag the divider beside the page list or details to resize it. You can also focus a divider and use the left and right arrow keys. Double-click a divider or press Home to reset its width.
+
 ## How things get in
 
 **You write them.** Brain → Edit. Frontmatter and markdown. Nothing clever.
