@@ -230,6 +230,15 @@ function fileDrag(type: string, files: File[] = [], types = ['Files']): Event {
   return event as unknown as Event;
 }
 
+function pasteFiles(files: File[], itemsOnly = false): Event {
+  const event = new dom.Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: {
+    files: itemsOnly ? [] : files,
+    items: files.map((file) => ({ kind: 'file', getAsFile: () => file })),
+  } });
+  return event as unknown as Event;
+}
+
 test('sidebar queues removable files, rejects folders and oversized files, and keeps files per workspace', async () => {
   await openIssuesSidebar();
   type('With attachments');
@@ -280,7 +289,7 @@ test('sidebar uploads images and files before clearing capture and retries witho
   }) as typeof fetch;
   setLocalServerAvailableForTests(true);
   try {
-    input().dispatchEvent(fileDrag('drop', [new dom.File(['log'], 'debug.txt', { type: 'text/plain' }) as unknown as File]));
+    input().dispatchEvent(pasteFiles([new dom.File(['log'], 'debug.txt', { type: 'text/plain' }) as unknown as File]));
     const before = store.listIssues().length;
     document.querySelector<HTMLButtonElement>('[data-create]')!.click();
     await until(() => document.querySelector('[data-create]')!.textContent === 'Retry save');
@@ -289,6 +298,8 @@ test('sidebar uploads images and files before clearing capture and retries witho
     assert.deepEqual(issue.attachments?.map((entry) => entry.name), ['screen.png']);
     assert.equal(input().value, 'With attachments');
     assert.match(document.getElementById('issuesSidebarFeedback')!.textContent!, /Upload interrupted/);
+    assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 1);
+    input().dispatchEvent(pasteFiles([new dom.File(['x'], 'ignored.txt') as unknown as File]));
     assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 1);
     fail = false;
     document.querySelector<HTMLButtonElement>('[data-create]')!.click();
@@ -334,6 +345,7 @@ test('Expand waits for attachments and upload completion preserves another works
     await until(() => Boolean(releaseUpload));
     assert.equal(expanded, false);
     assert.equal(input().disabled, true);
+    input().dispatchEvent(pasteFiles([new dom.File(['x'], 'ignored-paste.txt') as unknown as File]));
     input().dispatchEvent(fileDrag('drop', [new dom.File(['x'], 'ignored.txt') as unknown as File]));
     assert.equal(document.querySelectorAll('.issues-sidebar__file').length, 1);
     setWorkspaceFromServer({ path: 'C:/Projects/Other', label: 'Other', isDefault: false });
@@ -353,4 +365,37 @@ test('Expand waits for attachments and upload completion preserves another works
     setLocalServerAvailableForTests(false);
     setExpandIssueFetcherForTests(null);
   }
+});
+
+
+test('sidebar pastes clipboard files and image items once, validates size and leaves text paste untouched', async () => {
+  await openIssuesSidebar();
+  type('Pasted attachments');
+  const image = new dom.File(['image'], 'clipboard.png', { type: 'image/png' }) as unknown as File;
+  const imagePaste = pasteFiles([image], true);
+  input().dispatchEvent(imagePaste);
+  assert.equal(imagePaste.defaultPrevented, true);
+  const file = new dom.File(['log'], 'pasted.txt', { type: 'text/plain' }) as unknown as File;
+  const filePaste = pasteFiles([file]);
+  input().dispatchEvent(filePaste);
+  assert.equal(filePaste.defaultPrevented, true);
+  const rows = () => [...document.querySelectorAll('.issues-sidebar__file')];
+  assert.equal(rows().length, 2, 'files present in both clipboard files and items are queued once');
+  assert.match(rows()[0].textContent!, /clipboard.png/);
+  assert.match(rows()[1].textContent!, /pasted.txt/);
+  const oversized = new dom.File(['x'], 'large.png', { type: 'image/png' });
+  Object.defineProperty(oversized, 'size', { value: 13 * 1024 * 1024 });
+  input().dispatchEvent(pasteFiles([oversized as unknown as File]));
+  assert.equal(rows().length, 2);
+  assert.match(document.getElementById('issuesSidebarFeedback')!.textContent!, /12 MB/);
+  const textPaste = new dom.Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(textPaste, 'clipboardData', { value: {
+    files: [], items: [{ kind: 'string', getAsFile: () => null }], getData: () => 'Plain text',
+  } });
+  input().dispatchEvent(textPaste as unknown as Event);
+  assert.equal(textPaste.defaultPrevented, false);
+  assert.equal(input().value, 'Pasted attachments');
+  assert.equal(rows().length, 2);
+  for (const row of rows()) row.querySelector<HTMLButtonElement>('button')!.click();
+  assert.equal(rows().length, 0);
 });

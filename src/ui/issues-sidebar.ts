@@ -117,6 +117,22 @@ function renderDraftFiles(): void {
   host.hidden = value.files.length === 0;
 }
 
+function queueCaptureFiles(files: File[]): void {
+  const rejected: string[] = [];
+  for (const file of files) {
+    if (isLikelyDirectoryDrop(file)) {
+      rejected.push(`${file.name}: folders are not supported.`);
+    } else if (file.size > MAX_ATTACHMENT_BYTES) {
+      rejected.push(`${file.name}: attachment exceeds 12 MB.`);
+    } else {
+      state().files.push(file);
+    }
+  }
+  feedback.textContent = rejected.join(' ');
+  syncCapture();
+  input.focus();
+}
+
 function bindCaptureFileDrop(form: HTMLFormElement): void {
   const dragOver = (event: DragEvent): void => {
     if (!hasExternalFileDrag(event.dataTransfer)) return;
@@ -138,19 +154,7 @@ function bindCaptureFileDrop(form: HTMLFormElement): void {
     event.preventDefault();
     event.stopPropagation();
     if (busy || state().pendingId) return;
-    const rejected: string[] = [];
-    for (const file of filesFromDataTransfer(event.dataTransfer!)) {
-      if (isLikelyDirectoryDrop(file)) {
-        rejected.push(`${file.name}: folders are not supported.`);
-      } else if (file.size > MAX_ATTACHMENT_BYTES) {
-        rejected.push(`${file.name}: attachment exceeds 12 MB.`);
-      } else {
-        state().files.push(file);
-      }
-    }
-    feedback.textContent = rejected.join(' ');
-    syncCapture();
-    input.focus();
+    queueCaptureFiles(filesFromDataTransfer(event.dataTransfer!));
   });
 }
 
@@ -418,7 +422,7 @@ function mount(): void {
     <form class="issues-sidebar__capture">
       <label for="issuesSidebarDraft">New issue</label>
       <textarea id="issuesSidebarDraft" rows="3" placeholder="Describe the issue…" aria-describedby="issuesSidebarDropHint issuesSidebarFeedback"></textarea>
-      <p id="issuesSidebarDropHint" class="issues-sidebar__drop-hint">Drop images or files here · up to 12 MB each</p>
+      <p id="issuesSidebarDropHint" class="issues-sidebar__drop-hint">Drop or paste images and files · up to 12 MB each</p>
       <div data-draft-files aria-label="Pending attachments" hidden></div>
       <div class="issues-sidebar__actions"><button type="button" data-expand>Expand</button><button type="submit" data-create>Create</button></div>
       <p id="issuesSidebarFeedback" class="issues-sidebar__feedback" role="status" aria-live="polite"></p>
@@ -452,6 +456,23 @@ function mount(): void {
   const addFilter = root.querySelector<HTMLButtonElement>('[data-add-filter]')!;
   addFilter.addEventListener('click', () => openFilterMenu(addFilter));
   bindCaptureFileDrop(root.querySelector('form')!);
+  input.addEventListener('paste', (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    const files = Array.from(clipboard.files);
+    if (!files.length) {
+      for (const item of Array.from(clipboard.items)) {
+        if (item.kind !== 'file') continue;
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (!files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy || state().pendingId) return;
+    queueCaptureFiles(files);
+  });
   root.querySelector('form')!.addEventListener('submit', (event) => { event.preventDefault(); void createIssue(); });
   expandButton.addEventListener('click', () => { void createIssue(true); });
   input.addEventListener('input', () => {
