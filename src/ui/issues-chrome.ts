@@ -19,7 +19,7 @@ export function ensureIssuesChrome(root: HTMLElement): void {
   const shell = document.createElement('div');
   shell.className = 'issues-shell';
 
-  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewSelector(), buildChipBar(), buildBody());
+  shell.append(buildHeader(), buildPrimaryNavigation(), buildViewSelector(), buildBody());
   buildNewForm();
   root.appendChild(shell);
 }
@@ -156,7 +156,7 @@ function buildViewSelector(): HTMLElement {
   ]);
   const description = el('p', {
     id: 'issuesViewDescription',
-    class: 'issues-view-description',
+    class: 'visually-hidden',
   });
   const searchWrap = el('div', { class: 'issues-view-search' }, [
     el('label', { class: 'visually-hidden', for: 'issuesSearch', text: 'Search issues' }),
@@ -168,7 +168,9 @@ function buildViewSelector(): HTMLElement {
       autocomplete: 'off',
     }),
   ]);
-  return el('div', { class: 'issues-view-bar' }, [selector, description, searchWrap]);
+  return el('div', { class: 'issues-view-bar', role: 'group', 'aria-label': 'Issue view and filters' }, [
+    selector, description, buildChipBar(), searchWrap,
+  ]);
 }
 
 function buildChipBar(): HTMLElement {

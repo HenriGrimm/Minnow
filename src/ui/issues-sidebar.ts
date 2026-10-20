@@ -1,3 +1,5 @@
+import { filesFromDataTransfer, hasExternalFileDrag, isLikelyDirectoryDrop } from '../attachments/external-file-drop';
+import { MAX_ATTACHMENT_BYTES, formatAttachmentSize, uploadIssueAttachment } from '../state/issue-attachments-api';
 import { createIssueChatActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import '../styles/issues.css';
@@ -9,7 +11,7 @@ import { createIssuesLabelsField, isIssuesLabelsFieldFocused } from './issues-la
 import { deferUntilIssueLabelPopoverClosed } from './issues-label-chip';
 import { createIcon } from './icon';
 import type { createIssueDetailController } from './issues-detail';
-import { addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, listIssueProjects, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
+import { addIssueAttachment, addIssue, findIssueById, isIssuesStoreLoaded, isIssuesStoreRecovering, listIssues, listIssueProjects, loadIssuesFromStorage, saveIssuesNow, updateIssue, type AddIssueInput } from '../state/issues-store';
 import { getIssuesTaxonomySync, loadIssuesTaxonomyFromStorage } from '../state/issues-taxonomy-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
@@ -25,6 +27,7 @@ import { showToast } from './toast';
 
 interface SidebarState {
   draft: AddIssueInput;
+  files: File[];
   filter: SidebarIssueFilter;
   properties: SidebarIssueProperties;
   query: string;
@@ -66,17 +69,17 @@ function state(): SidebarState {
         labels: Array.isArray(stored.labels) ? stored.labels.filter((label: unknown) => typeof label === 'string') : [],
       };
     } catch {}
-    value = { draft, filter: 'open', properties: {}, query: '', scrollTop: 0, pendingId };
+    value = { draft, files: [], filter: 'open', properties: {}, query: '', scrollTop: 0, pendingId };
     states.set(currentWorkspace, value);
   }
   return value;
 }
 
-function saveDraft(): void {
+function saveDraft(value = state(), workspace = currentWorkspace): void {
   try {
     const drafts = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-    if (state().draft.title.trim() || state().draft.description?.trim()) drafts[currentWorkspace] = { ...state().draft, pendingId: state().pendingId };
-    else delete drafts[currentWorkspace];
+    if (value.draft.title.trim() || value.draft.description?.trim()) drafts[workspace] = { ...value.draft, pendingId: value.pendingId };
+    else delete drafts[workspace];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(drafts));
   } catch {}
 }
@@ -91,6 +94,64 @@ function syncCapture(): void {
   createButton.disabled = disabled;
   expandButton.disabled = disabled || Boolean(state().pendingId);
   createButton.textContent = busy ? 'Creating…' : state().pendingId ? 'Retry save' : 'Create';
+  renderDraftFiles();
+}
+
+function renderDraftFiles(): void {
+  const host = root!.querySelector<HTMLElement>('[data-draft-files]')!;
+  const value = state();
+  host.replaceChildren(...value.files.map((file) => {
+    const row = document.createElement('div');
+    row.className = 'issues-sidebar__file';
+    const name = document.createElement('span');
+    name.textContent = [file.name, formatAttachmentSize(file.size)].filter(Boolean).join(' · ');
+    const remove = button('×', () => {
+      value.files.splice(value.files.indexOf(file), 1);
+      syncCapture();
+    });
+    remove.setAttribute('aria-label', `Remove ${file.name}`);
+    remove.disabled = busy;
+    row.append(name, remove);
+    return row;
+  }));
+  host.hidden = value.files.length === 0;
+}
+
+function bindCaptureFileDrop(form: HTMLFormElement): void {
+  const dragOver = (event: DragEvent): void => {
+    if (!hasExternalFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const allowed = !busy && !state().pendingId;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = allowed ? 'copy' : 'none';
+    form.classList.toggle('is-drop-target', allowed);
+  };
+  form.addEventListener('dragenter', dragOver);
+  form.addEventListener('dragover', dragOver);
+  form.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget instanceof Node && form.contains(event.relatedTarget)) return;
+    form.classList.remove('is-drop-target');
+  });
+  form.addEventListener('drop', (event) => {
+    form.classList.remove('is-drop-target');
+    if (!hasExternalFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy || state().pendingId) return;
+    const rejected: string[] = [];
+    for (const file of filesFromDataTransfer(event.dataTransfer!)) {
+      if (isLikelyDirectoryDrop(file)) {
+        rejected.push(`${file.name}: folders are not supported.`);
+      } else if (file.size > MAX_ATTACHMENT_BYTES) {
+        rejected.push(`${file.name}: attachment exceeds 12 MB.`);
+      } else {
+        state().files.push(file);
+      }
+    }
+    feedback.textContent = rejected.join(' ');
+    syncCapture();
+    input.focus();
+  });
 }
 
 function button(text: string, onClick: () => void, className = 'issues-sidebar__button'): HTMLButtonElement {
@@ -301,33 +362,48 @@ function render(): void {
 
 async function createIssue(expandInBackground = false): Promise<void> {
   if (busy || !state().draft.title.trim()) return;
+  const value = state();
+  const workspace = currentWorkspace;
+  const workspacePath = getWorkspacePath();
   busy = true;
   feedback.textContent = '';
   syncCapture();
   try {
     if (!isIssuesStoreLoaded() || isIssuesStoreRecovering()) throw new Error('Issues are still loading');
-    if (state().pendingId && !findIssueById(state().pendingId!)) state().pendingId = undefined;
-    if (!state().pendingId) state().pendingId = addIssue({ ...state().draft, workspacePath: getWorkspacePath(), source: 'user' }).id;
-    saveDraft();
+    if (value.pendingId && !findIssueById(value.pendingId)) value.pendingId = undefined;
+    if (!value.pendingId) value.pendingId = addIssue({ ...value.draft, workspacePath, source: 'user' }).id;
+    saveDraft(value, workspace);
     await saveIssuesNow();
-    const id = state().pendingId!;
-    state().pendingId = undefined;
-    state().draft = { title: '' };
-    saveDraft();
-    input.value = '';
-    feedback.textContent = expandInBackground ? `Created ${id}. Expanding in the background.` : `Created ${id}`;
-    render();
+    const id = value.pendingId;
+    while (value.files.length) {
+      const stored = await uploadIssueAttachment(id, value.files[0]);
+      if (!stored) throw new Error('Attachments need the local server.');
+      if (!addIssueAttachment(id, stored)) throw new Error('Could not attach file to this issue.');
+      value.files.shift();
+      if (currentWorkspace === workspace) renderDraftFiles();
+      await saveIssuesNow();
+    }
+    value.pendingId = undefined;
+    value.draft = { title: '' };
+    saveDraft(value, workspace);
+    if (currentWorkspace === workspace) {
+      input.value = '';
+      feedback.textContent = expandInBackground ? `Created ${id}. Expanding in the background.` : `Created ${id}`;
+      render();
+    }
     if (expandInBackground) {
       void import('./issues-expand').then((m) => m.expandCreatedIssueInBackground(id)).catch((error) => {
         showToast(error instanceof Error ? error.message : `Could not expand ${id}`, 'error');
       });
     }
-  } catch {
-    feedback.textContent = 'Could not save this issue. Retry save to keep it without creating a duplicate.';
+  } catch (error) {
+    if (currentWorkspace === workspace) {
+      feedback.textContent = `${error instanceof Error ? error.message : 'Could not save this issue.'} Retry save to keep it without creating a duplicate.`;
+    }
   } finally {
     busy = false;
     syncCapture();
-    input.focus();
+    if (currentWorkspace === workspace) input.focus();
   }
 }
 
@@ -341,7 +417,9 @@ function mount(): void {
   root.innerHTML = `<div class="issues-sidebar__list-view">
     <form class="issues-sidebar__capture">
       <label for="issuesSidebarDraft">New issue</label>
-      <textarea id="issuesSidebarDraft" rows="3" placeholder="Describe the issue…" aria-describedby="issuesSidebarFeedback"></textarea>
+      <textarea id="issuesSidebarDraft" rows="3" placeholder="Describe the issue…" aria-describedby="issuesSidebarDropHint issuesSidebarFeedback"></textarea>
+      <p id="issuesSidebarDropHint" class="issues-sidebar__drop-hint">Drop images or files here · up to 12 MB each</p>
+      <div data-draft-files aria-label="Pending attachments" hidden></div>
       <div class="issues-sidebar__actions"><button type="button" data-expand>Expand</button><button type="submit" data-create>Create</button></div>
       <p id="issuesSidebarFeedback" class="issues-sidebar__feedback" role="status" aria-live="polite"></p>
     </form>
@@ -373,6 +451,7 @@ function mount(): void {
   count = root.querySelector('[data-count]')!;
   const addFilter = root.querySelector<HTMLButtonElement>('[data-add-filter]')!;
   addFilter.addEventListener('click', () => openFilterMenu(addFilter));
+  bindCaptureFileDrop(root.querySelector('form')!);
   root.querySelector('form')!.addEventListener('submit', (event) => { event.preventDefault(); void createIssue(); });
   expandButton.addEventListener('click', () => { void createIssue(true); });
   input.addEventListener('input', () => {

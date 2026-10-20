@@ -1950,6 +1950,8 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
     secondary.appendChild(useWorktree);
     const modelButton = createDetailTextButton({ label: issueLaunchModelLabel(issue.id), icon: 'appModels', disabled: !workflowOk || busy, title: 'Model for a new issue chat', onClick: () => pickIssueLaunchModel(issue.id, modelButton, refreshIssueDetailIfOpen) });
+    modelButton.classList.add('issues-detail__model');
+    modelButton.title = `Model for a new issue chat: ${issueLaunchModelLabel(issue.id)}`;
     secondary.appendChild(modelButton);
 
     const foregroundHints: Record<IssueForegroundChatMode, string> = {

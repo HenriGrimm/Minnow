@@ -1671,7 +1671,7 @@ function renderViewSelector(): void {
     [BUILTIN_VIEW_MY_OPEN]: 'Open issues assigned to you or left unassigned.',
   };
   const description = document.getElementById('issuesViewDescription');
-  if (description) description.textContent = `${descriptions[activeViewId] ?? 'Saved issue filters.'} Filters below refine this view.`;
+  if (description) description.textContent = descriptions[activeViewId] ?? 'Saved issue filters.';
 }
 
 function renderFilterChips(): void {

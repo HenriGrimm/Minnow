@@ -48,6 +48,14 @@ describe('inlineToHtml', () => {
     assert.equal(inlineToHtml('`<b>`'), '<code>&lt;b&gt;</code>');
   });
 
+  test('renders HTML line breaks in prose while keeping code and unsafe tags literal', () => {
+    const rendered = host(inlineToHtml('First.<br><BR/><br />Next. `<br>` <br onclick="bad()">'));
+    assert.equal(rendered.querySelectorAll('br').length, 3);
+    assert.equal(rendered.querySelector('code')?.textContent, '<br>');
+    assert.equal(rendered.textContent, 'First.Next. <br> <br onclick="bad()">');
+    assert.equal(htmlToInline(rendered), 'First.\n\n\nNext. `<br>` <br onclick="bad()">');
+  });
+
   test('renders links and images with escaped attributes', () => {
     assert.equal(
       inlineToHtml('[label](https://x.test)'),

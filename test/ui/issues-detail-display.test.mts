@@ -112,6 +112,22 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('description line breaks render without rewriting an untouched issue', () => {
+    setupDom();
+    const description = 'Test available models.<br><br>Use the spreadsheet.';
+    seedIssues([{
+      id: 'GET-3', title: 'Model testing', description, type: 'task',
+      status: 'backlog', priority: 'none', labels: [], source: 'user',
+      workspacePath: '/repo', createdAt: FIXED_NOW, updatedAt: FIXED_NOW,
+    }]);
+    openIssueDetail('GET-3');
+    const paragraph = document.querySelector('.mn-editor__para');
+    assert.equal(paragraph?.querySelectorAll('br').length, 2);
+    assert.equal(paragraph?.textContent, 'Test available models.Use the spreadsheet.');
+    closeIssueDetail();
+    assert.equal(findIssueById('GET-3')?.description, description);
+  });
+
   test('wrapped title editing saves a single line and Enter respects composition', () => {
     setupDom();
     seedIssues([{
