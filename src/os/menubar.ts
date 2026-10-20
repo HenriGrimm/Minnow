@@ -142,8 +142,8 @@ export function renderMenubar(root: HTMLElement): () => void {
   settingsBtn.setAttribute('aria-controls', 'settingsView');
   settingsBtn.addEventListener('click', () => {
     void import('../ui/settings-page').then((m) => {
-      if (isShellOverlayOpen('settings')) m.closeSettings();
-      else { closeShellOverlay(); m.openSettingsFromTopbar(); }
+      if (!isShellOverlayOpen('settings')) closeShellOverlay();
+      m.openSettingsFromTopbar();
     });
   });
 
