@@ -1,33 +1,102 @@
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
 import { launchModelLabel } from '../models/launch-selection';
+import { readDefaultModelBinding } from '../models/selection';
 import { loadModelChoices } from '../models/model-choices';
 import { fillModelChoices } from './routing-form';
 import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from './model-select-picker';
+import { decodeModelSelectKey } from '../lib/model-select-key';
+import { formatReasoningEffortLabel, getComposerReasoningLevelOptions, modelShowsComposerBrainToggle } from '../lib/reasoning-effort';
+import { resolveSendCapabilities } from '../providers/model-capabilities';
+import type { ReasoningEffortOption } from '../types';
 import '../styles/model-routing-form.css';
+
+interface LaunchPickerOptions {
+  reasoning: () => ReasoningEffortOption | undefined;
+  onReasoning: (value?: ReasoningEffortOption) => void;
+  onClose: () => void;
+}
 
 let closePicker: (() => void) | undefined;
 /** A dispatch override is local; changing it never remembers a chat preference. */
-export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick: (value: string) => void): void {
+export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick: (value: string) => void, options?: LaunchPickerOptions): void {
   closePicker?.();
   const abort = new AbortController();
-  const panel = document.createElement('section'); panel.className = 'mn-models-popover';
-  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Model for new chats');
-  const title = document.createElement('h2'); title.textContent = 'Model for new chats';
-  const select = document.createElement('select'); select.setAttribute('aria-label', 'Launch model'); select.disabled = true;
-  const status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Loading models…';
-  panel.append(title, select, status); document.body.append(panel); registerChromePopover();
+  const host = document.createElement('div');
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', 'Model for new chats');
+  select.hidden = true;
+  select.disabled = true;
+  host.append(select);
+  document.body.append(host);
   let closed = false;
-  const rect = anchor.getBoundingClientRect(); panel.style.left = `${Math.max(12, Math.min(rect.left, innerWidth - panel.offsetWidth - 12))}px`; panel.style.top = `${Math.max(12, Math.min(rect.bottom + 8, innerHeight - 230))}px`;
-  const close = () => { if (closed) return; closed = true; unregisterChromePopover(); abort.abort(); unmountAuxiliaryModelSelectCombobox(select); panel.remove(); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', key); closePicker = undefined; anchor.focus(); };
-  const outside = (event: PointerEvent) => { if (!panel.contains(event.target as Node) && !anchor.contains(event.target as Node)) close(); };
-  const key = (event: KeyboardEvent) => { if (event.key === 'Escape' && !event.defaultPrevented && !panel.querySelector('.auxiliary-model-popover:not(.hidden)')) { event.preventDefault(); close(); } };
-  closePicker = close; document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', key);
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    abort.abort();
+    unmountAuxiliaryModelSelectCombobox(select);
+    host.remove();
+    closePicker = undefined;
+    options?.onClose();
+    if (anchor.isConnected) anchor.focus();
+  };
+  closePicker = close;
   void loadModelChoices(abort.signal).then((choices) => {
-    if (abort.signal.aborted) return;
+    if (abort.signal.aborted || !anchor.isConnected) { close(); return; }
     fillModelChoices(select, choices, value, `Use last selected chat model · ${launchModelLabel('')}`);
-    select.disabled = false; status.textContent = 'Applies to this launch. Existing chats keep their model.';
-    mountAuxiliaryModelSelectCombobox(select, { searchable: true });
-    select.onchange = () => { onPick(select.value); close(); };
-    panel.querySelector<HTMLButtonElement>('.model-select-trigger')?.focus();
-  }).catch((error) => { if (!abort.signal.aborted) status.textContent = error.message; });
+    select.disabled = false;
+    mountAuxiliaryModelSelectCombobox(select, {
+      searchable: true, anchor, onClose: close, keepOpenOnPick: !!options,
+      showReasoningDefault: !options,
+    });
+    const trigger = host.querySelector<HTMLButtonElement>('.model-select-trigger')!;
+    // Only the shared menu is visible; the original issue control remains its anchor.
+    trigger.hidden = true;
+    trigger.style.display = 'none';
+    const panel = host.querySelector<HTMLElement>('.auxiliary-model-popover')!;
+    const reasoning = document.createElement('div');
+    reasoning.className = 'composer-model-reasoning';
+    const renderReasoning = () => {
+      if (!options) return;
+      const binding = decodeModelSelectKey(select.value) ?? readDefaultModelBinding();
+      const caps = binding.providerId ? resolveSendCapabilities(binding.providerId, binding.modelId) : undefined;
+      const levels = getComposerReasoningLevelOptions(caps?.reasoningAllowedOptions ?? []);
+      const toggle = modelShowsComposerBrainToggle(caps);
+      reasoning.replaceChildren();
+      reasoning.hidden = binding.providerId === 'minnow-router' || (!levels.length && !toggle);
+      if (reasoning.hidden) return;
+      const heading = document.createElement('div');
+      heading.className = 'composer-model-reasoning__heading';
+      heading.textContent = 'Reasoning for new chat';
+      const buttons = document.createElement('div');
+      buttons.className = 'composer-model-reasoning__choices';
+      buttons.setAttribute('role', 'group');
+      buttons.setAttribute('aria-label', 'Reasoning for new chat');
+      const values: Array<ReasoningEffortOption | undefined> = [undefined, ...(toggle ? ['off' as const] : []), ...(levels.length ? levels : ['on' as const])];
+      for (const effort of values) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'composer-model-reasoning__choice';
+        button.textContent = effort ? formatReasoningEffortLabel(effort) : 'Default';
+        button.setAttribute('aria-pressed', String(options.reasoning() === effort));
+        button.addEventListener('click', () => {
+          options.onReasoning(effort);
+          buttons.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        });
+        buttons.append(button);
+      }
+      reasoning.append(heading, buttons);
+    };
+    if (options) panel.querySelector('.model-select-menu')!.after(reasoning);
+    select.onchange = () => {
+      onPick(select.value);
+      if (options) renderReasoning();
+      else close();
+    };
+    renderReasoning();
+    trigger.click();
+  }).catch(async (error) => {
+    if (abort.signal.aborted) return;
+    close();
+    const { showToast } = await import('./toast');
+    showToast(error instanceof Error ? error.message : String(error), 'error');
+  });
 }

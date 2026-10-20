@@ -10,6 +10,7 @@ import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox,
 import { teardownHappyDomAsync } from '../os/dom-helpers.mts';
 
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: window.localStorage });
+Object.defineProperty(globalThis, 'Event', { configurable: true, value: window.Event });
 after(async () => teardownHappyDomAsync(window));
 
 describe('provider browser', { concurrency: false }, () => {
@@ -196,4 +197,37 @@ describe('provider browser', { concurrency: false }, () => {
     menu.querySelector<HTMLButtonElement>('.model-browser-pane .model-select-option')!.click();
     assert.deepEqual(picked, ['entry-a']);
   });
+});
+
+
+test('anchored launch picker stays open across model picks and disposes once on Escape', () => {
+  document.body.replaceChildren();
+  const anchor = document.createElement('button');
+  const host = document.createElement('div');
+  const select = document.createElement('select');
+  for (const id of ['first', 'second']) {
+    const option = document.createElement('option');
+    option.value = encodeModelSelectKey('api', id); option.text = id;
+    option.dataset.providerId = 'api'; option.dataset.providerLabel = 'API';
+    select.append(option);
+  }
+  select.value = encodeModelSelectKey('api', 'first');
+  host.append(select); document.body.append(anchor, host);
+  let closed = 0;
+  let picked = '';
+  select.addEventListener('change', () => { picked = select.value; });
+  mountAuxiliaryModelSelectCombobox(select, { anchor, keepOpenOnPick: true, showReasoningDefault: false, onClose: () => { closed++; unmountAuxiliaryModelSelectCombobox(select); host.remove(); } });
+  const trigger = host.querySelector<HTMLButtonElement>('.model-select-trigger')!;
+  trigger.hidden = true; trigger.click();
+  const panel = host.querySelector<HTMLElement>('.auxiliary-model-popover')!;
+  panel.querySelector<HTMLButtonElement>('.model-browser-provider')!.click();
+  const row = [...panel.querySelectorAll<HTMLElement>('.model-select-option')].find(item => item.dataset.value === encodeModelSelectKey('api', 'second'))!;
+  row.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+  assert.equal(select.value, encodeModelSelectKey('api', 'second'), 'native value after pick');
+  assert.equal(picked, encodeModelSelectKey('api', 'second'));
+  assert.equal(closed, 0);
+  assert.equal(panel.classList.contains('hidden'), false);
+  panel.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(closed, 1);
+  assert.equal(host.isConnected, false);
 });

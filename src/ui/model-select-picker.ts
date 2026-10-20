@@ -1010,6 +1010,8 @@ interface AuxiliaryModelSelectPicker {
   position: () => void;
   stopPositioning?: () => void;
   pick: (value: string) => void;
+  onClose?: () => void;
+  keepOpenOnPick?: boolean;
 }
 
 const auxiliaryPickers = new WeakMap<HTMLSelectElement, AuxiliaryModelSelectPicker>();
@@ -1019,6 +1021,7 @@ let auxiliaryPickerId = 0;
 
 function closeAuxiliaryModelSelectMenu(): void {
   if (!openAuxiliaryPicker) return;
+  const onClose = openAuxiliaryPicker.onClose;
   resetModelProviderBrowser(openAuxiliaryPicker.menu);
   openAuxiliaryPicker.stopPositioning?.();
   openAuxiliaryPicker.stopPositioning = undefined;
@@ -1034,6 +1037,7 @@ function closeAuxiliaryModelSelectMenu(): void {
     unregisterChromePopover();
     auxiliaryChromePopoverRegistered = false;
   }
+  onClose?.();
 }
 
 function ensureAuxiliaryPickerGlobals(): void {
@@ -1084,8 +1088,7 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
   picker.trigger.disabled = !hasSelectable;
 
   picker.pick = (modelId) => {
-    closeAuxiliaryModelSelectMenu();
-    closeModelSelectMenu();
+    if (!picker.keepOpenOnPick) closeModelSelectMenu();
     const resetting = modelId === '' && [...select.options].some((option) =>
       option.value === '' && option.dataset.modelSelectReset === 'true',
     );
@@ -1095,7 +1098,7 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
     }
     select.value = modelId;
     select.dispatchEvent(new Event('change', { bubbles: true }));
-    if (picker.trigger.isConnected) picker.trigger.focus();
+    if (picker.trigger.isConnected && !picker.trigger.hidden) picker.trigger.focus();
   };
   renderModelSelectMenuRows(picker.menu, select, picker.pick, undefined,
     { isolated: true, searchQuery: picker.search?.value ?? '', hostFilter: picker.hostFilter });
@@ -1106,7 +1109,7 @@ export function syncAuxiliaryModelSelectCombobox(select: HTMLSelectElement): voi
 /** Wrap a native model &lt;select&gt; with the same custom list UI as the top-bar picker. */
 export function mountAuxiliaryModelSelectCombobox(
   select: HTMLSelectElement,
-  options: 'select' | 'composer' | { appearance?: 'select' | 'composer'; searchable?: boolean } = 'select',
+  options: 'select' | 'composer' | { appearance?: 'select' | 'composer'; searchable?: boolean; anchor?: HTMLElement; onClose?: () => void; keepOpenOnPick?: boolean; showReasoningDefault?: boolean } = 'select',
 ): void {
   const appearance = typeof options === 'string' ? options : options.appearance ?? 'select';
   if (auxiliaryPickers.has(select)) return;
@@ -1156,6 +1159,8 @@ export function mountAuxiliaryModelSelectCombobox(
   root.appendChild(trigger);
   const panel = document.createElement('div');
   panel.className = 'model-select-popover auxiliary-model-popover hidden';
+  // A pick can rebuild its row before the document's outside-click check runs.
+  panel.addEventListener('mousedown', event => event.stopPropagation());
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', labelledBy || 'Choose a model');
   // Top-layer rendering escapes scroll/transform clipping while retaining dialog ownership.
@@ -1199,7 +1204,7 @@ export function mountAuxiliaryModelSelectCombobox(
   root.appendChild(panel);
 
   const position = () => {
-    const box = trigger.getBoundingClientRect();
+    const box = (typeof options === 'object' && options.anchor || trigger).getBoundingClientRect();
     const width = Math.min(620, Math.max(0, window.innerWidth - 16));
     panel.style.width = `${width}px`;
     panel.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
@@ -1210,8 +1215,13 @@ export function mountAuxiliaryModelSelectCombobox(
     panel.style.top = `${Math.max(8, Math.min(top, window.innerHeight - height - 8))}px`;
   };
   const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, hostFilter: 'all', position, composerButton, pick: () => {} };
+  if (typeof options === 'object') {
+    picker.onClose = options.onClose;
+    picker.keepOpenOnPick = options.keepOpenOnPick;
+  }
   auxiliaryPickers.set(select, picker);
   mountModelMenuActions(panel, {
+    showReasoningDefault: typeof options === 'object' ? options.showReasoningDefault : undefined,
     fallbackToGlobal: false,
     resolveSelectValue: () => {
       const selected = selectedOptionForSelect(select);

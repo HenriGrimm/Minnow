@@ -40,3 +40,20 @@ test('a stale provider without a chat model cannot contaminate the remembered bi
   });
   setStorageModeForTests(null);
 });
+
+
+test('issue reasoning is isolated, cleared on model changes and consumed with launch selection', async () => {
+  const { issueLaunchReasoning, setIssueLaunchReasoning, setIssueLaunchModel, clearIssueLaunchModel } = await import('../../src/models/launch-selection.ts');
+  const key = 'workspace\0ISSUE-1';
+  setIssueLaunchModel(key, 'provider\u001fmodel');
+  setIssueLaunchReasoning(key, 'high');
+  assert.equal(issueLaunchReasoning(key), 'high');
+  assert.equal(issueLaunchReasoning('other\0ISSUE-1'), undefined);
+  setIssueLaunchModel(key, 'provider\u001fmodel');
+  assert.equal(issueLaunchReasoning(key), 'high');
+  setIssueLaunchModel(key, 'provider\u001fother');
+  assert.equal(issueLaunchReasoning(key), undefined);
+  setIssueLaunchReasoning(key, 'off');
+  clearIssueLaunchModel(key);
+  assert.equal(issueLaunchReasoning(key), undefined);
+});

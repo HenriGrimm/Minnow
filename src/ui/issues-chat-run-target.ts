@@ -1,4 +1,4 @@
-import { issueLaunchModel as readIssueModel, clearIssueLaunchModel as clearIssueModel, setIssueLaunchModel, launchModelLabel } from '../models/launch-selection';
+import { issueLaunchModel as readIssueModel, clearIssueLaunchModel as clearIssueModel, setIssueLaunchModel, launchModelLabel, issueLaunchReasoning, setIssueLaunchReasoning } from '../models/launch-selection';
 import { readDefaultModelBinding } from '../models/selection';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 /**
@@ -15,7 +15,12 @@ export function issueLaunchModel(issueId: string): string { return readIssueMode
 export function clearIssueLaunchModel(issueId: string): void { clearIssueModel(issueKey(issueId)); }
 export function issueLaunchModelLabel(issueId: string): string { return launchModelLabel(issueLaunchModel(issueId)); }
 export function pickIssueLaunchModel(issueId: string, anchor: HTMLElement, onChanged: () => void): void {
-  void import('./launch-model-picker').then(({ openLaunchModelPicker }) => openLaunchModelPicker(anchor, issueLaunchModel(issueId), (value) => { setIssueLaunchModel(issueKey(issueId), value); onChanged(); }));
+  const key = issueKey(issueId);
+  void import('./launch-model-picker').then(({ openLaunchModelPicker }) => openLaunchModelPicker(anchor, readIssueModel(key), (value) => { setIssueLaunchModel(key, value); }, {
+    reasoning: () => issueLaunchReasoning(key),
+    onReasoning: value => setIssueLaunchReasoning(key, value),
+    onClose: onChanged,
+  }));
 }
 
 const isolatedIssues = new Set<string>();
