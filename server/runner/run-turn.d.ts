@@ -25,6 +25,7 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
     | { type: 'context_usage'; used: number; limit: number | null; isEstimate: boolean }
   | { type: 'response_restart'; warning: string }
   | { type: 'loading_model' }
+  | { type: 'model_selected'; providerId: string; modelId: string; routerId?: string }
   | { type: 'delta'; text: string }
   | { type: 'thinking'; text: string }
   | { type: 'tool_streaming'; name: string }

@@ -880,6 +880,10 @@ export function createRunnerEffector(options = {}) {
         /** @type {import('../runner/run-turn').TurnResult} */
         let result;
         try {
+          recordTranscriptEvent({
+            boardId, attemptId, taskId: desired.taskId, role: desired.role,
+            event: { type: 'model_selected', providerId: turnModel.providerId, modelId: turnModel.id },
+          });
           result = await runTurnFn({
             chatId: attemptId,
             seed,

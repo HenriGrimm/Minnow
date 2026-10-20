@@ -1933,6 +1933,28 @@
   padding-left: 24px;
 }
 
+.ov2-attempt-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--mn-border);
+  font-size: 12px;
+}
+
+.ov2-attempt-model__label,
+.ov2-attempt-model__pool {
+  color: var(--mn-fg-muted);
+}
+
+.ov2-attempt-model__value,
+.ov2-attempt-model__pool {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .ov2-context {
   flex-shrink: 0;
   padding: 6px 14px;

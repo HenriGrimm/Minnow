@@ -77,6 +77,33 @@ const NO_ACTIONS: BoardActions = {
 
 const OPTIONS = { selectedTaskId: null, pendingTaskIds: new Set<string>() };
 
+test('task model follows the selected attempt and live routing without replacing the thread', () => {
+  setupDom();
+  const state = board();
+  const task = state.tasks.get('W1-B')!;
+  const attemptId = task.attempts[0].attemptId;
+  const events: Record<string, unknown>[] = [
+    { type: 'model_selected', providerId: 'minnow-router', modelId: 'build-pool' },
+  ];
+  const options = { ...OPTIONS, transcript: { attemptId, status: 'ready' as const, events, truncated: false, capped: false } };
+  const overlay = renderTaskDetail(state, task, NO_ACTIONS, options);
+  document.body.append(overlay);
+  const body = overlay.querySelector('[data-thread-scroller]');
+  assert.match(overlay.querySelector('.ov2-attempt-model')!.textContent!, /Awaiting pool routing/);
+  events.push({ type: 'model_selected', providerId: 'host', modelId: 'chosen-model', routerId: 'build-pool' });
+  syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, options, { syncWork: false, thread: 'tail' });
+  assert.equal(overlay.querySelector('[data-thread-scroller]'), body);
+  assert.match(overlay.querySelector('.ov2-attempt-model')!.textContent!, /host \/ chosen-model/);
+  events.push({ type: 'model_selected', providerId: 'fallback', modelId: 'other-model', routerId: 'build-pool' });
+  syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, options, { syncWork: false, thread: 'tail' });
+  assert.match(overlay.querySelector('.ov2-attempt-model')!.textContent!, /fallback \/ other-model/);
+  const older = renderTaskDetail(state, state.tasks.get('W1-A')!, NO_ACTIONS, {
+    ...OPTIONS, transcript: { attemptId: 'a1', status: 'ready', events: [], truncated: false, capped: false },
+  });
+  assert.match(older.querySelector('.ov2-attempt-model')!.textContent!, /Not recorded/);
+  assert.doesNotMatch(older.querySelector('.ov2-attempt-model')!.textContent!, /other-model/);
+});
+
 function menuAction(items: ReturnType<typeof buildTaskCardMenuItems>, id: string): MenuActionItem {
   const row = items.find((item): item is MenuActionItem => 'id' in item && item.id === id);
   assert.ok(row, `expected menu item ${id}`);

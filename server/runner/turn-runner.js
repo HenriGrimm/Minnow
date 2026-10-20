@@ -556,6 +556,15 @@ function createTurnRunner(deps) {
         streamOptions?.onToolCallDelta?.(cliToolName);
       }
       if (chunk.minnow_router) {
+        const route = chunk.minnow_router;
+        if (route.phase === 'generating' && typeof route.providerId === 'string' && typeof route.modelId === 'string') {
+          onTurnEvent?.({
+            type: 'model_selected',
+            providerId: typeof route.resolvedProviderId === 'string' ? route.resolvedProviderId : route.providerId,
+            modelId: typeof route.resolvedModelId === 'string' ? route.resolvedModelId : route.modelId,
+            routerId: route.routerId,
+          });
+        }
         // The Auto pool's evaluator is judging the turn; the composer animates it.
         if (chunk.minnow_router.phase === 'deciding' || chunk.minnow_router.phase === 'evaluated') return;
         if (chunk.minnow_router.phase === 'loading' || chunk.minnow_router.phase === 'waiting') {

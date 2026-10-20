@@ -49,13 +49,13 @@ function rowHtml(item: ActivityItem, open: boolean): string {
     <div class="activity-row__body">
       <div class="activity-row__head"><button type="button" class="activity-row__title" data-action="open" data-item-id="${id}">${title}${unread}</button><span class="activity-row__time" ${timer} ${live ? '' : `data-timestamp="${item.timestamp}"`}>${time}</span></div>
       <p class="activity-row__status">${escapeHtml(statusLine)}</p>
-      ${primary ? `<div class="activity-row__actions">${primary}</div>` : ''}
+      ${primary || dismiss ? `<div class="activity-row__actions">${primary}${dismiss}</div>` : ''}
       <details class="activity-details" data-detail-id="${id}"${open ? ' open' : ''}>
         <summary>${item.children.length ? `${item.children.length} agent${item.children.length === 1 ? '' : 's'} · ` : ''}${activityNeedsAttention(item) && item.status !== 'question' ? 'Inspect' : 'Details'}</summary>
         ${item.detail && item.detail !== label ? `<p class="activity-details__preview">${escapeHtml(item.detail)}</p>` : ''}
         <p class="activity-details__meta">${meta}</p>
         ${children || settledChildren ? `<ul class="activity-children">${children}${settledChildren}</ul>` : ''}
-        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live ? action('Stop this work', 'stop', item.id) : ''}${retry}${dismiss}</div>
+        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live ? action('Stop this work', 'stop', item.id) : ''}${retry}</div>
       </details>
     </div>
   </li>`;
@@ -76,7 +76,8 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
   const summary = panel.querySelector<HTMLElement>('.activity-summary')!;
 
   function section(title: string, list: ActivityItem[], recent = false): string {
-    return `<section class="activity-section" aria-label="${title}"><div class="activity-section__heading"><h3>${title}</h3>${recent && latest?.feed.recent.some((item) => item.unread) ? action('Mark seen', 'seen') : ''}</div><ul class="activity-list">${list.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul></section>`;
+    const dismissible = list.some((item) => activityNeedsAttention(item) && item.status !== 'question');
+    return `<section class="activity-section" aria-label="${title}"><div class="activity-section__heading"><h3>${title}</h3>${dismissible ? action('Dismiss all', 'dismiss-all') : ''}${recent && latest?.feed.recent.some((item) => item.unread) ? action('Mark seen', 'seen') : ''}</div><ul class="activity-list">${list.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul></section>`;
   }
 
   function render(feed: ActivityFeed, prefs: NotificationPrefs, label: string, canStop: boolean): void {
@@ -104,7 +105,7 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
     history.hidden = feed.recent.length <= 3;
     history.textContent = historyExpanded ? 'Less history' : `Earlier activity (${feed.recent.length - 3})`;
     for (const button of panel.querySelectorAll<HTMLButtonElement>('[data-action="retry"]')) button.disabled = retrying.has(button.dataset.itemId!);
-    if (focusAction) [...panel.querySelectorAll<HTMLElement>('[data-action]')].find((node) => node.dataset.action === focusAction && node.dataset.itemId === focusItem && node.dataset.runId === focusRunId)?.focus({ preventScroll: true });
+    if (focusAction) ([...panel.querySelectorAll<HTMLElement>('[data-action]')].find((node) => node.dataset.action === focusAction && node.dataset.itemId === focusItem && node.dataset.runId === focusRunId) ?? mute).focus({ preventScroll: true });
     if (focusDetail) [...panel.querySelectorAll<HTMLDetailsElement>('details[data-detail-id]')].find((node) => node.dataset.detailId === focusDetail)?.querySelector('summary')?.focus({ preventScroll: true });
   }
 
@@ -117,6 +118,9 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
     if (name === 'settings') actions.settings();
     if (name === 'stop-all') actions.stop();
     if (name === 'seen' && latest) actions.seen(latest.feed.recent);
+    if (name === 'dismiss-all' && latest) {
+      for (const alert of [...latest.feed.attention]) if (alert.status !== 'question') actions.dismiss(alert);
+    }
     if (name === 'history' && latest) {
       historyExpanded = !historyExpanded;
       render(latest.feed, latest.prefs, latest.label, latest.canStop);

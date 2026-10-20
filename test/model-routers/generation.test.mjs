@@ -180,6 +180,8 @@ test('My Models router entries remap and complete through the bound upstream', a
     const text = Buffer.concat(state.chunks).toString();
     assert.match(text, /"phase":"loading"/);
     assert.match(text, /"phase":"generating"/);
+    assert.match(text, /"resolvedProviderId":"router-test"/);
+    assert.match(text, /"resolvedModelId":"primary"/);
   } finally {
     setLibraryServeDepsForTests(null);
     setLibraryBindingDepsForTests(null);

@@ -40,6 +40,7 @@ import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
 import { postChatCompletionsHttp } from '../../server/runner/adapters.js';
+import { readTranscript } from '../../server/orchestrator/transcripts.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENGINE_JS = path.join(PROJECT_ROOT, 'server', 'orchestrator', 'engine.js');
@@ -561,6 +562,10 @@ describe('runner effector', { concurrency: false }, () => {
     await waitFor(() => end !== null);
     assert.deepEqual(end.speed, { tokens: 30, seconds: 2 });
     assert.deepEqual(end.usage, { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 });
+    const transcript = await readTranscript(boardId, end.attemptId);
+    assert.deepEqual(transcript.events.filter(event => event.type === 'model_selected').map(({ ts, ...event }) => event), [
+      { type: 'model_selected', providerId: PROVIDER_ID, modelId: MODEL_ID, role: 'builder' },
+    ]);
   });
 
   test('kill the model host mid-turn → crashed', { timeout: 20_000 }, async () => {

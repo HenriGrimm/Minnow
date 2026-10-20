@@ -169,6 +169,17 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
   }
 
   const all = [...items.values()];
+  const completedByChat = new Map<string, number>();
+  for (const item of all) {
+    if (!item.chatId || item.status !== 'completed' || !item.notifications.some((record) => record.kind === 'chat_turn_complete' && notificationStatus(record) === 'completed')) continue;
+    completedByChat.set(item.chatId, Math.max(completedByChat.get(item.chatId) ?? -Infinity, item.timestamp));
+  }
+  for (const item of all) {
+    // A successful later reply supersedes chat errors, not unrelated task or review alerts.
+    if (item.status === 'failed' && item.chatId && item.notifications.every((record) => record.kind === 'chat_turn_error') && (completedByChat.get(item.chatId) ?? -Infinity) > item.timestamp) {
+      item.resolved = true;
+    }
+  }
   const attention = all.filter(activityNeedsAttention).sort((a, b) => Number(b.status === 'question') - Number(a.status === 'question') || b.timestamp - a.timestamp);
   const running = all.filter((item) => item.status === 'running' && !item.background).sort((a, b) => a.timestamp - b.timestamp);
   const background = all.filter((item) => item.status === 'running' && item.background);

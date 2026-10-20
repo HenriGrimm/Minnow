@@ -205,6 +205,8 @@ export async function runRouterGeneration(state) {
       emitRouterControl(state, body, {
         ...controlBase,
         phase: 'generating',
+        resolvedProviderId: bound.providerId,
+        resolvedModelId: bound.id,
         reset: Boolean(previousError),
         warning: previousError ? `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
         ...(displayDecision ? { decision: displayDecision } : {}),

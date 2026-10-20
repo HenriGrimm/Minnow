@@ -62,6 +62,34 @@ test('seen failures still need action; explicit dismissal keeps their outcome in
   assert.equal(dismissed.recent[0].status, 'failed');
 });
 
+test('a successful later reply clears older chat errors without deleting history', () => {
+  const failed = notice({ kind: 'chat_turn_error', activityId: 'turn:old', createdAt: 100 });
+  const feed = build({ notifications: [notice(), failed] });
+  assert.equal(feed.attention.length, 0);
+  assert.equal(feed.recent.length, 2);
+  assert.equal(feed.recent.find((item) => item.id === 'turn:old')?.resolved, true);
+  assert.equal(failed.resolved, undefined, 'projection must not mutate stored notifications');
+});
+
+test('recovery keeps newer failures, other chats, tasks, reviews and questions', () => {
+  const alerts = [
+    notice({ id: 'new', activityId: 'new', kind: 'chat_turn_error', createdAt: 400 }),
+    notice({ id: 'other', activityId: 'other', kind: 'chat_turn_error', chatId: 'other', createdAt: 100 }),
+    notice({ id: 'task', activityId: 'task', kind: 'task_failed', createdAt: 100 }),
+    notice({ id: 'review', activityId: 'review', kind: 'issue_agent_pr', createdAt: 100 }),
+    notice({ id: 'question', activityId: 'question', kind: 'chat_question', createdAt: 100 }),
+  ];
+  const feed = build({ notifications: [notice(), ...alerts], pendingChatIds: new Set([chat.id]) });
+  assert.equal(feed.attention.length, 5);
+});
+
+test('stopped replies and starts do not count as chat recovery', () => {
+  const failed = notice({ kind: 'chat_turn_error', activityId: 'old', createdAt: 100 });
+  for (const outcome of [notice({ activityStatus: 'stopped' }), notice({ kind: 'issue_agent_started' })]) {
+    assert.equal(build({ notifications: [failed, outcome] }).attention.length, 1);
+  }
+});
+
 test('completed parent absorbs terminal child events regardless of arrival order', () => {
   const child = notice({ id: 'child', kind: 'sub_agent_failed', activityId: 'sub:one', parentActivityId: 'turn:run-a', createdAt: 200 });
   const feed = build({ notifications: [notice(), child] });

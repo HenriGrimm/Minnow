@@ -291,8 +291,12 @@ export async function readAttemptTranscript(
   const body = await request(
     `/${encodeURIComponent(boardId)}/attempts/${encodeURIComponent(attemptId)}${query}`,
   );
+  const events: Record<string, unknown>[] = body.events ?? [];
+  if (body.modelSelection?.type === 'model_selected' && !events.some((event) => event.type === 'model_selected')) {
+    events.unshift(body.modelSelection);
+  }
   return {
-    events: body.events ?? [],
+    events,
     truncated: Boolean(body.truncated),
     capped: Boolean(body.capped),
   };
