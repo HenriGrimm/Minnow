@@ -197,6 +197,40 @@ describe('welcome-page recents open state', { concurrency: false }, () => {
 });
 
 describe('welcome-page', { concurrency: false }, () => {
+  test('Open project starts browsing at the configured project location', async () => {
+    const window = setupWelcomeDom();
+    globalThis.HTMLDivElement = window.HTMLDivElement;
+    globalThis.HTMLButtonElement = window.HTMLButtonElement;
+    resetWelcomeStateForTests();
+    setLocalServerAvailable(true);
+    const originalFetch = globalThis.fetch;
+    const browsed = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('/api/workspace/browse')) {
+        browsed.push(String(url));
+        return { ok: true, json: async () => ({
+          path: '/home/user/Projects', parent: '/home/user', entries: [],
+        }) };
+      }
+      return originalFetch(url, init);
+    };
+    try {
+      initWelcomePage();
+      document.getElementById('btnWelcomeOpenProject').click();
+      for (let attempt = 0; attempt < 100 && !browsed.length; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.deepEqual(browsed, [
+        '/api/workspace/browse?path=%2Fhome%2Fuser%2FProjects',
+      ]);
+      document.querySelector('[data-ws-picker-cancel]').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      globalThis.fetch = originalFetch;
+      setLocalServerAvailable(false);
+    }
+  });
+
   test('remote form suggests names, prevents duplicate clones, and retries opening without cloning again', async () => {
     const window = setupWelcomeDom();
     resetWelcomeStateForTests();

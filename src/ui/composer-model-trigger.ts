@@ -508,21 +508,19 @@ function positionPanel(trigger: ComposerModelTrigger): void {
   panel.style.left = `${left}px`;
   panel.style.right = 'auto';
 
-  const panelHeight = panel.offsetHeight || panel.getBoundingClientRect().height;
-
-  if (isMenubarStyleVariant(trigger.variant)) {
-    let top = rect.bottom + gap;
-    top = Math.max(margin, Math.min(top, window.innerHeight - panelHeight - margin));
-    panel.style.top = `${top}px`;
-    return;
+  const above = Math.max(0, rect.top - gap - margin);
+  const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
+  if (!panel.dataset.placement) {
+    const panelHeight = panel.offsetHeight || panel.getBoundingClientRect().height;
+    panel.dataset.placement = !isMenubarStyleVariant(trigger.variant)
+      && (panelHeight <= above || above >= below) ? 'above' : 'below';
   }
-
-  let top = rect.top - panelHeight - gap;
-  if (top < margin) {
-    top = rect.bottom + gap;
-  }
-  top = Math.max(margin, Math.min(top, window.innerHeight - panelHeight - margin));
-  panel.style.top = `${top}px`;
+  // Keep the opening side through asynchronous view/size changes (including Pools).
+  // Anchor the near edge and scroll within the available space instead of flipping.
+  const opensAbove = panel.dataset.placement === 'above';
+  panel.style.maxHeight = `${opensAbove ? above : below}px`;
+  panel.style.top = opensAbove ? 'auto' : `${Math.max(margin, rect.bottom + gap)}px`;
+  panel.style.bottom = opensAbove ? `${Math.max(margin, window.innerHeight - rect.top + gap)}px` : 'auto';
 }
 
 function clearMenubarCollapseTimer(trigger: ComposerModelTrigger): void {
@@ -766,6 +764,8 @@ function openMenu(trigger: ComposerModelTrigger): void {
   trigger.trigger.setAttribute('aria-expanded', 'true');
   trigger.trigger.setAttribute('aria-pressed', 'true');
   trigger.trigger.classList.add('is-overlay-open');
+  delete trigger.panel.dataset.placement;
+  trigger.panel.style.maxHeight = '';
   positionPanel(trigger);
   attachGlobalListeners();
   if (!chromePopoverRegistered) {

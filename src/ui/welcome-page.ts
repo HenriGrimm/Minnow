@@ -562,7 +562,10 @@ async function onOpenProject(): Promise<void> {
   setStatus('spin', 'Choose workspace folder…');
   await setWorkspaceGateOpening(true);
   try {
-    const result = await openWorkspaceFolderPicker();
+    const workspace = await fetchWorkspace();
+    const result = await openWorkspaceFolderPicker({
+      initialPath: workspace?.newProjectParent,
+    });
     if (result.cancelled) {
       await setWorkspaceGateOpening(false);
       setStatus('ok', 'Workspace unchanged');
