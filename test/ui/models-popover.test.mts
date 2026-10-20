@@ -23,7 +23,32 @@ mock.module('../../src/ui/routing-form.ts', { namedExports: {
     return { dispose: () => { disposed++; } };
   },
 } });
+const openedSections: string[] = [];
+mock.module('../../src/ui/models-page.ts', { namedExports: {
+  openModels: (section: string) => { openedSections.push(section); },
+} });
 const { openModelsPopover } = await import('../../src/ui/models-popover.ts');
+
+test('Manage models and Manage pools open their own sections and dismiss the popover', async () => {
+  const trigger = document.createElement('button'); document.body.append(trigger);
+  try {
+    for (const [selector, section] of [
+      ['.models-system__footer button', 'installed'],
+      ['.models-system__edit-pools', 'routers'],
+    ]) {
+      openedSections.length = 0;
+      const close = openModelsPopover(trigger);
+      try {
+        document.querySelector<HTMLButtonElement>(selector)!.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.deepEqual(openedSections, [section]);
+        assert.equal(document.querySelector('#modelsSystemPopover'), null);
+        assert.equal(isShellOverlayOpen('models'), false);
+        assert.equal(document.activeElement, trigger);
+      } finally { close(); }
+    }
+  } finally { trigger.remove(); }
+});
 
 test('Models shows pool coverage and per-model assignments, and refreshes while open', async () => {
   const trigger = document.createElement('button'); document.body.append(trigger);
