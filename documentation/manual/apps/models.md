@@ -97,6 +97,10 @@ A provider connects Minnow to a model service. You can have as many as you like,
 
 API keys are encrypted at rest with AES-256-GCM. Losing the key file in your Minnow home means re-entering them.
 
+Supported connections show **Account usage** in their connection card and beside the active chat's model control. DeepSeek reports its available balance, including granted and topped-up credit, in the account's currency. OpenCode Go reports rolling, weekly and monthly allowance used and remaining, with reset times where supplied. These are account-wide figures, not estimates from Minnow's chat token counts. Unknown measurements are omitted.
+
+Account checks use the saved encrypted provider credentials and read-only account endpoints, never a paid generation request. Results are cached for one minute in memory; the usage view shows when they were checked. A provider that does not expose account data shows no figures.
+
 Select a provider row to open its connection card. Changes save automatically when a field loses focus or you press Enter. The status below the fields confirms when they are saved. **Advanced settings** contains API paths, authentication headers, gateway routing, pricing, and capability checks. CLI connections have a **Manage CLI** link.
 
 Choose **Add provider** for a local or cloud preset, or **Custom endpoint** for another server. Provider IDs are filled in automatically and can be edited under Advanced settings.

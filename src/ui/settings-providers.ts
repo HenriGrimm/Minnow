@@ -1,4 +1,6 @@
 import { runSettingsAction } from './settings-controls';
+import { createProviderAccountUsageView } from './provider-account-usage';
+
 import { showToast } from './toast';
 import '../styles/settings-general.css';
 import '../styles/settings-providers.css';
@@ -47,6 +49,8 @@ import { readDefaultModelBinding, resolveEffectiveChatModelBinding } from './def
 import {
   appendSettingsCrosslinks,
 } from './settings-layout';
+
+let stopProviderUsageViews: Array<() => void> = [];
 
 /** Prefer the top-bar #modelSelect model for this provider, then the active chat binding. */
 function resolveProbePreferredModelId(providerId: string): string | undefined {
@@ -1754,6 +1758,8 @@ export function filterGenericProviderSettingsRows(
 /** Refresh Settings → Providers list and offline/add panel visibility. */
 export async function renderProvidersSettingsSection(): Promise<void> {
   const revision = ++providersRenderRevision;
+  stopProviderUsageViews.forEach(stop => stop());
+  stopProviderUsageViews = [];
   let listEl: HTMLElement;
   try {
     listEl = ensureProvidersShell();
@@ -1802,6 +1808,21 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
   configurableProviders.forEach((provider) => {
     const row = createProviderSettingsRow(provider, canRemove);
+    const usageDetails = document.createElement('details');
+    usageDetails.className = 'provider-account-usage-details';
+    const usageSummary = document.createElement('summary');
+    usageSummary.textContent = 'Account usage';
+    const usageView = createProviderAccountUsageView(provider.id, {
+      visible: () => usageDetails.open && usageDetails.isConnected
+        && Boolean(usageDetails.getClientRects().length),
+    });
+    usageDetails.append(usageSummary, usageView.root);
+    usageDetails.addEventListener('toggle', () => {
+      if (usageDetails.open) usageView.start();
+      else usageView.stop();
+    });
+    stopProviderUsageViews.push(usageView.stop);
+    row.append(usageDetails);
     rows.append(row);
     const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
     if (panel && openIds.has(provider.id)) panel.open = true;

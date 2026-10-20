@@ -1,6 +1,8 @@
 import { AGENT_CLI_USAGE_NAMES, agentCliUsageKind, type AgentCliKind } from '../models/agent-clis';
 import { accountUsageSummary, createAccountUsageView, type AccountUsageView } from './cli-account-usage';
 import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { createProviderAccountUsageView, providerMetricText } from './provider-account-usage';
+import { hasProviderUsage } from '../providers/account-usage';
 
 /** A separate button keeps model selection and quota inspection independently accessible. */
 export function createAccountUsageTrigger() {
@@ -18,6 +20,8 @@ export function createAccountUsageTrigger() {
   let kind: AgentCliKind | null = null;
   let view: AccountUsageView | null = null;
   let registered = false;
+  let selectedId: string | undefined;
+  let disposed = false;
 
   function close(): void {
     if (popover.isConnected) popover.hidePopover();
@@ -49,8 +53,10 @@ export function createAccountUsageTrigger() {
   return {
     button,
     setProvider(providerId: string | undefined) {
+      if (disposed) return;
       const next = agentCliUsageKind(providerId);
-      if (next === kind) { if (button.isConnected) view?.start(); return; }
+      if (providerId === selectedId) { if (button.isConnected) view?.start(); return; }
+      selectedId = providerId;
       close();
       view?.stop();
       view = null;
@@ -58,7 +64,29 @@ export function createAccountUsageTrigger() {
       button.hidden = !kind;
       button.textContent = 'Usage';
       popover.replaceChildren();
-      if (!kind) return;
+      if (!kind) {
+        if (!providerId) return;
+        const id = providerId;
+        popover.setAttribute('aria-label', 'Provider account usage');
+        button.setAttribute('aria-label', 'Provider account usage');
+        view = createProviderAccountUsageView(id, {
+          visible: () => button.isConnected && Boolean(button.parentElement?.getClientRects().length),
+          onChange(usage) {
+            if (disposed || selectedId !== id) return;
+            button.hidden = !hasProviderUsage(usage);
+            const metric = usage.metrics.find(item => typeof item.remaining === 'number');
+            button.textContent = hasProviderUsage(usage) && metric
+              ? `${metric.remaining!.toLocaleString(undefined, { maximumFractionDigits: 2 })}${metric.unit === '%' ? '%' : ' ' + metric.unit} left`
+              : 'Usage';
+            button.title = usage.metrics.map(metric => metric.label + ': ' + providerMetricText(metric)).join('\n');
+            if (button.hidden) close();
+          },
+        });
+        popover.append(view.root);
+        if (!popover.isConnected) document.body.append(popover);
+        if (button.isConnected) view.start();
+        return;
+      }
       const name = AGENT_CLI_USAGE_NAMES[kind];
       popover.setAttribute('aria-label', `${name} account usage`);
       button.setAttribute('aria-label', `${name} account usage`);
@@ -74,6 +102,6 @@ export function createAccountUsageTrigger() {
       if (!popover.isConnected) document.body.append(popover);
       if (button.isConnected) view.start();
     },
-    dispose() { close(); view?.stop(); popover.remove(); },
+    dispose() { disposed = true; close(); view?.stop(); popover.remove(); },
   };
 }
