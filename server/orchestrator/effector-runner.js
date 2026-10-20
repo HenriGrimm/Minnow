@@ -882,7 +882,9 @@ export function createRunnerEffector(options = {}) {
         try {
           recordTranscriptEvent({
             boardId, attemptId, taskId: desired.taskId, role: desired.role,
-            event: { type: 'model_selected', providerId: turnModel.providerId, modelId: turnModel.id },
+            event: { type: 'model_selected', providerId: turnModel.providerId, modelId: turnModel.id,
+              ...(turnModel.providerId !== 'minnow-router' ? { reasoning: reasoning || (thinkingMode === 'off' ? 'off' : 'on') } : {}),
+            },
           });
           result = await runTurnFn({
             chatId: attemptId,

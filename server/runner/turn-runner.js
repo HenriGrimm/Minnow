@@ -563,6 +563,9 @@ function createTurnRunner(deps) {
             providerId: typeof route.resolvedProviderId === 'string' ? route.resolvedProviderId : route.providerId,
             modelId: typeof route.resolvedModelId === 'string' ? route.resolvedModelId : route.modelId,
             routerId: route.routerId,
+            ...(typeof route.routerName === 'string' ? { routerName: route.routerName } : {}),
+            ...(typeof route.reasoning === 'string' ? { reasoning: route.reasoning } : {}),
+            ...(typeof route.reasoningStatus === 'string' ? { reasoningStatus: route.reasoningStatus } : {}),
           });
         }
         // The Auto pool's evaluator is judging the turn; the composer animates it.

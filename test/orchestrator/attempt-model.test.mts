@@ -21,12 +21,18 @@ test('renders direct models, routed models, awaiting routing and legacy transcri
   globalThis.document = window.document as unknown as Document;
   try {
     const direct = renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: 'model' }]);
-    assert.equal(direct.textContent, 'Modelhost / model');
-    assert.equal(direct.querySelector('.ov2-attempt-model__pool'), null);
-    const routed = renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: '<model>', routerId: 'pool' }]);
+    assert.equal(direct.textContent, 'Modelhost / modelReasoning: Not recorded');
+    const routed = renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: '<model>', routerId: 'pool-internal-id', routerName: 'Build pool' }]);
     assert.equal(routed.querySelector('.ov2-attempt-model__value')?.textContent, 'host / <model>');
     assert.equal(routed.querySelector('model'), null);
-    assert.match(routed.textContent!, /Pool: pool/);
+    assert.match(routed.textContent!, /Pool: Build pool/);
+    assert.doesNotMatch(routed.textContent!, /pool-internal-id/);
+    assert.match(renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: 'model', routerId: 'missing-id' }]).textContent!, /Pool: Unavailable pool/);
+    for (const reasoning of ['high', 'off', 'default', 'on']) {
+      const row = renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: 'model', reasoning }]);
+      assert.match(row.textContent!, new RegExp(`Reasoning: ${reasoning}`));
+    }
+    assert.match(renderAttemptModel([{ type: 'model_selected', providerId: 'host', modelId: 'model', reasoning: 'default', reasoningStatus: 'unsupported' }]).textContent!, /Reasoning: Unsupported/);
     assert.match(renderAttemptModel([{ type: 'model_selected', providerId: 'minnow-router', modelId: 'pool' }]).textContent!, /Awaiting pool routing/);
     assert.match(renderAttemptModel([]).textContent!, /Not recorded/);
     assert.match(renderAttemptModel([

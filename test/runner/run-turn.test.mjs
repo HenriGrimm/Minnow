@@ -176,7 +176,7 @@ test('pool selection and failover emit actual model assignments without evaluato
   await withFake([{ emit: [
     control({ routerId: 'pool', phase: 'evaluated' }),
     control({ routerId: 'pool', phase: 'loading', providerId: 'library', modelId: 'entry' }),
-    control({ routerId: 'pool', phase: 'generating', providerId: 'host-a', modelId: 'model-a', reset: false }),
+    control({ routerId: 'pool', phase: 'generating', providerId: 'host-a', modelId: 'model-a', reasoning: 'high', reasoningStatus: 'applied', reset: false }),
     control({ routerId: 'pool', phase: 'generating', providerId: 'minnow-library', modelId: 'library-entry', resolvedProviderId: 'host-b', resolvedModelId: 'model-b', reset: true, warning: 'Failover' }),
     ...proseSseChunks('Finished.'),
   ] }], async baseUrl => {
@@ -187,7 +187,7 @@ test('pool selection and failover emit actual model assignments without evaluato
       onEvent: event => events.push(event),
     });
     assert.deepEqual(events.filter(e => e.type === 'model_selected'), [
-      { type: 'model_selected', providerId: 'host-a', modelId: 'model-a', routerId: 'pool' },
+      { type: 'model_selected', providerId: 'host-a', modelId: 'model-a', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' },
       { type: 'model_selected', providerId: 'host-b', modelId: 'model-b', routerId: 'pool' },
     ]);
     assert.ok(events.some(e => e.type === 'response_restart'));

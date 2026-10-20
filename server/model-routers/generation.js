@@ -175,6 +175,7 @@ export async function runRouterGeneration(state) {
 
       const controlBase = {
         routerId,
+        routerName: current.name,
         entryId: entry.id,
         providerId: entry.providerId,
         modelId: entry.modelId,
@@ -207,6 +208,8 @@ export async function runRouterGeneration(state) {
         phase: 'generating',
         resolvedProviderId: bound.providerId,
         resolvedModelId: bound.id,
+        reasoning: effort || ((decision && decision.source !== 'override') ? 'default' : body.reasoning_effort || 'default'),
+        reasoningStatus: reasoningStatus || 'default',
         reset: Boolean(previousError),
         warning: previousError ? `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
         ...(displayDecision ? { decision: displayDecision } : {}),

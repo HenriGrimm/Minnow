@@ -510,7 +510,7 @@ describe('P9-D — attempt transcripts', () => {
 
   it('retains model routing across transcript reloads', async () => {
     const boardId = await createBoard();
-    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool' };
+    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' };
     recordTranscriptEvent({ boardId, attemptId: 'r-model', event });
     await flushTranscripts();
     resetTranscripts();
@@ -520,7 +520,7 @@ describe('P9-D — attempt transcripts', () => {
 
   it('retains the latest model outside a limited transcript tail', async () => {
     const boardId = await createBoard();
-    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool' };
+    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' };
     recordTranscriptEvent({ boardId, attemptId: 'r-model-tail', event });
     for (let i = 0; i < 5; i += 1) {
       recordTranscriptEvent({ boardId, attemptId: 'r-model-tail', event: { type: 'tool_call', name: 'read_file', id: String(i) } });

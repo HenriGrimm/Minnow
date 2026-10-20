@@ -564,7 +564,7 @@ describe('runner effector', { concurrency: false }, () => {
     assert.deepEqual(end.usage, { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 });
     const transcript = await readTranscript(boardId, end.attemptId);
     assert.deepEqual(transcript.events.filter(event => event.type === 'model_selected').map(({ ts, ...event }) => event), [
-      { type: 'model_selected', providerId: PROVIDER_ID, modelId: MODEL_ID, role: 'builder' },
+      { type: 'model_selected', providerId: PROVIDER_ID, modelId: MODEL_ID, role: 'builder', reasoning: 'on' },
     ]);
   });
 

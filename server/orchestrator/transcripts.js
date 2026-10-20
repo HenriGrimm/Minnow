@@ -204,6 +204,8 @@ export function recordTranscriptEvent(entry) {
     'providerId',
     'modelId',
     'routerId',
+    'routerName',
+    'reasoningStatus',
     'text',
     'summary',
     'error',
