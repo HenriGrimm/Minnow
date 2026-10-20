@@ -5,6 +5,7 @@ import { getMinnowHome } from '../config/home.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
 import { RouterScheduler, validateRouters, entryKey } from './scheduler.js';
+import { getAllowanceTracker } from '../generations/allowance.js';
 
 const stores = new Map();
 const digest = (value) => createHash('sha256').update(value).digest('hex');
@@ -77,6 +78,16 @@ async function openStore(home) {
     const limits = store.routers.filter((router) => router.enabled).flatMap((router) => router.entries.filter((candidate) => candidate.enabled && entryKey(candidate) === entryKey(entry)).map((candidate) => candidate.concurrencyLimit));
     return limits.length ? Math.min(...limits) : entry.concurrencyLimit;
   };
+  const allowances = await getAllowanceTracker();
+  allowances.listeners.add(() => {
+    // Invalidate waiters synchronously before the failing attempt releases its slot.
+    // They recheck eligibility in generation.js, outside the admission queue.
+    for (const request of [...store.scheduler.requests.values()]) {
+      if (request.status === 'queued' && request.allowanceContext && !allowances.availability(request.allowanceContext).available) {
+        store.scheduler.rejectQueued(request.requestId, 'Provider allowance changed; selecting an available model');
+      }
+    }
+  });
   let saves = Promise.resolve();
   store.save = (value) => {
     const input = structuredClone(value);

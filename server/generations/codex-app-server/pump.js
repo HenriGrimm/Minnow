@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
 import { admitAgentCli } from '../agent-cli/admission.js';
 import { agentCliToolWaitMs } from '../agent-cli/tool-wait.js';
-import { safeAgentCliDiagnostic } from '../agent-cli/errors.js';
+import { classifyAgentCliFailure, safeAgentCliDiagnostic } from '../agent-cli/errors.js';
 import { appendChunk, markComplete, markError, markStreaming, noteGenerationCandidateChosen } from '../store.js';
 import { generationTimeoutMessage } from '../timeouts.js';
 import { prepareConversation, continuation, seedConversation } from './conversation.js';
@@ -198,7 +198,11 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         if (controller.signal.aborted || error) {
           const message = safeAgentCliDiagnostic(error?.message ?? 'Codex request cancelled.', session.redactionSecrets ?? Object.values(runtime.secrets ?? {}));
           if (state.status === 'cancelled') resolveRound({ outcome: 'complete' });
-          else { markError(state, message); resolveRound({ outcome: 'fatal', message, hostSuspect: false }); }
+          else {
+            const classified = classifyAgentCliFailure({ error });
+            markError(state, message, classified);
+            resolveRound({ outcome: 'fatal', message, hostSuspect: false, quotaExceeded: classified.quotaExceeded, failure: classified.failure });
+          }
           if (!controller.signal.aborted) void closeCodexSession(session).catch(() => {});
           return;
         }

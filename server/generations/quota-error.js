@@ -16,6 +16,15 @@ export const QUOTA_EXHAUSTED_MARKERS = [
   'usage limit reached',
   'usage limit exceeded',
   'usagelimiterror',
+  'usagelimitexceeded',
+  'usage_limit_reached',
+  'usage_limit_exceeded',
+  "you've hit your limit",
+  "you've hit your usage limit",
+  'you have hit your limit',
+  'you have hit your usage limit',
+  'you have reached your usage limit',
+  'allowance exhausted',
   'quota exceeded',
   'exceeded your current quota',
   'insufficient_quota',
@@ -96,4 +105,24 @@ export function formatOutOfUsageMessage(input) {
   const hint = parseQuotaResetHint(input?.detail);
   const when = hint ? ` Resets in ${hint}.` : '';
   return `${OUT_OF_USAGE_TITLE}${where}. The provider will not accept more requests until the allowance resets.${when}`;
+}
+
+/** Only provider refusals enter this classifier; never scan successful model prose. */
+export function allowanceFailure(message, options = {}) {
+  const text = String(message || '');
+  const quota = options.quotaExceeded || detectQuotaExhausted({
+    status: options.status ?? Number(/HTTP (\d{3})/i.exec(text)?.[1]), body: text, retryAfterMs: options.retryAfterMs,
+  });
+  const rate = !quota && (options.status === 429 || /429|rate.?limit|too many requests/i.test(text));
+  if (!quota && !rate) return null;
+  const retryAfterMs = options.retryAfterMs;
+  const relative = /resets? in\s+(\d+(?:\.\d+)?)\s*(seconds?|minutes?|hours?|days?)/i.exec(text);
+  const relativeReset = relative ? Date.now() + Number(relative[1]) * ({ s: 1000, m: 60_000, h: 3600_000, d: 86400_000 }[relative[2][0].toLowerCase()]) : undefined;
+  return {
+    kind: quota ? 'quota' : 'rate_limit',
+    // Billing refusals are account-wide. Ambiguous usage caps stay model-scoped.
+    scope: options.scope || (options.status === 402 || /insufficient[_ ](?:quota|credits?)|out of credits|credit balance|billing hard limit|HTTP 402/i.test(text) ? 'provider' : 'model'),
+    ...(Number.isFinite(options.resetAt ?? relativeReset) ? { resetAt: options.resetAt ?? relativeReset } : {}),
+    ...(Number.isFinite(retryAfterMs) ? { retryAfterMs } : {}),
+  };
 }

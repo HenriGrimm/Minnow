@@ -50,6 +50,7 @@ import {
  * @property {boolean} failoverDisabled
  * @property {boolean} fallbackUsed
  * @property {boolean} [quotaExceeded] provider refused because the allowance is spent
+ * @property {object} [failure] structured provider allowance refusal
  * @property {string} chosenProviderId
  * @property {string} chosenModelId
  * @property {string | null} fallbackRole
@@ -701,9 +702,11 @@ export function markComplete(state) {
 /**
  * @param {GenerationState} state
  * @param {string} message
- * @param {{ quotaExceeded?: boolean }} [options]
+ * @param {{ quotaExceeded?: boolean, failure?: object }} [options]
  */
 export function markError(state, message, options) {
+  if (options?.failure) state.failure = options.failure;
+  if (options?.quotaExceeded) state.quotaExceeded = true;
   if (isTerminal(state.status)) {
     return;
   }

@@ -119,12 +119,12 @@ export class RouterScheduler {
     return chosen;
   }
 
-  acquire(router, chatId, entry, signal, requestId = crypto.randomUUID()) {
+  acquire(router, chatId, entry, signal, requestId = crypto.randomUUID(), allowanceContext) {
     const key = entryKey(entry);
     return new Promise((resolve, reject) => {
       const queue = this.queues.get(key) || [];
       this.queues.set(key, queue);
-      const request = { router, chatId, entry, requestId, signal, resolve, reject, status: 'queued' };
+      const request = { router, chatId, entry, requestId, signal, resolve, reject, status: 'queued', allowanceContext };
       request.abort = () => {
         const index = queue.indexOf(request);
         if (index >= 0) queue.splice(index, 1);

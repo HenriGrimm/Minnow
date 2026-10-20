@@ -42,6 +42,23 @@ async function loadCredentials(kind, options) {
   return { key: identity.update(authPath).update(auth).digest('hex'), credentials: null, accountKey };
 }
 
+/** Opaque account identity for allowance cooldowns; never fetches account usage. */
+export async function getAgentCliAllowanceIdentity(kind, options = {}) {
+  const env = options.env ?? process.env;
+  const keys = kind === 'claude' ? ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_BASE_URL']
+    : kind === 'codex' ? ['CODEX_API_KEY', 'OPENAI_API_KEY'] : ['CURSOR_API_KEY', 'CURSOR_API_ENDPOINT'];
+  const configured = keys.map(key => env[key] || '');
+  if (options.cliToken || configured.some(Boolean)) {
+    return createHash('sha256').update(JSON.stringify([kind, options.binPath, options.cliToken, configured])).digest('hex');
+  }
+  try {
+    const login = await loadCredentials(kind, options);
+    return login.accountKey || login.key;
+  } catch {
+    return createHash('sha256').update(JSON.stringify([kind, options.binPath, options.cliToken])).digest('hex');
+  }
+}
+
 /** Per-account cache; credentials and vendor errors never leave the adapters. */
 export function createAgentCliUsageService(deps = {}) {
   const now = deps.now ?? Date.now;

@@ -32,6 +32,9 @@ describe('Models model pools panel auto-save', () => {
   let loadedConfig: RouterConfig;
   let saveGate: Promise<void> | undefined;
   let onSaveStarted: (() => void) | undefined;
+  let health: Record<string, unknown>;
+  let retries: string[];
+  let retryGate: Promise<void> | undefined;
   const initialConfig: RouterConfig = {
     revision: 1,
     defaultRouterId: null,
@@ -55,12 +58,18 @@ describe('Models model pools panel auto-save', () => {
     loadedConfig = structuredClone(initialConfig);
     saveGate = undefined;
     onSaveStarted = undefined;
+    health = {}; retries = []; retryGate = undefined;
     invalidateProviderCache();
     serverRevision = initialConfig.revision;
     globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const target = String(url);
       const method = init?.method ?? 'GET';
       if (target.includes('/api/generations/routers')) {
+        if (target.endsWith('/retry') && method === 'POST') {
+          retries.push(String(init?.body));
+          if (retryGate) await retryGate;
+          return json({ assignments: [], requests: [], entries: [], availability: {}, events: [] });
+        }
         if (method === 'PUT') {
           const body = JSON.parse(String(init?.body)) as RouterConfig;
           onSaveStarted?.();
@@ -81,7 +90,7 @@ describe('Models model pools panel auto-save', () => {
             assignments: [],
             requests: [],
             entries: [],
-            availability: {},
+            availability: health,
             events: [],
           });
         }
@@ -148,6 +157,26 @@ describe('Models model pools panel auto-save', () => {
     assert.equal(saves.length, 2, 'expected a second save');
     assert.equal(saves[1]?.routers[0]?.name, 'Second rename');
     assert.equal(saves[1]?.revision, 3);
+  });
+
+  test('blocked allowances show recovery timing and a single pending Retry now action', async () => {
+    loadedConfig.routers[0].entries = [{ id: 'model', providerId: 'sample-cloud', modelId: 'balanced-model', enabled: true, concurrencyLimit: 1 }];
+    health = { model: { available: false, reason: 'Out of usage', kind: 'quota', retryAt: Date.now() + 60_000 } };
+    const { mountRoutersPanel } = await import('../../src/ui/models/routers-panel.ts');
+    await mountRoutersPanel();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const card = win.document.querySelector('.router-node')!;
+    assert.match(card.textContent || '', /Out of usage.*Retry available/);
+    const retry = [...card.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Retry now')!;
+    let release!: () => void;
+    retryGate = new Promise(resolve => { release = resolve; });
+    retry.click(); retry.click();
+    assert.equal(retry.disabled, true);
+    assert.equal(retries.length, 1);
+    assert.deepEqual(JSON.parse(retries[0]), { entryId: 'model' });
+    release(); await new Promise(resolve => setTimeout(resolve, 20));
+    assert.doesNotMatch(win.document.querySelector('.router-node')?.textContent || '', /Out of usage/);
+    assert.equal(saves.length, 0, 'health changes never edit the pool configuration');
   });
 
   test('users choose models, reorder them, pause them and adjust capacity without duplicate entries', async () => {

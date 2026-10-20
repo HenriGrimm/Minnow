@@ -29,6 +29,20 @@ function expandedThoughtText(body: HTMLElement): string {
 }
 
 describe('renderTranscriptView', () => {
+  test('board provider reasoning and response use the shared chat components', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    renderTranscriptView(body, adaptAttemptTranscript([
+      { type: 'tool_call', id: 'read', name: 'read_file', arguments: { path: 'a.ts' } },
+      { type: 'tool_result', id: 'read', content: 'source' },
+      { type: 'round_end', reasoning: 'Provider thoughts. '.repeat(80), text: 'Response before the tool.' },
+      { type: 'delta', text: 'Complete live response. '.repeat(80) },
+    ]).messages);
+    assert.equal(expandedThoughtText(body), 'Provider thoughts. '.repeat(80).trim());
+    assert.equal(body.querySelectorAll('.transcript-view__assistant').length, 2);
+    assert.equal(body.querySelectorAll('.transcript-view__assistant')[1].textContent, 'Complete live response. '.repeat(80).trim());
+    assert.ok(body.querySelector('.tool-call-msg'));
+  });
   test('keeps the actual response visible while tool arguments stream', () => {
     setupDom();
     const body = document.getElementById('transcriptBody')!;

@@ -89,7 +89,7 @@ function resolveEntryDir(id, options = {}) {
 /**
  * Event types whose `text` grows in place rather than arriving in pieces.
  */
-const COALESCING_TYPES = new Set(['thinking']);
+const COALESCING_TYPES = new Set(['thinking', 'delta']);
 
 /**
  * One append queue per file, a line count, and the pending coalesced line.
@@ -184,7 +184,9 @@ export function recordTranscriptEvent(entry) {
         : '';
   if (!entryDir || !attemptId || !event) return;
   const type = typeof event.type === 'string' ? event.type : '';
-  if (!type || isHighFrequencyTurnEvent(type)) return;
+  // Runner deltas are cumulative response snapshots, not individual tokens.
+  // Coalesce them so live/aborted prose survives without one line per token.
+  if (!type || (isHighFrequencyTurnEvent(type) && type !== 'delta')) return;
 
   /** @type {string} */
   let file;

@@ -250,8 +250,10 @@ plus `token` / `delta` / `reasoning_delta`) are classified by
 `isHighFrequencyTurnEvent` in this package. **This is a runner contract any
 `TurnEvent` sink must use** — not a board detail. Do not invent a second list.
 
-- **Disk** (board `transcripts.js`) and **board live SSE** drop the whole set so
-  a 12 Hz `stream_meta` cannot cap a P9-D log. `round_end` is **not**
+- **Disk** (board `transcripts.js`) drops this set except cumulative `delta`
+  response snapshots, which it coalesces like thinking so live and interrupted
+  prose survives. **Board live SSE** drops the set except `phase` (below).
+  A 12 Hz `stream_meta` cannot cap a P9-D log. `round_end` is **not**
   high-frequency; it is recorded.
 - **Sub-agent live SSE** uses `shouldEmitSubAgentLiveTurnEvent` (P10-L) so
   `phase` reaches cards. `phase` is not 12 Hz; the generating fallback without

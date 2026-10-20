@@ -545,6 +545,19 @@ export async function mountRoutersPanel(): Promise<void> {
         detail.textContent = stats ? `Average generation latency: ${Math.round(stats.latencyMs / stats.completed)} ms · Error rate: ${Math.round(100 * stats.errors / stats.completed)}% · Tokens: ${stats.usageSamples ? stats.tokens : 'not reported'} · Estimated cost: ${cost}` : 'No completed generations this session. Latency, errors, reported tokens, and estimated cost appear here.';
         const meter = node('progress'); meter.max = entry.concurrencyLimit; meter.value = activityEntry?.active || 0; meter.setAttribute('aria-label', `${routerEntryModelLabel(entry, library)} occupied generation slots`);
         card.append(inspect, node('span', routerEntryProviderLabel(entry, providerChoices)), node('span', activity.availability[entry.id]?.reason || 'Checking availability'), meter, node('span', `${activityEntry?.active || 0} / ${entry.concurrencyLimit} active · ${activityEntry?.queued || 0} queued`), detail);
+        const health = activity.availability[entry.id];
+        if (health?.kind) {
+          if (health.retryAt) card.append(node('span', `${health.resetAt ? 'Resets' : 'Retry available'} ${new Date(health.retryAt).toLocaleString()}`));
+          const retry = button('Retry now', () => {
+            retry.disabled = true;
+            void routerApi<RouterActivity>(`/${router.id}/retry`, { entryId: entry.id }, 'POST')
+              .then((updated) => { if (alive && selected === router.id && retry.isConnected) drawActivity(router, updated); })
+              .catch((error) => { if (alive && retry.isConnected) { retry.disabled = false; retry.textContent = 'Retry now'; card.append(node('span', `Could not enable retry: ${(error as Error).message}`)); } });
+          });
+          retry.title = 'Allow one recovery attempt on the next request. No model request is sent now.';
+          retry.disabled = health.reason === 'Checking allowance recovery';
+          card.append(retry);
+        }
         models.append(card);
       }
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.classList.add('router-connections'); svg.setAttribute('aria-hidden', 'true');

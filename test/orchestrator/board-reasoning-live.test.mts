@@ -8,8 +8,48 @@ import { mergeReasoningPatch, type BoardReasoningFields } from '../../src/orches
 import { teardownBoardHeaderReasoning, wireBoardHeaderReasoningSource } from '../../src/ui/orchestrate-board-reasoning.ts';
 import { attachV2BoardHeaderInstruments, teardownV2BoardHeaderInstruments } from '../../src/orchestrator/board-header-v2.ts';
 import type { BoardState } from '../../server/orchestrator/core/types';
+import { syncComposerModelTriggers } from '../../src/ui/composer-model-trigger.ts';
 
 let activeWindow: Window | undefined;
+
+for (const [modelId, levels] of [
+  ['deepseek-v4.1-flash', ['low', 'high', 'max']],
+  ['deepseek-v4-pro', ['high', 'max']],
+] as const) {
+  test(`board reasoning recovers when the OpenCode Go catalog arrives after mounting (${modelId})`, () => {
+    activeWindow = new Window();
+    installHappyDomGlobals(activeWindow);
+    const providerId = 'onboarding-cloud-opencode-go';
+    const controls = document.createElement('div');
+    document.body.appendChild(controls);
+    const posted: string[] = [];
+    attachV2BoardHeaderInstruments(controls, {
+      status: 'running', model: { providerId, id: modelId, reasoning: 'high' },
+    } as BoardState, {
+      setModel: async (_providerId, _id, reasoning) => { posted.push(reasoning); },
+      onNeedModel: () => assert.fail('board already has a model'),
+    });
+    const select = controls.querySelector('.board-reasoning-effort-select') as HTMLSelectElement;
+    // The composer hides its native selector in favor of its own effort menu.
+    assert.equal(select.classList.contains('composer-reasoning-effort-select'), false);
+    assert.equal(select.parentElement!.classList.contains('hidden'), true);
+
+    modelCache.set(encodeModelSelectKey(providerId, modelId), {
+      id: modelId, type: 'llm',
+      reasoning: { allowed_options: [...levels], default: levels[0] },
+    });
+    syncComposerModelTriggers();
+
+    assert.equal(select.parentElement!.classList.contains('hidden'), false);
+    assert.equal(select.disabled, false);
+    assert.deepEqual([...select.options].map((option) => option.value), [...levels]);
+    assert.equal(select.value, 'high');
+    select.value = 'max';
+    select.dispatchEvent(new activeWindow.Event('change'));
+    assert.deepEqual(posted, ['max']);
+    assert.equal(select.value, 'max');
+  });
+}
 
 afterEach(() => {
   teardownV2BoardHeaderInstruments();

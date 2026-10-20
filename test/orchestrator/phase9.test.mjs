@@ -587,7 +587,7 @@ describe('P9-D — attempt transcripts', () => {
     assert.equal(events[0].name, 'bash');
   });
 
-  it('drops P10-B high-frequency types and keeps round_end', async () => {
+  it('drops high-frequency metadata and keeps cumulative prose and round_end', async () => {
     const boardId = await createBoard();
     for (const type of ['stream_meta', 'phase', 'round_start', 'reasoning_end', 'delta']) {
       recordTranscriptEvent({ boardId, attemptId: 'r-hf', event: { type, text: 'x' } });
@@ -604,10 +604,23 @@ describe('P9-D — attempt transcripts', () => {
       },
     });
     const { events } = await readTranscript(boardId, 'r-hf');
-    assert.equal(events.length, 1);
-    assert.equal(events[0].type, 'round_end');
-    assert.equal(events[0].index, 0);
-    assert.equal(events[0].toolCallCount, 1);
+    assert.equal(events.length, 2);
+    assert.equal(events[0].type, 'delta');
+    assert.equal(events[1].type, 'round_end');
+    assert.equal(events[1].index, 0);
+    assert.equal(events[1].toolCallCount, 1);
+  });
+
+  it('coalesces full response snapshots and retains interrupted prose', async () => {
+    const boardId = await createBoard();
+    const whole = 'Checking the source. '.repeat(600);
+    for (let i = 100; i <= whole.length; i += 100) {
+      recordTranscriptEvent({ boardId, attemptId: 'r-response', event: { type: 'delta', text: whole.slice(0, i) } });
+    }
+    recordTranscriptEnd({ boardId, attemptId: 'r-response', outcome: 'stopped' });
+    const { events } = await readTranscript(boardId, 'r-response');
+    assert.deepEqual(events.map((event) => event.type), ['delta', 'attempt_end']);
+    assert.equal(events[0].text, whole);
   });
 
   it('refuses an attempt id that is not a filename', async () => {

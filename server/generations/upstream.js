@@ -43,6 +43,7 @@ import {
 } from '../providers/opencode-identity.js';
 import { pumpOpenAiResponsesUpstream } from './openai-responses/pump.js';
 import { withUtilityOutputBudget } from './utility-output-budget.js';
+import { allowanceContext, withAllowance } from './allowance.js';
 
 // ── Dump ─────────────────────────────────────────────────────────────────────
 
@@ -233,10 +234,12 @@ export async function pumpUpstreamAsync({ state }) {
 
     if (runtime.profile.apiKind === 'agent-cli-v1') {
       const canFailover = !state.failoverDisabled && index < state.candidates.length - 1;
-      const result = await pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+      const context = await allowanceContext(candidate.providerId, candidate.modelId, runtime);
+      const result = await withAllowance(context, () => pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover }), () => state.status === 'cancelled');
+      if (result.allowanceBlocked && canFailover) result.outcome = 'retry';
       if (result.outcome === 'complete') return;
       if (result.outcome === 'fatal' || !canFailover) {
-        markError(state, result.message ?? 'Agent CLI generation failed');
+        markError(state, result.message ?? 'Agent CLI generation failed', { quotaExceeded: result.quotaExceeded, failure: result.failure });
         return;
       }
       lastError = result.message ?? lastError;
@@ -293,7 +296,8 @@ export async function pumpUpstreamAsync({ state }) {
             },
           }
         : runtime;
-    const runAttempt = () => {
+    const context = { ...await allowanceContext(candidate.providerId, candidate.modelId, runtime), requestId: state.id };
+    const runAttempt = () => withAllowance(context, async () => {
       if (resolvedApi === 'anthropic-v1') {
         return pumpAnthropicUpstream({
           state,
@@ -336,9 +340,10 @@ export async function pumpUpstreamAsync({ state }) {
         origin,
         canFailover,
       });
-    };
+    }, () => state.status === 'cancelled');
 
     let result = await runAttempt();
+    if (result.allowanceBlocked && canFailover) result.outcome = 'retry';
 
     for (
       let attempt = 1;
@@ -367,7 +372,7 @@ export async function pumpUpstreamAsync({ state }) {
     }
     if (result.quotaExceeded) quotaExceeded = true;
     if (result.outcome === 'fatal' || !canFailover) {
-      markError(state, result.message ?? 'Generation failed', { quotaExceeded });
+      markError(state, result.message ?? 'Generation failed', { quotaExceeded, failure: result.failure });
       return;
     }
     lastError = result.message ?? lastError;
@@ -478,8 +483,8 @@ async function attemptCandidateStream({
         // The allowance is spent: another provider may still have room, but
         // retrying this one cannot succeed until it resets.
         return canFailover
-          ? { outcome: 'retry', message, retrySameCandidate: false, quotaExceeded: true }
-          : { outcome: 'fatal', message, quotaExceeded: true };
+          ? { outcome: 'retry', message, retrySameCandidate: false, quotaExceeded: true, failure: classified.failure }
+          : { outcome: 'fatal', message, quotaExceeded: true, failure: classified.failure };
       }
       if (!bytesEmitted && classified.kind === 'retryable') {
         return {
@@ -487,10 +492,11 @@ async function attemptCandidateStream({
           message,
           retrySameCandidate: shouldRetrySameCandidate(classified, canFailover),
           retryAfterMs: classified.retryAfterMs,
+          failure: classified.failure,
           hostSuspect: classified.rateLimited !== true && upstream.status >= 500,
         };
       }
-      return { outcome: 'fatal', message, quotaExceeded: classified.quotaExceeded };
+      return { outcome: 'fatal', message, quotaExceeded: classified.quotaExceeded, failure: classified.failure };
     }
 
     const contentType = upstream.headers?.get?.('content-type')?.toLowerCase() ?? '';
@@ -576,7 +582,7 @@ async function attemptCandidateStream({
     }
     const classified = classifyUpstreamError(err);
     if (!bytesEmitted && classified.quotaExceeded && canFailover) {
-      return { outcome: 'retry', message: classified.reason, retrySameCandidate: false, quotaExceeded: true };
+      return { outcome: 'retry', message: classified.reason, retrySameCandidate: false, quotaExceeded: true, failure: classified.failure };
     }
     if (!bytesEmitted && classified.kind === 'retryable') {
       return {
@@ -586,7 +592,7 @@ async function attemptCandidateStream({
         hostSuspect: true,
       };
     }
-    return { outcome: 'fatal', message: classified.reason, quotaExceeded: classified.quotaExceeded };
+    return { outcome: 'fatal', message: classified.reason, quotaExceeded: classified.quotaExceeded, failure: classified.failure };
   } finally {
     if (idleTimer) clearTimeout(idleTimer);
     if (maxTimer) clearTimeout(maxTimer);

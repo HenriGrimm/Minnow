@@ -219,7 +219,7 @@ function ensureReasoningDom(): void {
   selectWrapEl.className = 'board-reasoning-effort-wrap hidden';
 
   selectEl = document.createElement('select');
-  selectEl.className = 'composer-reasoning-effort-select board-reasoning-effort-select';
+  selectEl.className = 'board-reasoning-effort-select';
   selectEl.setAttribute('aria-label', 'Board reasoning effort');
   selectEl.title = 'Reasoning effort for new attempts. Agents already working keep their current setting.';
   selectEl.dataset.focusKey = 'board-reasoning';

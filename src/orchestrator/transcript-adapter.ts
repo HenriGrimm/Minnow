@@ -61,14 +61,16 @@ function callId(raw: unknown, index: number): string {
  *
  * Thinking accumulates onto the assistant turn it belongs to. Tool calls and
  * their results are paired by id. `round_end` carries the assistant's prose for
- * that round, which is the only place assistant text survives — the streaming
- * deltas are filtered out before they reach the transcript.
+ * that round. Cumulative `delta` snapshots retain prose while a round is live
+ * or interrupted; the settled round replaces them rather than repeating them.
  */
 export function adaptAttemptTranscript(
   events: readonly Record<string, unknown>[],
 ): AdaptedTranscript {
   const messages: unknown[] = [];
   let thinking: string[] = [];
+  let partialText = '';
+  let settledText: string | null = null;
   let pendingCalls: PendingToolCall[] = [];
   const resultsByCallId = new Map<string, Record<string, unknown>>();
   let end: AttemptOutcomeLine | null = null;
@@ -93,6 +95,7 @@ export function adaptAttemptTranscript(
       resultsByCallId.delete(call.id);
     }
     thinking = [];
+    partialText = '';
     pendingCalls = [];
   };
 
@@ -100,12 +103,30 @@ export function adaptAttemptTranscript(
     const type = typeof event.type === 'string' ? event.type : '';
 
     if (type === 'thinking') {
+      settledText = null;
       const body = text(event.text).trim();
-      if (body) thinking.push(body);
+      const last = thinking.at(-1);
+      if (body && last && body.startsWith(last)) thinking[thinking.length - 1] = body;
+      else if (body && !last?.startsWith(body)) thinking.push(body);
+      return;
+    }
+
+    if (type === 'delta') {
+      // The runner can publish the settled message again through persistence.
+      if (text(event.text) === settledText) return;
+      partialText = text(event.text);
+      return;
+    }
+
+    if (type === 'response_restart') {
+      settledText = null;
+      partialText = '';
+      thinking = [];
       return;
     }
 
     if (type === 'tool_call') {
+      settledText = null;
       pendingCalls.push({
         id: callId(event.id, index),
         type: 'function',
@@ -134,12 +155,17 @@ export function adaptAttemptTranscript(
     }
 
     if (type === 'round_end') {
-      flushAssistant(text(event.text));
+      // Some providers expose reasoning only on the completed response.
+      // This is the complete round, including any streamed reasoning.
+      const reasoning = text(event.reasoning).trim();
+      if (reasoning) thinking = [reasoning];
+      flushAssistant(text(event.text) || partialText);
+      settledText = text(event.text);
       return;
     }
 
     if (type === 'attempt_end') {
-      flushAssistant('');
+      flushAssistant(partialText);
       end = {
         outcome: text(event.name) || 'ended',
         summary: text(event.summary),
@@ -150,7 +176,7 @@ export function adaptAttemptTranscript(
     if (type === 'error') {
       const body = text(event.error ?? event.text ?? event.name).trim();
       if (!body) return;
-      flushAssistant('');
+      flushAssistant(partialText);
       messages.push({ role: 'assistant', content: body, isError: true });
       return;
     }
@@ -158,7 +184,7 @@ export function adaptAttemptTranscript(
 
   // Whatever was still open when the stream ran out — a live attempt, or one
   // that died before its last round closed.
-  flushAssistant('');
+  flushAssistant(partialText);
 
   return { messages, end };
 }
@@ -176,7 +202,7 @@ export function liveTailPhase(
     if (type === 'tool_call' || type === 'tool_streaming') {
       return { phase: 'tools', toolName: text(event.name) || 'tool' };
     }
-    if (type === 'tool_result' || type === 'round_end') return { phase: 'generating' };
+    if (type === 'tool_result' || type === 'round_end' || type === 'delta' || type === 'response_restart') return { phase: 'generating' };
     if (type === 'thinking') {
       const reasoning = text(event.text).trim();
       return reasoning ? { phase: 'thinking', reasoning } : { phase: 'thinking' };
@@ -198,6 +224,8 @@ export function transcriptStructureKey(
     .map((event) => {
       const type = typeof event.type === 'string' ? event.type : '';
       if (type === 'thinking') return 'thinking';
+      // Prose snapshots must repaint the assistant row as their content grows.
+      if (type === 'delta') return `delta:${text(event.text)}`;
       if (type === 'tool_call' || type === 'tool_result') {
         return `${type}:${text(event.id) || text(event.name)}`;
       }

@@ -1,3 +1,5 @@
+import { allowanceFailure } from '../quota-error.js';
+
 /** Keep credentials out of provider errors even when a CLI echoes configuration. */
 export function safeAgentCliDiagnostic(value, secrets = []) {
   let text = String(value ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
@@ -17,6 +19,8 @@ export function classifyAgentCliFailure({ error, terminal, exitCode, stderr = ''
   if (/unauthori[sz]ed|unauthenticated|not (?:logged|signed) in|authentication|invalid.*(?:key|token)|login required|401|403/i.test(message)) {
     return { kind: 'fatal', message: `Agent CLI authentication failed. Sign in from Models → CLIs. ${message}` };
   }
+  const failure = allowanceFailure(message, { quotaExceeded: error?.quotaExceeded });
+  if (failure?.kind === 'quota') return { kind: 'fatal', message, quotaExceeded: true, failure: { ...failure, scope: 'provider' } };
   if (/429|rate.?limit|overloaded|503|502|temporar|ECONNRESET|ETIMEDOUT/i.test(message)) return { kind: 'retryable', message };
   return { kind: 'fatal', message };
 }

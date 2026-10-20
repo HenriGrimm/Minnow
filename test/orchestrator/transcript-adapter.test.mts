@@ -21,6 +21,33 @@ const asMessages = (events: Record<string, unknown>[]): Msg[] =>
   adaptAttemptTranscript(events).messages as Msg[];
 
 describe('adaptAttemptTranscript', () => {
+  it('backfills settled provider reasoning without repeating live snapshots', () => {
+    for (const live of [[], [{ type: 'thinking', text: 'Checking' }], [
+      { type: 'thinking', text: 'Checking' },
+      { type: 'thinking', text: 'Checking the source.' },
+    ]]) {
+      const messages = asMessages([
+        ...live,
+        { type: 'round_end', index: 1, reasoning: 'Checking the source. Found it.', text: 'Fixed.' },
+      ]);
+      assert.deepEqual(messages, [{ role: 'assistant', content: 'Fixed.', reasoning: 'Checking the source. Found it.' }]);
+    }
+  });
+
+  it('keeps cumulative live and interrupted prose, replacing it at settlement', () => {
+    const events = [{ type: 'delta', text: 'Checking' }, { type: 'delta', text: 'Checking the source.' }];
+    assert.equal(asMessages(events)[0].content, 'Checking the source.');
+    assert.equal(asMessages([...events, { type: 'attempt_end', name: 'stopped' }])[0].content, 'Checking the source.');
+    assert.deepEqual(asMessages([...events,
+      { type: 'round_end', text: 'Found it.' },
+      { type: 'delta', text: 'Found it.' },
+    ]), [{ role: 'assistant', content: 'Found it.' }]);
+    assert.deepEqual(asMessages([...events,
+      { type: 'response_restart' },
+      { type: 'delta', text: 'Retry response.' },
+    ]), [{ role: 'assistant', content: 'Retry response.' }]);
+  });
+
   it('pairs a tool call with its result by id', () => {
     const messages = asMessages([
       { type: 'tool_call', id: 't1', name: 'read_file', arguments: '{"path":"a.ts"}' },
@@ -224,6 +251,12 @@ describe('liveTailPhase', () => {
 });
 
 describe('transcriptStructureKey', () => {
+  it('repaints growing response snapshots instead of only patching the status', () => {
+    assert.notEqual(
+      transcriptStructureKey([{ type: 'delta', text: 'Checking' }]),
+      transcriptStructureKey([{ type: 'delta', text: 'Checking the source.' }]),
+    );
+  });
   it('ignores growing thinking text so a coalesced thought is the same structure', () => {
     const first = transcriptStructureKey([{ type: 'thinking', text: 'Need to' }]);
     const grown = transcriptStructureKey([

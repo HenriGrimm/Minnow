@@ -1,4 +1,4 @@
-import { detectQuotaExhausted, isQuotaExhaustedText } from './quota-error.js';
+import { detectQuotaExhausted, isQuotaExhaustedText, allowanceFailure } from './quota-error.js';
 
 /** @typedef {'default' | 'utility' | 'vision' | 'research'} FallbackRole */
 
@@ -300,6 +300,7 @@ export function classifyUpstreamError(err, response, rawBody) {
           kind: 'fatal',
           reason: `Upstream HTTP ${status} (out of usage)`,
           quotaExceeded: true,
+          failure: allowanceFailure(rawBody, { status, retryAfterMs: parseRetryAfterRawMs(header) }),
         };
       }
       if (status === 402) {
@@ -310,6 +311,7 @@ export function classifyUpstreamError(err, response, rawBody) {
         kind: 'retryable',
         reason: `Upstream HTTP ${status}`,
         rateLimited: true,
+        failure: allowanceFailure(rawBody, { status, retryAfterMs: parseRetryAfterRawMs(header) }),
         ...(retryAfterMs == null ? {} : { retryAfterMs }),
       };
     }

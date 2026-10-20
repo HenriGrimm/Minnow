@@ -34,7 +34,7 @@
         "Next"
       ],
       "section": "Get started",
-      "hash": "4c0b7dd3c0ee7d3e9a568cc3baf3d7c85350737df27a048c614c3535b98430ab"
+      "hash": "07b0a0c63b181e08dd9f2c05af1314b94de9affb9d5e8cc88b79d6b7913fcee9"
     },
     {
       "path": "documentation/manual/get-started/connect-a-model.md",
@@ -121,7 +121,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "4681f6db6c3c8a7487bb29f9ea6d04b39688227dbc11dc01db0ec637d2725c58"
+      "hash": "d3a8914ff3ef44d043e6ddd704184a25a13c8b4286d8af6a81b39fb27a16059a"
     },
     {
       "path": "documentation/manual/concepts/modes.md",
@@ -159,7 +159,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "917a7405af78dfe6a8c2ae13038b4bdf56bb533144f796e3eaa20dac138cf7eb"
+      "hash": "cd11215c021cbc5bd3990c3e9f7fb512f3d1718fa9775f9baac48e2b5e9279fc"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -268,6 +268,7 @@
       "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail. It fills the main stage like the ot",
       "headings": [
         "The sections",
+        "Reading the graph",
         "How things get in",
         "How things come out",
         "The code index",
@@ -277,7 +278,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f0fc1a92b3a0580547b89adbc147bba7c2ed2b97c47d3250125fc1c7dc935c32"
+      "hash": "bed7e058939afd9292812eddf2ff2eecf3d232c3c7a7c4706571fd07ca935f3f"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -303,7 +304,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "c3c5dce01e6c545d2d1c39cfd5dad87bfe6c3bf54b1df64bf65d4d7e6bc27792"
+      "hash": "82d24c3de898c3445b1cb228a4d29e1c84f927dc3a1d08eab4b3672be00ca10c"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -358,7 +359,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "d63bcef813f96b8c7d7b185dabb6c183ee4e921566a1ba23198ffc737e709098"
+      "hash": "e321dce6e8dafa74f15fabca6e547780feb21b2c03d3c959d7257261c0e431b9"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -488,7 +489,7 @@
         "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "aae571756a757a4793a4b68e72e7abe2ebee62d39efcb19318d5e359ed1ab8e2"
+      "hash": "46b5dcb4e5397701386314e49e0d2aa68f085ee45788c79417523cbc94dc6c96"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",
@@ -506,7 +507,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "3da8469cc29e296af75fab2f252b893309f4981d11b201c418493f5b29285afd"
+      "hash": "ec23d66831a9e00ef2af820706ff32d77082ad542611cb8c007b8a970766b6db"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -526,7 +527,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "37ff92998389d06799e381571d0f018b7dd3752b62161433239550d0b82dc2c9"
+      "hash": "931c8008abc2c08cdca189b12568ceb860e2f3d23d0b5b0f65325e673314b36d"
     },
     {
       "path": "documentation/manual/reference/glossary.md",
@@ -654,7 +655,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "91f4439e9bd0241575c51c38aa5ec94c09919969a7b24ab9e11d56cc7039df28"
+      "hash": "1d0734e567dac2a530c18ca2f3e776e98a8a77bb8f741c9190c21c0a1773cffb"
     }
   ]
 }

@@ -18,6 +18,7 @@ import {
 import { routerEntryTier, routerTierFallbackOrder } from '../../src/models/router-tiers.mjs';
 import { isRouterTaskType } from '../../src/models/router-task-types.mjs';
 import { decideRoute } from './evaluator.js';
+import { allowanceContext, getAllowanceTracker, allowanceFailure } from '../generations/allowance.js';
 
 function isLibraryRouterEntry(entry) {
   const pid = entry?.providerId;
@@ -100,7 +101,7 @@ function publicDecision(decision, effort, modelLabel, reasoningStatus) {
 
 export function pumpRouterGeneration(state) {
   void runRouterGeneration(state).catch((error) => {
-    if (state.status !== 'cancelled') markError(state, error.message);
+    if (state.status !== 'cancelled') markError(state, error.message, { quotaExceeded: error.quotaExceeded });
   });
 }
 
@@ -110,9 +111,12 @@ export async function runRouterGeneration(state) {
   const body = JSON.parse(state.requestBody.toString());
   const chatId = state.chatId || state.id;
   const attempted = new Set();
+  const attemptFailures = new Map();
   const controller = new AbortController();
   state.upstreamController = controller;
   let previousError = '';
+  let previousQuota = false;
+  let previousLabel = '';
   let decision = null;
   let evaluated = false;
   let labels = {};
@@ -141,7 +145,21 @@ export async function runRouterGeneration(state) {
     const keepAssignment = !evaluated || decision?.source === 'kept' || decision?.source === 'fallback';
     const stickyEntryId = state.routerPreferAvailable === true || !keepAssignment ? undefined : workspace.scheduler.assignments[workspace.scheduler.assignmentKey(routerId, chatId)]?.assignedEntryId;
     const inTier = tierFilter(router, decision, labels, availability, attempted, stickyEntryId);
-    const entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available && (!inTier || inTier(e)), attempted, { preferAvailable: state.routerPreferAvailable === true });
+    let entry;
+    try {
+      entry = workspace.scheduler.select(router, chatId, (e) => availability[e.id]?.available && (!inTier || inTier(e)), attempted, { preferAvailable: state.routerPreferAvailable === true });
+    } catch (error) {
+      const enabled = router.entries.filter((e) => e.enabled);
+      const blocked = enabled.filter((e) => !availability[e.id]?.available || attemptFailures.has(entryKey(e)));
+      const details = blocked.map((e) => {
+        const health = availability[e.id];
+        const reason = health?.available ? attemptFailures.get(entryKey(e)) : health?.reason;
+        return `${e.providerId} / ${e.modelId}: ${reason || 'Unavailable'}${health?.retryAt ? ` (retry after ${new Date(health.retryAt).toISOString()})` : ''}`;
+      });
+      if (details.length) error.message += ` ${details.join('; ')}.`;
+      error.quotaExceeded = enabled.length > 0 && enabled.every((e) => availability[e.id]?.kind === 'quota');
+      throw error;
+    }
     attempted.add(entryKey(entry));
     let release;
     let queueCheck;
@@ -149,7 +167,8 @@ export async function runRouterGeneration(state) {
     let child;
     let usage;
     try {
-      const admission = workspace.scheduler.acquire(router, chatId, entry, controller.signal, state.id);
+      const context = isLibraryRouterEntry(entry) ? undefined : await allowanceContext(entry.providerId, entry.modelId);
+      const admission = workspace.scheduler.acquire(router, chatId, entry, controller.signal, state.id, context);
       let checking = false;
       queueCheck = setInterval(async () => {
         if (checking) return;
@@ -211,14 +230,18 @@ export async function runRouterGeneration(state) {
         reasoning: effort || ((decision && decision.source !== 'override') ? 'default' : body.reasoning_effort || 'default'),
         reasoningStatus: reasoningStatus || 'default',
         reset: Boolean(previousError),
-        warning: previousError ? `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
+        warning: previousError ? previousQuota
+          ? `${previousLabel} is out of usage. Continuing with ${labels[entry.id] || entry.modelId}.`
+          : `Response restarted on ${entry.providerId} / ${entry.modelId} after the previous model failed.` : '',
         ...(displayDecision ? { decision: displayDecision } : {}),
       });
       if (previousError) workspace.scheduler.emit(router, chatId, entry, 'failover', previousError);
       const childBody = { ...body, model: bound.id };
       if (decision && decision.source !== 'override') delete childBody.reasoning_effort;
       if (effort) childBody.reasoning_effort = effort;
-      child = createGenerationState({ providerId: bound.providerId, body: childBody, candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
+      child = createGenerationState({ providerId: bound.providerId, body: childBody,
+        fallbackRole: state.fallbackRole || (state.chatId || state.persist ? 'default' : null),
+        candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
       child.routerAttempt = true;
       // The upstream sanitizer drops reasoning_effort for models it has no
       // capabilities for; hand it the ones that justified this level.
@@ -231,13 +254,27 @@ export async function runRouterGeneration(state) {
       try { await pumpUpstreamAsync({ state: child }); }
       finally { unsubscribe(); controller.signal.removeEventListener('abort', abort); }
       if (state.status === 'cancelled' || controller.signal.aborted) return;
-      if (child.status !== 'complete') throw new Error(child.errorMessage || 'Provider returned an incomplete response');
+      if (child.status !== 'complete') {
+        const error = new Error(child.errorMessage || 'Provider returned an incomplete response');
+        error.quotaExceeded = child.quotaExceeded;
+        throw error;
+      }
       const responseText = Buffer.concat(child.chunks).toString('utf8');
       let finished = body.stream === false || /data:\s*\[DONE\]/.test(responseText);
       for (const line of responseText.split('\n')) {
         let parsed;
         try { parsed = JSON.parse(line.replace(/^data:\s*/, '')); } catch { continue; }
-        if (parsed.error) throw new Error(typeof parsed.error === 'string' ? parsed.error : parsed.error.message || 'Provider stream error');
+        if (parsed.error) {
+          const failure = allowanceFailure(typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error));
+          if (failure) {
+            const tracker = await getAllowanceTracker();
+            tracker.record(await allowanceContext(bound.providerId, bound.id), failure);
+            await tracker.flush().catch(() => {});
+          }
+          const error = new Error(typeof parsed.error === 'string' ? parsed.error : parsed.error.message || 'Provider stream error');
+          error.quotaExceeded = failure?.kind === 'quota';
+          throw error;
+        }
         if (parsed.usage) usage = parsed.usage;
         if (parsed.choices?.some((choice) => choice.finish_reason || choice.message)) finished = true;
       }
@@ -248,7 +285,10 @@ export async function runRouterGeneration(state) {
     } catch (error) {
       if (controller.signal.aborted || state.status === 'cancelled') return;
       failure = error.message;
+      attemptFailures.set(entryKey(entry), failure);
       previousError = failure;
+      previousQuota = error.quotaExceeded === true;
+      previousLabel = labels[entry.id] || entry.modelId;
       invalidateRouterProvider(entry.providerId);
     } finally { clearInterval(queueCheck); release?.(failure, usage); }
   }

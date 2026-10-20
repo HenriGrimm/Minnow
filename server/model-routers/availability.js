@@ -14,6 +14,7 @@ import { listServes } from '../models/serve.js';
 import { getLaunchPrefs } from '../models/launch-prefs.js';
 import { serveMatchesModelId } from '../models/admit-serve.js';
 import { libraryServePhase } from './library-serve.js';
+import { allowanceContext, getAllowanceTracker } from '../generations/allowance.js';
 
 const catalogs = new Map();
 
@@ -130,6 +131,11 @@ export async function routerAvailability(router, body = {}) {
     if (model && vision && capabilities?.vision === false && capabilities.sources?.vision === 'probe') reason = 'Image input unsupported';
     if (model && body.tools?.length && capabilities?.tools === false) reason = 'Tool calling unsupported';
     if (model && body.stream !== false && capabilities?.streaming === false) reason = 'Streaming unsupported';
+    if (reason === 'Available') {
+      const tracker = await getAllowanceTracker();
+      const health = tracker.availability(await allowanceContext(entry.providerId, entry.modelId));
+      if (health.kind) return [entry.id, health];
+    }
     return [entry.id, { available: reason === 'Available', reason }];
   })));
 }

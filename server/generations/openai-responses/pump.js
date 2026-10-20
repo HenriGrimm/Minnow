@@ -231,8 +231,8 @@ export async function pumpOpenAiResponsesUpstream({
         // The allowance is spent: another provider may still have room, but
         // retrying this one cannot succeed until it resets.
         return canFailover
-          ? { outcome: 'retry', message, retrySameCandidate: false, quotaExceeded: true }
-          : { outcome: 'fatal', message, quotaExceeded: true };
+          ? { outcome: 'retry', message, retrySameCandidate: false, quotaExceeded: true, failure: classified.failure }
+          : { outcome: 'fatal', message, quotaExceeded: true, failure: classified.failure };
       }
       if (!bytesEmitted && classified.kind === 'retryable') {
         return {
@@ -240,10 +240,11 @@ export async function pumpOpenAiResponsesUpstream({
           message,
           retrySameCandidate: classified.rateLimited === true || !canFailover,
           retryAfterMs: classified.retryAfterMs,
+          failure: classified.failure,
           hostSuspect: classified.rateLimited !== true && upstream.status >= 500,
         };
       }
-      return { outcome: 'fatal', message, quotaExceeded: classified.quotaExceeded };
+      return { outcome: 'fatal', message, quotaExceeded: classified.quotaExceeded, failure: classified.failure };
     }
 
     const contentType = upstream.headers?.get?.('content-type')?.toLowerCase() ?? '';
@@ -337,7 +338,7 @@ export async function pumpOpenAiResponsesUpstream({
     }
     const classified = classifyUpstreamError(err);
     if (!bytesEmitted && classified.quotaExceeded && canFailover) {
-      return { outcome: 'retry', message: classified.reason, retrySameCandidate: false, quotaExceeded: true };
+      return { outcome: 'retry', message: classified.reason, retrySameCandidate: false, quotaExceeded: true, failure: classified.failure };
     }
     if (!bytesEmitted && classified.kind === 'retryable') {
       return {
@@ -347,7 +348,7 @@ export async function pumpOpenAiResponsesUpstream({
         hostSuspect: true,
       };
     }
-    return { outcome: 'fatal', message: classified.reason, quotaExceeded: classified.quotaExceeded };
+    return { outcome: 'fatal', message: classified.reason, quotaExceeded: classified.quotaExceeded, failure: classified.failure };
   } finally {
     if (idleTimer) clearTimeout(idleTimer);
     if (maxTimer) clearTimeout(maxTimer);

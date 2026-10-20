@@ -54,6 +54,15 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
 });
 
+test('native Codex usage exhaustion preserves quota metadata on the generation and result', async () => {
+  setup([{ error: "You've hit your usage limit" }]);
+  const result = await generate([{ role: 'user', content: 'Start.' }]);
+  assert.equal(result.state.status, 'error');
+  assert.equal(result.state.quotaExceeded, true);
+  assert.equal(result.state.failure.kind, 'quota');
+  assert.equal(result.state.failure.scope, 'provider');
+});
+
 test('anonymous tool handoffs close their unresumable process instead of filling the CLI ceiling', async () => {
   setup([{ calls: [{ id: 'read', name: 'mn_tool_0' }] }]);
   for (let i = 0; i < 12; i++) {

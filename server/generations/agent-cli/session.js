@@ -510,7 +510,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
             : controller.signal.aborted ? new Error('Agent CLI request cancelled.') : this.failure;
           const classified = ['exit', 'result'].includes(kind) && this.calls.length === 0 && !error
             ? classifyAgentCliFailure({ terminal: snapshot.terminal, exitCode: session.exit?.code,
-              stderr: safeAgentCliDiagnostic(session.exit?.stderr ?? '', session.secretValues) }) : null;
+              stderr: safeAgentCliDiagnostic(session.exit?.stderr ?? '', session.secretValues) }) : error ? classifyAgentCliFailure({ error }) : null;
           const interruptedHandoff = kind === 'exit' && this.calls.length > 0
             ? 'Agent CLI exited before Minnow could return the tool result.' : null;
           const requiredMissing = ['exit', 'result'].includes(kind) && this.calls.length === 0
@@ -519,8 +519,14 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           const message = error?.message ?? classified?.message ?? interruptedHandoff ?? requiredMissing;
           if (message) {
             const safe = safeAgentCliDiagnostic(message, session.secretValues);
+            const quota = classified?.quotaExceeded === true;
+            const reset = session.rateLimit?.status === 'rejected' ? session.rateLimit.resets_at : undefined;
+            const failure = quota ? { ...classified.failure,
+              scope: ['seven_day_opus', 'seven_day_sonnet'].includes(session.rateLimit?.window) ? 'family' : 'provider',
+              ...(Number.isFinite(reset) ? { resetAt: reset < 1e12 ? reset * 1000 : reset } : {}),
+            } : undefined;
             if (!this.emitted && !session.inferenceStarted && canFailover) outcome = { outcome: 'retry', message: safe, retrySameCandidate: false, hostSuspect: false };
-            else { markError(state, safe); outcome = { outcome: 'fatal', message: safe, hostSuspect: false }; }
+            else { markError(state, safe, { quotaExceeded: quota, failure }); outcome = { outcome: 'fatal', message: safe, hostSuspect: false, quotaExceeded: quota, failure }; }
           } else {
             this.choose();
             const reason = kind === 'handoff' ? 'tool_calls' : snapshot.terminal?.finishReason ?? 'stop';

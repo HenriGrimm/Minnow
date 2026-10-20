@@ -50,7 +50,7 @@ export interface RouterActivity {
   assignments: { chatId: string; routerId: string; assignmentMode: 'router' | 'override'; assignedEntryId: string; overrideEntryId?: string }[];
   requests: { chatId: string; entryId: string; status: string; requestId: string }[];
   entries: { entryId: string; active: number; queued: number; telemetry: { completed: number; errors: number; latencyMs: number; tokens: number; promptTokens: number; completionTokens: number; usageSamples: number } | null }[];
-  availability: Record<string, { available: boolean; reason: string }>;
+  availability: Record<string, { available: boolean; reason: string; kind?: 'quota' | 'rate_limit'; retryAt?: number; resetAt?: number }>;
   events: { chatId: string; entryId?: string; status: string; timestamp: string; error?: string }[];
   decisions?: (Omit<RouterDecision, 'modelLabel'> & { chatId: string; routerId: string; decidedAt: string })[];
 }

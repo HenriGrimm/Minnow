@@ -1,5 +1,6 @@
 import { getRouterWorkspace, resolveRouterId, routerWorkspaceDigest } from './store.js';
 import { routerAvailability } from './availability.js';
+import { allowanceContext, getAllowanceTracker } from '../generations/allowance.js';
 
 export async function handleRouterRequest(req, res, pathname, readJsonBody, sendJson) {
   if (!pathname.startsWith('/api/generations/routers')) return false;
@@ -13,11 +14,18 @@ export async function handleRouterRequest(req, res, pathname, readJsonBody, send
       sendJson(res, 200, { legacyAliases, routers: workspace.routers, defaultRouterId: workspace.defaultRouterId, revision: workspace.revision, aliases: workspace.aliases, assignments: Object.values(workspace.scheduler.assignments), decisions: [...workspace.scheduler.decisions.values()] });
       return true;
     }
-    const match = pathname.match(/^\/api\/generations\/routers\/([\w-]+)\/(activity|override|reevaluate)$/);
+    const match = pathname.match(/^\/api\/generations\/routers\/([\w-]+)\/(activity|override|reevaluate|retry)$/);
     const id = match ? await resolveRouterId(match[1]) : '';
     const router = workspace.routers.find((r) => r.id === id);
     if (!router) { sendJson(res, 404, { error: 'Router not found' }); return true; }
-    if ((match[2] === 'override' || match[2] === 'reevaluate') && req.method === 'POST') {
+    if (match[2] === 'retry' && req.method === 'POST') {
+      const body = await readJsonBody(req);
+      const entry = router.entries.find((e) => e.id === body.entryId);
+      if (!entry) throw new Error('Choose an entry in this pool');
+      const tracker = await getAllowanceTracker();
+      tracker.retry(await allowanceContext(entry.providerId, entry.modelId));
+      await tracker.flush();
+    } else if ((match[2] === 'override' || match[2] === 'reevaluate') && req.method === 'POST') {
       const body = await readJsonBody(req);
       if (typeof body.chatId !== 'string' || !body.chatId || body.chatId.length > 200) throw new Error('Chat id is required');
       if (match[2] === 'reevaluate') workspace.scheduler.requestReevaluation(router, body.chatId);

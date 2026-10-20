@@ -208,6 +208,7 @@ function classifySdkError(err) {
       rateLimited: classified.rateLimited,
       retryAfterMs: classified.retryAfterMs,
       quotaExceeded: classified.quotaExceeded,
+      failure: classified.failure,
     };
   }
   const classified = classifyUpstreamError(err);
@@ -215,6 +216,7 @@ function classifySdkError(err) {
     kind: classified.kind,
     message: classified.reason,
     quotaExceeded: classified.quotaExceeded,
+    failure: classified.failure,
   };
 }
 
@@ -465,10 +467,11 @@ export async function pumpAnthropicUpstream({
           message: classified.message,
           retrySameCandidate: false,
           quotaExceeded: true,
+          failure: classified.failure,
         };
       }
-      markError(state, classified.message, { quotaExceeded: true });
-      return { outcome: 'fatal', message: classified.message, quotaExceeded: true };
+      markError(state, classified.message, { quotaExceeded: true, failure: classified.failure });
+      return { outcome: 'fatal', message: classified.message, quotaExceeded: true, failure: classified.failure };
     }
     if (!bytesEmitted && classified.kind === 'retryable') {
       return {
@@ -476,6 +479,7 @@ export async function pumpAnthropicUpstream({
         message: classified.message,
         retrySameCandidate: classified.rateLimited === true || !canFailover,
         retryAfterMs: classified.retryAfterMs,
+        failure: classified.failure,
         hostSuspect: classified.rateLimited !== true,
       };
     }

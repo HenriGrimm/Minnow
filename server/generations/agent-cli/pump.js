@@ -169,6 +169,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
       if (classified) {
         const error = new Error(classified.message);
         error.retryable = classified.kind === 'retryable';
+        error.quotaExceeded = classified.quotaExceeded;
         throw error;
       }
       if (body.tool_choice === 'required' || body.tool_choice?.function?.name) throw new Error('Agent CLI completed without calling the required tool.');
@@ -198,8 +199,8 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     const message = safeAgentCliDiagnostic(classified.message, secretValues);
     const retryable = !emitted && handedOff.length === 0 && (error.retryable || classified.kind === 'retryable' || timeoutKind);
     if (retryable && canFailover) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
-    markError(state, message);
-    return { outcome: 'fatal', message, hostSuspect: false };
+    markError(state, message, { quotaExceeded: classified.quotaExceeded, failure: classified.failure });
+    return { outcome: 'fatal', message, hostSuspect: false, quotaExceeded: classified.quotaExceeded, failure: classified.failure };
   } finally {
     clearTimeout(idleTimer);
     clearTimeout(maxTimer);

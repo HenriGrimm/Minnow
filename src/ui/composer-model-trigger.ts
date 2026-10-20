@@ -384,6 +384,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 /** Sync every mounted composer model trigger. */
 export function syncComposerModelTriggers(): void {
   for (const trigger of triggers) syncTrigger(trigger);
+  syncBoardHeaderReasoning();
   if (openTrigger) rebuildOpenMenu();
   updateModelLoadUnloadButtons();
 }

@@ -19,6 +19,8 @@
 import { getProviderRuntime } from '../providers/store.js';
 import { createGenerationState, cancel } from '../generations/store.js';
 import { pumpUpstreamAsync } from '../generations/upstream.js';
+import { allowanceContext, withAllowance } from '../generations/allowance.js';
+import { classifyUpstreamError } from '../generations/fallback.js';
 import { isAgentCliProviderId } from '../../src/models/runtime-ids.mjs';
 import {
   formatRouterTierLabel,
@@ -228,16 +230,26 @@ function completionText(chunks) {
  * @param {AbortSignal} signal
  */
 async function askDecisionModel(evaluator, state, signal) {
-  const { profile, headers } = await getProviderRuntime(evaluator.providerId);
+  const runtime = await getProviderRuntime(evaluator.providerId);
+  const { profile, headers } = runtime;
   const endpoint = decisionsEndpoint(profile, evaluator.modelId);
-  const response = await fetch(endpoint.url, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify(decisionRequestBody(endpoint.model, state)),
-    signal,
-  });
-  if (!response.ok) throw new Error(`Evaluator HTTP ${response.status}`);
-  return parseDecisionAnswers(await response.json());
+  let decision;
+  const result = await withAllowance(await allowanceContext(evaluator.providerId, evaluator.modelId, runtime), async () => {
+    const response = await fetch(endpoint.url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(decisionRequestBody(endpoint.model, state)),
+      signal,
+    });
+    if (!response.ok) {
+      const classified = classifyUpstreamError(null, response, await response.text());
+      return { outcome: 'fatal', message: `Evaluator HTTP ${response.status}`, ...classified };
+    }
+    decision = parseDecisionAnswers(await response.json());
+    return { outcome: 'complete' };
+  }, () => signal.aborted);
+  if (result.outcome !== 'complete') throw new Error(result.message);
+  return decision;
 }
 
 /**
