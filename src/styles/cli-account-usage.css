@@ -35,3 +35,9 @@
   .cli-account-usage-trigger:hover, .cli-account-usage__refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--mn-fg) 6%, transparent); color: var(--mn-fg); }
 }
 @media (pointer: coarse) { .cli-account-usage-trigger { min-height: 44px; } }
+
+.provider-account-usage .cli-account-usage__window { grid-template-columns: 1fr; }
+.provider-account-usage .cli-account-usage__window strong { white-space: normal; overflow-wrap: anywhere; }
+.provider-account-usage-details { margin-block: 12px; color: var(--mn-fg-muted); font-size: 13px; }
+.provider-account-usage-details > summary { cursor: pointer; padding-block: 8px; }
+.provider-account-usage-details > summary:focus-visible { outline: 2px solid var(--mn-focus-ring); outline-offset: 2px; }

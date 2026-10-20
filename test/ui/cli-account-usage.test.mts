@@ -118,3 +118,34 @@ test('composer quota switches providers without retaining the previous account r
   assert.equal(trigger.button.hidden, true);
   assert.equal(document.querySelector('.cli-account-usage__window'), null);
 });
+
+test('API trigger is hidden until real metrics and ignores stale selection and disposal', async () => {
+  const replies = new Map<string, (value: Response) => void>();
+  globalThis.fetch = (async input => new Promise<Response>(resolve => {
+    replies.set(String(input), resolve);
+  })) as typeof fetch;
+  const trigger = createAccountUsageTrigger();
+  triggers.push(trigger);
+  const wrap = document.createElement('div');
+  wrap.getClientRects = () => [{ width: 100, height: 32 }] as unknown as DOMRectList;
+  document.body.append(wrap);
+  wrap.append(trigger.button);
+  const reply = (id: string) => replies.get('/api/providers/' + id + '/usage')!(
+    new Response(JSON.stringify({ status: 'available', checkedAt: new Date().toISOString(),
+      metrics: [{ label: 'Balance', remaining: 4, unit: 'USD' }] })));
+  trigger.setProvider('api-old');
+  assert.equal(trigger.button.hidden, true);
+  trigger.setProvider('api-current');
+  reply('api-old');
+  await tick();
+  assert.equal(trigger.button.hidden, true);
+  reply('api-current');
+  await tick();
+  assert.equal(trigger.button.hidden, false);
+  assert.match(trigger.button.title, /4 USD remaining/);
+  trigger.setProvider('api-disposed');
+  trigger.dispose();
+  reply('api-disposed');
+  await tick();
+  assert.equal(trigger.button.hidden, true);
+});

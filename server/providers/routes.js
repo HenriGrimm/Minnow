@@ -20,6 +20,7 @@ import {
   readProviderCapabilitiesFile,
 } from './capability-probe.js';
 import { isSafeProviderPathSegment } from './validate.js';
+import { getAccountUsage } from './account-usage.js';
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -73,6 +74,33 @@ export async function handleProviderRequest(req, res, pathname) {
       const body = await readJsonBody(req);
       const created = await createProvider(body);
       sendJson(res, 201, created);
+      return true;
+    }
+
+    const usageMatch = pathname.match(/^\/api\/providers\/([^/]+)\/usage$/);
+    if (usageMatch) {
+      res.setHeader('Cache-Control', 'no-store');
+      const id = usageMatch[1];
+      if (!isSafeProviderPathSegment(id)) {
+        sendJson(res, 400, { error: 'Invalid provider id' });
+        return true;
+      }
+      if (req.method !== 'GET') {
+        res.setHeader('Allow', 'GET');
+        sendJson(res, 405, { error: 'Method not allowed' });
+        return true;
+      }
+      try {
+        await getProvider(id);
+      } catch (err) {
+        if (err?.code === 'ENOENT' || err?.message === 'Provider not found') {
+          sendJson(res, 404, { error: 'Provider not found' });
+          return true;
+        }
+        sendJson(res, 200, { status: 'unavailable', checkedAt: new Date().toISOString(), metrics: [] });
+        return true;
+      }
+      sendJson(res, 200, await getAccountUsage(id));
       return true;
     }
 
