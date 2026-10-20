@@ -40,6 +40,7 @@ import {
 } from '../ui/transcript-view';
 import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
 import { renderAttemptContext } from './attempt-context';
+import { renderAttemptModel } from './attempt-model';
 
 interface SpecDraft {
   taskId: string;
@@ -327,6 +328,12 @@ function syncThreadPane(
   }
 
   pane.dataset.attemptEnded = attempt.ended ? '1' : '0';
+
+  const previousModel = pane.querySelector<HTMLElement>('.ov2-attempt-model');
+  if (previousModel) {
+    const nextModel = renderAttemptModel(view.events);
+    if (nextModel.dataset.modelKey !== previousModel.dataset.modelKey) previousModel.replaceWith(nextModel);
+  }
 
   const previousContext = pane.querySelector<HTMLDetailsElement>('.ov2-context');
   if (previousContext) {
@@ -899,6 +906,7 @@ function renderThreadPane(state: BoardState, task: TaskState, options: BoardView
   }
 
   pane.appendChild(renderThreadHead(state, attempt, options));
+  pane.appendChild(renderAttemptModel(options.transcript.events));
   pane.appendChild(renderAttemptContext(options.transcript.events));
 
   const body = el('div', 'ov2-thread__body transcript-view__body chat-thread');

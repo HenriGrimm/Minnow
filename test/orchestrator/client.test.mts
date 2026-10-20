@@ -15,6 +15,7 @@ import { createScriptedEffector } from '../../server/orchestrator/effector-scrip
 import { disposeEngines } from '../../server/orchestrator/engine.js';
 import { emitLive } from '../../server/orchestrator/live-events.js';
 import { appendEvents, readEvents, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { recordTranscriptEvent } from '../../server/orchestrator/transcripts.js';
 import {
   createBoardsMiddleware,
   setEffectorFactory,
@@ -26,6 +27,7 @@ import {
   listBoards,
   PlanParseFailure,
   readJournal,
+  readAttemptTranscript,
   type EventStream,
 } from '../../src/orchestrator/client.ts';
 
@@ -224,6 +226,21 @@ async function makeBoard() {
 // ── Reading ──────────────────────────────────────────────────────────────────
 
 describe('board client — reading', () => {
+  it('restores model metadata outside the visible tail without duplicating in-tail selections', async () => {
+    const boardId = await makeBoard();
+    const selection = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool' };
+    recordTranscriptEvent({ boardId, attemptId: 'model-tail', event: selection });
+    for (let i = 0; i < 5; i += 1) {
+      recordTranscriptEvent({ boardId, attemptId: 'model-tail', event: { type: 'tool_call', name: 'read_file', id: String(i) } });
+    }
+    const tail = await readAttemptTranscript(boardId, 'model-tail', { limit: 2 });
+    assert.equal(tail.truncated, true);
+    assert.equal(tail.events.filter(event => event.type === 'model_selected').length, 1);
+    assert.equal(tail.events[0].modelId, 'actual-model');
+    const all = await readAttemptTranscript(boardId, 'model-tail');
+    assert.equal(all.events.filter(event => event.type === 'model_selected').length, 1);
+  });
+
   it('createBoardFromPlan returns the existing board for a previously opened plan', async () => {
     const boardId = await makeBoard();
     const opened = await createBoardFromPlan('view.md', { markdown: 'no longer valid' });

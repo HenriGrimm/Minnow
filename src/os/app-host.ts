@@ -462,7 +462,16 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
     }
     lastForegroundApp = appId;
   } else if (options && (appId === 'code' || appId === 'research')) {
-    openAppPageInBackground(appId, options, generation);
+    // A repeated launch can supersede the first deferred reveal before it runs.
+    // The replacement must reveal the layer too, not leave the previous app on top.
+    openAppPageInBackground(
+      appId,
+      options,
+      generation,
+      deferLayerUntilPageOpen && !isAppPageLayerOpen(appId)
+        ? { animateEnter: false }
+        : undefined,
+    );
   } else if (!isAppPageLayerOpen(appId)) {
     openAppPageInBackground(
       appId,

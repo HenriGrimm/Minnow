@@ -27,6 +27,7 @@ test('renders the priority stack with safe titles and actionable failure details
   assert.match(panel.textContent!, /Needs you · 1/);
   assert.ok(panel.querySelector('[data-action="retry"]'));
   assert.ok(panel.querySelector('[data-action="dismiss"]'));
+  assert.equal(panel.querySelector('[data-action="dismiss"]')!.closest('details'), null);
   view.destroy();
 });
 
@@ -38,6 +39,29 @@ test('mark seen keeps failures, and dismissal invokes the explicit resolution ac
   panel.querySelector<HTMLButtonElement>('[data-action="dismiss"]')!.click();
   assert.equal(dismissed, 'scheduler:r1');
   assert.match(panel.textContent!, /Needs you/);
+});
+
+test('dismiss all clears only alerts, keeps questions and history, and restores focus', () => {
+  let records = [notice(), notice({ id: 'second', activityId: 'second' }), notice({ id: 'done', activityId: 'done', activityStatus: 'completed' })];
+  const question = { id: 'question', title: 'Answer needed', status: 'question' as const, detail: 'Choose', source: 'Chat', timestamp: 1, children: [], notifications: [], unread: false, resolved: false, background: false };
+  const current = () => { const result = feed(records); result.attention.unshift(question); return result; };
+  const dismissed: string[] = [];
+  const view = createActivityDropdown(panel, actions);
+  actions.dismiss = (item) => {
+    dismissed.push(item.id);
+    records = records.map((record) => item.notifications.includes(record) ? { ...record, resolved: true, read: true } : record);
+    view.render(current(), DEFAULT_NOTIFICATION_PREFS, 'Minnow', false);
+  };
+  view.render(current(), DEFAULT_NOTIFICATION_PREFS, 'Minnow', false);
+  const button = panel.querySelector<HTMLButtonElement>('[data-action="dismiss-all"]')!;
+  button.focus();
+  button.click();
+  assert.deepEqual(dismissed.sort(), ['scheduler:r1', 'second']);
+  assert.equal(panel.querySelectorAll('.activity-row--question').length, 1);
+  assert.equal(panel.querySelectorAll('[data-action="dismiss"]').length, 0);
+  assert.equal(panel.querySelectorAll('.activity-row').length, 4);
+  assert.equal((document.activeElement as HTMLElement).dataset.action, 'mute');
+  view.destroy();
 });
 
 test('history expands locally, and mark seen includes outcomes beyond the visible three', () => {

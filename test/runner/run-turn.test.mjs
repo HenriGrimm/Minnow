@@ -171,6 +171,29 @@ async function withFake(scenario, fn) {
   }
 }
 
+test('pool selection and failover emit actual model assignments without evaluator noise', async () => {
+  const control = payload => `data: ${JSON.stringify({ minnow_router: payload, choices: [] })}\n\n`;
+  await withFake([{ emit: [
+    control({ routerId: 'pool', phase: 'evaluated' }),
+    control({ routerId: 'pool', phase: 'loading', providerId: 'library', modelId: 'entry' }),
+    control({ routerId: 'pool', phase: 'generating', providerId: 'host-a', modelId: 'model-a', reasoning: 'high', reasoningStatus: 'applied', reset: false }),
+    control({ routerId: 'pool', phase: 'generating', providerId: 'minnow-library', modelId: 'library-entry', resolvedProviderId: 'host-b', resolvedModelId: 'model-b', reset: true, warning: 'Failover' }),
+    ...proseSseChunks('Finished.'),
+  ] }], async baseUrl => {
+    const events = [];
+    await runTurn({ chatId: CHAT_UUID, seed: 'Build', tools: [],
+      model: { providerId: 'minnow-router', id: 'pool' }, deps: stubDeps(baseUrl),
+      injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      onEvent: event => events.push(event),
+    });
+    assert.deepEqual(events.filter(e => e.type === 'model_selected'), [
+      { type: 'model_selected', providerId: 'host-a', modelId: 'model-a', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' },
+      { type: 'model_selected', providerId: 'host-b', modelId: 'model-b', routerId: 'pool' },
+    ]);
+    assert.ok(events.some(e => e.type === 'response_restart'));
+  });
+});
+
 test('signed Anthropic blocks survive a tool round and reach the next request unchanged', async () => {
   const blocks = [
     { type: 'thinking', thinking: '  Check pricing.\n\n\nThen compare.  ', signature: 'sig-1' },

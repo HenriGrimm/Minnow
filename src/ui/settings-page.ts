@@ -624,8 +624,12 @@ export function resetSettingsPageForTests(): void {
   staticBindingsDone = false;
 }
 
-/** Topbar gear opens full settings instead of drawer when available. */
+/** Topbar gear toggles full settings instead of the drawer. */
 export function openSettingsFromTopbar(): void {
+  if (getSettingsRoot()?.classList.contains('is-open')) {
+    closeSettings();
+    return;
+  }
   openSettings('general');
 }
 

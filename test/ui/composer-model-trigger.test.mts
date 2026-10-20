@@ -10,7 +10,7 @@ import {
 } from '../../src/state/sessions.ts';
 
 describe('composer model trigger', () => {
-  test('syncComposerModelTriggers updates label from selected option', async () => {
+  test('syncs the selected label and keeps Pools anchored on the opening side', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
     const doc = win.document;
@@ -54,6 +54,41 @@ describe('composer model trigger', () => {
       assert.ok(spinner);
       assert.notEqual(spinner?.dataset.loadState, 'loading');
       assert.equal(trigger?.getAttribute('aria-busy'), null);
+
+      // Pools can grow beyond the room above the composer after its async load.
+      // It must scroll on the opening side rather than jump below the trigger.
+      const panel = doc.querySelector('.composer-model-menu') as unknown as HTMLElement;
+      Object.defineProperty(trigger, 'getBoundingClientRect', { configurable: true,
+        value: () => ({ top: 600, bottom: 630, left: 500, right: 620, width: 120, height: 30 }) });
+      let panelHeight = 450;
+      Object.defineProperty(panel, 'offsetHeight', { configurable: true, get: () => panelHeight });
+      (trigger as unknown as HTMLButtonElement).click();
+      assert.equal(panel.dataset.placement, 'above');
+      const bottom = panel.style.bottom;
+      assert.equal(panel.style.maxHeight, '588px');
+      panelHeight = 900;
+      panel.querySelector<HTMLButtonElement>('.model-pool-tab')!.click();
+      assert.equal(panel.style.top, 'auto');
+      assert.equal(panel.style.bottom, bottom);
+      assert.equal(panel.style.maxHeight, '588px');
+      // A later layout pass (loaded content or resizing) keeps the same anchor.
+      win.dispatchEvent(new win.Event('resize'));
+      assert.equal(panel.dataset.placement, 'above');
+      assert.equal(panel.style.bottom, bottom);
+      Object.defineProperty(win, 'innerWidth', { configurable: true, value: 390 });
+      Object.defineProperty(panel, 'offsetWidth', { configurable: true, value: 374 });
+      win.dispatchEvent(new win.Event('resize'));
+      assert.equal(panel.style.left, '8px');
+      assert.equal(panel.style.bottom, bottom);
+      const { closeComposerModelMenu } = await import('../../src/ui/composer-model-trigger.ts');
+      closeComposerModelMenu();
+      Object.defineProperty(trigger, 'getBoundingClientRect', { configurable: true,
+        value: () => ({ top: 30, bottom: 60, left: 200, right: 320, width: 120, height: 30 }) });
+      (trigger as unknown as HTMLButtonElement).click();
+      assert.equal(panel.dataset.placement, 'below', 'reopening chooses a fresh side');
+      assert.equal(panel.style.top, '64px');
+      assert.equal(panel.style.bottom, 'auto');
+      closeComposerModelMenu();
 
       sel.innerHTML = '<option value="">Loading models…</option>';
       syncComposerModelTriggers();

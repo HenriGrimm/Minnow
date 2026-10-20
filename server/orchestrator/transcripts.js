@@ -201,6 +201,11 @@ export function recordTranscriptEvent(entry) {
   const line = { ts: Date.now(), type };
   for (const key of [
     'name',
+    'providerId',
+    'modelId',
+    'routerId',
+    'routerName',
+    'reasoningStatus',
     'text',
     'summary',
     'error',
@@ -306,7 +311,7 @@ export async function flushTranscripts(id, attemptId, options = {}) {
  * @param {string} [id] board id, or unused when `options.entryDir` is set
  * @param {string} attemptId
  * @param {{ limit?: number, entryDir?: string }} [options]
- * @returns {Promise<{ events: Record<string, unknown>[], truncated: boolean, capped: boolean }>}
+ * @returns {Promise<{ events: Record<string, unknown>[], truncated: boolean, capped: boolean, modelSelection?: Record<string, unknown> }>}
  */
 export async function readTranscript(id, attemptId, options = {}) {
   const entryDir = resolveEntryDir(id, options);
@@ -347,10 +352,14 @@ export async function readTranscript(id, attemptId, options = {}) {
     ? Number(options.limit)
     : 0;
   const truncated = limit > 0 && folded.length > limit;
+  // The initial binding can precede the visible tail by hundreds of tool events.
+  // Keep model metadata available without changing the transcript's event limit.
+  const modelSelection = folded.findLast((event) => event.type === 'model_selected');
   return {
     events: truncated ? folded.slice(-limit) : folded,
     truncated,
     capped: writers.get(file)?.capped ?? false,
+    ...(modelSelection ? { modelSelection } : {}),
   };
 }
 

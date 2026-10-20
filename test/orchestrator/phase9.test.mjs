@@ -508,6 +508,32 @@ describe('P9-D — attempt transcripts', () => {
     assert.deepEqual(events.map(({ ts, ...measurement }) => measurement), [event]);
   });
 
+  it('retains model routing across transcript reloads', async () => {
+    const boardId = await createBoard();
+    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' };
+    recordTranscriptEvent({ boardId, attemptId: 'r-model', event });
+    await flushTranscripts();
+    resetTranscripts();
+    const { events } = await readTranscript(boardId, 'r-model');
+    assert.deepEqual(events.map(({ ts, ...assignment }) => assignment), [event]);
+  });
+
+  it('retains the latest model outside a limited transcript tail', async () => {
+    const boardId = await createBoard();
+    const event = { type: 'model_selected', providerId: 'host', modelId: 'actual-model', routerId: 'pool', reasoning: 'high', reasoningStatus: 'applied' };
+    recordTranscriptEvent({ boardId, attemptId: 'r-model-tail', event });
+    for (let i = 0; i < 5; i += 1) {
+      recordTranscriptEvent({ boardId, attemptId: 'r-model-tail', event: { type: 'tool_call', name: 'read_file', id: String(i) } });
+    }
+    const result = await readTranscript(boardId, 'r-model-tail', { limit: 2 });
+    assert.equal(result.events.length, 2);
+    assert.equal(result.truncated, true);
+    const { ts, ...selection } = result.modelSelection;
+    assert.deepEqual(selection, event);
+    const read = await call('GET', `/api/boards/${boardId}/attempts/r-model-tail?limit=2`);
+    assert.equal(read.body.modelSelection.modelId, 'actual-model');
+  });
+
   it('persists runner stage timings', async () => {
     const boardId = await createBoard();
     const event = { type: 'runner_timing', startedAt: 100, at: 120, stage: 'tool_batch', durationMs: 20, count: 2 };

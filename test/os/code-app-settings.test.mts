@@ -153,6 +153,44 @@ describe('code app settings (MIN-417)', () => {
     assert.equal(window.location.hash, '#/app/code/chat');
   });
 
+  test('pressing the header gear again closes Settings and can reopen it', async () => {
+    for (const expectedOpen of [true, false, true, false]) {
+      openSettingsFromTopbar();
+      syncOsRouteFromHashForTests();
+      syncAppHostForTests();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(document.getElementById('settingsView')?.classList.contains('is-open'), expectedOpen);
+      assert.equal(getInstanceSnapshot().instances.some((i) => i.appId === 'settings'), expectedOpen);
+      assert.equal(getForegroundAppId(), expectedOpen ? 'settings' : 'code');
+      if (!expectedOpen) assert.equal(window.location.hash, '#/app/code/chat');
+    }
+  });
+
+  test('clicking the original app after opening Settings restores its surface', async () => {
+    const { initAppRail } = await import('../../src/os/app-rail.ts');
+    const rail = document.createElement('nav');
+    document.body.appendChild(rail);
+    const dispose = initAppRail(rail);
+    try {
+      openSettingsFromTopbar();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(getForegroundAppId(), 'settings');
+      const code = rail.querySelector<HTMLButtonElement>('[data-app-id="code"]');
+      assert.ok(code);
+      code.dispatchEvent(new happyDomWindow!.PointerEvent('pointerdown', { bubbles: true }));
+      code.click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      assert.equal(getForegroundAppId(), 'code');
+      assert.equal(window.location.hash, '#/app/code/chat');
+      assert.equal(document.getElementById('settingsView')?.classList.contains('is-open'), false);
+      assert.equal(document.getElementById('settingsView')?.classList.contains('is-active'), false);
+      assert.equal(document.getElementById('appBody')?.classList.contains('hidden'), false);
+    } finally {
+      dispose();
+    }
+  });
+
   test('settings back button returns to the Code app', async () => {
     openSettingsFromTopbar();
     syncOsRouteFromHashForTests();

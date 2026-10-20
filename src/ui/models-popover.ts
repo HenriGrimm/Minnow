@@ -94,7 +94,7 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     nav.append(button);
   }
   panel.querySelector<HTMLButtonElement>('.models-system__edit-pools')!.onclick = () => navigate('routers');
-  panel.querySelector<HTMLButtonElement>('.models-system__manage')!.onclick = () => navigate('installed');
+  panel.querySelector<HTMLButtonElement>('.models-system__footer .models-system__manage')!.onclick = () => navigate('installed');
   dismiss.onclick = close;
   openShellOverlay('models', close);
   document.body.append(panel);
