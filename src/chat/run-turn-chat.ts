@@ -182,7 +182,6 @@ import { linkSentAttachmentsToTurn } from '../design/annotation-store';
 import {
   clearAttachments,
   getPendingAttachments,
-  restorePendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
 import { decodeModelSelectKey } from '../lib/model-select-key';
@@ -741,7 +740,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   let uiDesignerActive = false;
   let sendModelId = '';
   let sendProviderId = '';
-  let sentAttachments: Attachment[] = [];
   let releaseTickedMotion: (() => void) | null = null;
   let streamingStatsPublisher: ReturnType<typeof createStreamingStatsPublisher> | null = null;
   let agentBrowserRuntime: AgentBrowserRuntimeHandle | null = null;
@@ -894,8 +892,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           // while the user bubble (which already carries `validAttachments`) is
           // painted. Clearing here instead of after the turn setup keeps the
           // chips from lingering while a slow CLI agent finishes provisioning.
-          sentAttachments = getPendingAttachments();
-          if (sentAttachments.length > 0) {
+          // Once accepted, files belong to the persisted message even if the
+          // provider fails or the turn stops; they must not rejoin the next draft.
+          if (getPendingAttachments().length > 0) {
             clearAttachments();
           }
         }
@@ -2042,9 +2041,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
     if (uiDesignerActive) {
       chat.workAgentId = savedWorkAgentId;
-    }
-    if (!completedNormally && sessionState?.activeId === chat.id) {
-      restorePendingAttachments(sentAttachments);
     }
     if (turnRunId) {
       const run = findRunById(chat, turnRunId);
