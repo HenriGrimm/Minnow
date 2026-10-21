@@ -60,8 +60,19 @@ export function showToast(
   announce.setAttribute('aria-live', variant === 'error' ? 'assertive' : 'polite');
   announce.setAttribute('aria-atomic', 'true');
 
+  const status = document.createElement('span');
+  status.className = 'mn-toast__icon';
+  status.setAttribute('aria-hidden', 'true');
+  status.innerHTML = iconHtml(variant === 'error' ? 'close' : 'check', { size: 16 });
   const body = document.createElement('div');
   body.className = 'mn-toast__body';
+  const heading = document.createElement('div');
+  heading.className = 'mn-toast__heading';
+  // The live region announces the message; visual status is already on the group.
+  heading.setAttribute('aria-hidden', 'true');
+  const title = document.createElement('span');
+  title.className = 'mn-toast__title';
+  title.textContent = variant === 'error' ? 'Something went wrong' : 'Success';
   const content = document.createElement('div');
   content.className = 'mn-toast__message';
   content.id = `mn-toast-message-${++nextId}`;
@@ -71,7 +82,8 @@ export function showToast(
   const repeat = document.createElement('span');
   repeat.className = 'mn-toast__count';
   repeat.hidden = true;
-  body.append(content, repeat);
+  heading.append(title, repeat);
+  body.append(heading, content);
 
   let timer: number | undefined;
   let hovered = false;
@@ -120,7 +132,7 @@ export function showToast(
   close.setAttribute('aria-label', 'Dismiss notification');
   close.innerHTML = iconHtml('close', { size: 14 });
   close.addEventListener('click', dismiss);
-  el.append(announce, body, close);
+  el.append(announce, status, body, close);
   stack.appendChild(el);
   el.addEventListener('mouseenter', () => { hovered = true; stopTimer(); });
   el.addEventListener('mouseleave', () => { hovered = false; restart(); });
