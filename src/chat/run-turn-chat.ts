@@ -42,7 +42,6 @@ import {
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
 import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming, modelCache } from '../app-state';
-import { getChatMetaSync } from '../config/chat-meta';
 import { mergeGlobalSamplerWithLibraryModel } from '../config/library-inference-meta';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
 import { resolveSamplerPreset } from '../agents/resolve-sampler';
@@ -371,8 +370,8 @@ export function setRunTurnChatEndStreamingForTests(
 }
 
 export function resolveSpikeAskTimeoutMs(): number {
-  const idle = getChatMetaSync().generationIdleTimeoutMs;
-  return idle > 0 ? idle : DEFAULT_ASK_TIMEOUT_MS;
+  // Waiting for a human is independent of the model's silence watchdog.
+  return DEFAULT_ASK_TIMEOUT_MS;
 }
 
 /** Reason for a live `wait` tool row; the model's args arrive as a JSON string. */

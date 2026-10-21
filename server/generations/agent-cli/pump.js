@@ -139,7 +139,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
           append({ choices: [{ index: 0, delta }] });
         }
       }
-    });
+    }, { tools });
     const decoder = createJsonlDecoder({ onEvent: event => {
       translator.consume(event);
       if (translator.snapshot().terminal) void stop().catch(error => { failure = error; });

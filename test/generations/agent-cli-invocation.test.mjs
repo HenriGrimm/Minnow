@@ -28,6 +28,10 @@ for (const kind of ['claude', 'codex', 'cursor']) {
     assert.equal(result.cwd, tempDir);
     assert.equal(result.env.MINNOW_CLI_BRIDGE_TOKEN, 'generation-token');
     assert.equal(result.env.SECRET_FROM_MODEL, undefined);
+    if (kind === 'claude') {
+      assert.equal(result.env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT, '0');
+      assert.equal(result.env.CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS, '0');
+    }
     assert.equal(result.args.some((arg) => arg.includes(common.prompt)), false);
   });
 }
@@ -53,6 +57,8 @@ test('interactive Claude uses a real terminal contract with no print flags or ba
   assert.equal(result.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION, 'false');
   assert.equal(result.env.ENABLE_TOOL_SEARCH, 'false');
   assert.equal(result.env.DISABLE_AUTOUPDATER, '1');
+  assert.equal(result.env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT, '0');
+  assert.equal(result.env.CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS, '0');
   await assert.rejects(prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, profile: { maxBudgetUsd: 1 } }), /do not support.*budget/);
 });
 
