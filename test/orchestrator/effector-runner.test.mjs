@@ -952,7 +952,8 @@ describe('runner effector', { concurrency: false }, () => {
       deps.postChatCompletions = postChatCompletionsHttp;
       const resolveProvider = deps.resolveProvider;
       deps.resolveProvider = async () => ({ ...await resolveProvider(), baseUrl: fakeBase });
-      deps.resolveSendCapabilities = () => ({ reasoning: true, reasoningAllowedOptions: ['off', 'low', 'medium', 'high', 'minimal', 'xhigh', 'max'] });
+      // Served aliases may have no capability row; preserve the board's explicit effort.
+      deps.resolveSendCapabilities = () => ({});
       const seen = [];
       let finishBuilder;
       const builderDone = new Promise((resolve) => { finishBuilder = resolve; });

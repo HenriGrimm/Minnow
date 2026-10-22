@@ -5,7 +5,7 @@ import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { modelCache } from '../../src/app-state.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { mergeReasoningPatch, type BoardReasoningFields } from '../../src/orchestrator/board-journal-reasoning.ts';
-import { teardownBoardHeaderReasoning, wireBoardHeaderReasoningSource } from '../../src/ui/orchestrate-board-reasoning.ts';
+import { syncBoardHeaderReasoning, teardownBoardHeaderReasoning, wireBoardHeaderReasoningSource } from '../../src/ui/orchestrate-board-reasoning.ts';
 import { attachV2BoardHeaderInstruments, teardownV2BoardHeaderInstruments } from '../../src/orchestrator/board-header-v2.ts';
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { syncComposerModelTriggers } from '../../src/ui/composer-model-trigger.ts';
@@ -56,6 +56,36 @@ afterEach(() => {
   teardownBoardHeaderReasoning();
   modelCache.clear();
   activeWindow?.close();
+});
+
+test('MTPLX library board can select effort directly from Off and sync retains picker options', () => {
+  activeWindow = new Window();
+  installHappyDomGlobals(activeWindow);
+  const modelId = 'mtplx:Youssofal/Qwen3.8-Flash-Next-MTPLX-Bare-Speed';
+  modelCache.set(encodeModelSelectKey('minnow-library', modelId), { id: modelId, type: 'llm' });
+  const controls = document.createElement('div');
+  document.body.appendChild(controls);
+  const posted: string[] = [];
+  attachV2BoardHeaderInstruments(controls, {
+    status: 'running', model: { providerId: 'minnow-library', id: modelId, reasoning: 'off' },
+  } as BoardState, { setModel: async (_pid, _id, effort) => { posted.push(effort); },
+    onNeedModel: () => assert.fail('already bound') });
+  const select = controls.querySelector('select')!;
+  assert.equal(select.parentElement!.classList.contains('hidden'), false);
+  assert.equal(select.disabled, false);
+  assert.equal(select.value, 'off');
+  const high = [...select.options].find(option => option.value === 'high')!;
+  const themedButton = document.createElement('button');
+  themedButton.className = 'mn-select-button';
+  select.prepend(themedButton);
+  syncBoardHeaderReasoning();
+  assert.equal([...select.options].find(option => option.value === 'high'), high);
+  assert.equal(select.firstElementChild, themedButton);
+  select.value = 'high';
+  select.dispatchEvent(new activeWindow.Event('change'));
+  assert.deepEqual(posted, ['high']);
+  syncBoardHeaderReasoning();
+  assert.equal(select.value, 'high');
 });
 
 for (const level of ['xhigh', 'max'] as const) {

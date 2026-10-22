@@ -60,9 +60,10 @@ function effectiveCapabilities(): ReturnType<typeof resolveSendCapabilities> | u
 
 function getLevelOptions(): ReasoningEffortOption[] {
   const caps = effectiveCapabilities();
-  return getComposerReasoningLevelOptions(
+  const levels = getComposerReasoningLevelOptions(
     normalizeReasoningAllowedOptions(caps?.reasoningAllowedOptions ?? []),
   );
+  return caps?.reasoningAllowedOptions?.includes('off') ? ['off', ...levels] : levels;
 }
 
 function controlsDisabled(): boolean {
@@ -186,14 +187,18 @@ function populateSelect(
   display: ReasoningEffortOption | undefined,
 ): void {
   if (!selectEl) return;
-  selectEl.replaceChildren();
-  for (const option of options) {
-    const el = document.createElement('option');
-    el.value = option;
-    el.textContent = formatReasoningEffortLabel(option);
-    selectEl.appendChild(el);
+  // Preserve both the open picker and the themed select's own button on sync.
+  const current = [...selectEl.options];
+  if (current.length !== options.length || current.some((option, i) => option.value !== options[i])) {
+    for (const option of current) option.remove();
+    for (const option of options) {
+      const el = document.createElement('option');
+      el.value = option;
+      el.textContent = formatReasoningEffortLabel(option);
+      selectEl.appendChild(el);
+    }
   }
-  if (display) selectEl.value = display;
+  if (display && selectEl.value !== display) selectEl.value = display;
 }
 
 function ensureReasoningDom(): void {
@@ -294,14 +299,11 @@ export function syncBoardHeaderReasoning(): void {
         : 'Board reasoning off — click to turn on';
     }
 
-    const showLevel = effectiveOn;
-    if (selectWrapEl) selectWrapEl.classList.toggle('hidden', !showLevel);
+    selectWrapEl?.classList.remove('hidden');
     if (selectEl) {
-      selectEl.disabled = disabled || !showLevel;
-      if (showLevel) {
-        const levels = getLevelOptions();
-        populateSelect(levels, resolveDisplayEffort(levels));
-      }
+      selectEl.disabled = disabled;
+      const levels = getLevelOptions();
+      populateSelect(levels, resolveDisplayEffort(levels));
     }
     return;
   }

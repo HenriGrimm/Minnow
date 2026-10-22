@@ -1,5 +1,6 @@
 import { getLibraryLaunchSettingsForId } from '../config/library-launch-meta';
 import { MTPLX_LOCAL_ID, isLocalServeProviderId } from './engine-ids.mjs';
+import { mtplxReasoningCatalog } from '../../server/models/mtplx-reasoning.js';
 /**
  * Merge My Models (local GGUF library) into the top-bar / composer model picker.
  * Uses a synthetic provider id so load/unload can start or stop Minnow serves.
@@ -99,6 +100,7 @@ export interface LibraryModelSelectMerge {
   cacheEntries: Array<{ key: string; row: LmModelRecord }>;
   library: LibraryModel[];
   serves: ServeRecord[];
+  servedReasoning?: Array<{ providerId: string; baseUrl: string; modelId: string; reasoning: NonNullable<LmModelRecord['reasoning']> }>;
 }
 
 // ── Serve state ──────────────────────────────────────────────────────────────
@@ -345,6 +347,7 @@ export async function fetchLibraryModelSelectMerge(
   if (library.length === 0) return null;
 
   const cacheEntries: Array<{ key: string; row: LmModelRecord }> = [];
+  const servedReasoning: NonNullable<LibraryModelSelectMerge['servedReasoning']> = [];
   const opts = library
     .map((model) => {
       const key = encodeLibraryModelSelectKey(model.id);
@@ -355,6 +358,12 @@ export async function fetchLibraryModelSelectMerge(
         model.capabilities.includes('vision') &&
         !(model.id.startsWith('mtplx:') && upstreamProviderForLibraryModel(model) === MLX_LM_LOCAL_PROVIDER_ID);
       const loadedContext = servedContextLength(serve);
+      const reasoning = model.id.startsWith('mtplx:')
+        ? mtplxReasoningCatalog(model.id, serve?.mtplxDescriptor) : undefined;
+      if (reasoning && serve?.runtime === 'mtplx' && serve.status === 'running') {
+        servedReasoning.push({ providerId: serve.providerId, baseUrl: serve.baseUrl,
+          modelId: serve.modelLabel, reasoning });
+      }
       cacheEntries.push({
         key,
         row: {
@@ -365,6 +374,7 @@ export async function fetchLibraryModelSelectMerge(
           max_context_length: model.contextLength ?? undefined,
           ...(loadedContext !== undefined ? { loaded_context_length: loadedContext } : {}),
           ...(vision ? { catalogVision: true } : {}),
+          ...(reasoning ? { reasoning } : {}),
         },
       });
       return buildTopBarModelOptionHtml({
@@ -383,7 +393,7 @@ export async function fetchLibraryModelSelectMerge(
     .join('');
 
   const optgroupHtml = `<optgroup label="${LIBRARY_MODEL_OPTGROUP_LABEL}">${opts}</optgroup>`;
-  return { optgroupHtml, cacheEntries, library, serves };
+  return { optgroupHtml, cacheEntries, library, serves, servedReasoning };
 }
 
 const SERVE_POLL_MS = 400;

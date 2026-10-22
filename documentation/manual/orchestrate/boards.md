@@ -33,6 +33,8 @@ If the plan does not parse, Boards lists the errors and offers **Repair**. Repai
 
 The header is one instrument strip: plan title, status badge, and telemetry — tasks, waves, run, elapsed — over a thin progress bar, then the run controls.
 
+The reasoning dropdown lets you select **Off** or a supported effort level, including for MTPLX models. Changes apply to new attempts; agents already working keep their current setting.
+
 Cards move through these states:
 
 | Status | Meaning |
