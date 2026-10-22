@@ -910,6 +910,14 @@ export function createRunnerEffector(options = {}) {
             deps: {
               ...deps,
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
+              // The library's selected effort survives remapping to an opaque
+              // runtime alias, which may have no cached capability row yet.
+              resolveSendCapabilities: (providerId, modelId, apiKind) => {
+                const caps = deps.resolveSendCapabilities(providerId, modelId, apiKind);
+                return isComposerReasoningLevel(reasoning) && !caps?.reasoningAllowedOptions?.length
+                  ? { ...caps, reasoning: true, reasoningAllowedOptions: ['off', reasoning] }
+                  : caps;
+              },
             },
             execute: dispatch.execute,
             reportToolName: REPORT_TOOL_NAME,

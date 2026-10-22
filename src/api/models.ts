@@ -476,7 +476,10 @@ export async function populateMultiProviderModelSelect(
     for (const { provider, models } of results) {
       for (const m of models) {
         const key = encodeModelSelectKey(provider.id, m.id);
-        modelCache.set(key, { ...m, capabilities: catalogCapabilitiesFromRow(m, provider.apiKind) });
+        const served = libraryMerge?.servedReasoning?.find(row => row.modelId === m.id &&
+          (row.providerId === provider.id || row.baseUrl.replace(/\/+$/, '') === provider.baseUrl.replace(/\/+$/, '')));
+        const row = served ? { ...m, reasoning: served.reasoning } : m;
+        modelCache.set(key, { ...row, capabilities: catalogCapabilitiesFromRow(row, provider.apiKind) });
       }
     }
     if (libraryMerge) {
