@@ -52,6 +52,7 @@ let view: LlamaEnginesView | null = null;
 let runtime: LlamaRuntimeStatus | null = null;
 let runtimeError: string | null = null;
 let mlx: ManagedServerSummary | null = null;
+let mtplx: ManagedServerSummary | null = null;
 let llamaServes: ServeRecord[] = [];
 let buildUnsub: (() => void) | null = null;
 /** Upstream install in flight: its progress line replaces the runtime facts. */
@@ -96,9 +97,10 @@ async function loadServes(): Promise<void> {
   }
 }
 
-async function loadMlx(): Promise<void> {
+async function loadManagedRuntimes(): Promise<void> {
   const servers = await fetchManagedServers();
   mlx = servers?.find((s) => s.id === 'mlx-lm') ?? null;
+  mtplx = servers?.find((s) => s.id === 'mtplx') ?? null;
 }
 
 async function refreshEngines(): Promise<void> {
@@ -116,7 +118,7 @@ export async function mountEngineSection(): Promise<void> {
   if (!view) mount.replaceChildren(el('p', 'models-muted', 'Loading…'));
 
   try {
-    const [engines] = await Promise.all([fetchLlamaEngines(), loadRuntime(), loadServes(), loadMlx()]);
+    const [engines] = await Promise.all([fetchLlamaEngines(), loadRuntime(), loadServes(), loadManagedRuntimes()]);
     view = engines;
   } catch (err) {
     if (generation !== mountGeneration) return;
@@ -150,7 +152,7 @@ export async function mountEngineSection(): Promise<void> {
   const servesBlock = el('section', 'models-block');
   servesBlock.id = 'modelsEngineServes';
 
-  mount.replaceChildren(llamaBlock, customForkBlock(), servesBlock, mlxBlock());
+  mount.replaceChildren(llamaBlock, customForkBlock(), servesBlock, mlxBlock(), mtplxBlock());
   renderEngineList();
   renderServes();
 
@@ -737,6 +739,41 @@ function renderServes(): void {
   block.appendChild(list);
 }
 
+// ── MTPLX ────────────────────────────────────────────────────────────────────
+
+function mtplxBlock(): HTMLElement {
+  const block = el('section', 'models-block');
+  block.id = 'modelsEngineMtplx';
+  block.dataset.serverId = 'mtplx';
+  renderMtplxInto(block);
+  return block;
+}
+
+function renderMtplxInto(block: HTMLElement): void {
+  block.replaceChildren(el('h3', 'models-block__label', 'MTPLX'));
+  block.appendChild(el('p', 'models-engine__desc', 'Powered by MTPLX. Apple Silicon inference with multi-token prediction. Uses your existing installation.'));
+  const server = mtplx;
+  if (server) {
+    const head = el('div', 'models-engine__head');
+    head.appendChild(chip(server.supported === false ? 'Unsupported' : server.installed ? 'Installed' : 'Not installed', server.supported !== false && server.installed ? 'fit-perfect' : 'muted'));
+    if (server.version) head.appendChild(chip(server.version, 'muted'));
+    block.appendChild(head);
+    if (server.reason) block.appendChild(el('p', 'models-hint', server.reason));
+    if (server.supported !== false && server.installed) {
+      block.appendChild(el('p', 'models-hint', 'Load models in Models → My Models. Select MTPLX in the model’s Load settings.'));
+    }
+  } else {
+    block.appendChild(el('p', 'models-muted', 'Could not load the MTPLX runtime status.'));
+  }
+  const refresh = textButton('Refresh', () => {
+    void withButtonBusy(refresh, 'Refreshing…', async () => {
+      await loadManagedRuntimes();
+      if (block.isConnected) renderMtplxInto(block);
+    });
+  });
+  block.appendChild(refresh);
+}
+
 // ── MLX ──────────────────────────────────────────────────────────────────────
 
 function mlxBlock(): HTMLElement {
@@ -747,7 +784,7 @@ function mlxBlock(): HTMLElement {
 }
 
 async function refreshMlx(): Promise<void> {
-  await loadMlx();
+  await loadManagedRuntimes();
   const block = document.getElementById('modelsEngineMlx');
   if (block) renderMlxInto(block);
 }

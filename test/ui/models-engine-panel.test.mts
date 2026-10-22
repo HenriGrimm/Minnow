@@ -35,6 +35,18 @@ const MLX_UNSUPPORTED: ManagedServerSummary = {
     'MLX runs only on Apple Silicon Macs (macOS 13 or later). Use GGUF weights with llama.cpp on this machine.',
 };
 
+const MTPLX_INSTALLED: ManagedServerSummary = {
+  ...MLX_UNSUPPORTED,
+  id: 'mtplx',
+  label: 'MTPLX',
+  kind: 'external',
+  description: 'Powered by MTPLX.',
+  installed: true,
+  supported: true,
+  version: '2.12.0',
+  reason: null,
+};
+
 const UPGRADE_RUNTIME: LlamaRuntimeStatus = {
   path: 'C:\\Users\\me\\.minnow\\models-runtime\\llama-cpp\\llama-server.exe',
   source: 'managed',
@@ -125,6 +137,7 @@ async function waitFor(check: () => boolean, ms = 1000): Promise<void> {
 
 describe('Models → Engine panel', () => {
   let originalFetch: typeof fetch;
+  let mtplx: ManagedServerSummary;
   let view: LlamaEnginesView;
   let requests: Array<{ url: string; method: string; body?: string }>;
 
@@ -137,6 +150,7 @@ describe('Models → Engine panel', () => {
     document.body.innerHTML = '<div id="modelsEngineBody"></div>';
 
     view = enginesView();
+    mtplx = { ...MTPLX_INSTALLED };
     requests = [];
     originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -150,7 +164,7 @@ describe('Models → Engine panel', () => {
       }
       if (url === '/api/models/llama-runtime') return json(UPGRADE_RUNTIME);
       if (url === '/api/models/serve') return json({ serves: [] });
-      if (url === '/api/servers') return json({ servers: [MLX_UNSUPPORTED] });
+      if (url === '/api/servers') return json({ servers: [MLX_UNSUPPORTED, mtplx] });
       throw new Error(`unexpected fetch: ${method} ${url}`);
     }) as typeof fetch;
   });
@@ -218,6 +232,45 @@ describe('Models → Engine panel', () => {
     assert.ok(mlx);
     assert.equal(mlx.querySelector('[data-server-install="mlx-lm"]'), null);
     assert.match(mlx.querySelector('[data-server-install-reason="mlx-lm"]')?.textContent ?? '', /Apple Silicon/);
+  });
+
+  test('shows the installed MTPLX version and model loading guidance', async () => {
+    const { mountEngineSection } = await import('../../src/ui/models/engine-panel.ts');
+    await mountEngineSection();
+
+    const block = document.getElementById('modelsEngineMtplx');
+    assert.ok(block);
+    assert.match(block.textContent ?? '', /Powered by MTPLX/);
+    assert.match(block.textContent ?? '', /Installed/);
+    assert.match(block.textContent ?? '', /2\.12\.0/);
+    assert.match(block.textContent ?? '', /Load settings/);
+    assert.deepEqual([...block.querySelectorAll('button')].map((b) => b.textContent), ['Refresh']);
+  });
+
+  test('shows MTPLX installation guidance and refreshes after installation', async () => {
+    mtplx = { ...mtplx, installed: false, version: undefined, reason: 'Install with pip install --upgrade mtplx, then refresh.' };
+    const { mountEngineSection } = await import('../../src/ui/models/engine-panel.ts');
+    await mountEngineSection();
+
+    const block = document.getElementById('modelsEngineMtplx')!;
+    assert.match(block.textContent ?? '', /Not installed/);
+    assert.match(block.textContent ?? '', /pip install --upgrade mtplx/);
+    mtplx = { ...MTPLX_INSTALLED };
+    block.querySelector('button')!.click();
+    await waitFor(() => Boolean(block.textContent?.includes('2.12.0')));
+    assert.doesNotMatch(block.textContent ?? '', /Not installed/);
+  });
+
+  test('keeps MTPLX visible on unsupported hosts with the platform reason', async () => {
+    mtplx = { ...mtplx, installed: false, supported: false, reason: 'MTPLX requires Apple Silicon and macOS 14 or newer.' };
+    const { mountEngineSection } = await import('../../src/ui/models/engine-panel.ts');
+    await mountEngineSection();
+
+    const block = document.getElementById('modelsEngineMtplx')!;
+    assert.match(block.textContent ?? '', /Unsupported/);
+    assert.match(block.textContent ?? '', /macOS 14/);
+    assert.doesNotMatch(block.textContent ?? '', /Load settings/);
+    assert.deepEqual([...block.querySelectorAll('button')].map((b) => b.textContent), ['Refresh']);
   });
 
   test('selecting a built fork makes it active', async () => {
