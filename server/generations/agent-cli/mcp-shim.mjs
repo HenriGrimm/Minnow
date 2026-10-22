@@ -2,11 +2,14 @@
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { upstreamFetch } from '../upstream-fetch.js';
 
 const MAX_LINE = 1024 * 1024;
 
 /** Minimal stdio MCP. Tools request a handoff; this process never executes a tool. */
-export function startMcpShim({ env = process.env, input = process.stdin, output = process.stdout, fetchImpl = fetch } = {}) {
+// A handoff can wait an hour for a human. Minnow's session deadline and the
+// stdin-close abort own its lifetime, rather than fetch's 300s headers timeout.
+export function startMcpShim({ env = process.env, input = process.stdin, output = process.stdout, fetchImpl = upstreamFetch } = {}) {
   const url = new URL(env.MINNOW_CLI_BRIDGE_URL);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.pathname !== '/call' || url.username || url.password) throw new Error('Invalid Minnow CLI bridge address.');
   const tools = JSON.parse(readFileSync(env.MINNOW_CLI_TOOLS_FILE, 'utf8'));

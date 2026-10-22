@@ -611,7 +611,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
         append(state, delta.activity ? { choices: [{ index: 0, delta: {} }], minnow_agent_cli: delta.activity }
           : { choices: [{ index: 0, delta }] });
       }
-    });
+    }, { tools: buildAgentCliToolCatalog(body) });
     session.active = round;
     session.outputBytes = 0;
     session.waiting = false;

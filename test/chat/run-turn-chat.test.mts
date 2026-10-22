@@ -50,6 +50,7 @@ import {
   pushAttachment,
 } from '../../src/attachments/store.ts';
 import type { Attachment } from '../../src/attachments/types.ts';
+import { buildHistoryUserContent } from '../../src/chat/build-api-messages.ts';
 
 const CHAT_ID = '11111111-1111-1111-1111-111111111111';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -194,31 +195,39 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.deepEqual(getPendingAttachments(), [], 'the tray clears as soon as the turn owns the composer');
   });
 
-  test('a failed turn hands the sent attachments back to the composer', async () => {
-    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
-    installChatDom();
-    const chat = makeChat();
-    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  for (const outcome of ['failed', 'stopped'] as const) {
+    test(`a ${outcome} provider turn keeps sent attachments in the chat and preserves new composer files`, async () => {
+      setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+      installChatDom();
+      const chat = makeChat();
+      setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
 
-    const sent = textAttachment('sent');
-    pushAttachment(sent);
+      const sent = textAttachment('sent');
+      const queued = textAttachment('next-message');
+      pushAttachment(sent);
+      const historyContent = buildHistoryUserContent('Read this', [sent]);
 
-    setRunTurnForTests(async () => {
-      throw new Error('provider exploded');
+      setRunTurnForTests(async () => {
+        assert.deepEqual(getPendingAttachments(), [], 'sent files leave the composer before provider execution');
+        assert.ok(document.getElementById('chatArea')?.textContent?.includes(sent.name));
+        pushAttachment(queued);
+        if (outcome === 'stopped') throw new DOMException('Stopped', 'AbortError');
+        throw new Error('provider exploded');
+      });
+      const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+      await runChatTurn({
+        chat,
+        ...SIMPLE_TURN,
+        historyContent,
+        validAttachments: [sent],
+      });
+
+      assert.deepEqual(getPendingAttachments(), [queued], 'only the next message’s files stay in the composer');
+      const userRows = chat.history.filter(row => row.role === 'user');
+      assert.equal(userRows.length, 1);
+      assert.equal(userRows[0].content, historyContent, 'sent attachments remain in the saved message');
     });
-    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
-    await runChatTurn({
-      chat,
-      ...SIMPLE_TURN,
-      validAttachments: [sent],
-    });
-
-    assert.deepEqual(
-      getPendingAttachments().map((a) => a.id),
-      ['sent'],
-      'a failed send hands the attachment back to the composer',
-    );
-  });
+  }
 
   afterEach(() => {
     clearAttachments();

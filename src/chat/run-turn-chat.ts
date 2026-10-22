@@ -42,7 +42,6 @@ import {
 import { WorkAgentConfigError } from '../agents/work-agent-types';
 import { getUserWorkAgentOverride } from '../agents/work-agent-registry';
 import { getChatAbort, setChatAbort, setStreaming, isAnyChatStreaming, modelCache } from '../app-state';
-import { getChatMetaSync } from '../config/chat-meta';
 import { mergeGlobalSamplerWithLibraryModel } from '../config/library-inference-meta';
 import { readGlobalSamplerForSend } from '../config/sampler-meta';
 import { resolveSamplerPreset } from '../agents/resolve-sampler';
@@ -183,7 +182,6 @@ import { linkSentAttachmentsToTurn } from '../design/annotation-store';
 import {
   clearAttachments,
   getPendingAttachments,
-  restorePendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
 import { decodeModelSelectKey } from '../lib/model-select-key';
@@ -371,8 +369,8 @@ export function setRunTurnChatEndStreamingForTests(
 }
 
 export function resolveSpikeAskTimeoutMs(): number {
-  const idle = getChatMetaSync().generationIdleTimeoutMs;
-  return idle > 0 ? idle : DEFAULT_ASK_TIMEOUT_MS;
+  // Waiting for a human is independent of the model's silence watchdog.
+  return DEFAULT_ASK_TIMEOUT_MS;
 }
 
 /** Reason for a live `wait` tool row; the model's args arrive as a JSON string. */
@@ -742,7 +740,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   let uiDesignerActive = false;
   let sendModelId = '';
   let sendProviderId = '';
-  let sentAttachments: Attachment[] = [];
   let releaseTickedMotion: (() => void) | null = null;
   let streamingStatsPublisher: ReturnType<typeof createStreamingStatsPublisher> | null = null;
   let agentBrowserRuntime: AgentBrowserRuntimeHandle | null = null;
@@ -895,8 +892,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           // while the user bubble (which already carries `validAttachments`) is
           // painted. Clearing here instead of after the turn setup keeps the
           // chips from lingering while a slow CLI agent finishes provisioning.
-          sentAttachments = getPendingAttachments();
-          if (sentAttachments.length > 0) {
+          // Once accepted, files belong to the persisted message even if the
+          // provider fails or the turn stops; they must not rejoin the next draft.
+          if (getPendingAttachments().length > 0) {
             clearAttachments();
           }
         }
@@ -2043,9 +2041,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
     if (uiDesignerActive) {
       chat.workAgentId = savedWorkAgentId;
-    }
-    if (!completedNormally && sessionState?.activeId === chat.id) {
-      restorePendingAttachments(sentAttachments);
     }
     if (turnRunId) {
       const run = findRunById(chat, turnRunId);

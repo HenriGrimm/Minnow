@@ -63,8 +63,12 @@ export function mapAgentCliUsage(raw, kind) {
 }
 
 /** Per-invocation state prevents SDK snapshots and terminal summaries from duplicating deltas. */
-export function createAgentCliTranslator(kind, emit) {
+export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
   if (!['claude', 'codex', 'cursor'].includes(kind)) throw new Error('Unsupported agent CLI.');
+  // Native tools are disabled at invocation. A bare advertised Minnow name is
+  // an unavailable-tool mistake: let Claude receive its error and retry through
+  // MCP. Never turn an observed transcript block into an executable handoff.
+  const recoverableNames = new Set(tools.map(tool => tool.name).filter(name => /^[a-z][a-z0-9_]*$/.test(name)));
   let sawText = false;
   let sawReasoning = false;
   let streamedMessageText = false;
@@ -151,7 +155,7 @@ export function createAgentCliTranslator(kind, emit) {
         for (const block of event.message?.content ?? []) {
           if (block.type === 'text' && !streamedMessageText) text(block.text);
           if (block.type === 'thinking' && !streamedMessageReasoning) reasoning(block.thinking);
-          if (block.type === 'tool_use' && block.name !== 'EndConversation' && !String(block.name).startsWith('mcp__minnow__')) emit({ forbiddenTool: block.name });
+          if (block.type === 'tool_use' && block.name !== 'EndConversation' && !String(block.name).startsWith('mcp__minnow__') && !recoverableNames.has(block.name)) emit({ forbiddenTool: block.name });
         }
         if (event.message?.usage) usage = mapAgentCliUsage(event.message.usage, kind);
       }

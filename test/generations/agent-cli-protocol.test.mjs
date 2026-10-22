@@ -255,11 +255,42 @@ test('Claude transport instructions qualify Minnow tool names after supplied pro
   assert.equal(buildAgentCliPrompt(body, 'cursor').systemPrompt.includes('mcp__minnow__browser_eval'), false);
 });
 
-test('Claude still rejects bare Minnow names and native tools while accepting MCP names', () => {
+test('Claude fails closed on bare tool names when no permitted catalog is supplied', () => {
   const emitted = [];
   const translator = createAgentCliTranslator('claude', delta => emitted.push(delta));
   for (const name of ['mcp__minnow__browser_eval', 'browser_eval', 'Bash']) {
     translator.consume({ type: 'assistant', uuid: name, message: { content: [{ type: 'tool_use', name, input: {} }] } });
   }
   assert.deepEqual(emitted, [{ forbiddenTool: 'browser_eval' }, { forbiddenTool: 'Bash' }]);
+});
+
+test('Claude can recover from a bare advertised Minnow name without dispatching it', () => {
+  const emitted = [];
+  const tools = buildAgentCliToolCatalog({ tools: [{ type: 'function', function: { name: 'browser_eval' } }] });
+  const translator = createAgentCliTranslator('claude', delta => emitted.push(delta), { tools });
+  translator.consume({ type: 'assistant', uuid: 'bare', message: { content: [{ type: 'tool_use', name: 'browser_eval', input: {} }] } });
+  assert.deepEqual(emitted, [], 'a transcript observation never becomes a Minnow tool call');
+  translator.consume({ type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'tool_use', name: 'mcp__minnow__browser_eval' } } });
+  translator.consume({ type: 'result', subtype: 'success', result: 'Recovered.' });
+  assert.deepEqual(emitted, [{ activity: { phase: 'tools', toolName: 'browser_eval' } }, { content: 'Recovered.' }]);
+  assert.equal(translator.snapshot().terminal.ok, true);
+});
+
+test('bare-name recovery preserves native-tool rejection and current catalog restrictions', () => {
+  const tool = name => ({ type: 'function', function: { name } });
+  for (const body of [
+    { tools: [tool('browser_eval')] },
+    { tools: [tool('browser_eval')], tool_choice: 'none' },
+    { tools: [tool('browser_eval'), tool('read_file')], tool_choice: { function: { name: 'read_file' } } },
+    { tools: [tool('Bash')] },
+  ]) {
+    const emitted = [];
+    const translator = createAgentCliTranslator('claude', delta => emitted.push(delta), { tools: buildAgentCliToolCatalog(body) });
+    for (const name of ['browser_eval', 'browser_unknown', 'Bash', 'Read', 'Write', 'Task']) {
+      translator.consume({ type: 'assistant', uuid: name, message: { content: [{ type: 'tool_use', name, input: {} }] } });
+    }
+    const forbidden = ['browser_unknown', 'Bash', 'Read', 'Write', 'Task'];
+    if (body.tool_choice || body.tools[0].function.name !== 'browser_eval') forbidden.unshift('browser_eval');
+    assert.deepEqual(emitted, forbidden.map(forbiddenTool => ({ forbiddenTool })));
+  }
 });

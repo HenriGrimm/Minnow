@@ -4,8 +4,8 @@ import type { TurnToolDefinition } from './run-turn';
 export const ASK_QUESTION_TOOL_NAME: 'ask_question';
 
 /**
- * Default interactive wait (60 minutes). Matches Watchdog
- * `chat.generationIdleTimeoutMs`. Override with `askTimeoutMs`.
+ * Default interactive wait (60 minutes), independent of the generation
+ * silence watchdog. Override with `askTimeoutMs`.
  */
 export const DEFAULT_ASK_TIMEOUT_MS: number;
 

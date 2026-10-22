@@ -72,10 +72,10 @@ describe('P6-B chat spike AskCapability (MIN-724)', () => {
     assert.match(String(content), /"status":"error"/);
   });
 
-  test('resolveSpikeAskTimeoutMs honors watchdog idle and never returns 0', () => {
+  test('question answer time is independent of the generation silence watchdog', () => {
     resetChatMetaCache();
     setChatMetaForTests({ generationIdleTimeoutMs: 240_000 });
-    assert.equal(resolveSpikeAskTimeoutMs(), 240_000);
+    assert.equal(resolveSpikeAskTimeoutMs(), DEFAULT_ASK_TIMEOUT_MS);
     setChatMetaForTests({ generationIdleTimeoutMs: 0 });
     assert.equal(resolveSpikeAskTimeoutMs(), DEFAULT_ASK_TIMEOUT_MS);
     resetChatMetaCache();

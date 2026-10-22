@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { createAgentCliBridge, buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
 import { startMcpShim } from '../../server/generations/agent-cli/mcp-shim.mjs';
+import { getUpstreamAgentForTests } from '../../server/generations/upstream-fetch.js';
 
 async function fixture(t, onCall = () => {}) {
   const tempDir = await mkdtemp(join(tmpdir(), 'minnow-cli-bridge-test-'));
@@ -125,4 +126,42 @@ test('stdio shim negotiates MCP, publishes only supplied tools, and handles malf
   assert.equal((await next(3)).error.code, -32602);
   input.write(JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'ping' }) + '\n');
   assert.deepEqual((await next(4)).result, {});
+});
+
+test('stdio handoffs use the timeout-free transport, deliver a delayed answer, and abort on stdin close', async t => {
+  const calls = [];
+  const { bridge, env, tools } = await fixture(t, call => calls.push(call));
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const replies = [];
+  output.on('data', chunk => replies.push(JSON.parse(chunk.toString())));
+  const nativeFetch = globalThis.fetch;
+  let handoffSignal;
+  t.mock.method(globalThis, 'fetch', (url, init) => {
+    assert.equal(init.dispatcher, getUpstreamAgentForTests());
+    handoffSignal = init.signal;
+    return nativeFetch(url, init);
+  });
+  const shim = startMcpShim({ env, input, output });
+  t.after(() => { shim.close(); input.destroy(); output.destroy(); });
+  const send = (id, method, params) => input.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+  const until = async predicate => {
+    for (let i = 0; i < 200 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(predicate());
+  };
+  send(1, 'tools/call', { name: tools[0].name, arguments: {} });
+  await until(() => calls.length === 1);
+  // The CLI can still ping while its tool request waits for the user's answer.
+  send(2, 'ping');
+  await until(() => replies.some(reply => reply.id === 2));
+  assert.equal(replies.some(reply => reply.id === 1), false);
+  assert.equal(bridge.resolveCall(calls[0].id, 'Late answer'), true);
+  await until(() => replies.some(reply => reply.id === 1));
+  assert.deepEqual(replies.find(reply => reply.id === 1).result.content, [{ type: 'text', text: 'Late answer' }]);
+  bridge.resetBatch();
+  send(3, 'tools/call', { name: tools[0].name, arguments: {} });
+  await until(() => calls.length === 2);
+  input.end();
+  await until(() => handoffSignal.aborted);
+  assert.equal(replies.some(reply => reply.id === 3), false);
 });
