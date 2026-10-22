@@ -1189,7 +1189,7 @@ export async function stashList({ cwd } = {}) {
 
   const entries = String(result.stdout ?? '')
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/\s+\[minnow-checkout:[A-Za-z0-9_-]+\]/g, ''))
     .filter(Boolean);
 
   return { ok: true, stashes: entries };

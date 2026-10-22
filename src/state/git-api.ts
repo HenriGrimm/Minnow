@@ -73,6 +73,9 @@ export interface GitCommitEntry {
 }
 
 export interface GitOpResult {
+  needsChoice?: boolean;
+  fileCount?: number;
+  savedChanges?: GitSavedCheckoutChanges[];
   additions?: number;
   deletions?: number;
   ok: boolean;
@@ -111,6 +114,34 @@ export interface GitOpResult {
   conflict?: boolean;
   stashes?: string[];
   url?: string;
+}
+
+export interface GitSavedCheckoutChanges {
+  sha: string;
+  branch: string;
+  fileCount: number;
+  createdAt: string;
+}
+
+export interface GitCheckoutSwitchInput {
+  cwd?: string;
+  branch: string;
+  create?: boolean;
+  startPoint?: string;
+  dirtyHandling?: 'bring' | 'leave';
+  expectedBranch?: string;
+}
+
+export function gitCheckoutSwitch(input: GitCheckoutSwitchInput): Promise<GitOpResult> {
+  return postGit('checkoutSwitch', { ...input });
+}
+
+export function gitCheckoutSavedChanges(cwd?: string): Promise<GitOpResult> {
+  return postGit('checkoutSavedChanges', { cwd });
+}
+
+export function gitCheckoutRestoreChanges(input: { cwd?: string; sha: string; expectedBranch: string }): Promise<GitOpResult> {
+  return postGit('checkoutRestoreChanges', input);
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────

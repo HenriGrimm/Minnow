@@ -231,12 +231,12 @@ function createMinnowTips(): HTMLElement {
 
   const tips: { term: string; detail: string }[] = [
     {
-      term: 'Worktree dropdown',
-      detail: 'Choose which checkout folder you are browsing. Files, diffs, and commits reflect that folder.',
+      term: 'Checkout picker',
+      detail: 'Click the branch above its worktree name to search branches or worktrees. A branch open in another worktree opens that checkout. New branch, Add worktree, and removal actions live inside the picker.',
     },
     {
-      term: 'Branch dropdown',
-      detail: 'Switch the branch checked out in the selected worktree. Create branches with +; delete the selected branch with − (main and master cannot be deleted).',
+      term: 'Uncommitted changes',
+      detail: 'Switching branches asks whether to bring your changes or leave them saved in a stash. Returning to that branch in the same worktree offers Restore changes. Worktree browsing keeps each checkout’s files in place.',
     },
     {
       term: 'Composer run target',

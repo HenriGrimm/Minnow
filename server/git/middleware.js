@@ -1,6 +1,7 @@
 import { runRequestWork } from '../runtime/request-work.js';
 import { githubAuth } from './github-auth.js';
 import { ACTION_OPS } from './action-service.js';
+import { checkoutSwitch, checkoutSavedChanges, checkoutRestoreChanges } from './checkout-switch.js';
 import { issueWorkInspect, issueWorkCommit, issueWorkMerge, issueWorkCleanup } from './issue-work-ops.js';
 import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 /**
@@ -124,6 +125,9 @@ const OPS = {
   branchTree: (a) => branchTree(a),
   worktreeStatus: (a) => worktreeStatus(a),
   checkout: (a) => checkout(a),
+  checkoutSwitch,
+  checkoutSavedChanges,
+  checkoutRestoreChanges,
   checkoutDetach: (a) => checkoutDetach(a),
   createTag: (a) => createTag(a),
   deleteBranch: (a) => deleteBranch(a),

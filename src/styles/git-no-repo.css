@@ -101,6 +101,7 @@
 .git-panel-root__inner.git-panel-root--no-repo .git-panel-sections,
 .git-panel-root__inner.git-panel-root--no-repo .git-panel-section--history,
 .git-panel-root__inner.git-panel-root--no-repo .git-panel-branch-wrap,
+.git-panel-root__inner.git-panel-root--no-repo .git-checkout,
 .git-panel-root__inner.git-panel-root--no-repo .git-panel-sync-row,
 .git-panel-root__inner.git-panel-root--no-repo .git-panel-cwd-wrap {
   display: none !important;

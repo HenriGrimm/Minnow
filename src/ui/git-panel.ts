@@ -1,3 +1,4 @@
+import { createGitCheckoutPicker } from './git-checkout-picker';
 import { createCommitGenerationStatus } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
@@ -10,13 +11,9 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
 import { isIssuesSidebarActive, setIssuesSidebarActive } from './file-sidebar-view';
 import {
 
-  formatWorktreeOptionLabel,
-
   filterUserFacingBranches,
 
   filterUserFacingWorktrees,
-
-  getPrincipalWorktree,
 
   parseWorktreeListPorcelain,
 
@@ -27,7 +24,11 @@ import {
 import {
   gitBranches,
 
-  gitCheckout,
+  gitCheckoutSwitch,
+  gitCheckoutSavedChanges,
+  gitCheckoutRestoreChanges,
+  type GitCheckoutSwitchInput,
+  type GitSavedCheckoutChanges,
 
   gitCommit,
 
@@ -36,7 +37,6 @@ import {
   gitDiscard,
 
   gitPull,
-
 
   gitStage,
 
@@ -85,9 +85,7 @@ import {
   resolvePanelWorktreeCwd,
   resolvePanelBrowseRunTargetSeed,
   normalizePanelCwdAfterWorktreeListChange,
-  resolveKnownWorktreePath,
   resolveWorktreeListForRender,
-  worktreeOptionsMatch,
   type PanelBrowseRunTargetSeed,
 } from './panel-worktree-cwd';
 
@@ -138,14 +136,9 @@ let noRepoMount: HTMLElement | null = null;
 
 let bodyMount: HTMLElement | null = null;
 
-let branchSelect: HTMLSelectElement | null = null;
-let branchDeleteBtn: HTMLButtonElement | null = null;
+let checkoutPicker: ReturnType<typeof createGitCheckoutPicker> | null = null;
+let savedCheckoutChanges: GitSavedCheckoutChanges[] = [];
 let mergeToMainBtn: HTMLButtonElement | null = null;
-
-let cwdSelect: HTMLSelectElement | null = null;
-let worktreeDeleteBtn: HTMLButtonElement | null = null;
-
-let cwdWrap: HTMLElement | null = null;
 
 let aheadBehindEl: HTMLElement | null = null;
 
@@ -206,6 +199,9 @@ function setPanelCwd(next: string | undefined): void {
   panelCwd = next;
   if (unchanged) return;
   cwdGeneration += 1;
+  currentBranchName = knownWorktrees.find((wt) => pathsEqual(wt.path, next ?? getWorkspacePath()))?.branch ?? '';
+  savedCheckoutChanges = [];
+  syncCheckoutPicker();
 }
 
 /** When true, manual worktree browse (dropdown / Git Center) is not overwritten by chat sync. */
@@ -263,26 +259,6 @@ export function setGitPanelCwd(cwd: string | undefined): void {
   panelCwdUserOverride = true;
   setPanelCwd(cwd);
 
-  if (cwdSelect) {
-
-    const target = cwd ?? getWorkspacePath();
-
-    for (const opt of cwdSelect.options) {
-
-      if (pathsEqual(opt.value, target)) {
-
-        cwdSelect.value = opt.value;
-
-        break;
-
-      }
-
-    }
-
-    syncWorktreeDeleteButton();
-
-  }
-
   if (panelOpen) {
 
     void refreshGitPanel();
@@ -298,16 +274,6 @@ function pathsEqual(a: string, b: string): boolean {
 }
 
 // ── Branch actions ───────────────────────────────────────────────────────────
-
-function createToolbarIconBtn(label: string, title: string): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'git-panel-toolbar-btn';
-  btn.textContent = label;
-  btn.title = title;
-  btn.setAttribute('aria-label', title);
-  return btn;
-}
 
 /** Circular refresh icon (matches #btnFileTreeRefresh in index.html). */
 const GIT_PANEL_REFRESH_ICON = iconHtml('refresh');
@@ -330,20 +296,6 @@ async function handleManualRefresh(): Promise<void> {
 function isMainWorktreePath(worktreePath: string): boolean {
   const ws = getWorkspacePath().trim();
   return Boolean(ws && pathsEqual(worktreePath, ws));
-}
-
-function syncBranchDeleteButton(): void {
-  if (!branchDeleteBtn || !branchSelect) return;
-  const selected = branchSelect.value.trim();
-  branchDeleteBtn.disabled = !selected || isProtectedBranchName(selected);
-}
-
-function syncWorktreeDeleteButton(): void {
-  if (!worktreeDeleteBtn || !cwdSelect) return;
-  const selected = cwdSelect.value;
-  const canDelete = Boolean(selected && !isMainWorktreePath(selected));
-  worktreeDeleteBtn.disabled = !canDelete;
-  syncMergeToMainButton();
 }
 
 function syncMergeToMainButton(
@@ -371,7 +323,7 @@ function syncMergeToMainButton(
 
   const ws = getWorkspacePath().trim();
   const panelPath = panelCwd ?? ws;
-  const sourceBranch = currentBranchName || branchSelect?.value || '';
+  const sourceBranch = currentBranchName;
   const visible = mergeToMainButtonVisible({
     sourceBranch,
     mainWorkspaceCwd: ws,
@@ -386,7 +338,8 @@ function syncMergeToMainButton(
 }
 
 function openAddBranchPopover(anchor: HTMLButtonElement): void {
-  const cwd = getEffectiveCwdArg();
+  const cwd = getEffectiveCwdArg() ?? getWorkspacePath();
+  const sourceBranch = currentBranchName;
   openGitRefNamePopover({
     anchor,
     title: 'New branch',
@@ -395,25 +348,19 @@ function openAddBranchPopover(anchor: HTMLButtonElement): void {
     defaultPath: cwd || getWorkspacePath(),
     reserved: [currentBranchName, 'main', 'master'],
     onSubmit: async (result) => {
-      await runGitOp(
-        () =>
-          gitCheckout({
-            branch: result.name,
-            create: true,
-            startPoint: result.startPoint,
-            cwd,
-          }),
-        { successMessage: `Created branch ${result.name}` },
-      );
+      await checkoutPicker?.requestSwitch({
+        branch: result.name, create: true, startPoint: result.startPoint,
+        cwd, expectedBranch: sourceBranch,
+      });
     },
   });
 }
 
-async function deleteBranchByName(name: string): Promise<void> {
+async function deleteBranchByName(name: string, confirmed = false): Promise<void> {
   const branch = name.trim();
   if (!branch || isProtectedBranchName(branch)) return;
 
-  const cwd = getEffectiveCwdArg();
+  const cwd = getEffectiveCwdArg() ?? getWorkspacePath();
 
   if (branch === currentBranchName) {
     const { resolveTrunkBranchName } = await import('../lib/git-trunk-branch');
@@ -427,11 +374,9 @@ async function deleteBranchByName(name: string): Promise<void> {
       return;
     }
     if (!await appConfirm(`Switch to "${trunk}" and delete "${branch}"?`)) return;
-    const switched = await runGitOp(() => gitCheckout({ branch: trunk, cwd }), {
-      successMessage: `Switched to ${trunk}`,
-    });
-    if (!switched) return;
-  } else if (!await appConfirm(`Delete branch "${branch}"?`)) {
+    await checkoutPicker?.requestSwitch({ branch: trunk, cwd, expectedBranch: currentBranchName }, () => deleteBranchByName(branch, true));
+    return;
+  } else if (!confirmed && !await appConfirm(`Delete branch "${branch}"?`)) {
     return;
   }
 
@@ -460,8 +405,7 @@ async function deleteBranchByName(name: string): Promise<void> {
 }
 
 async function handleDeleteBranch(): Promise<void> {
-  if (!branchSelect) return;
-  await deleteBranchByName(branchSelect.value);
+  await deleteBranchByName(currentBranchName);
 }
 
 function openAddWorktreePopover(anchor: HTMLButtonElement): void {
@@ -515,7 +459,7 @@ async function handleMergeToMain(): Promise<void> {
   const localBranches = branchResult.ok ? (branchResult.local ?? []) : [];
   const remoteBranches = branchResult.ok ? (branchResult.remote ?? []) : [];
   const lockedLocalBranches = branchResult.ok ? (branchResult.lockedLocal ?? []) : [];
-  const sourceBranch = currentBranchName || branchSelect?.value || '';
+  const sourceBranch = currentBranchName;
   const panelPath = panelCwd ?? ws;
 
   const ctx = {
@@ -558,8 +502,7 @@ async function handleMergeToMain(): Promise<void> {
 }
 
 async function handleDeleteWorktree(): Promise<void> {
-  if (!cwdSelect) return;
-  const targetPath = cwdSelect.value;
+  const targetPath = panelCwd ?? getWorkspacePath();
   if (!targetPath || isMainWorktreePath(targetPath)) return;
   if (!await appConfirm(`Remove worktree at ${targetPath}?`)) return;
 
@@ -584,7 +527,7 @@ async function handleDeleteWorktree(): Promise<void> {
 function gitErrorChatContext(): GitErrorChatContext {
   return {
     cwd: (getEffectiveCwdArg() ?? getWorkspacePath().trim()) || undefined,
-    branch: currentBranchName || branchSelect?.value || undefined,
+    branch: currentBranchName || undefined,
   };
 }
 
@@ -781,102 +724,21 @@ function ensurePanelDom(): HTMLElement {
 
   toolbar.appendChild(centerRow);
 
-  cwdWrap = document.createElement('div');
-
-  cwdWrap.className = 'git-panel-cwd-wrap';
-
-  cwdWrap.hidden = true;
-
-  const cwdLabel = document.createElement('label');
-
-  cwdLabel.className = 'git-panel-cwd-label';
-
-  cwdLabel.textContent = 'Worktree';
-
-  cwdLabel.htmlFor = 'gitPanelCwdSelect';
-
-  const cwdFieldRow = document.createElement('div');
-
-  cwdFieldRow.className = 'git-panel-field-row';
-
-  cwdSelect = document.createElement('select');
-
-  cwdSelect.id = 'gitPanelCwdSelect';
-
-  cwdSelect.className = 'git-panel-cwd-select';
-
-  cwdSelect.title = 'Git worktree root';
-
-  cwdSelect.addEventListener('change', () => {
-    const value = cwdSelect?.value ?? '';
-    panelCwdUserOverride = true;
-    const ws = getWorkspacePath().trim();
-    setPanelCwd(value && !pathsEqual(value, ws) ? value : undefined);
-
-    syncWorktreeDeleteButton();
-
-    void refreshGitPanel();
-
-    void syncFileTreeGitPollCwd();
-
+  checkoutPicker?.dispose();
+  checkoutPicker = createGitCheckoutPicker({
+    onSwitch: switchPanelBranch,
+    onWorktree: (path) => setGitPanelCwd(pathsEqual(path, getWorkspacePath()) ? undefined : path),
+    onRestore: async (input) => {
+      const result = await gitCheckoutRestoreChanges(input);
+      await refreshGitPanel();
+      void syncFileTreeGitPollCwd();
+      return result;
+    },
+    onNewBranch: openAddBranchPopover,
+    onNewWorktree: openAddWorktreePopover,
+    onDeleteBranch: () => void handleDeleteBranch(),
+    onRemoveWorktree: () => void handleDeleteWorktree(),
   });
-
-  const worktreeAddBtn = createToolbarIconBtn('+', 'Add worktree');
-
-  worktreeAddBtn.addEventListener('click', () => openAddWorktreePopover(worktreeAddBtn));
-
-  worktreeDeleteBtn = createToolbarIconBtn('−', 'Remove worktree');
-
-  worktreeDeleteBtn.disabled = true;
-
-  worktreeDeleteBtn.addEventListener('click', () => void handleDeleteWorktree());
-
-  cwdFieldRow.append(cwdSelect, worktreeAddBtn, worktreeDeleteBtn);
-
-  cwdWrap.append(cwdLabel, cwdFieldRow);
-
-  const branchWrap = document.createElement('div');
-
-  branchWrap.className = 'git-panel-branch-wrap';
-
-  const branchLabel = document.createElement('label');
-
-  branchLabel.className = 'git-panel-cwd-label';
-
-  branchLabel.textContent = 'Branch';
-
-  branchLabel.htmlFor = 'gitPanelBranchSelect';
-
-  const branchFieldRow = document.createElement('div');
-
-  branchFieldRow.className = 'git-panel-field-row';
-
-  branchSelect = document.createElement('select');
-
-  branchSelect.id = 'gitPanelBranchSelect';
-
-  branchSelect.className = 'git-panel-branch-select';
-
-  branchSelect.title = 'Current branch';
-
-  branchSelect.addEventListener('change', () => {
-    syncBranchDeleteButton();
-    void handleBranchChange();
-  });
-
-  const branchAddBtn = createToolbarIconBtn('+', 'New branch');
-
-  branchAddBtn.addEventListener('click', () => openAddBranchPopover(branchAddBtn));
-
-  branchDeleteBtn = createToolbarIconBtn('−', 'Delete branch');
-
-  branchDeleteBtn.disabled = true;
-
-  branchDeleteBtn.addEventListener('click', () => void handleDeleteBranch());
-
-  branchFieldRow.append(branchSelect, branchAddBtn, branchDeleteBtn);
-
-  branchWrap.append(branchLabel, branchFieldRow);
 
   const branchRow = document.createElement('div');
 
@@ -919,7 +781,7 @@ function ensurePanelDom(): HTMLElement {
 
   branchRow.append(aheadBehindEl, pullBtn, pushBtn, mergeToMainBtn);
 
-  toolbar.append(cwdWrap, branchWrap, branchRow);
+  toolbar.append(checkoutPicker.root, branchRow);
 
   scrollMount = document.createElement('div');
 
@@ -1070,20 +932,34 @@ async function syncFileTreeGitPollCwd(force?: boolean): Promise<void> {
   await syncFileTreeToPanelWorktree(panelCwd, { force });
 }
 
-async function handleBranchChange(): Promise<void> {
-  if (!branchSelect) return;
-
-  const value = branchSelect.value.trim();
-  if (!value || value === currentBranchName) return;
-
-  const ok = await runGitOp(() => gitCheckout({ branch: value, cwd: getEffectiveCwdArg() }), {
-    successMessage: `Switched to ${value}`,
-  });
-
-  if (!ok && branchSelect && currentBranchName) {
-    branchSelect.value = currentBranchName;
-    syncBranchDeleteButton();
+async function switchPanelBranch(input: GitCheckoutSwitchInput): Promise<GitOpResult> {
+  const generation = cwdGeneration;
+  const result = await gitCheckoutSwitch(input);
+  if (result.needsChoice) return result;
+  if (generation === cwdGeneration) {
+    // Invalidate reads started before checkout, including a poll still in flight.
+    cwdGeneration += 1;
+    if (result.ok) {
+      currentBranchName = result.branch ?? input.branch;
+      knownWorktrees = knownWorktrees.map((wt) => pathsEqual(wt.path, input.cwd ?? getWorkspacePath())
+        ? { ...wt, branch: currentBranchName, detached: false }
+        : wt);
+      syncCheckoutPicker();
+    }
+    await refreshGitPanel();
+    void syncFileTreeGitPollCwd();
+    if (result.ok) showToast(`Switched to ${input.branch}`, 'success');
   }
+  return result;
+}
+
+function syncCheckoutPicker(): void {
+  const ws = getWorkspacePath().trim();
+  checkoutPicker?.update({
+    cwd: panelCwd ?? ws, workspace: ws, branch: currentBranchName,
+    branches: [...new Set([...cachedMergeBranchLists.local, ...cachedMergeBranchLists.lockedLocal, currentBranchName].filter(Boolean))],
+    worktrees: knownWorktrees, savedChanges: savedCheckoutChanges,
+  });
 }
 
 // ── Commit ───────────────────────────────────────────────────────────────────
@@ -1656,191 +1532,32 @@ function renderAheadBehind(status: GitOpResult): void {
 
 }
 
-function branchDropdownMatches(
-  select: HTMLSelectElement,
-  branches: string[],
-  selectedBranch: string,
-): boolean {
-  if (select.options.length !== branches.length) return false;
-  for (let i = 0; i < branches.length; i++) {
-    if (select.options[i]?.value !== branches[i]) return false;
-  }
-  return select.value === selectedBranch;
-}
-
-/** Rebuild a native select after its option set has changed. */
-function rebuildNativeSelect(
-  select: HTMLSelectElement,
-  options: { value: string; label: string }[],
-  selectedValue: string,
-): void {
-  select.replaceChildren();
-
-  for (const { value, label } of options) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = label;
-    if (value === selectedValue) opt.selected = true;
-    select.appendChild(opt);
-  }
-
-  select.value = selectedValue;
-}
-
 async function refreshBranchSelect(): Promise<void> {
-  if (!branchSelect) return;
-
   const generation = cwdGeneration;
-  const result = await gitBranches(getEffectiveCwdArg());
-
-  if (!result.ok || generation !== cwdGeneration || !branchSelect) return;
-
+  const cwd = getEffectiveCwdArg();
+  const [result, saved] = await Promise.all([gitBranches(cwd), gitCheckoutSavedChanges(cwd)]);
+  if (!result.ok || generation !== cwdGeneration) return;
   currentBranchName = result.current ?? '';
-
-  const visible = filterUserFacingBranches(result.local ?? []);
-  const branches =
-    currentBranchName && !visible.includes(currentBranchName)
-      ? [currentBranchName, ...visible]
-      : visible;
-
-  if (branches.length === 0) return;
-
-  // Removing a worktree leaves its branch in Git. The picker must follow HEAD
-  // in the new cwd rather than retain that still-valid previous selection.
-  const selectedBranch = branches.includes(currentBranchName)
-    ? currentBranchName
-    : branches[0]!;
-
-  if (branchDropdownMatches(branchSelect, branches, selectedBranch)) {
-    syncBranchDeleteButton();
-    syncMergeToMainButton(
-      filterUserFacingBranches(result.local ?? []),
-      result.remote ?? [],
-      result.lockedLocal ?? [],
-    );
-    return;
-  }
-
-  rebuildNativeSelect(
-    branchSelect,
-    branches.map((branch) => ({ value: branch, label: branch })),
-    selectedBranch,
-  );
-
-  syncBranchDeleteButton();
+  savedCheckoutChanges = saved.ok ? saved.savedChanges ?? [] : [];
   syncMergeToMainButton(
-    filterUserFacingBranches(result.local ?? []),
-    result.remote ?? [],
-    result.lockedLocal ?? [],
+    filterUserFacingBranches(result.local ?? []), result.remote ?? [],
+    filterUserFacingBranches(result.lockedLocal ?? []),
   );
-}
-
-/**
- * Select the option whose path matches `target`.
- *
- * `select.value = path` only matches an option byte-for-byte, so a value that
- * differs from the rendered option by separators or drive casing (git prints
- * `C:/…`, the workspace record keeps `C:\…`) silently blanked the dropdown.
- */
-function selectCwdOptionByPath(select: HTMLSelectElement, target: string): boolean {
-  for (let i = 0; i < select.options.length; i++) {
-    if (pathsEqual(select.options[i]!.value, target)) {
-      select.selectedIndex = i;
-      return true;
-    }
-  }
-  return false;
-}
-
-/** The `<option>` rows currently rendered in the worktree dropdown. */
-function currentCwdOptions(select: HTMLSelectElement): { value: string; label: string }[] {
-  return Array.from(select.options).map((opt) => ({
-    value: opt.value,
-    label: opt.textContent ?? '',
-  }));
-}
-
-/** Option rows for a worktree list. */
-function worktreeOptionRows(
-  worktrees: ParsedWorktree[],
-  ws: string,
-  principalPath?: string,
-): { value: string; label: string }[] {
-  return worktrees.map((wt) => ({
-    value: wt.path,
-    label: formatWorktreeOptionLabel(wt, ws, { principalPath }),
-  }));
-}
-
-function syncCwdSelectValue(): void {
-  if (!cwdSelect) return;
-  const ws = getWorkspacePath().trim();
-  const desired = panelCwd ?? ws;
-  const selectedPath = resolveKnownWorktreePath(knownWorktrees, desired, ws);
-
-  // A cwd the list has not caught up with yet (chat switch into a fresh
-  // worktree) must keep its value: resolving it against the stale list would
-  // silently drop the panel back to the workspace checkout.
-  const stale = Boolean(desired.trim()) && !knownWorktrees.some((wt) => pathsEqual(wt.path, desired));
-  if (stale) {
-    syncWorktreeDeleteButton();
-    return;
-  }
-
-  if (selectCwdOptionByPath(cwdSelect, selectedPath)) {
-    setPanelCwd(panelPathsEqual(selectedPath, ws) ? undefined : selectedPath);
-  }
-  syncWorktreeDeleteButton();
+  syncCheckoutPicker();
 }
 
 async function refreshWorktreeDropdown(): Promise<void> {
-
-  if (!cwdSelect || !cwdWrap) return;
-
   const ws = getWorkspacePath().trim();
-
+  const generation = cwdGeneration;
   const listResult = await listWorktrees();
-
-  if (!cwdSelect || !cwdWrap) return;
-
-  const parsed =
-    listResult.ok && listResult.output ? parseWorktreeListPorcelain(listResult.output) : [];
-  const principal = getPrincipalWorktree(parsed);
-  const userFacing = parsed.length > 0 ? filterUserFacingWorktrees(parsed, ws) : [];
-
+  if (generation !== cwdGeneration) return;
+  const parsed = listResult.ok && listResult.output ? parseWorktreeListPorcelain(listResult.output) : [];
+  const userFacing = parsed.length ? filterUserFacingWorktrees(parsed, ws) : [];
   knownWorktrees = resolveWorktreeListForRender({
-    parsed: userFacing,
-    previous: knownWorktrees,
-    fallback: ws
-      ? { path: ws, head: '', branch: currentBranchName || undefined, detached: false }
-      : null,
+    parsed: userFacing, previous: knownWorktrees,
+    fallback: ws ? { path: ws, head: '', branch: currentBranchName || undefined, detached: false } : null,
   });
-
-  cwdWrap.hidden = knownWorktrees.length === 0;
-
-  if (knownWorktrees.length === 0) return;
-
-  if (userFacing.length > 0) {
-    setPanelCwd(normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws));
-  }
-  const selectedPath = resolveKnownWorktreePath(knownWorktrees, panelCwd ?? ws, ws);
-
-  const rows = worktreeOptionRows(knownWorktrees, ws, principal?.path);
-
-  if (worktreeOptionsMatch(currentCwdOptions(cwdSelect), rows)) {
-    syncCwdSelectValue();
-    return;
-  }
-
-  rebuildNativeSelect(cwdSelect, rows, selectedPath);
-  if (!selectCwdOptionByPath(cwdSelect, selectedPath)) {
-    cwdSelect.selectedIndex = 0;
-  }
-  const effective = cwdSelect.value;
-  setPanelCwd(panelPathsEqual(effective, ws) ? undefined : effective);
-
-  syncWorktreeDeleteButton();
-
+  if (userFacing.length) setPanelCwd(normalizePanelCwdAfterWorktreeListChange(panelCwd, knownWorktrees, ws));
 }
 
 function setGitPanelNoRepoState(active: boolean): void {
@@ -2047,6 +1764,7 @@ export async function openGitSidePanel(): Promise<void> {
 export function closeGitSidePanel(): void {
 
   panelOpen = false;
+  checkoutPicker?.close();
 
   syncSidebarChrome();
 
@@ -2086,7 +1804,7 @@ export function syncPanelFromActiveChat(options?: { forceFileTree?: boolean }): 
   setPanelCwd(worktree ?? (ws || undefined));
   const moved = cwdGeneration !== before;
 
-  syncCwdSelectValue();
+  syncCheckoutPicker();
   // The worktree list, status, branches and graph all belong to the old
   // checkout now. Without this the panel showed the previous chat's repo until
   // the next poll tick, which reads as a freeze on every chat switch.
@@ -2161,14 +1879,10 @@ export function resetGitPanelForTests(): void {
   bodyMount = null;
   renderedSectionsKey = null;
 
-  branchSelect = null;
-  branchDeleteBtn = null;
+  checkoutPicker?.dispose();
+  checkoutPicker = null;
+  savedCheckoutChanges = [];
   mergeToMainBtn = null;
-
-  cwdSelect = null;
-  worktreeDeleteBtn = null;
-
-  cwdWrap = null;
 
   aheadBehindEl = null;
 

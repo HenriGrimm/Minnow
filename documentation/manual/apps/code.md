@@ -124,6 +124,10 @@ On Windows, **Git Bash** appears when Git for Windows is installed, and installe
 
 The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
 
+Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
+
+When you switch branches with uncommitted files, choose **Bring my changes** to carry them to the destination, or **Leave changes** to save them in Git stash. Saved changes include staged, unstaged, and new files; ignored files are excluded. Returning to the saved branch in the same worktree offers **Restore changes**, including the original staging. Commit or stash any current changes before restoring. If restoration conflicts, the saved stash remains available under **Source Control → Stashes**. Browsing a different worktree keeps each checkout’s files in place.
+
 Commit, push, pull, merge, and other git or GitHub actions show a small bouncing progress bar while they run. Success is a short confirmation. Failures open a popover with a plain-language title, a short summary, the raw details, and **Send to chat** so an agent can fix the problem.
 
 - **Commit messages** can be generated from the staged diff: conventional commits with optional gitmoji, an imperative subject, and a body explaining why. The `/git-commit` skill uses the same conventions. History shows gitmoji as emoji even when a commit stored a colon code such as `:sparkles:`.
