@@ -15,6 +15,7 @@ import {
   slotIdFromWorktreePath,
   taskCommitTitle,
 } from './worktree-lifecycle.js';
+import { readMergeReceipt, writeMergeReceipt } from './merge-receipt.js';
 
 /**
  * Git ops the queue calls.
@@ -219,6 +220,22 @@ export async function runMerge(input) {
     });
   }
 
+  const fromBranch = attemptBranch(boardId, slotId);
+  if (state.recoveryVersion) {
+    const tested = [...(state.tasks.get(taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.role === 'tester' && attempt.outcome === 'pass' && !attempt.retired);
+    const branchSha = await ops.readIntegrationRef({ boardId, ref: fromBranch });
+    if (!branchSha) return operationalEnd({ attemptId, taskId, reason: 'task-branch-unresolved', beforeSha, summary: 'The task branch could not be resolved. Retained work and checkpoints have not been discarded.' });
+    const waived = state.tasks.get(taskId)?.attempts.some((attempt) => !attempt.ended && attempt.role === 'merge' && attempt.evidence?.mergeAndSkip === true);
+    if (!waived && (!tested?.evidence?.verifiedSha || !branchSha || tested.evidence.verifiedSha !== branchSha)) return { attemptId, taskId, role: 'merge', outcome: 'rebased', sha: branchSha, beforeSha };
+    const receipt = await readMergeReceipt(boardId, taskId);
+    const already = await ops.verifyIntegrationMerge({ boardId, fromBranch });
+    if (already.ok && already.verified === true) {
+      await ops.refreshIntegrationDepsAfterMerge({ boardId, sinceSha: receipt?.beforeSha ?? beforeSha });
+      return { attemptId, taskId, role: 'merge', outcome: 'pass', sha: beforeSha, beforeSha: receipt?.testedId === tested?.attemptId ? receipt.beforeSha : beforeSha };
+    }
+    await writeMergeReceipt(boardId, taskId, { beforeSha, testedId: tested?.attemptId ?? null, fromBranch });
+  }
+
   const rebased = await ops.rebaseOntoIntegration({ boardId, slotId });
   if (!rebased.ok) {
     const conflicts = Array.isArray(rebased.conflicts) ? rebased.conflicts : [];
@@ -242,7 +259,13 @@ export async function runMerge(input) {
     });
   }
 
-  const fromBranch = attemptBranch(boardId, slotId);
+  if (state.recoveryVersion) {
+    const tested = [...(state.tasks.get(taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.role === 'tester' && attempt.outcome === 'pass' && !attempt.retired);
+    const waived = state.tasks.get(taskId)?.attempts.some((attempt) => !attempt.ended && attempt.role === 'merge' && attempt.evidence?.mergeAndSkip === true);
+    if (!waived && (!tested?.evidence?.verifiedSha || tested.evidence.verifiedSha !== rebased.sha)) {
+      return { attemptId, taskId, role: 'merge', outcome: 'rebased', sha: rebased.sha, beforeSha };
+    }
+  }
   const merged = await ops.mergeIntoIntegration({
     boardId,
     fromBranch,

@@ -12,6 +12,7 @@ export const SEED_KINDS = /** @type {const} */ ([
   'fix',
   'rebase',
   'integration-fix',
+  'diagnose',
 ]);
 
 /**
@@ -470,6 +471,7 @@ function baseSeed(kind, task, state) {
   const planPath = state.planPath;
   if (kind === 'initial') return initialSeed(task, planPath);
   if (kind === 'failure-aware') return failureAwareSeed(task, planPath);
+  if (kind === 'diagnose') return `${failureAwareSeed(task, planPath)}\n\n## Latest observed failure\n${capSeedOutput(lastEndedAttempt(task)?.summary ?? '(no summary)')}\n${capSeedOutput(testOutputOf(lastEndedAttempt(task)))}\n\n## Diagnose repeated failure\nThe previous approach has not resolved this task. Reproduce the remaining failure, identify its cause and record what changes the next repair should make. Preserve completed work and the acceptance requirements. Implement a focused correction if supported by the evidence; do not repeat unchanged commands or weaken checks. If a prerequisite or product decision is required, report blocked with that specific need.`;
   if (kind === 'repair') return repairSeed(task, planPath);
   if (kind === 'fix') return fixSeed(task, planPath);
   if (kind === 'rebase') return rebaseSeed(task, state.integrationSha, planPath);

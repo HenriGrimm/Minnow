@@ -497,6 +497,47 @@ describe('runner effector', { concurrency: false }, () => {
     assert.equal(seenInput.browser, false);
   });
 
+  test('a delayed final check retains the integration identity it actually verified', async () => {
+    const boardId = 'final-content-identity';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    state.recoveryVersion = 1; state.integrationSha = 'before-verification';
+    let release; let entered = false; let result;
+    const pending = new Promise(resolve => { release = resolve; });
+    const effector = createRunnerEffector({ boardId, journal, getState: () => state, model: MODEL, cwd,
+      runFinalLadder: async () => { entered = true; await pending; return { outcome: 'pass', summary: 'Verified', evidence: {} }; },
+    });
+    effector.onEnd(end => { result = end; });
+    await effector.start({ taskId: null, role: 'final', seedKind: 'initial' });
+    await waitFor(() => entered);
+    state.integrationSha = 'after-verification';
+    release();
+    await waitFor(() => result);
+    assert.equal(result.evidence.integrationSha, 'before-verification');
+  });
+
+  test('recovery omits only proven unsupported optional fields from the next request', async () => {
+    const boardId = 'protocol-adaptation';
+    const journal = await openBoard(boardId);
+    const state = await journal.loadState(boardId);
+    state.recoveryVersion = 1;
+    state.recoveryHistory = [{ taskId: 'W1-A', role: 'builder', revision: state.recoveryRevision, failure: { omitField: 'thinking' } }];
+    let sent; let ended = false;
+    const deps = { ...stubDeps(), postChatCompletions: async (_provider, body) => { sent = body; return new Response('ok'); } };
+    const effector = makeEffector({ boardId, journal, cwd, getState: () => state, deps,
+      runTurn: async opts => {
+        await opts.deps.postChatCompletions({}, { model: 'test', thinking: { type: 'enabled' }, tools: [{ type: 'function' }], messages: [{ role: 'user', content: 'Keep my task' }] }, new AbortController().signal);
+        return BUILDER_PASS;
+      },
+    });
+    effector.onEnd(() => { ended = true; });
+    await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'continue', sameWorktree: true });
+    await waitFor(() => ended);
+    assert.equal(sent.thinking, undefined);
+    assert.deepEqual(sent.tools, [{ type: 'function' }]);
+    assert.equal(sent.messages[0].content, 'Keep my task');
+  });
+
   test('inspect stays populated until onEnd resolves', { timeout: 20_000 }, async () => {
     fake.reset();
     const boardId = 'p2f-inspect';

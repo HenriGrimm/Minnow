@@ -6,6 +6,7 @@ import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 
 import { resetMinnowHomeCache } from '../../server/config/home.js';
+import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
 import { disposeEngines, getEngine } from '../../server/orchestrator/engine.js';
 import { boardExists, resetJournalCache } from '../../server/orchestrator/journal.js';
@@ -142,25 +143,25 @@ function unbindableEffector(message = 'no model bound for this attempt') {
 // ── engine failures reach ────────────────────────────────────────────────────
 
 describe('P9-A — engine failures reach the screen', () => {
-  it('refuses Start at the button rather than entering a retry loop', async () => {
+  it('holds accepted Start until a model prerequisite is resolved', async () => {
     effectorFactory = () => unbindableEffector();
     const boardId = await createBoard();
 
     const started = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
-    assert.equal(started.status, 400);
-    assert.match(started.body.error, /no model bound/);
+    assert.equal(started.status, 200);
+    assert.match(started.body.state.recoveryHolds['preflight:'].failure.message, /no model bound/);
 
     const after = await call('GET', `/api/boards/${boardId}`);
-    assert.equal(after.body.state.status, 'created');
+    assert.equal(after.body.state.status, 'running');
     const journal = await call('GET', `/api/boards/${boardId}/journal`);
     assert.equal(
       journal.body.events.some((e) => e.type === 'board.started'),
-      false,
-      'a refused start must not journal board.started',
+      true,
+      'accepted continuation must survive a restart',
     );
   });
 
-  it('emits a non-journaled error frame when start fails mid-run', async () => {
+  it('emits an error frame and records a durable hold when start fails mid-run', async () => {
     const boardId = await createBoard();
     const okStart = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
     assert.equal(okStart.status, 200);
@@ -172,15 +173,16 @@ describe('P9-A — engine failures reach the screen', () => {
     const unsubscribe = subscribeErrors(boardId, (payload) => seen.push(payload));
     const engine = await getEngine(boardId, () => effectorFactory(boardId));
     await engine.tick();
+    await engine.append([makeEvent('recovery.released', { key: 'builder:W1-A' })]);
     await engine.tick();
     unsubscribe();
 
-    assert.ok(seen.length >= 2, `expected repeated failures, got ${seen.length}`);
+    assert.equal(seen.length, 1, 'the durable hold suppresses repeated start failures');
     assert.equal(seen[0].taskId, 'W1-A');
     assert.equal(seen[0].role, 'builder');
     assert.match(seen[0].message, /provider is unreachable/);
     assert.equal(seen[0].consecutive, 1);
-    assert.equal(seen[1].consecutive, 2);
+    assert.ok(engine.getState().recoveryHolds['builder:W1-A']);
 
     const journal = await call('GET', `/api/boards/${boardId}/journal`);
     for (const event of journal.body.events) {
@@ -199,6 +201,9 @@ describe('P9-A — engine failures reach the screen', () => {
 
     effectorFactory = () => unbindableEffector('still broken');
     const engine = await getEngine(boardId, () => effectorFactory(boardId));
+    await engine.tick();
+
+    await engine.append([makeEvent('recovery.released', { key: 'builder:W1-A' })]);
     await engine.tick();
 
     const failures = engine.getStartFailures();
@@ -228,10 +233,12 @@ describe('P9-A — engine failures reach the screen', () => {
 
     const engine = await getEngine(boardId, () => effectorFactory(boardId));
     await engine.tick();
+    await engine.append([makeEvent('recovery.released', { key: 'builder:W1-A' })]);
+    await engine.tick();
     assert.equal(engine.getStartFailures().length, 1);
 
     broken = false;
-    await engine.tick();
+    await engine.checkRecovery('builder:W1-A');
     assert.equal(engine.getStartFailures().length, 0, 'a successful start clears the failure');
   });
 });
@@ -312,7 +319,7 @@ describe('P9-C — per-board model binding', () => {
     assert.equal(event.id, 'qwen/qwen3-8b');
   });
 
-  it('Start without a journaled model still 400 when Autopilot and active chat are empty', async () => {
+  it('Start without any model holds continuation for model selection', async () => {
     const { resolveAttemptModel } = await import('../../server/orchestrator/model-binding.js');
     effectorFactory = () => ({
       inspect: () => [],
@@ -327,9 +334,9 @@ describe('P9-C — per-board model binding', () => {
     });
     const boardId = await createBoard();
     const started = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
-    assert.equal(started.status, 400);
-    assert.match(started.body.error, /no model bound/);
-    assert.equal(started.body.state.status, 'created');
+    assert.equal(started.status, 200);
+    assert.match(started.body.state.recoveryHolds['preflight:'].failure.message, /no model bound/);
+    assert.equal(started.body.state.status, 'running');
   });
 });
 

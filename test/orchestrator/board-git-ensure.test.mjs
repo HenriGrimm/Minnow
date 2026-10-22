@@ -262,7 +262,7 @@ describe('board git ensure at Start', { concurrency: false }, () => {
     assert.match(status, /^\?\? documentation\/plans\/uncommitted\.md/m);
   });
 
-  test('git init failure is a 400 on Start and does not start the board', async () => {
+  test('git init failure preserves accepted Start as a recoverable hold', async () => {
     await fs.writeFile(path.join(repoDir, '.git'), 'not a repository\n', 'utf8');
     const created = await call('POST', '/api/boards', {
       planPath: 'demo.md',
@@ -273,15 +273,14 @@ describe('board git ensure at Start', { concurrency: false }, () => {
     const boardId = created.body.boardId;
 
     const started = await call('POST', `/api/boards/${boardId}/start`, { concurrency: 1 });
-    assert.equal(started.status, 400);
-    assert.match(String(started.body.error ?? ''), /git/i);
+    assert.equal(started.status, 200);
 
     const after = await call('GET', `/api/boards/${boardId}`);
-    assert.equal(after.body.state.status, 'created');
+    assert.equal(after.body.state.status, 'running');
     const journal = await call('GET', `/api/boards/${boardId}/journal`);
     assert.equal(
       journal.body.events.some((event) => event.type === 'board.started'),
-      false,
+      true,
     );
   });
 

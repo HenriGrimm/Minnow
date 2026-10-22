@@ -49,7 +49,13 @@ function throwIfTerminalFailed(terminal, sawBytes) {
       typeof terminal.errorMessage === 'string' && terminal.errorMessage.trim()
         ? terminal.errorMessage
         : 'Generation failed';
-    throw new Error(message);
+    const error = new Error(message);
+    // Preserve the refusal contract through the runner; board recovery must not
+    // guess account limits or reset times from flattened diagnostic prose.
+    for (const key of ['failure', 'quotaExceeded', 'statusCode', 'code', 'retryAt']) {
+      if (terminal[key] !== undefined) error[key] = terminal[key];
+    }
+    throw error;
   }
   if (status === 'cancelled') {
     throw abortError();

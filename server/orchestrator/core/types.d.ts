@@ -22,7 +22,8 @@ export type SeedKind =
   | 'continue'
   | 'fix'
   | 'rebase'
-  | 'integration-fix';
+  | 'integration-fix'
+  | 'diagnose';
 
 /** Derived task phase. Never stored — always computed by derive(). */
 export type TaskPhase =
@@ -49,6 +50,10 @@ export type KnownEventType =
   | 'task.attempt.started'
   | 'task.attempt.ended'
   | 'merge.enqueued'
+  | 'merge.rebased'
+  | 'recovery.held'
+  | 'recovery.released'
+  | 'final.repair.created'
   | 'merge.succeeded'
   | 'merge.conflicted'
   | 'merge.failed'
@@ -95,7 +100,7 @@ export type BoardCreatedEvent = EventEnvelope & {
   /** Workspace at create time. Older journals omit it. */
   workspacePath?: string;
 };
-export type BoardStartedEvent = EventEnvelope & { type: 'board.started'; concurrency: number };
+export type BoardStartedEvent = EventEnvelope & { type: 'board.started'; concurrency: number; recoveryVersion?: number; recoveryLimits?: { task: number; final: number; board: number } };
 export type BoardStoppedEvent = EventEnvelope & { type: 'board.stopped'; reason: StopReason };
 export type AttemptStartedEvent = EventEnvelope & {
   type: 'task.attempt.started';
@@ -219,6 +224,10 @@ export type TaskUpdatedEvent = EventEnvelope & {
 };
 
 export type KnownEvent =
+  | (EventEnvelope & { type: 'recovery.held'; hold: RecoveryHold })
+  | (EventEnvelope & { type: 'recovery.released'; key: string; observedAt?: number })
+  | (EventEnvelope & { type: 'final.repair.created'; taskId: string; fingerprint: string })
+  | (EventEnvelope & { type: 'merge.rebased'; taskId: string; sha?: string })
   | BoardCreatedEvent
   | BoardStartedEvent
   | BoardStoppedEvent
@@ -395,6 +404,14 @@ export interface FinalTestState {
 
 /** The whole board, derived. The only state the engine has. */
 export interface BoardState {
+  recoveryVersion: number;
+  recoveryRevision: number;
+  recoveryLimits: { task: number; final: number; board: number };
+  recoveryHolds: Record<string, RecoveryHold>;
+  recoveryHistory: RecoveryHold[];
+  finalRepairs: Array<{ taskId: string; fingerprint: string }>;
+  /** Failed attempt identities retained across explicit task resets. */
+  recoveryFailures: string[];
   boardId: string;
   name: string;
   planPath: string;
@@ -438,6 +455,37 @@ export interface Desired {
   sameWorktree: boolean;
 }
 
+export interface RecoveryFailure {
+  jitterMs?: number;
+  omitField?: string;
+  prerequisites?: Array<{ kind: string; path?: string; name?: string; port?: number; providerId?: string; auth?: boolean }>;
+  identity?: string;
+  providerId?: string;
+  modelId?: string;
+  category: string;
+  scope: string;
+  message: string;
+  fingerprint: string;
+  status?: number;
+  retryAt?: number;
+  observedAt?: number;
+}
+export interface RecoveryHold {
+  key: string;
+  taskId: string | null;
+  role: string;
+  stage: string;
+  failure: RecoveryFailure;
+  count: number;
+  attention: boolean;
+  retryAt: number;
+  observedAt: number;
+  revision?: number;
+  attemptId?: string;
+  resource?: string;
+  probe?: boolean;
+}
+
 /** What should happen next to a task with nothing in flight. */
 export type NextAction =
   | { kind: 'start'; role: Role; seedKind: SeedKind; sameWorktree: boolean }
@@ -446,7 +494,7 @@ export type NextAction =
   | { kind: 'none' };
 
 /** AttemptResult plus merge-only conflicted. */
-export type PolicyOutcome = AttemptResult | 'conflicted';
+export type PolicyOutcome = AttemptResult | 'conflicted' | 'merge_failed' | 'rebased';
 
 export interface RetryAction {
   kind: 'retry';

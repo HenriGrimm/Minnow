@@ -2,6 +2,8 @@
  * The production **board** graph injected into `createEngine`.: the reconcile loop must not statically import `core/plan.js` or.
  */
 
+import fs from 'node:fs/promises';
+import { cleanupCompletedRecovery } from './checkpoint.js';
 import {
   buildIntegrationFixTask,
   isReadyForFinalTest,
@@ -15,6 +17,8 @@ import {
 } from './core/plan.js';
 import { DEFAULT_BOARD_CONCURRENCY, foldInto } from './core/derive.js';
 import { makeEvent } from './core/events.js';
+import { boardFailure } from './failure.js';
+import { FINAL_REPAIR_LIMIT, recoverySpent, recoveryHold } from './core/recovery.js';
 import {
   BOARD_GIT_INITIALIZED_TYPE,
   integrationBranch,
@@ -71,14 +75,50 @@ export function boardRunSummary(state) {
 export function boardImpliedEvents(state) {
   /** @type {Record<string, unknown>[]} */
   const decisions = [];
-  for (const { taskId, reason, evidence } of pendingAbandonments(state)) {
-    decisions.push(makeEvent('task.abandoned', { taskId, reason, evidence }));
+  if (state.recoveryVersion) {
+    if (state.finalTest && state.finalTest.evidence?.integrationSha !== state.integrationSha && !state.recoveryHolds['final:']) {
+      const failure = boardFailure({ message: 'Integration changed after verification; running the required checks again.', failure: { category: 'interrupted' } }, 0);
+      return [makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'final', failure, now: 0 }) })];
+    }
+    const spent = recoverySpent(state);
+    if (spent >= state.recoveryLimits.board && !state.recoveryHolds['preflight:']) {
+      const failure = boardFailure({ outcome: 'blocked', message: 'Board recovery budget-exhausted. Increase the recovery limit in Settings before continuing; all work is retained.' }, 0);
+      return [makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'preflight', stage: 'budget', failure, now: 0 }) })];
+    }
+    for (const task of state.tasks.values()) {
+      const last = [...task.attempts].reverse().find((attempt) => attempt.ended && !attempt.retired);
+      const failure = last?.evidence?.failure;
+      if (!last || task.mergedSha || task.waived || task.abandonedReason || !failure || failure.category === 'implementation') continue;
+      if (state.recoveryHistory.some((hold) => hold.attemptId === last.attemptId)) continue;
+      decisions.push(makeEvent('recovery.held', { hold: recoveryHold(state, { taskId: task.id, role: last.role, failure, now: failure.observedAt ?? 0, attemptId: last.attemptId }) }));
+    }
+    if (decisions.length) return decisions;
   }
-  for (const { taskId, blockedBy } of pendingSkips(state)) {
+  for (const { taskId, reason, evidence } of pendingAbandonments(state)) {
+    if (state.recoveryVersion) {
+      const failure = boardFailure({ outcome: 'blocked', message: `${reason}: ${evidence.summary ?? 'Repeated repairs did not resolve this task. Review the task diagnosis.'}` }, 0);
+      decisions.push(makeEvent('recovery.held', { hold: recoveryHold(state, { taskId, role: 'builder', failure, now: 0 }) }));
+    } else decisions.push(makeEvent('task.abandoned', { taskId, reason, evidence }));
+  }
+  for (const { taskId, blockedBy } of state.recoveryVersion ? [] : pendingSkips(state)) {
     decisions.push(makeEvent('task.skipped', { taskId, blockedBy }));
   }
   for (const taskId of pendingEnqueues(state)) {
     decisions.push(makeEvent('merge.enqueued', { taskId }));
+  }
+  if (state.recoveryVersion && state.finalTest?.outcome === 'fail' && !state.recoveryHolds['final:']) {
+    const failure = state.finalTest.evidence?.failure ?? boardFailure({ outcome: 'fail', summary: state.finalTest.evidence?.output || state.finalTest.runInstructions }, 0);
+    if (failure.category !== 'implementation' || state.finalRepairs.length >= (state.recoveryLimits?.final ?? FINAL_REPAIR_LIMIT)) {
+      decisions.push(makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'final', failure: { ...failure, ...(failure.category === 'implementation' ? { category: 'prerequisite', message: `Final repair budget-exhausted. Increase final repair rounds in Settings. Last failure: ${failure.message}` } : {}) }, now: failure.observedAt ?? 0 }) }));
+    } else {
+      const fix = buildIntegrationFixTask(state);
+      const baseId = `AUTO-FIX-${state.finalRepairs.length + 1}-${(state.integrationSha || failure.fingerprint).slice(0, 8)}`;
+      fix.task.id = baseId;
+      let suffix = 1;
+      while (state.tasks.has(fix.task.id) && state.tasks.get(fix.task.id).buildSpec !== fix.task.build) fix.task.id = `${baseId}-${++suffix}`;
+      if (!state.tasks.has(fix.task.id)) decisions.push(makeEvent('task.added', { task: fix.task, wave: fix.wave }));
+      decisions.push(makeEvent('final.repair.created', { taskId: fix.task.id, fingerprint: failure.fingerprint }));
+    }
   }
   return decisions;
 }
@@ -95,7 +135,7 @@ export function boardEventsForRunComplete(state) {
   const reason =
     state.finalTest?.outcome === 'fail' || merged === 0 ? 'terminal' : 'complete';
   return [
-    makeEvent('run.finished', { summary: boardRunSummary(state) }),
+    makeEvent('run.finished', { summary: `${boardRunSummary(state)}${[...state.tasks.values()].some((task) => task.waived) ? '; completed with explicit waivers' : ''}` }),
     makeEvent('board.stopped', { reason }),
   ];
 }
@@ -124,7 +164,7 @@ export function boardIsAlreadyEnded(state, attemptId) {
  * @param {Set<string>} buffered
  * @returns {Record<string, unknown>[]}
  */
-export function boardReapVanished(state, live, buffered) {
+export function boardReapVanished(state, live, buffered, now = 0) {
   /** @type {Record<string, unknown>[]} */
   const ended = [];
   for (const task of state.tasks.values()) {
@@ -142,7 +182,7 @@ export function boardReapVanished(state, live, buffered) {
           summary: 'the process was no longer running',
           // Minnow restarted or the board was stopped under it — an
           // interruption, so it resumes without spending retry budget.
-          evidence: { interrupted: true },
+          evidence: { interrupted: true, ...(state.recoveryVersion ? { failure: { ...boardFailure({ outcome: 'crashed', message: 'the process was no longer running', evidence: { interrupted: true } }, now), observedAt: now } } : {}) },
         }),
       );
     }
@@ -199,6 +239,10 @@ export async function boardEventsForAttemptEnd(end, ctx) {
   const { id, state } = ctx;
   /** @type {Record<string, unknown>[]} */
   const events = [];
+  if (state.recoveryVersion && !['pass', 'rebased'].includes(end.outcome)) {
+    const failure = { ...boardFailure(end, ctx.now ?? Date.now()), observedAt: ctx.now ?? Date.now() };
+    end = { ...end, evidence: { ...(end.evidence ?? {}), failure } };
+  }
   if (isBoardAgentRole(end.role)) {
     const task = end.taskId ? state.tasks.get(end.taskId) : undefined;
     const attempt = task?.attempts.find((a) => a.attemptId === end.attemptId);
@@ -261,7 +305,9 @@ export async function boardEventsForAttemptEnd(end, ctx) {
     /** @type {Record<string, unknown>} */
     const mergeSummary =
       typeof end.summary === 'string' && end.summary ? { summary: end.summary } : {};
-    if (end.outcome === 'pass') {
+    if (end.outcome === 'rebased') {
+      events.push(makeEvent('merge.rebased', { taskId: end.taskId, sha: end.sha, ...mergeExtra }));
+    } else if (end.outcome === 'pass') {
       events.push(
         makeEvent('merge.succeeded', {
           taskId: end.taskId,
@@ -300,6 +346,10 @@ export async function boardEventsForAttemptEnd(end, ctx) {
   if (end.discarded) {
     events.push(makeEvent(WORKTREE_DISCARDED_TYPE, end.discarded));
   }
+  const failure = end.evidence?.failure;
+  if (state.recoveryVersion && end.outcome !== 'pass' && end.role !== 'final' && failure && failure.category !== 'implementation') {
+    events.push(makeEvent('recovery.held', { hold: recoveryHold(state, { taskId: end.taskId, role: end.role, failure, now: failure.observedAt, attemptId: end.attemptId }) }));
+  }
   return events;
 }
 
@@ -310,6 +360,21 @@ export async function boardEventsForAttemptEnd(end, ctx) {
  * @returns {Promise<Record<string, unknown>[]>}
  */
 export async function boardOnLoad(ctx) {
+  // Recovery may need bytes from any unfinished checkout. Explicit Reset/Delete
+  // still owns disposal; boot must not turn an interruption into data loss.
+  if (ctx.state.recoveryVersion) {
+    if (ctx.state.status === 'running' && ctx.state.workspacePath && !ctx.state.recoveryHolds['preflight:']) {
+      let exists = false;
+      try { exists = (await fs.stat(ctx.state.workspacePath)).isDirectory(); } catch {}
+      if (!exists) {
+        const now = Date.now();
+        return [makeEvent('recovery.held', { hold: {
+          ...recoveryHold(ctx.state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ outcome: 'blocked', message: 'The recorded workspace is unavailable. Restore or reconnect that folder to continue.' }, now), now }), probe: true,
+        } })];
+      }
+    }
+    return [];
+  }
   try {
     const result = await reconcileOrphanWorktrees({
       boardId: ctx.id,
@@ -360,6 +425,8 @@ export async function boardWriteReport(ctx) {
  * @type {import('./engine.js').Graph}
  */
 export const boardGraph = {
+  onFinished: ({ id, state }) => cleanupCompletedRecovery(id, state),
+  recoveryEnabled: true,
   foldInto,
   plan,
   impliedEvents: boardImpliedEvents,

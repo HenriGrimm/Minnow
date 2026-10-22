@@ -66,7 +66,7 @@ describe('report tool identity', () => {
     assert.equal(reportToolFor('tester').function.name, REPORT_TOOL_NAME);
   });
 
-  it('advertises blocked only on the builder schema', () => {
+  it('advertises blocked for both implementation and verification prerequisites', () => {
     assert.deepEqual(builderReportTool().function.parameters.properties.outcome.enum, [
       'pass',
       'fail',
@@ -75,6 +75,7 @@ describe('report tool identity', () => {
     assert.deepEqual(testerReportTool().function.parameters.properties.outcome.enum, [
       'pass',
       'fail',
+      'blocked',
     ]);
   });
 });
@@ -170,7 +171,7 @@ describe('parseTesterReport — malformed', () => {
   const cases = [
     ['not-json', 'not json {', 'JSON'],
     ['array', [], 'object'],
-    ['blocked outcome', { ...TESTER_PASS, outcome: 'blocked' }, 'blocked'],
+    ['blocked without prerequisite', { ...TESTER_PASS, outcome: 'blocked', testOutput: '' }, 'blocked'],
     ['missing outcome', { summary: 'x', evidence: [], testOutput: '' }, 'outcome'],
     ['unknown outcome', { ...TESTER_PASS, outcome: 'ok' }, 'outcome'],
     ['missing summary', { outcome: 'pass', evidence: [], testOutput: '' }, 'summary'],
@@ -277,7 +278,7 @@ describe('parseReportFor', () => {
         assert.deepEqual(schema.properties.outcome.enum, ['pass', 'fail', 'blocked']);
         assert.equal(schema.properties.testOutput, undefined);
       } else {
-        assert.deepEqual(schema.properties.outcome.enum, ['pass', 'fail']);
+        assert.deepEqual(schema.properties.outcome.enum, ['pass', 'fail', 'blocked']);
         assert.equal(schema.properties.testOutput.type, 'string');
         assert.equal(schema.properties.needs, undefined);
       }

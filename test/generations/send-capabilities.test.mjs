@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
-import { after, afterEach, before, describe, test } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { setTestHome, rmTestHome } from '../config/test-helpers.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
 import { createProvider } from '../../server/providers/store.js';
@@ -19,8 +19,14 @@ import { pumpUpstreamAsync } from '../../server/generations/upstream.js';
 import { handleGenerationsRequest } from '../../server/generations/routes.js';
 import { prepareResponsesRequest } from '../../server/generations/openai-responses/pump.js';
 import { resetHostCooldownForTests } from '../../server/generations/host-cooldown.js';
+import { getAllowanceTracker } from '../../server/generations/allowance.js';
 
 const REASONING_CAPS = { reasoning: true, reasoningAllowedOptions: ['low', 'medium', 'high'] };
+beforeEach(async () => {
+  const tracker = await getAllowanceTracker();
+  for (const [key, row] of tracker.rows) if (row.kind === 'unavailable') tracker.rows.delete(key);
+  tracker.probes.clear();
+});
 const OK_SSE = 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n';
 
 let homeDir;

@@ -4,6 +4,10 @@ import type { BoardState } from './core/types';
 export const REPORT_EVENT_TYPE: 'run.report.written';
 
 export const REPORT_FILE: 'report.md';
+export function recoveryMetrics(state: BoardState, events: Array<Record<string, unknown>>): {
+  automaticRecoveries: number; acknowledgements: number; checkpointFailures: number; setupFailures: number;
+  waitMs: Record<string, number>; repeatedFingerprints: number; recoveryUsage: number;
+};
 
 /** Give up on the LLM writer and use the mechanical fallback. */
 export const REPORT_COMPLETE_TIMEOUT_MS: 60000;

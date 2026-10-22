@@ -90,7 +90,7 @@ test('unknown resets back off to six hours and survive reload without vendor dia
   const reopened = new AllowanceTracker({ rows: saved, now: () => 101 });
   assert.equal(reopened.availability(context).available, false);
   tracker.record({ ...context, identity: 'rate' }, { kind: 'rate_limit', scope: 'model' });
-  assert.equal(Object.keys(tracker.snapshot()).length, 1);
+  assert.equal(Object.keys(tracker.snapshot()).length, 2);
 });
 
 test('HTTP and CLI refusals preserve quota, scope and unclamped retry information', () => {

@@ -58,7 +58,7 @@ const THIS_FILE = fileURLToPath(import.meta.url);
 const MODEL = { providerId: FAKE_PROVIDER_ID, id: FAKE_MODEL_ID };
 const execFileAsync = promisify(execFile);
 
-const fake = createFakeModelServer({ scenario: happyScenario() });
+const fake = createFakeModelServer({ scenario: happyScenario(), verificationContracts: true });
 
 /** @type {string} */
 let homeDir = '';
@@ -393,7 +393,8 @@ describe('P3-E N=2 overlap + finish with isolated worktrees', { concurrency: fal
       assert.equal(buildersOverlapBySeq(events), true);
 
       const enqueued = events.filter((e) => e.type === 'merge.enqueued');
-      assert.equal(enqueued.length, 3, 'each task must enter the merge queue');
+      assert.equal(new Set(enqueued.map((event) => event.taskId)).size, 3, 'each task must enter the merge queue');
+      assert.equal(enqueued.length, 3 + events.filter((event) => event.type === 'merge.rebased').length, 'changed rebases require fresh test approval and re-enqueue');
       const succeeded = events.filter((e) => e.type === 'merge.succeeded');
       assert.equal(succeeded.length, 3);
       for (const event of succeeded) {

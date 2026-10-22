@@ -1,6 +1,7 @@
 /** Runner effector: start real builder and tester attempts. */
 
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
 import { readConfigJson } from '../config/store.js';
 import { listEnabledMcpTools } from '../mcp/registry.js';
 import { getPluginToolDefinitions } from '../tools/loader.js';
@@ -17,7 +18,12 @@ import { cancel as cancelGeneration, listGenerationStates } from '../generations
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
 import { applyServerContextPolicy } from '../runner/context-budget.js';
-import { getProvider } from '../providers/store.js';
+import { getProvider, getProviderRuntime } from '../providers/store.js';
+import { prerequisitesReady, prerequisiteError } from './prerequisites.js';
+import { detectAgentCli } from '../models/agent-cli-detect.js';
+import { deriveBrowserAssertions } from './browser-rung.js';
+import { loadPlanMarkdown, resolveLadderRungs } from './final-test.js';
+import { taskVerificationContract, validateVerificationChecks, prepareVerificationInputs } from './verification-contract.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
 import {
@@ -39,11 +45,14 @@ import {
 } from '../runner/sub-agent-structured-outcome.js';
 import { parseReportFor, reportToolFor, REPORT_TOOL_NAME } from './report-tool.js';
 import { createPauseGate } from '../runner/pause-gate.js';
+import { checkpointAttempt } from './checkpoint.js';
+import { allowanceContext, getAllowanceTracker } from '../generations/allowance.js';
 import { buildSeed } from './seeds.js';
 import { runMerge } from './merge-queue.js';
 import { finalAttemptEnd, formatRunInstructions, runFinalLadder } from './final-test.js';
 import {
   allocateAttemptWorktree,
+  attemptBranch,
   commitAttemptWorktree,
   ensureBoardPlan,
   ensureBoardWorkspaceGit,
@@ -63,6 +72,8 @@ import {
 import { readGlobalThinkingModeForTurn } from '../agents/thinking.js';
 import { isComposerReasoningLevel } from '../runner/reasoning-effort.js';
 import { getEffectiveWorkspaceRoot, runWithToolContext } from '../runtime/path-access.js';
+import { readIntegrationRef, checkWorktreeDirty } from '../worktree/worktree-ops.js';
+import path from 'node:path';
 
 const BOARD_CONTEXT7_TOOL_NAMES = [
   'mcp__context7__resolve_library_id',
@@ -169,6 +180,7 @@ function toAttemptEnd(attemptId, desired, result) {
   const evidence = {};
   if (result.outcome === 'pass' && Array.isArray(result.evidence)) {
     evidence.evidence = result.evidence;
+    if (Array.isArray(result.checks)) evidence.checks = result.checks;
   }
   if (result.outcome === 'fail' && Array.isArray(result.blockers)) {
     evidence.blockers = result.blockers;
@@ -178,6 +190,7 @@ function toAttemptEnd(attemptId, desired, result) {
   }
   if (result.outcome === 'blocked' && Array.isArray(result.needs)) {
     evidence.needs = result.needs;
+    if (Array.isArray(result.prerequisites)) evidence.prerequisites = result.prerequisites;
   }
   if (result.outcome === 'crashed' && typeof result.error === 'string') {
     evidence.error = result.error;
@@ -185,6 +198,8 @@ function toAttemptEnd(attemptId, desired, result) {
   if (result.outcome === 'crashed' && result.providerUnreachable === true) {
     evidence.providerUnreachable = true;
   }
+  if (result.outcome === 'crashed' && result.failure) evidence.failure = result.failure;
+  if (result.outcome === 'crashed' && result.quotaExceeded) evidence.failure = { ...(evidence.failure ?? {}), kind: 'quota' };
 
   /** @type {import('./engine.js').AttemptEnd} */
   const end = {
@@ -532,12 +547,28 @@ export function createRunnerEffector(options = {}) {
       let end;
       try {
         const state = await currentState();
+        const integrationSha = state.integrationSha;
+        const checkGitIdentity = state.recoveryVersion && isolateWorktrees && boardId && /^[0-9a-f]{40,64}$/i.test(integrationSha || '');
+        const beforeHead = checkGitIdentity ? await readIntegrationRef({ boardId, ref: 'HEAD' }) : null;
+        const beforeClean = checkGitIdentity ? await checkWorktreeDirty({ boardId, slotId: INTEGRATION_SLOT }) : null;
         const result = await ladderFn({
           cwd: integrationCwd,
           planPath: state.planPath || null,
           signal: entry.controller.signal,
-          browser: false,
+          browser: state.recoveryVersion > 0,
         });
+        const browserRequired = [...state.tasks.values()].some(task => /\bbrowser\b|playwright|puppeteer|\be2e\b/i.test(`${task.testSpec} ${task.accept}`));
+        if (state.recoveryVersion && result.evidence?.blockedRung === 'browser' && (result.evidence?.browser?.reason !== 'no-observable-criteria' || browserRequired)) {
+          result.outcome = 'fail';
+          result.evidence.failure = { category: 'verification', message: result.summary };
+        }
+        const afterClean = checkGitIdentity ? await checkWorktreeDirty({ boardId, slotId: INTEGRATION_SLOT }) : null;
+        if (checkGitIdentity && (!beforeClean?.ok || beforeClean.dirty || !afterClean?.ok || afterClean.dirty || beforeHead !== integrationSha || await readIntegrationRef({ boardId, ref: 'HEAD' }) !== beforeHead)) {
+          result.outcome = 'fail';
+          result.summary = 'Integration contains uncommitted changes or changed during verification. Retained source must be reconciled before this commit can be certified.';
+          result.evidence = { ...result.evidence, failure: { category: 'verification', message: result.summary } };
+        }
+        result.evidence = { ...(result.evidence ?? {}), integrationSha, relativeCwd: path.relative(integrationCwd, result.evidence?.cwd ?? integrationCwd) || '.' };
         end = finalAttemptEnd(attemptId, result);
       } catch (err) {
         end = {
@@ -622,7 +653,9 @@ export function createRunnerEffector(options = {}) {
           summary: errorMessage(err),
         };
       }
-      if (boardId && mergeSlotId && end.outcome === 'pass') {
+      // Journal successful merge before releasing its recovery source. A crash
+      // between Git success and end delivery must leave enough state to reconcile.
+      if (boardId && mergeSlotId && end.outcome === 'pass' && !(await currentState()).recoveryVersion) {
         const released = await releaseWorktree({
           boardId,
           slotId: mergeSlotId,
@@ -675,8 +708,12 @@ export function createRunnerEffector(options = {}) {
           interruption: result.outcome === 'crashed' && result.providerUnreachable === true,
         });
       } catch {
-        keep = false;
+        // Failure to inspect policy/state is never permission to delete work.
+        keep = true;
       }
+      // Capture and journal the end before considering any destructive cleanup.
+      // Unmerged task work remains the recovery source, including untracked files.
+      if (result.outcome !== 'pass') keep = true;
       if (!keep) {
         try {
           const released = await releaseWorktree({
@@ -694,6 +731,19 @@ export function createRunnerEffector(options = {}) {
     }
 
     const end = toAttemptEnd(entry.attemptId, desired, result);
+    if (entry.slotId && boardId && state?.recoveryVersion && result.outcome === 'pass' && desired.role === 'tester') {
+      end.evidence = { ...(end.evidence ?? {}), verifiedSha: await readIntegrationRef({ boardId, ref: attemptBranch(boardId, entry.slotId) }) };
+    }
+    if (entry.slotId && boardId && state?.recoveryVersion && result.outcome !== 'pass') {
+      try {
+        const previousAttemptId = [...(state.tasks.get(desired.taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.evidence?.checkpoint)?.evidence.checkpoint.attemptId;
+        const checkpoint = await checkpointAttempt({ boardId, attemptId: entry.attemptId, worktree: entry.worktree, previousAttemptId });
+        end.evidence = { ...(end.evidence ?? {}), checkpoint: { attemptId: checkpoint.attemptId ?? entry.attemptId, tree: checkpoint.tree } };
+      } catch (error) {
+        end.evidence = { ...(end.evidence ?? {}), failure: { category: 'prerequisite', message: `Could not preserve recovery checkpoint: ${errorMessage(error)}` } };
+        end.summary = `Work retained in ${entry.worktree}. Checkpoint failed: ${errorMessage(error)}`;
+      }
+    }
     if (entry.roundSpeeds?.size) {
       const speed = { tokens: 0, seconds: 0 };
       for (const round of entry.roundSpeeds.values()) {
@@ -711,6 +761,20 @@ export function createRunnerEffector(options = {}) {
   }
 
   const effector = {
+    async recoveryReady(hold) {
+      const failure = hold.failure;
+      if (failure?.prerequisites?.length) {
+        const state = await currentState();
+        const cwd = hold.taskId && previousWorktreeForTask(state, hold.taskId) || state.workspacePath || await boardWorkspaceRoot();
+        return prerequisitesReady(failure.prerequisites, cwd);
+      }
+      if (failure?.identity && failure.providerId && failure.modelId) {
+        const current = await allowanceContext(failure.providerId, failure.modelId);
+        if (current.identity !== failure.identity) return true;
+        if (['authentication', 'prerequisite'].includes(failure.category)) return prerequisitesReady([{ kind: 'agent_cli', providerId: failure.providerId, auth: failure.category === 'authentication' }], await boardWorkspaceRoot());
+      }
+      return false;
+    },
     setPaused: (paused) => pauseGate.setPaused(paused),
     /** @returns {Array<{ taskId: string | null, role: string, attemptId: string }>} */
     inspect() {
@@ -727,8 +791,16 @@ export function createRunnerEffector(options = {}) {
      */
     async preflight() {
       const state = boardId || options.getState ? await currentState() : null;
+      if (state?.recoveryVersion && state.workspacePath && !(await fs.stat(state.workspacePath)).isDirectory()) throw new Error('The recorded workspace is unavailable');
       const model = await resolveAttemptModel(options.model ?? state?.model ?? null, state?.workspacePath);
       await resolveLibraryAttemptBinding(model);
+      if (state?.recoveryVersion && !usingFakeTurn && model.providerId !== 'minnow-router') {
+        const { profile, secrets } = await getProviderRuntime(model.providerId);
+        if (profile.apiKind === 'agent-cli-v1') {
+          const status = await detectAgentCli(profile.agentCli.kind, { binPath: profile.agentCli.binPath, cliToken: secrets.cliToken, fresh: true });
+          if (!status.installed) throw prerequisiteError('Install or reconnect the configured agent CLI to continue.', [{ kind: 'agent_cli', providerId: model.providerId }]);
+        }
+      }
       await loadRolePrompt('builder', promptVariant);
       await loadRolePrompt('tester', promptVariant);
       if (!isolateWorktrees) return;
@@ -742,6 +814,19 @@ export function createRunnerEffector(options = {}) {
       if (!prepared.ok) {
         throw new Error(prepared.error || prepared.output || 'Could not prepare the board worktree');
       }
+      if (state.recoveryVersion && !usingFakeTurn) {
+        const cwd = getWorktreeSlotPath(boardId, INTEGRATION_SLOT);
+        const markdown = await loadPlanMarkdown(cwd, state.planPath);
+        await prepareVerificationInputs({ workspace: state.workspacePath || await boardWorkspaceRoot(), cwd, markdown, boardId });
+        let packageJson;
+        try { packageJson = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8')); } catch {}
+        const rungs = resolveLadderRungs({ planMarkdown: markdown, packageJson });
+        // Resolve the verifier and commands before allocating paid builders.
+        if (deriveBrowserAssertions(markdown).assertions.length && !await prerequisitesReady([{ kind: 'browser' }], cwd)) throw prerequisiteError('Required browser verification is unavailable. Enable browser automation and install a supported Chromium browser.', [{ kind: 'browser' }], 'verification');
+        for (const name of new Set(rungs.map((rung) => /^\s*(npm|npx|node|python3?|uv|cargo|go)\b/.exec(rung.command)?.[1]).filter(Boolean))) {
+          if (!await prerequisitesReady([{ kind: 'executable', name }], cwd)) throw prerequisiteError(`Required verifier executable ${name} is unavailable.`, [{ kind: 'executable', name }], 'verification');
+        }
+      }
       if (prepared.gitInitialized) return { gitInitialized: prepared.gitInitialized };
     },
 
@@ -749,7 +834,8 @@ export function createRunnerEffector(options = {}) {
      * @param {import('./core/types').Desired} desired
      * @returns {Promise<{ attemptId: string, worktree?: string, discarded?: Record<string, unknown>[] }>}
      */
-    async start(desired) {
+    async start(desired, startOptions = {}) {
+      startOptions.signal?.throwIfAborted();
       if (desired.role === 'final') {
         const hasLadderHook = typeof options.runFinalLadder === 'function';
         if (hasLadderHook || (isolateWorktrees && boardId && !usingFakeTurn)) {
@@ -771,7 +857,7 @@ export function createRunnerEffector(options = {}) {
       const state = await currentState();
       const seedKind = desired.seedKind ?? 'initial';
       const resumeTask = seedKind === 'continue' && boardId ? state.tasks.get(desired.taskId) : undefined;
-      const seed = buildSeed(seedKind, {
+      let seed = buildSeed(seedKind, {
         state,
         taskId: desired.taskId,
         role: desired.role,
@@ -780,6 +866,11 @@ export function createRunnerEffector(options = {}) {
           : {}),
         ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
+      const contract = state.recoveryVersion && desired.role === 'tester' ? taskVerificationContract(state.tasks.get(desired.taskId)) : [];
+      const omittedFields = state.recoveryVersion ? new Set(state.recoveryHistory
+        .filter(hold => hold.taskId === desired.taskId && hold.role === desired.role && hold.revision === state.recoveryRevision)
+        .map(hold => hold.failure.omitField).filter(field => ['thinking', 'enable_thinking', 'reasoning_effort', 'reasoning', 'chat_template_kwargs'].includes(field))) : new Set();
+      if (contract.length) seed += `\n\n## Required verification contract\n${JSON.stringify(contract)}\nReport checks:[{id,outcome:"pass",evidence:["command and observed output"]}] for every required ID. A blocked or unexecuted required check cannot pass. The server binds accepted evidence to the tested commit.`;
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model, state.workspacePath),
       );
@@ -799,6 +890,17 @@ export function createRunnerEffector(options = {}) {
         sampler: globalSampler,
         thinking: { mode: thinkingMode },
       };
+
+      if (state.recoveryVersion && !usingFakeTurn && model.providerId !== 'minnow-router') {
+        const context = await allowanceContext(model.providerId, model.id);
+        const tracker = await getAllowanceTracker();
+        const availability = tracker.availability(context);
+        if (!availability.available) {
+          const error = new Error(availability.reason);
+          error.failure = { kind: availability.kind, scope: 'provider', retryAt: availability.retryAt, resetAt: availability.resetAt, identity: context.identity, providerId: context.providerId, modelId: context.modelId };
+          throw error;
+        }
+      }
 
       const attemptId = `r-${randomUUID()}`;
       if (reasoning) deps.transcriptStore?.setMeta(attemptId, { reasoningEffort: reasoning });
@@ -842,6 +944,7 @@ export function createRunnerEffector(options = {}) {
       // applies to the next attempt without a restart. An explicit caller
       // limit (tests) wins. `0` means no cap.
       const wallClockMs = limits.wallClockMs ?? await readBoardAttemptWallClockMs();
+      startOptions.signal?.throwIfAborted();
       const runtimeOwner = {
         chatId: boardId ?? `board:${attemptCwd}`,
         runId: desired.taskId,
@@ -900,7 +1003,7 @@ export function createRunnerEffector(options = {}) {
               ...limits,
               ...(wallClockMs > 0 ? { wallClockMs } : {}),
               modelContextLimit,
-              contextBudget: await loadGlobalContextBudget(),
+              contextBudget: Math.max(2048, (await loadGlobalContextBudget()) * 2 ** -Math.min(3, state.tasks.get(desired.taskId)?.attempts.filter((attempt) => attempt.evidence?.failure?.category === 'context').length ?? 0)),
               progressGuard: desired.role === 'builder',
               batchGuard: true,
               ...(desired.role === 'tester'
@@ -909,6 +1012,11 @@ export function createRunnerEffector(options = {}) {
             },
             deps: {
               ...deps,
+              ...(omittedFields.size ? { postChatCompletions: (provider, body, signal, options) => {
+                const adapted = { ...body };
+                for (const field of omittedFields) delete adapted[field];
+                return deps.postChatCompletions(provider, adapted, signal, options);
+              } } : {}),
               runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
               // The library's selected effort survives remapping to an opaque
               // runtime alias, which may have no cached capability row yet.
@@ -921,7 +1029,14 @@ export function createRunnerEffector(options = {}) {
             },
             execute: dispatch.execute,
             reportToolName: REPORT_TOOL_NAME,
-            parseReport: parseReportFor(desired.role),
+            parseReport: (raw) => {
+              const parsed = parseReportFor(desired.role)(raw);
+              if (parsed.ok && parsed.result.outcome === 'pass' && contract.length) {
+                const error = validateVerificationChecks(parsed.result.checks, contract);
+                if (error) return { ok: false, error: `Error: ${error}` };
+              }
+              return parsed;
+            },
             systemPrompt: prompt,
             refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
             finalizeStructuredOutcome: false,
@@ -973,6 +1088,10 @@ export function createRunnerEffector(options = {}) {
           deps.transcriptStore?.load?.(attemptId)?.messages,
           desired.role,
         );
+        if (result.outcome === 'pass' && contract.length) {
+          const error = validateVerificationChecks(result.checks, contract);
+          if (error) result = { outcome: 'crashed', error: `Verification reporting interrupted: ${error}`, failure: { category: 'interrupted' } };
+        }
         await finishAgent(entry, desired, result);
       })().catch((err) => backgroundFailure(entry, err));
 
@@ -1030,8 +1149,8 @@ export function createRunnerEffector(options = {}) {
   const rawStart = effector.start.bind(effector);
   effector.preflight = async () =>
     runWithToolContext(rawPreflight, { workspaceRoot: await boardWorkspaceRoot() });
-  effector.start = async (desired) =>
-    runWithToolContext(() => rawStart(desired), {
+  effector.start = async (desired, startOptions) =>
+    runWithToolContext(() => rawStart(desired, startOptions), {
       workspaceRoot: await boardWorkspaceRoot(),
     });
 

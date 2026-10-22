@@ -4,9 +4,19 @@ planType: build
 
 # Orchestrator autonomous recovery
 
-Status: proposed implementation plan, October 22, 2026. No runtime changes made.
+Status: implemented and independently reviewed in the working tree, October 22, 2026. Automated validation completed for the recovery workflow; live rollout measurements remain a release follow-up.
 
-Review: independently checked by a subagent against the current implementation and board audit on October 22. Incorporated first-Start continuation, healthy in-flight preservation, boot discovery/workspace ownership, stale-callback fencing, shared-engine compatibility, snapshot replay, nonisolated workspace protection and repair-directory corrections. This was static verification; implementation and failure-injection tests remain outstanding.
+Review: independently checked by subagents against the original board audit and implementation. The implementation includes durable continuation and holds, shared allowance admission, exact-byte checkpoints and interrupted restore transactions, crash-recoverable ownership, bounded repair/diagnosis, automatic final repairs, verification contracts and content identities, typed prerequisite probes, safe completion cleanup and GitHub Watch publication guards. Regression coverage uses deterministic effectors, scratch homes and real Git repositories; no historical user board was restarted or modified for testing.
+
+## Implementation validation
+
+- Orchestrator suite: 1,366 passing tests and one skip; targeted follow-up coverage verifies legacy continuation upgrades and accepted preflight holds.
+- Runner suite: 339 passing tests, including the packaged headless boundary. Generation, allowance and model-router regressions pass after isolating simulated transient cooldowns between independent scenarios.
+- Real Git regressions cover exact staged/unstaged/untracked/binary restoration, interrupted restore transactions, corrupt bundles, missing branches/tester identity, stale rebases, lost merge receipts, dirty verification content, declared input staging and safe completed-work cleanup.
+- Type checking, production build, scenario contract, test discovery coverage and product wiki validation pass. The total asset budget increases by 20 KB for recovery controls/status; other ceilings remain unchanged.
+- Full `npm test` ran. Remaining failures reproduce in the original checkout for Windows symlink permissions, remote cleanup/path handling, existing UI assertions and a Godot/libuv shutdown abort. A CLI fixture exceeded its short idle timeout under parallel load and passes in isolation; the runner suite also passes at bounded concurrency. These unrelated failures still prevent a completely green repository-wide run.
+
+These checks establish the implemented contracts. They do not measure a real provider outage rollout or claim a quantified improvement on historical user boards.
 
 ## Product contract
 

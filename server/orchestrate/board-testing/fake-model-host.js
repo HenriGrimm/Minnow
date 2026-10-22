@@ -149,7 +149,7 @@ export async function startFakeModel(options = {}) {
     await stopFakeModel();
   }
 
-  const fake = createFakeModelServer({ scenario: configuredScenario });
+  const fake = createFakeModelServer({ scenario: configuredScenario, verificationContracts: true });
   fake.reset();
   const port = options.port ?? DEFAULT_PORT;
   const resolvedPort = await fake.listen(port);

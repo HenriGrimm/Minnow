@@ -149,7 +149,7 @@ test('mixed failures report both blockers without claiming every allowance is sp
   mode = 'mixed'; const state = generation('mixed'); pumpRouterGeneration(state);
   await waitUntil(() => state.status === 'error');
   assert.equal(state.quotaExceeded, false);
-  assert.match(state.errorMessage, /quota-primary.*Out of usage.*quota-backup.*503/);
+  assert.match(state.errorMessage, /quota-primary.*Out of usage.*quota-backup.*Provider temporarily unavailable/);
 });
 
 test('Claude CLI quota falls back to the API and is remembered for subsequent chats', async () => {

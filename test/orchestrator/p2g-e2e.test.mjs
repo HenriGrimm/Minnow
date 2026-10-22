@@ -61,7 +61,7 @@ import {
 const THIS_FILE = fileURLToPath(import.meta.url);
 const MODEL = { providerId: FAKE_PROVIDER_ID, id: FAKE_MODEL_ID };
 
-const fake = createFakeModelServer({ scenario: happyScenario() });
+const fake = createFakeModelServer({ scenario: happyScenario(), verificationContracts: true });
 
 /** @type {string} */
 let homeDir = '';
@@ -419,7 +419,7 @@ describe('P2-G induced failures', { concurrency: false }, () => {
    * @param {ReturnType<typeof failingBuildScenario>} scenario
    */
   async function runMini(boardId, scenario) {
-    const dedicated = createFakeModelServer({ scenario });
+    const dedicated = createFakeModelServer({ scenario, verificationContracts: true });
     dedicated.reset();
     const port = await dedicated.listen(0);
     const completionsUrl = `http://127.0.0.1:${port}`;
@@ -537,7 +537,7 @@ describe('P2-G induced failures', { concurrency: false }, () => {
       await engine.startBoard(1);
       await waitFor(() => effector.inspect().length === 1 && explode, 15_000, 'hung attempt');
 
-      recovery = createFakeModelServer({ scenario: afterCrashScenario() });
+      recovery = createFakeModelServer({ scenario: afterCrashScenario(), verificationContracts: true });
       recovery.reset();
       const port = await recovery.listen(0);
       completionsUrl.current = `http://127.0.0.1:${port}`;

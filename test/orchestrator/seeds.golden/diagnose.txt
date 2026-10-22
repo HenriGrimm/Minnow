@@ -1,0 +1,27 @@
+# Task T1-A — Add health endpoint
+
+Plan: `plan.md`
+
+## Build
+Add GET /health that returns { ok: true }.
+
+## Test
+GET /health returns 200 and { ok: true }.
+
+## Accept
+curl the health endpoint returns ok.
+
+## Prior attempt
+The last attempt failed. Fix the blockers; do not expand scope.
+
+Summary: Typecheck failed.
+
+Blockers:
+- src/api/health.ts: missing return type
+
+## Latest observed failure
+Typecheck failed.
+src/api/health.ts: missing return type
+
+## Diagnose repeated failure
+The previous approach has not resolved this task. Reproduce the remaining failure, identify its cause and record what changes the next repair should make. Preserve completed work and the acceptance requirements. Implement a focused correction if supported by the evidence; do not repeat unchanged commands or weaken checks. If a prerequisite or product decision is required, report blocked with that specific need.

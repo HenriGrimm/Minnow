@@ -103,6 +103,8 @@ export const OUTCOME_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> =
 };
 
 export function phaseLabel(state: BoardState, task: TaskState): string {
+  const hold = Object.values(state.recoveryHolds ?? {}).find((item) => item.taskId === task.id);
+  if (hold && !runningAttempt(task)) return hold.attention ? 'action needed' : 'waiting to resume';
   const attempt = runningAttempt(task);
   const interruption = attempt ? attemptInterruption(state, attempt) : null;
   if (interruption) return interruption;
@@ -203,11 +205,14 @@ function headerStatus(
   if (state.stopReason === 'quota') {
     return { variant: 'stopped', label: 'Out of usage' };
   }
+  if (state.status === 'running' && Object.keys(state.recoveryHolds ?? {}).length) {
+    return { variant: 'running', label: Object.values(state.recoveryHolds).some((hold) => hold.attention) ? 'Action needed' : 'Recovering' };
+  }
   if (state.stopReason === 'terminal' || state.finalTest?.outcome === 'fail') {
     return { variant: 'failed', label: 'Failed' };
   }
   if (state.finished || state.stopReason === 'complete') {
-    return { variant: 'complete', label: 'Complete' };
+    return { variant: 'complete', label: [...state.tasks.values()].some((task) => task.waived) ? 'Completed with waivers' : 'Complete' };
   }
   if (state.status === 'running') return { variant: 'running', label: 'Running' };
   if (state.stopReason === 'paused') return { variant: 'stopped', label: 'Paused' };

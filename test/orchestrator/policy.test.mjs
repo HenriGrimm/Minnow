@@ -80,9 +80,9 @@ describe('decide — the documented rows, cell for cell', () => {
       ['builder', 'pass', 5, { kind: 'advance', to: 'tester' }],
       ['builder', 'pass', 0, { kind: 'advance', to: 'merge' }, 'merge'],
       ['builder', 'pass', 0, { kind: 'advance', to: 'tester' }, 'tester'],
-      ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }, 'merge'],
-      ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }],
-      ['builder', 'fail', 1, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }],
+      ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: true }, 'merge'],
+      ['builder', 'fail', 0, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: true }],
+      ['builder', 'fail', 1, { kind: 'retry', role: 'builder', seedKind: 'failure-aware', sameWorktree: true }],
       ['builder', 'fail', 2, 'abandon'],
       ['builder', 'fail', 3, 'abandon'],
       ['builder', 'blocked', 0, { kind: 'retry', role: 'builder', seedKind: 'repair', sameWorktree: true }],
@@ -128,7 +128,7 @@ describe('decide — the documented rows, cell for cell', () => {
         '| --- | --- | --- | --- |',
         '| builder (after merge) | pass | — | advance → merge |',
         '| builder | pass | — | advance → tester |',
-        '| builder | fail | < 2 | retry builder, failure-aware seed |',
+        '| builder | fail | < 2 | retry builder, failure-aware seed (same worktree) |',
         '| builder | fail | — | abandon (builder-failed) |',
         '| builder | blocked | < 1 | retry builder, repair seed (same worktree) |',
         '| builder | blocked | — | abandon (builder-blocked) |',
@@ -380,12 +380,12 @@ describe('decide — what is deliberately absent', () => {
 // ── Same worktree ────────────────────────────────────────────────────────────
 
 describe('wantsSameWorktree — MIN-705 / MIN-707 mapping', () => {
-  it('reuses for repair, continue, rebase, and fix; fresh for failure-aware', () => {
-    assert.deepEqual([...SAME_WORKTREE_SEED_KINDS], ['repair', 'continue', 'rebase', 'fix']);
+  it('preserves work for repair and failure-aware retries', () => {
+    assert.deepEqual([...SAME_WORKTREE_SEED_KINDS], ['repair', 'continue', 'rebase', 'fix', 'failure-aware', 'diagnose']);
     assert.equal(wantsSameWorktree('repair'), true);
     assert.equal(wantsSameWorktree('continue'), true);
     assert.equal(wantsSameWorktree('rebase'), true);
-    assert.equal(wantsSameWorktree('failure-aware'), false);
+    assert.equal(wantsSameWorktree('failure-aware'), true);
     assert.equal(wantsSameWorktree('fix'), true);
     assert.equal(wantsSameWorktree('initial'), false);
     assert.equal(wantsSameWorktree('integration-fix'), false);

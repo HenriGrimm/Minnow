@@ -364,43 +364,30 @@
     {
       "path": "documentation/manual/orchestrate/boards.md",
       "title": "Orchestrate boards",
-      "summary": "A board turns a plan document into a kanban of tasks that agents work through — building, testing, fixing and merging — while you watch or while you are away. This is the most powerful thing in Minnow and the one that most rewards understanding before you press Start. The shape o",
+      "summary": "A board runs a plan through builders, independent testers, isolated Git worktrees, merging, and final integration checks. Start a board Open Orchestrate from Code, choose a plan under documentation/plans/ , and open the board. Select a starting branch and a model, then press Star",
       "headings": [
-        "The shape of it",
-        "Starting a board",
-        "The board",
-        "Execution modes",
-        "Worktree isolation",
-        "Model and concurrency",
-        "When things fail",
-        "Finishing",
-        "Editing a task",
-        "Syncing from the plan",
-        "Global defaults",
-        "Board chats are locked",
-        "Getting good results",
-        "Related"
+        "Start a board",
+        "Execution controls",
+        "Automatic recovery",
+        "Action needed",
+        "Verification and completion",
+        "Inspect work",
+        "Limits and models"
       ],
       "section": "Orchestrate",
-      "hash": "83c3d036be682d1056e0c98ac596b687f8e9e968cc1701da1641fa3a1cb4975a"
+      "hash": "792b8e25f4e9f2a7c3ae9b4c785506059b598c2b0d15ffb3504c9f7623973bae"
     },
     {
       "path": "documentation/manual/orchestrate/agents.md",
-      "title": "Agents, sub-agents, and packs",
-      "summary": "Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work. Kind What it is Where it runs Work agent A role with its own prompt and tool settings The main chat, or a board chat Sub agent A nested a",
+      "title": "Board work agents",
+      "summary": "Boards use the shared chat runner and tool system for two worker roles. Role Responsibility Builder Implements one task, repairs concrete failures and preserves completed work Tester Independently verifies the task's Test and Accept requirements without modifying application code",
       "headings": [
-        "Work agents",
-        "Sub-agents",
-        "Delegating well",
-        "Board members",
-        "Autopilot",
-        "Watchdog",
-        "Agent packs",
-        "Context budgets",
-        "Related"
+        "Reports",
+        "Repair and continuation",
+        "Configuration"
       ],
       "section": "Orchestrate",
-      "hash": "7eea6409d5a74c33a23f7745d4bafd5ae40c70ec9225fa08d32935451e444af0"
+      "hash": "41c300b2c98c6046ffa23573698c5870198476312395bf4a6de73403311dce32"
     },
     {
       "path": "documentation/manual/extend/integrations.md",

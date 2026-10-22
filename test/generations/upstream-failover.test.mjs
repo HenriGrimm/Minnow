@@ -3,7 +3,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { after, before, describe, mock, test } from 'node:test';
+import { after, before, beforeEach, describe, mock, test } from 'node:test';
 import http from 'node:http';
 import { setTestHome, rmTestHome } from '../config/test-helpers.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
@@ -18,6 +18,7 @@ import {
 import { pumpUpstream, pumpUpstreamAsync } from '../../server/generations/upstream.js';
 import { thinkingToCompletionBody } from '../../server/runner/thinking-to-body.js';
 import { resetHostCooldownForTests } from '../../server/generations/host-cooldown.js';
+import { getAllowanceTracker } from '../../server/generations/allowance.js';
 
 let homeDir;
 let primaryBaseUrl;
@@ -121,6 +122,11 @@ after(async () => {
 });
 
 describe('upstream failover', () => {
+  beforeEach(async () => {
+    const tracker = await getAllowanceTracker();
+    for (const [key, row] of tracker.rows) if (row.kind === 'unavailable') tracker.rows.delete(key);
+    tracker.probes.clear();
+  });
   test('Go utility and orchestrator requests reach the correct endpoint with supported controls', async (t) => {
     await createProvider({
       id: 'go-compatibility', label: 'Go',

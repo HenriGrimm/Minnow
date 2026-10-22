@@ -34,8 +34,11 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'board.started': {
     required: { concurrency: 'posint' },
-    optional: {},
+    optional: { recoveryVersion: 'posint', recoveryLimits: 'obj' },
   },
+  'recovery.held': { required: { hold: 'obj' }, optional: {} },
+  'recovery.released': { required: { key: 'str' }, optional: { observedAt: 'int' } },
+  'final.repair.created': { required: { taskId: 'id', fingerprint: 'str' }, optional: {} },
   'board.stopped': {
     required: { reason: { enum: STOP_REASONS } },
     optional: {},
@@ -57,6 +60,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
     required: { taskId: 'id' },
     optional: { evidence: 'obj' },
   },
+  'merge.rebased': { required: { taskId: 'id', sha: 'id' }, optional: { beforeSha: 'id' } },
   'merge.succeeded': {
     required: { taskId: 'id', sha: 'id' },
     optional: { beforeSha: 'id' },
@@ -227,6 +231,17 @@ export function validateEvent(raw) {
     if (problem) return { ok: false, error: `${event.type}.${field}: ${problem}` };
   }
 
+  if (event.type === 'recovery.held') {
+    const hold = event.hold;
+    if (!isPlainObject(hold) || typeof hold.key !== 'string' || !hold.key ||
+      !['builder', 'tester', 'merge', 'final', 'preflight'].includes(hold.role) ||
+      !(hold.taskId === null || typeof hold.taskId === 'string') || typeof hold.attention !== 'boolean' ||
+      !Number.isSafeInteger(hold.retryAt) || !Number.isSafeInteger(hold.observedAt) ||
+      !isPlainObject(hold.failure) || typeof hold.failure.category !== 'string' ||
+      typeof hold.failure.fingerprint !== 'string' || typeof hold.failure.message !== 'string') {
+      return { ok: false, error: 'recovery.held.hold: invalid recovery observation' };
+    }
+  }
   return { ok: true, event, known: true };
 }
 

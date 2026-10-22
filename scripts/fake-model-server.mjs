@@ -324,7 +324,7 @@ export function pickScenarioEmit(scenario, ctx, body) {
 // ── HTTP server ──────────────────────────────────────────────────────────────
 
 /**
- * @param {{ scenario?: ScenarioStep[]; port?: number; host?: string }} [opts]
+ * @param {{ scenario?: ScenarioStep[]; port?: number; host?: string; verificationContracts?: boolean }} [opts]
  */
 export function createFakeModelServer(opts = {}) {
   const scenario = opts.scenario ?? DEFAULT_SCENARIO;
@@ -384,7 +384,27 @@ export function createFakeModelServer(opts = {}) {
           `[fake-model] POST ${pathname} (#${requests.length}) role=${context.role ?? '-'} taskId=${context.taskId ?? '-'}`,
         );
 
-        const chunks = pickScenarioEmit(scenario, context, body);
+        let chunks = pickScenarioEmit(scenario, context, body);
+        if (opts.verificationContracts && context.role === 'tester') {
+          // Positive board fixtures implement the current report contract. The
+          // default stays literal for malformed-report and rejection scenarios.
+          const contractText = /## Required verification contract\n(\[[^\n]+\])/.exec(messagesText(body))?.[1];
+          if (contractText) {
+            const contract = JSON.parse(contractText);
+            chunks = chunks.map(chunk => chunk.replace(/^data: (\{[^\n]+\})/gm, (line, json) => {
+              const parsed = JSON.parse(json);
+              for (const call of parsed.choices?.[0]?.delta?.tool_calls ?? []) {
+                if (call.function?.name !== 'report_outcome') continue;
+                const report = JSON.parse(call.function.arguments);
+                if (report.outcome === 'pass' && report.checks === undefined) {
+                  report.checks = contract.map(check => ({ id: check.id, outcome: 'pass', evidence: ['Fake verification scenario passed'] }));
+                  call.function.arguments = JSON.stringify(report);
+                }
+              }
+              return `data: ${JSON.stringify(parsed)}`;
+            }));
+          }
+        }
         // Completions are a finite SSE dump, not a long-lived stream.
         // keep-alive left sockets around and Windows libuv aborted on close
         // (UV_HANDLE_CLOSING in report-wiring / memory-store-turn).

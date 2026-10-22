@@ -103,7 +103,7 @@ describe('catalog covers the home', () => {
     assert.equal(new Set(ids).size, ids.length);
     assert.deepEqual(
       BACKUP_CATEGORIES.filter((category) => category.requiresPassphrase).map((category) => category.id),
-      ['reef', CREDENTIALS_CATEGORY],
+      ['reef', CREDENTIALS_CATEGORY, 'boards'],
     );
     assert.equal(defaultCategoryIds().includes('models'), false, 'models are large and off by default');
   });

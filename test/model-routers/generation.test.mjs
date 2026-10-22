@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -10,6 +10,7 @@ import { getRouterWorkspace } from '../../server/model-routers/store.js';
 import { runRouterGeneration } from '../../server/model-routers/generation.js';
 import { createGenerationState, cancel, deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 import { createCompletionStream } from '../../server/runner/generation-binding.js';
+import { getAllowanceTracker } from '../../server/generations/allowance.js';
 
 let home; let upstream; let mode = 'healthy'; let calls = []; let workspace; let releaseSlowResponse;
 before(async () => {
@@ -32,6 +33,11 @@ before(async () => {
   await createProvider({ id: 'router-test', label: 'Router test', apiKind: 'openai-v1', baseUrl: `http://127.0.0.1:${upstream.address().port}` });
   workspace = await getRouterWorkspace();
   await workspace.save({ revision: workspace.revision, defaultRouterId: 'test', routers: [{ id: 'test', name: 'Test router', enabled: true, policy: 'priority', entries: ['primary', 'backup'].map((id) => ({ id, modelId: id, providerId: 'router-test', enabled: true, concurrencyLimit: 1 })) }] });
+});
+beforeEach(async () => {
+  const tracker = await getAllowanceTracker();
+  for (const [key, row] of tracker.rows) if (row.kind === 'unavailable') tracker.rows.delete(key);
+  tracker.probes.clear();
 });
 after(async () => { await workspace?.flush(); deleteGenerationsForProviderShutdown(); upstream.closeAllConnections(); await new Promise((resolve) => upstream.close(resolve)); await rmTestHome(home); });
 const generation = (chatId, stream = true) => createGenerationState({ providerId: 'minnow-router', chatId, body: { model: 'test', messages: [{ role: 'user', content: 'hi' }], stream } });

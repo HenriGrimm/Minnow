@@ -86,6 +86,27 @@ test('partial success, skipped tasks, and failed final tests cannot publish', ()
   assert.equal(boardReadyForPullRequest({ ...ready(), tasks: new Map() }), false);
 });
 
+test('recovery holds stay pollable and publication requires current verified integration', async () => {
+  const h = harness();
+  await pollGithubWatch(job, h.deps);
+  const state = { ...ready(), finished: false, status: 'running', recoveryVersion: 1, integrationSha: 'abc', recoveryHolds: { 'builder:A': { attention: true } }, finalTest: null };
+  h.deps.boardState = async () => state;
+  await pollGithubWatch(job, h.deps);
+  assert.equal(h.ledger().issues[0].phase, 'board');
+  assert.equal(h.calls.includes('publish'), false);
+  assert.equal(h.calls.includes('comment:blocked'), false);
+  state.finished = true;
+  state.finalTest = { outcome: 'pass', evidence: { integrationSha: 'abc' } };
+  assert.equal(boardReadyForPullRequest(state), false);
+  state.recoveryHolds = {};
+  assert.equal(boardReadyForPullRequest(state), true);
+  state.tasks.get('A').waived = true;
+  assert.equal(boardReadyForPullRequest(state), false);
+  state.tasks.get('A').waived = false;
+  state.finalTest.evidence.integrationSha = 'stale';
+  assert.equal(boardReadyForPullRequest(state), false);
+});
+
 test('failed board records actionable local failure and generic GitHub update', async () => {
   const h = harness();
   await pollGithubWatch(job, h.deps);

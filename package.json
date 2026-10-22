@@ -165,6 +165,7 @@
     "isomorphic-dompurify": "^3.19.0",
     "marked": "^18.0.7",
     "material-icon-theme": "^5.37.0",
+    "proper-lockfile": "^4.1.2",
     "pyright": "^1.1.411",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

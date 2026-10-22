@@ -961,6 +961,8 @@ export async function runTurn(options) {
     return withUsage({
       outcome: 'crashed',
       error: errorMessage(err),
+      ...(err?.failure || err?.statusCode || err?.code ? { failure: err.failure ?? { status: err.statusCode, code: err.code } } : {}),
+      ...(err?.quotaExceeded ? { quotaExceeded: true } : {}),
       // The runner already waited out `limits.providerWaitMs`; callers treat this
       // as an interruption, not the agent's failure.
       ...(isProviderUnreachableError(err) ? { providerUnreachable: true } : {}),

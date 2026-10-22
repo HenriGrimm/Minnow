@@ -617,7 +617,7 @@ describe('nextAction — the single policy call site', () => {
 
   it('routes each outcome through the policy table', () => {
     const cases = [
-      [['fail'], { kind: 'start', role: 'builder', seedKind: 'failure-aware', sameWorktree: false }],
+      [['fail'], { kind: 'start', role: 'builder', seedKind: 'failure-aware', sameWorktree: true }],
       [['blocked'], { kind: 'start', role: 'builder', seedKind: 'repair', sameWorktree: true }],
       [['crashed'], { kind: 'start', role: 'builder', seedKind: 'continue', sameWorktree: true }],
       [['timeout'], { kind: 'start', role: 'builder', seedKind: 'continue', sameWorktree: true }],

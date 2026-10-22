@@ -39,7 +39,7 @@ export const POLICY_TABLE = /** @type {const} */ ([
   // tester already passed, so it goes straight back to the queue.
   { role: 'builder', outcome: 'pass', after: 'merge', under: null, action: advance('merge') },
   { role: 'builder', outcome: 'pass', under: null, action: advance('tester') },
-  { role: 'builder', outcome: 'fail', under: 2, action: retry('failure-aware') },
+  { role: 'builder', outcome: 'fail', under: 2, action: retry('failure-aware', true) },
   { role: 'builder', outcome: 'fail', under: null, action: abandon('builder-failed') },
   { role: 'builder', outcome: 'blocked', under: 1, action: retry('repair', true) },
   { role: 'builder', outcome: 'blocked', under: null, action: abandon('builder-blocked') },
@@ -127,7 +127,7 @@ function evidenceFor(input) {
   return evidence;
 }
 
-export const SAME_WORKTREE_SEED_KINDS = /** @type {const} */ (['repair', 'continue', 'rebase', 'fix']);
+export const SAME_WORKTREE_SEED_KINDS = /** @type {const} */ (['repair', 'continue', 'rebase', 'fix', 'failure-aware', 'diagnose']);
 
 /**
  * Does this seed kind repair in place rather than in a fresh worktree?

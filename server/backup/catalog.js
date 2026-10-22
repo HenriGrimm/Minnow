@@ -138,8 +138,9 @@ export const BACKUP_CATEGORIES = [
   {
     id: 'boards',
     label: 'Boards',
-    description: 'Orchestrate board journals and their run transcripts.',
+    description: 'Orchestrate journals, transcripts and recovery checkpoints containing project source.',
     defaultOn: true,
+    requiresPassphrase: true,
     roots: [{ path: 'boards' }],
   },
   {

@@ -29,6 +29,8 @@ export interface AutopilotMeta {
   maxTestAttempts: number;
   maxBuildAttempts: number;
   maxFinalTestAttempts: number;
+  /** Maximum non-operational failed attempts across one board's recovery history. */
+  recoveryAttemptBudget: number;
   /** When Continue should auto-route to a fresh summarized chat instead of nudging. */
   continueSmartRoute: AutopilotContinueSmartRoute;
   plannerProviderId: string;
@@ -67,6 +69,7 @@ export const DEFAULT_AUTOPILOT_META: AutopilotMeta = {
   maxTestAttempts: FALLBACK_MAX_TEST_ATTEMPTS,
   maxBuildAttempts: FALLBACK_MAX_BUILD_ATTEMPTS,
   maxFinalTestAttempts: FALLBACK_MAX_FINAL_TEST_ATTEMPTS,
+  recoveryAttemptBudget: 100,
   continueSmartRoute: 'conservative',
   plannerProviderId: '',
   plannerModelId: '',
@@ -190,6 +193,7 @@ export function parseAutopilotMeta(raw: unknown): AutopilotMeta {
       DEFAULT_AUTOPILOT_META.maxFinalTestAttempts,
     ),
     continueSmartRoute: parseContinueSmartRoute(block.continueSmartRoute),
+    recoveryAttemptBudget: typeof block.recoveryAttemptBudget === 'number' && Number.isFinite(block.recoveryAttemptBudget) ? Math.min(1000, Math.max(1, Math.round(block.recoveryAttemptBudget))) : 100,
     plannerProviderId: parseStringField(block.plannerProviderId),
     plannerModelId: parseStringField(block.plannerModelId),
     selfHealMaxRounds: clampSelfHealRounds(

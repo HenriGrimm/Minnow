@@ -2,6 +2,7 @@ import { StreamEventSource as EventSource } from '../api/stream-event-source';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import { foldInto } from '../../server/orchestrator/core/derive.js';
 import { noticeBoardOutOfUsage } from '../notifications/provider-quota';
+import { pushNotification } from '../notifications/push';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
 import type { LiveRoundMetrics, RoundMetrics } from './board-usage';
@@ -28,6 +29,7 @@ export interface BoardSummary {
   taskCount: number;
   mergedCount?: number;
   attentionCount?: number;
+  waitingCount?: number;
   finalTestFailed?: boolean;
   finished: boolean;
 }
@@ -113,6 +115,7 @@ export interface BoardClient {
   rename(name: string): Promise<void>;
   /** Reopen failed work after a finish. 409 is an answer, not a throw. */
   rerun(taskIds?: string[], concurrency?: number): Promise<{ ok: boolean; taskIds: string[] }>;
+  checkRecovery?(key: string): Promise<void>;
 }
 
 export class PlanParseFailure extends Error {
@@ -174,6 +177,13 @@ function readOnlyState(state: BoardState): BoardState {
   for (const [id, task] of state.tasks) tasks.set(id, freezeTask(task));
 
   const copy: BoardState = {
+    recoveryVersion: state.recoveryVersion ?? 0,
+    recoveryRevision: state.recoveryRevision ?? 0,
+    recoveryLimits: { ...(state.recoveryLimits ?? { task: 5, final: 3, board: 100 }) },
+    recoveryHolds: structuredClone(state.recoveryHolds ?? {}),
+    recoveryHistory: structuredClone(state.recoveryHistory ?? []),
+    finalRepairs: structuredClone(state.finalRepairs ?? []),
+    recoveryFailures: [...(state.recoveryFailures ?? [])],
     boardId: state.boardId,
     name: state.name,
     planPath: state.planPath,
@@ -516,6 +526,10 @@ export function createBoardClient(
     if (event.type === 'board.stopped' && event.reason === 'quota') {
       noticeBoardOutOfUsage(boardId, Number(event.ts));
     }
+    const hold = event.hold as BoardState['recoveryHolds'][string] | undefined;
+    if (event.type === 'recovery.held' && hold?.attention && Date.now() - Number(event.ts) < 300_000) {
+      pushNotification({ kind: 'board_blocked', title: `${internal.name || boardId}: action needed`, preview: String(hold.failure?.message ?? 'Resolve the prerequisite shown on the board.'), appId: 'code', workspacePath: internal.workspacePath ?? undefined, dedupeKey: `board-recovery:${boardId}:${hold.key}:${hold.failure?.fingerprint}`, os: true });
+    }
     const taskId = typeof event.taskId === 'string' ? event.taskId : '';
     const openMerge = internal.tasks.get(taskId)?.attempts.find(attempt => attempt.role === 'merge' && !attempt.ended);
     foldInto(internal, [event]);
@@ -773,6 +787,10 @@ export function createBoardClient(
             ? JSON.stringify({})
             : JSON.stringify({ concurrency }),
       });
+    },
+
+    async checkRecovery(key) {
+      await request(`/${encodeURIComponent(boardId)}/recovery`, { method: 'POST', body: JSON.stringify({ key }) });
     },
 
     async pause() {

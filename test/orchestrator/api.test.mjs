@@ -737,6 +737,7 @@ describe('the surface itself', () => {
         'POST mergeAndSkipTask',
         'POST model',
         'POST pause',
+        'POST recovery',
         'POST rerun',
         'POST resetTask',
         'POST resumeResolve',

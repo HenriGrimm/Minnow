@@ -38,6 +38,13 @@ const BOARD_STATE_KEYS = [
   'stopReason',
   'runSummary',
   'rerun',
+  'recoveryVersion',
+  'recoveryRevision',
+  'recoveryLimits',
+  'recoveryHolds',
+  'recoveryHistory',
+  'finalRepairs',
+  'recoveryFailures',
 ];
 
 const AUTONOMY_KEYS = ['status', 'concurrency'];

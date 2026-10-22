@@ -15,7 +15,7 @@ const services = new Map();
 export class AllowanceTracker {
   constructor({ rows = {}, now = Date.now, changed = () => {} } = {}) {
     this.rows = new Map(Object.entries(rows).filter(([, row]) =>
-      row && ['quota', 'rate_limit'].includes(row.kind) && Number.isFinite(row.retryAt) && Number.isFinite(row.failures)));
+      row && ['quota', 'rate_limit', 'unavailable'].includes(row.kind) && Number.isFinite(row.retryAt) && Number.isFinite(row.failures)));
     this.now = now;
     this.changed = changed;
     this.probes = new Map();
@@ -36,12 +36,12 @@ export class AllowanceTracker {
     const probing = this.probes.has(block.key);
     const available = !probing && this.now() >= block.row.retryAt;
     return { available, kind: block.row.kind, retryAt: block.row.retryAt, resetAt: block.row.resetAt,
-      reason: probing ? 'Checking allowance recovery' : block.row.kind === 'quota' ? 'Out of usage' : 'Rate limited' };
+      reason: probing ? 'Checking allowance recovery' : block.row.kind === 'quota' ? 'Out of usage' : block.row.kind === 'unavailable' ? 'Provider temporarily unavailable' : 'Rate limited' };
   }
   claim(context) {
     const block = this.block(context);
     if (!block) return { finish: (failure) => { if (failure) this.record(context, failure); } };
-    const ownsBackoff = block.row.kind === 'rate_limit' && context.requestId && block.row.owner === context.requestId && !this.probes.has(block.key);
+    const ownsBackoff = ['rate_limit', 'unavailable'].includes(block.row.kind) && context.requestId && block.row.owner === context.requestId && !this.probes.has(block.key);
     if (!ownsBackoff && !this.availability(context).available) return null;
     const token = Symbol('allowance probe');
     this.probes.set(block.key, token);
@@ -65,7 +65,7 @@ export class AllowanceTracker {
     this.rows.set(key, { kind: failure.kind, failures, observedAt: at, retryAt, ...(resetAt ? { resetAt } : {}),
       // The original request retains its bounded exponential retry when no
       // provider delay was supplied. Other requests observe the shared cooldown.
-      ...(failure.kind === 'rate_limit' && failure.retryAfterMs == null && context.requestId ? { owner: context.requestId } : {}),
+      ...(['rate_limit', 'unavailable'].includes(failure.kind) && failure.retryAfterMs == null && context.requestId ? { owner: context.requestId } : {}),
     });
     this.changed();
     for (const listener of this.listeners) listener();
@@ -74,7 +74,7 @@ export class AllowanceTracker {
     const block = this.block(context);
     if (block && !this.probes.has(block.key)) { block.row.retryAt = this.now(); this.changed(); }
   }
-  snapshot() { return Object.fromEntries([...this.rows].filter(([, row]) => row.kind === 'quota')); }
+  snapshot() { return Object.fromEntries(this.rows); }
 }
 
 async function openService(home) {
@@ -123,16 +123,20 @@ export async function withAllowance(context, attempt, cancelled = () => false) {
   if (!claim) {
     const status = tracker.availability(context);
     return { outcome: 'fatal', message: `${status.reason}. Retry after ${new Date(status.retryAt).toISOString()}.`,
-      quotaExceeded: status.kind === 'quota', allowanceBlocked: true };
+      quotaExceeded: status.kind === 'quota', allowanceBlocked: true,
+      failure: { kind: status.kind, scope: tracker.block(context)?.key === tracker.key(context, 'provider') ? 'provider' : 'model', retryAt: status.retryAt,
+        identity: context.identity, providerId: context.providerId, modelId: context.modelId, ...(status.resetAt ? { resetAt: status.resetAt } : {}) } };
   }
   let result;
   try {
     result = await attempt();
-    const failure = result.failure || allowanceFailure(result.message, result);
+    const failure = ['quota', 'rate_limit', 'unavailable'].includes(result.failure?.kind)
+      ? result.failure : allowanceFailure(result.message, result);
     if (failure?.kind === 'quota' && context.cli && !result.failure) failure.scope = 'provider';
     claim.finish(failure, result.outcome === 'complete' && !cancelled());
     await tracker.flush().catch(() => {});
-    if (failure) { result.failure = failure; result.quotaExceeded = failure.kind === 'quota'; }
+    if (failure) { result.failure = { ...failure, identity: context.identity, providerId: context.providerId, modelId: context.modelId }; result.quotaExceeded = failure.kind === 'quota'; }
+    else if (result.outcome === 'fatal') result.failure = { identity: context.identity, providerId: context.providerId, modelId: context.modelId };
     return result;
   } finally { claim.finish(null); }
 }

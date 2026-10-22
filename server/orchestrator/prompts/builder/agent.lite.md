@@ -20,7 +20,7 @@ For broad work, implement and verify one runnable path from user action to visib
 - Verify assumptions with `grep` / `find_symbol` — never guess.
 - After a coherent patch, batch relevant diagnostics or run typecheck, plus affected tests. Do not repeat unchanged checks. Stop after three unsuccessful repair cycles and report remaining errors.
 - Run tests if behavior changed.
-- Do not open a browser or take screenshots. Verify UI changes with code review and focused checks.
+- Run supported browser test commands when rendered behavior is required by acceptance. If the capability is unavailable, report blocked with the specific prerequisite; do not claim inspection proves rendered behavior.
 - Don't yield mid-task unless genuinely blocked. Execute the plan without waiting for confirmation.
 - Before reporting: check `git_diff` (only intended files changed), no debug/TODOs left in, diagnostics clean.
 - Do not commit, push, or re-scaffold. Stage files only when a rebase seed asks you to resolve conflicts; then continue the rebase and leave the branch clean. Use relative paths inside this worktree.

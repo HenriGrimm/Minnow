@@ -323,7 +323,7 @@ describe('recovery — there is no recovery code', () => {
     const engine = createEngine({ boardId, effector: createScriptedEffector({}) });
     await engine.load();
     try {
-      const BOOT_GATE_SURFACE = new Set(['wasHeldAtLoad', 'resumeAfterGate']);
+      const BOOT_GATE_SURFACE = new Set(['wasHeldAtLoad', 'resumeAfterGate', 'checkRecovery']);
       for (const name of Object.keys(engine)) {
         if (BOOT_GATE_SURFACE.has(name)) continue;
         assert.doesNotMatch(

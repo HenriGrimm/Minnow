@@ -66,7 +66,7 @@ function ended(taskId, attemptId, role, outcome, extra = {}) {
 function stateFor(kind) {
   const base = [created(), makeEvent('board.started', { concurrency: 1 })];
   if (kind === 'initial') return derive(journal(...base));
-  if (kind === 'failure-aware') {
+  if (kind === 'failure-aware' || kind === 'diagnose') {
     return derive(
       journal(
         ...base,
@@ -201,6 +201,7 @@ describe('SEED_KINDS', () => {
       'fix',
       'rebase',
       'integration-fix',
+      'diagnose',
     ]);
   });
 });

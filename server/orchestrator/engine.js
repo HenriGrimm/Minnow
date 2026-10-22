@@ -4,6 +4,9 @@
 
 import { makeEvent } from './core/events.js';
 import { isQuotaExhaustedText } from '../generations/quota-error.js';
+import { boardFailure } from './failure.js';
+import { recoveryHold, recoverySpent } from './core/recovery.js';
+import { acquireBoardOwner } from './owner.js';
 import { resetTargets, rewindCascade } from './core/rewind.js';
 import { diffTaskChanges, taskEditBlocker } from './core/task-edit.js';
 import { planResync, resyncHasWork } from './core/plan-resync.js';
@@ -174,6 +177,8 @@ function reportWriterState(live) {
  * @property {(state: any, requested?: readonly string[]) => Iterable<string>} [reopenTargets]
  * @property {(state: any) => { task: unknown, wave?: unknown }} [buildIntegrationFixTask]
  * @property {number} [defaultConcurrency]
+ * @property {boolean} [recoveryEnabled]
+ * @property {(ctx: {id: string, state: import('./core/types').BoardState}) => Promise<void>} [onFinished]
  */
 
 /**
@@ -244,6 +249,8 @@ export function createEngine(options) {
 
   /** @type {Set<string>} */
   const journaledStarts = new Set();
+  const finalInputs = new Map();
+  const startingEngineRoles = new Set();
 
   /** @type {Map<string, AttemptEnd>} */
   const bufferedEnds = new Map();
@@ -253,6 +260,11 @@ export function createEngine(options) {
   const taskGenerations = new Map();
   let reportPending = false;
   let reportWriting = false;
+  let checkingPreflight = 0;
+  let releaseOwner = null;
+  const pendingStarts = new Set();
+  const startControllers = new Map();
+  const identityChecks = new Map();
 
   /**
    * @param {Record<string, unknown>[]} events
@@ -260,10 +272,21 @@ export function createEngine(options) {
    */
   async function append(events) {
     if (disposed || events.length === 0) return [];
-    const stamped =
-      events.length === 1
+    if (state?.recoveryVersion && events.some((event) => ['board.stopped', 'board.model.set', 'board.reopened', 'board.rewound', 'task.reset', 'task.updated', 'task.waived', 'task.abandoned'].includes(event.type))) {
+      for (const controller of startControllers.values()) controller.abort();
+    }
+    let stamped;
+    try {
+      stamped = events.length === 1
         ? [await journal.appendEvent(boardId, events[0], { now: clock.now })]
         : await journal.appendEvents(boardId, events, { now: clock.now });
+    } catch (error) {
+      // A failed batch may have persisted a valid prefix. Reconcile that prefix
+      // before another decision, rather than continuing from stale memory.
+      state = await journal.loadState(boardId);
+      highestSeq = await journal.readHighestSeq(boardId);
+      throw error;
+    }
     graph.foldInto(state, stamped);
     highestSeq = Number(stamped[stamped.length - 1].seq) || highestSeq;
     for (const event of stamped) {
@@ -276,6 +299,21 @@ export function createEngine(options) {
     }
     if (wantsTicking()) startTimer();
     return stamped;
+  }
+
+  async function prepareRecovery() {
+    if (!graph.recoveryEnabled || !state.recoveryVersion) return;
+    const revision = state.recoveryRevision;
+    checkingPreflight++;
+    try {
+      const result = await effector.preflight?.();
+      if (!disposed && revision === state.recoveryRevision) {
+        const events = graph.eventsForPreflight?.(result) ?? [];
+        if (events.length) await append(events);
+      }
+    } catch (error) {
+      if (!disposed && revision === state.recoveryRevision && state.status === 'running') await append([makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }) })]);
+    } finally { checkingPreflight--; }
   }
 
   /**
@@ -298,6 +336,7 @@ export function createEngine(options) {
   /** @returns {Promise<void>} */
   async function runOnce() {
     if (disposed || !state) return;
+    if (checkingPreflight) return;
     if (state.stopReason === 'paused') return;
 
     // A finished run is quiescent: extra ticks must not journal more events
@@ -308,6 +347,50 @@ export function createEngine(options) {
       return;
     }
 
+    if (state.status === 'running' && graph.recoveryEnabled && state.recoveryVersion) {
+      for (const hold of Object.values(state.recoveryHolds)) {
+        if ((hold.failure.identity || hold.failure.prerequisites?.length) && effector.recoveryReady && clock.now() >= (identityChecks.get(hold.key) ?? 0)) {
+          const revision = state.recoveryRevision;
+          identityChecks.set(hold.key, clock.now() + 30_000);
+          let ready = false;
+          try { ready = await effector.recoveryReady(hold); } catch {}
+          if (ready && !disposed && revision === state.recoveryRevision && state.status === 'running' && state.recoveryHolds[hold.key] === hold) {
+            if (hold.stage === 'preflight') {
+              try {
+                const result = await effector.preflight?.();
+                if (disposed || revision !== state.recoveryRevision || state.status !== 'running' || state.recoveryHolds[hold.key] !== hold) continue;
+                const events = graph.eventsForPreflight?.(result) ?? [];
+                if (events.length) await append(events);
+              } catch (error) {
+                if (!disposed && revision === state.recoveryRevision && state.status === 'running' && state.recoveryHolds[hold.key] === hold) await append([makeEvent('recovery.held', { hold: recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }) })]);
+                continue;
+              }
+            }
+            if (disposed || revision !== state.recoveryRevision || state.status !== 'running' || state.recoveryHolds[hold.key] !== hold) continue;
+            await append([makeEvent('recovery.released', { key: hold.key, observedAt: clock.now() })]);
+            continue;
+          }
+        }
+        if ((hold.attention && !hold.probe) || hold.retryAt > clock.now()) continue;
+        const revision = state.recoveryRevision;
+        if (hold.stage === 'preflight') {
+          try {
+            const result = await effector.preflight?.();
+            if (!disposed && revision === state.recoveryRevision && state.status === 'running') {
+              const events = graph.eventsForPreflight?.(result) ?? [];
+              if (events.length) await append(events);
+            }
+          }
+          catch (error) {
+            if (!disposed && revision === state.recoveryRevision && state.status === 'running') {
+              await append([makeEvent('recovery.held', { hold: { ...recoveryHold(state, { role: 'preflight', stage: 'preflight', failure: boardFailure({ message: error.message, failure: error.failure }, clock.now()), now: clock.now() }), ...(hold.probe ? { probe: true } : {}) } })]);
+            }
+            continue;
+          }
+        }
+        if (!disposed && revision === state.recoveryRevision && state.status === 'running') await append([makeEvent('recovery.released', { key: hold.key, observedAt: clock.now() })]);
+      }
+    }
     if (state.status === 'running') await journalImpliedDecisions();
 
     if (await reapVanished(effector.inspect())) {
@@ -344,6 +427,8 @@ export function createEngine(options) {
       // Teardown may dispose mid-write; do not journal into a removed home.
       if (disposed || highestSeq !== finishSeq) return;
       await append([...finish, ...reportEvents]);
+      try { await graph.onFinished?.({ id: boardId, state }); }
+      catch (error) { console.warn('[orchestrator] Completion cleanup deferred:', error.message); }
     }
   }
 
@@ -431,7 +516,7 @@ export function createEngine(options) {
   async function reapVanished(actual) {
     if (!state || !graph.reapVanished) return false;
     const live = new Set(actual.map((r) => r.attemptId));
-    const ended = graph.reapVanished(state, live, new Set(bufferedEnds.keys()));
+    const ended = graph.reapVanished(state, live, new Set(bufferedEnds.keys()), clock.now());
     if (!ended || ended.length === 0) return false;
     for (const event of ended) {
       const attemptId = typeof event.attemptId === 'string' ? event.attemptId : '';
@@ -455,18 +540,33 @@ export function createEngine(options) {
    * @param {import('./core/types').Desired} want
    * @returns {Promise<void>}
    */
-  async function startAttempt(want) {
+  function startAttempt(want) {
+    const operation = startAttemptImpl(want);
+    pendingStarts.add(operation);
+    return operation.finally(() => pendingStarts.delete(operation));
+  }
+
+  async function startAttemptImpl(want) {
     const key = `${want.role}:${want.taskId ?? ''}`;
     const generation = taskGenerations.get(want.taskId) ?? 0;
+    const revision = state.recoveryRevision;
+    const integrationSha = state.integrationSha;
 
     /** @type {{ attemptId: string, worktree?: string, discarded?: Record<string, unknown>[], gitInitialized?: Record<string, unknown> }} */
     let handle;
+    const startController = new AbortController();
+    startControllers.set(key, startController);
+    if (state.recoveryVersion && !isAgentRole(want.role)) startingEngineRoles.add(key);
     try {
-      handle = await effector.start(want);
+      handle = await effector.start(want, { signal: startController.signal });
     } catch (err) {
+      if (disposed || startController.signal.aborted || revision !== state.recoveryRevision) return;
       const message = /** @type {Error} */ (err)?.message ?? String(err);
       const consecutive = (startFailures.get(key)?.consecutive ?? 0) + 1;
       startFailures.set(key, { consecutive, message });
+      if (graph.recoveryEnabled && state.recoveryVersion && !disposed && revision === state.recoveryRevision) {
+        await append([makeEvent('recovery.held', { hold: recoveryHold(state, { taskId: want.taskId, role: want.role, stage: 'start', failure: boardFailure({ message, failure: err?.failure }, clock.now()), now: clock.now() }) })]);
+      }
       emitError({ boardId, taskId: want.taskId ?? null, role: want.role, message, consecutive });
       if (consecutive === 1) {
         console.warn(
@@ -475,15 +575,23 @@ export function createEngine(options) {
         );
       }
       return;
+    } finally {
+      if (startControllers.get(key) === startController) startControllers.delete(key);
+      startingEngineRoles.delete(key);
     }
     startFailures.delete(key);
 
-    if (disposed || generation !== (taskGenerations.get(want.taskId) ?? 0)) {
+    if (disposed || generation !== (taskGenerations.get(want.taskId) ?? 0) || revision !== state.recoveryRevision) {
       await effector.stop(handle.attemptId);
       return;
     }
 
-    if (!isAgentRole(want.role)) return;
+    if (want.role === 'final') finalInputs.set(handle.attemptId, integrationSha);
+    if (!isAgentRole(want.role)) {
+      const early = bufferedEnds.get(handle.attemptId);
+      if (early) { bufferedEnds.delete(handle.attemptId); await handleAttemptEnd(early); }
+      return;
+    }
 
     const events = graph.eventsForStart
       ? graph.eventsForStart(want, handle)
@@ -512,6 +620,10 @@ export function createEngine(options) {
    */
   async function handleAttemptEnd(end) {
     if (disposed || !state) return;
+    if (!isAgentRole(end.role) && startingEngineRoles.has(`${end.role}:${end.taskId ?? ''}`)) {
+      bufferedEnds.set(end.attemptId, end);
+      return;
+    }
 
     if (isAgentRole(end.role) && !journaledStarts.has(end.attemptId)) {
       if (isAlreadyEnded(end.attemptId)) {
@@ -526,16 +638,22 @@ export function createEngine(options) {
       return;
     }
     journaledStarts.delete(end.attemptId);
+    if (end.role === 'final' && finalInputs.has(end.attemptId)) {
+      end = { ...end, evidence: { integrationSha: finalInputs.get(end.attemptId), ...end.evidence } };
+      finalInputs.delete(end.attemptId);
+    }
 
+    const revision = state.recoveryRevision;
     const events = graph.eventsForAttemptEnd
-      ? await graph.eventsForAttemptEnd(end, { id: boardId, state })
+      ? await graph.eventsForAttemptEnd(end, { id: boardId, state, now: clock.now() })
       : [];
+    if (disposed || (state.recoveryVersion && revision !== state.recoveryRevision)) return;
     if (events.length > 0) await append(events);
 
     // A spent provider allowance is not the task's fault and will not clear by
     // retrying. Halt the run so its tasks stay resumable instead of being
     // abandoned one wasted attempt at a time.
-    if (state.status === 'running' && isQuotaEnd(end)) {
+    if (state.status === 'running' && !state.recoveryVersion && isQuotaEnd(end)) {
       console.warn(
         `[orchestrator] ${boardId}: stopping — the model provider is out of usage ` +
           `(${end.summary ?? 'no detail'})`,
@@ -613,8 +731,10 @@ export function createEngine(options) {
     /** @returns {Promise<void>} */
     async load() {
       state = await journal.loadState(boardId);
-      highestSeq = await journal.readHighestSeq(boardId);
       if (disposed) return;
+      if (graph.recoveryEnabled && state.recoveryVersion && journal === diskJournal && !releaseOwner) releaseOwner = await acquireBoardOwner(boardId);
+      highestSeq = await journal.readHighestSeq(boardId);
+      if (disposed) { releaseOwner?.(); releaseOwner = null; return; }
       const stoppedEarly = state.stopReason === 'user' || state.stopReason === 'quota';
       if (graph.writeReport && (state.finished || stoppedEarly)) {
         reportPending = !graph.hasReport?.(await journal.readEvents(boardId));
@@ -632,8 +752,12 @@ export function createEngine(options) {
           );
         }
       }
+      if (state.finished && graph.onFinished) {
+        try { await graph.onFinished({ id: boardId, state }); }
+        catch (error) { console.warn('[orchestrator] Completion cleanup deferred:', error.message); }
+      }
       if (state.status === 'running') {
-        if (shouldHoldBoardResume(boardId)) heldAtLoad = true;
+        if (!state.recoveryVersion && shouldHoldBoardResume(boardId)) heldAtLoad = true;
         else startTimer();
       }
     },
@@ -839,12 +963,50 @@ export function createEngine(options) {
      * @param {number} concurrency
      * @returns {Promise<void>}
      */
-    async startBoard(concurrency) {
+    async startBoard(concurrency, options = {}) {
       if (!state) throw new Error('engine not loaded');
       if (state.finished) return false;
-      await append([makeEvent('board.started', { concurrency })]);
+      if (graph.recoveryEnabled && options.recovery && journal === diskJournal && !releaseOwner) releaseOwner = await acquireBoardOwner(boardId);
+      if (graph.recoveryEnabled && options.recovery && !state.recoveryVersion) {
+        const failed = new Set([...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && task.abandonedReason && task.abandonedReason !== 'user').map(task => task.id));
+        const taskIds = [...state.tasks.values()].filter(task => !task.waived && !task.mergedSha && (failed.has(task.id) || failed.has(task.skippedBy))).map(task => task.id);
+        if (taskIds.length) await append([makeEvent('board.reopened', { taskIds, reason: 'recovery-policy-upgrade' })]);
+      }
+      await append([makeEvent('board.started', { concurrency, ...(graph.recoveryEnabled && options.recovery ? { recoveryVersion: 1, ...(options.limits ? { recoveryLimits: options.limits } : {}) } : {}) })]);
+      if (state.recoveryHolds?.['preflight:']?.stage === 'budget') {
+        const spent = recoverySpent(state);
+        if (spent < state.recoveryLimits.board) await append([makeEvent('recovery.released', { key: 'preflight:' })]);
+      }
+      await prepareRecovery();
       effector.setPaused?.(state.stopReason === 'paused');
       startTimer();
+      await tick();
+      return true;
+    },
+
+    /** A prerequisite acknowledgement rechecks setup and releases one held step.
+     * The next real request still passes shared admission and all resource limits. */
+    async checkRecovery(key, limits) {
+      if (!graph.recoveryEnabled || state.status !== 'running' || !state.recoveryVersion) return false;
+      const hold = state.recoveryHolds[key];
+      if (!hold) return false;
+      const revision = state.recoveryRevision;
+      if (hold.failure.prerequisites?.length && !await effector.recoveryReady?.(hold)) return false;
+      let prepared;
+      try { prepared = await effector.preflight?.(); }
+      catch { return false; }
+      if (disposed || revision !== state.recoveryRevision || state.recoveryHolds[key] !== hold) return false;
+      const preflightEvents = graph.eventsForPreflight?.(prepared) ?? [];
+      if (preflightEvents.length) await append(preflightEvents);
+      // Budget exhaustion requires changed scope/resources, not an unlimited Retry button.
+      if (/budget-exhausted/.test(hold.failure.message)) {
+        if (!limits) return false;
+        const taskFailures = hold.taskId ? state.tasks.get(hold.taskId)?.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.outcome !== 'pass').length ?? 0 : 0;
+        const eligible = hold.stage === 'budget' ? limits.board > recoverySpent(state) : hold.role === 'final' ? limits.final > state.finalRepairs.length : limits.task > taskFailures;
+        if (!eligible) return false;
+        await append([makeEvent('board.started', { concurrency: state.concurrency, recoveryVersion: state.recoveryVersion, recoveryLimits: limits })]);
+      }
+      await append([makeEvent('recovery.released', { key, observedAt: clock.now(), by: 'user' })]);
       await tick();
       return true;
     },
@@ -1045,7 +1207,7 @@ export function createEngine(options) {
 
     /**
      * Reopen failed work after a finished run.
-     * @param {{ taskIds?: string[], concurrency?: number }} [opts]
+     * @param {{ taskIds?: string[], concurrency?: number, recovery?: boolean, limits?: { task: number, final: number, board: number } }} [opts]
      * @param {string} [reason]
      * @returns {Promise<{ ok: boolean, taskIds: string[], reason?: string }>}
      */
@@ -1075,11 +1237,13 @@ export function createEngine(options) {
           : Number.isSafeInteger(state.concurrency) && state.concurrency >= 1
             ? state.concurrency
             : fallbackN;
+      if (graph.recoveryEnabled && opts.recovery && journal === diskJournal && !releaseOwner) releaseOwner = await acquireBoardOwner(boardId);
       events.push(
         makeEvent('board.reopened', { taskIds: targets, reason: String(reason ?? 'user') }),
-        makeEvent('board.started', { concurrency }),
+        makeEvent('board.started', { concurrency, ...(graph.recoveryEnabled && opts.recovery ? { recoveryVersion: 1, ...(opts.limits ? { recoveryLimits: opts.limits } : {}) } : {}) }),
       );
       await append(events);
+      await prepareRecovery();
       startTimer();
       await tick();
       return { ok: true, taskIds: targets };
@@ -1113,12 +1277,20 @@ export function createEngine(options) {
       if (disposed) return;
       disposed = true;
       lifecycle.abort();
+      for (const controller of startControllers.values()) controller.abort();
       stopTimer();
       subscribers.clear();
-      for (const attempt of effector.inspect()) {
-        void effector.stop(attempt.attemptId).catch((err) => {
+      const stopping = effector.inspect().map((attempt) => effector.stop(attempt.attemptId).catch((err) => {
           console.warn(`[orchestrator] ${boardId}: attempt cancellation failed:`, err);
-        });
+          throw err;
+        }));
+      if (stopping.length || pendingStarts.size) {
+        void Promise.allSettled([...stopping, ...pendingStarts]).then(() => {
+          if (effector.inspect().length === 0) { releaseOwner?.(); releaseOwner = null; }
+        }).catch(() => {});
+      } else {
+        releaseOwner?.();
+        releaseOwner = null;
       }
     },
   };

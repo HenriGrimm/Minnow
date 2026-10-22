@@ -27,13 +27,16 @@ import { subscribeErrors, subscribeLive } from './live-events.js';
 import { readTranscript } from './transcripts.js';
 import { readCommitFileDiff, readCommitFileStats } from './task-files.js';
 import { cleanupBoardWorktrees } from '../worktree/worktree-ops.js';
-import { resolveSafePath } from '../runtime/path-access.js';
+import { resolveSafePath, runWithToolContext } from '../runtime/path-access.js';
 import { attachTouchesExpansion, listRepoFiles } from './touches.js';
 import { validateBoardPlan } from './validate-plan.js';
 import { normaliseTaskChanges } from './core/task-edit.js';
 import { boardBelongsToWorkspace } from './workspace-scope.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { runProcess } from '../process-runner.js';
+import { readConfigJson } from '../config/store.js';
+import { boardFailure } from './failure.js';
+import { recoveryHold } from './core/recovery.js';
 import { REASONING_EFFORT_OPTIONS, isReasoningEffortOption } from '../runner/reasoning-effort.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
@@ -57,6 +60,7 @@ const MUTATING_ROUTES = new Set([
   'model',
   'rename',
   'delete',
+  'recovery',
 ]);
 
 /**
@@ -64,6 +68,16 @@ const MUTATING_ROUTES = new Set([
  * @type {(boardId?: string) => import('./engine.js').Effector}
  */
 let makeEffector = () => createScriptedEffector({});
+
+function recoveryLimits(meta = {}) {
+  if (!meta || typeof meta !== 'object') meta = {};
+  const bounded = (value, fallback, max) => Number.isFinite(value) ? Math.min(max, Math.max(1, Math.round(value))) : fallback;
+  return {
+    task: bounded((meta.maxBuildAttempts ?? 2) + (meta.maxTestAttempts ?? 3), 5, 20),
+    final: bounded(meta.maxFinalTestAttempts, 3, 20),
+    board: bounded(meta.recoveryAttemptBudget, 100, 1000),
+  };
+}
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -73,6 +87,19 @@ let makeEffector = () => createScriptedEffector({});
  */
 export function setEffectorFactory(factory) {
   makeEffector = factory;
+}
+
+/** Discover only boards whose explicit continuation policy permits unattended boot. */
+export async function bootBoardRuntime() {
+  for (const boardId of await listBoards()) {
+    try {
+      const state = await loadState(boardId);
+      if (!state.recoveryVersion || state.status !== 'running' || state.finished || !state.workspacePath) continue;
+      await runWithToolContext(() => getEngine(boardId, () => makeEffector(boardId)), { workspaceRoot: state.workspacePath });
+    } catch (error) {
+      console.warn(`[orchestrator] ${boardId}: could not resume at boot:`, error.message);
+    }
+  }
 }
 
 /**
@@ -168,6 +195,7 @@ export const ROUTES = [
   { method: 'GET', pattern: /^\/api\/boards\/([^/]+)\/journal$/, name: 'journal' },
   { method: 'GET', pattern: /^\/api\/boards\/([^/]+)\/report$/, name: 'report' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/start$/, name: 'start' },
+  { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/recovery$/, name: 'recovery' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/stop$/, name: 'stop' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/pause$/, name: 'pause' },
   { method: 'POST', pattern: /^\/api\/boards\/([^/]+)\/concurrency$/, name: 'concurrency' },
@@ -322,7 +350,8 @@ async function dispatch(route, req, res) {
           concurrency: state.concurrency,
           taskCount: state.tasks.size,
           mergedCount: [...state.tasks.values()].filter(t => t.phase === 'merged').length,
-          attentionCount: [...state.tasks.values()].filter(needsAttention).length,
+          attentionCount: [...state.tasks.values()].filter(needsAttention).length + Object.values(state.recoveryHolds).filter((hold) => hold.attention).length,
+          waitingCount: Object.keys(state.recoveryHolds).length,
           finalTestFailed: state.finalTest?.outcome === 'fail',
           finished: state.finished,
         });
@@ -412,17 +441,17 @@ async function dispatch(route, req, res) {
           state: serialiseState(engine.getState()),
         });
       }
-      try {
-        await engine.preflight();
-      } catch (err) {
-        return json(res, 400, {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-          state: serialiseState(engine.getState()),
-        });
-      }
-      await engine.startBoard(concurrency);
+      const meta = (await readConfigJson('config.json')).autopilot ?? {};
+      await engine.startBoard(concurrency, { recovery: true, limits: recoveryLimits(meta) });
       return json(res, 200, { ok: true, state: serialiseState(engine.getState()) });
+    }
+
+    case 'recovery': {
+      const body = await readJsonBody(req);
+      if (typeof body.key !== 'string') return json(res, 400, { ok: false, error: 'recovery key is required' });
+      const engine = await getEngine(boardId, () => makeEffector(boardId));
+      const ok = await engine.checkRecovery(body.key, recoveryLimits((await readConfigJson('config.json')).autopilot));
+      return json(res, ok ? 200 : 409, { ok, state: serialiseState(engine.getState()) });
     }
 
     case 'model': {
@@ -682,16 +711,9 @@ async function dispatch(route, req, res) {
         return json(res, 400, { ok: false, error: 'concurrency must be an integer >= 1' });
       }
       const engine = await getEngine(boardId, () => makeEffector(boardId));
-      try {
-        await engine.preflight();
-      } catch (err) {
-        return json(res, 400, {
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-          state: serialiseState(engine.getState()),
-        });
-      }
       const result = await engine.reopen({
+        recovery: true,
+        limits: recoveryLimits((await readConfigJson('config.json'))?.autopilot),
         ...(taskIds && taskIds.length > 0 ? { taskIds } : {}),
         ...(concurrency !== undefined ? { concurrency } : {}),
       });
@@ -884,6 +906,16 @@ function deriveBoardId(requested, planName, planPath) {
  */
 async function streamEvents(req, res, boardId) {
   if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
+  let closed = false;
+  let heartbeat = null;
+  let unsubscribe = () => {};
+  let unsubscribeLive = () => {};
+  let unsubscribeErrors = () => {};
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
+  if (req.destroyed || res.destroyed) { cleanup(); return; }
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -906,6 +938,7 @@ async function streamEvents(req, res, boardId) {
    * @param {number} [id]
    */
   const send = (type, data, id) => {
+    if (closed || res.destroyed) return false;
     let frame = '';
     if (id !== undefined) frame += `id: ${id}\n`;
     frame += `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -918,6 +951,7 @@ async function streamEvents(req, res, boardId) {
   };
 
   const engine = await getEngine(boardId, () => makeEffector(boardId));
+  if (closed) return;
 
   /** @type {Record<string, unknown>[]} */
   let buffered = [];
@@ -933,11 +967,11 @@ async function streamEvents(req, res, boardId) {
     sentThrough = seq;
     if (!send('event', event, seq)) cleanup();
   };
-  const unsubscribe = engine.subscribe(deliver);
-  const unsubscribeLive = subscribeLive(boardId, (payload) => {
+  unsubscribe = engine.subscribe(deliver);
+  unsubscribeLive = subscribeLive(boardId, (payload) => {
     if (!send('live', payload)) cleanup();
   });
-  const unsubscribeErrors = subscribeErrors(boardId, (payload) => {
+  unsubscribeErrors = subscribeErrors(boardId, (payload) => {
     if (!send('error', payload)) cleanup();
   });
 
@@ -980,15 +1014,16 @@ async function streamEvents(req, res, boardId) {
     });
   }
 
-  const heartbeat = setInterval(() => {
+  if (closed) return;
+  heartbeat = setInterval(() => {
     try {
       res.write(': ping\n\n');
     } catch {
       cleanup();
     }
   }, HEARTBEAT_MS);
+  heartbeat.unref?.();
 
-  let closed = false;
   function cleanup() {
     if (closed) return;
     closed = true;
@@ -1002,10 +1037,6 @@ async function streamEvents(req, res, boardId) {
     }
   }
 
-  req.on('close', cleanup);
-  req.on('error', cleanup);
-  res.on('close', cleanup);
-  res.on('error', cleanup);
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────

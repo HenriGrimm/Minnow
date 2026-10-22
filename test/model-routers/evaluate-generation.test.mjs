@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -13,6 +13,7 @@ import { RouterScheduler } from '../../server/model-routers/scheduler.js';
 import { handleRouterRequest } from '../../server/model-routers/routes.js';
 import { writeCapabilities } from '../../server/providers/capabilities-store.js';
 import { invalidateRouterProvider } from '../../server/model-routers/availability.js';
+import { getAllowanceTracker } from '../../server/generations/allowance.js';
 
 let home; let upstream; let workspace;
 let decisionMode = 'ok';
@@ -74,6 +75,13 @@ before(async () => {
       entries: ['small-4b', 'big-70b'].map((id) => ({ id, modelId: id, providerId: 'router-eval', enabled: true, concurrencyLimit: 2 })),
     }],
   });
+});
+beforeEach(async () => {
+  // Each scenario controls its own simulated outage; router assignments still
+  // persist across scenarios, but another scenario's outage must not gate it.
+  const tracker = await getAllowanceTracker();
+  for (const [key, row] of tracker.rows) if (row.kind === 'unavailable') tracker.rows.delete(key);
+  tracker.probes.clear();
 });
 after(async () => { await workspace?.flush(); deleteGenerationsForProviderShutdown(); upstream.closeAllConnections(); await new Promise((resolve) => upstream.close(resolve)); await rmTestHome(home); });
 

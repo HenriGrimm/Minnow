@@ -1537,7 +1537,11 @@ describe('engine - merge and skip retained work', { concurrency: 1 }, () => {
     const { engine } = await harness({ tasks: [task('A'), task('B', { dependsOn: ['A'] })], script: [{ match: { role: 'merge' }, emit: { outcome: 'conflicted', files: ['file.txt'] } }] });
     await abandoned(engine);
     await engine.mergeAndSkipTask('A');
-    await settle();
+    for (let i = 0; i < 100; i += 1) {
+      await settle();
+      if (!engine.getState().tasks.get('A').attempts.some((a) => a.role === 'merge' && !a.ended)) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
     const card = engine.getState().tasks.get('A');
     assert.equal(card.waived, false);
     assert.equal(card.mergedSha, null);

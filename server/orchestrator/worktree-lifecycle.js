@@ -25,7 +25,7 @@ import {
 } from '../worktree/worktree-ops.js';
 import { initializeWorkspaceGit } from '../workspace/initialize-git.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
-import { loadState } from './journal.js';
+import { boardDir, loadState } from './journal.js';
 
 /** Integration slot name used by `getWorktreeSlotPath`. Never reclaimed as an orphan. */
 export const INTEGRATION_SLOT = 'integration';
@@ -453,14 +453,29 @@ export async function allocateAttemptWorktree(input) {
   }
   const gitInitialized = integration.gitInitialized;
 
-  const reuse = wantsReuse(desired);
+  const reuse = wantsReuse(desired) || state.recoveryVersion > 0;
   const previous = previousWorktreeForTask(state, taskId);
 
   if (reuse && previous) {
     // Keep live UUID (or other) paths; only name a slot when the journal path is gone.
     const slotId = slotIdFromWorktreePath(boardId, previous) ?? slotIdForTask(state, taskId);
+    const pendingPath = path.join(boardDir(boardId), 'recovery', `restore-${sanitizePathSegment(slotId)}.json`);
+    const finishRestore = async (target) => {
+      let pending;
+      try { pending = JSON.parse(await fs.readFile(pendingPath, 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') return; throw error; }
+      if (pending.worktree !== target) throw new Error('Recovery restore target changed');
+      const { restoreCheckpoint } = await import('./checkpoint.js');
+      await restoreCheckpoint({ boardId, attemptId: pending.attemptId, worktree: target, transaction: pending.transaction });
+      await fs.rm(pendingPath);
+    };
+    let exists = false;
     try {
       await fs.access(previous);
+      exists = true;
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (exists) {
+      if (state.recoveryVersion) await finishRestore(previous);
       return {
         ok: true,
         path: previous,
@@ -469,7 +484,17 @@ export async function allocateAttemptWorktree(input) {
         discarded,
         ...(gitInitialized ? { gitInitialized } : {}),
       };
-    } catch {
+    } else {
+      const checkpoint = state.recoveryVersion && [...(state.tasks.get(taskId)?.attempts ?? [])].reverse().find((attempt) => attempt.evidence?.checkpoint);
+      if (checkpoint) {
+        await fs.mkdir(path.dirname(pendingPath), { recursive: true });
+        try { await fs.access(pendingPath); }
+        catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+          const { writeRecoveryJson } = await import('./checkpoint.js');
+          await writeRecoveryJson(pendingPath, { worktree: previous, attemptId: checkpoint.evidence.checkpoint.attemptId, transaction: `${input.attemptId}:${Date.now()}` });
+        }
+      }
       const created = await createWorktree({
         boardId,
         slotId,
@@ -486,6 +511,7 @@ export async function allocateAttemptWorktree(input) {
           error: created.output || created.error || 'createWorktree failed',
         };
       }
+      if (state.recoveryVersion) await finishRestore(created.path);
       return {
         ok: true,
         path: created.path,

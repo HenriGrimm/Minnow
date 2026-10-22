@@ -9,11 +9,11 @@ export interface TurnUsage {
 }
 
 export type TurnResult =
-  | { outcome: 'pass'; summary: string; evidence: string[]; usage?: TurnUsage }
+  | { outcome: 'pass'; summary: string; evidence: string[]; checks?: Array<{ id: string; outcome: string; evidence: string[] }>; usage?: TurnUsage }
   | { outcome: 'fail'; summary: string; blockers: string[]; usage?: TurnUsage }
-  | { outcome: 'blocked'; summary: string; needs: string[]; usage?: TurnUsage }
+  | { outcome: 'blocked'; summary: string; needs: string[]; prerequisites?: Array<Record<string, unknown>>; usage?: TurnUsage }
   | { outcome: 'no_report'; usage?: TurnUsage }
-  | { outcome: 'crashed'; error: string; providerUnreachable?: true; usage?: TurnUsage }
+  | { outcome: 'crashed'; error: string; providerUnreachable?: true; failure?: Record<string, unknown>; quotaExceeded?: boolean; usage?: TurnUsage }
   | { outcome: 'timeout'; usage?: TurnUsage };
 
 export type AttemptResult = TurnResult;

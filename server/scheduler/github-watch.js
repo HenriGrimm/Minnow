@@ -7,6 +7,7 @@ function needsAttention(message) {
 
 export function boardReadyForPullRequest(state) {
   const tasks = [...state.tasks.values()];
+  if (state.recoveryVersion && (Object.keys(state.recoveryHolds ?? {}).length || tasks.some(task => task.waived) || !state.integrationSha || state.finalTest?.evidence?.integrationSha !== state.integrationSha)) return false;
   return state.finished === true && state.finalTest?.outcome === 'pass'
     && tasks.length > 0 && tasks.every(task => task.phase === 'merged');
 }

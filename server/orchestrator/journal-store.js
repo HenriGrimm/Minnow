@@ -91,6 +91,12 @@ export function createJournalStore(options) {
 
   let snapshotWrites = 0;
 
+  async function durableAppend(file, text) {
+    const handle = await fs.open(file, 'a');
+    try { await handle.writeFile(text, 'utf8'); await handle.sync(); }
+    finally { await handle.close(); }
+  }
+
   /**
    * @param {string} id
    * @returns {string}
@@ -363,7 +369,7 @@ export function createJournalStore(options) {
       assertValid(stamped);
 
       await fs.mkdir(dirOf(safe), { recursive: true });
-      await fs.appendFile(journalOf(safe), `${JSON.stringify(stamped)}\n`, 'utf8');
+      await durableAppend(journalOf(safe), `${JSON.stringify(stamped)}\n`);
       await recordTail(safe, seq);
 
       if (shouldSnapshot?.(seq) && makeSnapshot) {
@@ -409,10 +415,9 @@ export function createJournalStore(options) {
       if (stampedAll.length === 0) return [];
 
       await fs.mkdir(dirOf(safe), { recursive: true });
-      await fs.appendFile(
+      await durableAppend(
         journalOf(safe),
         `${stampedAll.map((e) => JSON.stringify(e)).join('\n')}\n`,
-        'utf8',
       );
       await recordTail(safe, seq);
 

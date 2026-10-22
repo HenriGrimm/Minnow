@@ -144,6 +144,7 @@ function terminalEventPayload(state) {
   if (state.quotaExceeded) {
     payload.quotaExceeded = true;
   }
+  if (state.failure) payload.failure = state.failure;
   if (state.fallbackUsed) {
     payload.fallbackUsed = true;
     payload.chosenProviderId = state.chosenProviderId;
@@ -487,6 +488,7 @@ function rehydrateFromCheckpoint(id) {
     finishedAt: typeof meta.finishedAt === 'string' ? meta.finishedAt : null,
     errorMessage: typeof meta.errorMessage === 'string' ? meta.errorMessage : null,
     quotaExceeded: meta.quotaExceeded === true,
+    ...(meta.failure ? { failure: meta.failure } : {}),
     candidates: [],
     activeCandidateIndex: 0,
     failoverDisabled: true,

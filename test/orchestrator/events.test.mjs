@@ -28,6 +28,9 @@ const SAMPLES = {
     waves: [{ n: 1, name: 'Foundations' }],
   },
   'board.started': { concurrency: 2 },
+  'recovery.held': { hold: { key: 'builder:A', taskId: 'A', role: 'builder', attention: false, retryAt: 6000, observedAt: 1000, failure: { category: 'unavailable', fingerprint: '503', message: 'Unavailable' } } },
+  'recovery.released': { key: 'builder:A' },
+  'final.repair.created': { taskId: 'AUTO-FIX-1', fingerprint: 'typecheck' },
   'board.stopped': { reason: 'user' },
   'task.attempt.started': { taskId: 'W1-A', attemptId: 'a1', role: 'builder' },
   'task.attempt.ended': {
@@ -37,6 +40,7 @@ const SAMPLES = {
     outcome: 'pass',
   },
   'merge.enqueued': { taskId: 'W1-A' },
+  'merge.rebased': { taskId: 'W1-A', sha: 'rebased' },
   'merge.succeeded': { taskId: 'W1-A', sha: 'deadbeef' },
   'merge.conflicted': { taskId: 'W1-A', files: ['src/a.ts'] },
   'merge.failed': { taskId: 'W1-A', reason: 'verify-failed' },
@@ -83,8 +87,8 @@ const sample = (type) => makeEvent(type, { ...SAMPLES[type] });
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 
 describe('event vocabulary', () => {
-  it('declares exactly the twenty-two types', () => {
-    assert.equal(EVENT_TYPES.length, 22);
+  it('declares the complete versioned vocabulary', () => {
+    assert.equal(EVENT_TYPES.length, 26);
     assert.deepEqual(EVENT_TYPES, Object.keys(SAMPLES));
   });
 

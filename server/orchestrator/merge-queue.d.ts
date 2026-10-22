@@ -37,7 +37,7 @@ export interface MergeAttemptEnd {
   attemptId: string;
   taskId: string | null;
   role: 'merge';
-  outcome: 'pass' | 'conflicted';
+  outcome: 'pass' | 'conflicted' | 'rebased' | 'merge_failed';
   sha?: string;
   files?: string[];
   /** Integration tip before this merge — optional field on the journal event. */

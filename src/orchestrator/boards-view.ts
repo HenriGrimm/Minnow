@@ -80,6 +80,7 @@ import { getActiveChat } from '../state/sessions';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 import { boardUsage } from './board-usage';
 import { attemptInterruption } from './attempt-status';
+import { renderRecovery } from './recovery-view';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -568,7 +569,7 @@ function renderListItem(board: BoardSummary): HTMLElement {
   const meta = el('span', 'ov2__board-meta');
   meta.appendChild(
     pill(
-      board.finished ? 'finished' : board.stopReason === 'paused' ? 'paused' : board.status,
+      board.finished ? 'finished' : board.stopReason === 'paused' ? 'paused' : board.status === 'running' && board.attentionCount ? 'action needed' : board.status === 'running' && board.waitingCount ? 'recovering' : board.status,
       board.finished ? 'good' : board.status === 'running' ? 'live' : 'neutral',
     ),
   );
@@ -1271,6 +1272,12 @@ function paintBoard(): void {
   detachV2BoardHeaderInstruments();
   pane.replaceChildren();
   pane.appendChild(renderBoardHeader(state, connected, renderControls(state)));
+  const recoveryClient = client;
+  const recovery = renderRecovery(state, async (key) => {
+    if (!recoveryClient?.checkRecovery) throw new Error('Reconnect to check recovery.');
+    await recoveryClient.checkRecovery(key);
+  });
+  if (recovery) pane.appendChild(recovery);
   const headerControls = pane.querySelector('.board-header__controls');
   if (headerControls instanceof HTMLElement) {
     attachV2BoardHeaderInstruments(headerControls, state, {

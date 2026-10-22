@@ -12,8 +12,9 @@ export const systemClock: {
 };
 
 export interface Effector {
+  recoveryReady?(hold: import('./core/types').RecoveryHold): Promise<boolean>;
   inspect(): Array<{ taskId: string | null; role: string; attemptId: string; handle?: unknown }>;
-  start(desired: Desired): Promise<{
+  start(desired: Desired, options?: { signal?: AbortSignal }): Promise<{
     attemptId: string;
     worktree?: string;
     discarded?: Record<string, unknown>[];
@@ -45,6 +46,7 @@ export interface AttemptEnd {
  * Fold + scheduler + the predicates a tick calls.
  */
 export interface Graph {
+  onFinished?: (ctx: { id: string; state: BoardState }) => Promise<void>;
   foldInto(state: unknown, events: Iterable<unknown>): unknown;
   plan(
     state: unknown,
@@ -54,7 +56,7 @@ export interface Graph {
   eventsForRunComplete?(state: unknown): Record<string, unknown>[];
   isAgentRole?(role: string): boolean;
   isAlreadyEnded?(state: unknown, attemptId: string): boolean;
-  reapVanished?(state: unknown, live: Set<string>, buffered: Set<string>): Record<string, unknown>[];
+  reapVanished?(state: unknown, live: Set<string>, buffered: Set<string>, now?: number): Record<string, unknown>[];
   eventsForStart?(
     want: Desired,
     handle: {
@@ -69,7 +71,7 @@ export interface Graph {
   ): Record<string, unknown>[];
   eventsForAttemptEnd?(
     end: AttemptEnd,
-    ctx: { id: string; state: unknown },
+    ctx: { id: string; state: unknown; now?: number },
   ): Promise<Record<string, unknown>[]> | Record<string, unknown>[];
   onLoad?(ctx: { id: string; state: unknown }): Promise<Record<string, unknown>[]>;
   writeReport?(ctx: {
@@ -91,6 +93,7 @@ export interface Graph {
   reopenTargets?(state: unknown, requested?: readonly string[]): Iterable<string>;
   buildIntegrationFixTask?(state: unknown): { task: unknown; wave?: unknown };
   defaultConcurrency?: number;
+  recoveryEnabled?: boolean;
 }
 
 export interface CreateEngineOptions {
@@ -123,7 +126,8 @@ export interface Engine {
   /** Skip by hand: dependents treat the card as done. */
   mergeAndSkipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
   skipTask(taskId: string): Promise<{ ok: boolean; reason?: string }>;
-  startBoard(concurrency: number): Promise<boolean | void>;
+  startBoard(concurrency: number, options?: { recovery?: boolean; limits?: { task: number; final: number; board: number } }): Promise<boolean | void>;
+  checkRecovery(key: string, limits?: { task: number; final: number; board: number }): Promise<boolean>;
   pauseBoard(): Promise<boolean>;
   stopBoard(reason?: StopReason): Promise<void>;
   setConcurrency(concurrency: number): Promise<void>;
@@ -147,7 +151,7 @@ export interface Engine {
     reason?: string,
   ): Promise<{ ok: boolean; taskIds: string[]; reason?: string }>;
   reopen(
-    opts?: { taskIds?: string[]; concurrency?: number },
+    opts?: { taskIds?: string[]; concurrency?: number; recovery?: boolean; limits?: { task: number; final: number; board: number } },
     reason?: string,
   ): Promise<{ ok: boolean; taskIds: string[]; reason?: string }>;
   tick(): Promise<void>;

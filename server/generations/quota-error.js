@@ -21,6 +21,7 @@ export const QUOTA_EXHAUSTED_MARKERS = [
   'usage_limit_exceeded',
   "you've hit your limit",
   "you've hit your usage limit",
+  "you've hit your session limit",
   'you have hit your limit',
   'you have hit your usage limit',
   'you have reached your usage limit',
@@ -114,15 +115,39 @@ export function allowanceFailure(message, options = {}) {
     status: options.status ?? Number(/HTTP (\d{3})/i.exec(text)?.[1]), body: text, retryAfterMs: options.retryAfterMs,
   });
   const rate = !quota && (options.status === 429 || /429|rate.?limit|too many requests/i.test(text));
-  if (!quota && !rate) return null;
+  const unavailable = !quota && !rate && ([408, 425, 500, 502, 503, 504, 529].includes(options.status) || /(?:Upstream\s+)?HTTP (?:408|425|500|502|503|504|529)\b|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|endpoint.*unavailable/i.test(text));
+  if (!quota && !rate && !unavailable) return null;
   const retryAfterMs = options.retryAfterMs;
   const relative = /resets? in\s+(\d+(?:\.\d+)?)\s*(seconds?|minutes?|hours?|days?)/i.exec(text);
-  const relativeReset = relative ? Date.now() + Number(relative[1]) * ({ s: 1000, m: 60_000, h: 3600_000, d: 86400_000 }[relative[2][0].toLowerCase()]) : undefined;
+  const now = options.now ?? Date.now();
+  const relativeReset = relative ? now + Number(relative[1]) * ({ s: 1000, m: 60_000, h: 3600_000, d: 86400_000 }[relative[2][0].toLowerCase()]) : parseAllowanceResetTime(text, now);
   return {
-    kind: quota ? 'quota' : 'rate_limit',
+    kind: quota ? 'quota' : rate ? 'rate_limit' : 'unavailable',
     // Billing refusals are account-wide. Ambiguous usage caps stay model-scoped.
-    scope: options.scope || (options.status === 402 || /insufficient[_ ](?:quota|credits?)|out of credits|credit balance|billing hard limit|HTTP 402/i.test(text) ? 'provider' : 'model'),
+    scope: options.scope || (options.status === 402 || /ECONNREFUSED|EHOSTUNREACH|insufficient[_ ](?:quota|credits?)|out of credits|credit balance|billing hard limit|HTTP 402/i.test(text) ? 'provider' : 'model'),
     ...(Number.isFinite(options.resetAt ?? relativeReset) ? { resetAt: options.resetAt ?? relativeReset } : {}),
     ...(Number.isFinite(retryAfterMs) ? { retryAfterMs } : {}),
   };
+}
+
+/** CLI clock reset hints include a timezone, e.g. "resets 11pm (America/Los_Angeles)". */
+export function parseAllowanceResetTime(text, now = Date.now()) {
+  const match = /resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)/i.exec(String(text));
+  if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2] ?? 0) > 59) return undefined;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: match[4], year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    const parts = (at) => Object.fromEntries(formatter.formatToParts(at).map((part) => [part.type, Number(part.value)]));
+    const today = parts(now);
+    const hour = Number(match[1]) % 12 + (match[3].toLowerCase() === 'pm' ? 12 : 0);
+    for (let day = 0; day <= 1; day += 1) {
+      const local = Date.UTC(today.year, today.month - 1, today.day + day, hour, Number(match[2] ?? 0));
+      let candidate = local;
+      for (let iteration = 0; iteration < 4; iteration += 1) {
+        const value = parts(candidate);
+        candidate += local - Date.UTC(value.year, value.month - 1, value.day, value.hour, value.minute, value.second);
+      }
+      if (candidate > now) return candidate;
+    }
+  } catch { /* Unknown zones remain unknown; the shared cooldown still applies. */ }
+  return undefined;
 }

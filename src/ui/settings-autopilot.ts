@@ -92,7 +92,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.textContent = 'Choose how new boards run tasks and recover from failures. You can override these defaults on each board.';
+  lead.textContent = 'Choose how boards run tasks and recover from failures. Recovery limits are captured when a board starts.';
   shell.appendChild(lead);
 
   const content = el('div', 'settings-general__content');
@@ -184,7 +184,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   const testsBody = appendSettingsGroup(
     content,
     'Test & build retries',
-    'Global thresholds for per-task test/build failures and final integration tests.',
+    'Build and test allowances combine into each task’s repair budget. Provider outages and capacity waits do not spend that budget.',
     'agents.autopilot.retries',
     { emphasis: true },
   );
@@ -207,12 +207,14 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     step: '1',
     ariaLabel: 'Final test attempts',
   });
+  const recoveryBudget = createKvNumberInput(meta.recoveryAttemptBudget, { min: '1', max: '1000', step: '1', ariaLabel: 'Board recovery attempt budget' });
   testsBody.appendChild(
     createSettingsKvList(
       [
         { term: 'Per-task test attempts', value: taskAttempts.wrap },
         { term: 'Per-task build attempts', value: buildAttempts.wrap },
-        { term: 'Final test attempts', value: finalAttempts.wrap },
+        { term: 'Final repair rounds', value: finalAttempts.wrap },
+        { term: 'Board recovery budget', value: recoveryBudget.wrap },
       ],
       { className: 'settings-kv settings-kv--row' },
     ),
@@ -239,7 +241,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     el(
       'p',
       'settings-field-hint',
-      'Wall-clock cap for one builder or tester attempt. Hitting it ends the attempt as timed out, which retries or abandons the task like any other timeout. 5–1440 minutes; 0 turns it off.',
+      'Wall-clock cap for one builder or tester attempt. A timeout retains progress and enters bounded recovery. 5–1440 minutes; 0 turns the cap off.',
     ),
   );
 
@@ -285,7 +287,7 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
   const selfHealBody = appendSettingsGroup(
     content,
     'Self-heal & provisioning',
-    'How the AFK orchestrator handles task failures and infra setup. Worktree isolation is configured under Default isolation mode (git checkouts only — not host containment).',
+    'Legacy task-chat provisioning controls. Current boards use the recovery limits above and preserve work while waiting for prerequisites.',
     'agents.autopilot.selfHeal',
     { emphasis: true },
   );
@@ -398,6 +400,11 @@ export async function renderAutopilotSettingsSection(mount: HTMLElement): Promis
     );
     finalAttempts.input.value = String(value);
     void persist({ maxFinalTestAttempts: value });
+  });
+  recoveryBudget.input.addEventListener('change', () => {
+    const value = Math.min(1000, Math.max(1, Math.round(Number(recoveryBudget.input.value) || 100)));
+    recoveryBudget.input.value = String(value);
+    void persist({ recoveryAttemptBudget: value });
   });
   attemptLimitInput.addEventListener('change', () => {
     const minutes = Math.floor(Number(attemptLimitInput.value));

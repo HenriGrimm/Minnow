@@ -88,6 +88,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   cancelOrphanedRunnerGenerations();
   setEffectorFactory((boardId) => createRunnerEffector({ boardId }));
   armBoardResumeGate();
+  void import('../orchestrator/middleware.js').then(({ bootBoardRuntime }) => bootBoardRuntime()).catch(error => console.error('[orchestrator] boot recovery failed:', error.message));
   cancelOrphanedSubAgentGenerations();
   setAgentsEffectorFactory((parentChatId) => createSubAgentEffector({ parentChatId }));
   void bootAgentsRuntime();

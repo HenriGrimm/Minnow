@@ -11,6 +11,7 @@ import {
 } from './derive.js';
 import { bundleAbandonmentEvidence } from './evidence.js';
 import { decide, wantsSameWorktree } from './policy.js';
+import { held, OPERATIONAL_CATEGORIES, TASK_REPAIR_LIMIT } from './recovery.js';
 
 // ── Task actions ─────────────────────────────────────────────────────────────
 
@@ -35,14 +36,39 @@ export function nextAction(state, taskId) {
   if (!task) return { kind: 'none' };
   if (isSettled(task)) return { kind: 'none' };
   if (task.attempts.some((a) => !a.ended)) return { kind: 'none' };
+  if (held(state, taskId, 'builder') || held(state, taskId, 'tester') || held(state, taskId, 'merge')) return { kind: 'none' };
 
   const last = lastEndedAttempt(task);
   if (!last) {
     if (task.reopened?.resumeRole === 'tester') {
       return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true };
     }
-    const seedKind = task.reopened ? 'integration-fix' : 'initial';
+    const seedKind = task.reopened && !state.recoveryVersion ? 'integration-fix' : 'initial';
     return { kind: 'start', role: 'builder', seedKind, sameWorktree: false };
+  }
+
+  if (state.recoveryVersion && last.outcome !== 'pass') {
+    if (last.role === 'merge') {
+      if (last.outcome === 'rebased') return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true };
+      if (task.attempts.filter((attempt) => !attempt.retired && attempt.ended && attempt.role === 'merge' && !['pass', 'rebased'].includes(attempt.outcome)).length >= (state.recoveryLimits?.task ?? TASK_REPAIR_LIMIT)) {
+        return { kind: 'abandon', reason: 'repair-budget-exhausted', evidence: { summary: 'Repeated merge repairs did not resolve the failure. Review the recorded Git diagnosis.' } };
+      }
+      return { kind: 'start', role: last.outcome === 'conflicted' ? 'builder' : 'merge', seedKind: 'rebase', sameWorktree: true };
+    }
+    const failures = task.attempts.filter((attempt) => attempt.ended && !attempt.retired && attempt.outcome !== 'pass');
+    const operational = OPERATIONAL_CATEGORIES.includes(last.evidence?.failure?.category);
+    const repairFailures = failures.filter((attempt) => !OPERATIONAL_CATEGORIES.includes(attempt.evidence?.failure?.category));
+    const fingerprint = last.evidence?.failure?.fingerprint;
+    const repeated = fingerprint && repairFailures.filter((attempt) => attempt.evidence?.failure?.fingerprint === fingerprint);
+    const diagnosed = repeated && repeated.some((attempt) => attempt.seedKind === 'diagnose');
+    if (!operational && repairFailures.length >= (state.recoveryLimits?.task ?? TASK_REPAIR_LIMIT)) {
+      return { kind: 'abandon', reason: 'repair-budget-exhausted', evidence: { summary: last.summary, failures: repairFailures.length } };
+    }
+    return {
+      kind: 'start', role: operational ? last.role : 'builder',
+      seedKind: last.evidence?.failure?.category === 'environment' ? 'repair' : !operational && repeated?.length >= 2 && !diagnosed ? 'diagnose' : last.role === 'tester' ? (operational ? 'initial' : 'fix') : last.outcome === 'fail' ? 'failure-aware' : 'continue',
+      sameWorktree: true,
+    };
   }
 
   // Minnow restarted or the model server stayed down: the agent did nothing
@@ -78,7 +104,12 @@ export function nextAction(state, taskId) {
     if (action.to === 'tester') {
       return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: false };
     }
-    if (action.to === 'merge') return { kind: 'enqueue' };
+    if (action.to === 'merge') {
+      if (state.recoveryVersion && last.role === 'builder' && last.seedKind === 'rebase') {
+        return { kind: 'start', role: 'tester', seedKind: 'initial', sameWorktree: true };
+      }
+      return { kind: 'enqueue' };
+    }
     return { kind: 'none' };
   }
   return {
@@ -151,7 +182,7 @@ export function plan(state) {
   const desired = [];
 
   const head = state.mergeQueue[0];
-  if (head !== undefined && state.tasks.has(head)) {
+  if (head !== undefined && state.tasks.has(head) && (!held(state, head, 'merge') || state.tasks.get(head).attempts.some((a) => a.role === 'merge' && !a.ended))) {
     desired.push({ taskId: head, role: 'merge', seedKind: 'rebase', sameWorktree: false });
   }
 
@@ -213,7 +244,7 @@ export function plan(state) {
     occupied.push(id);
   }
 
-  if (desired.length === 0 && isReadyForFinalTest(state)) {
+  if (desired.length === 0 && isReadyForFinalTest(state) && !held(state, null, 'final')) {
     desired.push({ taskId: null, role: 'final', seedKind: 'initial', sameWorktree: false });
   }
 
@@ -259,6 +290,7 @@ export function isReadyForFinalTest(state) {
   if (!state || state.tasks.size === 0) return false;
   if (state.finalTest !== null || state.finished) return false;
   if (state.mergeQueue.length > 0) return false;
+  if (state.recoveryVersion && [...state.tasks.values()].some((task) => task.phase !== 'merged' && !task.waived)) return false;
   let merged = 0;
   for (const task of state.tasks.values()) {
     if (task.phase === 'merged') merged += 1;
@@ -276,6 +308,8 @@ export function isRunComplete(state) {
   if (!state || state.finished) return false;
   if (state.tasks.size === 0) return false;
   if (state.mergeQueue.length > 0) return false;
+  if (state.recoveryVersion && (Object.keys(state.recoveryHolds).length || [...state.tasks.values()].some((task) => task.phase !== 'merged' && !task.waived))) return false;
+  if (state.recoveryVersion && state.finalTest?.evidence?.integrationSha !== undefined && state.finalTest.evidence.integrationSha !== state.integrationSha) return false;
 
   let merged = 0;
   for (const task of state.tasks.values()) {
@@ -347,12 +381,14 @@ export function buildIntegrationFixTask(state) {
     typeof evidence.output === 'string' && evidence.output.trim() ? evidence.output.trim() : '';
   const parsed = parseCommandCwd(failed?.runInstructions ?? '');
   const commandLine = parsed?.command ? `Command: ${parsed.command}` : '';
+  const relativeCwd = typeof evidence.relativeCwd === 'string' && !/^(?:[A-Za-z]:|[\\/])/.test(evidence.relativeCwd) && !evidence.relativeCwd.split(/[\\/]/).includes('..') ? evidence.relativeCwd : '.';
   const build = [
     failedRung
       ? `Fix the failing integration ${failedRung} rung.`
       : 'Fix the failure recorded by the final integration test.',
     commandLine,
     integrationReproNote(state),
+    ...(state.recoveryVersion ? [`Reproduce from the repository-relative directory \`${relativeCwd}\` inside your own task worktree.`] : []),
     output ? `Output:\n${output}` : '',
   ]
     .filter(Boolean)

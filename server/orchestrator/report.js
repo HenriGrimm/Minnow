@@ -13,6 +13,35 @@ export const REPORT_EVENT_TYPE = 'run.report.written';
 /** Filename next to `journal.jsonl`. */
 export const REPORT_FILE = 'report.md';
 
+/** Local facts only; no provider calls or telemetry. */
+export function recoveryMetrics(state, events) {
+  const waiting = new Map(); const waitMs = {}; const fingerprints = new Map();
+  let automaticRecoveries = 0; let acknowledgements = 0; let checkpointFailures = 0; let setupFailures = 0;
+  const end = events.reduce((latest, event) => Math.max(latest, event.ts || event.observedAt || 0), 0);
+  const close = (key, at) => {
+    const hold = waiting.get(key);
+    if (!hold) return;
+    const category = hold.failure.category;
+    waitMs[category] = (waitMs[category] || 0) + Math.max(0, at - hold.observedAt);
+    waiting.delete(key);
+  };
+  for (const event of events) {
+    if (event.type === 'recovery.held') {
+      close(event.hold.key, event.hold.observedAt);
+      waiting.set(event.hold.key, event.hold);
+      fingerprints.set(event.hold.failure.fingerprint, (fingerprints.get(event.hold.failure.fingerprint) || 0) + 1);
+      if (/checkpoint|restore/i.test(event.hold.failure.message)) checkpointFailures++;
+      if (['preflight', 'start'].includes(event.hold.stage)) setupFailures++;
+    } else if (event.type === 'recovery.released') {
+      if (event.by === 'user') acknowledgements++; else automaticRecoveries++;
+      close(event.key, event.observedAt ?? event.ts ?? end);
+    }
+  }
+  for (const key of waiting.keys()) close(key, end);
+  return { automaticRecoveries, acknowledgements, checkpointFailures, setupFailures, waitMs,
+    repeatedFingerprints: [...fingerprints.values()].filter(count => count > 1).length, recoveryUsage: state.recoveryFailures.length };
+}
+
 /** Abort a hung LLM writer so Stop / workspace switch cannot wait forever. */
 export const REPORT_COMPLETE_TIMEOUT_MS = 60_000;
 
@@ -196,6 +225,15 @@ export function buildReportInput(events, state) {
         }
       : null,
     stillOpen,
+    ...(state.recoveryVersion ? { recovery: {
+      policyVersion: state.recoveryVersion,
+      ...recoveryMetrics(state, list),
+      holds: Object.values(state.recoveryHolds),
+      observations: state.recoveryHistory.length,
+      finalRepairs: state.finalRepairs.length,
+      manualInterventions: list.filter((event) => ['board.reopened', 'task.reset', 'board.rewound'].includes(event.type) || event.type === 'recovery.released' && event.by === 'user').length,
+      limits: state.recoveryLimits,
+    } } : {}),
     events: compactEvents,
   };
 }
@@ -554,6 +592,13 @@ export async function writeEndOfRunReport(options) {
   if (!markdown) {
     usedFallback = true;
     markdown = formatMechanicalReport(input);
+  }
+  if (state?.recoveryVersion) {
+    const tasks = [...state.tasks.values()];
+    const merged = tasks.filter((task) => task.phase === 'merged').length;
+    const waived = tasks.filter((task) => task.waived).length;
+    const waiting = Object.keys(state.recoveryHolds).length;
+    markdown = `Delivery: ${merged}/${tasks.length} tasks merged; ${waived} explicit waivers; ${waiting} recovery holds. Final verification: ${state.finalTest?.outcome ?? 'not completed'}. Integration: ${state.integrationSha ?? 'not merged'}.\n\n${markdown}`;
   }
   if (!markdown.endsWith('\n')) markdown = `${markdown}\n`;
 

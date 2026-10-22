@@ -96,13 +96,13 @@ describe('Builder prompt states the blocked criterion', () => {
   }
 });
 
-describe('Tester prompt has no blocked outcome', () => {
+describe('Tester distinguishes defects from unavailable verification', () => {
   for (const profile of ['full', 'lite']) {
-    it(`${profile} allows pass or fail only`, () => {
+    it(`${profile} allows an explicit prerequisite hold`, () => {
       const body = read(path.join(PROMPTS_DIR, 'tester', `agent.${profile}.md`));
       assert.match(body, /pass.*fail/);
-      assert.match(body, /do \*\*not\*\* report `blocked`|You do not report `blocked`/i);
-      assert.equal(body.includes("outcome: \"pass\" | \"fail\" | \"blocked\""), false);
+      assert.match(body, /prerequisite/i);
+      assert.equal(body.includes("outcome: \"pass\" | \"fail\" | \"blocked\""), true);
     });
   }
 });

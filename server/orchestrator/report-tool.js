@@ -4,7 +4,13 @@
 export const REPORT_TOOL_NAME = 'report_outcome';
 
 const BUILDER_OUTCOMES = new Set(['pass', 'fail', 'blocked']);
-const TESTER_OUTCOMES = new Set(['pass', 'fail']);
+const TESTER_OUTCOMES = new Set(['pass', 'fail', 'blocked']);
+import { normalizePrerequisites } from './prerequisites.js';
+
+function prerequisiteFields(raw) {
+  if (raw.prerequisites === undefined) return {};
+  return { prerequisites: normalizePrerequisites(raw.prerequisites) };
+}
 
 /**
  * Tool-call markup that leaked into a value instead of delimiting it.
@@ -154,10 +160,10 @@ export function parseBuilderReport(raw) {
       result: { outcome: 'fail', summary: summary.value, blockers: blockers.value },
     };
   }
-  return {
+  try { return {
     ok: true,
-    result: { outcome: 'blocked', summary: summary.value, needs: needs.value },
-  };
+    result: { outcome: 'blocked', summary: summary.value, needs: needs.value, ...prerequisiteFields(obj.value) },
+  }; } catch (error) { return { ok: false, error: `Error: ${error.message}` }; }
 }
 
 /**
@@ -171,11 +177,15 @@ export function parseTesterReport(raw) {
 
   const outcome = obj.value.outcome;
   if (outcome === 'blocked') {
-    return {
-      ok: false,
-      error:
-        'Error: the tester may only report "pass" or "fail". "blocked" is a builder outcome for when the environment cannot support the work. Retry with pass or fail; if you could not run tests, report fail and put the missing-environment detail in testOutput.',
-    };
+    const summary = requireNonEmptySummary(obj.value.summary);
+    if (!summary.ok) return summary;
+    const evidence = requireStringArray(obj.value.evidence, 'evidence', obj.value);
+    if (!evidence.ok) return evidence;
+    if (typeof obj.value.testOutput !== 'string') return { ok: false, error: 'Error: report_outcome requires testOutput as a string. Retry with the unmet prerequisite.' };
+    const needs = Array.isArray(obj.value.needs) ? obj.value.needs : [obj.value.testOutput];
+    if (!needs.length || !needs.every((need) => typeof need === 'string' && need.trim())) return { ok: false, error: 'Error: Blocked verification requires the specific unmet prerequisite in testOutput. Retry with that detail.' };
+    try { return { ok: true, result: { outcome: 'blocked', summary: summary.value, needs, ...prerequisiteFields(obj.value) } }; }
+    catch (error) { return { ok: false, error: `Error: ${error.message}` }; }
   }
   if (!TESTER_OUTCOMES.has(outcome)) {
     return {
@@ -201,7 +211,7 @@ export function parseTesterReport(raw) {
   if (outcome === 'pass') {
     return {
       ok: true,
-      result: { outcome: 'pass', summary: summary.value, evidence: evidence.value },
+      result: { outcome: 'pass', summary: summary.value, evidence: evidence.value, ...(Array.isArray(obj.value.checks) ? { checks: obj.value.checks } : {}) },
     };
   }
   const testOutput = obj.value.testOutput;
@@ -266,6 +276,7 @@ export function builderReportTool() {
             items: { type: 'string' },
             description: 'What the environment is missing. Required (use [] when not blocked).',
           },
+          prerequisites: { type: 'array', description: 'Optional machine-checkable prerequisites for blocked: file {kind:"file",path:workspace-relative}, executable {kind:"executable",name}, loopback service {kind:"service",port}, browser {kind:"browser"}. Never supply shell commands.', items: { type: 'object' } },
         },
         required: ['outcome', 'summary', 'evidence', 'blockers', 'needs'],
       },
@@ -284,11 +295,11 @@ export function testerReportTool() {
     function: {
       name: REPORT_TOOL_NAME,
       description:
-        'Report the test verdict for this attempt. Call once when finished. Do not put the outcome only in assistant text. A rejected call is not a finished report — fix the payload and retry. Outcome is pass or fail only.',
+        'Report the test verdict. Use pass with observed evidence, fail for an observed implementation defect, or blocked when a required check cannot run. For blocked, describe the specific unmet prerequisite in testOutput. A rejected call is not a finished report; correct it and retry.',
       parameters: {
         type: 'object',
         properties: {
-          outcome: { type: 'string', enum: ['pass', 'fail'] },
+          outcome: { type: 'string', enum: ['pass', 'fail', 'blocked'] },
           summary: { type: 'string', description: 'What you ran and what it showed.' },
           evidence: {
             type: 'array',
@@ -299,6 +310,8 @@ export function testerReportTool() {
             type: 'string',
             description: 'The test command output the builder needs if this is a fail.',
           },
+          checks: { type: 'array', description: 'Required for recovery-enabled task pass: one row per required verification ID from the seed. Optional extra checks may be marked not-run with a reason.', items: { type: 'object', properties: { id: { type: 'string' }, outcome: { type: 'string', enum: ['pass', 'fail', 'blocked', 'not-run'] }, evidence: { type: 'array', items: { type: 'string' } } }, required: ['id', 'outcome', 'evidence'] } },
+          prerequisites: { type: 'array', description: 'For blocked, optional read-only checks: workspace-relative file {kind:"file",path}, executable {kind:"executable",name}, loopback service {kind:"service",port}, browser {kind:"browser"}.', items: { type: 'object' } },
         },
         required: ['outcome', 'summary', 'evidence', 'testOutput'],
       },

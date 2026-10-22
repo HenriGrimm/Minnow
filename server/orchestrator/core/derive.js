@@ -1,6 +1,7 @@
 /** Fold journal events into board state. */
 
 import { validateEvent } from './events.js';
+import { OPERATIONAL_CATEGORIES } from './recovery.js';
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
@@ -33,6 +34,13 @@ export function emptyState() {
     stopReason: null,
     runSummary: null,
     rerun: null,
+    recoveryVersion: 0,
+    recoveryRevision: 0,
+    recoveryLimits: { task: 5, final: 3, board: 100 },
+    recoveryHolds: {},
+    recoveryHistory: [],
+    finalRepairs: [],
+    recoveryFailures: [],
   };
 }
 
@@ -78,7 +86,28 @@ export function derive(events) {
  * @returns {void}
  */
 function apply(state, event) {
+  if (state.recoveryVersion && (!event.taskId || state.tasks.has(event.taskId)) && ['board.started', 'board.stopped', 'board.model.set', 'board.reopened', 'board.rewound', 'task.reset', 'task.updated', 'task.waived', 'task.abandoned'].includes(event.type)) {
+    state.recoveryRevision += 1;
+  }
   switch (event.type) {
+    case 'recovery.held': {
+      const hold = event.hold;
+      if (!hold || typeof hold.key !== 'string' || !hold.failure || !Number.isFinite(hold.retryAt)) return;
+      state.recoveryHolds[hold.key] = hold;
+      state.recoveryHistory.push(hold);
+      return;
+    }
+    case 'recovery.released': {
+      const hold = state.recoveryHolds[event.key];
+      if (hold?.role === 'final') state.finalTest = null;
+      delete state.recoveryHolds[event.key];
+      return;
+    }
+    case 'final.repair.created': {
+      if (!state.finalRepairs.some((repair) => repair.taskId === event.taskId)) state.finalRepairs.push({ taskId: event.taskId, fingerprint: event.fingerprint });
+      state.finalTest = null;
+      return;
+    }
     case 'board.created': {
       state.boardId = event.boardId;
       state.planPath = event.planPath;
@@ -98,6 +127,13 @@ function apply(state, event) {
     }
 
     case 'board.started': {
+      if (event.recoveryVersion) state.recoveryVersion = event.recoveryVersion;
+      if (event.recoveryLimits) {
+        for (const key of ['task', 'final', 'board']) {
+          const value = event.recoveryLimits[key];
+          if (Number.isSafeInteger(value) && value > 0) state.recoveryLimits[key] = Math.min(key === 'board' ? 1000 : 20, value);
+        }
+      }
       state.status = 'running';
       state.concurrency = event.concurrency;
       state.stopReason = null;
@@ -158,6 +194,10 @@ function apply(state, event) {
       attempt.outcome = event.outcome;
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
+      if (state.recoveryVersion && event.outcome !== 'pass' && !OPERATIONAL_CATEGORIES.includes(event.evidence?.failure?.category)) {
+        const key = `${event.taskId}:${event.attemptId}`;
+        if (!state.recoveryFailures.includes(key)) state.recoveryFailures.push(key);
+      }
       if (event.usage !== undefined) attempt.usage = event.usage;
       if (event.speed !== undefined) attempt.speed = event.speed;
       return;
@@ -190,7 +230,18 @@ function apply(state, event) {
       task.mergedSha = event.sha;
       task.mergeConflicts = null;
       state.integrationSha = event.sha;
+      if (state.recoveryVersion) state.finalTest = null;
       if (mergeAndSkip && releaseStrandedSkips(state) > 0) reopenBoard(state);
+      return;
+    }
+
+    case 'merge.rebased': {
+      const task = state.tasks.get(event.taskId);
+      if (!task) return;
+      state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
+      closeMergeAttempt(task, 'rebased');
+      task.mergeConflicts = null;
+      task.mergeFailure = null;
       return;
     }
 
@@ -237,6 +288,7 @@ function apply(state, event) {
       const task = state.tasks.get(event.taskId);
       // A merged card already counts for its dependents; Skip must not unmerge it.
       if (!task || task.mergedSha !== null) return;
+      for (const [key, hold] of Object.entries(state.recoveryHolds)) if (hold.taskId === event.taskId) delete state.recoveryHolds[key];
       state.mergeQueue = state.mergeQueue.filter((id) => id !== event.taskId);
       task.waived = true;
       // The user's Skip stands on its own, not as a side effect of whatever stranded it.
@@ -272,6 +324,12 @@ function apply(state, event) {
     }
 
     case 'board.model.set': {
+      if (state.recoveryVersion) {
+        for (const [key, hold] of Object.entries(state.recoveryHolds)) {
+          if (hold.stage === 'preflight') state.recoveryHolds[key] = { ...hold, attention: false, probe: true, retryAt: 0 };
+          else if (['quota', 'rate_limit', 'unavailable', 'authentication', 'protocol', 'capacity'].includes(hold.failure.category)) delete state.recoveryHolds[key];
+        }
+      }
       state.model = {
         providerId: event.providerId,
         id: event.id,
@@ -304,6 +362,7 @@ function apply(state, event) {
     }
 
     case 'board.reopened': {
+      state.recoveryHolds = {};
       const n = (state.rerun?.n ?? 0) + 1;
       const taskIds = Array.isArray(event.taskIds) ? event.taskIds.map(String) : [];
       state.rerun = {
@@ -339,6 +398,7 @@ function apply(state, event) {
     }
 
     case 'task.reset': {
+      for (const [key, hold] of Object.entries(state.recoveryHolds)) if (event.taskIds.includes(hold.taskId)) delete state.recoveryHolds[key];
       reopenBoard(state);
       const taskIds = Array.isArray(event.taskIds) ? event.taskIds.map(String) : [];
       for (const id of taskIds) {
@@ -351,6 +411,7 @@ function apply(state, event) {
     }
 
     case 'board.rewound': {
+      state.recoveryHolds = {};
       reopenBoard(state);
       const beforeSha =
         typeof event.beforeSha === 'string' && event.beforeSha.trim()
@@ -367,8 +428,13 @@ function apply(state, event) {
     }
 
     case 'task.updated': {
+      for (const [key, hold] of Object.entries(state.recoveryHolds)) if (hold.taskId === event.taskId) delete state.recoveryHolds[key];
       const task = state.tasks.get(event.taskId);
       if (!task) return;
+      if (state.recoveryVersion) {
+        for (const attempt of task.attempts) if (attempt.ended) attempt.retired = true;
+        state.finalTest = null;
+      }
       applyTaskChanges(task, event.changes);
       // A plan re-sync brings the card back in line with the file; only hand edits diverge.
       if (event.reason !== 'plan') task.edits += 1;

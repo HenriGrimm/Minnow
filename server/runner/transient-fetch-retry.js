@@ -35,7 +35,7 @@ function isTransientFetchError(err) {
 
 function httpStatusFromError(err) {
   if (!(err instanceof Error)) return null;
-  const match = err.message.match(/^HTTP (\d{3})\b/);
+  const match = err.message.match(/^(?:Upstream\s+)?HTTP\s+(\d{3})\b/i);
   if (!match) return null;
   return Number(match[1]);
 }

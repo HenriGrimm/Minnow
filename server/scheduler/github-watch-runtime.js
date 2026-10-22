@@ -9,9 +9,10 @@ import { resolveJobRunModel } from './resolve-job-model.js';
 import { parsePlan, isParseErrors, formatParseErrors } from '../orchestrator/core/parse-plan.js';
 import { stateFromJSON } from '../orchestrator/core/snapshot.js';
 import { integrationBranch } from '../orchestrator/worktree-lifecycle.js';
+import { getWorktreeSlotPath } from '../worktree/paths.js';
 import { peekEngine } from '../orchestrator/engine.js';
 import { listPendingBoardResumes, resolveBoardResume } from '../orchestrator/resume-gate.js';
-import { pollGithubWatch } from './github-watch.js';
+import { pollGithubWatch, boardReadyForPullRequest } from './github-watch.js';
 
 export function githubRepositoryFromRemote(remote) {
   const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([^/]+\/[^/]+?)\/?$/i.exec(remote.trim());
@@ -152,7 +153,11 @@ export async function runGithubWatch({ job, baseUrl, runPlanner, gh = runGh, pro
         if (existing[0].baseRefName !== row.baseBranch) throw new Error('Existing PR targets a different base branch');
         return existing[0].url;
       }
-      await git(['push', 'origin', `refs/heads/${branch}:refs/heads/${branch}`]);
+      const verified = await boardState(row);
+      const head = String(await git(['rev-parse', `refs/heads/${branch}`])).trim();
+      if (verified.recoveryVersion && String(await git(['-C', getWorktreeSlotPath(row.boardId, 'integration'), 'status', '--porcelain'])).trim()) throw new Error('Integration has uncommitted changes; publication requires clean verified source.');
+      if (!boardReadyForPullRequest(verified) || verified.recoveryVersion && head !== verified.integrationSha) throw new Error('Integration changed after verification. The board must verify the current commit before publication.');
+      await git(['push', 'origin', `${head}:refs/heads/${branch}`]);
       const body = `Fixes #${row.number}\n\n${report.markdown}`;
       return withBodyFile(body, file => github(['pr', 'create', '--repo', repository,
         '--base', row.baseBranch, '--head', branch, '--title', `Fix #${row.number}: ${row.title}`.slice(0, 250), '--body-file', file]));

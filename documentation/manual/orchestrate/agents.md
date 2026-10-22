@@ -1,96 +1,40 @@
-# Agents, sub-agents, and packs
+# Board work agents
 
-Minnow does not have one assistant. It has a system of them, and the differences between the kinds matter once you start delegating real work.
+Boards use the shared chat runner and tool system for two worker roles.
 
-| Kind | What it is | Where it runs |
-|------|------------|---------------|
-| **Work agent** | A role with its own prompt and tool settings | The main chat, or a board chat |
-| **Sub-agent** | A nested agent spawned for one job, reporting back | In the background |
-| **Board member** | A builder, tester or fixer bound to one task | Its own board chat |
+| Role | Responsibility |
+| --- | --- |
+| **Builder** | Implements one task, repairs concrete failures and preserves completed work |
+| **Tester** | Independently verifies the task's Test and Accept requirements without modifying application code |
 
-## Work agents
+The server schedules work, serializes merges, and runs final integration checks. A separate planner or supervisor agent does not drive the board.
 
-A work agent is the *role* the assistant is playing: its system prompt, its sampler settings, its thinking mode, using the model selected in its chat.
+## Reports
 
-Shipped roles: `default`, `general`, `desktop`, `planner`, `orchestrator`, `builder`, `verifier`, `tester`, `reviewer`, `researcher`, `ui-designer`, `expert-panel`.
+Workers call `report_outcome` with their observed result:
 
-Edit prompts, tools and generation settings under **Settings → Agents**. Work agents use the chat model; changing a role does not replace the composer selection.
+- **pass**: the required behavior was demonstrated.
+- **fail**: an implementation defect or failing assertion was observed.
+- **blocked**: a required prerequisite or verification capability is unavailable.
 
-## Sub-agents
+A blocked report names the specific need. The board either attempts supported local recovery or retains the work while awaiting the prerequisite. An unavailable environment is not evidence that the implementation failed.
 
-A sub-agent runs a job in the background and reports a structured result. Delegation is how a long task avoids drowning your main conversation in exploration: three agents read the codebase in parallel and hand back findings, instead of your context filling with file dumps.
+Workers can include typed prerequisites for workspace-relative files, executable names, local service ports or browser capability. These use read-only checks and resume automatically when resolved. Free-text needs remain available for requirements that cannot be checked automatically.
 
-Shipped types:
+Recovery-enabled testers receive required verification IDs from the current task specification. A passing report includes each ID and observed evidence; missing or unexecuted required checks cannot pass.
 
-| Type | For |
-|------|-----|
-| **General purpose** | Anything not covered by a specialist |
-| **Explore** | Reading and searching. Read-only by design — no shell, no commits. |
-| **Research worker** | Web and code research; the most parallel type, up to five at once |
-| **Shell** | Command execution |
-| **Explorer (self-heal)** | Diagnosing a stuck board task |
-| **Debugger** | Root-cause investigation |
-| **Bug planner** | Turning a diagnosis into a fix plan |
-| **Issue writer** | Expanding a triage note into a real issue |
+Required browser checks run through supported project test commands or available server browser tools. A worker cannot substitute source inspection for required rendered behavior.
 
-Three at once globally by default, with per-type caps. There is no wall-clock timeout; a sub-agent runs until it reports or is cancelled. Each type has its own tool allowlist, and **no sub-agent can spawn further sub-agents** — recursion is denied everywhere, which is what stops a delegation cascade.
+## Repair and continuation
 
-While a sub-agent runs you see live status — thinking, generating, or the tool it is running — on its card in the transcript and in the drawer. A background agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model has it without a wall of text appearing in your transcript.
+Repairs reuse the task checkout and receive the original specification, previous report and relevant failure evidence. Repeated failures enter diagnosis before exhausting the configured budget. Independent test approval is renewed when rebasing changes the tested content.
 
-Open an agent's card to inspect its **Conversation**. The agent list identifies each run by its assignment, with its role and status underneath. Thoughts supplied by the model start expanded; responses stay in reading order, with consecutive tool calls grouped in expandable rows. **Result** shows the returned response and structured findings. The assignment and run details expand separately. Available thoughts, responses, and tool activity remain accessible when you reopen the chat. Running agents offer **Stop agent**; stopped or failed agents offer **Retry agent**.
+Final integration failures create their own repair task. They do not replace the scope of an unfinished original task.
 
-Configure them under **Settings → Agents → Sub-agents**: concurrency, model bindings, tool allowlists, context policy, and the summary schema each type returns.
+## Configuration
 
-Use **Models** in the top bar for general sub-agent routing: **Follow parent chat** or a fixed model/pool. Advanced per-type routing takes precedence over that general rule. **Use sub-agent routing** in a type's binding panel clears its fixed override. Runs capture their selection before queueing; later routing or parent-model changes apply to subsequent launches. Agents cannot choose a different model through the delegation tool.
+Choose the board model and reasoning in its header. New attempts inherit the updated selection; active attempts keep theirs.
 
-### Delegating well
+**Settings → Autopilot** controls repair allowances, final repair rounds, the board-wide recovery budget and attempt duration. Provider-wide waits share admission with other work using that account. Tool permissions and workspace boundaries still apply during recovery.
 
-- **Parallel reads, serial writes.** Several explore agents at once is great. Several agents writing to one checkout is not — that is what board worktree isolation exists for (git checkout isolation, not host filesystem containment).
-- **Give a clear deliverable.** "Find where authentication is validated and list the files" beats "look into auth".
-- **Watch the first one.** If a sub-agent type is misconfigured, you find out in its first run.
-
-## Board members
-
-On an orchestrate board each task gets an agent in one of three roles, with deliberately different tool sets:
-
-| Role | Notable |
-|------|---------|
-| **Builder** | Development tools for implementing the task; no browser automation |
-| **Tester** | Read-only development tools for verification; no browser automation |
-| **Fixer** | Development tools for repairs; no browser automation |
-
-All three can read and write Brain, because the worker holds the discovery context: the agent that found the awkward detail is the one that should record it. All three get the composer task checklist. None can change its own mode or reach the mutating board tools; the orchestrator owns board state.
-
-See [Orchestrate boards](boards.md).
-
-## Autopilot
-
-**Settings → Agents → Autopilot** holds the global defaults for board execution: Running or Stopped start, isolation, maximum concurrency, planner model, retries, heartbeat, self-heal rounds, infrastructure provisioning, auto-restart of stalled tasks, and a guard that stops agents changing directory outside their worktree. Isolation here means git worktrees for parallel tasks — it does not sandbox agent shells against the rest of the host (see [Privacy and security](../reference/privacy-and-security.md)).
-
-There is also a **Continue** policy for what happens when a task chat grows too large: always nudge the existing chat, hand off to a fresh chat when a chat is derailed or very large (conservative), or hand off sooner (aggressive).
-
-## Watchdog
-
-**Settings → AI & agents → Timeouts & recovery** sets streaming limits: an **idle timeout** that fires when no tokens arrive, and a **maximum duration** for any single generation.
-
-The idle timeout resets whenever new tokens arrive, so it catches a genuinely dead stream without cutting off a slow model that is still working. This is the setting that stops a hung provider from freezing a board overnight.
-
-## Agent packs
-
-A pack bundles work agents, prompts and configuration into something portable — a house style you can share or reuse.
-
-**Settings → Agents → Agent packs** lets you download a starter template, export the built-in pack as a starting point, upload a pack as a zip, and manage what is installed.
-
-Useful when a team wants everyone's reviewer to apply the same standards, or when you want one configuration on your laptop and your desktop.
-
-## Context budgets
-
-Agents that run unattended cannot ask you to start a fresh chat, so each has a context policy — summarize (the default), slide, truncate, or archive — and optionally a maximum input token cap. Precedence is per-agent override, then the global default, then the shipped default. With no cap set, nothing is enforced.
-
-See [Context, memory, and rules](../concepts/context-and-memory.md).
-
-## Related
-
-- [Orchestrate boards](boards.md)
-- [Models app](../apps/models.md)
-- [Settings app](../apps/settings.md)
+See [Orchestrate boards](boards.md) for run controls, retained work and action holds.

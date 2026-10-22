@@ -1653,6 +1653,7 @@ export function mergeConfigMeta(existing, patch) {
       maxTestAttempts: 3,
       maxBuildAttempts: 2,
       maxFinalTestAttempts: 3,
+      recoveryAttemptBudget: 100,
       continueSmartRoute: 'conservative',
       plannerProviderId: '',
       plannerModelId: '',
@@ -1730,6 +1731,10 @@ export function mergeConfigMeta(existing, patch) {
           a.maxFinalTestAttempts,
           existingAutopilot.maxFinalTestAttempts ?? 3,
         );
+      }
+      if (a.recoveryAttemptBudget !== undefined) {
+        existingAutopilot.recoveryAttemptBudget = typeof a.recoveryAttemptBudget === 'number' && Number.isFinite(a.recoveryAttemptBudget)
+          ? Math.min(1000, Math.max(1, Math.round(a.recoveryAttemptBudget))) : existingAutopilot.recoveryAttemptBudget ?? 100;
       }
       if (typeof a.plannerProviderId === 'string') {
         existingAutopilot.plannerProviderId = a.plannerProviderId.trim();

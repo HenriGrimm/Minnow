@@ -43,6 +43,9 @@ import { inspectDepDir } from '../../server/worktree/dep-symlinks.js';
 import { getBoardWorktreesDir, getWorktreeSlotPath } from '../../server/worktree/paths.js';
 import { setWorkspaceRoot } from '../../server/workspace/root.js';
 import { wantsSameWorktree } from '../../server/orchestrator/core/policy.js';
+import { checkpointAttempt } from '../../server/orchestrator/checkpoint.js';
+import { boardDir } from '../../server/orchestrator/journal.js';
+import { prepareVerificationInputs } from '../../server/orchestrator/verification-contract.js';
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -171,6 +174,45 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.notEqual(paths[0], paths[1]);
     await fs.writeFile(path.join(paths[0], 'private.txt'), 'first task');
     assert.equal(await exists(path.join(paths[1], 'private.txt')), false);
+  });
+
+  test('a failed checkpoint restore must complete before an existing checkout can be reused', async () => {
+    const state = boardState(['RESTORE']);
+    state.boardId = 'restore-retry'; state.recoveryVersion = 1;
+    const desired = { taskId: 'RESTORE', role: 'builder', seedKind: 'continue', sameWorktree: true };
+    const input = { boardId: state.boardId, taskId: 'RESTORE', attemptId: 'original', state, desired };
+    const allocated = await allocateAttemptWorktree(input);
+    await fs.writeFile(path.join(allocated.path, 'progress.txt'), 'retained unfinished work');
+    const checkpoint = await checkpointAttempt({ boardId: state.boardId, attemptId: 'original', worktree: allocated.path });
+    state.tasks.get('RESTORE').attempts.push({ attemptId: 'original', role: 'builder', ended: true, outcome: 'fail', worktree: allocated.path, evidence: { checkpoint } });
+    await execFileAsync('git', ['worktree', 'remove', '--force', allocated.path], { cwd: repoDir, windowsHide: true });
+    const bundlePath = path.join(boardDir(state.boardId), 'recovery', 'original', 'checkpoint.bundle');
+    const bundle = await fs.readFile(bundlePath);
+    await fs.writeFile(bundlePath, 'corrupt interrupted archive');
+    await assert.rejects(allocateAttemptWorktree({ ...input, attemptId: 'retry-1' }), /validation/);
+    assert.equal(await exists(allocated.path), true);
+    await assert.rejects(allocateAttemptWorktree({ ...input, attemptId: 'retry-2' }), /validation/);
+    await fs.writeFile(bundlePath, bundle);
+    const restored = await allocateAttemptWorktree({ ...input, attemptId: 'retry-3' });
+    assert.equal(restored.ok, true);
+    assert.equal(await fs.readFile(path.join(restored.path, 'progress.txt'), 'utf8'), 'retained unfinished work');
+  });
+
+  test('declared reference inputs are staged only in the board and survive preflight replay', async () => {
+    const boardId = 'declared-inputs';
+    const integration = await ensureBoardIntegration(boardId);
+    const name = 'references/prototype.html';
+    await fs.mkdir(path.join(repoDir, 'references'), { recursive: true });
+    await fs.writeFile(path.join(repoDir, name), '<p>Authorized reference</p>');
+    const { stdout: before } = await execFileAsync('git', ['status', '--porcelain'], { cwd: repoDir, windowsHide: true });
+    const input = { boardId, workspace: repoDir, cwd: integration.path, markdown: `## Inputs\n- \`${name}\`\n\n## Tasks\nImplement the reference.` };
+    await prepareVerificationInputs(input);
+    await prepareVerificationInputs(input);
+    const { stdout: copied } = await execFileAsync('git', ['show', `HEAD:${name}`], { cwd: integration.path, windowsHide: true });
+    assert.equal(copied, '<p>Authorized reference</p>');
+    const { stdout: after } = await execFileAsync('git', ['status', '--porcelain'], { cwd: repoDir, windowsHide: true });
+    assert.equal(after, before);
+    await assert.rejects(prepareVerificationInputs({ ...input, markdown: '## Inputs\n- `references/missing.html`\n' }), error => error.failure.prerequisites[0].path === 'references/missing.html');
   });
 
   test('integration validation rejects husks without discarding their files', async () => {
@@ -365,7 +407,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     }
   });
 
-  test('blocked, continue, and rebase reuse the same path; failure-aware is a fresh checkout', async () => {
+  test('blocked, continue, rebase and failure-aware retain work', async () => {
     resetEnsuredBoards();
     const state = boardState(['C']);
     const first = await allocateAttemptWorktree({
@@ -446,7 +488,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(fresh.ok, true, fresh.error);
     // Task-keyed slots keep the same path; the tree is a new checkout off integration.
     assert.equal(path.resolve(fresh.path), path.resolve(first.path));
-    assert.equal(await exists(path.join(fresh.path, 'in-progress.txt')), false);
+    assert.equal(await exists(path.join(fresh.path, 'in-progress.txt')), true);
     assert.equal(
       (await fs.readFile(path.join(fresh.path, 'README.md'), 'utf8')).replace(/\r\n/g, '\n'),
       '# p3a\n',
@@ -885,7 +927,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
     assert.equal(wantsSameWorktree('repair'), true);
     assert.equal(wantsSameWorktree('continue'), true);
     assert.equal(wantsSameWorktree('rebase'), true);
-    assert.equal(wantsSameWorktree('failure-aware'), false);
+    assert.equal(wantsSameWorktree('failure-aware'), true);
     assert.equal(wantsSameWorktree('fix'), true);
   });
 

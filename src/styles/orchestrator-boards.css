@@ -4217,3 +4217,17 @@ select.ov2-create__input {
     max-width: none;
   }
 }
+.ov2-recovery {
+  border-block-end: 1px solid var(--mn-border);
+  padding: 12px 16px;
+}
+.ov2-recovery__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-block: 6px;
+}
+.ov2-recovery__description { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.ov2-recovery p { margin-block: 4px; }
+.ov2-recovery__status { color: var(--mn-fg-muted); }

@@ -262,6 +262,70 @@ describe('P3-C merge-queue (real git)', { concurrency: false }, () => {
     resetEnsuredBoards();
   });
 
+  test('recovery re-tests rebased content and reconciles a Git merge lost before journaling', async () => {
+    const h = await makeRepo('recovery-merge');
+    const a = await addSlot(h, 'slot-a', { 'a.txt': 'a\n' });
+    const b = await addSlot(h, 'slot-b', { 'b.txt': 'b\n' });
+    const state = stateFor(h.boardId, [{ id: 'A', worktree: a.wt }, { id: 'B', worktree: b.wt }]);
+    state.recoveryVersion = 1;
+    const testedA = state.tasks.get('A').attempts.find((attempt) => attempt.role === 'tester');
+    testedA.evidence = { verifiedSha: await headSha(a.wt) };
+    const endA = await runMerge({ boardId: h.boardId, taskId: 'A', attemptId: 'first', state });
+    assert.equal(endA.outcome, 'pass');
+    const recoveredA = await runMerge({ boardId: h.boardId, taskId: 'A', attemptId: 'replayed', state });
+    assert.equal(recoveredA.outcome, 'pass');
+    assert.equal(recoveredA.sha, endA.sha);
+    assert.equal(recoveredA.beforeSha, endA.beforeSha);
+    const testedB = state.tasks.get('B').attempts.find((attempt) => attempt.role === 'tester');
+    testedB.evidence = { verifiedSha: await headSha(b.wt) };
+    const rebase = await runMerge({ boardId: h.boardId, taskId: 'B', attemptId: 'rebased', state });
+    assert.equal(rebase.outcome, 'rebased');
+    assert.notEqual(rebase.sha, testedB.evidence.verifiedSha);
+    assert.equal(await headSha(getWorktreeSlotPath(h.boardId, 'integration')), endA.sha);
+    testedB.evidence.verifiedSha = rebase.sha;
+    const endB = await runMerge({ boardId: h.boardId, taskId: 'B', attemptId: 'verified', state });
+    assert.equal(endB.outcome, 'pass');
+  });
+
+  test('recovery never merges missing tester identity or emits a rebase with an unresolved branch', async () => {
+    const h = await makeRepo('missing-verification');
+    const a = await addSlot(h, 'slot-a', { 'a.txt': 'implementation\n' });
+    const state = stateFor(h.boardId, [{ id: 'A', worktree: a.wt }]);
+    state.recoveryVersion = 1;
+    const end = await runMerge({ boardId: h.boardId, taskId: 'A', attemptId: 'unverified', state });
+    assert.equal(end.outcome, 'rebased');
+    assert.ok(end.sha);
+    await git(['update-ref', '-d', `refs/heads/${a.branch}`], h.repoDir);
+    const missing = await runMerge({ boardId: h.boardId, taskId: 'A', attemptId: 'missing-branch', state });
+    assert.equal(missing.outcome, 'merge_failed');
+    assert.equal(missing.reason, 'task-branch-unresolved');
+  });
+
+  test('final verification cannot certify dirty integration bytes with an unchanged HEAD', async () => {
+    const h = await makeRepo('dirty-final');
+    const state = stateFor(h.boardId, []);
+    state.recoveryVersion = 1;
+    const cwd = getWorktreeSlotPath(h.boardId, 'integration');
+    state.integrationSha = await headSha(cwd);
+    const dirty = path.join(cwd, 'uncertified-source.txt');
+    for (const timing of ['before', 'during']) {
+      if (timing === 'before') await fsp.writeFile(dirty, 'uncommitted fix');
+      const effector = createRunnerEffector({ boardId: h.boardId, getState: () => state, model: { providerId: 'unused', id: 'unused' }, worktrees: true,
+        runFinalLadder: async () => { if (timing === 'during') await fsp.writeFile(dirty, 'late uncommitted fix'); return { outcome: 'pass', summary: 'Checks passed', evidence: {} }; },
+      });
+      let resolve;
+      const result = new Promise(done => { resolve = done; });
+      effector.onEnd(resolve);
+      await effector.start({ taskId: null, role: 'final', seedKind: 'initial' });
+      const end = await result;
+      assert.equal(end.outcome, 'fail');
+      assert.equal(end.evidence.failure.category, 'verification');
+      assert.equal(await headSha(cwd), state.integrationSha);
+      assert.equal(await fsp.readFile(dirty, 'utf8'), timing === 'before' ? 'uncommitted fix' : 'late uncommitted fix');
+      await fsp.rm(dirty);
+    }
+  });
+
   test('manual merge and skip preserves committed and uncommitted abandoned work', async () => {
     const h = await makeRepo('merge-skip');
     const a = await addSlot(h, 'slot-a', { 'committed.txt': 'retained commit\n' });
