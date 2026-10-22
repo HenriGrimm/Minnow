@@ -8,6 +8,7 @@ import {
   githubHeadingSlug,
   handleMarkdownLinkClick,
   hardenMarkdownAnchors,
+  inlineFileReferenceHref,
   parseMarkdownLineFragment,
   resetMarkdownLinkRoutingForTests,
   resolveMarkdownWorkspacePath,
@@ -37,6 +38,39 @@ describe('markdown links', () => {
     assert.equal(githubHeadingSlug('What it is'), 'what-it-is');
     assert.equal(githubHeadingSlug('Overview'), 'overview');
     assert.equal(githubHeadingSlug('  '), 'section');
+  });
+
+  test('recognizes inline filenames and line ranges without linking expressions or URLs', () => {
+    for (const [text, href] of [
+      ['PRODUCT.md:20', 'PRODUCT.md#L20'],
+      ['documentation/plans/gitbox-local-git-remote.md:5', 'documentation/plans/gitbox-local-git-remote.md#L5'],
+      ['src/main.ts:10-12', 'src/main.ts#L10-L12'],
+      ['src/main.ts#L10-L12', 'src/main.ts#L10-L12'],
+      ['src\\main.ts', 'src/main.ts'],
+    ]) assert.equal(inlineFileReferenceHref(text!), href);
+    for (const text of ['const x = 1', 'https://example.com/a.ts', 'hi@example.com', 'npm run build', 'foo()', 'src/a.ts:0', 'src/a.ts:9-2']) {
+      assert.equal(inlineFileReferenceHref(text), null, text);
+    }
+  });
+
+  test('inline references are accessible links, avoid fences and existing anchors, and route lines', () => {
+    const root = document.createElement('div');
+    root.className = 'msg-bubble msg-bubble--md';
+    root.innerHTML = '<p><code>PRODUCT.md:20</code> <code>documentation/plans/build.md:5</code></p><pre><code>src/main.ts:10</code></pre><a href="other.md"><code>named.md</code></a>';
+    document.body.appendChild(root);
+    decorateRenderedMarkdown(root);
+    decorateRenderedMarkdown(root);
+    assert.equal(root.querySelectorAll('a').length, 3);
+    assert.equal(root.querySelector('pre a'), null);
+    assert.equal(root.querySelector('a a'), null);
+    const opened: unknown[] = [];
+    setMarkdownWorkspaceOpenerForTests((path, headingId, lineRange) => opened.push({ path, lineRange }));
+    root.querySelector('code')!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    assert.deepEqual(opened, [{ path: 'PRODUCT.md', lineRange: { startLine: 20, endLine: 20 } }]);
+    assert.equal(window.location.hash, '#/app/code/chat');
+    assert.deepEqual(classifyMarkdownHref('src/main.ts:10-12', null), {
+      type: 'workspace', path: 'src/main.ts', lineRange: { startLine: 10, endLine: 12 },
+    });
   });
 
   test('code blocks and tables remain keyboard reachable after markdown decoration', () => {

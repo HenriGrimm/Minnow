@@ -396,6 +396,9 @@ async function openViewerTabInternal(
     if (options?.asCode && existing.viewMode === 'markdown-preview') {
       existing.viewMode = 'editor';
     }
+    if (options?.asCode === false && options.viewMode === 'markdown-preview') {
+      existing.viewMode = 'markdown-preview';
+    }
     setActiveInternal(key);
     emitChange();
     persistWorkspaceTabs();

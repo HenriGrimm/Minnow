@@ -35,7 +35,7 @@ function sleep(ms: number): Promise<void> {
 /** Canonical fixture covering lists, tables, fences, setext, inline HTML. */
 function buildFixture(partial: 'full' | 'unterminated-fence' | 'growing'): string {
   const head = [
-    'Intro paragraph with **bold** and `code`.',
+    'Intro paragraph with **bold**, `code`, and `src/main.ts:12`.',
     '',
     'Setext heading',
     '==============',

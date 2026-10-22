@@ -25,6 +25,21 @@ const DANGEROUS_SCHEME_RE = /^(javascript|data|vbscript|file):/iu;
 
 const LINE_FRAGMENT_RE = /^L(\d+)(?:-L?(\d+))?$/iu;
 
+/** A whole inline-code file reference, optionally followed by source line numbers. */
+const FILE_REFERENCE_RE = /^((?:\.{1,2}[\\/]|[\\/])?(?:[\w@.-]+[\\/])*[\w.-]+\.[a-zA-Z][\w-]*)(?::(\d+)(?:-(\d+))?|#L(\d+)(?:-L?(\d+))?)?$/u;
+
+export function inlineFileReferenceHref(text: string): string | null {
+  const match = FILE_REFERENCE_RE.exec(text.trim());
+  if (!match) return null;
+  const path = match[1]!.replace(/\\/g, '/');
+  const start = match[2] ?? match[4];
+  const end = match[3] ?? match[5];
+  if (!start) return path;
+  if (!Number.isSafeInteger(Number(start)) || Number(start) < 1) return null;
+  if (end && (!Number.isSafeInteger(Number(end)) || Number(end) < Number(start))) return null;
+  return `${path}#L${start}${end ? `-L${end}` : ''}`;
+}
+
 const MAIL_OR_TEL_RE = /^(mailto|tel):/iu;
 
 export type MarkdownLineRange = { startLine: number; endLine: number };
@@ -87,6 +102,17 @@ export function applyMarkdownHeadingIds(root: ParentNode, used = new Map<string,
  * In-app hashes stay in-place so `#/wiki/…` and `#/app/…` still route.
  */
 export function hardenMarkdownAnchors(root: ParentNode): void {
+  // Use real anchors for keyboard activation and the existing capture-phase routing.
+  root.querySelectorAll('code').forEach((code) => {
+    if (code.closest('pre, a')) return;
+    const href = inlineFileReferenceHref(code.textContent ?? '');
+    if (!href) return;
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', href);
+    anchor.title = `Open ${code.textContent}`;
+    code.replaceWith(anchor);
+    anchor.appendChild(code);
+  });
   root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
     const href = anchor.getAttribute('href')?.trim() ?? '';
     if (!href || IN_APP_HASH_RE.test(href) || MAIL_OR_TEL_RE.test(href)) return;
@@ -221,10 +247,12 @@ export function classifyMarkdownHref(
     return { type: 'heading', id };
   }
 
-  const path = resolveMarkdownWorkspacePath(trimmed, sourcePath);
+  // Models also emit ordinary Markdown links with the same path:line syntax.
+  const referenceHref = inlineFileReferenceHref(trimmed) ?? trimmed;
+  const path = resolveMarkdownWorkspacePath(referenceHref, sourcePath);
   if (!path) return { type: 'ignore' };
 
-  const fragment = fragmentFromHref(trimmed);
+  const fragment = fragmentFromHref(referenceHref);
   let decodedFragment = fragment;
   try {
     decodedFragment = decodeURIComponent(fragment);
@@ -315,9 +343,12 @@ function openWorkspaceFromMarkdown(
   }
   if (headingId) queueHeadingScroll(path, headingId);
   void import('../ui/file-viewer').then(async (mod) => {
+    const isPlan = /^documentation\/plans\/.*\.md$/iu.test(path);
     await mod.openFileInViewer(
       path,
-      lineRange
+      isPlan
+        ? { asCode: false }
+        : lineRange
         ? { asCode: true, initialLineRange: lineRange }
         : undefined,
     );

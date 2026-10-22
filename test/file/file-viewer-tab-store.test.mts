@@ -52,6 +52,17 @@ describe('file-viewer-tab-store', () => {
     assert.deepEqual(getOpenViewerTabPaths(), []);
   });
 
+  test('explicit preview opens an existing plan editor without replacing its draft', async () => {
+    const path = 'documentation/plans/build.md';
+    await openViewerTab(path, { asCode: true, viewMode: 'editor' });
+    snapshotViewerTabEditorContent(path, '# Unsaved plan', true);
+    const opened = await openViewerTab(path, { asCode: false, viewMode: 'markdown-preview' });
+    assert.equal(opened?.focusedExisting, true);
+    assert.equal(opened?.tab.viewMode, 'markdown-preview');
+    assert.equal(opened?.tab.cachedEditorContent, '# Unsaved plan');
+    assert.equal(opened?.tab.isDirty, true);
+  });
+
   test('retargetTab updates path key', async () => {
     await openViewerTab('old/name.ts', { skipUnsavedGuard: true });
     retargetViewerTab('old/name.ts', 'new/name.ts');
