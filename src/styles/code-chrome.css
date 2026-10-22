@@ -14,10 +14,11 @@
 
 .code-views {
   flex: none;
+  min-height: var(--mn-code-header-height);
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--mn-border);
   background: var(--mn-surface-1);
 }
@@ -27,7 +28,7 @@
   align-items: center;
   gap: 6px;
   position: relative;
-  min-height: 30px;
+  min-height: 32px;
   padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);

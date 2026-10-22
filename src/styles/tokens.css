@@ -50,6 +50,7 @@ body {
   --bp-mobile: 640px;
   --bp-wide: 900px;
   --topbar-h: 52px;
+  --mn-code-header-height: 52px;
   --sidebar-w: 300px;
   --sidebar-rail: 48px;
   --file-sidebar-w: 350px;

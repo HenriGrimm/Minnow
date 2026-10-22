@@ -100,9 +100,10 @@
 
 .chat-sidebar-header {
   display: flex;
+  min-height: var(--mn-code-header-height);
   align-items: center;
   gap: 6px;
-  padding: 10px 10px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--mn-border);
   flex-shrink: 0;
 }
