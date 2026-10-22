@@ -7,6 +7,7 @@ let confirmed = true;
 const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
+let savedChanges: { sha: string; branch: string; fileCount: number; createdAt: string }[] = [];
 let statusResult: { ok: boolean; error?: string; staged?: { path: string; status: string }[]; unstaged?: { path: string; status: string }[]; untracked?: { path: string; status: string }[] } = { ok: true };
 mock.module('../../src/ui/git-commit-diff-panel.ts', { namedExports: {
   closeGitCommitDiffPanel() {}, getOpenGitCommitDiffSha: () => null,
@@ -35,6 +36,23 @@ mock.module('../../src/ui/git-graph.ts', { namedExports: {
   renderGitGraph: () => ({ refresh: unused, destroy() {}, setSelectedCommit() {} }),
 } });
 mock.module('../../src/state/git-api.ts', { namedExports: {
+  gitCheckoutSwitch: async (input: { branch: string; cwd?: string; dirtyHandling?: string }) => {
+    calls.push(['switch', input]);
+    const dirty = (statusResult.staged?.length ?? 0) + (statusResult.unstaged?.length ?? 0) + (statusResult.untracked?.length ?? 0);
+    if (dirty && !input.dirtyHandling) return { ok: false, needsChoice: true, branch: workspaceBranch, fileCount: dirty };
+    if (input.dirtyHandling === 'leave') {
+      savedChanges.push({ sha: 'saved-main', branch: workspaceBranch, fileCount: dirty, createdAt: 'today' });
+      statusResult = { ok: true };
+    }
+    workspaceBranch = input.branch;
+    return { ok: true, branch: input.branch };
+  },
+  gitCheckoutSavedChanges: async () => ({ ok: true, savedChanges }),
+  gitCheckoutRestoreChanges: async (input: unknown) => {
+    calls.push(['restore', input]); savedChanges = [];
+    statusResult = { ok: true, unstaged: [{ path: 'work.ts', status: 'M' }] };
+    return { ok: true };
+  },
   gitBranches: async (cwd?: string) => ({
     ok: true, current: cwd === '/selected-worktree' ? 'feature' : workspaceBranch,
     local: ['main', 'feature'], remote: [], lockedLocal: [],
@@ -92,6 +110,7 @@ beforeEach(() => {
   confirmed = true;
   featureWorktreeExists = true;
   workspaceBranch = 'main';
+  savedChanges = [];
   statusResult = { ok: true };
   workspace.setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
   panel.initGitPanel();
@@ -106,20 +125,24 @@ afterEach(async () => {
 
 test('removing the active worktree selects the workspace HEAD while retaining the removed branch', async () => {
   await panel.openGitSidePanel();
-  const branch = document.getElementById('gitPanelBranchSelect') as HTMLSelectElement;
-  const cwd = document.getElementById('gitPanelCwdSelect') as HTMLSelectElement;
-  assert.equal(branch.value, 'feature');
-  assert.equal(cwd.value, '/selected-worktree');
+  const branch = document.getElementById('gitCheckoutTrigger') as HTMLButtonElement;
 
-  (document.querySelector('[aria-label="Remove worktree"]') as HTMLButtonElement).click();
-  for (let attempt = 0; attempt < 100 && branch.value !== 'main'; attempt++) {
+  assert.match(branch.textContent ?? '', /feature/);
+  assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
+
+  branch.click();
+  (document.getElementById('gitCheckoutTab-worktrees') as HTMLButtonElement).click();
+  ([...document.querySelectorAll('.git-checkout__action')].find((el) => el.textContent?.startsWith('Remove current worktree')) as HTMLButtonElement).click();
+  for (let attempt = 0; attempt < 100 && !branch.textContent?.includes('main'); attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   panel.closeGitSidePanel();
 
-  assert.equal(cwd.value, '/workspace');
-  assert.equal(branch.value, 'main');
-  assert.ok([...branch.options].some((option) => option.value === 'feature'));
+  assert.ok(!panel.getGitPanelCwd() || panel.getGitPanelCwd() === '/workspace');
+  assert.match(branch.textContent ?? '', /main/);
+  branch.click();
+  (document.getElementById('gitCheckoutTab-branches') as HTMLButtonElement).click();
+  assert.match(document.querySelector('.git-checkout__list')?.textContent ?? '', /feature/);
   assert.ok(calls.some((call) => Array.isArray(call) && call[0] === 'remove'));
   assert.ok(!calls.some((call) => Array.isArray(call) && call[0] === 'checkout'));
 });
@@ -127,11 +150,37 @@ test('removing the active worktree selects the workspace HEAD while retaining th
 test('refresh follows an external checkout even when the previous branch remains available', async () => {
   panel.setGitPanelCwd(undefined);
   await panel.openGitSidePanel();
-  const branch = document.getElementById('gitPanelBranchSelect') as HTMLSelectElement;
-  assert.equal(branch.value, 'main');
+  const branch = document.getElementById('gitCheckoutTrigger') as HTMLButtonElement;
+  assert.match(branch.textContent ?? '', /main/);
   workspaceBranch = 'feature';
   await panel.refreshGitPanel();
-  assert.equal(branch.value, 'feature');
+  assert.match(branch.textContent ?? '', /feature/);
+});
+
+test('sidebar saves changes on the source branch and offers restore after switching back', async () => {
+  panel.setGitPanelCwd(undefined);
+  featureWorktreeExists = false;
+  statusResult = { ok: true, unstaged: [{ path: 'work.ts', status: 'M' }] };
+  await panel.openGitSidePanel();
+  const click = (selector: string, contains?: string) => {
+    const el = [...document.querySelectorAll<HTMLButtonElement>(selector)].find((b) => !contains || b.textContent?.includes(contains));
+    assert.ok(el); el.click();
+  };
+  const waitFor = async (condition: () => boolean) => {
+    for (let i = 0; i < 100 && !condition(); i++) await new Promise((r) => setTimeout(r, 5));
+    assert.ok(condition());
+  };
+  click('#gitCheckoutTrigger'); click('.git-checkout__item', 'feature');
+  await waitFor(() => Boolean(document.querySelector('.git-checkout__choice')));
+  assert.equal(workspaceBranch, 'main');
+  click('.git-checkout__choice', 'Leave changes');
+  await waitFor(() => workspaceBranch === 'feature' && !document.getElementById('gitCheckoutTrigger')?.hasAttribute('disabled'));
+  assert.equal(savedChanges[0].branch, 'main');
+  click('#gitCheckoutTrigger'); click('.git-checkout__item', 'main');
+  await waitFor(() => Boolean(document.querySelector('.git-checkout__restore button')));
+  click('.git-checkout__restore button');
+  await waitFor(() => savedChanges.length === 0 && !document.querySelector('.git-checkout__restore'));
+  assert.ok(calls.some((call) => Array.isArray(call) && call[0] === 'restore'));
 });
 
 test('81 unchanged files survive polling without subtree deletion or lost collapse state', async () => {

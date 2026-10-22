@@ -3,6 +3,7 @@
  */
 
 @import './git-no-repo.css';
+@import './git-checkout-picker.css';
 
 .git-panel-root {
   flex: 1;
@@ -76,65 +77,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.git-panel-cwd-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.git-panel-cwd-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--mn-fg-muted);
-}
-
-.git-panel-cwd-wrap,
-.git-panel-branch-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.git-panel-field-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.git-panel-field-row .git-panel-cwd-select,
-.git-panel-field-row .git-panel-branch-select {
-  flex: 1;
-  min-width: 0;
-}
-
-.git-panel-toolbar-btn {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg);
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .git-panel-toolbar-btn:hover:not(:disabled) {
-    background: var(--mn-accent-soft);
-  }
-}
-
-.git-panel-toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* Anchored name popover for branch/worktree create (Electron-safe; no window.prompt).
@@ -341,29 +283,6 @@
 .git-panel-sync-row .git-panel-ahead-behind {
   flex: 1;
   min-width: 0;
-}
-
-.git-panel-cwd-select {
-  width: 100%;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 6px 8px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg);
-}
-
-.git-panel-branch-select {
-  width: 100%;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 6px 8px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm);
-  background: var(--mn-bg);
-  color: var(--mn-fg);
 }
 
 .git-panel-ahead-behind {

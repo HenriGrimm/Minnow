@@ -1,0 +1,152 @@
+.git-checkout {
+  min-width: 0;
+  color: var(--mn-fg);
+}
+
+.git-checkout button {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.git-checkout button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-checkout__trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--mn-surface-0);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-md);
+}
+
+.git-checkout__identity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.git-checkout__branch {
+  display: block;
+  overflow-wrap: anywhere;
+  font: 13px/1.5 var(--font-mono);
+}
+
+.git-checkout__trigger .git-checkout__branch {
+  font-weight: 600;
+}
+
+.git-checkout__detail {
+  display: block;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.git-checkout__menu {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--mn-menu-bg);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  max-height: min(440px, 55vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.git-checkout [hidden] { display: none !important; }
+
+.git-checkout__tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mn-border);
+  flex-shrink: 0;
+}
+
+.git-checkout__tab,
+.git-checkout__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  font-size: 12px !important;
+  overflow-wrap: anywhere;
+}
+
+.git-checkout__tab { flex: 1; justify-content: center; }
+.git-checkout__tab[aria-selected='true'] { background: var(--mn-accent-soft); color: var(--mn-accent-ink); }
+.git-checkout__search { display: flex; flex-direction: column; flex-shrink: 0; gap: 4px; margin: 10px 2px 6px; }
+.git-checkout__list { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.git-checkout__search input {
+  min-width: 0;
+  width: 100%;
+  padding: 7px 9px;
+  font: 13px/1.5 var(--font-ui);
+  background: var(--mn-surface-0);
+  color: var(--mn-fg);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+}
+
+.git-checkout__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: var(--mn-menu-item-padding);
+  border: 1px solid transparent;
+  border-radius: var(--mn-menu-item-radius);
+  background: transparent;
+  text-align: left;
+}
+
+.git-checkout__tag { max-width: 85px; font-size: 11px; color: var(--mn-fg-muted); }
+.git-checkout__footer { display: flex; flex-direction: column; flex-shrink: 0; gap: 2px; border-top: 1px solid var(--mn-border); margin-top: 6px; padding-top: 6px; }
+.git-checkout__footer > .git-checkout__detail { padding: 6px 8px; }
+.git-checkout__heading { margin: 4px 4px 8px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.git-checkout__menu > .git-checkout__detail { margin: 0 4px 12px; }
+.git-checkout__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.git-checkout__choice > .icon-svg { margin-top: 2px; flex-shrink: 0; }
+.git-checkout__choice > span { min-width: 0; }
+.git-checkout__title { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.git-checkout__choice .git-checkout__detail { margin-top: 4px; }
+.git-checkout__restore { padding: 12px 2px 4px; }
+.git-checkout__restore button { margin-top: 8px; border-color: var(--mn-border); }
+.git-checkout__empty { display: block; padding: 12px 8px; font-size: 12px; color: var(--mn-fg-muted); }
+.git-checkout__error { display: block; margin: 10px 2px 4px; color: var(--mn-danger); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (hover: hover) and (pointer: fine) {
+  .git-checkout button:hover:not(:disabled) { background: var(--mn-menu-hover-bg); }
+}
+@media (pointer: coarse) {
+  .git-checkout button { min-height: 44px; }
+  .git-checkout__search input { font-size: 16px; }
+}
