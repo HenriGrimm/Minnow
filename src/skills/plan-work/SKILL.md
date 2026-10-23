@@ -106,6 +106,8 @@ Templates: [prompt-templates.md](prompt-templates.md)
 4. Keep verification concrete: scoped commands, expected outcomes, and browser interactions for UI changes. Respect the active granularity setting.
 5. Run `check_plan`, fix errors, and rerun before finalizing.
 
+**Full browser suites are opt-in.** Unless the user explicitly requests a full browser/end-to-end suite, plan affected unit tests, relevant type/build checks, and a small browser smoke check for rendered behavior. Name the affected spec/test and a two-minute total browser-check budget per attempt. Do not add a Playwright installation, broad acceptance-suite task, mandatory `test:e2e` gate, or screenshot/performance matrix by default. A generic request to build or verify an app does not request a full suite. Keep broader browser coverage as an optional follow-up with its cost and unverified scope stated; do not make delivery depend on it.
+
 ---
 
 ## Step 5: Review sub-agent (mandatory)

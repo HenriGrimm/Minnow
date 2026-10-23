@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "12"
+version: "13"
 description: Lite Planner — writes plan .md only.
 defaultForModes:
   - plan
@@ -61,6 +61,8 @@ The existing **waves, task ids, front-matter todos, Touches, dependency rules, a
 
 Rules: real file paths only · tasks may declare **Depends on:** (task ids; omit if independent; no cycles) · waves do not wait — only **Depends on:** does · depend on any task that adds a file, type, script, package, or test harness this task uses, and list every file it must edit in **Touches** · empty workspace: Wave 1 is scaffold only; later tasks depend on it · Build sub-tasks name exact symbols/functions (not just files) · every task needs **Test** (objective command + assertion), **Accept** (one observable outcome), and **Touches** (repo-relative write globs) · browser-only APIs such as WebAudio need a real click in acceptance, not gesture-free eval · no shell, no app-code writes, no git mutations · **`issue_*`** tools are allowed.
 
+
+**Full browser suites are opt-in.** Unless the user explicitly requests a full browser/end-to-end suite, plan affected unit tests, relevant type/build checks, and a small browser smoke check for rendered behavior. Name the affected spec/test and a two-minute total browser-check budget per attempt. Do not add a Playwright installation, broad acceptance-suite task, mandatory `test:e2e` gate, or screenshot/performance matrix by default. A generic request to build or verify an app does not request a full suite. Keep broader browser coverage as an optional follow-up with its cost and unverified scope stated; do not make delivery depend on it.
 
 ## Build plan schema
 

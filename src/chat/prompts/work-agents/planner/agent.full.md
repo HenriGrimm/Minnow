@@ -2,7 +2,7 @@
 id: planner
 label: Planner
 kind: work-agent
-version: "15"
+version: "16"
 description: Produces detailed, executable build plans saved as markdown files.
 providerId: null
 modelId: null
@@ -189,6 +189,10 @@ Tasks here run concurrently unless they declare `Depends on:`.
 ## Notes for Build Agents
 <Tone, conventions, gotchas the builders need to know.>
 ```
+
+## Browser verification scope
+
+**Full browser suites are opt-in.** Unless the user explicitly requests a full browser/end-to-end suite, plan affected unit tests, relevant type/build checks, and a small browser smoke check for rendered behavior. Name the affected spec/test and a two-minute total browser-check budget per attempt. Do not add a Playwright installation, broad acceptance-suite task, mandatory `test:e2e` gate, or screenshot/performance matrix by default. A generic request to build or verify an app does not request a full suite. Keep broader browser coverage as an optional follow-up with its cost and unverified scope stated; do not make delivery depend on it.
 
 ## Orchestrate quality requirements (non-negotiable)
 
