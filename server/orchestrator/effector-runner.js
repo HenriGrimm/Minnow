@@ -792,8 +792,9 @@ export function createRunnerEffector(options = {}) {
     async preflight() {
       const state = boardId || options.getState ? await currentState() : null;
       if (state?.recoveryVersion && state.workspacePath && !(await fs.stat(state.workspacePath)).isDirectory()) throw new Error('The recorded workspace is unavailable');
-      const model = await resolveAttemptModel(options.model ?? state?.model ?? null, state?.workspacePath);
-      await resolveLibraryAttemptBinding(model);
+      const model = await resolveLibraryAttemptBinding(
+        await resolveAttemptModel(options.model ?? state?.model ?? null, state?.workspacePath),
+      );
       if (state?.recoveryVersion && !usingFakeTurn && model.providerId !== 'minnow-router') {
         const { profile, secrets } = await getProviderRuntime(model.providerId);
         if (profile.apiKind === 'agent-cli-v1') {

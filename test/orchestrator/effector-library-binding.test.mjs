@@ -25,9 +25,12 @@ import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import {
   ensureProviderRegistry,
+  createProvider,
   getProvider,
   getProviderRuntime,
   LLAMA_CPP_LOCAL_ID,
+  MLX_LM_LOCAL_ID,
+  MTPLX_LOCAL_ID,
 } from '../../server/providers/store.js';
 
 const LIBRARY_PROVIDER = 'minnow-library';
@@ -110,6 +113,9 @@ describe('V2 runner My Models binding', { concurrency: false }, () => {
     homeDir = setTestHome(process.env, 'minnow-test-v2-lib-bind');
     await ensureMinnowLayout();
     await ensureProviderRegistry();
+    for (const id of [MLX_LM_LOCAL_ID, MTPLX_LOCAL_ID]) {
+      await createProvider({ id, label: id, baseUrl: 'http://127.0.0.1:18999', apiKind: 'openai-v1' });
+    }
     cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'v2-lib-bind-cwd-'));
   });
 
@@ -123,6 +129,67 @@ describe('V2 runner My Models binding', { concurrency: false }, () => {
     await rmTestHome(homeDir);
     resetMinnowHomeCache();
   });
+
+  for (const target of [
+    {
+      runtime: 'llama-cpp', libraryId: GGUF_LIBRARY_ID,
+      modelPath: GGUF_PATH, modelLabel: 'Qwen3.5-9B',
+      cached: {
+        repo_id: 'qwen/Qwen3.5-9B', path: path.dirname(GGUF_PATH), is_local_dir: true,
+        gguf_files: [{ rel_path: 'weights.Q4_K_M.gguf', role: 'model', size_bytes: 6000 }],
+      },
+    },
+    {
+      runtime: 'mlx-lm', libraryId: 'mlx:mlx-community/Qwen',
+      modelPath: '/models/mlx/Qwen', modelLabel: '/models/mlx/Qwen',
+      cached: { repo_id: 'mlx-community/Qwen', mlx_root: '/models/mlx/Qwen' },
+    },
+    {
+      runtime: 'mtplx', libraryId: 'mtplx:Youssofal/Qwen',
+      modelPath: '/models/mtplx/Qwen', modelLabel: 'Youssofal/Qwen',
+      cached: { repo_id: 'Youssofal/Qwen', mtplx_root: '/models/mtplx/Qwen', mtplx_validated: true },
+    },
+  ]) {
+    for (const loaded of [true, false]) {
+      test(`production recovery preflight remaps ${target.runtime} (${loaded ? 'running' : 'unloaded after restart'})`, async () => {
+        const boardId = `recovery-${target.runtime}-${loaded}`;
+        const journal = await openBoard(boardId);
+        await journal.appendEvents(boardId, [
+          makeEvent('board.model.set', { providerId: LIBRARY_PROVIDER, id: target.libraryId }),
+          makeEvent('board.started', { concurrency: 1, recoveryVersion: 1 }),
+        ]);
+        let state = await journal.loadState(boardId);
+        const serve = {
+          id: 'recovery-serve', runtime: target.runtime, status: 'running',
+          modelLabel: target.modelLabel, modelPath: target.modelPath, libraryId: target.libraryId,
+        };
+        const starts = [];
+        setLibraryBindingDepsForTests({
+          ...fakeLiveGgufDeps(),
+          findLiveLlamaCppServe: async () => null,
+          listServes: async () => loaded ? [serve] : [],
+          listCachedModels: async () => ({ models: [target.cached] }),
+          startServe: async (body) => { starts.push(body); return serve; },
+        });
+        // Use the production turn runner: injecting runTurn bypasses the
+        // recovery provider/auth checks that regressed. No generation is sent.
+        const effector = createRunnerEffector({ boardId, journal, getState: () => state, cwd, promptVariant: 'lite' });
+        await effector.preflight();
+        assert.equal(starts.length, loaded ? 0 : 1);
+        if (!loaded) {
+          assert.equal(starts[0].libraryId, target.libraryId);
+          assert.equal(starts[0].runtime, target.runtime);
+        }
+        assert.deepEqual(state.model, { providerId: LIBRARY_PROVIDER, id: target.libraryId, reasoning: null });
+
+        // A board model change is read fresh by the same effector.
+        await journal.appendEvent(boardId, makeEvent('board.model.set', { providerId: 'lm-studio-local', id: 'other-model' }));
+        state = await journal.loadState(boardId);
+        await effector.preflight();
+        assert.equal(starts.length, loaded ? 0 : 1);
+      });
+    }
+  }
 
   test('runTurn receives llama-cpp-local and never opens minnow-library/profile.json', async () => {
     setLibraryBindingDepsForTests(fakeLiveGgufDeps());
