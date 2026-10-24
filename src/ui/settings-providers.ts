@@ -1136,6 +1136,20 @@ export function createProviderSettingsRow(
     const body = el('div', 'settings-providers-card-body');
     const form = buildProviderEditForm(provider);
     const advanced = form.querySelector('.settings-providers-advanced');
+    const usageDetails = el('details', 'provider-account-usage-details');
+    const usageView = createProviderAccountUsageView(provider.id, {
+      visible: () => panel.open && usageDetails.open && usageDetails.isConnected
+        && Boolean(usageDetails.getClientRects().length),
+    });
+    usageDetails.append(el('summary', undefined, 'Account usage'), usageView.root);
+    const syncUsage = () => {
+      if (panel.open && usageDetails.open) usageView.start();
+      else usageView.stop();
+    };
+    usageDetails.addEventListener('toggle', syncUsage);
+    panel.addEventListener('toggle', syncUsage);
+    stopProviderUsageViews.push(usageView.stop);
+    form.insertBefore(usageDetails, advanced);
     const structured = el('p', 'field-hint', formatStructuredOutputBadge(capabilities, provider.id).label);
     advanced?.append(structured);
     if (!capabilities) {
@@ -1808,21 +1822,6 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
   configurableProviders.forEach((provider) => {
     const row = createProviderSettingsRow(provider, canRemove);
-    const usageDetails = document.createElement('details');
-    usageDetails.className = 'provider-account-usage-details';
-    const usageSummary = document.createElement('summary');
-    usageSummary.textContent = 'Account usage';
-    const usageView = createProviderAccountUsageView(provider.id, {
-      visible: () => usageDetails.open && usageDetails.isConnected
-        && Boolean(usageDetails.getClientRects().length),
-    });
-    usageDetails.append(usageSummary, usageView.root);
-    usageDetails.addEventListener('toggle', () => {
-      if (usageDetails.open) usageView.start();
-      else usageView.stop();
-    });
-    stopProviderUsageViews.push(usageView.stop);
-    row.append(usageDetails);
     rows.append(row);
     const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
     if (panel && openIds.has(provider.id)) panel.open = true;
