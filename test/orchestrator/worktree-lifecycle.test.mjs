@@ -44,7 +44,7 @@ import { getBoardWorktreesDir, getWorktreeSlotPath } from '../../server/worktree
 import { setWorkspaceRoot } from '../../server/workspace/root.js';
 import { wantsSameWorktree } from '../../server/orchestrator/core/policy.js';
 import { checkpointAttempt } from '../../server/orchestrator/checkpoint.js';
-import { boardDir } from '../../server/orchestrator/journal.js';
+import { boardDir, createBoard } from '../../server/orchestrator/journal.js';
 import { prepareVerificationInputs } from '../../server/orchestrator/verification-contract.js';
 
 const execFileAsync = promisify(execFile);
@@ -179,6 +179,7 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
   test('a failed checkpoint restore must complete before an existing checkout can be reused', async () => {
     const state = boardState(['RESTORE']);
     state.boardId = 'restore-retry'; state.recoveryVersion = 1;
+    await createBoard(state.boardId);
     const desired = { taskId: 'RESTORE', role: 'builder', seedKind: 'continue', sameWorktree: true };
     const input = { boardId: state.boardId, taskId: 'RESTORE', attemptId: 'original', state, desired };
     const allocated = await allocateAttemptWorktree(input);

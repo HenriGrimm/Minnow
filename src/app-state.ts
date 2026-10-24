@@ -95,6 +95,9 @@ export function setStreaming(value: boolean, chatId?: string | null): void {
     streamingChatIds.clear();
   }
   syncLegacyStreamingFlags();
+  if (typeof window !== 'undefined') {
+    window.minnow?.power?.setChatActive?.(streamingChatIds.size > 0);
+  }
   notifyPluginContextChanged();
 }
 

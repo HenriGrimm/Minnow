@@ -9,6 +9,7 @@ import {
   crashReporter,
   dialog,
   powerMonitor,
+  powerSaveBlocker,
   session,
   shell,
 } from 'electron';
@@ -79,7 +80,7 @@ import { revealAbsolutePathInExplorer } from './shell-reveal.js';
 import { registerDesktopNotificationIpc } from './desktop-notifications.js';
 import { resolveFileDragPaths } from './shell-file-drag-paths.js';
 import { startShellFileDrag } from './shell-file-drag.js';
-import { setAfkBoardPowerGuardActive } from './afk-power-guard.js';
+import { createChatPowerGuard, wireChatPowerGuard } from './chat-power-guard.js';
 import { formatUnknownError } from './error-text.js';
 import { workspaceClaimHttpBase } from './workspace-claim-transport.js';
 import {
@@ -91,6 +92,7 @@ import {
 // ── App paths ────────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const chatPowerGuard = createChatPowerGuard(powerSaveBlocker);
 
 function appIconPath(): string {
   const root = app.isPackaged
@@ -417,8 +419,8 @@ function registerIpcHandlers(): void {
     crashLog.clearOomPauseMarker();
   });
 
-  trustedIpc.handle(channels.POWER_SET_AFK_GUARD, (_event, active: unknown) => {
-    setAfkBoardPowerGuardActive(active === true);
+  trustedIpc.handle(channels.POWER_SET_CHAT_ACTIVE, (event, active: unknown) => {
+    chatPowerGuard.setActive(event.sender.id, active === true && !quitInProgress);
   });
 
   trustedIpc.handle(channels.WINDOW_MINIMIZE, (event) => {
@@ -997,6 +999,7 @@ async function createShellWindow(
   });
 
   wireShellReload(win);
+  wireChatPowerGuard(win.webContents, chatPowerGuard);
   shellWindows.register(win.id, workspacePath, viewId, appId);
   const revokeShellTrust = wireShellNavigation(win.webContents, shellBaseUrl, {
     trust: trustShellWebContents,
@@ -1837,6 +1840,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('before-quit', (event) => {
+    chatPowerGuard.dispose();
     if (quitInProgress) return;
     event.preventDefault();
     quitInProgress = true;

@@ -17,6 +17,8 @@ import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { runProcess } from '../../server/process-runner.js';
 import { ensureBoardIntegration, resetEnsuredBoards } from '../../server/orchestrator/worktree-lifecycle.js';
+import { checkpointAttempt, restoreCheckpoint } from '../../server/orchestrator/checkpoint.js';
+import { getWorktreeSlotPath } from '../../server/worktree/paths.js';
 
 const PLAN = `---
 name: demo-board
@@ -129,6 +131,54 @@ async function createBoard(markdown = PLAN) {
 }
 
 describe('stuck board deletion', () => {
+  it('deletes recovery refs after in-flight checkpoints, including orphan refs in corrupt boards', async () => {
+    const previousRoot = getDefaultWorkspaceRoot();
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-delete-recovery-'));
+    const git = async (...args) => {
+      const result = await runProcess('git', args, { cwd: workspace });
+      assert.equal(result.code, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    try {
+      await setWorkspaceRoot(workspace);
+      await git('init', '-b', 'main');
+      await git('config', 'user.name', 'Test');
+      await git('config', 'user.email', 'test@example.invalid');
+      await fs.writeFile(path.join(workspace, 'source.txt'), 'base');
+      await git('add', '.');
+      await git('commit', '-m', 'base');
+      const boardId = await createBoard();
+      const prefix = `refs/minnow/recovery/${boardId}/`;
+      const sha = await git('rev-parse', 'HEAD');
+      const other = `refs/minnow/recovery/${boardId}-other/attempt`;
+      await git('update-ref', `${prefix}orphan`, sha);
+      await git('update-ref', `${prefix}orphan-index`, sha);
+      await git('update-ref', other, sha);
+      const worktree = getWorktreeSlotPath(boardId, 'attempt');
+      await fs.mkdir(path.dirname(worktree), { recursive: true });
+      await git('worktree', 'add', '-b', 'board-task', worktree);
+      await fs.writeFile(path.join(worktree, 'progress.txt'), 'unfinished work');
+      await fs.appendFile(journalPath(boardId), 'broken event\n');
+      const saving = checkpointAttempt({ boardId, attemptId: 'in-flight', worktree });
+      const deleting = call('DELETE', `/api/boards/${boardId}`);
+      const checkpoint = await saving;
+      const result = await deleting;
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.equal(await git('for-each-ref', '--format=%(refname)', prefix), '');
+      assert.equal(await git('rev-parse', other), sha);
+      assert.equal(await boardExists(boardId), false);
+      await assert.rejects(checkpointAttempt({ boardId, attemptId: 'late', worktree }), /no longer exists/);
+      await assert.rejects(restoreCheckpoint({ boardId, attemptId: checkpoint.attemptId, worktree }), /no longer exists/);
+      assert.equal(await boardExists(boardId), false);
+      assert.equal(await git('for-each-ref', '--format=%(refname)', prefix), '');
+      assert.equal(await createBoard(), boardId);
+      assert.equal((await call('DELETE', `/api/boards/${boardId}`)).status, 200);
+    } finally {
+      await setWorkspaceRoot(previousRoot);
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it('lists and deletes a corrupt journal without replaying it', async () => {
     const boardId = await createBoard();
     await fs.appendFile(journalPath(boardId), 'broken event\n');

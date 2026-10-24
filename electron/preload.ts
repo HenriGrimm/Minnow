@@ -637,8 +637,10 @@ const minnowBridge = {
     },
   },
   power: {
-    setAfkBoardGuard: (active: boolean): void => {
-      void ipcRenderer.invoke(channels.POWER_SET_AFK_GUARD, active);
+    setChatActive: (active: boolean): void => {
+      void ipcRenderer.invoke(channels.POWER_SET_CHAT_ACTIVE, active).catch((error) => {
+        console.warn('[power] Unable to update chat sleep protection:', error);
+      });
     },
     onScreenUnlocked: (callback: () => void): (() => void) => {
       const handler = () => callback();

@@ -37,6 +37,7 @@ import { runProcess } from '../process-runner.js';
 import { readConfigJson } from '../config/store.js';
 import { boardFailure } from './failure.js';
 import { recoveryHold } from './core/recovery.js';
+import { cleanupRecoveryRefs, withBoardRecovery } from './checkpoint.js';
 import { REASONING_EFFORT_OPTIONS, isReasoningEffortOption } from '../runner/reasoning-effort.js';
 
 /** Heartbeat cadence. Intermediaries close idle streams without it. */
@@ -489,17 +490,19 @@ async function dispatch(route, req, res) {
     case 'delete': {
       if (!(await boardExists(boardId))) return json(res, 404, { ok: false, error: 'no such board' });
       disposeEngines(boardId);
-      // Journal delete used to leave ~/.minnow/worktrees/<repo>/<boardId>/ behind.
-      // Recreating the same board id then hung engine load on orphan reconcile.
-      try {
-        await cleanupBoardWorktrees({ boardId, includeIntegration: true });
-      } catch (err) {
-        console.warn(
-          `[orchestrator] ${boardId}: worktree cleanup failed:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
-      const removed = await deleteBoard(boardId);
+      const removed = await withBoardRecovery(boardId, async () => {
+        // Recreating a board id must not inherit its old checkouts or recovery refs.
+        try {
+          await cleanupBoardWorktrees({ boardId, includeIntegration: true });
+        } catch (err) {
+          console.warn(
+            `[orchestrator] ${boardId}: worktree cleanup failed:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+        await cleanupRecoveryRefs(boardId, getEffectiveWorkspaceRoot());
+        return deleteBoard(boardId);
+      });
       return json(res, removed ? 200 : 404, {
         ok: removed,
         ...(removed ? { boardId } : { error: 'no such board' }),
