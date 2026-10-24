@@ -1,0 +1,444 @@
+vite v8.1.5 building client environment for production...
+[2K
+[plugin rolldown:vite-resolve] Module "node:fs/promises" has been externalized for browser compatibility, imported by "C:/Users/dukky/Documents/Development/Minnow/src/skills/client.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:path" has been externalized for browser compatibility, imported by "C:/Users/dukky/Documents/Development/Minnow/src/skills/client.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:url" has been externalized for browser compatibility, imported by "C:/Users/dukky/Documents/Development/Minnow/src/skills/client.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+transforming...✓ 2513 modules transformed.
+
+(!) outDir C:\Users\dukky\AppData\Local\Temp\minnow-review-20261023-01a16bf9\dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/index.html                                            188.56 kB │ gzip:  34.70 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/uicons-solid-rounded-Bdt-jAVh.woff2            502.96 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/uicons-regular-rounded-B7AnJSlT.woff2          589.88 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-gate-CAdUsUG4.css                      0.73 kB │ gzip:   0.33 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/github-dark.min-Z5exjX_n.css                     1.06 kB │ gzip:   0.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/device-request-prompt-DvCfPt-I.css               1.34 kB │ gzip:   0.59 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-plugin-packages-CmtCefUX.css            1.96 kB │ gzip:   0.69 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/github-account-CShv9zOq.css                      2.61 kB │ gzip:   0.82 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/model-pool-fields-3BNS0iJh.css                   2.81 kB │ gzip:   0.87 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/vendor-xterm-BrP-ENHg.css                        3.93 kB │ gzip:   1.01 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/git-commit-diff-B96NLRr-.css                     4.41 kB │ gzip:   1.08 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/backup-restore-panel-S4DbkNZb.css                5.62 kB │ gzip:   1.43 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/compare-page-BgWmPMTp.css                        5.83 kB │ gzip:   1.32 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-devices-PXyFZgXp.css                    5.93 kB │ gzip:   1.46 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/model-pool-picker-DsYSDhpT.css                   6.35 kB │ gzip:   1.55 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/cli-panel-CAXmWbaz.css                           7.25 kB │ gzip:   1.89 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-sidebar-Bh-j7M9a.css                      7.59 kB │ gzip:   1.86 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/routing-form-CoUgwlT8.css                        8.20 kB │ gzip:   1.91 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/welcome-page-C9EQeAfv.css                        8.65 kB │ gzip:   2.01 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/viewer-k86fvp5E.css                              8.78 kB │ gzip:   2.01 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/terminal-panel-CBZkIqqk.css                      9.33 kB │ gzip:   2.03 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/routers-panel-B-9nm83D.css                      11.01 kB │ gzip:   2.60 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/product-wiki-D-pbEnc9.css                       11.65 kB │ gzip:   2.58 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/scheduler-page-4zIvgF5e.css                     14.96 kB │ gzip:   2.99 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/experts-hub-bR7r4YIT.css                        15.48 kB │ gzip:   3.15 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-controls-Bvo1iPFK.css                  20.39 kB │ gzip:   3.65 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/page-CK-QA1U2.css                               24.11 kB │ gzip:   4.42 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/home-page-CPMpgPco.css                          24.26 kB │ gzip:   5.08 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/reef-page-D1l9VC8C.css                          30.32 kB │ gzip:   6.12 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/onboarding-B21Vd-sW.css                         31.89 kB │ gzip:   5.43 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-CKz5vt0m.css                              32.88 kB │ gzip:   6.61 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/init-file-panel-DkzwYkmV.css                    36.83 kB │ gzip:   6.21 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/benchmark-page-CH1aSSg-.css                     37.51 kB │ gzip:   6.01 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/source-control-center-YBfm6TuB.css              52.89 kB │ gzip:   9.18 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/brain-page-F-3x4ULM.css                         58.01 kB │ gzip:   9.33 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/boards-view-B0iAQgkD.css                        62.29 kB │ gzip:  10.29 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-page-DtpuO_V_.css                      74.94 kB │ gzip:  11.16 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-electron-visibility-BX4r7p4B.css       382.23 kB │ gzip:  57.05 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/index-DgphNcZe.css                             788.22 kB │ gzip: 130.66 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/persist-schedule-DpoOb-Fj.js                     0.07 kB │ gzip:   0.08 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/__vite-browser-external-BRm5n2qg.js              0.09 kB │ gzip:   0.10 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/outbound-estimate-epochs-CBBLb9ja.js             0.12 kB │ gzip:   0.10 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/app-for-chat-ewDRcsSz.js                         0.13 kB │ gzip:   0.13 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/document-path-Cx4I3mO1.js                        0.13 kB │ gzip:   0.12 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/orchestrate-board-setup-banner-BZjWV9hJ.js       0.16 kB │ gzip:   0.12 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/view-workspace-ChibMlPZ.js                       0.17 kB │ gzip:   0.15 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-events-DwtiSvhk.js                       0.21 kB │ gzip:   0.17 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/events-BEqYGPx7.js                               0.23 kB │ gzip:   0.19 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/types-CoHszS2G.js                                0.25 kB │ gzip:   0.18 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/brain-memory-routing-CRRtthNC.js                 0.26 kB │ gzip:   0.21 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-scoped-map-Bdp_Cjp9.js                 0.41 kB │ gzip:   0.27 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/import-xlsx-FTsqhX8B.js                          0.47 kB │ gzip:   0.32 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/export-xlsx-KdUardnK.js                          0.57 kB │ gzip:   0.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/random-id-9zN8n_2G.js                            0.59 kB │ gzip:   0.34 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-views-chats-toggle-DhlUzzGk.js              0.60 kB │ gzip:   0.36 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/language-id-f1hEMPCW.js                          0.61 kB │ gzip:   0.30 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/hover-client-CmiOwoFa.js                         0.63 kB │ gzip:   0.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-review-C66r_iHO.js                          0.68 kB │ gzip:   0.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/rolldown-runtime-QTnfLwEv.js                     0.69 kB │ gzip:   0.42 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-menubar-DCLAwvPR.js                    0.71 kB │ gzip:   0.39 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/storage-mode-tYKii7EC.js                         0.72 kB │ gzip:   0.42 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-activity-BWiEbD8E.js                        0.74 kB │ gzip:   0.51 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/agent-watch-Bx-raeYC.js                          0.75 kB │ gzip:   0.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/mode-3onZklBb.js                                 0.82 kB │ gzip:   0.46 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/normalize-workspace-path-BQAYWl5K.js             0.85 kB │ gzip:   0.46 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/open-workspace-windows-DUlpa6tS.js               0.88 kB │ gzip:   0.45 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-turn-review-D3sy8Mkv.js                     0.89 kB │ gzip:   0.55 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/git-trunk-branch-Bd6JeBF1.js                     0.90 kB │ gzip:   0.48 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-tree-path-Lb6yXwti.js                       1.01 kB │ gzip:   0.48 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/window-close-prompt-F7R6ZA7I.js                  1.02 kB │ gzip:   0.54 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/capture-surface-menus-B8YhSpTr.js                1.08 kB │ gzip:   0.56 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/app-preferences-CIzE9G2C.js                      1.11 kB │ gzip:   0.63 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/store-ub9wGXBi.js                                1.15 kB │ gzip:   0.57 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/session-token-CZuHnVS0.js                        1.20 kB │ gzip:   0.63 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/parse-frontmatter-EMtGo8fS.js                    1.33 kB │ gzip:   0.70 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chats-workspace-D4eg3vXB.js                      1.40 kB │ gzip:   0.70 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/message-content-CX7dKGTe.js                      1.41 kB │ gzip:   0.56 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/format-document-96O6KvIk.js                      1.49 kB │ gzip:   0.70 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/apply-patch-CnImc1hF.js                          1.67 kB │ gzip:   0.80 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/move-prompt-B15yXjd0.js                          1.69 kB │ gzip:   0.87 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-mcp-tools-BRDynkdd.js                   1.75 kB │ gzip:   0.87 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/qr-scanner-Cm06dlMe.js                           1.78 kB │ gzip:   1.01 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/roster-picker-DqWKXeRl.js                        1.87 kB │ gzip:   0.85 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/mobile-layout-DzEb8Lxq.js                        1.98 kB │ gzip:   0.76 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/instances-CbbzOuGp.js                            2.01 kB │ gzip:   0.96 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/recent-viewer-files-qsNxKEdV.js                  2.05 kB │ gzip:   0.84 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-expand-client-D-zXR7A3.js                 2.17 kB │ gzip:   1.11 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/stream-fetch-DrBmk6yA.js                         2.18 kB │ gzip:   1.15 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/sidebar-chat-dnd-CJiKSsL8.js                     2.23 kB │ gzip:   0.96 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/highlighter-DGRRhbL8.js                          2.26 kB │ gzip:   0.91 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/remote-admin-D3YMg83A.js                         2.27 kB │ gzip:   0.79 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/stream-event-source-D5UDci7q.js                  2.30 kB │ gzip:   1.14 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/client-BVJl6Z9O.js                               2.39 kB │ gzip:   1.11 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/browser-meta-T8RviHOv.js                         2.42 kB │ gzip:   0.95 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-text-read-Cu7GSxiD.js                  2.42 kB │ gzip:   1.10 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/parse-front-matter-UgXUpB1p.js                   2.47 kB │ gzip:   1.06 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/launch-model-picker-BlYtQTv8.js                  2.54 kB │ gzip:   1.27 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/godot-languages-PiA5jPkq.js                      2.55 kB │ gzip:   1.05 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/app-ready-3YI19Kes.js                            2.65 kB │ gzip:   1.15 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/completion-client-LHHvEB3r.js                    2.65 kB │ gzip:   1.02 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/client-_2lynsYh.js                               2.65 kB │ gzip:   0.82 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-change-ledger-jnCm0WU8.js                   2.72 kB │ gzip:   1.06 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/clipboard-Cdcc2p33.js                            3.17 kB │ gzip:   1.37 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/action-catalog-CrkWETYy.js                       3.24 kB │ gzip:   1.29 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/minnow-glyph-DkwckGo7.js                         3.28 kB │ gzip:   1.26 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/persistence-ByYTEAiu.js                          3.33 kB │ gzip:   1.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/toast-BI3jR2Nb.js                                3.38 kB │ gzip:   1.38 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-change-backfill-C7KPNYIs.js                 3.45 kB │ gzip:   1.49 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-capture-ready-GhHeP6HJ.js                3.55 kB │ gzip:   1.75 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-run-ui-D-DeBYNq.js                         3.62 kB │ gzip:   1.61 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issue-link-from-editor-DeItMUCi.js               3.69 kB │ gzip:   1.94 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-devices-anywhere-DiCq7Val.js            3.74 kB │ gzip:   1.61 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issue-capture-wiring-CBTqfJnT.js                 3.76 kB │ gzip:   1.81 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/failed-turn-recovery-B5eFK0x5.js                 3.97 kB │ gzip:   2.05 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-change-strip-CRE-XhjI.js                    4.06 kB │ gzip:   1.93 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/editor-ai-completion-CgO6f-oB.js                 4.12 kB │ gzip:   1.30 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/release-draft-client-DyLXuMxA.js                 4.26 kB │ gzip:   2.10 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-app-Dyff6kRK.js                             4.32 kB │ gzip:   2.30 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/experts-settings-BcS_8Hn9.js                     4.33 kB │ gzip:   2.23 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issue-type-color-picker-ChIkd3id.js              4.38 kB │ gzip:   1.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-launch-rl0H3QoY.js                          4.42 kB │ gzip:   1.93 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/annotation-nav-CA2h-tap.js                       4.43 kB │ gzip:   2.18 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/theme-BI0eM_tU.js                                4.43 kB │ gzip:   1.91 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-views-orchestrate-button-wUstjx3k.js        4.52 kB │ gzip:   2.26 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/orchestrate-board-onboarding-ui-B-jgM0GJ.js      4.80 kB │ gzip:   1.80 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-tree-rename-CLtCyYDd.js                     4.86 kB │ gzip:   2.36 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/icon-BCxPzr8c.js                                 4.88 kB │ gzip:   1.92 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/orchestrate-launch-DzbAbaYC.js                   4.93 kB │ gzip:   2.39 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/navigate-CjovngeF.js                             5.03 kB │ gzip:   2.21 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/model-pool-fields-BOB5cGsh.js                    5.14 kB │ gzip:   1.96 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/terminal-meta-4FeiYbeF.js                        5.16 kB │ gzip:   1.52 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/agent-dispatch-BlwIamum.js                       5.19 kB │ gzip:   2.69 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-ref-link-CN2QXSqk.js                        5.23 kB │ gzip:   2.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-viewer-secondary-slot-CFPghjKZ.js           5.37 kB │ gzip:   2.36 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-BDYRnwFG.js                            5.38 kB │ gzip:   2.37 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-github-auto-CEVpjG9g.js                   5.45 kB │ gzip:   2.77 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/minnow-browser-links-DnqkIUYm.js                 5.46 kB │ gzip:   2.84 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/github-account-BechCy7J.js                       5.49 kB │ gzip:   2.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/terminal-tabs-CxF3hCgF.js                        5.52 kB │ gzip:   2.10 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-tab-store-B545nltm.js                    5.54 kB │ gzip:   2.33 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-change-strip-actions-CuPoDMNz.js            5.54 kB │ gzip:   2.34 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/continue-in-chat-Db7wwiYT.js                     5.59 kB │ gzip:   2.24 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-tree-create-BPQYo1g8.js                     5.60 kB │ gzip:   2.64 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-context-menu-handler-BcEjo2Iv.js         5.67 kB │ gzip:   2.57 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/sheet-CBRGYKqE.js                                5.70 kB │ gzip:   2.26 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/device-request-prompt-DgDiZ61E.js                5.77 kB │ gzip:   2.86 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-brain-capture-CdAZYGm5.js                   5.87 kB │ gzip:   2.62 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-plugins-fkS4D_ps.js                     5.99 kB │ gzip:   2.75 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/models-DOpKWBN3.js                               6.01 kB │ gzip:   2.63 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/spatial-viewport-HovC0GUS.js                     6.08 kB │ gzip:   2.55 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/pr-review-store-D_9PT-QI.js                      6.33 kB │ gzip:   2.64 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/expand-issue-JXA3OxqP.js                         6.46 kB │ gzip:   2.61 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-gate-B66kvteM.js                       6.55 kB │ gzip:   2.82 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-transcript-export-DEXfY2qr.js               6.65 kB │ gzip:   2.99 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-secondary-design-El3Vzxa_.js             6.66 kB │ gzip:   2.57 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-viewer-tab-store-DoLkeF8Z.js                6.78 kB │ gzip:   2.41 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-keyboard-help-C-ouLxzC.js                  6.88 kB │ gzip:   2.34 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/command-palette-CCWaD1Dh.js                      7.08 kB │ gzip:   2.93 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/routing-form-B2WWUugD.js                         7.26 kB │ gzip:   2.89 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-search-rank-CuCAjygU.js                 7.45 kB │ gzip:   2.79 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-row-menu-B5yuP7Vg.js                      7.70 kB │ gzip:   3.37 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/backup-restore-panel-BCTO9Q_y.js                 7.79 kB │ gzip:   3.06 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/app-state-Cw4owVwD.js                            8.13 kB │ gzip:   3.77 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/registry-B_JqCeEA.js                             8.18 kB │ gzip:   2.93 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-workspace-modules-sOIZA3_R.js               8.40 kB │ gzip:   2.57 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/persist-YYvCxnhh.js                              8.48 kB │ gzip:   3.12 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-switch-guard-DWlTsOFk.js               8.54 kB │ gzip:   3.09 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/experts-config-C6kOPd_5.js                       8.56 kB │ gzip:   3.19 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/models-popover-MLo2oMU9.js                       8.65 kB │ gzip:   3.70 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-devices-DgQL2zBF.js                     8.83 kB │ gzip:   3.94 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/profiles-client-B2nUS6he.js                      8.93 kB │ gzip:   3.05 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/text-diff-BGBrxkH4.js                            8.96 kB │ gzip:   3.29 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-panel-Dn1Mq7oE.js                           9.85 kB │ gzip:   3.14 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-window-command-DQJ2_Iaz.js                  9.93 kB │ gzip:   3.00 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/chat-search-popover-Ztp2I1E3.js                  9.96 kB │ gzip:   4.29 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/evaluate-BsqE_lTn.js                            10.18 kB │ gzip:   4.02 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/taxonomy-CB_R1Rvy.js                            10.55 kB │ gzip:   3.68 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/app-registry-BQAdi_FK.js                        10.67 kB │ gzip:   3.61 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/ui-runtime-DNtV7BDD.js                          11.02 kB │ gzip:   4.91 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/terminal-xterm-Dn5sVfdE.js                      11.46 kB │ gzip:   4.84 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/code-launch-BIxjMAAz.js                         11.82 kB │ gzip:   3.19 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/prompt-composer-CtG-2nmL.js                     12.01 kB │ gzip:   3.98 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-commands-DQkzIfLK.js                      12.20 kB │ gzip:   3.55 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-expand-B79fZl3G.js                       12.57 kB │ gzip:   4.66 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/terminal-panel-C0G0MtIb.js                      13.08 kB │ gzip:   5.09 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/brain-page-DSU74prB.js                          13.18 kB │ gzip:   4.66 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/browser-executor-B8FFCfP_.js                    13.67 kB │ gzip:   4.94 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/generations-Q3adHsq-.js                         13.69 kB │ gzip:   5.19 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-plugin-packages-DdxLg27x.js            14.27 kB │ gzip:   6.09 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/theme-Dl2C8cZg.js                               14.63 kB │ gzip:   6.26 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-backup-C6OAS74i.js                     15.14 kB │ gzip:   5.49 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/model-pool-picker-CPLq92MY.js                   15.24 kB │ gzip:   5.48 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/sub-agent-config-BKt6cNOT.js                    16.44 kB │ gzip:   4.20 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/product-wiki-GQknFFNv.js                        16.53 kB │ gzip:   5.62 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/issues-sidebar-Dg4fd5Ju.js                      17.29 kB │ gzip:   6.62 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/workspace-button-ZBmg_t5c.js                    17.68 kB │ gzip:   5.18 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/compare-page-Nu_7oyw9.js                        19.16 kB │ gzip:   6.79 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/viewer-CEj2uRSi.js                              19.73 kB │ gzip:   6.09 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/browser-preview-tools-CTZ0Tws_.js               20.73 kB │ gzip:   6.68 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/routers-panel-D3_3vziT.js                       21.07 kB │ gzip:   7.80 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/welcome-page-CyNpdL8o.js                        21.23 kB │ gzip:   6.51 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-page-qQB4A5QJ.js                       24.03 kB │ gzip:   7.39 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/cli-panel-DxX1UCc4.js                           24.97 kB │ gzip:   9.06 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/transcript-adapter-B1Z2VZXe.js                  25.93 kB │ gzip:   8.73 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/init-file-panel-C_S_VzwP.js                     27.02 kB │ gzip:   9.51 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/settings-devices-connect-J14lIZ4Z.js            28.44 kB │ gzip:  10.85 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/client-SuJah1Nk.js                              32.63 kB │ gzip:   9.43 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/experts-hub-Cztdke5y.js                         37.98 kB │ gzip:  11.50 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/graph-section-B1gJF9s8.js                       42.69 kB │ gzip:  13.97 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/context-budget-24Z0oGAK.js                      45.17 kB │ gzip:  15.96 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/reef-page-C1WvbI8K.js                           50.48 kB │ gzip:  18.17 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/panel-BOwN0hIS.js                               50.49 kB │ gzip:  15.67 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/sections-tgr0lU91.js                            51.91 kB │ gzip:  14.08 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/home-page-CFG5L6sD.js                           55.99 kB │ gzip:  19.66 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/routers-DWl8_esI.js                             59.57 kB │ gzip:  22.28 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/vendor-charts-CO9FBMuG.js                       60.89 kB │ gzip:  20.59 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-overlay-state-CHLi2kGD.js                 69.31 kB │ gzip:  23.33 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/shell-_k28tb2s.js                               70.19 kB │ gzip:  21.27 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/benchmark-page-Dt_CXE-y.js                      72.60 kB │ gzip:  19.91 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/page-nI9XhdSh.js                                73.90 kB │ gzip:  26.16 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/onboarding-_fOgviSW.js                          83.54 kB │ gzip:  26.44 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/boards-view-BQ3vaCXu.js                        120.69 kB │ gzip:  36.55 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/file-viewer-CywV6xXn.js                        123.40 kB │ gzip:  38.30 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/tool-messages-0IacJSpy.js                      126.49 kB │ gzip:  36.48 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/scheduler-page-PUaiKqpv.js                     130.63 kB │ gzip:  40.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/source-control-center-CsrUcw0s.js              136.51 kB │ gzip:  43.39 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/vendor-xterm-BwRD91wD.js                       342.19 kB │ gzip:  87.05 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/index-59OMTdfa.js                              356.18 kB │ gzip: 107.20 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/catalog-Drmlyt05.js                            413.84 kB │ gzip:  36.35 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/xlsx-workbook-BWWO3wUO.js                      495.07 kB │ gzip: 161.95 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/vendor-highlight-D2GFXAO_.js                 1,012.60 kB │ gzip: 337.20 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/vendor-codemirror-B4nJoZwE.js                1,653.94 kB │ gzip: 575.40 kB
+../../../AppData/Local/Temp/minnow-review-20261023-01a16bf9/dist/assets/preview-electron-visibility-DjU1Neh-.js      3,394.47 kB │ gzip: 948.26 kB
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/scheduler/notifications-poll.ts is dynamically imported by src/ui/agent-activity-panel.ts but also statically imported by src/main.ts, dynamic import will not move module into another chunk.
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 1500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[INEFFECTIVE_DYNAMIC_IMPORT] src/os/app-modules.ts is dynamically imported by src/main.ts but also statically imported by src/os/app-host.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/file-viewer.ts is dynamically imported by src/chat/issues/pipeline.ts, src/markdown/links.ts, src/orchestrator/boards-view.ts, src/os/code-window-command.ts, src/ui/chat-turn-changes.ts, ... but also statically imported by src/ui/file-viewer-secondary-slot.ts, src/ui/init-file-panel.ts, src/ui/lsp-editor/definition.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/git-api.ts is dynamically imported by src/ui/file-tree.ts, src/ui/issue-capture-context.ts, src/ui/source-control-center.ts but also statically imported by src/chat/issues/git-actions.ts, src/chat/turn-snapshots.ts, src/chat/undo-turn.ts, src/home/work-changes.ts, src/orchestrator/board-report.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/panel-worktree-cwd.ts is dynamically imported by src/ui/presented-file-cards.ts but also statically imported by src/lib/worktree-allowlist-client.ts, src/ui/file-tree-auto-refresh.ts, src/ui/file-tree-listing-root.ts, src/ui/git-checkout-picker.ts, src/ui/git-panel.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/chat-scroll.ts is dynamically imported by src/os/code-launch.ts, src/ui/orchestrate-board-chat.ts, src/ui/sidebar.ts, src/ui/view-mode-toggle.ts but also statically imported by src/api/chat.ts, src/chat/goal/evaluate.ts, src/chat/run-turn-chat-paint.ts, src/chat/run-turn-chat.ts, src/chat/steer-message.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/skills/client.ts is dynamically imported by src/tools/client.ts but also statically imported by src/benchmark/capabilities/delegated-probes.ts, src/benchmark/suites/skills.ts, src/chat/slash-commands/picker-catalog.ts, src/chat/slash-commands/registry.ts, src/main.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-prompt-history.ts is dynamically imported by src/ui/composer-surface.ts but also statically imported by src/ui/chat-app.ts, src/ui/composer-draft.ts, src/ui/input.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-skill-highlight.ts is dynamically imported by src/ui/composer-auto-resize.ts but also statically imported by src/ui/skill-picker.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/chat-groups.ts is dynamically imported by src/orchestrator/boards-view.ts, src/os/code-window-command.ts, src/ui/messages.ts, src/ui/sidebar.ts, src/ui/workspace-switch-guard.ts but also statically imported by src/chat/prompts/compose-context.ts, src/chat/run-turn-chat.ts, src/chat/settle-interrupted-turn.ts, src/mobile/chat-thread.ts, src/mobile/chats.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/main-column-overlay.ts is dynamically imported by src/orchestrator/boards-view.ts, src/os/app-host.ts, src/ui/code-brain-map.ts, src/ui/dev-server-screen.ts, src/ui/issues-page.ts, ... but also statically imported by src/chat/ask-question-display.ts, src/chat/streaming-state.ts, src/ui/agent-cli-view.ts, src/ui/code-brain-map.ts, src/ui/code-views-chats-toggle.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/app-dialog.ts is dynamically imported by src/chat/undo-turn.ts, src/ui/issue-editor-paste.ts, src/ui/issue-editor.ts, src/ui/issues-sub-issues.ts but also statically imported by src/chat/review/review-actions.ts, src/electron-tray-bridge.ts, src/main.ts, src/orchestrator/boards-view.ts, src/research/library.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/chat-item-dot.ts is dynamically imported by src/chat/flush-stopped-chat-presentation.ts but also statically imported by src/api/chat.ts, src/chat/run-turn-chat.ts, src/chat/settle-interrupted-turn.ts, src/electron-tray-bridge.ts, src/main.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/issues-taxonomy-store.ts is dynamically imported by src/main.ts, src/os/app-rail.ts, src/ui/issues-page.ts, src/ui/settings-issues.ts but also statically imported by src/chat/issues/board-review.ts, src/chat/issues/chat-review.ts, src/chat/issues/expand-task.ts, src/chat/issues/pipeline.ts, src/chat/issues/workflow-seeds.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/issues-store.ts is dynamically imported by src/main.ts, src/mobile/issues.ts, src/os/app-rail.ts, src/os/code-window-command.ts, src/ui/issue-capture-popover.ts, ... but also statically imported by src/boot/diagnostics.ts, src/chat/issue-mention-context.ts, src/chat/issues/agent-dispatch.ts, src/chat/issues/agent-watch.ts, src/chat/issues/board-review.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/issue-attachments-api.ts is dynamically imported by src/ui/issue-editor-paste.ts but also statically imported by src/issues/markdown-inline.ts, src/tools/issue-tool-images.ts, src/ui/issues-attachments-section.ts, src/ui/issues-sidebar.ts, src/ui/user-message-bubble.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/notifications/push.ts is dynamically imported by src/agents/sub-agent-completion-push.ts, src/chat/super-plan/store.ts, src/scheduler/notifications-poll.ts, src/synthesis/client.ts, src/ui/device-request-prompt.ts but also statically imported by src/boot/diagnostics.ts, src/chat/issues/agent-dispatch.ts, src/chat/issues/agent-watch.ts, src/notifications/ask-question.ts, src/notifications/chat-turn.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/context-usage-ring.ts is dynamically imported by src/api/models.ts, src/os/code-launch.ts, src/ui/chat-model-ui.ts, src/ui/context-usage-breakdown.ts, src/ui/tools-list.ts but also statically imported by src/attachments/store.ts, src/chat/run-turn-chat.ts, src/main.ts, src/ui/chat-app.ts, src/ui/composer-brain-notes.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/agents/orchestrator.ts is dynamically imported by src/ui/sidebar.ts but also statically imported by src/agents/sub-agent-completion-push.ts, src/agents/sub-agent-resume-message.ts, src/chat/issues/pipeline.ts, src/chat/review/run-pr-review.ts, src/chat/run-turn-chat.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/stop-generation.ts is dynamically imported by src/orchestrator/plan-repair.ts, src/ui/issues-work-panel.ts, src/ui/workspace-switch-guard.ts but also statically imported by src/ui/agent-activity-panel.ts, src/ui/chat-app.ts, src/ui/chat-model-ui.ts, src/ui/composer-send.ts, src/ui/orchestrate-board-onboarding-ui.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/code-brain-map.ts is dynamically imported by src/boot/code-workspace-modules.ts, src/ui/brain-page.ts, src/ui/code-map/page.ts, src/ui/main-column-overlay.ts, src/ui/status.ts, ... but also statically imported by src/ui/messages.ts, src/ui/orchestrate-hub.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/goal-active-hint.ts is dynamically imported by src/ui/messages.ts but also statically imported by src/chat/goal/command.ts, src/chat/goal/evaluate.ts, src/chat/loop/command.ts, src/chat/messaging.ts, src/main.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/loop/pacing.ts is dynamically imported by src/chat/run-turn-chat.ts but also statically imported by src/chat/loop/ticker.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/loop/ticker.ts is dynamically imported by src/main.ts, src/state/sessions.ts but also statically imported by src/ui/loop-status.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/loop-active-hint.ts is dynamically imported by src/os/page-bridge.ts, src/ui/messages.ts but also statically imported by src/chat/goal/command.ts, src/chat/loop/command.ts, src/chat/loop/ticker.ts, src/chat/messaging.ts, src/main.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/agents/sub-agent-completion-push.ts is dynamically imported by src/ui/sidebar.ts but also statically imported by src/tools/sub-agent-executor.ts, src/ui/sub-agent-cards.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/tools/sub-agent-executor.ts is dynamically imported by src/tools/client.ts but also statically imported by src/chat/run-turn-chat.ts, src/tools/chat-tool-batch.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/memory-saved-toast.ts is dynamically imported by src/synthesis/client.ts but also statically imported by src/chat/run-turn-chat-paint.ts, src/tools/chat-tool-batch.ts, src/ui/brain/edit-section.ts, src/ui/brain/memories-section.ts, src/ui/chat-brain-capture.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/research-panel.ts is dynamically imported by src/os/app-focus-cycle.ts, src/research/panel.ts, src/ui/main-column-overlay.ts but also statically imported by src/os/app-focus-cycle.ts, src/os/app-rail.ts, src/os/page-bridge.ts, src/ui/status.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/providers/model-capabilities.ts is dynamically imported by src/ui/settings-model-binding.ts, src/ui/settings-providers.ts but also statically imported by src/agents/renderer-runner-deps.ts, src/api/models.ts, src/benchmark/llm-driver.ts, src/models/model-choices.ts, src/providers/first-load-probe.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/brain/client.ts is dynamically imported by src/ui/brain/proposals-section.ts, src/ui/memory-saved-toast.ts but also statically imported by src/brain/code-injection-config.ts, src/brain/code-map-injection.ts, src/chat/prompts/compose-context.ts, src/ui/brain-page.ts, src/ui/brain/edit-section.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/memory/client.ts is dynamically imported by src/ui/memory-saved-toast.ts but also statically imported by src/chat/prompts/compose-context.ts, src/memory/config.ts, src/onboarding/steps/extras.ts, src/onboarding/steps/remaining.ts, src/ui/brain/memories-section.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/agent-cli-view.ts is dynamically imported by src/ui/main-column-overlay.ts but also statically imported by src/main.ts, src/ui/chat-app.ts, src/ui/chat-model-ui.ts, src/ui/dev-server-screen.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/chat-model-ui.ts is dynamically imported by src/mobile/models.ts, src/ui/model-select-picker.ts but also statically imported by src/ui/composer-model-trigger.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/model-select-picker.ts is dynamically imported by src/models/routers.ts, src/providers/first-load-probe.ts, src/ui/settings-model-binding.ts but also statically imported by src/api/ensure-chat-model-loaded.ts, src/api/models.ts, src/main.ts, src/onboarding/steps/model.ts, src/ui/capability-matrix/roster-panel.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-model-trigger.ts is dynamically imported by src/api/models.ts, src/mobile/models.ts, src/models/routers.ts but also statically imported by src/main.ts, src/orchestrator/board-header-v2.ts, src/research/panel.ts, src/ui/chat-model-ui.ts, src/ui/composer-reasoning-effort.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/orchestrate-plan-selector.ts is dynamically imported by src/ui/view-mode-toggle.ts but also statically imported by src/main.ts, src/ui/init-file-panel.ts, src/ui/mode-selector.ts, src/ui/sidebar.ts, src/ui/workspace-composer-link.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-run-target.ts is dynamically imported by src/main.ts, src/os/code-launch.ts, src/ui/composer-send.ts but also statically imported by src/ui/composer-compact.ts, src/ui/init-file-panel.ts, src/ui/mode-selector.ts, src/ui/new-chat-run-target-seed.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-undo.ts is dynamically imported by src/chat/git-setup-background.ts, src/ui/chat-work.ts, src/ui/code-change-strip.ts, src/ui/composer-send.ts, src/ui/git-panel.ts, ... but also statically imported by src/main.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/file-tree-listing-root.ts is dynamically imported by src/ui/file-tree-ops.ts, src/ui/file-viewer.ts, src/ui/presented-file-cards.ts but also statically imported by src/ui/file-tree-auto-refresh.ts, src/ui/file-tree.ts, src/ui/file-viewer-recent.ts, src/ui/file-viewer-secondary-slot.ts, src/ui/file-viewer.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/git-commit-diff-panel.ts is dynamically imported by src/chat/issues/git-actions.ts, src/ui/file-viewer.ts but also statically imported by src/ui/chat-turn-review.ts, src/ui/git-panel.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/titles/schedule.ts is dynamically imported by src/ui/sidebar.ts but also statically imported by src/api/chat.ts, src/chat/messaging.ts, src/chat/prompts/first-turn-injection.ts, src/chat/run-turn-chat.ts, src/ui/orchestrate-plan-screen.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-draft.ts is dynamically imported by src/main.ts, src/ui/input.ts but also statically imported by src/api/chat.ts, src/chat/messaging.ts, src/chat/run-turn-chat.ts, src/ui/branch-picker.ts, src/ui/chat-app.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/git-panel.ts is dynamically imported by src/chat/git-setup-background.ts, src/chat/issues/git-actions.ts, src/chat/run-turn-chat.ts, src/os/code-launch.ts, src/state/chat-groups.ts, ... but also statically imported by src/ui/init-file-panel.ts, src/ui/issues-sidebar.ts, src/ui/new-chat-run-target-seed.ts, src/ui/sidebar.ts, src/ui/terminal-worktree-cwd.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/os/router.ts is dynamically imported by src/chat/issues/agent-dispatch.ts, src/chat/issues/pipeline.ts, src/chat/review/review-actions.ts, src/compare/continue-in-chat.ts, src/electron-tray-bridge.ts, ... but also statically imported by src/home/flow-dock.ts, src/main.ts, src/notifications/navigate.ts, src/os/app-focus-cycle.ts, src/os/app-host.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/code-overview.ts is dynamically imported by src/boot/code-workspace-modules.ts, src/chat/review/review-actions.ts, src/state/chat-groups.ts, src/ui/git-error-to-chat.ts, src/ui/main-column-overlay.ts but also statically imported by src/ui/messages.ts, src/ui/orchestrate-hub.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/config/startup-api.ts is dynamically imported by src/ui/hub-dev-server.ts but also statically imported by src/ui/dev-server-form-popover.ts, src/ui/dev-server-screen-view.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/dev-server-screen.ts is dynamically imported by src/boot/code-workspace-modules.ts, src/ui/main-column-overlay.ts, src/ui/orchestrate-hub.ts, src/ui/workspace-button.ts but also statically imported by src/ui/messages.ts, src/ui/sidebar.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/file-tree-context-menu.ts is dynamically imported by src/ui/unified-right-tabs.ts but also statically imported by src/ui/file-tree.ts, src/ui/file-viewer.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/file-tree.ts is dynamically imported by src/ui/file-tree-create.ts, src/ui/git-panel.ts, src/ui/workspace-button.ts but also statically imported by src/ui/file-tree-dnd.ts, src/ui/init-file-panel.ts, src/ui/issues-file-drawer.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/issues-file-drawer.ts is dynamically imported by src/ui/file-layout.ts but also statically imported by src/ui/issues-page.ts, src/ui/status.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/hub.ts is dynamically imported by src/state/sessions.ts, src/ui/main-column-overlay.ts, src/ui/workspace-button.ts but also statically imported by src/main.ts, src/ui/chat-worktree-setup.ts, src/ui/messages.ts, src/ui/orchestrate-hub.ts, src/ui/orchestrate-plan-screen.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/sub-agent-drawer.ts is dynamically imported by src/chat/issues/pipeline.ts, src/os/code-window-command.ts, src/ui/agent-activity-panel.ts but also statically imported by src/ui/pr-review-panel.ts, src/ui/status.ts, src/ui/sub-agent-cards.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/issues-sub-issues.ts is dynamically imported by src/ui/issue-drop-target.ts but also statically imported by src/ui/issues-detail.ts, src/ui/issues-row-menu.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/issues-detail.ts is dynamically imported by src/ui/issue-capture.ts, src/ui/issue-editor.ts, src/ui/issue-link-from-editor.ts, src/ui/issues-chats-section.ts, src/ui/issues-expand.ts, ... but also statically imported by src/home/flow-dock.ts, src/ui/issues-page.ts, src/ui/issues-row-menu.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/issues-page.ts is dynamically imported by src/os/app-host.ts, src/os/app-registry.ts, src/ui/issue-capture.ts, src/ui/issues-detail.ts, src/ui/issues-sidebar.ts, ... but also statically imported by src/ui/messages.ts, src/ui/orchestrate-hub.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/orchestrate-hub.ts is dynamically imported by src/boot/code-workspace-modules.ts, src/ui/main-column-overlay.ts, src/ui/mode-selector.ts, src/ui/shell-handlers.ts, src/ui/sidebar.ts but also statically imported by src/ui/code-views-orchestrate-button.ts, src/ui/hub.ts, src/ui/messages.ts, src/ui/orchestrate-plan-screen.ts, src/ui/sidebar.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/sidebar.ts is dynamically imported by src/chat/flush-stopped-chat-presentation.ts, src/chat/followup/spawn.ts, src/chat/issues/pipeline.ts, src/chat/review/review-actions.ts, src/chat/super-plan/store.ts, ... but also statically imported by src/api/chat.ts, src/api/models.ts, src/chat/goal/evaluate.ts, src/chat/run-turn-chat.ts, src/chat/settle-interrupted-turn.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/mode-selector.ts is dynamically imported by src/mobile/chat-thread.ts, src/os/code-launch.ts, src/ui/chat-turn-changes.ts but also statically imported by src/chat/pending-mode.ts, src/main.ts, src/tools/mode-handoff-tools.ts, src/ui/composer-compact.ts, src/ui/composer-run-target.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/prompts/token-estimate.ts is dynamically imported by src/chat/context-usage.ts but also statically imported by src/ui/settings-prompt-estimate.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/settings-prompt-estimate.ts is dynamically imported by src/ui/context-usage-breakdown.ts but also statically imported by src/ui/settings-agent-center.ts, src/ui/settings-page.ts, src/ui/settings-profiles.ts, src/ui/settings-sections.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/settings.ts is dynamically imported by src/ui/status.ts but also statically imported by src/main.ts, src/ui/messages.ts, src/ui/settings-sections.ts, src/ui/shell-handlers.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/right-pane-slot-tabs.ts is dynamically imported by src/ui/file-tree-ops.ts, src/ui/file-viewer.ts, src/ui/preview-panel.ts but also statically imported by src/ui/right-pane-split.ts, src/ui/unified-right-tabs.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/unified-right-tabs.ts is dynamically imported by src/ui/file-layout.ts, src/ui/file-viewer.ts, src/ui/preview-tabs.ts, src/ui/right-pane-split.ts but also statically imported by src/ui/file-viewer-tabs.ts, src/ui/preview-tabs.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/preview-instance-host.ts is dynamically imported by src/ui/preview-secondary-slot.ts but also statically imported by src/ui/preview-design-instance.ts, src/ui/preview-secondary-slot.ts, src/ui/reef-preview.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/preview-secondary-slot.ts is dynamically imported by src/ui/preview-design-instance.ts, src/ui/preview-electron-visibility.ts, src/ui/preview-panel.ts, src/ui/right-pane-split.ts but also statically imported by src/design/native-design-strip.ts, src/ui/init-file-panel.ts, src/ui/preview-design-instance.ts, src/ui/preview-design-source.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/preview-panel.ts is dynamically imported by src/design/annotation-nav.ts, src/os/page-bridge.ts, src/research/panel.ts, src/tools/browser-preview-tools.ts, src/ui/dev-server-screen.ts, ... but also statically imported by src/ui/settings-browser.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/settings-sections.ts is dynamically imported by src/ui/context-usage-breakdown.ts but also statically imported by src/settings/client-sync.ts, src/ui/models/settings-reparent.ts, src/ui/settings-page.ts, src/ui/settings-profiles.ts, src/ui/settings-search-navigate.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/tools/client.ts is dynamically imported by src/boot/code-workspace-modules.ts, src/home/flow-actions.ts, src/ui/file-tree-ops.ts, src/ui/file-tree.ts, src/ui/settings-plugins.ts, ... but also statically imported by src/attachments/reader.ts, src/attachments/workspace-ref.ts, src/benchmark/campaign-persistence.ts, src/benchmark/capabilities/manual-verdicts.ts, src/benchmark/capabilities/roster-store.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/view-mode-toggle.ts is dynamically imported by src/os/code-launch.ts, src/state/chat-groups.ts, src/ui/composer-send.ts, src/ui/main-column-overlay.ts but also statically imported by src/chat/ask-question-display.ts, src/chat/streaming-state.ts, src/main.ts, src/ui/init-file-panel.ts, src/ui/messages.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/followup-active-hint.ts is dynamically imported by src/ui/messages.ts but also statically imported by src/chat/followup/command.ts, src/chat/followup/runner.ts, src/chat/messaging.ts, src/main.ts, src/ui/composer-send.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/composer-send.ts is dynamically imported by src/chat/flush-stopped-chat-presentation.ts but also statically imported by src/api/chat.ts, src/chat/messaging.ts, src/chat/run-turn-chat.ts, src/os/code-launch.ts, src/ui/chat-app.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/input.ts is dynamically imported by src/ui/composer-surface.ts but also statically imported by src/main.ts, src/markdown/renderer.ts, src/ui/chat-app.ts, src/ui/composer-draft.ts, src/ui/composer-expand.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/context/compact-command.ts is dynamically imported by src/chat/run-turn-chat.ts, src/ui/context-usage-breakdown.ts but also statically imported by src/chat/messaging.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/build-api-messages.ts is dynamically imported by src/ui/sidebar.ts but also statically imported by src/chat/messaging.ts, src/chat/run-turn-chat.ts, src/ui/code-change-strip-actions.ts, src/ui/message-actions.ts, src/ui/orchestrate-board-kickoff.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/issue-mention-context.ts is dynamically imported by src/ui/message-actions.ts but also statically imported by src/chat/messaging.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/models/store.ts is dynamically imported by src/models/model-select-library.ts, src/ui/model-select-picker.ts but also statically imported by src/chat/run-turn-chat.ts, src/ui/models-page.ts, src/ui/models/discover-downloads.ts, src/ui/models/discover-inspector.ts, src/ui/models/discover-panel.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/tools/stream-chat-dom.ts is dynamically imported by src/os/code-launch.ts, src/ui/chat-app.ts, src/ui/experts/experts-scope.ts, src/ui/messages.ts, src/ui/sidebar.ts, ... but also statically imported by src/chat/run-turn-chat.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/run-turn-chat.ts is dynamically imported by src/agents/sub-agent-completion-push.ts, src/chat/generation-resume.ts, src/chat/incomplete-tool-resume.ts, src/chat/message-queue.ts, src/ui/sidebar.ts, ... but also statically imported by src/chat/failed-turn-recovery.ts, src/chat/fork-from-run.ts, src/chat/goal/evaluate.ts, src/chat/messaging.ts, src/ui/code-change-strip-actions.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/messaging.ts is dynamically imported by src/chat/followup/spawn.ts, src/chat/git-setup-background.ts, src/chat/issues/workspace-chat.ts, src/home/flow-actions.ts, src/main.ts, ... but also statically imported by src/os/code-launch.ts, src/ui/chat-app.ts, src/ui/orchestrate-plan-screen.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/orchestrate-plan-screen.ts is dynamically imported by src/orchestrator/boards-view.ts, src/os/page-bridge.ts, src/ui/main-column-overlay.ts, src/ui/super-plan-entry.ts but also statically imported by src/chat/streaming-state.ts, src/main.ts, src/tools/ask-question-queue.ts, src/ui/hub.ts, src/ui/messages.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/chat/streaming-state.ts is dynamically imported by src/orchestrator/plan-repair.ts, src/ui/context-usage-breakdown.ts but also statically imported by src/agents/sub-agent-completion-push.ts, src/api/chat.ts, src/chat/chat-turn-guard.ts, src/chat/context/compact-command.ts, src/chat/failed-turn-recovery.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/super-plan-entry.ts is dynamically imported by src/chat/super-plan/store.ts, src/ui/main-column-overlay.ts but also statically imported by src/ui/messages.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/sub-agent-session-sync.ts is dynamically imported by src/agents/sub-agent-completion-push.ts but also statically imported by src/ui/sub-agent-cards.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/message-actions.ts is dynamically imported by src/chat/messaging.ts, src/chat/run-turn-chat.ts, src/chat/steer-message.ts, src/ui/chat-work.ts but also statically imported by src/ui/messages.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/models/inspector.ts is dynamically imported by src/ui/model-select-picker.ts but also statically imported by src/ui/models-page.ts, src/ui/models/library-panel.ts, src/ui/models/server-panel.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/models-page.ts is dynamically imported by src/os/app-host.ts, src/os/app-registry.ts, src/ui/brain-page.ts, src/ui/model-pool-picker-host.ts, src/ui/model-select-picker.ts, ... but also statically imported by src/ui/composer-voice.ts, src/ui/voice-controls.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/voice-controls.ts is dynamically imported by src/chat/run-turn-chat.ts, src/ui/models/voice-panel.ts but also statically imported by src/main.ts, src/ui/composer-voice.ts, src/ui/messages.ts, src/ui/models/voice-panel.ts, dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/messages.ts is dynamically imported by src/chat/failed-turn-recovery.ts, src/compare/continue-in-chat.ts, src/design/annotation-nav.ts, src/orchestrator/boards-view.ts, src/os/code-launch.ts, ... but also statically imported by src/api/chat.ts, src/chat/context/compact-command.ts, src/chat/fork-from-run.ts, src/chat/goal/evaluate.ts, src/chat/run-turn-chat-paint.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/state/sessions.ts is dynamically imported by src/agents/sub-agent-completion-push.ts, src/chat/context-usage.ts, src/chat/generation-resume.ts, src/chat/incomplete-tool-resume.ts, src/chat/issues/agent-dispatch.ts, ... but also statically imported by src/agents/orchestrator.ts, src/agents/session-transcript-store.ts, src/agents/sub-agent-completion-push.ts, src/api/chat.ts, src/api/models.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/status.ts is dynamically imported by src/state/issues-store.ts, src/state/issues-taxonomy-store.ts, src/state/pr-review-store.ts, src/ui/chat-turn-changes.ts, src/ui/context-usage-breakdown.ts, ... but also statically imported by src/api/chat.ts, src/api/models.ts, src/boot/diagnostics.ts, src/chat/context/compact-command.ts, src/chat/failed-turn-recovery.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/api/models.ts is dynamically imported by src/mobile/models.ts, src/ui/model-select-picker.ts, src/ui/models/cli-panel.ts, src/ui/models/store.ts but also statically imported by src/agents/renderer-runner-deps.ts, src/api/chat.ts, src/api/ensure-chat-model-loaded.ts, src/benchmark/model-lifecycle.ts, src/chat/context-usage.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/file-layout.ts is dynamically imported by src/tools/browser-preview-tools.ts, src/ui/code-readiness-actions.ts, src/ui/file-viewer.ts, src/ui/init-file-panel.ts, src/ui/preview-capture-ready.ts, ... but also statically imported by src/main.ts, src/ui/file-viewer.ts, src/ui/git-commit-diff-panel.ts, src/ui/git-panel.ts, src/ui/init-file-panel.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/right-pane-split.ts is dynamically imported by src/tools/browser-preview-tools.ts, src/ui/file-tree-ops.ts, src/ui/file-viewer.ts, src/ui/preview-panel.ts but also statically imported by src/design/element-picker.ts, src/design/native-design-strip.ts, src/ui/file-layout.ts, src/ui/init-file-panel.ts, src/ui/preview-design-instance.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/preview-electron-visibility.ts is dynamically imported by src/orchestrator/boards-view.ts, src/os/app-host.ts, src/os/page-bridge.ts, src/research/panel.ts, src/tools/browser-preview-tools.ts, ... but also statically imported by src/os/update-menubar.ts, src/ui/agent-activity-panel.ts, src/ui/app-dialog.ts, src/ui/browser-url-suggest.ts, src/ui/chat-search-popover.ts, ..., dynamic import will not move module into another chunk.
+
+[INEFFECTIVE_DYNAMIC_IMPORT] src/ui/issue-type-color-picker.ts is dynamically imported by src/ui/issue-type-icon-picker.ts but also statically imported by src/ui/settings-issues.ts, dynamic import will not move module into another chunk.
+
+✓ built in 2.42s

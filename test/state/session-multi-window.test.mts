@@ -19,6 +19,7 @@ import {
   persistSessionsBeforeDeliveryAck,
   resetSessionPersistenceForTests,
   refreshSessionsFromServer,
+  refreshChatBeforeRecovery,
   saveSessionsNow,
   sessionState,
   setSessionStateForTests,
@@ -234,6 +235,25 @@ describe('multi-window session writes', () => {
     await refreshSessionsFromServer();
     assert.equal(active.composerDraft, 'Still typing');
     assert.equal(active.name, 'Mine');
+  });
+
+  test('recovery refreshes a stale tool transcript after the other device finishes', async () => {
+    const store = new FakeSessionsStore();
+    await bootWindow(store);
+    const active = sessionState!.chats.find((chat) => chat.id === MINE)!;
+    active.history = [
+      { role: 'user', content: 'Build it' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 'tool-1', type: 'function',
+        function: { name: 'save_file', arguments: '{}' } }] },
+    ];
+    active.historyLoaded = true;
+    store.advanceChat(MINE);
+    assert.equal(await refreshChatBeforeRecovery(active), true);
+    assert.deepEqual(active.history, [], 'the old unanswered tool call must not be replayed');
+    assert.equal(sessionState!.chats.find(chat => chat.id === MINE), active);
+    assert.equal(store.writes.length, 0);
+    active.composerDraft = 'Keep my unsent text';
+    assert.equal(await refreshChatBeforeRecovery(active), false, 'local edits must not be discarded for recovery');
   });
 
   test('remote deletion of the active chat leaves a usable local draft without resurrecting it', async () => {

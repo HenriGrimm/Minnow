@@ -117,6 +117,7 @@ import {
 } from './state/sessions';
 import { initChatScroll } from './ui/chat-scroll';
 import { startSessionLiveSync } from './state/session-live-sync';
+import { syncComposerFromStreamingState } from './ui/composer-send';
 import { initMinnowBrowserLinkRouting } from './ui/minnow-browser-links';
 import { initMarkdownLinkRouting } from './markdown/links';
 import { renderChatFromHistory, renderStatsForChat } from './ui/messages';
@@ -505,6 +506,7 @@ export async function initApp(): Promise<void> {
       syncFollowupActiveHint();
       syncTodoPanel();
       refreshContextUsageRing();
+      syncComposerFromStreamingState();
     }
   });
 

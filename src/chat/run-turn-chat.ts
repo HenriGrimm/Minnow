@@ -1,4 +1,7 @@
 import { setChatRunActivity } from '../state/chat-run-activity';
+import { acquireChatTurn, localChatTurnLease, type ChatTurnLease } from './turn-ownership';
+import { isServerStorageMode } from '../config/storage-mode';
+import { persistSessionsBeforeDeliveryAck, refreshChatBeforeRecovery } from '../state/sessions';
 import { runTurn } from '../../server/runner/index.js';
 import { loadToolConfig } from '../tools/config';
 import type {
@@ -289,6 +292,8 @@ export const RUN_TURN_CHAT_SPIKE_TOOL_IDS = ['get_datetime', 'calculate'] as con
 
 /** Options for {@link runChatTurn} (composer send or history resend). */
 export interface RunChatTurnOptions {
+  /** Internal recovery handoff: keep ownership while finishing pending tools. */
+  turnLease?: ChatTurnLease;
   codeMap?: CodeMapMessageSnapshot;
   chat: Chat;
   /** When false, the last user row in history is reused (regenerate / remake). */
@@ -712,10 +717,39 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     return false;
   }
 
+  let turnLease: ChatTurnLease | null;
+  try {
+    turnLease = options.turnLease ?? (isServerStorageMode() ? await acquireChatTurn(chat.id) : localChatTurnLease());
+  } catch (error) {
+    endChatTurnSetup(chat.id);
+    if (pushUser) setStatus('err', error instanceof Error ? error.message : 'Could not connect to the computer.');
+    return false;
+  }
+  if (!turnLease) {
+    endChatTurnSetup(chat.id);
+    syncComposerFromStreamingState();
+    return false;
+  }
+  if (resumeGenerationId) {
+    try {
+      const fresh = await refreshChatBeforeRecovery(chat);
+      if (!fresh || chat.currentGenerationId !== resumeGenerationId) {
+        await turnLease.release();
+        endChatTurnSetup(chat.id);
+        if (fresh && getActiveChat().id === chat.id) renderChatFromHistory(chat);
+        return false;
+      }
+    } catch {
+      await turnLease.release();
+      endChatTurnSetup(chat.id);
+      return false;
+    }
+  }
+
   getChatAbort(chat.id)?.abort();
   const controller = new AbortController();
   setChatAbort(chat.id, controller);
-  const chatSignal = controller.signal;
+  const chatSignal = AbortSignal.any([controller.signal, turnLease.signal]);
   setStreaming(true, chat.id);
   if (getActiveChat().id === chat.id) {
     syncComposerFromStreamingState();
@@ -747,6 +781,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   const ledgerWrites: Promise<void>[] = [];
 
   try {
+    await turnLease.check();
     await ensureChatHistoryLoaded(chat.id);
     requireHistory(chat);
 
@@ -1519,6 +1554,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
 
     let resumeId = resumeGenerationId?.trim() || '';
     deps.postChatCompletions = async (prov, body, signal, postOptions) => {
+      await turnLease.check();
       const next: PostChatCompletionsOptions = {
         ...postOptions,
         persist: true,
@@ -1771,6 +1807,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       nudgeToolUse: false,
       finalizeStructuredOutcome: false,
       execute: async (name, args, ctx) => {
+        await turnLease.check();
         if (name === ASK_QUESTION_TOOL_NAME) {
           return {
             content:
@@ -2089,6 +2126,9 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (turnMountPinned) {
       setTurnChatMount(null);
     }
+    // Publish the settled transcript before another device can resume or send.
+    await persistSessionsBeforeDeliveryAck();
+    await turnLease.release();
     endChatTurnSetup(chat.id);
 
     if (completedNormally && isPartyModePinned(chat.pinnedSkill) && isStreamDomVisible(chat.id)) {

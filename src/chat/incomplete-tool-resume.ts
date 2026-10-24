@@ -23,6 +23,9 @@ import { isUserPromptLocked } from '../ui/user-prompt-lock';
 
 import { setStatus } from '../ui/status';
 import { isResumeGateHeld } from './resume-gate';
+import { acquireChatTurn, type ChatTurnLease } from './turn-ownership';
+import { persistSessionsBeforeDeliveryAck, refreshChatBeforeRecovery } from '../state/sessions';
+import { renderChatFromHistory } from '../ui/messages';
 
 
 
@@ -119,7 +122,7 @@ export async function resumeIncompleteToolBatch(
 
 
 
-  const batch = findIncompleteToolBatchAtTail(chat);
+  let batch = findIncompleteToolBatchAtTail(chat);
 
   if (!batch) {
 
@@ -142,10 +145,20 @@ export async function resumeIncompleteToolBatch(
   const parentTurnId = createSubAgentRunId();
 
   const resumeAbort = new AbortController();
+  let turnLease: ChatTurnLease | null = null;
+  let handedOff = false;
 
 
 
   try {
+
+    turnLease = await acquireChatTurn(chat.id);
+    if (!turnLease) return false;
+    await turnLease.check();
+    if (!await refreshChatBeforeRecovery(chat)) return false;
+    if (getActiveChat().id === chat.id) renderChatFromHistory(chat);
+    batch = findIncompleteToolBatchAtTail(chat);
+    if (!batch) return false;
 
     await runChatToolBatch({
 
@@ -153,7 +166,7 @@ export async function resumeIncompleteToolBatch(
 
       toolCalls: batch.pendingToolCalls,
 
-      signal: resumeAbort.signal,
+      signal: AbortSignal.any([resumeAbort.signal, turnLease.signal]),
 
       constrained: false,
 
@@ -181,10 +194,6 @@ export async function resumeIncompleteToolBatch(
 
 
 
-    endChatTurnSetup(chat.id);
-
-
-
     const modelId = chat.modelId?.trim() || '';
 
     if (!modelId) {
@@ -199,7 +208,11 @@ export async function resumeIncompleteToolBatch(
 
     const { runChatTurn } = await import('./run-turn-chat');
 
+    endChatTurnSetup(chat.id);
+    handedOff = true;
     await runChatTurn({
+
+      turnLease,
 
       chat,
 
@@ -225,11 +238,17 @@ export async function resumeIncompleteToolBatch(
 
   } catch {
 
-    endChatTurnSetup(chat.id);
+    if (!handedOff) endChatTurnSetup(chat.id);
 
     return false;
 
   } finally {
+
+    if (turnLease) {
+      await persistSessionsBeforeDeliveryAck();
+      await turnLease.release();
+    }
+    if (!handedOff) endChatTurnSetup(chat.id);
 
     resumingChatIds.delete(chat.id);
 

@@ -1,0 +1,26 @@
+{
+  "metrics": {
+    "entryJs": {
+      "name": "index-59OMTdfa.js",
+      "bytes": 356188,
+      "kb": 347.8
+    },
+    "entryCss": {
+      "name": "index-DgphNcZe.css",
+      "bytes": 788224,
+      "kb": 769.8
+    },
+    "largestLazyJs": {
+      "name": "preview-electron-visibility-DjU1Neh-.js",
+      "bytes": 3394471,
+      "kb": 3314.9
+    },
+    "eagerJs": {
+      "name": "eager(84 chunks)",
+      "bytes": 4477223,
+      "kb": 4372.3
+    },
+    "totalAssetsKb": 11707.2
+  },
+  "breaches": []
+}

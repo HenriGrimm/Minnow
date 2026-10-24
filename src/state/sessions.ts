@@ -1768,6 +1768,21 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
   return { changed, activeChanged };
 }
 
+/** Recheck the saved transcript under a turn lease before replaying recovery work. */
+export async function refreshChatBeforeRecovery(chat: Chat): Promise<boolean> {
+  if (!isServerStorageMode()) return true;
+  const protectedLocally = () => dirtyChatIds.has(chat.id) || deletedChatIds.has(chat.id) ||
+    conflictedChatIds.has(chat.id) || streamingChatIds.has(chat.id) ||
+    historyLoadInflight.has(chat.id) || Boolean(chat.composerDraft);
+  if (!sessionsHydratedFromServer || inFlightSessionSave || protectedLocally()) return false;
+  const state = sessionState;
+  const epoch = sessionDirtyEpoch;
+  await refreshSessionsFromServer();
+  if (state !== sessionState || epoch !== sessionDirtyEpoch || protectedLocally() || findChatById(chat.id) !== chat) return false;
+  await ensureChatHistoryLoaded(chat.id);
+  return state === sessionState && epoch === sessionDirtyEpoch && !protectedLocally();
+}
+
 // ── Chat fields ──────────────────────────────────────────────────────────────
 
 /**

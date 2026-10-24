@@ -1,0 +1,21 @@
+{
+  "attemptedPath": "documentation/plans/../../plan-traversal-proof.md",
+  "requestMode": "plan",
+  "result": {
+    "result": "Saved plan-traversal-proof.md (29 bytes)",
+    "codeChange": {
+      "additions": 1,
+      "deletions": 0,
+      "path": "plan-traversal-proof.md",
+      "source": "file-tool",
+      "diffLines": [
+        {
+          "type": "add",
+          "text": "# Review-only Plan path proof"
+        }
+      ],
+      "diffTruncated": false
+    }
+  },
+  "existsAtWorkspaceRoot": true
+}
