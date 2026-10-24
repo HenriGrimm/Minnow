@@ -1,4 +1,5 @@
 import { showToast } from './toast';
+import { isChatRunningRemotely } from '../chat/remote-turn-state';
 import { streaming } from '../app-state';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import {
@@ -175,6 +176,15 @@ export function syncComposerFromStreamingState(): void {
   syncFollowupActiveHint();
   syncTodoPanel();
   if (!sessionState) return;
+  if (isChatRunningRemotely(getActiveChat().id)) {
+    const { inputEl, sendBtnEl } = getActiveComposerSurface();
+    if (inputEl) inputEl.disabled = true;
+    if (sendBtnEl) {
+      sendBtnEl.disabled = true;
+      sendBtnEl.setAttribute('aria-busy', 'true');
+      sendBtnEl.setAttribute('aria-label', 'Running on another device');
+    }
+  }
   if (isChatWorktreeSetupPending(getActiveChat().id)) {
     const { inputEl, sendBtnEl } = getActiveComposerSurface();
     if (inputEl) inputEl.disabled = true;
@@ -228,6 +238,7 @@ function pushFirstQueuedMessageAsSteer(chat: ReturnType<typeof getActiveChat>): 
 
 /** Send when idle; queue follow-up when streaming with text; stop when streaming with empty input. */
 export function handleComposerPrimaryAction(): void {
+  if (sessionState && isChatRunningRemotely(getActiveChat().id)) return;
   if (sessionState && isChatWorktreeSetupPending(getActiveChat().id)) return;
   const scopedAction = getActiveComposerSurface().onPrimaryAction;
   if (scopedAction) { scopedAction(); return; }

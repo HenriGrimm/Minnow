@@ -4,6 +4,7 @@ import type { Chat } from '../types';
 import { isGoalLoopActive } from '../state/sessions';
 import { setStatus } from '../ui/status';
 import { isResumeGateHeld } from './resume-gate';
+import { isChatOwnedElsewhere } from './turn-ownership';
 
 /** Read the composer model picker (empty when none selected). */
 
@@ -48,6 +49,12 @@ export async function bootGenerationResumeForChat(
   if (!generationId) {
     return;
   }
+
+  // Replaying a model round through runTurn also executes its tools and starts
+  // subsequent rounds. A second viewer must only receive the saved transcript.
+  try {
+    if (await isChatOwnedElsewhere(chat.id)) return;
+  } catch { return; }
 
   const modelId = chat.modelId?.trim() || '';
   if (!modelId) {

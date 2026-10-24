@@ -31,6 +31,8 @@ import {
 } from '../chat/resume-interrupted.ts';
 import { reportBackgroundError } from './report-background-error.ts';
 import { showResumePromptModal, type ResumePromptItem } from '../ui/resume-prompt-modal.ts';
+import { refreshRemoteChatTurns } from '../chat/turn-ownership.ts';
+import { isChatRunningRemotely } from '../chat/remote-turn-state.ts';
 
 /** Why a chat is a resume candidate — a live generation, unfinished tools, or quit mid-turn. */
 type ChatCandidateKind = 'generation' | 'tool-batch' | 'interrupted';
@@ -92,15 +94,24 @@ export async function collectResumeCandidates(state: SessionState): Promise<Resu
 
   const activeId = getActiveChat()?.id;
   const scoped = scopeChatsToWindowWorkspace(state.chats);
+  const ownedElsewhere = new Set<string>();
+  try {
+    await refreshRemoteChatTurns(AbortSignal.timeout(5_000));
+    for (const chat of scoped) if (isChatRunningRemotely(chat.id)) ownedElsewhere.add(chat.id);
+  } catch {
+    // A connection outage is not evidence that work on another device stopped.
+    for (const chat of scoped) ownedElsewhere.add(chat.id);
+  }
   const active = listChatsWithGenerationId(scoped).find((chat) => chat.id === activeId);
-  if (active) {
+  if (active && !ownedElsewhere.has(active.id)) {
     pushChat(active, 'generation');
-  } else if (isActiveChatInScope(scoped) && (await hasIncompleteToolBatchForBoot())) {
+  } else if (!ownedElsewhere.has(activeId) && isActiveChatInScope(scoped) && (await hasIncompleteToolBatchForBoot())) {
     const activeChat = getActiveChat();
     if (activeChat) pushChat(activeChat, 'tool-batch');
   }
 
   for (const chat of scoped) {
+    if (ownedElsewhere.has(chat.id)) continue;
     if (!isChatResumeInterrupted(chat)) continue;
     pushChat(chat, 'interrupted');
   }

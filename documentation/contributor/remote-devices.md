@@ -77,6 +77,26 @@ Notification taps route to phone screens through `openMobileNotificationTarget`.
 
 Host side: **Settings → Devices** ([`settings-devices.ts`](../../src/ui/settings-devices.ts)), the Connect sheet ([`settings-devices-connect.ts`](../../src/ui/settings-devices-connect.ts)), and approval cards in any app ([`device-request-prompt.ts`](../../src/ui/device-request-prompt.ts), notification kind `device_request`).
 
+### Shared chat execution
+
+The renderer that sends a chat message owns that turn through authenticated
+`/api/chat-turns` claims and heartbeats. Ownership spans model responses and tool
+execution, rather than ending at each model round. Opening the chat on another
+device observes its saved transcript and shows **Working on another device…**;
+the composer is disabled until that turn finishes. The observer never replays the
+generation through the tool loop or resumes its pending tools. Boot recovery also
+excludes chats owned by a live viewer. Saved transcript and ownership status poll
+every five seconds and refresh on wake.
+
+Claims are held in server memory with a 30-second renewal deadline. An expired
+claim remains protected while its backend generation is live. A replaced renderer
+checks its claim before further model or tool actions and stops on ownership loss.
+The owning view remembers its claim in `sessionStorage` for reload recovery;
+recovery refreshes the saved transcript before replaying any generation or tools.
+Pending-tool recovery transfers its claim to the next model round, and the settled
+transcript flushes before ownership is released. Tests cover two-device admission,
+tool gaps, expiry, wake after replacement, and passive generation/tool recovery.
+
 ## Testing
 
 ```bash

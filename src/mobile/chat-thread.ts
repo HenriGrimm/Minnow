@@ -10,6 +10,7 @@ import { isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd } 
 import { isChatPinned, setChatPinned } from '../state/chat-groups';
 import { renameChatTitle, scheduleSaveSessions, sessionState } from '../state/sessions';
 import { PLACEHOLDER_CHAT_NAME } from '../constants';
+import { isChatRunningRemotely } from '../chat/remote-turn-state';
 import { getWorkspaceLabel } from '../state/workspace';
 import type { Chat } from '../types';
 import { screenHeader } from './chrome';
@@ -95,8 +96,9 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
     if (hintGlyph) hintGlyph.className = `fi ${modeGlyph(chat.modeId)} icon-svg`;
     const hintMode = emptyHint.querySelector('.m-thread__empty-mode');
     if (hintMode) hintMode.textContent = `${modeLabel(chat.modeId)} mode · ${getWorkspaceLabel() || 'this workspace'}`;
-    const working = isChatStreaming(chatId);
-    statusText.textContent = working ? 'Working…' : shortModel(chat);
+    const remote = isChatRunningRemotely(chatId);
+    const working = isChatStreaming(chatId) || remote;
+    statusText.textContent = remote ? 'Working on another device…' : working ? 'Working…' : shortModel(chat);
     statusText.classList.toggle('is-working', working);
   }
 
