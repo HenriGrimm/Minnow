@@ -487,9 +487,9 @@ export interface MinnowTrayApi {
   onZoomPercentChanged(callback: (percent: number) => void): () => void;
 }
 
-/** macOS display sleep / system resume hooks for AFK board reliability. */
+/** Desktop idle sleep protection and system resume hooks. */
 export interface MinnowPowerApi {
-  setAfkBoardGuard(active: boolean): void;
+  setChatActive(active: boolean): void;
   onScreenUnlocked(callback: () => void): () => void;
 }
 

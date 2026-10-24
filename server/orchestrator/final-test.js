@@ -11,6 +11,8 @@ import {
   runBrowserRung,
 } from './browser-rung.js';
 import { resolveOrchestratorCwd } from './resolve-cwd.js';
+import { resolveVerificationEnv } from './verification-env.js';
+export { ladderEnv } from './verification-env.js';
 
 const execAsync = promisify(exec);
 
@@ -284,22 +286,6 @@ export async function loadPlanMarkdown(cwd, planPath) {
 }
 
 /**
- * Plan checklists name bare binaries (`tsc --noEmit`), which only resolve under
- * `npm run`. Put the checkout's `node_modules/.bin` first on PATH the same way,
- * so a rung never fails as "'tsc' is not recognized".
- * @param {string} cwd
- * @returns {NodeJS.ProcessEnv}
- */
-export function ladderEnv(cwd) {
-  const env = { ...process.env, CI: '1', npm_config_progress: 'false' };
-  // Windows spells it `Path`; keep whichever key exists so we don't add a second.
-  const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
-  const bin = path.join(path.resolve(cwd), 'node_modules', '.bin');
-  env[key] = env[key] ? `${bin}${path.delimiter}${env[key]}` : bin;
-  return env;
-}
-
-/**
  * @param {string} command
  * @param {{ cwd: string, timeoutMs?: number, signal?: AbortSignal }} opts
  * @returns {Promise<{ exitCode: number, output: string }>}
@@ -315,7 +301,7 @@ export async function execLadderCommand(command, opts) {
       windowsHide: true,
       shell: true,
       signal: opts.signal,
-      env: ladderEnv(cwd),
+      env: await resolveVerificationEnv(cwd, { signal: opts.signal }),
     });
     return {
       exitCode: 0,

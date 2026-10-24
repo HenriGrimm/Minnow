@@ -5,6 +5,7 @@ import net from 'node:net';
 import { detectAgentCli, verifyAgentCliAuth } from '../models/agent-cli-detect.js';
 import { getProviderRuntime } from '../providers/store.js';
 import { probeBrowserCapability } from '../browser-driver/index.js';
+import { resolveVerificationEnv } from './verification-env.js';
 
 export function normalizePrerequisites(value) {
   if (value == null) return [];
@@ -23,6 +24,7 @@ export function normalizePrerequisites(value) {
 export async function prerequisitesReady(value, cwd) {
   const items = normalizePrerequisites(value);
   if (!items.length) return false;
+  let executableEnv;
   for (const item of items) {
     if (item.kind === 'file') {
       const root = await fs.realpath(cwd);
@@ -30,12 +32,20 @@ export async function prerequisitesReady(value, cwd) {
       const relative = file && path.relative(root, file);
       if (!file || relative.startsWith('..') || path.isAbsolute(relative)) return false;
     } else if (item.kind === 'executable') {
-      const extensions = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';') : [''];
+      executableEnv ??= await resolveVerificationEnv(cwd);
+      const pathKey = Object.keys(executableEnv).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
+      const extensions = process.platform === 'win32' ? (executableEnv.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';') : [];
       let found = false;
-      for (const directory of (process.env.PATH || '').split(path.delimiter)) {
-        if (!directory) continue;
+      for (const directory of (executableEnv[pathKey] || '').split(path.delimiter)) {
+        const resolved = path.resolve(cwd, directory);
         for (const extension of ['', ...extensions]) {
-          try { if ((await fs.stat(path.join(directory, `${item.name}${extension}`))).isFile()) { found = true; break; } } catch {}
+          try {
+            const file = path.join(resolved, `${item.name}${extension}`);
+            if (!(await fs.stat(file)).isFile()) continue;
+            await fs.access(file, process.platform === 'win32' ? fs.constants.F_OK : fs.constants.X_OK);
+            found = true;
+            break;
+          } catch {}
         }
         if (found) break;
       }

@@ -10,7 +10,7 @@ import { setWorkspaceRoot, getDefaultWorkspaceRoot } from '../../server/workspac
 import { getWorktreeSlotPath, isPathUnderWorktreesRoot } from '../../server/worktree/paths.js';
 import { checkpointAttempt, restoreCheckpoint, cleanupCompletedRecovery } from '../../server/orchestrator/checkpoint.js';
 import { acquireBoardOwner } from '../../server/orchestrator/owner.js';
-import { boardDir } from '../../server/orchestrator/journal.js';
+import { boardDir, createBoard } from '../../server/orchestrator/journal.js';
 
 const exec = promisify(execFile);
 test('checkpoint restores tracked, untracked, binary and staged work without changing the source index', async () => {
@@ -30,6 +30,7 @@ test('checkpoint restores tracked, untracked, binary and staged work without cha
     await git(repo, 'add', '.');
     await git(repo, 'commit', '-m', 'base');
     await setWorkspaceRoot(repo);
+    await createBoard('checkpoint');
     const worktree = getWorktreeSlotPath('checkpoint', 'task');
     assert.ok(isPathUnderWorktreesRoot(worktree));
     assert.ok(path.resolve(worktree).startsWith(path.resolve(scratch)));
@@ -41,6 +42,14 @@ test('checkpoint restores tracked, untracked, binary and staged work without cha
     await fs.writeFile(path.join(worktree, 'new.bin'), Buffer.from([0, 255, 42, 0]));
     const before = await git(worktree, 'status', '--porcelain');
     const checkpoint = await checkpointAttempt({ boardId: 'checkpoint', attemptId: 'one', worktree });
+    const refs = () => git(repo, 'for-each-ref', '--format=%(refname)', 'refs/minnow/recovery/checkpoint/');
+    const orphan = 'refs/minnow/recovery/checkpoint/interrupted';
+    const unrelated = 'refs/minnow/recovery/checkpoint-other/one';
+    await git(repo, 'update-ref', orphan, checkpoint.commit);
+    await git(repo, 'update-ref', `${orphan}-index`, checkpoint.indexCommit);
+    await git(repo, 'update-ref', unrelated, checkpoint.commit);
+    await fs.mkdir(path.join(boardDir('checkpoint'), 'recovery', 'interrupted'));
+    await fs.writeFile(path.join(boardDir('checkpoint'), 'recovery', 'interrupted', 'manifest.json'), 'interrupted write');
     assert.equal(await git(worktree, 'status', '--porcelain'), before);
     assert.notEqual(checkpoint.indexTree, checkpoint.tree);
     await git(repo, 'worktree', 'remove', '--force', worktree);
@@ -63,13 +72,35 @@ test('checkpoint restores tracked, untracked, binary and staged work without cha
     const completed = { recoveryVersion: 1, recoveryRevision: 1, finished: true, workspacePath: repo, integrationSha: checkpoint.head, finalTest: { outcome: 'pass' }, recoveryHolds: {}, tasks: new Map([['A', { phase: 'merged', attempts: [{ worktree, evidence: { checkpoint } }] }]]) };
     await cleanupCompletedRecovery('checkpoint', completed);
     assert.equal(await fs.readFile(path.join(worktree, 'tracked.txt'), 'utf8'), 'unstaged\n', 'dirty source remains retained');
+    assert.match(await refs(), /interrupted/);
+    assert.match(await refs(), /\/one-index/);
     await git(worktree, 'add', '.');
     await git(worktree, 'commit', '-m', 'verified task work');
+    await cleanupCompletedRecovery('checkpoint', completed);
+    await fs.access(worktree);
+    assert.match(await refs(), /\/one-index/, 'clean unmerged work stays recoverable');
     completed.integrationSha = await git(worktree, 'rev-parse', 'HEAD');
     await git(repo, 'merge', 'task');
+    await cleanupCompletedRecovery('checkpoint', { ...completed, finalTest: { outcome: 'fail' } });
+    assert.match(await refs(), /\/one-index/);
+    await cleanupCompletedRecovery('checkpoint', { ...completed, tasks: new Map([['A', { ...completed.tasks.get('A'), waived: true }]]) });
+    assert.match(await refs(), /\/one-index/);
+    // A damaged manifest must not strand otherwise eligible recovery refs.
+    await fs.writeFile(path.join(boardDir('checkpoint'), 'recovery', 'one', 'manifest.json'), 'damaged');
+    const unrecorded = getWorktreeSlotPath('checkpoint', 'unrecorded');
+    await fs.mkdir(unrecorded);
+    await fs.writeFile(path.join(unrecorded, 'progress.txt'), 'unjournaled work');
+    await cleanupCompletedRecovery('checkpoint', completed);
+    assert.match(await refs(), /interrupted/, 'unknown work prevents sweeping orphan checkpoints');
+    assert.equal(await fs.readFile(path.join(unrecorded, 'progress.txt'), 'utf8'), 'unjournaled work');
+    await fs.rm(unrecorded, { recursive: true });
+    await cleanupCompletedRecovery('checkpoint', completed);
     await cleanupCompletedRecovery('checkpoint', completed);
     await assert.rejects(fs.access(worktree), { code: 'ENOENT' });
     await assert.rejects(fs.access(path.join(boardDir('checkpoint'), 'recovery', 'one')), { code: 'ENOENT' });
+    await assert.rejects(fs.access(path.join(boardDir('checkpoint'), 'recovery')), { code: 'ENOENT' });
+    assert.equal(await refs(), '');
+    assert.equal(await git(repo, 'rev-parse', unrelated), checkpoint.commit);
     const release = await acquireBoardOwner('checkpoint');
     await assert.rejects(acquireBoardOwner('checkpoint'), /owned/);
     release();

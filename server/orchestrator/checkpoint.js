@@ -5,11 +5,27 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { boardDir } from './journal.js';
+import { boardDir, boardExists } from './journal.js';
 import { safeSegment } from './journal-store.js';
 import { isPathUnderWorktreesRoot, getBoardWorktreesDir } from '../worktree/paths.js';
 
 const exec = promisify(execFile);
+const recoveryChains = new Map();
+
+/** Serialize checkpoint writes/restores with cleanup, including board deletion. */
+export function withBoardRecovery(boardId, operation) {
+  const key = boardDir(boardId);
+  const next = (recoveryChains.get(key) ?? Promise.resolve()).then(operation, operation);
+  recoveryChains.set(key, next);
+  return next.finally(() => {
+    if (recoveryChains.get(key) === next) recoveryChains.delete(key);
+  });
+}
+
+async function requireBoard(boardId) {
+  if (!await boardExists(boardId)) throw new Error('Board no longer exists; recovery work was cancelled.');
+}
+
 async function git(cwd, args, env = {}) {
   const result = await exec('git', ['-c', 'core.longpaths=true', ...args], {
     cwd, env: { ...process.env, ...env }, windowsHide: true, timeout: 120_000, maxBuffer: 4 * 1024 * 1024,
@@ -40,12 +56,19 @@ function checkedPath(root, name) {
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.split(path.sep)[0].toLowerCase() === '.git') throw new Error('Invalid checkpoint path');
   return resolved;
 }
-function ownedWorktree(boardId, worktree) {
-  const relative = path.relative(getBoardWorktreesDir(boardId), path.resolve(worktree));
+function ownedWorktree(boardId, worktree, workspacePath) {
+  const relative = path.relative(getBoardWorktreesDir(boardId, workspacePath), path.resolve(worktree));
   return isPathUnderWorktreesRoot(worktree) && relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-export async function checkpointAttempt({ boardId, attemptId, worktree, previousAttemptId }) {
+export function checkpointAttempt(input) {
+  return withBoardRecovery(input.boardId, async () => {
+    await requireBoard(input.boardId);
+    return captureCheckpoint(input);
+  });
+}
+
+async function captureCheckpoint({ boardId, attemptId, worktree, previousAttemptId }) {
   // An explicit nonisolated cwd can contain user work. Never stage it, even in
   // a temporary index, or treat its contents as owned by board recovery.
   if (!ownedWorktree(boardId, worktree)) throw new Error('Checkpoint requires a managed isolated worktree owned by this board');
@@ -123,7 +146,14 @@ export async function checkpointAttempt({ boardId, attemptId, worktree, previous
   } finally { await fs.rm(temporaryIndex, { force: true }); }
 }
 
-export async function restoreCheckpoint({ boardId, attemptId, worktree, transaction, afterGitRestore }) {
+export function restoreCheckpoint(input) {
+  return withBoardRecovery(input.boardId, async () => {
+    await requireBoard(input.boardId);
+    return restoreSavedCheckpoint(input);
+  });
+}
+
+async function restoreSavedCheckpoint({ boardId, attemptId, worktree, transaction, afterGitRestore }) {
   if (!ownedWorktree(boardId, worktree)) throw new Error('Restore requires a managed isolated worktree owned by this board');
   const directory = path.join(boardDir(boardId), 'recovery', safeSegment(attemptId));
   const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'));
@@ -192,37 +222,71 @@ export async function restoreCheckpoint({ boardId, attemptId, worktree, transact
 
 /** Once completion is journaled, merged source is retained by integration Git.
  * Never reclaim unresolved/waived tasks or checkouts with subsequent user edits. */
-export async function cleanupCompletedRecovery(boardId, state) {
+export function cleanupCompletedRecovery(boardId, state) {
+  return withBoardRecovery(boardId, () => cleanupCompletedCheckpoints(boardId, state));
+}
+
+/** Remove only this board's recovery refs, including interrupted writes without manifests.
+ * Call under withBoardRecovery so a checkpoint cannot publish refs after cleanup. */
+export async function cleanupRecoveryRefs(boardId, workspacePath, attemptIds) {
+  const prefix = `refs/minnow/recovery/${safeSegment(boardId)}/`;
+  const selected = attemptIds && new Set(attemptIds.flatMap(id => {
+    const ref = `${prefix}${safeSegment(id)}`;
+    return [ref, `${ref}-index`];
+  }));
+  let refs;
+  try {
+    refs = await git(workspacePath, ['for-each-ref', '--format=%(refname) %(objectname)', prefix]);
+  } catch (error) {
+    // A board can be deleted before its workspace has ever been initialized.
+    if (/not a git repository/i.test(error.stderr ?? '')) return;
+    throw error;
+  }
+  for (const line of refs.split('\n').filter(Boolean)) {
+    const [ref, sha] = line.split(' ');
+    if (!ref.startsWith(prefix) || selected && !selected.has(ref)) continue;
+    await git(workspacePath, ['update-ref', '-d', ref, sha]);
+  }
+}
+
+async function cleanupCompletedCheckpoints(boardId, state) {
   if (!state.recoveryVersion || !state.finished || state.finalTest?.outcome !== 'pass' || Object.keys(state.recoveryHolds).length) return;
+  if (!await boardExists(boardId)) return;
   const revision = state.recoveryRevision;
+  const current = () => state.finished && state.recoveryRevision === revision;
+  let allSafe = true;
   for (const task of state.tasks.values()) {
-    if (task.phase !== 'merged' || task.waived) continue;
+    if (task.phase !== 'merged' || task.waived) { allSafe = false; continue; }
     const paths = new Set(task.attempts.map((attempt) => attempt.worktree).filter(Boolean));
     let safe = true;
     for (const worktree of paths) {
       if (!state.finished || state.recoveryRevision !== revision) return;
-      if (!ownedWorktree(boardId, worktree)) { safe = false; continue; }
+      if (!ownedWorktree(boardId, worktree, state.workspacePath)) { safe = false; continue; }
       try {
         await fs.access(worktree);
-        if (await git(worktree, ['status', '--porcelain'])) { safe = false; continue; }
+        if (await git(worktree, ['status', '--porcelain', '--untracked-files=all'])) { safe = false; continue; }
         await git(worktree, ['merge-base', '--is-ancestor', 'HEAD', state.integrationSha]);
         if (!state.finished || state.recoveryRevision !== revision) return;
         // Git refuses a dirty/locked checkout; never fall back to forced delete.
         await git(state.workspacePath, ['worktree', 'remove', worktree]);
       } catch (error) { if (error.code !== 'ENOENT') safe = false; }
     }
-    if (!safe) continue;
-    for (const attempt of task.attempts) {
-      const checkpointId = attempt.evidence?.checkpoint?.attemptId;
-      if (!checkpointId || !state.finished || state.recoveryRevision !== revision) continue;
+    if (!safe) { allSafe = false; continue; }
+    const checkpointIds = [...new Set(task.attempts.map(attempt => attempt.evidence?.checkpoint?.attemptId).filter(Boolean))];
+    for (const checkpointId of checkpointIds) {
+      if (!current()) return;
       const directory = path.join(boardDir(boardId), 'recovery', safeSegment(checkpointId));
-      try {
-        const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'));
-        if (!manifest.ref?.startsWith(`refs/minnow/recovery/${safeSegment(boardId)}/`)) continue;
-        await git(state.workspacePath, ['update-ref', '-d', manifest.ref]);
-        await git(state.workspacePath, ['update-ref', '-d', `${manifest.ref}-index`]);
-        await fs.rm(directory, { recursive: true, force: true });
-      } catch (error) { if (error.code !== 'ENOENT') console.warn('[orchestrator] Completed checkpoint cleanup deferred:', error.code || error.message); }
+      await cleanupRecoveryRefs(boardId, state.workspacePath, [checkpointId]);
+      await fs.rm(directory, { recursive: true, force: true });
     }
   }
+  if (!allSafe || !current()) return;
+  let remaining;
+  try { remaining = await fs.readdir(getBoardWorktreesDir(boardId, state.workspacePath)); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; remaining = []; }
+  // An unjournaled checkout may still own work after an interrupted attempt.
+  if (remaining.some(slot => slot !== 'integration')) return;
+  await cleanupRecoveryRefs(boardId, state.workspacePath);
+  if (!current()) return;
+  await fs.rm(path.join(boardDir(boardId), 'recovery'), { recursive: true, force: true });
 }

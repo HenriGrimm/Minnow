@@ -61,7 +61,7 @@ export const DIAGNOSTICS_LAST_CRASH = 'minnow:diagnostics:last-crash';
 export const DIAGNOSTICS_OOM_PAUSE = 'minnow:diagnostics:oom-pause';
 export const DIAGNOSTICS_CLEAR_OOM_PAUSE = 'minnow:diagnostics:clear-oom-pause';
 
-export const POWER_SET_AFK_GUARD = 'minnow:power:set-afk-guard';
+export const POWER_SET_CHAT_ACTIVE = 'minnow:power:set-chat-active';
 export const POWER_SCREEN_UNLOCKED = 'minnow:power:screen-unlocked';
 export const BOARD_PAUSE_FOR_SHUTDOWN = 'minnow:board:pause-for-shutdown';
 

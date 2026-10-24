@@ -44,6 +44,8 @@ The model label includes the current reasoning level, such as **GPT · Medium**.
 
 ## While the model is working
 
+In the desktop app, Minnow automatically prevents idle system sleep while a chat turn is running, including model loading and tool calls. Protection stays active across chats and workspace windows, even when Minnow is minimized or kept in the tray, and ends when the last turn finishes, fails, or stops. Your screen can still turn off. This does not override closing a laptop lid or putting the computer to sleep yourself. Browser and headless CLI runs do not provide this protection.
+
 **Compact view** draws a running turn as a timeline under your prompt. A round of reads and searches is one step — **Explored 5 files, 1 search** — with the files it touched as chips; open it for the individual calls. Thinking time rides on the step it led to. While the run is live, a line above the composer shows **Working**, the elapsed time, and how many actions the turn has taken.
 
 When the turn finishes it folds into one line — **Worked 6m 55s · 20 reads · 16 searches** — with the final answer below it. Expand the line to see the timeline again. Recorded file changes appear in an **Edited files** card with per-file counts, **Review**, and — on the latest turn — **Commit** and **Create PR**. Copy, remake, and the reply's speed sit under the latest answer. Failed and stopped replies remain visible, with a notice that carries the recovery actions.
