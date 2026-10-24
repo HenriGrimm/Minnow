@@ -1,24 +1,17 @@
 import { refreshSessionsFromServer } from './sessions';
-import { refreshRemoteChatTurns } from '../chat/turn-ownership';
-import { remoteChatTurnsRevision } from '../chat/remote-turn-state';
 
 /** Poll shared saved state, and catch up immediately after a backgrounded view wakes. */
 export function startSessionLiveSync(onChange: (activeChanged: boolean) => void): () => void {
   let stopped = false;
   let controller: AbortController | null = null;
   let retryOnWake = false;
-  let activityRevision = -1;
   const refresh = async () => {
     if (stopped || controller || document.visibilityState === 'hidden') return;
     controller = new AbortController();
     const timeout = window.setTimeout(() => controller?.abort(), 8_000);
     try {
-      await refreshRemoteChatTurns(controller.signal).catch(() => {});
-      const nextActivityRevision = remoteChatTurnsRevision();
-      const activityChanged = nextActivityRevision !== activityRevision;
       const result = await refreshSessionsFromServer(controller.signal);
-      if (!stopped && (result.changed || activityChanged)) onChange(result.activeChanged || activityChanged);
-      activityRevision = nextActivityRevision;
+      if (!stopped && result.changed) onChange(result.activeChanged);
     } catch {
       // A disconnected host retains the last good state; the next poll retries.
     } finally {

@@ -195,6 +195,24 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     assert.deepEqual(getPendingAttachments(), [], 'the tray clears as soon as the turn owns the composer');
   });
 
+  test('a phone-originated turn preserves the PC composer text and attachment tray', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    chat.composerDraft = 'PC is still typing';
+    setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+    input.value = 'PC is still typing';
+    const pending = textAttachment('pc-pending');
+    pushAttachment(pending);
+    setRunTurnForTests(async () => ({ outcome: 'no_report' } satisfies TurnResult));
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN, clearComposerOnSend: false });
+    assert.equal(input.value, 'PC is still typing');
+    assert.equal(chat.composerDraft, 'PC is still typing');
+    assert.equal(getPendingAttachments()[0]?.id, pending.id);
+  });
+
   for (const outcome of ['failed', 'stopped'] as const) {
     test(`a ${outcome} provider turn keeps sent attachments in the chat and preserves new composer files`, async () => {
       setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
@@ -435,6 +453,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
       ],
       suppressUserEcho: true,
     });
+    chat.currentGenerationId = 'gen-resume-1';
     await runChatTurn({
       chat,
       pushUser: false,

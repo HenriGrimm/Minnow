@@ -1,6 +1,6 @@
 # Use Minnow on your phone
 
-Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, follow a board, approve a tool call, file an issue, or read a file. Nothing needs to be installed on the phone.
+Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, steer an agent, follow a board, file an issue, or read a file. Nothing needs to be installed on the phone.
 
 There are two ways for a phone to reach your computer. You can use either or both:
 
@@ -21,6 +21,20 @@ There are two ways for a phone to reach your computer. You can use either or bot
 Minnow opens on the phone, and the computer shows the phone's name in the sheet. That's it. There is no code to type and nothing to name in advance; the phone suggests a name, which you can change.
 
 The phone stays connected through computer restarts, Minnow updates, Wi-Fi changes, and phone restarts. If the computer is asleep or Minnow is closed, the phone shows **Can't reach** with a likely reason and reconnects on its own when the computer is back.
+
+## Share a live chat
+
+The computer runs the conversation. Open the same chat on your phone to see its
+reply, reasoning, tool activity and final status as they arrive.
+
+You can send messages and stop a reply from either device. Sending while the
+agent is working queues a follow-up. Choose **Push now** on a queued message to
+steer the current run. These actions reach the existing run on your computer.
+
+Keep the workspace open in Minnow on the computer to start a reply from the phone.
+Phone drafts and unsent computer drafts stay separate. If the connection drops,
+the phone catches up when it reconnects and keeps a message draft until the
+computer confirms it was accepted.
 
 ## Make it work anywhere
 

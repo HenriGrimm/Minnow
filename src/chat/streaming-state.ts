@@ -8,6 +8,7 @@ import { isCodeMapChatOpenForChat } from '../ui/code-map/chat-state';
 import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state';
 import { isBoardViewActive } from '../ui/view-mode-toggle';
 import { reportBackgroundError } from '../boot/report-background-error';
+import { isChatRunningRemotely } from './remote-turn-state';
 
 type ChatStreamEndListener = (chatId: string) => void;
 const streamEndListeners = new Set<ChatStreamEndListener>();
@@ -142,12 +143,12 @@ export function getStreamingChatId(): string | null {
 
 /** True when the given chat has an in-flight assistant turn. */
 export function isChatStreaming(chatId: string): boolean {
-  return streamingChatIds.has(chatId);
+  return streamingChatIds.has(chatId) || isChatRunningRemotely(chatId);
 }
 
 /** True when the active sidebar chat is the one currently streaming. */
 export function isActiveChatStreaming(): boolean {
-  return streamingChatIds.has(getActiveChat().id);
+  return isChatStreaming(getActiveChat().id);
 }
 
 /** Concurrent streams are allowed — board cap handles orchestrate task limits. */

@@ -2,6 +2,7 @@ import { persistDefaultModelValue } from '../models/selection';
 import { showToast } from './toast';
 import { applyModelSelectValueToChat } from '../lib/model-select-key';
 import { isChatStreaming } from '../chat/streaming-state';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
 import { stopGeneration } from '../chat/stop-generation';
 import { scheduleCapabilityProbeForSelectValue } from '../providers/first-load-probe';
 import {
@@ -26,10 +27,14 @@ export function syncActiveChatModelUi(): void {
 }
 
 /** Bind the chat and remember an explicit composer selection for future chats. */
-export function onActiveChatModelChange(selectValue: string): void {
-  const chat = getActiveChat();
+export function onActiveChatModelChange(selectValue: string, chat = getActiveChat()): void {
   const raw = selectValue.trim();
   if (!raw) return;
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'configure', { patch: { modelSelectValue: raw } })
+      .catch(error => showToast(String(error?.message || error), 'error'));
+    return;
+  }
 
   if (isChatStreaming(chat.id)) {
     stopGeneration(chat.id, 'user');

@@ -1181,6 +1181,8 @@ export interface SessionSummariesState {
 
 export interface Chat {
   id: string;
+  /** Bounded receipts for phone commands admitted by the PC runner. */
+  remoteCommandReceipts?: string[];
   name: string;
   /** expert = per-expert thread; expert-lab = legacy hidden session (migrated away). */
   kind?: ChatKind;

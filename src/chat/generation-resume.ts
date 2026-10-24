@@ -5,6 +5,7 @@ import { isGoalLoopActive } from '../state/sessions';
 import { setStatus } from '../ui/status';
 import { isResumeGateHeld } from './resume-gate';
 import { isChatOwnedElsewhere } from './turn-ownership';
+import { isPairedDevice } from '../api/session-token';
 
 /** Read the composer model picker (empty when none selected). */
 
@@ -38,6 +39,7 @@ export async function bootGenerationResumeForChat(
   chat: Chat,
   options: BootGenerationResumeOptions = {},
 ): Promise<void> {
+  if (isPairedDevice()) return;
   if (isResumeGateHeld()) {
     return;
   }

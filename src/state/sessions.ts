@@ -17,6 +17,8 @@ import {
 import { defaultSessionState } from '../config/defaults';
 import { randomUUID } from '../lib/random-id.ts';
 import { isServerStorageMode } from '../config/storage-mode';
+import { isChatRunningRemotely, remoteChatTurnsRevision } from '../chat/remote-turn-state';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
 import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
@@ -1676,9 +1678,10 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
       !sessionPatchDirtySetsReady || inFlightSessionSave) return unchanged;
   const epoch = sessionDirtyEpoch;
   const revision = sessionRevision;
+  const liveRevision = remoteChatTurnsRevision();
   const activeId = state.activeId;
   const protectedChat = (chat: Chat) => dirtyChatIds.has(chat.id) || deletedChatIds.has(chat.id) ||
-    conflictedChatIds.has(chat.id) || streamingChatIds.has(chat.id) ||
+    conflictedChatIds.has(chat.id) || streamingChatIds.has(chat.id) || isChatRunningRemotely(chat.id) ||
     historyLoadInflight.has(chat.id) || Boolean(chat.composerDraft);
   const synced = summariesSyncedRevision;
   const remote = await getSessionSummaries(undefined, signal, synced ?? undefined);
@@ -1714,7 +1717,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     }
     replacements.set(chat.id, chat);
   }
-  if (signal?.aborted || state !== sessionState || epoch !== sessionDirtyEpoch ||
+  if (signal?.aborted || liveRevision !== remoteChatTurnsRevision() || state !== sessionState || epoch !== sessionDirtyEpoch ||
       revision !== sessionRevision || activeId !== state.activeId || inFlightSessionSave) return unchanged;
   let changed = false;
   let activeChanged = false;
@@ -1781,6 +1784,35 @@ export async function refreshChatBeforeRecovery(chat: Chat): Promise<boolean> {
   if (state !== sessionState || epoch !== sessionDirtyEpoch || protectedLocally() || findChatById(chat.id) !== chat) return false;
   await ensureChatHistoryLoaded(chat.id);
   return state === sessionState && epoch === sessionDirtyEpoch && !protectedLocally();
+}
+
+/** Apply an authoritative live view without echoing its transcript into a save. */
+export function applySharedChatFrame(
+  chatId: string, fields?: Record<string, unknown>, history?: { start: number; messages: Message[]; length: number },
+): Chat | undefined {
+  const state = sessionState;
+  if (!state || streamingChatIds.has(chatId)) return undefined;
+  let chat = state.chats.find(row => row.id === chatId);
+  if (!chat) {
+    chat = createEmptyChatObject(String(fields?.modelId || ''), String(fields?.workspacePath || ''));
+    chat.id = chatId;
+    state.chats.push(chat);
+  }
+  if (history && (chat.historyLoaded === false || history.start > chat.history.length)) return undefined;
+  for (const [name, value] of Object.entries(fields ?? {})) {
+    if (['id', 'history', 'historyLoaded', 'composerDraft', '__proto__', 'constructor'].includes(name)) continue;
+    if (value === null) delete (chat as unknown as Record<string, unknown>)[name];
+    else (chat as unknown as Record<string, unknown>)[name] = value;
+  }
+  if (history) {
+    chat.history.splice(history.start, chat.history.length - history.start, ...history.messages);
+    chat.messageCount = chat.history.length;
+  }
+  // Incoming state is a view of the owner's edits, never a local transcript edit.
+  dirtyChatIds.delete(chatId);
+  conflictedChatIds.delete(chatId);
+  dirtyTrackingShadow.delete(chatId);
+  return chat;
 }
 
 // ── Chat fields ──────────────────────────────────────────────────────────────
@@ -2473,6 +2505,11 @@ export async function switchActiveChat(id: string): Promise<Chat | null> {
 export function renameChatTitle(chatId: string, name: string): boolean {
   const chat = findChatById(chatId);
   if (!chat) return false;
+  if (shouldRelayChat(chatId)) {
+    void sendRemoteChatCommand(chatId, 'configure', { patch: { name } })
+      .catch(error => setStatus('err', String(error?.message || error)));
+    return true;
+  }
   const trimmed = name.trim();
   if (trimmed) chat.name = trimmed;
   touchChat(chat);

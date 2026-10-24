@@ -26,6 +26,7 @@ import { isResumeGateHeld } from './resume-gate';
 import { acquireChatTurn, type ChatTurnLease } from './turn-ownership';
 import { persistSessionsBeforeDeliveryAck, refreshChatBeforeRecovery } from '../state/sessions';
 import { renderChatFromHistory } from '../ui/messages';
+import { isPairedDevice } from '../api/session-token';
 
 
 
@@ -83,6 +84,8 @@ export async function resumeIncompleteToolBatch(
   options: { ownsGlobalStreaming?: boolean } = {},
 
 ): Promise<boolean> {
+
+  if (isPairedDevice()) return false;
 
   if (typeof document === 'undefined') {
 

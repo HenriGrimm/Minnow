@@ -6,6 +6,8 @@ import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation'
 import { findChatById, getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { cancelAllForParentChat } from '../agents/orchestrator';
+import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
+import { setStatus } from '../ui/status';
 
 /**
  * Stop a chat turn: cancel the backend generation (if any) and abort the local SSE reader.
@@ -16,6 +18,10 @@ export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user')
   const chat = requestedId ? findChatById(requestedId) : getActiveChat();
   if (!chat) return;
   const id = chat.id;
+  if (shouldRelayChat(id)) {
+    void sendRemoteChatCommand(id, 'stop').catch(error => setStatus('err', String(error?.message || error)));
+    return;
+  }
   if (reason === 'user') {
     chat.subAgentAutoResumeBlocked = true;
     touchChat(chat);

@@ -6,6 +6,8 @@
 
 import { getChatAbort, setChatStopReason } from '../app-state.ts';
 import { reportBackgroundError } from '../boot/report-background-error.ts';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
+import { setStatus } from '../ui/status';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path.ts';
 import { syncOrchestratorPlannerChatTitle } from '../chat/plans/planner-chat-title.ts';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
@@ -130,6 +132,11 @@ export function isChatPinned(chat: Chat): boolean {
  * not activity, so the chat keeps its slot when it is unpinned again.
  */
 export function setChatPinned(chat: Chat, pinned: boolean): void {
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'configure', { patch: { pinned } })
+      .catch(error => setStatus('err', String(error?.message || error)));
+    return;
+  }
   if (pinned === isChatPinned(chat)) return;
   if (pinned) chat.pinnedAt = Date.now();
   else delete chat.pinnedAt;

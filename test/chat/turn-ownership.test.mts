@@ -130,7 +130,7 @@ test('an unavailable ownership API leaves automatic recovery passive', async () 
   assert.deepEqual(chat, original);
 });
 
-test('a passive composer stays separate from local streaming and becomes usable on completion', () => {
+test('remote streaming retains composer controls without creating a local runner', () => {
   const chat = createEmptyChatObject('m1');
   chat.id = CHAT;
   setSessionStateForTests({ version: 6, activeId: CHAT, chats: [chat], sidebarCollapsed: false });
@@ -141,9 +141,9 @@ test('a passive composer stays separate from local streaming and becomes usable 
   document.body.replaceChildren(input, send);
   setRemoteChatTurns([CHAT]);
   syncComposerFromStreamingState();
-  assert.equal(input.disabled, true);
-  assert.equal(send.disabled, true);
-  assert.equal(send.getAttribute('aria-label'), 'Running on another device');
+  assert.equal(input.disabled, false);
+  assert.equal(send.disabled, false);
+  assert.equal(send.getAttribute('aria-label'), 'Stop generating');
   assert.equal(streamingChatIds.has(CHAT), false);
   setRemoteChatTurns([]);
   syncComposerFromStreamingState();

@@ -1,6 +1,8 @@
 import { isServerStorageMode } from '../config/storage-mode';
 import { randomUUID } from '../lib/random-id';
 import { isChatRunningRemotely, setRemoteChatTurns } from './remote-turn-state';
+import { isPairedDevice } from '../api/session-token';
+import { getChatHostId } from './remote-chat-client';
 
 const owners = new Map<string, string>();
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -31,7 +33,7 @@ async function request(action: string, chatId: string, ownerId: string): Promise
   const response = await fetch('/api/chat-turns', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, chatId, ownerId }),
+    body: JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId() }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (response.status === 409) return false;
@@ -58,6 +60,7 @@ export async function isChatOwnedElsewhere(chatId: string): Promise<boolean> {
 
 /** Claim before any history, model, tool, or recovery mutation. Conflicts are passive. */
 export async function acquireChatTurn(chatId: string): Promise<ChatTurnLease | null> {
+  if (isPairedDevice()) return null;
   const controller = new AbortController();
   if (!isServerStorageMode()) return localChatTurnLease();
   // sessionStorage survives a reload in this view, without granting another
