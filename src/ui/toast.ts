@@ -1,4 +1,5 @@
 import { iconHtml } from './icon';
+import { markPreviewOccluder } from './preview-occlusion';
 
 export type ToastVariant = 'success' | 'error';
 
@@ -52,6 +53,8 @@ export function showToast(
   }
   const el = document.createElement('div');
   el.className = `mn-toast mn-toast--${variant}`;
+  // Each toast (not the click-through stack) is what paints over the preview pane.
+  markPreviewOccluder(el, 'notification');
   el.setAttribute('role', 'group');
   el.setAttribute('aria-label', variant === 'error' ? 'Error notification' : 'Notification');
   const announce = document.createElement('span');

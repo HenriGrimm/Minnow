@@ -30,8 +30,75 @@ test('Cursor MCP identity matches the rows the real CLI emits', () => {
   assert.equal(cursorPermissionAllowed({ toolCall: { title: 'minnow: echo_value' } }, names), true);
   assert.equal(cursorPermissionAllowed({ toolCall: { ...named, rawInput: { ...named.rawInput, providerIdentifier: 'other' }, title: 'other: echo_value' } }, names), false);
   assert.equal(cursorPermissionAllowed({ toolCall: { ...named, rawInput: { ...named.rawInput, toolName: 'shell' }, title: 'minnow: shell' } }, names), false);
+  assert.equal(cursorPermissionAllowed({ toolCall: { ...named, rawInput: { ...named.rawInput, providerIdentifier: 'other' } } }, names), false);
+  assert.equal(cursorPermissionAllowed({ toolCall: { ...named, rawInput: { ...named.rawInput, serverName: 'other' } } }, names), false);
   assert.equal(cursorUnnamedMcpCall(named), false);
   assert.equal(cursorUnnamedMcpCall({ title: 'Shell', kind: 'execute', rawInput: {} }), false);
+});
+
+async function fixture(env, check) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cursor-recovery-'));
+  const log = path.join(root, 'calls.log');
+  const diagnostics = [];
+  let run;
+  try {
+    run = await openCursorAcp({ command: process.execPath,
+      args: [fileURLToPath(new URL('../fixtures/fake-cursor-acp.mjs', import.meta.url))], cwd: root,
+      env: { ...process.env, CURSOR_DATA_DIR: root, ACP_CALL_LOG: log, ...env }, selectedModel: 'fixture' },
+    { onNativeData: chunk => diagnostics.push(chunk.toString()) });
+    const rows = [];
+    let finish;
+    const terminal = new Promise(resolve => { finish = resolve; });
+    let pending = '';
+    run.child.stdout.on('data', chunk => {
+      pending += chunk;
+      let newline;
+      while ((newline = pending.indexOf('\n')) >= 0) {
+        const row = JSON.parse(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        rows.push(row);
+        if (row.type === 'result' || row.type === 'error') finish(row);
+      }
+    });
+    await check({ run, root, log, rows, terminal, diagnostics });
+  } finally { await run?.stop(); await fs.rm(root, { recursive: true, force: true }); }
+}
+
+for (const env of [{ ACP_EDIT_PERMISSION: '1', ACP_LATE_TEXT: '1' }, { ACP_CANCEL_ERROR: '1' }]) {
+  test(`Cursor cancels a native edit and continues after ${env.ACP_CANCEL_ERROR ? 'RPC cancellation' : 'permission cancellation'}`, { timeout: 10_000 }, async () => {
+    await fixture(env, async ({ run, root, log, rows, terminal, diagnostics }) => {
+      await run.send('EDIT_NATIVE');
+      assert.equal((await terminal).type, 'result');
+      assert.equal(rows.filter(row => row.type === 'assistant').map(row => row.message.content[0].text).join(''), 'Reply 2.');
+      assert.match(diagnostics.join(''), /rejected unexposed native tool "Edit File"/);
+      assert.equal((await fs.readFile(log, 'utf8')).match(/^session\/prompt$/gm).length, 2);
+      assert.equal((await fs.readFile(log, 'utf8')).match(/^session\/cancel$/gm).length, 1);
+      assert.equal(await fs.access(path.join(root, 'forbidden')).then(() => true, () => false), false);
+    });
+  });
+}
+
+test('Cursor bounds repeated native tool recovery and names the rejected tool in the final error', { timeout: 10_000 }, async () => {
+  await fixture({ ACP_REPEAT_NATIVE: '1' }, async ({ run, log, terminal }) => {
+    await run.send('EDIT_NATIVE');
+    const end = await terminal;
+    assert.equal(end.type, 'error');
+    assert.match(end.message, /unexposed native tool "Edit File".*exceeded 2 recovery attempts/);
+    assert.equal((await fs.readFile(log, 'utf8')).match(/^session\/prompt$/gm).length, 3);
+  });
+});
+
+test('stopping Cursor during native tool cancellation never sends a recovery prompt', { timeout: 10_000 }, async () => {
+  await fixture({ ACP_IGNORE_CANCEL: '1' }, async ({ run, log, diagnostics }) => {
+    const controller = new AbortController();
+    await run.send('EDIT_NATIVE', controller.signal);
+    // Wait for the notification to reach the guard before exercising Stop.
+    while (!diagnostics.some(line => line.includes('[Minnow]'))) await new Promise(resolve => setTimeout(resolve, 10));
+    controller.abort();
+    await run.stop();
+    await run.done;
+    assert.equal((await fs.readFile(log, 'utf8')).match(/^session\/prompt$/gm).length, 1);
+  });
 });
 
 // Shapes recorded from `cursor-agent --model <slug> acp` (2026.10.01) with the

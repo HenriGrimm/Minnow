@@ -138,7 +138,11 @@ export interface PreviewCapturePageOptions {
   captureTimeoutMs?: number;
   /** Capture the currently painted frame for transient shell overlays. */
   immediate?: boolean;
+  /** Immediate captures only; JPEG keeps the once-a-second placeholder frame small. */
+  format?: 'png' | 'jpeg';
 }
+
+const PLACEHOLDER_JPEG_QUALITY = 80;
 
 // Empty PNG after a hung GPU copy is not retried — retries would stack CopyFromSurface.
 export async function previewCapturePageBase64(
@@ -152,7 +156,8 @@ export async function previewCapturePageBase64(
   if (options?.immediate) {
     try {
       const image = await withTimeout(wc.capturePage(), timeoutMs, 'preview snapshot timed out');
-      return image.toPNG().toString('base64');
+      const encoded = options.format === 'jpeg' ? image.toJPEG(PLACEHOLDER_JPEG_QUALITY) : image.toPNG();
+      return encoded.toString('base64');
     } catch {
       return '';
     }

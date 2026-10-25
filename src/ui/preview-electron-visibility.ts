@@ -2,7 +2,18 @@ import type { MinnowPreviewBounds } from '../electron';
 import { isDesignModeUsingIframeGuest } from './preview-design-mode-guest';
 import { getFilePanelState } from '../state/file-panel';
 import { isRightPaneSplitActive } from './right-pane-split';
-import { clearPreviewPopoverSnapshot, preparePreviewPopoverSnapshot } from './preview-popover-snapshot';
+import {
+  clearPreviewOcclusionPlaceholders,
+  clearPreviewPopoverSnapshot,
+  noteHostBoundsChanged,
+  preparePreviewPopoverSnapshot,
+  resetPreviewFrameCachesForTests,
+  setPreviewPausedMessage,
+  showCachedPreviewFrame,
+  startPreviewFrameCache,
+  stopPreviewFrameCache,
+} from './preview-popover-snapshot';
+import { getPreviewOccluders, subscribePreviewOcclusion } from './preview-occlusion';
 
 /** Full-screen app layer roots that cover the Code workspace when `is-open`. */
 const FULLSCREEN_OVERLAY_IDS = [
@@ -79,38 +90,80 @@ export function isProductWikiOverlayVisible(): boolean {
   return Boolean(el && !el.classList.contains('hidden'));
 }
 
-/** Open menubar/chrome popovers that overlap the preview pane (native layer wins). */
-let chromePopoverOpenCount = 0;
-const chromePopoverListeners = new Set<() => void>();
+/**
+ * Force-hide holds for surfaces whose geometry cannot be measured (the
+ * top-layer `::picker(select)`). Measurable overlays use `markPreviewOccluder`.
+ */
+let previewHideHoldCount = 0;
+const hideHoldListeners = new Set<() => void>();
 
-/** Bound native guests must also react to menus, including the secondary split pane. */
-export function onChromePopoverChange(listener: () => void): () => void {
-  chromePopoverListeners.add(listener);
-  return () => { chromePopoverListeners.delete(listener); };
+/** Native guests bound to other hosts (secondary split, Reef) react to holds and overlay changes. */
+export function onPreviewOcclusionChange(listener: () => void): () => void {
+  hideHoldListeners.add(listener);
+  const unsubscribeOverlays = subscribePreviewOcclusion(listener);
+  return () => {
+    hideHoldListeners.delete(listener);
+    unsubscribeOverlays();
+  };
 }
 
-/** Register an obstructing chrome popover (notifications, model chip, workspace, etc.). */
-export function registerChromePopover(): void {
-  chromePopoverOpenCount += 1;
-  for (const listener of chromePopoverListeners) listener();
+/** Hide every native guest until the matching release, regardless of geometry. */
+export function holdPreviewGuestHidden(): void {
+  previewHideHoldCount += 1;
+  for (const listener of hideHoldListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 
-/** Unregister when a chrome popover closes. */
-export function unregisterChromePopover(): void {
-  if (chromePopoverOpenCount > 0) chromePopoverOpenCount -= 1;
-  for (const listener of chromePopoverListeners) listener();
+/** Release one `holdPreviewGuestHidden`. */
+export function releasePreviewGuestHidden(): void {
+  if (previewHideHoldCount > 0) previewHideHoldCount -= 1;
+  for (const listener of hideHoldListeners) listener();
   scheduleElectronPreviewHostVisibilitySync();
 }
 
-/** True while any registered chrome popover is open. */
-export function isChromePopoverOpen(): boolean {
-  return chromePopoverOpenCount > 0;
+/** True while any force-hide hold is active. */
+export function isPreviewHideHeld(): boolean {
+  return previewHideHoldCount > 0;
 }
 
-/** Test helper — reset popover registry between cases. */
-export function resetChromePopoverRegistryForTests(): void {
-  chromePopoverOpenCount = 0;
+/** Test helper — reset force-hide holds between cases. */
+export function resetPreviewHideHoldsForTests(): void {
+  previewHideHoldCount = 0;
+}
+
+export const registerChromePopover = holdPreviewGuestHidden;
+export const unregisterChromePopover = releasePreviewGuestHidden;
+export const isChromePopoverOpen = isPreviewHideHeld;
+export const onChromePopoverChange = onPreviewOcclusionChange;
+export const resetChromePopoverRegistryForTests = resetPreviewHideHoldsForTests;
+
+export interface PreviewHostOcclusion {
+  obscured: boolean;
+  /** A notification is among the covering overlays, so the frozen page explains itself. */
+  notification: boolean;
+}
+
+const NOT_OBSCURED: PreviewHostOcclusion = { obscured: false, notification: false };
+
+/** Whether a hold or a marked overlay painted over `host` requires its guest to step aside. */
+export function readPreviewHostOcclusion(host: HTMLElement): PreviewHostOcclusion {
+  const overlaps = getPreviewOccluders(host);
+  return {
+    obscured: isPreviewHideHeld() || overlaps.length > 0,
+    notification: overlaps.some((overlap) => overlap.kind === 'notification'),
+  };
+}
+
+export function isPreviewHostObscured(host: HTMLElement): boolean {
+  return readPreviewHostOcclusion(host).obscured;
+}
+
+let unsubscribePrimaryOcclusion: (() => void) | null = null;
+
+/** Overlay changes re-run the primary sync; observers stay off outside the desktop shell. */
+function ensurePrimaryOcclusionSubscription(): void {
+  if (unsubscribePrimaryOcclusion || !usesElectronPreview()) return;
+  unsubscribePrimaryOcclusion = subscribePreviewOcclusion(scheduleElectronPreviewHostVisibilitySync);
 }
 
 /** True when the desktop workspace drawer is showing the browser mount. */
@@ -171,7 +224,9 @@ function isCodeWorkspaceForeground(): boolean {
 
 /** Whether the Chromium guest should be visible and receive bounds updates. */
 export function shouldShowElectronPreviewHost(): boolean {
-  return !isChromePopoverOpen() && canPaintElectronPreviewHost();
+  if (!canPaintElectronPreviewHost()) return false;
+  const body = document.getElementById('previewBody');
+  return Boolean(body) && !isPreviewHostObscured(body!);
 }
 
 /** Ignore transient menus when deciding whether the underlying page is on screen. */
@@ -251,6 +306,7 @@ function waitForStablePreviewBodyBounds(): Promise<MinnowPreviewBounds | null> {
         return;
       }
 
+      if (previous) noteHostBoundsChanged(body);
       previous = rect;
       frames += 1;
       if (frames >= MAX_LAYOUT_STABLE_FRAMES) {
@@ -271,18 +327,29 @@ let previewGuestVisible = false;
 async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<void> {
   const api = typeof window !== 'undefined' ? window.minnow?.preview : undefined;
   if (!api) return;
+  ensurePrimaryOcclusionSubscription();
 
-  if (!shouldShowElectronPreviewHost()) {
-    if (isChromePopoverOpen() && canPaintElectronPreviewHost()) {
-      if (previewGuestVisible) await preparePreviewPopoverSnapshot();
-      // Opening/closing menus or navigating away can race the capture IPC.
-      if (shouldShowElectronPreviewHost()) {
-        clearPreviewPopoverSnapshot();
-        return;
+  const body = document.getElementById('previewBody');
+  const paintable = canPaintElectronPreviewHost();
+  const occlusion = paintable && body ? readPreviewHostOcclusion(body) : NOT_OBSCURED;
+  if (!paintable || occlusion.obscured) {
+    if (paintable && body) {
+      // Covered by an overlay: leave the page's last frame where the guest was.
+      setPreviewPausedMessage(body, occlusion.notification);
+      if (previewGuestVisible && !showCachedPreviewFrame(body)) {
+        await preparePreviewPopoverSnapshot();
+        // Opening/closing menus or navigating away can race the capture IPC.
+        if (shouldShowElectronPreviewHost()) {
+          clearPreviewOcclusionPlaceholders(body);
+          return;
+        }
+        if (!canPaintElectronPreviewHost()) clearPreviewOcclusionPlaceholders(body);
       }
-      if (!canPaintElectronPreviewHost()) clearPreviewPopoverSnapshot();
     } else {
       clearPreviewPopoverSnapshot();
+      clearPreviewOcclusionPlaceholders(body);
+      // Off-screen for a non-overlay reason; a stale frame must not reappear later.
+      if (body) stopPreviewFrameCache(body);
     }
     await api.hide();
     previewGuestVisible = false;
@@ -295,7 +362,8 @@ async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<
 
   await api.show(bounds, tabId ?? undefined);
   previewGuestVisible = true;
-  clearPreviewPopoverSnapshot();
+  clearPreviewOcclusionPlaceholders(body);
+  if (body) startPreviewFrameCache(body, { isGuestVisible: () => previewGuestVisible });
 }
 
 /** Show or hide the native preview host and sync bounds when visible. */
@@ -355,6 +423,9 @@ export function scheduleSecondaryPreviewHostLayoutSync(): void {
 /** Test helper — reset guest visibility tracking between cases. */
 export function resetPreviewGuestVisibilityForTests(): void {
   clearPreviewPopoverSnapshot();
+  resetPreviewFrameCachesForTests();
+  unsubscribePrimaryOcclusion?.();
+  unsubscribePrimaryOcclusion = null;
   previewGuestVisible = false;
   layoutSyncChain = Promise.resolve();
   if (layoutSyncRaf) {

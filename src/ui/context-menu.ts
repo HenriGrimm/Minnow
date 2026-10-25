@@ -1,5 +1,5 @@
 import '../styles/context-menu.css';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import { shellOverlayClosed } from './shell-overlay-state';
 
 /** A selectable row. */
@@ -121,7 +121,6 @@ export function closeContextMenu(options?: { restoreFocus?: boolean }): void {
   cancelSubmenuTimer();
   for (const level of levels) level.root.remove();
   levels = [];
-  unregisterChromePopover();
   unbindGlobalListeners();
   const target = restoreFocusEl;
   restoreFocusEl = null;
@@ -262,6 +261,8 @@ function buildLevel(
 ): MenuLevel {
   const root = document.createElement('div');
   root.className = 'mn-menu';
+  // Every level (root and submenus) is removed on close, so the marker needs no cleanup.
+  markPreviewOccluder(root, 'menu');
   root.setAttribute('role', 'menu');
   root.setAttribute('aria-label', label);
   root.tabIndex = -1;
@@ -610,7 +611,6 @@ export function openContextMenu(options: OpenContextMenuOptions): ContextMenuHan
   const level = buildLevel(options.items, options.label ?? 'Menu', null);
   host().appendChild(level.root);
   levels = [level];
-  registerChromePopover();
 
   if (options.anchor) positionAtAnchor(level.root, options.anchor);
   else positionAtPoint(level.root, options.clientX ?? 0, options.clientY ?? 0);

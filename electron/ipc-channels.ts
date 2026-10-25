@@ -11,6 +11,7 @@ export const PREVIEW_GO_FORWARD = 'minnow:preview:go-forward';
 export const PREVIEW_SET_BOUNDS = 'minnow:preview:set-bounds';
 export const PREVIEW_EXEC_JS = 'minnow:preview:exec-js';
 export const PREVIEW_CAPTURE_PAGE = 'minnow:preview:capture-page';
+export const PREVIEW_CAPTURE_PLACEHOLDER = 'minnow:preview:capture-placeholder';
 export const PREVIEW_COPY_URL = 'minnow:preview:copy-url';
 export const PREVIEW_COPY_SCREENSHOT = 'minnow:preview:copy-screenshot';
 export const PREVIEW_GET_ZOOM = 'minnow:preview:get-zoom';

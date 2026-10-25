@@ -26,10 +26,7 @@ import {
   getModelLoadUnloadTargetSelectValue,
   isModelLoadUnloadBusy,
 } from './model-load-unload-button';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { activitySuffixForModelId } from '../models/serve-activity-feed';
 import { iconHtml } from './icon';
 import { createComposerModelButton, syncComposerModelButtonLabel } from './composer-model-button';
@@ -85,8 +82,6 @@ const HOST_FILTER_CHOICES: { id: ModelHostFilter; label: string }[] = [
 
 let pickerBound = false;
 let open = false;
-let chromePopoverRegistered = false;
-let auxiliaryChromePopoverRegistered = false;
 let hostFilter: ModelHostFilter = loadModelHostFilter();
 let localLoadFilter: ModelLocalLoadFilter = loadModelLocalLoadFilter();
 let libraryFilter: ModelLibraryFilter = loadModelLibraryFilter();
@@ -903,13 +898,12 @@ export function closeModelSelectMenu(): boolean {
   menu?.removeAttribute('aria-activedescendant');
   if (menu) resetModelProviderBrowser(menu);
   root?.classList.remove('is-open');
-  getTopBarModelPopover()?.classList.add('hidden');
+  const topBarPopover = getTopBarModelPopover();
+  topBarPopover?.classList.add('hidden');
+  if (topBarPopover) unmarkPreviewOccluder(topBarPopover);
   menu?.classList.add('hidden');
+  if (menu) unmarkPreviewOccluder(menu);
   trigger?.setAttribute('aria-expanded', 'false');
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
   return true;
 }
 
@@ -922,13 +916,13 @@ function openModelSelectMenu(): void {
   renderModelSelectMenuRows(menu, sel);
   open = true;
   root.classList.add('is-open');
-  getTopBarModelPopover()?.classList.remove('hidden');
+  const topBarPopover = getTopBarModelPopover();
+  topBarPopover?.classList.remove('hidden');
+  // The popover wrapper is taller than the list (it holds the filter bar), so tag both.
+  if (topBarPopover) markPreviewOccluder(topBarPopover, 'menu');
   menu.classList.remove('hidden');
+  markPreviewOccluder(menu, 'menu');
   trigger.setAttribute('aria-expanded', 'true');
-  if (!chromePopoverRegistered) {
-    registerChromePopover();
-    chromePopoverRegistered = true;
-  }
   void import('../api/models').then(({ updateModelLoadUnloadButtons }) => {
     updateModelLoadUnloadButtons();
   });
@@ -1029,14 +1023,11 @@ function closeAuxiliaryModelSelectMenu(): void {
   if (typeof panel.hidePopover === 'function' && panel.matches(':popover-open')) panel.hidePopover();
   openAuxiliaryPicker.root.classList.remove('is-open');
   openAuxiliaryPicker.panel.classList.add('hidden');
+  unmarkPreviewOccluder(openAuxiliaryPicker.panel);
   openAuxiliaryPicker.trigger.setAttribute('aria-expanded', 'false');
   openAuxiliaryPicker.search?.setAttribute('aria-expanded', 'false');
   if (openAuxiliaryPicker.search) openAuxiliaryPicker.search.value = '';
   openAuxiliaryPicker = null;
-  if (auxiliaryChromePopoverRegistered) {
-    unregisterChromePopover();
-    auxiliaryChromePopoverRegistered = false;
-  }
   onClose?.();
 }
 
@@ -1248,12 +1239,9 @@ export function mountAuxiliaryModelSelectCombobox(
     openAuxiliaryPicker = picker;
     picker.root.classList.add('is-open');
     picker.panel.classList.remove('hidden');
+    markPreviewOccluder(picker.panel, 'menu');
     picker.trigger.setAttribute('aria-expanded', 'true');
     search?.setAttribute('aria-expanded', 'true');
-    if (!auxiliaryChromePopoverRegistered) {
-      registerChromePopover();
-      auxiliaryChromePopoverRegistered = true;
-    }
     syncAuxiliaryModelSelectCombobox(select);
     if (typeof panel.showPopover === 'function') panel.showPopover();
     position();

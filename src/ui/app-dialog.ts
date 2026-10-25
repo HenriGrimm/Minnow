@@ -1,7 +1,4 @@
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 export interface AppDialogButton {
   id: string;
@@ -73,7 +70,6 @@ let checkboxEl: HTMLInputElement | null = null;
 let checkboxTextEl: HTMLSpanElement | null = null;
 let actionsEl: HTMLElement | null = null;
 let open = false;
-let chromePopoverRegistered = false;
 let previousFocus: HTMLElement | null = null;
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let trapFocusHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -188,10 +184,7 @@ function closeDialog(): void {
   detachListeners();
   overlayEl!.hidden = true;
   overlayEl!.classList.add('hidden');
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
+  unmarkPreviewOccluder(overlayEl!);
   previousFocus?.focus();
   previousFocus = null;
   actionsEl?.replaceChildren();
@@ -246,8 +239,8 @@ function openDialogShell(
   overlayEl.hidden = false;
   overlayEl.classList.remove('hidden');
   document.body.appendChild(overlayEl);
-  registerChromePopover();
-  chromePopoverRegistered = true;
+  // The dimmed backdrop covers the whole window, so the preview pauses behind it.
+  markPreviewOccluder(overlayEl, 'dialog');
 
   escapeHandler = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || !pending) return;

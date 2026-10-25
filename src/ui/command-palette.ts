@@ -1,6 +1,6 @@
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import '../styles/command-palette.css';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { commandCategory, listCommands, type Command, type CommandCategory } from './command-registry';
 import { createIcon, type IconName } from './icon';
 
@@ -336,7 +336,7 @@ export function createCommandPalette(
     commands = options.getCommands();
     if (options.shellOverlayId) openShellOverlay(options.shellOverlayId, close);
     open = true;
-    registerChromePopover();
+    markPreviewOccluder(overlay, 'dialog');
     const active = document.activeElement as HTMLElement | null;
     previousFocus = typeof active?.focus === 'function' ? active : null;
     overlay.hidden = false;
@@ -351,7 +351,7 @@ export function createCommandPalette(
     if (!open) return;
     open = false;
     if (options.shellOverlayId) shellOverlayClosed(options.shellOverlayId);
-    unregisterChromePopover();
+    unmarkPreviewOccluder(overlay);
     overlay.hidden = true;
     input.value = '';
     const target = previousFocus;

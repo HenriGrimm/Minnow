@@ -26,6 +26,7 @@ import {
   shouldKeepPreviewGuestVisibleAfterCapture,
 } from './preview-guest-reveal.js';
 import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
+import { createPreviewCaptureGate } from './preview-capture-gate.js';
 import { enableCdpPicking, type CdpPickSession } from './preview-cdp-pick.js';
 import {
   handleGuestContextMenu,
@@ -60,6 +61,8 @@ interface PreviewHostEntry {
   visible: boolean;
   devtools: WebContentsView | null;
   devtoolsPopout: BrowserWindow | null;
+  /** Set while a hide waits for in-flight captures before zero-sizing/detaching. */
+  deferredHideToken?: number;
 }
 
 interface WindowPreviewState {
@@ -83,6 +86,11 @@ const cdpPickSessions = new Map<number, CdpPickSession>();
 const lastBoundsByInstance = new Map<string, PreviewBounds>();
 
 const devtoolsDockByWindow = new Map<number, DevToolsDockPosition>();
+
+const captureGate = createPreviewCaptureGate();
+let deferredHideSequence = 0;
+
+const PLACEHOLDER_CAPTURE_TIMEOUT_MS = 250;
 
 function resolveDevToolsDock(win: BrowserWindow): DevToolsDockPosition {
   return devtoolsDockByWindow.get(win.id) ?? 'bottom';
@@ -628,6 +636,8 @@ function applyPreviewViewBounds(
     return false;
   }
   const split = splitPreviewBounds(rounded, Boolean(entry.devtools), dock);
+  // A show that lands before a deferred hide's resize wins.
+  entry.deferredHideToken = undefined;
   entry.view.setBounds(split.guest);
   showPreviewGuestIfHidden(entry);
   if (entry.devtools) {
@@ -642,14 +652,40 @@ function applyPreviewViewBounds(
   return true;
 }
 
-function hidePreviewHostEntry(entry: PreviewHostEntry): void {
+function zeroPreviewEntryBounds(entry: PreviewHostEntry): void {
+  entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  entry.devtools?.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+}
+
+/**
+ * Hide immediately; zero-size (and run `afterHidden`, e.g. detach) only once no
+ * capture is copying the surface. Resizing to 0x0 mid-copy can hang macOS WindowServer.
+ */
+function hidePreviewHostEntry(entry: PreviewHostEntry, afterHidden?: () => void): void {
   entry.visible = false;
   entry.view.setVisible(false);
-  entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
-  if (entry.devtools) {
-    entry.devtools.setVisible(false);
-    entry.devtools.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  entry.devtools?.setVisible(false);
+  const finishHide = (): void => {
+    zeroPreviewEntryBounds(entry);
+    afterHidden?.();
+  };
+  if (captureGate.inFlight(entry) === 0) {
+    entry.deferredHideToken = undefined;
+    finishHide();
+    return;
   }
+  const token = ++deferredHideSequence;
+  entry.deferredHideToken = token;
+  void captureGate.whenIdle(entry).then(() => {
+    if (entry.deferredHideToken !== token || entry.visible) return;
+    entry.deferredHideToken = undefined;
+    if (entry.view.webContents.isDestroyed()) return;
+    try {
+      finishHide();
+    } catch (err) {
+      console.warn('[preview] deferred hide failed:', err instanceof Error ? err.message : err);
+    }
+  });
 }
 
 function isChildView(win: BrowserWindow, view: WebContentsView): boolean {
@@ -685,17 +721,19 @@ function detachAllTabViews(
   if (!state) return;
   for (const entry of state.tabs.values()) {
     if (entry === keep) continue;
-    hidePreviewHostEntry(entry);
-    try {
-      win.contentView.removeChildView(entry.view);
-    } catch {
-    }
-    if (entry.devtools) {
+    hidePreviewHostEntry(entry, () => {
+      if (win.isDestroyed()) return;
       try {
-        win.contentView.removeChildView(entry.devtools);
+        win.contentView.removeChildView(entry.view);
       } catch {
       }
-    }
+      if (entry.devtools) {
+        try {
+          win.contentView.removeChildView(entry.devtools);
+        } catch {
+        }
+      }
+    });
   }
 }
 
@@ -808,8 +846,8 @@ async function capturePreviewEntryBase64(
     }
   }
   try {
-    return await previewCapturePageBase64(entry.view.webContents,
-      immediate ? { immediate: true, captureTimeoutMs: 250 } : undefined);
+    return await captureGate.track(entry, previewCapturePageBase64(entry.view.webContents,
+      immediate ? { immediate: true, captureTimeoutMs: 250 } : undefined));
   } finally {
     if (temporarilyShown && !shouldKeepPreviewGuestVisibleAfterCapture(wasVisible)) {
       hidePreviewHostEntry(entry);
@@ -1137,6 +1175,20 @@ export function registerPreviewHostIpc(): void {
     channels.PREVIEW_CAPTURE_PAGE,
     async (event, tabId?: string, instanceId?: string, immediate?: boolean) => {
       return capturePreviewEntryBase64(event, tabId, instanceId, immediate === true);
+    },
+  );
+
+  trustedIpc.handle(
+    channels.PREVIEW_CAPTURE_PLACEHOLDER,
+    async (event, tabId?: string, instanceId?: string) => {
+      const entry = getActiveEntry(event, tabId, instanceId);
+      // Never reveal a hidden guest for a placeholder, and never copy a hidden surface.
+      if (!entry?.visible || entry.view.webContents.isDestroyed()) return '';
+      return captureGate.track(entry, previewCapturePageBase64(entry.view.webContents, {
+        immediate: true,
+        captureTimeoutMs: PLACEHOLDER_CAPTURE_TIMEOUT_MS,
+        format: 'jpeg',
+      }));
     },
   );
 

@@ -375,6 +375,44 @@
   user-select: none;
 }
 
+.preview-popover-snapshot[hidden] {
+  display: none;
+}
+
+/* Shown over the frozen frame when a notification is what covers the page. */
+.preview-paused {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(22rem, calc(100% - 2rem));
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+  box-shadow: 0 8px 24px var(--mn-shadow);
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
+}
+
+.preview-paused[hidden] {
+  display: none;
+}
+
+.preview-paused__heading {
+  margin: 0;
+  font-weight: 600;
+}
+
+.preview-paused__detail {
+  margin: 0.25rem 0 0;
+  color: var(--mn-fg-muted);
+}
+
 .preview-body iframe.preview-frame {
   display: block;
   width: 100%;

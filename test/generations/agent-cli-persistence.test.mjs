@@ -220,20 +220,54 @@ test('Cursor tool results return through the same native prompt, once', async ()
   const second = await generate(chat, messages, { tools });
   assert.equal(second.state.status, 'complete', second.state.errorMessage); assert.equal(second.text, 'Used Actual source'); assert.equal(processes, 1);
 });
-test('Cursor rejects an MCP call that its named update attributes to another provider', async () => {
+test('Cursor recovers after an MCP update names another provider without executing it', async () => {
   setup('cursor', { ACP_FOREIGN_MCP: '1' }); const chat = 'cursor-foreign-mcp', messages = [{ role: 'user', content: 'TOOL' }];
   const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }];
   const first = await generate(chat, messages, { tools });
   const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
-  const last = first.state.status === 'error' ? first : await generate(chat, [...messages,
-    { role: 'assistant', content: '', tool_calls: calls }, ...calls.map(call => ({ role: 'tool', tool_call_id: call.id, content: 'Actual source' }))], { tools });
-  assert.equal(last.state.status, 'error'); assert.match(last.state.errorMessage, /unexposed native tool/);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.equal(calls.length, 0);
+  assert.equal(first.text, 'Reply 2.'); assert.equal(processes, 1);
+  assert.match(getAgentCliOutput(chat).output, /rejected unexposed native tool "other: read_file"/);
 });
-for (const text of ['NATIVE', 'BLOCKING']) test(`Cursor rejects ${text} without granting execution or hanging`, async () => {
+for (const text of ['NATIVE', 'EDIT_NATIVE']) test(`Cursor recovers from ${text} without granting execution or losing the native session`, async () => {
   setup('cursor'); const result = await generate(`cursor-${text}`, [{ role: 'user', content: text }]);
+  assert.equal(result.state.status, 'complete', result.state.errorMessage); assert.equal(processes, 1);
+  assert.equal(result.text, 'Reply 2.');
+  assert.match(getAgentCliOutput(`cursor-${text}`).output, new RegExp(`rejected unexposed native tool "${text === 'NATIVE' ? 'Shell' : 'Edit File'}"`));
+  assert.equal(await fs.access(path.join(path.dirname(invocations[0].tempDir), 'cursor-data/forbidden')).then(() => true, () => false), false);
+  assert.equal((await readCliCheckpoint('fixture-cursor-durable', `cursor-${text}`)).clean, true);
+  await disposeCliSessions();
+  const next = await generate(`cursor-${text}`, [{ role: 'user', content: text }, { role: 'assistant', content: result.text }, { role: 'user', content: 'Next.' }]);
+  assert.equal(next.state.status, 'complete', next.state.errorMessage);
+  assert.equal(next.rows.at(-1).minnow_cli.continuation, 'resumed');
+});
+
+test('Cursor still rejects unsupported blocking extensions with their name', async () => {
+  setup('cursor'); const result = await generate('cursor-blocking', [{ role: 'user', content: 'BLOCKING' }]);
   assert.equal(result.state.status, 'error'); assert.equal(processes, 1);
-  assert.match(result.state.errorMessage, /native permission|blocking extension/);
-  assert.equal(await fs.access(path.join(invocations[0].tempDir, 'forbidden')).then(() => true, () => false), false);
+  assert.match(result.state.errorMessage, /blocking extension \(cursor\/create_plan\)/);
+});
+
+test('Cursor native tool recovery continues through Minnow tool results exactly once and resumes from disk', async () => {
+  setup('cursor', { ACP_RECOVERY_TOOL: '1', ACP_EDIT_PERMISSION: '1' });
+  const chat = 'cursor-native-recovery-tools', messages = [{ role: 'user', content: 'EDIT_NATIVE' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate(chat, messages, options);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].function.name, 'read_file');
+  messages.push({ role: 'assistant', content: first.text, tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Actual source' });
+  const second = await generate(chat, messages, options);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  assert.equal(second.text, 'Used Actual source'); assert.equal(processes, 1);
+  assert.equal((await readCliCheckpoint('fixture-cursor-durable', chat)).clean, true);
+  await disposeCliSessions();
+  messages.push({ role: 'assistant', content: second.text }, { role: 'user', content: 'Next.' });
+  const third = await generate(chat, messages, options);
+  assert.equal(third.state.status, 'complete', third.state.errorMessage);
+  assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
 });
 
 for (const failure of ['ACP_UNAVAILABLE', 'ACP_WRONG_MODEL']) test(`Cursor selects isolated replay before inference for ${failure}`, async () => {

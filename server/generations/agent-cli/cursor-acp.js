@@ -5,6 +5,7 @@ import { cursorVariantParts } from '../../../src/models/cursor-variants.mjs';
 
 const EFFORT_OPTION_IDS = new Set(['reasoning', 'effort', 'reasoning_effort', 'thought_level']);
 const acpEffort = value => value === 'extra-high' ? 'xhigh' : value === 'none' ? 'off' : value;
+const MAX_NATIVE_TOOL_RECOVERIES = 2;
 
 /**
  * Cursor's parameterized picker reports the base model and its parameters
@@ -31,7 +32,11 @@ export function cursorPermissionAllowed(params, names) {
   const call = params?.toolCall;
   const raw = call?.rawInput;
   // Cursor reports MCP calls as `${providerIdentifier}: ${toolName}`.
-  if ((raw?.providerIdentifier === 'minnow' || raw?.serverName === 'minnow') && names.has(raw.toolName)) return true;
+  if (raw?.providerIdentifier != null || raw?.serverName != null || raw?.toolName != null) {
+    return (raw.providerIdentifier === 'minnow' || raw.serverName === 'minnow')
+      && (raw.providerIdentifier == null || raw.providerIdentifier === 'minnow')
+      && (raw.serverName == null || raw.serverName === 'minnow') && names.has(raw.toolName);
+  }
   return [...names].some(name => [`mcp__minnow__${name}`, `minnow:${name}`, `minnow: ${name}`].includes(call?.title));
 }
 
@@ -43,18 +48,27 @@ export function cursorUnnamedMcpCall(update) {
 export async function openCursorAcp(invocation, { tools = [], saved, onNativeData, signal } = {}) {
   const names = new Set(tools.map(row => row.name));
   const output = new PassThrough();
-  let sessionId, loading = false, started = false, failure, resolveDone;
+  let sessionId, loading = false, started = false, stopping = false, failure, resolveDone, activePrompt;
   let ledger = [], ledgerBytes = 0;
   const done = new Promise(resolve => { resolveDone = resolve; });
   const emit = row => output.write(`${JSON.stringify(row)}\n`);
   const rpc = createCliRpc({ ...invocation, argsPrefix: [] }, { name: 'Cursor ACP', jsonrpc: true, onRequest: async row => {
-    if (row.method === 'session/request_permission' && row.params?.sessionId === sessionId
-      && cursorPermissionAllowed(row.params, names)) {
-      const allow = row.params.options?.find(option => option.kind === 'allow_once');
-      if (allow) { await rpc.respond(row.id, { outcome: { outcome: 'selected', optionId: allow.optionId } }); return; }
+    if (row.method === 'session/request_permission' && row.params?.sessionId === sessionId) {
+      const call = row.params.toolCall;
+      const known = ledger.findLast(entry => entry.toolId === call?.toolCallId);
+      const identity = { title: known?.title, rawInput: known?.input, ...call };
+      if (!stopping && !activePrompt?.rejection && cursorPermissionAllowed({ toolCall: identity }, names)) {
+        const allow = row.params.options?.find(option => option.kind === 'allow_once');
+        if (allow) { await rpc.respond(row.id, { outcome: { outcome: 'selected', optionId: allow.optionId } }); return; }
+      }
+      // Cancellation must also resolve outstanding permissions. Never select
+      // an allow option for a native call, even when no reject option exists.
+      if (!stopping && !activePrompt?.rejection) rejectNativeTool(identity);
+      await rpc.respond(row.id, { outcome: { outcome: 'cancelled' } });
+      return;
     }
     await rpc.respond(row.id, null, { code: -32601, message: 'Only exposed Minnow tools are allowed.' });
-    fail(new Error('Cursor requested a native permission or unsupported blocking extension.'));
+    fail(new Error(`Cursor requested an unsupported blocking extension (${row.method}).`));
   } });
   rpc.child.stdout.on('data', chunk => onNativeData?.(chunk));
   rpc.child.once('close', code => { output.end(); resolveDone({ code: code ?? 1, stderr: failure?.message ?? '' }); });
@@ -66,6 +80,49 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
     void rpc.close().catch(() => {});
   }
   rpc.onFailure(error => { if (started) fail(error); });
+  function rejectNativeTool(call) {
+    const label = [call?.title, call?.name, call?.rawInput?.toolName, call?.kind]
+      .find(value => typeof value === 'string' && value.trim()) ?? 'unknown tool';
+    const name = JSON.stringify(label.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 160));
+    const message = `Cursor rejected unexposed native tool ${name}. Only exposed Minnow MCP tools are allowed.`;
+    if (!activePrompt) { fail(new Error(message)); return; }
+    if (activePrompt.rejection || stopping) return;
+    activePrompt.rejection = message;
+    onNativeData?.(Buffer.from(`[Minnow] ${message}\n`));
+    // ACP tool_call is a notification, not an execution request we can answer.
+    // Stop this prompt, wait for its response, then correct within this session.
+    activePrompt.cancellation = rpc.notify('session/cancel', { sessionId });
+    void activePrompt.cancellation.catch(fail);
+  }
+  async function prompt(text, sendSignal) {
+    for (let recoveries = 0; !stopping && !failure && !sendSignal?.aborted; recoveries++) {
+      const turn = {};
+      activePrompt = turn;
+      record({ role: 'user', text });
+      let result;
+      try {
+        result = await rpc.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }, { signal: sendSignal, timeoutMs: 0 });
+      } catch (error) {
+        // Some agents acknowledge cancellation with the JSON-RPC cancelled
+        // error rather than a PromptResponse. Other failures remain terminal.
+        if (!turn.rejection || !error.message.includes('(-32800)')) {
+          throw turn.rejection ? new Error(`${turn.rejection} ${error.message}`) : error;
+        }
+      } finally { if (activePrompt === turn) activePrompt = null; }
+      if (stopping || failure || sendSignal?.aborted) return;
+      if (turn.rejection) {
+        await turn.cancellation;
+        if (recoveries >= MAX_NATIVE_TOOL_RECOVERIES) {
+          throw new Error(`${turn.rejection} Cursor exceeded ${MAX_NATIVE_TOOL_RECOVERIES} recovery attempts.`);
+        }
+        text = `${turn.rejection}\nContinue the original task using only the advertised tools from the minnow MCP server. Do not use native Cursor tools. Keep completed work and tool results; do not repeat successful calls.`;
+        continue;
+      }
+      if (result.stopReason !== 'end_turn') throw new Error(`Cursor prompt stopped (${result.stopReason}).`);
+      emit({ type: 'result', subtype: 'success' });
+      return;
+    }
+  }
   function record(row) {
     ledgerBytes += Buffer.byteLength(JSON.stringify(row));
     if (ledgerBytes > 8 * 1024 * 1024) throw new Error('Cursor native history exceeded its verification limit.');
@@ -93,7 +150,7 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
       } else if (type === 'agent_message_chunk') {
         if (u.content?.type !== 'text') throw new Error('Unsupported Cursor response content.');
         record({ role: 'assistant', text: u.content.text });
-        if (!loading && started) emit({ type: 'assistant', message: { content: [{ type: 'text', text: u.content.text }] } });
+        if (!loading && started && !activePrompt?.rejection) emit({ type: 'assistant', message: { content: [{ type: 'text', text: u.content.text }] } });
       } else if (type === 'agent_thought_chunk') {
         if (!loading && started && u.content?.type === 'text') emit({ type: 'thinking', text: u.content.text });
       } else if (type === 'tool_call' || type === 'tool_call_update') {
@@ -101,7 +158,7 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
         // MCP placeholder is unnamed until a later tool_call_update.
         const identifies = type === 'tool_call' || u.title != null || u.rawInput != null;
         if (!loading && identifies && !cursorPermissionAllowed({ toolCall: u }, names) && !cursorUnnamedMcpCall(u)) {
-          throw new Error('Cursor attempted an unexposed native tool.');
+          rejectNativeTool(u);
         }
         const known = ledger.findLast(entry => entry.toolId === u.toolCallId);
         record({ ...(known ?? {}), toolId: u.toolCallId, ...(u.title ? { title: u.title } : {}),
@@ -149,15 +206,10 @@ export async function openCursorAcp(invocation, { tools = [], saved, onNativeDat
       async send(text, sendSignal) {
         if (failure) throw failure;
         started = true;
-        record({ role: 'user', text });
-        void rpc.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }, { signal: sendSignal, timeoutMs: 0 })
-          .then(result => {
-            if (failure) return;
-            if (result.stopReason !== 'end_turn') { fail(new Error(`Cursor prompt stopped (${result.stopReason}).`)); return; }
-            emit({ type: 'result', subtype: 'success' });
-          }).catch(fail);
+        void prompt(text, sendSignal).catch(error => { if (!stopping && !sendSignal?.aborted) fail(error); });
       },
       async stop() {
+        stopping = true;
         if (started) await rpc.notify('session/cancel', { sessionId }).catch(() => {});
         await rpc.close();
       },
