@@ -79,14 +79,27 @@ Host side: **Settings → Devices** ([`settings-devices.ts`](../../src/ui/settin
 
 ### Shared chat execution
 
-The renderer that sends a chat message owns that turn through authenticated
-`/api/chat-turns` claims and heartbeats. Ownership spans model responses and tool
-execution, rather than ending at each model round. Opening the chat on another
-device observes its saved transcript and shows **Working on another device…**;
-the composer is disabled until that turn finishes. The observer never replays the
-generation through the tool loop or resumes its pending tools. Boot recovery also
-excludes chats owned by a live viewer. Saved transcript and ownership status poll
-every five seconds and refresh on wake.
+The computer renderer always owns the chat engine, including messages sent from
+a phone. Paired devices cannot claim turns or start persistent main-chat
+generations. Their composer sends authenticated commands through `/api/chat-sync`:
+Send uses the PC's normal send path (or queues a follow-up while busy), Push now
+steers its existing run, and Stop aborts that run and its tools on the computer.
+Commands target the actual owning view and do not switch its active chat. An idle
+chat needs its workspace open in a computer view; an unavailable PC keeps the
+phone's draft and reports the connection failure.
+
+Host and observer event streams use the shared WebSocket transport. The host
+coalesces new tokens for up to 40 ms and sends reasoning, prose, tool transcript
+changes, queue state and terminal outcomes directly to the other views. Indexed
+transcript patches and incremental text avoid resending a whole chat per token.
+Reconnect replays a coalesced current-turn snapshot; idle session polling is a
+fallback, not the live output path. Phone wake/online reconnects immediately.
+
+Command ids deduplicate HTTP retries and stream replay. The PC saves a bounded
+`remoteCommandReceipts` list with accepted user/queue changes before acknowledging
+delivery, so a host reload does not send an accepted message twice. Device drafts
+remain in that device's `sessionStorage`, and a phone-originated turn preserves
+the PC's unsent composer text and attachments.
 
 Claims are held in server memory with a 30-second renewal deadline. An expired
 claim remains protected while its backend generation is live. A replaced renderer
@@ -94,8 +107,9 @@ checks its claim before further model or tool actions and stops on ownership los
 The owning view remembers its claim in `sessionStorage` for reload recovery;
 recovery refreshes the saved transcript before replaying any generation or tools.
 Pending-tool recovery transfers its claim to the next model round, and the settled
-transcript flushes before ownership is released. Tests cover two-device admission,
-tool gaps, expiry, wake after replacement, and passive generation/tool recovery.
+transcript flushes before ownership is released. Tests cover real event streams,
+two-device admission, tool gaps, expiry, wake after replacement, passive recovery,
+live reasoning/prose and tools, command retries, steering, stopping and draft isolation.
 
 ## Testing
 

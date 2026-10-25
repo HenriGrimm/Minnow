@@ -3,7 +3,7 @@ import { iconHtml, type IconName } from './icon';
 import { loadModelChoices, type ModelChoice } from '../models/model-choices';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { isKnownLocalProviderId } from '../providers/provider-host';
-import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from './model-select-picker';
+import { mountAuxiliaryModelSelectCombobox, syncAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from './model-select-picker';
 import { patchSubAgentUserOverrides, loadSubAgentConfig, setRuntimeSubAgentOverrides } from '../agents/sub-agent-config';
 import { resetUtilityModelConfigCache } from '../config/utility-model-meta';
 import { resetGoalEvalConfigCache } from '../config/goal-eval-meta';
@@ -34,13 +34,56 @@ export function fillModelChoices(select: HTMLSelectElement, choices: ModelChoice
 export function mountRoutingForm(host: HTMLElement, options: { autosave?: boolean; onReady?: () => void; layout?: 'page' | 'compact' } = {}): RoutingForm {
   const abort = new AbortController();
   let handle: RoutingForm;
-  let rows: RoutingRow[] = [];
+  const rows: RoutingRow[] = [
+    { label: 'Sub-agents', icon: 'appAgentActivity', description: 'Delegated work', kind: 'subagents', value: '', saved: '' },
+    { label: 'Utility tasks', icon: 'sparkles', description: 'Titles & prompts', kind: 'utilityModel', value: '', saved: '' },
+    { label: 'Editor assistance', icon: 'appCode', description: 'Completions & edits', kind: 'editorAiCompletion', value: '', saved: '' },
+    { label: 'Goal evaluation', icon: 'loop', description: 'Progress checks', kind: 'goalEval', value: '', saved: '' },
+  ];
   let pending = Promise.resolve();
   const status = document.createElement('p'); status.className = 'model-routing-form__status'; status.setAttribute('role', 'status'); status.textContent = 'Loading routing…';
   const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'model-routing-form__retry'; retry.textContent = 'Retry saving'; retry.hidden = true;
   host.classList.add('model-routing-form');
   host.classList.toggle('model-routing-form--page', options.layout === 'page');
-  host.append(status, retry);
+  host.setAttribute('aria-busy', 'true');
+  const advanced = document.createElement('details'); advanced.className = 'model-routing-form__advanced'; advanced.inert = true;
+  const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('settings', { size: 14 })}<span>Advanced sub-agent routing</span>${iconHtml('chevronRight', { size: 12, className: 'model-routing-form__advanced-arrow' })}`; advanced.append(summary);
+  const basicCount = rows.length;
+  const pageDescriptions: Record<string, string> = {
+    subagents: 'Delegated work inherits the parent chat model unless you choose an override.',
+    utilityModel: 'Generate titles, expand prompts and issues, and write commit messages.',
+    editorAiCompletion: 'Power inline completions, quick edits, and editor assistance.',
+    goalEval: 'Check progress and decide whether a goal needs another iteration.',
+  };
+  if (options.layout === 'page') {
+    const columns = document.createElement('div'); columns.className = 'model-routing-form__columns'; columns.setAttribute('aria-hidden', 'true');
+    columns.innerHTML = '<span>Task</span><span>Assigned model</span>';
+    host.append(columns);
+    const hint = document.createElement('p'); hint.className = 'model-routing-form__advanced-hint';
+    hint.textContent = 'Set a model for an individual agent type. These choices take precedence over the general Sub-agents setting above.';
+    advanced.append(hint);
+  }
+  const renderRow = (row: RoutingRow, index: number): void => {
+    const label = document.createElement('label'); label.className = 'model-routing-form__row';
+    const text = document.createElement('span'); text.className = 'model-routing-form__label';
+    const icon = document.createElement('span'); icon.className = 'model-routing-form__icon'; icon.innerHTML = iconHtml(row.icon || 'appAgentActivity', { size: options.layout === 'page' && index < basicCount ? 20 : 16 });
+    const copy = document.createElement('span'); copy.className = 'model-routing-form__copy';
+    const name = document.createElement('span'); name.textContent = row.label; copy.append(name);
+    const descriptionText = options.layout === 'page' ? pageDescriptions[row.kind] || row.description : row.description;
+    if (descriptionText) { const description = document.createElement('small'); description.textContent = descriptionText; copy.append(description); }
+    text.append(icon, copy);
+    const select = document.createElement('select'); select.setAttribute('aria-label', `${row.label} model`); row.select = select;
+    select.disabled = true;
+    const loading = document.createElement('option'); loading.textContent = 'Loading…'; select.append(loading);
+    label.append(text, select); (index < basicCount ? host : advanced).append(label);
+    mountAuxiliaryModelSelectCombobox(select, { searchable: true });
+    select.onchange = () => {
+      row.value = select.value;
+      if (options.autosave) { pending = pending.catch(() => {}).then(commit); void pending.catch(() => {}); }
+    };
+  };
+  rows.forEach(renderRow);
+  host.append(advanced, status, retry);
   const valueOf = (block?: { providerId?: string; modelId?: string } | null) => block?.modelId ? encodeModelSelectKey(block.providerId || '', block.modelId) : '';
   const commit = async (): Promise<void> => {
     await ready;
@@ -82,53 +125,23 @@ export function mountRoutingForm(host: HTMLElement, options: { autosave?: boolea
     const config = await loadSubAgentConfig();
     const meta = await metaResponse.json();
     if (abort.signal.aborted) return;
-    rows = [
-      { label: 'Sub-agents', icon: 'appAgentActivity', description: 'Delegated work', kind: 'subagents', value: valueOf(config.defaultModel), saved: '' },
-      { label: 'Utility tasks', icon: 'sparkles', description: 'Titles & prompts', kind: 'utilityModel', value: valueOf(meta.utilityModel), saved: '' },
-      { label: 'Editor assistance', icon: 'appCode', description: 'Completions & edits', kind: 'editorAiCompletion', value: meta.editorAiCompletion?.useChatModel !== false ? '' : valueOf(meta.editorAiCompletion), saved: '' },
-      { label: 'Goal evaluation', icon: 'loop', description: 'Progress checks', kind: 'goalEval', value: valueOf(meta.goalEval), saved: '' },
-    ];
-    const advanced = document.createElement('details'); advanced.className = 'model-routing-form__advanced';
-    const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('settings', { size: 14 })}<span>Advanced sub-agent routing</span>${iconHtml('chevronRight', { size: 12, className: 'model-routing-form__advanced-arrow' })}`; advanced.append(summary);
-    const basicCount = rows.length;
+    for (const row of rows) row.value = row.kind === 'subagents' ? valueOf(config.defaultModel)
+      : row.kind === 'editorAiCompletion' && meta.editorAiCompletion?.useChatModel !== false ? '' : valueOf(meta[row.kind]);
     for (const [typeId, type] of Object.entries(config.types)) rows.push({ label: type.label || typeId, kind: 'type', typeId, value: valueOf(type), saved: '' });
-    const pageDescriptions: Record<string, string> = {
-      subagents: 'Delegated work inherits the parent chat model unless you choose an override.',
-      utilityModel: 'Generate titles, expand prompts and issues, and write commit messages.',
-      editorAiCompletion: 'Power inline completions, quick edits, and editor assistance.',
-      goalEval: 'Check progress and decide whether a goal needs another iteration.',
-    };
-    if (options.layout === 'page') {
-      const columns = document.createElement('div'); columns.className = 'model-routing-form__columns'; columns.setAttribute('aria-hidden', 'true');
-      columns.innerHTML = '<span>Task</span><span>Assigned model</span>';
-      host.append(columns);
-      const hint = document.createElement('p'); hint.className = 'model-routing-form__advanced-hint';
-      hint.textContent = 'Set a model for an individual agent type. These choices take precedence over the general Sub-agents setting above.';
-      advanced.append(hint);
-    }
     rows.forEach((row, index) => {
       row.saved = row.value;
-      const label = document.createElement('label'); label.className = 'model-routing-form__row';
-      const text = document.createElement('span'); text.className = 'model-routing-form__label';
-      const icon = document.createElement('span'); icon.className = 'model-routing-form__icon'; icon.innerHTML = iconHtml(row.icon || 'appAgentActivity', { size: options.layout === 'page' && index < basicCount ? 20 : 16 });
-      const copy = document.createElement('span'); copy.className = 'model-routing-form__copy';
-      const name = document.createElement('span'); name.textContent = row.label; copy.append(name);
-      const descriptionText = options.layout === 'page' ? pageDescriptions[row.kind] || row.description : row.description;
-      if (descriptionText) { const description = document.createElement('small'); description.textContent = descriptionText; copy.append(description); }
-      text.append(icon, copy);
-      const select = document.createElement('select'); select.setAttribute('aria-label', `${row.label} model`); row.select = select;
+      if (!row.select) renderRow(row, index);
+      const select = row.select!;
       fillModelChoices(select, choices, row.value, row.kind === 'type' ? 'Use sub-agent routing' : row.kind === 'subagents' ? 'Follow parent chat' : row.kind === 'utilityModel' ? 'Follow originating task' : 'Follow chat');
-      label.append(text, select); (index < basicCount ? host : advanced).append(label);
-      mountAuxiliaryModelSelectCombobox(select, { searchable: true });
-      select.onchange = () => {
-        row.value = select.value;
-        if (options.autosave) { pending = pending.catch(() => {}).then(commit); void pending.catch(() => {}); }
-      };
+      select.disabled = false;
+      syncAuxiliaryModelSelectCombobox(select);
     });
-    host.append(advanced, status, retry); status.textContent = options.autosave ? 'Changes save automatically' : 'Settings apply across projects. Chat models are selected in the composer.'; status.dataset.state = 'idle';
+    advanced.inert = false; host.setAttribute('aria-busy', 'false');
+    status.textContent = options.autosave ? 'Changes save automatically' : 'Settings apply across projects. Chat models are selected in the composer.'; status.dataset.state = 'idle';
     options.onReady?.();
   })().catch((error) => {
     if (!abort.signal.aborted) {
+      host.setAttribute('aria-busy', 'false');
       status.textContent = error instanceof Error ? error.message : 'Could not load routing'; status.dataset.state = 'error';
       retry.hidden = false; retry.textContent = 'Reload routing';
       retry.onclick = () => { handle.dispose(); host.replaceChildren(); Object.assign(handle, mountRoutingForm(host, options)); };

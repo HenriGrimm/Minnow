@@ -8,6 +8,8 @@ import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { isChatTurnInProgress } from './chat-turn-guard';
 import { enqueueSteerMessage } from './steer-message';
 import { parseCompactSlashInput } from './context/parse-compact-command';
+import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
+import { setStatus } from '../ui/status';
 
 type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
@@ -85,6 +87,10 @@ export function enqueueComposerMessage(chat: Chat, text: string): boolean {
 
 /** Remove one queued follow-up by id. */
 export function removeQueuedMessage(chat: Chat, id: string): boolean {
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'remove', { itemId: id }).catch(error => setStatus('err', String(error?.message || error)));
+    return true;
+  }
   const queue = getPendingMessageQueue(chat);
   const index = queue.findIndex((item) => item.id === id);
   if (index < 0) return false;
@@ -115,6 +121,10 @@ export type PushQueuedMessageNowResult = 'sent' | 'deferred' | false;
 
 /** Promote a queued item to steer while streaming, or send immediately when idle. */
 export function pushQueuedMessageNow(chat: Chat, id: string): PushQueuedMessageNowResult {
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'push', { itemId: id }).catch(error => setStatus('err', String(error?.message || error)));
+    return 'sent';
+  }
   const queue = getPendingMessageQueue(chat);
   const index = queue.findIndex((item) => item.id === id);
   if (index < 0) return false;

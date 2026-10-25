@@ -14,6 +14,21 @@ import { clearComposerInput, getActiveComposerSurface } from './composer-surface
 import { autoResize } from './input';
 import { clearAttachments } from '../attachments/store';
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
+import { isPairedDevice } from '../api/session-token';
+
+const deviceDrafts = new Map<string, string>();
+function deviceDraft(chatId: string): string {
+  if (deviceDrafts.has(chatId)) return deviceDrafts.get(chatId)!;
+  try { return sessionStorage.getItem(`minnow.deviceDraft.${chatId}`) || ''; } catch { return ''; }
+}
+
+function saveDeviceDraft(chatId: string, text: string): void {
+  deviceDrafts.set(chatId, text);
+  try {
+    if (text) sessionStorage.setItem(`minnow.deviceDraft.${chatId}`, text);
+    else sessionStorage.removeItem(`minnow.deviceDraft.${chatId}`);
+  } catch {}
+}
 
 let draftRestoreSuspended = false;
 
@@ -44,6 +59,11 @@ export function isComposerDraftRestoreSuspended(): boolean {
 
 /** Write unsent composer text onto a chat row (clears when empty). */
 export function persistComposerDraftOnChat(chat: Chat, rawText: string): boolean {
+  if (isPairedDevice()) {
+    const hadDraft = Boolean(deviceDraft(chat.id).trim());
+    saveDeviceDraft(chat.id, rawText);
+    return hadDraft !== Boolean(rawText.trim());
+  }
   const trimmed = rawText.trim();
   const hadDraft = hasComposerDraft(chat);
   if (trimmed) {
@@ -56,6 +76,7 @@ export function persistComposerDraftOnChat(chat: Chat, rawText: string): boolean
 
 /** Write a pending draft flush now (blur, chat switch, send). */
 export function flushComposerDraftSessionSave(chatId?: string): void {
+  if (isPairedDevice()) return;
   if (draftSaveTimer) {
     clearTimeout(draftSaveTimer);
     draftSaveTimer = null;
@@ -80,6 +101,7 @@ function scheduleIdleComposerDraftSave(chatId: string): void {
 
 /** Remove persisted draft text after a user message is committed. */
 export function clearComposerDraftOnChat(chat: Chat): void {
+  if (isPairedDevice()) { saveDeviceDraft(chat.id, ''); return; }
   delete chat.composerDraft;
 }
 
@@ -88,7 +110,7 @@ export function clearComposerAfterSend(
   chat: Chat,
   inputEl?: HTMLTextAreaElement | null,
 ): void {
-  const hadDraft = hasComposerDraft(chat);
+  const hadDraft = isPairedDevice() ? Boolean(deviceDraft(chat.id).trim()) : hasComposerDraft(chat);
   clearComposerDraftOnChat(chat);
   clearComposerInput(inputEl ?? getActiveComposerSurface().inputEl);
   if (draftSaveTimer) {
@@ -96,6 +118,7 @@ export function clearComposerAfterSend(
     draftSaveTimer = null;
   }
   draftSaveChatId = null;
+  if (isPairedDevice()) return;
   if (!hadDraft) return;
   scheduleSaveSessions({ chatId: chat.id });
   void import('./sidebar').then((m) => m.renderSidebar());
@@ -122,7 +145,7 @@ export function applyComposerDraftForChat(chat: Chat): void {
   const input = getActiveComposerSurface().inputEl;
   if (!input) return;
   draftRestoreSuspended = true;
-  input.value = chat.composerDraft ?? '';
+  input.value = isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft ?? '';
   resetComposerPromptHistory(chat.id);
   autoResize(input);
   draftRestoreSuspended = false;
@@ -140,6 +163,7 @@ export function handleComposerDraftInput(): void {
   const input = getActiveComposerSurface().inputEl;
   const text = input ? composerPromptHistoryDraft(input) : '';
   const visibilityChanged = persistComposerDraftOnChat(chat, text);
+  if (isPairedDevice()) return;
   if (!visibilityChanged && !hasComposerDraft(chat)) return;
 
   scheduleIdleComposerDraftSave(chat.id);

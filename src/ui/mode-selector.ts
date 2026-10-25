@@ -1,4 +1,5 @@
 import { isActiveChatStreaming, isChatStreaming } from '../chat/streaming-state';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
 import { isComposerRecoveryBlocked } from './composer-send';
 import { getDefaultWorkAgentForMode } from '../agents/work-agent-registry';
 import { syncWorkAgentDevFromActiveChat } from './work-agent-dev';
@@ -302,6 +303,11 @@ export function setChatMode(modeId: ModeId, chat = getActiveChat(), allowDuringT
   }
 
   const normalized = modeId;
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'configure', { patch: { modeId: normalized } })
+      .catch(error => setStatus('err', String(error?.message || error)));
+    return { ok: true, modeId: normalized };
+  }
   if (chat.modeId === normalized) {
     const mode = listModes().find((m) => m.id === normalized);
     return { ok: true, modeId: normalized, label: mode?.label };

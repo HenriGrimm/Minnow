@@ -427,9 +427,10 @@
     {
       "path": "documentation/manual/extend/companion.md",
       "title": "Use Minnow on your phone",
-      "summary": "Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, follow a board, approve a tool call, file an issue, or read a file. Nothing needs to be installed on the phone. There are two ways for a phone to reach your computer. You can use ",
+      "summary": "Use Minnow from a phone or tablet while your computer runs it. Pick up a conversation from the sofa, steer an agent, follow a board, file an issue, or read a file. Nothing needs to be installed on the phone. There are two ways for a phone to reach your computer. You can use eithe",
       "headings": [
         "Connect a phone",
+        "Share a live chat",
         "Make it work anywhere",
         "Add Minnow to your Home Screen",
         "Request access",
@@ -440,7 +441,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f0b77364e73b85df593cd7a7b900fa4b641a26ba5635a467924277eed34aefe8"
+      "hash": "f005ac75695f78006b15c31478ffa158bfe7af88859b65c3cfef5a01367f0157"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",

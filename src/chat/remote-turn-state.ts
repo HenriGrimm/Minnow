@@ -8,6 +8,13 @@ export function isChatRunningRemotely(chatId: string): boolean {
   return remoteChatIds.has(chatId);
 }
 
+export function setRemoteChatRunning(chatId: string, running: boolean): void {
+  if (remoteChatIds.has(chatId) === running) return;
+  if (running) remoteChatIds.add(chatId);
+  else remoteChatIds.delete(chatId);
+  revision += 1;
+}
+
 export function setRemoteChatTurns(ids: Iterable<string>): boolean {
   const next = new Set(ids);
   const changed = next.size !== remoteChatIds.size || [...next].some(id => !remoteChatIds.has(id));

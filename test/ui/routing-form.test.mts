@@ -5,7 +5,7 @@ import { mock, test } from 'node:test';
 let config: any = { types: { explore: { label: 'Explore', providerId: '', modelId: '' } } };
 const patches: any[] = [];
 mock.module('../../src/models/model-choices.ts', { namedExports: { loadModelChoices: async () => [{ value: 'cloud\u001fflash', label: 'Flash', group: 'Cloud' }] } });
-mock.module('../../src/ui/model-select-picker.ts', { namedExports: { mountAuxiliaryModelSelectCombobox() {}, unmountAuxiliaryModelSelectCombobox() {} } });
+mock.module('../../src/ui/model-select-picker.ts', { namedExports: { mountAuxiliaryModelSelectCombobox() {}, syncAuxiliaryModelSelectCombobox() {}, unmountAuxiliaryModelSelectCombobox() {} } });
 mock.module('../../src/agents/sub-agent-config.ts', { namedExports: { loadSubAgentConfig: async () => config, setRuntimeSubAgentOverrides: (fresh: any) => { config = { types: { explore: { label: 'Explore', providerId: '', modelId: '' } }, ...fresh }; }, patchSubAgentUserOverrides: async (patch: any) => { patches.push(patch); config = { ...config, ...patch }; return true; } } });
 const { mountRoutingForm } = await import('../../src/ui/routing-form.ts');
 
@@ -38,7 +38,53 @@ test('failed routing reads offer a reload without inventing empty values', async
   const form = mountRoutingForm(host);
   try {
     await assert.rejects(form.ready, /load model routing/);
-    assert.equal(host.querySelectorAll('select').length, 0);
+    assert.equal(host.querySelectorAll('select:disabled').length, 4);
+    assert.equal(host.getAttribute('aria-busy'), 'false');
     assert.equal(host.querySelector('button')?.textContent, 'Reload routing');
   } finally { form.dispose(); host.remove(); globalThis.fetch = original; }
+});
+
+test('routing rows reserve their layout immediately and hydrate in place after delayed reads', async () => {
+  const original = globalThis.fetch;
+  let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  globalThis.fetch = (async () => {
+    await gate;
+    return Response.json({ utilityModel: { providerId: 'cloud', modelId: 'flash' } });
+  }) as typeof fetch;
+  const host = document.createElement('div'); document.body.append(host);
+  const form = mountRoutingForm(host, { autosave: true });
+  try {
+    const initialRows = [...host.querySelectorAll('.model-routing-form__row')];
+    const selects = [...host.querySelectorAll('select')];
+    const advanced = host.querySelector<HTMLDetailsElement>('details')!;
+    assert.equal(initialRows.length, 4);
+    assert.equal(host.getAttribute('aria-busy'), 'true');
+    assert.ok(selects.every(select => select.disabled && select.selectedOptions[0].textContent === 'Loading…'));
+    assert.equal(advanced.inert, true);
+    finish(); await form.ready;
+    assert.deepEqual([...host.querySelectorAll('.model-routing-form__row')].slice(0, 4), initialRows);
+    assert.ok(selects.every(select => !select.disabled));
+    assert.equal(selects[1].value, 'cloud\u001fflash');
+    assert.equal(advanced.inert, false);
+    assert.equal(advanced.open, false);
+    assert.equal(host.getAttribute('aria-busy'), 'false');
+  } finally { finish(); form.dispose(); host.remove(); globalThis.fetch = original; }
+});
+
+test('disposing during routing load prevents late hydration', async () => {
+  const original = globalThis.fetch;
+  let finish!: () => void;
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  globalThis.fetch = (async () => { await gate; return Response.json({}); }) as typeof fetch;
+  const host = document.createElement('div'); document.body.append(host);
+  let readyCalls = 0;
+  const form = mountRoutingForm(host, { onReady: () => { readyCalls++; } });
+  try {
+    form.dispose();
+    finish(); await form.ready;
+    assert.equal(readyCalls, 0);
+    assert.equal(host.querySelectorAll('select:disabled').length, 4);
+    assert.equal(host.querySelectorAll('details select').length, 0);
+  } finally { finish(); form.dispose(); host.remove(); globalThis.fetch = original; }
 });

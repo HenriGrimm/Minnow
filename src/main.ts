@@ -118,6 +118,7 @@ import {
 import { initChatScroll } from './ui/chat-scroll';
 import { startSessionLiveSync } from './state/session-live-sync';
 import { syncComposerFromStreamingState } from './ui/composer-send';
+import { isPairedDevice } from './api/session-token';
 import { initMinnowBrowserLinkRouting } from './ui/minnow-browser-links';
 import { initMarkdownLinkRouting } from './markdown/links';
 import { renderChatFromHistory, renderStatsForChat } from './ui/messages';
@@ -490,7 +491,7 @@ export async function initApp(): Promise<void> {
   }
   markChromeReady();
   window.addEventListener('minnow-host-reconnected', () => { void fetchModels(); });
-  startSessionLiveSync((activeChanged) => {
+  const renderSharedSessionChanges = (activeChanged: boolean) => {
     renderSidebar();
     refreshHubLiveData();
     if (activeChanged && hasComposerSurface) {
@@ -508,7 +509,12 @@ export async function initApp(): Promise<void> {
       refreshContextUsageRing();
       syncComposerFromStreamingState();
     }
-  });
+  };
+  startSessionLiveSync(renderSharedSessionChanges);
+  if (hasChatSurface) {
+    const { startSharedChatBridge } = await import('./chat/shared-chat-bridge');
+    startSharedChatBridge(renderSharedSessionChanges);
+  }
 
   // Dedicated windows still expose the shared default-model chip in the menubar.
   void fetchModels().then(() => {
@@ -521,19 +527,21 @@ export async function initApp(): Promise<void> {
     void import('./ui/terminal-panel').then((m) => m.refreshTerminalHistoryForActiveChat());
     warmIssuesAppInBackground();
 
-    if (sessionState) {
+    if (sessionState && !isPairedDevice()) {
       parkResumeCandidatesAtBoot(sessionState);
       startBootResumeGate(sessionState);
     }
 
-    const { startLoopTicker } = await import('./chat/loop/ticker');
-    const { sendProgrammaticChatText } = await import('./chat/messaging');
-    startLoopTicker({
-      send: (chat, text) => sendProgrammaticChatText(chat, text),
-    });
+    if (!isPairedDevice()) {
+      const { startLoopTicker } = await import('./chat/loop/ticker');
+      const { sendProgrammaticChatText } = await import('./chat/messaging');
+      startLoopTicker({
+        send: (chat, text) => sendProgrammaticChatText(chat, text),
+      });
 
-    const { initFollowupRunner } = await import('./chat/followup/runner');
-    initFollowupRunner();
+      const { initFollowupRunner } = await import('./chat/followup/runner');
+      initFollowupRunner();
+    }
   }
   window.addEventListener('resize', () => {
     if (!isMobileLayout()) {

@@ -1,6 +1,8 @@
 import { setChatRunActivity } from '../state/chat-run-activity';
 import { acquireChatTurn, localChatTurnLease, type ChatTurnLease } from './turn-ownership';
 import { isServerStorageMode } from '../config/storage-mode';
+import { isPairedDevice } from '../api/session-token';
+import { flushSharedChat, notifySharedChatEvent } from './shared-chat-events';
 import { persistSessionsBeforeDeliveryAck, refreshChatBeforeRecovery } from '../state/sessions';
 import { runTurn } from '../../server/runner/index.js';
 import { loadToolConfig } from '../tools/config';
@@ -292,6 +294,8 @@ export const RUN_TURN_CHAT_SPIKE_TOOL_IDS = ['get_datetime', 'calculate'] as con
 
 /** Options for {@link runChatTurn} (composer send or history resend). */
 export interface RunChatTurnOptions {
+  signal?: AbortSignal;
+  clearComposerOnSend?: boolean;
   /** Internal recovery handoff: keep ownership while finishing pending tools. */
   turnLease?: ChatTurnLease;
   codeMap?: CodeMapMessageSnapshot;
@@ -683,6 +687,7 @@ export async function maybeRunChatTurnViaRunner(
 }
 
 export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean> {
+  if (isPairedDevice()) return false;
   const {
     chat,
     pushUser,
@@ -749,7 +754,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   getChatAbort(chat.id)?.abort();
   const controller = new AbortController();
   setChatAbort(chat.id, controller);
-  const chatSignal = AbortSignal.any([controller.signal, turnLease.signal]);
+  const chatSignal = AbortSignal.any([controller.signal, turnLease.signal, ...(options.signal ? [options.signal] : [])]);
   setStreaming(true, chat.id);
   if (getActiveChat().id === chat.id) {
     syncComposerFromStreamingState();
@@ -781,8 +786,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   const ledgerWrites: Promise<void>[] = [];
 
   try {
+    chatSignal.throwIfAborted();
     await turnLease.check();
     await ensureChatHistoryLoaded(chat.id);
+    void flushSharedChat(chat.id, true);
     requireHistory(chat);
 
     if (skillId === GIT_SETUP_SKILL_ID && !resumeGenerationId) {
@@ -872,7 +879,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       if (repairSessionHistoryTail(chat)) {
         scheduleSaveSessions();
       }
-      clearComposerDraftOnChat(chat);
+      chatSignal.throwIfAborted();
+      if (options.clearComposerOnSend !== false) clearComposerDraftOnChat(chat);
       const pushedUserRow: Message = hideUserEcho
         ? hiddenTranscriptUserMessage(historyContent)
         : { role: 'user', content: historyContent };
@@ -894,6 +902,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         touchChat(chat);
       }
       await options.onUserMessageAccepted?.();
+      notifySharedChatEvent(chat.id);
       const pushedUserIdx = chat.history.length - 1;
       if (validAttachments.length > 0) {
         void linkSentAttachmentsToTurn(chat.id, String(pushedUserIdx), validAttachments);
@@ -919,7 +928,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             turnKind: 'user',
           });
         }
-        if (useActiveChatDom && getActiveChat().id === chat.id) {
+        if (options.clearComposerOnSend !== false && useActiveChatDom && getActiveChat().id === chat.id) {
           clearComposerInput(
             resolveComposerSurface(options.composerSurface).inputEl,
           );
@@ -1777,6 +1786,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           resumeMainTurnActivityFromWait(chat.id);
         }
         painter?.onEvent(event);
+        notifySharedChatEvent(chat.id, event);
       },
       transcript: chatStore,
       signal: chatSignal,
@@ -2128,6 +2138,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
     // Publish the settled transcript before another device can resume or send.
     await persistSessionsBeforeDeliveryAck();
+    await flushSharedChat(chat.id, false);
     await turnLease.release();
     endChatTurnSetup(chat.id);
 
@@ -2165,6 +2176,7 @@ export async function resumeParentChatWithMessage(
   message: string,
   options: ResumeParentChatOptions = {},
 ): Promise<boolean> {
+  if (isPairedDevice()) return false;
   if (isChatStreaming(chat.id)) return false;
   if (isChatTurnSetupPending(chat.id)) return false;
   if (parseCompactSlashInput(message)) {

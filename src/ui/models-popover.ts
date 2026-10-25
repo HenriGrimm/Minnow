@@ -64,7 +64,7 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     const box = anchor.getBoundingClientRect();
     const top = Math.max(12, Math.min(box.bottom + 8, window.innerHeight - 80));
     panel.style.top = `${top}px`;
-    panel.style.maxHeight = `min(720px, ${window.innerHeight - top - 12}px)`;
+    panel.style.maxHeight = `${window.innerHeight - top - 12}px`;
     panel.style.left = `${Math.max(12, Math.min(box.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 12))}px`;
   };
   const outside = (event: PointerEvent): void => {

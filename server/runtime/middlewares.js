@@ -1,6 +1,7 @@
 import { createAgentPacksMiddleware } from '../agent-packs/routes.js';
 import { createActivityMiddleware } from '../activity/middleware.js';
-import { createChatTurnsMiddleware } from '../chat-turns/middleware.js';
+import { createChatTurnRegistry, createChatTurnsMiddleware } from '../chat-turns/middleware.js';
+import { createChatLiveMiddleware } from '../chat-turns/live.js';
 import { createBenchmarkWorkspaceMiddleware } from '../benchmark-workspace/middleware.js';
 import { createChatsWorkspaceMiddleware } from '../chats-workspace/middleware.js';
 import { createBenchmarksMiddleware } from '../benchmarks/middleware.js';
@@ -107,7 +108,9 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createPreviewAccessMiddleware());
   connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
-  connectApp.use(createChatTurnsMiddleware());
+  const chatTurns = createChatTurnRegistry();
+  connectApp.use(createChatTurnsMiddleware(chatTurns));
+  connectApp.use(createChatLiveMiddleware(chatTurns));
   connectApp.use(createAuthRoutesMiddleware());
   connectApp.use(createRemoteMiddleware());
   connectApp.use(createDiagnosticsMiddleware());

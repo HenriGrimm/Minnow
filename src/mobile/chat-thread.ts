@@ -98,7 +98,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
     if (hintMode) hintMode.textContent = `${modeLabel(chat.modeId)} mode · ${getWorkspaceLabel() || 'this workspace'}`;
     const remote = isChatRunningRemotely(chatId);
     const working = isChatStreaming(chatId) || remote;
-    statusText.textContent = remote ? 'Working on another device…' : working ? 'Working…' : shortModel(chat);
+    statusText.textContent = remote ? 'Working on computer…' : working ? 'Working…' : shortModel(chat);
     statusText.classList.toggle('is-working', working);
   }
 

@@ -73,6 +73,10 @@ export async function handleGenerationsRequest(req, res, pathname) {
     if (await handleRouterRequest(req, res, pathname, readJsonBody, sendJson)) return true;
     if (pathname === '/api/generations' && req.method === 'POST') {
       const payload = await readJsonBody(req);
+      if (req.minnowAuth?.kind === 'device' && payload.chatId && (payload.persist === true || payload.fallbackRole === 'main-chat')) {
+        sendJson(res, 403, { error: 'Chat turns run on the computer. Send through the shared chat connection.' });
+        return true;
+      }
       const providerId =
         typeof payload.providerId === 'string' ? validateProviderId(payload.providerId) : null;
       if (!providerId) {

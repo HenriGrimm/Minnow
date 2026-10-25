@@ -3,6 +3,7 @@ import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import type { Attachment } from '../attachments/types';
 import {
   getAttachmentEpoch,
+  clearAttachments,
   getPendingAttachments,
   replacePendingAttachments,
 } from '../attachments/store';
@@ -77,6 +78,9 @@ import { setStatus } from '../ui/status';
 import type { Chat, CodeMapMessageSnapshot, IssueMessageSnapshot } from '../types';
 import { dispatchPluginSlashCommand, isPluginSlashCommand } from './slash-commands/registry';
 import { getWorkspacePath } from '../state/workspace';
+import { isPairedDevice } from '../api/session-token';
+import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
+import { persistSessionsBeforeDeliveryAck } from '../state/sessions';
 
 export {
   buildApiMessages,
@@ -110,6 +114,9 @@ export interface ComposerSendOptions extends Partial<ComposerSurface> {
 
 /** Options for {@link sendProgrammaticChatText}. */
 export interface SendProgrammaticChatTextOptions {
+  signal?: AbortSignal;
+  clearComposerOnSend?: boolean;
+  onUserMessageAccepted?: () => Promise<void>;
   codeMap?: CodeMapMessageSnapshot;
   goalDriven?: boolean;
   suppressUserEcho?: boolean;
@@ -139,6 +146,11 @@ export async function sendProgrammaticChatText(
   text: string,
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
+  if (isPairedDevice()) {
+    if (!chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+    await sendRemoteChatCommand(chat.id, 'send', { text, attachments: options.validAttachments });
+    return;
+  }
   if (isChatWorktreeSetupPending(chat.id)) throw new Error('Worktree setup is still running. Wait for it to finish.');
   if (chat.worktreeSetupRequired && !chat.worktreeEnabled) throw new Error('Retry worktree setup or explicitly choose Local before sending.');
   if (isChatStreaming(chat.id) || isChatTurnSetupPending(chat.id)) {
@@ -267,6 +279,9 @@ export async function sendProgrammaticChatText(
   syncTodoPanel();
 
   const completed = await runChatTurn({
+    signal: options.signal,
+    clearComposerOnSend: options.clearComposerOnSend,
+    onUserMessageAccepted: options.onUserMessageAccepted,
     chat,
     pushUser: true,
     suppressUserEcho: options.suppressUserEcho ?? false,
@@ -311,6 +326,22 @@ export async function sendMessageWithTools(
   }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
+  if (shouldRelayChat(chat.id)) {
+    const remoteAttachmentEpoch = getAttachmentEpoch();
+    const attachments = await resolveWorkspaceReferences(getPendingAttachments());
+    if (!rawTextEarly && !attachments.length) return;
+    try {
+      if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+      await sendRemoteChatCommand(chat.id, 'send', { text: rawTextEarly,
+        attachments: attachments.filter(attachment => attachment.kind !== 'error') });
+      // Clear only the draft that was actually accepted; keep text typed during delivery.
+      if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
+        clearComposerAfterSend(chat, input);
+        if (getAttachmentEpoch() === remoteAttachmentEpoch) clearAttachments();
+      }
+    } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
+    return;
+  }
   if (isChatWorktreeSetupPending(chat.id)) {
     showToast('Setting up the worktree. Your message is kept here until setup finishes.');
     return;
