@@ -1,4 +1,4 @@
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { holdPreviewGuestHidden, releasePreviewGuestHidden } from './preview-electron-visibility';
 
 /** CSS select pickers live in the renderer's top layer, below Electron's native
  * preview guest. Reuse the chrome-popover guard while a styled picker is open.
@@ -16,12 +16,12 @@ export function installNativeSelectPreviewGuard(): () => void {
     if (open === registered) return;
     registered = open;
     if (open) {
-      registerChromePopover();
+      holdPreviewGuestHidden();
       // Removing or hiding a control can close its picker without a focus event.
       observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     } else {
       observer.disconnect();
-      unregisterChromePopover();
+      releasePreviewGuestHidden();
     }
   };
   const schedule = (): void => {
@@ -37,6 +37,6 @@ export function installNativeSelectPreviewGuard(): () => void {
     for (const event of events) document.removeEventListener(event, schedule, true);
     observer.disconnect();
     if (frame) cancelAnimationFrame(frame);
-    if (registered) unregisterChromePopover();
+    if (registered) releasePreviewGuestHidden();
   };
 }

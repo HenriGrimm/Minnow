@@ -33,10 +33,7 @@ import {
   subscribeServeActivityFeed,
   syncModelActivityIndicators,
 } from '../models/serve-activity-feed';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 import { iconHtml } from './icon';
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
@@ -115,7 +112,6 @@ const triggers: ComposerModelTrigger[] = [];
 /** App-wide live-activity subscription; opened once by initComposerModelTriggers. */
 let activityFeedUnsub: (() => void) | null = null;
 let openTrigger: ComposerModelTrigger | null = null;
-let chromePopoverRegistered = false;
 let globalsBound = false;
 let shortcutBound = false;
 let unregisterExternalCloser: (() => void) | null = null;
@@ -727,16 +723,13 @@ export function closeComposerModelMenu(): boolean {
   resetModelProviderBrowser(current.menu);
   openTrigger = null;
   current.panel.classList.add('hidden');
+  unmarkPreviewOccluder(current.panel);
   current.root.classList.remove('is-open');
   current.trigger.setAttribute('aria-expanded', 'false');
   current.trigger.setAttribute('aria-pressed', 'false');
   current.trigger.classList.remove('is-overlay-open');
   if (isMenubarStyleVariant(current.variant)) {
     collapseMenubarExpand(current);
-  }
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
   }
   detachGlobalListeners();
   shellOverlayClosed('model');
@@ -757,6 +750,7 @@ function openMenu(trigger: ComposerModelTrigger): void {
   rebuildOpenMenu();
   updateModelLoadUnloadButtons();
   trigger.panel.classList.remove('hidden');
+  markPreviewOccluder(trigger.panel, 'menu');
   trigger.root.classList.add('is-open');
   if (isMenubarStyleVariant(trigger.variant)) {
     trigger.expandEl?.classList.add('is-open');
@@ -769,10 +763,6 @@ function openMenu(trigger: ComposerModelTrigger): void {
   trigger.panel.style.maxHeight = '';
   positionPanel(trigger);
   attachGlobalListeners();
-  if (!chromePopoverRegistered) {
-    registerChromePopover();
-    chromePopoverRegistered = true;
-  }
   focusModelHostFilterSearch();
 }
 

@@ -253,6 +253,11 @@ export interface MinnowPreviewApi {
   execJs(code: string, tabId?: string, instanceId?: string): Promise<unknown>;
   /** immediate captures the painted frame without waiting for page load. */
   capturePage(tabId?: string, instanceId?: string, immediate?: boolean): Promise<string>;
+  /**
+   * JPEG of the painted frame for the occlusion placeholder; '' while the guest is hidden.
+   * Optional: packaged shells older than the frame cache lack it.
+   */
+  capturePlaceholder?(tabId?: string, instanceId?: string): Promise<string>;
   getInfo(tabId?: string, instanceId?: string): Promise<MinnowPreviewGuestInfo>;
   navigateAndWait(
     url: string,

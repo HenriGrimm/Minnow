@@ -1,6 +1,14 @@
 import { scheduleAnimationFrame } from '../lib/schedule-animation-frame';
 import type { MinnowPreviewBounds } from '../electron';
-import { isChromePopoverOpen, onChromePopoverChange } from './preview-electron-visibility';
+import { onPreviewOcclusionChange, readPreviewHostOcclusion } from './preview-electron-visibility';
+import {
+  clearPreviewOcclusionPlaceholders,
+  noteHostBoundsChanged,
+  setPreviewPausedMessage,
+  showCachedPreviewFrame,
+  startPreviewFrameCache,
+  stopPreviewFrameCache,
+} from './preview-popover-snapshot';
 
 export function usesElectronPreview(): boolean {
   return Boolean(window.minnow?.preview);
@@ -10,6 +18,8 @@ interface BoundInstance {
   element: HTMLElement;
   observer: ResizeObserver | null;
   visible: boolean;
+  /** Last show/hide sent to the native guest; gates frame captures. */
+  guestVisible: boolean;
   unsubscribePopover: () => void;
 }
 
@@ -26,16 +36,31 @@ function syncInstance(instanceId: string): void {
   const api = window.minnow?.preview;
   if (!bound || !api) return;
 
-  if (!bound.visible || isChromePopoverOpen()) {
+  if (!bound.visible) {
+    clearPreviewOcclusionPlaceholders(bound.element);
+    bound.guestVisible = false;
+    void api.hide(undefined, instanceId);
+    return;
+  }
+
+  const occlusion = readPreviewHostOcclusion(bound.element);
+  if (occlusion.obscured) {
+    setPreviewPausedMessage(bound.element, occlusion.notification);
+    if (bound.guestVisible) showCachedPreviewFrame(bound.element);
+    bound.guestVisible = false;
     void api.hide(undefined, instanceId);
     return;
   }
 
   const bounds = readElementBounds(bound.element);
   if (!bounds) {
+    clearPreviewOcclusionPlaceholders(bound.element);
+    bound.guestVisible = false;
     void api.hide(undefined, instanceId);
     return;
   }
+  clearPreviewOcclusionPlaceholders(bound.element);
+  bound.guestVisible = true;
   void api.show(bounds, undefined, instanceId);
 }
 
@@ -49,16 +74,21 @@ export function bindPreviewInstanceToElement(instanceId: string, element: HTMLEl
   void window.minnow?.preview?.instances?.create(instanceId);
 
   const bound: BoundInstance = {
-    element, observer: null, visible: true,
-    unsubscribePopover: onChromePopoverChange(() => syncInstance(instanceId)),
+    element, observer: null, visible: true, guestVisible: false,
+    unsubscribePopover: onPreviewOcclusionChange(() => syncInstance(instanceId)),
   };
   boundInstances.set(instanceId, bound);
 
-  const observer = new ResizeObserver(scheduleAnimationFrame(() => syncInstance(instanceId)));
+  const scheduleSync = scheduleAnimationFrame(() => syncInstance(instanceId));
+  const observer = new ResizeObserver(() => {
+    noteHostBoundsChanged(element);
+    scheduleSync();
+  });
   observer.observe(element);
   bound.observer = observer;
 
   syncInstance(instanceId);
+  startPreviewFrameCache(element, { instanceId, isGuestVisible: () => bound.guestVisible });
   return () => unbindPreviewInstance(instanceId);
 }
 
@@ -81,6 +111,8 @@ export function unbindPreviewInstance(instanceId: string): void {
   if (!existing) return;
   existing.observer?.disconnect();
   existing.unsubscribePopover();
+  stopPreviewFrameCache(existing.element);
+  clearPreviewOcclusionPlaceholders(existing.element);
   boundInstances.delete(instanceId);
   void window.minnow?.preview?.hide(undefined, instanceId);
 }
@@ -90,6 +122,7 @@ export function resetPreviewInstanceHostsForTests(): void {
   for (const bound of boundInstances.values()) {
     bound.observer?.disconnect();
     bound.unsubscribePopover();
+    stopPreviewFrameCache(bound.element);
   }
   boundInstances.clear();
 }
