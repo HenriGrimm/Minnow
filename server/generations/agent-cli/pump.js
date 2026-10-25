@@ -187,7 +187,9 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     } else {
       appendChunk(state, Buffer.from(JSON.stringify({
         id: state.id, object: 'chat.completion', model: candidate.modelId,
-        choices: [{ index: 0, message: { role: 'assistant', content: content || null, ...(reasoning ? { reasoning } : {}), ...(handedOff.length > 0 ? { tool_calls: handedOff } : {}) }, finish_reason: finishReason }],
+        choices: [{ index: 0, message: { role: 'assistant', content: content || null,
+          ...(reasoning ? { reasoning, ...(['claude', 'codex'].includes(settings.kind) ? { reasoning_format: 'summary' } : {}) } : {}),
+          ...(handedOff.length > 0 ? { tool_calls: handedOff } : {}) }, finish_reason: finishReason }],
         ...metadata,
       })));
     }

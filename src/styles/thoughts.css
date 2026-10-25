@@ -1,3 +1,17 @@
+.reasoning-summary-activity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.reasoning-summary-activity__elapsed {
+  font-variant-numeric: tabular-nums;
+  color: var(--mn-fg-subtle);
+}
+
 /* Live reasoning stage: sits between assistant label and main bubble */
 .thought-stage {
   align-self: flex-start;

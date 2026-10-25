@@ -567,7 +567,9 @@ describe('board client — reading', () => {
   it('notifies subscribeLive, not subscribe, on thinking and tool frames', async () => {
     const boardId = await makeBoard();
     const trackedStream = trackTestStream();
-    const client = createBoardClient(boardId, { openStream: trackedStream.openStream });
+    const conversationFrames: { attemptId: string; event: { type: string }; roundIndex?: number }[] = [];
+    const client = createBoardClient(boardId, { openStream: trackedStream.openStream,
+      onTurnEvent: frame => conversationFrames.push(frame) });
     try {
       client.connect();
       await until(() => trackedStream.receivedSnapshot(), 'the snapshot frame');
@@ -602,6 +604,14 @@ describe('board client — reading', () => {
       await until(() => liveCalls === 2, 'the live tool subscriber');
       assert.equal(stateCalls, 0, 'tool frames must not trigger a board state paint');
       assert.equal(client.getLiveActivity().get('W1-A')?.kind, 'tool');
+      emitLive({ boardId, attemptId: 'r-live-bus', taskId: 'W1-A', role: 'builder', roundIndex: 2,
+        event: { type: 'delta', text: 'Live assistant prose.' } });
+      emitLive({ boardId, attemptId: 'r-live-bus', taskId: 'W1-A', role: 'builder', roundIndex: 2,
+        event: { type: 'reasoning_end' } });
+      await until(() => conversationFrames.length === 4, 'raw conversation frames');
+      assert.deepEqual(conversationFrames.slice(-2).map(frame => [frame.event.type, frame.roundIndex]),
+        [['delta', 2], ['reasoning_end', 2]]);
+      assert.equal(stateCalls, 0, 'conversation events must not repaint the board');
     } finally {
       client.close();
     }

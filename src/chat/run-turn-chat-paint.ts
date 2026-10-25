@@ -26,6 +26,7 @@ import {
   syncThoughtsCaretPulse,
   thoughtsScopeFromEl,
   type ThoughtBubbleController,
+  type ThoughtsToggleOptions,
 } from '../ui/thought-bubbles';
 import {
   attachToolStartIndicator,
@@ -51,6 +52,8 @@ export type ChatTurnThoughtController = Pick<ThoughtBubbleController, 'appendRea
   resetStreamPhaseHints?: ThoughtBubbleController['resetStreamPhaseHints'];
   resetFailedResponse?: ThoughtBubbleController['resetFailedResponse'];
   setThinkingElapsed?: ThoughtBubbleController['setThinkingElapsed'];
+  setReasoningFormat?: ThoughtBubbleController['setReasoningFormat'];
+  getReasoningFormat?: ThoughtBubbleController['getReasoningFormat'];
 };
 
 /** Closed-round notice so the caller can stamp `historyIndex` and message actions. */
@@ -71,6 +74,11 @@ export interface ChatTurnPaintHost {
   /** Transcript mount that receives `.tool-call-msg` rows. */
   mount: HTMLElement;
   chatId?: string;
+  /** Independent transcript hosts never look up tools or controls in main chat. */
+  isolated?: boolean;
+  finalizeAllRounds?: boolean;
+  thoughts?: ThoughtsToggleOptions;
+  onToolRendered?: (wrap: HTMLElement, id: string) => void;
   isDomVisible?: () => boolean;
   /** First prose token reveals the awaiting bubble. */
   revealProse: () => void;
@@ -108,6 +116,7 @@ export interface ChatTurnEventPainter {
   flush: () => void;
   /** Retarget live handles after a stream-dom remount (chat switch). */
   retarget: (next: Partial<ChatTurnPaintHost>) => void;
+  dispose: () => void;
 }
 
 export interface FinalizeThinkingRoundOpts {
@@ -118,6 +127,8 @@ export interface FinalizeThinkingRoundOpts {
   durationMs?: number;
   /** When false, skip DOM (background chat). Default true. */
   domVisible?: boolean;
+  isolated?: boolean;
+  thoughts?: ThoughtsToggleOptions;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -127,20 +138,22 @@ export function finalizeAndAnchorThinkingRound(
 ): { segments: string[]; durationMs: number } {
   const segments = opts.thoughtController?.consumePersistedSegments?.() ?? [];
   const durationMs = opts.durationMs ?? 0;
+  const reasoningFormat = opts.thoughtController?.getReasoningFormat?.();
   if (opts.domVisible === false) return { segments, durationMs };
   if (segments.length > 0) {
-    const durationOpt = durationMs > 0 ? { durationMs } : {};
+    const durationOpt = { ...(durationMs > 0 ? { durationMs } : {}), reasoningFormat };
     if (opts.hasProse) {
-      renderThoughtsToggle(opts.wrap, segments, durationOpt);
+      renderThoughtsToggle(opts.wrap, segments, { ...durationOpt, ...opts.thoughts });
     } else {
       anchorPersistedThoughtsOnRow(opts.wrap, segments, {
         ...durationOpt,
         streamStatus: opts.streamStatus,
+        ...opts.thoughts,
       });
     }
     syncThoughtsCaretPulse(thoughtsScopeFromEl(opts.wrap));
   } else if (!opts.hasProse) {
-    removeOrphanStreamingRow(opts.wrap, opts.streamStatus);
+    removeOrphanStreamingRow(opts.wrap, opts.streamStatus, opts.isolated);
   }
   return { segments, durationMs };
 }
@@ -220,6 +233,7 @@ function defaultSchedulePaintTick(cb: () => void): void {
 // ── Painter ──────────────────────────────────────────────────────────────────
 
 export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEventPainter {
+  let disposed = false;
   let lastDelta = '';
   let lastThinking = '';
   let lastPaintedThinking = '';
@@ -280,6 +294,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   };
 
   const flushPaint = (opts?: { immediateMarkdown?: boolean }): void => {
+    if (disposed) return;
     paintScheduled = false;
     const thinkingSnap = pendingThinking;
     const deltaSnap = pendingDelta;
@@ -353,6 +368,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     if (next.beginNextStreamingRow) host.beginNextStreamingRow = next.beginNextStreamingRow;
     if (next.onRoundFinalized) host.onRoundFinalized = next.onRoundFinalized;
     if (next.onCoalescedPaint) host.onCoalescedPaint = next.onCoalescedPaint;
+    if (next.thoughts) host.thoughts = next.thoughts;
     if (next.scrollTranscript) host.scrollTranscript = next.scrollTranscript;
     if (next.scheduleMarkdown) host.scheduleMarkdown = next.scheduleMarkdown;
   };
@@ -369,6 +385,11 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   };
 
   const closeToolBearingRound = (event: Extract<TurnEvent, { type: 'round_end' }>): void => {
+    host.thoughtController.setReasoningFormat?.(event.reasoningFormat);
+    if (event.reasoning && event.reasoning !== lastThinking) {
+      lastThinking = event.reasoning;
+      pendingThinking = event.reasoning;
+    }
     flushPaint();
     const wrap = host.wrap;
     const bubble = host.bubble;
@@ -396,6 +417,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       hasProse,
       durationMs,
       domVisible: originStreamVisible(),
+      isolated: host.isolated,
+      thoughts: host.thoughts,
     });
     if (wrap.isConnected) host.streamStatus?.dispose();
 
@@ -416,6 +439,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   };
 
   const onEvent = (event: TurnEvent): void => {
+    if (disposed) return;
     host.onActivity?.();
     if (event.type === 'response_restart') {
       pendingDelta = null; pendingThinking = null;
@@ -437,6 +461,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'thinking') {
+      host.thoughtController.setReasoningFormat?.(event.reasoningFormat);
       reasoningPhaseEnded = false;
       lastThinking = event.text;
       pendingThinking = event.text;
@@ -458,7 +483,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'round_end') {
-      if (event.toolCallCount > 0) closeToolBearingRound(event);
+      if (event.toolCallCount > 0 || host.finalizeAllRounds) closeToolBearingRound(event);
       return;
     }
     if (event.type === 'tool_streaming') {
@@ -480,10 +505,10 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       if (event.id) argsById.set(event.id, presentationArgs);
       // Background chats rebuild tool cards from history on switch (MIN-584).
       if (!originStreamVisible()) return;
-      const wrap = renderToolCall(event.name, presentationArgs);
+      const wrap = renderToolCall(event.name, presentationArgs, { standalone: host.isolated });
       if (event.id) wrap.dataset.toolCallId = event.id;
       toolWraps.set(key, wrap);
-      if (event.id) {
+      if (event.id && !host.isolated) {
         attachShellKillUi(
           wrap,
           event.name,
@@ -506,6 +531,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       } else if (roundToolBatch) {
         appendToolCallBatchItem(roundToolBatch, item);
       }
+      host.onToolRendered?.(wrap, key);
       return;
     }
     if (event.type === 'tool_result') {
@@ -515,16 +541,16 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
         : [...toolWraps.keys()].find((k) => k.startsWith(`${event.name}:`));
       const captured =
         (event.id && toolWraps.get(event.id)) || (key ? toolWraps.get(key) : undefined)
-        || (originStreamVisible() && event.id ? findToolWrapInDom(event.id, getActiveChatMountElement()) : null);
+        || (originStreamVisible() && event.id ? findToolWrapInDom(event.id, host.isolated ? host.mount : getActiveChatMountElement()) : null);
       const args =
         (event.id && argsById.get(event.id)) || (key ? argsById.get(key) : undefined);
       const content = displayToolResultContent(event);
       if (!captured) {
-        notifyMemorySavedFromTool(event.name, args, content);
+        if (!host.isolated) notifyMemorySavedFromTool(event.name, args, content);
         return;
       }
       const wrap =
-        originStreamVisible() && event.id
+        !host.isolated && originStreamVisible() && event.id
           ? resolveLiveToolWrap(event.id, captured)
           : captured;
       if (wrap !== captured && event.id) {
@@ -537,7 +563,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
         args,
         asCodeChangeStats(event.codeChange),
       );
-      if (event.id) {
+      if (event.id && !host.isolated) {
         attachShellKillUi(
           wrap,
           event.name,
@@ -547,7 +573,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
           host.chatId,
         );
       }
-      notifyMemorySavedFromTool(event.name, args, content);
+      if (!host.isolated) notifyMemorySavedFromTool(event.name, args, content);
+      if (key) host.onToolRendered?.(wrap, key);
     }
   };
 
@@ -556,5 +583,13 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     snapshot: () => ({ lastDelta, lastThinking, toolCallCount }),
     flush: flushPaint,
     retarget,
+    dispose: () => {
+      disposed = true;
+      pendingDelta = null;
+      pendingThinking = null;
+      clearToolStartIndicator();
+      cancelAssistantBubbleRenderDebounce(host.bubble);
+      host.streamStatus?.dispose();
+    },
   };
 }

@@ -47,6 +47,7 @@ import {
 } from './board-report';
 import {
   renderTaskDetail,
+  applyTaskDetailTurnEvent,
   resetTaskDetailLogUi,
   resetTaskDetailUi,
   runningAgentAttempt,
@@ -460,7 +461,11 @@ function selectBoard(boardId: string | null): void {
   notice = null;
 
   if (boardId) {
-    client = createBoardClient(boardId, { openStream });
+    client = createBoardClient(boardId, { openStream, onTurnEvent: frame => {
+      if (selectedBoardId !== boardId) return;
+      const overlay = surface?.root.querySelector<HTMLElement>('.ov2-detail-overlay');
+      if (overlay) applyTaskDetailTurnEvent(overlay, frame.attemptId, frame.event, frame.roundIndex);
+    } });
     unsubscribeBoard = client.subscribe(() => paintBoard());
     unsubscribeLive = client.subscribeLive(scheduleLiveUi);
     client.connect();
@@ -1482,10 +1487,12 @@ function clearTaskDetailState(): void {
   expandedFiles.clear();
   stopLogPolling();
   resetTaskDetailUi();
+  finalTranscriptAttemptId = null;
 }
 
 const LOG_POLL_MS = 1_200;
 let logPollTimer: ReturnType<typeof setInterval> | null = null;
+let finalTranscriptAttemptId: string | null = null;
 
 function stopLogPolling(): void {
   if (logPollTimer === null) return;
@@ -1502,6 +1509,10 @@ function syncLogPolling(state: BoardState): void {
   const wanted = Boolean(attempt && !attempt.ended);
   if (!wanted) {
     stopLogPolling();
+    if (attempt?.ended && transcript?.status === 'ready' && finalTranscriptAttemptId !== attempt.attemptId) {
+      finalTranscriptAttemptId = attempt.attemptId;
+      void refreshTranscript(attempt.attemptId);
+    }
     return;
   }
   if (logPollTimer !== null) return;
@@ -1618,6 +1629,7 @@ function openTaskFile(path: string): void {
 async function toggleTranscript(attemptId: string): Promise<void> {
   const boardId = selectedBoardId;
   if (!boardId) return;
+  finalTranscriptAttemptId = null;
   if (transcript?.attemptId === attemptId) {
     transcript = null;
     resetTaskDetailLogUi();

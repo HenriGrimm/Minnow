@@ -57,6 +57,7 @@ for (const kind of ['claude', 'codex', 'cursor']) test(`${kind} executable strea
   assert.match(wire, /"total_tokens":17/);
   assert.ok(wire.endsWith('data: [DONE]\n\n'));
   assert.ok(!wire.includes('Startup banner'));
+  if (kind === 'claude') assert.match(wire, /"reasoning_format":"summary"/);
   await assert.rejects(access(seen[0].tempDir));
 });
 
@@ -66,6 +67,7 @@ test('non-streaming inference returns one ordinary OpenAI completion object', as
   const result = JSON.parse(Buffer.concat(state.chunks));
   assert.equal(result.choices[0].message.content, 'Hello 🌊');
   assert.equal(result.choices[0].message.reasoning, 'Consider it.');
+  assert.equal(result.choices[0].message.reasoning_format, 'summary');
   assert.equal(result.choices[0].finish_reason, 'stop');
 });
 

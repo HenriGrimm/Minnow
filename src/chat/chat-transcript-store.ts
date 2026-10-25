@@ -61,6 +61,7 @@ export interface CreateChatTranscriptStoreOptions {
 }
 
 interface RoundDecorState {
+  reasoningFormat?: 'summary';
   reasoningBlocks?: import('../types').AnthropicThinkingBlock[];
   index: number;
   thinkingSnapshot: string;
@@ -142,6 +143,7 @@ export function createChatTranscriptStore(
     const thinking = thinkingSegmentsForRow();
     if (thinking.length > 0) {
       row.thinking = thinking;
+      if (round.reasoningFormat) row.reasoningFormat = round.reasoningFormat;
       const durationMs = thinkingTracker.finalizeRound();
       if (durationMs > 0) row.thinkingDurationMs = durationMs;
       const signature = thoughtController?.getAnthropicThinkingSignature();
@@ -287,6 +289,7 @@ export function createChatTranscriptStore(
       | undefined;
     if (!row || row.role !== 'assistant') return;
     const mutable = row as unknown as Record<string, unknown>;
+    if (round.reasoningFormat) mutable.reasoningFormat = round.reasoningFormat;
     const blocks = anthropicReasoningBlocks(round.reasoningBlocks);
     if (blocks.length) mutable.thinkingBlocks = blocks;
     if (!Array.isArray(mutable.thinking) || mutable.thinking.length === 0) {
@@ -342,6 +345,7 @@ export function createChatTranscriptStore(
       }
       if (event.type === 'thinking') {
         round.thinkingSnapshot = event.text;
+        round.reasoningFormat = event.reasoningFormat;
         thinkingTracker.startSegment();
         return;
       }
@@ -374,6 +378,7 @@ export function createChatTranscriptStore(
         return;
       }
       if (event.type === 'round_end') {
+        round.reasoningFormat = event.reasoningFormat ?? round.reasoningFormat;
         round.index = event.index;
         round.reasoning = event.reasoning;
         round.toolCallCount = event.toolCallCount;

@@ -8,6 +8,48 @@
  * log file.
  */
 
+import type { Message } from '../types';
+import type { TurnEvent } from '../../server/runner/run-turn';
+import type { ConversationSnapshot } from '../chat/conversation-view';
+import { applyTurnEventToMessages } from '../../server/orchestrator/transcript-messages.js';
+
+/** Board journals adapt data; the shared chat owns all message and stream DOM. */
+export function adaptAttemptConversation(events: readonly Record<string, unknown>[], isLive: boolean): ConversationSnapshot & { end: AttemptOutcomeLine | null } {
+  let boundary = -1;
+  let completedRound = -1;
+  events.forEach((event, index) => {
+    if (event.type === 'context_compaction') boundary = index;
+    if (event.type !== 'round_end') return;
+    boundary = index;
+    completedRound = typeof event.index === 'number' ? event.index : completedRound + 1;
+  });
+  const ended = events.some(event => event.type === 'attempt_end' || event.type === 'error');
+  const settled = !isLive || ended;
+  const { messages, end } = adaptAttemptTranscript(settled ? events : events.slice(0, boundary + 1));
+  const history = messages.map(raw => {
+    const { reasoning, isError, ...message } = raw as Record<string, unknown>;
+    return { ...message, ...(typeof reasoning === 'string' && reasoning ? { thinking: [reasoning] } : {}),
+      ...(isError ? { failed: true } : {}) } as unknown as Message;
+  });
+  const openEvents: TurnEvent[] = [];
+  if (!settled) for (const [offset, event] of events.slice(boundary + 1).entries()) {
+    const name = text(event.name) || 'tool';
+    if (event.type === 'thinking') openEvents.push({ type: 'thinking', text: text(event.text),
+      ...(event.reasoningFormat === 'summary' ? { reasoningFormat: 'summary' } : {}) });
+    if (event.type === 'delta') openEvents.push({ type: 'delta', text: text(event.text) });
+    if (event.type === 'reasoning_end') openEvents.push({ type: 'reasoning_end' });
+    if (event.type === 'phase' && ['thinking', 'generating', 'tools'].includes(text(event.phase))) {
+      openEvents.push({ type: 'phase', phase: event.phase as 'thinking' | 'generating' | 'tools' });
+    }
+    if (event.type === 'tool_streaming') openEvents.push({ type: 'tool_streaming', name });
+    if (event.type === 'response_restart') openEvents.push({ type: 'response_restart', warning: text(event.warning) });
+    if (event.type === 'tool_call') openEvents.push({ type: 'tool_call', name, id: callId(event.id, boundary + 1 + offset), arguments: event.arguments });
+    if (event.type === 'tool_result') openEvents.push({ type: 'tool_result', name, id: text(event.id), content: text(event.content ?? event.result),
+      ...(event.codeChange ? { codeChange: event.codeChange } : {}), ...(Array.isArray(event.attachments) ? { attachments: event.attachments } : {}) });
+  }
+  return { history, openEvents, completedRound, isLive: !settled, end };
+}
+
 export interface AttemptOutcomeLine {
   outcome: string;
   summary: string;
@@ -69,6 +111,7 @@ export function adaptAttemptTranscript(
 ): AdaptedTranscript {
   const messages: unknown[] = [];
   let thinking: string[] = [];
+  let reasoningFormat: 'summary' | undefined;
   let partialText = '';
   let settledText: string | null = null;
   let pendingCalls: PendingToolCall[] = [];
@@ -80,6 +123,7 @@ export function adaptAttemptTranscript(
     if (!content && thinking.length === 0 && pendingCalls.length === 0) return;
     const message: Record<string, unknown> = { role: 'assistant', content };
     if (thinking.length > 0) message.reasoning = thinking.join('\n\n');
+    if (reasoningFormat) message.reasoningFormat = reasoningFormat;
     if (pendingCalls.length > 0) message.tool_calls = pendingCalls;
     messages.push(message);
 
@@ -95,6 +139,7 @@ export function adaptAttemptTranscript(
       resultsByCallId.delete(call.id);
     }
     thinking = [];
+    reasoningFormat = undefined;
     partialText = '';
     pendingCalls = [];
   };
@@ -103,6 +148,7 @@ export function adaptAttemptTranscript(
     const type = typeof event.type === 'string' ? event.type : '';
 
     if (type === 'thinking') {
+      if (event.reasoningFormat === 'summary') reasoningFormat = 'summary';
       settledText = null;
       const body = text(event.text).trim();
       const last = thinking.at(-1);
@@ -119,6 +165,7 @@ export function adaptAttemptTranscript(
     }
 
     if (type === 'response_restart') {
+      reasoningFormat = undefined;
       settledText = null;
       partialText = '';
       thinking = [];
@@ -155,6 +202,7 @@ export function adaptAttemptTranscript(
     }
 
     if (type === 'round_end') {
+      if (event.reasoningFormat === 'summary') reasoningFormat = 'summary';
       // Some providers expose reasoning only on the completed response.
       // This is the complete round, including any streamed reasoning.
       const reasoning = text(event.reasoning).trim();
@@ -170,6 +218,12 @@ export function adaptAttemptTranscript(
         outcome: text(event.name) || 'ended',
         summary: text(event.summary),
       };
+      return;
+    }
+
+    if (type === 'context_compaction') {
+      flushAssistant(partialText);
+      messages.push(...applyTurnEventToMessages([], event));
       return;
     }
 

@@ -73,6 +73,7 @@ describe('createOpenAiSseEncoder', () => {
     );
 
     assert.equal(textChunk.choices[0].delta.content, 'Hi');
+    assert.equal(reasoningChunk.choices[0].delta.reasoning_format, 'summary');
     assert.equal(reasoningChunk.choices[0].delta.reasoning, 'think');
   });
 

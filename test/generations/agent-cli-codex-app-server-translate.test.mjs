@@ -12,6 +12,15 @@ function stream() {
   };
 }
 
+test('summary deltas and completed snapshots identify their format independently of raw content', () => {
+  const chunks = [];
+  const translate = createCodexTranslator((delta, format) => chunks.push({ delta, format }));
+  translate({ method: 'item/reasoning/summaryTextDelta', params: { itemId: 'r1', delta: 'Checking.' } });
+  translate({ method: 'item/reasoning/textDelta', params: { itemId: 'r1', delta: 'Raw content.' } });
+  translate({ method: 'item/completed', params: { item: { id: 'r2', type: 'reasoning', summary: ['Another summary.'] } } });
+  assert.deepEqual(chunks.map(chunk => chunk.format), ['summary', undefined, 'summary']);
+});
+
 test('Codex streams the reasoning body alongside its summary heading without replaying snapshots', () => {
   const s = stream();
   s.send('item/reasoning/summaryTextDelta', { itemId: 'r1', summaryIndex: 0, delta: '**Checking options**' });

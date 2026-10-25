@@ -28,6 +28,7 @@ for (const [kind, events] of [['claude', CLAUDE_OK_EVENTS], ['codex', CODEX_OK_E
     events.forEach(translator.consume);
     assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Hello 🌊');
     assert.equal(deltas.map(delta => delta.reasoning ?? '').join(''), kind === 'cursor' ? '' : 'Consider it.');
+    if (kind !== 'cursor') assert.ok(deltas.filter(delta => delta.reasoning).every(delta => delta.reasoning_format === 'summary'));
     assert.equal(translator.snapshot().terminal.ok, true);
     assert.equal(translator.snapshot().usage.total_tokens, 17);
     assert.ok(!JSON.stringify(deltas).includes('reasoning_signature'));

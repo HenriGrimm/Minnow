@@ -118,7 +118,7 @@ function appendAssistantTranscriptRow(
   body: HTMLElement,
   msg: Record<string, unknown>,
   opts: AssistantTranscriptPaintOpts = {},
-): void {
+): HTMLElement | undefined {
   const prose = assistantTranscriptContentProse(msg);
   const segments = assistantTranscriptThinkingSegments(msg);
   if (!prose && segments.length === 0) return;
@@ -128,6 +128,7 @@ function appendAssistantTranscriptRow(
 
   if (segments.length > 0) {
     renderThoughtsToggle(wrap, segments, {
+      reasoningFormat: msg.reasoningFormat === 'summary' ? 'summary' : undefined,
       pulse: opts.liveThinking === true,
       label: opts.liveThinking === true ? STREAM_LABEL_THINKING : undefined,
       expanded: opts.thoughtsExpanded,
@@ -149,6 +150,7 @@ function appendAssistantTranscriptRow(
   }
 
   body.appendChild(wrap);
+  return wrap;
 }
 
 /** Optional disclosure state for callers that repaint a transcript in place. */
@@ -224,7 +226,7 @@ function appendGeneratingPartial(tail: HTMLElement, live: SubAgentTranscriptLive
  * thoughts must not suppress the tail for a turn that has none yet.
  */
 function lastAssistantThinkingSegments(messages: unknown[]): string[] {
-  const index = lastAssistantMessageIndex(messages);
+  const index = liveAssistantMessageIndex(messages);
   if (index < 0) return [];
   const msg = messages[index] as Record<string, unknown>;
   return assistantTranscriptThinkingSegments(msg);
@@ -242,22 +244,26 @@ function syncLiveThinkingRow(
   body: HTMLElement,
   messages: unknown[],
   reasoning: string,
-): void {
+): boolean {
   const stored = lastAssistantThinkingSegments(messages);
-  if (stored.length === 0) return;
-  const turns = body.querySelectorAll<HTMLElement>('.transcript-view__assistant-turn');
-  const wrap = turns[turns.length - 1]?.querySelector<HTMLElement>('.thoughts-panel-wrap');
-  if (!wrap) return;
+  if (stored.length === 0) return false;
+  const row = body.querySelector<HTMLElement>(`[data-transcript-message-index="${liveAssistantMessageIndex(messages)}"]`);
+  const wrap = row?.querySelector<HTMLElement>('.thoughts-panel-wrap');
+  if (!wrap) return false;
   // Split the same way the panel does, or a turn stored as one joined string
   // would compare as a single segment and the open thought would double up.
   const split = splitThinkingSegments(stored.join('\n\n'));
   const segments = split.length > 0 ? split : stored;
   const last = segments[segments.length - 1];
-  const next =
-    reasoning.startsWith(last) || last.startsWith(reasoning)
-      ? [...segments.slice(0, -1), reasoning]
-      : [...segments, reasoning];
+  const complete = segments.join('\n\n');
+  let next = segments;
+  if (reasoning.startsWith(complete)) next = [reasoning];
+  else if (!complete.startsWith(reasoning)) {
+    if (reasoning.startsWith(last)) next = [...segments.slice(0, -1), reasoning];
+    else if (!last.startsWith(reasoning)) next = [...segments, reasoning];
+  }
   updateThoughtsToggleSegments(wrap, next);
+  return true;
 }
 
 export function appendTranscriptLiveTail(
@@ -276,15 +282,14 @@ export function appendTranscriptLiveTail(
 
   // A hydrated thinking event lives in the assistant row, not the live tail.
   // Keep that mounted panel current when callers only patch streaming activity.
-  if (phase === 'thinking' && lastAssistantThinkingSegments(messages).length > 0) {
-    const reasoning = live.partialReasoning?.trim();
-    if (reasoning) syncLiveThinkingRow(body, messages, reasoning);
+  const reasoning = live.partialReasoning?.trim() || lastAssistantThinkingSegments(messages).join('\n\n');
+  if (phase === 'thinking' && reasoning && syncLiveThinkingRow(body, messages, reasoning)) {
     existing?.remove();
     return;
   }
 
   if (existing && canReuseLiveTail(existing, phase, toolName)) {
-    syncReusedLiveTail(existing, live, messages);
+    syncReusedLiveTail(existing, { ...live, partialReasoning: reasoning });
     return;
   }
 
@@ -294,7 +299,7 @@ export function appendTranscriptLiveTail(
   tail.dataset.livePhase = phase;
   if (toolName) tail.dataset.toolName = toolName;
 
-  fillLiveTail(tail, live, messages);
+  fillLiveTail(tail, { ...live, partialReasoning: reasoning });
 
   if (tail.childNodes.length > 0) {
     body.appendChild(tail);
@@ -316,14 +321,9 @@ function canReuseLiveTail(
 function syncReusedLiveTail(
   tail: HTMLElement,
   live: SubAgentTranscriptLive,
-  messages: unknown[],
 ): void {
   const phase = live.phase;
   if (phase === 'thinking') {
-    if (lastAssistantThinkingSegments(messages).length > 0) {
-      tail.remove();
-      return;
-    }
     const reasoning = live.partialReasoning?.trim();
     const toggleWrap = tail.querySelector('.thoughts-panel-wrap');
     if (toggleWrap instanceof HTMLElement && reasoning) {
@@ -371,19 +371,16 @@ function liveThoughtsToggleOptions(live: SubAgentTranscriptLive): {
 function fillLiveTail(
   tail: HTMLElement,
   live: SubAgentTranscriptLive,
-  messages: unknown[],
 ): void {
   const phase = live.phase;
   const toolName = live.currentToolName?.trim();
 
   if (phase === 'thinking') {
-    if (lastAssistantThinkingSegments(messages).length === 0) {
-      const reasoning = live.partialReasoning?.trim();
-      if (reasoning) {
-        renderThoughtsToggle(tail, [reasoning], liveThoughtsToggleOptions(live));
-      } else {
-        tail.appendChild(createTranscriptStreamStatus('thinking'));
-      }
+    const reasoning = live.partialReasoning?.trim();
+    if (reasoning) {
+      renderThoughtsToggle(tail, [reasoning], liveThoughtsToggleOptions(live));
+    } else {
+      tail.appendChild(createTranscriptStreamStatus('thinking'));
     }
   } else if (phase === 'generating') {
     tail.appendChild(createTranscriptStreamStatus('generating'));
@@ -411,12 +408,14 @@ function syncGeneratingPartial(tail: HTMLElement, live: SubAgentTranscriptLive):
   if (partial.textContent !== text) partial.textContent = text;
 }
 
-/** Index of the last assistant row (for live Thinking… pulse on that turn). */
-function lastAssistantMessageIndex(messages: unknown[]): number {
+/** Only an open assistant row can own live thoughts; tools and later turns close it. */
+function liveAssistantMessageIndex(messages: unknown[]): number {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const raw = messages[i];
     if (!raw || typeof raw !== 'object') continue;
-    if ((raw as Record<string, unknown>).role === 'assistant') return i;
+    const msg = raw as Record<string, unknown>;
+    if (msg.role !== 'assistant') return -1;
+    return Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0 ? -1 : i;
   }
   return -1;
 }
@@ -461,7 +460,7 @@ export function renderTranscriptView(
   });
 
   const liveThinkingIdx =
-    live?.isLive && live.phase === 'thinking' ? lastAssistantMessageIndex(messages) : -1;
+    live?.isLive && live.phase === 'thinking' ? liveAssistantMessageIndex(messages) : -1;
 
   for (let i = 0; i < messages.length; i += 1) {
     const raw = messages[i];
@@ -500,7 +499,7 @@ export function renderTranscriptView(
           ? durationRaw
           : undefined;
 
-      appendAssistantTranscriptRow(body, msg, {
+      const row = appendAssistantTranscriptRow(body, msg, {
         liveThinking: i === liveThinkingIdx && segments.length > 0,
         thinkingDurationMs,
         thoughtsExpanded:
@@ -511,6 +510,7 @@ export function renderTranscriptView(
           if (i === liveThinkingIdx) live?.onThoughtsExpandedChange?.(expanded);
         },
       });
+      if (row) row.dataset.transcriptMessageIndex = String(i);
 
       if (Array.isArray(toolCalls) && toolCalls.length > 0) {
         for (const tc of toolCalls as Array<{

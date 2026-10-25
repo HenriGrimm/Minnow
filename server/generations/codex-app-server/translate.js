@@ -11,7 +11,7 @@ export function createCodexTranslator(emit) {
       if (reasoningKey != null && reasoningKey !== key) delta = `\n\n${delta}`;
       reasoningKey = key;
     }
-    emit({ [channel]: delta });
+    emit({ [channel]: delta }, channel === 'reasoning' && key.includes(':summary:') ? 'summary' : undefined);
   }
   function snapshot(key, channel, value) {
     const previous = text.get(key) ?? '';

@@ -30,16 +30,20 @@ async function respond(req, res) {
   const body = JSON.parse(Buffer.concat(chunks)); requests.push(body);
   if (requests.length > 5) throw new Error('Unexpected extra inference request.');
   const tool = requests.length === 1;
+  const thoughtPrefix = `Checking fixture ${requests.length}:`;
   const send = data => res.write(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`);
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   send({ type: 'message_start', message: { id: `streaming-${requests.length}`, type: 'message', role: 'assistant', content: [], model: body.model,
     stop_reason: null, usage: { input_tokens: 2, output_tokens: 0 } } });
   send({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } });
-  send({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Checking the fixture.\n' } });
+  send({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: thoughtPrefix } });
+  await delay(600);
+  observations.push({ phase: 'thinking-delta', visible: deltas().map(d => d.reasoning ?? '').join('').includes(thoughtPrefix) });
+  send({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: ' inputs.\n' } });
   send({ type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'fake-local-signature' } });
   send({ type: 'content_block_stop', index: 0 });
   await delay(1200);
-  observations.push({ phase: 'thinking', visible: deltas().map(d => d.reasoning ?? '').join('').includes('Checking the fixture.') });
+  observations.push({ phase: 'thinking', visible: deltas().map(d => d.reasoning ?? '').join('').includes(`${thoughtPrefix} inputs.`) });
   send({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } });
   send({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'First line.\n' } });
   await delay(1000);
@@ -136,9 +140,10 @@ try {
   assert.equal(processes, 1, 'tool continuation and follow-up reuse the interactive process');
   assert.equal(requests.length, 3);
   assert.ok(requests.every(r => r.thinking?.display === 'summarized'), 'request visible thinking summaries');
+  assert.ok(observations.filter(o => o.phase.startsWith('thinking')).every(o => o.visible), 'thinking chunks must arrive before the block and native response complete');
   assert.ok(observations.filter(o => o.phase === 'text').every(o => o.visible), 'reply text must arrive before the native response completes');
   assert.equal(completions.map(c => c.text).join(''), 'First line.\nSecond line.\nAfter tool dispatch.\n' + 'First line.\nSecond line.\n'.repeat(2));
-  assert.equal(completions.map(c => c.thinking).join(''), 'Checking the fixture.\n'.repeat(3));
+  assert.equal(completions.map(c => c.thinking).join(''), [1, 2, 3].map(n => `Checking fixture ${n}: inputs.\n`).join(''));
   assert.equal(completions.reduce((sum, c) => sum + (c.usage?.completion_tokens ?? 0), 0), 90);
   assert.equal(completions.reduce((sum, c) => sum + (c.usage?.completion_tokens_details?.reasoning_tokens ?? 0), 0), 30);
   // Helpers enter through the public router without a chat binding. Each must

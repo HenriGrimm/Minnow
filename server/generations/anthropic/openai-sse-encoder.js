@@ -131,7 +131,7 @@ export function createOpenAiSseEncoder() {
           reasoningBlocks.set(part.id, block);
         }
         if (block.type === 'thinking') block.thinking += part.text ?? '';
-        const delta = { reasoning: part.text };
+        const delta = { reasoning: part.text, reasoning_format: 'summary' };
         const signature = part.providerMetadata?.anthropic?.signature;
         if (typeof signature === 'string' && signature.trim()) {
           delta.reasoning_signature = signature;
@@ -258,6 +258,7 @@ export function encodeNonStreamingCompletion({
 
   if (reasoningText) {
     message.reasoning = reasoningText;
+    message.reasoning_format = 'summary';
   }
   const blocks = (reasoning ?? []).flatMap((part) => {
     const meta = part.providerMetadata?.anthropic;

@@ -6,6 +6,7 @@ import { pushNotification } from '../notifications/push';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { readDisplayedBoardModelSeed } from './board-model-bind';
 import type { LiveRoundMetrics, RoundMetrics } from './board-usage';
+import type { TurnEvent } from '../../server/runner/run-turn';
 import type {
   Attempt,
   BoardState,
@@ -41,6 +42,7 @@ export interface EventStream {
 
 export interface BoardClientOptions {
   openStream?: (url: string) => EventStream;
+  onTurnEvent?: (frame: { attemptId: string; event: TurnEvent; roundIndex?: number }) => void;
 }
 
 /** What an agent is doing right now, for the card's activity line. */
@@ -596,6 +598,11 @@ export function createBoardClient(
       if (!taskId) return;
       const inner = payload.event;
       if (!inner) return;
+      if (typeof payload.attemptId === 'string') options.onTurnEvent?.({
+        attemptId: payload.attemptId, event: inner as TurnEvent,
+        roundIndex: Number.isSafeInteger((payload as { roundIndex?: number }).roundIndex)
+          ? (payload as { roundIndex?: number }).roundIndex : undefined,
+      });
 
       if (inner.type === 'round_end' && typeof payload.attemptId === 'string' &&
           Number.isSafeInteger(inner.index) && (inner.index ?? -1) >= 0) {

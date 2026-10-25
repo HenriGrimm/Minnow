@@ -204,7 +204,7 @@ test('signed Anthropic blocks survive a tool round and reach the next request un
   const delta = value => `data: ${JSON.stringify({ choices: [{ delta: value }] })}\n\n`;
   const tool = { type: 'function', function: { name: 'read_page', parameters: { type: 'object' } } };
   await withFake([
-    { match: { nth: 0 }, emit: [delta({ reasoning }), ...blocks.map(b => delta({ reasoning_blocks: [b] })), ...functionCallChunks('read_page', {})] },
+    { match: { nth: 0 }, emit: [delta({ reasoning, reasoning_format: 'summary' }), ...blocks.map(b => delta({ reasoning_blocks: [b] })), ...functionCallChunks('read_page', {})] },
     { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
   ], async (baseUrl, fake) => {
     const events = [];
@@ -218,6 +218,9 @@ test('signed Anthropic blocks survive a tool round and reach the next request un
     const replay = requests[1].body.messages.find(row => row.tool_calls?.length);
     assert.deepEqual(replay.reasoning_blocks, blocks);
     assert.deepEqual(events.find(e => e.type === 'round_end').reasoningBlocks, blocks);
+    assert.equal(events.find(e => e.type === 'round_end').reasoningFormat, 'summary');
+    assert.equal(events.find(e => e.type === 'thinking').reasoningFormat, 'summary');
+    assert.equal(events.filter(e => e.type === 'round_end')[1].reasoningFormat, undefined);
     assert.ok(events.some(e => e.type === 'thinking' && e.text.includes('Check pricing')));
   });
 });

@@ -12,6 +12,7 @@ import { installChatWorkView, disposeChatWorkView } from '../../src/ui/chat-work
 import { setChatView } from '../../src/appearance/chat-view.ts';
 import { collectTranscriptTurns } from '../../src/chat/transcript-turns.ts';
 import { getPerFileChangeSummary } from '../../src/usage/code-change-ledger.ts';
+import { ThoughtBubbleController } from '../../src/ui/thought-bubbles.ts';
 
 let win, mount, chat;
 const originalFetch = globalThis.fetch;
@@ -418,6 +419,29 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   await new Promise((resolve) => setTimeout(resolve, 40));
   assert.ok(!row.wrap.classList.contains('chat-step'), 'removing the calling indicator leaves no orphan dot');
   row.streamStatus.dispose();
+});
+
+test('compact summary activity reports Working and keeps the summary disclosure visible', async () => {
+  chat.history = [{ role: 'user', content: 'Review the files.' }];
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  const row = appendStreamingAssistantRow(chat.id);
+  const controller = new ThoughtBubbleController(row.wrap);
+  try {
+    controller.setReasoningFormat('summary');
+    controller.appendReasoningDelta('Reviewing the files.');
+    for (let i = 0; i < 40 && mount.querySelector('.chat-work__activity')?.textContent !== 'Working'; i++) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.equal(mount.querySelector('.chat-work__activity').textContent, 'Working');
+    assert.equal(row.wrap.querySelector('.thoughts-toggle__label').textContent, 'Reasoning summary');
+    assert.ok(!row.wrap.classList.contains('chat-work-hidden'));
+    assert.ok(row.wrap.querySelector('.reasoning-summary-activity'));
+  } finally {
+    controller.abort();
+    row.streamStatus.dispose();
+  }
 });
 
 test('changed files are buttons and more files is reversible', async () => {

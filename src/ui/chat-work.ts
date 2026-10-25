@@ -32,7 +32,7 @@ interface WorkGroup {
 }
 
 /** Text that ticks on a timer during a stream; never worth a transcript walk. */
-const LIVE_TEXT_LEAVES = '.stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label';
+const LIVE_TEXT_LEAVES = '.stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label, .reasoning-summary-activity__elapsed';
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();
@@ -425,7 +425,8 @@ function liveActivityText(mount: HTMLElement, rows: HTMLElement[], assistants: H
   // One native lookup instead of a query per assistant row.
   const owners = new Set(Array.from(mount.querySelectorAll('.thoughts-panel-wrap--live'), (panel) => panel.closest('.msg')));
   const thinking = assistants.some((row) => row.dataset.streamPhase === 'thinking' || owners.has(row));
-  return [narration || toolText || (thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ');
+  const summary = latestAssistant?.querySelector('.reasoning-summary-activity');
+  return [narration || toolText || (summary ? 'Working' : thinking ? 'Thinking' : phaseLabel || 'Generating response'), runtime].filter(Boolean).join(' · ');
 }
 
 function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean, duration: string): string {

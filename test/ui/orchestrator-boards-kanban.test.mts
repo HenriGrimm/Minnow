@@ -36,6 +36,7 @@ import {
 import type { MenuActionItem } from '../../src/ui/context-menu.ts';
 import {
   renderTaskDetail,
+  applyTaskDetailTurnEvent,
   resetTaskDetailUi,
   runningAgentAttempt,
   syncTaskDetailOverlay,
@@ -1155,7 +1156,7 @@ describe('renderTaskDetail', () => {
     assert.equal(thoughts.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
     assert.ok(thoughts.textContent!.includes(thought.trim().slice(-40)));
     // The assistant's prose for the round reads as a message.
-    assert.match(node.querySelector('.transcript-view__assistant')!.textContent!, /Created the file/);
+    assert.match(node.querySelector('.msg.assistant .msg-bubble')!.textContent!, /Created the file/);
     assert.match(node.querySelector('.ov2-thread__end')!.textContent!, /pass/);
     assert.equal(node.querySelector('.ov2-thread__body')?.getAttribute('data-chat-view'), 'full');
     assert.equal(node.querySelector('.chat-work'), null);
@@ -1219,6 +1220,87 @@ describe('renderTaskDetail', () => {
     syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, nextOptions, { thread: 'body' });
     assert.equal(overlay.querySelector('.thoughts-toggle')?.getAttribute('aria-expanded'), 'false');
     assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
+  });
+
+  test('live thoughts after a tool stay visible before transcript polling catches up', () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const transcript = {
+      attemptId: 'b1', status: 'ready' as const, truncated: false, capped: false,
+      events: [
+        { type: 'thinking', text: 'Inspect the source.' },
+        { type: 'tool_call', id: 't1', name: 'read_file', arguments: '{"path":"b.ts"}' },
+        { type: 'tool_result', id: 't1', name: 'read_file', content: 'source' },
+        { type: 'round_end', index: 0, text: '' },
+      ],
+    };
+    const overlay = renderTaskDetail(state, task, NO_ACTIONS, { ...OPTIONS, transcript });
+    document.body.append(overlay);
+    const earlier = overlay.querySelector('.thoughts-content');
+    for (const text of ['Now check', 'Now check the tests.']) {
+      syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, {
+        ...OPTIONS, transcript,
+        liveActivity: new Map([[task.id, {
+          attemptId: 'b1', role: 'builder', kind: 'thinking' as const, text, settled: false,
+        }]]),
+      }, { syncWork: false, thread: 'tail' });
+      assert.equal(overlay.querySelectorAll('.thoughts-toggle').length, 2);
+      assert.equal(earlier?.textContent?.trim(), 'Inspect the source.');
+      assert.equal(overlay.querySelector('.msg--awaiting-prose .thoughts-content')?.textContent?.trim(), text);
+      assert.equal(overlay.querySelector('.msg--awaiting-prose .thoughts-toggle')?.getAttribute('aria-expanded'), 'true');
+    }
+  });
+
+  test('runner events paint main-chat rows immediately and a stale transcript cannot replace them', async () => {
+    setupDom();
+    const state = board();
+    const task = state.tasks.get('W1-B')!;
+    const options = { ...OPTIONS, transcript: {
+      attemptId: 'b1', status: 'ready' as const, events: [], truncated: false, capped: false,
+    } };
+    const overlay = renderTaskDetail(state, task, NO_ACTIONS, options);
+    document.body.append(overlay);
+    const thought = { type: 'thinking' as const, text: 'Read the implementation.' };
+    applyTaskDetailTurnEvent(overlay, 'other-attempt', { ...thought, text: 'Must stay out.' }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', thought, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'delta', text: 'Checking **this** file.' }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'tool_call', id: 'live', name: 'read_file', arguments: { path: 'b.ts' } }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'tool_result', id: 'live', name: 'read_file', content: 'source' }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'round_end', index: 0, text: 'Checking **this** file.',
+      reasoning: thought.text, toolCallCount: 1, t0: 0, tFirst: null, tEnd: 1 }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'thinking', text: 'Now verify it.' }, 1);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    syncTaskDetailOverlay(overlay, state, task, NO_ACTIONS, options, { syncWork: false, thread: 'tail' });
+    assert.equal(overlay.querySelectorAll('.ov2-thread .msg.assistant').length, 2);
+    assert.equal(overlay.querySelectorAll('.ov2-thread .thoughts-toggle').length, 2);
+    assert.ok(overlay.querySelector('.ov2-thread .msg-bubble strong'));
+    assert.ok(overlay.querySelector('[data-tool-call-id="live"].tool-call-msg--ok'));
+    assert.match(overlay.textContent!, /Now verify it/);
+    assert.doesNotMatch(overlay.textContent!, /Must stay out/);
+    assert.equal(overlay.querySelector('[class*="transcript-view__"]'), null);
+  });
+
+  test('events received while initial history loads survive completion and the loading response', () => {
+    setupDom();
+    const running = board();
+    const task = running.tasks.get('W1-B')!;
+    const options = { ...OPTIONS, transcript: {
+      attemptId: 'b1', status: 'loading' as const, events: [], truncated: false, capped: false,
+    } };
+    const overlay = renderTaskDetail(running, task, NO_ACTIONS, options);
+    document.body.append(overlay);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'thinking', text: 'Arrived during loading.' }, 0);
+    applyTaskDetailTurnEvent(overlay, 'b1', { type: 'round_end', index: 0, text: 'Completed while loading.',
+      reasoning: 'Arrived during loading.', toolCallCount: 0, t0: 0, tFirst: null, tEnd: 1 }, 0);
+    const ended = board([{ v: 1, seq: 8, type: 'task.attempt.ended', taskId: 'W1-B', attemptId: 'b1', role: 'builder', outcome: 'pass' }]);
+    syncTaskDetailOverlay(overlay, ended, ended.tasks.get('W1-B')!, NO_ACTIONS, options);
+    syncTaskDetailOverlay(overlay, ended, ended.tasks.get('W1-B')!, NO_ACTIONS,
+      { ...options, transcript: { ...options.transcript, status: 'ready' } });
+    assert.match(overlay.textContent!, /Arrived during loading/);
+    assert.match(overlay.textContent!, /Completed while loading/);
+    assert.equal(overlay.querySelector('.ov2-skeleton'), null);
+    assert.equal(overlay.querySelector('.ov2-thread .stream-status:not(.hidden)'), null);
   });
 
   for (const chatView of ['compact', 'full'] as const) {
@@ -1458,7 +1540,7 @@ for (const reason of ['paused', 'user', 'quota'] as const) {
     const overlay = renderTaskDetail(running, task, NO_ACTIONS, options);
     document.body.appendChild(overlay);
     assert.ok(overlay.querySelector('.tool-call-msg[aria-busy]'));
-    const details = overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')!;
+    const details = overlay.querySelector<HTMLDetailsElement>('[data-tool-call-id="pending"] details')!;
     details.open = true;
     details.dispatchEvent(new window.Event('toggle'));
 
@@ -1470,11 +1552,11 @@ for (const reason of ['paused', 'user', 'quota'] as const) {
     assert.match(overlay.querySelector('.ov2-thread__head')!.textContent!, new RegExp(label));
     assert.equal(overlay.querySelector('.tool-call-spinner'), null);
     assert.equal(overlay.querySelector('.tool-call-msg[aria-busy]'), null);
-    assert.equal(overlay.querySelector('.transcript-view__live-tail'), null);
-    assert.equal(overlay.querySelector('[data-transcript-tool-call-id="pending"] .tool-call-outcome')?.textContent, label === 'paused' ? 'Paused' : 'Stopped');
-    assert.ok(overlay.querySelector('[data-transcript-tool-call-id="done"].tool-call-msg--ok'));
-    assert.equal(overlay.querySelector('[data-transcript-tool-call-id="pending"].tool-call-msg--ok'), null);
-    assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')?.open, true);
+    assert.equal(overlay.querySelector('.ov2-thread .stream-status:not(.hidden)'), null);
+    assert.equal(overlay.querySelector('[data-tool-call-id="pending"] .tool-call-outcome')?.textContent, label === 'paused' ? 'Paused' : 'Stopped');
+    assert.ok(overlay.querySelector('[data-tool-call-id="done"].tool-call-msg--ok'));
+    assert.equal(overlay.querySelector('[data-tool-call-id="pending"].tool-call-msg--ok'), null);
+    assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-tool-call-id="pending"] details')?.open, true);
     assert.match(overlay.textContent!, /Keep this reasoning visible/);
     assert.equal(inactiveTask.attempts.at(-1)!.ended, false);
 
@@ -1492,9 +1574,9 @@ for (const reason of ['paused', 'user', 'quota'] as const) {
     if (reason === 'paused') {
       syncTaskDetailOverlay(overlay, running, task, NO_ACTIONS, options);
       assert.ok(overlay.querySelector('.ov2-work__running'));
-      assert.ok(overlay.querySelector('[data-transcript-tool-call-id="pending"][aria-busy]'));
-      assert.ok(overlay.querySelector('.transcript-view__live-tail'));
-      assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-transcript-tool-call-id="pending"] details')?.open, true);
+      assert.ok(overlay.querySelector('[data-tool-call-id="pending"][aria-busy]'));
+      assert.ok(overlay.querySelector('.ov2-thread .tool-start-indicator'));
+      assert.equal(overlay.querySelector<HTMLDetailsElement>('[data-tool-call-id="pending"] details')?.open, true);
     }
   });
 }

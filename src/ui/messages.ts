@@ -112,7 +112,7 @@ import { updateCodeChangeStrip } from './code-change-strip';
 import { renderSidebar } from './sidebar';
 import { syncTodoPanel } from './todo-panel';
 import { renderThoughtsToggle, syncThoughtsCaretPulse } from './thought-bubbles';
-import { renderToolCall, renderToolResult } from './tool-messages';
+import { renderToolCall, renderToolResult, renderToolInterruption } from './tool-messages';
 import { createToolCallBatch, type ToolCallBatchItem } from './tool-call-batch';
 import { attachShellKillUi } from './shell-run-ui';
 import {
@@ -185,6 +185,7 @@ export { resolveModelInfo, showCachedModelInfo } from '../api/models';
 /** Suppress per-bubble scroll while bulk-rendering history (renderChatFromHistory). */
 let suppressBubbleScroll = false;
 let embeddedHistoryPaint = false;
+let embeddedHistoryChat: Chat | null = null;
 
 /** Remove landing placeholders before the first live bubble mounts. */
 function clearTranscriptEmptyState(mount: HTMLElement): void {
@@ -298,6 +299,43 @@ interface HistoryRenderContext {
   toolResultMap: ToolResultLookup;
   /** Latest compaction checkpoint's fold, or null when the chat has none. */
   fold: ReturnType<typeof compactionFoldView>;
+  presentation?: ChatTranscriptPresentation;
+}
+
+export interface ChatTranscriptPresentation {
+  isThoughtExpanded: (key: string) => boolean;
+  onThoughtExpandedChange: (key: string, expanded: boolean) => void;
+  isToolExpanded: (id: string) => boolean;
+  onToolExpandedChange: (id: string, expanded: boolean) => void;
+  pendingToolStatus?: 'paused' | 'stopped';
+}
+
+/** The main chat's history rows, mounted independently of the active session. */
+export function renderChatTranscriptHistory(
+  area: HTMLElement,
+  history: Message[],
+  identity: { id: string; modeId?: Chat['modeId'] },
+  presentation: ChatTranscriptPresentation,
+): void {
+  const chat: Chat = { ...identity, name: '', workspacePath: '', modelId: '', history,
+    updatedAt: 0, lastStats: null, modelInfo: {} };
+  const ctx = { ...historyRenderContext(chat), presentation };
+  const wasEmbedded = embeddedHistoryPaint;
+  const previousChat = embeddedHistoryChat;
+  const wasSuppressed = suppressBubbleScroll;
+  embeddedHistoryPaint = true;
+  embeddedHistoryChat = chat;
+  suppressBubbleScroll = true;
+  try {
+    area.replaceChildren();
+    runWithChatMount(area, () => {
+      for (let i = 0; i < history.length; i++) appendHistoryMessageAt(area, ctx, i);
+    });
+  } finally {
+    embeddedHistoryPaint = wasEmbedded;
+    embeddedHistoryChat = previousChat;
+    suppressBubbleScroll = wasSuppressed;
+  }
 }
 
 function historyRenderContext(chat: Chat): HistoryRenderContext {
@@ -389,6 +427,13 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
   const msg = chat.history[i];
   if (!msg || !msg.role) return;
   if (msg.role === 'tool') return;
+  const attachActions: typeof attachMessageActions = (...args) => {
+    if (!ctx.presentation) attachMessageActions(...args);
+  };
+  const thoughts = ctx.presentation ? {
+    expanded: ctx.presentation.isThoughtExpanded(String(i)),
+    onExpandedChange: (expanded: boolean) => ctx.presentation?.onThoughtExpandedChange(String(i), expanded),
+  } : {};
 
   if (msg.role === 'context') {
     if (isCompactionNotice(msg)) {
@@ -423,12 +468,12 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     if (userMsg.goalAchieved) {
       restoreGoalAchievedAffordance(wrap, userMsg);
     }
-    attachMessageActions(wrap, {
+    attachActions(wrap, {
       chatId: chat.id,
       historyIndex: i,
       turnKind: 'user',
     });
-    attachBranchPicker(wrap, chat.id, i);
+    if (!ctx.presentation) attachBranchPicker(wrap, chat.id, i);
     return;
   }
 
@@ -450,6 +495,8 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       if (hasToolThinking) {
         const durationMs = msg.thinkingDurationMs;
         renderThoughtsToggle(wrap, toolThinking!, {
+          reasoningFormat: msg.reasoningFormat,
+          ...thoughts,
           durationMs: durationMs != null && durationMs > 0 ? durationMs : undefined,
         });
       }
@@ -459,7 +506,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       if (msg.stopped) {
         markMessageStopped(wrap);
       }
-      attachMessageActions(wrap, {
+      attachActions(wrap, {
         chatId: chat.id,
         historyIndex: i,
         turnKind: 'assistant-tools',
@@ -486,8 +533,15 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
           argsObj,
           stored.codeChange,
         );
+      } else if (ctx.presentation?.pendingToolStatus) {
+        renderToolInterruption(toolWrap, ctx.presentation.pendingToolStatus);
       }
-      attachShellKillUi(toolWrap, tc.function.name, tc.id, argsObj, undefined, chat.id);
+      if (!ctx.presentation) attachShellKillUi(toolWrap, tc.function.name, tc.id, argsObj, undefined, chat.id);
+      const details = toolWrap.querySelector<HTMLDetailsElement>('.tool-call-details');
+      if (details && ctx.presentation) {
+        details.open = ctx.presentation.isToolExpanded(tc.id);
+        details.addEventListener('toggle', () => ctx.presentation?.onToolExpandedChange(tc.id, details.open));
+      }
     }
     if (toolItems.length > 1) {
       const batch = createToolCallBatch(toolItems);
@@ -498,14 +552,14 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       host.appendChild(firstToolEl);
     }
     if (!prose && !hasToolThinking && firstToolEl) {
-      attachMessageActions(firstToolEl, {
+      attachActions(firstToolEl, {
         chatId: chat.id,
         historyIndex: i,
         turnKind: 'assistant-tools',
       });
     }
 
-    for (const pair of getBeforeAfterPairs(chat.id)) {
+    for (const pair of ctx.presentation ? [] : getBeforeAfterPairs(chat.id)) {
       if (pair.turnId !== String(i)) continue;
       host.appendChild(renderBeforeAfterCard(pair));
     }
@@ -542,6 +596,8 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
   if (hasThinking) {
     const durationMs = withThinking.thinkingDurationMs;
     renderThoughtsToggle(wrap, thinkingSegments!, {
+      reasoningFormat: withThinking.reasoningFormat,
+      ...thoughts,
       durationMs: durationMs != null && durationMs > 0 ? durationMs : undefined,
     });
   }
@@ -553,23 +609,23 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     const fork = indexOfUserBeforeBlock(chat.history, i);
     markMessageFailed(
       wrap,
-      tailFailed === i && fork >= 0
+      !ctx.presentation && tailFailed === i && fork >= 0
         ? { chatId: chat.id, forkHistoryIndex: fork }
         : undefined,
     );
   }
-  if (withThinking.truncated) {
+  if (withThinking.truncated && !ctx.presentation) {
     markMessageTruncated(wrap, chat);
   }
   if (msg.stats || msg.usage) {
     appendStats(wrap, msg.stats || {}, msg.usage || {});
   }
-  attachMessageActions(wrap, {
+  attachActions(wrap, {
     chatId: chat.id,
     historyIndex: i,
     turnKind: 'assistant',
   });
-  attachVoicePlayButton(wrap, trimmed);
+  if (!ctx.presentation) attachVoicePlayButton(wrap, trimmed);
 }
 
 /** Newest messages rendered in the switch's own task — what the user actually looks at. */
@@ -1104,12 +1160,12 @@ export function appendBubble(
   meta?: BubbleRenderMeta,
   userOptions?: AppendUserBubbleOptions,
 ): { wrap: HTMLDivElement; bubble: HTMLDivElement } {
-  const active = getActiveChat();
+  const active = embeddedHistoryChat ?? getActiveChat();
   const targetId = meta?.chatId?.trim() || active.id;
   if (!embeddedHistoryPaint && targetId !== active.id && !isStreamDomVisible(targetId)) {
     return bubbleDomStub();
   }
-  const chat = resolveBubbleTargetChat(meta);
+  const chat = embeddedHistoryChat ?? resolveBubbleTargetChat(meta);
   if (!embeddedHistoryPaint && shouldStubOrchestrateStreamDom(chat)) {
     return bubbleDomStub();
   }
@@ -1277,6 +1333,15 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
 
   removeStaleLiveStreamingRows(mount);
 
+  const row = createChatStreamingRow(mount);
+  beginStreamAnnouncer(row.wrap);
+  installChatWorkView(mount, targetChat, () => isChatStreaming(targetChat.id));
+  scrollChatIfPinned();
+  return row;
+}
+
+/** Shared streaming shell; the caller owns its mount and lifecycle. */
+export function createChatStreamingRow(mount: HTMLElement): StreamingAssistantRow {
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant msg--awaiting-prose';
 
@@ -1293,12 +1358,9 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
 
   wrap.appendChild(label);
   const streamStatus = attachStreamStatus(wrap);
-  beginStreamAnnouncer(wrap);
   wrap.appendChild(bubble);
   bubble.appendChild(cursor);
   appendChatTranscriptNode(wrap, mount);
-  installChatWorkView(mount, targetChat, () => isChatStreaming(targetChat.id));
-  scrollChatIfPinned();
   return { wrap, bubble, cursor, streamStatus };
 }
 
@@ -1326,17 +1388,21 @@ export function assistantProseHasVisibleContent(
 export function removeOrphanStreamingRow(
   wrap: HTMLElement,
   streamStatus?: StreamingStatusHandle,
+  isolated = false,
 ): void {
   streamStatus?.dispose();
-  cancelStreamAnnouncer();
+  if (!isolated) cancelStreamAnnouncer();
   if (wrap.isConnected) {
     wrap.remove();
   }
 }
 
 export interface AnchorPersistedThoughtsOptions {
+  reasoningFormat?: 'summary';
   durationMs?: number;
   streamStatus?: StreamingStatusHandle;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 /** Pin a completed thinking block on an assistant row at the response that produced it. */
@@ -1347,6 +1413,9 @@ export function anchorPersistedThoughtsOnRow(
 ): void {
   if (segments.length === 0) return;
   renderThoughtsToggle(wrap, segments, {
+    reasoningFormat: opts.reasoningFormat,
+    expanded: opts.expanded,
+    onExpandedChange: opts.onExpandedChange,
     durationMs: opts.durationMs != null && opts.durationMs > 0 ? opts.durationMs : undefined,
   });
   opts.streamStatus?.dispose();

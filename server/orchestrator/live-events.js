@@ -7,6 +7,7 @@
  * @property {string} attemptId
  * @property {string | null} taskId
  * @property {string} role
+ * @property {number} [roundIndex]
  * @property {import('../runner/run-turn').TurnEvent} event
  */
 

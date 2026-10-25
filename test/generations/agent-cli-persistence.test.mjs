@@ -64,6 +64,7 @@ test('interactive handoffs retain concurrent tool calls while later native commi
       stdin: JSON.stringify({ message: { content: input.prompt } }), env: input.bridgeConfig.env }),
     openInteractive: async invocation => ({ child, done,
       async send() {
+        child.stdout.write(`${JSON.stringify({ type: 'interactive_reasoning', text: 'Compare both calls.' })}\n`);
         const post = value => fetch(invocation.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
           headers: { authorization: `Bearer ${invocation.env.MINNOW_CLI_BRIDGE_TOKEN}` },
           body: JSON.stringify({ name: 'ping', arguments: { value } }) }).catch(() => {});
@@ -85,6 +86,7 @@ test('interactive handoffs retain concurrent tool calls while later native commi
   });
   assert.equal(result.state.status, 'complete', result.state.errorMessage);
   const calls = result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  assert.ok(result.rows.some(row => row.choices?.[0]?.delta?.reasoning_format === 'summary'));
   assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).value).sort(), [1, 2]);
   assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
 });

@@ -301,6 +301,53 @@ describe('renderTranscriptView', () => {
     }
   });
 
+  test('new reasoning after a tool result stays after the tool and leaves earlier thoughts intact', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const messages = adaptAttemptTranscript([
+      { type: 'thinking', text: 'Inspect the source.' },
+      { type: 'round_end', index: 0, reasoning: 'Inspect the source.', text: '' },
+      { type: 'tool_call', id: 'read', name: 'read_file', arguments: { path: 'a.ts' } },
+      { type: 'tool_result', id: 'read', content: 'source' },
+      { type: 'round_end', index: 1, text: '' },
+    ]).messages;
+    renderTranscriptView(body, messages, {
+      isLive: true, phase: 'thinking', partialReasoning: 'Now check the tests.', thoughtsExpanded: true,
+    });
+    assert.equal(body.querySelectorAll('.thoughts-toggle').length, 2);
+    assert.equal(expandedThoughtText(body), 'Inspect the source.');
+    const tail = body.querySelector('.transcript-view__live-tail')!;
+    assert.equal(tail.querySelector('.thoughts-content')?.textContent?.trim(), 'Now check the tests.');
+    assert.equal(body.lastElementChild, tail);
+  });
+
+  test('thinking hydration ahead of the mounted rows keeps the live thoughts visible', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    renderTranscriptView(body, [], {
+      isLive: true, phase: 'thinking', partialReasoning: 'Checking', thoughtsExpanded: true,
+    });
+    const toggle = body.querySelector('.thoughts-toggle');
+    appendTranscriptLiveTail(body, {
+      isLive: true, phase: 'thinking', partialReasoning: 'Checking the code.', thoughtsExpanded: true,
+    }, [{ role: 'assistant', content: '', reasoning: 'Checking the code.' }]);
+    assert.equal(body.querySelector('.thoughts-toggle'), toggle);
+    assert.equal(expandedThoughtText(body), 'Checking the code.');
+  });
+
+  test('cumulative reasoning with multiple paragraphs grows without repeating earlier paragraphs', () => {
+    setupDom();
+    const body = document.getElementById('transcriptBody')!;
+    const messages = [{ role: 'assistant', content: '', reasoning: 'Read the source.\n\nCheck' }];
+    renderTranscriptView(body, messages);
+    appendTranscriptLiveTail(body, {
+      isLive: true, phase: 'thinking', partialReasoning: 'Read the source.\n\nCheck the tests.',
+    }, messages);
+    expandedThoughtText(body);
+    assert.equal(body.querySelector('.thoughts-content')?.textContent?.trim(),
+      'Read the source.\nCheck the tests.');
+  });
+
   test('subAgentTranscriptLiveFromRun maps orchestrator live fields', () => {
     const live = subAgentTranscriptLiveFromRun(
       {

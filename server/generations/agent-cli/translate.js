@@ -84,7 +84,8 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
   let cursorStreamedPartials = false;
   let pendingCursorText = '';
   function text(value) { if (typeof value === 'string' && value) { sawText = true; emit({ content: value }); } }
-  function reasoning(value) { if (typeof value === 'string' && value) { sawReasoning = true; emit({ reasoning: value }); } }
+  function reasoning(value) { if (typeof value === 'string' && value) { sawReasoning = true; emit({ reasoning: value,
+    ...(['claude', 'codex'].includes(kind) ? { reasoning_format: 'summary' } : {}) }); } }
   function activity(phase, toolName) {
     const key = `${phase}:${toolName ?? ''}`;
     if (key === lastActivity) return;

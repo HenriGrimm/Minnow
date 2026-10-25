@@ -10,6 +10,7 @@ export interface LiveAttemptEvent {
   attemptId: string;
   taskId: string | null;
   role: string;
+  roundIndex?: number;
   event: TurnEvent;
 }
 

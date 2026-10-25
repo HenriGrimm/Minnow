@@ -231,6 +231,7 @@ function createTurnRunner(deps) {
       fullText,
       reasoningText,
       finishReason,
+      ...(message?.reasoning_format === 'summary' ? { reasoningFormat: 'summary' } : {}),
       toolCalls: [],
       reasoningBlocks: anthropicReasoningBlocks(message?.reasoning_blocks),
       streamMeta: {
@@ -372,6 +373,7 @@ function createTurnRunner(deps) {
     const carriedText = streamOptions?.carriedText ?? "";
     let proseText = carriedText;
     let reasoningText = streamOptions?.carriedReasoning ?? "";
+    let reasoningFormat;
     let reasoningBlocks = [];
     let streamMeta = {};
     let toolAcc = {};
@@ -452,7 +454,7 @@ function createTurnRunner(deps) {
     }
     function notifyReasoningDelta() {
       if (!reasoningText) return;
-      streamOptions?.onReasoningDelta?.(reasoningText);
+      streamOptions?.onReasoningDelta?.(reasoningText, reasoningFormat);
     }
     function emitThinking(text) {
       if (!text) {
@@ -582,6 +584,7 @@ function createTurnRunner(deps) {
       if (chunk.minnow_router?.reset) {
         proseText = carriedText;
         reasoningText = streamOptions?.carriedReasoning ?? '';
+        reasoningFormat = undefined;
         reasoningBlocks = [];
         streamMeta = {}; toolAcc = {}; tFirst = null;
         outputProseChars = 0; outputPayloadChars = 0;
@@ -618,6 +621,7 @@ function createTurnRunner(deps) {
       }
       reasoningBlocks.push(...anthropicReasoningBlocks(chunk.choices?.[0]?.delta?.reasoning_blocks));
       if (reasoningDelta) {
+        if (chunk.choices?.[0]?.delta?.reasoning_format === 'summary') reasoningFormat = 'summary';
         // Marks these tokens as decoded inside the measured window. Providers
         // that think before their first byte never set it, so their hidden
         // reasoning stays out of tok/s.
@@ -693,6 +697,7 @@ function createTurnRunner(deps) {
       fullText,
       reasoningText,
       finishReason,
+      ...(reasoningFormat ? { reasoningFormat } : {}),
       toolCalls,
       reasoningBlocks,
       streamMeta,
@@ -880,6 +885,7 @@ function createTurnRunner(deps) {
         pendingLive = {
           phase: pendingLive?.phase ?? null,
           partialReasoning: pendingLive?.partialReasoning,
+          reasoningFormat: pendingLive?.reasoningFormat,
           currentToolName: pendingLive?.currentToolName,
           ...patch
         };
@@ -1056,6 +1062,7 @@ function createTurnRunner(deps) {
           index: currentRoundIndex,
           text: typeof turnResult?.fullText === "string" ? turnResult.fullText : "",
           reasoning: typeof turnResult?.reasoningText === "string" ? turnResult.reasoningText : "",
+          ...(turnResult?.reasoningFormat ? { reasoningFormat: turnResult.reasoningFormat } : {}),
           reasoningBlocks: turnResult?.reasoningBlocks ?? [],
           toolCallCount: Array.isArray(turnResult?.toolCalls) ? turnResult.toolCalls.length : 0,
           ...(usage && typeof usage === "object" ? { usage } : {}),
@@ -1443,10 +1450,11 @@ function createTurnRunner(deps) {
         }
         let streamingAssistant = "";
         const streamProgress = {
-          onReasoningDelta: (reasoningSoFar) => {
+          onReasoningDelta: (reasoningSoFar, reasoningFormat) => {
             emitLiveActivity({
               phase: "thinking",
               partialReasoning: reasoningSoFar,
+              reasoningFormat,
               currentToolName: null
             });
           },

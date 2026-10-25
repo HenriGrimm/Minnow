@@ -32,6 +32,11 @@ async function fixture(t) {
   const hook = settings.hooks.Stop[0].hooks[0];
   const post = (event, extra = {}) => fetch(hook.url, { method: 'POST', headers: hook.headers,
     body: JSON.stringify({ session_id: id, cwd, prompt_id: 'prompt', ...event }), ...extra });
+  const thinking = (delta, index = 0, extra = {}, request = {}) => fetch(hook.url.replace('/hook', '/thinking'), {
+    method: 'POST', headers: hook.headers,
+    body: JSON.stringify({ session_id: id, cwd, turn_id: 'turn', step_index: 0, block_index: 0, index, delta, ...extra }),
+    ...request,
+  });
   const begin = async () => { ready(true); await run.send('Payload stays out of the PTY'); await post({ hook_event_name: 'UserPromptSubmit', prompt: command }); await delay(10); };
   const row = (messageId, content, stop = 'tool_use', output = 17) => ({ type: 'assistant', uuid: randomUUID(),
     message: { id: messageId, role: 'assistant', model: 'claude-opus-5-5', stop_reason: stop, content,
@@ -43,7 +48,7 @@ async function fixture(t) {
     assert.ok(events.some(e => e.type === 'result'), 'completion must arrive');
     return events.find(e => e.type === 'result');
   };
-  return { root, cwd, file, run, events, commands, post, begin, row, append, waitResult, ready, exit: code => exit({ exitCode: code }), data: value => data(value), bridge };
+  return { root, cwd, file, run, events, commands, post, thinking, begin, row, append, waitResult, ready, exit: code => exit({ exitCode: code }), data: value => data(value), bridge };
 }
 
 test('first-run display and security notice complete without accepting login or later model output', async t => {
@@ -162,6 +167,54 @@ test('native thinking blocks reach the stream before the response commits and ar
   assert.equal(deltas.map(d => d.reasoning ?? '').join(''), 'Checking the inputs.');
   assert.equal(translator.snapshot().usage.completion_tokens, 17);
   assert.equal(JSON.stringify(f.events).includes('private-signature'), false);
+});
+
+test('live native thinking arrives before transcript flush and is not replayed at commit', async t => {
+  const f = await fixture(t); await f.begin();
+  assert.equal((await f.thinking('Checking ')).status, 200);
+  assert.deepEqual(f.events.filter(e => e.type === 'interactive_reasoning').map(e => e.text), ['Checking ']);
+  assert.equal(f.events.some(e => e.event?.type === 'message_start'), false);
+  await f.thinking('the inputs.', 1);
+  await f.thinking('Checking ', 0);
+  await f.append(f.row('live-thinking', [{ type: 'thinking', thinking: 'Checking the inputs.', signature: 'private-signature' },
+    { type: 'text', text: 'Done.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Done.' });
+  assert.equal((await f.waitResult()).subtype, 'success');
+  assert.deepEqual(f.events.filter(e => e.type === 'interactive_reasoning').map(e => e.text), ['Checking ', 'the inputs.']);
+  assert.equal(JSON.stringify(f.events).includes('private-signature'), false);
+  await f.run.stop();
+  await assert.rejects(fs.access(path.join(f.cwd, 'minnow-reasoning')), { code: 'ENOENT' });
+});
+
+test('live thinking retains identical blocks and transcript fallback across a paused tool handoff', async t => {
+  const f = await fixture(t); await f.begin();
+  await f.thinking('Check.');
+  f.run.pauseOutput();
+  await f.thinking('Check.', 0, { step_index: 1 });
+  await f.thinking('Next.', 0, { step_index: 1, block_index: 1 });
+  assert.equal(f.events.filter(e => e.type === 'interactive_reasoning').length, 1);
+  f.run.resumeOutput();
+  await f.append(f.row('first', [{ type: 'thinking', thinking: 'Check.' }, { type: 'text', text: 'One.' }], 'end_turn'));
+  await f.append(f.row('second', [{ type: 'thinking', thinking: 'Check.' }, { type: 'thinking', thinking: 'Next. More.' },
+    { type: 'thinking', thinking: 'Transcript only.' }, { type: 'text', text: 'Two.' }], 'end_turn'));
+  await f.post({ hook_event_name: 'Stop', last_assistant_message: 'Two.' });
+  assert.equal((await f.waitResult()).subtype, 'success');
+  assert.equal(f.events.filter(e => e.type === 'interactive_reasoning').map(e => e.text).join(''),
+    'Check.Check.Next. More.Transcript only.');
+});
+
+test('thinking delivery rejects another session, invalid sequence and an unauthenticated request', async t => {
+  const f = await fixture(t); await f.begin();
+  assert.equal((await f.thinking('wrong', 0, { session_id: 'other' })).status, 400);
+  assert.equal((await f.thinking('wrong', 0, { cwd: '/other' })).status, 400);
+  assert.equal((await f.thinking('wrong', 1)).status, 400);
+  assert.equal((await f.thinking('wrong', -1)).status, 400);
+  assert.equal((await f.thinking('wrong', 0, {}, { headers: {} })).status, 403);
+  assert.equal((await f.thinking('wrong', 0, {}, { headers: { Origin: 'https://example.com' } })).status, 403);
+  assert.equal(f.events.some(e => e.type === 'interactive_reasoning'), false);
+  assert.equal((await f.thinking('')).status, 200);
+  assert.equal((await f.thinking('Accepted.')).status, 200);
+  assert.equal(f.events.filter(e => e.type === 'interactive_reasoning').length, 1);
 });
 
 test('repeated delivery of the same prompt hook is acknowledged without starting another turn', async t => {

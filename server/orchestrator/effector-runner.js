@@ -981,6 +981,7 @@ export function createRunnerEffector(options = {}) {
       });
 
       void (async () => {
+        let liveRoundIndex = 0;
         /** @type {import('../runner/run-turn').TurnResult} */
         let result;
         try {
@@ -1044,6 +1045,7 @@ export function createRunnerEffector(options = {}) {
             ask: null,
             onEvent: (event) => {
               if (!boardId) return;
+              if (event.type === 'round_start') liveRoundIndex = event.index;
               if (event?.type === 'round_end') {
                 const speed = modelRoundSpeed(event);
                 if (speed) entry.roundSpeeds.set(event.index, speed);
@@ -1059,12 +1061,16 @@ export function createRunnerEffector(options = {}) {
               const liveEvent = event?.type === 'round_start'
                 ? /** @type {import('../runner/run-turn').TurnEvent} */ ({ type: 'phase', phase: 'thinking' })
                 : event;
+              if (['delta', 'reasoning_end', 'round_start'].includes(event.type)) {
+                emitLive({ boardId, attemptId, taskId: desired.taskId, role: desired.role, roundIndex: liveRoundIndex, event });
+              }
               if (shouldEmitSubAgentLiveTurnEvent(liveEvent?.type)) {
                 emitLive({
                   boardId,
                   attemptId,
                   taskId: desired.taskId,
                   role: desired.role,
+                  roundIndex: liveRoundIndex,
                   event: liveEvent,
                 });
               }

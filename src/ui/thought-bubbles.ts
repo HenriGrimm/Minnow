@@ -54,9 +54,14 @@ export class ThoughtBubbleController {
   /** Cached joined segment text; cleared when reasoning text changes. */
   private joinedDisplayCache: string | null = null;
 
-  constructor(assistantWrap: HTMLElement, phaseCallbacks: ThoughtPhaseCallbacks = {}) {
+  private summaryTimer: ReturnType<typeof setInterval> | null = null;
+
+  private summaryStartedAt: number | null = null;
+
+  constructor(assistantWrap: HTMLElement, phaseCallbacks: ThoughtPhaseCallbacks = {}, private options: ThoughtsToggleOptions = {}) {
     this.assistantWrap = assistantWrap;
     this.phaseCallbacks = phaseCallbacks;
+    this.expanded = options.expanded ?? false;
   }
 
   /** Reset phase callbacks for a new streaming shell in the same user send (e.g. after tools). */
@@ -64,6 +69,23 @@ export class ThoughtBubbleController {
     this.thinkingStartNotified = false;
     this.reasoningPhaseEnded = false;
     this.anthropicThinkingSignature = null;
+    this.options.reasoningFormat = undefined;
+    this.summaryStartedAt = null;
+  }
+
+  setReasoningFormat(format: 'summary' | undefined): void {
+    if (this.options.reasoningFormat === format) return;
+    this.options.reasoningFormat = format;
+    if (!this.stageEl) return;
+    const expanded = this.expanded;
+    this.teardownStage();
+    this.expanded = expanded;
+    this.ensureThinkingPanel();
+    this.syncFlowContent();
+  }
+
+  getReasoningFormat(): 'summary' | undefined {
+    return this.options.reasoningFormat;
   }
 
   /** Discard reasoning from a failed attempt before a router restarts it. */
@@ -86,7 +108,7 @@ export class ThoughtBubbleController {
     this.expanded = expanded;
     if (!this.getJoinedDisplayText()) return;
     if (this.reasoningPhaseEnded) {
-      renderThoughtsToggle(wrap, this.getSegmentsNormalized(), { expanded, durationMs: this.elapsedMs ?? undefined });
+      renderThoughtsToggle(wrap, this.getSegmentsNormalized(), { ...this.options, expanded, durationMs: this.elapsedMs ?? undefined });
     } else {
       this.ensureThinkingPanel();
       this.syncFlowContent();
@@ -181,11 +203,14 @@ export class ThoughtBubbleController {
     const segments = this.getSegmentsNormalized();
     if (segments.length > 0) {
       renderThoughtsToggle(this.assistantWrap, segments, {
+        reasoningFormat: this.options.reasoningFormat,
+        onExpandedChange: this.options.onExpandedChange,
         expanded: wasExpanded,
         durationMs: durationMs != null && durationMs > 0 ? durationMs : undefined,
       });
       syncThoughtsCaretPulse(thoughtsScopeFromEl(this.assistantWrap));
     }
+    this.summaryStartedAt = null;
     this.phaseCallbacks.onReasoningEnded?.();
   }
 
@@ -247,6 +272,8 @@ export class ThoughtBubbleController {
   private ensureThinkingPanel(): void {
     if (this.disposed) return;
     if (this.stageEl && !this.stageEl.isConnected) {
+      if (this.summaryTimer != null) clearInterval(this.summaryTimer);
+      this.summaryTimer = null;
       this.stageEl = null;
       this.toggleBtn = null;
       this.caretEl = null;
@@ -260,6 +287,7 @@ export class ThoughtBubbleController {
 
       const panelWrap = document.createElement('div');
       panelWrap.className = 'thoughts-panel-wrap thoughts-panel-wrap--live';
+      if (this.options.reasoningFormat === 'summary') panelWrap.dataset.reasoningFormat = 'summary';
 
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -290,11 +318,36 @@ export class ThoughtBubbleController {
       btn.addEventListener('click', () => {
         this.expanded = !this.expanded;
         this.syncExpandedState();
+        this.options.onExpandedChange?.(this.expanded);
       });
 
       panelWrap.appendChild(btn);
       panelWrap.appendChild(flow);
       stage.appendChild(panelWrap);
+
+      if (this.options.reasoningFormat === 'summary') {
+        const activity = document.createElement('div');
+        activity.className = 'reasoning-summary-activity';
+        activity.setAttribute('role', 'status');
+        activity.setAttribute('aria-live', 'polite');
+        activity.title = 'Reasoning summaries arrive intermittently while the model works.';
+        const spinner = document.createElement('span');
+        spinner.className = 'tool-call-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.textContent = 'Working…';
+        const elapsed = document.createElement('span');
+        elapsed.className = 'reasoning-summary-activity__elapsed';
+        elapsed.setAttribute('aria-hidden', 'true');
+        activity.append(spinner, label, elapsed);
+        stage.appendChild(activity);
+        this.summaryStartedAt ??= performance.now();
+        const updateElapsed = () => {
+          elapsed.textContent = formatThinkingDuration(performance.now() - this.summaryStartedAt!);
+        };
+        updateElapsed();
+        this.summaryTimer = setInterval(updateElapsed, 1000);
+      }
 
       const label = this.assistantWrap.querySelector('.msg-label');
       const firstBubble = this.assistantWrap.querySelector('.msg-bubble');
@@ -342,8 +395,8 @@ export class ThoughtBubbleController {
     const labelEl = this.toggleBtn.querySelector('.thoughts-toggle__label');
     if (!labelEl) return;
 
-    let label = LIVE_THINKING_LABEL;
-    if (this.elapsedMs != null && this.elapsedMs > 0) {
+    let label = this.options.reasoningFormat === 'summary' ? 'Reasoning summary' : LIVE_THINKING_LABEL;
+    if (this.options.reasoningFormat !== 'summary' && this.elapsedMs != null && this.elapsedMs > 0) {
       label = `${LIVE_THINKING_LABEL} ${formatThinkingDuration(this.elapsedMs)}`;
     }
     labelEl.textContent = label;
@@ -351,6 +404,8 @@ export class ThoughtBubbleController {
   }
 
   private teardownStage(): void {
+    if (this.summaryTimer != null) clearInterval(this.summaryTimer);
+    this.summaryTimer = null;
     if (this.stageEl) {
       this.stageEl.remove();
       this.stageEl = null;
@@ -377,13 +432,14 @@ export function syncThoughtsCaretPulse(scope: HTMLElement | null): void {
     caret.classList.remove('thoughts-caret--pulse');
   }
   const last = carets[carets.length - 1];
-  if (last && !last.classList.contains('thoughts-caret--expanded')) {
+  if (last && !last.closest('[data-reasoning-format="summary"]') && !last.classList.contains('thoughts-caret--expanded')) {
     last.classList.add('thoughts-caret--pulse');
   }
 }
 
 /** Renders the "Thoughts" control and expandable flow above the assistant bubble. */
 export interface ThoughtsToggleOptions {
+  reasoningFormat?: 'summary';
   expanded?: boolean;
   durationMs?: number;
   /** Whether the collapsed caret pulses. */
@@ -419,6 +475,10 @@ export function renderThoughtsToggle(
 
   const panelWrap = document.createElement('div');
   panelWrap.className = 'thoughts-panel-wrap';
+  if (resolved.reasoningFormat === 'summary') {
+    panelWrap.dataset.reasoningFormat = 'summary';
+    panelWrap.title = 'A summary of the model’s reasoning, rather than its full internal thoughts.';
+  }
   if (resolved.pulse === true) {
     panelWrap.classList.add('thoughts-panel-wrap--live');
   }
@@ -433,7 +493,10 @@ export function renderThoughtsToggle(
 
   const durationMs = resolved.durationMs;
   const customLabel = typeof resolved.label === 'string' ? resolved.label.trim() : '';
-  if (customLabel) {
+  if (resolved.reasoningFormat === 'summary') {
+    labelSpan.textContent = 'Reasoning summary';
+    btn.setAttribute('aria-label', expanded ? 'Hide reasoning summary' : 'Show reasoning summary');
+  } else if (customLabel) {
     labelSpan.textContent = customLabel;
     btn.setAttribute('aria-label', expanded ? 'Hide reasoning' : customLabel);
   } else if (durationMs != null && durationMs > 0) {
@@ -449,7 +512,7 @@ export function renderThoughtsToggle(
   caret.className = 'thoughts-caret';
   if (expanded) {
     caret.classList.add('thoughts-caret--expanded');
-  } else if (resolved.pulse === true) {
+  } else if (resolved.pulse === true && resolved.reasoningFormat !== 'summary') {
     caret.classList.add('thoughts-caret--pulse');
   }
   caret.setAttribute('aria-hidden', 'true');
@@ -467,7 +530,6 @@ export function renderThoughtsToggle(
   content.className = 'thoughts-content';
   flow.appendChild(content);
   settledThoughtMarkdown.set(flow, list.join('\n\n'));
-  if (expanded) renderSettledThoughts(flow);
 
   btn.addEventListener('click', () => {
     const nowExpanded = Boolean(flow.hidden);
@@ -486,6 +548,7 @@ export function renderThoughtsToggle(
 
   panelWrap.appendChild(btn);
   panelWrap.appendChild(flow);
+  if (expanded) renderSettledThoughts(flow);
 
   const bubble = wrap.querySelector('.msg-bubble');
   if (bubble) {

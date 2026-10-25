@@ -27,7 +27,7 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
   | { type: 'loading_model' }
   | { type: 'model_selected'; providerId: string; modelId: string; routerId?: string; reasoning?: string; reasoningStatus?: string }
   | { type: 'delta'; text: string }
-  | { type: 'thinking'; text: string }
+  | { type: 'thinking'; text: string; reasoningFormat?: 'summary' }
   | { type: 'tool_streaming'; name: string }
   | { type: 'tool_call'; name: string; id?: string; arguments?: unknown }
   | {
@@ -69,6 +69,7 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
       index: number;
       text: string;
       reasoning: string;
+      reasoningFormat?: 'summary';
       reasoningBlocks?: import('../../src/types').AnthropicThinkingBlock[];
       toolCallCount: number;
       usage?: Record<string, unknown>;

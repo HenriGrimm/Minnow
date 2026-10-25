@@ -33,6 +33,53 @@ function assistantWrap() {
 }
 
 describe('ThoughtBubbleController', { concurrency: false }, () => {
+  test('summaries keep a separate working indicator through quiet gaps and expansion', (t) => {
+    setupDom();
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    let now = 0;
+    t.mock.method(performance, 'now', () => now);
+    const wrap = assistantWrap();
+    document.body.append(wrap);
+    const ctrl = new ThoughtBubbleController(wrap);
+    ctrl.setReasoningFormat('summary');
+    ctrl.appendReasoningDelta('**Inspecting files**');
+    const toggle = wrap.querySelector('.thoughts-toggle');
+    const activity = wrap.querySelector('.reasoning-summary-activity');
+    assert.equal(toggle.textContent, 'Reasoning summary');
+    assert.ok(activity.querySelector('.tool-call-spinner'));
+    assert.match(activity.textContent, /Working/);
+    toggle.click();
+    assert.equal(wrap.querySelector('.thoughts-flow').hidden, false);
+    assert.ok(activity.isConnected, 'expanding a summary does not hide activity');
+    now = 6000;
+    t.mock.timers.tick(6000);
+    assert.equal(activity.querySelector('.reasoning-summary-activity__elapsed').textContent, '6.0s');
+    ctrl.appendReasoningDelta('\n\nChecking the result.');
+    assert.equal(wrap.querySelector('.thoughts-toggle'), toggle);
+    assert.equal(wrap.querySelector('.reasoning-summary-activity'), activity);
+    ctrl.endReasoningPhase();
+    syncThoughtsCaretPulse(document.body);
+    assert.equal(wrap.querySelector('.reasoning-summary-activity'), null);
+    assert.equal(wrap.querySelector('.thoughts-toggle__label').textContent, 'Reasoning summary');
+    assert.equal(wrap.querySelector('.thoughts-caret--pulse'), null, 'settled summaries do not look active');
+    assert.match(wrap.querySelector('.thoughts-content').textContent, /Checking the result/);
+  });
+
+  test('summary activity is removed on abort and resets for a new response', () => {
+    setupDom();
+    const wrap = assistantWrap();
+    document.body.append(wrap);
+    const ctrl = new ThoughtBubbleController(wrap);
+    ctrl.setReasoningFormat('summary');
+    ctrl.appendReasoningDelta('Provider summary.');
+    ctrl.resetFailedResponse();
+    assert.equal(wrap.querySelector('.reasoning-summary-activity'), null);
+    ctrl.appendReasoningDelta('Directly streamed reasoning.');
+    assert.equal(wrap.querySelector('.thoughts-toggle__label').textContent, 'Thinking…');
+    ctrl.abort();
+    assert.equal(wrap.querySelector('.thought-stage'), null);
+  });
+
   test('reasoning prose is collapsed by default during streaming', () => {
     setupDom();
     const wrap = assistantWrap();

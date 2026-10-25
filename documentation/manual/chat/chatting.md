@@ -52,6 +52,8 @@ When the turn finishes it folds into one line — **Worked 6m 55s · 20 reads ·
 
 Choose **Settings → Appearance → Chat view → Full** to keep every step visible in the transcript. Tool calls and thoughts stay collapsed until you expand them. Switch back to **Compact** for the quieter view. The preference applies immediately and is saved across restarts; it changes only the display, not the conversation sent to the model.
 
+Claude and Codex reasoning summaries appear under **Reasoning summary**. A separate **Working…** indicator shows elapsed time and stays visible when you expand the summary. Summaries can arrive intermittently while the model continues working; a pause between updates does not mean the turn has stopped.
+
 You do not have to sit still and wait.
 
 **Type your next message and press Enter.** It queues, and runs when the current turn settles. The follow-up appears in the transcript as a muted **Queued** bubble (and in the compact strip above the composer) so it is not sent-and-forgotten. Edit, push it in as a steer, or delete it from either place. The bubble leaves as soon as that turn starts.

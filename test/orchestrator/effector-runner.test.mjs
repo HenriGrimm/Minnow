@@ -458,7 +458,9 @@ describe('runner effector', { concurrency: false }, () => {
       // Rounds open with a thinking frame, so a card never keeps naming a
       // finished tool while the model processes the next prompt.
       for (const attemptId of new Set(live.map((row) => row.attemptId))) {
+        assert.ok(live.filter(row => row.attemptId === attemptId).every(row => Number.isSafeInteger(row.roundIndex)));
         const frames = live.filter((row) => row.attemptId === attemptId).map((row) => row.event);
+        assert.ok(frames.some(event => event.type === 'round_start'), 'shared painter receives round boundaries');
         const opened = frames.findIndex((e) => e?.type === 'phase' && e.phase === 'thinking');
         const called = frames.findIndex((e) => e?.type === 'tool_call');
         assert.ok(opened !== -1 && opened < called, `round opened live before tool call for ${attemptId}`);

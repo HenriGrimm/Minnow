@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { killProcessTree, killProcessTreeAndWait } from '../../terminal-runner.js';
 import { cliHash } from './checkpoints.js';
 import { detectAgentCli } from '../../models/agent-cli-detect.js';
+import { prepareClaudeReasoningMod } from './claude-reasoning-mod.js';
 
 const MAX_TRANSCRIPT = 64 * 1024 * 1024;
 const MAX_HOOK = 16 * 1024 * 1024;
@@ -93,6 +94,8 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   let inFlight = false, submitted = false;
   let transcriptTimer, transcriptEpoch = 0;
   const reasoningBlocks = new Map();
+  const streamedThoughts = new Map();
+  let reasoningBytes = 0;
   const deferredCalls = [];
   let outputPaused = false, pendingBytes = 0;
   const pendingOutput = [];
@@ -128,9 +131,31 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
     const count = reasoningBlocks.get(message.id) ?? 0;
     const blocks = message.content.filter(b => b.type === 'thinking');
     for (const block of blocks.slice(count)) {
-      if (typeof block.thinking === 'string' && block.thinking) emit({ type: 'interactive_reasoning', text: block.thinking });
+      if (typeof block.thinking !== 'string' || !block.thinking) continue;
+      const streamed = [...streamedThoughts.values()].find(thought => !thought.recorded && block.thinking.startsWith(thought.text));
+      if (streamed) streamed.recorded = true;
+      const text = block.thinking.slice(streamed?.text.length ?? 0);
+      if (text) emit({ type: 'interactive_reasoning', text });
     }
     reasoningBlocks.set(message.id, blocks.length);
+  }
+  function receiveThinking(event) {
+    if (event.session_id !== nativeId || path.resolve(event.cwd ?? '') !== path.resolve(invocation.cwd)) throw new Error('Interactive Claude thinking identity mismatch.');
+    if (!inFlight) return;
+    if (typeof event.turn_id !== 'string' || !event.turn_id || event.turn_id.length > 128
+      || ![event.step_index, event.block_index, event.index].every(value => Number.isSafeInteger(value) && value >= 0)
+      || typeof event.delta !== 'string') throw new Error('Invalid Claude thinking event.');
+    if (!event.delta) return;
+    const key = `${event.turn_id}:${event.step_index}:${event.block_index}`;
+    const thought = streamedThoughts.get(key) ?? { next: 0, text: '', recorded: false };
+    if (event.index < thought.next) return;
+    if (event.index !== thought.next) throw new Error('Claude thinking stream arrived out of order.');
+    reasoningBytes += Buffer.byteLength(event.delta);
+    if (reasoningBytes > MAX_TRANSCRIPT || (streamedThoughts.size >= 4096 && !streamedThoughts.has(key))) throw new Error('Claude thinking exceeded its size limit.');
+    thought.next++;
+    thought.text += event.delta;
+    streamedThoughts.set(key, thought);
+    if (event.delta) emit({ type: 'interactive_reasoning', text: event.delta });
   }
   async function pollTranscript(epoch) {
     try {
@@ -209,11 +234,16 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   }
   const server = createServer(async (req, res) => {
     const supplied = Buffer.from(String(req.headers.authorization ?? ''));
-    if (closed || req.method !== 'POST' || req.url !== '/hook' || req.headers.origin || supplied.length !== secret.length || !timingSafeEqual(supplied, secret)) { res.writeHead(403).end(); return; }
+    if (closed || req.method !== 'POST' || !['/hook', '/thinking'].includes(req.url) || req.headers.origin || supplied.length !== secret.length || !timingSafeEqual(supplied, secret)) { res.writeHead(403).end(); return; }
     try {
       const chunks = []; let size = 0;
       for await (const chunk of req) { size += chunk.length; if (size > MAX_HOOK) { res.writeHead(413).end(); return; } chunks.push(chunk); }
       const event = JSON.parse(Buffer.concat(chunks));
+      if (req.url === '/thinking') {
+        receiveThinking(event);
+        res.writeHead(200, { 'content-type': 'application/json' }).end('{}');
+        return;
+      }
       if (event.hook_event_name === 'UserPromptSubmit') {
         const sameIdentity = event.session_id === nativeId && typeof event.cwd === 'string'
           && path.resolve(event.cwd) === path.resolve(invocation.cwd);
@@ -243,13 +273,17 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
   server.on('connection', s => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const settingsPath = path.join(invocation.cwd, 'claude-interactive-settings.json');
+  const reasoningMod = path.join(invocation.cwd, 'minnow-reasoning');
   try {
+    await prepareClaudeReasoningMod(invocation.cwd, {
+      url: `http://127.0.0.1:${server.address().port}/thinking`, token, sessionId: nativeId,
+    });
     const hook = { type: 'http', url: `http://127.0.0.1:${server.address().port}/hook`, headers: { Authorization: `Bearer ${token}` }, timeout: 5 };
     await fs.writeFile(settingsPath, JSON.stringify({ promptSuggestionEnabled: false,
       hooks: Object.fromEntries(['UserPromptSubmit', 'MessageDisplay', 'Stop', 'StopFailure', 'PreCompact'].map(name => [name, [{ hooks: [hook] }]])) }), { mode: 0o600 });
     const pty = spawnPty ?? (await import('@lydell/node-pty')).default.spawn;
     signal?.throwIfAborted();
-    terminal = pty(invocation.command, [...invocation.args, '--settings', settingsPath], { cwd: invocation.cwd, env: invocation.env, name: 'xterm-256color', cols: 140, rows: 40 });
+    terminal = pty(invocation.command, [...invocation.args, '--settings', settingsPath, '--plugin-dir', reasoningMod], { cwd: invocation.cwd, env: invocation.env, name: 'xterm-256color', cols: 140, rows: 40 });
     child.pid = terminal.pid; child.kill = signal => { terminal.kill(signal); return true; };
     terminal.onExit(event => {
       if (!closed && (!startupComplete || inFlight)) {
@@ -304,6 +338,7 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
         await killProcessTreeAndWait(child, { graceMs: 1500 });
       }
       await fs.rm(settingsPath, { force: true });
+      await fs.rm(reasoningMod, { recursive: true, force: true, maxRetries: 5 });
     })();
     return stopPromise;
   }
@@ -328,6 +363,7 @@ export async function openClaudeInteractive(invocation, { bridge, nativeId, conf
       if (failure || closed) throw failure ?? new Error('Interactive Claude session closed.');
       status('Sending message.');
       displayText = ''; emittedText = ''; committedText = ''; batches.clear(); lastCommitted = null; acceptedSubmission = null;
+      streamedThoughts.clear(); reasoningBytes = 0;
       expectedCommand = bridge.queuePrompt(content);
       inFlight = true;
       clearTimeout(transcriptTimer);

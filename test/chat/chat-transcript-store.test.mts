@@ -81,6 +81,20 @@ function install(chat: Chat): void {
 }
 
 describe('P10-D chat transcript decorator (MIN-769)', () => {
+  test('summary format survives persistence and resets before a raw reasoning round', () => {
+    const chat = makeChat();
+    install(chat);
+    const store = createChatTranscriptStore();
+    store.observe({ type: 'round_start', index: 0 });
+    store.observe({ type: 'thinking', text: 'A provider summary.', reasoningFormat: 'summary' });
+    store.append(chat.id, { role: 'assistant', content: 'Answer.' });
+    assert.equal((chat.history[1] as any).reasoningFormat, 'summary');
+    store.observe({ type: 'round_start', index: 1 });
+    store.observe({ type: 'thinking', text: 'Direct reasoning.' });
+    store.append(chat.id, { role: 'assistant', content: 'Next answer.' });
+    assert.equal((chat.history[2] as any).reasoningFormat, undefined);
+  });
+
   test('persists exact provider blocks separately from formatted thoughts and restores replay', async () => {
     const chat = makeChat();
     chat.modelId = 'claude-opus-5';

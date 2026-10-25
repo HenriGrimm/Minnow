@@ -2044,6 +2044,8 @@
 }
 
 .ov2-thread__body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   padding: 14px 4px 0 0;
@@ -2058,44 +2060,6 @@
   min-width: 0;
   flex-shrink: 0;
   align-self: center;
-}
-
-/* Shared chat closes an 18px gap with a negative margin; transcripts use 10px. */
-.ov2-thread__body.chat-thread > .tool-call-msg + .tool-call-msg {
-  margin-top: -6px;
-}
-
-.ov2-thread__body .transcript-view__assistant {
-  width: 100%;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.75;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.ov2-thread__body .transcript-view__assistant--partial {
-  white-space: pre-wrap;
-}
-
-.ov2-thread__body .transcript-view__assistant-turn {
-  gap: 10px;
-  margin: 0;
-}
-
-.ov2-thread__body.chat-thread > .transcript-view__user {
-  width: fit-content;
-  max-width: min(88%, 64ch);
-  align-self: flex-end;
-  padding: 13px 18px;
-  border: 0;
-  border-radius: 18px;
-  background: var(--mn-surface-2);
 }
 
 .ov2-thread__blank {

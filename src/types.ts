@@ -252,6 +252,8 @@ export interface AssistantMessage {
   content: string;
   /** Ordered reasoning segments from LM Studio (when Developer reasoning split is on). */
   thinking?: string[];
+  /** Provider-supplied reasoning summaries, distinct from directly streamed thoughts. */
+  reasoningFormat?: 'summary';
   /** Accumulated reasoning-active wall time for this reply (ms), not TTFT. */
   thinkingDurationMs?: number;
   /** User stopped generation before the model finished. */
@@ -272,6 +274,7 @@ export interface AssistantToolCallMessage {
   tool_calls: ToolCall[];
   /** Reasoning segments shown in UI; replayed to Anthropic when signature is set. */
   thinking?: string[];
+  reasoningFormat?: 'summary';
   /** Accumulated reasoning-active wall time for this tool-call reply (ms), not TTFT. */
   thinkingDurationMs?: number;
   /**

@@ -216,7 +216,8 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
           appendChunk(state, Buffer.from('data: [DONE]\n\n'));
         } else appendChunk(state, Buffer.from(JSON.stringify({ id: state.id, object: 'chat.completion', model: candidate.modelId,
           choices: [{ index: 0, message: { role: 'assistant', content: this.content || null,
-            ...(this.reasoning ? { reasoning: this.reasoning } : {}), ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata }))); };
+            ...(this.reasoning ? { reasoning: this.reasoning, ...(this.reasoningFormat ? { reasoning_format: this.reasoningFormat } : {}) } : {}),
+            ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata }))); };
         session.accepted = [...prepared.messages, { role: 'assistant', content: this.content.trim(),
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
@@ -236,13 +237,14 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         resolveRound({ outcome: 'complete' });
       },
     };
-    round.translate = createCodexTranslator(delta => {
+    round.translate = createCodexTranslator((delta, reasoningFormat) => {
       if (round.finished || controller.signal.aborted) return;
       if (metrics.first_delta_ms == null) metrics.first_delta_ms = performance.now() - initializedAt;
       const forwardingAt = performance.now();
       round.bytes += Buffer.byteLength(JSON.stringify(delta));
       if (round.bytes > 16 * 1024 * 1024) throw new Error('Codex output exceeded 16 MB.');
       round.content += delta.content ?? ''; round.reasoning += delta.reasoning ?? '';
+      if (reasoningFormat) { delta.reasoning_format = reasoningFormat; round.reasoningFormat = reasoningFormat; }
       round.choose();
       if (body.stream !== false) append(state, { choices: [{ index: 0, delta }] });
       metrics.forwarding_max_ms = Math.max(metrics.forwarding_max_ms ?? 0, performance.now() - forwardingAt);

@@ -936,7 +936,8 @@ export async function runTurn(options) {
         const thinking = activity?.partialReasoning;
         if (typeof thinking === 'string' && thinking && thinking !== lastThinking) {
           lastThinking = thinking;
-          emit(onEvent, { type: 'thinking', text: thinking });
+          emit(onEvent, { type: 'thinking', text: thinking,
+            ...(activity.reasoningFormat === 'summary' ? { reasoningFormat: 'summary' } : {}) });
         }
         const toolName =
           typeof activity?.currentToolName === 'string'

@@ -26,19 +26,16 @@ import { hasRunDebris } from '../../server/orchestrator/core/rewind.js';
 import { attemptInterruption } from './attempt-status';
 import { taskEditBlocker } from '../../server/orchestrator/core/task-edit.js';
 import type { TaskFileStat, LiveActivity } from './client';
-import { adaptAttemptTranscript, liveTailPhase, transcriptStructureKey } from './transcript-adapter';
+import { adaptAttemptConversation, liveTailPhase, transcriptStructureKey } from './transcript-adapter';
+import { createConversationView, type ConversationView } from '../chat/conversation-view';
+import type { TurnEvent } from '../../server/runner/run-turn';
+import type { ChatTranscriptPresentation } from '../ui/messages';
 import { renderAttemptScan, resetAttemptWriteUps } from './attempt-report';
 import { humanizeAbandonReason } from './attempt-scan';
 import { el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
 import { renderUnifiedPromptDiff } from '../ui/prompt-diff-unified';
 import { setAssistantBubbleContent } from '../markdown/renderer';
-import {
-  appendTranscriptLiveTail,
-  renderTranscriptView,
-  type TranscriptDisclosureState,
-} from '../ui/transcript-view';
-import type { SubAgentTranscriptLive } from '../ui/sub-agent-live-status';
 import { renderAttemptContext } from './attempt-context';
 import { renderAttemptModel } from './attempt-model';
 
@@ -56,6 +53,8 @@ interface SpecDraft {
 /** Which draft each mounted editor was built from. */
 const editorDrafts = new WeakMap<HTMLElement, SpecDraft>();
 
+const conversations = new Map<HTMLElement, { renderer: ConversationView; streaming: boolean }>();
+
 const ui = {
   followThread: true,
   threadScrollTop: 0,
@@ -64,8 +63,6 @@ const ui = {
   specEdit: null as SpecDraft | null,
   /** Files panel disclosure; defaults collapsed until the user opens it. */
   filesOpen: null as boolean | null,
-  /** Live Thoughts the user closed, keyed by attempt id. */
-  collapsedLiveThoughts: new Set<string>(),
   /** Settled Thoughts the user closed, keyed by attempt and message. */
   collapsedThoughts: new Set<string>(),
   /** Tool cards the user opened, keyed by attempt and tool call. */
@@ -75,6 +72,8 @@ const ui = {
 // ── Reset ────────────────────────────────────────────────────────────────────
 
 export function resetTaskDetailLogUi(): void {
+  for (const entry of conversations.values()) entry.renderer.dispose();
+  conversations.clear();
   ui.followThread = true;
   ui.threadScrollTop = 0;
 }
@@ -100,7 +99,6 @@ export function settleSpecEdit(taskId: string, error: string | null): void {
 export function resetTaskDetailUi(): void {
   resetTaskDetailLogUi();
   resetAttemptWriteUps();
-  ui.collapsedLiveThoughts.clear();
   ui.collapsedThoughts.clear();
   ui.expandedToolCalls.clear();
   ui.specOpen = null;
@@ -304,8 +302,19 @@ function syncThreadPane(
 
   const runState = attemptInterruption(state, attempt) ?? (attempt.ended ? 'ended' : 'running');
   let mode = threadMode;
-  if (pane.dataset.runState !== runState) mode = 'pane';
+  const stateChanged = pane.dataset.runState !== runState;
+  if (stateChanged) mode = body?.dataset.threadScroller === attempt.attemptId ? 'body' : 'pane';
   if (view.status === 'loading' || view.status === 'error') {
+    if (view.status === 'loading' && body?.dataset.threadScroller === attempt.attemptId) {
+      pane.dataset.runState = runState;
+      pane.dataset.attemptEnded = attempt.ended ? '1' : '0';
+      if (stateChanged) {
+        pane.querySelector('.ov2-thread__head')?.replaceWith(renderThreadHead(state, attempt, options));
+        conversations.get(body)?.renderer.sync({ history: [], openEvents: [], completedRound: -1,
+          isLive: !attempt.ended && !attemptInterruption(state, attempt), pendingToolStatus: attemptInterruption(state, attempt) ?? 'stopped' });
+      }
+      return;
+    }
     if (mode === 'tail') return;
     mode = 'pane';
   } else if (mode === 'auto') {
@@ -322,12 +331,15 @@ function syncThreadPane(
   }
 
   if (mode === 'pane' || !body) {
+    if (body) { conversations.get(body)?.renderer.dispose(); conversations.delete(body); }
     const next = renderThreadPane(state, task, options);
     pane.replaceWith(next);
     return;
   }
 
   pane.dataset.attemptEnded = attempt.ended ? '1' : '0';
+  pane.dataset.runState = runState;
+  if (stateChanged) pane.querySelector('.ov2-thread__head')?.replaceWith(renderThreadHead(state, attempt, options));
 
   const previousModel = pane.querySelector<HTMLElement>('.ov2-attempt-model');
   if (previousModel) {
@@ -344,19 +356,6 @@ function syncThreadPane(
       previousContext.replaceWith(nextContext);
       if (focused) nextContext.querySelector('summary')?.focus();
     }
-  }
-
-  if (mode === 'tail' && view.status === 'ready') {
-    const { messages } = adaptAttemptTranscript(view.events);
-    appendTranscriptLiveTail(
-      body,
-      threadLive(state, attempt, view, options.liveActivity?.get(task.id) ?? null),
-      messages,
-    );
-    if (body.querySelector('.transcript-view__live-tail')) {
-      body.querySelector('.ov2-empty')?.remove();
-    }
-    return;
   }
 
   paintThread(body, state, view, attempt, options.liveActivity?.get(task.id) ?? null);
@@ -909,12 +908,14 @@ function renderThreadPane(state: BoardState, task: TaskState, options: BoardView
   pane.appendChild(renderAttemptModel(options.transcript.events));
   pane.appendChild(renderAttemptContext(options.transcript.events));
 
-  const body = el('div', 'ov2-thread__body transcript-view__body chat-thread');
+  const body = el('div', 'ov2-thread__body chat-thread');
   body.dataset.threadScroller = attempt.attemptId;
   pane.appendChild(body);
 
   const view = options.transcript;
   if (view.status === 'loading') {
+    conversationFor(body, attempt).renderer.sync({ history: [], openEvents: [], completedRound: -1,
+      isLive: !attempt.ended && !attemptInterruption(state, attempt) });
     body.appendChild(renderSkeleton(5, 'ov2-skeleton ov2-skeleton--log'));
     return pane;
   }
@@ -981,37 +982,27 @@ function renderThreadPlaceholder(task: TaskState): HTMLElement {
   return wrap;
 }
 
-/**
- * Live tail for the open thread: prefer the SSE activity map (token-fresh)
- * over the last coalesced disk event.
- */
-function threadLive(
-  state: BoardState,
-  attempt: Attempt,
-  view: TranscriptView,
-  activity?: LiveActivity | null,
-): SubAgentTranscriptLive | undefined {
-  if (attempt.ended || attemptInterruption(state, attempt)) return undefined;
-  const tail = liveTailPhase(view.events);
-  const thinking = activity?.kind === 'thinking';
-  const tool = activity?.kind === 'tool';
-  const writing = activity?.kind === 'writing';
-  // A phase frame can land before the frame that names what is happening, so an
-  // empty live text falls back to the transcript's tail rather than blanking.
-  const reasoning = thinking && activity.text ? activity.text : tail.reasoning;
-  const toolName = tool && activity.text ? activity.text : tail.toolName;
-  const phase = thinking ? 'thinking' : tool ? 'tools' : writing ? 'generating' : tail.phase;
-  return {
-    isLive: true,
-    phase,
-    currentToolName: toolName ?? null,
-    ...(reasoning ? { partialReasoning: reasoning } : {}),
-    thoughtsExpanded: !ui.collapsedLiveThoughts.has(attempt.attemptId),
-    onThoughtsExpandedChange: (expanded) => {
-      if (expanded) ui.collapsedLiveThoughts.delete(attempt.attemptId);
-      else ui.collapsedLiveThoughts.add(attempt.attemptId);
-    },
-  };
+/** Forward the selected attempt's runner events into the main chat painter. */
+export function applyTaskDetailTurnEvent(overlay: HTMLElement, attemptId: string, event: TurnEvent, roundIndex?: number): void {
+  const pane = overlay.querySelector<HTMLElement>('.ov2-thread');
+  const body = pane?.querySelector<HTMLElement>('[data-thread-scroller]');
+  if (!body || body.dataset.threadScroller !== attemptId || pane?.dataset.runState !== 'running') return;
+  const entry = conversations.get(body);
+  if (!entry) return;
+  entry.streaming = true;
+  body.querySelector('.ov2-empty')?.remove();
+  body.querySelector('.ov2-skeleton')?.remove();
+  entry.renderer.onEvent(event, roundIndex);
+}
+
+function conversationFor(body: HTMLElement, attempt: Attempt) {
+  let entry = conversations.get(body);
+  if (!entry) {
+    entry = { renderer: createConversationView(body, { id: attempt.attemptId, modeId: 'build' },
+      threadDisclosureState(attempt.attemptId), () => restoreThreadScroll(body, true)), streaming: false };
+    conversations.set(body, entry);
+  }
+  return entry;
 }
 
 function paintThread(
@@ -1021,71 +1012,37 @@ function paintThread(
   attempt: Attempt,
   activity?: LiveActivity | null,
 ): void {
-  const { messages, end } = adaptAttemptTranscript(view.events);
   const interruption = attemptInterruption(state, attempt);
-  const live = !attempt.ended && !interruption;
+  const snapshot = adaptAttemptConversation(view.events, !attempt.ended);
+  if (interruption) snapshot.isLive = false;
   body.dataset.chatView = 'full';
   body.dataset.structureKey = transcriptStructureKey(view.events);
-
-  if (messages.length === 0 && !end) {
-    body.replaceChildren();
-    if (live) {
-      appendTranscriptLiveTail(body, threadLive(state, attempt, view, activity), messages);
-      if (body.childNodes.length > 0) {
-        restoreThreadScroll(body, true);
-        return;
-      }
-    }
-    body.appendChild(
-      empty(
-        live
-          ? 'Nothing yet. The thread starts at the first thought or tool call.'
-          : 'Nothing was recorded for this attempt.',
-      ),
-    );
-    return;
+  body.querySelector('.ov2-empty')?.remove();
+  body.querySelector('.ov2-thread__note')?.remove();
+  body.querySelector('.ov2-thread__end')?.remove();
+  const entry = conversationFor(body, attempt);
+  entry.renderer.sync({ ...snapshot, pendingToolStatus: interruption ?? (attempt.ended ? 'stopped' : undefined) });
+  if (snapshot.isLive && !entry.streaming) {
+    const current = activity?.attemptId === attempt.attemptId ? activity : null;
+    const tail = liveTailPhase(view.events);
+    const phase = current?.kind === 'thinking' ? 'thinking' : current?.kind === 'tool' ? 'tools' : current?.kind === 'writing' ? 'generating' : tail.phase;
+    if (current?.kind === 'thinking' && current.text) entry.renderer.onEvent({ type: 'thinking', text: current.text });
+    entry.renderer.flush();
+    entry.renderer.setPhase(phase, current?.kind === 'tool' ? current.text : tail.toolName);
   }
-
-  // The shared renderer owns this element and clears it, so the note about a
-  // shortened thread goes in after, not before. It needs the live descriptor:
-  // that is what marks the open turn's Thoughts panel live, and only a panel
-  // mounted that way keeps growing as mid-chain reasoning streams in.
-  renderTranscriptView(
-    body,
-    messages,
-    live ? threadLive(state, attempt, view, activity) : undefined,
-    threadDisclosureState(attempt.attemptId),
-    { pendingToolStatus: interruption ?? (attempt.ended ? 'stopped' : undefined) },
-  );
-  renderThreadProse(body);
-
+  if (!body.childNodes.length && !snapshot.end) {
+    body.appendChild(empty(snapshot.isLive ? 'Nothing yet. The thread starts at the first thought or tool call.' : 'Nothing was recorded for this attempt.'));
+  }
   if (view.capped || view.truncated) {
-    body.prepend(
-      el(
-        'p',
-        'ov2-panel__note ov2-thread__note',
-        view.capped
-          ? 'This attempt ran longer than the transcript keeps. The earliest of it was dropped.'
-          : 'Showing the most recent of a long thread.',
-      ),
-    );
+    body.prepend(el('p', 'ov2-panel__note ov2-thread__note', view.capped
+      ? 'This attempt ran longer than the transcript keeps. The earliest of it was dropped.'
+      : 'Showing the most recent of a long thread.'));
   }
-
-  if (!live && end) {
-    body.appendChild(renderThreadEnd(end.outcome, end.summary));
-  }
-
-  restoreThreadScroll(body, live);
+  if (!snapshot.isLive && snapshot.end) body.appendChild(renderThreadEnd(snapshot.end.outcome, snapshot.end.summary));
+  restoreThreadScroll(body, snapshot.isLive);
 }
 
-/** Board threads always show activity in the reading flow. */
-function renderThreadProse(body: HTMLElement): void {
-  for (const prose of body.querySelectorAll<HTMLElement>('.transcript-view__assistant:not(.transcript-view__assistant--partial)')) {
-    setAssistantBubbleContent(prose, prose.textContent ?? '');
-  }
-}
-
-function threadDisclosureState(attemptId: string): TranscriptDisclosureState {
+function threadDisclosureState(attemptId: string): ChatTranscriptPresentation {
   const key = (kind: 'thought' | 'tool', id: string) => `${attemptId}:${kind}:${id}`;
   const sync = (set: Set<string>, stateKey: string, expanded: boolean) => {
     if (expanded) set.delete(stateKey);
