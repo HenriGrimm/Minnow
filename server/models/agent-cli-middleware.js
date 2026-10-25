@@ -89,6 +89,7 @@ export async function getAgentCliStatus(kind, options = {}) {
     hasCliToken: Boolean(secrets.cliToken?.trim()),
     allowUtilityRoles: agentCli.allowUtilityRoles === true,
     maxConcurrent: agentCli.maxConcurrent,
+    ...(typeof agentCli.interactive === 'boolean' ? { interactive: agentCli.interactive } : {}),
     ...(typeof agentCli.contextWindowTokens === 'number' ? { contextWindowTokens: agentCli.contextWindowTokens } : {}),
     ...(typeof agentCli.maxBudgetUsd === 'number'
       ? { maxBudgetUsd: agentCli.maxBudgetUsd }

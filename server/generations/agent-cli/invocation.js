@@ -299,6 +299,9 @@ export async function prepareAgentCliInvocation(input) {
     if (process.env.CURSOR_AUTH_TOKEN) env.CURSOR_AUTH_TOKEN = process.env.CURSOR_AUTH_TOKEN;
   }
   if (kind === 'claude') {
+    // Inline tool programs do not have the tool_use transcript boundaries our
+    // MCP handoff/checkpoint protocol verifies. Keep native calls on that path.
+    env.CLAUDE_CODE_INLINE_TOOLS = '0';
     // Minnow owns tool execution and waits for answers before continuing.
     // Claude must neither abandon a quiet handoff nor background it mid-question.
     env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT = '0';

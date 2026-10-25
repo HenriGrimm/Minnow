@@ -29,6 +29,7 @@ for (const kind of ['claude', 'codex', 'cursor']) {
     assert.equal(result.env.MINNOW_CLI_BRIDGE_TOKEN, 'generation-token');
     assert.equal(result.env.SECRET_FROM_MODEL, undefined);
     if (kind === 'claude') {
+      assert.equal(result.env.CLAUDE_CODE_INLINE_TOOLS, '0');
       assert.equal(result.env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT, '0');
       assert.equal(result.env.CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS, '0');
     }
@@ -59,7 +60,14 @@ test('interactive Claude uses a real terminal contract with no print flags or ba
   assert.equal(result.env.DISABLE_AUTOUPDATER, '1');
   assert.equal(result.env.CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT, '0');
   assert.equal(result.env.CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS, '0');
+  assert.equal(result.env.CLAUDE_CODE_INLINE_TOOLS, '0');
   await assert.rejects(prepareAgentCliInvocation({ ...common, kind: 'claude', interactive: true, profile: { maxBudgetUsd: 1 } }), /do not support.*budget/);
+});
+
+test('Claude bridge configuration cannot enable unsupported inline tool programs', async () => {
+  const result = await prepareAgentCliInvocation({ ...common, kind: 'claude',
+    bridgeConfig: { ...common.bridgeConfig, env: { ...common.bridgeConfig.env, CLAUDE_CODE_INLINE_TOOLS: '1' } } });
+  assert.equal(result.env.CLAUDE_CODE_INLINE_TOOLS, '0');
 });
 
 test('Codex global controls precede exec subcommand', async () => {

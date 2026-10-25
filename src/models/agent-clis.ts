@@ -68,6 +68,7 @@ export interface AgentCliStatus {
   maxBudgetUsd?: number;
   contextWindowTokens?: number;
   sessionMode: 'auto' | 'replay';
+  interactive?: boolean;
   transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
   restartResumeSupported?: boolean;
   fallbackReason?: string;
@@ -79,6 +80,7 @@ export interface AgentCliStatus {
 }
 
 export interface AgentCliSettingsPatch {
+  interactive?: boolean;
   binPath?: string | null;
   allowUtilityRoles?: boolean;
   maxConcurrent?: number;

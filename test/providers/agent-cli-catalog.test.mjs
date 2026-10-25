@@ -86,6 +86,12 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.equal(validateAgentCliProfile({ kind: 'cursor', sessionMode: 'auto' }).sessionMode, 'auto');
   });
 
+  test('Claude transport selection is an optional boolean', () => {
+    assert.equal(validateAgentCliProfile({ kind: 'claude', interactive: false }).interactive, false);
+    assert.equal(validateAgentCliProfile({ interactive: true }, { partial: true }).interactive, true);
+    assert.throws(() => validateAgentCliProfile({ kind: 'claude', interactive: 'false' }), /Invalid agentCli interactive/);
+  });
+
   test('returns selectable rows with known context, reasoning, and vision', () => {
     for (const providerId of AGENT_CLI_PROVIDER_IDS) {
       const kind = agentCliKindForProviderId(providerId);

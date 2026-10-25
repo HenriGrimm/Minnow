@@ -1755,6 +1755,7 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   crashReporter.start({ uploadToServer: false, compress: true });
+  crashLog.installStdioErrorHandlers();
 
   process.on('uncaughtException', (err) => {
     crashLog.logCrash({

@@ -243,6 +243,18 @@ describe('agent CLI model routes', () => {
     }
   });
 
+  test('Claude stream-json selection survives unrelated settings updates', async () => {
+    const update = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { interactive: false });
+    assert.equal(update.status, 200);
+    assert.equal(update.json.agentCli.interactive, false);
+    await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { maxConcurrent: 1 });
+    assert.equal((await getProviderRuntime('claude-code-cli')).profile.agentCli.interactive, false);
+    const invalid = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { interactive: 'false' });
+    assert.equal(invalid.status, 400);
+    const reset = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { interactive: true });
+    assert.equal(reset.status, 200);
+  });
+
   test('context windows persist, propagate through catalog/probes, and reset to automatic', async () => {
     const model = { providerId: 'claude-code-cli', id: 'sonnet' };
     // Warm the real runner's minute-long cache before the settings mutation.

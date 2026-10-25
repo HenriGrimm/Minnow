@@ -16,6 +16,8 @@ export interface AgentCliSettings {
   maxBudgetUsd?: number;
   contextWindowTokens?: number;
   sessionMode: 'auto' | 'replay';
+  /** Claude only: false selects the persistent stream-json transport. */
+  interactive?: boolean;
 }
 export type AuthStyle = 'bearer' | 'api-key' | 'x-api-key';
 export type ProviderId = string;

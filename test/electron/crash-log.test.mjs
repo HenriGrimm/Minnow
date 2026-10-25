@@ -3,11 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
+import { EventEmitter } from 'node:events';
 import {
   clearLastCrashMarker,
   clearOomPauseMarker,
   flushCrashLogSync,
   logCrash,
+  installStdioErrorHandlers,
+  MAX_CRASH_LOG_BYTES,
   readLastCrashMarker,
   readOomPauseMarker,
   resetCrashLogDirCache,
@@ -33,6 +36,7 @@ describe('crash-log', () => {
   });
 
   afterEach(() => {
+    flushCrashLogSync();
     resetCrashLogDirCache();
     if (savedHome === undefined) {
       delete process.env.MINNOW_HOME;
@@ -83,6 +87,30 @@ describe('crash-log', () => {
       resolveCrashLogDir({ override: logsUnderBad });
       logCrash({ kind: 'ignored', message: 'should not throw' });
     });
+  });
+
+  test('closed launcher pipes do not feed an uncaught-exception logging loop', () => {
+    const stream = new EventEmitter();
+    const dispose = installStdioErrorHandlers([stream]);
+    try {
+      for (let i = 0; i < 100; i++) stream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      stream.emit('error', Object.assign(new Error('other stream failure'), { code: 'EIO' }));
+      flushCrashLogSync();
+      const rows = fs.readFileSync(path.join(resolveCrashLogDir(), 'crash.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].message, 'other stream failure');
+    } finally { dispose(); }
+    assert.equal(stream.listenerCount('error'), 0);
+  });
+
+  test('crash logs rotate before the next flush exceeds the size limit', () => {
+    const file = path.join(resolveCrashLogDir(), 'crash.jsonl');
+    fs.writeFileSync(file, 'x'.repeat(MAX_CRASH_LOG_BYTES));
+    logCrash({ kind: 'after-rotation', message: 'new diagnostic' });
+    flushCrashLogSync();
+    assert.equal(fs.statSync(`${file}.1`).size, MAX_CRASH_LOG_BYTES);
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).kind, 'after-rotation');
+    assert.ok(fs.statSync(file).size < MAX_CRASH_LOG_BYTES);
   });
 
   test('last crash marker round-trip and clear', () => {
