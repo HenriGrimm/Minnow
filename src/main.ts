@@ -1,4 +1,3 @@
-import './styles/tokens.css';
 import './styles/theme-transitions.css';
 import './styles/global.css';
 import './styles/icons.css';

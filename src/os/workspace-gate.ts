@@ -16,6 +16,7 @@ import { hasViewWorkspace } from '../state/view-workspace';
 import { getAppWindowId, isAppWindowRenderer } from './app-window';
 import { openShellOverlay, shellOverlayClosed } from '../ui/shell-overlay-state';
 import { isMobileShell } from '../mobile/mode';
+import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,13 @@ function showGateElement(): void {
   welcome.classList.add('welcome-page--os-overlay');
   gateOpen = true;
   document.documentElement.classList.add('os-workspace-gate-open');
+  markPreviewOccluder(gate, 'panel');
+  syncPreviewVisibility();
+}
+
+function syncPreviewVisibility(): void {
+  if (!window.minnow?.preview) return;
+  void import('../ui/preview-electron-visibility').then((m) => m.scheduleElectronPreviewHostVisibilitySync());
 }
 
 function hideGateElement(): void {
@@ -115,10 +123,14 @@ function hideGateElement(): void {
   const welcome = getWelcomeRoot();
   gateOpen = false;
   setGateOpening(false);
-  if (gate) gate.hidden = true;
+  if (gate) {
+    gate.hidden = true;
+    unmarkPreviewOccluder(gate);
+  }
   welcome?.classList.remove('is-open', 'welcome-page--os-overlay');
   if (welcome) welcome.hidden = true;
   document.documentElement.classList.remove('os-workspace-gate-open');
+  syncPreviewVisibility();
 }
 
 /**

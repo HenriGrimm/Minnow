@@ -21,9 +21,9 @@ export const APP_READY_CHROME_TIMEOUT_MS = 15_000;
 export const APP_LOADER_REMOVE_DELAY_MS = 260;
 
 /**
- * Sentinel custom property declared on `:root` by `styles/tokens.css`. The inline
- * critical CSS in `index.html` only *consumes* tokens (with fallbacks) and declares
- * none, so resolving this proves the bundled stylesheet is applied.
+ * Sentinel custom property declared on `:root` by `styles/global.css`. The inline
+ * palette stylesheet and inline loader CSS do not declare this sentinel, so
+ * resolving it proves the main app stylesheet is applied.
  */
 export const APP_CSS_READY_PROPERTY = '--mn-app-css-ready';
 

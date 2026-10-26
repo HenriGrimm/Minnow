@@ -73,6 +73,9 @@ export function isNonCodeOsAppLayerActive(): boolean {
 
 /** True when a full-screen app covers the workspace (Issues, settings, etc.). */
 export function isFullscreenOverlayObscuringWorkspace(): boolean {
+  // The gate remains an opaque cover while opening, even with pointer events
+  // disabled. Hit-testing alone cannot detect it during that handoff.
+  if (isWorkspaceGateVisible()) return true;
   for (const id of FULLSCREEN_OVERLAY_IDS) {
     const el = document.getElementById(id);
     if (!el?.classList.contains('is-open')) continue;
@@ -82,6 +85,10 @@ export function isFullscreenOverlayObscuringWorkspace(): boolean {
     return true;
   }
   return isNonCodeOsAppLayerActive();
+}
+
+function isWorkspaceGateVisible(): boolean {
+  return typeof document !== 'undefined' && document.getElementById('osWorkspaceGate')?.hidden === false;
 }
 
 /** True when the Minnow wiki overlay (#/wiki) covers the workspace. */
@@ -143,7 +150,7 @@ const NOT_OBSCURED: PreviewHostOcclusion = { obscured: false, notification: fals
 export function readPreviewHostOcclusion(host: HTMLElement): PreviewHostOcclusion {
   const overlaps = getPreviewOccluders(host);
   return {
-    obscured: isPreviewHideHeld() || overlaps.length > 0,
+    obscured: isWorkspaceGateVisible() || isPreviewHideHeld() || overlaps.length > 0,
     notification: overlaps.some((overlap) => overlap.kind === 'notification'),
   };
 }
