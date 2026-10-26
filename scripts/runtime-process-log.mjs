@@ -2,10 +2,43 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Transform } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const KEEP_RUNS = 10;
 const RUN_FILE = /^(\d{13}-\d+-[a-f0-9]{8})\.(stdout|stderr|events)\.log(?:\.[12])?$/;
+const UNUSED_ONNX_INITIALIZER = /^\d{4}-\d{2}-\d{2} [\d:.]+ \[W:onnxruntime:, graph\.cc:\d+ onnxruntime::Graph::CleanUnusedInitializersAndNodeArgs\] Removing initializer '[^\r\n]*'\. It is not used by any node and should be removed from the model\.\r?\n?$/;
+
+/** Hide benign model-export cleanup noise in the terminal; raw logs retain it. */
+export function createServerStderrEcho() {
+  const decoder = new StringDecoder('utf8');
+  let pending = '';
+  function emitLines(stream, text, flush = false) {
+    pending += text;
+    let end;
+    while ((end = pending.indexOf('\n')) !== -1) {
+      const line = pending.slice(0, end + 1);
+      pending = pending.slice(end + 1);
+      if (!UNUSED_ONNX_INITIALIZER.test(line)) stream.push(line);
+    }
+    // Bound buffering for native output without newlines.
+    if (flush || pending.length > 64 * 1024) {
+      if (!UNUSED_ONNX_INITIALIZER.test(pending)) stream.push(pending);
+      pending = '';
+    }
+  }
+  return new Transform({
+    transform(chunk, encoding, done) {
+      emitLines(this, decoder.write(chunk));
+      done();
+    },
+    flush(done) {
+      emitLines(this, decoder.end(), true);
+      done();
+    },
+  });
+}
 
 function isAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; }
@@ -80,7 +113,12 @@ export function observeRuntimeProcess(child, role, { echo = true, ...options } =
   child.once('error', (error) => log.event('spawn-error', { code: error.code, message: error.message }));
   for (const stream of ['stdout', 'stderr']) {
     child[stream]?.on('data', (chunk) => log.write(stream, chunk));
-    if (echo) child[stream]?.pipe(process[stream], { end: false });
+    if (echo) {
+      const source = role === 'server' && stream === 'stderr' && (options.env ?? process.env).MINNOW_DEBUG !== '1'
+        ? child[stream]?.pipe(createServerStderrEcho())
+        : child[stream];
+      source?.pipe(process[stream], { end: false });
+    }
   }
   child.once('exit', (code, signal) => log.event('exit', { pid: child.pid, code, signal }));
   child.once('close', (code, signal) => log.event('close', { pid: child.pid, code, signal }));

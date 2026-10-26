@@ -5,7 +5,38 @@ import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRuntimeLog, observeRuntimeProcess } from '../../scripts/runtime-process-log.mjs';
+import { createRuntimeLog, observeRuntimeProcess, createServerStderrEcho } from '../../scripts/runtime-process-log.mjs';
+
+const initializerWarning = "2026-10-26 01:02:33.8904136 [W:onnxruntime:, graph.cc:3490 onnxruntime::Graph::CleanUnusedInitializersAndNodeArgs] Removing initializer '/model/decoder/layers.1/final_layer_norm/Constant_output_0'. It is not used by any node and should be removed from the model.";
+
+test('terminal filter handles split warnings and UTF-8 while preserving other diagnostics and final tails', async () => {
+  const filter = createServerStderrEcho();
+  let output = '';
+  filter.on('data', (chunk) => { output += chunk; });
+  const ended = once(filter, 'end');
+  const warning = Buffer.from(`${initializerWarning}\r\n`);
+  filter.write(warning.subarray(0, 83));
+  filter.write(warning.subarray(83));
+  const useful = `Other warning: café\n${initializerWarning.replace('[W:', '[E:')}\n`;
+  for (const byte of Buffer.from(useful)) filter.write(Buffer.from([byte]));
+  filter.write(`${initializerWarning}\n${initializerWarning}\n`);
+  filter.end('fatal tail without newline');
+  await ended;
+  assert.equal(output, `${useful}fatal tail without newline`);
+});
+
+test('terminal filter bounds buffering for long native diagnostics', async () => {
+  const filter = createServerStderrEcho();
+  let output = '';
+  filter.on('data', (chunk) => { output += chunk; });
+  const ended = once(filter, 'end');
+  const long = 'x'.repeat(128 * 1024);
+  filter.write(long);
+  assert.equal(output, long);
+  filter.end('tail');
+  await ended;
+  assert.equal(output, `${long}tail`);
+});
 
 function scratch(t) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-runtime-log-'));
@@ -130,6 +161,33 @@ test('server launcher echoes output, preserves failure status and saves diagnost
   const events = fs.readdirSync(directory).find((file) => file.endsWith('.events.log'));
   assert.match(fs.readFileSync(path.join(directory, events), 'utf8'), /"kind":"exit".*"code":23/);
 });
+
+for (const debug of ['0', '1']) {
+  test(`server terminal hides only initializer cleanup noise and retains raw stderr (debug=${debug})`, async (t) => {
+    const env = scratch(t);
+    const logger = new URL('../../scripts/runtime-process-log.mjs', import.meta.url).href;
+    const supervisor = path.join(env.MINNOW_HOME, 'supervisor.mjs');
+    const diagnostic = `${initializerWarning}\nOther ONNX warning\nfatal tail`;
+    fs.writeFileSync(supervisor, `
+      import { spawn } from 'node:child_process';
+      import { observeRuntimeProcess } from ${JSON.stringify(logger)};
+      const child = spawn(process.execPath, ['-e', ${JSON.stringify(`process.stderr.write(${JSON.stringify(diagnostic)}); process.exitCode = 23;`)}], { stdio: 'pipe' });
+      observeRuntimeProcess(child, 'server');
+      child.on('close', (code) => { process.exitCode = code; });
+    `);
+    const wrapper = spawn(process.execPath, [supervisor], {
+      env: { ...process.env, ...env, MINNOW_DEBUG: debug }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stderr = '';
+    wrapper.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [code] = await once(wrapper, 'close');
+    assert.equal(code, 23);
+    assert.equal(stderr, debug === '1' ? diagnostic : 'Other ONNX warning\nfatal tail');
+    const directory = path.join(env.MINNOW_HOME, 'logs', 'runtime', 'server');
+    const file = fs.readdirSync(directory).find((name) => name.endsWith('.stderr.log'));
+    assert.equal(fs.readFileSync(path.join(directory, file), 'utf8'), diagnostic);
+  });
+}
 
 test('detached shell supervisor stays alive until final output and exit are recorded', async (t) => {
   const env = scratch(t);
