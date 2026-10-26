@@ -15,7 +15,7 @@ After this work:
 - **Marked overlays are found automatically.** Any element with the class `mn-occludes-preview` is detected; no feature calls a register function.
 - **The guest hides only when covered.** It steps aside only when a marked overlay's box intersects that preview host's box *and* a hit-test at the overlap centre confirms the overlay is painted on top. A menu on the far side of the window leaves the page live.
 - **No wait or flash on hide.** While the guest is visible, a cached JPEG of the page refreshes about once a second. The cached frame shows synchronously before the native view hides.
-- **No zero-sizing mid-capture.** The main process never resizes a guest to 0×0 while a `capturePage` copy is in flight, which is the macOS hang described in `documentation/plans/browser-screenshot-macos-freeze.md`.
+- **No zero-sizing mid-capture.** The main process never resizes a guest to 0×0 while a `capturePage` copy is in flight, as a preventative surface-lifetime race mitigation discussed in `documentation/plans/browser-screenshot-macos-freeze.md`.
 - **Toasts work and say why.** Toasts are marked overlays. When a notification is what covers the page, the frozen frame shows "Paused while a notification is open".
 - **Secondary hosts get the same check.** The secondary split preview and the Reef preview (`src/ui/preview-instance-host.ts`) use the per-element overlap check instead of the global counter.
 
@@ -88,7 +88,7 @@ The steps below call this `RUN_TS <file>`.
 ## Implementation steps
 
 ### 1. Overlay tracker module
-- [ ] `src/ui/preview-occlusion.ts` detects marked overlays covering a given host element, with injectable geometry.
+- [x] `src/ui/preview-occlusion.ts` detects marked overlays covering a given host element, with injectable geometry.
 - Changes: Create the tracker module with the following parts.
   - **Exports:**
     - `PREVIEW_OCCLUDER_CLASS = 'mn-occludes-preview'` and `PREVIEW_OCCLUDER_HIT_EXCLUDE_CLASS = 'mn-occluder-hit-exclude'`.
@@ -113,7 +113,7 @@ The steps below call this `RUN_TS <file>`.
   - (h) Toggling the `style` attribute of a marked element invalidates its cached rect: the next `getOverlaps` calls `getRect` again.
 
 ### 2. Main-process capture gate and placeholder capture IPC
-- [ ] The native host never zero-sizes a view mid-capture, and exposes a JPEG placeholder capture that never reveals a hidden guest.
+- [x] The native host never zero-sizes a view mid-capture, and exposes a JPEG placeholder capture that never reveals a hidden guest.
 - Changes: Add the gate, the deferred hide, the JPEG option and the placeholder channel.
   - **Capture gate.** Create `electron/preview-capture-gate.ts` with `createPreviewCaptureGate()` returning:
     - `track<T>(key: object, capture: Promise<T>): Promise<T>`
@@ -139,7 +139,7 @@ The steps below call this `RUN_TS <file>`.
   - `RUN_TS test/electron/preview-guest-reveal.test.mts test/electron/preview-browser-actions.test.mjs` still passes.
 
 ### 3. Cached frame per host
-- [ ] `src/ui/preview-popover-snapshot.ts` keeps an always-mounted hidden frame per host, refreshed about once a second while that host's guest is visible.
+- [x] `src/ui/preview-popover-snapshot.ts` keeps an always-mounted hidden frame per host, refreshed about once a second while that host's guest is visible.
 - Changes: Extend `src/ui/preview-popover-snapshot.ts` and its styles.
   - **Cache API.** Add `startPreviewFrameCache(host: HTMLElement, instanceId?: string): () => void`:
     - Creates `img.preview-popover-snapshot` with `hidden = true`, `alt=''`, `aria-hidden`.
@@ -157,7 +157,7 @@ The steps below call this `RUN_TS <file>`.
   - The existing four tests still pass.
 
 ### 4. Wire the tracker into primary and secondary visibility
-- [ ] Guest visibility depends on actual overlap of the host plus force-hide holds, not on a global counter.
+- [x] Guest visibility depends on actual overlap of the host plus force-hide holds, not on a global counter.
 - Changes: Update the primary gate, its lifecycle and the secondary hosts.
   - **Primary gate (`src/ui/preview-electron-visibility.ts`).**
     - Rename `chromePopoverOpenCount` / `registerChromePopover` / `unregisterChromePopover` / `isChromePopoverOpen` / `resetChromePopoverRegistryForTests` to `previewHideHoldCount` / `holdPreviewGuestHidden` / `releasePreviewGuestHidden` / `isPreviewHideHeld` / `resetPreviewHideHoldsForTests`.
@@ -184,7 +184,7 @@ The steps below call this `RUN_TS <file>`.
   - An instance host obscured only on its own element hides that instance and not the primary.
 
 ### 5. Paused message for notifications
-- [ ] A frozen frame caused by a notification says why.
+- [x] A frozen frame caused by a notification says why.
 - Changes: Add the paused-message helper, call it, and style it.
   - **Helper.** In `src/ui/preview-popover-snapshot.ts` add `setPreviewPausedMessage(host: HTMLElement, visible: boolean): void`. It lazily creates `.preview-paused` containing `.preview-paused__heading` ("Paused while a notification is open") and `.preview-paused__detail` ("Dismiss the notification to keep using the browser."), with `role="status"`.
   - **Call sites.** `runElectronPreviewHostLayoutSync` and `syncInstance` call it with `overlaps.some((o) => o.kind === 'notification')` while obscured, and `false` on show or clear.
@@ -196,7 +196,7 @@ The steps below call this `RUN_TS <file>`.
   - `npm run check:icons` is unaffected (no icons added).
 
 ### 6. Shared overlay surfaces and the toast stack
-- [ ] The high-traffic shared primitives use the marker, and toasts become notification occluders.
+- [x] The high-traffic shared primitives use the marker, and toasts become notification occluders.
 - Changes: Mark the shared surfaces, convert the select guard, and update their tests.
   - **Marking.** In each module, call `markPreviewOccluder(root, kind)` where the overlay root is created, and delete its `registerChromePopover` / `unregisterChromePopover` calls and any `chromePopoverRegistered` / `registered` bookkeeping:
     - `src/ui/toast.ts`: each `.mn-toast` element, `notification`.
@@ -214,7 +214,7 @@ The steps below call this `RUN_TS <file>`.
   - The existing toast tests found by `grep -l showToast test/ui` still pass.
 
 ### 7. Migrate the shell menus and popovers
-- [ ] Menubar, workspace, git, models and chat popovers use the marker.
+- [x] Menubar, workspace, git, models and chat popovers use the marker.
 - Changes: mark the visible root and remove register/unregister calls (kind in parentheses):
   - `src/os/app-switcher-menu.ts` (menu)
   - `src/os/update-menubar.ts` (menu)
@@ -233,7 +233,7 @@ The steps below call this `RUN_TS <file>`.
 - Verify: `RUN_TS test/ui/preview-browser-menu.test.mts test/ui/preview-chrome-popover-panels.test.mts` passes, plus each module's existing test file located with `grep -l "<module-name>" test`. `grep -rn "registerChromePopover" src/os src/ui` lists only the files in step 8 and the alias in `preview-electron-visibility.ts`.
 
 ### 8. Migrate dialogs, lightboxes and full panels, then delete the old API
-- [ ] Every remaining caller uses the marker, and the old names no longer exist.
+- [x] Every remaining caller uses the marker, and the old names no longer exist.
 - Changes: Migrate the last callers, then remove the aliases and update test imports.
   - **Remaining callers** (kind in parentheses):
     - `src/ui/fork-model-dialog.ts` (dialog)
@@ -255,7 +255,7 @@ The steps below call this `RUN_TS <file>`.
   - `npm test` shows no new failures in `test/ui/**` or `test/electron/**`. AGENTS.md notes a few unrelated failures on `main`; compare against a baseline run.
 
 ### 9. Documentation
-- [ ] `documentation/context.md` describes the new contract.
+- [x] `documentation/context.md` describes the new contract.
 - Changes: Update the context reference and the agent gotchas.
   - In the **Preview browser** bullet (around line 1409), replace "or chrome popovers overlap the pane" with a short description:
     - the `mn-occludes-preview` marker and kinds, plus the geometry-then-hit-test check from `src/ui/preview-occlusion.ts`;
@@ -297,3 +297,28 @@ The steps below call this `RUN_TS <file>`.
 - **Pointer-events contract.** A marked overlay with `pointer-events: none` will never be confirmed. Step 6 handles the toast stack; other surfaces must follow the documented rule.
 - **Capture cost.** About one JPEG per second per visible guest crosses IPC. That's acceptable per VS Code, but watch the `MINNOW_DEBUG=1` long-task log during step 10. If needed, raise the interval or pause while the window is unfocused.
 - **macOS GPU copy.** The gate prevents zero-sizing mid-copy, but a periodic `capturePage` on a visible view is new load on macOS 26 WindowServer. Step 10 includes a rapid-toggle check; if it regresses, drop the loop and keep the on-demand fallback.
+
+
+## Implementation and verification record (2026-10-25)
+
+Steps 1–9 are implemented. Step 10 remains unverified in the real Electron desktop; do not infer native compositor or macOS stability from DOM tests.
+
+Corrections made during implementation:
+
+- Track raw `webContents.capturePage()` promises, not their timeout wrappers. A 250 ms caller timeout does not cancel Chromium's native copy. A pending copy blocks additional captures for that WebContents and defers zero-bounds/detach until it settles; a later show cancels stale cleanup. This mitigates a surface-lifetime race; it does not prove the cause or resolution of WindowServer hangs.
+- Detect marker changes on already-mounted panels as well as additions/removals. Observe filtered attributes and coalesce updates; invalidate geometry on scrolling, top-layer toggle, transition/animation completion, and resize.
+- Keep fallback snapshots per host and discard late results after teardown. Invalidate cached images on tab/source changes or load start, and let a first frame arriving during occlusion become visible without another sync.
+- Mark visible modal dimmers as well as independently mounted sheets. Each toast is marked, never its click-through stack. Remove the browser toolbar menu's direct hide call so all occlusion hides use the cached-frame coordinator.
+
+Checks run:
+
+- Renderer TypeScript, Electron TypeScript, `npm run electron:build`, and `npm run build`: passed. Vite reports ineffective-dynamic-import/externalized-Node-module/plugin timing warnings.
+- Preview/shared-surface/renamed API regression batch: **164 passed**.
+- Additional affected menu, model, workspace picker, dialog layout and accessibility batch: **122 passed**.
+- Electron directory tests: **252 passed** (including caller-timeout/raw-copy lifetime and deferred hide cancellation).
+- `test:check-coverage`, `check:icons`, and product wiki tests (**13 passed**): passed.
+- Rendered Chromium probe at **1280×850** and **390×844**, using production overlay/tracker/cache modules and a **mock Electron bridge**: non-overlapping menu stays live; overlapping notification shows frame and paused message; narrow layout has no horizontal overflow. Error/unhandled-rejection listeners in the desktop probe observed no errors during those checks. This is not a full application/runtime or native guest test.
+- `npm test`: attempted but timed out at **600 seconds**, with failures beyond the preview area; missing old-registry imports found by the run were fixed and retested in the targeted batch. Full-suite success is **not** established. Local full-run output retained under `.minnow/preview-occlusion-tests.log` (ignored).
+- Bundle budget check: **fails** on total assets (**11789.9 KB**, limit **11735 KB**, over by **54.9 KB**). A separate HEAD-source export with the same installed dependencies/generated assets measured **11757.3 KB**, already over by **22.3 KB**; this implementation adds approximately **32.6 KB** to that comparison. No budget or baseline was raised. Bundle reduction or an explicitly reviewed budget decision remains outstanding.
+
+Remaining release checks: real Electron primary/secondary menu and notification smoke, native focus/scroll restoration, macOS rapid-toggle stability, the total-assets budget, and a completed full-suite run with failures triaged. The native smoke checklist above stays unchecked.

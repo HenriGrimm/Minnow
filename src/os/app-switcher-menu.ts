@@ -8,10 +8,7 @@ import { createAppIcon } from './icons';
 import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { launchApp } from './router';
 import { closeComposerModelMenu } from '../ui/composer-model-trigger';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from '../ui/preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
 import { APP_SWITCHER_DESKTOP_ID, type AppSwitcherItemId } from './surface-id';
 import type { AppId } from './types';
 
@@ -68,7 +65,7 @@ let unsubPrefs: (() => void) | null = null;
 export function closeAppSwitcherMenu(): void {
   if (!menuOpen) return;
   menuOpen = false;
-  unregisterChromePopover();
+  if (panelEl) unmarkPreviewOccluder(panelEl);
   detachGlobalListeners();
   panelEl?.classList.add('hidden');
   anchorBtn?.setAttribute('aria-expanded', 'false');
@@ -196,7 +193,7 @@ function openMenu(): void {
   const panel = ensurePanel();
   rebuildGrid();
   menuOpen = true;
-  registerChromePopover();
+  markPreviewOccluder(panel, 'menu');
   panel.classList.remove('hidden');
   btn.setAttribute('aria-expanded', 'true');
   btn.classList.add('is-open');

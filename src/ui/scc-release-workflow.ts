@@ -4,7 +4,7 @@ import { requestActionRuns, requestActionWorkflow } from './scc-actions';
 import { button, el, type SccContext } from './scc-shared';
 import { statusLine } from './scc-action-form';
 import { renderRemoteWorkflowForm } from './scc-workflow-form';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 
 export function createReleaseWorkflowTrigger(ctx: SccContext) {
   let popover: HTMLElement | null = null;
@@ -35,7 +35,6 @@ export function createReleaseWorkflowTrigger(ctx: SccContext) {
     if (!popover) return;
     popover.remove();
     popover = null;
-    unregisterChromePopover();
     trigger.setAttribute('aria-expanded', 'false');
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', keyboard, true);
@@ -60,7 +59,7 @@ export function createReleaseWorkflowTrigger(ctx: SccContext) {
     host.append(status);
     panel.append(header, host);
     document.body.append(panel);
-    registerChromePopover();
+    markPreviewOccluder(panel, 'panel');
     trigger.setAttribute('aria-expanded', 'true');
     document.addEventListener('pointerdown', outside, true);
     document.addEventListener('keydown', keyboard, true);

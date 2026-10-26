@@ -5,7 +5,7 @@ import type {
 import { appConfirm } from './app-dialog';
 import { clearBrowserHistory } from './browser-history';
 import { closeBrowserHistoryPopover } from './browser-url-suggest';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 
 const ZOOM_STEPS = [25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500];
@@ -109,7 +109,6 @@ export function closePreviewBrowserMenu(options?: { restoreFocus?: boolean }): v
   cleanupOpenMenu = null;
   openMenu.remove();
   openMenu = null;
-  unregisterChromePopover();
   openAnchor?.setAttribute('aria-expanded', 'false');
   if (options?.restoreFocus) openAnchor?.focus();
   openAnchor = null;
@@ -290,9 +289,8 @@ async function openPreviewBrowserMenu(
   openAnchor = anchor;
   onOpenMenuClose = options.onClose ?? null;
   anchor.setAttribute('aria-expanded', 'true');
-  registerChromePopover();
+  markPreviewOccluder(menu, 'menu');
   positionMenu(menu, anchor);
-  void window.minnow?.preview?.hide(tabId, instanceId);
   menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
 
   const onPointerDown = (event: MouseEvent): void => {

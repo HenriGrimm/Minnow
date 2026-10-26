@@ -1,4 +1,4 @@
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import {
   filterChatsByWorkspacePath,
   searchChats,
@@ -96,7 +96,6 @@ function detachGlobalListeners(): void {
 export function closeChatSearchPopover(): void {
   if (!open) return;
   open = false;
-  unregisterChromePopover();
   detachGlobalListeners();
   anchorEl?.setAttribute('aria-expanded', 'false');
   anchorEl = null;
@@ -387,7 +386,7 @@ export function openChatSearchPopover(anchor: HTMLElement): void {
   document.body.appendChild(popoverEl);
   anchorEl = anchor;
   open = true;
-  registerChromePopover();
+  markPreviewOccluder(popoverEl, 'panel');
   anchor.setAttribute('aria-expanded', 'true');
 
   renderResults('');

@@ -19,10 +19,7 @@ import {
   saveIssueCaptureDraft,
   type IssueCaptureDraft,
 } from './issue-capture-draft';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 import type { ExpandedIssueDraft } from '../chat/issues/expand-issue';
 
@@ -68,8 +65,6 @@ interface CaptureSession {
 }
 
 let session: CaptureSession | null = null;
-/** True while the popover holds a chrome-popover registration (native preview guest hidden). */
-let chromePopoverRegistered = false;
 
 /** True while the capture popover is open. */
 export function isIssueCaptureOpen(): boolean {
@@ -105,10 +100,6 @@ export function closeIssueCapture(options?: {
   if (restore?.isConnected) restore.focus();
   current.root.remove();
   shellOverlayClosed('capture');
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
 }
 
 function chipIconFor(kind: CaptureItem['kind']): string {
@@ -605,8 +596,7 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   document.body.appendChild(root);
   positionPopover(root, current.anchor);
   bindGlobalListeners();
-  registerChromePopover();
-  chromePopoverRegistered = true;
+  markPreviewOccluder(root, 'panel');
 
   titleInput.focus();
   titleInput.select();

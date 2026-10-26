@@ -4,6 +4,7 @@ import { onPreviewOcclusionChange, readPreviewHostOcclusion } from './preview-el
 import {
   clearPreviewOcclusionPlaceholders,
   noteHostBoundsChanged,
+  preparePreviewPopoverSnapshot,
   setPreviewPausedMessage,
   showCachedPreviewFrame,
   startPreviewFrameCache,
@@ -21,6 +22,8 @@ interface BoundInstance {
   /** Last show/hide sent to the native guest; gates frame captures. */
   guestVisible: boolean;
   unsubscribePopover: () => void;
+  syncVersion: number;
+  sourceKey?: () => string;
 }
 
 const boundInstances = new Map<string, BoundInstance>();
@@ -35,10 +38,12 @@ function syncInstance(instanceId: string): void {
   const bound = boundInstances.get(instanceId);
   const api = window.minnow?.preview;
   if (!bound || !api) return;
+  const version = ++bound.syncVersion;
 
   if (!bound.visible) {
     clearPreviewOcclusionPlaceholders(bound.element);
     bound.guestVisible = false;
+    stopPreviewFrameCache(bound.element);
     void api.hide(undefined, instanceId);
     return;
   }
@@ -46,7 +51,19 @@ function syncInstance(instanceId: string): void {
   const occlusion = readPreviewHostOcclusion(bound.element);
   if (occlusion.obscured) {
     setPreviewPausedMessage(bound.element, occlusion.notification);
-    if (bound.guestVisible) showCachedPreviewFrame(bound.element);
+    if (bound.guestVisible && !showCachedPreviewFrame(bound.element) && typeof api.capturePage === 'function') {
+      // A newly bound host may not have its first cached frame yet.
+      void preparePreviewPopoverSnapshot(bound.element, instanceId).then(() => {
+        if (boundInstances.get(instanceId) !== bound || bound.syncVersion !== version) return;
+        if (!readPreviewHostOcclusion(bound.element).obscured) {
+          syncInstance(instanceId);
+          return;
+        }
+        bound.guestVisible = false;
+        void api.hide(undefined, instanceId);
+      });
+      return;
+    }
     bound.guestVisible = false;
     void api.hide(undefined, instanceId);
     return;
@@ -62,9 +79,14 @@ function syncInstance(instanceId: string): void {
   clearPreviewOcclusionPlaceholders(bound.element);
   bound.guestVisible = true;
   void api.show(bounds, undefined, instanceId);
+  startPreviewFrameCache(bound.element, {
+    instanceId, isGuestVisible: () => bound.guestVisible, sourceKey: bound.sourceKey,
+  });
 }
 
-export function bindPreviewInstanceToElement(instanceId: string, element: HTMLElement): () => void {
+export function bindPreviewInstanceToElement(
+  instanceId: string, element: HTMLElement, sourceKey?: () => string,
+): () => void {
   unbindPreviewInstance(instanceId);
 
   if (!usesElectronPreview() || typeof ResizeObserver === 'undefined') {
@@ -74,7 +96,7 @@ export function bindPreviewInstanceToElement(instanceId: string, element: HTMLEl
   void window.minnow?.preview?.instances?.create(instanceId);
 
   const bound: BoundInstance = {
-    element, observer: null, visible: true, guestVisible: false,
+    element, observer: null, visible: true, guestVisible: false, syncVersion: 0, sourceKey,
     unsubscribePopover: onPreviewOcclusionChange(() => syncInstance(instanceId)),
   };
   boundInstances.set(instanceId, bound);
@@ -88,7 +110,6 @@ export function bindPreviewInstanceToElement(instanceId: string, element: HTMLEl
   bound.observer = observer;
 
   syncInstance(instanceId);
-  startPreviewFrameCache(element, { instanceId, isGuestVisible: () => bound.guestVisible });
   return () => unbindPreviewInstance(instanceId);
 }
 

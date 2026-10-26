@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { Window } from 'happy-dom';
-import { registerChromePopover, unregisterChromePopover, resetChromePopoverRegistryForTests,
+import { holdPreviewGuestHidden, releasePreviewGuestHidden, resetPreviewHideHoldsForTests,
   resetPreviewGuestVisibilityForTests, syncElectronPreviewHostLayout } from '../../src/ui/preview-electron-visibility';
 import { DEFAULT_FILE_PANEL_STATE, resetFilePanelStateForTests, setFilePanelState } from '../../src/state/file-panel';
 
@@ -53,7 +53,7 @@ function setup(capture: () => Promise<string> = async () => 'cG5n') {
 
 afterEach(async () => {
   resetPreviewGuestVisibilityForTests();
-  resetChromePopoverRegistryForTests();
+  resetPreviewHideHoldsForTests();
   resetFilePanelStateForTests();
   await win?.happyDOM.close();
   for (const [key, descriptor] of originals) {
@@ -66,16 +66,16 @@ afterEach(async () => {
 test('menus retain the painted page until the last menu closes, then restore the live guest', async () => {
   const { body, actions, sync } = setup();
   await sync();
-  registerChromePopover();
+  holdPreviewGuestHidden();
   await sync();
   assert.deepEqual(actions, ['show', 'capture', 'hide-with-snapshot']);
   assert.equal(body.querySelector('img')?.getAttribute('src'), 'data:image/png;base64,cG5n');
-  registerChromePopover();
-  unregisterChromePopover();
+  holdPreviewGuestHidden();
+  releasePreviewGuestHidden();
   await sync();
   assert.equal(actions.filter((action) => action === 'capture').length, 1);
   assert.ok(body.querySelector('img'));
-  unregisterChromePopover();
+  releasePreviewGuestHidden();
   await sync();
   assert.equal(actions.at(-1), 'show');
   assert.equal(body.querySelector('img'), null);
@@ -85,11 +85,11 @@ test('closing a menu during capture does not hide the live browser afterwards', 
   let finish!: (value: string) => void;
   const { body, actions, sync } = setup(() => new Promise((resolve) => { finish = resolve; }));
   await sync();
-  registerChromePopover();
+  holdPreviewGuestHidden();
   const pending = syncElectronPreviewHostLayout();
   await Promise.resolve();
   await Promise.resolve();
-  unregisterChromePopover();
+  releasePreviewGuestHidden();
   finish('cG5n');
   await pending;
   assert.deepEqual(actions, ['show', 'capture']);
@@ -99,10 +99,10 @@ test('closing a menu during capture does not hide the live browser afterwards', 
 test('failed capture still hides the guest for the menu and restores it on dismissal', async () => {
   const { body, actions, sync } = setup(async () => { throw new Error('capture failed'); });
   await sync();
-  registerChromePopover();
+  holdPreviewGuestHidden();
   await sync();
   assert.equal(actions.at(-1), 'hide');
-  unregisterChromePopover();
+  releasePreviewGuestHidden();
   await sync();
   assert.equal(actions.at(-1), 'show');
   assert.equal(body.querySelector('img'), null);
@@ -111,7 +111,7 @@ test('failed capture still hides the guest for the menu and restores it on dismi
 test('leaving Code clears a snapshot instead of retaining stale page content', async () => {
   const { body, sync } = setup();
   await sync();
-  registerChromePopover();
+  holdPreviewGuestHidden();
   await sync();
   assert.ok(body.querySelector('img'));
   win.document.documentElement.dataset.osApp = 'settings';

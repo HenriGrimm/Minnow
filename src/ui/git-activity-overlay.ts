@@ -9,10 +9,7 @@ import {
   type GitErrorChatContext,
   type GitErrorChatKind,
 } from './git-error-to-chat';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 
 /** Wait this long before showing progress so instant ops do not flash. */
@@ -46,7 +43,6 @@ let showTimer: number | undefined;
 let hideTimer: number | undefined;
 let visible = false;
 let errorMode = false;
-let chromePopoverRegistered = false;
 let escapeHandler: ((event: KeyboardEvent) => void) | null = null;
 
 function clearShowTimer(): void {
@@ -113,18 +109,6 @@ function topLabel(): string {
 function showProgressIfNeeded(): void {
   if (stack.length === 0 || errorMode) return;
   paintProgress(topLabel());
-}
-
-function registerErrorChrome(): void {
-  if (chromePopoverRegistered) return;
-  registerChromePopover();
-  chromePopoverRegistered = true;
-}
-
-function unregisterErrorChrome(): void {
-  if (!chromePopoverRegistered) return;
-  unregisterChromePopover();
-  chromePopoverRegistered = false;
 }
 
 function detachEscape(): void {
@@ -248,7 +232,7 @@ function paintError(options: GitActivityErrorOptions): void {
   el.replaceChildren(body, actions);
   visible = true;
   setVisible(el, true);
-  registerErrorChrome();
+  markPreviewOccluder(el, 'panel');
   attachEscape();
   dismiss.focus();
 }
@@ -270,7 +254,7 @@ export function beginGitActivity(
   const replacingError = errorMode;
   if (errorMode) {
     detachEscape();
-    unregisterErrorChrome();
+    if (overlayEl) unmarkPreviewOccluder(overlayEl);
     errorMode = false;
   }
 
@@ -354,7 +338,7 @@ export function showGitErrorPopover(options: GitActivityErrorOptions): void {
 export function hideGitActivityOverlay(): void {
   clearShowTimer();
   detachEscape();
-  unregisterErrorChrome();
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   errorMode = false;
   visible = false;
   stack.length = 0;
@@ -374,7 +358,7 @@ export function resetGitActivityOverlayForTests(): void {
   clearShowTimer();
   clearHideTimer();
   detachEscape();
-  unregisterErrorChrome();
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   errorMode = false;
   visible = false;
   stack.length = 0;

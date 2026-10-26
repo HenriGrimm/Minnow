@@ -1,7 +1,7 @@
 import type { DevServerDefinition, DevServerListItem, ListeningPortRow } from '../config/dev-servers-api';
 import { DEFAULT_DEV_SERVER_PORT } from '../config/startup-api';
 import { iconHtml } from './icon';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 
 type ServerInput = Partial<DevServerDefinition> & { name: string; command: string };
 
@@ -132,7 +132,6 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
     window.removeEventListener('scroll', onScroll, true);
     anchor.setAttribute('aria-expanded', 'false');
     anchor.removeAttribute('aria-controls');
-    unregisterChromePopover();
     options.onClose();
     if (restoreFocus && anchor.isConnected) anchor.focus();
   }
@@ -237,7 +236,7 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
     });
   });
   document.body.appendChild(panel);
-  registerChromePopover();
+  markPreviewOccluder(panel, 'panel');
   anchor.setAttribute('aria-expanded', 'true');
   anchor.setAttribute('aria-controls', panel.id);
   anchor.setAttribute('aria-haspopup', 'dialog');

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals, teardownHappyDomAsync } from '../os/dom-helpers.mts';
 import { openDevServerFormPopover } from '../../src/ui/dev-server-form-popover.ts';
-import { isChromePopoverOpen, resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
 import type { DevServerListItem } from '../../src/config/dev-servers-api.ts';
 
 let win: InstanceType<typeof Window>;
@@ -13,7 +12,6 @@ let anchor: HTMLButtonElement;
 beforeEach(() => {
   win = new Window();
   installHappyDomGlobals(win);
-  resetChromePopoverRegistryForTests();
   anchor = document.createElement('button');
   document.body.append(anchor);
 });
@@ -60,7 +58,9 @@ test('new server keeps advanced fields collapsed and saves safe defaults', async
   assert.equal(document.activeElement, field('command'));
   assert.equal(document.querySelector('details')!.open, false);
   assert.equal(anchor.getAttribute('aria-expanded'), 'true');
-  assert.equal(isChromePopoverOpen(), true);
+  assert.ok(document.querySelector('#devServerFormPopover.mn-occludes-preview'));
+  assert.equal(document.querySelector('#devServerFormPopover')?.getAttribute('data-occluder-kind'), 'panel');
+  assert.equal(document.querySelector<HTMLElement>('#devServerFormPopover')!.hidden, false);
   field('command').value = ' npm run dev ';
   form().requestSubmit();
   await settle();
@@ -70,7 +70,6 @@ test('new server keeps advanced fields collapsed and saves safe defaults', async
   }]);
   assert.equal(saved, 1);
   assert.equal(document.querySelector('#devServerFormPopover'), null);
-  assert.equal(isChromePopoverOpen(), false);
   assert.equal(document.activeElement, anchor);
 });
 
@@ -175,7 +174,7 @@ test('Escape closes only the popover, restores focus, and removes the preview ob
   assert.equal(escapedToParent, 0);
   assert.equal(document.activeElement, anchor);
   assert.equal(anchor.getAttribute('aria-expanded'), 'false');
-  assert.equal(isChromePopoverOpen(), false);
+  assert.equal(document.querySelector('#devServerFormPopover'), null);
   close?.();
   assert.equal(closed, 1);
   document.removeEventListener('keydown', parent);
@@ -189,5 +188,4 @@ test('clicking outside dismisses without moving focus back to the trigger', () =
   outside.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
   assert.equal(document.querySelector('#devServerFormPopover'), null);
   assert.equal(document.activeElement, outside);
-  assert.equal(isChromePopoverOpen(), false);
 });

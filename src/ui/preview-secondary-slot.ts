@@ -313,7 +313,10 @@ async function loadSecondaryElectron(tabId: string, url: string): Promise<void> 
   if (!api || !body) return;
 
   if (!secondaryBound) {
-    bindPreviewInstanceToElement(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, body);
+    bindPreviewInstanceToElement(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, body, () => {
+      const id = getSecondaryPreviewTabId();
+      return JSON.stringify([id, id ? getPreviewTab(id)?.source : null]);
+    });
     secondaryBound = true;
   } else {
     setPreviewInstanceVisible(WORKSPACE_PREVIEW_SECONDARY_INSTANCE, true);

@@ -8,6 +8,7 @@ import {
   type PreviewSource,
 } from '../state/file-panel';
 import { onFileSaved } from '../state/preview-events';
+import { noteHostBoundsChanged } from './preview-popover-snapshot';
 import {
   collapseRightPane,
   expandRightPane,
@@ -761,6 +762,7 @@ function startBoundsObserver(): void {
   const body = getPreviewBody();
   if (!body || boundsObserver || !usesElectronPreview()) return;
   const onLayoutChange = (): void => {
+    noteHostBoundsChanged(body);
     scheduleElectronPreviewHostLayoutSync();
   };
   boundsObserver = new ResizeObserver(onLayoutChange);

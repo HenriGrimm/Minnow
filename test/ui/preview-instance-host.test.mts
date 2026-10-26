@@ -6,7 +6,7 @@ import {
   unbindPreviewInstance,
   resetPreviewInstanceHostsForTests,
 } from '../../src/ui/preview-instance-host.ts';
-import { registerChromePopover, unregisterChromePopover, resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
+import { holdPreviewGuestHidden, releasePreviewGuestHidden, resetPreviewHideHoldsForTests } from '../../src/ui/preview-electron-visibility.ts';
 
 describe('preview-instance-host', () => {
   const originalWindow = globalThis.window;
@@ -41,7 +41,7 @@ describe('preview-instance-host', () => {
     // Reset any instances left bound by the previous test BEFORE zeroing counters — otherwise
     // the disconnect() calls from that cleanup would be attributed to this test.
     resetPreviewInstanceHostsForTests();
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     createCalls = [];
     showCalls = [];
     hideCalls = [];
@@ -76,7 +76,7 @@ describe('preview-instance-host', () => {
 
   afterEach(() => {
     resetPreviewInstanceHostsForTests();
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     Object.defineProperty(globalThis, 'window', {
       value: originalWindow,
       configurable: true,
@@ -142,23 +142,23 @@ describe('preview-instance-host', () => {
   test('menus hide bound guests until the last menu closes, including during bounds updates', () => {
     const el = makeElement({ left: 0, top: 0, width: 100, height: 100 });
     bindPreviewInstanceToElement('workspace-preview-secondary', el);
-    registerChromePopover();
-    registerChromePopover();
+    holdPreviewGuestHidden();
+    holdPreviewGuestHidden();
     const showsBeforeClose = showCalls.length;
     setPreviewInstanceVisible('workspace-preview-secondary', true);
     bindPreviewInstanceToElement('another-preview', el);
     assert.equal(showCalls.length, showsBeforeClose);
     assert.ok(hideCalls.some((call) => call.instanceId === 'workspace-preview-secondary'));
     assert.ok(hideCalls.some((call) => call.instanceId === 'another-preview'));
-    unregisterChromePopover();
+    releasePreviewGuestHidden();
     assert.equal(showCalls.length, showsBeforeClose);
     setPreviewInstanceVisible('another-preview', false);
-    unregisterChromePopover();
+    releasePreviewGuestHidden();
     assert.equal(showCalls.length, showsBeforeClose + 1);
     assert.equal(showCalls.at(-1)?.instanceId, 'workspace-preview-secondary');
     unbindPreviewInstance('workspace-preview-secondary');
-    registerChromePopover();
-    unregisterChromePopover();
+    holdPreviewGuestHidden();
+    releasePreviewGuestHidden();
     assert.equal(showCalls.length, showsBeforeClose + 1, 'unbound and inactive guests stay hidden');
   });
 

@@ -22,7 +22,7 @@ import { createActivityDropdown } from './activity-dropdown';
 import { getChatItemDotContext, resolveChatItemDotState, subscribeChatInputPending } from './chat-item-dot';
 import { resolveEffectiveChatModelBinding } from './default-model';
 import { iconHtml } from './icon';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { bindShellOverlayTrigger, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 
 let anchor: HTMLButtonElement | null = null;
@@ -131,7 +131,7 @@ export function setAgentActivityPanelOpen(next: boolean): void {
   panel.hidden = !next;
   anchor.setAttribute('aria-expanded', String(next));
   if (next) {
-    registerChromePopover();
+    markPreviewOccluder(panel, 'panel');
     refresh();
     position();
     void loadDetails();
@@ -141,7 +141,7 @@ export function setAgentActivityPanelOpen(next: boolean): void {
     panel.querySelector<HTMLButtonElement>('button')?.focus();
     void import('../notifications/sound').then((module) => module.unlockNotificationAudio());
   } else {
-    unregisterChromePopover();
+    unmarkPreviewOccluder(panel);
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = null;
     if (schedulerTimer) clearInterval(schedulerTimer);

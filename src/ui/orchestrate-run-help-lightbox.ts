@@ -1,7 +1,4 @@
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { createGitWorktreeIcon, type GitWorktreeIconKind } from './git-worktree-icons';
 import { createIcon } from './icon';
 
@@ -15,7 +12,6 @@ let dialogEl: HTMLDivElement | null = null;
 let isOpen = false;
 let previousFocus: HTMLElement | null = null;
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
-let chromePopoverRegistered = false;
 
 /** Whether the run-settings help lightbox is open. */
 export function isBoardRunHelpLightboxOpen(): boolean {
@@ -230,8 +226,7 @@ export function openBoardRunHelpLightbox(): void {
   isOpen = true;
   overlayEl!.hidden = false;
   overlayEl!.classList.remove('hidden');
-  registerChromePopover();
-  chromePopoverRegistered = true;
+  markPreviewOccluder(overlayEl!, 'dialog');
   dialogEl!.focus();
 
   escapeHandler = (e: KeyboardEvent) => {
@@ -251,10 +246,7 @@ export function closeBoardRunHelpLightbox(): void {
   detachListeners();
   overlayEl!.hidden = true;
   overlayEl!.classList.add('hidden');
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   previousFocus?.focus();
   previousFocus = null;
 }

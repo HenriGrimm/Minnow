@@ -23,10 +23,9 @@ import { PreviewInstanceRegistry, DEFAULT_PREVIEW_INSTANCE_ID } from './preview-
 import {
   resolvePreviewGuestAttachMode,
   showPreviewGuestIfHidden,
-  shouldKeepPreviewGuestVisibleAfterCapture,
 } from './preview-guest-reveal.js';
 import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
-import { createPreviewCaptureGate } from './preview-capture-gate.js';
+import { previewCaptureGate as captureGate, createPreviewCaptureVisibility } from './preview-capture-gate.js';
 import { enableCdpPicking, type CdpPickSession } from './preview-cdp-pick.js';
 import {
   handleGuestContextMenu,
@@ -61,8 +60,6 @@ interface PreviewHostEntry {
   visible: boolean;
   devtools: WebContentsView | null;
   devtoolsPopout: BrowserWindow | null;
-  /** Set while a hide waits for in-flight captures before zero-sizing/detaching. */
-  deferredHideToken?: number;
 }
 
 interface WindowPreviewState {
@@ -87,8 +84,7 @@ const lastBoundsByInstance = new Map<string, PreviewBounds>();
 
 const devtoolsDockByWindow = new Map<number, DevToolsDockPosition>();
 
-const captureGate = createPreviewCaptureGate();
-let deferredHideSequence = 0;
+const captureVisibility = createPreviewCaptureVisibility(captureGate);
 
 const PLACEHOLDER_CAPTURE_TIMEOUT_MS = 250;
 
@@ -630,14 +626,12 @@ function applyPreviewViewBounds(
     height: bounds.height * zoomFactor,
   });
   if (rounded.width <= 0 || rounded.height <= 0) {
-    entry.visible = false;
-    entry.view.setVisible(false);
-    entry.devtools?.setVisible(false);
+    hidePreviewHostEntry(entry);
     return false;
   }
   const split = splitPreviewBounds(rounded, Boolean(entry.devtools), dock);
   // A show that lands before a deferred hide's resize wins.
-  entry.deferredHideToken = undefined;
+  captureVisibility.change(entry.view.webContents);
   entry.view.setBounds(split.guest);
   showPreviewGuestIfHidden(entry);
   if (entry.devtools) {
@@ -659,7 +653,7 @@ function zeroPreviewEntryBounds(entry: PreviewHostEntry): void {
 
 /**
  * Hide immediately; zero-size (and run `afterHidden`, e.g. detach) only once no
- * capture is copying the surface. Resizing to 0x0 mid-copy can hang macOS WindowServer.
+ * raw capture is copying the surface: preventative surface-lifetime race mitigation.
  */
 function hidePreviewHostEntry(entry: PreviewHostEntry, afterHidden?: () => void): void {
   entry.visible = false;
@@ -669,20 +663,9 @@ function hidePreviewHostEntry(entry: PreviewHostEntry, afterHidden?: () => void)
     zeroPreviewEntryBounds(entry);
     afterHidden?.();
   };
-  if (captureGate.inFlight(entry) === 0) {
-    entry.deferredHideToken = undefined;
-    finishHide();
-    return;
-  }
-  const token = ++deferredHideSequence;
-  entry.deferredHideToken = token;
-  void captureGate.whenIdle(entry).then(() => {
-    if (entry.deferredHideToken !== token || entry.visible) return;
-    entry.deferredHideToken = undefined;
+  captureVisibility.hide(entry.view.webContents, () => {
     if (entry.view.webContents.isDestroyed()) return;
-    try {
-      finishHide();
-    } catch (err) {
+    try { finishHide(); } catch (err) {
       console.warn('[preview] deferred hide failed:', err instanceof Error ? err.message : err);
     }
   });
@@ -831,30 +814,38 @@ async function capturePreviewEntryBase64(
   const win = windowFromInvoke(event);
   const entry = getActiveEntry(event, tabId, instanceId);
   if (!entry) throw new Error('Preview guest is not available');
+  const wc = entry.view.webContents;
+  if (wc.isDestroyed() || captureGate.inFlight(wc) > 0) return '';
   const wasVisible = entry.visible;
-  // A menu snapshot must never reveal a guest hidden by another app/overlay.
   if (immediate && !wasVisible) return '';
-  let temporarilyShown = false;
+  let temporaryIntent: object | undefined;
+  const wasAttached = win ? isChildView(win, entry.view) : false;
   if (win && !wasVisible) {
     const id = PreviewInstanceRegistry.resolveInstanceId(instanceId);
     const bounds = lastBoundsByInstance.get(boundsKey(win.id, id));
     if (isValidPreviewBounds(bounds)) {
-      applyPreviewViewBounds(entry, bounds, hostZoomFactor(win), resolveDevToolsDock(win));
-      rememberPreviewBounds(win, bounds, id);
-      attachPreviewHostEntry(win, entry);
-      temporarilyShown = true;
+      // Reveal only this guest, not its DevTools or another tab/instance.
+      const zoom = hostZoomFactor(win);
+      entry.view.setBounds(roundBounds({
+        x: bounds.x * zoom, y: bounds.y * zoom,
+        width: bounds.width * zoom, height: bounds.height * zoom,
+      }));
+      temporaryIntent = captureVisibility.change(wc);
+      showPreviewGuestIfHidden(entry);
+      if (!wasAttached) win.contentView.addChildView(entry.view);
     }
   }
+  if (!entry.visible) return '';
   try {
-    return await captureGate.track(entry, previewCapturePageBase64(entry.view.webContents,
-      immediate ? { immediate: true, captureTimeoutMs: 250 } : undefined));
+    return await previewCapturePageBase64(wc, {
+      ...(immediate ? { immediate: true, captureTimeoutMs: 250 } : {}),
+      canCapture: () => entry.visible,
+    });
   } finally {
-    if (temporarilyShown && !shouldKeepPreviewGuestVisibleAfterCapture(wasVisible)) {
-      hidePreviewHostEntry(entry);
-      if (win && !win.isDestroyed()) {
-        const id = PreviewInstanceRegistry.resolveInstanceId(instanceId);
-        previewInstances.setVisible(win.id, id, false);
-      }
+    if (temporaryIntent && captureVisibility.isCurrent(wc, temporaryIntent)) {
+      hidePreviewHostEntry(entry, () => {
+        if (!wasAttached && win && !win.isDestroyed()) win.contentView.removeChildView(entry.view);
+      });
     }
   }
 }
@@ -1149,8 +1140,7 @@ export function registerPreviewHostIpc(): void {
       if (!isValidPreviewBounds(bounds)) {
         const { width, height } = bounds;
         if (Number.isFinite(width) && Number.isFinite(height) && (width <= 0 || height <= 0)) {
-          entry.view.setVisible(false);
-          entry.visible = false;
+          hidePreviewHostEntry(entry);
         }
         return;
       }
@@ -1183,12 +1173,13 @@ export function registerPreviewHostIpc(): void {
     async (event, tabId?: string, instanceId?: string) => {
       const entry = getActiveEntry(event, tabId, instanceId);
       // Never reveal a hidden guest for a placeholder, and never copy a hidden surface.
-      if (!entry?.visible || entry.view.webContents.isDestroyed()) return '';
-      return captureGate.track(entry, previewCapturePageBase64(entry.view.webContents, {
+      if (!entry?.visible || entry.view.webContents.isDestroyed() || captureGate.inFlight(entry.view.webContents) > 0) return '';
+      return previewCapturePageBase64(entry.view.webContents, {
         immediate: true,
         captureTimeoutMs: PLACEHOLDER_CAPTURE_TIMEOUT_MS,
         format: 'jpeg',
-      }));
+        canCapture: () => entry.visible,
+      });
     },
   );
 

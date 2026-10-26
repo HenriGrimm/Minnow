@@ -12,7 +12,6 @@ const originalFetch = globalThis.fetch;
 const toolCalls: unknown[][] = [];
 mock.module('../../src/tools/client.ts', { namedExports: { executeTool: async (...args: unknown[]) => { toolCalls.push(args); return { content: 'done' }; } } });
 mock.module('../../src/skills/client.ts', { namedExports: { getSkillCatalog: () => [{ id: 'build-plugin' }] } });
-mock.module('../../src/ui/preview-electron-visibility.ts', { namedExports: { registerChromePopover: () => {}, unregisterChromePopover: () => {} } });
 mock.module('../../src/plugins/usage.ts', { namedExports: {
   getPluginChatUsage: () => null,
   getPluginWorkspaceUsage: () => ({ totals: { totalTokens: 0 } }),

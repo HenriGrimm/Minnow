@@ -1,7 +1,7 @@
 import { iconHtml, type IconName } from './icon';
 import { mountRoutingForm } from './routing-form';
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import type { ModelsSectionId } from './models-section-ids';
 import { mountModelPoolOverview } from './model-pool-overview';
 import { encodeModelSelectKey } from '../lib/model-select-key';
@@ -52,7 +52,6 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     form.dispose();
     overview.dispose();
     panel.remove();
-    unregisterChromePopover();
     shellOverlayClosed('models');
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', key);
@@ -98,7 +97,7 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
   dismiss.onclick = close;
   openShellOverlay('models', close);
   document.body.append(panel);
-  registerChromePopover();
+  markPreviewOccluder(panel, 'panel');
   position();
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('keydown', key);

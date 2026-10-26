@@ -1,5 +1,6 @@
 /** Keep the browser's last frame visible while a DOM menu covers its native guest. */
-let snapshot: HTMLImageElement | null = null;
+const snapshots = new Map<HTMLElement, HTMLImageElement>();
+const snapshotRequests = new Map<HTMLElement, object>();
 
 const FRAME_INTERVAL_MS = 1000;
 const BOUNDS_SETTLE_MS = 300;
@@ -12,29 +13,42 @@ function createSnapshotImage(): HTMLImageElement {
   return image;
 }
 
-export function clearPreviewPopoverSnapshot(): void {
-  snapshot?.remove();
-  snapshot = null;
+export function clearPreviewPopoverSnapshot(host?: HTMLElement): void {
+  if (host) {
+    snapshots.get(host)?.remove();
+    snapshots.delete(host);
+    snapshotRequests.delete(host);
+    return;
+  }
+  for (const image of snapshots.values()) image.remove();
+  snapshots.clear();
+  snapshotRequests.clear();
 }
 
 /** Fallback when no cached frame exists yet: capture the painted page on demand. */
-export async function preparePreviewPopoverSnapshot(): Promise<void> {
-  if (snapshot?.isConnected) return;
+export async function preparePreviewPopoverSnapshot(
+  body: HTMLElement | null = document.getElementById('previewBody'),
+  instanceId?: string,
+): Promise<void> {
+  if (!body || snapshots.get(body)?.isConnected) return;
   const api = window.minnow?.preview;
-  const body = document.getElementById('previewBody');
   if (!api?.capturePage || !body) return;
+  const request = {};
+  snapshotRequests.set(body, request);
   try {
-    const base64 = await api.capturePage(undefined, undefined, true);
-    if (!base64 || !body.isConnected) return;
+    const base64 = await api.capturePage(undefined, instanceId, true);
+    if (!base64 || !body.isConnected || snapshotRequests.get(body) !== request) return;
     const image = createSnapshotImage();
     image.src = `data:image/png;base64,${base64}`;
     await image.decode();
-    if (!body.isConnected) return;
-    clearPreviewPopoverSnapshot();
+    if (!body.isConnected || snapshotRequests.get(body) !== request) return;
+    snapshots.get(body)?.remove();
     body.appendChild(image);
-    snapshot = image;
+    snapshots.set(body, image);
   } catch {
     // Capture failure must not block menus or prevent the live guest returning.
+  } finally {
+    if (snapshotRequests.get(body) === request) snapshotRequests.delete(body);
   }
 }
 
@@ -43,6 +57,8 @@ export async function preparePreviewPopoverSnapshot(): Promise<void> {
 interface FrameCache {
   image: HTMLImageElement;
   loaded: boolean;
+  requestedVisible: boolean;
+  refreshIdentity: () => void;
   stop: () => void;
 }
 
@@ -50,6 +66,8 @@ export interface PreviewFrameCacheOptions {
   instanceId?: string;
   /** Captures run only while this is true; a hidden surface is never copied. */
   isGuestVisible: () => boolean;
+  /** Invalidate a frame before it could be shown for a different tab/source. */
+  sourceKey?: () => string;
 }
 
 const frameCaches = new Map<HTMLElement, FrameCache>();
@@ -75,21 +93,41 @@ export function startPreviewFrameCache(host: HTMLElement, options: PreviewFrameC
   const api = typeof window !== 'undefined' ? window.minnow?.preview : undefined;
   if (!api?.capturePlaceholder) return () => {};
   const capturePlaceholder = api.capturePlaceholder.bind(api);
+  const ownerWindow = host.ownerDocument.defaultView ?? window;
+  const ownerDocument = host.ownerDocument;
 
   const image = createSnapshotImage();
   image.hidden = true;
   host.appendChild(image);
   let stopped = false;
   let timer: number | undefined;
+  let identity = options.sourceKey?.();
+  let revision = 0;
+  const invalidate = (): void => {
+    revision++;
+    cache.loaded = false;
+    cache.requestedVisible = false;
+    image.hidden = true;
+    image.removeAttribute('src');
+  };
+  const refreshIdentity = (): void => {
+    const next = options.sourceKey?.();
+    if (identity === next) return;
+    identity = next;
+    invalidate();
+  };
 
   const schedule = (): void => {
-    if (!stopped) timer = window.setTimeout(() => { void tick(); }, FRAME_INTERVAL_MS);
+    if (!stopped) timer = ownerWindow.setTimeout(() => { void tick(); }, FRAME_INTERVAL_MS);
   };
   const tick = async (): Promise<void> => {
     timer = undefined;
     if (stopped) return;
+    if (!host.isConnected) { cache.stop(); return; }
+    refreshIdentity();
+    const captureRevision = revision;
     const settling = now() - (boundsChangedAt.get(host) ?? -Infinity) < BOUNDS_SETTLE_MS;
-    if (!options.isGuestVisible() || document.visibilityState === 'hidden' || settling) {
+    if (!options.isGuestVisible() || ownerDocument.visibilityState === 'hidden' || settling) {
       schedule();
       return;
     }
@@ -101,9 +139,11 @@ export function startPreviewFrameCache(host: HTMLElement, options: PreviewFrameC
         const probe = createSnapshotImage();
         probe.src = url;
         await probe.decode();
-        if (!stopped) {
+        refreshIdentity();
+        if (!stopped && captureRevision === revision) {
           image.src = url;
           cache.loaded = true;
+          image.hidden = !cache.requestedVisible;
         }
       }
     } catch {
@@ -115,14 +155,20 @@ export function startPreviewFrameCache(host: HTMLElement, options: PreviewFrameC
   const cache: FrameCache = {
     image,
     loaded: false,
+    requestedVisible: false,
+    refreshIdentity,
     stop: () => {
       if (stopped) return;
       stopped = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      unsubscribeLoading?.();
+      if (timer !== undefined) ownerWindow.clearTimeout(timer);
       image.remove();
       if (frameCaches.get(host) === cache) frameCaches.delete(host);
     },
   };
+  const unsubscribeLoading = typeof api.onLoading === 'function' ? api.onLoading((loading, _tabId, instanceId) => {
+    if (loading && (instanceId ?? 'workspace-preview') === (options.instanceId ?? 'workspace-preview')) invalidate();
+  }) : undefined;
   frameCaches.set(host, cache);
   void tick();
   return cache.stop;
@@ -136,6 +182,8 @@ export function stopPreviewFrameCache(host: HTMLElement): void {
 /** Reveal the cached frame; false when no frame has loaded yet. */
 export function showCachedPreviewFrame(host: HTMLElement): boolean {
   const cache = frameCaches.get(host);
+  cache?.refreshIdentity();
+  if (cache) cache.requestedVisible = true;
   if (!cache?.loaded) return false;
   cache.image.hidden = false;
   return true;
@@ -143,7 +191,10 @@ export function showCachedPreviewFrame(host: HTMLElement): boolean {
 
 export function hideCachedPreviewFrame(host: HTMLElement): void {
   const cache = frameCaches.get(host);
-  if (cache) cache.image.hidden = true;
+  if (cache) {
+    cache.requestedVisible = false;
+    cache.image.hidden = true;
+  }
 }
 
 // ── Paused message ──────────────────────────────────────────────────────────────────
@@ -179,7 +230,7 @@ export function clearPreviewOcclusionPlaceholders(host: HTMLElement | null): voi
   if (!host) return;
   hideCachedPreviewFrame(host);
   setPreviewPausedMessage(host, false);
-  if (snapshot?.parentElement === host) clearPreviewPopoverSnapshot();
+  clearPreviewPopoverSnapshot(host);
 }
 
 /** Test helper: stop every frame cache. */

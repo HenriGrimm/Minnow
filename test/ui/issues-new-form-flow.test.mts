@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { Window } from 'happy-dom';
-import { isChromePopoverOpen } from '../../src/ui/preview-electron-visibility.ts';
 
 const dom = new Window({ url: 'http://localhost/' });
 for (const name of ['window', 'document', 'HTMLElement', 'HTMLLabelElement', 'HTMLButtonElement', 'HTMLInputElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLFormElement', 'HTMLParagraphElement', 'Node', 'NodeFilter', 'Element', 'SVGElement', 'AbortController', 'AbortSignal'] as const) {
@@ -41,7 +40,10 @@ function dropImage(): void {
 
 test('new issue form expands entered fields without saving, then creates one issue with uploaded images', async () => {
   click('btnIssuesNew');
-  assert.equal(isChromePopoverOpen(), true, 'New issue hides the native preview');
+  assert.equal(form().isConnected, true);
+  assert.equal(form().classList.contains('is-open'), true);
+  assert.equal(form().classList.contains('mn-occludes-preview'), true);
+  assert.equal(form().getAttribute('data-occluder-kind'), 'menu');
   input('issuesNewTitle').value = 'Login fails';
   input('issuesNewPriority').value = 'high';
   input('issuesNewType').value = 'bug';
@@ -70,7 +72,8 @@ test('new issue form expands entered fields without saving, then creates one iss
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   await until(() => !form().classList.contains('is-open'));
-  assert.equal(isChromePopoverOpen(), false, 'creating the issue releases the preview');
+  assert.equal(form().classList.contains('mn-occludes-preview'), false);
+  assert.equal(form().getAttribute('data-occluder-kind'), null);
   const issues = store.listIssues();
   assert.equal(issues.length, 1);
   assert.equal(issues[0].title, 'Fix login failure');
@@ -92,7 +95,11 @@ test('cancel and reopen invalidates an upload-waiting submit', async () => {
   await until(() => Boolean(request));
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);
   click('btnIssuesNewCancel');
+  assert.equal(form().classList.contains('mn-occludes-preview'), false);
+  assert.equal(form().getAttribute('data-occluder-kind'), null);
   click('btnIssuesNew');
+  assert.equal(form().classList.contains('mn-occludes-preview'), true);
+  assert.equal(form().getAttribute('data-occluder-kind'), 'menu');
   input('issuesNewTitle').value = 'A different draft';
   finish(new Response(JSON.stringify({ attachment: { key: `${request!.issueId}/screen.png`, name: 'screen.png', path: `/attachments/${request!.issueId}/screen.png`, mime: 'image/png', bytes: 3 } })));
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -160,7 +167,11 @@ test('cancelling expansion cannot overwrite a reopened draft', async () => {
   click('issuesNewExpand');
   await until(() => Boolean(finish));
   click('btnIssuesNewCancel');
+  assert.equal(form().classList.contains('mn-occludes-preview'), false);
+  assert.equal(form().getAttribute('data-occluder-kind'), null);
   click('btnIssuesNew');
+  assert.equal(form().classList.contains('mn-occludes-preview'), true);
+  assert.equal(form().getAttribute('data-occluder-kind'), 'menu');
   input('issuesNewTitle').value = 'Fresh draft';
   finish({ draft: { title: 'Old suggestion', description: 'Old suggestion' } });
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -183,7 +194,11 @@ test('reopening a draft preserves its description and labels', async () => {
   click('issuesNewExpand');
   await until(() => Boolean(document.getElementById('issuesNewLabelsHost')?.textContent?.includes('regression')));
   click('btnIssuesNewCancel');
+  assert.equal(form().classList.contains('mn-occludes-preview'), false);
+  assert.equal(form().getAttribute('data-occluder-kind'), null);
   click('btnIssuesNew');
+  assert.equal(form().classList.contains('mn-occludes-preview'), true);
+  assert.equal(form().getAttribute('data-occluder-kind'), 'menu');
   assert.match(body().textContent ?? '', /Details that should survive closing/);
   assert.match(document.getElementById('issuesNewLabelsHost')?.textContent ?? '', /regression/);
   form().dispatchEvent(new dom.Event('submit', { cancelable: true }) as unknown as Event);

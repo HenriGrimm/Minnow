@@ -1,4 +1,5 @@
 import type { WebContents } from 'electron';
+import { previewCaptureGate } from './preview-capture-gate.js';
 
 export interface PreviewNavigateAwaitResult {
   ok: boolean;
@@ -136,6 +137,8 @@ export async function previewExecJs(
 
 export interface PreviewCapturePageOptions {
   captureTimeoutMs?: number;
+  /** Rechecked after asynchronous paint waits, before issuing a native copy. */
+  canCapture?: () => boolean;
   /** Capture the currently painted frame for transient shell overlays. */
   immediate?: boolean;
   /** Immediate captures only; JPEG keeps the once-a-second placeholder frame small. */
@@ -144,18 +147,24 @@ export interface PreviewCapturePageOptions {
 
 const PLACEHOLDER_JPEG_QUALITY = 80;
 
-// Empty PNG after a hung GPU copy is not retried — retries would stack CopyFromSurface.
+// A timeout bounds the caller only; the raw native copy remains tracked until settlement.
 export async function previewCapturePageBase64(
   wc: WebContents,
   options?: PreviewCapturePageOptions,
 ): Promise<string> {
-  if (wc.isDestroyed()) return '';
+  const capture = () => {
+    if (wc.isDestroyed() || options?.canCapture?.() === false || previewCaptureGate.inFlight(wc) > 0) {
+      throw new Error('Preview capture unavailable');
+    }
+    return previewCaptureGate.track(wc, wc.capturePage());
+  };
+  if (wc.isDestroyed() || previewCaptureGate.inFlight(wc) > 0) return '';
 
   const timeoutMs = options?.captureTimeoutMs ?? PREVIEW_CAPTURE_PAGE_TIMEOUT_MS;
 
   if (options?.immediate) {
     try {
-      const image = await withTimeout(wc.capturePage(), timeoutMs, 'preview snapshot timed out');
+      const image = await withTimeout(capture(), timeoutMs, 'preview snapshot timed out');
       const encoded = options.format === 'jpeg' ? image.toJPEG(PLACEHOLDER_JPEG_QUALITY) : image.toPNG();
       return encoded.toString('base64');
     } catch {
@@ -176,7 +185,7 @@ export async function previewCapturePageBase64(
   for (let attempt = 0; attempt < PREVIEW_CAPTURE_MAX_RETRIES; attempt++) {
     try {
       const image = await withTimeout(
-        wc.capturePage(),
+        capture(),
         timeoutMs,
         'preview capturePage timed out',
       );

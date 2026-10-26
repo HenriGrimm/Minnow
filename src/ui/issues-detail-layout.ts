@@ -2,7 +2,7 @@
 import { applyIcon } from './icon';
 import { isContextMenuOpen } from './context-menu';
 import { isAppDialogOpen } from './app-dialog';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 let maximized = false;
 let active = false;
@@ -64,11 +64,13 @@ export function refreshIssuesPeekLayoutChrome(): void {
   active = open;
   if (open) {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    registerChromePopover();
+    if (host) markPreviewOccluder(host, 'dialog');
+    if (scrim) markPreviewOccluder(scrim, 'dialog');
     document.addEventListener('keydown', onPanelKeydown);
     listening = true;
   } else {
-    unregisterChromePopover();
+    if (host) unmarkPreviewOccluder(host);
+    if (scrim) unmarkPreviewOccluder(scrim);
     document.removeEventListener('keydown', onPanelKeydown);
     listening = false;
     if (restoreFocus?.isConnected) restoreFocus.focus({ preventScroll: true });
@@ -105,7 +107,10 @@ export function resetIssueDetailSheetOnClose(): void {
 
 export function resetIssuesDetailLayoutForTests(): void {
   maximized = false;
-  if (active) unregisterChromePopover();
+  const host = panelHost();
+  const scrim = document.getElementById('issuesDetailScrim');
+  if (host) unmarkPreviewOccluder(host);
+  if (scrim) unmarkPreviewOccluder(scrim);
   if (listening) document.removeEventListener('keydown', onPanelKeydown);
   active = false;
   listening = false;

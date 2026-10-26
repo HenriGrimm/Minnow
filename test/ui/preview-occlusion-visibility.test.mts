@@ -17,6 +17,7 @@ import {
 import {
   noteHostBoundsChanged,
   startPreviewFrameCache,
+  showCachedPreviewFrame,
 } from '../../src/ui/preview-popover-snapshot';
 import {
   bindPreviewInstanceToElement,
@@ -214,15 +215,51 @@ test('stopping the frame cache mid-capture leaves no image behind', async () => 
   assert.ok(!body.querySelector('img'));
 });
 
+test('a cached frame cannot be reused after switching tabs', async () => {
+  const { body, flush } = setup();
+  let source = 'tab-a';
+  const stop = startPreviewFrameCache(body, { isGuestVisible: () => true, sourceKey: () => source });
+  await flush();
+  assert.equal(showCachedPreviewFrame(body), true);
+  source = 'tab-b';
+  assert.equal(showCachedPreviewFrame(body), false);
+  assert.ok(!visibleFrame(body));
+  stop();
+});
+
+test('a frame that resolves after a tab switch is discarded', async () => {
+  let finish!: (value: string) => void;
+  const { body, flush } = setup(() => new Promise((resolve) => { finish = resolve; }));
+  let source = 'tab-a';
+  const stop = startPreviewFrameCache(body, { isGuestVisible: () => true, sourceKey: () => source });
+  source = 'tab-b';
+  finish('anBn');
+  await flush();
+  assert.equal(showCachedPreviewFrame(body), false);
+  stop();
+});
+
+test('a first cache frame arriving after occlusion becomes visible without another sync', async () => {
+  let finish!: (value: string) => void;
+  const { body, flush } = setup(() => new Promise((resolve) => { finish = resolve; }));
+  const stop = startPreviewFrameCache(body, { isGuestVisible: () => true });
+  assert.equal(showCachedPreviewFrame(body), false);
+  finish('anBn');
+  await flush();
+  assert.ok(visibleFrame(body));
+  stop();
+});
+
 test('an overlay over a bound instance host hides only that instance', async () => {
-  const { reefHost, actions, addOverlay, sync } = setup();
+  const { reefHost, actions, addOverlay, sync, flush } = setup();
   await sync();
   bindPreviewInstanceToElement('reef', reefHost);
   assert.ok(actions.includes('show:reef'));
 
   addOverlay('menu', box(0, 400, 100, 100));
   syncPreviewInstanceBounds('reef');
-  assert.equal(actions.at(-1), 'hide:reef');
+  await flush();
+  assert.ok(actions.includes('hide:reef'));
   await sync();
   assert.ok(!actions.includes('hide') && !actions.includes('hide-with-frame'));
 });

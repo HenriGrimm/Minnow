@@ -1,7 +1,4 @@
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { iconHtml } from './icon';
 
 const OVERLAY_ID = 'agentCenterLightboxOverlay';
@@ -18,7 +15,6 @@ let bodyEl: HTMLDivElement | null = null;
 let isOpen = false;
 let previousFocus: HTMLElement | null = null;
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
-let chromePopoverRegistered = false;
 
 export interface AgentCenterLightboxContent {
   title: string;
@@ -140,10 +136,7 @@ export function openAgentCenterLightbox(content: AgentCenterLightboxContent): vo
   overlayEl.classList.remove('hidden');
   isOpen = true;
 
-  if (!chromePopoverRegistered) {
-    registerChromePopover();
-    chromePopoverRegistered = true;
-  }
+  markPreviewOccluder(overlayEl, 'dialog');
 
   escapeHandler = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -168,10 +161,7 @@ export function closeAgentCenterLightbox(): void {
     document.removeEventListener('keydown', escapeHandler, true);
     escapeHandler = null;
   }
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   previousFocus?.focus();
   previousFocus = null;
 }

@@ -15,7 +15,7 @@ import {
   suggestBrowserUrls,
   type BrowserHistoryEntry,
 } from './browser-history';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 const SUGGESTION_LIMIT = 8;
 const HISTORY_POPOVER_LIMIT = 300;
@@ -109,8 +109,8 @@ export function attachBrowserUrlSuggest(
     open = next;
     list.hidden = !next;
     input.setAttribute('aria-expanded', next ? 'true' : 'false');
-    if (next) registerChromePopover();
-    else unregisterChromePopover();
+    if (next) markPreviewOccluder(list, 'menu');
+    else unmarkPreviewOccluder(list);
   };
 
   const close = (): void => {
@@ -261,7 +261,6 @@ export function closeBrowserHistoryPopover(): void {
   historyCleanup?.();
   historyCleanup = null;
   historyPopover?.remove();
-  if (historyPopover) unregisterChromePopover();
   historyPopover = null;
 }
 
@@ -364,7 +363,7 @@ export function toggleBrowserHistoryPopover(
   panel.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
   document.body.appendChild(panel);
   historyPopover = panel;
-  registerChromePopover();
+  markPreviewOccluder(panel, 'menu');
   render();
   search.focus();
 

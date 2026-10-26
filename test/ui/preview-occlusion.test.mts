@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 import {
   createPreviewOcclusionTracker,
   markPreviewOccluder,
+  unmarkPreviewOccluder,
   PREVIEW_OCCLUDER_HIT_EXCLUDE_CLASS,
 } from '../../src/ui/preview-occlusion';
 
@@ -151,6 +152,24 @@ test('unrelated DOM churn does not notify subscribers', async () => {
   await flushMutations();
   runFrames();
   assert.equal(calls, 0);
+});
+
+test('marking and unmarking an already-mounted panel notifies on every reopen', async () => {
+  const menu = doc.createElement('div');
+  doc.body.appendChild(menu);
+  const tracker = createPreviewOcclusionTracker({ doc, getRect, hitTest: () => menu });
+  let calls = 0;
+  const unsubscribe = tracker.subscribe(() => { calls += 1; });
+  for (let i = 0; i < 2; i++) {
+    markPreviewOccluder(menu, 'menu');
+    await flushMutations();
+    runFrames();
+    unmarkPreviewOccluder(menu);
+    await flushMutations();
+    runFrames();
+  }
+  assert.equal(calls, 4);
+  unsubscribe();
 });
 
 test('restyling a marked overlay invalidates its cached rect', async () => {

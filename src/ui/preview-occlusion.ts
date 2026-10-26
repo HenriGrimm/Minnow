@@ -121,7 +121,10 @@ export function createPreviewOcclusionTracker(options: PreviewOcclusionTrackerOp
         rects.delete(element);
         notify();
       });
-      observer.observe(element, { attributes: true, attributeFilter: ['style', 'class', 'hidden'], childList: true, subtree: true });
+      observer.observe(element, {
+        attributes: true, attributeFilter: ['style', 'class', 'hidden'],
+        childList: true, characterData: true, subtree: true,
+      });
       elementObservers.set(element, observer);
       changed = true;
     }
@@ -139,13 +142,31 @@ export function createPreviewOcclusionTracker(options: PreviewOcclusionTrackerOp
     const root = doc.body ?? doc.documentElement;
     if (ObserverCtor && root) {
       // Body-wide childList changes are frequent; only overlay membership changes notify.
-      structuralObserver = new ObserverCtor(() => {
-        if (trackElements()) notify();
+      structuralObserver = new ObserverCtor((records) => {
+        // Reused panels gain their marker on open without being reinserted.
+        // Ignore unrelated class/style churn (including frame-cache updates).
+        const membershipChanged = trackElements();
+        const relevant = records.some((record) => {
+          const target = record.target as Element;
+          return target.nodeType === 1 && Array.from(overlays).some((overlay) =>
+            overlay === target || target.contains(overlay));
+        });
+        if (membershipChanged || relevant) {
+          rects = new WeakMap();
+          notify();
+        }
       });
-      structuralObserver.observe(root, { childList: true, subtree: true });
+      structuralObserver.observe(root, {
+        childList: true, subtree: true, attributes: true,
+        attributeFilter: ['class', 'style', 'hidden', 'data-occluder-kind'],
+      });
     }
     trackElements();
     view?.addEventListener('resize', onResize);
+    doc.addEventListener?.('scroll', onResize, true);
+    doc.addEventListener?.('transitionend', onResize, true);
+    doc.addEventListener?.('animationend', onResize, true);
+    doc.addEventListener?.('toggle', onResize, true);
   };
 
   const disconnect = (): void => {
@@ -157,6 +178,10 @@ export function createPreviewOcclusionTracker(options: PreviewOcclusionTrackerOp
     elementObservers.clear();
     rects = new WeakMap();
     view?.removeEventListener('resize', onResize);
+    doc.removeEventListener?.('scroll', onResize, true);
+    doc.removeEventListener?.('transitionend', onResize, true);
+    doc.removeEventListener?.('animationend', onResize, true);
+    doc.removeEventListener?.('toggle', onResize, true);
   };
 
   const readRect = (element: Element): DOMRectReadOnly => {

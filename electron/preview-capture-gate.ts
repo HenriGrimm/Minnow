@@ -1,7 +1,7 @@
 /**
  * Tracks in-flight `capturePage` copies per preview guest. Resizing a surface to
- * 0x0 or detaching it while Chromium copies it can hang macOS WindowServer, so
- * those steps wait for the guest's captures to settle.
+ * 0x0 or detaching it waits for native copies as a preventative surface-lifetime
+ * race mitigation, not a proven fix for WindowServer hangs.
  */
 export interface PreviewCaptureGate {
   /** Register a capture for `key`; resolves or rejects exactly like `capture`. */
@@ -39,6 +39,31 @@ export function createPreviewCaptureGate(): PreviewCaptureGate {
     },
     inFlight(key) {
       return pending.get(key)?.size ?? 0;
+    },
+  };
+}
+
+/** Shared by the raw-copy producer and native surface lifecycle. Keys are WebContents. */
+export const previewCaptureGate = createPreviewCaptureGate();
+
+/** Latest visibility intent wins, including over temporary capture reveals. */
+export function createPreviewCaptureVisibility(gate: PreviewCaptureGate) {
+  const intents = new WeakMap<object, object>();
+  const change = (key: object): object => {
+    const token = {};
+    intents.set(key, token);
+    return token;
+  };
+  const isCurrent = (key: object, token: object): boolean => intents.get(key) === token;
+  return {
+    change,
+    isCurrent,
+    hide(key: object, finish: () => void): void {
+      const token = change(key);
+      if (gate.inFlight(key) === 0) { finish(); return; }
+      void gate.whenIdle(key).then(() => {
+        if (isCurrent(key, token)) finish();
+      });
     },
   };
 }

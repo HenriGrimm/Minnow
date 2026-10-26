@@ -1,6 +1,6 @@
 import { AGENT_CLI_USAGE_NAMES, agentCliUsageKind, type AgentCliKind } from '../models/agent-clis';
 import { accountUsageSummary, createAccountUsageView, type AccountUsageView } from './cli-account-usage';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { createProviderAccountUsageView, providerMetricText } from './provider-account-usage';
 import { hasProviderUsage } from '../providers/account-usage';
 
@@ -19,19 +19,18 @@ export function createAccountUsageTrigger() {
   popover.setAttribute('role', 'dialog');
   let kind: AgentCliKind | null = null;
   let view: AccountUsageView | null = null;
-  let registered = false;
   let selectedId: string | undefined;
   let disposed = false;
 
   function close(): void {
     if (popover.isConnected) popover.hidePopover();
-    if (registered) { unregisterChromePopover(); registered = false; }
+    unmarkPreviewOccluder(popover);
     button.setAttribute('aria-expanded', 'false');
   }
   popover.addEventListener('toggle', event => {
     const open = (event as ToggleEvent).newState === 'open';
     button.setAttribute('aria-expanded', String(open));
-    if (!open && registered) { unregisterChromePopover(); registered = false; }
+    if (!open) unmarkPreviewOccluder(popover);
   });
   button.addEventListener('click', () => {
     if (!view) return;
@@ -43,8 +42,7 @@ export function createAccountUsageTrigger() {
     popover.showPopover();
     const height = popover.getBoundingClientRect().height;
     popover.style.top = `${Math.max(12, Math.min(rect.top - height - 8, window.innerHeight - height - 12))}px`;
-    registerChromePopover();
-    registered = true;
+    markPreviewOccluder(popover, 'menu');
     button.setAttribute('aria-expanded', 'true');
     void view.refresh();
     popover.querySelector<HTMLButtonElement>('button')?.focus();

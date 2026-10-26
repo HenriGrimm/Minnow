@@ -2,7 +2,6 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen, openShellOverlay } from '../../src/ui/shell-overlay-state.ts';
-import { isChromePopoverOpen, resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
 import type { RouterConfig } from '../../src/models/routers.ts';
 
 let pools: RouterConfig = { revision: 1, defaultRouterId: null, routers: [{
@@ -69,16 +68,18 @@ test('Models shows pool coverage and per-model assignments, and refreshes while 
   } finally { close(); trigger.remove(); }
 });
 
-test('Models preserves nested picker dismissal, balances chrome registration and restores trigger focus', () => {
+test('Models preserves nested picker dismissal, tracks mounted preview occlusion and restores trigger focus', () => {
   disposed = 0;
-  resetChromePopoverRegistryForTests();
   const trigger = document.createElement('button'); document.body.append(trigger);
   const unbind = bindShellOverlayTrigger(trigger, 'models');
   try {
     const close = openModelsPopover(trigger);
     const panel = document.querySelector<HTMLElement>('#modelsSystemPopover')!;
     assert.equal(isShellOverlayOpen('models'), true);
-    assert.equal(isChromePopoverOpen(), true);
+    assert.equal(panel.isConnected, true);
+    assert.equal(panel.classList.contains('mn-occludes-preview'), true);
+    assert.equal(panel.getAttribute('data-occluder-kind'), 'panel');
+    assert.equal(panel.hidden, false);
     assert.equal(trigger.getAttribute('aria-expanded'), 'true');
     const picker = document.createElement('div'); picker.className = 'auxiliary-model-popover'; panel.append(picker);
     document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
@@ -86,7 +87,8 @@ test('Models preserves nested picker dismissal, balances chrome registration and
     picker.remove();
     document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     assert.equal(isShellOverlayOpen('models'), false);
-    assert.equal(isChromePopoverOpen(), false);
+    assert.equal(panel.isConnected, false);
+    assert.equal(document.querySelector('#modelsSystemPopover'), null);
     assert.equal(document.activeElement, trigger);
     assert.equal(disposed, 1);
     close(); assert.equal(disposed, 1);
@@ -94,6 +96,5 @@ test('Models preserves nested picker dismissal, balances chrome registration and
     openShellOverlay('other', () => {});
     assert.equal(disposed, 2);
     assert.equal(document.querySelector('#modelsSystemPopover'), null);
-    assert.equal(isChromePopoverOpen(), false);
-  } finally { closeShellOverlay(); unbind(); trigger.remove(); resetChromePopoverRegistryForTests(); }
+  } finally { closeShellOverlay(); unbind(); trigger.remove(); }
 });

@@ -41,7 +41,7 @@ describe('preview browser menu', () => {
   test('renders every requested action and states the screenshot destination', async () => {
     Object.defineProperty(win, 'minnow', {
       configurable: true,
-      value: { preview: { browserMenu: api, hide: async () => undefined } },
+      value: { preview: { browserMenu: api, hide: async () => { calls.push('direct-hide'); } } },
     });
     const anchor = win.document.createElement('button') as unknown as HTMLButtonElement;
     win.document.body.appendChild(anchor as unknown as Node);
@@ -57,6 +57,8 @@ describe('preview browser menu', () => {
     assert.match(text, /Clear browsing history/);
     assert.match(text, /Clear cookies/);
     assert.match(text, /Clear cache/);
+    assert.equal(win.document.querySelector('.preview-browser-menu')?.getAttribute('data-occluder-kind'), 'menu');
+    assert.ok(!calls.includes('direct-hide'), 'visibility must go through the occlusion/cache coordinator');
   });
 
   test('routes every menu action to the preview bridge', async () => {

@@ -131,12 +131,6 @@ export function resetPreviewHideHoldsForTests(): void {
   previewHideHoldCount = 0;
 }
 
-export const registerChromePopover = holdPreviewGuestHidden;
-export const unregisterChromePopover = releasePreviewGuestHidden;
-export const isChromePopoverOpen = isPreviewHideHeld;
-export const onChromePopoverChange = onPreviewOcclusionChange;
-export const resetChromePopoverRegistryForTests = resetPreviewHideHoldsForTests;
-
 export interface PreviewHostOcclusion {
   obscured: boolean;
   /** A notification is among the covering overlays, so the frozen page explains itself. */
@@ -346,7 +340,8 @@ async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<
         if (!canPaintElectronPreviewHost()) clearPreviewOcclusionPlaceholders(body);
       }
     } else {
-      clearPreviewPopoverSnapshot();
+      unsubscribePrimaryOcclusion?.();
+      unsubscribePrimaryOcclusion = null;
       clearPreviewOcclusionPlaceholders(body);
       // Off-screen for a non-overlay reason; a stale frame must not reappear later.
       if (body) stopPreviewFrameCache(body);
@@ -363,7 +358,10 @@ async function runElectronPreviewHostLayoutSync(tabId?: string | null): Promise<
   await api.show(bounds, tabId ?? undefined);
   previewGuestVisible = true;
   clearPreviewOcclusionPlaceholders(body);
-  if (body) startPreviewFrameCache(body, { isGuestVisible: () => previewGuestVisible });
+  if (body) startPreviewFrameCache(body, {
+    isGuestVisible: () => previewGuestVisible,
+    sourceKey: () => JSON.stringify([getFilePanelState().activePreviewTab, getFilePanelState().previewSource]),
+  });
 }
 
 /** Show or hide the native preview host and sync bounds when visible. */

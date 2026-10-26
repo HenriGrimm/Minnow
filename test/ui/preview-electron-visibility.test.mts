@@ -6,10 +6,10 @@ import {
   isNonCodeOsAppLayerActive,
   isProductWikiOverlayVisible,
   isPreviewPaneDomVisible,
-  isChromePopoverOpen,
-  registerChromePopover,
-  unregisterChromePopover,
-  resetChromePopoverRegistryForTests,
+  isPreviewHideHeld,
+  holdPreviewGuestHidden,
+  releasePreviewGuestHidden,
+  resetPreviewHideHoldsForTests,
   resetPreviewGuestVisibilityForTests,
   shouldShowElectronPreviewHost,
   syncElectronPreviewHostLayout,
@@ -70,7 +70,7 @@ describe('preview-electron-visibility', () => {
     lastShowBounds = null;
     layoutSyncRaf = 0;
     resetFilePanelStateForTests();
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     resetPreviewGuestVisibilityForTests();
     resetDesignModeIframeGuestForTests();
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
@@ -146,7 +146,7 @@ describe('preview-electron-visibility', () => {
   });
 
   afterEach(async () => {
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     resetPreviewGuestVisibilityForTests();
     // Let debounced preview sync finish before restoring globals (avoids post-test rejections).
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -304,12 +304,12 @@ describe('preview-electron-visibility', () => {
     assert.equal(hideCalls, 1);
   });
 
-  test('isChromePopoverOpen tracks register and unregister', () => {
-    assert.equal(isChromePopoverOpen(), false);
-    registerChromePopover();
-    assert.equal(isChromePopoverOpen(), true);
-    unregisterChromePopover();
-    assert.equal(isChromePopoverOpen(), false);
+  test('isPreviewHideHeld tracks register and unregister', () => {
+    assert.equal(isPreviewHideHeld(), false);
+    holdPreviewGuestHidden();
+    assert.equal(isPreviewHideHeld(), true);
+    releasePreviewGuestHidden();
+    assert.equal(isPreviewHideHeld(), false);
   });
 
   test('shouldShowElectronPreviewHost is true when desktop browser mount is active', () => {
@@ -354,9 +354,9 @@ describe('preview-electron-visibility', () => {
     elements.get('previewPane')!.classList.delete('hidden');
     enableCodeForeground();
     assert.equal(shouldShowElectronPreviewHost(), true);
-    registerChromePopover();
+    holdPreviewGuestHidden();
     assert.equal(shouldShowElectronPreviewHost(), false);
-    unregisterChromePopover();
+    releasePreviewGuestHidden();
     assert.equal(shouldShowElectronPreviewHost(), true);
   });
 
@@ -441,8 +441,8 @@ describe('preview-electron-visibility', () => {
       viewerOpen: true,
     });
     elements.get('previewPane')!.classList.delete('hidden');
-    registerChromePopover();
-    // registerChromePopover schedules a debounced sync; isolate the direct sync under test.
+    holdPreviewGuestHidden();
+    // holdPreviewGuestHidden schedules a debounced sync; isolate the direct sync under test.
     await new Promise((resolve) => setTimeout(resolve, 0));
     hideCalls = 0;
 

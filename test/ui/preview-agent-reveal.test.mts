@@ -13,7 +13,7 @@ import {
   resetPreviewTabStoreForTests,
 } from '../../src/ui/preview-tab-store.ts';
 import {
-  resetChromePopoverRegistryForTests,
+  resetPreviewHideHoldsForTests,
   resetPreviewGuestVisibilityForTests,
 } from '../../src/ui/preview-electron-visibility.ts';
 import { teardownHappyDomAsync } from '../os/dom-helpers.mts';
@@ -66,7 +66,7 @@ describe('revealPreviewPanelForAgentNavigation', () => {
 
   beforeEach(async () => {
     setStorageModeForTests('localStorage');
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     resetPreviewGuestVisibilityForTests();
     const { Window } = await import('happy-dom');
     const win = new Window();
@@ -120,7 +120,7 @@ describe('revealPreviewPanelForAgentNavigation', () => {
   afterEach(async () => {
     resetFilePanelStateForTests();
     resetPreviewTabStoreForTests();
-    resetChromePopoverRegistryForTests();
+    resetPreviewHideHoldsForTests();
     resetPreviewGuestVisibilityForTests();
     setStorageModeForTests('localStorage');
     if (happyDomWindow) {

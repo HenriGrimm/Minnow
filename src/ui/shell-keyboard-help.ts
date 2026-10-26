@@ -1,4 +1,4 @@
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 import { isDeveloperReleased } from '../os/app-registry';
 import type { AppId } from '../os/types';
 import { isTypingTarget } from './a11y/typing-target';
@@ -126,7 +126,6 @@ function trapFocus(event: KeyboardEvent): void {
 function closeKeyboardHelp(): void {
   if (!sheetOpen) return;
   sheetOpen = false;
-  unregisterChromePopover();
   const backdrop = document.getElementById('shellKeyboardHelpBackdrop');
   const panel = document.getElementById('shellKeyboardHelpPanel');
   backdrop?.remove();
@@ -219,7 +218,6 @@ export function showShellKeyboardHelp(): void {
   }
 
   sheetOpen = true;
-  registerChromePopover();
   previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
@@ -229,12 +227,14 @@ export function showShellKeyboardHelp(): void {
   const backdrop = document.createElement('div');
   backdrop.id = 'shellKeyboardHelpBackdrop';
   backdrop.className = 'shell-keyboard-help-backdrop';
+  markPreviewOccluder(backdrop, 'dialog');
   if (scoped) backdrop.classList.add('is-scoped');
   backdrop.addEventListener('click', closeKeyboardHelp);
 
   const panel = document.createElement('div');
   panel.id = 'shellKeyboardHelpPanel';
   panel.className = 'shell-keyboard-help-sheet';
+  markPreviewOccluder(panel, 'dialog');
   if (scoped) panel.classList.add('is-scoped');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-modal', 'true');

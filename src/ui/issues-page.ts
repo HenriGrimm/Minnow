@@ -2,7 +2,7 @@ import { openShellOverlay, shellOverlayClosed, isShellOverlayOpen, closeShellOve
 import { createIssueChatActivity, createIssueAgentActivity } from './issues-chat-activity';
 import { createIssueExpansionActivity } from './issues-background-activity';
 import { formatIssueAge } from '../issues/age';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 import '../styles/issues.css';
 
@@ -2195,8 +2195,8 @@ function attachNewFormSessionListeners(form: HTMLElement, backdrop: HTMLElement 
 
 function setNewIssuePanelOpen(open: boolean, form: HTMLElement, backdrop: HTMLElement | null): void {
   if (open !== form.classList.contains('is-open')) {
-    if (open) registerChromePopover();
-    else unregisterChromePopover();
+    if (open) markPreviewOccluder(form, 'menu');
+    else unmarkPreviewOccluder(form);
   }
   form.classList.toggle('is-open', open);
   backdrop?.classList.toggle('is-open', open);

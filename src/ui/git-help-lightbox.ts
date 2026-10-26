@@ -1,7 +1,4 @@
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { createGitWorktreeIcon } from './git-worktree-icons';
 import { createIcon } from './icon';
 
@@ -15,7 +12,6 @@ let dialogEl: HTMLDivElement | null = null;
 let isOpen = false;
 let previousFocus: HTMLElement | null = null;
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
-let chromePopoverRegistered = false;
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -345,8 +341,7 @@ export function openGitHelpLightbox(): void {
   overlayEl!.hidden = false;
   overlayEl!.classList.remove('hidden');
   document.getElementById('btnGitHelp')?.classList.add('is-active');
-  registerChromePopover();
-  chromePopoverRegistered = true;
+  markPreviewOccluder(overlayEl!, 'dialog');
   dialogEl!.focus();
 
   escapeHandler = (e: KeyboardEvent) => {
@@ -367,10 +362,7 @@ export function closeGitHelpLightbox(): void {
   document.getElementById('btnGitHelp')?.classList.remove('is-active');
   overlayEl!.hidden = true;
   overlayEl!.classList.add('hidden');
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   previousFocus?.focus();
   previousFocus = null;
 }

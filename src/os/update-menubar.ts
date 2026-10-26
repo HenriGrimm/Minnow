@@ -13,10 +13,7 @@ import {
   type MinnowUpdaterStatus,
 } from '../electron/updater-client';
 import { launchApp } from './router';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from '../ui/preview-electron-visibility';
+import { markPreviewOccluder } from '../ui/preview-occlusion';
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -65,7 +62,6 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
     if (!menuOpen) return;
     menuOpen = false;
     shellOverlayClosed('update');
-    unregisterChromePopover();
     detachGlobalListeners();
     panel?.remove();
     panel = null;
@@ -155,7 +151,7 @@ export function initUpdateMenubarPill(slot: HTMLElement): () => void {
     panel = buildPanel(latest);
     document.body.appendChild(panel);
     menuOpen = true;
-    registerChromePopover();
+    markPreviewOccluder(panel, 'menu');
     pill.setAttribute('aria-expanded', 'true');
     pill.classList.add('is-open');
     positionPanel();

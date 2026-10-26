@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import type { MinnowElectronBridge } from '../../src/electron.d.ts';
-import { resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
 
 describe('app dialog', () => {
   let win: import('happy-dom').Window;
@@ -10,7 +9,6 @@ describe('app dialog', () => {
   const prevRaf = globalThis.requestAnimationFrame;
 
   beforeEach(async () => {
-    resetChromePopoverRegistryForTests();
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(0);
       return 1;
@@ -45,7 +43,6 @@ describe('app dialog', () => {
   });
 
   afterEach(async () => {
-    resetChromePopoverRegistryForTests();
     const { resetAppDialogForTests } = await import('../../src/ui/app-dialog.ts');
     resetAppDialogForTests();
     globalThis.requestAnimationFrame = prevRaf;

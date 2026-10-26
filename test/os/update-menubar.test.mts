@@ -34,7 +34,7 @@ function setup(initial: MinnowUpdaterStatus) {
   g.document = win.document;
   g.window = win;
   g.HTMLElement = win.HTMLElement;
-  // registerChromePopover schedules a preview layout sync via bare rAF globals.
+  // Provide animation scheduling for mounted UI.
   g.requestAnimationFrame = (cb: FrameRequestCallback) =>
     setTimeout(() => cb(0), 0) as unknown as number;
   g.cancelAnimationFrame = (id: number) => clearTimeout(id);
@@ -117,6 +117,10 @@ describe('initUpdateMenubarPill', () => {
     pill?.click();
     const menu = document.querySelector<HTMLElement>('.mn-os-update-menu');
     assert.ok(menu);
+    assert.equal(menu.isConnected, true);
+    assert.equal(menu.hidden, false);
+    assert.equal(menu.classList.contains('mn-occludes-preview'), true);
+    assert.equal(menu.getAttribute('data-occluder-kind'), 'menu');
     assert.ok(menu.textContent?.includes('Minnow 1.1.0 is downloaded.'));
     assert.ok(menu.textContent?.includes('Highlights'));
     assert.ok(menu.textContent?.includes('A broad reliability update.'));
@@ -126,6 +130,7 @@ describe('initUpdateMenubarPill', () => {
 
     menu.querySelector<HTMLButtonElement>('.mn-os-update-menu__restart')?.click();
     assert.deepEqual(calls, ['restart']);
+    assert.equal(menu.isConnected, false);
     assert.equal(document.querySelector('.mn-os-update-menu'), null);
   });
 

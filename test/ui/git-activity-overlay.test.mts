@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { Window } from 'happy-dom';
 
-import { resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility.ts';
 
 function setupDom() {
   const window = new Window();
@@ -21,7 +20,6 @@ describe('git activity overlay', () => {
       '../../src/ui/git-activity-overlay.ts'
     );
     resetGitActivityOverlayForTests();
-    resetChromePopoverRegistryForTests();
     document.body.replaceChildren();
   });
 

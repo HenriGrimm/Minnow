@@ -365,7 +365,9 @@
 }
 
 /* The live native guest steps aside for shell menus; retain its painted page. */
-.preview-popover-snapshot {
+.preview-popover-snapshot,
+.reef-preview img.preview-popover-snapshot {
+  z-index: 1;
   position: absolute;
   inset: 0;
   width: 100%;
@@ -375,12 +377,14 @@
   user-select: none;
 }
 
-.preview-popover-snapshot[hidden] {
+.preview-popover-snapshot[hidden],
+.reef-preview img.preview-popover-snapshot[hidden] {
   display: none;
 }
 
 /* Shown over the frozen frame when a notification is what covers the page. */
 .preview-paused {
+  z-index: 2;
   position: absolute;
   top: 50%;
   left: 50%;

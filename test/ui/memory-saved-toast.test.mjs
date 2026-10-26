@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
-import { isChromePopoverOpen, registerChromePopover, unregisterChromePopover } from '../../src/ui/preview-electron-visibility.ts';
+import { isPreviewHideHeld, holdPreviewGuestHidden, releasePreviewGuestHidden } from '../../src/ui/preview-electron-visibility.ts';
 
 const {
   dismissAllMemorySavedToasts,
@@ -36,38 +36,58 @@ describe('memory saved toast', () => {
   });
 
 
-  test('keeps native preview suppressed through exit and queued card transitions', async () => {
+  test('keeps preview markers through exit and queued card transitions', async () => {
     const payload = { title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } };
     const dismissFirst = showMemorySavedToast(payload);
     showMemorySavedToast({ ...payload, title: 'Next' });
-    assert.equal(isChromePopoverOpen(), true);
+    const first = document.querySelector('.memory-saved-toast');
+    const assertMarked = (card) => {
+      assert.equal(card.isConnected, true);
+      assert.equal(card.hidden, false);
+      assert.equal(card.classList.contains('mn-occludes-preview'), true);
+      assert.equal(card.getAttribute('data-occluder-kind'), 'notification');
+    };
+    assertMarked(first);
+    assert.equal(first.classList.contains('memory-saved-toast--visible'), true);
     dismissFirst();
-    document.querySelector('.memory-saved-toast__progress-fill').dispatchEvent(new window.Event('transitionend', { bubbles: true }));
+    first.querySelector('.memory-saved-toast__progress-fill').dispatchEvent(new window.Event('transitionend', { bubbles: true }));
     assert.equal(document.querySelectorAll('.memory-saved-toast').length, 1, 'child progress transition must not end card exit');
-    assert.equal(isChromePopoverOpen(), true, 'exiting card still overlays native preview');
+    assert.equal(first.classList.contains('memory-saved-toast--visible'), false);
+    assertMarked(first);
     await wait(190);
     assert.equal(document.querySelectorAll('.memory-saved-toast').length, 2);
-    const first = document.querySelector('.memory-saved-toast');
+    const next = document.querySelector('.memory-saved-toast--visible');
+    assert.notEqual(next, first);
+    assertMarked(first);
+    assertMarked(next);
     first.dispatchEvent(new window.Event('transitionend'));
-    assert.equal(isChromePopoverOpen(), true, 'next card retains its own registration');
+    assert.equal(first.isConnected, false);
+    assertMarked(next);
     await wait(80);
-    assert.equal(isChromePopoverOpen(), true, 'fallback removal cannot unregister twice');
+    assertMarked(next);
+    assert.equal(document.querySelectorAll('.memory-saved-toast').length, 1, 'fallback removal cannot remove the next card');
     dismissAllMemorySavedToasts();
-    assert.equal(isChromePopoverOpen(), false);
-    assert.equal(document.querySelector('.memory-saved-toast'), null);
+    assert.equal(next.isConnected, false);
+    assert.equal(document.querySelector('.memory-saved-toast.mn-occludes-preview'), null);
   });
 
-  test('teardown removes exiting cards and preserves other popover registrations', async () => {
-    registerChromePopover();
-    const dismiss = showMemorySavedToast({ title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } });
-    dismiss();
-    dismissAllMemorySavedToasts();
-    assert.equal(document.querySelector('.memory-saved-toast'), null);
-    assert.equal(isChromePopoverOpen(), true);
-    await wait(270);
-    assert.equal(isChromePopoverOpen(), true);
-    unregisterChromePopover();
-    assert.equal(isChromePopoverOpen(), false);
+  test('teardown removes exiting cards and preserves independent preview holds', async () => {
+    holdPreviewGuestHidden();
+    try {
+      const dismiss = showMemorySavedToast({ title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } });
+      const card = document.querySelector('.memory-saved-toast');
+      dismiss();
+      dismissAllMemorySavedToasts();
+      assert.equal(card.isConnected, false);
+      assert.equal(document.querySelector('.memory-saved-toast'), null);
+      assert.equal(isPreviewHideHeld(), true);
+      await wait(270);
+      assert.equal(document.querySelector('.memory-saved-toast'), null);
+      assert.equal(isPreviewHideHeld(), true);
+    } finally {
+      releasePreviewGuestHidden();
+    }
+    assert.equal(isPreviewHideHeld(), false);
   });
 
   test('renders the saved memory title, description, actions, and progress', () => {

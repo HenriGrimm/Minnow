@@ -3,7 +3,7 @@ import type { ModelRouter, RouterEntry } from '../models/routers';
 import { formatRouterTaskTypeLabel, ROUTER_TASK_TYPES } from '../models/router-task-types.mjs';
 import '../styles/model-router-task-types.css';
 import { iconHtml } from './icon';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 let openTasks: { owner: HTMLElement; close: () => void } | undefined;
 
@@ -81,14 +81,14 @@ export function poolTaskTypeChoices(entry: RouterEntry, label: string, onChange:
     if (typeof panel.hidePopover === 'function' && panel.matches(':popover-open')) panel.hidePopover();
     panel.hidden = true; trigger.setAttribute('aria-expanded', 'false');
     if (openTasks?.owner === group) openTasks = undefined;
-    unregisterChromePopover();
+    unmarkPreviewOccluder(panel);
   };
   const outside = (event: Event): void => { if (!group.contains(event.target as Node)) close(); };
   const scrolled = (event: Event): void => { if (!panel.contains(event.target as Node)) close(); };
   trigger.onclick = () => {
     if (opened) { close(); return; }
     openTasks?.close(); opened = true; openTasks = { owner: group, close };
-    panel.hidden = false; registerChromePopover();
+    panel.hidden = false; markPreviewOccluder(panel, 'menu');
     if (typeof panel.showPopover === 'function') panel.showPopover();
     const box = trigger.getBoundingClientRect();
     const width = panel.offsetWidth || 280; const height = panel.offsetHeight;

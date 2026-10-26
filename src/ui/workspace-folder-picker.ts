@@ -3,10 +3,7 @@ import {
   createWorkspaceSubfolder,
   type WorkspaceBrowseEntry,
 } from '../config/workspace-api';
-import {
-  registerChromePopover,
-  unregisterChromePopover,
-} from './preview-electron-visibility';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { createIcon, type IconName } from './icon';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import {
@@ -61,7 +58,6 @@ let resolvePicker: ((result: WorkspaceFolderPickerResult) => void) | null = null
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let previousFocus: HTMLElement | null = null;
 let shellListenersBound = false;
-let chromePopoverRegistered = false;
 
 const DEFAULT_TITLE = 'Open workspace';
 const DEFAULT_CONFIRM_VERB = 'Open';
@@ -777,8 +773,7 @@ function showOverlay(): void {
   if (!overlayEl || !dialogEl) {
     return;
   }
-  registerChromePopover();
-  chromePopoverRegistered = true;
+  markPreviewOccluder(overlayEl, 'dialog');
   overlayEl.hidden = false;
   overlayEl.classList.remove('hidden');
   if (!isNewFolderPanelVisible()) {
@@ -800,10 +795,7 @@ function finishPicker(result: WorkspaceFolderPickerResult): void {
   detachEscape();
   hideNewFolderPanel();
   hideOverlay();
-  if (chromePopoverRegistered) {
-    unregisterChromePopover();
-    chromePopoverRegistered = false;
-  }
+  if (overlayEl) unmarkPreviewOccluder(overlayEl);
   const resolve = resolvePicker;
   resolvePicker = null;
   previousFocus?.focus();

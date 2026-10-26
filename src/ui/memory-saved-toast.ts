@@ -2,7 +2,7 @@ import type { BrainPage } from '../brain/types';
 import type { MemoryEntryMeta } from '../memory/types';
 import { createIcon } from './icon';
 import { showToast } from './toast';
-import { registerChromePopover, unregisterChromePopover } from './preview-electron-visibility';
+import { markPreviewOccluder } from './preview-occlusion';
 
 const DEFAULT_DURATION_MS = 10_000;
 const PROGRESS_INTERVAL_MS = 50;
@@ -372,11 +372,10 @@ function renderNextToast(): void {
     busy: false,
   };
   activeToast = toast;
-  registerChromePopover();
+  markPreviewOccluder(element, 'notification');
   mountedToastRemovers.set(element, () => {
     if (!mountedToastRemovers.delete(element)) return;
     element.remove();
-    unregisterChromePopover();
   });
   document.body.append(element);
   requestAnimationFrame(() => element.classList.add('memory-saved-toast--visible'));

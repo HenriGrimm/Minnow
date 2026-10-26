@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installNativeSelectPreviewGuard } from '../../src/ui/native-select-preview-guard';
-import { isChromePopoverOpen, registerChromePopover, unregisterChromePopover, resetChromePopoverRegistryForTests } from '../../src/ui/preview-electron-visibility';
+import { isPreviewHideHeld, holdPreviewGuestHidden, releasePreviewGuestHidden, resetPreviewHideHoldsForTests } from '../../src/ui/preview-electron-visibility';
 
 const originals = new Map<string, PropertyDescriptor | undefined>();
 let dispose: (() => void) | undefined;
@@ -50,7 +50,7 @@ function setup() {
 afterEach(() => {
   dispose?.();
   dispose = undefined;
-  resetChromePopoverRegistryForTests();
+  resetPreviewHideHoldsForTests();
   win?.close();
   for (const [key, descriptor] of originals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
@@ -61,7 +61,7 @@ afterEach(() => {
 
 test('a styled picker registers once and closes without consuming another popover', () => {
   const { select, flush, setOpen } = setup();
-  registerChromePopover();
+  holdPreviewGuestHidden();
   setOpen(true);
   select.dispatchEvent(new win.Event('focusin', { bubbles: true }));
   flush();
@@ -70,9 +70,9 @@ test('a styled picker registers once and closes without consuming another popove
   setOpen(false);
   select.dispatchEvent(new win.Event('change', { bubbles: true }));
   flush();
-  assert.equal(isChromePopoverOpen(), true);
-  unregisterChromePopover();
-  assert.equal(isChromePopoverOpen(), false);
+  assert.equal(isPreviewHideHeld(), true);
+  releasePreviewGuestHidden();
+  assert.equal(isPreviewHideHeld(), false);
 });
 
 test('removing an open select restores the preview even without a focus event', async () => {
@@ -80,11 +80,11 @@ test('removing an open select restores the preview even without a focus event', 
   setOpen(true);
   select.dispatchEvent(new win.Event('focusin', { bubbles: true }));
   flush();
-  assert.equal(isChromePopoverOpen(), true);
+  assert.equal(isPreviewHideHeld(), true);
   select.remove();
   await new Promise((resolve) => setTimeout(resolve, 0));
   flush();
-  assert.equal(isChromePopoverOpen(), false);
+  assert.equal(isPreviewHideHeld(), false);
 });
 
 test('disposing an open picker releases the guard and cancels pending work', () => {
@@ -92,10 +92,10 @@ test('disposing an open picker releases the guard and cancels pending work', () 
   setOpen(true);
   select.dispatchEvent(new win.Event('focusin', { bubbles: true }));
   flush();
-  assert.equal(isChromePopoverOpen(), true);
+  assert.equal(isPreviewHideHeld(), true);
   select.dispatchEvent(new win.Event('keydown', { bubbles: true }));
   dispose?.();
   dispose = undefined;
   flush();
-  assert.equal(isChromePopoverOpen(), false);
+  assert.equal(isPreviewHideHeld(), false);
 });
