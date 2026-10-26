@@ -3,6 +3,7 @@ import { afterEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import {
   holdPreviewGuestHidden,
+  canAgentRevealPreviewPanel,
   releasePreviewGuestHidden,
   resetPreviewGuestVisibilityForTests,
   resetPreviewHideHoldsForTests,
@@ -167,6 +168,42 @@ test('a force-hide hold hides the guest without any overlay', async () => {
   releasePreviewGuestHidden();
   await sync();
   assert.equal(actions.at(-1), 'show');
+});
+
+test('the workspace chooser hides primary and split guests through the opening cover, then restores them', async () => {
+  const { doc, reefHost, actions, sync, flush } = setup();
+  const gate = doc.createElement('div');
+  gate.id = 'osWorkspaceGate';
+  gate.hidden = true;
+  doc.body.appendChild(gate);
+  await sync();
+  bindPreviewInstanceToElement('secondary', reefHost);
+  await flush();
+  assert.ok(actions.includes('show'));
+  assert.ok(actions.includes('show:secondary'));
+
+  // An opaque full-stage cover still hides guests when hit-testing sees
+  // through it during the disabled opening state (no injected overlay rect).
+  gate.hidden = false;
+  gate.classList.add('workspace-gate--opening');
+  gate.style.pointerEvents = 'none';
+  actions.length = 0;
+  await sync();
+  syncPreviewInstanceBounds('secondary');
+  await flush();
+  assert.equal(canAgentRevealPreviewPanel(), false);
+  assert.ok(actions.includes('hide'));
+  assert.ok(actions.includes('hide:secondary'));
+  assert.ok(!actions.some((action) => action.startsWith('show')));
+
+  gate.hidden = true;
+  actions.length = 0;
+  await sync();
+  syncPreviewInstanceBounds('secondary');
+  await flush();
+  assert.equal(canAgentRevealPreviewPanel(), true);
+  assert.ok(actions.includes('show'));
+  assert.ok(actions.includes('show:secondary'));
 });
 
 test('a notification over the page shows the paused message; a menu does not', async () => {

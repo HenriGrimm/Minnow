@@ -1,3 +1,10 @@
+:root {
+  /* Boot sentinel: proves bundled app CSS is applied (see boot/app-ready.ts).
+     Route-independent on purpose — probing shell geometry breaks whenever the
+     active shell hides that element. Keep this declaration. */
+  --mn-app-css-ready: 1;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {

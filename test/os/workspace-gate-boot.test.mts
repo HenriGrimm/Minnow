@@ -89,10 +89,12 @@ describe('workspace-gate boot', { concurrency: false }, () => {
     mountWorkspaceGateDom();
     openWorkspaceGate({ switch: true });
     assert.equal(isWorkspaceGateOpen(), true);
+    assert.equal(document.getElementById('osWorkspaceGate')!.classList.contains('mn-occludes-preview'), true);
 
     await finishWorkspaceGateSwitch();
 
     assert.equal(isWorkspaceGateOpen(), false);
+    assert.equal(document.getElementById('osWorkspaceGate')!.classList.contains('mn-occludes-preview'), false);
     assert.equal(
       document.documentElement.classList.contains('os-workspace-gate-holding'),
       false,
