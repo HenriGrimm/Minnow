@@ -13,6 +13,13 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 const PLANNER_DIR = path.join(REPO_ROOT, 'src/chat/prompts/work-agents/planner');
 
 describe('planner work-agent prompts', () => {
+  test('planning sources specify browser pass conditions without a fixed total time budget', async () => {
+    for (const relative of ['src/chat/prompts/work-agents/planner/agent.full.md', 'src/chat/prompts/work-agents/planner/agent.lite.md', 'src/skills/plan-work/SKILL.md', 'src/skills/plan-work/plan-template.md']) {
+      const body = await fs.readFile(path.join(REPO_ROOT, relative), 'utf8');
+      assert.doesNotMatch(body, /two-minute total (?:browser-check )?budget/);
+      assert.match(body, /observable pass condition/);
+    }
+  });
   test('both profiles and Plan mode choose the format before scope questions and preserve revisions', async () => {
     for (const relative of ['work-agents/planner/agent.full.md', 'work-agents/planner/agent.lite.md', 'modes/plan.full.md', 'modes/plan.lite.md']) {
       const body = await fs.readFile(path.join(REPO_ROOT, 'src/chat/prompts', relative), 'utf8');

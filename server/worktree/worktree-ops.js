@@ -45,7 +45,7 @@ async function seedTaskWorktreeDeps(wtPath, intPath) {
   if (!deps.ok && preferred !== workspace) {
     deps = await ensureDependencyDirs(workspace, wtPath);
   }
-  if (await hasBrokenDepDir(wtPath)) {
+  if (!deps.ok || await hasBrokenDepDir(wtPath)) {
     return {
       ok: false,
       error: 'deps',
@@ -295,12 +295,14 @@ export async function ensureIntegration({ boardId, branch, baseRef }) {
       };
     }
     const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+    if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
     return { ok: true, path: intPath, branch, created: false, deps };
   }
   await fs.mkdir(path.dirname(intPath), { recursive: true });
   const w = await git(['worktree', 'add', intPath, branch]);
   if (!ok(w)) return { ok: false, stage: 'worktree', path: intPath, output: out(w) };
   const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+  if (!deps.ok) return { ok: false, stage: 'deps', path: intPath, deps, output: depFailureOutput(deps) };
   return { ok: true, path: intPath, branch, created: true, deps };
 }
 

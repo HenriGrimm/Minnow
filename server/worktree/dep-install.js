@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { killProcessTree } from '../terminal-runner.js';
-import { resolveUnixLoginShell } from '../terminal/one-shot-spawn.js';
+import { installSpawnTarget } from './dep-install-spawn.js';
 import { ECOSYSTEM_ENTRIES, materializeDepDirs } from './dep-symlinks.js';
 
 const INSTALL_TIMEOUT_MS = 600_000;
@@ -15,17 +15,6 @@ const INSTALL_TIMEOUT_MS = 600_000;
 function installFailure(label, reason) {
   const detail = String(reason).trim();
   return `${label} (${detail.length > 2000 ? `…${detail.slice(-2000)}` : detail})`;
-}
-
-/** GUI launches need the login PATH; pass argv separately from shell source. */
-function installSpawnTarget(install) {
-  if (process.platform === 'win32') return { ...install, shell: true };
-  const login = resolveUnixLoginShell(process.platform);
-  return {
-    command: login.shell,
-    args: [...login.loginArgs, '-c', 'exec "$@"', 'minnow-dep-install', install.command, ...install.args],
-    shell: false,
-  };
 }
 
 async function pathExists(targetPath) {

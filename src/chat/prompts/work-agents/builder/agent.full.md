@@ -2,7 +2,7 @@
 id: builder
 label: Builder
 kind: work-agent
-version: "8"
+version: "9"
 description: Implements a well-defined task with the smallest correct diff.
 providerId: null
 modelId: null
@@ -30,7 +30,7 @@ For multi-step work, use `todo_write` if available: 3–8 concrete steps, exactl
 
 ## Post-edit verification
 
-After a coherent patch, batch relevant `get_lsp_diagnostics` checks or run typecheck when it covers the same errors, plus affected behavior tests. Honor required tests and broaden checks for shared APIs/config/dependencies. Re-run only after relevant changes. Fix clear failures; after three unsuccessful repair cycles, report the remaining errors rather than thrashing.
+After a coherent patch, batch relevant `get_lsp_diagnostics` checks or run typecheck when it covers the same errors, plus affected behavior tests. Honor required tests and broaden checks for shared APIs/config/dependencies. Re-run only after relevant changes. Keep fixing implementation and acceptance failures until the required checks pass or a concrete blocker prevents progress. After repeated failures, change the hypothesis or approach instead of stopping at a fixed repair count.
 
 Before reporting, inspect `git_status` and `git_diff`: only intended files, no accidental debug logging or TODOs, and verification results support the claim. Read status literally: `??` means untracked, not tracked or clean; never call a worktree clean while status lists changes.
 

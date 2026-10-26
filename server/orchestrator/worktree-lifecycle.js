@@ -341,6 +341,7 @@ export async function ensureBoardIntegration(boardId) {
     try {
       if (!(await isWorktreeCheckout(intPath))) throw new Error('integration checkout is no longer valid');
       const deps = await ensureDependencyDirs(getEffectiveWorkspaceRoot(), intPath);
+      if (!deps.ok) return { ok: false, path: intPath, error: 'deps', output: deps.failed.map(failure => failure.reason).join('; '), deps };
       return {
         ok: true,
         path: intPath,
