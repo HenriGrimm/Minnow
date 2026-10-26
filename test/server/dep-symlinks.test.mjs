@@ -422,6 +422,109 @@ describe('dep-symlinks', () => {
     assert.equal(mainContent, 'installed\n');
   });
 
+  /** Two npm workspace checkouts with distinguishable package exports. */
+  async function npmFixture(name, workspaces = ['packages/*']) {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), `minnow-npm-${name}-`));
+    const source = path.join(base, 'main');
+    const wt = path.join(base, 'wt');
+    const manifest = { name: 'workspace-fixture', version: '1.0.0', workspaces };
+    const lock = { name: manifest.name, version: '1.0.0', lockfileVersion: 3, packages: {
+      '': manifest,
+      'packages/core': { name: '@fixture/core', version: '1.0.0' },
+      'node_modules/@fixture/core': { resolved: 'packages/core', link: true },
+    } };
+    for (const dir of [source, wt]) {
+      await fs.mkdir(path.join(dir, 'packages/core'), { recursive: true });
+      await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(manifest));
+      await fs.writeFile(path.join(dir, 'package-lock.json'), JSON.stringify(lock));
+      await fs.writeFile(path.join(dir, 'packages/core/package.json'), JSON.stringify({ name: '@fixture/core', version: '1.0.0', main: 'index.js' }));
+      await fs.writeFile(path.join(dir, 'packages/core/index.js'), `module.exports = ${JSON.stringify(dir === wt ? 'task-only-export' : 'old-integration-export')};`);
+    }
+    await fs.mkdir(path.join(source, 'node_modules/@fixture'), { recursive: true });
+    await fs.symlink(path.join(source, 'packages/core'), path.join(source, 'node_modules/@fixture/core'), process.platform === 'win32' ? 'junction' : 'dir');
+    await fs.symlink(path.join(source, 'node_modules'), path.join(wt, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+    return { base, source, wt };
+  }
+
+  for (const workspaces of [['packages/*'], { packages: ['packages/*'] }]) test(`npm workspace imports use task sources (${Array.isArray(workspaces) ? 'array' : 'object'} manifest)`, async () => {
+    const { base, source, wt } = await npmFixture('local', workspaces);
+    try {
+      const res = await ensureDependencyDirs(source, wt);
+      assert.equal(res.ok, true, JSON.stringify(res.failed));
+      assert.deepEqual(res.installed, ['node_modules']);
+      assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'real-dir');
+      assert.equal(await fs.realpath(path.join(wt, 'node_modules/@fixture/core')), await fs.realpath(path.join(wt, 'packages/core')));
+      const loaded = await execFileAsync(process.execPath, ['-e', "console.log(require('@fixture/core'))"], { cwd: wt });
+      assert.equal(loaded.stdout.trim(), 'task-only-export');
+      assert.equal(await fs.realpath(path.join(source, 'node_modules/@fixture/core')), await fs.realpath(path.join(source, 'packages/core')));
+      assert.equal((await ensureDependencyDirs(source, wt, { installNpm: () => assert.fail('healthy worktree must not reinstall') })).ok, true);
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
+  test('npm workspace setup repairs foreign links even inside a real modules directory', async () => {
+    const { base, source, wt } = await npmFixture('foreign');
+    try {
+      await fs.unlink(path.join(wt, 'node_modules'));
+      await fs.mkdir(path.join(wt, 'node_modules/@fixture'), { recursive: true });
+      await fs.symlink(path.join(source, 'packages/core'), path.join(wt, 'node_modules/@fixture/core'), process.platform === 'win32' ? 'junction' : 'dir');
+      const res = await ensureDependencyDirs(source, wt);
+      assert.equal(res.ok, true, JSON.stringify(res.failed));
+      assert.equal(await fs.realpath(path.join(wt, 'node_modules/@fixture/core')), await fs.realpath(path.join(wt, 'packages/core')));
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
+  test('npm workspaces without a lockfile install locally without creating a tracked lockfile', async () => {
+    const { base, source, wt } = await npmFixture('unlocked');
+    try {
+      await fs.unlink(path.join(wt, 'package-lock.json'));
+      const res = await ensureDependencyDirs(source, wt);
+      assert.equal(res.ok, true, JSON.stringify(res.failed));
+      await assert.rejects(fs.access(path.join(wt, 'package-lock.json')));
+      assert.equal(await fs.realpath(path.join(wt, 'node_modules/@fixture/core')), await fs.realpath(path.join(wt, 'packages/core')));
+      assert.equal((await ensureDependencyDirs(source, wt, { installNpm: () => assert.fail('must reuse local links') })).ok, true);
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
+  test('a failed npm workspace install never falls back to integration sources and can retry', async () => {
+    const { base, source, wt } = await npmFixture('failed');
+    try {
+      const res = await ensureDependencyDirs(source, wt, { installNpm: async () => {
+        await fs.mkdir(path.join(wt, 'node_modules'), { recursive: true });
+        return { ok: false, reason: 'offline fixture' };
+      } });
+      assert.equal(res.ok, false);
+      assert.deepEqual(res.linked, []);
+      assert.match(res.failed[0].reason, /offline fixture/);
+      assert.equal(await inspectDepDir(path.join(wt, 'node_modules')), 'real-dir');
+      assert.equal((await ensureDependencyDirs(source, wt)).ok, true);
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
+  test('concurrent npm workspace setup shares one install', async () => {
+    const { base, source, wt } = await npmFixture('concurrent');
+    let installs = 0;
+    try {
+      const options = { installNpm: async () => {
+        installs++;
+        await fs.mkdir(path.join(wt, 'node_modules/@fixture'), { recursive: true });
+        await fs.symlink(path.join(wt, 'packages/core'), path.join(wt, 'node_modules/@fixture/core'), process.platform === 'win32' ? 'junction' : 'dir');
+        return { ok: true };
+      } };
+      const results = await Promise.all([ensureDependencyDirs(source, wt, options), ensureDependencyDirs(source, wt, options)]);
+      assert.equal(installs, 1);
+      assert.ok(results.every(result => result.ok));
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
+  test('npm workspace setup refuses to install into its own source checkout', async () => {
+    const { base, source } = await npmFixture('self');
+    try {
+      const res = await ensureDependencyDirs(source, source, { installNpm: () => assert.fail('must not install') });
+      assert.equal(res.ok, false);
+      assert.match(res.failed[0].reason, /source checkout itself/);
+    } finally { await fs.rm(base, { recursive: true, force: true }); }
+  });
+
   /** A pnpm-workspace source with its own `node_modules`, plus an empty worktree dir. */
   async function pnpmFixture(name) {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), `minnow-pnpm-${name}-`));

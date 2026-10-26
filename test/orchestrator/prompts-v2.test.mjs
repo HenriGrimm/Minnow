@@ -45,6 +45,24 @@ describe('efficient build and verification guidance', () => {
   }
 });
 
+describe('acceptance verification remains actionable after failed checks', () => {
+  for (const profile of ['full', 'lite']) {
+    it(`${profile} builders keep repairing without a browser budget or fixed retry cutoff`, () => {
+      const builder = read(path.join(PROMPTS_DIR, 'builder', `agent.${profile}.md`));
+      assert.doesNotMatch(builder, /two-minute total budget|three unsuccessful repair cycles|#3 attempts|within the remaining budget/i);
+      assert.match(builder, /Keep fixing failing acceptance tests until all required criteria pass or a concrete blocker/i);
+      assert.match(builder, /change the hypothesis or approach/i);
+      assert.match(builder, /Do not skip required checks, weaken assertions/i);
+      assert.match(builder, /command and test timeouts appropriate/i);
+      for (const role of ['builder', 'tester']) {
+        const body = read(path.join(PROMPTS_DIR, role, `agent.${profile}.md`));
+        assert.match(body, /checks required by the assigned task's Test and Accept criteria/);
+        assert.doesNotMatch(body, /two-minute total budget|report the conflict so acceptance can be narrowed/);
+      }
+    });
+  }
+});
+
 describe('V1 work-agent prompts no longer name deleted board tools', () => {
   it('builder and tester do not mention board_report', () => {
     const builder = read(V1_BUILDER);

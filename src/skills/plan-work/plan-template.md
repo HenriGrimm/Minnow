@@ -113,7 +113,7 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - **Depends on:** W1-A, W1-B
 
 ## Verification Checklist
-<!-- Full browser suites are opt-in: include only when the user explicitly requests them. Otherwise name affected unit tests and a browser smoke spec with a two-minute total budget; list broader browser coverage as an optional follow-up. -->
+<!-- Full browser suites are opt-in: include only when the user explicitly requests them. Otherwise name affected unit tests and a browser smoke spec with an observable pass condition and enough time for verification and repairs; list broader browser coverage as an optional follow-up. -->
 - [ ] `npm test` passes
 - [ ] `npm run build` passes
 - [ ] <other project-wide assertions>

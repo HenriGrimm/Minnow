@@ -15,5 +15,7 @@ for (const variant of ['agent.full.md', 'agent.lite.md']) {
     assert.match(body, /\?\?.*untracked/s);
     assert.match(body, /build warnings/);
     assert.match(body, /no errors observed in the checks run/);
+    assert.doesNotMatch(body, /three unsuccessful repair cycles/i);
+    assert.match(body, /Keep fixing implementation and acceptance failures until the required checks pass or a concrete blocker/);
   });
 }
