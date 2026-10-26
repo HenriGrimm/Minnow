@@ -91,6 +91,82 @@ test('interactive handoffs retain concurrent tool calls while later native commi
   assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
 });
 
+test('Claude retains native tool calls arriving between Minnow generations', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
+  let finish, post;
+  const done = new Promise(resolve => { finish = resolve; });
+  const replies = [];
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', keepStdinOpen: true,
+      stdin: JSON.stringify({ message: { content: input.prompt } }), env: input.bridgeConfig.env }),
+    openInteractive: async invocation => {
+      post = value => fetch(invocation.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
+        headers: { authorization: `Bearer ${invocation.env.MINNOW_CLI_BRIDGE_TOKEN}` },
+        body: JSON.stringify({ name: 'ping', arguments: { value } }) })
+        .then(response => response.json()).then(result => {
+          replies.push(result.content[0].text);
+          if (replies.length === 2) child.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success' })}\n`);
+        }).catch(() => {});
+      return { child, done, send: async () => { void post(1); }, beforeHandoff: async () => null,
+        stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); } };
+    },
+  });
+  const messages = [{ role: 'user', content: 'Two calls from one native response.' }];
+  const options = { settings: { interactive: true }, tools: [{ type: 'function', function: {
+    name: 'ping', parameters: { type: 'object', properties: { value: { type: 'number' } } },
+  } }] };
+  const first = await generate('between-generations', messages, options);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  // Native Claude can dispatch another block after the first handoff has
+  // finished, while Minnow is still executing tools with no active generation.
+  const late = post(2);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  for (const [result, value] of [[first, 1], [null, 2]]) {
+    const current = result ?? await generate('between-generations', messages, options);
+    assert.equal(current.state.status, 'complete', current.state.errorMessage);
+    const calls = current.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+    assert.equal(calls.length, 1);
+    assert.equal(JSON.parse(calls[0].function.arguments).value, value);
+    messages.push({ role: 'assistant', content: current.text, tool_calls: calls },
+      { role: 'tool', tool_call_id: calls[0].id, content: `result-${value}` });
+  }
+  const final = await generate('between-generations', messages, options);
+  assert.equal(final.state.status, 'complete', final.state.errorMessage);
+  await late;
+  assert.deepEqual(replies, ['result-1', 'result-2']);
+});
+
+test('Claude heartbeats cannot hide an announced MCP call that never reaches the bridge', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
+  let finish;
+  const done = new Promise(resolve => { finish = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async () => ({ transport: 'claude-interactive', keepStdinOpen: true, stdin: '{}', env: {} }),
+    openInteractive: async () => ({ child, done,
+      async send() {
+        const emit = event => child.stdout.write(`${JSON.stringify(event)}\n`);
+        emit({ type: 'stream_event', event: { type: 'message_start', message: { id: 'missing-dispatch' } } });
+        emit({ type: 'assistant', message: { id: 'missing-dispatch', content: [
+          { type: 'tool_use', id: 'native-save', name: 'mcp__minnow__save_file', input: { path: 'runtime.ts', content: 'generated' } },
+        ] } });
+        // Long native inference is allowed; dispatch is only expected after
+        // message_stop. Progress for an older call must not fail this round.
+        emit({ type: 'tool_progress', tool_use_id: 'native-save', tool_name: 'mcp__minnow__save_file', elapsed_time_seconds: 90 });
+        emit({ type: 'stream_event', event: { type: 'message_stop' } });
+        emit({ type: 'tool_progress', tool_use_id: 'old-call', tool_name: 'mcp__minnow__save_file', elapsed_time_seconds: 90 });
+        emit({ type: 'tool_progress', tool_use_id: 'native-save-heartbeat', parent_tool_use_id: 'native-save',
+          tool_name: 'mcp__minnow__save_file', elapsed_time_seconds: 30, heartbeat: true });
+      },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const result = await generate('missing-mcp-dispatch', [{ role: 'user', content: 'Write runtime.ts.' }], { settings: { interactive: true } });
+  assert.equal(result.state.status, 'error');
+  assert.match(result.state.errorMessage, /Claude MCP dispatch stalled.*save_file.*30 seconds.*No tool execution started/);
+});
+
 test('a natively ended Claude conversation never silently rebuilds into a new session', async () => {
   setup('claude');
   const providerId = 'fixture-claude-durable', chatId = 'native-ended';
@@ -134,6 +210,19 @@ for (const provider of ['claude', 'cursor']) test(`${provider} sends incremental
   assert.equal(third.rows.at(-1).minnow_cli.continuation, 'resumed');
   assert.equal(invocations.at(-1).prompt.includes('Stable rules.'), false, 'resume must not replay the original transcript');
 });
+test('Claude can persistently select stream-json instead of the interactive terminal', async () => {
+  setup('claude');
+  const messages = [{ role: 'user', content: 'Start.' }];
+  const first = await generate('explicit-stream-json', messages, { settings: { interactive: false } });
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.equal(invocations[0].interactive, false);
+  messages.push({ role: 'assistant', content: first.text }, { role: 'user', content: 'Continue.' });
+  const next = await generate('explicit-stream-json', messages, { settings: { interactive: false } });
+  assert.equal(next.state.status, 'complete', next.state.errorMessage);
+  assert.equal(processes, 1);
+  assert.equal(next.rows.at(-1).minnow_cli.transport, 'stream-json');
+});
+
 test('Claude waits for the complete streamed response before handing off an early tool call', async () => {
   setup('claude', { FAKE_CLAUDE_STREAM_AFTER_TOOL: '1' });
   const chat = 'streaming-handoff', messages = [{ role: 'user', content: 'TOOL' }];

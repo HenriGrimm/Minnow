@@ -754,6 +754,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     'cliToken',
     'clearCliToken',
     'contextWindowTokens',
+    'interactive',
   ]);
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agent CLI setting: ${key}`);
@@ -772,7 +773,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
   const patch = validateAgentCliProfile(
     Object.fromEntries(
       Object.entries(body).filter(([key]) =>
-        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens'].includes(key),
+        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens', 'interactive'].includes(key),
       ),
     ),
     { partial: true },

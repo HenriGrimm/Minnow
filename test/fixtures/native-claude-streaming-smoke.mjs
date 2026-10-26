@@ -28,6 +28,7 @@ async function respond(req, res) {
   if (!req.url?.startsWith('/v1/messages')) { res.writeHead(200).end('{}'); return; }
   const chunks = []; for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks)); requests.push(body);
+  assert.ok(!String(req.headers['anthropic-beta'] ?? '').includes('inline-tools-2026-09-15'), 'Minnow handoffs require ordinary MCP tool calls');
   if (requests.length > 5) throw new Error('Unexpected extra inference request.');
   const tool = requests.length === 1;
   const thoughtPrefix = `Checking fixture ${requests.length}:`;

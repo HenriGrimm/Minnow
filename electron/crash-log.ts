@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import type { EventEmitter } from 'node:events';
 
 export type CrashEntry = {
   kind: string;
@@ -37,6 +38,31 @@ let cachedLogDir: string | null = null;
 let crashBuffer: string[] = [];
 let crashFlushTimer: ReturnType<typeof setTimeout> | undefined;
 const CRASH_FLUSH_DELAY_MS = 50;
+export const MAX_CRASH_LOG_BYTES = 4 * 1024 * 1024;
+
+function rotateCrashLog(incomingBytes: number): void {
+  const file = crashLogPath();
+  try {
+    if (fs.statSync(file).size + incomingBytes <= MAX_CRASH_LOG_BYTES) return;
+    fs.rmSync(`${file}.1`, { force: true });
+    fs.renameSync(file, `${file}.1`);
+  } catch {
+  }
+}
+
+/** A detached launcher can close stderr; echoing EPIPE from the crash handler
+ * back into that pipe otherwise creates another uncaught exception forever. */
+export function installStdioErrorHandlers(streams: EventEmitter[] = [process.stdout, process.stderr]): () => void {
+  const handlers = streams.map(stream => {
+    const handler = (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EPIPE') return;
+      logCrash({ source: 'main', kind: 'stdio-error', message: error.message, stack: error.stack });
+    };
+    stream.on('error', handler);
+    return () => stream.removeListener('error', handler);
+  });
+  return () => { for (const remove of handlers) remove(); };
+}
 
 // ── Flush buffer ─────────────────────────────────────────────────────────────
 
@@ -46,7 +72,9 @@ function scheduleCrashFlush(): void {
     crashFlushTimer = undefined;
     const lines = crashBuffer.splice(0);
     if (!lines.length) return;
-    fs.appendFile(crashLogPath(), lines.join(''), 'utf8', () => {});
+    const text = lines.join('');
+    rotateCrashLog(Buffer.byteLength(text));
+    fs.appendFile(crashLogPath(), text, 'utf8', () => {});
   }, CRASH_FLUSH_DELAY_MS);
 }
 
@@ -58,7 +86,9 @@ export function flushCrashLogSync(): void {
   const lines = crashBuffer.splice(0);
   if (!lines.length) return;
   try {
-    fs.appendFileSync(crashLogPath(), lines.join(''), 'utf8');
+    const text = lines.join('');
+    rotateCrashLog(Buffer.byteLength(text));
+    fs.appendFileSync(crashLogPath(), text, 'utf8');
   } catch {
   }
 }

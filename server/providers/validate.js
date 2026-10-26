@@ -67,6 +67,7 @@ export function validateAgentCliProfile(raw, options = {}) {
     'maxBudgetUsd',
     'contextWindowTokens',
     'sessionMode',
+    'interactive',
   ]);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agentCli setting: ${key}`);
@@ -94,6 +95,10 @@ export function validateAgentCliProfile(raw, options = {}) {
       throw new Error('Invalid agentCli allowUtilityRoles');
     }
     out.allowUtilityRoles = input.allowUtilityRoles;
+  }
+  if (input.interactive !== undefined) {
+    if (typeof input.interactive !== 'boolean') throw new Error('Invalid agentCli interactive');
+    out.interactive = input.interactive;
   }
   if (input.maxConcurrent !== undefined) {
     if (!Number.isInteger(input.maxConcurrent) || input.maxConcurrent < 1 || input.maxConcurrent > 16) {

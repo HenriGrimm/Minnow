@@ -25,6 +25,7 @@ import { isToolImageFollowUpMessage } from '../../runner/tool-image-follow-up.js
 const closing = new Set();
 const sessions = createCliSessionPool('stream-json', closing, closeSession);
 const HANDOFF_QUIET_MS = 200;
+const MCP_DISPATCH_STALL_SECONDS = 30;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 // A failed Cursor ACP preflight costs a full CLI start (~5 s) before replay
 // begins. Remember it per provider model instead of repeating it every turn.
@@ -126,12 +127,36 @@ function canResume(session, body) {
   return results.size === session.calls.length && session.calls.every(call => results.has(call.id));
 }
 
+async function receiveToolCall(session, call) {
+  if (session.closed) return;
+  const round = session.active;
+  if (!round || round.finished) {
+    // Pausing stdout cannot pause native MCP dispatch. A later tool block can
+    // arrive while Minnow executes the previous handoff between generations.
+    session.queuedCalls.push(call);
+    return;
+  }
+  if (round.controller.signal.aborted) return;
+  const index = round.calls.push(call) - 1;
+  round.choose();
+  if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
+  if (session.transport === 'claude-interactive') {
+    round.pendingNativeHandoffs++;
+    round.scheduleHandoff();
+    try { if (!await session.processRun.beforeHandoff(call)) round.deferredNativeHandoff = true; }
+    catch (error) { round.failure = error; void closeSession(session); return; }
+    finally { round.pendingNativeHandoffs--; }
+    if (round.finished || round.controller.signal.aborted) return;
+  }
+  round.scheduleHandoff();
+}
+
 async function createSession({ key, state, runtime, candidate, body, settings, controller, identity, fingerprint, method }) {
   await Promise.all([...closing].filter(row => row.key === key).map(row => row.closePromise));
   const kind = settings.kind === 'cursor-agent' ? 'cursor' : settings.kind;
-  const interactive = kind === 'claude' && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1'
+  const interactive = kind === 'claude' && settings.interactive !== false && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1'
     && (!agentCliSessionIsMocked() || settings.interactive === true);
-  const session = { key, messages: canonicalCliMessages(body.messages), signature: fingerprint, identity, calls: [], waiting: false,
+  const session = { key, messages: canonicalCliMessages(body.messages), signature: fingerprint, identity, calls: [], queuedCalls: [], waiting: false,
     kind,
     closed: false, active: null, outputBytes: 0, release: null, tempDir: null, bridge: null,
     invocation: null, processRun: null, timer: null, decoder: null, exit: null, capture: null, originalTools: body.tools ?? [],
@@ -183,24 +208,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     session.persistent = persistent;
     session.bridge = await createAgentCliBridge({
       tools: buildAgentCliToolCatalog(body), tempDir: session.tempDir, interactive,
-      onCall: async call => {
-        const round = session.active;
-        if (!round || round.finished || round.controller.signal.aborted) return;
-        const index = round.calls.push(call) - 1;
-        round.choose();
-        // Show the completed call immediately; execution still waits for the
-        // native commit checks and the normal handoff boundary below.
-        if (round.body.stream !== false) append(round.state, { choices: [{ index: 0, delta: { tool_calls: [{ index, ...call }] } }] });
-        if (session.transport === 'claude-interactive') {
-          round.pendingNativeHandoffs++;
-          round.scheduleHandoff();
-          try { if (!await session.processRun.beforeHandoff(call)) round.deferredNativeHandoff = true; }
-          catch (error) { round.failure = error; void closeSession(session); return; }
-          finally { round.pendingNativeHandoffs--; }
-          if (round.finished || round.controller.signal.aborted) return;
-        }
-        round.scheduleHandoff();
-      },
+      onCall: call => receiveToolCall(session, call),
     });
     session.secretValues.push(session.bridge.config.env.MINNOW_CLI_BRIDGE_TOKEN);
     const newMessages = session.resume ? session.messages.slice(saved.acceptedCount) : session.messages;
@@ -304,11 +312,26 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
         if (part && round.ignoreNativeMessage) return;
         if (event.type === 'assistant' && event.message?.id && event.message.id !== round.nativeMessageId && session.seenMessages.has(event.message.id)) return;
         if (event.type === 'assistant' && event.message?.id) round.completedNativeMessageId = event.message.id;
+        if (event.type === 'assistant') {
+          for (const block of event.message?.content ?? []) {
+            if (block.type === 'tool_use' && block.name?.startsWith('mcp__minnow__')) round.nativeToolUses.add(block.id);
+          }
+        }
         if (part?.type === 'message_delta' && round.rawUsage.length) mergeUsage(round.rawUsage.at(-1), part.usage);
         if (event.type === 'assistant' && event.message?.usage && round.rawUsage.length) mergeUsage(round.rawUsage.at(-1), event.message.usage);
         if (part?.type === 'message_stop') {
           round.nativeStreaming = false;
           if (round.calls.length) round.scheduleHandoff();
+        }
+        // Native heartbeats can keep the model idle timer alive forever even
+        // though Claude never delivered its announced MCP request. An actual
+        // Minnow tool has a bridge call and leaves this generation at handoff.
+        if (event.type === 'tool_progress' && !round.nativeStreaming && !round.calls.length
+          && !round.pendingNativeHandoffs && event.elapsed_time_seconds >= MCP_DISPATCH_STALL_SECONDS
+          && round.nativeToolUses.has(event.parent_tool_use_id ?? event.tool_use_id)) {
+          round.failure = new Error(`Claude MCP dispatch stalled: ${event.tool_name} has waited ${Math.round(event.elapsed_time_seconds)} seconds without reaching Minnow. No tool execution started.`);
+          void closeSession(session);
+          return;
         }
       }
       // Claude's terminal usage totals the entire CLI run; count streaming
@@ -328,6 +351,7 @@ async function closeSession(session, { forget = false } = {}) {
   if (!session) return;
   if (session.closePromise) return session.closePromise;
   session.closed = true;
+  session.queuedCalls.length = 0;
   closing.add(session);
   clearTimeout(session.timer);
   if (sessions.get(session.key) === session) sessions.delete(session.key);
@@ -463,7 +487,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     let resolveRound;
     const complete = new Promise(resolve => { resolveRound = resolve; });
     round = {
-      state, body, controller, calls: [], pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
+      state, body, controller, calls: [], nativeToolUses: new Set(), pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
       maxTimer: null, handoffTimer: null, timeoutKind: null, emitted: false, content: '', reasoning: '', rawUsage: [],
       choose() {
         if (this.emitted) return;
@@ -673,6 +697,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
       if (['acp', 'claude-interactive'].includes(session.transport)) await session.processRun.send(content, controller.signal);
       else await new Promise((resolve, reject) => session.processRun.child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content } })}\n`, error => error ? reject(error) : resolve()));
     }
+    for (const call of session.queuedCalls.splice(0)) void receiveToolCall(session, call);
     return await complete;
   } catch (error) {
     // Preserve a send/startup failure before process cleanup reports a normal
