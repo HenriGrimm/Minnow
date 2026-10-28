@@ -602,6 +602,7 @@ function createTurnRunner(deps) {
         // Corrections replace prose only. Tool calls, reasoning and usage already
         // received belong to this same attempt and must survive the replacement.
         const replacement = carriedText + chunk.minnow_text_snapshot.content;
+        if (replacement === proseText) return;
         outputProseChars = Math.max(0, outputProseChars + replacement.length - proseText.length);
         proseText = replacement;
         inlineRouter = new InlineContentThinkingRouter({ thinkingModel: modelLikelyUsesInlineThinking(modelId) });

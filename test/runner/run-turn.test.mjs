@@ -194,6 +194,36 @@ test('pool selection and failover emit actual model assignments without evaluato
   });
 });
 
+test('prose snapshots replace cumulative text while preserving reasoning, tools and persisted history', async () => {
+  const delta = value => `data: ${JSON.stringify({ choices: [{ delta: value }] })}\n\n`;
+  const snapshot = `data: ${JSON.stringify({ minnow_text_snapshot: { version: 1, content: 'Correct.' } })}\n\n`;
+  const tool = { type: 'function', function: { name: 'read_page', parameters: { type: 'object' } } };
+  await withFake([
+    { match: { nth: 0 }, emit: [delta({ reasoning: 'Checking.' }), delta({ content: 'Wrong.' }), snapshot, snapshot,
+      ...functionCallChunks('read_page', { path: 'a' })] },
+    { match: { nth: 1 }, emit: proseSseChunks('Finished.') },
+  ], async (baseUrl, fake) => {
+    const events = [], transcript = createMemoryTranscriptStore();
+    await runTurn({ chatId: CHAT_UUID, seed: 'Check', tools: [tool], lazyTools: false, transcript,
+      limits: { maxTurns: 3 }, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+      model: { providerId: 'local-fake', id: 'fixture' },
+      deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }), execute: async () => ({ content: 'Read once.' }),
+      onEvent: event => events.push(event),
+    });
+    const round = events.find(event => event.type === 'round_end');
+    assert.equal(round.text, 'Correct.');
+    assert.equal(round.reasoning, 'Checking.');
+    assert.equal(round.toolCallCount, 1);
+    assert.equal(events.some(event => event.type === 'response_restart'), false);
+    assert.ok(events.some(event => event.type === 'delta' && event.text === 'Correct.'));
+    assert.equal(events.some(event => event.type === 'delta' && event.text.includes('Wrong.Correct.')), false);
+    const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+    assert.equal(requests[1].body.messages.find(row => row.tool_calls?.length).content, 'Correct.');
+    const saved = await transcript.load(CHAT_UUID);
+    assert.equal(saved.messages.find(row => row.tool_calls?.length).content, 'Correct.');
+  });
+});
+
 test('signed Anthropic blocks survive a tool round and reach the next request unchanged', async () => {
   const blocks = [
     { type: 'thinking', thinking: '  Check pricing.\n\n\nThen compare.  ', signature: 'sig-1' },

@@ -132,6 +132,26 @@ describe('P6-A chat turn event painter (MIN-723)', () => {
     assert.ok(stub.activity.length >= 4);
   });
 
+  test('a corrected cumulative prose snapshot preserves reasoning and completed tool rows', () => {
+    const rendered: string[] = [];
+    const stub = hostStub({ scheduleMarkdown: (_bubble, text) => rendered.push(text) });
+    const painter = createChatTurnEventPainter(stub.host);
+    painter.onEvent({ type: 'thinking', text: 'Checked the file.' });
+    painter.onEvent({ type: 'delta', text: 'Wrong.' });
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read', arguments: '{}' });
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read', content: 'Actual contents.' });
+    painter.onEvent({ type: 'delta', text: 'Correct.' });
+    painter.flush();
+    assert.equal(painter.snapshot().lastDelta, 'Correct.');
+    assert.equal(painter.snapshot().lastThinking, 'Checked the file.');
+    assert.equal(painter.snapshot().toolCallCount, 1);
+    assert.equal(rendered.at(-1), 'Correct.');
+    assert.equal(stub.mount.querySelectorAll('.tool-call-msg').length, 1);
+    assert.deepEqual(stub.thinking, ['Checked the file.']);
+    painter.dispose();
+    stub.mount.remove();
+  });
+
   test('tool_streaming shows Calling… and retarget keeps it across remount', () => {
     const stub = hostStub();
     const streamStatus = {

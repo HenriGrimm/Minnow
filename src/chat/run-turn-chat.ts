@@ -758,6 +758,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   const controller = new AbortController();
   setChatAbort(chat.id, controller);
   const chatSignal = AbortSignal.any([controller.signal, turnLease.signal, ...(options.signal ? [options.signal] : [])]);
+  let ownershipCancellation: Promise<void> | undefined;
+  const cancelUnownedGeneration = () => {
+    const cause = turnLease.signal.reason;
+    const id = chat.currentGenerationId;
+    if (controller.signal.aborted || !(cause instanceof ChatOwnershipError) || cause.kind !== 'unavailable' || !id) return;
+    ownershipCancellation ??= cancelGeneration(id, AbortSignal.timeout(5_000))
+      .catch(error => reportBackgroundError('chat-ownership-cancel', error));
+  };
+  turnLease.signal.addEventListener('abort', cancelUnownedGeneration, { once: true });
   setStreaming(true, chat.id);
   if (getActiveChat().id === chat.id) {
     syncComposerFromStreamingState();
@@ -1901,9 +1910,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
 
     if (chatSignal.reason instanceof ChatOwnershipError) {
       const cause = chatSignal.reason;
-      if (cause.kind === 'unavailable' && chat.currentGenerationId) {
-        await cancelGeneration(chat.currentGenerationId, AbortSignal.timeout(5_000)).catch(error => reportBackgroundError('chat-ownership-cancel', error));
-      }
+      cancelUnownedGeneration();
+      await ownershipCancellation;
       const settled = settleFailedTurn(chrome, cause);
       turnRunStatus = 'failed';
       turnErrorMessage = settled.errorMessage;
@@ -2058,9 +2066,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     };
     if (chatSignal.reason instanceof ChatOwnershipError) {
       const cause = chatSignal.reason;
-      if (cause.kind === 'unavailable' && chat.currentGenerationId) {
-        await cancelGeneration(chat.currentGenerationId, AbortSignal.timeout(5_000)).catch(error => reportBackgroundError('chat-ownership-cancel', error));
-      }
+      cancelUnownedGeneration();
+      await ownershipCancellation;
       const settled = settleFailedTurn(chrome, cause);
       turnRunStatus = 'failed';
       turnErrorMessage = settled.errorMessage;
@@ -2078,6 +2085,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     }
   } finally {
     turnTeardownRan = true;
+    turnLease.signal.removeEventListener('abort', cancelUnownedGeneration);
     setSubAgentExecutorContext(null);
     setBugBoardExecutorContext(null);
     await Promise.all(ledgerWrites);

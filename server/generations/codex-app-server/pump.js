@@ -49,8 +49,10 @@ function onEvent(session, event) {
     if (owner && owner.generationId !== round?.generationId && event.method === 'item/completed') {
       // A native item may settle after its Minnow tool handoff. Its text belongs
       // to the earlier round; never replay that snapshot into this generation.
-      if (p.item.type === 'agentMessage' && typeof p.item.text === 'string' && p.item.text !== owner.text) {
+      if (!owner.diagnosed && p.item.type === 'agentMessage' && typeof p.item.text === 'string' && p.item.text !== owner.text) {
+        owner.diagnosed = true;
         session.rebuild = true;
+        void dirtyCodexSession(session).catch(() => {});
         void appendDiagnosticEntry({ source: 'server', kind: 'codex-snapshot-divergence',
           message: 'Late Codex prose snapshot; native session will rebuild at the next handoff.',
           extra: { chatId: session.chatId, generationId: owner.generationId, previousLength: owner.text.length, snapshotLength: p.item.text.length } });
@@ -248,7 +250,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         session.accepted = [...prepared.messages, { role: 'assistant', content: this.content.trim(),
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
-        if (!session.waiting && !session.closed) {
+        if (!session.waiting && !session.closed && !session.rebuild) {
           try { await checkpointCodexSession(session); }
           catch { session.clean = false; updateAgentCliSessionOutput(session.capture, { reason: 'Native session snapshot unavailable; restart will rebuild.' }); }
         }
@@ -282,7 +284,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       if (body.stream !== false) append(state, { choices: [{ index: 0, delta }] });
       metrics.forwarding_max_ms = Math.max(metrics.forwarding_max_ms ?? 0, performance.now() - forwardingAt);
     }, { onDivergence(details) {
-      if (round.finished && details.channel === 'content' && details.kind === 'revised') session.rebuild = true;
+      if (details.channel === 'content' && details.kind === 'stale') session.rebuild = true;
       void appendDiagnosticEntry({ source: 'server', kind: 'codex-snapshot-divergence',
         message: `Codex ${details.channel} snapshot ${details.kind}`, extra: { chatId: state.chatId, generationId: state.id, ...details } });
     } });

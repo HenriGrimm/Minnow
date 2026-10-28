@@ -3,8 +3,8 @@ export class ChatOwnershipError extends Error {
   readonly name = 'ChatOwnershipError';
   constructor(readonly kind: 'lost' | 'unavailable', readonly chatId: string) {
     super(kind === 'lost'
-      ? 'This chat is now owned by another window. Continue from that window, or retry when it finishes.'
-      : 'Could not confirm chat ownership before its lease expired. Check the connection and continue from the saved work.');
+      ? 'This window no longer owns the chat. Retry when no other window is running it.'
+      : 'Could not confirm chat ownership. Check the connection and continue from the saved work.');
   }
 }
 
@@ -25,8 +25,7 @@ export function createTurnLease(options: {
   const now = options.now ?? (() => performance.now());
   const controller = new AbortController();
   let deadline = options.grant.startedAt + options.grant.leaseMs;
-  let renewedAt = options.grant.startedAt;
-  let nextRenewAt = renewedAt + 5_000;
+  let nextRenewAt = options.grant.startedAt + 5_000;
   let released = false;
   let failures = 0;
   let renewing: Promise<void> | null = null;
@@ -66,7 +65,6 @@ export function createTurnLease(options: {
         if (!grant) { fail('lost'); return; }
         // The server grant begins no later than request dispatch, not response receipt.
         deadline = grant.startedAt + grant.leaseMs;
-        renewedAt = grant.startedAt;
         if (expired()) return;
         if (failures) options.diagnose?.('recovered');
         failures = 0;

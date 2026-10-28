@@ -1,6 +1,6 @@
 # Codex CLI chat continuity
 
-Status: proposed; implementation has not started.
+Status: implemented; validation results are recorded below. The checklist retains the original design for reference.
 Date: 2026-10-28.
 
 ## Problem and evidence
@@ -93,3 +93,15 @@ Acceptance: revised reasoning followed by a tool call and final answer completes
 Implement and review ownership resilience plus accurate settlement first: that addresses the strongest explanation for the recurring silent stops. Then land snapshot reconciliation with its end-to-end stream contract and tests. Both changes must pass their own focused tests before broad validation.
 
 No changes to provider quota settings, account credentials, native tool permissions or user concurrency preferences are needed for this plan. No new top-level Minnow-home store is proposed.
+
+## Implementation record
+
+- Implemented a server-granted, monotonic ownership deadline with bounded renewal retries, immediate conflict/permanent-error termination, cancellation-safe release, and diagnostic failure/recovery events.
+- Ownership errors survive combined-signal/runner abort normalization and settle as failed runs, retaining partial output and completed tool results. Loss of connectivity cancels the originating generation immediately; confirmed conflicts do not cancel another owner's work. The cancellation endpoint also closes parked Codex turns only when their generation id still matches.
+- Completed Codex snapshots now preserve stale prefixes and revised reasoning. Revised active prose uses `minnow_text_snapshot` version 1 and the shared runner's existing cumulative `delta` path; a new runner event or UI reset is unnecessary. Tests verify that correction preserves reasoning, tool state, recorded history and native continuation.
+- Item ownership is tracked across native tool handoffs without retaining previous generation closures. Late prose changes invalidate reuse and rebuild from recorded history at the next safe boundary.
+- Focused validation passed: 123 ownership/settlement/painter/runner checks, five additional HTTP failure-classification checks, and six targeted prose/cancellation/handoff checks. The initial Codex translator/pump and remote-ownership run passed all 76 checks; later additions also passed targeted reruns.
+- Type checking, test discovery and the final production build passed. The asset-size gate already fails on the prior checkout (`d61f8ebb8`): 11,791.2 KB versus the 11,735 KB ceiling. The final changed build measured 11,793.9 KB (58.9 KB over). Budgets were not raised.
+- The full suite completed: 13,230 reported tests, 13,151 passed, 39 failed, two cancelled and 38 skipped. Failures include legacy CLI fixtures, Windows symlink permissions/native shutdown, headless-host/model startup timeouts, and existing UI expectations. The stdio MCP handoff and both tool-start remount failures reproduce on the prior checkout; other selected CLI failures passed when rerun. The prior checkout also fails the headless production-boundary smoke, at its model startup barrier rather than host readiness, so that full end-to-end path remains unverified here. Focused ownership, prose reconciliation, generation cancellation, tool handoff, renderer and persistence regressions passed.
+- Restored tracked reliability reports and runtime fixtures produced by the full suite, preserving the Codex fixture edits and unrelated working-tree/index changes.
+- Failure injection used fake clocks, HTTP fixtures and scratch native CLI homes. A manual GUI/live-account smoke was not performed.

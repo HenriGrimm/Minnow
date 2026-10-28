@@ -131,6 +131,30 @@ test('an unavailable ownership API leaves automatic recovery passive', async () 
   assert.deepEqual(chat, original);
 });
 
+for (const status of [503, 401, 403, 400, 'invalid-grant'] as const) test(`renewal ${status} is classified without pretending the user pressed Stop`, async t => {
+  let clock = 0;
+  t.mock.method(performance, 'now', () => clock);
+  setStorageModeForTests('server');
+  globalThis.fetch = async (input, init) => {
+    if (String(input) !== '/api/chat-turns') return Response.json({ ok: true });
+    const action = JSON.parse(String(init?.body)).action;
+    if (action !== 'renew') return Response.json({ ok: true, leaseMs: 30_000 });
+    return status === 'invalid-grant' ? Response.json(null) : Response.json({ error: 'Unavailable' }, { status });
+  };
+  const lease = await acquireChatTurn(CHAT);
+  assert.ok(lease);
+  try {
+    clock = 6_000;
+    if (status === 503) {
+      await lease.check();
+      assert.equal(lease.signal.aborted, false, 'temporary server failure retains the confirmed grant');
+    } else {
+      await assert.rejects(lease.check(), { name: 'ChatOwnershipError' });
+      assert.equal(lease.signal.reason.kind, 'unavailable');
+    }
+  } finally { await lease.release(); }
+});
+
 test('remote streaming retains composer controls without creating a local runner', () => {
   const chat = createEmptyChatObject('m1');
   chat.id = CHAT;

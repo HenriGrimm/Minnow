@@ -56,6 +56,46 @@ test('changed reasoning still hands off a tool and completes the same native tur
   assert.equal(processes, 1);
   assert.equal(next.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Done.');
 });
+
+test('non-streaming revised prose agrees with the authoritative completion', async () => {
+  setup([{ deltas: ['Wrong.'], text: 'Correct.' }]);
+  const result = await generate([{ role: 'user', content: 'Start.' }], { stream: false });
+  assert.equal(result.state.status, 'complete');
+  assert.equal(JSON.parse(result.wire).choices[0].message.content, 'Correct.');
+});
+
+test('cancel endpoint closes a parked native turn and cannot close a newer generation', async () => {
+  const { handleGenerationsRequest } = await import('../../server/generations/routes.js');
+  setup([{ text: 'Done.' }, { calls: [{ id: 'read', name: 'mn_tool_0' }] }]);
+  const messages = [{ role: 'user', content: 'Start.' }];
+  const first = await generate(messages);
+  messages.push({ role: 'assistant', content: 'Done.' }, { role: 'user', content: 'Read.' });
+  const second = await generate(messages);
+  const cancelRequest = async id => {
+    const response = { statusCode: 0, setHeader() {}, end() {} };
+    await handleGenerationsRequest({ method: 'POST' }, response, `/api/generations/${id}/cancel`);
+    assert.equal(response.statusCode, 200);
+  };
+  assert.equal(codexSessionStats().total, 1);
+  await cancelRequest(first.state.id);
+  assert.equal(codexSessionStats().total, 1, 'a stale cancellation must not close the reused session');
+  await cancelRequest(second.state.id);
+  assert.equal(codexSessionStats().total, 0, 'the complete handoff still owns a parked native turn');
+});
+
+test('late settled prose does not leak into the next tool round and forces a safe rebuild', async () => {
+  setup([{ text: 'Preface.', calls: [{ id: 'read', name: 'mn_tool_0', lateSnapshot: 'Revised preface.' }] }, { text: 'Done.' }]);
+  const messages = [{ role: 'user', content: 'Read.' }];
+  const first = await generate(messages);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  messages.push({ role: 'assistant', content: 'Preface.', tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Already read.' });
+  const second = await generate(messages);
+  assert.equal(second.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Done.');
+  assert.equal(second.rows.some(row => row.minnow_text_snapshot), false);
+  messages.push({ role: 'assistant', content: 'Done.' }, { role: 'user', content: 'Next.' });
+  await generate(messages);
+  assert.equal(processes, 2, 'the diverged native transcript is not reused');
+});
 async function generate(messages, overrides = {}, settings = {}) {
   const state = createGenerationState({ providerId: 'codex-cli', chatId: settings.chatId === undefined ? 'test-chat' : settings.chatId, fallbackRole: 'default',
     body: { model: 'fixture', stream: true, messages, tools, ...overrides } }); states.push(state);

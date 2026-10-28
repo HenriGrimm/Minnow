@@ -43,7 +43,7 @@ async function request(action: string, chatId: string, ownerId: string, signal?:
   if (!response.ok) throw new ChatLeaseRequestError(response.status >= 500 || response.status === 408 || response.status === 429);
   if (action === 'release') return { startedAt, leaseMs: 0 };
   const grant = await response.json().catch(() => { throw new ChatLeaseRequestError(false); });
-  if (grant.ok !== true || !Number.isFinite(grant.leaseMs) || grant.leaseMs <= 0) throw new ChatLeaseRequestError(false);
+  if (grant?.ok !== true || !Number.isFinite(grant.leaseMs) || grant.leaseMs <= 0) throw new ChatLeaseRequestError(false);
   return { startedAt, leaseMs: grant.leaseMs };
 }
 

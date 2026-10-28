@@ -37,6 +37,7 @@ import {
 import { DEFAULT_TITLES_CONFIG, setTitlesConfigForTests } from '../../src/config/titles-meta.ts';
 import { resetRunTurnForTests, setRunTurnForTests } from '../../src/chat/run-turn-chat.ts';
 import { markMessageStopped } from '../../src/ui/stopped-affordance.ts';
+import { ChatOwnershipError } from '../../src/chat/turn-lease.ts';
 
 const CHAT_ID = '33333333-3333-3333-3333-333333333333';
 
@@ -141,6 +142,29 @@ describe('P10-E runChatTurn stopped persist (MIN-770)', () => {
     flushScheduledSessionSaveForTests();
     setSessionStateForTests(null);
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+  });
+
+  for (const kind of ['lost', 'unavailable'] as const) test(`ownership ${kind} persists a failed run and retains completed tools`, async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const controller = new AbortController();
+    setRunTurnForTests(async options => {
+      appendStoppedToolRound(options);
+      options.onEvent?.({ type: 'delta', text: 'Work already done.' });
+      controller.abort(new ChatOwnershipError(kind, CHAT_ID));
+      return { outcome: 'crashed', error: 'aborted' };
+    });
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const { runChatTurn } = await import('../../src/chat/run-turn-chat.ts');
+    await runChatTurn({ chat, ...SIMPLE_TURN, turnLease: { signal: controller.signal, async check() {}, async release() {} } });
+    const run = chat.runs?.find(row => row.status === 'failed');
+    assert.ok(run);
+    assert.equal(run.stopReason, undefined);
+    assert.match(run.errorMessage ?? '', kind === 'lost' ? /no longer owns/ : /Could not confirm chat ownership/);
+    assert.equal(chat.history.some(row => row.role === 'tool' && row.tool_call_id === 'call_1'), true);
+    assert.equal(chat.history.some(row => row.role === 'assistant' && row.stopped), false);
+    assert.equal(roundTripHistory(chat).some(row => row.role === 'tool'), true);
   });
 
   test('returned aborted outcome persists stopped partial that survives wire reload', async () => {
