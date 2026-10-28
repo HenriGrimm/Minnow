@@ -819,6 +819,7 @@ export function syncComposerDraftSidebarLabels(chat: Chat): void {
   );
   for (const row of rows) {
     const nameSpan = row.querySelector('.chat-item-name');
+    if (nameSpan?.textContent === displayName) continue;
     if (nameSpan) nameSpan.textContent = displayName;
     row.classList.add('chat-item-row--draft');
     row.setAttribute('aria-label', `${displayName}, ${modelLabel}`);

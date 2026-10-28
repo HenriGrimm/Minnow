@@ -435,9 +435,10 @@ export function subscribeToGenerationRaw(
 // ── Cancel ───────────────────────────────────────────────────────────────────
 
 /** Cancel upstream generation (Stop button). */
-export async function cancelGeneration(generationId: string): Promise<void> {
+export async function cancelGeneration(generationId: string, signal?: AbortSignal): Promise<void> {
   const res = await fetch(`/api/generations/${generationId}/cancel`, {
     method: 'POST',
+    signal,
   });
   if (res.status === 404) {
     return;

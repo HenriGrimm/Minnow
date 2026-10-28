@@ -12,7 +12,7 @@ import { modelCache } from '../app-state';
 import type { Attachment } from '../attachments/types';
 import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import type { Chat, LmModelRecord } from '../types';
-import { resolveLastTurnMetrics } from '../usage/chat-turn-metrics';
+import { resolveLastRequestMetrics } from '../usage/chat-turn-metrics';
 import { resolveNativeContext } from './native-context';
 import {
   estimateInFlightOverlayTokens,
@@ -90,11 +90,11 @@ export interface ContextBudget {
   willCompress: boolean;
   /** False when USED is grounded in provider context or last-turn usage. */
   isEstimate: boolean;
-  /** Provider prompt_tokens from the last completed turn, if any. */
+  /** Provider prompt_tokens from the latest individual request, if available. */
   lastTurnPromptTokens: number | null;
-  /** Provider completion_tokens from the last completed turn, if any. */
+  /** Provider completion_tokens from the latest individual request, if available. */
   lastTurnCompletionTokens: number | null;
-  /** Provider total_tokens (prompt+completion) from the last completed turn. */
+  /** Provider total_tokens for the latest individual request, if available. */
   lastTurnTotalTokens: number | null;
   breakdown: ContextUsageSection[];
 }
@@ -467,7 +467,7 @@ export async function getContextBudget(
   const attachmentTokens = options?.pendingAttachmentTokens ?? 0;
   const inFlightTokens = estimateInFlightOverlayTokens(options?.inFlight);
 
-  const lastTurn = resolveLastTurnMetrics(chat);
+  const lastTurn = resolveLastRequestMetrics(chat);
 
   return assembleContextBudget({
     modelId,

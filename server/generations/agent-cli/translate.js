@@ -75,11 +75,13 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
   let streamedMessageReasoning = false;
   let terminal = null;
   let usage;
+  let lastRequestUsage;
   let cost;
   const completed = new Set();
   const itemText = new Map();
   let lastActivity = '';
   let claudeUsage = {};
+  let claudeMessageId;
   let cursorSegmentText = '';
   let cursorStreamedPartials = false;
   let pendingCursorText = '';
@@ -131,7 +133,9 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
           streamedMessageText = false;
           streamedMessageReasoning = false;
           claudeUsage = { ...part.message?.usage };
+          claudeMessageId = part.message?.id;
           usage = mapAgentCliUsage(claudeUsage, kind);
+          lastRequestUsage = usage;
         }
         if (part.type === 'content_block_start' && part.content_block?.type === 'thinking') activity('thinking');
         if (part.type === 'content_block_start' && part.content_block?.type === 'tool_use') {
@@ -145,6 +149,7 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
         if (part.type === 'message_delta') {
           claudeUsage = { ...claudeUsage, ...part.usage };
           usage = mapAgentCliUsage(claudeUsage, kind);
+          lastRequestUsage = usage;
         }
       }
       if (event.type === 'assistant') {
@@ -158,7 +163,13 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
           if (block.type === 'thinking' && !streamedMessageReasoning) reasoning(block.thinking);
           if (block.type === 'tool_use' && block.name !== 'EndConversation' && !String(block.name).startsWith('mcp__minnow__') && !recoverableNames.has(block.name)) emit({ forbiddenTool: block.name });
         }
-        if (event.message?.usage) usage = mapAgentCliUsage(event.message.usage, kind);
+        if (event.message?.usage) {
+          if (event.message.id && claudeMessageId !== event.message.id) claudeUsage = {};
+          claudeMessageId = event.message.id;
+          claudeUsage = { ...claudeUsage, ...event.message.usage };
+          usage = mapAgentCliUsage(claudeUsage, kind);
+          lastRequestUsage = usage;
+        }
       }
       if (event.type === 'result') {
         const ok = event.is_error !== true && (!event.subtype || event.subtype === 'success');
@@ -202,6 +213,7 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
       }
       if (flushBoundary) resetCursorSegment();
       if (event.type === 'assistant') {
+        if (event.message?.usage) lastRequestUsage = mapAgentCliUsage(event.message.usage, kind);
         for (const block of event.message?.content ?? []) {
           if (block.type === 'thinking') { activity('thinking'); reasoning(block.thinking ?? block.text); }
         }
@@ -221,5 +233,7 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
       if (event.type === 'error') finish(false, event.error ?? event.message);
     }
   }
-  return { consume, snapshot: () => ({ terminal, usage, cost, sawText, sawReasoning }) };
+  return { consume, snapshot: () => ({ terminal,
+    usage: usage ? { ...usage, last_request_usage: lastRequestUsage ?? null } : undefined,
+    cost, sawText, sawReasoning }) };
 }

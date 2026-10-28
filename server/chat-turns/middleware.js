@@ -74,7 +74,7 @@ export function createChatTurnsMiddleware(registry = createChatTurnRegistry()) {
       }
       if (action === 'release') { registry.release(chatId, ownerId); send(200, { ok: true }); return; }
       const ok = action === 'claim' ? registry.claim(chatId, ownerId, typeof hostId === 'string' && ID_RE.test(hostId) ? hostId : undefined) : registry.renew(chatId, ownerId);
-      send(ok ? 200 : 409, { ok });
+      send(ok ? 200 : 409, { ok, ...(ok ? { leaseMs: LEASE_MS } : {}) });
     } catch {
       send(400, { error: 'Invalid chat turn request' });
     }

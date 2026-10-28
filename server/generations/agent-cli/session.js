@@ -84,6 +84,7 @@ function roundUsage(round, fallback, kind) {
     ...(available.has('uncached_tokens') ? { uncached_tokens: uncached } : {}),
     ...(available.has('cache_creation_tokens') ? { cache_creation_tokens: created } : {}) };
   if (hasReasoning) total.completion_tokens_details = { reasoning_tokens: reasoning };
+  total.last_request_usage = mapAgentCliUsage(round.rawUsage.at(-1), kind) ?? null;
   return total;
 }
 function mergeUsage(target, source) {

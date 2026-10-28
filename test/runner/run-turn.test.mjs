@@ -892,6 +892,22 @@ describe('runTurn tools and opaque chatId', () => {
 describe('P5-D the turn reports what it cost (MIN-722)', () => {
   const payload = { outcome: 'pass', summary: 'Did the work.', evidence: ['ok'] };
 
+  for (const lastRequest of [{ prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 }, null]) {
+    test(`CLI aggregate usage stays in accounting while context uses ${lastRequest ? 'one request' : 'estimates when unavailable'}`, async () => {
+      const usage = { prompt_tokens: 500, completion_tokens: 40, total_tokens: 540, last_request_usage: lastRequest };
+      await withFake([{ emit: functionCallChunksWithUsage(DEFAULT_REPORT_TOOL_NAME, payload, usage) }], async baseUrl => {
+        const events = [];
+        await runTurn({ chatId: CHAT_UUID, seed: 'Report.', tools: [],
+          model: { providerId: 'local-fake', id: 'fake-model' },
+          limits: { modelContextLimit: 32000 }, deps: stubDeps(baseUrl), onEvent: event => events.push(event) });
+        const measured = events.filter(event => event.type === 'context_usage' && !event.isEstimate);
+        if (lastRequest) assert.equal(measured.at(-1).used, 120);
+        else assert.equal(measured.length, 0);
+        assert.equal(events.find(event => event.type === 'round_end').usage.total_tokens, 540);
+      });
+    });
+  }
+
   test('context events carry a request estimate then provider occupancy', async () => {
     await withFake([{ emit: functionCallChunksWithUsage(DEFAULT_REPORT_TOOL_NAME, payload, {
       prompt_tokens: 1234, completion_tokens: 56, total_tokens: 1290,

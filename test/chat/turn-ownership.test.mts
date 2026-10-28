@@ -26,7 +26,7 @@ function installRegistry(registry: ReturnType<typeof createChatTurnRegistry>): v
     const { action, chatId, ownerId } = JSON.parse(String(init.body));
     if (action === 'release') { registry.release(chatId, ownerId); return Response.json({ ok: true }); }
     const ok = action === 'claim' ? registry.claim(chatId, ownerId) : registry.renew(chatId, ownerId);
-    return Response.json({ ok }, { status: ok ? 200 : 409 });
+    return Response.json({ ok, leaseMs: 30_000 }, { status: ok ? 200 : 409 });
   };
 }
 
@@ -58,9 +58,10 @@ test('lease client renews/releases on the server and excludes its own turn from 
   }
 });
 
-test('a renderer waking after replacement aborts before its next model or tool action', async () => {
+test('a renderer waking after replacement aborts before its next model or tool action', async (t) => {
   let clock = 0;
   Date.now = () => clock;
+  t.mock.method(performance, 'now', () => clock);
   const registry = createChatTurnRegistry({ now: () => clock, generations: () => [] });
   installRegistry(registry);
   setStorageModeForTests('server');
@@ -69,7 +70,7 @@ test('a renderer waking after replacement aborts before its next model or tool a
   try {
     clock = 31_000;
     assert.equal(registry.claim(CHAT, 'phone'), true);
-    await assert.rejects(lease.check(), { name: 'AbortError' });
+    await assert.rejects(lease.check(), { name: 'ChatOwnershipError' });
     assert.equal(lease.signal.aborted, true);
   } finally {
     await lease.release();

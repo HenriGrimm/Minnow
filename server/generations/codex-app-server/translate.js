@@ -1,10 +1,13 @@
 /** Item snapshots fill missing suffixes; they never replay already streamed text. */
-export function createCodexTranslator(emit) {
+export function createCodexTranslator(emit, { onDivergence = () => {} } = {}) {
   const text = new Map();
+  const proseKeys = new Set();
+  const diagnosed = new Set();
   let reasoningKey;
   function append(key, channel, delta) {
     if (typeof delta !== 'string' || !delta) return;
     text.set(key, (text.get(key) ?? '') + delta);
+    if (channel === 'content') proseKeys.add(key);
     if (channel === 'reasoning') {
       // Summaries and content have independent indexes. Keep their sections
       // readable without inserting separators between tokens of one section.
@@ -16,7 +19,19 @@ export function createCodexTranslator(emit) {
   function snapshot(key, channel, value) {
     const previous = text.get(key) ?? '';
     if (typeof value !== 'string') return;
-    if (!value.startsWith(previous)) throw new Error('Codex changed an already streamed item.');
+    if (!value.startsWith(previous)) {
+      const stale = previous.startsWith(value);
+      if (!diagnosed.has(key)) {
+        diagnosed.add(key);
+        onDivergence({ channel, previousLength: previous.length, snapshotLength: value.length, kind: stale ? 'stale' : 'revised' });
+      }
+      // Some native completions contain an empty/stale snapshot or revise a
+      // reasoning summary. Neither invalidates already delivered model work.
+      if (stale || channel === 'reasoning') return;
+      text.set(key, value); proseKeys.add(key);
+      emit({ content_snapshot: [...proseKeys].map(id => text.get(id)).join('') });
+      return;
+    }
     append(key, channel, value.slice(previous.length));
   }
   return event => {

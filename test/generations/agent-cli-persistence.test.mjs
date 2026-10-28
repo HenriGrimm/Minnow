@@ -231,6 +231,8 @@ test('Claude waits for the complete streamed response before handing off an earl
   assert.equal(first.state.status, 'complete', first.state.errorMessage);
   assert.equal(first.text, 'Still finishing the response.');
   assert.equal(first.rows.at(-1).usage.completion_tokens, 12000);
+  assert.equal(first.rows.at(-1).usage.last_request_usage.completion_tokens, 12000);
+  assert.equal(first.rows.at(-1).usage.last_request_usage.prompt_tokens, 11);
   assert.equal(first.rows.at(-1).usage.completion_tokens_details.reasoning_tokens, 5400);
   assert.equal(first.rows.at(-1).minnow_cli.rate_limit.utilization, .83);
   assert.ok(first.rows.some(row => row.choices.length === 0 && row.minnow_cli?.rate_limit?.window === 'five_hour'));
@@ -244,6 +246,8 @@ test('Claude waits for the complete streamed response before handing off an earl
   assert.equal(second.state.status, 'complete', second.state.errorMessage);
   assert.equal(second.text, 'Used Source read once.');
   assert.equal(second.rows.at(-1).usage.completion_tokens, 3, 'prior response must not be counted twice');
+  assert.equal(second.rows.at(-1).usage.total_tokens, 14, 'terminal turn totals cannot be charged again');
+  assert.equal(second.rows.at(-1).usage.last_request_usage.total_tokens, 14);
   assert.equal(processes, 1);
 });
 

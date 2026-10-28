@@ -1,5 +1,8 @@
 import { setChatRunActivity } from '../state/chat-run-activity';
 import { acquireChatTurn, localChatTurnLease, type ChatTurnLease } from './turn-ownership';
+import { ChatOwnershipError } from './turn-lease';
+import { cancelGeneration } from '../api/generations';
+import { reportBackgroundError } from '../boot/report-background-error';
 import { isServerStorageMode } from '../config/storage-mode';
 import { isPairedDevice } from '../api/session-token';
 import { flushSharedChat, notifySharedChatEvent } from './shared-chat-events';
@@ -1896,7 +1899,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       pushUser,
     };
 
-    if (isAbortedTurnResult(result, chatSignal)) {
+    if (chatSignal.reason instanceof ChatOwnershipError) {
+      const cause = chatSignal.reason;
+      if (cause.kind === 'unavailable' && chat.currentGenerationId) {
+        await cancelGeneration(chat.currentGenerationId, AbortSignal.timeout(5_000)).catch(error => reportBackgroundError('chat-ownership-cancel', error));
+      }
+      const settled = settleFailedTurn(chrome, cause);
+      turnRunStatus = 'failed';
+      turnErrorMessage = settled.errorMessage;
+    } else if (isAbortedTurnResult(result, chatSignal)) {
       const settled = settleStoppedTurn(chrome);
       turnRunStatus = 'stopped';
       turnStopReason = settled.stopReason;
@@ -2045,7 +2056,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       turnRunId,
       pushUser,
     };
-    if (isAbortError(err) || getChatAbort(chat.id)?.signal.aborted) {
+    if (chatSignal.reason instanceof ChatOwnershipError) {
+      const cause = chatSignal.reason;
+      if (cause.kind === 'unavailable' && chat.currentGenerationId) {
+        await cancelGeneration(chat.currentGenerationId, AbortSignal.timeout(5_000)).catch(error => reportBackgroundError('chat-ownership-cancel', error));
+      }
+      const settled = settleFailedTurn(chrome, cause);
+      turnRunStatus = 'failed';
+      turnErrorMessage = settled.errorMessage;
+    } else if (isAbortError(err) || getChatAbort(chat.id)?.signal.aborted) {
       const settled = settleStoppedTurn(chrome);
       turnRunStatus = 'stopped';
       turnStopReason = settled.stopReason;

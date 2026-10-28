@@ -13,6 +13,7 @@ import { updateAgentCliSessionOutput } from '../agent-cli/output.js';
 import { withCliTurnContext } from '../agent-cli/conversation.js';
 import { CODEX_READ_BATCH, expandCodexReadBatch } from './read-batch.js';
 import { isParallelSafeTool } from '../../runner/parallel-tool-policy.js';
+import { appendDiagnosticEntry } from '../../diagnostics/ring-log.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
 const MAX_HANDOFF_CALLS = 8;
@@ -27,6 +28,7 @@ function onEvent(session, event) {
   if (event.method === 'turn/completed' && p.turn.id !== session.turnId) return;
   if (event.method === 'thread/tokenUsage/updated') {
     session.usage = p.tokenUsage.total;
+    session.lastRequestUsage = allocateCodexUsage(p.tokenUsage.last);
     session.context = { used: p.tokenUsage.last?.totalTokens, input: p.tokenUsage.last?.inputTokens,
       limit: p.tokenUsage.modelContextWindow };
     return;
@@ -40,6 +42,29 @@ function onEvent(session, event) {
     failure(session, new Error(`Codex attempted an unsupported native item (${p.item?.type}).`)); return;
   }
   const round = session.round;
+  const itemId = p.itemId ?? p.item?.id;
+  if (itemId && (['agentMessage', 'reasoning'].includes(p.item?.type) || p.itemId)) {
+    session.itemOrigins ??= new Map();
+    const owner = session.itemOrigins.get(itemId);
+    if (owner && owner.generationId !== round?.generationId && event.method === 'item/completed') {
+      // A native item may settle after its Minnow tool handoff. Its text belongs
+      // to the earlier round; never replay that snapshot into this generation.
+      if (p.item.type === 'agentMessage' && typeof p.item.text === 'string' && p.item.text !== owner.text) {
+        session.rebuild = true;
+        void appendDiagnosticEntry({ source: 'server', kind: 'codex-snapshot-divergence',
+          message: 'Late Codex prose snapshot; native session will rebuild at the next handoff.',
+          extra: { chatId: session.chatId, generationId: owner.generationId, previousLength: owner.text.length, snapshotLength: p.item.text.length } });
+      }
+      return;
+    }
+    if (round) {
+      const entry = owner ?? { generationId: round.generationId, text: '' };
+      if (event.method === 'item/agentMessage/delta') entry.text += p.delta ?? '';
+      if (event.method === 'item/completed' && p.item.type === 'agentMessage' && typeof p.item.text === 'string'
+        && !entry.text.startsWith(p.item.text)) entry.text = p.item.text;
+      session.itemOrigins.set(itemId, entry);
+    }
+  }
   if (!round || round.finished) {
     if (['item/agentMessage/delta', 'turn/completed'].includes(event.method)) failure(session, new Error('Codex produced output while awaiting Minnow tool results.'));
     return;
@@ -133,7 +158,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     const identity = await codexIdentity(runtime, workspace);
     const prepared = prepareConversation(body, identity);
     const admittedAt = performance.now();
-    let resume = session && continuation(session, prepared);
+    let resume = session && !session.rebuild && continuation(session, prepared);
     if (session && !resume) { await closeCodexSession(session); session = null; }
     if (!session) {
       try { session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
@@ -151,6 +176,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     else if (resume) session.method = 'reused';
     if (controller.signal.aborted) throw new Error('Codex request cancelled.');
     clearTimeout(session.timer); session.active = true;
+    session.generationId = state.id;
     updateAgentCliSessionOutput(session.capture, { sessionState: 'active', continuation: session.method });
     const initializedAt = performance.now();
     const baseline = { ...session.allocated };
@@ -158,7 +184,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     let resolveRound;
     const done = new Promise(resolve => { resolveRound = resolve; });
     round = {
-      calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, batchStartedAt: null, handoffReady: false, bytes: 0,
+      generationId: state.id, calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, batchStartedAt: null, handoffReady: false, bytes: 0,
       choose() { if (!this.emitted) { this.emitted = true; noteGenerationCandidateChosen(state, { ...candidate, index }); } },
       activity() {
         clearTimeout(this.idleTimer);
@@ -207,7 +233,8 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
           return;
         }
         this.choose();
-        const metadata = { usage: allocateCodexUsage(session.usage, baseline), minnow_cli: { timings: metrics, continuation: session.method, transport: 'app-server',
+        const allocatedUsage = allocateCodexUsage(session.usage, baseline);
+        const metadata = { usage: allocatedUsage ? { ...allocatedUsage, last_request_usage: session.lastRequestUsage ?? null } : undefined, minnow_cli: { timings: metrics, continuation: session.method, transport: 'app-server',
           ...(session.context ? { context: session.context } : {}) } };
         updateAgentCliSessionOutput(session.capture, { usage: metadata.usage });
         session.allocated = { ...session.usage };
@@ -243,12 +270,22 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       const forwardingAt = performance.now();
       round.bytes += Buffer.byteLength(JSON.stringify(delta));
       if (round.bytes > 16 * 1024 * 1024) throw new Error('Codex output exceeded 16 MB.');
+      if (typeof delta.content_snapshot === 'string') {
+        round.content = delta.content_snapshot;
+        round.choose();
+        if (body.stream !== false) append(state, { minnow_text_snapshot: { version: 1, content: round.content } });
+        return;
+      }
       round.content += delta.content ?? ''; round.reasoning += delta.reasoning ?? '';
       if (reasoningFormat) { delta.reasoning_format = reasoningFormat; round.reasoningFormat = reasoningFormat; }
       round.choose();
       if (body.stream !== false) append(state, { choices: [{ index: 0, delta }] });
       metrics.forwarding_max_ms = Math.max(metrics.forwarding_max_ms ?? 0, performance.now() - forwardingAt);
-    });
+    }, { onDivergence(details) {
+      if (round.finished && details.channel === 'content' && details.kind === 'revised') session.rebuild = true;
+      void appendDiagnosticEntry({ source: 'server', kind: 'codex-snapshot-divergence',
+        message: `Codex ${details.channel} snapshot ${details.kind}`, extra: { chatId: state.chatId, generationId: state.id, ...details } });
+    } });
     session.round = round; session.onFailure = error => round.finish('error', error);
     await dirtyCodexSession(session);
     markStreaming(state); round.activity();
@@ -275,7 +312,9 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       session.handed = [];
       for (const call of session.buffered.splice(0, MAX_HANDOFF_CALLS)) round.tool(call);
     } else {
+      session.itemOrigins = new Map();
       session.context = undefined;
+      session.lastRequestUsage = undefined;
       const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
       if (body.minnow_cli_turn_context) {
         if (seed.input[0]?.type !== 'text') seed.input.unshift({ type: 'text', text: '' });

@@ -11,6 +11,7 @@ import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
 import { getAgentCliOutput, subscribeAgentCliOutput } from './agent-cli/output.js';
+import { shutdownCodexSessions } from './codex-app-server/manager.js';
 import {
   addSubscriber,
   cancel,
@@ -176,6 +177,9 @@ export async function handleGenerationsRequest(req, res, pathname) {
         return true;
       }
       cancel(state);
+      // A tool-handoff generation is complete while its native turn is parked.
+      // Only close the session still attached to this exact generation id.
+      await shutdownCodexSessions(session => session.generationId === id);
       sendJson(res, 200, { ok: true });
       return true;
     }

@@ -88,7 +88,7 @@ function renderSummary(budget: ContextBudget): string {
   const compaction = budget.compressAtTokens != null
     ? `Auto-compact at <strong>${formatTokens(budget.compressAtTokens)}</strong>`
     : 'Automatic compaction unavailable';
-  return `<section class="context-usage-breakdown__summary${warn ? ' is-warn' : ''}" aria-label="Current context usage" title="${budget.isEstimate ? 'Context size uses character-based token estimates.' : 'Context size includes the last prompt and reply, plus pending input.'} Section counts are estimates.">
+  return `<section class="context-usage-breakdown__summary${warn ? ' is-warn' : ''}" aria-label="Current context usage" title="${budget.isEstimate ? 'Context size uses character-based token estimates.' : 'Context size uses provider-reported context or the latest request, plus pending input.'} Section counts are estimates.">
     <div class="context-usage-breakdown__summary-stats">
       <div class="context-usage-breakdown__summary-stat">
         <span class="context-usage-breakdown__summary-value">${formatUsedTokens(budget)} <span>tokens used</span></span>
@@ -244,7 +244,7 @@ function renderPanelBody(budget: ContextBudget): string {
         <tr class="context-usage-breakdown__usage-total"><th scope="row">Total</th><td>${count(budget.lastTurnTotalTokens)}</td><td>${count(session?.totalTokens)}</td></tr>
       </tbody>
     </table>
-    <p class="context-usage-breakdown__usage-note">${session ? `${formatTokens(session.completionCount)} requests this session. ` : ''}Session totals include repeated history.</p>`
+    <p class="context-usage-breakdown__usage-note">${session ? `${formatTokens(session.completionCount)} recorded generations this session. ` : ''}Session totals include repeated history.${budget.lastTurnPromptTokens == null && budget.lastTurnCompletionTokens == null && budget.lastTurnTotalTokens == null ? ' Individual request counts are unavailable.' : ''}</p>`
     : '<h4 class="context-usage-breakdown__sections-title">Token usage</h4><p class="context-usage-breakdown__usage-note">Usage appears after your first reply.</p>';
   return `<header class="context-usage-breakdown__header">
       <div class="context-usage-breakdown__headline">

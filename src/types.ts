@@ -53,6 +53,11 @@ export interface ChatCompletionToolCallDelta {
 
 /** Token usage from LM Studio completion chunks or non-streaming responses. */
 export interface Usage {
+  /** Latest individual model request, when CLI usage above aggregates requests.
+   * null means the transport exposes only aggregate usage; omission means usage
+   * already describes one request (ordinary provider APIs).
+   */
+  last_request_usage?: Omit<Usage, 'last_request_usage'> | null;
   total_tokens?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -1559,6 +1564,8 @@ export interface ChatCompletionChoice {
 
 /** Single SSE `data:` JSON object from `/api/v0/chat/completions`. */
 export interface ChatCompletionChunk {
+  /** Authoritative prose for this generation; shared runner emits its ordinary cumulative delta. */
+  minnow_text_snapshot?: { version: 1; content: string };
   minnow_cli?: {
     /** Model actually reported by the CLI, after resolving aliases. */
     model?: string;

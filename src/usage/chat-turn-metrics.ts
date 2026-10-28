@@ -181,6 +181,25 @@ export function resolveLastTurnMetrics(chat: Chat): LastStats | null {
   return lastStatsHasMetrics(normalized) ? normalized : null;
 }
 
+/** Context details show one provider request; ledger/history usage may aggregate
+ * several native CLI requests across a tool handoff. Never infer a request from
+ * such an aggregate when the CLI explicitly reports it as unavailable.
+ */
+export function resolveLastRequestMetrics(chat: Chat): LastStats | null {
+  if (chat.historyLoaded !== false) {
+    for (let i = chat.history.length - 1; i >= 0; i -= 1) {
+      const row = chat.history[i];
+      if (row.role !== 'assistant' || !row.usage) continue;
+      if (row.usage.last_request_usage !== undefined) {
+        return buildLastStatsSnapshot(row.stats, row.usage.last_request_usage ?? {});
+      }
+      // Preserve ordinary API hydration of partial snapshots from lastStats.
+      return resolveLastTurnMetrics(chat);
+    }
+  }
+  return resolveLastTurnMetrics(chat);
+}
+
 /** True when persisting `resolved` would fill fields `stored` is missing. */
 export function lastStatsNeedsHydration(
   stored: LastStats | null | undefined,

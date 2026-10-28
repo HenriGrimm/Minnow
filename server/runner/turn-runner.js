@@ -598,6 +598,19 @@ function createTurnRunner(deps) {
         streamOptions?.onReasoningDelta?.(reasoningText);
         return;
       }
+      if (chunk.minnow_text_snapshot?.version === 1 && typeof chunk.minnow_text_snapshot.content === 'string') {
+        // Corrections replace prose only. Tool calls, reasoning and usage already
+        // received belong to this same attempt and must survive the replacement.
+        const replacement = carriedText + chunk.minnow_text_snapshot.content;
+        outputProseChars = Math.max(0, outputProseChars + replacement.length - proseText.length);
+        proseText = replacement;
+        inlineRouter = new InlineContentThinkingRouter({ thinkingModel: modelLikelyUsesInlineThinking(modelId) });
+        harmonyRouter = new HarmonyChannelRouter();
+        toolCallRouter = new ContentToolCallRouter();
+        prefillEchoPartial = ''; carriedEchoPending = false;
+        onDelta?.(proseText);
+        return;
+      }
       streamMeta = mergeStreamMeta(streamMeta, chunk);
       const reasoningDelta = extractReasoningDelta(chunk);
       const contentDelta = extractStreamDelta(chunk);
@@ -1035,6 +1048,7 @@ function createTurnRunner(deps) {
       };
       const emitRoundEnd = (turnResult) => {
         const usage = turnResult?.streamMeta?.usage;
+        const requestUsage = usage?.last_request_usage === undefined ? usage : usage.last_request_usage;
         const nativeContext = turnResult?.streamMeta?.minnow_cli?.context;
         if (Number.isFinite(nativeContext?.used) && nativeContext.used >= 0) {
           if (Number.isFinite(nativeContext.limit) && nativeContext.limit > 0) {
@@ -1045,12 +1059,12 @@ function createTurnRunner(deps) {
             recordContextEstimateBias(input.modelId, nativeContext.input, estimateApiMessagesTokens(messages), reservedTokens);
           }
           emitTurnEvent({ type: "context_usage", used: nativeContext.used, limit: modelContextLimit ?? null, isEstimate: false });
-        } else if (Number.isFinite(usage?.prompt_tokens) && usage.prompt_tokens >= 0) {
-          const completion = Number.isFinite(usage.completion_tokens) && usage.completion_tokens >= 0
-            ? usage.completion_tokens : null;
+        } else if (Number.isFinite(requestUsage?.prompt_tokens) && requestUsage.prompt_tokens >= 0) {
+          const completion = Number.isFinite(requestUsage.completion_tokens) && requestUsage.completion_tokens >= 0
+            ? requestUsage.completion_tokens : null;
           emitTurnEvent({
             type: "context_usage",
-            used: usage.prompt_tokens + (completion ?? 0),
+            used: requestUsage.prompt_tokens + (completion ?? 0),
             limit: modelContextLimit ?? null,
             isEstimate: completion === null
           });

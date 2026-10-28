@@ -180,7 +180,7 @@ describe('metrics strip last-turn parity', { concurrency: false }, () => {
     ring.id = surface.ringId;
     document.body.append(ring);
     toggleContextUsageBreakdown(budget, surface);
-    assert.match(panel.textContent ?? '', /3 requests this session/);
+    assert.match(panel.textContent ?? '', /3 recorded generations this session/);
     const totals = [...panel.querySelectorAll('.context-usage-breakdown__usage-total td')].map(cell => cell.textContent);
     assert.deepEqual(totals, [formatStatCount(finalRound.total_tokens).full, '35,300']);
     assert.match(panel.textContent ?? '', /Session totals include repeated history/);

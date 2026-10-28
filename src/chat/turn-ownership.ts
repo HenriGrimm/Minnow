@@ -3,6 +3,8 @@ import { randomUUID } from '../lib/random-id';
 import { isChatRunningRemotely, setRemoteChatTurns } from './remote-turn-state';
 import { isPairedDevice } from '../api/session-token';
 import { getChatHostId } from './remote-chat-client';
+import { createTurnLease, ChatLeaseRequestError, type LeaseGrant } from './turn-lease';
+import { reportBackgroundError } from '../boot/report-background-error';
 
 const owners = new Map<string, string>();
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -29,16 +31,20 @@ export function localChatTurnLease(): ChatTurnLease {
   return { signal: new AbortController().signal, async check() {}, async release() {} };
 }
 
-async function request(action: string, chatId: string, ownerId: string): Promise<boolean> {
+async function request(action: string, chatId: string, ownerId: string, signal?: AbortSignal): Promise<LeaseGrant | null> {
+  const startedAt = performance.now();
   const response = await fetch('/api/chat-turns', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId() }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  if (response.status === 409) return false;
-  if (!response.ok) throw new Error('Could not check which device is running this chat.');
-  return true;
+  if (response.status === 409) return null;
+  if (!response.ok) throw new ChatLeaseRequestError(response.status >= 500 || response.status === 408 || response.status === 429);
+  if (action === 'release') return { startedAt, leaseMs: 0 };
+  const grant = await response.json().catch(() => { throw new ChatLeaseRequestError(false); });
+  if (grant.ok !== true || !Number.isFinite(grant.leaseMs) || grant.leaseMs <= 0) throw new ChatLeaseRequestError(false);
+  return { startedAt, leaseMs: grant.leaseMs };
 }
 
 /** Refresh observer status without running, cancelling, or writing any chat. */
@@ -61,50 +67,25 @@ export async function isChatOwnedElsewhere(chatId: string): Promise<boolean> {
 /** Claim before any history, model, tool, or recovery mutation. Conflicts are passive. */
 export async function acquireChatTurn(chatId: string): Promise<ChatTurnLease | null> {
   if (isPairedDevice()) return null;
-  const controller = new AbortController();
   if (!isServerStorageMode()) return localChatTurnLease();
   // sessionStorage survives a reload in this view, without granting another
   // device ownership of its running turn.
   const ownerId = rememberedOwner(chatId) ?? randomUUID();
-  if (!await request('claim', chatId, ownerId)) {
+  const grant = await request('claim', chatId, ownerId);
+  if (!grant) {
     await refreshRemoteChatTurns(AbortSignal.timeout(REQUEST_TIMEOUT_MS));
     return null;
   }
   owners.set(chatId, ownerId);
   rememberOwner(chatId, ownerId);
-  let released = false;
-  let renewedAt = Date.now();
-  let renewing: Promise<void> | null = null;
-  const renew = (): Promise<void> => {
-    if (renewing) return renewing;
-    renewing = (async () => {
-      try {
-        if (!await request('renew', chatId, ownerId)) throw new Error('Chat ownership was lost.');
-        renewedAt = Date.now();
-      } catch (error) {
-        controller.abort();
-        throw error;
-      } finally { renewing = null; }
-    })();
-    return renewing;
-  };
-  const timer = setInterval(() => { void renew().catch(() => {}); }, 5_000);
-  return {
-    signal: controller.signal,
-    async check() {
-      if (!released && !controller.signal.aborted && Date.now() - renewedAt >= 5_000) {
-        await renew().catch(() => {});
-      }
-      if (released || controller.signal.aborted) throw new DOMException('Chat ownership was lost', 'AbortError');
-    },
+  return createTurnLease({
+    chatId, grant,
+    request: signal => request('renew', chatId, ownerId, signal),
+    diagnose: event => reportBackgroundError('chat-ownership', `Chat ${chatId}: ${event}`),
     async release() {
-      if (released) return;
-      released = true;
-      clearInterval(timer);
-      await renewing?.catch(() => {});
       if (owners.get(chatId) === ownerId) owners.delete(chatId);
       if (rememberedOwner(chatId) === ownerId) rememberOwner(chatId, null);
       await request('release', chatId, ownerId).catch(() => {});
     },
-  };
+  });
 }

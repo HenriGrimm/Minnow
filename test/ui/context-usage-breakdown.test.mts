@@ -67,3 +67,13 @@ test('unknown windows and pending compaction have clear states', () => {
   panel.querySelector<HTMLButtonElement>('[data-context-action="close"]')!.click();
   assert.ok(panel.classList.contains('hidden'));
 });
+
+test('aggregate-only CLI usage shows unavailable request counts and retains session totals', () => {
+  toggleContextUsageBreakdown({ ...budget,
+    lastTurnPromptTokens: null, lastTurnCompletionTokens: null, lastTurnTotalTokens: null,
+  }, surface);
+  const rows = panel.querySelectorAll('tbody tr');
+  assert.deepEqual(Array.from(rows, row => row.children[1].textContent), ['—', '—', '—']);
+  assert.equal(rows[2].children[2].textContent, '592,733');
+  assert.match(panel.textContent!, /Individual request counts are unavailable/);
+});

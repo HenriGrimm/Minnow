@@ -63,8 +63,31 @@ test('summary-only models remain summary-only and assistant text stays separate'
   assert.equal(s.content(), 'Answer.');
 });
 
-test('changed completed reasoning is rejected instead of corrupting streamed text', () => {
+test('changed completed reasoning preserves streamed reasoning without terminating the turn', () => {
   const s = stream();
   s.send('item/reasoning/textDelta', { itemId: 'r1', delta: 'Original' });
-  assert.throws(() => s.send('item/completed', { item: { type: 'reasoning', id: 'r1', content: ['Changed'] } }), /already streamed/);
+  s.send('item/completed', { item: { type: 'reasoning', id: 'r1', content: ['Changed'] } });
+  s.send('item/completed', { item: { type: 'agentMessage', id: 'm1', text: 'Done.' } });
+  assert.equal(s.reasoning(), 'Original');
+  assert.equal(s.content(), 'Done.');
+});
+
+test('empty and shorter snapshots do not replay or truncate streamed sections', () => {
+  const s = stream();
+  s.send('item/agentMessage/delta', { itemId: 'm1', delta: 'Complete text.' });
+  for (const text of ['', 'Complete', 'Complete text.']) s.send('item/completed', { item: { type: 'agentMessage', id: 'm1', text } });
+  assert.equal(s.content(), 'Complete text.');
+});
+
+test('revised prose replaces the ordered round snapshot once, without concatenating conflicting answers', () => {
+  const chunks = [], diagnostics = [];
+  const translate = createCodexTranslator(delta => chunks.push(delta), { onDivergence: d => diagnostics.push(d) });
+  const send = (method, params) => translate({ method, params });
+  send('item/agentMessage/delta', { itemId: 'm1', delta: 'Intro. ' });
+  send('item/agentMessage/delta', { itemId: 'm2', delta: 'Wrong.' });
+  send('item/completed', { item: { id: 'm2', type: 'agentMessage', text: 'Correct.' } });
+  send('item/completed', { item: { id: 'm2', type: 'agentMessage', text: 'Correct.' } });
+  send('item/agentMessage/delta', { itemId: 'm3', delta: ' Next.' });
+  assert.deepEqual(chunks, [{ content: 'Intro. ' }, { content: 'Wrong.' }, { content_snapshot: 'Intro. Correct.' }, { content: ' Next.' }]);
+  assert.deepEqual(diagnostics, [{ channel: 'content', previousLength: 6, snapshotLength: 8, kind: 'revised' }]);
 });

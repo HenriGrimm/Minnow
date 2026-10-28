@@ -11,6 +11,7 @@ import {
   lastStatsNeedsHydration,
   mergeLastStats,
   resolveLastTurnMetrics,
+  resolveLastRequestMetrics,
 } from '../../src/usage/chat-turn-metrics.ts';
 import type { Chat } from '../../src/types.ts';
 
@@ -29,6 +30,36 @@ function chatWith(partial: Partial<Chat>): Chat {
 }
 
 describe('buildLastStatsSnapshot', () => {
+  test('latest CLI request survives persistence while ledger counts both delayed requests', async () => {
+    const { recordTokenUsage } = await import('../../src/usage/token-ledger.ts');
+    const usage = { prompt_tokens: 246053, completion_tokens: 188, total_tokens: 246241,
+      last_request_usage: { prompt_tokens: 123122, completion_tokens: 96, total_tokens: 123218 } };
+    const chat = chatWith({ history: [{ role: 'assistant', content: 'Done.', usage }], lastStats: buildLastStatsSnapshot({}, usage) });
+    recordTokenUsage(chat, { source: { kind: 'main', modeId: 'general' }, providerId: 'codex-cli', modelId: 'fixture', usage, costUsd: null });
+    const restored = JSON.parse(JSON.stringify(chat)) as Chat;
+    assert.equal(resolveLastRequestMetrics(restored)?.total_tokens, 123218);
+    assert.equal(resolveLastRequestMetrics(restored)?.prompt_tokens, 123122);
+    assert.equal(restored.tokenLedger?.totals.totalTokens, 246241);
+    assert.equal(restored.tokenLedger?.totals.promptTokens, 246053);
+  });
+
+  test('aggregate-only CLI usage stays unknown instead of falling back to stale or aggregate metrics', () => {
+    const chat = chatWith({ history: [{ role: 'assistant', content: 'Done.', usage: {
+      prompt_tokens: 500, completion_tokens: 40, last_request_usage: null,
+    } }], lastStats: buildLastStatsSnapshot({}, { total_tokens: 540 }) });
+    assert.equal(resolveLastRequestMetrics(chat)?.total_tokens, null);
+    assert.equal(resolveLastRequestMetrics(chat)?.prompt_tokens, null);
+  });
+
+  test('ordinary API usage retains hydration from the richer lastStats snapshot', () => {
+    const usage = { prompt_tokens: 100, completion_tokens: 20 };
+    const chat = chatWith({ history: [{ role: 'assistant', content: 'Done.', usage }],
+      lastStats: buildLastStatsSnapshot({}, usage) });
+    assert.equal(resolveLastRequestMetrics(chat)?.total_tokens, 120);
+    chat.history[0].usage = { prompt_tokens: 100 };
+    assert.equal(resolveLastRequestMetrics(chat)?.total_tokens, 120);
+  });
+
   test('fills total_tokens from prompt + completion', () => {
     const ls = buildLastStatsSnapshot({ tokens_per_second: 10 }, {
       prompt_tokens: 61_692,

@@ -9,6 +9,36 @@ import { admitAgentCli } from '../../server/generations/agent-cli/admission.js';
 import { reasoningEffortToCompletionBody, thinkingToCompletionBody } from '../../server/runner/thinking-to-body.js';
 import { CLAUDE_OK_EVENTS, CLAUDE_AUTH_FAIL_EVENTS, CODEX_OK_EVENTS, CURSOR_CURRENT_EVENTS, CURSOR_OK_EVENTS } from '../fixtures/fake-agent-cli.mjs';
 
+test('Claude preserves the latest message usage when the terminal result reports a turn aggregate', () => {
+  const translator = createAgentCliTranslator('claude', () => {});
+  translator.consume({ type: 'stream_event', event: { type: 'message_start', message: { id: 'last', usage: {
+    input_tokens: 10, cache_read_input_tokens: 90, cache_creation_input_tokens: 5,
+  } } } });
+  translator.consume({ type: 'stream_event', event: { type: 'message_delta', usage: { output_tokens: 12 } } });
+  translator.consume({ type: 'assistant', uuid: 'snapshot', message: { id: 'last', usage: { input_tokens: 10, output_tokens: 12 } } });
+  translator.consume({ type: 'result', subtype: 'success', usage: { input_tokens: 500, output_tokens: 40 } });
+  const { usage } = translator.snapshot();
+  assert.equal(usage.total_tokens, 540);
+  assert.equal(usage.last_request_usage.prompt_tokens, 105, 'all cached and cache-write input belongs to the request');
+  assert.equal(usage.last_request_usage.completion_tokens, 12);
+  assert.equal(usage.last_request_usage.total_tokens, 117);
+});
+
+for (const kind of ['claude', 'codex', 'cursor']) test(`${kind} aggregate-only output does not invent individual request usage`, () => {
+  const translator = createAgentCliTranslator(kind, () => {});
+  translator.consume({ type: kind === 'codex' ? 'turn.completed' : 'result', usage: { input_tokens: 500, output_tokens: 40 } });
+  assert.equal(translator.snapshot().usage.total_tokens, 540);
+  assert.equal(translator.snapshot().usage.last_request_usage, null);
+});
+
+test('Cursor uses per-message usage when available without replacing terminal totals', () => {
+  const translator = createAgentCliTranslator('cursor', () => {});
+  translator.consume({ type: 'assistant', message: { content: [], usage: { input_tokens: 100, output_tokens: 12 } } });
+  translator.consume({ type: 'result', usage: { input_tokens: 500, output_tokens: 40 } });
+  assert.equal(translator.snapshot().usage.total_tokens, 540);
+  assert.equal(translator.snapshot().usage.last_request_usage.total_tokens, 112);
+});
+
 test('JSONL handles every byte boundary, CRLF, BOM, startup banners and final unterminated record', () => {
   const events = [], banners = [];
   const decoder = createJsonlDecoder({ onEvent: event => events.push(event), onText: text => banners.push(text) });

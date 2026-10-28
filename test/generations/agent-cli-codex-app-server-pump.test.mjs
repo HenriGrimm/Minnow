@@ -30,6 +30,32 @@ function setup(sequence, env = {}) {
 const tools = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: {} } } }];
 const imageUrl = 'data:image/png;base64,aW1hZ2U=';
 const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
+
+test('revised native prose is delivered as a replacement and reused with the corrected transcript', async () => {
+  setup([{ deltas: ['Wrong.'], text: 'Correct.' }, { text: 'Next.' }]);
+  const messages = [{ role: 'user', content: 'Start.' }];
+  const first = await generate(messages);
+  assert.equal(first.state.status, 'complete');
+  assert.deepEqual(first.rows.find(row => row.minnow_text_snapshot)?.minnow_text_snapshot, { version: 1, content: 'Correct.' });
+  messages.push({ role: 'assistant', content: 'Correct.' }, { role: 'user', content: 'Continue.' });
+  assert.equal((await generate(messages)).state.status, 'complete');
+  assert.equal(processes, 1);
+});
+
+test('changed reasoning still hands off a tool and completes the same native turn', async () => {
+  setup([{ reasoning: 'Original reasoning.', reasoningSnapshot: 'Revised summary.', calls: [{ id: 'read', name: 'mn_tool_0' }] }, { text: 'Done.' }]);
+  const messages = [{ role: 'user', content: 'Read.' }];
+  const first = await generate(messages);
+  assert.equal(first.state.status, 'complete');
+  assert.equal(first.rows.map(row => row.choices?.[0]?.delta?.reasoning ?? '').join(''), 'Original reasoning.');
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.equal(calls.length, 1);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Read result.' });
+  const next = await generate(messages);
+  assert.equal(next.state.status, 'complete');
+  assert.equal(processes, 1);
+  assert.equal(next.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Done.');
+});
 async function generate(messages, overrides = {}, settings = {}) {
   const state = createGenerationState({ providerId: 'codex-cli', chatId: settings.chatId === undefined ? 'test-chat' : settings.chatId, fallbackRole: 'default',
     body: { model: 'fixture', stream: true, messages, tools, ...overrides } }); states.push(state);
@@ -52,6 +78,39 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
     messages.push({ role: 'assistant', content: 'Hello.' }, { role: 'user', content: `Next ${i}.` });
   }
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
+});
+
+for (const restart of [false, true]) test(`late Codex usage keeps the latest request separate from allocations (${restart ? 'resumed' : 'warm'})`, async () => {
+  const last = { inputTokens: 123122, outputTokens: 96, totalTokens: 123218, cachedInputTokens: 122880, reasoningOutputTokens: 0 };
+  setup([
+    { calls: [{ id: 'read', name: 'mn_tool_0' }] },
+    { text: 'Done.', repeatUsage: true, tokenUsage: { total: {
+      inputTokens: 246053, outputTokens: 188, totalTokens: 246241, cachedInputTokens: 245632, reasoningOutputTokens: 37,
+    }, last, modelContextWindow: 828400 } },
+    { text: 'Next.', tokenUsage: { total: { inputTokens: 246453, outputTokens: 288, totalTokens: 246741 },
+      last: { inputTokens: 400, outputTokens: 100, totalTokens: 500 } } },
+  ]);
+  const messages = [{ role: 'user', content: 'Read.' }];
+  const first = await generate(messages);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
+  messages.push({ role: 'assistant', content: '', tool_calls: calls }, { role: 'tool', tool_call_id: calls[0].id, content: 'Contents.' });
+  const final = await generate(messages);
+  const metadata = final.rows.at(-1);
+  assert.equal(metadata.usage.total_tokens, 246241, 'both requests are allocated exactly once');
+  assert.deepEqual(metadata.usage.last_request_usage, {
+    prompt_tokens: 123122, completion_tokens: 96, total_tokens: 123218,
+    prompt_tokens_details: { cached_tokens: 122880, uncached_tokens: 242 },
+    completion_tokens_details: { reasoning_tokens: 0 },
+  });
+  assert.equal(metadata.minnow_cli.context.used, 123218);
+  if (restart) await shutdownCodexSessions();
+  messages.push({ role: 'assistant', content: 'Done.' }, { role: 'user', content: 'Again.' });
+  const next = await generate(messages, { stream: false });
+  assert.equal(next.state.status, 'complete', next.state.errorMessage);
+  const reply = JSON.parse(next.wire);
+  assert.equal(reply.usage.total_tokens, 500, 'warm and restored allocation baselines exclude prior usage');
+  assert.equal(reply.usage.last_request_usage.total_tokens, 500);
+  assert.equal(metadata.usage.total_tokens + reply.usage.total_tokens, 246741);
 });
 
 test('native Codex usage exhaustion preserves quota metadata on the generation and result', async () => {

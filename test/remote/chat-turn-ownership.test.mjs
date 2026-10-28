@@ -67,6 +67,7 @@ test('two devices see one owner through the HTTP API; release permits the next t
   try {
     const claims = await Promise.all([post('claim', 'pc'), post('claim', 'phone')]);
     assert.deepEqual(claims.map(res => res.status).sort(), [200, 409]);
+    assert.equal((await claims.find(res => res.ok).json()).leaseMs, 30_000);
     const status = await fetch(url);
     assert.equal(status.headers.get('cache-control'), 'no-store');
     const { turns } = await status.json();

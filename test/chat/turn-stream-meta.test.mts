@@ -18,6 +18,14 @@ test('native generation cost survives runner stream metadata into the completion
   assert.equal(finished.minnow_cli?.cost_usd, .01); assert.equal(finished.minnow_cli?.continuation, 'resumed');
 });
 
+test('latest-request usage and full allocations both survive streaming and round-end metadata', () => {
+  const usage = { prompt_tokens: 246053, completion_tokens: 188, total_tokens: 246241,
+    last_request_usage: { prompt_tokens: 123122, completion_tokens: 96, total_tokens: 123218 } };
+  const metadata = applyStreamMetaEvent({}, { type: 'stream_meta', usage });
+  const finished = streamMetaFromRoundEnd(metadata, { type: 'round_end', index: 0, usage, finishReason: 'stop' });
+  assert.deepEqual(finished.usage, usage);
+});
+
 describe('llamaRuntimeFromStreamMetaRuntime', () => {
   test('round-end native context survives even when no stream metadata preceded it', () => {
     const context = { used: 120_000, input: 118_000, limit: 240_000 };

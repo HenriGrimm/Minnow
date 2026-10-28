@@ -32,9 +32,11 @@ function saveDeviceDraft(chatId: string, text: string): void {
 
 let draftRestoreSuspended = false;
 
-/** Debounce draft-only sidebar title tweaks (full rebuild only when list membership changes). */
+/** Keep rail work out of typing/repeat-backspace frames, including empty/nonempty transitions. */
 let draftSidebarLabelTimer: ReturnType<typeof setTimeout> | null = null;
-const DRAFT_SIDEBAR_LABEL_DEBOUNCE_MS = 200;
+const DRAFT_SIDEBAR_LABEL_DEBOUNCE_MS = 400;
+const pendingDraftSidebarChats = new Map<Chat, boolean>();
+let draftSidebarRevision = 0;
 
 /** Session PATCH after a typing pause stringified the whole chat (and in DEV every chat) on the main thread — glyphs froze, then caught up. */
 const DRAFT_SESSION_SAVE_IDLE_MS = 2500;
@@ -43,12 +45,26 @@ let draftSaveChatId: string | null = null;
 
 // ── Persist ──────────────────────────────────────────────────────────────────
 
-function scheduleComposerDraftSidebarLabelSync(chat: Chat): void {
-  if (getChatMessageCount(chat) !== 0 || !hasComposerDraft(chat)) return;
+function scheduleComposerDraftSidebarLabelSync(chat: Chat, visibilityChanged: boolean): void {
+  if (getChatMessageCount(chat) !== 0) return;
+  pendingDraftSidebarChats.set(chat, visibilityChanged || pendingDraftSidebarChats.get(chat) === true);
+  const revision = ++draftSidebarRevision;
   if (draftSidebarLabelTimer) clearTimeout(draftSidebarLabelTimer);
   draftSidebarLabelTimer = setTimeout(() => {
     draftSidebarLabelTimer = null;
-    void import('./sidebar').then((m) => m.syncComposerDraftSidebarLabels(chat));
+    void import('./sidebar').then((m) => {
+      if (revision !== draftSidebarRevision) return;
+      const pending = [...pendingDraftSidebarChats];
+      pendingDraftSidebarChats.clear();
+      // A switch or send may have removed/replaced a chat while the timer waited.
+      const current = pending.filter(([row]) => sessionState?.chats.includes(row));
+      if (current.some(([, changed]) => changed)) {
+        m.renderSidebar();
+        void import('./chat-app').then((app) => app.refreshChatAppSessionRail());
+      } else {
+        for (const [row] of current) m.syncComposerDraftSidebarLabels(row);
+      }
+    });
   }, DRAFT_SIDEBAR_LABEL_DEBOUNCE_MS);
 }
 
@@ -164,16 +180,15 @@ export function handleComposerDraftInput(): void {
   const text = input ? composerPromptHistoryDraft(input) : '';
   const visibilityChanged = persistComposerDraftOnChat(chat, text);
   if (isPairedDevice()) return;
-  if (!visibilityChanged && !hasComposerDraft(chat)) return;
+  if (!visibilityChanged && !hasComposerDraft(chat)) {
+    // An empty draft still postpones any pending removal while Backspace repeats.
+    if (pendingDraftSidebarChats.has(chat)) scheduleComposerDraftSidebarLabelSync(chat, false);
+    return;
+  }
 
   scheduleIdleComposerDraftSave(chat.id);
 
-  if (visibilityChanged) {
-    void import('./sidebar').then((m) => m.renderSidebar());
-    void import('./chat-app').then((m) => m.refreshChatAppSessionRail());
-  } else {
-    scheduleComposerDraftSidebarLabelSync(chat);
-  }
+  scheduleComposerDraftSidebarLabelSync(chat, visibilityChanged);
 }
 
 let draftInputFrame = 0;
@@ -188,7 +203,7 @@ function cancelScheduledDraftInput(): void {
   draftInputFrame = 0;
 }
 
-/** Run draft persist after the browser paints the new glyph (macOS input lag). */
+/** Coalesce in-memory draft tracking; rail rendering and saves have separate idle timers. */
 function scheduleComposerDraftInput(): void {
   if (draftInputFrame) return;
   const run = (): void => {
