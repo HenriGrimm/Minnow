@@ -4,6 +4,7 @@ import * as sessions from '../../src/state/sessions.ts';
 import type { Chat } from '../../src/types.ts';
 import { setResumeGateState } from '../../src/chat/resume-gate.ts';
 import { normalizeChatRow } from '../../src/state/session-schema.mjs';
+import { beginChatTurnSetup, endChatTurnSetup } from '../../src/chat/chat-turn-guard.ts';
 
 let persistSucceeds = true;
 let holdTurn = false;
@@ -81,6 +82,7 @@ function fold(runId: string, parentChatId: string, phase: 'running' | 'passed' |
 }
 
 after(() => {
+  endChatTurnSetup(PARENT);
   setResumeGateState('idle');
   for (const finish of pendingTurns.splice(0)) finish(false);
   setSubAgentCompletionDeliverHook(null);
@@ -279,16 +281,39 @@ test('pending and declined boot resume gates retain and ACK results without laun
   setResumeGateState('idle');
 });
 
-test('a busy parent that has not accepted the message keeps delivery pending for a later retry', async () => {
+test('a declined parent resume stays quietly pending and accepts a later retry exactly once', async () => {
   const harness = await defaultDeliveryHarness();
   declineResume = true;
   harness.emit([RUN]);
-  await assert.rejects(harness.flush(), /did not accept/);
+  await harness.flush();
   assert.deepEqual(harness.acknowledgements, []);
   assert.equal(harness.parent.history!.length, 0);
   declineResume = false;
   harness.emit([RUN]);
   await harness.flush();
+  assert.deepEqual(harness.acknowledgements, [[RUN]]);
+  assert.equal(harness.parent.history!.length, 1);
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.equal(harness.parent.history!.length, 1);
+  assert.equal(defaultResumes.length, 2, 'one declined attempt and one accepted attempt');
+});
+
+test('a completion offered during parent setup remains unacknowledged until a retry after release', async () => {
+  const harness = await defaultDeliveryHarness();
+  assert.equal(beginChatTurnSetup(PARENT), true);
+  try {
+    harness.emit([RUN]);
+    await harness.flush();
+    assert.deepEqual(defaultResumes, [], 'a setup-only parent is busy even before streaming');
+    assert.deepEqual(harness.acknowledgements, []);
+    assert.equal(harness.parent.history!.length, 0);
+  } finally {
+    endChatTurnSetup(PARENT);
+  }
+  harness.emit([RUN]);
+  await harness.flush();
+  assert.deepEqual(defaultResumes, [PARENT]);
   assert.deepEqual(harness.acknowledgements, [[RUN]]);
   assert.equal(harness.parent.history!.length, 1);
 });

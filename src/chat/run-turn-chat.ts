@@ -2150,13 +2150,6 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     }
     setChatRunActivity(chat.id, completedNormally ? 'completed' : turnRunStatus === 'stopped' ? 'stopped' : 'failed');
-    endStreamingImpl(chat.id);
-    setSidebarStreamPhase(null, chat.id);
-    syncChatItemDotsInDom();
-    if (getActiveChat().id === chat.id) {
-      syncComposerFromStreamingState();
-    }
-    void rehydrateLiveParentSubAgents(chat.id);
     if (getChatAbort(chat.id)?.signal) {
       setChatAbort(chat.id, null);
     }
@@ -2168,6 +2161,16 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     await flushSharedChat(chat.id, false);
     await turnLease.release();
     endChatTurnSetup(chat.id);
+    // Stream-end listeners can start a completion turn immediately. Keep the
+    // chat busy until its transcript is published and both ownership guards
+    // are released, so those listeners do not race the previous teardown.
+    endStreamingImpl(chat.id);
+    setSidebarStreamPhase(null, chat.id);
+    syncChatItemDotsInDom();
+    if (getActiveChat().id === chat.id) {
+      syncComposerFromStreamingState();
+    }
+    void rehydrateLiveParentSubAgents(chat.id);
 
     if (completedNormally && isPartyModePinned(chat.pinnedSkill) && isStreamDomVisible(chat.id)) {
       burstPartyConfetti();

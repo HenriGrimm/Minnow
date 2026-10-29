@@ -17,15 +17,24 @@ import {
   flushScheduledSessionSaveForTests,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
-import { endChatTurnSetup } from '../../src/chat/chat-turn-guard.ts';
+import { endChatTurnSetup, isChatTurnSetupPending } from '../../src/chat/chat-turn-guard.ts';
 import { getChatAbort, setChatAbort, setStreaming } from '../../src/app-state.ts';
 import { DEFAULT_TITLES_CONFIG, setTitlesConfigForTests } from '../../src/config/titles-meta.ts';
 import { notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
 import { isChatStreaming } from '../../src/chat/streaming-state.ts';
 import { buildAgentActivitySnapshot } from '../../src/state/agent-activity-registry.ts';
 import { listMainTurnActivity } from '../../src/chat/main-turn-activity.ts';
+import { adoptSubAgentRunForTests, resetSubAgentOrchestrator } from '../../src/agents/orchestrator.ts';
+import {
+  adapterDeliveryStateForTests,
+  flushSubAgentCompletionPushForChat,
+  initSubAgentCompletionPush,
+  resetSubAgentCompletionPushForTests,
+  setSubAgentDeliveryHandleForTests,
+} from '../../src/agents/sub-agent-completion-push.ts';
 import {
   maybeRunChatTurnViaRunner,
+  runChatTurn,
   resetRunTurnForTests,
   setRunTurnChatEndStreamingForTests,
   setRunTurnForTests,
@@ -34,6 +43,7 @@ import {
 const CHAT_ID = '11111111-1111-1111-1111-111111111111';
 
 function installChatDom(): void {
+  globalThis.localStorage = window.localStorage;
   document.body.replaceChildren();
   const chatArea = document.createElement('div');
   chatArea.id = 'chatArea';
@@ -68,6 +78,9 @@ function makeChat(): Chat {
 
 describe('P6-D stream-end order (MIN-726)', () => {
   afterEach(() => {
+    resetSubAgentCompletionPushForTests();
+    setSubAgentDeliveryHandleForTests(null);
+    resetSubAgentOrchestrator();
     setRunTurnChatEndStreamingForTests(null);
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();
@@ -114,6 +127,79 @@ describe('P6-D stream-end order (MIN-726)', () => {
     });
 
     assert.deepEqual(order, ['setStreaming(false)', 'notifyChatStreamEnded']);
+  });
+
+  test('a completion resumes exactly once after asynchronous parent lease release', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const releaseStarted = Promise.withResolvers<void>();
+    const allowRelease = Promise.withResolvers<void>();
+    const resumedTurnEnded = Promise.withResolvers<void>();
+    const childRunId = '22222222-2222-2222-2222-222222222222';
+    let leaseReleased = false;
+    let turns = 0;
+    const notifications: Array<{ released: boolean; streaming: boolean; setup: boolean; abort: boolean }> = [];
+    resetSubAgentCompletionPushForTests();
+    initSubAgentCompletionPush();
+    setRunTurnForTests(async () => {
+      turns++;
+      if (turns === 1) {
+        adoptSubAgentRunForTests({
+          runId: childRunId, type: 'explore', task: 'scan', status: 'completed',
+          parentChatId: chat.id, parentToolCallId: null, parentTurnId: null,
+          summary: 'Retained completion result', error: null,
+          startedAt: '2026-10-29T12:00:00.000Z', endedAt: '2026-10-29T12:00:01.000Z',
+          toolTurns: 0, cancelled: false, messages: [],
+        });
+      }
+      return { outcome: 'no_report' };
+    });
+    setRunTurnChatEndStreamingForTests({
+      notifyChatStreamEnded: (chatId) => {
+        notifications.push({
+          released: leaseReleased,
+          streaming: isChatStreaming(chatId),
+          setup: isChatTurnSetupPending(chatId),
+          abort: Boolean(getChatAbort(chatId)),
+        });
+        notifyChatStreamEnded(chatId);
+        if (notifications.length === 2) resumedTurnEnded.resolve();
+      },
+    });
+    const parent = runChatTurn({
+      chat, pushUser: true, rawText: 'Hi', userText: 'Hi', skillId: null,
+      historyContent: 'Hi', validAttachments: [],
+      turnLease: {
+        signal: new AbortController().signal,
+        async check() {},
+        async release() {
+          releaseStarted.resolve();
+          await allowRelease.promise;
+          leaseReleased = true;
+        },
+      },
+    });
+    try {
+      await releaseStarted.promise;
+      assert.equal(notifications.length, 0, 'completion listeners must wait for lease release');
+      assert.equal(isChatStreaming(chat.id), true);
+      assert.equal(isChatTurnSetupPending(chat.id), true);
+      assert.equal(turns, 1);
+      assert.deepEqual(chat.subAgentDeliveryReceipts ?? [], []);
+    } finally {
+      allowRelease.resolve();
+      await parent;
+    }
+    await flushSubAgentCompletionPushForChat(chat.id);
+    await resumedTurnEnded.promise;
+    await flushSubAgentCompletionPushForChat(chat.id);
+    assert.deepEqual(notifications[0], { released: true, streaming: false, setup: false, abort: false });
+    assert.deepEqual(chat.subAgentDeliveryReceipts, [childRunId]);
+    assert.equal((await adapterDeliveryStateForTests(chat.id)).runs.get(childRunId)?.delivered, true);
+    assert.equal(turns, 2, 'one parent turn and one completion turn');
+    assert.equal(chat.history.filter((row) => row.role === 'user' && row.hiddenFromTranscript).length, 1);
   });
 
   test('background turns still register per-chat streaming activity', async () => {

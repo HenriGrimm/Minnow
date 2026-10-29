@@ -5,6 +5,7 @@ import { reportBackgroundError } from '../boot/report-background-error';
 import { findChatById, recordChatMessage, touchChat } from '../state/sessions';
 import { hiddenTranscriptUserMessage } from '../chat/hidden-transcript-user-messages';
 import { isResumeGateHeld } from '../chat/resume-gate';
+import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import type { PersistedSubAgentRun } from '../types';
 import {
   acknowledgeSubAgentDelivery,
@@ -41,6 +42,10 @@ const delayedByChat = new Map<string, Array<DeliverFrame & { parentChatId: strin
 const queuedDeliveryKeys = new Set<string>();
 const resumedDeliveryKeys = new Set<string>();
 
+// A turn can win admission after a delivery frame was queued. Leave its
+// result unacknowledged for the server's next offer without reporting an error.
+class ParentChatDeliveryDeferredError extends Error {}
+
 function deliveryKey(frame: DeliverFrame & { parentChatId: string }): string {
   return `${frame.parentChatId}:${[...frame.runIds].sort().join(',')}`;
 }
@@ -57,7 +62,9 @@ function createAdapterDelivery(): DeliveryHandle {
     buildMessage: adapterBuildMessage,
     notifyUndeliverable: adapterNotify,
     deliverToParent: adapterDeliver,
-    onDeliverError: (err) => reportBackgroundError('sub-agent-completion-push', err),
+    onDeliverError: (err) => {
+      if (!(err instanceof ParentChatDeliveryDeferredError)) reportBackgroundError('sub-agent-completion-push', err);
+    },
   });
 }
 
@@ -67,7 +74,7 @@ function adapterParentStatus(chatId: string): ParentStatus {
   if (normalizeModeId(chat.modeId) === 'orchestrate') {
     return { streaming: false, skip: 'orchestrate' };
   }
-  return { streaming: isChatStreaming(chatId), skip: null };
+  return { streaming: isChatTurnInProgress(chatId), skip: null };
 }
 
 function foldRunToSubAgentRun(run: RunState): SubAgentRun {
@@ -197,6 +204,7 @@ async function defaultDeliverResume(
   if (chat.subAgentAutoResumeBlocked || isResumeGateHeld()) {
     return defaultDeliverResume(chatId, message, runIdsToMark, kind);
   }
+  if (isChatTurnInProgress(chatId)) throw new ParentChatDeliveryDeferredError();
   // Acceptance is durable storage of the result, not successful completion of
   // the next model turn. Stop or a provider failure must not re-deliver it.
   await new Promise<void>((resolve, reject) => {
@@ -209,7 +217,7 @@ async function defaultDeliverResume(
         resolve();
       },
     }).then(() => {
-      if (!accepted) reject(new Error('Parent chat did not accept the sub-agent completion'));
+      if (!accepted) reject(new ParentChatDeliveryDeferredError());
     }, (err) => {
       if (!accepted) reject(err);
       else reportBackgroundError('sub-agent-parent-turn', err);
@@ -327,7 +335,8 @@ function onSubAgentRunUpdated(run: SubAgentRun): void {
   if (!delivery) return;
   if (!run.parentChatId) return;
   if (!isSubAgentRunTerminal(run.status)) return;
-  void follow(() => ingestAndTick(run));
+  void follow(() => ingestAndTick(run))
+    .catch((err) => reportBackgroundError('sub-agent-completion-push', err));
 }
 
 async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }): Promise<void> {
@@ -354,6 +363,8 @@ async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }
     }
     await acknowledgeSubAgentDelivery(chatId, frame.runIds);
     resumedDeliveryKeys.delete(key);
+  } catch (err) {
+    if (!(err instanceof ParentChatDeliveryDeferredError)) throw err;
   } finally {
     queuedDeliveryKeys.delete(key);
   }
@@ -392,7 +403,7 @@ export function flushAllPendingSubAgentCompletions(): void {
   void follow(async () => {
     for (const chatId of [...delayedByChat.keys()]) await flushDelayed(chatId);
     if (delivery) await delivery.tickAll();
-  });
+  }).catch((err) => reportBackgroundError('sub-agent-completion-flush', err));
 }
 
 export function fireSubAgentCheckInNudge(runId: string): Promise<void> {
@@ -436,7 +447,7 @@ export function initSubAgentCompletionPush(): void {
     void follow(async () => {
       await flushDelayed(chatId);
       if (delivery) await delivery.tick(chatId);
-    });
+    }).catch((err) => reportBackgroundError('sub-agent-completion-flush', err));
   });
 }
 
