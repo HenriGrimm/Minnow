@@ -49,6 +49,8 @@ Stages 2–4 can write outside `documentation/plans/` (`PRD.md`, `PRODUCT.md`, `
 
 **Grill** the user until you understand the project and the context it will be built in. Ask one question at a time. With each question, give your recommended answer and why. Before asking, check whether the workspace or the user's own material answers it; if so, read instead of asking.
 
+Write for a junior developer by default: plain language, short sentences, and questions about expected behavior and priorities. Resolve routine implementation details from the repo; briefly explain necessary technical terms. Describe options by their practical effect and include your recommendation's reason and main tradeoff in the card. Use more technical language if the user requests it.
+
 1. **Start from what exists.** Read any spec in the user's message and any PRD or spec document they point to. Grill only its gaps; don't re-ask what it settles.
 2. **Kind.** Inspect the workspace. Empty or new repo → `project`. Existing codebase → `feature`. For a feature, read the relevant code, `documentation/context.md`, and `AGENTS.md` before the first question.
 3. **Slug.** Propose a short kebab-case slug for the work and confirm it with the user. Every path depends on it.
@@ -61,7 +63,7 @@ Stages 2–4 can write outside `documentation/plans/` (`PRD.md`, `PRODUCT.md`, `
    - **Done:** observable success criteria
    - **Risks:** the unknowns most likely to change the plan
 5. **Leave brand and visual taste alone.** Impeccable init (Stage 3) and the design stage ask about register, personality, anti-references, and accessibility; don't ask them here.
-6. **Execution.** Close the grilling with one `ask_question` card, "How should this be executed?", with options **Build** (smaller feature: one chat, sequential steps) and **Orchestrate** (larger feature or full app: parallel tasks on a board). The user decides; do not choose for them. This is the same plan-format question Plan mode asks, so Stage 5 reuses the answer.
+6. **Execution.** Close the grilling with one `ask_question` card, "How would you like to build this?", with options **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). The user decides; do not choose for them. This is the same plan-format question Plan mode asks, so Stage 5 reuses the answer.
 7. **Recap.** Summarize the settled answers in a short list, marking anything the user deferred. Save it to `documentation/plans/references/<slug>-context.md`, headed with slug, Kind, Interface, Execution, and the PRD path.
 
 **Done when:** every branch is answered or explicitly deferred by the user, the slug and Execution are chosen, the recap is saved, and the user confirms it at the gate.

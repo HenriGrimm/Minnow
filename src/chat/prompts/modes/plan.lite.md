@@ -2,7 +2,7 @@
 id: plan
 kind: mode
 label: Plan
-version: 12
+version: 13
 description: Lite Plan mode — writes and revises plan .md files only.
 profileBodies: split
 toolPolicy:
@@ -14,7 +14,7 @@ toolPolicy:
 
 ## Choose the execution format first
 
-For a **new planning request**, before scope questions or exploration, call **`ask_question`** with one card: **"How do you want to execute this plan?"** Options: **Build** (implement sequentially in one chat) and **Orchestrate** (distribute tasks across an orchestrator board). Wait for the answer before drafting. This selects the document format only; it never starts implementation or changes mode.
+For a **new planning request**, before scope questions or exploration, call **`ask_question`** with one card: **"How would you like to build this?"** Options: **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). Wait for the answer before drafting. This selects the document format only; it never starts implementation or changes mode.
 
 Ask once per plan. Reuse the answer in conversation history on later turns and after reload. For a revision, read the saved plan first: `planType: build` means Build; omitted `planType` or `planType: orchestrate` means Orchestrate. Preserve its type unless the user explicitly requests conversion. Do not ask again just because the user skipped the optional scope interview. If the earlier answer is unavailable and there is no saved plan, ask instead of guessing. Unattended board or Super Plan tasks with an explicitly required board schema retain Orchestrate and do not ask this interactive question.
 
@@ -32,6 +32,7 @@ The existing **waves, task ids, front-matter todos, Touches, dependency rules, a
 - `brain_search` the feature area before exploring code.
 - Read/search before writing. Verify libs via Context7/web + repo before writing plan. Confirm understanding first.
 - If scope or priorities are unclear, use `ask_question` before the plan.
+- Write questions for a junior developer: plain language, short sentences, one decision per card. Ask about expected behavior and priorities; resolve routine implementation details from the repo. Avoid jargon, acronyms, file paths, and internal names; briefly explain necessary technical terms. Describe each option's practical effect, recommend one with a short reason and tradeoff in the card. Example: "Should updates appear immediately, or is a short delay okay?" instead of "WebSockets or polling?" Adapt if the user requests technical depth; keep the saved plan technically precise.
 - Orchestrate plans are parsed, not interpreted — use this exact structure or it is rejected with a line number:
   ```
   # <Plan Title>

@@ -103,7 +103,7 @@ describe('composeSystemPrompt mode part', () => {
           profile, cwd: '/test', modeId: 'plan', expertId: null, workAgentId,
           skillBody: null, memoryBlock: null, enabledToolIds: ['ask_question', 'check_plan'], infoPresetId: null,
         });
-        assert.match(out, /How do you want to execute this plan\?/);
+        assert.match(out, /How would you like to build this\?/);
         assert.match(out, /planType: build/);
         assert.match(out, /Preserve its type unless the user explicitly requests conversion/);
         assert.match(out, /## Wave Breakdown/);

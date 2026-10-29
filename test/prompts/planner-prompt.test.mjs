@@ -23,22 +23,22 @@ describe('planner work-agent prompts', () => {
   test('both profiles and Plan mode choose the format before scope questions and preserve revisions', async () => {
     for (const relative of ['work-agents/planner/agent.full.md', 'work-agents/planner/agent.lite.md', 'modes/plan.full.md', 'modes/plan.lite.md']) {
       const body = await fs.readFile(path.join(REPO_ROOT, 'src/chat/prompts', relative), 'utf8');
-      assert.match(body, /How do you want to execute this plan\?/);
+      assert.match(body, /How would you like to build this\?/);
       assert.match(body, /Wait for the answer before drafting/);
       assert.match(body, /Ask once per plan/);
       assert.match(body, /Preserve its type unless the user explicitly requests conversion/);
       assert.match(body, /Unattended board or Super Plan tasks/);
       assert.match(body, /planType: build/);
       assert.match(body, /For Build, summarize the sequential steps and suggest \*\*Build\*\*/);
-      const choice = body.indexOf('How do you want to execute this plan?');
-      const scope = body.indexOf('Want me to ask a few clarifying questions');
+      const choice = body.indexOf('How would you like to build this?');
+      const scope = body.indexOf('Would you like a few questions');
       if (scope >= 0) assert.ok(choice < scope);
     }
   });
   test('agent.full.md offers optional clarifying-questions grill before explore', async () => {
     const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.full.md'), 'utf8');
     assert.match(body, /ask_question/);
-    assert.match(body, /Want me to ask a few clarifying questions first to sharpen scope\?/);
+    assert.match(body, /Would you like a few questions to help decide what to include\?/);
     assert.match(body, /lightweight grill/i);
     assert.match(body, /two batches of up to 4 questions/i);
     assert.match(body, /one `ask_question` call/);
@@ -49,14 +49,14 @@ describe('planner work-agent prompts', () => {
 
     const processSection = body.slice(body.indexOf('## Process'));
     const exploreIdx = processSection.indexOf('**Explore the codebase.**');
-    const clarifyIdx = processSection.indexOf('Want me to ask a few clarifying questions');
+    const clarifyIdx = processSection.indexOf('Would you like a few questions');
     assert.ok(clarifyIdx >= 0 && exploreIdx >= 0, 'Process section must include clarify gate and explore step');
     assert.ok(clarifyIdx < exploreIdx, 'clarifying-questions gate must appear before Explore the codebase');
   });
 
   test('agent.lite.md mentions optional clarifying-questions gate', async () => {
     const body = await fs.readFile(path.join(PLANNER_DIR, 'agent.lite.md'), 'utf8');
-    assert.match(body, /Want me to ask a few clarifying questions first to sharpen scope\?/);
+    assert.match(body, /Would you like a few questions to help decide what to include\?/);
     assert.match(body, /lightweight grill/i);
     assert.match(body, /2 batches of up to 4 questions/);
     assert.doesNotMatch(body, /one at a time/i);
