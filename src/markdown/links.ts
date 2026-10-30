@@ -7,6 +7,8 @@
  * intercepts clicks in capture phase.
  */
 
+import { isMarkdownFilePath } from '../ui/file-markdown-path';
+
 const HTTP_URL_RE = /^https?:\/\//i;
 
 /** Surfaces whose anchors must not escape to the browser chrome. */
@@ -343,10 +345,9 @@ function openWorkspaceFromMarkdown(
   }
   if (headingId) queueHeadingScroll(path, headingId);
   void import('../ui/file-viewer').then(async (mod) => {
-    const isPlan = /^documentation\/plans\/.*\.md$/iu.test(path);
     await mod.openFileInViewer(
       path,
-      isPlan
+      isMarkdownFilePath(path)
         ? { asCode: false }
         : lineRange
         ? { asCode: true, initialLineRange: lineRange }
