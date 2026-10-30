@@ -4,6 +4,7 @@
 
 import { runProcess } from '../process-runner.js';
 import { buildCodeChangePayload } from './line-diff-stats.js';
+import { withCodeChangeCheckout } from './code-change-checkout.js';
 
 /**
  * Parse `git show --numstat` / `git diff --numstat` tab-separated rows.
@@ -74,7 +75,7 @@ export async function codeChangeForGitCommit(cwd, sha = 'HEAD') {
     const parsed = parseGitNumstat(line);
     return parsed.paths.map((path) => ({ path, additions: parsed.additions, deletions: parsed.deletions }));
   });
-  return payload;
+  return withCodeChangeCheckout(payload, cwd);
 }
 
 /**

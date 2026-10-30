@@ -35,6 +35,16 @@ export function normalizeCodeChangePayload(raw: unknown): CodeChangeStats | unde
   if (additions === 0 && deletions === 0) return undefined;
 
   const out: CodeChangeStats = { additions, deletions };
+  for (const key of ['workspacePath', 'gitBranch', 'commitSha'] as const) {
+    if (typeof row[key] === 'string' && row[key].trim()) out[key] = row[key].trim();
+  }
+  if (Array.isArray(row.files)) {
+    out.files = row.files.flatMap((file) => {
+      if (!file || typeof file.path !== 'string' || !file.path.trim() ||
+        !Number.isFinite(file.additions) || !Number.isFinite(file.deletions)) return [];
+      return [{ path: file.path, additions: file.additions, deletions: file.deletions }];
+    });
+  }
 
   const path = typeof row.path === 'string' && row.path.trim() ? row.path.trim() : undefined;
   if (path) out.path = path;

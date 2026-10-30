@@ -6,6 +6,8 @@ Code opens after you choose a project. You can also open it from the **app rail*
 
 Worktree chats show a branch icon in the chat list. It changes to a merge icon when the checkout is clean and its commits are included in the locally known `main` branch (`master` is used when `main` is absent). Hover over the icon for the branch and merge status. Local chats have no icon. Status refreshes while Minnow is visible; squash merges are not detected from Git ancestry.
 
+Each **Edited files** summary shows the branch where the changes were made. If you open a changed file after switching branches, Minnow shows its recorded diff and identifies both branches. **Switch to…** returns that checkout to the recorded branch. Minnow warns if chats are still running in the shared checkout; chats in isolated worktrees are excluded. Uncommitted files get an explicit choice to bring them or leave them saved on their current branch. Older changes without branch information display **Branch not recorded**.
+
 ## Pin a chat
 
 Right-click a chat in the sidebar and choose **Pin to top** to keep it in a **Pinned** section above every other chat and group, however long ago it was last used. The most recently pinned chat is listed first. A pinned chat that belongs to a group is listed under Pinned instead of in the group, and returns to the group when you choose **Unpin**.

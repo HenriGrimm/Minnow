@@ -445,7 +445,9 @@
 
 .chat-turn-changes__header { display: flex; align-items: center; gap: 2px 10px; padding: 8px 8px 8px 14px; flex-wrap: wrap; }
 .chat-turn-changes__header strong { font-weight: 500; }
-.chat-turn-changes__heading { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
+.chat-turn-changes__heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; flex: 1; min-width: 0; }
+.chat-turn-changes__branch { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: var(--mn-fg-muted); font: 11.5px var(--font-mono); }
+.chat-turn-changes__file > .chat-turn-changes__branch { max-width: 35%; }
 .chat-turn-changes button { font: inherit; cursor: pointer; color: var(--mn-fg); }
 .chat-turn-changes__actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .chat-turn-changes__actions[hidden] { display: none; }

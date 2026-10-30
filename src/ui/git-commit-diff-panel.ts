@@ -1,5 +1,6 @@
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { gitDiff, gitShow } from '../state/git-api';
+import { GIT_CHECKOUT_CHANGED_EVENT } from '../state/git-checkout-events';
 import { getWorkspacePath } from '../state/workspace';
 import { showViewerSplit, hideViewerSplit } from './file-layout';
 import { basename } from './file-tree-path';
@@ -26,6 +27,7 @@ export interface GitCommitDiffPanelOptions {
   sha: string;
   cwd?: string;
   subject?: string;
+  notice?: HTMLElement;
 }
 
 export interface GitWorkingFileDiffPanelOptions {
@@ -54,6 +56,7 @@ let fileTabsEl: HTMLElement | null = null;
 let wrapToggleBtn: HTMLButtonElement | null = null;
 let diffMountEl: HTMLElement | null = null;
 let openRequest = 0;
+let disposeNotice: (() => void) | undefined;
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -291,9 +294,11 @@ function createMetaActions(): HTMLElement {
   return actions;
 }
 
-function mountPanelShell(meta: HTMLElement, showFileTabs: boolean): void {
+function mountPanelShell(meta: HTMLElement, showFileTabs: boolean, notice?: HTMLElement): void {
   const host = getViewerHost();
   if (!host) return;
+  disposeNotice?.();
+  disposeNotice = undefined;
 
   host.replaceChildren();
   host.classList.add('git-commit-diff-host');
@@ -310,11 +315,29 @@ function mountPanelShell(meta: HTMLElement, showFileTabs: boolean): void {
   diffBodyEl = document.createElement('div');
   diffBodyEl.className = 'git-commit-diff__body';
 
-  shell.append(meta, fileTabsEl, diffBodyEl);
+  shell.append(meta);
+  if (notice) shell.append(notice);
+  shell.append(fileTabsEl, diffBodyEl);
   host.appendChild(shell);
+  if (notice) {
+    const refresh = () => {
+      if (!notice.isConnected) { disposeNotice?.(); return; }
+      notice.dispatchEvent(new window.Event('minnow:refresh-change-branches'));
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener(GIT_CHECKOUT_CHANGED_EVENT, refresh);
+    // Also catches branch changes made by an agent shell or outside Minnow.
+    const timer = window.setInterval(refresh, 5_000);
+    disposeNotice = () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener(GIT_CHECKOUT_CHANGED_EVENT, refresh);
+      disposeNotice = undefined;
+    };
+  }
 }
 
-function mountCommitPanelChrome(shortSha: string, subject: string, statLine: string): void {
+function mountCommitPanelChrome(shortSha: string, subject: string, statLine: string, notice?: HTMLElement): void {
   const meta = document.createElement('div');
   meta.className = 'git-commit-diff__meta';
 
@@ -329,7 +352,7 @@ function mountCommitPanelChrome(shortSha: string, subject: string, statLine: str
   metaText.append(title, detail);
 
   meta.append(metaText, createMetaActions());
-  mountPanelShell(meta, true);
+  mountPanelShell(meta, true, notice);
 }
 
 function mountWorkingFilePanelChrome(path: string, staged: boolean): void {
@@ -398,7 +421,7 @@ export async function openGitCommitDiffPanel(
   const statLine = result.stat?.trim().split('\n').pop()?.trim() ?? '';
   const subject = options.subject?.trim() ?? '';
 
-  mountCommitPanelChrome(shortSha, subject, statLine);
+  mountCommitPanelChrome(shortSha, subject, statLine, options.notice);
   buildFileTabs();
   setGitCommitReview(sha, cwd, fileEntries);
   selectFile(0);
@@ -460,7 +483,7 @@ export async function openGitWorkingFileDiffPanel(
 }
 
 /** Review recorded chat changes using the same chrome and renderer as Git history. */
-export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[]): Promise<GitCommitDiffOpenResult> {
+export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[], options?: { notice?: HTMLElement }): Promise<GitCommitDiffOpenResult> {
   const request = ++openRequest;
   const { dismissFileViewerForPreview } = await import('./file-viewer');
   if (!(await dismissFileViewerForPreview())) return { ok: false, cancelled: true };
@@ -473,7 +496,7 @@ export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[])
   openRecorded = true;
   fileEntries = entries;
   activeFileIndex = 0;
-  mountCommitPanelChrome('Recorded changes', 'Chat changes', `${entries.length} files`);
+  mountCommitPanelChrome('Recorded changes', 'Chat changes', `${entries.length} file${entries.length === 1 ? '' : 's'}`, options?.notice);
   buildFileTabs();
   selectFile(0);
   return { ok: true };
@@ -482,6 +505,7 @@ export async function openRecordedChangesDiffPanel(entries: GitPatchFileEntry[])
 /** Close the commit diff panel and hide the viewer split when empty. */
 export function closeGitCommitDiffPanel(): void {
   ++openRequest;
+  disposeNotice?.();
   if (!openSha && !openWorkingFile && !openRecorded) return;
 
   openSha = null;

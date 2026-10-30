@@ -4,6 +4,7 @@
 
 import { isLocalServerAvailable } from '../tools/config.ts';
 import { reportBackgroundError } from '../boot/report-background-error.ts';
+import { GIT_CHECKOUT_CHANGED_EVENT } from './git-checkout-events';
 
 export interface GitFileEntry {
   path: string;
@@ -168,7 +169,11 @@ async function postGit(
           : `HTTP ${res.status}`,
       };
     }
-    return (await res.json()) as GitOpResult;
+    const result = (await res.json()) as GitOpResult;
+    if (result.ok && ['checkout', 'checkoutSwitch', 'checkoutDetach'].includes(op) && typeof window !== 'undefined') {
+      window.dispatchEvent(new window.CustomEvent(GIT_CHECKOUT_CHANGED_EVENT));
+    }
+    return result;
   } catch (err) {
     // A failed Git request is not a health check: other project/chat requests
     // can still succeed. Only server detection should change availability.

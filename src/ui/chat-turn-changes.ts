@@ -6,6 +6,7 @@ import type { Chat } from '../types';
 import { getPerFileChangeSummary } from '../usage/code-change-ledger';
 import { createIcon } from './icon';
 import { getSharedChatHost } from './shared-chat-host-state';
+import { changeCheckoutRoot } from './change-branch-notice';
 
 export interface TurnChangesOptions {
   /** Latest turn card: hosts Commit, Create PR, and Undo controls. */
@@ -29,7 +30,8 @@ export function createTurnChanges(
   const header = document.createElement('div');
   header.className = 'chat-turn-changes__header';
   const title = document.createElement('strong');
-  title.textContent = `Edited ${files.length} file${files.length === 1 ? '' : 's'}`;
+  const fileCount = new Set(files.map(file => file.path)).size;
+  title.textContent = `Edited ${fileCount} file${fileCount === 1 ? '' : 's'}`;
   const heading = document.createElement('div');
   heading.className = 'chat-turn-changes__heading';
   const totals = document.createElement('div');
@@ -50,6 +52,15 @@ export function createTurnChanges(
   removed.textContent = `−${deletions}`;
   totals.append(added, removed);
   heading.append(title, totals);
+  const branches = [...new Set(files.map(file => file.gitBranch || ''))];
+  for (const branch of branches) {
+    const label = document.createElement('span');
+    label.className = 'chat-turn-changes__branch';
+    const name = branch === 'HEAD' ? 'Detached HEAD' : branch || 'Branch not recorded';
+    label.append(createIcon('gitBranch', { size: 13 }), document.createTextNode(name));
+    label.title = branch ? `Changes made on ${name}` : 'These older changes have no recorded branch';
+    heading.append(label);
+  }
   header.append(heading);
 
   // Ghost actions first; Commit is the one filled button and sits last.
@@ -121,11 +132,29 @@ export function createTurnChanges(
     base.textContent = slash >= 0 ? file.path.slice(slash + 1) : file.path;
     path.append(dir, base);
     path.title = `Open ${file.path}`;
-    path.addEventListener('click', () => {
-      const root = chat.workspacePath?.replace(/\\/g, '/').replace(/\/$/, '');
-      const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(file.path);
-      const target = !absolute && root ? `${root}/${file.path}` : file.path;
-      void import('./file-viewer').then((m) => m.openFileInViewer(target));
+    path.addEventListener('click', async () => {
+      path.disabled = true;
+      try {
+        const cwd = changeCheckoutRoot(file, chat);
+        if (file.gitBranch) {
+          const { gitBranches } = await import('../state/git-api');
+          const current = await gitBranches(cwd);
+          if (!current.ok || current.current !== file.gitBranch || file.gitBranch === 'HEAD') {
+            const { reviewTurnChanges } = await import('./chat-turn-review');
+            const result = await reviewTurnChanges(chat, start, end, file);
+            if (!result.ok && !result.cancelled) throw new Error(result.error || 'Could not open review');
+            return;
+          }
+        }
+        const root = cwd.replace(/\\/g, '/').replace(/\/$/, '');
+        const absolute = /^(?:[A-Za-z]:[\\/]|\/)/.test(file.path);
+        const target = !absolute && root ? `${root}/${file.path}` : file.path;
+        const { openFileInViewer } = await import('./file-viewer');
+        await openFileInViewer(target, { workspaceRoot: cwd });
+      } catch (error) {
+        const { setStatus } = await import('./status');
+        setStatus('err', error instanceof Error ? error.message : 'Could not open file');
+      } finally { path.disabled = false; }
     });
     const counts = document.createElement('span');
     counts.className = 'chat-turn-changes__counts';
@@ -143,6 +172,12 @@ export function createTurnChanges(
       counts,
       createIcon('chevronRight', { className: 'chat-turn-changes__file-chevron', size: 14 }),
     );
+    if (branches.length > 1) {
+      const branch = document.createElement('span');
+      branch.className = 'chat-turn-changes__branch';
+      branch.textContent = file.gitBranch || 'Branch not recorded';
+      row.insertBefore(branch, counts);
+    }
     rows.push(row);
     card.append(row);
   }

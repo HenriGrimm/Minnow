@@ -328,6 +328,9 @@ export interface CodeChangeStats {
   diffTruncated?: boolean;
   commitSha?: string;
   files?: Array<{ path: string; additions: number; deletions: number }>;
+  /** Checkout and branch when this mutation was recorded. Absent on legacy rows. */
+  workspacePath?: string;
+  gitBranch?: string;
 }
 
 /** Cumulative line stats for one chat (file-write tools only). */

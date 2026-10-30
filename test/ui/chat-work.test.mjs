@@ -13,6 +13,7 @@ import { setChatView } from '../../src/appearance/chat-view.ts';
 import { collectTranscriptTurns } from '../../src/chat/transcript-turns.ts';
 import { getPerFileChangeSummary } from '../../src/usage/code-change-ledger.ts';
 import { ThoughtBubbleController } from '../../src/ui/thought-bubbles.ts';
+import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 let win, mount, chat;
 const originalFetch = globalThis.fetch;
@@ -41,6 +42,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setLocalServerAvailableForTests(false);
   disposeChatWorkView(mount);
   cancelChatHistoryBackfill();
   setSessionStateForTests(null);
@@ -544,6 +546,35 @@ test('Review opens recorded changes in the shared side-by-side viewer', async ()
   globalThis.CustomEvent = win.CustomEvent;
   try { closeGitCommitDiffPanel(); } finally { globalThis.CustomEvent = originalCustomEvent; }
   assert.equal(host.children.length, 0);
+});
+
+test('a file from another branch opens its saved diff with a branch-switch notice instead of reading a missing file', async () => {
+  const pane = document.createElement('div');
+  pane.id = 'fileViewerPane';
+  const host = document.createElement('div'); host.id = 'fileViewerHost'; pane.append(host); document.body.append(pane);
+  chat.workspacePath = '/repo';
+  chat.gitBranch = 'main';
+  chat.history[2].codeChange.gitBranch = 'feature';
+  chat.history[2].codeChange.workspacePath = '/repo';
+  const requests = [];
+  setLocalServerAvailableForTests(true);
+  globalThis.fetch = async (url, options) => {
+    const body = options?.body ? JSON.parse(options.body) : {};
+    requests.push([url, body]);
+    return Response.json(url === '/api/git' ? { ok: true, current: 'main' } : []);
+  };
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-turn-changes__branch').textContent, 'feature');
+  mount.querySelector('.chat-turn-changes__path').click();
+  for (let i = 0; i < 40 && !host.querySelector('.change-branch-notice button:not([hidden])'); i++) await new Promise(resolve => setTimeout(resolve, 25));
+  assert.match(host.textContent, /made on feature.*checkout is on main/);
+  assert.match(host.textContent, /old/);
+  assert.match(host.textContent, /new/);
+  assert.equal(host.querySelector('.change-branch-notice button').textContent, 'Switch to feature');
+  assert.equal(requests.some(([url]) => String(url).includes('/api/tools')), false, 'never try reading the other branch file');
+  const { closeGitCommitDiffPanel } = await import('../../src/ui/git-commit-diff-panel.ts');
+  const originalCustomEvent = globalThis.CustomEvent; globalThis.CustomEvent = win.CustomEvent;
+  try { closeGitCommitDiffPanel(); } finally { globalThis.CustomEvent = originalCustomEvent; }
 });
 
 test('an exploring round reads as Explored with file chips and absorbs the thought that led to it', () => {

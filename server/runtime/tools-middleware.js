@@ -123,6 +123,7 @@ import {
   countLinesInText,
 } from '../tools/line-diff-stats.js';
 import { codeChangeForGitCommit } from '../tools/git-change-stats.js';
+import { withCodeChangeCheckout } from '../tools/code-change-checkout.js';
 import {
   captureWorkspaceSnapshot,
   readHeuristicFileSnapshot,
@@ -1612,6 +1613,9 @@ export async function executeServerTool(name, args, options = {}) {
         if (unsupported) return { result: unsupported };
       }
       const out = await handler(args ?? {}, options);
+      if (out?.codeChange) {
+        out.codeChange = await withCodeChangeCheckout(out.codeChange, getEffectiveWorkspaceRoot());
+      }
       if (out?.codeChange?.source === 'file-tool' && (options.agentActivity || options.runtimeOwner)) {
         try {
           const { recordCodeActivity } = await import('../activity/store.js');

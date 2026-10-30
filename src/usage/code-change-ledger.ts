@@ -16,6 +16,8 @@ import type {
 /** Per-file rollup for the code-change strip panel. */
 export interface FileChangeSummary {
   path: string;
+  workspacePath?: string;
+  gitBranch?: string;
   additions: number;
   deletions: number;
   countsKnown?: boolean;
@@ -211,10 +213,13 @@ export function getPerFileChangeSummary(chat: Chat, start = 0, end?: number): Fi
     if (paths.length === 0) continue;
 
     for (const path of paths) {
-      let row = byPath.get(path);
+      const key = JSON.stringify([path, normalizeWorkspacePath(codeChange.workspacePath ?? ''), codeChange.gitBranch ?? '']);
+      let row = byPath.get(key);
       if (!row) {
         row = { path, additions: 0, deletions: 0, diffChunks: [] };
-        byPath.set(path, row);
+        if (codeChange.workspacePath) row.workspacePath = codeChange.workspacePath;
+        if (codeChange.gitBranch) row.gitBranch = codeChange.gitBranch;
+        byPath.set(key, row);
       }
       const counts = codeChange.files?.find((file) => file.path === path)
         ?? (paths.length === 1 ? codeChange : undefined);
