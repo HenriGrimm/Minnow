@@ -85,6 +85,35 @@ async function seed(repository) {
   return { rows, fence };
 }
 
+test('adding the request-independent write fence preserves existing revision and deletion bases', () => {
+  const db = new Database(':memory:');
+  try {
+    initPreAgentSchema(db);
+    db.exec('CREATE TABLE IF NOT EXISTS chat_revisions(chat_id TEXT PRIMARY KEY, revision INTEGER NOT NULL DEFAULT 0)');
+    db.prepare('INSERT INTO chat_revisions(chat_id,revision) VALUES(?,?)').run('existing', 41);
+    db.prepare('INSERT INTO chat_revisions(chat_id,revision) VALUES(?,?)').run('deleted', 57);
+    initSessionsSchema(db);
+    assert.deepEqual(db.prepare('SELECT * FROM chat_revisions ORDER BY chat_id').all(), [
+      { chat_id: 'deleted', revision: 57, write_revision: 57 }, { chat_id: 'existing', revision: 41, write_revision: 41 },
+    ]);
+    db.prepare('UPDATE chat_revisions SET revision=60 WHERE chat_id=?').run('existing');
+    initSessionsSchema(db);
+    assert.equal(db.prepare('SELECT write_revision FROM chat_revisions WHERE chat_id=?').get('existing').write_revision, 41,
+      'reopening does not turn request-only revisions into a conflicting write');
+  } finally { db.close(); }
+});
+
+test('archives saved before the write fence import with conservative revision bases', async t => {
+  const f = fixture(t), source = f.database(); await seed(source.repository);
+  const archive = exportChatArchive(source.db);
+  for (const row of archive.tables.chat_revisions) delete row.write_revision;
+  const { digest: _digest, ...payload } = archive; archive.digest = hashChatArchive(payload);
+  f.useHome('old-archive-target'); const target = f.database();
+  importChatArchive(target.db, archive);
+  for (const row of target.db.prepare('SELECT * FROM chat_revisions').all()) assert.equal(row.write_revision, row.revision);
+  assert.equal(target.repository.readTranscript('child').messages.length, 4);
+});
+
 test('versioned archive round trip retains full canonical records, exact journals, revisions and child-only usage after reopen', async t => {
   const f = fixture(t), source = f.database(); const { rows } = await seed(source.repository);
   const archive = exportChatArchive(source.db, { now: () => 2000 });

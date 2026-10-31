@@ -2457,6 +2457,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 /** Flush a parent resume or delegation without depending on unrelated conflicted chats. */
 export async function persistSessionsBeforeDeliveryAck(chatId?: string): Promise<boolean> {
   if (!sessionState || (isServerStorageMode() && !sessionsHydratedFromServer)) return false;
+  if (chatId && !sessionState.chats.some(chat => chat.id === chatId)) return false;
   if (saveTimer) {
     clearTimeout(saveTimer);
     setSaveTimer(null);

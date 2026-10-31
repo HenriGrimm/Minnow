@@ -122,6 +122,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
   function revision(chatId) {
     return db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?').get(chatId)?.revision ?? 0;
   }
+  // Request receipts notify viewers without invalidating a renderer-owned transcript save.
   function touch(chatId, { requestOnly = false } = {}) {
     const next = (readSessionMeta(db, 'revision', 0) || 0) + 1;
     writeSessionMeta(db, 'revision', next);

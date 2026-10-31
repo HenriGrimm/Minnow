@@ -74,14 +74,15 @@ function createMessagesFtsTable(database) {
 }
 
 /**
- * Future additive columns land here — never bump user_version for these.
- * Empty at schema v1; call ensureColumn(...) here for later releases.
+ * Additive columns never bump user_version or rebuild the session store.
  * @param {import('better-sqlite3').Database} database
  */
 function migrateAddedColumns(database) {
-  if (ensureColumn(database, 'chat_revisions', 'write_revision', 'INTEGER NOT NULL DEFAULT 0')) {
-    database.exec('UPDATE chat_revisions SET write_revision = revision');
-  }
+  database.transaction(() => {
+    if (ensureColumn(database, 'chat_revisions', 'write_revision', 'INTEGER NOT NULL DEFAULT 0')) {
+      database.exec('UPDATE chat_revisions SET write_revision = revision');
+    }
+  })();
 }
 
 /**
