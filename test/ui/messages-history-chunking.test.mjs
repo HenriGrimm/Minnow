@@ -1,6 +1,6 @@
 /**
  * MIN-793 #2 — a long transcript must not rebuild as one unbroken main-thread task.
- * The switch renders the tail; older rows arrive in idle chunks, prepended above.
+ * The switch renders the tail; older rows load in requested pages, prepended above.
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
@@ -70,7 +70,7 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     }
   });
 
-  test('the switch paints only the tail, then backfills the rest in order', async () => {
+  test('the switch keeps older rows unmounted until the reader requests them', async () => {
     const { chatArea, chat } = setup(80, 'chunked-chat');
 
     renderChatFromHistory(chat);
@@ -83,6 +83,11 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     assert.equal(immediate.at(-1), 'message 79', 'the newest message is what the user looks at');
 
     await drain();
+    assert.equal(bubbleTexts(chatArea).length, immediate.length, 'idle time must not eagerly mount history');
+    while (chatArea.querySelector('.chat-history-more')) {
+      chatArea.querySelector('.chat-history-more').click();
+      await drain();
+    }
 
     const full = bubbleTexts(chatArea);
     assert.equal(full.length, 80);
@@ -98,31 +103,60 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     assert.equal(bubbleTexts(chatArea).length, 5);
   });
 
-  test('expensive history rows yield before the fixed chunk limit', (t) => {
-    const { chatArea, chat } = setup(80, 'expensive-chat');
-    const pending = new Map();
-    let id = 0;
-    window.requestIdleCallback = (cb) => { pending.set(++id, cb); return id; };
-    window.cancelIdleCallback = (key) => { pending.delete(key); };
+  test('a same-chat repaint retains earlier pages the reader has already loaded', async () => {
+    const { chatArea, chat } = setup(100, 'retained-pages');
     renderChatFromHistory(chat);
-    const initial = bubbleTexts(chatArea).length;
-    let clock = 0;
-    t.mock.method(performance, 'now', () => { clock += 10; return clock; });
-    const tick = () => {
-      const [key, cb] = pending.entries().next().value;
-      pending.delete(key);
-      cb();
-    };
-    tick();
-    assert.equal(bubbleTexts(chatArea).length, initial + 1, 'a costly row consumes this slice');
-    while (pending.size) tick();
-    assert.deepEqual(bubbleTexts(chatArea), Array.from({ length: 80 }, (_, i) => `message ${i}`));
+    chatArea.querySelector('.chat-history-more').click();
+    await drain();
+    assert.equal(bubbleTexts(chatArea)[0], 'message 40');
+    chat.history.push({ role: 'user', content: 'new message' });
+    renderChatFromHistory(chat);
+    assert.equal(bubbleTexts(chatArea)[0], 'message 40');
+    assert.equal(bubbleTexts(chatArea).at(-1), 'new message');
+    assert.equal(bubbleTexts(chatArea).length, 61);
+  });
+
+  test('one request loads one page without changing existing row identity', async () => {
+    const { chatArea, chat } = setup(100, 'paged-chat');
+    renderChatFromHistory(chat);
+    const last = chatArea.querySelector('.msg:last-child');
+    chatArea.querySelector('.chat-history-more').click();
+    await drain();
+    assert.equal(bubbleTexts(chatArea).length, 60);
+    assert.equal(chatArea.querySelector('.msg:last-child'), last);
+    assert.equal(bubbleTexts(chatArea)[0], 'message 40');
+    assert.equal(chatArea.querySelector('.msg').dataset.historyIndex, '40');
+  });
+
+  test('scrolling toward older messages loads one page and preserves the scroll anchor', async () => {
+    const { chatArea, chat } = setup(100, 'scroll-page');
+    Object.defineProperty(chatArea, 'scrollHeight', { get: () => bubbleTexts(chatArea).length * 20 });
+    chatArea.scrollTop = 25;
+    renderChatFromHistory(chat);
+    await drain();
+    chatArea.scrollTop = 25;
+    chatArea.style.scrollBehavior = 'smooth';
+    let top = 25;
+    let anchorBehavior;
+    Object.defineProperty(chatArea, 'scrollTop', {
+      get: () => top,
+      set: value => { top = value; anchorBehavior = chatArea.style.scrollBehavior; },
+    });
+    chatArea.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -20 }));
+    await drain();
+    assert.equal(bubbleTexts(chatArea).length, 60);
+    assert.equal(chatArea.scrollTop, 625, 'the same row remains at the same screen position');
+    assert.equal(anchorBehavior, 'auto', 'anchor correction must not animate on smooth-scroll hosts');
+    assert.equal(chatArea.style.scrollBehavior, 'smooth', 'the host scroll preference is restored');
+    await drain();
+    assert.equal(bubbleTexts(chatArea).length, 60, 'one gesture must not drain all history');
   });
 
   test('switching away abandons the previous chat backfill', async () => {
     const { chatArea, chat } = setup(80, 'abandoned-chat');
     renderChatFromHistory(chat);
     const partial = bubbleTexts(chatArea).length;
+    chatArea.querySelector('.chat-history-more').click();
 
     // A second paint owns the transcript now; the first chat's chunks must not land in it.
     const other = createEmptyChatObject('');

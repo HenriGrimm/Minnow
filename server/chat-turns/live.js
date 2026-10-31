@@ -4,14 +4,14 @@ import { normalizeWorkspacePath } from '../config/validators.js';
 import { createHash } from 'node:crypto';
 
 const ID = /^[a-zA-Z0-9_-]{1,160}$/;
-const COMMANDS = new Set(['send', 'steer', 'stop', 'push', 'remove', 'configure']);
+const COMMANDS = new Set(['send', 'steer', 'stop', 'push', 'remove', 'edit', 'cancel-steer', 'configure']);
 const MAX_FRAME = 4 * 1024 * 1024;
 
 function fault(status, message) { return Object.assign(new Error(message), { status }); }
 
 /** Host-renderer execution, server-owned delivery and replayable live view state. */
 export function createChatLiveBroker({ turns, workspaceForChat = id =>
-  readChatModelBinding(id) ? readChatWorkspacePath(id) : null, now = Date.now } = {}) {
+  readChatModelBinding(id) ? readChatWorkspacePath(id) : null, now = Date.now, isManagedChat = () => false } = {}) {
   const hosts = new Map();
   const viewers = new Set();
   const snapshots = new Map();
@@ -57,6 +57,9 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       if (!input || !ID.test(input.id || '') || !ID.test(input.chatId || '') || !COMMANDS.has(input.action)) {
         throw fault(400, 'Invalid chat command.');
       }
+      if (isManagedChat(input.chatId)) throw fault(409, 'This conversation uses durable commands. Reload Minnow before sending.');
+      if (input.expectedOwnerId !== undefined && (input.action !== 'stop' || !ID.test(input.expectedOwnerId) ||
+          turns.list().find(row => row.chatId === input.chatId)?.ownerId !== input.expectedOwnerId)) throw fault(409, 'The captured chat owner has changed.');
       const commandKey = `${deviceId}:${input.id}`;
       const signature = createHash('sha256').update(JSON.stringify(input)).digest('hex');
       const previous = commands.get(commandKey);
@@ -65,10 +68,12 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
         return { id: commandKey, ...previous.result, pending: !previous.result };
       }
       if (commands.size >= 512) throw fault(429, 'Too many chat commands.');
-      if (['send', 'steer'].includes(input.action) &&
+      if (['send', 'steer', 'edit'].includes(input.action) &&
           (typeof input.text !== 'string' || input.text.length > 100_000 || (!input.text.trim() && !input.attachments?.length))) {
         throw fault(400, 'Add a message or attachment.');
       }
+      if (['push', 'remove', 'edit'].includes(input.action) && !ID.test(input.itemId || '')) throw fault(400, 'Invalid queued message.');
+      if (input.action === 'edit' && !input.text.trim()) throw fault(400, 'Add a message.');
       if (input.attachments && (!Array.isArray(input.attachments) || input.attachments.length > 20)) throw fault(400, 'Invalid attachments.');
       const workspace = await workspaceForChat(input.chatId);
       if (workspace === null) throw fault(404, 'Chat not found.');
@@ -80,6 +85,7 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       }
       const host = hostFor(input.chatId, workspace);
       if (!host) throw fault(503, 'Open this workspace in Minnow on the computer to send messages.');
+      if (input.expectedOwnerId && turns.list().find(row => row.chatId === input.chatId)?.ownerId !== input.expectedOwnerId) throw fault(409, 'The captured chat owner has changed.');
       const bytes = JSON.stringify(input).length * 2;
       if (commandBytes + bytes > 64 * 1024 * 1024) throw fault(429, 'Pending chat attachments exceed the delivery limit.');
       const row = { input, signature, bytes, hostId: host.hostId, deviceId, result: null, finishedAt: 0 };
@@ -93,6 +99,17 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       if (!row || row.deviceId !== deviceId) throw fault(404, 'Command not found.');
       return { id, ...row.result, pending: !row.result };
     },
+    waitResult(id, deviceId, timeoutMs = 20_000) {
+      const row = commands.get(id);
+      if (!row || row.deviceId !== deviceId) return Promise.reject(fault(404, 'Command not found.'));
+      if (row.result) return Promise.resolve({ id, ...row.result, pending: false });
+      return new Promise((resolve, reject) => {
+        const finish = value => { clearTimeout(timer); row.waiters?.delete(finish); resolve({ id, ...value, pending: false }); };
+        const timer = setTimeout(() => { row.waiters?.delete(finish); reject(fault(503, 'The original chat owner has not confirmed Stop.')); }, timeoutMs);
+        timer.unref?.();
+        (row.waiters ??= new Set()).add(finish);
+      });
+    },
     snapshot(chatId, workspace) {
       const frame = snapshots.get(chatId);
       if (!frame || key(frame.workspace) !== key(workspace)) throw fault(404, 'Chat is not live.');
@@ -104,6 +121,8 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       if (!row.result) {
         row.result = { ok: result.ok === true, error: String(result.error || '').slice(0, 1000) };
         row.finishedAt = now();
+        for (const waiter of row.waiters ?? []) waiter(row.result);
+        row.waiters?.clear();
         commandBytes -= row.bytes;
         row.bytes = 0; row.input = null;
         for (const viewer of viewers) if (viewer.deviceId === row.deviceId) viewer.send({ kind: 'command-result', id, ...row.result });
@@ -182,7 +201,7 @@ function openStream(req, res, attach) {
 }
 
 export function createChatLiveMiddleware(turns, options) {
-  const broker = createChatLiveBroker({ turns, ...options });
+  const broker = options?.broker ?? createChatLiveBroker({ turns, ...options });
   return async (req, res, next) => {
     const url = new URL(req.url || '/', 'http://localhost');
     if (!url.pathname.startsWith('/api/chat-sync/')) return next();
@@ -217,7 +236,21 @@ export function createChatLiveMiddleware(turns, options) {
       if (url.pathname === '/api/chat-sync/commands') { send(202, await broker.submit(body, deviceId)); return; }
       hostOnly();
       if (url.pathname === '/api/chat-sync/ack') { send(200, broker.acknowledge(body.id, body.hostId, body)); return; }
-      if (url.pathname === '/api/chat-sync/publish') { send(200, { sequence: await broker.publish(body.hostId, body.frame) }); return; }
+      if (url.pathname === '/api/chat-sync/publish') {
+        if (body.frames !== undefined) {
+          if (!Array.isArray(body.frames) || !body.frames.length || body.frames.length > 64) {
+            throw fault(400, 'Invalid chat publication batch.');
+          }
+          const results = [];
+          // Every frame retains the same host/lease/workspace checks as a single publication.
+          for (const frame of body.frames) {
+            try { results.push({ ok: true, sequence: await broker.publish(body.hostId, frame) }); }
+            catch (error) { results.push({ ok: false, status: error.status || 400, error: error.message }); }
+          }
+          send(200, { results });
+        } else send(200, { sequence: await broker.publish(body.hostId, body.frame) });
+        return;
+      }
       send(404, { error: 'Not found' });
     } catch (error) { send(error.status || 400, { error: error.message || 'Chat connection failed.' }); }
   };

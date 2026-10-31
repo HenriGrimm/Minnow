@@ -9,6 +9,7 @@ import {
 import { readConfigJson } from '../../config/store.js';
 import { validateSessionState } from '../../config/validators.js';
 import { resolveEffectiveShellSandboxMode } from './mode.js';
+import { pathAccessStore } from '../../runtime/path-access.js';
 
 /**
  * @param {string} chatId
@@ -67,7 +68,7 @@ export async function resolveShellSandboxForRun({
     getAllowUnsandboxedShellFromConfig(),
   ]);
 
-  const mode =
+  let mode =
     modeOverride != null
       ? resolveEffectiveShellSandboxMode({
           globalMode: modeOverride,
@@ -83,9 +84,12 @@ export async function resolveShellSandboxForRun({
           env,
         });
 
+  const ceiling = pathAccessStore.getStore()?.shellSandboxMode;
+  const ranks = ['off', 'prefer', 'require'];
+  if (ranks.includes(ceiling) && ranks.indexOf(ceiling) > ranks.indexOf(mode)) mode = ceiling;
   return {
     mode,
-    allowUnsandboxed: allowUnsandboxed === true || alwaysAllow === true,
+    allowUnsandboxed: mode === 'require' ? false : allowUnsandboxed === true || alwaysAllow === true,
     onBoard: board.onBoard,
     ...(board.groupId ? { groupId: board.groupId } : {}),
   };

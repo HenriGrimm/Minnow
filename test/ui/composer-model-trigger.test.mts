@@ -55,6 +55,25 @@ describe('composer model trigger', () => {
       assert.notEqual(spinner?.dataset.loadState, 'loading');
       assert.equal(trigger?.getAttribute('aria-busy'), null);
 
+      chat.agentConversation = { version: 1, childChatId: chat.id, parentChatId: 'parent', rootChatId: 'parent', journalOwnerId: 'parent', origin: 'native', createdAt: 1 };
+      syncComposerModelTriggers();
+      assert.equal((trigger as HTMLButtonElement).disabled, true);
+      assert.match((trigger as HTMLButtonElement).title, /original host/);
+      delete chat.agentConversation; syncComposerModelTriggers();
+      assert.equal((trigger as HTMLButtonElement).disabled, false);
+
+      chat.chatCommandVersion = 1;
+      chat.agentConversation = { version: 1, childChatId: chat.id, parentChatId: 'parent', rootChatId: 'parent', journalOwnerId: 'parent', origin: 'delegated', createdAt: 1,
+        capabilities: { canSend: true, canChooseModel: true, canStop: true } };
+      sel.disabled = true;
+      syncComposerModelTriggers();
+      assert.equal((trigger as HTMLButtonElement).disabled, false, 'a server-owned turn can choose its next-message model while the native select is locked');
+      chat.agentConversation.capabilities!.canChooseModel = false;
+      syncComposerModelTriggers();
+      assert.equal((trigger as HTMLButtonElement).disabled, true);
+      delete chat.agentConversation; delete chat.chatCommandVersion; sel.disabled = false;
+      syncComposerModelTriggers();
+
       // Pools can grow beyond the room above the composer after its async load.
       // It must scroll on the opening side rather than jump below the trigger.
       const panel = doc.querySelector('.composer-model-menu') as unknown as HTMLElement;
@@ -95,6 +114,9 @@ describe('composer model trigger', () => {
       assert.equal(spinner?.dataset.loadState, 'loading');
       assert.equal(trigger?.getAttribute('aria-busy'), 'true');
     } finally {
+      await import('../../src/state/issues-store.ts');
+      win.dispatchEvent(new win.Event('pagehide'));
+      await win.happyDOM.close();
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;
@@ -137,6 +159,9 @@ describe('composer model trigger', () => {
         'Qwen 2.5 7B',
       );
     } finally {
+      await import('../../src/state/issues-store.ts');
+      win.dispatchEvent(new win.Event('pagehide'));
+      await win.happyDOM.close();
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;

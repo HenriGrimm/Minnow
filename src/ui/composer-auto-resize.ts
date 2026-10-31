@@ -1,3 +1,5 @@
+import { syncInlineComposerReferences } from './composer-inline-references';
+
 const COMPOSER_MIN_HEIGHT_PX = 44;
 const COMPOSER_MAX_HEIGHT_VH = 40;
 
@@ -98,6 +100,7 @@ function applyComposerOverflowY(el: HTMLTextAreaElement): void {
 
 /** Grow a composer textarea to fit lines. */
 export function autoResize(el: HTMLTextAreaElement): void {
+  if (syncInlineComposerReferences(el)) return;
   if (composerFieldSizingSupported()) {
     syncFieldSizingClamp(el, composerMaxHeightPx(el));
     applyComposerOverflowY(el);

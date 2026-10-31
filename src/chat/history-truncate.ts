@@ -8,6 +8,7 @@ import {
 } from '../state/sessions';
 import { pruneSupersededRunsAfterTruncate } from '../state/runs-store';
 import type { Chat } from '../types';
+import { supportsLocalHistoryMutation } from '../state/chat-relationships';
 import {
   expandAtomicRange,
   indexOfLastUserMessage,
@@ -26,7 +27,8 @@ export interface TruncateResult {
     | 'streaming'
     | 'invalid_index'
     | 'invalid_target'
-    | 'history_not_loaded';
+    | 'history_not_loaded'
+    | 'canonical_history';
   removedCount?: number;
   chat?: Chat;
 }
@@ -55,6 +57,8 @@ export function truncateChatHistory(
   if (!chat) {
     return { ok: false, error: 'not_found' };
   }
+
+  if (!supportsLocalHistoryMutation(chat)) return { ok: false, error: 'canonical_history' };
 
   if (!isChatHistoryLoaded(chat)) {
     return { ok: false, error: 'history_not_loaded' };

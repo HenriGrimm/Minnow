@@ -6,6 +6,16 @@ const registry = new Map<string, ParsedPrompt>();
 
 /** User overrides from ~/.minnow/prompts (merged when server registry is set). */
 const userRegistry = new Map<string, ParsedPrompt>();
+let captureReads: ParsedPrompt[] | null = null;
+
+/** Synchronous composition can capture only its resolved sources for a durable profile. */
+export function captureResolvedPromptSources<T>(compose: () => T): { value: T; prompts: ParsedPrompt[] } {
+  const previous = captureReads;
+  const prompts: ParsedPrompt[] = [];
+  captureReads = prompts;
+  try { return { value: compose(), prompts }; }
+  finally { captureReads = previous; }
+}
 
 // ── Parse ────────────────────────────────────────────────────────────────────
 
@@ -199,6 +209,7 @@ export function loadBuiltinPromptById(
   const key = registryKey(kind, id);
   const prompt = registry.get(key);
   if (!prompt) return null;
+  captureReads?.push({ ...prompt });
 
   const bodies = getStoredBodies(prompt);
   if (profile === 'lite' && bodies.liteBody?.trim()) {
@@ -224,6 +235,7 @@ export function loadPromptById(
   const key = registryKey(kind, id);
   const prompt = userRegistry.get(key) ?? registry.get(key);
   if (!prompt) return null;
+  captureReads?.push({ ...prompt });
 
   const bodies = getStoredBodies(prompt);
   if (profile === 'lite' && bodies.liteBody?.trim()) {

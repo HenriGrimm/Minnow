@@ -12,6 +12,7 @@ export interface RunnerProvider {
   modelApiOverrides?: Record<string, string>;
   supportsExtendedSamplers?: boolean;
   constrainedToolCalls?: boolean;
+  pricing?: import('../../src/usage/types').ProviderPricing | null;
 }
 
 /** The reasoning fields of `ModelCapabilities` the provider sanitizer reads. */
@@ -27,6 +28,10 @@ export interface PostChatCompletionsOptions {
   chatId?: string;
   /** Prefer free router capacity over a worker's sticky model assignment. */
   routerPreferAvailable?: boolean;
+  /** Internal captured options for routing, never serialized into the upstream body. */
+  agentModelOptions?: import('../chats/contracts').ModelOptions;
+  /** Explicit single-model work cannot use the role's fallback chain. */
+  exactModel?: boolean;
   /**
    * Capabilities the body was sanitized with. The generations store re-sanitizes
    * before the wire and, without these, strips reasoning controls as unsupported.

@@ -67,7 +67,12 @@ export type GitIconName =
   | 'gitLocal'
   | 'gitWorktree'
   | 'gitGraph'
-  | 'gitCommit';
+  | 'gitCommit'
+  | 'gitPullRequest'
+  | 'gitPullRequestDraft'
+  | 'gitPullRequestClosed'
+  | 'checksPassed'
+  | 'checksFailed';
 
 export type EmailIconName =
   | 'compose'
@@ -77,6 +82,7 @@ export type EmailIconName =
   | 'star'
   | 'starFilled'
   | 'archive'
+  | 'unarchive'
   | 'trash'
   | 'mail'
   | 'mailOpen'
@@ -175,7 +181,7 @@ export type MetricIconName =
   | 'metricTotal'
   | 'metricCtx';
 
-/** All 149 semantic icon names. */
+/** All 155 semantic icon names. */
 export type IconName =
   | ShellIconName
   | AppIconName
@@ -249,6 +255,11 @@ export const ICON_CLASS: Record<IconName, string> = {
   gitWorktree: 'fi-sr-folder-tree',
   gitGraph: 'fi-rr-chart-network',
   gitCommit: 'fi-rr-code-commit',
+  gitPullRequest: 'fi-rr-code-pull-request',
+  gitPullRequestDraft: 'fi-rr-code-pull-request-draft',
+  gitPullRequestClosed: 'fi-rr-code-pull-request-closed',
+  checksPassed: 'fi-rr-check-circle',
+  checksFailed: 'fi-rr-cross-circle',
 
   compose: 'fi-rr-pencil',
   reply: 'fi-rr-arrow-turn-down-left',
@@ -256,7 +267,8 @@ export const ICON_CLASS: Record<IconName, string> = {
   forward: 'fi-rr-forward',
   star: 'fi-rr-star',
   starFilled: 'fi-sr-star',
-  archive: 'fi-rr-box-alt',
+  archive: 'fi-rr-box',
+  unarchive: 'fi-rr-box-open',
   trash: 'fi-rr-trash',
   mail: 'fi-rr-envelope',
   mailOpen: 'fi-rr-envelope-open',

@@ -2,6 +2,7 @@ import { setModelCatalogEntries } from '../models/selection';
 import { modelCache, modelsFetchAbort, setModelsFetchAbort } from '../app-state';
 import { isServerStorageMode } from '../config/storage-mode';
 import { buildTopBarModelOptionHtml, escapeHtml } from '../lib/format-model-label';
+import { notifyModelInventory } from '../models/inventory-events';
 import {
   applyModelSelectValueToChat,
   decodeModelSelectKey,
@@ -230,6 +231,7 @@ export async function loadModel(modelId: string, providerId: string): Promise<vo
   }
 
   await postModelAction(endpoints.modelsLoadUrl, { model: modelId.trim() });
+  notifyModelInventory();
   await fetchModels();
 }
 
@@ -253,6 +255,7 @@ export async function unloadModel(modelId: string, providerId: string): Promise<
   }
 
   await postModelAction(endpoints.modelsUnloadUrl, { instance_id: modelId.trim() });
+  notifyModelInventory();
   await fetchModels();
 }
 

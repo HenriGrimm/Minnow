@@ -1,5 +1,26 @@
 @import './chat-thread.css';
 
+.chat-history-more {
+  align-self: center;
+  flex-shrink: 0;
+  margin: 8px auto 16px;
+  padding: 6px 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat-history-more:hover,
+.chat-history-more:focus-visible {
+  color: var(--mn-fg);
+  background: var(--mn-surface-2);
+}
+
+.chat-history-more:disabled { cursor: progress; }
+
 /* Lazy history: shown synchronously on chat switch before the history GET completes. */
 .chat-history-pending {
   display: flex;

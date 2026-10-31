@@ -1,5 +1,6 @@
 import { defaultAskQuestionTool } from '../runner/ask-question-tool.js';
 import { ACTION_TOOLS } from './action-catalog.js';
+import { CHAT_COORDINATION_TOOLS } from './chat-catalog.js';
 import { TAVILY_SEARCH_PROPERTIES } from './tavily-options.js';
 import { MAP_PROPERTIES, EXTRACT_PROPERTIES } from './tavily-tool-schemas.js';
 
@@ -51,6 +52,7 @@ function withFullResult(properties) {
 
 /** @type {import('../../src/tools/definitions').ToolDefinition[]} */
 export const BUILT_IN_TOOLS = [
+  ...CHAT_COORDINATION_TOOLS,
   ...ACTION_TOOLS,
   {
     id: 'plugin_inspect', label: 'Inspect plugins', category: 'utility', serverRequired: true,
@@ -1199,22 +1201,37 @@ export const BUILT_IN_TOOLS = [
         type: {
           type: 'string',
           description:
-            'Sub-agent type id (e.g. researcher, explore, generalPurpose, shell, debugger)',
+            'Configured agent type ID.',
         },
-        task: { type: 'string', description: 'Task description for the sub-agent' },
+        task: { type: 'string', description: 'Task for the agent.' },
+          title: { type: 'string', description: 'Child chat title.' },
+          target: {
+            type: 'object', description: 'Exact model; discover IDs/options with agent_capabilities.',
+            properties: {
+              providerId: { type: 'string' }, modelId: { type: 'string' },
+              options: { type: 'object', properties: {
+                reasoningEffort: { type: 'string', description: 'Advertised effort.' },
+                thinkingMode: { type: 'string', enum: ['inherit', 'on', 'off'] },
+                thinkingBudgetTokens: { type: ['integer', 'null'], minimum: 0 },
+              }, additionalProperties: false },
+            }, required: ['providerId', 'modelId'], additionalProperties: false,
+          },
+          client_request_id: { type: 'string', description: 'Stable key for identical retries.' },
+          workspace_strategy: { type: 'string', enum: ['shared', 'new_worktree', 'existing_worktree'], description: 'Default shared; new_worktree starts at HEAD and retains its checkout.' },
+          workspace_id: { type: 'string', description: 'Authorized ID required for existing_worktree.' },
         wait: {
           type: 'boolean',
           description:
-            'If true, block until the sub-agent finishes and return the aggregate JSON in this tool result. Default false — you do not need to poll; completion is pushed as a new turn.',
+            'Wait for the aggregate result. Default false: completion is pushed; no polling.',
         },
         category: {
           type: 'string',
           enum: ['build', 'fix', 'test', 'research'],
-          description: 'Work category when spawned from a leftover V1 board task chat',
+          description: 'Legacy board category.',
         },
         board_task_id: {
           type: 'string',
-          description: 'Linked leftover board task id (e.g. W1-A)',
+          description: 'Legacy board task ID.',
         },
       },
       ['type', 'task'],

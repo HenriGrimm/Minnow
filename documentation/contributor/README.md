@@ -18,6 +18,7 @@ Documentation for cloning the repo, running from source, testing, and understand
 | [orchestrate-board-testing.md](orchestrate-board-testing.md) | `test:orchestrator`, fake model, scenario contract, journal suite |
 | [accessibility-audit.md](accessibility-audit.md) | Keyboard-first checklist, focus, screen readers, contrast regression |
 | [remote-devices.md](remote-devices.md) | Phone access: ingress listeners, device credentials, connecting, built-in Tailscale |
+| [agent-conversation-recovery.md](agent-conversation-recovery.md) | Persistent conversation archives, startup/restore ordering and compatible rollback |
 
 ## Related references
 

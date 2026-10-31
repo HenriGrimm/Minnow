@@ -29,11 +29,13 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       parentToolCallId: 'str',
       model: 'obj',
       modelSource: 'str',
+      childChatId: 'id', journalOwnerId: 'id', commandId: 'id',
+      executionKind: { enum: ['chat'] }, profileReference: 'obj', policy: 'obj', completionPolicy: 'obj', modelOptions: 'obj', workspaceBinding: 'obj',
     },
   },
   'attempt.started': {
     required: { runId: 'id', attemptId: 'id', seed: 'obj' },
-    optional: { model: 'obj', seedKind: 'str' },
+    optional: { model: 'obj', seedKind: 'str', executionId: 'id', commandId: 'id' },
   },
   'attempt.ended': {
     required: {
@@ -41,7 +43,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       attemptId: 'id',
       outcome: { enum: ATTEMPT_OUTCOMES },
     },
-    optional: { summary: 'str', evidence: 'obj', usage: 'obj', resolvedModel: 'obj' },
+    optional: { summary: 'str', evidence: 'obj', usage: 'obj', resolvedModel: 'obj', executionId: 'id', resultMessageId: 'id' },
   },
   'run.abandoned': {
     required: { runId: 'id', reason: 'id' },
@@ -53,7 +55,8 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
   },
   'result.delivered': {
     required: { runId: 'id', parentChatId: 'id' },
-    optional: { skipReason: { enum: ['missing_chat', 'orchestrate'] } },
+    optional: { skipReason: { enum: ['missing_chat', 'orchestrate'] }, recipientChatId: 'id', commandId: 'id',
+      disposition: { enum: ['accepted', 'local_only', 'inline', 'disposed', 'missing_chat'] } },
   },
   'run.nudged': {
     required: { runId: 'id', parentChatId: 'id' },

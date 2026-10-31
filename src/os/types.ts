@@ -112,6 +112,8 @@ export type IssuesSectionId = 'projects';
 
 /** Parsed hash route consumed by the OS shell and page bridge. */
 export interface OsRoute {
+  /** Stable Code conversation link; independent of the chat's current title. */
+  chatId?: string;
   reefAppId?: string;
   view: OsView;
   appId?: AppId;

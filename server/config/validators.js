@@ -984,6 +984,7 @@ export function normalizeContextCompactionConfig(raw) {
 }
 
 function defaultPermissionForTool(id, enabled) {
+  if (['agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(id)) return enabled ? 'full' : 'off';
   if (
     id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'present_files' || id === 'search_settings'
     || id === 'get_settings'
@@ -1001,6 +1002,7 @@ function defaultPermissionForTool(id, enabled) {
 
 export function normalizeToolConfig(raw) {
   const DEFAULT_ENABLED_TOOL_IDS = new Set([
+    'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
     'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
     'load_skill',
     'present_files',

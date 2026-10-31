@@ -46,6 +46,7 @@ export interface SessionsPatchDelta {
   baseRevision?: number;
   /** Revisions of changed chats at the time this viewer loaded or last saved them. */
   chatBaseRevisions?: Record<string, number>;
+  chatBasePresentationRevisions?: Record<string, number>;
   chats?: Chat[];
   deleteChatIds?: string[];
   groups?: ChatGroup[];
@@ -106,9 +107,9 @@ export async function fetchConfigStatus(): Promise<ConfigStatusResponse> {
 }
 
 /** GET /api/config/sessions */
-export async function getSessions(): Promise<SessionState & { revision?: number; chatRevisions?: Record<string, number> }> {
+export async function getSessions(): Promise<SessionState & { revision?: number; chatRevisions?: Record<string, number>; chatPresentationRevisions?: Record<string, number> }> {
   const res = await fetch('/api/config/sessions', { cache: 'no-store' });
-  return parseJsonResponse<SessionState & { revision?: number; chatRevisions?: Record<string, number> }>(res);
+  return parseJsonResponse<SessionState & { revision?: number; chatRevisions?: Record<string, number>; chatPresentationRevisions?: Record<string, number> }>(res);
 }
 
 /**
@@ -310,7 +311,7 @@ export class SessionsRevisionConflictError extends Error {
   }
 }
 
-async function parseSessionsWriteResponse(res: Response): Promise<number | undefined> {
+async function parseSessionsWriteResponse(res: Response, onPresentationRevisions?: (revisions: Record<string, number>) => void): Promise<number | undefined> {
   if (res.status === 409) {
     const body = (await res.json().catch(() => ({}))) as {
       error?: unknown;
@@ -325,7 +326,11 @@ async function parseSessionsWriteResponse(res: Response): Promise<number | undef
         : [],
     );
   }
-  const body = await parseJsonResponse<{ ok: boolean; revision?: number }>(res);
+  const body = await parseJsonResponse<{ ok: boolean; revision?: number; chatPresentationRevisions?: Record<string, number> }>(res);
+  if (body.chatPresentationRevisions && typeof body.chatPresentationRevisions === 'object' && !Array.isArray(body.chatPresentationRevisions)) {
+    const revisions = Object.fromEntries(Object.entries(body.chatPresentationRevisions).filter(([, value]) => Number.isSafeInteger(value) && value >= 0));
+    onPresentationRevisions?.(revisions);
+  }
   return typeof body.revision === 'number' ? body.revision : undefined;
 }
 
@@ -342,6 +347,9 @@ export interface PutSessionsOptions {
   /** Revision this write was composed against; mismatch returns 409. */
   baseRevision?: number;
   chatBaseRevisions?: Record<string, number>;
+  chatBasePresentationRevisions?: Record<string, number>;
+  /** Receipt callback; never serialized into the write body. */
+  onPresentationRevisions?: (revisions: Record<string, number>) => void;
 }
 
 /** How many times a write re-bases onto a newer revision before giving up. */
@@ -367,7 +375,7 @@ const SESSIONS_CONFLICT_RETRIES = 2;
 async function sendSessionsWrite(
   method: 'PUT' | 'PATCH',
   body: Record<string, unknown>,
-  options: { rebaseOnConflict?: boolean } = {},
+  options: { rebaseOnConflict?: boolean; onPresentationRevisions?: (revisions: Record<string, number>) => void } = {},
 ): Promise<number | undefined> {
   const rebaseOnConflict = options.rebaseOnConflict !== false;
   let payload = body;
@@ -385,7 +393,7 @@ async function sendSessionsWrite(
       body: JSON.stringify(payload),
     });
     try {
-      return await parseSessionsWriteResponse(res);
+      return await parseSessionsWriteResponse(res, options.onPresentationRevisions);
     } catch (err) {
       const rebased =
         rebaseOnConflict &&
@@ -401,12 +409,21 @@ async function sendSessionsWrite(
   }
 }
 
+function assertNoConversationArchive(input: unknown): void {
+  const data = input as { conversationArchive?: unknown; kind?: unknown } | null;
+  if (data?.conversationArchive || data?.kind === 'minnow.conversation-archive') {
+    throw new Error('Use importManagedChatArchive to import a versioned conversation archive');
+  }
+}
+
 /** PUT /api/config/sessions — returns the server's new revision when it reports one. */
 export async function putSessions(
   state: SessionState,
   options: PutSessionsOptions = {},
 ): Promise<number | undefined> {
-  return sendSessionsWrite('PUT', { ...state, ...options });
+  assertNoConversationArchive(state);
+  const { onPresentationRevisions, ...wireOptions } = options;
+  return sendSessionsWrite('PUT', { ...state, ...wireOptions }, { onPresentationRevisions });
 }
 
 /**
@@ -418,8 +435,9 @@ export async function putSessions(
  */
 export async function patchSessions(
   delta: SessionsPatchDelta,
-  options: { rebaseOnConflict?: boolean } = {},
+  options: { rebaseOnConflict?: boolean; onPresentationRevisions?: (revisions: Record<string, number>) => void } = {},
 ): Promise<number | undefined> {
+  assertNoConversationArchive(delta);
   return sendSessionsWrite('PATCH', delta as unknown as Record<string, unknown>, options);
 }
 
@@ -438,6 +456,7 @@ export function putSessionsKeepalive(
   options: PutSessionsOptions = {},
 ): boolean {
   try {
+    assertNoConversationArchive(state);
     const body = JSON.stringify({ ...state, ...options });
     if (utf8ByteLength(body) >= FETCH_KEEPALIVE_MAX_BYTES) {
       return false;
@@ -518,14 +537,16 @@ export function flushSessionsOnShutdown(
  */
 function splitSessionsPatchBeacons(delta: SessionsPatchDelta): boolean {
   const chats = Array.isArray(delta.chats) ? delta.chats : [];
-  const { chats: _chats, chatBaseRevisions: _bases, ...rest } = delta;
+  const { chats: _chats, chatBaseRevisions: _bases, chatBasePresentationRevisions: _presentationBases, ...rest } = delta;
   void _chats;
   void _bases;
+  void _presentationBases;
 
   let allQueued = true;
   for (const chat of chats) {
     const piece: SessionsPatchDelta = { baseVersion: delta.baseVersion, chats: [chat],
       chatBaseRevisions: { [chat.id]: delta.chatBaseRevisions?.[chat.id] ?? 0 } };
+    if (delta.chatBasePresentationRevisions?.[chat.id] !== undefined) piece.chatBasePresentationRevisions = { [chat.id]: delta.chatBasePresentationRevisions[chat.id] };
     if (utf8ByteLength(JSON.stringify(piece)) >= SESSIONS_BEACON_MAX_BYTES) {
       allQueued = false;
       continue;

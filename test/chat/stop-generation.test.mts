@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { setChatAbort } from '../../src/app-state.ts';
 import { stopGeneration } from '../../src/chat/stop-generation.ts';
+import { setAgentConversationsCapabilityForTests } from '../../src/config/agent-conversations-enabled.ts';
+import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
   emitMainTurnActivity,
   getMainTurnActivity,
@@ -24,6 +26,7 @@ import {
 } from '../../src/state/sessions.ts';
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
+const originalFetch = globalThis.fetch;
 
 function seedActiveChat(): void {
   const chat = createEmptyChatObject('m1');
@@ -40,6 +43,8 @@ describe('stopGeneration', () => {
   beforeEach(async () => {
     const { Window } = await import('happy-dom');
     const window = new Window();
+    globalThis.window = window;
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: window.sessionStorage });
     globalThis.document = window.document;
     globalThis.HTMLElement = window.HTMLElement;
     globalThis.performance = window.performance;
@@ -48,6 +53,10 @@ describe('stopGeneration', () => {
   });
 
   afterEach(() => {
+    globalThis.fetch = originalFetch;
+    setStorageModeForTests(null);
+    setAgentConversationsCapabilityForTests();
+    sessionStorage.clear();
     setSessionStateForTests(null);
     setChatAbort(FIXED_CHAT_ID, null);
     resetMainTurnActivity();
@@ -73,6 +82,44 @@ describe('stopGeneration', () => {
     seedActiveChat();
     setChatAbort('11111111-1111-1111-1111-111111111111', null);
     assert.doesNotThrow(() => stopGeneration());
+  });
+
+  test('persistent Stop captures the full family before releasing the legacy owner', async () => {
+    seedActiveChat();
+    setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: true, recoveryEnabled: true, reason: 'released' });
+    setStorageModeForTests('server');
+    sessionStorage.setItem(`minnow.chatTurnOwner.${FIXED_CHAT_ID}`, 'original-owner');
+    const controller = new AbortController();
+    setChatAbort(FIXED_CHAT_ID, controller);
+    let accept!: () => void;
+    const requests: any[] = [];
+    globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith('/commands')) {
+        requests.push(JSON.parse(String(options?.body)));
+        await new Promise<void>(resolve => { accept = resolve; });
+      }
+      return Response.json({});
+    };
+
+    stopGeneration(FIXED_CHAT_ID);
+    for (let i = 0; i < 100 && !accept; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].scope, 'tree');
+    assert.equal(requests[0].expectedLegacyOwnerId, 'original-owner');
+    assert.equal(controller.signal.aborted, false, 'retain the owner until the server admits Stop');
+    assert.equal(findChatById(FIXED_CHAT_ID)?.subAgentAutoResumeBlocked, true);
+
+    // The server sends Stop back to the captured renderer before stopping children.
+    stopGeneration(FIXED_CHAT_ID, 'user', { ownedByThisView: true, serverControl: true });
+    assert.equal(controller.signal.aborted, true);
+    const replacement = new AbortController();
+    setChatAbort(FIXED_CHAT_ID, replacement);
+    findChatById(FIXED_CHAT_ID)!.currentGenerationId = 'replacement-generation';
+    accept();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(requests.length, 1, 'the server callback cannot start another scope command');
+    assert.equal(replacement.signal.aborted, false);
+    assert.equal(findChatById(FIXED_CHAT_ID)!.currentGenerationId, 'replacement-generation');
   });
 
   test('clears a stuck generation id when no local turn is abortable', () => {

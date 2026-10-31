@@ -60,6 +60,7 @@ export const TOOL_GROUP_IDS = {
   'code-intel': ['repo_map', 'find_symbol', 'who_calls', 'read_symbol'],
   lsp: ['get_lsp_diagnostics', 'godot_inspect'],
   'sub-agents': [
+    'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
     'spawn_sub_agent',
     'cancel_sub_agent',
     'list_sub_agents',
@@ -270,7 +271,7 @@ export const MODE_ALLOWED_GROUPS: Record<RegisteredModeId, readonly ToolGroupId[
 export const MODE_TOOL_DENY_OVERRIDES: Partial<Record<ModeId, readonly string[]>> = {
   plan: ['move_file', 'copy_file', 'delete_path', 'update_settings'],
   'super-plan': ['move_file', 'copy_file', 'delete_path', 'update_settings'],
-  orchestrate: ['spawn_sub_agent', 'cancel_sub_agent'],
+  orchestrate: ['spawn_sub_agent', 'cancel_sub_agent', 'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'],
 };
 
 /** Per-mode explicit allow overrides applied after group expansion. */

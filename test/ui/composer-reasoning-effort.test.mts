@@ -34,6 +34,9 @@ const {
 
 function setupDom(): Window {
   const win = new Window();
+  // Electron supports the Popover API; happy-dom currently omits these methods.
+  win.HTMLElement.prototype.showPopover = function () { this.dataset.popoverOpen = 'true'; };
+  win.HTMLElement.prototype.hidePopover = function () { delete this.dataset.popoverOpen; };
   globalThis.document = win.document as unknown as Document;
   globalThis.window = win as unknown as Window & typeof globalThis.window;
   globalThis.HTMLElement = win.HTMLElement;

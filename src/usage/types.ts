@@ -62,4 +62,4 @@ export interface ChatTokenLedger {
 }
 
 /** Max retained ledger rows per chat (totals always accumulate). */
-export const TOKEN_LEDGER_ENTRY_CAP = 200;
+export { TOKEN_LEDGER_ENTRY_CAP } from '../../server/usage/ledger.js';

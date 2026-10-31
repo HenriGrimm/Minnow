@@ -85,6 +85,13 @@ export interface SubAgentsFile {
 }
 
 export interface SubAgentRun {
+  commandId?: string;
+  modelOptions?: import('../../server/chats/contracts').ModelOptions;
+  phase?: string;
+  childChatId?: string;
+  executionId?: string;
+  journalOwnerId?: string;
+  completionPolicy?: import('../../server/chats/contracts').TaskCompletionPolicy;
   modelSource?: string;
   resolvedModel?: { providerId: string; id: string } | null;
   runId: string;
@@ -128,6 +135,13 @@ export interface SubAgentRun {
 export interface SpawnSubAgentInput {
   type: string;
   task: string;
+  title?: string;
+  target?: import('../../server/chats/contracts').ModelSelection;
+  clientRequestId?: string;
+  workspaceStrategy?: 'shared' | 'new_worktree' | 'existing_worktree';
+  workspaceId?: string;
+  /** Bound caller cancellation; never serialized as model authority. */
+  signal?: AbortSignal;
   wait?: boolean;
   parentTurnId?: string | null;
   parentChatId?: string | null;
@@ -142,6 +156,10 @@ export interface SpawnSubAgentInput {
 export interface SpawnSubAgentResult {
   runId: string;
   status: SubAgentStatus;
+  childChatId?: string;
+  executionId?: string;
+  commandId?: string;
+  link?: string;
 }
 
 export interface CancelSubAgentResult {

@@ -19,7 +19,7 @@ export type SubAgentRole = 'sub-agent';
 
 export type SeedKind = 'initial' | 'continue';
 
-export type RunPhase = 'idle' | 'running' | 'passed' | 'abandoned' | 'cancelled' | 'cancelling';
+export type RunPhase = 'idle' | 'running' | 'passed' | 'abandoned' | 'cancelled' | 'cancelling' | 'recovery_required';
 
 export type AgentsStatus = 'idle' | 'running';
 
@@ -43,6 +43,8 @@ export type ValidationResult =
   | { ok: false; error: string };
 
 export interface Attempt {
+  executionId?: string;
+  resultMessageId?: string;
   attemptId: string;
   seedKind: SeedKind | string | null;
   seed: Record<string, unknown> | null;
@@ -55,6 +57,17 @@ export interface Attempt {
 }
 
 export interface RunState {
+  childChatId?: string;
+  executionId?: string | null;
+  journalOwnerId?: string;
+  commandId?: string;
+  executionKind?: 'chat';
+  profileReference?: { profileId: string; profileVersion: number } | null;
+  policy?: Record<string, unknown> | null;
+  completionPolicy?: import('../chats/contracts').TaskCompletionPolicy | null;
+  modelOptions?: import('../chats/contracts').ModelOptions;
+  workspaceBinding?: Record<string, unknown>;
+  recoveryRequired?: boolean;
   modelSource?: string;
   resolvedModel?: { providerId: string; id: string } | null;
   runId: string;

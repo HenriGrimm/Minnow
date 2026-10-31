@@ -20,10 +20,16 @@ import {
   subAgentLiveBadgeLabel,
   subAgentLiveStatusLine,
 } from './sub-agent-live-status';
+import { batchPersistentAgentActivity, clearPersistentAgentActivity, persistentAgentActivityOwner, refreshPersistentAgentActivity, upsertPersistentAgentActivity } from './persistent-agent-activity';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
+import { syncAgentConversationHeader } from './agent-conversation';
+import { agentModelId, createAgentMark, syncAgentMark, type AgentMarkState } from './agent-model-mark';
 
 /** Maps run id to the card element for the current chat render. */
 const cards = new Map<string, HTMLElement>();
 const cardRenderKeys = new WeakMap<HTMLElement, string>();
+/** Marks survive card refills so a live → settled change can play its badge pop. */
+const cardMarks = new WeakMap<HTMLElement, HTMLElement>();
 
 let liveSubscriptionBound = false;
 /** Pending coalesced tail scroll — one per frame, not one per card (MIN-793). */
@@ -57,6 +63,7 @@ function isEmptyChatLandingMounted(): boolean {
 
 /** Clears the card registry when the chat DOM is rebuilt from history. */
 export function clearSubAgentCardDomRegistry(): void {
+  clearPersistentAgentActivity();
   cards.clear();
   pendingCardRuns.clear();
   if (cardRenderRaf != null && typeof cancelAnimationFrame === 'function') {
@@ -147,6 +154,7 @@ function cardRenderKey(
     run.status,
     run.type,
     run.task,
+    agentModelId(run),
     metaLabel(run, live),
     detail.text,
     detail.error,
@@ -154,6 +162,14 @@ function cardRenderKey(
 }
 
 // ── Card fill ────────────────────────────────────────────────────────────────
+
+function markState(run: SubAgentRun | PersistedSubAgentRun): AgentMarkState {
+  if (run.status === 'completed') return 'done';
+  if (run.status === 'failed') return 'failed';
+  if (run.status === 'cancelled') return 'stopped';
+  if (run.status === 'queued') return 'queued';
+  return 'running';
+}
 
 /**
  * One timeline step: icon · agent · brief title · status, then a single
@@ -174,9 +190,12 @@ function fillCard(
   const body = document.createElement('div');
   body.className = 'sub-agent-card__body';
 
-  const mark = document.createElement('span');
-  mark.className = 'sub-agent-card__mark';
-  mark.appendChild(createIcon('appAgentActivity', { size: 14 }));
+  let mark = cardMarks.get(el);
+  if (!mark) {
+    mark = createAgentMark('sub-agent-card__mark');
+    cardMarks.set(el, mark);
+  }
+  syncAgentMark(mark, agentModelId(run), markState(run));
 
   const type = document.createElement('span');
   type.className = 'sub-agent-card__type';
@@ -204,7 +223,9 @@ function fillCard(
     const line = document.createElement('div');
     line.className = detail.error
       ? 'sub-agent-card__detail sub-agent-card__error'
-      : 'sub-agent-card__detail';
+      : live && subAgentLiveStatusLine(run, true)
+        ? 'sub-agent-card__detail agent-shimmer'
+        : 'sub-agent-card__detail';
     line.textContent = detail.text;
     body.appendChild(line);
   }
@@ -333,6 +354,7 @@ export function upsertSubAgentCardForRun(
 ): HTMLElement | null {
   const active = getActiveChat();
   if (active.id !== chatId) return null;
+  if (run.childChatId && persistentAgentActivityOwner(run, chatId) !== chatId) return null;
   const orchestratorRun = getSubAgentRun(run.runId);
   const isLive =
     run.status === 'running' ||
@@ -349,6 +371,7 @@ export function upsertSubAgentCardForRun(
     return null;
   }
   if (isEmptyChatLandingMounted()) return null;
+  if (run.childChatId) return upsertPersistentAgentActivity(orchestratorRun ?? run, chatId, getActiveChatMountElement());
 
   let el = cards.get(run.runId);
   const displayRun = orchestratorRun ?? run;
@@ -405,9 +428,10 @@ function scheduleSubAgentCardUpdate(run: SubAgentRun): void {
   if (typeof requestAnimationFrame !== 'function') {
     const pending = [...pendingCardRuns.values()];
     pendingCardRuns.clear();
-    for (const latest of pending) {
-      if (latest.parentChatId) upsertSubAgentCardForRun(latest, latest.parentChatId);
-    }
+    batchPersistentAgentActivity(() => { for (const latest of pending) {
+      const owner = latest.childChatId ? persistentAgentActivityOwner(latest) : latest.parentChatId;
+      if (owner) upsertSubAgentCardForRun(latest, owner);
+    } });
     return;
   }
   cardRenderRaf = -1;
@@ -415,27 +439,31 @@ function scheduleSubAgentCardUpdate(run: SubAgentRun): void {
     cardRenderRaf = null;
     const pending = [...pendingCardRuns.values()];
     pendingCardRuns.clear();
-    for (const latest of pending) {
-      if (latest.parentChatId) upsertSubAgentCardForRun(latest, latest.parentChatId);
-    }
+    batchPersistentAgentActivity(() => { for (const latest of pending) {
+      const owner = latest.childChatId ? persistentAgentActivityOwner(latest) : latest.parentChatId;
+      if (owner) upsertSubAgentCardForRun(latest, owner);
+    } });
   });
   if (cardRenderRaf === -1) cardRenderRaf = handle;
 }
 
 /** Re-mount persisted and in-flight cards after `renderChatFromHistory` rebuilds the transcript. */
 export function renderPersistedSubAgentCardsForChat(chat: Chat): void {
+  batchPersistentAgentActivity(() => {
   for (const row of chat.subAgentRuns ?? []) {
     upsertSubAgentCardForRun(row, chat.id);
   }
   for (const run of listActiveSubAgentRuns()) {
-    if (run.parentChatId === chat.id) {
+    if ((run.childChatId ? persistentAgentActivityOwner(run) : run.parentChatId) === chat.id) {
       upsertSubAgentCardForRun(run, chat.id);
     }
   }
-  void hydrateSubAgentRunsForParentChat(chat.id).then(() => {
-    for (const run of listSubAgentRunsForParentChat(chat.id)) {
+  });
+  const journalOwner = chat.agentConversation?.journalOwnerId ?? chat.id;
+  void hydrateSubAgentRunsForParentChat(journalOwner).then(() => {
+    batchPersistentAgentActivity(() => { for (const run of listSubAgentRunsForParentChat(journalOwner)) {
       upsertSubAgentCardForRun(run, chat.id);
-    }
+    } });
   });
 }
 
@@ -453,7 +481,14 @@ export function initSubAgentUi(): void {
   }
   if (liveSubscriptionBound) return;
   liveSubscriptionBound = true;
+  subscribeManagedChatMetadata(() => {
+    try {
+      const chat = getActiveChat(), area = getActiveChatMountElement();
+      if (!area.isConnected || isEmptyChatLandingMounted() || (!isBoardChatEmbedOpenForChat(chat.id) && isMainColumnOverlaySuppressingChatDom())) return;
+      refreshPersistentAgentActivity(chat.id, area); syncAgentConversationHeader(chat, area);
+    } catch { /* No chat mount is visible during workspace teardown. */ }
+  });
   subscribeSubAgentRuns((run) => {
-    if (run.parentChatId) scheduleSubAgentCardUpdate(run);
+    if (run.parentChatId || run.childChatId) scheduleSubAgentCardUpdate(run);
   });
 }

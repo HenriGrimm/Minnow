@@ -14,6 +14,10 @@ export interface ExecuteInProcessToolOptions {
   activityChatId?: string;
   /** Turn stop signal, forwarded so a tool owning a child process can kill it. */
   signal?: AbortSignal;
+  filesystemAccessCeiling?: 'workspace' | 'full';
+  shellSandboxMode?: 'off' | 'prefer' | 'require';
+  /** Granted by the durable interactive host for this exact invocation only. */
+  interactiveApproval?: boolean;
 }
 
 export interface InProcessToolResult {
@@ -39,13 +43,16 @@ export interface CreateInProcessToolDispatchOptions {
   runtimeOwner?: { chatId: string; runId: string; agentId: string };
   /** The real chat that made the edits; runtimeOwner.chatId is only a runtime key (a board id for board runs). */
   activityChatId?: string;
+  filesystemAccessCeiling?: 'workspace' | 'full';
+  shellSandboxMode?: 'off' | 'prefer' | 'require';
+  interactiveApproval?: boolean;
 }
 
 export interface InProcessToolDispatch {
   execute: (
     name: string,
     args: unknown,
-    ctx?: { toolCallId?: string; signal?: AbortSignal },
+    ctx?: { toolCallId?: string; signal?: AbortSignal; approvalGranted?: boolean },
   ) => Promise<InProcessToolResult>;
   runHeadlessToolBatch: RunHeadlessToolBatch;
   cwd: string;

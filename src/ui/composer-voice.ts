@@ -54,6 +54,7 @@ function resizeComposerInput(input: HTMLTextAreaElement): void {
 
 /** Insert transcribed text at the caret in a textarea (batch path). */
 function insertTranscript(input: HTMLTextAreaElement, text: string): void {
+  if (input.disabled || input.readOnly) return;
   const trimmed = text.trim();
   if (!trimmed) return;
   const start = input.selectionStart ?? input.value.length;
@@ -261,7 +262,7 @@ async function transcribeBlob(blob: Blob): Promise<string> {
 
 /** Apply live dictation text to the composer and resize. */
 function renderDictation(input: HTMLTextAreaElement): void {
-  if (!dictationRange) return;
+  if (!dictationRange || input.disabled || input.readOnly) return;
   dictationRange.render(input);
   input.dispatchEvent(new Event('input', { bubbles: true }));
   resizeComposerInput(input);
@@ -337,18 +338,18 @@ async function handleStreamingRecordingStop(): Promise<void> {
   setMicBusyLabel('Finishing dictation…');
   try {
     const finalText = await client.stop();
-    if (range) {
+    if (range && !inputEl.disabled && !inputEl.readOnly) {
       range.setFinal(finalText);
       range.render(inputEl);
       inputEl.dispatchEvent(new Event('input', { bubbles: true }));
       autoResize(inputEl);
     }
     if (!finalText.trim()) {
-      range?.restore(inputEl);
+      if (!inputEl.disabled && !inputEl.readOnly) range?.restore(inputEl);
       setStatus('err', 'No speech detected');
     }
   } catch (err) {
-    range?.restore(inputEl);
+    if (!inputEl.disabled && !inputEl.readOnly) range?.restore(inputEl);
     const message = err instanceof Error ? err.message : 'Transcription failed';
     setStatus('err', message);
     if (message.includes('Settings') || message.includes('Models')) {
@@ -442,6 +443,8 @@ async function startBatchRecording(): Promise<void> {
 
 async function startRecording(): Promise<void> {
   if (micState !== 'idle') return;
+  const initialInput = getActiveComposerSurface().inputEl;
+  if (initialInput?.disabled || initialInput?.readOnly) return;
 
   if (!window.isSecureContext) {
     setStatus('err', 'Microphone requires HTTPS or localhost');
@@ -497,7 +500,7 @@ async function startRecording(): Promise<void> {
   }
 
   const { inputEl } = getActiveComposerSurface();
-  if (!inputEl) {
+  if (!inputEl || inputEl.disabled || inputEl.readOnly) {
     setMicButtonsState('idle');
     setStatus('err', 'Composer input not found');
     return;
@@ -557,6 +560,8 @@ function onMicClick(): void {
     return;
   }
   if (micState === 'transcribing' || micState === 'starting') return;
+  const input = getActiveComposerSurface().inputEl;
+  if (input?.disabled || input?.readOnly) return;
   void startRecording();
 }
 

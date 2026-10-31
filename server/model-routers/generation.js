@@ -3,7 +3,7 @@ import { getRouterWorkspace, resolveRouterId } from './store.js';
 import { routerAvailability, invalidateRouterProvider, routerCatalogModel } from './availability.js';
 import { bindRouterLibraryEntry } from './library-serve.js';
 import { findLibraryCachedRow, isLibraryModelBinding } from '../models/library-binding.js';
-import { MINNOW_LIBRARY_PROVIDER_ID } from '../providers/store.js';
+import { MINNOW_LIBRARY_PROVIDER_ID, listProviders } from '../providers/store.js';
 import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-ids.mjs';
 import { entryKey } from './scheduler.js';
 import { pumpUpstreamAsync } from '../generations/upstream.js';
@@ -19,6 +19,9 @@ import { routerEntryTier, routerTierFallbackOrder } from '../../src/models/route
 import { isRouterTaskType } from '../../src/models/router-task-types.mjs';
 import { decideRoute } from './evaluator.js';
 import { allowanceContext, getAllowanceTracker, allowanceFailure } from '../generations/allowance.js';
+import { ChatContractError, validateModelOptions } from '../chats/contracts.js';
+import { assertSupportedModelOptions, modelOptionSupport } from '../chats/model-selection.js';
+import { reasoningEffortToCompletionBody, thinkingToCompletionBody } from '../runner/thinking-to-body.js';
 
 function isLibraryRouterEntry(entry) {
   const pid = entry?.providerId;
@@ -93,6 +96,43 @@ async function resolveEntryEffort(bound, effort) {
     : { reasoningStatus: 'default' };
 }
 
+/** Only app-owned captured options activate strict filtering; legacy requests retain their policy. */
+async function explicitEntryOptions(entry, options, cache = {}) {
+  if (!options || !Object.keys(options).length) return null;
+  cache.providers ??= listProviders();
+  cache.capabilities ??= new Map();
+  if (!cache.capabilities.has(entry.providerId)) cache.capabilities.set(entry.providerId, readCapabilities(entry.providerId).catch(() => ({ models: {} })));
+  const [{ providers }, capabilities] = await Promise.all([
+    cache.providers, cache.capabilities.get(entry.providerId),
+  ]);
+  const row = entry.providerId === MINNOW_LIBRARY_PROVIDER_ID
+    ? { ...(await findLibraryCachedRow(entry.modelId).catch(() => null) ?? {}), id: entry.modelId }
+    : await routerCatalogModel(entry.providerId, entry.modelId).catch(() => null);
+  const provider = providers.find((candidate) => candidate.id === entry.providerId) ?? {};
+  const support = modelOptionSupport(row ?? { id: entry.modelId }, capabilities, provider);
+  const validated = assertSupportedModelOptions(options, support);
+  const effort = validated.reasoningEffort ?? (validated.thinkingMode === 'off' && support.reasoningEffort.includes('off') ? 'off' : undefined);
+  return { effort, caps: support.sendCapabilities, provider, options: validated, reasoningStatus: effort !== undefined ? 'applied' : validated.thinkingMode === 'off' ? 'off' : 'default' };
+}
+
+async function filterExplicitOptions(router, availability, options) {
+  if (!options || !Object.keys(options).length) return availability;
+  const filtered = { ...availability };
+  const cache = {};
+  await Promise.all(router.entries.filter((entry) => entry.enabled).map(async (entry) => {
+    try { await explicitEntryOptions(entry, options, cache); }
+    catch (error) {
+      if (!(error instanceof ChatContractError) || error.code !== 'options_unsupported') throw error;
+      filtered[entry.id] = { available: false, reason: 'Requested model options unsupported', kind: 'options' };
+    }
+  }));
+  const enabled = router.entries.filter((entry) => entry.enabled);
+  if (enabled.length && enabled.every((entry) => filtered[entry.id]?.kind === 'options')) {
+    throw new ChatContractError('options_unsupported', 'No enabled model pool member supports the requested options');
+  }
+  return filtered;
+}
+
 /** What the composer shows for a decision. */
 function publicDecision(decision, effort, modelLabel, reasoningStatus) {
   if (!decision) return undefined;
@@ -106,6 +146,12 @@ export function pumpRouterGeneration(state) {
 }
 
 export async function runRouterGeneration(state) {
+  let explicitOptions;
+  if (state.agentModelOptions !== undefined) {
+    const validated = validateModelOptions(state.agentModelOptions);
+    if (!validated.ok) throw new ChatContractError(validated.error.code, validated.error.message, { path: validated.error.path });
+    explicitOptions = validated.value;
+  }
   const workspace = await getRouterWorkspace();
   const routerId = await resolveRouterId(JSON.parse(state.requestBody.toString()).model, undefined, state.chatId);
   const body = JSON.parse(state.requestBody.toString());
@@ -122,6 +168,9 @@ export async function runRouterGeneration(state) {
   let labels = {};
   try {
   const startRouter = workspace.routers.find((r) => r.id === routerId);
+  if (startRouter && explicitOptions && Object.keys(explicitOptions).length) {
+    await filterExplicitOptions(startRouter, await routerAvailability(startRouter, body), explicitOptions);
+  }
   if (startRouter?.policy === 'evaluate' && state.chatId) {
     labels = await entryLabels(startRouter);
     decision = await decideRoute({
@@ -140,7 +189,7 @@ export async function runRouterGeneration(state) {
   while (state.status !== 'cancelled') {
     const router = workspace.routers.find((r) => r.id === routerId);
     if (!router) throw new Error('Router no longer exists. Select a model or router in Models.');
-    const availability = await routerAvailability(router, body);
+    const availability = await filterExplicitOptions(router, await routerAvailability(router, body), explicitOptions);
     if (controller.signal.aborted || state.status === 'cancelled') return;
     const keepAssignment = !evaluated || decision?.source === 'kept' || decision?.source === 'fallback';
     const stickyEntryId = state.routerPreferAvailable === true || !keepAssignment ? undefined : workspace.scheduler.assignments[workspace.scheduler.assignmentKey(routerId, chatId)]?.assignedEntryId;
@@ -178,6 +227,7 @@ export async function runRouterGeneration(state) {
           const currentEntry = latest?.entries.find((e) => e.id === entry.id && entryKey(e) === entryKey(entry));
           const health = latest && currentEntry ? await routerAvailability(latest, body) : null;
           if (!health?.[entry.id]?.available) workspace.scheduler.rejectQueued(state.id, health?.[entry.id]?.reason || 'Router entry removed while queued');
+          else await explicitEntryOptions(currentEntry, explicitOptions);
         } catch (error) { workspace.scheduler.rejectQueued(state.id, error.message); }
         finally { checking = false; }
       }, 2500);
@@ -190,6 +240,7 @@ export async function runRouterGeneration(state) {
       if (!currentEntry || !current.enabled || !currentEntry.enabled) throw new Error('Assigned entry was disabled or removed while queued');
       const fresh = await routerAvailability(current, body);
       if (!fresh[entry.id]?.available) throw new Error(fresh[entry.id]?.reason || 'Assigned model unavailable');
+      await explicitEntryOptions(currentEntry, explicitOptions);
       if (controller.signal.aborted || state.status === 'cancelled') return;
 
       const controlBase = {
@@ -211,7 +262,11 @@ export async function runRouterGeneration(state) {
       }
       if (controller.signal.aborted || state.status === 'cancelled') return;
 
-      const { effort, caps: effortCaps, reasoningStatus } = await resolveEntryEffort(bound, decision?.effort);
+      const requested = await explicitEntryOptions({ providerId: bound.providerId, modelId: bound.id }, explicitOptions);
+      const locksEffort = explicitOptions?.reasoningEffort !== undefined || explicitOptions?.thinkingMode === 'off' || explicitOptions?.thinkingBudgetTokens === 0;
+      const { effort, caps: effortCaps, reasoningStatus } = locksEffort
+        ? requested ?? {}
+        : await resolveEntryEffort(bound, decision?.effort);
       if (controller.signal.aborted || state.status === 'cancelled') return;
       state.chosenProviderId = bound.providerId;
       state.chosenModelId = bound.id;
@@ -237,15 +292,25 @@ export async function runRouterGeneration(state) {
       });
       if (previousError) workspace.scheduler.emit(router, chatId, entry, 'failover', previousError);
       const childBody = { ...body, model: bound.id };
-      if (decision && decision.source !== 'override') delete childBody.reasoning_effort;
-      if (effort) childBody.reasoning_effort = effort;
+      if ((decision && decision.source !== 'override') || locksEffort) delete childBody.reasoning_effort;
+      if (effort !== undefined) childBody.reasoning_effort = effort;
+      if (requested && explicitOptions && (locksEffort || explicitOptions.thinkingMode === 'on' || explicitOptions.thinkingBudgetTokens != null)) {
+        // Rebuild the semantic patch for the selected provider, rather than
+        // keeping a contradictory synthetic-pool reasoning/thinking object.
+        for (const key of ['thinking', 'reasoning', 'reasoning_effort', 'enable_thinking', 'thinking_budget_tokens']) delete childBody[key];
+        const apiKind = requested.provider.apiKind ?? 'openai-v1';
+        const patch = effort !== undefined
+          ? reasoningEffortToCompletionBody(effort, apiKind, requested.caps, explicitOptions.thinkingBudgetTokens, bound.id)
+          : thinkingToCompletionBody(requested.options.thinkingMode ?? 'on', apiKind, requested.caps, explicitOptions.thinkingBudgetTokens, bound.id);
+        Object.assign(childBody, patch.body);
+      }
       child = createGenerationState({ providerId: bound.providerId, body: childBody,
         fallbackRole: state.fallbackRole || (state.chatId || state.persist ? 'default' : null),
         candidates: [{ providerId: bound.providerId, modelId: bound.id }] });
       child.routerAttempt = true;
       // The upstream sanitizer drops reasoning_effort for models it has no
       // capabilities for; hand it the ones that justified this level.
-      if (effort && effortCaps) child.modelCapabilities = { [bound.id]: effortCaps };
+      if (requested?.caps || (effort && effortCaps)) child.modelCapabilities = { [bound.id]: requested?.caps ?? effortCaps };
       const abort = () => cancel(child);
       controller.signal.addEventListener('abort', abort, { once: true });
       const unsubscribe = addLocalSubscriber(child, { onChunk: (chunk) => {

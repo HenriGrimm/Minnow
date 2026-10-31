@@ -517,6 +517,9 @@ describe('compaction dividers (context compaction v2)', () => {
       dividers[0].querySelector('.compaction-divider__label')?.textContent,
       'Context compacted · 38 turns folded · 142k → 29k tokens',
     );
+    const details = dividers[0].querySelector('details')!;
+    details.open = true;
+    details.dispatchEvent(new document.defaultView!.Event('toggle'));
     assert.equal(
       dividers[0].querySelector('.compaction-divider__text')?.textContent,
       '## Prior context (compacted — rows #0–#3 folded)',

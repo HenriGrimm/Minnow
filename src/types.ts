@@ -157,6 +157,11 @@ export interface CodeMapMessageSnapshot {
 export interface UserMessage {
   role: 'user';
   content: string;
+  /** Stable identities and authorship for server-admitted conversation input. */
+  messageId?: string;
+  commandId?: string;
+  provenance?: import('../server/chats/contracts').MessageProvenance;
+  createdAt?: number;
   /** Attached image bytes (drag-drop, paste, Design Mode crop). Vision models only. */
   images?: UserImageAttachment[];
   /** Issue ticket shown in place of the generated workflow prompt. */
@@ -508,6 +513,13 @@ export type PersistedSubAgentStatus =
  * terminal state (for drawer restore after session reload).
  */
 export interface PersistedSubAgentRun {
+  commandId?: string;
+  modelOptions?: import('../server/chats/contracts').ModelOptions;
+  phase?: string;
+  journalOwnerId?: string;
+  completionPolicy?: import('../server/chats/contracts').TaskCompletionPolicy;
+  childChatId?: string;
+  executionId?: string;
   modelSource?: string;
   resolvedModel?: { providerId: string; id: string } | null;
   providerId?: string;
@@ -1144,6 +1156,9 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   createdAt: number;
+  /** Server command revision and captured selection for managed conversations. */
+  commandRevision?: number;
+  modelSelection?: import('../server/chats/contracts').ModelSelection;
 }
 
 /**
@@ -1172,6 +1187,8 @@ export interface SessionSummariesState {
   revision?: number;
   /** Per-chat revisions for safe concurrent viewer writes. */
   chatRevisions?: Record<string, number>;
+  /** Managed shell metadata changes independently of server execution activity. */
+  chatPresentationRevisions?: Record<string, number>;
   /**
    * `?sinceRevision=` answers: `unchanged` carries only `revision`; `delta` lists just the
    * chats stamped after it, while `chatRevisions` still names every chat.
@@ -1192,6 +1209,27 @@ export interface SessionSummariesState {
 
 export interface Chat {
   id: string;
+  /** Server-owned persistent child identity; generic session writes cannot replace it. */
+  agentConversation?: import('../server/chats/contracts').AgentConversationMeta;
+  agentTypeId?: string;
+  /** Server-derived dispatch marker, also present on managed root conversations. */
+  chatCommandVersion?: 1;
+  /** Server-owned CAS counter for editable presentation fields, independent of turns. */
+  agentPresentationRevision?: number;
+  profileReference?: import('../server/chats/contracts').AgentProfileReference;
+  /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
+  agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
+    createdAt?: number; updatedAt?: number; settledAt?: number | null; modelSelection?: import('../server/chats/contracts').ModelSelection;
+    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean } };
+  agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
+  agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
+  /** Server-projected next-message selection; queued inputs retain their own captured value. */
+  agentModelSelection?: import('../server/chats/contracts').ModelSelection;
+  /** Captured ceiling only. Live revocations may restrict it further. */
+  agentAuthority?: Pick<import('../server/chats/policy').ChatPolicySnapshot, 'modeId' | 'filesystemAccess' | 'fileWriteScope' | 'shellSandboxMode' | 'toolPermissions'>;
+  agentTaskAttention?: { status: 'waiting_for_agents'; pendingCount: number };
+  agentRequestSummary?: { requestId: string; kind: 'question' | 'approval' }[];
+  agentRequests?: import('../server/chats/contracts').ChatRequest[];
   /** Bounded receipts for phone commands admitted by the PC runner. */
   remoteCommandReceipts?: string[];
   name: string;
@@ -1298,7 +1336,7 @@ export interface Chat {
    * {@link currentGenerationId}) or a crash mid-tools.
    */
   resumeInterrupted?: boolean;
-  /** Queued steering correction for the in-flight turn (push-now; cleared on consume or stop). */
+  /** Corrections accumulated for the next round; unapplied text returns to the queue on Stop. */
   pendingSteerMessage?: string;
   /** Follow-up messages queued while this chat is streaming (MIN-200). */
   pendingMessageQueue?: QueuedComposerMessage[];
@@ -1326,6 +1364,8 @@ export interface Chat {
   unread?: boolean;
   /** Epoch ms the user pinned this chat; pinned chats list above everything else, newest pin first. */
   pinnedAt?: number;
+  /** Epoch ms the user archived this chat; omitted for working chats. */
+  archivedAt?: number;
   /** Sidebar: red dot on inactive rows after a failed turn until the user opens this chat again. */
   turnError?: boolean;
   /** Epoch ms of the last committed assistant reply (unread baseline). */

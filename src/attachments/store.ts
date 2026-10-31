@@ -11,6 +11,7 @@ import { randomUUID } from '../lib/random-id.ts';
 import { scheduleContextUsageRefresh } from '../ui/context-usage-ring';
 import type { Attachment } from './types';
 import type { SourceMapping } from '../design/source-map';
+import { decorateChatReference } from '../ui/chat-reference-chip';
 
 // ── Queue ────────────────────────────────────────────────────────────────────
 
@@ -200,6 +201,18 @@ function createAttachChip(attachment: Attachment): HTMLElement {
   chip.className = 'attach-chip';
   chip.dataset.attachmentId = attachment.id;
 
+  if (attachment.kind === 'chatRef' && attachment.chatId) {
+    chip.classList.add('attach-chip--chat-ref');
+    const link = document.createElement('a');
+    decorateChatReference(link, attachment.chatId);
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      void import('../os/chat-launch').then(module => module.launchCodeWithChat(attachment.chatId!));
+    });
+    chip.append(link);
+  }
+
   if (attachment.kind === 'image') {
     chip.classList.add('attach-chip--image');
     if (attachment.dataUrl) {
@@ -329,7 +342,7 @@ function createAttachChip(attachment: Attachment): HTMLElement {
       workspaceRef: attachment.kind === 'workspace',
     });
     chip.append(icon, stack);
-  } else {
+  } else if (attachment.kind !== 'chatRef') {
     const label = document.createElement('span');
     label.className = 'attach-chip-label';
     label.textContent = chipLabel(attachment);
@@ -341,7 +354,12 @@ function createAttachChip(attachment: Attachment): HTMLElement {
   removeBtn.className = 'attach-chip-remove';
   removeBtn.setAttribute('aria-label', `Remove ${attachment.name}`);
   removeBtn.textContent = '×';
-  removeBtn.addEventListener('click', () => removeAttachment(attachment.id));
+  removeBtn.addEventListener('click', () => {
+    removeAttachment(attachment.id);
+    if (attachment.kind === 'chatRef') {
+      void import('../ui/composer-draft').then(module => module.handleComposerDraftInput());
+    }
+  });
   chip.appendChild(removeBtn);
 
   return chip;
@@ -384,6 +402,7 @@ export function renderAttachPreview(): void {
 /** Handles change on the hidden #fileInput (also exposed on window for inline HTML). */
 export function onFileSelected(event: Event): void {
   const input = event.target as HTMLInputElement;
+  if (input.disabled) { input.value = ''; return; }
   const list = input.files;
   if (!list?.length) return;
 

@@ -124,6 +124,9 @@ export const defaultEvalRunner: EvalRunner = {
     const usageSegments: Usage[] = [];
 
     for (let turn = 0; ; turn++) {
+      if (input.task.toolFixtures && toolTurns > input.task.toolFixtures.steps.length + 1) return {
+        summary: '', toolTurns, messages, error: 'Scripted eval tool-round budget exhausted',
+      };
       const body: EvalCompletionBody = {
         model: input.modelId || undefined,
         messages,

@@ -28,8 +28,9 @@ The computer runs the conversation. Open the same chat on your phone to see its
 reply, reasoning, tool activity and final status as they arrive.
 
 You can send messages and stop a reply from either device. Sending while the
-agent is working queues a follow-up. Choose **Push now** on a queued message to
-steer the current run. These actions reach the existing run on your computer.
+agent is working steers the current run at its next step. Choose **Queue for later**
+to wait until the reply finishes, or **Steer current run** on a queued message to
+apply it sooner. These actions reach the existing run on your computer.
 
 Keep the workspace open in Minnow on the computer to start a reply from the phone.
 Phone drafts and unsent computer drafts stay separate. If the connection drops,

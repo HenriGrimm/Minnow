@@ -1,4 +1,6 @@
 import { foldLeftoverBoardAutonomy } from '../lib/leftover-autonomy.mjs';
+import { validateAgentConversationMeta, validateAgentProfileReference, validateChatId, validateModelSelection,
+  CHAT_EXECUTION_STATES, CHAT_COMMAND_STATES, CHAT_ERROR_CODES } from '../../server/chats/contracts.js';
 
 // ── Plan paths ───────────────────────────────────────────────────────────────
 
@@ -1249,6 +1251,9 @@ export function normalizeChatRow(raw) {
     ...(typeof row.pinnedAt === 'number' && Number.isFinite(row.pinnedAt) && row.pinnedAt > 0
       ? { pinnedAt: row.pinnedAt }
       : {}),
+    ...(typeof row.archivedAt === 'number' && Number.isFinite(row.archivedAt) && row.archivedAt > 0
+      ? { archivedAt: row.archivedAt }
+      : {}),
     ...(typeof row.lastAssistantAt === 'number' &&
     Number.isFinite(row.lastAssistantAt) &&
     row.lastAssistantAt > 0
@@ -1274,6 +1279,48 @@ export function normalizeChatRow(raw) {
   }
   if (Array.isArray(row.remoteCommandReceipts)) {
     out.remoteCommandReceipts = [...new Set(row.remoteCommandReceipts.filter(value => typeof value === 'string' && value.length <= 256))].slice(-256);
+  }
+
+  if (row.agentConversation !== undefined) {
+    const parsed = validateAgentConversationMeta(row.agentConversation);
+    if (parsed.ok && parsed.value.childChatId === out.id) out.agentConversation = parsed.value;
+  }
+  if (row.chatCommandVersion === 1) out.chatCommandVersion = 1;
+  if (Number.isSafeInteger(row.agentPresentationRevision) && row.agentPresentationRevision >= 0) out.agentPresentationRevision = row.agentPresentationRevision;
+  if (validateChatId(row.agentTypeId).ok) out.agentTypeId = row.agentTypeId;
+  if (row.profileReference !== undefined) {
+    const parsed = validateAgentProfileReference(row.profileReference);
+    if (parsed.ok) out.profileReference = parsed.value;
+  }
+  if (row.agentExecution && typeof row.agentExecution === 'object' && validateChatId(row.agentExecution.executionId).ok && CHAT_EXECUTION_STATES.includes(row.agentExecution.status)) {
+    const raw = row.agentExecution;
+    const execution = { executionId: raw.executionId, status: raw.status };
+    for (const key of ['commandId', 'runId']) if (validateChatId(raw[key]).ok) execution[key] = raw[key];
+    for (const key of ['createdAt', 'updatedAt', 'settledAt']) if (Number.isFinite(raw[key]) && raw[key] >= 0) execution[key] = raw[key];
+    for (const key of ['modelSelection', 'resolvedModel']) {
+      const parsed = validateModelSelection(raw[key]); if (parsed.ok) execution[key] = parsed.value;
+    }
+    const usage = raw.contextUsage;
+    if (usage && Number.isFinite(usage.used) && usage.used >= 0 && (usage.limit === null || Number.isFinite(usage.limit) && usage.limit > 0) && typeof usage.isEstimate === 'boolean') {
+      execution.contextUsage = { used: usage.used, limit: usage.limit, isEstimate: usage.isEstimate };
+    }
+    out.agentExecution = execution;
+  }
+  if (row.agentPendingCommand && typeof row.agentPendingCommand === 'object' && validateChatId(row.agentPendingCommand.commandId).ok && CHAT_COMMAND_STATES.includes(row.agentPendingCommand.state)) {
+    const raw = row.agentPendingCommand;
+    out.agentPendingCommand = { commandId: raw.commandId, state: raw.state, held: raw.held === true,
+      ...(validateChatId(raw.runId).ok ? { runId: raw.runId } : {}), ...(CHAT_ERROR_CODES.includes(raw.errorCode) ? { errorCode: raw.errorCode } : {}) };
+  }
+  if (row.agentActivityCursor && Number.isSafeInteger(row.agentActivityCursor.messageSeq) && row.agentActivityCursor.messageSeq >= -1 &&
+    (row.agentActivityCursor.executionId === null || validateChatId(row.agentActivityCursor.executionId).ok)) {
+    out.agentActivityCursor = { messageSeq: row.agentActivityCursor.messageSeq, executionId: row.agentActivityCursor.executionId };
+  }
+  if (Array.isArray(row.agentRequestSummary)) {
+    out.agentRequestSummary = row.agentRequestSummary.slice(0, 256).filter(request => request && validateChatId(request.requestId).ok && ['question', 'approval'].includes(request.kind))
+      .map(request => ({ requestId: request.requestId, kind: request.kind }));
+  }
+  if (row.agentTaskAttention?.status === 'waiting_for_agents' && Number.isSafeInteger(row.agentTaskAttention.pendingCount) && row.agentTaskAttention.pendingCount > 0) {
+    out.agentTaskAttention = { status: 'waiting_for_agents', pendingCount: row.agentTaskAttention.pendingCount };
   }
 
   return out;

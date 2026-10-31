@@ -1183,6 +1183,22 @@ describe('P10-I in-turn steer and context overlay (MIN-774)', () => {
     assert.ok(chat.runs?.some((r) => r.status === 'completed'));
   });
 
+  test('a failed queued turn does not restore a user message already accepted into history', async () => {
+    setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    installChatDom();
+    const chat = makeChat();
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    const { enqueueComposerMessage, flushPendingMessageQueue } = await import('../../src/chat/message-queue.ts');
+    enqueueComposerMessage(chat, 'accepted follow-up');
+    enqueueComposerMessage(chat, 'still waiting');
+    chat.composerDraft = 'unsent draft';
+    setRunTurnForTests(async () => { throw new Error('Provider interrupted'); });
+    await flushPendingMessageQueue(chat);
+    assert.equal(chat.history.filter(row => row.role === 'user' && row.content === 'accepted follow-up').length, 1);
+    assert.deepEqual(chat.pendingMessageQueue?.map(item => item.text), ['still waiting']);
+    assert.equal(chat.composerDraft, 'unsent draft');
+  });
+
   test('context overlay writes at most once per paint tick, not per token', async () => {
     const {
       resetContextOverlayWriteCountForTests,

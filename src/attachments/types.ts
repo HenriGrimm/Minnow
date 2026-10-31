@@ -13,6 +13,7 @@ export type AttachmentKind =
   | 'error'
   | 'workspace'
   | 'codeRef'
+  | 'chatRef'
   | 'elementRef'
   | 'designRef';
 
@@ -39,6 +40,8 @@ export interface Attachment {
   largeTextWarning?: boolean;
   /** Project-relative path for workspace reference chips (loaded on send). */
   workspacePath?: string;
+  /** Conversation referenced by a composer chip; sent as an ordinary chat deep link. */
+  chatId?: string;
   /** 1-based start line for `codeRef` selections. */
   lineStart?: number;
   /** 1-based end line for `codeRef` selections (inclusive). */

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "kind": "api",
+      "selection": { "providerId": "deepseek", "modelId": "deepseek-flash", "options": {} }
+    },
+    {
+      "kind": "cli",
+      "selection": { "providerId": "codex-cli", "modelId": "gpt-6-luna", "options": { "reasoningEffort": "low" } }
+    },
+    {
+      "kind": "pool",
+      "selection": { "providerId": "minnow-router", "modelId": "agent-smoke-pool", "options": {} },
+      "pool": {
+        "members": [
+          { "providerId": "deepseek", "modelId": "deepseek-flash" },
+          { "providerId": "onboarding-cloud-opencode-go", "modelId": "deepseek-v4.1-flash" }
+        ]
+      }
+    },
+    {
+      "kind": "local",
+      "selection": { "providerId": "llama-cpp-local", "modelId": "gguf:swift:Swift-Qwen3.8-27B-IQ4_XS.gguf", "options": {} }
+    }
+  ]
+}

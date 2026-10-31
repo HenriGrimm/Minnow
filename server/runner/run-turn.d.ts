@@ -84,6 +84,12 @@ export type TurnPhase = 'generating' | 'thinking' | 'tools';
 export interface TurnModel {
   providerId: string;
   id: string;
+  /** Validated support for persisted user image bytes. Unknown is text-only. */
+  vision?: boolean;
+  /** Captured per-execution options; live model validation happens at admission. */
+  options?: import('../chats/contracts').ModelOptions;
+  /** Do not substitute a role fallback for an explicitly named model. */
+  exactModel?: boolean;
   sampler?: { preset: Record<string, unknown>; maxTokens: number };
   thinking?: { mode: 'on' | 'off'; budgetTokens?: number | null };
 }
@@ -191,7 +197,7 @@ export interface RunTurnOptions {
   nudgeToolUse?: boolean;
   finalizeStructuredOutcome?: boolean;
   summarySchema?: string;
-  onRoundBoundary?: () => TranscriptMessage[] | null;
+  onRoundBoundary?: () => TranscriptMessage[] | { messages: TranscriptMessage[]; rowIds: Array<number | null> } | null;
   refreshRoundConfig?: () => Promise<{ systemPrompt: string; cliTurnContext?: string; tools: TurnToolDefinition[] } | null>;
   execute?: (
     name: string,
@@ -220,7 +226,7 @@ export function resolveTurnTools(
 export interface AskCapability {
   ask(
     question: unknown,
-    ctx: { signal: AbortSignal; chatId: string },
+    ctx: { signal: AbortSignal; chatId: string; toolCallId?: string },
   ): Promise<unknown>;
 }
 

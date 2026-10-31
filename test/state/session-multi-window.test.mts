@@ -485,6 +485,8 @@ describe('multi-window session writes', () => {
     assert.equal(mine.name, 'Unsaved conflicting edit', 'retain the conflict for copying');
     assert.equal(store.chatNames.get(MINE), 'Mine updated elsewhere');
     assert.equal(await persistSessionsBeforeDeliveryAck(), false, 'conflicted edits are not durably acknowledged');
+    assert.equal(await persistSessionsBeforeDeliveryAck(THEIRS), true, 'an unrelated conflicted chat cannot block delegation');
+    assert.equal(await persistSessionsBeforeDeliveryAck(MINE), false, 'the delegating chat must still save its own edits');
     await bootWindow(store);
     assert.equal(sessionState!.chats.find((chat) => chat.id === fresh.id)?.name, 'Recent chat');
     assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)?.name, 'Unrelated edit');

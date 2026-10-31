@@ -17,11 +17,12 @@ import { initBrainApi } from '../brain/routes.js';
 import { ensureProviderRegistry } from '../providers/store.js';
 import { snapshotSessionsDbIfDue } from '../config/sessions-snapshot.js';
 import { initPluginsApi } from '../tools/middleware.js';
-import { initWorkspaceRoot } from '../workspace/root.js';
+import { initWorkspaceRoot, getAppRoot } from '../workspace/root.js';
 import { recomputeAllNextRuns } from '../scheduler/store.js';
 import { applyPendingRestore } from '../backup/restore-apply.js';
 import { startBackupScheduleLoop } from '../backup/schedule.js';
 import { writeHostLock } from './host-lock.js';
+import { ensureChatPreparationArtifact } from './chat-preparation-artifact.js';
 
 /**
  * Log the outcome of a boot-time restore swap. Silent when nothing was pending.
@@ -52,6 +53,7 @@ export function reportPendingRestore(result) {
  */
 export async function bootstrapMinnowRuntime() {
   reportPendingRestore(applyPendingRestore());
+  await ensureChatPreparationArtifact({ appRoot: getAppRoot() });
   writeHostLock();
   await ensureMinnowLayoutInitialized();
   await ensureChatsWorkspace();

@@ -12,7 +12,6 @@ import './styles/sidebar.css';
 import './styles/code-chrome.css';
 import './styles/chat-search.css';
 import './styles/messages.css';
-import './styles/agent-cli-view.css';
 import './styles/context-notice.css';
 import './styles/compaction-divider.css';
 import './styles/message-actions.css';
@@ -50,6 +49,7 @@ import './styles/tool-approval.css';
 import './styles/question-cards.css';
 import './styles/transcript-view.css';
 import './styles/sub-agent-drawer.css';
+import './styles/agent-model-mark.css';
 import './styles/composer-pinned-skill.css';
 import './styles/composer-model-trigger.css';
 import './styles/view-mode-toggle.css';
@@ -121,7 +121,6 @@ import { isPairedDevice } from './api/session-token';
 import { initMinnowBrowserLinkRouting } from './ui/minnow-browser-links';
 import { initMarkdownLinkRouting } from './markdown/links';
 import { renderChatFromHistory, renderStatsForChat } from './ui/messages';
-import { initAgentCliView } from './ui/agent-cli-view';
 import { refreshHubLiveData } from './ui/hub';
 import {
   parkResumeCandidatesAtBoot,
@@ -454,7 +453,6 @@ export async function initApp(): Promise<void> {
   );
   await ensureBootAppsInitialized();
   if (hasComposerSurface) {
-    initAgentCliView();
     syncModelSelectForActiveChat();
     syncModelSelectPicker();
     syncComposerModelTriggers();
@@ -510,6 +508,10 @@ export async function initApp(): Promise<void> {
     }
   };
   startSessionLiveSync(renderSharedSessionChanges);
+  if (hasComposerSurface) {
+    const { startChatSurfaceWake } = await import('./ui/chat-surface-wake');
+    startChatSurfaceWake(() => renderSharedSessionChanges(true));
+  }
   if (hasChatSurface) {
     const { startSharedChatBridge } = await import('./chat/shared-chat-bridge');
     startSharedChatBridge(renderSharedSessionChanges);

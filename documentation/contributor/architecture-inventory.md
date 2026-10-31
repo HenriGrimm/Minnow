@@ -6,7 +6,7 @@ Run `npm run architecture:generate` after changing a registry; CI checks drift w
 
 | Inventory | Current registry |
 | --- | --- |
-| Built-in tools | 121 (0 app-gated) |
+| Built-in tools | 127 (0 app-gated) |
 | Released apps | 9: Code, Dashboard, Reef, Source Control, Models, Brain, Scheduler, Issues, Settings |
 | Hidden apps | 4: Research, Experts, Benchmarking, Compare |
 | Available modes | 6: General, Build, Plan, Orchestrate, Debug, Onboarding |

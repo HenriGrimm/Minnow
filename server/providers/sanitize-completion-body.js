@@ -3,6 +3,7 @@ import { LLAMA_CPP_LOCAL_ID, MLX_LM_LOCAL_ID } from '../../src/models/runtime-id
 import { providerSupportsChatTemplateKwargs } from './provider-host.js';
 import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../../src/lib/openai-responses-route.mjs';
 import { isDeepSeekV4ModelId } from '../runner/reasoning-effort.js';
+import { projectChatAttribution } from '../chats/attribution.js';
 
 /**
  * @param {string} modelId
@@ -127,6 +128,7 @@ function stripInternalApiMessageFields(body) {
     ...body,
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
+      raw = projectChatAttribution(raw);
       const allowed = WIRE_MESSAGE_FIELDS_BY_ROLE[raw.role];
       if (!allowed) return raw;
       const msg = {};

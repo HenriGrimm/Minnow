@@ -1,6 +1,7 @@
 import { extractInlineThinkingFromContent } from '../../api/inline-thinking';
 import { GUARD_CLOSE, isWrappedUntrusted, wrapUntrusted } from '../../lib/untrusted.mjs';
 import type { Attachment } from '../../attachments/types';
+import { chatLink } from '../../state/chat-relationships';
 import type { ApiMessage } from '../../types';
 
 const EXPAND_SYSTEM = `You rewrite a rough prompt into a clearer, more complete prompt.
@@ -72,6 +73,9 @@ function attachmentEntry(att: Attachment, budget: number): string | null {
   const name = escapeAttr(att.name || att.workspacePath || 'attachment');
 
   if (att.kind === 'error') return null;
+  if (att.kind === 'chatRef' && att.chatId) {
+    return `<chatReference name="${name}" href="${escapeAttr(chatLink(att.chatId))}" />`;
+  }
 
   if (att.kind === 'image') {
     return `<image name="${name}" />`;

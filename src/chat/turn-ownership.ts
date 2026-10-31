@@ -5,6 +5,7 @@ import { isPairedDevice } from '../api/session-token';
 import { getChatHostId } from './remote-chat-client';
 import { createTurnLease, ChatLeaseRequestError, type LeaseGrant } from './turn-lease';
 import { reportBackgroundError } from '../boot/report-background-error';
+import { findChatById } from '../state/sessions';
 
 const owners = new Map<string, string>();
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -26,6 +27,7 @@ export interface ChatTurnLease {
   check(): Promise<void>;
   release(): Promise<void>;
 }
+export function getChatTurnOwnerId(chatId: string): string | undefined { return owners.get(chatId) ?? rememberedOwner(chatId); }
 
 export function localChatTurnLease(): ChatTurnLease {
   return { signal: new AbortController().signal, async check() {}, async release() {} };
@@ -33,10 +35,14 @@ export function localChatTurnLease(): ChatTurnLease {
 
 async function request(action: string, chatId: string, ownerId: string, signal?: AbortSignal): Promise<LeaseGrant | null> {
   const startedAt = performance.now();
+  const chat = action === 'claim' ? findChatById(chatId) : undefined;
+  const options = chat?.reasoningEffort ? { reasoningEffort: chat.reasoningEffort }
+    : chat?.thinkingMode && chat.thinkingMode !== 'inherit' ? { thinkingMode: chat.thinkingMode } : undefined;
+  const modelSelection = chat?.providerId && chat.modelId ? { providerId: chat.providerId, modelId: chat.modelId, ...(options ? { options } : {}) } : undefined;
   const response = await fetch('/api/chat-turns', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId() }),
+    body: JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId(), ...(modelSelection ? { modelSelection } : {}) }),
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (response.status === 409) return null;

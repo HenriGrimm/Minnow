@@ -14,6 +14,9 @@ import { getNotifications, markNotificationRead, resolveActivityNotifications, s
 import { buildAgentActivitySnapshot, type AgentActivityContextFill } from '../state/agent-activity-registry';
 import { buildActivityFeed, getRunningAgentCount, type ActivityFeed, type ActivityItem } from '../state/activity-feed';
 import { sessionState } from '../state/sessions';
+import { sendManagedChatAction } from '../chat/managed-chat-client';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
+import { acknowledgeObservedManagedActivity } from '../notifications/acknowledge';
 import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { getViewWorkspacePath } from '../state/view-workspace';
 import { workspacePathsEqual } from '../lib/normalize-workspace-path';
@@ -34,6 +37,7 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let feed: ActivityFeed | null = null;
 let lifetime = 0;
+let disposeMountedPanel: (() => void) | undefined;
 const labels = new Map<string, string>();
 const context = new Map<string, AgentActivityContextFill>();
 
@@ -61,6 +65,7 @@ function snapshot(): ActivityFeed {
 }
 
 function canStop(item: ActivityItem): boolean {
+  if (item.live?.kind === 'agent_chat') return item.live.canStop === true && Boolean(item.live.executionId);
   return Boolean(item.live || item.status === 'question');
 }
 
@@ -154,7 +159,10 @@ async function activate(item: ActivityItem, childRunId?: string): Promise<void> 
   if (item.chatId) {
     const { launchCodeWithChat } = await import('../os/chat-launch');
     await launchCodeWithChat(item.chatId);
-    if (childRunId || item.live?.runId) {
+    if (item.requestId) {
+      const { focusManagedChatRequest } = await import('./managed-chat-requests');
+      await focusManagedChatRequest(item.chatId, item.requestId);
+    } else if (item.live?.kind !== 'agent_chat' && (childRunId || item.live?.runId)) {
       const { openSubAgentDrawer } = await import('./sub-agent-drawer');
       openSubAgentDrawer(childRunId || item.live!.runId!, item.chatId);
     }
@@ -164,7 +172,11 @@ async function activate(item: ActivityItem, childRunId?: string): Promise<void> 
   if (record) await openNotificationTarget(record);
 }
 
-function stopItem(item: ActivityItem): void {
+export async function stopAgentActivityItem(item: ActivityItem): Promise<void> {
+  if (item.live?.kind === 'agent_chat') {
+    if (canStop(item)) await sendManagedChatAction(item.chatId!, 'stop', { scope: 'tree', executionId: item.live.executionId });
+    return;
+  }
   if (item.background && item.chatId) abortChatTitleGeneration(item.chatId);
   else if (item.chatId) stopGeneration(item.chatId, 'user');
   for (const child of item.children) if (child.runId) cancelSubAgent(child.runId, 'user_cancel');
@@ -172,16 +184,32 @@ function stopItem(item: ActivityItem): void {
 }
 
 async function stop(item?: ActivityItem): Promise<void> {
-  if (item) { stopItem(item); refresh(); return; }
-  const accepted = await appConfirm('Stop all work in this workspace? Running chats, their sub-agents, and background title jobs will be cancelled.');
+  if (item) { await stopAgentActivityItem(item); refresh(); return; }
+  const accepted = await appConfirm('Stop active chats in this workspace? Each displayed conversation, its sub-agents and background title jobs will stop. Saved queued messages keep their place.');
   if (!accepted) return;
   const current = snapshot();
-  for (const target of [...current.running, ...current.background, ...current.attention].filter(canStop)) stopItem(target);
+  const seen = new Set<string>();
+  for (const target of [...current.running, ...current.background, ...current.attention].filter(canStop)) {
+    const key = target.live?.executionId ?? target.id;
+    if (seen.has(key)) continue;
+    seen.add(key); await stopAgentActivityItem(target);
+  }
+  refresh();
+}
+
+export async function acknowledgeAgentActivityItems(items: ActivityItem[]): Promise<void> {
+  for (const item of items) {
+    if (item.chatId && item.activityCursor) {
+      await acknowledgeObservedManagedActivity(item.chatId, item.activityCursor);
+    }
+    for (const record of item.notifications) markNotificationRead(record.id);
+  }
   refresh();
 }
 
 /** One workspace-scoped Activity control for live work, actionable alerts, and history. */
 export function initAgentActivityMenubar(button: HTMLButtonElement): () => void {
+  disposeMountedPanel?.();
   anchor = button;
   button.id = 'btnActivity';
   button.classList.add('activity-trigger');
@@ -197,8 +225,8 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
   document.body.append(panel);
   view = createActivityDropdown(panel, {
     open: (item, runId) => { void activate(item, runId).catch(reportError); },
-    seen: (items) => { for (const item of items) for (const record of item.notifications) markNotificationRead(record.id); },
-    dismiss: (item) => resolveActivityNotifications(item.notifications.map((record) => record.id)),
+    seen: (items) => { void acknowledgeAgentActivityItems(items).catch(reportError); },
+    dismiss: (item) => { void acknowledgeAgentActivityItems([item]).then(() => resolveActivityNotifications(item.notifications.map((record) => record.id))).catch(reportError); },
     stop: (item) => { void stop(item).catch(reportError); },
     mute: () => saveNotificationPref('muted', !loadNotificationPrefs().muted),
     settings: () => {
@@ -228,6 +256,7 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
     subscribeMainTurnActivity(scheduleRefresh), subscribeSubAgentRuns(scheduleRefresh),
     subscribeTitleJobActivity(scheduleRefresh), subscribeChatStreamEnd(scheduleRefresh),
     subscribeChatInputPending(scheduleRefresh), subscribeNotifications(scheduleRefresh),
+    subscribeManagedChatMetadata(scheduleRefresh),
     subscribeNotificationPrefs(refresh), subscribeWorkspace(() => { context.clear(); scheduleRefresh(); }),
   ];
   button.addEventListener('click', click);
@@ -236,7 +265,10 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
   document.addEventListener('visibilitychange', visible);
   window.addEventListener('resize', position);
   refresh();
-  return () => {
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
     lifetime++;
     closeAgentActivityPanel();
     subscriptions.forEach((unsubscribe) => unsubscribe());
@@ -250,7 +282,10 @@ export function initAgentActivityMenubar(button: HTMLButtonElement): () => void 
     view?.destroy(); panel?.remove();
     panel = null; anchor = null; view = null; feed = null;
     context.clear(); labels.clear(); unbind();
+    if (disposeMountedPanel === dispose) disposeMountedPanel = undefined;
   };
+  disposeMountedPanel = dispose;
+  return dispose;
 }
 
 function reportError(error: unknown): void {

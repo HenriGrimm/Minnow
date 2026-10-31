@@ -74,6 +74,7 @@ test('probes authenticate with the same-origin cookie, never a token header', as
   assert.equal(await start().ready, true);
   assert.equal(seen[0].credentials, 'same-origin');
   assert.equal(new Headers(seen[0].headers).has('X-Minnow-Token'), false);
+  assert.equal(new Headers(seen[0].headers).get('X-Minnow-Chat-Protocol'), '1');
   assert.deepEqual(sessions, [{ hostName: 'Studio Mac' }]);
 });
 

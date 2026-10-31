@@ -53,8 +53,8 @@ export function headlessApiUrl(path: string): string {
  * everyone's workspace with a global `PUT /api/workspace`.
  */
 function withMinnowHeaders(init: RequestInit | undefined, token: string): RequestInit | undefined {
-  if (!token && !headlessWorkspace) return init;
   const headers = new Headers(init?.headers);
+  headers.set('X-Minnow-Chat-Protocol', '1');
   if (token) headers.set('X-Minnow-Token', token);
   if (headlessWorkspace) headers.set('X-Minnow-Workspace', headlessWorkspace);
   return { ...init, headers };

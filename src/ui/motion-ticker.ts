@@ -1,11 +1,11 @@
-import { isRenderIdle } from '../boot/render-idle';
+import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 
 /** Set on `<html>` while stepping. Carries no CSS — it is a state flag for diagnostics. */
 const MOTION_ATTR = 'data-mn-motion';
 const MOTION_TICKED = 'ticked';
 
-/** How often parked animations advance — the frame rate the UI actually runs at during a local generation, and the dial for the whole trade. */
-const STEP_HZ = 20;
+/** Smooth local-generation feedback without asking the compositor for a frame every vsync. */
+const STEP_HZ = 30;
 const STEP_INTERVAL_MS = Math.round(1000 / STEP_HZ);
 
 /** Ceiling on a single advance. */
@@ -25,14 +25,8 @@ const NOOP = (): void => {};
 let leases = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 let lastStepAt = 0;
-let observer: MutationObserver | null = null;
+let unwatchIdle: (() => void) | undefined;
 const parked = new Set<SteppableAnimation>();
-/** Coalesce mutation-driven getAnimations into one rAF (MIN-584). */
-let discoveryRaf: number | null = null;
-/** Subtrees added since the last discovery frame — scoped so streaming never walks the whole document (MIN-793). */
-const pendingDiscovery = new Set<Element>();
-/** Above this many added subtrees one document-wide walk is cheaper than N scoped ones. */
-const MAX_SCOPED_TARGETS = 32;
 
 /** Only looping animations are worth parking; a finite one ends on its own. */
 function isInfinite(anim: SteppableAnimation): boolean {
@@ -105,62 +99,6 @@ function now(): number {
     : Date.now();
 }
 
-function mutationObserverCtor(): typeof MutationObserver | null {
-  if (typeof MutationObserver === 'function') return MutationObserver;
-  const w = typeof window !== 'undefined' ? window : undefined;
-  if (w && typeof w.MutationObserver === 'function') return w.MutationObserver;
-  return null;
-}
-
-/** A newly inserted element (thinking caret, tool spinner) may already be running at vsync. */
-function documentHost(): AnimationsHost {
-  return (
-    (document.documentElement as unknown as AnimationsHost) ??
-    (document as unknown as AnimationsHost)
-  );
-}
-
-/**
- * Walk only what was added. `documentElement.getAnimations({ subtree: true })` forces a style
- * update over the whole document, and during streaming that lands on nearly every frame.
- */
-function runDiscovery(): void {
-  if (pendingDiscovery.size === 0) return;
-  if (pendingDiscovery.size > MAX_SCOPED_TARGETS) {
-    pendingDiscovery.clear();
-    parkTarget(documentHost(), true);
-    return;
-  }
-  const targets = [...pendingDiscovery];
-  pendingDiscovery.clear();
-  for (const target of targets) {
-    if (!target.isConnected) continue;
-    parkTarget(target as unknown as AnimationsHost, true);
-  }
-}
-
-function onMutations(records: MutationRecord[]): void {
-  for (const rec of records) {
-    if (rec.type !== 'childList') continue;
-    for (const node of rec.addedNodes) {
-      if (node.nodeType !== 1) continue;
-      pendingDiscovery.add(node as Element);
-      if (pendingDiscovery.size > MAX_SCOPED_TARGETS) break;
-    }
-    if (pendingDiscovery.size > MAX_SCOPED_TARGETS) break;
-  }
-  if (pendingDiscovery.size === 0) return;
-  if (typeof requestAnimationFrame !== 'function') {
-    runDiscovery();
-    return;
-  }
-  if (discoveryRaf != null) return;
-  discoveryRaf = requestAnimationFrame(() => {
-    discoveryRaf = null;
-    runDiscovery();
-  });
-}
-
 /** Class-toggled loops on already-mounted chrome (sidebar dots) never appear as childList mutations. */
 function onAnimationStarted(ev: Event): void {
   const target = ev.target;
@@ -169,26 +107,17 @@ function onAnimationStarted(ev: Event): void {
 }
 
 function startDiscovery(): void {
-  const Ctor = mutationObserverCtor();
-  const root = document.documentElement;
-  if (Ctor && root) {
-    observer = new Ctor(onMutations);
-    observer.observe(root, { childList: true, subtree: true });
-  }
+  // animationstart covers inserted spinners and class changes after browser style resolution.
+  // Inspecting getAnimations on every Markdown mutation forced unrelated layout during streams.
   document.addEventListener('animationstart', onAnimationStarted, true);
+  unwatchIdle = subscribeRenderIdle(idle => {
+    if (!idle) parkRunningInfinite(currentAnimations());
+  });
 }
 
 function stopDiscovery(): void {
-  if (discoveryRaf != null && typeof cancelAnimationFrame === 'function') {
-    cancelAnimationFrame(discoveryRaf);
-  }
-  discoveryRaf = null;
-  pendingDiscovery.clear();
-  observer?.disconnect();
-  observer = null;
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('animationstart', onAnimationStarted, true);
-  }
+  unwatchIdle?.(); unwatchIdle = undefined;
+  if (typeof document !== 'undefined') document.removeEventListener('animationstart', onAnimationStarted, true);
 }
 
 function tick(): void {
@@ -226,7 +155,7 @@ export function isTickedMotionActive(): boolean {
   return document.documentElement?.getAttribute(MOTION_ATTR) === MOTION_TICKED;
 }
 
-/** Step looping animations at STEP_HZ (20 Hz) until the returned function is called. */
+/** Step looping animations at STEP_HZ (30 Hz) until the returned function is called. */
 export function acquireTickedMotion(): () => void {
   if (typeof document === 'undefined') return NOOP;
   if (

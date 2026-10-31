@@ -546,7 +546,7 @@ async function showDetail(id: string, stamp: number) {
   manageActions.append(button('Rename', async () => { manage.open = false; const name = await appPrompt('App name', app.name); if (name?.trim()) { await reefRequest(`apps/${id}`, 'PATCH', { name }); await refresh(); } }),
     button('Delete app', async () => { manage.open = false; if (await appConfirm(`Delete ${app.name}, its local repository, and app data?`, { danger: true, confirmLabel: 'Delete app' })) { await reefRequest(`apps/${id}`, 'DELETE'); navigate(); } }));
   manage.append(manageActions);
-  manage.addEventListener('toggle', () => { previewView.setVisible(view === 'preview' && !manage.open && exportPanel.hidden); });
+  manage.addEventListener('toggle', () => { previewView.setVisible(view === 'preview' && !manage.open && Boolean(exportPanel.hidden)); });
   actions.append(runButton, exportButton, button('Open in Code', () => launchApp('code', { workspacePath: app.workspacePath })), manage);
   heading.append(actions); body.append(heading, exportPanel, content); root.append(body);
   chat = mountReefChat(aside, async text => { await reefRequest(`apps/${id}/chat`, 'POST', { prompt: text }); await refresh(); });

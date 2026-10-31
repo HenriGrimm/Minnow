@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "inference": true,
+  "recordedAt": "2026-10-30T16:00:35.378Z",
+  "authorization": {
+    "status": "explicit_human_authorization_received",
+    "instruction": "Authorize these live tests",
+    "destinations": [
+      "api.deepseek.com",
+      "opencode.ai (eligible pool member)",
+      "configured Codex CLI account"
+    ]
+  },
+  "bounds": {
+    "configuredCases": 3,
+    "maxMinnowTurnsPerCase": 2,
+    "maxRequestedOutputTokensPerTurn": 1024,
+    "runtimeDeadlineMs": 60000,
+    "workerDeadlineMs": 75000,
+    "workspace": "scratch_only",
+    "projectFilesIncluded": false,
+    "historyIncluded": false,
+    "attachmentsIncluded": false,
+    "memoryIncluded": false,
+    "providerCosts": "unknown",
+    "cliInternalUsage": "provider_controlled"
+  },
+  "poolFallbackExercised": false,
+  "opencodeInferenceVerified": false,
+  "paths": [
+    {
+      "kind": "api",
+      "status": "PASS",
+      "code": "production_tool_round",
+      "selection": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash",
+        "options": {}
+      },
+      "capturedSelection": {
+        "modelId": "deepseek-flash",
+        "options": {},
+        "providerId": "deepseek"
+      },
+      "resolvedSelection": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "durationMs": 7221
+    },
+    {
+      "kind": "cli",
+      "status": "PASS",
+      "code": "production_tool_round",
+      "selection": {
+        "providerId": "codex-cli",
+        "modelId": "gpt-6-luna",
+        "options": {
+          "reasoningEffort": "low"
+        }
+      },
+      "capturedSelection": {
+        "modelId": "gpt-6-luna",
+        "options": {
+          "reasoningEffort": "low"
+        },
+        "providerId": "codex-cli"
+      },
+      "resolvedSelection": {
+        "providerId": "codex-cli",
+        "modelId": "gpt-6-luna"
+      },
+      "durationMs": 15458
+    },
+    {
+      "kind": "pool",
+      "status": "PASS",
+      "code": "production_tool_round",
+      "selection": {
+        "providerId": "minnow-router",
+        "modelId": "agent-smoke-pool",
+        "options": {}
+      },
+      "capturedSelection": {
+        "modelId": "agent-smoke-pool",
+        "options": {},
+        "providerId": "minnow-router"
+      },
+      "resolvedSelection": {
+        "providerId": "deepseek",
+        "modelId": "deepseek-flash"
+      },
+      "pool": {
+        "id": "agent-smoke-pool",
+        "revision": 1,
+        "eligibleEntryIds": [
+          "entry-0",
+          "entry-1"
+        ]
+      },
+      "durationMs": 7518
+    },
+    {
+      "kind": "local",
+      "status": "SKIP",
+      "code": "provider_unavailable",
+      "selection": {
+        "providerId": "llama-cpp-local",
+        "modelId": "gguf:swift:Swift-Qwen3.8-27B-IQ4_XS.gguf",
+        "options": {}
+      },
+      "phase": "stage",
+      "durationMs": 44
+    }
+  ]
+}

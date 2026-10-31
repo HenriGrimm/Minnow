@@ -1,0 +1,3982 @@
+{
+  "date": "2026-10-30",
+  "timezone": "America/Los_Angeles",
+  "head": "2cd6e14e",
+  "hardware": {
+    "cpu": "Apple M5 Max",
+    "logicalCpus": 18,
+    "memoryGiB": 128
+  },
+  "environment": {
+    "node": "24.18.0",
+    "displayFrameMedianMs": 8.3,
+    "unrelatedCpuWorker": {
+      "cpuCores": 1,
+      "rssApproxGiB": 4.8,
+      "ageDays": 6,
+      "leftUnchanged": true
+    }
+  },
+  "method": {
+    "renderer": "Electron via CDP CPU sampling, Performance.getMetrics, longtask observer and requestAnimationFrame intervals",
+    "development": "Actual Minnow Electron main and preload with Vite and isolated MINNOW_HOME",
+    "production": "Built dist via shipped server-host HTTP stack in a separate Node process; Electron BrowserWindow with workspace context and without native tray bridge",
+    "frameCaveat": "rAF intervals measure scheduling gaps, not a compositor dropped-frame counter. CDP setup can contribute an isolated long frame.",
+    "slowdown": "4x CDP CPU throttle is an artificial sensitivity test, not measured local-model GPU contention.",
+    "historyFirstPaintCaveat": "Production history 1x firstPaintMs can include the loading placeholder. Use its final rows and frame distribution; 4x histories were already loaded.",
+    "scope": "No product code changes; no original conversation bodies or credentials in this file."
+  },
+  "profileScale": {
+    "chats": 1053,
+    "messages": 56038,
+    "maxChatMessages": 803,
+    "replaySamples": [
+      {
+        "messages": 536,
+        "payloadBytes": 7974037
+      },
+      {
+        "messages": 284,
+        "payloadBytes": 7620963
+      },
+      {
+        "messages": 178,
+        "payloadBytes": 6660760
+      }
+    ],
+    "allReplayedToolCallsHadResults": true
+  },
+  "bundleKb": {
+    "entryJs": 364.8,
+    "entryCss": 790.3,
+    "largestLazyJs": 3381.8,
+    "eagerJs": 4558.3,
+    "totalAssets": 11977.9,
+    "eagerChunks": 100,
+    "passed": true
+  },
+  "tests": {
+    "bootAndMotionPassed": 13,
+    "markdownPassed": 7,
+    "sessionsPerfPassed": 2,
+    "coverageFiles": 1865,
+    "fullSuiteRun": false
+  },
+  "cases": {
+    "idle-10s": {
+      "result": true,
+      "stats": {
+        "frames": 1203,
+        "frameP50": 8.300000000000182,
+        "frameP95": 9,
+        "frameP99": 9.299999999999272,
+        "frameMax": 25,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 2609,
+        "heap": 114065454
+      },
+      "metrics": {
+        "Timestamp": 10.047192000085488,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": 0,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 0,
+        "Resources": 13,
+        "ContextLifecycleStateObservers": 0,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 2,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0.00012000000000000899,
+        "DevToolsCommandDuration": 0.03615,
+        "ScriptDuration": 0.010695000000000003,
+        "V8CompileDuration": 0.000018000000000000004,
+        "TaskDuration": 0.149744,
+        "TaskOtherDuration": 0.10276099999999999,
+        "ThreadTime": 0.254277,
+        "ProcessTime": 0.42116299999999995,
+        "JSHeapUsedSize": 670164,
+        "JSHeapTotalSize": 0,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "app-switch-cold": {
+      "result": [
+        {
+          "app": "home",
+          "ms": 60.89999997615814
+        },
+        {
+          "app": "models",
+          "ms": 88.69999992847443
+        },
+        {
+          "app": "brain",
+          "ms": 116.70000004768372
+        },
+        {
+          "app": "scheduler",
+          "ms": 87
+        },
+        {
+          "app": "issues",
+          "ms": 41.700000047683716
+        },
+        {
+          "app": "settings",
+          "ms": 51
+        },
+        {
+          "app": "code",
+          "ms": 268.6999999284744
+        }
+      ],
+      "stats": {
+        "frames": 90,
+        "frameP50": 8.300000000001091,
+        "frameP95": 9.100000000000364,
+        "frameP99": 24.899999999999636,
+        "frameMax": 24.899999999999636,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 3018,
+        "heap": 118709409
+      },
+      "metrics": {
+        "Timestamp": 0.7625039999838918,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": 769,
+        "LayoutObjects": 2328,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1655,
+        "Resources": 142,
+        "ContextLifecycleStateObservers": 111,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 59,
+        "RecalcStyleCount": 172,
+        "LayoutDuration": 0.009122000000000002,
+        "RecalcStyleDuration": 0.07639800000000001,
+        "DevToolsCommandDuration": 0.031785999999999995,
+        "ScriptDuration": 0.009044999999999997,
+        "V8CompileDuration": 0.000018000000000000004,
+        "TaskDuration": 0.679006,
+        "TaskOtherDuration": 0.552637,
+        "ThreadTime": 0.7370430000000001,
+        "ProcessTime": 0.8288220000000006,
+        "JSHeapUsedSize": 2164596,
+        "JSHeapTotalSize": 0,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "history-switch-20": {
+      "result": [
+        12.700000047683716,
+        16.100000023841858,
+        14,
+        16.09999990463257,
+        19.899999976158142,
+        19.600000023841858
+      ],
+      "stats": {
+        "frames": 521,
+        "frameP50": 8.299999999999272,
+        "frameP95": 9,
+        "frameP99": 9.30000000000291,
+        "frameMax": 25,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 3433,
+        "heap": 121034009
+      },
+      "metrics": {
+        "Timestamp": 4.357224000035785,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 20,
+        "Frames": 0,
+        "JSEventListeners": 78,
+        "LayoutObjects": 1430,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 2503,
+        "Resources": 18,
+        "ContextLifecycleStateObservers": 24,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 20,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 32,
+        "RecalcStyleCount": 199,
+        "LayoutDuration": 0.010009999999999991,
+        "RecalcStyleDuration": 0.075486,
+        "DevToolsCommandDuration": 0.04252299999999999,
+        "ScriptDuration": 0.023647,
+        "V8CompileDuration": 0.000021000000000000077,
+        "TaskDuration": 0.5932369999999993,
+        "TaskOtherDuration": 0.44154999999999944,
+        "ThreadTime": 0.6493469999999997,
+        "ProcessTime": 0.8163730000000005,
+        "JSHeapUsedSize": -1241764,
+        "JSHeapTotalSize": -8388608,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "history-switch-200": {
+      "result": [
+        16.100000023841858,
+        25.600000023841858,
+        26.399999976158142,
+        18.59999990463257,
+        23,
+        25.200000047683716
+      ],
+      "stats": {
+        "frames": 522,
+        "frameP50": 8.30000000000291,
+        "frameP95": 9.099999999998545,
+        "frameP99": 9.30000000000291,
+        "frameMax": 16.69999999999709,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 5953,
+        "heap": 118532445
+      },
+      "metrics": {
+        "Timestamp": 4.386367999948561,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 145,
+        "Frames": 0,
+        "JSEventListeners": 673,
+        "LayoutObjects": 9755,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 15026,
+        "Resources": -35,
+        "ContextLifecycleStateObservers": 190,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 145,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 105,
+        "RecalcStyleCount": 310,
+        "LayoutDuration": 0.06121299999999999,
+        "RecalcStyleDuration": 0.28305400000000003,
+        "DevToolsCommandDuration": 0.03686400000000001,
+        "ScriptDuration": 0.16137500000000002,
+        "V8CompileDuration": 0.00006900000000000005,
+        "TaskDuration": 1.1369410000000002,
+        "TaskOtherDuration": 0.594366,
+        "ThreadTime": 1.1905070000000002,
+        "ProcessTime": 1.458964,
+        "JSHeapUsedSize": -2624732,
+        "JSHeapTotalSize": 2359296,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "history-switch-1000": {
+      "result": [
+        17.100000023841858,
+        24.90000009536743,
+        24.899999976158142,
+        24.700000047683716,
+        23.899999976158142,
+        24.200000047683716
+      ],
+      "stats": {
+        "frames": 518,
+        "frameP50": 8.30000000000291,
+        "frameP95": 9.10000000000582,
+        "frameP99": 24.099999999998545,
+        "frameMax": 33.400000000001455,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 14712,
+        "heap": 121718774
+      },
+      "metrics": {
+        "Timestamp": 4.434767999919131,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 55,
+        "Frames": 0,
+        "JSEventListeners": 689,
+        "LayoutObjects": 14001,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 16348,
+        "Resources": -8,
+        "ContextLifecycleStateObservers": 65,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 55,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 345,
+        "RecalcStyleCount": 787,
+        "LayoutDuration": 0.28463000000000005,
+        "RecalcStyleDuration": 1.5280300000000002,
+        "DevToolsCommandDuration": 0.039369000000000015,
+        "ScriptDuration": 0.784448,
+        "V8CompileDuration": 0.000067,
+        "TaskDuration": 4.276704,
+        "TaskOtherDuration": 1.6401599999999998,
+        "ThreadTime": 4.308038000000001,
+        "ProcessTime": 4.817527000000002,
+        "JSHeapUsedSize": 2264068,
+        "JSHeapTotalSize": 10485760,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "sidebar-50": {
+      "result": [
+        0.3999999761581421,
+        0.40000009536743164,
+        0.30000007152557373,
+        0.20000004768371582,
+        0.3999999761581421,
+        0.20000004768371582,
+        0.20000004768371582,
+        0.2999999523162842,
+        0.20000004768371582,
+        0.2999999523162842,
+        0.2999999523162842,
+        0.20000004768371582
+      ],
+      "stats": {
+        "frames": 28,
+        "frameP50": 8.400000000001455,
+        "frameP95": 25,
+        "frameP99": 58.299999999995634,
+        "frameMax": 58.299999999995634,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 17153,
+        "heap": 125319112
+      },
+      "metrics": {
+        "Timestamp": 0.3544339999789372,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 72,
+        "Frames": 0,
+        "JSEventListeners": 327,
+        "LayoutObjects": 5050,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 7869,
+        "Resources": 1,
+        "ContextLifecycleStateObservers": 94,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 72,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 22,
+        "RecalcStyleCount": 25,
+        "LayoutDuration": 0.013695999999999986,
+        "RecalcStyleDuration": 0.1589299999999998,
+        "DevToolsCommandDuration": 0.046373,
+        "ScriptDuration": 0.04019400000000006,
+        "V8CompileDuration": 0.00007400000000000006,
+        "TaskDuration": 0.3507859999999994,
+        "TaskOtherDuration": 0.0915189999999999,
+        "ThreadTime": 0.350676,
+        "ProcessTime": 0.36567499999999953,
+        "JSHeapUsedSize": 1379652,
+        "JSHeapTotalSize": 0,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "sidebar-200": {
+      "result": [
+        0.40000009536743164,
+        0.2999999523162842,
+        0.3999999761581421,
+        0.5,
+        0.3999999761581421,
+        0.3999999761581421,
+        0.3999999761581421,
+        0.40000009536743164,
+        0.3999999761581421,
+        0.3999999761581421,
+        0.3999999761581421,
+        0.3999999761581421
+      ],
+      "stats": {
+        "frames": 29,
+        "frameP50": 8.30000000000291,
+        "frameP95": 9.200000000004366,
+        "frameP99": 24.89999999999418,
+        "frameMax": 24.89999999999418,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 17153,
+        "heap": 125157166
+      },
+      "metrics": {
+        "Timestamp": 0.2578180000418797,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": 312,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 288,
+        "Resources": 0,
+        "ContextLifecycleStateObservers": 0,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 13,
+        "RecalcStyleCount": 13,
+        "LayoutDuration": 0.0017079999999999873,
+        "RecalcStyleDuration": 0.09699100000000005,
+        "DevToolsCommandDuration": 0.040715,
+        "ScriptDuration": 0.0010559999999999459,
+        "V8CompileDuration": 0.000016000000000000064,
+        "TaskDuration": 0.1640599999999992,
+        "TaskOtherDuration": 0.023573999999999984,
+        "ThreadTime": 0.16458999999999868,
+        "ProcessTime": 0.17174200000000184,
+        "JSHeapUsedSize": 5803904,
+        "JSHeapTotalSize": 0,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "sidebar-500": {
+      "result": [
+        0.7000000476837158,
+        0.7000000476837158,
+        0.7000000476837158,
+        0.6999999284744263,
+        0.8000000715255737,
+        0.7000000476837158,
+        0.6999999284744263,
+        0.6999999284744263,
+        0.6000000238418579,
+        0.6000000238418579,
+        0.5,
+        0.7000000476837158
+      ],
+      "stats": {
+        "frames": 27,
+        "frameP50": 8.30000000000291,
+        "frameP95": 8.89999999999418,
+        "frameP99": 33.400000000001455,
+        "frameMax": 33.400000000001455,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 17153,
+        "heap": 119470620
+      },
+      "metrics": {
+        "Timestamp": 0.24920000007841736,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": 288,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 288,
+        "Resources": 0,
+        "ContextLifecycleStateObservers": 0,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 12,
+        "RecalcStyleCount": 12,
+        "LayoutDuration": 0.0015759999999999663,
+        "RecalcStyleDuration": 0.08937399999999984,
+        "DevToolsCommandDuration": 0.041852,
+        "ScriptDuration": 0.0010889999999998956,
+        "V8CompileDuration": 0.000019000000000000028,
+        "TaskDuration": 0.15974299999999886,
+        "TaskOtherDuration": 0.02583299999999955,
+        "ThreadTime": 0.16020599999999874,
+        "ProcessTime": 0.1683880000000002,
+        "JSHeapUsedSize": -47976,
+        "JSHeapTotalSize": 0,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "real-history-0": {
+      "result": {
+        "firstPaintMs": 26.5,
+        "rows": 390,
+        "history": 536,
+        "settled": true
+      },
+      "stats": {
+        "frames": 945,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.10000000000582,
+        "frameP99": 16.29999999998836,
+        "frameMax": 58.80000000001746,
+        "framesOver33": 4,
+        "longTasks": 1,
+        "longTaskMs": 62,
+        "longTaskMax": 62,
+        "nodes": 27184,
+        "heap": 169860398
+      },
+      "metrics": {
+        "Timestamp": 8.103860000032,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 1,
+        "Frames": 0,
+        "JSEventListeners": 592,
+        "LayoutObjects": 1308,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 39609,
+        "Resources": 23,
+        "ContextLifecycleStateObservers": 887,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 1,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 1,
+        "LayoutCount": 111,
+        "RecalcStyleCount": 141,
+        "LayoutDuration": 0.12251400000000001,
+        "RecalcStyleDuration": 0.3751490000000004,
+        "DevToolsCommandDuration": 0.06290399999999996,
+        "ScriptDuration": 0.20681200000000022,
+        "V8CompileDuration": 0.00008199999999999874,
+        "TaskDuration": 1.041047000000006,
+        "TaskOtherDuration": 0.27358600000000166,
+        "ThreadTime": 1.1326469999999986,
+        "ProcessTime": 1.4513109999999898,
+        "JSHeapUsedSize": 2968624,
+        "JSHeapTotalSize": 2801664,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "real-history-1": {
+      "result": {
+        "firstPaintMs": 22.299999952316284,
+        "rows": 139,
+        "history": 284,
+        "settled": true
+      },
+      "stats": {
+        "frames": 966,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.10000000000582,
+        "frameP99": 9.300000000017462,
+        "frameMax": 41.69999999998254,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 9125,
+        "heap": 196858644
+      },
+      "metrics": {
+        "Timestamp": 8.09408299997449,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 9,
+        "Frames": 0,
+        "JSEventListeners": 552,
+        "LayoutObjects": 6211,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 13816,
+        "Resources": 26,
+        "ContextLifecycleStateObservers": 659,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 9,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 41,
+        "RecalcStyleCount": 88,
+        "LayoutDuration": 0.024089999999999945,
+        "RecalcStyleDuration": 0.11532500000000034,
+        "DevToolsCommandDuration": 0.058613000000000026,
+        "ScriptDuration": 0.07189800000000002,
+        "V8CompileDuration": 0.00006899999999999962,
+        "TaskDuration": 0.46134899999999845,
+        "TaskOtherDuration": 0.19135400000000047,
+        "ThreadTime": 0.5589250000000021,
+        "ProcessTime": 0.7472209999999961,
+        "JSHeapUsedSize": 26694392,
+        "JSHeapTotalSize": 15253504,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "real-history-2": {
+      "result": {
+        "firstPaintMs": 18.399999976158142,
+        "rows": 145,
+        "history": 178,
+        "settled": true
+      },
+      "stats": {
+        "frames": 966,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.10000000000582,
+        "frameP99": 9.299999999988358,
+        "frameMax": 41.69999999998254,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 10259,
+        "heap": 166459310
+      },
+      "metrics": {
+        "Timestamp": 8.086394999991171,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -10,
+        "Frames": 0,
+        "JSEventListeners": -926,
+        "LayoutObjects": -10960,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -44619,
+        "Resources": -37,
+        "ContextLifecycleStateObservers": -1254,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -10,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 27,
+        "RecalcStyleCount": 67,
+        "LayoutDuration": 0.021181000000000116,
+        "RecalcStyleDuration": 0.07477999999999874,
+        "DevToolsCommandDuration": 0.05868099999999998,
+        "ScriptDuration": 0.058259999999999756,
+        "V8CompileDuration": 0.00007400000000000115,
+        "TaskDuration": 0.44945600000000496,
+        "TaskOtherDuration": 0.23648000000000025,
+        "ThreadTime": 0.5465579999999974,
+        "ProcessTime": 0.8823369999999926,
+        "JSHeapUsedSize": -30488408,
+        "JSHeapTotalSize": -83361792,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "real-history-app-switch": {
+      "result": [
+        201.89999997615814,
+        184,
+        189.29999995231628,
+        184.89999997615814,
+        188.69999992847443
+      ],
+      "stats": {
+        "frames": 681,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.199999999982538,
+        "frameP99": 15.699999999982538,
+        "frameMax": 41.69999999998254,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 10263,
+        "heap": 168496278
+      },
+      "metrics": {
+        "Timestamp": 5.782058999990113,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 10,
+        "Frames": 0,
+        "JSEventListeners": 200,
+        "LayoutObjects": 2187,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1838,
+        "Resources": -15,
+        "ContextLifecycleStateObservers": 26,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 10,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 187,
+        "RecalcStyleCount": 487,
+        "LayoutDuration": 0.12115600000000004,
+        "RecalcStyleDuration": 0.4729790000000005,
+        "DevToolsCommandDuration": 0.05318999999999996,
+        "ScriptDuration": 0.13466099999999948,
+        "V8CompileDuration": 0.00008100000000000121,
+        "TaskDuration": 2.1429940000000016,
+        "TaskOtherDuration": 1.3609270000000002,
+        "ThreadTime": 2.3028720000000007,
+        "ProcessTime": 2.7465370000000036,
+        "JSHeapUsedSize": 1930156,
+        "JSHeapTotalSize": 7602176,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "real-history-4x": {
+      "result": [
+        92.69999992847443,
+        98.20000004768372,
+        77.60000002384186
+      ],
+      "stats": {
+        "frames": 1029,
+        "frameP50": 8.39999999999418,
+        "frameP95": 33.29999999998836,
+        "frameP99": 76.39999999999418,
+        "frameMax": 208.80000000001746,
+        "framesOver33": 48,
+        "longTasks": 13,
+        "longTaskMs": 1055,
+        "longTaskMax": 159,
+        "nodes": 10263,
+        "heap": 169959648
+      },
+      "metrics": {
+        "Timestamp": 12.499167999951169,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 14,
+        "Frames": 0,
+        "JSEventListeners": 668,
+        "LayoutObjects": 7068,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 13573,
+        "Resources": 3,
+        "ContextLifecycleStateObservers": 688,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 14,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 195,
+        "RecalcStyleCount": 295,
+        "LayoutDuration": 0.688852,
+        "RecalcStyleDuration": 2.5513829999999995,
+        "DevToolsCommandDuration": 0.21160199999999996,
+        "ScriptDuration": 0.8226919999999991,
+        "V8CompileDuration": 0.000337999999999998,
+        "TaskDuration": 6.00788,
+        "TaskOtherDuration": 1.7330129999999997,
+        "ThreadTime": 10.967821999999998,
+        "ProcessTime": 11.540825999999996,
+        "JSHeapUsedSize": 919164,
+        "JSHeapTotalSize": 786432,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "warm-app-switch-4x": {
+      "result": [
+        {
+          "app": "settings",
+          "ms": 197.69999992847443
+        },
+        {
+          "app": "models",
+          "ms": 504.60000002384186
+        },
+        {
+          "app": "code",
+          "ms": 894.3000000715256
+        },
+        {
+          "app": "settings",
+          "ms": 192.39999997615814
+        },
+        {
+          "app": "models",
+          "ms": 486.6999999284744
+        },
+        {
+          "app": "code",
+          "ms": 1059.3999999761581
+        },
+        {
+          "app": "settings",
+          "ms": 197.10000002384186
+        },
+        {
+          "app": "models",
+          "ms": 498.40000009536743
+        },
+        {
+          "app": "code",
+          "ms": 995.5999999046326
+        }
+      ],
+      "stats": {
+        "frames": 436,
+        "frameP50": 9.89999999999418,
+        "frameP95": 51.5,
+        "frameP99": 84.69999999998254,
+        "frameMax": 181.79999999998836,
+        "framesOver33": 67,
+        "longTasks": 6,
+        "longTaskMs": 394,
+        "longTaskMax": 71,
+        "nodes": 7820,
+        "heap": 168587841
+      },
+      "metrics": {
+        "Timestamp": 8.214905999950133,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -19,
+        "Frames": 0,
+        "JSEventListeners": -627,
+        "LayoutObjects": -3249,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -16708,
+        "Resources": -23,
+        "ContextLifecycleStateObservers": -833,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -19,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 4,
+        "LayoutCount": 118,
+        "RecalcStyleCount": 335,
+        "LayoutDuration": 0.2617889999999998,
+        "RecalcStyleDuration": 1.2709770000000002,
+        "DevToolsCommandDuration": 0.219391,
+        "ScriptDuration": 0.34012899999999924,
+        "V8CompileDuration": 0.0003109999999999988,
+        "TaskDuration": 7.648791999999993,
+        "TaskOtherDuration": 5.556195000000002,
+        "ThreadTime": 8.199828000000004,
+        "ProcessTime": 8.62003399999999,
+        "JSHeapUsedSize": -1412156,
+        "JSHeapTotalSize": 262144,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "deterministic-1-normal": {
+      "result": {
+        "before": 2115,
+        "after": 17246,
+        "runs": [
+          {
+            "id": "0d0da604-3237-43fa-944f-6641e92e4225",
+            "start": 300987.39999997616,
+            "done": false
+          }
+        ],
+        "streaming": [
+          "0d0da604-3237-43fa-944f-6641e92e4225"
+        ]
+      },
+      "stats": {
+        "frames": 1204,
+        "frameP50": 8.299999999988358,
+        "frameP95": 9.899999999965075,
+        "frameP99": 10.200000000011642,
+        "frameMax": 41.699999999953434,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4324,
+        "heap": 173339998
+      },
+      "metrics": {
+        "Timestamp": 10.068067000014707,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 34,
+        "Frames": 0,
+        "JSEventListeners": 88,
+        "LayoutObjects": 2375,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 3284,
+        "Resources": 146,
+        "ContextLifecycleStateObservers": 52,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 34,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 75,
+        "LayoutCount": 186,
+        "RecalcStyleCount": 1439,
+        "LayoutDuration": 0.04586400000000035,
+        "RecalcStyleDuration": 0.7850320000000011,
+        "DevToolsCommandDuration": 0.049368999999999996,
+        "ScriptDuration": 0.513897,
+        "V8CompileDuration": 0.00006799999999999862,
+        "TaskDuration": 1.9504839999999959,
+        "TaskOtherDuration": 0.5562539999999956,
+        "ThreadTime": 2.0495889999999974,
+        "ProcessTime": 2.6460580000000107,
+        "JSHeapUsedSize": 449140,
+        "JSHeapTotalSize": 2670592,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "deterministic-4-normal": {
+      "result": {
+        "before": 2115,
+        "after": 17246,
+        "runs": [
+          {
+            "id": "071fb8f2-c0a9-4876-a722-bbe3b2dfb332",
+            "start": 320515.5,
+            "done": false
+          },
+          {
+            "id": "7ada5153-036f-46f5-a442-49e597af6728",
+            "start": 320630.7999999523,
+            "done": false
+          },
+          {
+            "id": "3395d057-841f-435c-ae30-bb626a566b73",
+            "start": 320743.59999990463,
+            "done": false
+          },
+          {
+            "id": "51825cf4-4afb-4d6a-952e-ed53c088eb95",
+            "start": 320857.39999997616,
+            "done": false
+          }
+        ],
+        "streaming": [
+          "071fb8f2-c0a9-4876-a722-bbe3b2dfb332",
+          "7ada5153-036f-46f5-a442-49e597af6728",
+          "3395d057-841f-435c-ae30-bb626a566b73",
+          "51825cf4-4afb-4d6a-952e-ed53c088eb95"
+        ]
+      },
+      "stats": {
+        "frames": 1205,
+        "frameP50": 8.299999999988358,
+        "frameP95": 10.100000000034925,
+        "frameP99": 10.399999999965075,
+        "frameMax": 41.70000000001164,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4367,
+        "heap": 201857503
+      },
+      "metrics": {
+        "Timestamp": 10.07161400001496,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 47,
+        "Frames": 0,
+        "JSEventListeners": 108,
+        "LayoutObjects": 2385,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 3482,
+        "Resources": 560,
+        "ContextLifecycleStateObservers": 69,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 47,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 381,
+        "LayoutCount": 188,
+        "RecalcStyleCount": 1862,
+        "LayoutDuration": 0.037109999999999754,
+        "RecalcStyleDuration": 0.6745480000000015,
+        "DevToolsCommandDuration": 0.051881000000000066,
+        "ScriptDuration": 0.6483679999999996,
+        "V8CompileDuration": 0.000018999999999998185,
+        "TaskDuration": 2.066096999999999,
+        "TaskOtherDuration": 0.6541709999999981,
+        "ThreadTime": 2.1639320000000026,
+        "ProcessTime": 2.9959170000000057,
+        "JSHeapUsedSize": 14679876,
+        "JSHeapTotalSize": 3981312,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "deterministic-4-fast": {
+      "result": {
+        "before": 25159,
+        "after": 150063,
+        "runs": [
+          {
+            "id": "9f09b816-ec84-4cb1-84d3-8bea6e432be9",
+            "start": 341413.89999997616,
+            "done": false
+          },
+          {
+            "id": "8dd2a255-e67c-4b43-bf55-3273ef3b1700",
+            "start": 341525.89999997616,
+            "done": false
+          },
+          {
+            "id": "06a4d1e0-aa53-4f29-b936-1d7864cd44d2",
+            "start": 341639.39999997616,
+            "done": false
+          },
+          {
+            "id": "8946f7fa-e61a-445a-a820-68b241b0540b",
+            "start": 341758,
+            "done": false
+          }
+        ],
+        "streaming": [
+          "9f09b816-ec84-4cb1-84d3-8bea6e432be9",
+          "8dd2a255-e67c-4b43-bf55-3273ef3b1700",
+          "06a4d1e0-aa53-4f29-b936-1d7864cd44d2",
+          "8946f7fa-e61a-445a-a820-68b241b0540b"
+        ]
+      },
+      "stats": {
+        "frames": 1203,
+        "frameP50": 8.299999999988358,
+        "frameP95": 10,
+        "frameP99": 10.299999999988358,
+        "frameMax": 41.29999999998836,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 12382,
+        "heap": 234930320
+      },
+      "metrics": {
+        "Timestamp": 10.075355000095442,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -492,
+        "Frames": 0,
+        "JSEventListeners": -70,
+        "LayoutObjects": 19458,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 14935,
+        "Resources": 163,
+        "ContextLifecycleStateObservers": -506,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -492,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 818,
+        "LayoutCount": 138,
+        "RecalcStyleCount": 1711,
+        "LayoutDuration": 0.06069099999999983,
+        "RecalcStyleDuration": 0.7047959999999982,
+        "DevToolsCommandDuration": 0.05763000000000007,
+        "ScriptDuration": 0.7753019999999999,
+        "V8CompileDuration": 0.000015000000000001124,
+        "TaskDuration": 2.2086129999999997,
+        "TaskOtherDuration": 0.6101790000000022,
+        "ThreadTime": 2.280057999999997,
+        "ProcessTime": 2.890498000000008,
+        "JSHeapUsedSize": 32157532,
+        "JSHeapTotalSize": 32292864,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "deterministic-4-fast-hidden": {
+      "result": {
+        "before": 0,
+        "after": 0,
+        "runs": [
+          {
+            "id": "679c60bb-01e4-412b-8201-799334ffce6a",
+            "start": 362313.2999999523,
+            "done": false
+          },
+          {
+            "id": "25a57b46-3b8e-4654-9c2d-dac7fc7b49cb",
+            "start": 362426.09999990463,
+            "done": false
+          },
+          {
+            "id": "ee0f92db-4663-40b9-ae57-38452dec5872",
+            "start": 362538,
+            "done": false
+          },
+          {
+            "id": "159cacb1-b3dc-4522-b86b-a15b95eaff3a",
+            "start": 362649.39999997616,
+            "done": false
+          }
+        ],
+        "streaming": [
+          "679c60bb-01e4-412b-8201-799334ffce6a",
+          "25a57b46-3b8e-4654-9c2d-dac7fc7b49cb",
+          "ee0f92db-4663-40b9-ae57-38452dec5872",
+          "159cacb1-b3dc-4522-b86b-a15b95eaff3a"
+        ]
+      },
+      "stats": {
+        "frames": 1205,
+        "frameP50": 8.299999999988358,
+        "frameP95": 10,
+        "frameP99": 10.299999999988358,
+        "frameMax": 74.70000000001164,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 12422,
+        "heap": 248282906
+      },
+      "metrics": {
+        "Timestamp": 10.103434999939054,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 4453,
+        "Frames": 0,
+        "JSEventListeners": 94,
+        "LayoutObjects": 275,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 86324,
+        "Resources": 693,
+        "ContextLifecycleStateObservers": 4468,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 4453,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 6483,
+        "LayoutCount": 93,
+        "RecalcStyleCount": 434,
+        "LayoutDuration": 0.010539000000000076,
+        "RecalcStyleDuration": 0.46219600000000227,
+        "DevToolsCommandDuration": 0.06829700000000005,
+        "ScriptDuration": 0.9719060000000006,
+        "V8CompileDuration": 0.000015999999999995185,
+        "TaskDuration": 2.0968480000000085,
+        "TaskOtherDuration": 0.5838940000000008,
+        "ThreadTime": 2.1909100000000024,
+        "ProcessTime": 2.7026190000000128,
+        "JSHeapUsedSize": 17237520,
+        "JSHeapTotalSize": 31883264,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tool-stress-1": {
+      "result": {
+        "runs": [
+          {
+            "id": "e4e4ec0f-eddb-4046-835a-2d3f70ebead0",
+            "done": true,
+            "start": 416855.6999999285,
+            "elapsed": 7727.200000047684
+          }
+        ],
+        "switches": [
+          9.799999952316284,
+          10.199999928474426,
+          13.399999976158142,
+          8.599999904632568,
+          15.700000047683716,
+          16,
+          17.799999952316284,
+          15.700000047683716,
+          16.5,
+          16,
+          15.100000023841858,
+          16.5,
+          17.100000023841858,
+          15.200000047683716
+        ],
+        "network": {
+          "/api/agents": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/brain/code/config": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/memory/status": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/config/file": {
+            "n": 5,
+            "bytes": 0
+          },
+          "/api/providers": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/usage": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/workspace/dev-servers": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/workspace/loc": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/system/vram": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 4,
+            "bytes": 329
+          },
+          "/api/chat-turns": {
+            "n": 3,
+            "bytes": 469
+          },
+          "/api/terminal/history": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/chats/capabilities": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/chat-sync/publish": {
+            "n": 14,
+            "bytes": 87409
+          },
+          "/api/models/cached": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/brain/retrieve": {
+            "n": 4,
+            "bytes": 359
+          },
+          "/api/preview/file/AGENTS.md": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/preview/file/documentation/context.md": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/system/hardware": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/models/serve": {
+            "n": 13,
+            "bytes": 0
+          },
+          "/api/config/sessions": {
+            "n": 11,
+            "bytes": 2065910
+          },
+          "/api/providers/codex-cli/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/lm-studio-local/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/perf-stream/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/plugins/packages": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/capabilities": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/plugins/tools": {
+            "n": 9,
+            "bytes": 0
+          },
+          "/api/mcp/tools": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/generations": {
+            "n": 9,
+            "bytes": 780117
+          },
+          "/api/config/issues": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/scheduler/notifications": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/scheduler/jobs": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/boards": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/remote/status": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/memory/synthesis/run": {
+            "n": 1,
+            "bytes": 329
+          }
+        }
+      },
+      "stats": {
+        "frames": 927,
+        "frameP50": 8.299999999988358,
+        "frameP95": 9.200000000011642,
+        "frameP99": 9.300000000046566,
+        "frameMax": 49.09999999997672,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4503,
+        "heap": 159268176
+      },
+      "metrics": {
+        "Timestamp": 7.781195000046864,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": -27,
+        "LayoutObjects": -45960,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -49844,
+        "Resources": -6,
+        "ContextLifecycleStateObservers": 172,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 4,
+        "LayoutCount": 34,
+        "RecalcStyleCount": 989,
+        "LayoutDuration": 0.006418000000000035,
+        "RecalcStyleDuration": 0.0819100000000006,
+        "DevToolsCommandDuration": 0.056041999999999925,
+        "ScriptDuration": 0.14801299999999884,
+        "V8CompileDuration": 0.00008500000000000174,
+        "TaskDuration": 0.8707650000000058,
+        "TaskOtherDuration": 0.5782969999999992,
+        "ThreadTime": 0.9615210000000047,
+        "ProcessTime": 1.321747000000002,
+        "JSHeapUsedSize": -1713260,
+        "JSHeapTotalSize": 7208960,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tool-stress-4": {
+      "result": {
+        "runs": [
+          {
+            "id": "48cf9b50-3c43-48f2-b7ef-ffa35583c53d",
+            "done": true,
+            "start": 425072.39999997616,
+            "elapsed": 8068.5
+          },
+          {
+            "id": "79b33176-f2e6-405d-a2d5-c5ef3d1e27fb",
+            "done": true,
+            "start": 425187.09999990463,
+            "elapsed": 8054.700000047684
+          },
+          {
+            "id": "865679e2-e33f-4f73-9c31-5fc46a0bd44d",
+            "done": true,
+            "start": 425304,
+            "elapsed": 8030.799999952316
+          },
+          {
+            "id": "f693431e-12be-41d2-ba85-e0c83ddc3635",
+            "done": true,
+            "start": 425419.1999999285,
+            "elapsed": 7946.800000071526
+          }
+        ],
+        "switches": [
+          16.5,
+          14.600000023841858,
+          16.200000047683716,
+          14.899999976158142,
+          14.300000071525574,
+          18.399999976158142,
+          15.299999952316284,
+          16.199999928474426,
+          15.600000023841858,
+          15.599999904632568,
+          14.800000071525574,
+          16,
+          16.199999928474426,
+          17.5,
+          20.200000047683716
+        ],
+        "network": {
+          "/api/agents": {
+            "n": 6,
+            "bytes": 0
+          },
+          "/api/brain/code/config": {
+            "n": 42,
+            "bytes": 0
+          },
+          "/api/memory/status": {
+            "n": 58,
+            "bytes": 0
+          },
+          "/api/config/file": {
+            "n": 10,
+            "bytes": 0
+          },
+          "/api/providers": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/usage": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/workspace/dev-servers": {
+            "n": 23,
+            "bytes": 0
+          },
+          "/api/workspace/loc": {
+            "n": 10,
+            "bytes": 0
+          },
+          "/api/system/vram": {
+            "n": 10,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 18,
+            "bytes": 1615
+          },
+          "/api/chat-turns": {
+            "n": 15,
+            "bytes": 2345
+          },
+          "/api/terminal/history": {
+            "n": 20,
+            "bytes": 0
+          },
+          "/api/chats/capabilities": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/chat-sync/publish": {
+            "n": 99,
+            "bytes": 469123
+          },
+          "/api/models/cached": {
+            "n": 5,
+            "bytes": 0
+          },
+          "/api/brain/retrieve": {
+            "n": 8,
+            "bytes": 811
+          },
+          "/api/preview/file/AGENTS.md": {
+            "n": 8,
+            "bytes": 0
+          },
+          "/api/preview/file/documentation/context.md": {
+            "n": 8,
+            "bytes": 0
+          },
+          "/api/system/hardware": {
+            "n": 5,
+            "bytes": 0
+          },
+          "/api/models/serve": {
+            "n": 29,
+            "bytes": 0
+          },
+          "/api/config/sessions": {
+            "n": 21,
+            "bytes": 7926235
+          },
+          "/api/providers/codex-cli/models": {
+            "n": 23,
+            "bytes": 0
+          },
+          "/api/providers/lm-studio-local/models": {
+            "n": 23,
+            "bytes": 0
+          },
+          "/api/providers/perf-stream/models": {
+            "n": 23,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/models": {
+            "n": 23,
+            "bytes": 0
+          },
+          "/api/plugins/packages": {
+            "n": 6,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/capabilities": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/plugins/tools": {
+            "n": 45,
+            "bytes": 0
+          },
+          "/api/mcp/tools": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/generations": {
+            "n": 45,
+            "bytes": 3900585
+          },
+          "/api/config/issues": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/scheduler/notifications": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/scheduler/jobs": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/boards": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/remote/status": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/memory/synthesis/run": {
+            "n": 5,
+            "bytes": 1645
+          }
+        }
+      },
+      "stats": {
+        "frames": 993,
+        "frameP50": 8.299999999988358,
+        "frameP95": 9.299999999988358,
+        "frameP99": 9.399999999965075,
+        "frameMax": 59.20000000001164,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4553,
+        "heap": 211594976
+      },
+      "metrics": {
+        "Timestamp": 8.33674900000915,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 3,
+        "Frames": 0,
+        "JSEventListeners": 167,
+        "LayoutObjects": 513,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 18408,
+        "Resources": 53,
+        "ContextLifecycleStateObservers": 817,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 3,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 44,
+        "LayoutCount": 219,
+        "RecalcStyleCount": 2123,
+        "LayoutDuration": 0.03753900000000021,
+        "RecalcStyleDuration": 0.3790380000000013,
+        "DevToolsCommandDuration": 0.056837999999999944,
+        "ScriptDuration": 0.20601999999999876,
+        "V8CompileDuration": 0.000016000000000002124,
+        "TaskDuration": 2.242497,
+        "TaskOtherDuration": 1.563046,
+        "ThreadTime": 2.377004999999997,
+        "ProcessTime": 3.0218850000000117,
+        "JSHeapUsedSize": 48282064,
+        "JSHeapTotalSize": 55738368,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tray-on": {
+      "result": {
+        "network": {
+          "/api/chat-sync/publish": {
+            "n": 693,
+            "bytes": 532408
+          },
+          "/api/config/file": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/plugins/packages": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/chat-turns": {
+            "n": 6,
+            "bytes": 798
+          },
+          "/api/config/issues": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 1,
+            "bytes": 15
+          },
+          "/api/scheduler/notifications": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/scheduler/jobs": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/boards": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/remote/status": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/models/serve": {
+            "n": 1,
+            "bytes": 0
+          }
+        },
+        "prosePaints": 77,
+        "proseP50Gap": 104.79999995231628,
+        "proseP95Gap": 107.19999992847443,
+        "runs": [
+          {
+            "id": "1b49ce2c-d2ce-4612-86c5-b87e3af5f7f6",
+            "start": 504008.1999999285,
+            "done": false
+          },
+          {
+            "id": "d0476597-ca6c-4f8e-a925-9d24b20b8ec8",
+            "start": 504126.59999990463,
+            "done": false
+          },
+          {
+            "id": "7476995d-0a8a-4496-89a1-cae78dbec47b",
+            "start": 504238.7999999523,
+            "done": false
+          },
+          {
+            "id": "9469ca00-4238-4342-aaa3-3986f34479f0",
+            "start": 504351.1999999285,
+            "done": false
+          }
+        ]
+      },
+      "stats": {
+        "frames": 963,
+        "frameP50": 8.300000000046566,
+        "frameP95": 9.200000000011642,
+        "frameP99": 9.299999999988358,
+        "frameMax": 41.699999999953434,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4287,
+        "heap": 173511268
+      },
+      "metrics": {
+        "Timestamp": 8.067550999927334,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 72,
+        "Frames": 0,
+        "JSEventListeners": 150,
+        "LayoutObjects": 2019,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 3478,
+        "Resources": 680,
+        "ContextLifecycleStateObservers": 87,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 72,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 539,
+        "LayoutCount": 147,
+        "RecalcStyleCount": 1505,
+        "LayoutDuration": 0.02800899999999995,
+        "RecalcStyleDuration": 0.5699639999999988,
+        "DevToolsCommandDuration": 0.053781999999999996,
+        "ScriptDuration": 0.5218889999999998,
+        "V8CompileDuration": 0.00007100000000000162,
+        "TaskDuration": 1.6932570000000027,
+        "TaskOtherDuration": 0.5195420000000013,
+        "ThreadTime": 1.7703249999999997,
+        "ProcessTime": 2.457238000000004,
+        "JSHeapUsedSize": -2095172,
+        "JSHeapTotalSize": 9175040,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tray-off": {
+      "result": {
+        "network": {
+          "/api/chat-sync/publish": {
+            "n": 705,
+            "bytes": 532600
+          },
+          "/api/plugins/packages": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/models/serve": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/file": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/config/issues": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 2,
+            "bytes": 30
+          },
+          "/api/boards": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/chat-turns": {
+            "n": 8,
+            "bytes": 1064
+          },
+          "/api/providers": {
+            "n": 1,
+            "bytes": 0
+          }
+        },
+        "prosePaints": 77,
+        "proseP50Gap": 104.60000002384186,
+        "proseP95Gap": 107.69999992847443,
+        "runs": [
+          {
+            "id": "c3743461-5977-4a6a-92c3-4865cd200ead",
+            "start": 525926.5999999046,
+            "done": false
+          },
+          {
+            "id": "7c0368c1-6570-4606-9b10-52195280f413",
+            "start": 526039.7999999523,
+            "done": false
+          },
+          {
+            "id": "0b08c13c-1d35-40ca-8f96-f41b5241e932",
+            "start": 526160,
+            "done": false
+          },
+          {
+            "id": "7839a762-48f8-4551-b6cd-3118b24befe5",
+            "start": 526279.6999999285,
+            "done": false
+          }
+        ]
+      },
+      "stats": {
+        "frames": 964,
+        "frameP50": 8.300000000046566,
+        "frameP95": 9.29999999993015,
+        "frameP99": 9.400000000023283,
+        "frameMax": 50.09999999997672,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4415,
+        "heap": 189595594
+      },
+      "metrics": {
+        "Timestamp": 8.071244000107981,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 44,
+        "Frames": 0,
+        "JSEventListeners": 3,
+        "LayoutObjects": -4265,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -3703,
+        "Resources": 24,
+        "ContextLifecycleStateObservers": 45,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 44,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 275,
+        "LayoutCount": 149,
+        "RecalcStyleCount": 1490,
+        "LayoutDuration": 0.026483999999999952,
+        "RecalcStyleDuration": 0.6055749999999982,
+        "DevToolsCommandDuration": 0.05962899999999993,
+        "ScriptDuration": 0.503781,
+        "V8CompileDuration": 0.000016000000000002124,
+        "TaskDuration": 1.7286069999999967,
+        "TaskOtherDuration": 0.5331219999999988,
+        "ThreadTime": 1.803286,
+        "ProcessTime": 2.5091019999999844,
+        "JSHeapUsedSize": -7667956,
+        "JSHeapTotalSize": -11452416,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tool-tray-on": {
+      "result": {
+        "runs": [
+          {
+            "id": "4bb17d9b-57ed-46ad-9e32-a1a663f9ad38",
+            "done": true,
+            "start": 551534.5,
+            "elapsed": 8919.399999976158
+          },
+          {
+            "id": "e02db6ed-e2ee-4db6-b6c0-91d38da91583",
+            "done": true,
+            "start": 551651.7999999523,
+            "elapsed": 8858.899999976158
+          },
+          {
+            "id": "79bbd906-29b0-4e1c-838b-233f050e2a18",
+            "done": true,
+            "start": 551763.8999999762,
+            "elapsed": 8715
+          },
+          {
+            "id": "ed922f0d-040d-4142-a502-4e3070437821",
+            "done": true,
+            "start": 551877.1999999285,
+            "elapsed": 8704.399999976158
+          }
+        ],
+        "switches": [
+          12.099999904632568,
+          15.300000071525574,
+          15.399999976158142,
+          15.299999952316284,
+          14.699999928474426,
+          15.100000023841858,
+          16,
+          15.799999952316284,
+          17.199999928474426,
+          16,
+          17,
+          16.200000047683716,
+          16.5,
+          16.5,
+          16.799999952316284,
+          16.59999990463257
+        ],
+        "network": {
+          "/api/agents": {
+            "n": 5,
+            "bytes": 0
+          },
+          "/api/brain/code/config": {
+            "n": 41,
+            "bytes": 0
+          },
+          "/api/memory/status": {
+            "n": 73,
+            "bytes": 0
+          },
+          "/api/config/file": {
+            "n": 6,
+            "bytes": 0
+          },
+          "/api/workspace/dev-servers": {
+            "n": 17,
+            "bytes": 0
+          },
+          "/api/workspace/loc": {
+            "n": 9,
+            "bytes": 0
+          },
+          "/api/system/vram": {
+            "n": 9,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 16,
+            "bytes": 1400
+          },
+          "/api/chat-turns": {
+            "n": 12,
+            "bytes": 1876
+          },
+          "/api/terminal/history": {
+            "n": 20,
+            "bytes": 0
+          },
+          "/api/chats/capabilities": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/chat-sync/publish": {
+            "n": 72,
+            "bytes": 273923
+          },
+          "/api/models/cached": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/system/hardware": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/config/sessions": {
+            "n": 13,
+            "bytes": 7414168
+          },
+          "/api/models/serve": {
+            "n": 16,
+            "bytes": 0
+          },
+          "/api/plugins/packages": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/brain/retrieve": {
+            "n": 16,
+            "bytes": 1436
+          },
+          "/api/preview/file/AGENTS.md": {
+            "n": 16,
+            "bytes": 0
+          },
+          "/api/preview/file/documentation/context.md": {
+            "n": 16,
+            "bytes": 0
+          },
+          "/api/providers/codex-cli/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/lm-studio-local/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/perf-stream/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/providers/perf-tools/models": {
+            "n": 11,
+            "bytes": 0
+          },
+          "/api/plugins/tools": {
+            "n": 36,
+            "bytes": 0
+          },
+          "/api/mcp/tools": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/generations": {
+            "n": 36,
+            "bytes": 3120468
+          },
+          "/api/config/issues": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/boards": {
+            "n": 2,
+            "bytes": 0
+          },
+          "/api/memory/synthesis/run": {
+            "n": 4,
+            "bytes": 1316
+          }
+        }
+      },
+      "stats": {
+        "frames": 1046,
+        "frameP50": 8.300000000046566,
+        "frameP95": 9.20000000006985,
+        "frameP99": 9.400000000023283,
+        "frameMax": 49.59999999997672,
+        "framesOver33": 3,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4671,
+        "heap": 187188671
+      },
+      "metrics": {
+        "Timestamp": 8.849286000011489,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": -18,
+        "LayoutObjects": -5504,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -1156,
+        "Resources": -162,
+        "ContextLifecycleStateObservers": 171,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": -5,
+        "LayoutCount": 245,
+        "RecalcStyleCount": 2323,
+        "LayoutDuration": 0.04352,
+        "RecalcStyleDuration": 0.4454039999999999,
+        "DevToolsCommandDuration": 0.06728900000000015,
+        "ScriptDuration": 0.28139600000000087,
+        "V8CompileDuration": 0.00003600000000000131,
+        "TaskDuration": 2.5621359999999953,
+        "TaskOtherDuration": 1.7244910000000004,
+        "ThreadTime": 2.7074769999999972,
+        "ProcessTime": 3.4154780000000073,
+        "JSHeapUsedSize": -1368960,
+        "JSHeapTotalSize": 19988480,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "tool-tray-off": {
+      "result": {
+        "runs": [
+          {
+            "id": "095a515a-9056-4346-b33a-c621f76fdce0",
+            "done": true,
+            "start": 561159.0999999046,
+            "elapsed": 8007.5
+          },
+          {
+            "id": "85975783-6721-4593-af77-448b9901abb7",
+            "done": true,
+            "start": 561273,
+            "elapsed": 8049.5
+          },
+          {
+            "id": "d06c9cdf-772f-4159-a4b7-5bcef44fbdcd",
+            "done": true,
+            "start": 561392,
+            "elapsed": 7989.099999904633
+          },
+          {
+            "id": "d3a02b12-6f62-48a0-99a4-a7fedf7f4e9f",
+            "done": true,
+            "start": 561514.5,
+            "elapsed": 7927.5
+          }
+        ],
+        "switches": [
+          14.399999976158142,
+          13.899999976158142,
+          14.899999976158142,
+          15.900000095367432,
+          16.800000071525574,
+          16.399999976158142,
+          16.799999952316284,
+          16.600000023841858,
+          16.90000009536743,
+          16.5,
+          18,
+          16.300000071525574,
+          17.799999952316284,
+          15.799999952316284
+        ],
+        "network": {
+          "/api/brain/code/config": {
+            "n": 37,
+            "bytes": 0
+          },
+          "/api/memory/status": {
+            "n": 45,
+            "bytes": 0
+          },
+          "/api/config/file": {
+            "n": 6,
+            "bytes": 0
+          },
+          "/api/workspace/dev-servers": {
+            "n": 20,
+            "bytes": 0
+          },
+          "/api/workspace/loc": {
+            "n": 8,
+            "bytes": 0
+          },
+          "/api/system/vram": {
+            "n": 8,
+            "bytes": 0
+          },
+          "/api/git": {
+            "n": 13,
+            "bytes": 1271
+          },
+          "/api/chat-turns": {
+            "n": 12,
+            "bytes": 1876
+          },
+          "/api/chat-sync/publish": {
+            "n": 87,
+            "bytes": 603783
+          },
+          "/api/terminal/history": {
+            "n": 18,
+            "bytes": 0
+          },
+          "/api/agents": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/models/cached": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/system/hardware": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/models/serve": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/brain/retrieve": {
+            "n": 4,
+            "bytes": 452
+          },
+          "/api/preview/file/AGENTS.md": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/preview/file/documentation/context.md": {
+            "n": 4,
+            "bytes": 0
+          },
+          "/api/plugins/packages": {
+            "n": 3,
+            "bytes": 0
+          },
+          "/api/plugins/tools": {
+            "n": 36,
+            "bytes": 0
+          },
+          "/api/generations": {
+            "n": 36,
+            "bytes": 3120468
+          },
+          "/api/config/sessions": {
+            "n": 6,
+            "bytes": 3845635
+          },
+          "/api/providers/perf-tools/usage": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/providers": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/issues": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/default-model": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/boards": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/config/sessions/summaries": {
+            "n": 1,
+            "bytes": 0
+          },
+          "/api/memory/synthesis/run": {
+            "n": 4,
+            "bytes": 1316
+          }
+        }
+      },
+      "stats": {
+        "frames": 922,
+        "frameP50": 8.300000000046566,
+        "frameP95": 9.300000000046566,
+        "frameP99": 9.400000000023283,
+        "frameMax": 75.19999999995343,
+        "framesOver33": 2,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4711,
+        "heap": 196324722
+      },
+      "metrics": {
+        "Timestamp": 7.828788999933749,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 2,
+        "Frames": 0,
+        "JSEventListeners": 83,
+        "LayoutObjects": -89,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 9755,
+        "Resources": -28,
+        "ContextLifecycleStateObservers": 498,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 2,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 41,
+        "LayoutCount": 209,
+        "RecalcStyleCount": 2117,
+        "LayoutDuration": 0.03833699999999984,
+        "RecalcStyleDuration": 0.3840760000000003,
+        "DevToolsCommandDuration": 0.06583899999999998,
+        "ScriptDuration": 0.2611579999999982,
+        "V8CompileDuration": 0.000014999999999994185,
+        "TaskDuration": 2.2350990000000053,
+        "TaskOtherDuration": 1.485673999999996,
+        "ThreadTime": 2.3615449999999925,
+        "ProcessTime": 2.9312590000000114,
+        "JSHeapUsedSize": 23648872,
+        "JSHeapTotalSize": 28770304,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "backfill-normal-4x": {
+      "result": [
+        {
+          "firstPaintMs": 98.19999992847443,
+          "mounted": 0
+        },
+        {
+          "firstPaintMs": 79.5,
+          "mounted": 139
+        },
+        {
+          "firstPaintMs": 101.89999997615814,
+          "mounted": 304
+        }
+      ],
+      "stats": {
+        "frames": 535,
+        "frameP50": 8.400000000023283,
+        "frameP95": 58.20000000006985,
+        "frameP99": 100,
+        "frameMax": 224.90000000002328,
+        "framesOver33": 50,
+        "longTasks": 12,
+        "longTaskMs": 967,
+        "longTaskMax": 155,
+        "nodes": 21626,
+        "heap": 173107062
+      },
+      "metrics": {
+        "Timestamp": 8.159348999965005,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 5,
+        "Frames": 0,
+        "JSEventListeners": 106,
+        "LayoutObjects": 4536,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -6952,
+        "Resources": -70,
+        "ContextLifecycleStateObservers": -123,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 5,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 162,
+        "RecalcStyleCount": 247,
+        "LayoutDuration": 0.4418359999999999,
+        "RecalcStyleDuration": 2.0922759999999982,
+        "DevToolsCommandDuration": 0.2540220000000004,
+        "ScriptDuration": 0.9428979999999996,
+        "V8CompileDuration": 0.0010719999999999966,
+        "TaskDuration": 5.682203999999999,
+        "TaskOtherDuration": 1.950099999999999,
+        "ThreadTime": 7.595054999999988,
+        "ProcessTime": 8.054404000000005,
+        "JSHeapUsedSize": -15189820,
+        "JSHeapTotalSize": -15433728,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "backfill-tail-only-4x": {
+      "result": [
+        {
+          "firstPaintMs": 89.29999995231628,
+          "mounted": 21
+        },
+        {
+          "firstPaintMs": 82.39999997615814,
+          "mounted": 20
+        },
+        {
+          "firstPaintMs": 90.79999995231628,
+          "mounted": 21
+        }
+      ],
+      "stats": {
+        "frames": 857,
+        "frameP50": 8.300000000046566,
+        "frameP95": 9.300000000046566,
+        "frameP99": 25.79999999993015,
+        "frameMax": 216.69999999995343,
+        "framesOver33": 7,
+        "longTasks": 3,
+        "longTaskMs": 191,
+        "longTaskMax": 66,
+        "nodes": 4184,
+        "heap": 172522154
+      },
+      "metrics": {
+        "Timestamp": 8.030822000000626,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 6,
+        "Frames": 0,
+        "JSEventListeners": 203,
+        "LayoutObjects": 1307,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 4918,
+        "Resources": 31,
+        "ContextLifecycleStateObservers": 157,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 6,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 19,
+        "RecalcStyleCount": 83,
+        "LayoutDuration": 0.026263000000000147,
+        "RecalcStyleDuration": 0.20584900000000061,
+        "DevToolsCommandDuration": 0.2533129999999999,
+        "ScriptDuration": 0.09099100000000249,
+        "V8CompileDuration": 0.000019999999999999185,
+        "TaskDuration": 1.6520609999999891,
+        "TaskOtherDuration": 1.0756250000000023,
+        "ThreadTime": 6.536736999999988,
+        "ProcessTime": 6.728923000000009,
+        "JSHeapUsedSize": -2325944,
+        "JSHeapTotalSize": -13123584,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "native-window-focus": {
+      "result": [
+        {
+          "direction": "away",
+          "ms": 2
+        },
+        {
+          "direction": "back",
+          "ms": 18.899999976158142
+        },
+        {
+          "direction": "away",
+          "ms": 19.399999976158142
+        },
+        {
+          "direction": "back",
+          "ms": 12.900000095367432
+        },
+        {
+          "direction": "away",
+          "ms": 18.200000047683716
+        },
+        {
+          "direction": "back",
+          "ms": 12.699999928474426
+        },
+        {
+          "direction": "away",
+          "ms": 18
+        },
+        {
+          "direction": "back",
+          "ms": 16.799999952316284
+        },
+        {
+          "direction": "away",
+          "ms": 14.699999928474426
+        },
+        {
+          "direction": "back",
+          "ms": 10.899999976158142
+        },
+        {
+          "direction": "away",
+          "ms": 23.799999952316284
+        },
+        {
+          "direction": "back",
+          "ms": 17.5
+        },
+        {
+          "direction": "away",
+          "ms": 15.799999952316284
+        },
+        {
+          "direction": "back",
+          "ms": 15.600000023841858
+        },
+        {
+          "direction": "away",
+          "ms": 15.5
+        },
+        {
+          "direction": "back",
+          "ms": 16.199999928474426
+        }
+      ],
+      "stats": {
+        "frames": 420,
+        "frameP50": 8.300000000046566,
+        "frameP95": 10.099999999976717,
+        "frameP99": 10.300000000046566,
+        "frameMax": 50.29999999993015,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 27535,
+        "heap": 174595975
+      },
+      "metrics": {
+        "Timestamp": 3.5397399999201298,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 0,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": 0,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 0,
+        "Resources": 22,
+        "ContextLifecycleStateObservers": 0,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 0,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 0,
+        "RecalcStyleCount": 323,
+        "LayoutDuration": 0,
+        "RecalcStyleDuration": 0.007999000000005196,
+        "DevToolsCommandDuration": 0.05646899999999988,
+        "ScriptDuration": 0.010134000000000754,
+        "V8CompileDuration": 0.0000879999999999978,
+        "TaskDuration": 0.17870499999999367,
+        "TaskOtherDuration": 0.10401499999999686,
+        "ThreadTime": 0.20014699999998697,
+        "ProcessTime": 0.29826199999999403,
+        "JSHeapUsedSize": 1638952,
+        "JSHeapTotalSize": 1572864,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "native-window-focus-four-streams": {
+      "result": {
+        "times": [
+          {
+            "direction": "away",
+            "ms": 5.100000023841858
+          },
+          {
+            "direction": "back",
+            "ms": 17.299999952316284
+          },
+          {
+            "direction": "away",
+            "ms": 3.799999952316284
+          },
+          {
+            "direction": "back",
+            "ms": 12
+          },
+          {
+            "direction": "away",
+            "ms": 6.5
+          },
+          {
+            "direction": "back",
+            "ms": 16.799999952316284
+          },
+          {
+            "direction": "away",
+            "ms": 9
+          },
+          {
+            "direction": "back",
+            "ms": 17.399999976158142
+          },
+          {
+            "direction": "away",
+            "ms": 6.100000023841858
+          },
+          {
+            "direction": "back",
+            "ms": 16.899999976158142
+          },
+          {
+            "direction": "away",
+            "ms": 3.200000047683716
+          },
+          {
+            "direction": "back",
+            "ms": 13.400000095367432
+          },
+          {
+            "direction": "away",
+            "ms": 6.899999976158142
+          },
+          {
+            "direction": "back",
+            "ms": 16.700000047683716
+          },
+          {
+            "direction": "away",
+            "ms": 2.5
+          },
+          {
+            "direction": "back",
+            "ms": 13.599999904632568
+          }
+        ],
+        "streams": [
+          "9b0d9d93-67fb-42a6-9239-60b8e52c550e",
+          "6743bad1-760f-478d-aeca-2efc0cb2930e",
+          "1d7ffa18-01db-46bd-a71c-78bfa58e919c",
+          "321d83d8-35ae-4f90-ae07-69e92cdcc07f"
+        ]
+      },
+      "stats": {
+        "frames": 1010,
+        "frameP50": 7.300000000046566,
+        "frameP95": 8.900000000023283,
+        "frameP99": 9.29999999993015,
+        "frameMax": 50,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 4232,
+        "heap": 194372118
+      },
+      "metrics": {
+        "Timestamp": 4.252742999931797,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 44,
+        "Frames": 0,
+        "JSEventListeners": 105,
+        "LayoutObjects": 1072,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 1969,
+        "Resources": 225,
+        "ContextLifecycleStateObservers": 55,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 44,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 322,
+        "LayoutCount": 77,
+        "RecalcStyleCount": 742,
+        "LayoutDuration": 0.010845999999999911,
+        "RecalcStyleDuration": 0.2167529999999971,
+        "DevToolsCommandDuration": 0.06079200000000018,
+        "ScriptDuration": 0.15877899999999912,
+        "V8CompileDuration": 0.00011099999999999999,
+        "TaskDuration": 0.6558500000000151,
+        "TaskOtherDuration": 0.20856899999999712,
+        "ThreadTime": 0.6887070000000222,
+        "ProcessTime": 0.9438839999999971,
+        "JSHeapUsedSize": 9858972,
+        "JSHeapTotalSize": 10944512,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "source-control-and-editor": {
+      "result": [
+        {
+          "app": "source-control",
+          "ms": 22
+        },
+        {
+          "app": "code",
+          "ms": 219.80000007152557
+        },
+        {
+          "app": "source-control",
+          "ms": 16.5
+        },
+        {
+          "app": "code",
+          "ms": 212.39999997615814
+        },
+        {
+          "path": "src/ui/messages.ts",
+          "ms": 30.700000047683716
+        },
+        {
+          "path": "src/markdown/renderer.ts",
+          "ms": 48.60000002384186
+        },
+        {
+          "path": "src/ui/messages.ts",
+          "ms": 52.5
+        }
+      ],
+      "stats": {
+        "frames": 302,
+        "frameP50": 8.300000000046566,
+        "frameP95": 10.199999999953434,
+        "frameP99": 33.699999999953434,
+        "frameMax": 41.89999999990687,
+        "framesOver33": 4,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 24453,
+        "heap": 173997810
+      },
+      "metrics": {
+        "Timestamp": 2.7400710000656545,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 21,
+        "Frames": 1,
+        "JSEventListeners": 474,
+        "LayoutObjects": 6866,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -3261,
+        "Resources": -28,
+        "ContextLifecycleStateObservers": -49,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 21,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 223,
+        "RecalcStyleCount": 392,
+        "LayoutDuration": 0.1721869999999992,
+        "RecalcStyleDuration": 0.7467279999999974,
+        "DevToolsCommandDuration": 0.058625999999999845,
+        "ScriptDuration": 0.1832400000000014,
+        "V8CompileDuration": 0.00008500000000000174,
+        "TaskDuration": 1.8274039999999871,
+        "TaskOtherDuration": 0.6665379999999956,
+        "ThreadTime": 1.8788200000000188,
+        "ProcessTime": 2.371073000000024,
+        "JSHeapUsedSize": -1864744,
+        "JSHeapTotalSize": 4292608,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-app-switch": {
+      "result": [
+        {
+          "app": "settings",
+          "ms": 153,
+          "hash": "#/app/settings"
+        },
+        {
+          "app": "models",
+          "ms": 175.60000002384186,
+          "hash": "#/app/models"
+        },
+        {
+          "app": "brain",
+          "ms": 208.39999997615814,
+          "hash": "#/app/brain/graph"
+        },
+        {
+          "app": "issues",
+          "ms": 61.10000002384186,
+          "hash": "#/app/issues"
+        },
+        {
+          "app": "source-control",
+          "ms": 39.699999928474426,
+          "hash": "#/app/source-control"
+        },
+        {
+          "app": "code",
+          "ms": 257.60000002384186,
+          "hash": "#/app/code"
+        },
+        {
+          "app": "settings",
+          "ms": 54.799999952316284,
+          "hash": "#/app/settings"
+        },
+        {
+          "app": "models",
+          "ms": 122.10000002384186,
+          "hash": "#/app/models"
+        },
+        {
+          "app": "brain",
+          "ms": 136.39999997615814,
+          "hash": "#/app/brain/graph"
+        },
+        {
+          "app": "issues",
+          "ms": 64.30000007152557,
+          "hash": "#/app/issues"
+        },
+        {
+          "app": "source-control",
+          "ms": 30.100000023841858,
+          "hash": "#/app/source-control"
+        },
+        {
+          "app": "code",
+          "ms": 228.79999995231628,
+          "hash": "#/app/code"
+        },
+        {
+          "app": "settings",
+          "ms": 52.10000002384186,
+          "hash": "#/app/settings"
+        },
+        {
+          "app": "models",
+          "ms": 112.89999997615814,
+          "hash": "#/app/models"
+        },
+        {
+          "app": "brain",
+          "ms": 134.39999997615814,
+          "hash": "#/app/brain/graph"
+        },
+        {
+          "app": "issues",
+          "ms": 45.699999928474426,
+          "hash": "#/app/issues"
+        },
+        {
+          "app": "source-control",
+          "ms": 34.300000071525574,
+          "hash": "#/app/source-control"
+        },
+        {
+          "app": "code",
+          "ms": 252.39999997615814,
+          "hash": "#/app/code"
+        }
+      ],
+      "stats": {
+        "frames": 374,
+        "frameP50": 8.899999999999636,
+        "frameP95": 33.19999999999891,
+        "frameP99": 99.29999999999927,
+        "frameMax": 166.40000000000055,
+        "framesOver33": 17,
+        "longTasks": 6,
+        "longTaskMs": 494,
+        "longTaskMax": 117,
+        "nodes": 5264,
+        "heap": 71729321
+      },
+      "metrics": {
+        "Timestamp": 5.2809650000417605,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -13,
+        "Frames": -1,
+        "JSEventListeners": 266,
+        "LayoutObjects": -29749,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -33187,
+        "Resources": -77,
+        "ContextLifecycleStateObservers": -397,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -13,
+        "AdSubframes": 0,
+        "DetachedScriptStates": -2,
+        "ArrayBufferContents": -91,
+        "LayoutCount": 138,
+        "RecalcStyleCount": 639,
+        "LayoutDuration": 0.20694800000000002,
+        "RecalcStyleDuration": 1.871305,
+        "DevToolsCommandDuration": 0.19789600000000002,
+        "ScriptDuration": 1.0113940000000001,
+        "V8CompileDuration": 0.000087,
+        "TaskDuration": 4.706917000000001,
+        "TaskOtherDuration": 1.4192870000000002,
+        "ThreadTime": 5.155786,
+        "ProcessTime": 5.5317810000000005,
+        "JSHeapUsedSize": -61882808,
+        "JSHeapTotalSize": -66584576,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-warm-app-switch": {
+      "result": [
+        {
+          "app": "settings",
+          "ms": 18.5
+        },
+        {
+          "app": "models",
+          "ms": 33.299999952316284
+        },
+        {
+          "app": "brain",
+          "ms": 33.09999990463257
+        },
+        {
+          "app": "issues",
+          "ms": 16.299999952316284
+        },
+        {
+          "app": "source-control",
+          "ms": 16.700000047683716
+        },
+        {
+          "app": "code",
+          "ms": 45
+        },
+        {
+          "app": "settings",
+          "ms": 19.699999928474426
+        },
+        {
+          "app": "models",
+          "ms": 32.89999997615814
+        },
+        {
+          "app": "brain",
+          "ms": 25.299999952316284
+        },
+        {
+          "app": "issues",
+          "ms": 15
+        },
+        {
+          "app": "source-control",
+          "ms": 16.299999952316284
+        },
+        {
+          "app": "code",
+          "ms": 50
+        },
+        {
+          "app": "settings",
+          "ms": 15.699999928474426
+        },
+        {
+          "app": "models",
+          "ms": 26.700000047683716
+        },
+        {
+          "app": "brain",
+          "ms": 31.399999976158142
+        },
+        {
+          "app": "issues",
+          "ms": 15.5
+        },
+        {
+          "app": "source-control",
+          "ms": 16.5
+        },
+        {
+          "app": "code",
+          "ms": 43.200000047683716
+        }
+      ],
+      "stats": {
+        "frames": 385,
+        "frameP50": 8.30000000000291,
+        "frameP95": 9.10000000000582,
+        "frameP99": 9.30000000000291,
+        "frameMax": 16.59999999999127,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 10072,
+        "heap": 61819028
+      },
+      "metrics": {
+        "Timestamp": 3.217714999918826,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 10,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": 2178,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 847,
+        "Resources": -90,
+        "ContextLifecycleStateObservers": 10,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 10,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 141,
+        "RecalcStyleCount": 543,
+        "LayoutDuration": 0.08168799999999998,
+        "RecalcStyleDuration": 0.28824200000000033,
+        "DevToolsCommandDuration": 0.026733000000000007,
+        "ScriptDuration": 0.11176800000000009,
+        "V8CompileDuration": 0.00009000000000000002,
+        "TaskDuration": 0.7589589999999973,
+        "TaskOtherDuration": 0.25043799999999994,
+        "ThreadTime": 0.7836929999999995,
+        "ProcessTime": 1.1822270000000046,
+        "JSHeapUsedSize": 269372,
+        "JSHeapTotalSize": 2883584,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-history-1x": {
+      "result": [
+        {
+          "firstPaintMs": 6.899999976158142,
+          "rows": 390
+        },
+        {
+          "firstPaintMs": 13.400000095367432,
+          "rows": 139
+        },
+        {
+          "firstPaintMs": 13,
+          "rows": 145
+        }
+      ],
+      "stats": {
+        "frames": 1437,
+        "frameP50": 8.299999999999272,
+        "frameP95": 9.899999999997817,
+        "frameP99": 10.299999999999272,
+        "frameMax": 33.5,
+        "framesOver33": 1,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 10072,
+        "heap": 94953860
+      },
+      "metrics": {
+        "Timestamp": 12.112806999939494,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -23,
+        "Frames": 0,
+        "JSEventListeners": -285,
+        "LayoutObjects": 1938,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -22274,
+        "Resources": -3,
+        "ContextLifecycleStateObservers": -129,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -23,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 146,
+        "RecalcStyleCount": 254,
+        "LayoutDuration": 0.14444499999999993,
+        "RecalcStyleDuration": 0.4201839999999999,
+        "DevToolsCommandDuration": 0.028936000000000017,
+        "ScriptDuration": 0.1912799999999999,
+        "V8CompileDuration": 0.000017000000000000007,
+        "TaskDuration": 1.1324810000000003,
+        "TaskOtherDuration": 0.3476189999999999,
+        "ThreadTime": 1.2319779999999998,
+        "ProcessTime": 1.6694159999999982,
+        "JSHeapUsedSize": 22307988,
+        "JSHeapTotalSize": 38240256,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-history-4x": {
+      "result": [
+        {
+          "firstPaintMs": 90.10000002384186,
+          "rows": 390
+        },
+        {
+          "firstPaintMs": 98.09999990463257,
+          "rows": 139
+        },
+        {
+          "firstPaintMs": 77.09999990463257,
+          "rows": 145
+        }
+      ],
+      "stats": {
+        "frames": 1102,
+        "frameP50": 8.30000000000291,
+        "frameP95": 32.29999999999927,
+        "frameP99": 74.40000000000146,
+        "frameMax": 175.29999999999927,
+        "framesOver33": 51,
+        "longTasks": 14,
+        "longTaskMs": 1051,
+        "longTaskMax": 136,
+        "nodes": 10072,
+        "heap": 62388262
+      },
+      "metrics": {
+        "Timestamp": 12.413854000042193,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -10,
+        "Frames": 0,
+        "JSEventListeners": -290,
+        "LayoutObjects": -7776,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -12259,
+        "Resources": -32,
+        "ContextLifecycleStateObservers": -612,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -10,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 191,
+        "RecalcStyleCount": 318,
+        "LayoutDuration": 0.6757160000000001,
+        "RecalcStyleDuration": 2.250744,
+        "DevToolsCommandDuration": 0.13255599999999998,
+        "ScriptDuration": 0.9999850000000001,
+        "V8CompileDuration": 0.000019999999999999998,
+        "TaskDuration": 4.9701889999999995,
+        "TaskOtherDuration": 0.911168,
+        "ThreadTime": 10.642774,
+        "ProcessTime": 11.142875,
+        "JSHeapUsedSize": -32749016,
+        "JSHeapTotalSize": -27017216,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-return-heavy": {
+      "result": [
+        68.90000009536743,
+        65,
+        61,
+        63.200000047683716
+      ],
+      "stats": {
+        "frames": 666,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.200000000011642,
+        "frameP99": 32.79999999998836,
+        "frameMax": 33.79999999998836,
+        "framesOver33": 2,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 27005,
+        "heap": 64373499
+      },
+      "metrics": {
+        "Timestamp": 5.9155160000082105,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": 71,
+        "Frames": 0,
+        "JSEventListeners": 587,
+        "LayoutObjects": 49943,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": 50281,
+        "Resources": 6,
+        "ContextLifecycleStateObservers": 953,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": 71,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 445,
+        "RecalcStyleCount": 626,
+        "LayoutDuration": 0.4525610000000002,
+        "RecalcStyleDuration": 1.2444599999999992,
+        "DevToolsCommandDuration": 0.03059799999999996,
+        "ScriptDuration": 0.387327,
+        "V8CompileDuration": 0.00006599999999999998,
+        "TaskDuration": 2.488109999999999,
+        "TaskOtherDuration": 0.3730980000000006,
+        "ThreadTime": 2.521281000000002,
+        "ProcessTime": 2.9540289999999985,
+        "JSHeapUsedSize": 1216908,
+        "JSHeapTotalSize": 13008896,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    },
+    "production-return-lighter": {
+      "result": [
+        48.89999997615814,
+        48.5,
+        54.700000047683716,
+        54.60000002384186
+      ],
+      "stats": {
+        "frames": 702,
+        "frameP50": 8.300000000017462,
+        "frameP95": 9.10000000000582,
+        "frameP99": 9.300000000017462,
+        "frameMax": 25.10000000000582,
+        "framesOver33": 0,
+        "longTasks": 0,
+        "longTaskMs": 0,
+        "longTaskMax": 0,
+        "nodes": 10072,
+        "heap": 62094224
+      },
+      "metrics": {
+        "Timestamp": 5.866972999996506,
+        "AudioHandlers": 0,
+        "AudioWorkletProcessors": 0,
+        "Documents": -10,
+        "Frames": 0,
+        "JSEventListeners": 0,
+        "LayoutObjects": -5772,
+        "MediaKeySessions": 0,
+        "MediaKeys": 0,
+        "Nodes": -963,
+        "Resources": -5,
+        "ContextLifecycleStateObservers": -10,
+        "V8PerContextDatas": 0,
+        "WorkerGlobalScopes": 0,
+        "UACSSResources": 0,
+        "RTCPeerConnections": 0,
+        "ResourceFetchers": -10,
+        "AdSubframes": 0,
+        "DetachedScriptStates": 0,
+        "ArrayBufferContents": 0,
+        "LayoutCount": 117,
+        "RecalcStyleCount": 325,
+        "LayoutDuration": 0.08555000000000001,
+        "RecalcStyleDuration": 0.26690099999999894,
+        "DevToolsCommandDuration": 0.03445599999999999,
+        "ScriptDuration": 0.10027199999999947,
+        "V8CompileDuration": 0.000027000000000000006,
+        "TaskDuration": 0.6990589999999983,
+        "TaskOtherDuration": 0.21185299999999962,
+        "ThreadTime": 0.7517910000000008,
+        "ProcessTime": 1.033253000000002,
+        "JSHeapUsedSize": -14935440,
+        "JSHeapTotalSize": -16744448,
+        "FirstMeaningfulPaint": 0,
+        "DomContentLoaded": 0,
+        "NavigationStart": 0
+      }
+    }
+  },
+  "cli": {
+    "startedAt": "2026-10-31T05:29:09.255Z",
+    "samples": 2,
+    "restart": false,
+    "prompt": "Write exactly five short numbered lines explaining why small software changes are easier to review. No introduction or conclusion. Do not call tools.",
+    "reasoningEffort": "low",
+    "scope": "Production generation adapters to local stream subscriber; excludes browser paint. Synthetic prompts only.",
+    "rows": [
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "cold-prose",
+        "sample": 1,
+        "status": "complete",
+        "firstVisibleMs": 3164.1,
+        "firstTextMs": 3164.1,
+        "firstToolMs": null,
+        "completeMs": 3600.2,
+        "tailMs": 41.4,
+        "maxOutputGapMs": 52.6,
+        "outputChars": 181,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 3.6384589999999974,
+            "initialization_ms": 722.373416,
+            "warm": false,
+            "first_delta_ms": 2437.039292,
+            "forwarding_max_ms": 0.7092920000000049
+          },
+          "continuation": "new",
+          "transport": "app-server",
+          "context": {
+            "used": 3396,
+            "input": 3347,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 3347,
+          "completion_tokens": 49,
+          "total_tokens": 3396,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "uncached_tokens": 3347
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3347,
+            "completion_tokens": 49,
+            "total_tokens": 3396,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 3347
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "warm-prose",
+        "sample": 1,
+        "status": "complete",
+        "firstVisibleMs": 1196.1,
+        "firstTextMs": 1196.1,
+        "firstToolMs": null,
+        "completeMs": 1451.2,
+        "tailMs": 39,
+        "maxOutputGapMs": 71.6,
+        "outputChars": 158,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 2.0102499999998145,
+            "initialization_ms": 0.4497080000001006,
+            "warm": true,
+            "first_delta_ms": 1193.5678749999997,
+            "forwarding_max_ms": 0.050750000000334694
+          },
+          "continuation": "reused",
+          "transport": "app-server",
+          "context": {
+            "used": 3473,
+            "input": 3428,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 3428,
+          "completion_tokens": 45,
+          "total_tokens": 3473,
+          "prompt_tokens_details": {
+            "cached_tokens": 3200,
+            "uncached_tokens": 228
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3428,
+            "completion_tokens": 45,
+            "total_tokens": 3473,
+            "prompt_tokens_details": {
+              "cached_tokens": 3200,
+              "uncached_tokens": 228
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "tool-request",
+        "sample": 1,
+        "status": "complete",
+        "firstVisibleMs": 1297.1,
+        "firstTextMs": null,
+        "firstToolMs": 1297.1,
+        "completeMs": 1298.5,
+        "tailMs": 1.3,
+        "maxOutputGapMs": null,
+        "outputChars": 0,
+        "reasoningChars": 0,
+        "toolCalls": 1,
+        "metadata": {
+          "timings": {
+            "queue_ms": 1.9789579999996931,
+            "initialization_ms": 0.3556250000001455,
+            "warm": true,
+            "tool_handoff_ms": 1294.6969579999995,
+            "tool_batch_count": 1,
+            "tool_batch_collect_ms": 1.2498749999995198
+          },
+          "continuation": "reused",
+          "transport": "app-server"
+        },
+        "usage": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "uncached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": null
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "tool-result",
+        "sample": 1,
+        "status": "complete",
+        "firstVisibleMs": 904.6,
+        "firstTextMs": 904.6,
+        "firstToolMs": null,
+        "completeMs": 1003.1,
+        "tailMs": 44.6,
+        "maxOutputGapMs": 24.5,
+        "outputChars": 36,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 2.2317080000002534,
+            "initialization_ms": 0.36616700000013225,
+            "warm": true,
+            "tool_wait_ms": 5.046707999999853,
+            "tool_return_ms": 0.06224999999994907,
+            "first_delta_ms": 901.8089579999996,
+            "forwarding_max_ms": 0.11849999999958527
+          },
+          "continuation": "reused",
+          "transport": "app-server",
+          "context": {
+            "used": 3595,
+            "input": 3570,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 7068,
+          "completion_tokens": 53,
+          "total_tokens": 7121,
+          "prompt_tokens_details": {
+            "cached_tokens": 6528,
+            "uncached_tokens": 540
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3570,
+            "completion_tokens": 25,
+            "total_tokens": 3595,
+            "prompt_tokens_details": {
+              "cached_tokens": 3328,
+              "uncached_tokens": 242
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "cold-prose",
+        "sample": 2,
+        "status": "complete",
+        "firstVisibleMs": 2317.6,
+        "firstTextMs": 2317.6,
+        "firstToolMs": null,
+        "completeMs": 2998,
+        "tailMs": 73.7,
+        "maxOutputGapMs": 73.9,
+        "outputChars": 181,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 1.9816659999996773,
+            "initialization_ms": 527.8905000000004,
+            "warm": false,
+            "first_delta_ms": 1787.6452500000005,
+            "forwarding_max_ms": 0.05454199999985576
+          },
+          "continuation": "new",
+          "transport": "app-server",
+          "context": {
+            "used": 3398,
+            "input": 3350,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 3350,
+          "completion_tokens": 48,
+          "total_tokens": 3398,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "uncached_tokens": 3350
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3350,
+            "completion_tokens": 48,
+            "total_tokens": 3398,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "uncached_tokens": 3350
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "warm-prose",
+        "sample": 2,
+        "status": "complete",
+        "firstVisibleMs": 1150.9,
+        "firstTextMs": 1150.9,
+        "firstToolMs": null,
+        "completeMs": 1490.9,
+        "tailMs": 42.9,
+        "maxOutputGapMs": 53.6,
+        "outputChars": 169,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 2.2332919999989826,
+            "initialization_ms": 0.4440410000006523,
+            "warm": true,
+            "first_delta_ms": 1148.118124999999,
+            "forwarding_max_ms": 0.08162499999889405
+          },
+          "continuation": "reused",
+          "transport": "app-server",
+          "context": {
+            "used": 3478,
+            "input": 3430,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 3430,
+          "completion_tokens": 48,
+          "total_tokens": 3478,
+          "prompt_tokens_details": {
+            "cached_tokens": 3200,
+            "uncached_tokens": 230
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3430,
+            "completion_tokens": 48,
+            "total_tokens": 3478,
+            "prompt_tokens_details": {
+              "cached_tokens": 3200,
+              "uncached_tokens": 230
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "tool-request",
+        "sample": 2,
+        "status": "complete",
+        "firstVisibleMs": 1518.7,
+        "firstTextMs": null,
+        "firstToolMs": 1518.7,
+        "completeMs": 1520,
+        "tailMs": 1.3,
+        "maxOutputGapMs": null,
+        "outputChars": 0,
+        "reasoningChars": 0,
+        "toolCalls": 1,
+        "metadata": {
+          "timings": {
+            "queue_ms": 2.416417000000365,
+            "initialization_ms": 0.45879099999910977,
+            "warm": true,
+            "tool_handoff_ms": 1515.759,
+            "tool_batch_count": 1,
+            "tool_batch_collect_ms": 1.2451670000009472
+          },
+          "continuation": "reused",
+          "transport": "app-server"
+        },
+        "usage": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "uncached_tokens": 0
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": null
+        }
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "transport": "codex",
+        "scenario": "tool-result",
+        "sample": 2,
+        "status": "complete",
+        "firstVisibleMs": 944.2,
+        "firstTextMs": 944.2,
+        "firstToolMs": null,
+        "completeMs": 1083,
+        "tailMs": 53.9,
+        "maxOutputGapMs": 35.9,
+        "outputChars": 36,
+        "reasoningChars": 0,
+        "toolCalls": 0,
+        "metadata": {
+          "timings": {
+            "queue_ms": 1.8684159999993426,
+            "initialization_ms": 0.3884170000001177,
+            "warm": true,
+            "tool_wait_ms": 4.537958000000799,
+            "tool_return_ms": 0.025416000000404892,
+            "first_delta_ms": 941.9063330000008,
+            "forwarding_max_ms": 0.03787499999998545
+          },
+          "continuation": "reused",
+          "transport": "app-server",
+          "context": {
+            "used": 3604,
+            "input": 3577,
+            "limit": 475000
+          }
+        },
+        "usage": {
+          "prompt_tokens": 7080,
+          "completion_tokens": 55,
+          "total_tokens": 7135,
+          "prompt_tokens_details": {
+            "cached_tokens": 6528,
+            "uncached_tokens": 552
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "last_request_usage": {
+            "prompt_tokens": 3577,
+            "completion_tokens": 27,
+            "total_tokens": 3604,
+            "prompt_tokens_details": {
+              "cached_tokens": 3328,
+              "uncached_tokens": 249
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        }
+      }
+    ],
+    "trials": [
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "sample": 1,
+        "status": "passed"
+      },
+      {
+        "provider": "codex-cli",
+        "model": "gpt-6.1-terra",
+        "sample": 2,
+        "status": "passed"
+      }
+    ],
+    "finishedAt": "2026-10-31T05:29:23.726Z"
+  },
+  "nativeUiRuns": {
+    "single": [
+      {
+        "id": "7b200cdb-6586-450b-aa85-8fd5a3a80dfa",
+        "started": 61986.59999990463,
+        "done": true,
+        "error": null,
+        "elapsed": 55550.200000047684
+      }
+    ],
+    "four": [
+      {
+        "id": "e4f351b4-f5f5-44b5-a580-f8ff05675650",
+        "started": 118487.29999995232,
+        "done": true,
+        "error": null,
+        "elapsed": 54846.60000002384
+      },
+      {
+        "id": "36dd66f0-636e-41ca-8a95-4f3b31cccabc",
+        "started": 118601.39999997616,
+        "done": true,
+        "error": null,
+        "elapsed": 58003.199999928474
+      },
+      {
+        "id": "70120bfb-f670-44d7-ad01-041c31f817c6",
+        "started": 118713,
+        "done": true,
+        "error": null,
+        "elapsed": 56380
+      },
+      {
+        "id": "8778c74d-4134-4a29-ba2a-095d48376306",
+        "started": 118823.29999995232,
+        "done": true,
+        "error": null,
+        "elapsed": 66173.79999995232
+      }
+    ]
+  },
+  "boot": {
+    "development": {
+      "bootOriginMs": 32.299999952316284,
+      "appReadyAtMs": 731.8999999761581,
+      "appReadyMs": 699.6000000238419,
+      "interactiveMs": 844.5
+    },
+    "production": {
+      "url": "http://127.0.0.1:19483",
+      "boot": {
+        "bootOriginMs": 174.39999997615814,
+        "appReadyAtMs": 1260.2000000476837,
+        "appReadyMs": 1085.8000000715256,
+        "interactiveMs": 1287.5
+      },
+      "nodes": 26549
+    }
+  }
+}

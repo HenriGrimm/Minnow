@@ -15,6 +15,12 @@ archive:
 defaultForModes:
   - research
 allowedTools:
+  - agent_capabilities
+  - chat_list
+  - chat_read
+  - chat_send
+  - chat_wait
+  - chat_stop
   - load_skill
   - get_datetime
   - read_file

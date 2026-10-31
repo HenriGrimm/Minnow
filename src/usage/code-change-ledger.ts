@@ -198,11 +198,15 @@ export function runHadCodeChanges(chat: Chat, run: TurnRunRecord): boolean {
  */
 export function getPerFileChangeSummary(chat: Chat, start = 0, end?: number): FileChangeSummary[] {
   if (!isChatHistoryReady(chat)) return [];
+  return getPerFileChangeSummaryForMessages(chat.history, start, end);
+}
 
+/** {@link getPerFileChangeSummary} over a bare transcript, such as a sub-agent run's messages. */
+export function getPerFileChangeSummaryForMessages(messages: readonly unknown[], start = 0, end?: number): FileChangeSummary[] {
   const byPath = new Map<string, FileChangeSummary>();
 
-  for (let i = start; i <= (end ?? chat.history.length - 1); i++) {
-    const msg = chat.history[i];
+  for (let i = start; i <= (end ?? messages.length - 1); i++) {
+    const msg = messages[i] as Chat['history'][number] | undefined;
     if (!msg) continue;
     if (msg.role !== 'tool') continue;
     const toolMsg = msg as ToolResultMessage;

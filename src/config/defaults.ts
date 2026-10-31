@@ -22,6 +22,7 @@ export function defaultSkillConfig(): SkillConfig {
 }
 
 const DEFAULT_ENABLED_TOOL_IDS = new Set([
+  'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
   'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
   'load_skill',
   'plugin_inspect',
@@ -107,6 +108,7 @@ const APPEARANCE_READ_TOOL_IDS = new Set(['get_appearance']);
 const WAIT_FULL_PERMISSION_TOOL_IDS = new Set(['wait']);
 
 function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionMode {
+  if (['agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(id)) return enabled ? 'full' : 'off';
   if (id === 'action_inspect' || id === 'release_inspect') return enabled ? 'full' : 'off';
   if (
     SETTINGS_READ_TOOL_IDS.has(id)

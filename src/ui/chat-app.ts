@@ -1,4 +1,5 @@
 import { sendMessage } from '../chat/messaging';
+import { isComposerQueueShortcut } from './composer-shortcuts';
 import { clearAttachments } from '../attachments/store';
 import { stopGeneration } from '../chat/stop-generation';
 import { isActiveChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
@@ -37,6 +38,7 @@ import {
   handleComposerPrimaryAction,
   initComposerSteerInputListener,
   syncComposerFromStreamingState,
+  shouldSubmitComposerOnEnter,
 } from './composer-send';
 import { handleComposerPromptHistoryKeydown } from './composer-prompt-history';
 import { autoResize, composerFieldSizingSupported } from './input';
@@ -52,7 +54,6 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { setStatus } from './status';
-import { syncAgentCliView } from './agent-cli-view';
 
 const CHAT_APP_MOUNT = '#chatAppMessageCol';
 
@@ -290,7 +291,6 @@ async function applyConciergeSeed(seed?: string): Promise<void> {
 
 /** Refresh rail, messages, outputs, and composer chrome. */
 function renderChatAppSurface(): void {
-  syncAgentCliView();
   renderSessionRail();
   renderChatAppMessages();
   void refreshChatAppOutputsPanel();
@@ -471,11 +471,17 @@ function bindStaticControls(): void {
     syncComposerSendState();
   });
   input?.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (handleSkillPickerKeydown(e)) return;
     if (handleComposerPromptHistoryKeydown(e, input)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       if (isSkillPickerOpen()) return;
       e.preventDefault();
+      if (!shouldSubmitComposerOnEnter(input.value)) return;
+      if (isComposerQueueShortcut(e)) {
+        void import('./composer-send').then(m => m.submitComposerFollowup('queue'));
+        return;
+      }
       void handleChatAppSend();
     }
   });

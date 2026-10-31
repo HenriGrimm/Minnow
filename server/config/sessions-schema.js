@@ -7,6 +7,8 @@
  * without a circular import through getSessionsDb → importJsonSessionsIfNeeded.
  */
 
+import { initChatConversationSchema } from '../chats/schema.js';
+
 /** SQLite table-layout version (distinct from SESSION_SCHEMA_VERSION wire shape = 6). */
 export const SESSIONS_DB_SCHEMA_VERSION = 1;
 
@@ -72,12 +74,15 @@ function createMessagesFtsTable(database) {
 }
 
 /**
- * Future additive columns land here — never bump user_version for these.
- * Empty at schema v1; call ensureColumn(...) here for later releases.
+ * Additive columns never bump user_version or rebuild the session store.
  * @param {import('better-sqlite3').Database} database
  */
 function migrateAddedColumns(database) {
-  void database;
+  database.transaction(() => {
+    if (ensureColumn(database, 'chat_revisions', 'write_revision', 'INTEGER NOT NULL DEFAULT 0')) {
+      database.exec('UPDATE chat_revisions SET write_revision = revision');
+    }
+  })();
 }
 
 /**
@@ -249,6 +254,7 @@ export function initSessionsSchema(database) {
   }
 
   migrateAddedColumns(database);
+  initChatConversationSchema(database);
 
   const version = database.pragma('user_version', { simple: true });
   if (version < SESSIONS_DB_SCHEMA_VERSION) {

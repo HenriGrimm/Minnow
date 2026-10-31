@@ -78,7 +78,7 @@ describe('resolveModelProducer', () => {
       assert.equal(producer.slug, 'anthropic');
       assert.equal(producer.displayName, 'Anthropic');
       assert.equal(producer.logoSvg, modelProducerLogoSvg('claude-opus-5-5'));
-      assert.equal(resolveModelProducer(id).slug, 'other');
+      assert.equal(resolveModelProducer(id).slug, 'anthropic', 'bare Claude aliases map without catalog ownership');
     }
   });
 

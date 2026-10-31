@@ -9,6 +9,8 @@ import { isBoardChatEmbedOpenForChat } from '../ui/orchestrate-board-chat-state'
 import { isBoardViewActive } from '../ui/view-mode-toggle';
 import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatRunningRemotely } from './remote-turn-state';
+import { getForegroundAppId } from '../os/instances';
+import { isRenderIdle } from '../boot/render-idle';
 
 type ChatStreamEndListener = (chatId: string) => void;
 const streamEndListeners = new Set<ChatStreamEndListener>();
@@ -160,7 +162,14 @@ export function isBackgroundStreamBlockingSend(): boolean {
 export function isStreamDomVisible(chatId: string): boolean {
   const active = getActiveChat();
   if (active.id !== chatId) return false;
-  if (getSharedChatHost(chatId)) return true;
+  if (isRenderIdle()) return false;
+  const shared = getSharedChatHost(chatId);
+  if (shared) {
+    const layer = shared.transcript.closest('[data-os-app]');
+    return shared.transcript.isConnected && (!layer || layer.classList.contains('is-active'));
+  }
+  const foreground = getForegroundAppId();
+  if (foreground != null && foreground !== 'code') return false;
   if (isCodeMapChatOpenForChat(chatId)) return true;
   if (isBoardChatEmbedOpenForChat(chatId)) return true;
   if (isOrchestratePlanScreenSuppressingChatDom(chatId)) return false;

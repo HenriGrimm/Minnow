@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "9faa995d696f5146f55ec5431d0bb3ed9fe05cc3a7fff058c0bf58a78d73ec4c"
+      "hash": "42e4019e55fb67dd4019c5b3e8950f096ffa3d82ce6ab00a4ad89b32cdb71ac3"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "e8e7ae71274d28bf5bf69b548767c9de3e2a75b478e3d1c44fd6ce9517452908"
+      "hash": "b2639deba0c17c9eb9405b41e487fa92e78e115a28bbff4032168daf17232f87"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "2cf9092bd9662cab3f0abeb3c7a82f88d831de596844290af4a589a1d8309eb1"
+      "hash": "3cb1c3fa9dd0884da23e98da89ea5a5687c5bd0eca6c48046a265152aa349a56"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -304,7 +304,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "82d24c3de898c3445b1cb228a4d29e1c84f927dc3a1d08eab4b3672be00ca10c"
+      "hash": "4dd232d952021db85750393780fbda1c56121c8822f8195e2eca4e0b50d5c88f"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -380,14 +380,14 @@
     {
       "path": "documentation/manual/orchestrate/agents.md",
       "title": "Board work agents",
-      "summary": "Boards use the shared chat runner and tool system for two worker roles. Role Responsibility Builder Implements one task, repairs concrete failures and preserves completed work Tester Independently verifies the task's Test and Accept requirements without modifying application code",
+      "summary": "Boards use the shared chat runner and tool system for two worker roles. For research, review or other work delegated from a conversation, see Agent conversations. Those assignments have saved child chats with their own model selection, requests and follow up messages. Board worke",
       "headings": [
         "Reports",
         "Repair and continuation",
         "Configuration"
       ],
       "section": "Orchestrate",
-      "hash": "41c300b2c98c6046ffa23573698c5870198476312395bf4a6de73403311dce32"
+      "hash": "8800584ba9b10961bb2dcc1a5d5044399204ba3656a920d629c9397acc7841de"
     },
     {
       "path": "documentation/manual/extend/integrations.md",
@@ -441,7 +441,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "f005ac75695f78006b15c31478ffa158bfe7af88859b65c3cfef5a01367f0157"
+      "hash": "cfc840a43bdd4e8c95320f7d22098abba35003b0fcdc212913d86a25fd51f1ae"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",
@@ -461,7 +461,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "c034362cf0a4f4049022ef4652d2cfc6e94464df48c90e4fc7c47b52913d5cb5"
+      "hash": "36a54806dcf4eb85aa3157956e95f0a4e55c370b14a75fba8fda4c3254cb1e96"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -564,7 +564,7 @@
         "How priorities are chosen"
       ],
       "section": "Roadmap",
-      "hash": "397ca79a1c50bf70873046d443868714a6e3330a39567863685b55cde6b34b5d"
+      "hash": "e2ede5ebe5a7fb00b2833719e94f3c02a654f95f9d29913a414bc8882a6d6430"
     },
     {
       "path": "documentation/THIRD_PARTY_NOTICES.md",
@@ -597,6 +597,26 @@
       ],
       "section": "Overview",
       "hash": "c6261f52134158157299c6c40404c63bbe90a8ff0d3f9eeaf759e5048449132c"
+    },
+    {
+      "path": "documentation/manual/chat/persistent-agent-chats.md",
+      "title": "Agent conversations",
+      "summary": "Delegating a task creates a saved conversation for that agent. Open it to read the work, answer a question, choose a model, or send a follow up. Switching chats or closing a chat view does not stop accepted work. Minnow's server must remain running for work to continue. Open an a",
+      "headings": [
+        "Open an agent chat",
+        "An assignment and its conversation",
+        "Choose each agent's model",
+        "Send, queue and steer",
+        "Questions and approvals",
+        "Stop controls",
+        "Messages between chats",
+        "Saved history and older tasks",
+        "Checkouts, deletion and backups",
+        "Continue from the CLI",
+        "Related"
+      ],
+      "section": "Chat",
+      "hash": "7136e6968e938a117b955b924da2c01638283b24649bcf69de832bf57dfe38f8"
     },
     {
       "path": "documentation/manual/apps/home.md",

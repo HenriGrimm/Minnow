@@ -464,7 +464,10 @@ test('long-history backfill merges work into one disclosure per turn', async () 
   chat.history = [{ role: 'user', content: 'Many steps' }, ...Array.from({ length: 25 }, (_, i) => tool(String(i), `${i}.ts`)).flat(),
     { role: 'assistant', content: 'Finished all steps.' }];
   renderChatFromHistory(chat);
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  while (mount.querySelector('.chat-history-more')) {
+    mount.querySelector('.chat-history-more').click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   assert.equal(mount.querySelectorAll('.chat-work').length, 1);
   assert.equal(mount.querySelectorAll('.tool-call-msg').length, 25);
   assert.equal(mount.querySelectorAll('.tool-call-msg.chat-work-hidden').length, 25);
@@ -666,7 +669,10 @@ test('a repeat sync of a long live turn writes no transcript classes', async () 
   chat.runs = [];
   setStreaming(true, chat.id);
   renderChatFromHistory(chat);
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  while (mount.querySelector('.chat-history-more')) {
+    mount.querySelector('.chat-history-more').click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   appendStreamingAssistantRow(chat.id);
   installChatWorkView(mount, chat, () => true);
   const steps = mount.querySelectorAll('.chat-step').length;

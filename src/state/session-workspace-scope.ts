@@ -20,12 +20,18 @@ export function hasComposerDraft(chat: Chat): boolean {
   return Boolean(chat.composerDraft?.trim());
 }
 
+export function isChatArchived(chat: Chat): boolean {
+  return typeof chat.archivedAt === 'number' && Number.isFinite(chat.archivedAt) && chat.archivedAt > 0;
+}
+
 /**
  * Whether a chat belongs in session rails (desktop / Code / Chat app).
  * Lazy-boot chats keep `history: []` until hydrate — use denormalized `messageCount`
  * so rails are not empty after restart.
  */
 export function chatHasListableContent(chat: Chat): boolean {
+  if (chat.agentConversation?.version === 1) return true;
+  if (isChatArchived(chat)) return true;
   if (hasComposerDraft(chat)) return true;
   // A Super Plan chat is the home of a server-side run and never has a
   // transcript of its own; it belongs in the sidebar from the run's start.
@@ -63,6 +69,8 @@ export function formatDraftChatSidebarName(chat: Chat): string {
 
 /** Board planners and folder-linked chats stay even when still empty. */
 function isProtectedFromEphemeralPrune(chat: Chat, state: SessionState): boolean {
+  // The durable shell can exist while setup/capacity is pending, before any input hydrates.
+  if (chat.agentConversation?.version === 1) return true;
   /*
    * A background chat is empty from the moment it is created until its agent
    * reports back (MIN-637). Pruning it in that window would delete the only

@@ -6,13 +6,22 @@ import {
 } from '../state/sessions';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { isChatTurnInProgress } from './chat-turn-guard';
-import { enqueueSteerMessage } from './steer-message';
+import { clearPendingSteer, enqueueSteerMessage } from './steer-message';
 import { parseCompactSlashInput } from './context/parse-compact-command';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import { setStatus } from '../ui/status';
 
 type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
+const dispatching = new Map<string, object>();
+const editing = new Set<string>();
+
+/** Hold a queued message in place while its inline editor is open. */
+export function setQueuedMessageEditing(chatId: string, id: string, active: boolean): void {
+  const key = `${chatId}:${id}`;
+  if (active) editing.add(key);
+  else editing.delete(key);
+}
 
 export function setPendingMessageQueueChangedListener(
   listener: QueueChangedListener | null,
@@ -31,6 +40,25 @@ function restoreDequeuedMessage(chat: Chat, item: QueuedComposerMessage): void {
   touchChat(chat);
   scheduleSaveSessions();
   notifyPendingMessageQueueChanged();
+}
+
+async function dispatchQueuedMessage(chat: Chat, item: QueuedComposerMessage): Promise<void> {
+  const token = {};
+  dispatching.set(chat.id, token);
+  let admitted = false;
+  const release = () => { if (dispatching.get(chat.id) === token) dispatching.delete(chat.id); };
+  try {
+    const { resumeParentChatWithMessage } = await import('./run-turn-chat');
+    const completed = await resumeParentChatWithMessage(chat, item.text, {
+      onUserMessageAccepted: async () => { admitted = true; release(); },
+    });
+    if (!completed && !admitted) restoreDequeuedMessage(chat, item);
+    // Local commands have no turn teardown to advance the next queued message.
+    if (completed && !admitted) { release(); queueMicrotask(() => { void flushPendingMessageQueue(chat); }); }
+  } catch (error) {
+    if (!admitted) restoreDequeuedMessage(chat, item);
+    throw error;
+  } finally { release(); }
 }
 
 /** Return the chat queue array (empty when unset). */
@@ -95,6 +123,7 @@ export function removeQueuedMessage(chat: Chat, id: string): boolean {
   const index = queue.findIndex((item) => item.id === id);
   if (index < 0) return false;
   queue.splice(index, 1);
+  editing.delete(`${chat.id}:${id}`);
   chat.pendingMessageQueue = queue.length > 0 ? queue : undefined;
   touchChat(chat);
   scheduleSaveSessions();
@@ -106,6 +135,10 @@ export function removeQueuedMessage(chat: Chat, id: string): boolean {
 export function updateQueuedMessage(chat: Chat, id: string, text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (shouldRelayChat(chat.id)) {
+    void sendRemoteChatCommand(chat.id, 'edit', { itemId: id, text: trimmed }).catch(error => setStatus('err', String(error?.message || error)));
+    return true;
+  }
   const queue = getPendingMessageQueue(chat);
   const item = queue.find((entry) => entry.id === id);
   if (!item) return false;
@@ -115,6 +148,15 @@ export function updateQueuedMessage(chat: Chat, id: string, text: string): boole
   scheduleSaveSessions();
   notifyPendingMessageQueueChanged();
   return true;
+}
+
+/** Keep unapplied corrections available after Stop, failure, or a boundary-free reply. */
+export function preservePendingSteer(chat: Chat): void {
+  const text = chat.pendingSteerMessage?.trim();
+  if (!text) return;
+  chat.pendingMessageQueue = [{ id: randomUUID(), text, createdAt: Date.now() }, ...getPendingMessageQueue(chat)];
+  clearPendingSteer(chat);
+  notifyPendingMessageQueueChanged();
 }
 
 export type PushQueuedMessageNowResult = 'sent' | 'deferred' | false;
@@ -129,6 +171,7 @@ export function pushQueuedMessageNow(chat: Chat, id: string): PushQueuedMessageN
   const index = queue.findIndex((item) => item.id === id);
   if (index < 0) return false;
   const queued = queue[index];
+  if (dispatching.has(chat.id) || editing.has(`${chat.id}:${id}`)) return false;
   // Local commands must reach their command handler after the current turn.
   // Sending one as a steer persists it as ordinary user text for the model.
   if (isChatTurnInProgress(chat.id) && parseCompactSlashInput(queued?.text ?? '')) {
@@ -145,18 +188,14 @@ export function pushQueuedMessageNow(chat: Chat, id: string): PushQueuedMessageN
     return enqueueSteerMessage(chat, item.text) ? 'sent' : false;
   }
 
-  void import('./run-turn-chat')
-    .then(({ resumeParentChatWithMessage }) => resumeParentChatWithMessage(chat, item.text))
-    .then((accepted) => {
-      if (!accepted) restoreDequeuedMessage(chat, item);
-    })
-    .catch(() => restoreDequeuedMessage(chat, item));
+  void dispatchQueuedMessage(chat, item).catch(error => setStatus('err', String(error?.message || error)));
   return 'sent';
 }
 
 /** Drop all queued follow-ups (e.g. chat delete). */
 export function clearPendingMessageQueue(chat: Chat): void {
   if (!chat.pendingMessageQueue?.length) return;
+  for (const item of chat.pendingMessageQueue) editing.delete(`${chat.id}:${item.id}`);
   chat.pendingMessageQueue = undefined;
   touchChat(chat);
   scheduleSaveSessions();
@@ -165,8 +204,9 @@ export function clearPendingMessageQueue(chat: Chat): void {
 
 /** Send the oldest queued follow-up as a new turn after streaming ends. */
 export async function flushPendingMessageQueue(chat: Chat): Promise<void> {
+  if (chat.chatCommandVersion === 1) return;
   const queue = getPendingMessageQueue(chat);
-  if (queue.length === 0) return;
+  if (queue.length === 0 || isChatTurnInProgress(chat.id) || dispatching.has(chat.id) || editing.has(`${chat.id}:${queue[0].id}`)) return;
   const item = queue.shift();
   chat.pendingMessageQueue = queue.length > 0 ? queue : undefined;
   touchChat(chat);
@@ -174,14 +214,7 @@ export async function flushPendingMessageQueue(chat: Chat): Promise<void> {
   notifyPendingMessageQueueChanged();
   if (!item?.text.trim()) return;
 
-  try {
-    const { resumeParentChatWithMessage } = await import('./run-turn-chat');
-    const accepted = await resumeParentChatWithMessage(chat, item.text);
-    if (!accepted) restoreDequeuedMessage(chat, item);
-  } catch (err) {
-    restoreDequeuedMessage(chat, item);
-    throw err;
-  }
+  await dispatchQueuedMessage(chat, item);
 }
 
 /** @internal Test hook — append a queue row with a fixed id. */

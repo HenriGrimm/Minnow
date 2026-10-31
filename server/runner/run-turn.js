@@ -6,6 +6,7 @@ import { SEARCH_TOOLS_NAME } from './lazy-tools.js';
 import { createToolExposure, SEARCH_MCP_TOOLS_NAME, CALL_MCP_TOOL_NAME } from './tool-exposure.js';
 import { createTurnRunner } from './turn-runner.js';
 import { buildOpeningTranscript } from './opening-messages.js';
+import { projectUserContent } from './user-content.js';
 import { STOPPED_TOOL_MSG } from './tool-batch.js';
 import { SUB_AGENT_CONTEXT_BUDGET_ERROR } from './sub-agent-outcome.js';
 import { isProviderUnreachableError } from './transient-fetch-retry.js';
@@ -285,6 +286,7 @@ function waitForAbort(signal) {
  *   signal?: AbortSignal,
  *   turnTimeoutSignal?: AbortSignal,
  *   chatId: string,
+ *   toolCallId?: string,
  * }} opts
  * @returns {Promise<string>}
  */
@@ -305,6 +307,7 @@ async function runAskCapability(rawArgs, opts) {
       opts.ask.ask(parseAskQuestionArgs(rawArgs), {
         signal: combined,
         chatId: opts.chatId,
+        toolCallId: opts.toolCallId,
       }),
     );
     const abortPromise = waitForAbort(combined);
@@ -400,9 +403,30 @@ function normalizeRoundBoundaryRows(raw) {
     if ('content' in row) next.content = row.content;
     if (typeof row.tool_call_id === 'string') next.tool_call_id = row.tool_call_id;
     if (Array.isArray(row.tool_calls)) next.tool_calls = row.tool_calls;
+    if (typeof row.messageId === 'string') next.messageId = row.messageId;
+    if (typeof row.commandId === 'string') next.commandId = row.commandId;
+    if (row.provenance && typeof row.provenance === 'object') next.provenance = row.provenance;
+    if (typeof row.createdAt === 'number') next.createdAt = row.createdAt;
     out.push(next);
   }
   return out;
+}
+
+/** Application routing identity belongs in canonical history, never upstream JSON. */
+function stripTranscriptRouting(body, vision) {
+  if (!Array.isArray(body.messages)) return body;
+  let changed = false;
+  const messages = body.messages.map(message => {
+    const projected = projectUserContent(message, { vision });
+    if (projected !== message) changed = true;
+    message = projected;
+    if (!message || typeof message !== 'object' ||
+        !['messageId', 'commandId', 'provenance', 'createdAt'].some(key => Object.hasOwn(message, key))) return message;
+    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, ...wire } = message;
+    changed = true;
+    return wire;
+  });
+  return changed ? { ...body, messages } : body;
 }
 
 /**
@@ -479,8 +503,40 @@ export async function runTurn(options) {
   });
   const seed = typeof options.seed === 'string' ? options.seed : '';
   const limits = options.limits ?? {};
-  const transcript = options.transcript ?? deps.transcriptStore;
+  const rawTranscript = options.transcript ?? deps.transcriptStore;
+  const canonicalPersistence = typeof rawTranscript?.observePersisted === 'function';
+  const transcriptAbort = new AbortController();
+  let transcriptFailure = null;
+  // Presentation callbacks may be best-effort. Canonical writes cannot be:
+  // latch failures even if a legacy inner progress callback catches the throw.
+  const persist = (work) => {
+    if (transcriptFailure) throw transcriptFailure;
+    try { return work(); }
+    catch (error) {
+      transcriptFailure = error instanceof Error ? error : new Error(String(error));
+      transcriptAbort.abort(transcriptFailure);
+      throw transcriptFailure;
+    }
+  };
+  const transcript = rawTranscript ? {
+    ...rawTranscript,
+    load: (id) => persist(() => rawTranscript.load(id)),
+    append: (id, message) => persist(() => rawTranscript.append(id, message)),
+    setMeta: (id, meta) => persist(() => rawTranscript.setMeta(id, meta)),
+    ...(typeof rawTranscript.observePersisted === 'function' ? {
+      observePersisted: (id, event) => persist(() => rawTranscript.observePersisted(id, event)),
+    } : {}),
+    ...(typeof rawTranscript.setCompaction === 'function' ? {
+      setCompaction: (id, checkpoint) => persist(() => rawTranscript.setCompaction(id, checkpoint)),
+    } : {}),
+  } : rawTranscript;
   const onEvent = options.onEvent;
+  const publish = event => {
+    // A queued live-delta microtask may outlive an aborted persistence path.
+    if (transcriptFailure) return;
+    transcript?.observePersisted?.(chatId, event);
+    emit(onEvent, event);
+  };
   const timing = createRunnerTiming(event => emit(onEvent, event));
   const turnStarted = timing.start();
   let roundStarted = null;
@@ -491,15 +547,27 @@ export async function runTurn(options) {
   const cwd = options.cwd;
   /** @type {unknown[] | undefined} */
   let priorMessages;
+  let storedCompaction;
   /** @type {Array<number | null> | undefined} */
   let priorRowIds;
   if (Array.isArray(options.messages)) {
     priorMessages = options.messages;
     priorRowIds = Array.isArray(options.messageRowIds) ? options.messageRowIds : undefined;
   } else if (options.seedKind === 'continue') {
-    const record = transcript.load(chatId);
+    let record;
+    try { record = transcript.load(chatId); }
+    catch (error) { return { outcome: 'crashed', error: errorMessage(error), failure: { code: 'transcript_persistence_failed' } }; }
     priorMessages = record?.messages ?? [];
+    storedCompaction = record?.compaction;
     priorRowIds = Array.isArray(record?.rowIds) ? record.rowIds : priorMessages.map((_, i) => i);
+  }
+  // Provider sanitizers remove application-only fields before postChatCompletions.
+  // Project saved pixels into this invocation's working copy first, preserving
+  // canonical string content/images and positional ids in the underlying store.
+  const lastPrior = priorMessages?.[priorMessages.length - 1];
+  const openingSeed = lastPrior?.role === 'user' && lastPrior.content === seed ? '' : seed;
+  if (priorMessages) {
+    priorMessages = priorMessages.map(message => projectUserContent(message, { vision: model.vision === true }));
   }
   const isContinueTurn = priorMessages !== undefined;
 
@@ -526,7 +594,7 @@ export async function runTurn(options) {
   const continuePersistFrom =
     priorMessages === undefined
       ? 0
-      : buildOpeningTranscript(systemPrompt, seed, priorMessages).persistFrom;
+      : buildOpeningTranscript(systemPrompt, openingSeed, priorMessages).persistFrom;
   let persistCursor = continuePersistFrom;
 
   /** @type {import('./run-turn').TurnResult | null} */
@@ -551,10 +619,11 @@ export async function runTurn(options) {
   syncWallTimer(options.pauseGate?.paused ?? false);
 
   const combinedSignal = anySignal(
-    [options.signal, timeoutCtrl.signal].filter(Boolean),
+    [options.signal, timeoutCtrl.signal, transcriptAbort.signal].filter(Boolean),
   );
 
   const countedPost = async (provider, body, signal, postOptions) => {
+    if (transcriptFailure) throw transcriptFailure;
     if (options.pauseGate?.paused) await options.pauseGate.wait(combinedSignal);
     if (typeof limits.maxTurns === 'number' && completionCount >= limits.maxTurns) {
       timeoutCtrl.abort(TURN_TIMEOUT);
@@ -564,19 +633,25 @@ export async function runTurn(options) {
     }
     completionCount += 1;
     const started = timing.start();
+    const upstreamBody = stripTranscriptRouting(body, model.vision === true);
     try { return await deps.postChatCompletions(provider,
       provider.apiKind === 'agent-cli-v1' && options.cliTurnContext
-        ? { ...body, minnow_cli_turn_context: options.cliTurnContext } : body, signal, postOptions); }
+        ? { ...upstreamBody, minnow_cli_turn_context: options.cliTurnContext } : upstreamBody, signal, {
+          ...postOptions,
+          ...(Object.hasOwn(model, 'options') ? { agentModelOptions: model.options } : {}),
+          ...(model.exactModel === true ? { exactModel: true } : {}),
+        }); }
     finally { timing.end('request_headers', started, { index: completionCount - 1 }); }
   };
 
   const interceptingBatch = async (batchOptions) => {
+    if (transcriptFailure) throw transcriptFailure;
     if (options.pauseGate?.paused) await options.pauseGate.wait(combinedSignal);
     const toolCalls = batchOptions?.toolCalls ?? [];
     for (const toolCall of toolCalls) {
       const inspected = inspectToolCall(toolCall);
       if (!inspected.name) continue;
-      emit(onEvent, {
+      publish({
         type: 'tool_call',
         name: inspected.name,
         id: inspected.id,
@@ -595,7 +670,7 @@ export async function runTurn(options) {
         const content = inspected.name === SEARCH_MCP_TOOLS_NAME
           ? cliMcpTools.search(inspected.arguments)
           : 'Error: invoke MCP tools through call_mcp_tool. Use search_mcp_tools to discover their schemas.';
-        emit(onEvent, { type: 'tool_result', name: inspected.name, id: inspected.id,
+        publish({ type: 'tool_result', name: inspected.name, id: inspected.id,
           content, ...(content.startsWith('Error:') ? { isError: true } : {}) });
         outcomes.push({ toolCall, result: { content } });
         continue;
@@ -612,7 +687,7 @@ export async function runTurn(options) {
         } catch (err) {
           content = `Error: recall_history failed (${errorMessage(err)}).`;
         }
-        emit(onEvent, {
+        publish({
           type: 'tool_result',
           name: RECALL_HISTORY_TOOL_NAME,
           id: inspected.id,
@@ -627,7 +702,7 @@ export async function runTurn(options) {
         const content = inspected.name === SEARCH_TOOLS_NAME && callableNames.has(SEARCH_TOOLS_NAME)
           ? lazyTools.search(inspected.arguments)
           : 'Error: tool is not loaded or available. Use search_tools to find permitted tools before calling them.';
-        emit(onEvent, { type: 'tool_result', name: inspected.name, id: inspected.id,
+        publish({ type: 'tool_result', name: inspected.name, id: inspected.id,
           content, ...(content.startsWith('Error:') ? { isError: true } : {}) });
         outcomes.push({ toolCall, result: { content } });
         continue;
@@ -640,10 +715,11 @@ export async function runTurn(options) {
           signal: options.signal,
           turnTimeoutSignal: timeoutCtrl.signal,
           chatId,
+          toolCallId: inspected.id,
         });
         timing.end('ask', askStarted, { id: inspected.id });
         if (!content.startsWith('Error:')) progress.reset();
-        emit(onEvent, {
+        publish({
           type: 'tool_result',
           name: ASK_QUESTION_TOOL_NAME,
           id: inspected.id,
@@ -661,7 +737,7 @@ export async function runTurn(options) {
       if (parsed.ok) {
         captured = parsed.result;
         const content = 'Outcome recorded.';
-        emit(onEvent, {
+        publish({
           type: 'tool_result',
           name: reportToolName,
           id: inspected.id,
@@ -669,7 +745,7 @@ export async function runTurn(options) {
         });
         outcomes.push({ toolCall, result: { content } });
       } else {
-        emit(onEvent, {
+        publish({
           type: 'tool_result',
           name: reportToolName,
           id: inspected.id,
@@ -696,6 +772,7 @@ export async function runTurn(options) {
     const roundNoteId = roundNote ? inspectToolCall(otherCalls[otherCalls.length - 1]).id : undefined;
 
     const execute = async (name, args, ctx) => {
+      if (transcriptFailure) throw transcriptFailure;
       if (cliMcpTools && name === CALL_MCP_TOOL_NAME) {
         const call = cliMcpTools.resolveCall(args);
         if (call.error) return { content: call.error };
@@ -730,7 +807,7 @@ export async function runTurn(options) {
         if (seenToolResultIds.has(id)) return;
         seenToolResultIds.add(id);
       }
-      emit(onEvent, event);
+      publish(event);
     };
 
     const batchStarted = timing.start();
@@ -752,6 +829,14 @@ export async function runTurn(options) {
     return outcomes;
   };
 
+  const effortOption = model.options?.reasoningEffort;
+  const thinkingOption = model.options?.thinkingMode === 'on' || model.options?.thinkingMode === 'off'
+    ? model.options.thinkingMode
+    : effortOption ? (effortOption === 'off' ? 'off' : 'on') : undefined;
+  const thinking = thinkingOption === 'on' || thinkingOption === 'off'
+    ? { mode: thinkingOption, ...(Object.hasOwn(model.options, 'thinkingBudgetTokens')
+      ? { budgetTokens: model.options.thinkingBudgetTokens } : {}) }
+    : model.thinking;
   const wrappedDeps = {
     ...deps,
     transcriptStore: transcript,
@@ -760,18 +845,14 @@ export async function runTurn(options) {
     resolveSamplerPreset: (input) =>
       model.sampler ?? deps.resolveSamplerPreset(input),
     resolveThinkingMode: (input) =>
-      model.thinking?.mode
-        ? { mode: model.thinking.mode }
+      thinking?.mode
+        ? { mode: thinking.mode }
         : deps.resolveThinkingMode(input),
     resolveThinkingBudgetTokens: (input) =>
-      model.thinking && 'budgetTokens' in model.thinking
-        ? { budgetTokens: model.thinking.budgetTokens ?? null }
+      thinking && 'budgetTokens' in thinking
+        ? { budgetTokens: thinking.budgetTokens ?? null }
         : deps.resolveThinkingBudgetTokens(input),
   };
-
-  if (transcript && model.thinking?.mode) {
-    transcript.setMeta(chatId, { thinkingMode: model.thinking.mode });
-  }
 
   let lastDelta = '';
   let lastThinking = '';
@@ -800,10 +881,17 @@ export async function runTurn(options) {
   };
 
   try {
+    if (transcript && thinking?.mode) {
+      transcript.setMeta(chatId, { thinkingMode: thinking.mode });
+    }
+    if (transcript && Object.hasOwn(model, 'options')) {
+      // An explicit empty options snapshot clears a previous turn's override.
+      transcript.setMeta(chatId, { reasoningEffort: model.options?.reasoningEffort ?? null });
+    }
     ran = await runner.run({
       runId: chatId,
       type: 'turn',
-      task: seed,
+      task: openingSeed,
       systemPrompt,
       tools,
       refreshRoundConfig: async () => {
@@ -826,12 +914,13 @@ export async function runTurn(options) {
         } finally { timing.end('refresh_config', started); }
       },
       priorRowIds,
-      compaction: options.compaction ?? null,
+      compaction: Object.hasOwn(options, 'compaction') ? options.compaction : storedCompaction ?? null,
       resolveRowId: (position) => positionRowIds.get(position) ?? undefined,
       bindRecallRows: (read) => {
         recallRows = read;
       },
       onCompaction: (event) => {
+        transcript?.setCompaction?.(chatId, event.checkpoint);
         if (!recallActive) {
           recallActive = true;
           // Same array the loop sends as `body.tools`; callable from the next request.
@@ -857,6 +946,7 @@ export async function runTurn(options) {
       reportToolName: injection.inject ? reportToolName : null,
       summarySchema: options.summarySchema,
       executeTool: async (name, args, ctx) => {
+        if (transcriptFailure) throw transcriptFailure;
         if (typeof options.execute === 'function') {
           return options.execute(name, args, {
             toolCallId: ctx?.toolCallId,
@@ -870,7 +960,7 @@ export async function runTurn(options) {
         const syncStarted = timing.start();
         try {
           const rowShift = Number.isFinite(meta?.rowShift) ? meta.rowShift : 0;
-          if (!isContinueTurn) {
+          if (!isContinueTurn && !canonicalPersistence) {
             persistNewMessages(transcript, chatId, messages, { rowShift, onAppended: noteAppended });
           } else if (meta?.settled === true && Array.isArray(messages)) {
             persistNewMessages(transcript, chatId, messages, {
@@ -888,7 +978,12 @@ export async function runTurn(options) {
           const text = typeof last.content === 'string' ? last.content : '';
           if (!text || text === lastDelta) return;
           lastDelta = text;
-          emit(onEvent, { type: 'delta', text });
+          publish({ type: 'delta', text });
+        } catch (error) {
+          // Settled snapshots may arrive from the inner runner's microtask.
+          // The persistence latch already aborted work; surface it from runTurn,
+          // rather than leaking an uncaught exception from that queued callback.
+          if (!transcriptFailure) throw error;
         } finally { transcriptSyncMs += timing.start() - syncStarted; }
       },
       onTurnEvent: (event) => {
@@ -906,17 +1001,24 @@ export async function runTurn(options) {
           roundStarted = null;
         }
         if (event.type === 'response_restart') { lastDelta = ''; lastThinking = ''; lastStreamingTool = ''; }
-        emit(onEvent, event);
+        publish(event);
       },
       onRoundBoundary:
         typeof options.onRoundBoundary === 'function'
           ? () => {
               try {
-                const spliced = normalizeRoundBoundaryRows(options.onRoundBoundary());
+                const boundary = options.onRoundBoundary();
+                const spliced = normalizeRoundBoundaryRows(Array.isArray(boundary) ? boundary : boundary?.messages);
                 if (spliced.length === 0) return null;
+                if (!Array.isArray(boundary) && Array.isArray(boundary?.rowIds)) {
+                  spliced.forEach((_, index) => noteAppended(persistCursor + index, boundary.rowIds[index] ?? -1));
+                }
                 if (isContinueTurn) persistCursor += spliced.length;
                 return spliced;
-              } catch {
+              } catch (error) {
+                if (canonicalPersistence) {
+                  return persist(() => { throw error; });
+                }
                 return null;
               }
             }
@@ -931,12 +1033,12 @@ export async function runTurn(options) {
           phase !== lastPhase
         ) {
           lastPhase = phase;
-          emit(onEvent, { type: 'phase', phase });
+          publish({ type: 'phase', phase });
         }
         const thinking = activity?.partialReasoning;
         if (typeof thinking === 'string' && thinking && thinking !== lastThinking) {
           lastThinking = thinking;
-          emit(onEvent, { type: 'thinking', text: thinking,
+          publish({ type: 'thinking', text: thinking,
             ...(activity.reasoningFormat === 'summary' ? { reasoningFormat: 'summary' } : {}) });
         }
         const toolName =
@@ -945,12 +1047,17 @@ export async function runTurn(options) {
             : '';
         if (toolName && toolName !== lastStreamingTool) {
           lastStreamingTool = toolName;
-          emit(onEvent, { type: 'tool_streaming', name: toolName });
+          publish({ type: 'tool_streaming', name: toolName });
         }
       },
     });
+    if (transcriptFailure) throw transcriptFailure;
     if (ran?.usage) usage = ran.usage;
   } catch (err) {
+    if (transcriptFailure) return withUsage({
+      outcome: 'crashed', error: errorMessage(transcriptFailure),
+      failure: { code: 'transcript_persistence_failed' },
+    });
     if (captured) return withUsage(captured);
     if (err?.[TURN_REPORTED]) return withUsage(err[TURN_REPORTED]);
     if (err?.[TURN_TIMEOUT] || timeoutCtrl.signal.aborted) {
@@ -969,18 +1076,26 @@ export async function runTurn(options) {
       ...(isProviderUnreachableError(err) ? { providerUnreachable: true } : {}),
     });
   } finally {
-    if (isContinueTurn && lastSnapshot) {
-      persistNewMessages(transcript, chatId, lastSnapshot, {
-        from: persistCursor,
-        rowShift: lastSnapshotShift,
-        onAppended: noteAppended,
-      });
+    if (!transcriptFailure && (isContinueTurn || canonicalPersistence) && lastSnapshot) {
+      try {
+        persistNewMessages(transcript, chatId, lastSnapshot, {
+          from: persistCursor,
+          rowShift: lastSnapshotShift,
+          onAppended: noteAppended,
+        });
+      } catch (error) {
+        if (!transcriptFailure) throw error;
+      }
     }
     unsubscribePause?.();
     if (wallTimer) clearTimeout(wallTimer);
     if (roundStarted !== null) timing.end('model_round_incomplete', roundStarted);
     if (transcriptSyncMs > 0) timing.end('transcript_sync', timing.start() - transcriptSyncMs);
     timing.end('turn', turnStarted);
+    // A final settled append can fail after a report was captured. Durable
+    // failure must win over every earlier success/timeout return.
+    if (transcriptFailure) return withUsage({ outcome: 'crashed', error: errorMessage(transcriptFailure),
+      failure: { code: 'transcript_persistence_failed' } });
   }
 
   if (captured) return withUsage(captured);

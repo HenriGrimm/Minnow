@@ -20,6 +20,7 @@ import {
   touchChat,
 } from '../state/sessions';
 import type { Chat, TurnRunRecord } from '../types';
+import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/chat-relationships';
 
 export type UndoBlockReason =
   | 'streaming'
@@ -27,6 +28,7 @@ export type UndoBlockReason =
   | 'board'
   | 'worktree'
   | 'no_turn'
+  | 'canonical_history'
   | 'not_found';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -196,6 +198,8 @@ export function undoBlockMessage(reason: UndoBlockReason): string {
   switch (reason) {
     case 'streaming':
       return MSG_STREAMING;
+    case 'canonical_history':
+      return CANONICAL_HISTORY_HINT;
     case 'orchestrate':
       return MSG_ORCHESTRATE;
     case 'board':
@@ -212,6 +216,7 @@ export function undoBlockMessage(reason: UndoBlockReason): string {
 }
 
 export function getUndoEligibility(chat: Chat): UndoEligibility {
+  if (!supportsLocalHistoryMutation(chat)) return { ok: false, reason: 'canonical_history', message: CANONICAL_HISTORY_HINT };
   if (streamingChatIds.has(chat.id)) {
     return { ok: false, reason: 'streaming', message: MSG_STREAMING };
   }
@@ -400,6 +405,8 @@ export async function undoLastAgentTurn(
     pendingFileRestore = true;
   }
 
+  // The chat can acquire canonical ownership while a confirmation dialog is open.
+  if (!supportsLocalHistoryMutation(chat)) return { ok: false, error: 'canonical_history' };
   persistActiveBranchSuffix(chat, forkHistoryIndex);
 
   if (run && (!run.outputMessages || run.outputMessages.length === 0)) {

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "status": "resolved_after_explicit_authorization",
+  "initialAttempt": {
+    "version": 1,
+    "status": "blocked_approval",
+    "authorization": "pending_human_response",
+    "realProviderRequestsStarted": false,
+    "destinations": [
+      "api.deepseek.com",
+      "opencode.ai",
+      "configured Codex CLI account"
+    ],
+    "reason": "Automatic approval review requires explicit authorization for credentialed external model requests and possible provider costs.",
+    "paths": [
+      {
+        "kind": "api",
+        "status": "NOT_RUN"
+      },
+      {
+        "kind": "cli",
+        "status": "NOT_RUN"
+      },
+      {
+        "kind": "pool",
+        "status": "NOT_RUN"
+      },
+      {
+        "kind": "local",
+        "status": "NOT_RUN"
+      }
+    ]
+  },
+  "resolution": {
+    "authorization": "explicit_human_authorization_received",
+    "instruction": "Authorize these live tests",
+    "realProviderRequestsStarted": true,
+    "report": "agent-smoke-results.json",
+    "outcomes": [
+      {
+        "kind": "api",
+        "status": "PASS",
+        "code": "production_tool_round"
+      },
+      {
+        "kind": "cli",
+        "status": "PASS",
+        "code": "production_tool_round"
+      },
+      {
+        "kind": "pool",
+        "status": "PASS",
+        "code": "production_tool_round"
+      },
+      {
+        "kind": "local",
+        "status": "SKIP",
+        "code": "provider_unavailable"
+      }
+    ],
+    "poolFallbackExercised": false,
+    "opencodeInferenceVerified": false
+  }
+}

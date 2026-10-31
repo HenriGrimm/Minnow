@@ -13,6 +13,7 @@ import { recordAppSurfaceFocus } from './app-focus-cycle';
 import { osOnAppClose, osOnAppOpen } from './page-bridge';
 import { getAppWindowId, isHashInAppWindow, resolveAppWindowBootHash } from './app-window';
 import { CODE_SECTION_IDS, type AppId, type CodeSectionId, type LaunchOptions, type OsRoute } from './types';
+import { chatIdFromLink, chatLink } from '../state/chat-relationships';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -179,6 +180,8 @@ export function parseOsHash(hash: string): OsRoute {
       route.codeSection = isCodeSectionId(seg)
         ? seg
         : (pendingCodeSection ?? 'chat');
+      const chatId = chatIdFromLink(normalized);
+      if (chatId) { route.chatId = chatId; route.codeSection = 'chat'; }
     }
     if (route.appId === 'reef') route.reefAppId = appMatch[2];
     if (route.appId === 'issues' && appMatch[2]) {
@@ -279,6 +282,7 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
   }
 
   const routeFields: LaunchOptions = {};
+  if (route.chatId) routeFields.chatId = route.chatId;
   if (route.settingsSection) {
     routeFields.settingsSection = route.settingsSection;
     pendingSettingsSection = route.settingsSection;
@@ -411,7 +415,7 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
       : appId === 'brain' && options?.brainSection
         ? `#/app/brain/${options.brainSection}`
         : appId === 'code'
-          ? hashForCodeSection(codeSection ?? 'chat')
+          ? options?.chatId?.trim() ? chatLink(options.chatId.trim()) : hashForCodeSection(codeSection ?? 'chat')
           : `#/app/${appId}`;
   if (window.location.hash !== next) {
     pendingLaunchOptions = options;

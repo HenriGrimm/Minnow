@@ -12,6 +12,8 @@ export interface CompletionStreamOptions {
   fallbackRole?: string | null;
   chatId?: string | null;
   routerPreferAvailable?: boolean;
+  agentModelOptions?: import('../chats/contracts').ModelOptions;
+  exactModel?: boolean;
   /** Capabilities the body was sanitized with; see `PostChatCompletionsOptions`. */
   modelCapabilities?: SendModelCapabilities | null;
 }

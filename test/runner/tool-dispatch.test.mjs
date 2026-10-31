@@ -351,8 +351,6 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     }
 
     const samples = [
-      'get_datetime',
-      'calculate',
       'ask_question',
       'spawn_sub_agent',
       'todo_write',
@@ -361,6 +359,11 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
       const out = await executeInProcessTool(name, {}, { cwd: codeWorkspace });
       assert.equal(out.content, `Not implemented: ${name}`);
     }
+
+    const date = await executeInProcessTool('get_datetime', {}, { cwd: codeWorkspace });
+    assert.equal(Number.isFinite(Date.parse(date.content)), true);
+    assert.equal((await executeInProcessTool('calculate', { expression: 'Math.pow(2, 3) + 1' }, { cwd: codeWorkspace })).content, '9');
+    assert.match((await executeInProcessTool('wait', { duration: 'invalid' }, { cwd: codeWorkspace })).content, /duration must be/);
 
     // Default ids must be in the server registry (empty args may still Error).
     for (const id of DEFAULT_HEADLESS_TOOL_IDS) {

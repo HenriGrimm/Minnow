@@ -173,7 +173,7 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     assert.ok(document.querySelector('.sub-agent-overlay__body')?.textContent?.includes(grown));
     adoptSubAgentRunForTests({ ...thinking, livePhase: 'generating', livePartialReasoning: '', livePartialText: response });
     assert.ok(document.querySelector('.transcript-view__assistant--partial')?.textContent?.includes(response));
-    const settled = completedRun({ summary: 'Short handoff summary', messages: [
+    const settled = completedRun({ modelId: 'requested-model', resolvedModel: { id: 'actual-model', providerId: 'local' }, summary: 'Short handoff summary', messages: [
       { role: 'assistant', content: '', reasoning: grown },
       ...completedRun().messages,
       { role: 'assistant', content: response },
@@ -194,8 +194,10 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     setSubAgentApiFetchForTests(async (input) => Response.json(String(input).includes('/transcript')
       ? { ok: true, events: [] }
       : { ok: true, state: { runs: [{ runId: FIXED_RUN_ID, parentChatId: CHAT_ID, type: settled.type,
-          task: settled.task, phase: 'passed', attempts: [{ ended: true, summary: settled.summary, outcome: 'pass' }], delivered: true }] } }));
+          task: settled.task, resolvedModel: settled.resolvedModel, phase: 'passed', attempts: [{ ended: true, summary: settled.summary, outcome: 'pass' }], delivered: true }] } }));
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    assert.equal(document.querySelector('.sub-agent-overlay__model')?.textContent, 'Model: actual-model');
+    assert.equal(document.querySelector('.sub-agent-overlay__chip-model')?.textContent, 'Model: actual-model');
     const reopened = document.querySelector<HTMLElement>('.sub-agent-overlay__body')!;
     assert.equal(reopened.hidden, false);
     assert.ok(reopened.textContent?.includes(grown));
@@ -215,6 +217,27 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     buttons[1].click();
     assert.equal(document.querySelector('.sub-agent-overlay__title')?.textContent, 'Check Windows runtime');
     assert.equal(document.querySelector('.sub-agent-overlay__chip[aria-pressed="true"]')?.getAttribute('data-run-id'), 'second-run');
+  });
+
+  test('model metadata follows resolution updates and agent selection', async () => {
+    setupOverlayDom();
+    setSubAgentOpenStreamForTests(() => ({ addEventListener() {}, close() {} }));
+    setSubAgentApiFetchForTests(async () => Response.json({ ok: true, events: [], state: { runs: [] } }));
+    const run = completedRun({ modelId: 'requested-model', providerId: 'requested-provider' });
+    adoptSubAgentRunForTests(run);
+    adoptSubAgentRunForTests(completedRun({ runId: 'legacy-run' }));
+    await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    assert.equal(document.querySelector('.sub-agent-overlay__model')?.textContent, 'Model: requested-model');
+    assert.equal(document.querySelector('.sub-agent-overlay__model')?.getAttribute('title'), 'requested-model · requested-provider');
+
+    adoptSubAgentRunForTests({ ...run, resolvedModel: { id: 'actual-model', providerId: 'actual-provider' } });
+    assert.equal(document.querySelector('.sub-agent-overlay__model')?.textContent, 'Model: actual-model');
+    assert.equal(document.querySelector('.sub-agent-overlay__chip-model')?.textContent, 'Model: actual-model');
+    assert.equal(document.querySelector('.sub-agent-overlay__chip-model')?.getAttribute('title'), 'actual-model · actual-provider');
+    assert.ok(document.querySelector('option')?.textContent?.includes('actual-model'));
+
+    document.querySelector<HTMLButtonElement>('[data-run-id="legacy-run"]')!.click();
+    assert.equal(document.querySelector('.sub-agent-overlay__model')?.textContent, 'Model: Model not recorded');
   });
 
   test('queued agents show a waiting state without claiming to generate a response', async () => {

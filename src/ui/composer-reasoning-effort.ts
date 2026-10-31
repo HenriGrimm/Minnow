@@ -28,6 +28,8 @@ import { getModelReasoningDefault } from '../config/model-reasoning-defaults';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { cursorVariantFamilyKey, cursorVariantParts, resolveCursorVariantId } from '../models/cursor-variants.mjs';
 import { syncComposerModelTriggers } from './composer-model-trigger';
+import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
+import { showToast } from './toast';
 
 let selectEl: HTMLSelectElement | null = null;
 let wrapEl: HTMLElement | null = null;
@@ -56,6 +58,7 @@ function getLevelOptions(): EffortOption[] {
 /** Drop saved effort when the active model no longer allows it. */
 function validateAndClearInvalidEffort(): void {
   const chat = getActiveChat();
+  if (chat.chatCommandVersion === 1) return;
   if (!chat.reasoningEffort) return;
   const caps = effectiveCapabilities();
   const levels = getLevelOptions();
@@ -159,7 +162,7 @@ export function getComposerReasoningState() {
   return {
     label: choices.length && (caps?.reasoning === true || getAllowedOptions().length || chat.thinkingMode || chat.reasoningEffort) ? label : '', choices,
     selected: (chat.reasoningEffort ?? chat.thinkingMode ?? 'inherit') as ComposerReasoningChoice['value'],
-    disabled: isActiveChatStreaming() || isComposerRecoveryBlocked(),
+    disabled: (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked(),
   };
 }
 
@@ -168,6 +171,11 @@ export function setComposerReasoningChoice(value: string): void {
   const state = getComposerReasoningState();
   if (state.disabled || !state.choices.some(choice => choice.value === value)) return;
   const chat = getActiveChat();
+  if (chat.chatCommandVersion === 1) {
+    void configureManagedChatModel(chat, managedReasoningSelection(chat, value, getLevelOptions().length > 0))
+      .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
+    syncComposerReasoningEffortFromActiveChat(); return;
+  }
   if (value === 'inherit') {
     const saved = chat.providerId && chat.modelId
       ? getModelReasoningDefault(encodeModelSelectKey(chat.providerId, chat.modelId)) : undefined;
@@ -191,11 +199,7 @@ function onSelectChange(): void {
   const value = selectEl.value as EffortOption;
   if (!levels.includes(value)) return;
 
-  const chat = getActiveChat();
-  chat.reasoningEffort = value;
-  touchChat(chat);
-  scheduleSaveSessions();
-  syncComposerReasoningEffortFromActiveChat();
+  setComposerReasoningChoice(value);
 }
 
 function cursorModelIds(): string[] {
@@ -208,6 +212,7 @@ function cursorModelIds(): string[] {
 /** Keep the saved binding and model chip aligned with the composer controls. */
 function syncCursorModelVariant(): void {
   const chat = getActiveChat();
+  if (chat.chatCommandVersion === 1) return;
   if (chat.providerId !== 'cursor-agent-cli' || !chat.modelId) return;
   const fast = chat.cursorFast ?? cursorVariantParts(chat.modelId)?.fast ?? false;
   const modelId = resolveCursorVariantId(chat.modelId, cursorModelIds(), {
@@ -236,7 +241,13 @@ function ensureCursorFastButton(): void {
   button.addEventListener('click', () => {
     if (button.disabled) return;
     const chat = getActiveChat();
-    const current = chat.cursorFast ?? cursorVariantParts(chat.modelId)?.fast ?? false;
+    const current = chat.chatCommandVersion === 1 ? cursorVariantParts(chat.modelId)?.fast ?? false : chat.cursorFast ?? cursorVariantParts(chat.modelId)?.fast ?? false;
+    if (chat.chatCommandVersion === 1) {
+      const modelId = resolveCursorVariantId(chat.modelId, cursorModelIds(), { effort: chat.reasoningEffort, fast: !current });
+      void configureManagedChatModel(chat, { ...managedChatModelSelection(chat), modelId })
+        .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
+      syncComposerReasoningEffortFromActiveChat(); return;
+    }
     chat.cursorFast = !current;
     touchChat(chat);
     scheduleSaveSessions();
@@ -256,7 +267,7 @@ function syncCursorFastButton(): void {
     : [];
   const available = fastVariants.some(id => !effort || cursorVariantParts(id)?.effort === effort);
   cursorFastButton.classList.toggle('hidden', fastVariants.length === 0);
-  cursorFastButton.disabled = !available || isActiveChatStreaming() || isComposerRecoveryBlocked();
+  cursorFastButton.disabled = !available || (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked();
   cursorFastButton.setAttribute('aria-checked', String(available && Boolean(cursorVariantParts(chat.modelId)?.fast)));
   cursorFastButton.title = available ? 'Use Cursor fast mode' : 'Fast mode is unavailable at this reasoning level';
 }
@@ -287,7 +298,8 @@ export function syncComposerReasoningEffortFromActiveChat(): void {
   syncCursorModelVariant();
 
   const visible = isLevelDropdownVisible();
-  const disabled = isActiveChatStreaming() || isComposerRecoveryBlocked();
+  const chat = getActiveChat();
+  const disabled = (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked();
 
   if (wrapEl) wrapEl.classList.toggle('hidden', !visible);
   if (selectEl) {

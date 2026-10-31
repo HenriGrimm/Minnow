@@ -88,4 +88,18 @@ describe('orchestrator aggregate', () => {
     assert.notEqual(agg.outcome.summary, 'Sub-agent completed with no text output.');
     assert.deepEqual(agg.outcome.findings, []);
   });
+
+  test('a large terminal result keeps bounded valid JSON and exact task identity for durable inline acknowledgement', () => {
+    const text = 'Result 🔍 '.repeat(20000);
+    const json = formatAggregateResult({ runId: FIXED_RUN_ID, type: 'explore', status: 'completed',
+      summary: text, outcome: { summary: text, findings: [text], artifacts: [] },
+      startedAt: null, endedAt: null, toolTurns: 5, cancelled: false });
+    assert.ok(Buffer.byteLength(json, 'utf8') <= 32 * 1024);
+    const parsed = JSON.parse(json);
+    assert.equal(parsed.runId, FIXED_RUN_ID);
+    assert.equal(parsed.status, 'completed');
+    assert.equal(parsed.truncated, true);
+    assert.ok(parsed.summary.length > 0);
+    assert.ok(parsed.outcome.summary.length > 0);
+  });
 });

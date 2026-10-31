@@ -7,6 +7,12 @@ description: Lite UI Designer — Impeccable workflow.
 providerId: null
 modelId: null
 allowedTools:
+  - agent_capabilities
+  - chat_list
+  - chat_read
+  - chat_send
+  - chat_wait
+  - chat_stop
   - browser_reserve_tab
   - browser_release_tab
   - browser_close_tab

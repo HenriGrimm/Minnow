@@ -82,6 +82,13 @@ export function serializeState(state) {
       model: run.model,
       modelSource: run.modelSource,
       resolvedModel: run.resolvedModel,
+      ...(run.childChatId ? {
+        childChatId: run.childChatId, journalOwnerId: run.journalOwnerId, commandId: run.commandId,
+        executionId: run.executionId ?? null,
+        executionKind: run.executionKind, profileReference: run.profileReference, policy: run.policy,
+        completionPolicy: run.completionPolicy, modelOptions: run.modelOptions,
+        workspaceBinding: run.workspaceBinding, recoveryRequired: run.recoveryRequired,
+      } : {}),
       attempts: run.attempts.map((a) => ({
         attemptId: a.attemptId,
         seedKind: a.seedKind,
@@ -92,6 +99,8 @@ export function serializeState(state) {
         summary: a.summary,
         evidence: a.evidence,
         usage: a.usage,
+        ...(a.executionId ? { executionId: a.executionId } : {}),
+        ...(a.resultMessageId ? { resultMessageId: a.resultMessageId } : {}),
       })),
     };
   });
@@ -155,7 +164,10 @@ function apply(state, event) {
         summary: null,
         evidence: null,
         usage: null,
+        ...(typeof event.executionId === 'string' ? { executionId: event.executionId } : {}),
       });
+      if (run.childChatId && typeof event.executionId === 'string') run.executionId = event.executionId;
+      if (run.childChatId && seed?.recoveryResolution?.verified === true) run.recoveryRequired = false;
       return;
     }
 
@@ -183,6 +195,10 @@ function apply(state, event) {
       attempt.summary = event.summary ?? null;
       attempt.evidence = event.evidence ?? null;
       attempt.usage = event.usage ?? null;
+      if (typeof event.executionId === 'string') attempt.executionId = event.executionId;
+      if (run.childChatId && typeof event.executionId === 'string') run.executionId = event.executionId;
+      if (typeof event.resultMessageId === 'string') attempt.resultMessageId = event.resultMessageId;
+      if (run.childChatId && event.evidence?.recoveryRequired === true) run.recoveryRequired = true;
       if (event.resolvedModel) run.resolvedModel = readModel(event.resolvedModel);
       run.endedAt = typeof event.ts === 'number' ? event.ts : run.endedAt;
       return;
@@ -267,6 +283,14 @@ function newRun(event) {
         : null,
     model: readModel(event.model),
     modelSource: typeof event.modelSource === 'string' ? event.modelSource : undefined,
+    ...(typeof event.childChatId === 'string' ? {
+      childChatId: event.childChatId, journalOwnerId: event.journalOwnerId ?? event.parentChatId,
+      commandId: event.commandId, executionKind: event.executionKind ?? 'chat',
+      executionId: null,
+      profileReference: event.profileReference ?? null, policy: event.policy ?? null,
+      completionPolicy: event.completionPolicy ?? null, modelOptions: event.modelOptions,
+      workspaceBinding: event.workspaceBinding, recoveryRequired: false,
+    } : {}),
   };
 }
 
@@ -303,6 +327,7 @@ function phaseOf(run) {
   const open = run.attempts.find((a) => !a.ended);
   if (run.cancelledReason !== null) return open ? 'cancelling' : 'cancelled';
   if (run.abandonedReason !== null) return 'abandoned';
+  if (run.recoveryRequired === true) return 'recovery_required';
   if (open) return 'running';
   const last = lastEndedAttempt(run);
   if (last?.outcome === 'pass') return 'passed';
@@ -322,7 +347,7 @@ export function isTerminal(run) {
  * @returns {boolean}
  */
 export function isStoppedForScheduling(run) {
-  return isTerminal(run) || run.phase === 'cancelling';
+  return isTerminal(run) || run.phase === 'cancelling' || run.recoveryRequired === true;
 }
 
 /**

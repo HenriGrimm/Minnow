@@ -1,4 +1,5 @@
 import { getRouterWorkspace, resolveRouterId } from '../model-routers/store.js';
+import { createServerRunnerDeps } from '../runtime/server-runner-deps.js';
 import { listEnabledMcpTools } from '../mcp/registry.js';
 import { getPluginToolDefinitions } from '../tools/loader.js';
 import { randomUUID } from 'node:crypto';
@@ -434,38 +435,6 @@ function toAttemptEnd(attemptId, runId, result) {
  * @param {import('../runner/adapters').PostChatCompletions} postChatCompletions
  * @returns {import('../runner/adapters').RunnerDeps}
  */
-function createServerRunnerDeps(postChatCompletions) {
-  return {
-    transcriptStore: createMemoryTranscriptStore(),
-    postChatCompletions,
-    runHeadlessToolBatch: async () => [],
-    resolveProvider: async (providerId) => {
-      if (providerId === 'minnow-router') return { id: providerId, label: 'Router', baseUrl: '', apiKind: 'openai-v1' };
-      const row = await getProvider(providerId);
-      return {
-        id: row.id,
-        label: row.label,
-        baseUrl: row.baseUrl,
-        apiKind: row.apiKind,
-        chatCompletionsPath: row.chatCompletionsPath,
-      };
-    },
-    getSubAgentTypeConfig: async (typeId) => (await getSubAgentTypeRow(String(typeId))) ?? {},
-    // Last-ditch only: production `bindTypeModel` attaches `{ preset, maxTokens }`.
-    // 2048 here reintroduced finish_reason: length when a type omitted maxTokens.
-    resolveSamplerPreset: () => ({ preset: {}, maxTokens: DEFAULT_AGENT_MAX_TOKENS }),
-    resolveThinkingMode: () => ({ mode: 'off' }),
-    resolveThinkingBudgetTokens: () => ({ budgetTokens: null }),
-    loadToolCallsMeta: async () => {},
-    getToolCallsMetaSync: () => ({ useConstrainedDecoding: false }),
-    isConstrainedDecodingEnabledForProvider: () => false,
-    readProviderCapabilities: async () => null,
-    isStructuredOutcomeResponseFormatAvailable: () => false,
-    resolveSendCapabilities: () => ({}),
-    resolveModelContextLimit: () => null,
-    applyContextPolicy: async (input) => applyServerContextPolicy(input),
-  };
-}
 
 /**
  * Map a type row onto `TurnModel`. Sampler in `sub-agents.json` is a flat

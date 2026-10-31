@@ -1,4 +1,14 @@
 import { addAttachments } from '../attachments/store';
+import { chatReferencesInText } from './chat-reference-chip';
+import { insertInlineComposerText, syncInlineComposerReferences } from './composer-inline-references';
+
+/** Keep pasted references at the insertion point and paint them before the next frame. */
+export function pasteChatReferences(input: HTMLTextAreaElement, text: string): boolean {
+  if (input.disabled || input.readOnly) return false;
+  if (!chatReferencesInText(text).length) return false;
+  insertInlineComposerText(input, text);
+  return true;
+}
 
 /** Clipboard images are nameless blobs; give them a stable, sortable filename. */
 function nameForPastedImage(file: File, index: number): string {
@@ -59,7 +69,13 @@ export function isComposerPasteTarget(target: EventTarget | null): boolean {
 
 function onComposerPaste(event: ClipboardEvent): void {
   if (!isComposerPasteTarget(event.target)) return;
+  const input = event.target instanceof HTMLTextAreaElement ? event.target : (event.target as HTMLElement).closest('textarea');
+  if (input?.disabled || input?.readOnly) return;
   const data = event.clipboardData;
+  if (input && data && pasteChatReferences(input, data.getData('text/plain'))) {
+    event.preventDefault();
+    return;
+  }
   if (!pasteIsImageOnly(data)) return;
   const files = imageFilesFromClipboard(data);
   if (!files.length) return;
@@ -67,11 +83,14 @@ function onComposerPaste(event: ClipboardEvent): void {
   void addAttachments(files);
 }
 
-let bound = false;
+const boundDocuments = new WeakSet<Document>();
 
 /** Wires paste-to-attach for every composer surface. */
 export function initComposerPaste(): void {
-  if (bound) return;
-  bound = true;
+  if (boundDocuments.has(document)) return;
+  boundDocuments.add(document);
   document.addEventListener('paste', onComposerPaste);
+  document.addEventListener('input', event => {
+    if (isComposerPasteTarget(event.target)) syncInlineComposerReferences(event.target as HTMLTextAreaElement);
+  }, true);
 }

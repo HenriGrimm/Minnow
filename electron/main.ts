@@ -8,6 +8,7 @@ import {
   BrowserWindow,
   crashReporter,
   dialog,
+  Menu,
   powerMonitor,
   powerSaveBlocker,
   session,
@@ -57,6 +58,7 @@ import {
 } from './desktop-shell-config.js';
 import { applyShellZoom, DEFAULT_SHELL_ZOOM_PERCENT, shellZoomFactorFromPercent, wireShellZoom } from './shell-zoom.js';
 import { wireShellReload } from './shell-reload.js';
+import { buildShellEditMenu } from './shell-context-menu.js';
 import { readLoginItemSnapshot, writeLoginItemOpenAtLogin } from './login-item.js';
 import { createTrayManager, type TrayManager } from './tray.js';
 import {
@@ -999,6 +1001,10 @@ async function createShellWindow(
   });
 
   wireShellReload(win);
+  win.webContents.on('context-menu', (_event, params) => {
+    const items = buildShellEditMenu(params);
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
+  });
   wireChatPowerGuard(win.webContents, chatPowerGuard);
   shellWindows.register(win.id, workspacePath, viewId, appId);
   const revokeShellTrust = wireShellNavigation(win.webContents, shellBaseUrl, {

@@ -12,7 +12,7 @@ import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 type SteerEnqueuedListener = (chatId: string) => void;
 let steerEnqueuedListener: SteerEnqueuedListener | null = null;
 
-/** @internal Optional UI hook when push-now steer is queued. P10-I does not abort. */
+/** @internal UI hook when pending steering changes. Does not abort a turn. */
 export function setSteerEnqueuedListener(listener: SteerEnqueuedListener | null): void {
   steerEnqueuedListener = listener;
 }
@@ -26,24 +26,25 @@ export function formatSteerHistoryContent(text: string): string {
   return text.trim();
 }
 
-/** Last-write-wins slot for the next tool-loop consume. */
+/** Accumulate corrections until the next tool-loop boundary, in send order. */
 export function enqueueSteerMessage(chat: Chat, text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
   forceCloseAskQuestionModalForChat(chat.id);
-  chat.pendingSteerMessage = trimmed;
+  chat.pendingSteerMessage = [chat.pendingSteerMessage?.trim(), trimmed].filter(Boolean).join('\n\n');
   touchChat(chat);
   scheduleSaveSessions();
   notifySteerEnqueued(chat.id);
   return true;
 }
 
-/** Drop queued steer (e.g. user stopped generation). */
+/** Drop a pending correction after cancellation or preservation in the queue. */
 export function clearPendingSteer(chat: Chat): void {
   if (!chat.pendingSteerMessage) return;
   chat.pendingSteerMessage = undefined;
   touchChat(chat);
   scheduleSaveSessions();
+  notifySteerEnqueued(chat.id);
 }
 
 export interface ConsumePendingSteerOptions {

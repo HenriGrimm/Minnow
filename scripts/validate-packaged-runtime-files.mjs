@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HEADLESS_RUNNER_BUNDLE } from '../server/constants/headless-runner.js';
+import { HEADLESS_RUNNER_BUNDLE, CHAT_PREPARATION_BUNDLE } from '../server/constants/headless-runner.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const serverRoot = path.join(repoRoot, 'server');
@@ -204,10 +204,12 @@ function main() {
   // Scheduled jobs spawn this bundle in an installed build. It is generated
   // (scripts/build-headless-runner.mjs) right before electron-builder runs, so
   // only the packaging rule can be checked this early.
-  if (!isIncludedInElectronFiles(HEADLESS_RUNNER_BUNDLE, electronFiles)) {
-    throw new Error(
-      `Headless runner bundle is not listed in electron-builder files: ${HEADLESS_RUNNER_BUNDLE}`,
-    );
+  for (const bundle of [HEADLESS_RUNNER_BUNDLE, CHAT_PREPARATION_BUNDLE]) {
+    if (!isIncludedInElectronFiles(bundle, electronFiles)) {
+      throw new Error(
+        `Headless runner bundle is not listed in electron-builder files: ${bundle}`,
+      );
+    }
   }
 
   const dynamicImports = collectServerRuntimeImports(serverRoot);

@@ -7,6 +7,12 @@ description: Impeccable-guided UI audit, screenshot, plan or implement Minnow su
 providerId: null
 modelId: null
 allowedTools:
+  - agent_capabilities
+  - chat_list
+  - chat_read
+  - chat_send
+  - chat_wait
+  - chat_stop
   - load_skill
   - browser_reserve_tab
   - browser_release_tab

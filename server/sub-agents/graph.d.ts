@@ -14,7 +14,7 @@ export function reapVanished(
 ): Record<string, unknown>[];
 export function eventsForStart(
   want: Pick<Desired, 'taskId' | 'role' | 'seedKind'>,
-  handle: { attemptId: string; model?: { providerId: string; id: string } },
+  handle: { attemptId: string; model?: { providerId: string; id: string }; executionId?: string; commandId?: string },
 ): Record<string, unknown>[];
 export function eventsForAttemptEnd(end: AttemptEnd): Record<string, unknown>[];
 export function createSubAgentGraph(caps?: Caps): Graph;

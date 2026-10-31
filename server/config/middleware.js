@@ -122,7 +122,11 @@ async function handleMigrate(body) {
       key: 'sessions',
       raw: ls.sessions,
       file: useJsonSessionsStore() ? 'sessions/state.json' : 'sessions/sessions.db',
-      parse: (str) => validateSessionState(JSON.parse(str)),
+      parse: (str) => {
+        const parsed = JSON.parse(str);
+        if (parsed?.conversationArchive || parsed?.kind === 'minnow.conversation-archive') throw new Error('Import a versioned conversation archive through /api/chats/archive/import');
+        return validateSessionState(parsed);
+      },
       write: async (parsed) => {
         await writeResource('sessions', parsed);
       },
@@ -573,12 +577,14 @@ export async function handleConfigRequest(req, res, pathname) {
 
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
+        const sessionReceipt = resource === 'sessions' && !useJsonSessionsStore();
         const saved = resource === 'issues' && body?.state && Object.hasOwn(body, 'base')
           ? await mergeIssuesResource(body.base, body.state)
-          : await writeResource(resource, body);
-        const payload = { ok: true, data: saved };
-        if (resource === 'sessions' && !useJsonSessionsStore()) {
-          payload.revision = readSessionRevision();
+          : await writeResource(resource, body, { sessionReceipt });
+        const payload = { ok: true, data: sessionReceipt ? saved.state : saved };
+        if (sessionReceipt) {
+          payload.revision = saved.revision;
+          if (Object.keys(saved.chatPresentationRevisions ?? {}).length) payload.chatPresentationRevisions = saved.chatPresentationRevisions;
         }
         sendJson(res, 200, payload);
         return true;
@@ -662,8 +668,11 @@ export async function handleConfigRequest(req, res, pathname) {
       const conflictingChatIds = err && typeof err === 'object' && 'conflictingChatIds' in err
         ? /** @type {{ conflictingChatIds: string[] }} */ (err).conflictingChatIds
         : undefined;
+      const presentation = err && typeof err === 'object' && 'presentationConflict' in err ? {
+        presentationConflict: err.presentationConflict, chatPresentationRevisions: err.chatPresentationRevisions,
+      } : {};
       sendJson(res, 409, { error: message, ...(revision != null ? { revision } : {}),
-        ...(conflictingChatIds ? { conflictingChatIds } : {}) });
+        ...(conflictingChatIds ? { conflictingChatIds } : {}), ...presentation });
       return true;
     }
     if (message === 'Invalid config path' || message.includes('Invalid config')) {

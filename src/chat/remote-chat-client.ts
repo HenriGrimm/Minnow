@@ -3,8 +3,9 @@ import { randomUUID } from '../lib/random-id';
 import { getViewId } from '../state/view-workspace';
 import { isChatRunningRemotely } from './remote-turn-state';
 import type { Attachment } from '../attachments/types';
+import { findChatById } from '../state/sessions';
 
-export type RemoteChatAction = 'send' | 'steer' | 'stop' | 'push' | 'remove' | 'configure';
+export type RemoteChatAction = 'send' | 'steer' | 'stop' | 'push' | 'remove' | 'edit' | 'cancel-steer' | 'configure';
 export interface RemoteChatCommand {
   id: string;
   chatId: string;
@@ -12,8 +13,13 @@ export interface RemoteChatCommand {
   text?: string;
   itemId?: string;
   attachments?: Attachment[];
-  patch?: { modelSelectValue?: string; modeId?: string; name?: string; pinned?: boolean };
+  patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean; archived?: boolean };
+  /** Managed Stop pins the displayed execution before capturing its descendants. */
+  executionId?: string;
+  scope?: 'turn' | 'tree';
   deliveryId?: string;
+  /** Legacy Stop is pinned to the renderer that owned the interrupted turn. */
+  expectedOwnerId?: string;
 }
 
 let hostId = '';
@@ -27,7 +33,7 @@ export function getChatHostId(): string {
 }
 
 export function shouldRelayChat(chatId: string): boolean {
-  return isPairedDevice() || isChatRunningRemotely(chatId);
+  return findChatById(chatId)?.chatCommandVersion === 1 || isPairedDevice() || isChatRunningRemotely(chatId);
 }
 
 const results = new Map<string, { ok?: boolean; error?: string }>();
@@ -41,6 +47,11 @@ export function receiveRemoteCommandResult(id: string, result: { ok?: boolean; e
 export async function sendRemoteChatCommand(
   chatId: string, action: RemoteChatAction, data: Partial<RemoteChatCommand> = {},
 ): Promise<void> {
+  if (findChatById(chatId)?.chatCommandVersion === 1) {
+    const { sendManagedChatAction } = await import('./managed-chat-client');
+    await sendManagedChatAction(chatId, action, data);
+    return;
+  }
   const inputKey = `${chatId}:${action}:${Object.keys(data.patch ?? {}).sort().join(',')}`;
   const storageKey = `minnow.chatCommand.${inputKey}`;
   const signature = JSON.stringify({ ...data, id: undefined, chatId, action,

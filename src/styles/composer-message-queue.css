@@ -52,6 +52,12 @@
   flex-direction: column;
   gap: 1px;
   border-top: 1px solid var(--mn-border);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.composer-message-queue__list[hidden] {
+  display: none;
 }
 
 .composer-message-queue__item {
@@ -78,7 +84,24 @@
   color: var(--mn-fg);
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.composer-message-queue__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.composer-message-queue__model {
+  display: block;
+  margin-block-start: 3px;
+  color: var(--mn-fg-muted);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
 }
 
 .composer-message-queue__actions {
@@ -120,6 +143,62 @@
 .composer-message-queue__action:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 1px;
+}
+
+.composer-message-queue__text-action {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer-message-queue__text-action:focus-visible,
+.composer-message-queue__header:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+.composer-message-queue__text-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.composer-message-queue__item.is-editing {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.composer-message-queue__editor {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font: inherit;
+}
+
+.composer-message-queue__editor:focus {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .composer-message-queue__action {
+    width: 44px;
+    height: 44px;
+  }
+
+  .composer-message-queue__text-action {
+    min-height: 44px;
+  }
 }
 
 .chat-app-composer .composer-message-queue {

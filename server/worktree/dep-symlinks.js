@@ -3,6 +3,7 @@ import path from 'node:path';
 import { runProcess } from '../process-runner.js';
 import { killProcessTree } from '../terminal-runner.js';
 import { installSpawnTarget } from './dep-install-spawn.js';
+import { runWorktreeSetupProcess } from './setup-process.js';
 
 /** Delimiters for the managed block we own inside `.git/info/exclude`. */
 const EXCLUDE_BEGIN = '# >>> minnow dependency links >>>';
@@ -212,13 +213,14 @@ export async function ensureDepDirsExcluded(wtPath, dirs) {
 const WORKSPACE_INSTALL_TIMEOUT_MS = 600_000;
 const npmWorkspaceSetups = new Map();
 
-async function runNpmWorkspaceInstall(wtPath) {
+async function runNpmWorkspaceInstall(wtPath, { signal } = {}) {
+  signal?.throwIfAborted();
   const locked = await pathExists(path.join(wtPath, 'npm-shrinkwrap.json')) || await pathExists(path.join(wtPath, 'package-lock.json'));
   const target = installSpawnTarget({ command: 'npm', args: [locked ? 'ci' : 'install',
     ...(!locked ? ['--package-lock=false'] : []), '--prefer-offline', '--no-audit', '--no-fund'] });
-  const result = await runProcess(target.command, target.args, {
+  const result = await (signal ? runWorktreeSetupProcess : runProcess)(target.command, target.args, {
     cwd: wtPath, shell: target.shell, timeout: WORKSPACE_INSTALL_TIMEOUT_MS,
-    killTree: killProcessTree, env: { ...process.env, CI: 'true' },
+    killTree: killProcessTree, env: { ...process.env, CI: 'true' }, signal,
   });
   if (result.code === 0) return { ok: true };
   const detail = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim().slice(-2000);
@@ -243,7 +245,8 @@ async function npmWorkspaceLinksAreLocal(wtPath) {
 
 /** npm hoists workspace links into the root modules directory. Sharing that
  * directory silently imports another checkout's source during verification. */
-async function prepareNpmWorkspace(sourceRoot, wtPath, install) {
+async function prepareNpmWorkspace(sourceRoot, wtPath, install, signal) {
+  signal?.throwIfAborted();
   const manifest = await fs.readFile(path.join(wtPath, 'package.json'), 'utf8').then(JSON.parse).catch(() => null);
   const workspaces = Array.isArray(manifest?.workspaces) ? manifest.workspaces : manifest?.workspaces?.packages;
   if (!Array.isArray(workspaces) || !workspaces.length) return { handled: false };
@@ -257,6 +260,7 @@ async function prepareNpmWorkspace(sourceRoot, wtPath, install) {
   if (samePath(source, target)) return { handled: true, reason: 'refusing to install worktree dependencies into the source checkout itself' };
   const modules = path.join(wtPath, 'node_modules');
   const state = await inspectDepDir(modules);
+  signal?.throwIfAborted();
   if (state === 'real-dir' && await npmWorkspaceLinksAreLocal(wtPath)) return { handled: true, installed: false };
   if (state !== 'missing' && state !== 'real-dir' && !(await removeDepLink(modules))) {
     return { handled: true, reason: `existing node_modules link could not be removed (${modules})` };
@@ -269,11 +273,15 @@ async function prepareNpmWorkspace(sourceRoot, wtPath, install) {
     }
     return { handled: true, installed: true };
   } catch (err) {
+    if (signal?.aborted || err?.code === 'recovery_required') throw err;
     return { handled: true, reason: errMessage(err) };
   }
 }
 
-function ensureNpmWorkspaceInstall(sourceRoot, wtPath, install) {
+function ensureNpmWorkspaceInstall(sourceRoot, wtPath, install, signal) {
+  // The durable allocation owner coalesces these calls. Its Stop signal must
+  // never attach to a legacy/shared install owned by a different caller.
+  if (signal) return prepareNpmWorkspace(sourceRoot, wtPath, install, signal);
   const key = path.resolve(wtPath);
   if (npmWorkspaceSetups.has(key)) return npmWorkspaceSetups.get(key);
   const pending = prepareNpmWorkspace(sourceRoot, wtPath, install).finally(() => npmWorkspaceSetups.delete(key));
@@ -295,12 +303,14 @@ async function isLinkedWorktree(root) {
 }
 
 /** @param {string} wtPath */
-async function runPnpmInstall(wtPath) {
-  const result = await runProcess('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], {
+async function runPnpmInstall(wtPath, { signal } = {}) {
+  signal?.throwIfAborted();
+  const result = await (signal ? runWorktreeSetupProcess : runProcess)('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], {
     cwd: wtPath,
     timeout: WORKSPACE_INSTALL_TIMEOUT_MS,
     shell: process.platform === 'win32',
     env: { ...process.env, CI: 'true' },
+    signal,
   });
   if (result.code === 0) return { ok: true };
   const detail = `${result.stderr ?? ''}${result.stdout ?? ''}`.trim().split('\n').slice(-3).join(' ');
@@ -321,11 +331,13 @@ async function runPnpmInstall(wtPath) {
  * @param {(wtPath: string) => Promise<{ ok: boolean, reason?: string }>} install
  * @returns {Promise<{ handled: boolean, installed: boolean, reason?: string }>}
  */
-async function ensurePnpmWorkspaceInstall(sourceRoot, wtPath, install) {
+async function ensurePnpmWorkspaceInstall(sourceRoot, wtPath, install, signal) {
+  signal?.throwIfAborted();
   if (!(await pathExists(path.join(sourceRoot, 'pnpm-workspace.yaml')))) return { handled: false, installed: false };
   if (!(await pathExists(path.join(wtPath, 'pnpm-lock.yaml')))) return { handled: false, installed: false };
   const targetLink = path.join(wtPath, 'node_modules');
   const state = await inspectDepDir(targetLink);
+  signal?.throwIfAborted();
   if (state === 'real-dir') return { handled: true, installed: false };
   if (state !== 'missing' && !(await removeDepLink(targetLink))) {
     return { handled: false, installed: false, reason: `existing node_modules link could not be removed (${targetLink})` };
@@ -334,6 +346,7 @@ async function ensurePnpmWorkspaceInstall(sourceRoot, wtPath, install) {
   try {
     outcome = await install(wtPath);
   } catch (err) {
+    if (signal?.aborted || err?.code === 'recovery_required') throw err;
     outcome = { ok: false, reason: errMessage(err) };
   }
   if (outcome.ok) return { handled: true, installed: true };
@@ -367,10 +380,12 @@ export async function unlinkSharedDepsBeforeInstall(command, root) {
 /**
  * @param {string} sourceRoot
  * @param {string} wtPath
- * @param {{ installPnpm?: (wtPath: string) => Promise<{ ok: boolean, reason?: string }>, installNpm?: (wtPath: string) => Promise<{ ok: boolean, reason?: string }> }} [options]
+ * @param {{ signal?: AbortSignal, installPnpm?: (wtPath: string, options?: { signal?: AbortSignal }) => Promise<{ ok: boolean, reason?: string }>, installNpm?: (wtPath: string, options?: { signal?: AbortSignal }) => Promise<{ ok: boolean, reason?: string }> }} [options]
  * @returns {Promise<{ ok: boolean, linked: string[], repaired: string[], installed: string[], failed: Array<{ dir: string, reason: string }> }>}
  */
 export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
+  const signal = options.signal;
+  signal?.throwIfAborted();
   const linked = [];
   const repaired = [];
   const installed = [];
@@ -378,13 +393,17 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
   const seen = new Set();
   const symlinkType = process.platform === 'win32' ? 'junction' : 'dir';
 
-  const npm = await ensureNpmWorkspaceInstall(sourceRoot, wtPath, options.installNpm ?? runNpmWorkspaceInstall);
+  const npm = await ensureNpmWorkspaceInstall(sourceRoot, wtPath,
+    root => signal ? (options.installNpm ?? runNpmWorkspaceInstall)(root, { signal }) : (options.installNpm ?? runNpmWorkspaceInstall)(root), signal);
+  signal?.throwIfAborted();
   if (npm.handled) {
     seen.add('node_modules');
     if (npm.installed) installed.push('node_modules');
     if (npm.reason) failed.push({ dir: 'node_modules', reason: npm.reason });
   }
-  const pnpm = npm.handled ? { handled: false } : await ensurePnpmWorkspaceInstall(sourceRoot, wtPath, options.installPnpm ?? runPnpmInstall);
+  const pnpm = npm.handled ? { handled: false } : await ensurePnpmWorkspaceInstall(sourceRoot, wtPath,
+    root => signal ? (options.installPnpm ?? runPnpmInstall)(root, { signal }) : (options.installPnpm ?? runPnpmInstall)(root), signal);
+  signal?.throwIfAborted();
   if (pnpm.handled) {
     seen.add('node_modules');
     if (pnpm.installed) installed.push('node_modules');
@@ -395,12 +414,14 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
   }
 
   for (const entry of ECOSYSTEM_ENTRIES) {
+    signal?.throwIfAborted();
     const hasManifest = await Promise.all(
       entry.manifests.map((manifest) => pathExists(path.join(sourceRoot, manifest))),
     );
     if (!hasManifest.some(Boolean)) continue;
 
     for (const dir of entry.dirs) {
+      signal?.throwIfAborted();
       if (seen.has(dir)) continue;
       seen.add(dir);
 
@@ -469,8 +490,10 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
       }
 
       try {
+        signal?.throwIfAborted();
         await fs.symlink(realSource, targetLink, symlinkType);
       } catch (err) {
+        if (signal?.aborted || err?.code === 'recovery_required') throw err;
         failed.push({ dir, reason: `failed to link ${dir}: ${errMessage(err)}` });
         continue;
       }
@@ -488,7 +511,9 @@ export async function ensureDependencyDirs(sourceRoot, wtPath, options = {}) {
 
   // Exclude every dep dir of a matched ecosystem, whether or not we linked it
   // this pass: a link from an earlier run is exactly the case that needs it.
+  signal?.throwIfAborted();
   const excluded = await ensureDepDirsExcluded(wtPath, seen);
+  signal?.throwIfAborted();
   if (!excluded.ok && excluded.reason) {
     console.warn(`[dep-symlinks] ${wtPath}: could not exclude dep dirs: ${excluded.reason}`);
   }

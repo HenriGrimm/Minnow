@@ -66,14 +66,14 @@ afterEach(() => {
 });
 
 describe('sidebar pinned chats', () => {
-  test('no Pinned section until a chat is pinned', () => {
+  test('no Pinned section until a chat is pinned; activity sections still head the list', () => {
     const list = setupList();
     setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });
     const a = listedChat('A', 300);
     const b = listedChat('B', 200);
     setSessionStateForTests({ ...defaultSessionState(), chats: [a, b], activeId: a.id });
     renderSidebar();
-    assert.deepEqual(paintOrder(list), ['a', 'b']);
+    assert.deepEqual(paintOrder(list), ['#older', 'a', 'b']);
   });
 
   test('pinned chats sit above newer activity and leave their group', () => {
@@ -97,13 +97,13 @@ describe('sidebar pinned chats', () => {
     grouped.pinnedAt = 2;
     renderSidebar();
     assert.deepEqual(paintOrder(list), [
-      '#pinned', 'grouped', 'old', '#chats', 'fresh', 'group:grp',
+      '#pinned', 'grouped', 'old', '#older', 'fresh', 'group:grp',
     ]);
     assert.equal(grouped.groupId, group.id, 'pinning keeps group membership');
 
     setChatPinned(grouped, false);
     setChatPinned(old, false);
     renderSidebar();
-    assert.deepEqual(paintOrder(list), ['fresh', 'group:grp', 'grouped', 'old']);
+    assert.deepEqual(paintOrder(list), ['#older', 'fresh', 'group:grp', 'grouped', 'old']);
   });
 });

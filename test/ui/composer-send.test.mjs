@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 const appState = await import('../../src/app-state.ts');
+const { composerFollowUpPlaceholder } = await import('../../src/ui/composer-shortcuts.ts');
 const { setSessionStateForTests, createEmptyChatObject } = await import(
   '../../src/state/sessions.ts'
 );
@@ -138,12 +139,12 @@ describe('setComposerStreamingMode', () => {
     appState.setStreaming(true, chat.id);
     syncComposerFromStreamingState();
     assert.equal(btn.dataset.mode, 'stop');
-    assert.equal(document.getElementById('msgInput').placeholder, 'Steer the run, or queue a follow-up…');
+    assert.equal(document.getElementById('msgInput').placeholder, composerFollowUpPlaceholder());
 
     appState.setStreaming(false, chat.id);
     syncComposerFromStreamingState();
     assert.equal(btn.dataset.mode, 'send');
-    assert.notEqual(document.getElementById('msgInput').placeholder, 'Steer the run, or queue a follow-up…');
+    assert.notEqual(document.getElementById('msgInput').placeholder, composerFollowUpPlaceholder());
   });
 
 });

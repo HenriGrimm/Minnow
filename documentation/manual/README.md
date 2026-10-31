@@ -45,6 +45,7 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 ### Chat
 
 - [Working in chat](chat/chatting.md) — attachments, dictation, queueing, steering, stopping, undo, branches
+- [Agent conversations](chat/persistent-agent-chats.md) — saved child chats, per-agent models, requests and messages between chats
 - [Skills and slash commands](chat/skills-and-commands.md) — `/` skills, the Skills Library, `/goal`, `/loop`
 
 ### Apps

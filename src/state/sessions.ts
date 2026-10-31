@@ -1,5 +1,7 @@
+import { noteChatMutation } from './chat-mutation-version';
 import { PLACEHOLDER_CHAT_NAME, SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, STORAGE_KEY } from '../constants';
 import { abortChatTitleGeneration } from '../chat/titles/inflight';
+import { setChatReferenceTitleResolver } from './chat-reference-titles';
 import { cleanupChatWorktreeOnDelete } from './chat-worktree';
 import { isPlaceholderChatName } from '../chat/titles/placeholder';
 import { setSaveTimer, saveTimer, streamingChatIds } from '../app-state';
@@ -56,6 +58,7 @@ import { getWorkspacePath } from './workspace';
 import { notifyPluginContextChanged } from '../plugins/events';
 import { getRouterConfigSync } from '../models/routers';
 import { MAX_GOAL_CONDITION_CHARS } from '../chat/goal/parse-command';
+import { validateChatRequest } from '../../server/chats/contracts.js';
 import {
   INITIAL_LOOP_AUTO_DELAY_MS,
   MAX_LOOP_PROMPT_CHARS,
@@ -133,6 +136,7 @@ function normalizeChatTodoStatus(raw: unknown): ChatTodo['status'] {
 
 /** In-memory session blob mirrored to ~/.minnow or localStorage fallback. */
 export let sessionState: SessionState | null = null;
+setChatReferenceTitleResolver(chatId => sessionState?.chats.find(chat => chat.id === chatId)?.name);
 
 /**
  * Set after a successful GET from ~/.minnow. Blocks PUT until hydration so a boot-time
@@ -154,12 +158,26 @@ let sessionRevision: number | null = null;
 let summariesSyncedRevision: number | null = null;
 /** Revision of each chat as last observed by this viewer, independent of store writes. */
 const chatRevisions = new Map<string, number>();
+const chatPresentationRevisions = new Map<string, number>();
 let sessionWriteBlockedByChatConflict = false;
 /** Conflicted rows stay dirty, while unrelated and new chats can still save. */
 const conflictedChatIds = new Set<string>();
 
 function chatBaseRevisions(ids: Iterable<string>): Record<string, number> {
   return Object.fromEntries([...ids].map((id) => [id, chatRevisions.get(id) ?? 0]));
+}
+
+function chatBasePresentationRevisions(ids: Iterable<string>): Record<string, number> | undefined {
+  const values = [...ids].filter(id => chatPresentationRevisions.has(id) && !deletedChatIds.has(id))
+    .map(id => [id, chatPresentationRevisions.get(id)!] as const);
+  return values.length ? Object.fromEntries(values) : undefined;
+}
+
+function captureChatPresentationRevisions(revisions?: Record<string, number>, ids?: Iterable<string>): void {
+  const allowed = ids ? new Set(ids) : undefined;
+  for (const [id, revision] of Object.entries(revisions ?? {})) {
+    if ((!allowed || allowed.has(id)) && Number.isSafeInteger(revision) && revision >= 0) chatPresentationRevisions.set(id, revision);
+  }
 }
 
 /** Dirty chat ids since last successful flush (B.2 PATCH payload). */
@@ -597,6 +615,7 @@ function markSessionsReady(): void {
 export function setSessionStateForTests(state: SessionState | null): void {
   sessionState = state;
   chatRevisions.clear();
+  chatPresentationRevisions.clear();
   summariesSyncedRevision = null;
   sessionWriteBlockedByChatConflict = false;
   conflictedChatIds.clear();
@@ -619,6 +638,7 @@ export function resetSessionPersistenceForTests(): void {
   sessionPersistenceShutdownRegistered = false;
   clearSessionDirtySets();
   chatRevisions.clear();
+  chatPresentationRevisions.clear();
   summariesSyncedRevision = null;
   sessionWriteBlockedByChatConflict = false;
   conflictedChatIds.clear();
@@ -1593,6 +1613,8 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
           summariesSyncedRevision = sessionRevision;
           chatRevisions.clear();
+          chatPresentationRevisions.clear();
+          captureChatPresentationRevisions(remote.chatPresentationRevisions);
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
             if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
           }
@@ -1624,6 +1646,8 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;
           summariesSyncedRevision = sessionRevision;
           chatRevisions.clear();
+          chatPresentationRevisions.clear();
+          captureChatPresentationRevisions(remote.chatPresentationRevisions);
           for (const [id, revision] of Object.entries(remote.chatRevisions ?? {})) {
             if (Number.isSafeInteger(revision) && revision >= 0) chatRevisions.set(id, revision);
           }
@@ -1726,6 +1750,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     changed = true;
     activeChanged ||= chat.id === activeId;
     chatRevisions.delete(chat.id);
+    chatPresentationRevisions.delete(chat.id);
     dirtyTrackingShadow.delete(chat.id);
     return false;
   });
@@ -1740,6 +1765,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     }
     const nextRevision = remote.chatRevisions[id];
     if (typeof nextRevision === 'number') chatRevisions.set(id, nextRevision);
+    captureChatPresentationRevisions(remote.chatPresentationRevisions, [id]);
     dirtyTrackingShadow.delete(id);
     changed = true;
     activeChanged ||= id === activeId;
@@ -1787,6 +1813,45 @@ export async function refreshChatBeforeRecovery(chat: Chat): Promise<boolean> {
 }
 
 /** Apply an authoritative live view without echoing its transcript into a save. */
+/** Attention from the server can arrive while a legacy renderer still owns its transcript. */
+export function applySharedChatAttention(chatId: string, fields?: Record<string, unknown>): Chat | undefined {
+  const chat = sessionState?.chats.find(row => row.id === chatId);
+  if (!chat || !fields) return chat;
+  const update: Partial<Pick<Chat, 'agentRequestSummary' | 'agentRequests' | 'unread' | 'turnError'>> = {};
+  if (Object.hasOwn(fields, 'agentRequestSummary')) {
+    const summary = fields.agentRequestSummary;
+    if (!Array.isArray(summary) || summary.length > 256) return chat;
+    const normalized: NonNullable<Chat['agentRequestSummary']> = [];
+    for (const item of summary) {
+      if (!item || typeof item !== 'object' || !/^[A-Za-z0-9_-]{1,160}$/.test(item.requestId ?? '') || !['question', 'approval'].includes(item.kind)) return chat;
+      normalized.push({ requestId: item.requestId, kind: item.kind });
+    }
+    update.agentRequestSummary = normalized;
+  }
+  if (Object.hasOwn(fields, 'agentRequests')) {
+    if (!Array.isArray(fields.agentRequests) || fields.agentRequests.length > 80) return chat;
+    const requests = fields.agentRequests.map(request => validateChatRequest(request));
+    if (requests.some(request => !request.ok || request.value.chatId !== chatId)) return chat;
+    update.agentRequests = requests.flatMap(request => request.ok ? [request.value] : []);
+  }
+  for (const key of ['unread', 'turnError'] as const) if (Object.hasOwn(fields, key)) {
+    if (typeof fields[key] !== 'boolean') return chat;
+    update[key] = fields[key];
+  }
+  if (!Object.keys(update).length) return chat;
+  Object.assign(chat, update);
+  if (update.agentRequestSummary && !update.agentRequests && chat.agentRequests) {
+    const pending = new Set(update.agentRequestSummary.map(request => request.requestId));
+    chat.agentRequests = chat.agentRequests.filter(request => pending.has(request.requestId) || ['answered', 'expired', 'cancelled'].includes(request.state));
+  }
+  // Server presentation is not a local edit. Invalidate its verifier baseline,
+  // while retaining any independently dirty transcript/draft and conflicts.
+  dirtyTrackingShadow.delete(chatId);
+  // Observer updates invalidate presentation without becoming local persistence edits.
+  if (fields || history) noteChatMutation(chat);
+  return chat;
+}
+
 export function applySharedChatFrame(
   chatId: string, fields?: Record<string, unknown>, history?: { start: number; messages: Message[]; length: number },
 ): Chat | undefined {
@@ -1799,8 +1864,18 @@ export function applySharedChatFrame(
     state.chats.push(chat);
   }
   if (history && (chat.historyLoaded === false || history.start > chat.history.length)) return undefined;
+  const managed = chat.chatCommandVersion === 1 || Boolean(chat.agentConversation) || fields?.chatCommandVersion === 1 || Boolean(fields?.agentConversation);
+  const localShellEdit = dirtyChatIds.has(chatId) && managed;
+  const completeShell = ['name', 'groupId', 'pinnedAt', 'composerDraft'].every(key => Object.hasOwn(fields ?? {}, key));
+  const draftMatches = (typeof fields?.composerDraft === 'string' ? fields.composerDraft : '') === (chat.composerDraft ?? '');
+  // Keep the viewer's draft. A newer base is safe only after observing the
+  // complete matching shell; an unseen draft in another window must still CAS.
+  if (!localShellEdit && completeShell && draftMatches && Number.isSafeInteger(fields?.agentPresentationRevision) && Number(fields?.agentPresentationRevision) >= 0) {
+    chatPresentationRevisions.set(chatId, Number(fields?.agentPresentationRevision));
+  }
   for (const [name, value] of Object.entries(fields ?? {})) {
-    if (['id', 'history', 'historyLoaded', 'composerDraft', '__proto__', 'constructor'].includes(name)) continue;
+    if (['id', 'history', 'historyLoaded', 'composerDraft', 'agentPresentationRevision', '__proto__', 'constructor'].includes(name)) continue;
+    if (localShellEdit && ['name', 'groupId', 'pinned', 'pinnedAt'].includes(name)) continue;
     if (value === null) delete (chat as unknown as Record<string, unknown>)[name];
     else (chat as unknown as Record<string, unknown>)[name] = value;
   }
@@ -1809,9 +1884,12 @@ export function applySharedChatFrame(
     chat.messageCount = chat.history.length;
   }
   // Incoming state is a view of the owner's edits, never a local transcript edit.
-  dirtyChatIds.delete(chatId);
-  conflictedChatIds.delete(chatId);
+  if (!localShellEdit) {
+    dirtyChatIds.delete(chatId);
+    conflictedChatIds.delete(chatId);
+  }
   dirtyTrackingShadow.delete(chatId);
+  if (fields || history) noteChatMutation(chat);
   return chat;
 }
 
@@ -1841,6 +1919,7 @@ export function getActiveChat(): Chat {
 }
 
 export function touchChat(chat: Chat): void {
+  noteChatMutation(chat);
   chat.updatedAt = Date.now();
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
@@ -1852,6 +1931,7 @@ export function touchChat(chat: Chat): void {
  * that must persist but are not a user edit — restamping churns sidebar order (MIN-793).
  */
 export function markChatDirty(chat: Chat): void {
+  noteChatMutation(chat);
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
   notifyPluginContextChanged();
@@ -2181,6 +2261,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
        */
       const delta = usePatch && hasSessionDirtyWork() ? buildSessionsPatchDelta(sessionState) : null;
       if (delta) {
+        delta.chatBasePresentationRevisions = chatBasePresentationRevisions((delta.chats ?? []).map(chat => chat.id));
         delta.chatBaseRevisions = chatBaseRevisions([
           ...(delta.chats ?? []).map((chat) => chat.id),
           ...(delta.deleteChatIds ?? []),
@@ -2194,6 +2275,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
         chatBaseRevisions: chatBaseRevisions([
           ...sessionState.chats.map((chat) => chat.id), ...deletedChatIds,
         ]),
+        chatBasePresentationRevisions: chatBasePresentationRevisions(sessionState.chats.map(chat => chat.id)),
       });
       if (clearedOk) {
         clearSessionRetry();
@@ -2270,9 +2352,13 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     };
 
     const epochAtStart = sessionDirtyEpoch;
+    const stateAtStart = sessionState;
     const writtenChatIds = usePatch
       ? [...new Set([...dirtyChatIds, ...deletedChatIds])].filter((id) => !conflictedChatIds.has(id))
       : [...new Set([...sessionState.chats.map((chat) => chat.id), ...deletedChatIds])];
+    const onPresentationRevisions = (revisions: Record<string, number>) => {
+      if (sessionState === stateAtStart) captureChatPresentationRevisions(revisions, writtenChatIds);
+    };
     const finishSave = (ok: boolean, revision?: number, conflict = false): void => {
       inFlightSessionSave = null;
       if (ok) {
@@ -2309,6 +2395,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
 
     if (usePatch) {
       const delta = buildSessionsPatchDelta(sessionState);
+      delta.chatBasePresentationRevisions = chatBasePresentationRevisions((delta.chats ?? []).map(chat => chat.id));
       if (sessionRevision != null) delta.baseRevision = sessionRevision;
       delta.chatBaseRevisions = chatBaseRevisions([
         ...(delta.chats ?? []).map((chat) => chat.id),
@@ -2317,6 +2404,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       inFlightSessionSave = patchSessions(delta, {
         // A describe must not be re-based onto another window's newer revision.
         rebaseOnConflict: !patchCoversWholeState,
+        onPresentationRevisions,
       })
         .then((revision) => finishSave(true, revision))
         .catch((err) => {
@@ -2335,6 +2423,8 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       deleteGroupIds: [...deletedGroupIds],
       ...(sessionRevision != null ? { baseRevision: sessionRevision } : {}),
       chatBaseRevisions: chatBaseRevisions(writtenChatIds),
+      chatBasePresentationRevisions: chatBasePresentationRevisions(sessionState.chats.map(chat => chat.id)),
+      onPresentationRevisions,
     })
       .then((revision) => finishSave(true, revision))
       .catch((err) => {
@@ -2364,9 +2454,10 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
   }
 }
 
-/** Flush a parent resume before acknowledging external delivery. */
-export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
+/** Flush a parent resume or delegation without depending on unrelated conflicted chats. */
+export async function persistSessionsBeforeDeliveryAck(chatId?: string): Promise<boolean> {
   if (!sessionState || (isServerStorageMode() && !sessionsHydratedFromServer)) return false;
+  if (chatId && !sessionState.chats.some(chat => chat.id === chatId)) return false;
   if (saveTimer) {
     clearTimeout(saveTimer);
     setSaveTimer(null);
@@ -2374,8 +2465,8 @@ export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     if (saveSessionsNow() !== 'ok') return false;
     if (inFlightSessionSave) await inFlightSessionSave;
-    if (!hasSessionDirtyWork(true)) return true;
-    if (conflictedChatIds.size > 0 || sessionWriteBlockedByChatConflict) return false;
+    if (chatId ? !dirtyChatIds.has(chatId) && !deletedChatIds.has(chatId) : !hasSessionDirtyWork(true)) return true;
+    if ((chatId ? conflictedChatIds.has(chatId) : conflictedChatIds.size > 0) || sessionWriteBlockedByChatConflict) return false;
     if (sessionRetryTimer !== null) return false;
   }
   return false;
@@ -2544,7 +2635,7 @@ export function setSidebarCollapsed(collapsed: boolean): void {
  * Remove a chat by id. If the list becomes empty, inserts a new empty chat using fallbackModelId.
  * Does not show confirm dialogs — callers in UI handle that.
  */
-export function removeChatById(chatId: string, fallbackModelId: string): RemoveChatResult {
+export function removeChatById(chatId: string, fallbackModelId: string, deletion?: { acknowledged: true; revision: number; retainWorktree: boolean; replacementChat?: Chat }): RemoveChatResult {
   const state = requireSessionState();
   const idx = state.chats.findIndex((c) => c.id === chatId);
   if (idx < 0) {
@@ -2552,7 +2643,10 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
   }
 
   const victim = state.chats[idx];
-  void cleanupChatWorktreeOnDelete(victim);
+  const ownsAgents = state.chats.some(chat => chat.agentConversation?.parentChatId === chatId);
+  // Persistent conversations require the server's guarded deletion receipt.
+  if (!deletion && (victim.agentConversation || victim.chatCommandVersion === 1 || ownsAgents)) return { ok: false, activeChanged: false, activeChat: getActiveChat() };
+  if (!deletion?.retainWorktree && !victim.agentConversation && !ownsAgents) void cleanupChatWorktreeOnDelete(victim);
   abortChatTitleGeneration(chatId);
   const wasActive = state.activeId === chatId;
 
@@ -2566,7 +2660,10 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
   }
 
   state.chats.splice(idx, 1);
-  deletedChatIds.add(chatId);
+  if (deletion) {
+    dirtyChatIds.delete(chatId); conflictedChatIds.delete(chatId); chatRevisions.delete(chatId); chatPresentationRevisions.delete(chatId); dirtyTrackingShadow.delete(chatId);
+    sessionRevision = Math.max(sessionRevision ?? 0, deletion.revision);
+  } else deletedChatIds.add(chatId);
   bumpSessionDirtyEpoch();
   if (boardGroup) {
     markGroupDirty(boardGroup.id);
@@ -2575,7 +2672,8 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
   const victimWorkspace = normalizeWorkspacePath(victim.workspacePath ?? '');
   let activeChanged = wasActive;
   if (state.chats.length === 0) {
-    const fresh = createEmptyChatObject(fallbackModelId, victimWorkspace);
+    const fresh = deletion?.replacementChat ?? createEmptyChatObject(fallbackModelId, victimWorkspace);
+    fresh.historyLoaded = true;
     state.chats.push(fresh);
     state.activeId = fresh.id;
     markSessionScalarsDirty();
@@ -2590,7 +2688,8 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
       state.activeId = remaining[0]!.id;
       markSessionScalarsDirty();
     } else {
-      const fresh = createEmptyChatObject(fallbackModelId, victimWorkspace);
+      const fresh = deletion?.replacementChat ?? createEmptyChatObject(fallbackModelId, victimWorkspace);
+      fresh.historyLoaded = true;
       state.chats.push(fresh);
       state.activeId = fresh.id;
       markSessionScalarsDirty();
@@ -2611,6 +2710,23 @@ export function removeChatById(chatId: string, fallbackModelId: string): RemoveC
     activeChanged,
     activeChat: getActiveChat(),
   };
+}
+
+/** Server deletion completes before local removal or any worktree cleanup. */
+export async function removeChatByIdAsync(chatId: string, fallbackModelId: string): Promise<RemoveChatResult> {
+  const state = requireSessionState();
+  const victim = state.chats.find(chat => chat.id === chatId);
+  if (!victim) return { ok: false, activeChanged: false, activeChat: getActiveChat() };
+  if (!isServerStorageMode() && !victim.agentConversation && victim.chatCommandVersion !== 1 && !state.chats.some(chat => chat.agentConversation?.parentChatId === chatId)) return removeChatById(chatId, fallbackModelId);
+  if (!victim.agentConversation && victim.chatCommandVersion !== 1 && !state.chats.some(chat => chat.agentConversation?.parentChatId === chatId)) {
+    const capability = await import('../config/agent-conversations-enabled');
+    await capability.loadAgentConversationsCapability();
+    if (capability.getConversationStorageCapabilitySync() === 'json') return removeChatById(chatId, fallbackModelId);
+  }
+  const { deleteManagedConversation } = await import('../chat/managed-chat-client');
+  const receipt = await deleteManagedConversation(chatId);
+  return removeChatById(chatId, fallbackModelId, { acknowledged: true, revision: receipt.revision, retainWorktree: receipt.retainedWorktree,
+    ...(receipt.replacementChat ? { replacementChat: receipt.replacementChat } : {}) });
 }
 
 /**

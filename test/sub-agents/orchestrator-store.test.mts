@@ -31,7 +31,7 @@ import {
   waitForSubAgent,
 } from '../../src/agents/orchestrator.ts';
 import type { SubAgentRun } from '../../src/agents/types.ts';
-import { setSubAgentExecutorContext } from '../../src/tools/sub-agent-executor.ts';
+import { executeSubAgentTool, setSubAgentExecutorContext } from '../../src/tools/sub-agent-executor.ts';
 import {
   createEmptyChatObject,
   setSessionStateForTests,
@@ -177,6 +177,38 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
     assert.equal(body.type, 'explore');
     assert.equal(body.task, 'scan');
     assert.equal(body.parentChatId, CHAT_ID);
+  });
+
+  test('tool context cancels spawn admission but an accepted child wait outlives that signal', async () => {
+    let admissionSignal: AbortSignal | null | undefined;
+    const requests: string[] = [];
+    setSubAgentApiFetchForTests(async (input, init) => {
+      requests.push(String(input));
+      if (init?.method === 'POST' && String(input).endsWith('/api/agents')) {
+        admissionSignal = init.signal;
+        return Response.json({ ok: true, runId: FIXED_RUN_ID, status: 'running', run: { runId: FIXED_RUN_ID,
+          type: 'explore', task: 'scan', parentChatId: CHAT_ID, requestedAt: 1, phase: 'running', attempts: [], delivered: false } });
+      }
+      return Response.json({ ok: true, events: [] });
+    });
+    const rejected = new AbortController(); rejected.abort(new DOMException('Parent already stopped', 'AbortError'));
+    assert.match(await executeSubAgentTool('spawn_sub_agent', { type: 'explore', task: 'scan' }, { chatId: CHAT_ID, signal: rejected.signal }), /Parent already stopped/);
+    assert.equal(requests.length, 0, 'pre-admission Stop does not create work');
+    const parent = new AbortController(); let settled = false;
+    const waiting = executeSubAgentTool('spawn_sub_agent', { type: 'explore', task: 'scan', wait: true }, { chatId: CHAT_ID, signal: parent.signal });
+    void waiting.then(() => { settled = true; });
+    try {
+      for (let count = 0; count < 100 && !getSubAgentRun(FIXED_RUN_ID); count++) await new Promise(resolve => setTimeout(resolve, 5));
+      assert.ok(getSubAgentRun(FIXED_RUN_ID)); assert.equal(admissionSignal, parent.signal);
+      parent.abort(new DOMException('Parent stopped after admission', 'AbortError'));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(settled, false, 'the original request signal is not a durable child cancellation');
+      assert.equal(getSubAgentRun(FIXED_RUN_ID)?.status, 'running');
+      assert.equal(requests.some(url => url.endsWith('/cancel')), false);
+    } finally {
+      adoptSubAgentRunForTests({ ...runningRun(), status: 'completed', endedAt: '2026-05-19T12:01:00.000Z', summary: FIXED_SUMMARY });
+    }
+    assert.match(await waiting, new RegExp(FIXED_SUMMARY));
   });
 
   test('cancel POSTs /api/agents/:runId/cancel', async () => {
@@ -459,7 +491,7 @@ describe('cancel origin wiring (P10-L / MIN-777)', () => {
     assert.match(source, /\(openStream \?\? openAuthenticatedStream\)/);
   });
 
-  test('executeSubAgentTool does not take the parent chat signal', () => {
+  test('executeSubAgentTool forwards parent identity and admission signal only through the spawn boundary', () => {
     const source = fs.readFileSync(
       path.join(PROJECT_ROOT, 'src', 'tools', 'sub-agent-executor.ts'),
       'utf8',
@@ -469,8 +501,15 @@ describe('cancel origin wiring (P10-L / MIN-777)', () => {
       /export async function executeSubAgentTool\(\s*name: string,\s*args: Record<string, unknown>/,
     );
     const client = fs.readFileSync(path.join(PROJECT_ROOT, 'src', 'tools', 'client.ts'), 'utf8');
-    assert.match(client, /executeSubAgentTool\(name, args\)/);
-    assert.equal(client.includes('executeSubAgentTool(name, args, context)'), false);
+    assert.match(client, /executeSubAgentTool\(name, args, context\)/);
+    assert.match(source, /context:\s*ExecuteToolContext\s*=\s*\{\}/);
+    const spawnStart = source.indexOf("if (name === 'spawn_sub_agent')");
+    const cancelStart = source.indexOf("if (name === 'cancel_sub_agent')");
+    assert.ok(spawnStart >= 0 && cancelStart > spawnStart);
+    const admission = source.slice(spawnStart, cancelStart);
+    assert.match(admission, /parentChatId:\s*context\.chatId/);
+    assert.match(admission, /signal:\s*context\.signal/);
+    assert.doesNotMatch(source.slice(cancelStart), /context\.signal/, 'read/status/cancel helpers do not retain the parent turn AbortSignal');
   });
 
   test('parent Stop cancels the chat children without coupling runChatTurn to a turn signal', () => {

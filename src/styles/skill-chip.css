@@ -69,3 +69,53 @@
 .input-wrap--inset-actions .composer-skill-highlight-host #msgInput {
   width: 100%;
 }
+
+.composer-inline-source {
+  display: none !important;
+}
+
+.composer-skill-highlight-host:has(.composer-inline-source) > .composer-skill-highlight {
+  display: none;
+}
+
+.composer-inline-editor {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  max-height: min(40vh, max(44px, calc(var(--mn-viewport-height, 100dvh) - 360px)));
+  box-sizing: border-box;
+  padding: 14px 16px 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--mn-fg);
+  caret-color: var(--mn-accent);
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 14.5px;
+  line-height: 1.55;
+  outline: none;
+}
+
+.composer-inline-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--mn-fg-subtle);
+  pointer-events: none;
+}
+
+.composer-inline-editor[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer-inline-editor .composer-inline-chat-reference {
+  display: inline-flex;
+  vertical-align: baseline;
+  padding: 0 6px;
+  margin: 0 2px;
+  max-width: min(20rem, 100%);
+  user-select: all;
+  -webkit-user-select: all;
+}

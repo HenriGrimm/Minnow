@@ -88,6 +88,8 @@ export function eventsForStart(want, handle) {
   if (handle.model && handle.model.providerId && handle.model.id) {
     payload.model = { providerId: handle.model.providerId, id: handle.model.id };
   }
+  if (handle.executionId) payload.executionId = handle.executionId;
+  if (handle.commandId) payload.commandId = handle.commandId;
   return [makeEvent('attempt.started', payload)];
 }
 
@@ -117,7 +119,10 @@ export function eventsForAttemptEnd(end) {
   if (end.summary !== undefined) payload.summary = end.summary;
   if (end.evidence !== undefined) payload.evidence = end.evidence;
   if (end.usage !== undefined) payload.usage = end.usage;
-  return [makeEvent('attempt.ended', payload)];
+  if (end.executionId) payload.executionId = end.executionId;
+  if (end.resultMessageId) payload.resultMessageId = end.resultMessageId;
+  return [...(end.evidence?.childChatId && end.evidence?.stopped === true
+    ? [makeEvent('run.cancelled', { runId: end.taskId, reason: 'user' })] : []), makeEvent('attempt.ended', payload)];
 }
 
 /**

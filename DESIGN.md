@@ -38,6 +38,11 @@ typography:
     fontWeight: 600
     lineHeight: 1.3
     letterSpacing: "0.06em"
+  caption:
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "12px"
+    fontWeight: 500
+    lineHeight: 1.5
   mono:
     fontFamily: "'JetBrains Mono', ui-monospace, monospace"
     fontSize: "13px"

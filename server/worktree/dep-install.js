@@ -9,6 +9,7 @@ import { runProcess } from '../process-runner.js';
 import { killProcessTree } from '../terminal-runner.js';
 import { installSpawnTarget } from './dep-install-spawn.js';
 import { ECOSYSTEM_ENTRIES, materializeDepDirs } from './dep-symlinks.js';
+import { runWorktreeSetupProcess } from './setup-process.js';
 
 const INSTALL_TIMEOUT_MS = 600_000;
 
@@ -32,10 +33,11 @@ async function pathExists(targetPath) {
  * Windows `shell:true` spawns cmd.exe, so SIGTERM alone is not enough — kill the tree.
  * @param {string} root — integration worktree root (absolute)
  * @param {string[]} changedFiles — paths from a post-merge git diff
- * @param {{ timeout?: number }} [options]
+ * @param {{ timeout?: number, signal?: AbortSignal }} [options]
  * @returns {Promise<{ ran: string[], failed: string[] }>}
  */
-export async function refreshDependencies(root, changedFiles, { timeout = INSTALL_TIMEOUT_MS } = {}) {
+export async function refreshDependencies(root, changedFiles, { timeout = INSTALL_TIMEOUT_MS, signal } = {}) {
+  signal?.throwIfAborted();
   const ran = [];
   const failed = [];
 
@@ -44,6 +46,7 @@ export async function refreshDependencies(root, changedFiles, { timeout = INSTAL
     const seenCommands = new Set();
 
     for (const entry of ECOSYSTEM_ENTRIES) {
+      signal?.throwIfAborted();
       const triggers = [...entry.manifests, ...(entry.lockfiles ?? [])];
       if (!triggers.some((name) => changedBasenames.has(name))) continue;
 
@@ -72,11 +75,12 @@ export async function refreshDependencies(root, changedFiles, { timeout = INSTAL
 
       try {
         const target = installSpawnTarget(install);
-        const result = await runProcess(target.command, target.args, {
+        const result = await (signal ? runWorktreeSetupProcess : runProcess)(target.command, target.args, {
           cwd: root,
           timeout,
           shell: target.shell,
           killTree: killProcessTree,
+          signal,
         });
         if (result.code === 0) {
           ran.push(label);
@@ -88,12 +92,14 @@ export async function refreshDependencies(root, changedFiles, { timeout = INSTAL
           );
         }
       } catch (err) {
+        if (signal?.aborted) throw err;
         const message = err instanceof Error ? err.message : String(err);
         failed.push(installFailure(label, message));
         console.warn(`[dep-install] ${label} failed: ${message}`);
       }
     }
   } catch (err) {
+    if (signal?.aborted) throw err;
     const message = err instanceof Error ? err.message : String(err);
     failed.push(installFailure('Dependency setup', message));
     console.warn(`[dep-install] unexpected error: ${message}`);

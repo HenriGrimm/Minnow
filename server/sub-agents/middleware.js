@@ -43,6 +43,16 @@ const MUTATING_ROUTES = new Set(['spawn', 'cancel', 'cancel-parent', 'delivery-a
  * @type {(parentChatId: string) => import('../orchestrator/engine.js').Effector}
  */
 let makeEffector = (parentChatId) => createSubAgentEffector({ parentChatId });
+let persistentSpawner = null;
+let recoveryGate = null;
+
+/** Connected clients cannot load a family graph before canonical startup recovery. */
+export function configureAgentRecoveryGate(gate) { recoveryGate = typeof gate === 'function' ? gate : null; }
+
+/** Trusted runtime adapter; versioned new spawns never fall back after rejection. */
+export function configurePersistentAgentSpawner(handler) {
+  persistentSpawner = typeof handler === 'function' ? handler : null;
+}
 
 /**
  * @param {(parentChatId: string) => import('../orchestrator/engine.js').Effector} factory
@@ -85,7 +95,8 @@ function capsFromFile(file) {
  * @param {string} parentChatId
  * @returns {Promise<import('../orchestrator/engine.js').Engine>}
  */
-export async function getAgentsEngine(parentChatId) {
+export async function getAgentsEngine(parentChatId, { skipRecoveryGate = false } = {}) {
+  if (recoveryGate && !skipRecoveryGate) await recoveryGate();
   const file = await loadSubAgentFile();
   const engine = await getEngine(parentChatId, () => makeEffector(parentChatId), {
     namespace: AGENTS_NAMESPACE,
@@ -284,6 +295,7 @@ async function dispatch(route, req, res) {
       return spawnRun(req, res);
 
     case 'delivery-ack': {
+      if (recoveryGate && !useJsonSessionsStore()) await recoveryGate();
       const body = await readJsonBody(req);
       const parentChatId = typeof body.parentChatId === 'string' ? body.parentChatId.trim() : '';
       const runIds = Array.isArray(body.runIds) ? body.runIds : [];
@@ -436,6 +448,21 @@ async function dispatch(route, req, res) {
  */
 async function spawnRun(req, res) {
   const body = await readJsonBody(req);
+  if (body.conversationVersion !== undefined && body.conversationVersion !== 1) return json(res, 400, { ok: false, error: 'Unsupported agent conversation version' });
+  if (body.conversationVersion === 1) {
+    if (!persistentSpawner) return json(res, 503, { ok: false, error: 'Persistent agent conversations are unavailable', code: 'capability_unavailable' });
+    const controller = new AbortController();
+    const disconnected = () => { if (!res.writableEnded) controller.abort(new DOMException('Delegating host disconnected', 'AbortError')); };
+    res.once('close', disconnected);
+    try {
+      const result = await persistentSpawner(req, body, { signal: controller.signal });
+      if (result !== null && result !== undefined) return json(res, result.status ?? 201, result.body ?? { ok: true, ...result });
+      return json(res, 403, { ok: false, error: 'Persistent agent conversation creation is disabled', code: 'capability_disabled' });
+    } catch (error) {
+      if (error?.statusCode) return json(res, error.statusCode, { ok: false, error: error.message, code: error.code });
+      throw error;
+    } finally { res.off('close', disconnected); }
+  }
   const type = typeof body.type === 'string' ? body.type.trim() : '';
   const task = typeof body.task === 'string' ? body.task.trim() : '';
   const parentChatId = typeof body.parentChatId === 'string' ? body.parentChatId.trim() : '';
@@ -1004,6 +1031,8 @@ export function createAgentsMiddleware() {
 
 /** Tests: drop engine registry + delivery wiring. */
 export function resetAgentsMiddlewareForTests() {
+  persistentSpawner = null;
+  recoveryGate = null;
   deliveryWired.clear();
   disposeEngines(undefined, AGENTS_NAMESPACE);
   resetJournalCache();

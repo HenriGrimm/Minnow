@@ -20,7 +20,7 @@ export function readHighestSeq(boardId: string): Promise<number>;
 export function appendEvent(
   boardId: string,
   event: Record<string, unknown>,
-  options?: { now?: () => number },
+  options?: { now?: () => number; idempotencyKey?: string },
 ): Promise<Record<string, unknown>>;
 
 /** Append several events as one unit, so nothing can interleave between them. */

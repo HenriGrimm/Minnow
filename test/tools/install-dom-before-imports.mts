@@ -8,8 +8,22 @@
  */
 
 import { Window } from 'happy-dom';
+import { after } from 'node:test';
 
 const window = new Window();
+let closed = false;
+for (const name of ['setTimeout', 'setInterval', 'requestAnimationFrame'] as const) {
+  const schedule = window[name];
+  Object.defineProperty(window, name, { configurable: true, value: (...args: unknown[]) =>
+    closed ? 0 : Reflect.apply(schedule, window, args) });
+}
+after(async () => {
+  // A deferred module cannot restart timers in a browser context that was closed.
+  // Do not import unrelated app modules here: individual tests may mock them.
+  window.dispatchEvent(new window.Event('pagehide'));
+  closed = true;
+  await window.happyDOM.close();
+});
 const g = globalThis as unknown as Record<string, unknown>;
 g.window = window;
 g.document = window.document;

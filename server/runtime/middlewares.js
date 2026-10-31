@@ -1,7 +1,21 @@
 import { createAgentPacksMiddleware } from '../agent-packs/routes.js';
 import { createActivityMiddleware } from '../activity/middleware.js';
 import { createChatTurnRegistry, createChatTurnsMiddleware } from '../chat-turns/middleware.js';
-import { createChatLiveMiddleware } from '../chat-turns/live.js';
+import { createChatLiveBroker, createChatLiveMiddleware } from '../chat-turns/live.js';
+import { ChatContractError } from '../chats/contracts.js';
+import { createChatMiddleware } from '../chats/middleware.js';
+import { createChatRepository } from '../chats/repository.js';
+import { useJsonSessionsStore } from '../config/sessions-repo.js';
+import { createProductionChatRuntime, getProductionChatRuntime, peekProductionChatRuntime, publishProductionChatRuntime, setProductionChatRuntimeFactory } from '../chats/runtime.js';
+import { installChatDelegation } from '../chats/delegation.js';
+import { installLegacyChatImporter } from '../chats/legacy-import.js';
+import { installChatWorkspaces } from '../chats/workspace-runtime.js';
+import { installChatTools } from '../chats/tools.js';
+import { createAgentChatToolsMiddleware } from '../chats/agent-tools-middleware.js';
+import { createLazyPersistentSubAgentEffector } from '../chats/task-bridge.js';
+import { peekEngine } from '../orchestrator/engine.js';
+import { AGENTS_NAMESPACE } from '../sub-agents/derive.js';
+import { loadState as loadAgentState } from '../sub-agents/journal.js';
 import { createBenchmarkWorkspaceMiddleware } from '../benchmark-workspace/middleware.js';
 import { createChatsWorkspaceMiddleware } from '../chats-workspace/middleware.js';
 import { createBenchmarksMiddleware } from '../benchmarks/middleware.js';
@@ -63,6 +77,9 @@ import {
 import {
   createAgentsMiddleware,
   setAgentsEffectorFactory,
+  getAgentsEngine,
+  configurePersistentAgentSpawner,
+  configureAgentRecoveryGate,
 } from '../sub-agents/middleware.js';
 import {
   cancelOrphanedSubAgentGenerations,
@@ -92,8 +109,14 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   armBoardResumeGate();
   void import('../orchestrator/middleware.js').then(({ bootBoardRuntime }) => bootBoardRuntime()).catch(error => console.error('[orchestrator] boot recovery failed:', error.message));
   cancelOrphanedSubAgentGenerations();
-  setAgentsEffectorFactory((parentChatId) => createSubAgentEffector({ parentChatId }));
-  void bootAgentsRuntime();
+  setAgentsEffectorFactory((parentChatId) => {
+    const legacyEffector = createSubAgentEffector({ parentChatId });
+    return createLazyPersistentSubAgentEffector({ legacyEffector, getRuntime: async () => peekProductionChatRuntime() ?? getProductionChatRuntime(),
+      getState: () => peekEngine(parentChatId, AGENTS_NAMESPACE)?.getState() ?? loadAgentState(parentChatId),
+    });
+  });
+  configureAgentRecoveryGate(useJsonSessionsStore() ? null : () => getProductionChatRuntime());
+  if (useJsonSessionsStore()) void bootAgentsRuntime();
   // Super Plan: the headless stages (research/review/polish) run in-process;
   // interview/draft are delegated to the renderer through a lease
   // (`effector-delegated.js`) that the claim route hands out. Boot re-arms
@@ -108,9 +131,82 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
   connectApp.use(createPreviewAccessMiddleware());
   connectApp.use(createMcpHubMiddleware());
   connectApp.use(createActivityMiddleware());
-  const chatTurns = createChatTurnRegistry();
+  const protectedChat = chatId => {
+    try { return createChatRepository().getChat(chatId).chatCommandVersion === 1; } catch { return false; }
+  };
+  const chatTurns = createChatTurnRegistry({
+    isServerOwned: protectedChat,
+    extraTurns: () => peekProductionChatRuntime()?.listTurns() ?? [],
+    captureCancellationEpoch(chatId) { try { return createChatRepository().getCancellationEpoch(chatId); } catch { return undefined; } },
+    canClaim(chatId, ownerId) {
+      if (useJsonSessionsStore()) return true;
+      try {
+        const lease = createChatRepository().getLease(chatId);
+        return !lease || lease.state !== 'active' || (lease.ownerId === ownerId && lease.expiresAt > Date.now());
+      } catch { return false; }
+    },
+    onRenew(chatId, ownerId) {
+      try { peekProductionChatRuntime()?.renewLegacy(chatId, ownerId); return true; } catch { return false; }
+    },
+    onRelease(chatId, ownerId) { peekProductionChatRuntime()?.releaseLegacy(chatId, ownerId); },
+  });
+  const liveBroker = createChatLiveBroker({ turns: chatTurns, isManagedChat: protectedChat });
+  setProductionChatRuntimeFactory(async () => {
+    const runtime = createProductionChatRuntime({ turns: chatTurns,
+      stopExternalOwner: async ({ chatId, owner, commandId }) => {
+        const matches = () => chatTurns.listLegacy().some(row => row.chatId === chatId && row.ownerId === owner.ownerId);
+        if (!matches()) return { stopRequested: false };
+        try {
+          const admitted = await liveBroker.submit({ id: commandId, chatId, action: 'stop', expectedOwnerId: owner.ownerId }, 'host');
+          const result = admitted.pending ? await liveBroker.waitResult(admitted.id, 'host') : admitted;
+          if (result.ok !== true) throw new Error('Original owner did not accept Stop');
+          return { stopRequested: true };
+        } catch {
+          if (!matches()) return { stopRequested: false };
+          throw new ChatContractError('capability_unavailable', 'The original renderer has not confirmed Stop. Its queued Stop is retained.', { retryable: true });
+        }
+      },
+    });
+    publishProductionChatRuntime(runtime);
+    installChatWorkspaces(runtime);
+    installLegacyChatImporter(runtime);
+    installChatTools(runtime);
+    installChatDelegation(runtime, { getEngine: parentChatId => getAgentsEngine(parentChatId, { skipRecoveryGate: true }),
+      onChange: chatId => runtime.presentation.changed(chatId),
+      cancelTree: input => {
+        if (!runtime.taskDelivery) throw new ChatContractError('capability_unavailable', 'Task cancellation recovery is not available');
+        return runtime.taskDelivery.cancelTree(input);
+      },
+      resolveWorkspace: async input => {
+        if (!runtime.workspaceResolver) {
+          if (input.strategy.kind !== 'shared') throw new ChatContractError('capability_unavailable', 'Checkout isolation is unavailable');
+          return { workspacePath: input.target.scope.canonicalKey, scope: input.target.scope, registry: input.target.registry };
+        }
+        const result = await runtime.workspaceResolver.resolve({ ...input, sourceTarget: input.target });
+        const project = await runtime.context.project(input.target.scope.canonicalKey);
+        return { ...result.chatPatch, scope: result.scope, registry: project.registry, binding: result.binding };
+      },
+    });
+    await runtime.start();
+    void bootAgentsRuntime().catch(error => console.error('[agents] boot recovery failed:', error.message));
+    return runtime;
+  });
+  configurePersistentAgentSpawner(async (req, body, executionContext = {}) => {
+    if (req.minnowAuth?.kind !== 'host') throw new ChatContractError('caller_denied', 'Only the owning computer execution may delegate agents');
+    const allowed = new Set(['conversationVersion', 'parentChatId', 'ownerId', 'parentToolCallId', 'type', 'task', 'title', 'target', 'workspace_strategy', 'workspace_id', 'client_request_id', 'wait', 'providerId', 'modelId', 'category', 'board_task_id']);
+    if (Object.keys(body).some(key => !allowed.has(key))) throw new ChatContractError('invalid_request', 'Unsupported persistent delegation input');
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(body.parentChatId ?? '') || !/^[A-Za-z0-9_-]{1,160}$/.test(body.ownerId ?? '')) throw new ChatContractError('caller_not_active', 'A bound parent execution is required');
+    const runtime = await getProductionChatRuntime();
+    const { caller } = await runtime.legacyCaller({ chatId: body.parentChatId, ownerId: body.ownerId });
+    const { conversationVersion: _version, parentChatId: _parent, ownerId: _owner, parentToolCallId, ...input } = body;
+    const receipt = await runtime.delegation.spawn(caller, input, { toolCallId: parentToolCallId, signal: executionContext.signal });
+    return { status: 201, body: { ok: true, ...receipt } };
+  });
   connectApp.use(createChatTurnsMiddleware(chatTurns));
-  connectApp.use(createChatLiveMiddleware(chatTurns));
+  connectApp.use(createAgentChatToolsMiddleware({ getRuntime: getProductionChatRuntime }));
+  connectApp.use(createChatMiddleware({ getRuntime: getProductionChatRuntime }));
+  connectApp.use(createChatLiveMiddleware(chatTurns, { broker: liveBroker }));
+  if (!useJsonSessionsStore()) void getProductionChatRuntime().catch(error => console.error('[chats] boot recovery failed:', error.message));
   connectApp.use(createAuthRoutesMiddleware());
   connectApp.use(createRemoteMiddleware());
   connectApp.use(createDiagnosticsMiddleware());

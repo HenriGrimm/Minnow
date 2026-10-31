@@ -98,6 +98,13 @@ export function plan(state, caps = defaultCaps()) {
   if (!state) return [];
 
   const globalCap = capOf(caps.globalMaxConcurrent, DEFAULT_GLOBAL_MAX_CONCURRENT);
+  // One FIFO assignment per durable conversation. A second queued assignment
+  // cannot reserve a family slot while the first still owns that child.
+  const firstByChild = new Map();
+  for (const id of state.runOrder) {
+    const run = state.runs.get(id);
+    if (run?.childChatId && !['passed', 'abandoned', 'cancelled'].includes(run.phase) && !firstByChild.has(run.childChatId)) firstByChild.set(run.childChatId, id);
+  }
 
   /** @type {import('./types').Desired[]} */
   const inFlight = [];
@@ -133,6 +140,7 @@ export function plan(state, caps = defaultCaps()) {
     if (occupied.has(id)) continue;
     const run = state.runs.get(id);
     if (!run || isStoppedForScheduling(run)) continue;
+    if (run.childChatId && firstByChild.get(run.childChatId) !== id) continue;
     if (run.attempts.some((a) => !a.ended)) continue;
 
     const next = nextAction(state, id);

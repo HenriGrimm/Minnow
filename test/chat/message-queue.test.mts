@@ -10,6 +10,8 @@ import {
   removeQueuedMessage,
   setPendingMessageQueueChangedListener,
   updateQueuedMessage,
+  setQueuedMessageEditing,
+  preservePendingSteer,
 } from '../../src/chat/message-queue.ts';
 // Circular import regression: composer UI must not TDZ-crash message-queue init.
 import '../../src/ui/composer-message-queue.ts';
@@ -178,5 +180,28 @@ describe('message-queue helpers', () => {
 
     assert.equal(getPendingMessageQueueCount(chat), 1);
     assert.equal(chat.pendingMessageQueue?.[0]?.text, QUEUE_TEXT);
+  });
+
+  test('an item being edited holds the FIFO queue until editing finishes', async () => {
+    const chat = seedChat();
+    enqueueComposerMessage(chat, QUEUE_TEXT);
+    enqueueComposerMessage(chat, QUEUE_TEXT_TWO);
+    const id = chat.pendingMessageQueue![0].id;
+    setQueuedMessageEditing(chat.id, id, true);
+    try {
+      await flushPendingMessageQueue(chat);
+      assert.deepEqual(chat.pendingMessageQueue?.map(item => item.text), [QUEUE_TEXT, QUEUE_TEXT_TWO]);
+      assert.equal(pushQueuedMessageNow(chat, id), false);
+    } finally { setQueuedMessageEditing(chat.id, id, false); }
+  });
+
+  test('unapplied steering is preserved once at the front of the follow-up queue', () => {
+    const chat = seedChat();
+    enqueueComposerMessage(chat, QUEUE_TEXT);
+    chat.pendingSteerMessage = 'correction one\n\ncorrection two';
+    preservePendingSteer(chat);
+    preservePendingSteer(chat);
+    assert.equal(chat.pendingSteerMessage, undefined);
+    assert.deepEqual(chat.pendingMessageQueue?.map(item => item.text), ['correction one\n\ncorrection two', QUEUE_TEXT]);
   });
 });

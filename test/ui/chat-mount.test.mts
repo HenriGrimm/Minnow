@@ -22,9 +22,11 @@ function setupDom(win: import('happy-dom').Window): void {
 }
 
 describe('chat-mount foreground', () => {
+  let domWindow: import('happy-dom').Window;
   beforeEach(async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
+    domWindow = win;
     const g = globalThis as typeof globalThis & {
       window: Window;
       document: Document;
@@ -39,10 +41,12 @@ describe('chat-mount foreground', () => {
     initOsPageBridge();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await import('../../src/state/issues-store.ts');
     setSessionStateForTests(null);
     resetInstancesForTests();
     resetOsPageBridgeForTests();
+    await domWindow.happyDOM.close();
   });
 
   test('isChatAppForeground is false when Code is foreground but chatView stays is-open', async () => {

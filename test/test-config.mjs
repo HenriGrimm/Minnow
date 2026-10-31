@@ -102,6 +102,8 @@ export const PATH_RUNNER_RULES = [
   { pattern: 'test/orchestrator/**/*.test.mjs', runner: 'node' },
   // Shared runner package (MIN-698). Plain node — same untranspiled contract as the core.
   { pattern: 'test/runner/**/*.test.mjs', runner: 'node' },
+  // Conversation server contracts and persistence must run on packaged plain Node.
+  { pattern: 'test/chats/**/*.test.mjs', runner: 'node' },
   // Backup engine and CLI are plain server .js; bare node proves no TS is on the path.
   { pattern: 'test/backup/**/*.test.mjs', runner: 'node' },
   { pattern: 'test/headless/preflight.test.mts', runner: 'node-tsx' },
@@ -161,6 +163,9 @@ export const EXCLUDED_TESTS = [
  * `post` runs after discovered tests (e.g. smoke scripts).
  */
 export const SCOPED_SUITES = {
+  chats: {
+    patterns: ['test/chats/**/*.test.mjs', 'test/chats/**/*.test.mts', 'test/runner/model-options.test.mjs'],
+  },
   'agent-cli': {
     patterns: ['test/generations/agent-cli-*.test.mjs', 'test/providers/agent-cli-*.test.mjs', 'test/providers/settings-provider-filter.test.mts', 'test/models/agent-cli-*.test.mjs', 'test/models/agent-clis-client.test.mts', 'test/mcp/agent-cli-*.test.mjs', 'test/ui/models-cli-*.test.mts', 'test/ui/cli-account-usage.test.mts', 'test/ui/agent-cli-sign-in.test.mts'],
   },

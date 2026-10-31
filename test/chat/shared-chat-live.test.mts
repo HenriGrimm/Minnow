@@ -2,7 +2,7 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createHostChatCommandHandler, createSharedChatObserver, createSharedChatPublisher } from '../../src/chat/shared-chat-bridge.ts';
-import { createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { applySharedChatFrame, createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { registerChatStreamText, notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
 import { setChatAbort, setStreaming, streamingChatIds } from '../../src/app-state.ts';
 import { setPairedDevice } from '../../src/api/session-token.ts';
@@ -18,8 +18,10 @@ import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 import type { Chat } from '../../src/types';
 import { renameChatTitle } from '../../src/state/sessions';
 import { setChatPinned } from '../../src/state/chat-groups';
+import { setChatArchived } from '../../src/state/chat-archive';
 import { onActiveChatModelChange } from '../../src/ui/chat-model-ui';
 import { setChatMode } from '../../src/ui/mode-selector';
+import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
 
 const CHAT = '11111111-1111-1111-1111-111111111111';
 const originalFetch = globalThis.fetch;
@@ -68,6 +70,17 @@ test('publisher streams token differences, indexed tool messages and a terminal 
     assert.equal(frames.at(-1)!.running, false, 'terminal state is sent even when prose did not change');
     assert.equal(frames.at(-1)!.live, null);
   } finally { publisher.dispose(); }
+});
+
+test('observer-only metadata invalidates a mounted view without marking the transcript dirty', () => {
+  const chat = setup();
+  renderChatFromHistory(chat);
+  const area = document.getElementById('chatArea')!;
+  assert.equal(hasCurrentChatSurface(area, chat), true);
+  const before = getSessionDirtyTrackingForTests().dirtyChatIds;
+  applySharedChatFrame(CHAT, { turnError: true });
+  assert.equal(hasCurrentChatSurface(area, chat), false);
+  assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
 });
 
 test('phone paints live reasoning/prose, reconnects without duplicates, then displays the PC final result', async () => {
@@ -133,6 +146,21 @@ test('PC admits phone send once, queues and steers on its engine, and Stop abort
   await reloadedHandler(command);
 });
 
+test('phone queue edits and steering cancellation reach the owner without replacing its draft', async () => {
+  const chat = setup();
+  chat.composerDraft = 'computer draft';
+  chat.pendingMessageQueue = [{ id: 'queued', text: 'original', createdAt: 1 }];
+  chat.pendingSteerMessage = 'correction';
+  setStreaming(true, CHAT);
+  const handler = createHostChatCommandHandler(async () => {}, { persist: async () => true });
+  await handler({ id: 'edit', chatId: CHAT, action: 'edit', itemId: 'queued', text: 'revised' });
+  await handler({ id: 'cancel', chatId: CHAT, action: 'cancel-steer' });
+  assert.equal(chat.pendingMessageQueue[0].text, 'revised');
+  assert.equal(chat.pendingSteerMessage, undefined);
+  assert.equal(chat.composerDraft, 'computer draft');
+  assert.equal(streamingChatIds.has(CHAT), true);
+});
+
 test('an already-open stale phone transcript hydrates its missing prefix before applying the live turn', async () => {
   const chat = setup();
   const observer = createSharedChatObserver(() => {});
@@ -165,15 +193,37 @@ test('phone chat settings use PC commands instead of racing its transcript persi
   };
   renameChatTitle(CHAT, 'Phone title');
   setChatPinned(chat, true);
+  setChatArchived(chat, true);
   onActiveChatModelChange('another-model');
   assert.equal(setChatMode('build', chat).ok, true);
   await new Promise(resolve => setTimeout(resolve, 10));
-  assert.equal(commands.length, 4);
+  assert.equal(commands.length, 5);
   assert.ok(commands.every(command => command.action === 'configure'));
   assert.equal(chat.name, original.name);
   assert.equal(chat.modelId, original.modelId);
   assert.equal(chat.modeId, original.modeId);
   assert.equal(chat.pinnedAt, undefined);
+  assert.equal(chat.archivedAt, undefined);
+});
+
+test('host archive commands publish metadata and leave the active transcript intact', async () => {
+  const chat = setup();
+  const history = structuredClone(chat.history);
+  const frames: any[] = [];
+  const publisher = createSharedChatPublisher(async frame => { frames.push(frame); });
+  const handler = createHostChatCommandHandler(async (chatId, running) => {
+    await publisher.update(chatId, undefined, running);
+  }, { persist: async () => true });
+  try {
+    await handler({ id: 'archive', chatId: CHAT, action: 'configure', patch: { archived: true } });
+    assert.ok(chat.archivedAt! > 0);
+    assert.equal(frames.at(-1).fields.archivedAt, chat.archivedAt);
+    assert.deepEqual(chat.history, history);
+    await handler({ id: 'restore', chatId: CHAT, action: 'configure', patch: { archived: false } });
+    assert.equal(chat.archivedAt, undefined);
+    assert.equal(frames.at(-1).fields.archivedAt, null);
+    assert.deepEqual(chat.history, history);
+  } finally { publisher.dispose(); }
 });
 
 test('phone send and Stop use the shared command API and keep drafts outside the PC chat', async () => {

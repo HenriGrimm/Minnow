@@ -4,6 +4,7 @@ import { ChatOwnershipError } from './turn-lease';
 import { cancelGeneration } from '../api/generations';
 import { reportBackgroundError } from '../boot/report-background-error';
 import { isServerStorageMode } from '../config/storage-mode';
+import { loadAgentConversationsCapability } from '../config/agent-conversations-enabled';
 import { isPairedDevice } from '../api/session-token';
 import { flushSharedChat, notifySharedChatEvent } from './shared-chat-events';
 import { persistSessionsBeforeDeliveryAck, refreshChatBeforeRecovery } from '../state/sessions';
@@ -120,8 +121,8 @@ import {
 } from '../api/chat';
 import { resolveModelInfo } from '../api/models';
 import { buildLastStatsSnapshot, updateStrip } from '../ui/stats';
-import { consumePendingSteer, clearPendingSteer } from './steer-message';
-import { flushPendingMessageQueue, getPendingMessageQueueCount } from './message-queue';
+import { consumePendingSteer } from './steer-message';
+import { flushPendingMessageQueue, getPendingMessageQueueCount, preservePendingSteer } from './message-queue';
 import { notifyChatTurnEnded } from '../notifications/chat-turn';
 import { syncComposerMessageQueue } from '../ui/composer-message-queue';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
@@ -738,6 +739,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     syncComposerFromStreamingState();
     return false;
   }
+  if (isServerStorageMode()) await loadAgentConversationsCapability();
   if (resumeGenerationId) {
     try {
       const fresh = await refreshChatBeforeRecovery(chat);
@@ -1964,7 +1966,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       const prose = painted.lastDelta.trim();
       const thinkingDurationMs = thinkingTracker?.finalizeRound() ?? 0;
       const hasProse = Boolean(prose);
-      if (hasProse && wrap?.isConnected && bubble) {
+      if (hasProse && wrap?.isConnected && bubble && isStreamDomVisible(chat.id)) {
         revealProse();
         setAssistantBubbleContent(bubble, prose, { streaming: false, modeId: chat.modeId });
         completeStreamAnnouncer(prose);
@@ -2176,13 +2178,14 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       burstPartyConfetti();
     }
 
+    const leftoverSteer = [leftoverBrowserGuide, chat.pendingSteerMessage?.trim() ?? '']
+      .filter(Boolean)
+      .join('\n\n');
+    if (leftoverSteer) chat.pendingSteerMessage = leftoverSteer;
+    preservePendingSteer(chat);
     if (completedNormally) {
-      const leftoverSteer = [leftoverBrowserGuide, chat.pendingSteerMessage?.trim() ?? '']
-        .filter(Boolean)
-        .join('\n\n');
       if (leftoverSteer) {
-        clearPendingSteer(chat);
-        void resumeParentChatWithMessage(chat, leftoverSteer);
+        void flushPendingMessageQueue(chat);
       } else {
         void flushPendingMessageQueue(chat);
         if (goalDriven) {
@@ -2226,6 +2229,7 @@ export async function resumeParentChatWithMessage(
   return runChatTurn({
     chat,
     pushUser: true,
+    clearComposerOnSend: false,
     suppressUserEcho: options.suppressUserEcho ?? false,
     rawText: message,
     userText: message,

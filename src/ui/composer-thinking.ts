@@ -28,9 +28,11 @@ import {
   sessionState,
   touchChat,
 } from '../state/sessions';
-import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
+import { syncComposerReasoningEffortFromActiveChat, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { createIcon } from './icon';
 import { isComposerRecoveryBlocked } from './composer-send';
+import { configureManagedChatModel, isManagedModelBusy, managedModelReadOnlyReason, managedReasoningSelection } from './managed-chat-model';
+import { showToast } from './toast';
 
 let rootEl: HTMLElement | null = null;
 let toggleBtn: HTMLButtonElement | null = null;
@@ -85,6 +87,11 @@ function isDropdownReasoningActive(
 
 function applyChatThinkingMode(mode: ThinkingTriState): void {
   const chat = getActiveChat();
+  if (chat.chatCommandVersion === 1) {
+    void configureManagedChatModel(chat, managedReasoningSelection(chat, mode, false))
+      .catch(error => showToast(String(error?.message || error), 'error')).finally(syncComposerReasoningEffortFromActiveChat);
+    syncComposerReasoningEffortFromActiveChat(); return;
+  }
   if (mode === 'inherit') {
     delete chat.thinkingMode;
   } else {
@@ -100,6 +107,10 @@ function applyDropdownModeBrainToggle(): void {
   const chat = getActiveChat();
   const caps = effectiveCapabilities();
   if (modelUsesAlwaysOnReasoning(caps)) return;
+  if (chat.chatCommandVersion === 1) {
+    setComposerReasoningChoice(chat.reasoningEffort === 'off' ? defaultComposerReasoningLevel(caps) ?? 'inherit' : 'off');
+    return;
+  }
   if (chat.reasoningEffort === 'off') {
     const level = defaultComposerReasoningLevel(caps);
     if (level) chat.reasoningEffort = level;
@@ -176,7 +187,7 @@ export function syncThinkingControlFromActiveChat(): void {
   if (!toggleBtn || !showBrain) return;
 
   const chat = getActiveChat();
-  const disabled = isActiveChatStreaming() || isComposerRecoveryBlocked();
+  const disabled = (chat.chatCommandVersion === 1 ? Boolean(managedModelReadOnlyReason(chat)) || isManagedModelBusy(chat.id) : isActiveChatStreaming()) || isComposerRecoveryBlocked();
 
   if (dropdownMode) {
     const effectiveOn = isDropdownReasoningActive(caps);

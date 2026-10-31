@@ -4,6 +4,7 @@
  */
 
 import { highlightedSkillTextHtml } from '../skills/skill-chip';
+import { syncInlineComposerReferences } from './composer-inline-references';
 
 const STYLE_PROPS = [
   'font',
@@ -73,6 +74,7 @@ const pendingFrames = new WeakMap<HTMLTextAreaElement, number>();
 
 /** Paint known `/skill-id` tokens to match the live textarea. */
 export function syncComposerSkillHighlight(textarea: HTMLTextAreaElement): void {
+  if (syncInlineComposerReferences(textarea)) return;
   const layer = ensureLayer(textarea);
   copyTextareaMetrics(textarea, layer);
   const html = highlightedSkillTextHtml(textarea.value);

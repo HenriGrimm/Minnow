@@ -19,6 +19,7 @@ import { enqueueToolApproval, type ToolApprovalContext } from './approval-queue'
 import type { ToolApprovalRequest } from './tool-approval-types';
 import { resolveEffectivePermission } from './permission-resolve';
 import { applyDestructiveConfirmationAfterUserApproval } from './destructive-tool-confirm';
+import { consumeServerToolAdmission } from './server-admission';
 import {
   ensureShellSandboxCaches,
   fetchSandboxStatus,
@@ -149,7 +150,11 @@ export async function maybeBlockToolForUserApproval(
 
   const needsPathAck = pathsOutsideWorkspace.length > 0;
   const needsCompanionAck = companionRequiresApproval(permissionToolId);
-  const needsPermissionAck = perm === 'ask' || needsCompanionAck;
+  const serverAdmitted = consumeServerToolAdmission(context.serverAdmission, execName, args, context);
+  const needsPermissionAck = (perm === 'ask' && !serverAdmitted) || needsCompanionAck;
+  if (perm === 'ask' && serverAdmitted && !needsCompanionAck && !needsPathAck) {
+    applyDestructiveConfirmationAfterUserApproval(permissionToolId, args);
+  }
 
   if (needsPathAck || needsPermissionAck) {
     const afkBlocked = blockAfkInteractionAttempt(

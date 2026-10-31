@@ -1,6 +1,8 @@
 import { showToast } from '../ui/toast';
+import { chatReadOnlyReason } from '../state/chat-relationships';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import type { Attachment } from '../attachments/types';
+import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import {
   getAttachmentEpoch,
   clearAttachments,
@@ -15,7 +17,8 @@ import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
 import { parseCompactSlashInput } from './context/parse-compact-command';
 import { enqueueComposerMessage } from './message-queue';
-import { isChatTurnSetupPending } from './chat-turn-guard';
+import { enqueueSteerMessage } from './steer-message';
+import { isChatTurnInProgress, isChatTurnSetupPending } from './chat-turn-guard';
 import {
   isActiveChatStreaming,
   isBackgroundStreamBlockingSend,
@@ -106,6 +109,8 @@ export { sendMessage as sendMessagePlain } from '../api/chat';
 
 /** Send the composer text with tool calling. */
 export interface ComposerSendOptions extends Partial<ComposerSurface> {
+  /** Mid-turn messages steer by default; explicit queue actions wait for turn end. */
+  followupDelivery?: 'steer' | 'queue';
   /** Surface-owned context injected for this turn without adding it to chat history. */
   ephemeralContext?: string;
   /** Programmatic issue seed rendered as a dedicated ticket. */
@@ -146,6 +151,18 @@ export async function sendProgrammaticChatText(
   text: string,
   options: SendProgrammaticChatTextOptions = {},
 ): Promise<void> {
+  const readOnly = chatReadOnlyReason(chat);
+  if (readOnly) throw new Error(readOnly);
+  if (chat.chatCommandVersion === 1) {
+    const { sendManagedChatAction, waitForManagedCommand } = await import('./managed-chat-client');
+    const receipt = await sendManagedChatAction(chat.id, 'send', { text, attachments: options.validAttachments });
+    await options.onUserMessageAccepted?.();
+    if (options.requireCompletedTurn) {
+      if (!receipt?.commandId) throw new Error('The conversation did not return an admission receipt.');
+      await waitForManagedCommand(receipt, options.signal);
+    }
+    return;
+  }
   if (isPairedDevice()) {
     if (!chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
     await sendRemoteChatCommand(chat.id, 'send', { text, attachments: options.validAttachments });
@@ -326,14 +343,17 @@ export async function sendMessageWithTools(
   }
   const rawTextEarly = input.value.trim();
   const chat = getActiveChat();
+  const readOnly = chatReadOnlyReason(chat);
+  if (readOnly) { showToast(readOnly); return; }
   if (shouldRelayChat(chat.id)) {
     const remoteAttachmentEpoch = getAttachmentEpoch();
     const attachments = await resolveWorkspaceReferences(getPendingAttachments());
     if (!rawTextEarly && !attachments.length) return;
     try {
       if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
-      await sendRemoteChatCommand(chat.id, 'send', { text: rawTextEarly,
-        attachments: attachments.filter(attachment => attachment.kind !== 'error') });
+      const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
+      await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(rawTextEarly, attachments),
+        attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
       // Clear only the draft that was actually accepted; keep text typed during delivery.
       if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
         clearComposerAfterSend(chat, input);
@@ -368,21 +388,20 @@ export async function sendMessageWithTools(
     clearComposerAfterSend(chat, input);
     return;
   }
-  if (isActiveChatStreaming()) {
-    if (!rawTextEarly) return;
+  if (isChatTurnInProgress(chat.id)) {
+    const followupText = withComposerChatReferences(rawTextEarly);
+    if (!followupText.trim()) return;
     const pendingSteer = getPendingAttachments();
-    const pendingOk = pendingSteer.filter((a) => a.kind !== 'error');
+    const pendingOk = pendingSteer.filter((a) => a.kind !== 'error' && a.kind !== 'chatRef');
     if (pendingOk.length > 0) {
       setStatus('err', 'Follow-ups are text only — wait for this turn to finish for attachments');
       return;
     }
-    const chat = getActiveChat();
-    if (enqueueComposerMessage(chat, rawTextEarly)) {
+    const queue = composer?.followupDelivery === 'queue' || Boolean(parseCompactSlashInput(rawTextEarly));
+    if ((queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, followupText)) {
+      clearComposerChatReferences();
       clearComposerAfterSend(chat, input);
-      showToast(parseCompactSlashInput(rawTextEarly)
-          ? 'Compaction queued for after this reply'
-          : 'Follow-up queued',
-      );
+      if (parseCompactSlashInput(rawTextEarly)) showToast('Compaction queued for after this reply');
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
     }

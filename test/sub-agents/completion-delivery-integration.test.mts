@@ -5,10 +5,12 @@ import type { Chat } from '../../src/types.ts';
 import { setResumeGateState } from '../../src/chat/resume-gate.ts';
 import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 import { beginChatTurnSetup, endChatTurnSetup } from '../../src/chat/chat-turn-guard.ts';
+import { streamingChatIds } from '../../src/app-state.ts';
 
 let persistSucceeds = true;
 let holdTurn = false;
 let declineResume = false;
+let beforeHistoryHydrate: (() => void | Promise<void>) | undefined;
 const defaultResumes: string[] = [];
 const pendingTurns: Array<(completed: boolean) => void> = [];
 
@@ -16,6 +18,7 @@ mock.module('../../src/state/sessions.ts', {
   namedExports: {
     ...sessions,
     persistSessionsBeforeDeliveryAck: async () => persistSucceeds,
+    ensureChatHistoryLoaded: async (chatId: string) => { await beforeHistoryHydrate?.(); await sessions.ensureChatHistoryLoaded(chatId); },
   },
 });
 mock.module('../../src/chat/run-turn-chat.ts', {
@@ -160,6 +163,7 @@ async function defaultDeliveryHarness(chat?: Chat, cancelledResults = false) {
   persistSucceeds = true;
   holdTurn = false;
   declineResume = false;
+  beforeHistoryHydrate = undefined;
   setResumeGateState('idle');
   defaultResumes.length = 0;
   const parent = chat ?? createEmptyChatObject('');
@@ -331,4 +335,55 @@ test('failed persistence leaves delivery unacknowledged and retries without dupl
   assert.deepEqual(harness.acknowledgements, [[RUN]]);
   assert.equal(defaultResumes.length, 1, 'retry should persist the receipt rather than start another model turn');
   assert.equal(harness.parent.history!.length, 1);
+});
+
+test('a persistent binding fences legacy SSE hints and queued retries before parent history, resume or ACK', async () => {
+  const harness = await defaultDeliveryHarness();
+  streamingChatIds.add(PARENT);
+  try {
+    harness.emit([RUN], 'Must not duplicate the canonical task result');
+    harness.parent.subAgentRuns = [{ runId: RUN, parentTurnId: 'original-turn', childChatId: 'persistent-child',
+      commandId: 'persistent-command', executionId: 'persistent-execution', journalOwnerId: PARENT,
+      type: 'explore', task: 'scan', status: 'completed', summary: 'Canonical task result', toolTurns: 0, messages: [] }];
+  } finally { streamingChatIds.delete(PARENT); }
+  await harness.flush();
+  harness.emit([RUN]); await harness.flush();
+  assert.deepEqual(defaultResumes, []); assert.deepEqual(harness.acknowledgements, []); assert.deepEqual(harness.parent.history, []);
+});
+
+test('a mixed stale delivery keeps the true legacy result and excludes the persistent child payload', async () => {
+  const harness = await defaultDeliveryHarness();
+  harness.parent.subAgentRuns = [{ runId: RUN, parentTurnId: 'original-turn', childChatId: 'persistent-child',
+    type: 'explore', task: 'scan', status: 'completed', summary: 'Canonical result', toolTurns: 0, messages: [] }];
+  harness.emit([RUN, OFFLINE_RUN], 'MANAGED_RESULT_MUST_NOT_ENTER_LEGACY_HISTORY'); await harness.flush();
+  assert.deepEqual(defaultResumes, [PARENT]); assert.deepEqual(harness.acknowledgements, [[OFFLINE_RUN]]);
+  assert.equal(harness.parent.history!.length, 1);
+  assert.doesNotMatch(String(harness.parent.history![0].content), /MANAGED_RESULT_MUST_NOT_ENTER_LEGACY_HISTORY|Canonical result/);
+  assert.match(String(harness.parent.history![0].content), /done/);
+});
+
+test('a persistent binding learned during history hydration cannot produce a legacy ACK after the filtered delivery returns', async () => {
+  const harness = await defaultDeliveryHarness();
+  beforeHistoryHydrate = () => { harness.parent.subAgentRuns = [{ runId: RUN, parentTurnId: 'original-turn', childChatId: 'persistent-child',
+    type: 'explore', task: 'scan', status: 'completed', summary: 'Canonical result', toolTurns: 0, messages: [] }]; };
+  harness.emit([RUN]); await harness.flush();
+  assert.deepEqual(defaultResumes, []); assert.deepEqual(harness.acknowledgements, []); assert.deepEqual(harness.parent.history, []);
+});
+
+test('legacy results defer without local append, resume or ACK when the parent is managed before or during hydration', async () => {
+  for (const duringHydration of [false, true]) {
+    const harness = await defaultDeliveryHarness();
+    if (duringHydration) beforeHistoryHydrate = () => { harness.parent.chatCommandVersion = 1; };
+    else harness.parent.chatCommandVersion = 1;
+    harness.emit([RUN]); await harness.flush();
+    assert.deepEqual(defaultResumes, []); assert.deepEqual(harness.acknowledgements, []); assert.deepEqual(harness.parent.history, []);
+  }
+});
+
+test('a parent promoted while a custom legacy deliver hook awaits is not renderer-ACKed', async () => {
+  const harness = await defaultDeliveryHarness();
+  setSubAgentCompletionDeliverHook(async () => { harness.parent.chatCommandVersion = 1; });
+  harness.emit([RUN]); await harness.flush();
+  assert.deepEqual(harness.acknowledgements, []); assert.deepEqual(defaultResumes, []); assert.deepEqual(harness.parent.history, []);
+  setSubAgentCompletionDeliverHook(null);
 });

@@ -12,6 +12,7 @@ export const MAX_PARALLEL_READ_TOOLS = 6;
 
 /** Extra read utilities not yet marked cacheable in result-cache. */
 const PARALLEL_EXTRA_WHITELIST = new Set([
+  'agent_capabilities', 'chat_list', 'chat_read',
   'get_datetime',
   'calculate',
   'get_system_info',
@@ -52,6 +53,9 @@ function buildSequentialDenySet(): Set<string> {
   deny.add('write_clipboard');
   deny.add('spawn_sub_agent');
   deny.add('cancel_sub_agent');
+  deny.add('chat_send');
+  deny.add('chat_wait');
+  deny.add('chat_stop');
 
   for (const groupId of SEQUENTIAL_TOOL_GROUP_IDS) {
     for (const toolId of TOOL_GROUP_IDS[groupId]) {

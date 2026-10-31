@@ -3,6 +3,7 @@ import { makeEvent, validateEvent } from './events.js';
 
 /** Backstop poll while the parent is streaming or a seam call failed. */
 export const RETRY_DELAY_MS = 5_000;
+const pendingLegacyDeliveries = state => pendingDeliveries(state).filter(run => !run.childChatId);
 
 /**
  * Production `deliverToParent` throws this when no SSE viewer is connected.
@@ -191,6 +192,7 @@ export function createDelivery(opts = {}) {
   const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const retryDelayMs = Number.isFinite(opts.retryDelayMs) ? opts.retryDelayMs : RETRY_DELAY_MS;
   const requiresAcceptanceAck = opts.requiresAcceptanceAck === true;
+  const deliverCanonical = opts.deliverCanonical;
 
   /** @type {(parentChatId: string, message: string, meta: DeliveryMeta) => Promise<void>} */
   let deliverToParent = opts.deliverToParent ?? (async () => {});
@@ -264,10 +266,26 @@ export function createDelivery(opts = {}) {
    */
   async function doTick(parentChatId) {
     const state = await loadState(parentChatId);
-    const pending = pendingDeliveries(state);
+    const pending = pendingLegacyDeliveries(state);
     if (pending.length === 0) {
       cancelRetry(parentChatId);
       return;
+    }
+
+    // The canonical bridge owns managed parents even while busy or stopped.
+    // A null result leaves the ordinary renderer/SSE lifecycle unchanged.
+    if (deliverCanonical) {
+      let accepted;
+      try { accepted = await deliverCanonical(parentChatId, { kind: 'completion', runIds: pending.map(run => run.runId) }); }
+      catch (error) { scheduleRetry(parentChatId); opts.onDeliverError?.(error); return; }
+      if (accepted !== null) {
+        const wanted = new Set(accepted.acceptedRunIds);
+        const after = await loadState(parentChatId);
+        const delivered = pendingLegacyDeliveries(after).filter(run => wanted.has(run.runId));
+        if (delivered.length) await appendEvents(parentChatId, delivered.map(run => makeEvent('result.delivered', { runId: run.runId, parentChatId })));
+        if (pendingLegacyDeliveries(await loadState(parentChatId)).length) scheduleRetry(parentChatId); else cancelRetry(parentChatId);
+        return;
+      }
     }
 
     const status = parentStatus(parentChatId) ?? { streaming: false, skip: null };
@@ -314,7 +332,7 @@ export function createDelivery(opts = {}) {
     }
 
     const after = await loadState(parentChatId);
-    const stillPending = pendingDeliveries(after).filter((r) => runIds.includes(r.runId));
+    const stillPending = pendingLegacyDeliveries(after).filter((r) => runIds.includes(r.runId));
     if (stillPending.length === 0) {
       cancelRetry(parentChatId);
       return;
@@ -348,7 +366,11 @@ export function createDelivery(opts = {}) {
     return enqueue(parentChatId, async () => {
       const state = await loadState(parentChatId);
       const wanted = new Set(runIds);
-      const accepted = pendingDeliveries(state).filter((run) => wanted.has(run.runId));
+      let accepted = pendingLegacyDeliveries(state).filter((run) => wanted.has(run.runId));
+      if (deliverCanonical && accepted.length) {
+        const canonical = await deliverCanonical(parentChatId, { kind: 'completion', runIds: accepted.map(run => run.runId) });
+        if (canonical !== null) { const retained = new Set(canonical.acceptedRunIds); accepted = accepted.filter(run => retained.has(run.runId)); }
+      }
       if (accepted.length > 0) {
         await appendEvents(parentChatId, accepted.map((run) =>
           makeEvent('result.delivered', { runId: run.runId, parentChatId }),
@@ -386,9 +408,10 @@ export function createDelivery(opts = {}) {
     return enqueue(parentChatId, async () => {
       const state = await loadState(parentChatId);
       const run = state.runs.get(runId);
-      if (!run) return false;
+      if (!run || run.childChatId) return false;
       if (run.nudged) return false;
       if (isTerminal(run)) return false;
+      if (deliverCanonical && await deliverCanonical(parentChatId, { kind: 'check_in_nudge', runIds: [runId] }) !== null) return false;
 
       const status = parentStatus(parentChatId) ?? { streaming: false, skip: null };
       if (status.skip) return false;
@@ -474,6 +497,7 @@ export function createDelivery(opts = {}) {
  * @property {(ms: number) => Promise<void>} [sleep]
  * @property {number} [retryDelayMs]
  * @property {boolean} [requiresAcceptanceAck]
+ * @property {(parentChatId: string, meta: DeliveryMeta) => Promise<{ acceptedRunIds: string[] } | null>} [deliverCanonical]
  * @property {(err: unknown) => void} [onDeliverError]
  */
 

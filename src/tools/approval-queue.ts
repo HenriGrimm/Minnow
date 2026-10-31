@@ -8,6 +8,8 @@ export type ToolApprovalDecision = ToolApprovalModalResult;
 
 /** Optional executor metadata (sub-agent label for the modal). */
 export interface ToolApprovalContext {
+  serverAdmission?: import('./server-admission').ServerToolAdmission;
+  executionId?: string;
   chatId?: string;
   toolCallId?: string;
   subAgentType?: string;

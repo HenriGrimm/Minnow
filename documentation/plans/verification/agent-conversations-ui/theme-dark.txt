@@ -1,0 +1,1 @@
+"{\"theme\":\"swamp-dark\",\"bg\":\"rgb(15, 18, 22)\",\"width\":1440,\"height\":1000,\"reducedMotion\":true,\"conflictToast\":false}"

@@ -3,6 +3,7 @@
  */
 
 import { isServerStorageMode } from '../config/storage-mode';
+import { notifyModelInventory } from '../models/inventory-events';
 import { parseServerBaseUrl, serverUrl } from '../ui/status';
 import type { ProviderPricing } from '../usage/types';
 import type {
@@ -314,6 +315,7 @@ export async function updateProviderSecrets(
 export function invalidateProviderCache(): void {
   cachedList = null;
   cachedAt = null;
+  notifyModelInventory();
 }
 
 /** Last cached list (if any). */

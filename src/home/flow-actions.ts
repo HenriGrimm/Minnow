@@ -221,7 +221,7 @@ export async function addToHomeChat(issues: IssueCard[], chat: Chat): Promise<st
   const text = `Also work on these issues in this same worktree:\n\n${accepted.map(buildIssueContextBlock).join('\n\n')}`;
   if (streamingChatIds.has(chat.id)) {
     const { enqueueSteerMessage } = await import('../chat/steer-message');
-    enqueueSteerMessage(chat, [chat.pendingSteerMessage, text].filter(Boolean).join('\n\n'));
+    enqueueSteerMessage(chat, text);
   } else void runHomeTurn(accepted[0], chat, text);
   return accepted.map(i => i.id);
 }

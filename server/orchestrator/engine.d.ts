@@ -12,14 +12,21 @@ export const systemClock: {
 };
 
 export interface Effector {
+  /** Reattach verified suspended attempts to their existing journaled identities. */
+  reattach?(state: unknown): Promise<Array<{ handle: { attemptId: string; executionId?: string; commandId?: string }; desired: Desired }>>;
   recoveryReady?(hold: import('./core/types').RecoveryHold): Promise<boolean>;
   inspect(): Array<{ taskId: string | null; role: string; attemptId: string; handle?: unknown }>;
-  start(desired: Desired, options?: { signal?: AbortSignal }): Promise<{
+  start(desired: Desired, options?: { signal?: AbortSignal }): Promise<{ deferred: true; reason?: string } | {
     attemptId: string;
+    deferred?: false;
+    executionId?: string;
+    commandId?: string;
     worktree?: string;
     discarded?: Record<string, unknown>[];
     gitInitialized?: Record<string, unknown>;
   }>;
+  /** Release a prepared execution only after attempt.started is durable. */
+  onStarted?(handle: { attemptId: string; executionId?: string; commandId?: string }, desired: Desired): void | Promise<void>;
   stop(attemptId: string): Promise<void>;
   setPaused?(paused: boolean): void;
   onEnd?(handler: (end: AttemptEnd) => Promise<void> | void): void;
@@ -27,6 +34,8 @@ export interface Effector {
 }
 
 export interface AttemptEnd {
+  executionId?: string;
+  resultMessageId?: string;
   resolvedModel?: { providerId: string; id: string };
   attemptId: string;
   taskId: string | null;
@@ -112,7 +121,7 @@ export interface Engine {
   getState(): BoardState;
   getHighestSeq(): number;
   getEvents(): Promise<Record<string, unknown>[]>;
-  append(events: Record<string, unknown>[]): Promise<Record<string, unknown>[]>;
+  append(events: Record<string, unknown>[], options?: { idempotencyKey?: string }): Promise<Record<string, unknown>[]>;
   preflight(): Promise<void>;
   getStartFailures(): Array<{
     role: string;

@@ -8,6 +8,8 @@
  */
 
 import { isMarkdownFilePath } from '../ui/file-markdown-path';
+import { chatIdFromLink } from '../state/chat-relationships';
+import { chatIdFromHref, decorateChatReference } from '../ui/chat-reference-chip';
 
 const HTTP_URL_RE = /^https?:\/\//i;
 
@@ -65,6 +67,7 @@ export type MarkdownLinkAction =
   | { type: 'ignore' }
   | { type: 'http'; url: string }
   | { type: 'heading'; id: string }
+  | { type: 'chat'; chatId: string }
   | {
       type: 'workspace';
       path: string;
@@ -117,6 +120,11 @@ export function hardenMarkdownAnchors(root: ParentNode): void {
   });
   root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
     const href = anchor.getAttribute('href')?.trim() ?? '';
+    const chatId = chatIdFromHref(href);
+    if (chatId && !anchor.closest('pre, code')) {
+      decorateChatReference(anchor, chatId);
+      return;
+    }
     if (!href || IN_APP_HASH_RE.test(href) || MAIL_OR_TEL_RE.test(href)) return;
     anchor.target = '_blank';
     anchor.rel = 'noopener noreferrer';
@@ -215,6 +223,8 @@ export function classifyMarkdownHref(
   if (!trimmed) return { type: 'ignore' };
   if (DANGEROUS_SCHEME_RE.test(trimmed)) return { type: 'ignore' };
   if (MAIL_OR_TEL_RE.test(trimmed)) return { type: 'pass' };
+  const linkedChatId = chatIdFromHref(trimmed);
+  if (linkedChatId) return { type: 'chat', chatId: linkedChatId };
 
   if (trimmed.startsWith('//')) {
     try {
@@ -238,6 +248,8 @@ export function classifyMarkdownHref(
   }
 
   if (trimmed.startsWith('#')) {
+    const chatId = chatIdFromLink(trimmed);
+    if (chatId) return { type: 'chat', chatId };
     if (IN_APP_HASH_RE.test(trimmed)) return { type: 'pass' };
     let id = trimmed.slice(1);
     try {
@@ -382,6 +394,11 @@ export function handleMarkdownLinkClick(event: MouseEvent): void {
   event.stopPropagation();
 
   if (action.type === 'ignore') return;
+
+  if (action.type === 'chat') {
+    void import('../os/chat-launch').then(module => module.launchCodeWithChat(action.chatId));
+    return;
+  }
 
   if (action.type === 'http') {
     void import('../ui/minnow-browser-links').then((mod) => {

@@ -114,6 +114,24 @@ afterEach(async () => {
 });
 
 describe('composer-voice mic boot states', () => {
+  test('inspect-only input cannot start dictation even through a dispatched click', async () => {
+    setupDom(); mockGetUserMedia(); originalFetch = globalThis.fetch;
+    let sttCalls = 0;
+    globalThis.fetch = async input => {
+      if (fetchPath(input).includes('/api/stt/')) sttCalls++;
+      return Response.json({});
+    };
+    const { initComposerVoice, getMicState } = await import('../../src/ui/composer-voice.ts');
+    initComposerVoice();
+    const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+    input.value = 'Retained reference text'; input.disabled = true;
+    document.getElementById('btnComposerMic')!.dispatchEvent(new window.Event('click'));
+    input.disabled = false; input.readOnly = true;
+    document.getElementById('btnComposerMic')!.dispatchEvent(new window.Event('click'));
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(sttCalls, 0); assert.equal(getMicState(), 'idle'); assert.equal(input.value, 'Retained reference text');
+  });
+
   test('local socket close before ready restores an actionable mic button', async () => {
     setupDom();
     mockGetUserMedia();
