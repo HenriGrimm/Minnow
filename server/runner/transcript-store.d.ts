@@ -2,6 +2,9 @@
 export interface TranscriptMessage {
   role: string;
   content?: unknown;
+  messageId?: string;
+  commandId?: string;
+  provenance?: import('../chats/contracts').MessageProvenance;
 }
 
 /** Parent-chat fields the runner reads (thinking / reasoning). */
@@ -15,6 +18,8 @@ export interface TranscriptRecord {
   /** Store id of each message when it differs from its index (filtered chat history). */
   rowIds?: number[];
   meta: TranscriptMeta;
+  /** Canonical checkpoint, with ids in this store's row identity space. */
+  compaction?: import('./compaction').CompactionCheckpoint | null;
 }
 
 /**
@@ -26,6 +31,10 @@ export interface TranscriptStore {
   /** Returns the stored row's id (-1 when the store keeps no row), or nothing for positional stores. */
   append(chatId: string, message: TranscriptMessage): number | void;
   setMeta(chatId: string, meta: TranscriptMeta): void;
+  /** Authoritative persistence hook, called before best-effort presentation events. */
+  observePersisted?(chatId: string, event: import('./run-turn').TurnEvent): void;
+  /** Save a full checkpoint before the next generation uses its projection. */
+  setCompaction?(chatId: string, checkpoint: import('./compaction').CompactionCheckpoint): void;
 }
 
 /** Empty in-memory store for Node / tests — no session store required. */

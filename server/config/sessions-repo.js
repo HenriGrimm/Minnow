@@ -33,19 +33,23 @@ import {
 import { CHAT_DETAIL_META_KEYS, isRunStub, mergeRunOverStored, RUN_DETAIL_KEYS, slimChatSummary } from './chat-detail.js';
 import { recallQueryTerms, runRecallHistory } from '../runner/compaction/recall.js';
 import { isUiOnlyTranscriptRole } from '../runner/injection-notice.js';
+import { isDeletedManagedConversation, isManagedConversation, readAgentConversationProjection } from '../chats/schema.js';
+import { ChatContractError } from '../chats/contracts.js';
+import { readChatActivity } from '../chats/activity.js';
+import { exportChatArchive } from '../chats/archive.js';
+import { readChatPresentationRevision, readChatPresentationRevisions, advanceChatPresentationRevision, hasChatPresentationChanges } from '../chats/presentation-revision.js';
 
 const MAX_TERMINAL_HISTORY = 50;
 
 const PRUNE_GUARD_MIN_CHATS = 5;
 const PRUNE_GUARD_MAX_RATIO = 0.5;
 
-export function readSessionRevision() {
-  const value = readSessionMeta(getSessionsDb(), 'revision');
+export function readSessionRevision(db = getSessionsDb()) {
+  const value = readSessionMeta(db, 'revision');
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function bumpSessionRevision() {
-  const db = getSessionsDb();
+function bumpSessionRevision(db = getSessionsDb()) {
   const current = readSessionMeta(db, 'revision');
   const next = (typeof current === 'number' && Number.isFinite(current) ? current : 0) + 1;
   writeSessionMeta(db, 'revision', next);
@@ -55,11 +59,11 @@ function bumpSessionRevision() {
 /**
  * @param {unknown} baseRevision
  */
-function assertSessionRevision(baseRevision) {
+function assertSessionRevision(baseRevision, db = getSessionsDb()) {
   if (baseRevision === undefined || baseRevision === null) return;
   const expected = Number(baseRevision);
   if (!Number.isFinite(expected)) return;
-  const current = readSessionRevision();
+  const current = readSessionRevision(db);
   if (expected === current) return;
   const err = new Error('Session state changed in another window');
   /** @type {Error & { statusCode?: number, revision?: number }} */ (err).statusCode = 409;
@@ -76,7 +80,7 @@ function assertChatRevisions(db, ids, bases) {
     if (!Number.isSafeInteger(expected) || expected < 0) {
       const err = new Error(`Missing chat revision for ${id}`);
       err.statusCode = 409;
-      err.revision = readSessionRevision();
+      err.revision = readSessionRevision(db);
       err.conflictingChatIds = [id];
       throw err;
     }
@@ -84,10 +88,41 @@ function assertChatRevisions(db, ids, bases) {
     if (current === expected) continue;
     const err = new Error(`Chat ${id} changed in another window; reload before saving`);
     err.statusCode = 409;
-    err.revision = readSessionRevision();
+    err.revision = readSessionRevision(db);
     err.conflictingChatIds = [id];
     throw err;
   }
+}
+
+/** New clients fence managed safe metadata independently of canonical activity. */
+function assertChatPresentationBases(db, ids, bases) {
+  if (bases === undefined) return new Set();
+  if (!bases || typeof bases !== 'object' || Array.isArray(bases)) throw new ChatContractError('invalid_request', 'Invalid conversation presentation revisions');
+  for (const [id, expected] of Object.entries(bases)) {
+    if (!Number.isSafeInteger(expected) || expected < 0) throw new ChatContractError('invalid_request', 'Invalid conversation presentation revision');
+    const current = readChatPresentationRevision(db, id);
+    if (current === null) throw new ChatContractError('invalid_request', 'Presentation revisions apply only to existing managed conversations');
+  }
+  const protectedIds = new Set();
+  for (const id of ids) {
+    if (!Object.hasOwn(bases, id)) continue;
+    const current = readChatPresentationRevision(db, id);
+    if (current === null) continue;
+    const expected = bases[id];
+    if (current !== expected) {
+      const err = new Error(`Chat ${id} presentation changed in another window; reload before saving`);
+      err.statusCode = 409; err.revision = readSessionRevision(db); err.conflictingChatIds = [id];
+      err.chatPresentationRevisions = { [id]: current };
+      err.presentationConflict = { chatId: id, expectedRevision: expected ?? null, currentRevision: current };
+      throw err;
+    }
+    protectedIds.add(id);
+  }
+  return protectedIds;
+}
+
+export function readSessionChatPresentationRevisions(ids, db = getSessionsDb()) {
+  return readChatPresentationRevisions(db, ids);
 }
 
 function stampChatRevisions(db, ids, revision) {
@@ -248,6 +283,17 @@ function stitchChat(row, children) {
     updatedAt: typeof row.updated_at === 'number' ? row.updated_at : 0,
     lastMessageAt: typeof row.last_message_at === 'number' ? row.last_message_at : 0,
   };
+  // Relations are server-owned rows, never claims supplied in a generic save.
+  delete chat.agentConversation;
+  delete chat.chatCommandVersion;
+  delete chat.profileReference;
+  for (const key of ['agentExecution', 'agentPendingCommand', 'agentActivityCursor', 'agentRequestSummary', 'agentRequests',
+    'agentTaskAttention', 'agentModelSelection', 'agentAuthority', 'agentPresentationRevision']) delete chat[key];
+  const agentConversation = readAgentConversationProjection(getSessionsDb(), row.id);
+  if (agentConversation) chat.agentConversation = agentConversation;
+  if (isManagedConversation(getSessionsDb(), row.id)) chat.chatCommandVersion = 1;
+  const profile = getSessionsDb().prepare('SELECT profile_id,profile_version FROM chat_execution_profiles WHERE chat_id=? ORDER BY rowid DESC LIMIT 1').get(row.id);
+  if (profile) chat.profileReference = { profileId: profile.profile_id, profileVersion: profile.profile_version };
 
   if (row.kind) chat.kind = row.kind;
   // Stored app_scope calendar/email (removed apps) is dropped.
@@ -274,6 +320,8 @@ function stitchChat(row, children) {
   if (children.runs.length) chat.runs = children.runs;
   if (children.subAgentRuns.length) chat.subAgentRuns = children.subAgentRuns;
   if (children.activeLoops.length) chat.activeLoops = children.activeLoops;
+
+  if (isManagedConversation(getSessionsDb(), row.id)) Object.assign(chat, readChatActivity(getSessionsDb(), row.id));
 
   return chat;
 }
@@ -373,11 +421,13 @@ export function readWholeSessionState() {
     const log = (logByGroup.get(row.id) ?? []).map(boardLogRowToEvent);
     return stitchGroup(row, tasks, log);
   });
+  const chatPresentationRevisions = readChatPresentationRevisions(db, chatRows.map(row => row.id));
 
   /** @type {Record<string, unknown>} */
   const raw = {
     revision: readSessionRevision(),
     chatRevisions: readChatRevisions(db, chatRows.map((row) => row.id)),
+    ...(Object.keys(chatPresentationRevisions).length ? { chatPresentationRevisions } : {}),
     version: readSessionMeta(db, 'schemaVersion') ?? 6,
     activeId: readSessionMeta(db, 'activeId') ?? '',
     sidebarCollapsed: !!readSessionMeta(db, 'sidebarCollapsed'),
@@ -406,6 +456,7 @@ export function readWholeSessionState() {
     ...validateSessionState(raw),
     revision: raw.revision,
     chatRevisions: raw.chatRevisions,
+    ...(raw.chatPresentationRevisions ? { chatPresentationRevisions: raw.chatPresentationRevisions } : {}),
   };
 }
 
@@ -465,8 +516,33 @@ function readChatMessageDerived(db, chatId) {
  * @param {boolean} syncHistory
  * @returns {boolean}
  */
-function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory) {
+function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory, { replacePresentation = false, rawChat = chat } = {}) {
   const chatId = String(chat.id);
+  if (isDeletedManagedConversation(db, chatId)) {
+    throw new ChatContractError('stale_revision', 'A deleted managed chat cannot be recreated by a session save');
+  }
+  if (isManagedConversation(db, chatId)) {
+    if (replacePresentation) {
+      for (const key of ['name', 'groupId', 'composerDraft']) if (rawChat[key] !== undefined && typeof rawChat[key] !== 'string') throw new ChatContractError('invalid_request', 'Invalid conversation presentation field ' + key);
+      if (rawChat.pinnedAt !== undefined && (!Number.isFinite(rawChat.pinnedAt) || rawChat.pinnedAt <= 0)) throw new ChatContractError('invalid_request', 'Invalid conversation pinned timestamp');
+    }
+    const stored = db.prepare('SELECT name,group_id,meta_json FROM chats WHERE id = ?').get(chatId);
+    const meta = parseJson(stored?.meta_json, {});
+    const presentationBefore = { ...meta, name: stored.name, groupId: stored.group_id };
+    // Legacy viewers can still save presentation state without owning the
+    // transcript, captured model, workspace, profile, or execution records.
+    for (const key of ['pinnedAt', 'composerDraft']) {
+      if (Object.prototype.hasOwnProperty.call(chat, key)) {
+        meta[key] = chat[key];
+      } else if (replacePresentation) delete meta[key];
+    }
+    if (replacePresentation && !Number.isFinite(meta.pinnedAt)) delete meta.pinned;
+    db.prepare('UPDATE chats SET name = ?, group_id = ?, updated_at = MAX(updated_at, ?), meta_json = ? WHERE id = ?')
+      .run(chat.name ?? '', chat.groupId ?? '',
+        Number.isFinite(chat.updatedAt) ? chat.updatedAt : 0, JSON.stringify(meta), chatId);
+    if (hasChatPresentationChanges(presentationBefore, { ...meta, name: chat.name, groupId: chat.groupId })) advanceChatPresentationRevision(db, chatId);
+    return true;
+  }
   // Nothing clears these on purpose, and a client that never fetched a chat's
   // detail (or predates it) omits them: keep what is stored.
   const keep = { keepPriorMetaKeys: CHAT_DETAIL_META_KEYS };
@@ -502,18 +578,25 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory) {
  * @param {string[]} chatIds
  * @returns {number}
  */
-function deleteChatRows(db, chatIds) {
+function deleteChatRows(db, chatIds, { deferCleanup = false } = {}) {
   const delFts = db.prepare('DELETE FROM messages_fts WHERE chat_id = ?');
   const delChat = db.prepare('DELETE FROM chats WHERE id = ?');
   let removed = 0;
   for (const rawId of chatIds) {
     const id = typeof rawId === 'string' ? rawId.trim() : '';
     if (!id) continue;
+    const active = db.prepare(
+      "WITH RECURSIVE family(id) AS (SELECT ? UNION SELECT r.chat_id FROM chat_relations r JOIN family f ON r.parent_chat_id = f.id) SELECT 1 FROM chat_executions e JOIN family f ON e.chat_id = f.id WHERE e.status NOT IN ('completed','failed','stopped') UNION ALL SELECT 1 FROM chat_commands c JOIN family f ON c.chat_id=f.id WHERE c.state IN ('accepted','queued','waiting_for_host') UNION ALL SELECT 1 FROM chat_requests q JOIN family f ON q.chat_id=f.id WHERE q.state='pending' LIMIT 1",
+    ).get(id);
+    if (active) throw new ChatContractError('ownership_conflict', 'Resolve active work, queued inputs and pending questions before deleting this conversation');
+    if (isManagedConversation(db, id)) {
+      db.prepare('INSERT OR IGNORE INTO chat_conversation_tombstones (chat_id,deleted_at) VALUES (?,?)').run(id, Date.now());
+    }
     delFts.run(id);
     const result = delChat.run(id);
     if (result.changes > 0) {
       removed += 1;
-      void disposeCodexSessions(session => session.chatId === id, { forget: true }).catch(() => {});
+      if (!deferCleanup) void disposeCodexSessions(session => session.chatId === id, { forget: true }).catch(() => {});
     }
   }
   return removed;
@@ -734,9 +817,10 @@ function writeScalars(db, state) {
 
 /**
  * @param {Record<string, any>} state
- * @param {{ rawChats?: unknown[], deleteChatIds?: string[], deleteGroupIds?: string[], pruneMissingChats?: boolean, baseRevision?: number, chatBaseRevisions?: Record<string, number> }} [options]
+ * @param {{ rawChats?: unknown[], deleteChatIds?: string[], deleteGroupIds?: string[], pruneMissingChats?: boolean, baseRevision?: number, chatBaseRevisions?: Record<string, number>, chatBasePresentationRevisions?: Record<string, number> }} [options]
  */
 export function writeWholeSessionState(state, options = {}) {
+  if (state?.conversationArchive || state?.kind === 'minnow.conversation-archive') throw new ChatContractError('invalid_request', 'Import a versioned conversation archive through /api/chats/archive/import');
   const db = getSessionsDb();
   const chats = Array.isArray(state.chats) ? state.chats : [];
   const groups = Array.isArray(state.groups) ? state.groups : [];
@@ -747,7 +831,10 @@ export function writeWholeSessionState(state, options = {}) {
 
   const tx = db.transaction(() => {
     assertSessionRevision(options.baseRevision);
-    assertChatRevisions(db, [...chats.map((chat) => String(chat?.id ?? '')).filter(Boolean), ...deleteChatIds], options.chatBaseRevisions);
+    const changedIds = chats.map((chat) => String(chat?.id ?? '')).filter(Boolean);
+    const presentationIds = assertChatPresentationBases(db, changedIds, options.chatBasePresentationRevisions);
+    assertChatRevisions(db, [...changedIds.filter(id => !presentationIds.has(id)), ...deleteChatIds],
+      options.chatBasePresentationRevisions === undefined ? options.chatBaseRevisions : options.chatBaseRevisions ?? {});
     const prunedChatIds = [];
     writeScalars(db, state);
 
@@ -782,7 +869,7 @@ export function writeWholeSessionState(state, options = {}) {
       const hasHistoryKey =
         rawById.size === 0 || wireChatIncludesHistory(rawById.get(chatId) ?? {});
 
-      if (upsertChatWithOptionalHistory(db, chat, sortIndex, hasHistoryKey)) {
+      if (upsertChatWithOptionalHistory(db, chat, sortIndex, hasHistoryKey, { replacePresentation: presentationIds.has(chatId), rawChat: rawById.get(chatId) ?? chat })) {
         chatIds.push(chatId);
       }
     });
@@ -790,7 +877,7 @@ export function writeWholeSessionState(state, options = {}) {
     if (pruneMissing) {
       const keep = new Set(chatIds);
       const stored = db.prepare('SELECT id FROM chats').all().map((row) => String(row.id));
-      const doomed = stored.filter((id) => !keep.has(id));
+      const doomed = stored.filter((id) => !keep.has(id) && !isManagedConversation(db, id));
       assertChatRevisions(db, doomed, options.chatBaseRevisions);
       assertPruneIsSane(db, stored.length, doomed);
       deleteChatRows(db, doomed);
@@ -799,8 +886,9 @@ export function writeWholeSessionState(state, options = {}) {
 
     const revision = bumpSessionRevision();
     stampChatRevisions(db, [...chatIds, ...deleteChatIds, ...prunedChatIds], revision);
+    return { revision, chatPresentationRevisions: readChatPresentationRevisions(db, chatIds) };
   });
-  tx();
+  return tx();
 }
 
 /**
@@ -1393,11 +1481,13 @@ export function readSessionSummariesState(filter = {}) {
         ? db.prepare('SELECT id FROM chats WHERE workspace_path = ?').all(workspace)
         : stmts.chatIds.all()
       ).map((row) => row.id);
+  const chatPresentationRevisions = readChatPresentationRevisions(db, listedIds);
 
   /** @type {Record<string, unknown>} */
   const raw = {
     revision: readSessionRevision(),
     chatRevisions: readChatRevisions(db, listedIds),
+    ...(Object.keys(chatPresentationRevisions).length ? { chatPresentationRevisions } : {}),
     version: readSessionMeta(db, 'schemaVersion') ?? SESSION_SCHEMA_VERSION,
     activeId: readSessionMeta(db, 'activeId') ?? '',
     sidebarCollapsed: !!readSessionMeta(db, 'sidebarCollapsed'),
@@ -1427,14 +1517,15 @@ export function readSessionSummariesState(filter = {}) {
 }
 
 export function exportSessionStateToJson() {
-  return readWholeSessionState();
+  const db = getSessionsDb();
+  return { ...readWholeSessionState(), conversationArchive: exportChatArchive(db) };
 }
 
 /**
  * @param {unknown} delta
  * @returns {{ ok: true, applied: { chats: number, deletedChats: number, groups: number, deletedGroups: number, scalars: boolean } }}
  */
-export function patchSessionState(delta) {
+export function patchSessionState(delta, { db: suppliedDb, deferDeleteCleanup = false } = {}) {
   if (!delta || typeof delta !== 'object') {
     const err = new Error('Invalid session patch');
     /** @type {Error & { statusCode?: number }} */ (err).statusCode = 400;
@@ -1442,6 +1533,7 @@ export function patchSessionState(delta) {
   }
 
   const body = /** @type {Record<string, unknown>} */ (delta);
+  if (body.conversationArchive || body.kind === 'minnow.conversation-archive') throw new ChatContractError('invalid_request', 'Import a versioned conversation archive through /api/chats/archive/import');
   const baseVersion = body.baseVersion;
   if (
     baseVersion !== undefined &&
@@ -1466,19 +1558,24 @@ export function patchSessionState(delta) {
     scalars: false,
   };
 
-  const db = getSessionsDb();
+  const db = suppliedDb ?? getSessionsDb();
   let revision = 0;
+  let chatPresentationRevisions = {};
   const tx = db.transaction(() => {
-    assertSessionRevision(body.baseRevision);
-    assertChatRevisions(db, [
-      ...(Array.isArray(body.chats) ? body.chats.map((chat) => String(chat?.id ?? '')).filter(Boolean) : []),
-      ...(Array.isArray(body.deleteChatIds) ? body.deleteChatIds.filter((id) => typeof id === 'string') : []),
-    ], body.chatBaseRevisions);
+    const changedIds = Array.isArray(body.chats) ? body.chats.map(chat => String(chat?.id ?? '')).filter(Boolean) : [];
+    const deletedIds = Array.isArray(body.deleteChatIds) ? body.deleteChatIds.filter(id => typeof id === 'string') : [];
+    const presentationIds = assertChatPresentationBases(db, changedIds, body.chatBasePresentationRevisions);
+    const presentationOnly = changedIds.length > 0 && changedIds.every(id => presentationIds.has(id)) && !deletedIds.length &&
+      !(Array.isArray(body.groups) && body.groups.length) && !(Array.isArray(body.deleteGroupIds) && body.deleteGroupIds.length) &&
+      !(body.scalars && typeof body.scalars === 'object' && Object.keys(body.scalars).length);
+    if (!presentationOnly) assertSessionRevision(body.baseRevision, db);
+    assertChatRevisions(db, [...changedIds.filter(id => !presentationIds.has(id)), ...deletedIds],
+      body.chatBasePresentationRevisions === undefined ? body.chatBaseRevisions : body.chatBaseRevisions ?? {});
 
     const changedChatIds = [];
 
     if (Array.isArray(body.deleteChatIds)) {
-      applied.deletedChats += deleteChatRows(db, body.deleteChatIds);
+      applied.deletedChats += deleteChatRows(db, body.deleteChatIds, { deferCleanup: deferDeleteCleanup });
       changedChatIds.push(...body.deleteChatIds.filter((id) => typeof id === 'string'));
     }
 
@@ -1511,7 +1608,7 @@ export function patchSessionState(delta) {
         }
 
         const hasHistoryKey = wireChatIncludesHistory(raw);
-        if (upsertChatWithOptionalHistory(db, chat, sortIndex, hasHistoryKey)) {
+        if (upsertChatWithOptionalHistory(db, chat, sortIndex, hasHistoryKey, { replacePresentation: presentationIds.has(chatId), rawChat: raw })) {
           applied.chats += 1;
           changedChatIds.push(chatId);
         }
@@ -1556,11 +1653,12 @@ export function patchSessionState(delta) {
     }
 
     writeSessionMeta(db, 'schemaVersion', SESSION_SCHEMA_VERSION);
-    revision = bumpSessionRevision();
+    revision = bumpSessionRevision(db);
     stampChatRevisions(db, changedChatIds, revision);
+    chatPresentationRevisions = readChatPresentationRevisions(db, changedChatIds);
   });
   tx();
-  return { ok: true, applied, revision };
+  return { ok: true, applied, revision, ...(Object.keys(chatPresentationRevisions).length ? { chatPresentationRevisions } : {}) };
 }
 
 /**

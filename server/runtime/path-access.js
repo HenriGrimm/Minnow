@@ -88,7 +88,7 @@ export function resolveSafePath(userPath, options = {}) {
     : path.resolve(workspaceRoot, userPath);
 
   const store = pathAccessStore.getStore();
-  const allowOutside = ALLOW_ALL_PATHS || store?.allowOutsideWorkspace === true;
+  const allowOutside = store?.enforceWorkspace === true ? false : ALLOW_ALL_PATHS || store?.allowOutsideWorkspace === true;
 
   if (allowOutside) {
     return resolved;
@@ -134,7 +134,7 @@ export function getToolAbortSignal() {
  * Run tool handlers with optional workspace root override (validated by caller).
  * @template T
  * @param {() => Promise<T>} fn
- * @param {{ allowOutsideWorkspace?: boolean, workspaceRoot?: string, abortSignal?: AbortSignal }} [options]
+ * @param {{ allowOutsideWorkspace?: boolean, workspaceRoot?: string, abortSignal?: AbortSignal, enforceWorkspace?: boolean, shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
  * @returns {Promise<T>}
  */
 export async function runWithToolContext(fn, options = {}) {
@@ -148,6 +148,8 @@ export async function runWithToolContext(fn, options = {}) {
     allowOutsideWorkspace,
     ...(options.workspaceRoot ? { workspaceRootOverride: options.workspaceRoot } : {}),
     ...(abortSignal ? { abortSignal } : {}),
+    ...((options.enforceWorkspace || parent?.enforceWorkspace) ? { enforceWorkspace: true } : {}),
+    ...((options.shellSandboxMode ?? parent?.shellSandboxMode) ? { shellSandboxMode: options.shellSandboxMode ?? parent?.shellSandboxMode } : {}),
   };
   return pathAccessStore.run(store, fn);
 }

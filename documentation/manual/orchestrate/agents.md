@@ -2,6 +2,8 @@
 
 Boards use the shared chat runner and tool system for two worker roles.
 
+For research, review or other work delegated from a conversation, see [Agent conversations](../chat/persistent-agent-chats.md). Those assignments have saved child chats with their own model selection, requests and follow-up messages. Board worker roles, reports, merge scheduling and controls on this page remain board-specific.
+
 | Role | Responsibility |
 | --- | --- |
 | **Builder** | Implements one task, repairs concrete failures and preserves completed work |

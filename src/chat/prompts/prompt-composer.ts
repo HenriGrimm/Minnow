@@ -317,6 +317,12 @@ function resolveSubAgentDelegationBody(ctx: ComposeContext, profile: PromptProfi
   return loaded?.body?.trim() ?? '';
 }
 
+function resolveChatCoordinationBody(ctx: ComposeContext, profile: PromptProfile): string {
+  if (!['general', 'build', 'plan', 'debug'].includes(ctx.modeId ?? '') ||
+      !(ctx.enabledToolIds ?? []).some(name => ['chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(name))) return '';
+  return loadPromptById('tool-usage', 'chat-coordination', profile === 'lite' ? 'lite' : 'full')?.body?.trim() ?? '';
+}
+
 /** Brain save guidance when write tools are enabled for this chat. */
 function resolveMemorySaveBody(ctx: ComposeContext, profile: PromptProfile): string {
   if (!contextHasBrainWriteTools(ctx)) {
@@ -562,6 +568,8 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
         }
       }
       const browserAllowlistRaw = resolveBrowserAllowlistBody(ctx, profileKey);
+      const coordinationRaw = resolveChatCoordinationBody(ctx, profileKey);
+      if (coordinationRaw) sections.push(interpolatePromptBody(coordinationRaw, vars).trim());
       if (browserAllowlistRaw.trim()) {
         const browserInterpolated = interpolatePromptBody(browserAllowlistRaw, vars);
         if (browserInterpolated.trim()) {

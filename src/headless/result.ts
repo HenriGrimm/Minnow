@@ -39,6 +39,9 @@ export interface HeadlessRunResult {
   error: string | null;
   /** Present when --persist-chat wrote this run into ~/.minnow sessions. */
   chatId: string | null;
+  /** Durable receipt when an existing conversation remains server-owned. */
+  managedChat?: { clientRequestId: string; commandId: string | null; executionId: string | null;
+    state: string; disposition: string; link: string };
 }
 
 /** Stable key order for CI diff-friendly JSON. */
@@ -61,6 +64,7 @@ export function serializeHeadlessRunResult(result: HeadlessRunResult): string {
     stats: result.stats,
     error: result.error,
     chatId: result.chatId,
+    ...(result.managedChat ? { managedChat: result.managedChat } : {}),
   };
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }

@@ -54,7 +54,7 @@ import {
   markSessionScalarsDirty,
   onWorkspaceChanged,
   pruneEphemeralEmptyChats,
-  removeChatById,
+  removeChatByIdAsync,
   sessionState,
   touchChat,
   recordChatMessage,
@@ -158,6 +158,10 @@ import {
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
 import { syncChatItemWorktreeIcon } from './chat-item-worktree-icon';
 import { hasComposerDraft } from '../state/session-workspace-scope';
+import { getChatsForWorkspace, isSidebarListedChat } from '../state/session-workspace-scope';
+import { AGENT_CHILD_PAGE_SIZE, AGENT_VISUAL_DEPTH_LIMIT, agentChatStatusLabel, chatLink, chatReadOnlyReason, hasUnsettledAgentWork, isAgentChatActive, projectChatRelationships, sortAgentChats, type ChatRelationships } from '../state/chat-relationships';
+import { isChatRunningRemotely } from '../chat/remote-turn-state';
+import { markPreviewOccluder } from './preview-occlusion';
 import {
   flushActiveComposerDraftBeforeNewChat,
   resetComposerForEphemeralReuse,
@@ -467,8 +471,9 @@ function buildChatRow(
   row.setAttribute('aria-label', rowLabel);
   row.title = [displayName, modelLabel, codeChangeAria].filter(Boolean).join('\n');
   row.tabIndex = 0;
+  const currentChat = () => sessionState?.chats.find(entry => entry.id === chat.id) ?? chat;
   const prefetchHistoryOnIntent = () => {
-    if (chat.historyLoaded === false) {
+    if (currentChat().historyLoaded === false) {
       void ensureChatHistoryLoaded(chat.id);
     }
   };
@@ -484,9 +489,9 @@ function buildChatRow(
   if (options?.draggable !== false) {
     row.draggable = true;
     row.classList.add('chat-item-row--draggable');
-  }
+  } else row.draggable = false;
   row.addEventListener('click', (e) => {
-    if ((e.target as Element).closest('.chat-rename-input')) return;
+    if ((e.target as Element).closest('.chat-rename-input, button, a')) return;
     if (e.shiftKey) {
       e.preventDefault();
       selectRangeTo(chat.id);
@@ -500,19 +505,19 @@ function buildChatRow(
     clearChatSelection();
     lastSelectedChatId = chat.id;
     if (options?.onActivate) {
-      options.onActivate(chat);
+      options.onActivate(currentChat());
       return;
     }
     switchChat(chat.id);
   });
   row.addEventListener('keydown', (e) => {
-    if ((e.target as Element).closest('.chat-rename-input')) return;
+    if ((e.target as Element).closest('.chat-rename-input, button, a')) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       clearChatSelection();
       lastSelectedChatId = chat.id;
       if (options?.onActivate) {
-        options.onActivate(chat);
+        options.onActivate(currentChat());
         return;
       }
       switchChat(chat.id);
@@ -567,7 +572,7 @@ function buildChatRow(
     if (selectedChatIds.size > 1 && selectedChatIds.has(chat.id)) {
       showMultiSelectContextMenu(e.clientX, e.clientY, [...selectedChatIds]);
     } else {
-      showChatItemContextMenu(e.clientX, e.clientY, chat, nameSpan, options);
+      showChatItemContextMenu(e.clientX, e.clientY, currentChat(), nameSpan, options);
     }
   });
 
@@ -683,6 +688,7 @@ function showGroupContextMenu(
   const menu = document.createElement('div');
   menu.id = 'chatGroupContextMenu';
   menu.className = 'chat-group-context-menu';
+  markPreviewOccluder(menu, 'menu');
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
@@ -981,6 +987,127 @@ function cancelScheduledSidebarRender(): void {
 }
 
 const sidebarRenderListeners = new Set<() => void>();
+const expandedAgentChats = new Map<string, boolean>();
+const expandedPreviousAgents = new Map<string, boolean>();
+const agentPageSizes = new Map<string, number>();
+let revealedAgentChatId: string | null = null;
+
+export function resetSidebarAgentNavigationForTests(): void {
+  expandedAgentChats.clear(); expandedPreviousAgents.clear(); agentPageSizes.clear(); revealedAgentChatId = null;
+}
+
+/** Relationship state survives keyed updates and ordinary chat navigation. */
+function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationships, activeId: string | null,
+  takeRow: (chat: Chat, options?: AppendChatRowOptions) => HTMLElement): (chat: Chat, options?: AppendChatRowOptions) => HTMLElement[] {
+  const running = (id: string) => isChatStreaming(id) || isChatRunningRemotely(id);
+  const existing = new Map<string, HTMLElement>();
+  list.querySelectorAll<HTMLElement>('[data-agent-key]').forEach(node => existing.set(node.dataset.agentKey!, node));
+  const ancestors = activeId ? relationships.ancestors(activeId) : [];
+  const priorityIds = new Set([...ancestors.map(chat => chat.id), ...(activeId ? [activeId] : [])]);
+  const activeIds = new Set<string>();
+  for (const chat of relationships.byId.values()) {
+    if (!isAgentChatActive(chat, running)) continue;
+    activeIds.add(chat.id);
+    for (const ancestor of relationships.ancestors(chat.id)) activeIds.add(ancestor.id);
+  }
+  for (const map of [expandedAgentChats, expandedPreviousAgents, agentPageSizes]) {
+    for (const id of map.keys()) if (!relationships.byId.has(id.split(':')[0]!)) map.delete(id);
+  }
+  if (activeId !== revealedAgentChatId) {
+    revealedAgentChatId = activeId;
+    for (const ancestor of ancestors) { expandedAgentChats.set(ancestor.id, true); expandedPreviousAgents.set(ancestor.id, true); }
+    const root = ancestors[0];
+    const group = root?.groupId ? findGroupById(root.groupId) : undefined;
+    if (group?.collapsed) toggleGroupCollapsed(group.id);
+  }
+  const take = (key: string, tag = 'div'): HTMLElement => {
+    const node = existing.get(key) ?? document.createElement(tag);
+    node.dataset.agentKey = key; existing.delete(key); return node;
+  };
+  const button = (key: string, text: string, expanded: boolean | null, action: () => void): HTMLButtonElement => {
+    const node = take(key, 'button') as HTMLButtonElement;
+    node.type = 'button'; node.className = 'chat-agent-disclosure'; node.textContent = text;
+    if (expanded !== null) node.setAttribute('aria-expanded', String(expanded));
+    node.onclick = event => { event.stopPropagation(); action(); renderSidebar(); };
+    return node;
+  };
+  return (root, rootOptions) => {
+    const output: HTMLElement[] = [];
+    const jobs = [{ chat: root, options: rootOptions, depth: 0, output }];
+    const pending: { parent: HTMLElement; children: HTMLElement[] }[] = [];
+    const trailing: { target: HTMLElement[]; more: HTMLElement }[] = [];
+    const sections: { target: HTMLElement[]; nodes: HTMLElement[] }[] = [];
+    for (let i = 0; i < jobs.length; i++) {
+      const { chat, options, depth, output: nodes } = jobs[i]!;
+      const child = Boolean(chat.agentConversation);
+      const row = takeRow(chat, child ? { ...options, draggable: false, pinnable: false } : options);
+      nodes.push(row);
+      row.classList.toggle('chat-item-row--agent', child);
+      row.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT)));
+      if (child) {
+        let meta = row.querySelector<HTMLElement>('.chat-item-agent-meta');
+        if (!meta) { meta = document.createElement('div'); meta.className = 'chat-item-agent-meta'; row.append(meta); }
+        const missing = !relationships.parentById.has(chat.id) && Boolean(chat.agentConversation?.parentChatId || chat.agentConversation?.missingParent);
+        meta.textContent = [chat.agentTypeId, options?.inGroup ? routerChatModelLabel(chat) : null, agentChatStatusLabel(chat, running), missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
+        row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${meta.textContent}`);
+        row.title += `\n${chatReadOnlyReason(chat) ?? meta.textContent}`;
+      } else row.querySelector('.chat-item-agent-meta')?.remove();
+      const children = relationships.children.get(chat.id) ?? [];
+      if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); continue; }
+      const activeChildren = children.filter(entry => activeIds.has(entry.id));
+      const previousChildren = children.filter(entry => !activeIds.has(entry.id));
+      if (!expandedAgentChats.has(chat.id)) expandedAgentChats.set(chat.id, activeChildren.length > 0);
+      const expanded = expandedAgentChats.get(chat.id) ?? activeChildren.length > 0;
+      const toggle = button(`toggle:${chat.id}`, `${expanded ? '▾' : '▸'} ${children.length}`, expanded,
+        () => expandedAgentChats.set(chat.id, !expanded));
+      toggle.classList.add('chat-agent-toggle');
+      toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${children.length} agents of ${chat.name}`);
+      row.querySelector('.chat-item-title-row')?.prepend(toggle);
+      if (!expanded) continue;
+      const group = take(`children:${chat.id}`);
+      group.className = 'chat-agent-children'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', `Agents of ${chat.name}`);
+      nodes.push(group);
+      const groupNodes: HTMLElement[] = [];
+      pending.push({ parent: group, children: groupNodes });
+      const enqueue = (entries: readonly Chat[], target: HTMLElement[], section: string) => {
+        const sorted = sortAgentChats(entries, priorityIds);
+        const key = `${chat.id}:${section}`;
+        const limit = agentPageSizes.get(key) ?? AGENT_CHILD_PAGE_SIZE;
+        for (const entry of sorted.slice(0, limit)) jobs.push({ chat: entry, options, depth: depth + 1, output: target });
+        if (sorted.length > limit) {
+          // Finalizers append this after the child branches have populated target.
+          const more = button(`more:${key}`, `Show ${Math.min(AGENT_CHILD_PAGE_SIZE, sorted.length - limit)} more agents`, null,
+            () => agentPageSizes.set(key, limit + AGENT_CHILD_PAGE_SIZE));
+          more.classList.add('chat-agent-show-more');
+          more.dataset.agentMore = key;
+          trailing.push({ target, more });
+        }
+      };
+      enqueue(activeChildren, groupNodes, 'active');
+      if (previousChildren.length) {
+        const open = expandedPreviousAgents.get(chat.id) ?? false;
+        const previous = button(`previous:${chat.id}`, `${open ? '▾' : '▸'} Previous agents · ${previousChildren.length}`, open,
+          () => expandedPreviousAgents.set(chat.id, !open));
+        previous.classList.add('chat-agent-previous-toggle');
+        // Keep section headings after active branches even when those are nested.
+        const previousNodes: HTMLElement[] = [previous];
+        if (open) {
+          const body = take(`previous-body:${chat.id}`);
+          body.className = 'chat-agent-previous'; body.setAttribute('role', 'group'); body.setAttribute('aria-label', `Previous agents of ${chat.name}`);
+          previousNodes.push(body);
+          const bodyNodes: HTMLElement[] = [];
+          pending.push({ parent: body, children: bodyNodes });
+          enqueue(previousChildren, bodyNodes, 'previous');
+        }
+        sections.push({ target: groupNodes, nodes: previousNodes });
+      }
+    }
+    for (const { target, more } of trailing) target.push(more);
+    for (const section of sections) section.target.push(...section.nodes);
+    for (const entry of pending.reverse()) reconcileChildren(entry.parent, entry.children);
+    return output;
+  };
+}
 
 /** Called whenever the chat list re-renders: chats added, renamed, reordered or removed. */
 export function subscribeSidebarRender(listener: () => void): () => void {
@@ -1041,10 +1168,18 @@ export function renderSidebar(): void {
   const ws = getWorkspacePath();
   const excludeAssistantChats = (chat: { workspacePath?: string }) =>
     !isChatsWorkspacePath(chat.workspacePath ?? '');
-  const workspaceChats = getSidebarListedChatsForWorkspace(ws, sessionState)
+  const workspaceCandidates = getChatsForWorkspace(ws, sessionState)
     .filter((c) => !isHiddenFromMainSidebar(c))
     .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
+  const unassignedCandidates = getUnassignedChats(sessionState)
+    .filter((c) => !isHiddenFromMainSidebar(c))
+    .filter((c) => !isBoardOwnedChat(c))
+    .filter(excludeAssistantChats);
+  const relationships = projectChatRelationships([...workspaceCandidates, ...unassignedCandidates]);
+  const workspaceIds = new Set(workspaceCandidates.map(chat => chat.id));
+  const listedRoots = relationships.roots.filter(chat => isSidebarListedChat(chat) || relationships.children.has(chat.id));
+  const workspaceChats = listedRoots.filter(chat => workspaceIds.has(chat.id));
   const highlightChatId = sidebarHighlightChatId();
   // A pinned chat lists once, up top — lifted out of its group until it is unpinned.
   const { pinned, rest: unpinnedChats } = splitPinnedChats(workspaceChats);
@@ -1065,11 +1200,12 @@ export function renderSidebar(): void {
     existingRows.delete(chat.id);
     return buildChatRow(chat, highlightChatId, options);
   };
+  const takeBranch = agentSidebarBranches(list, relationships, highlightChatId, takeRow);
 
   if (pinned.length) {
     desired.push(takeSectionHead('Pinned', pinned.length));
     for (const chat of pinned) {
-      desired.push(takeRow(chat, { draggable: false, pinnable: true }));
+      desired.push(...takeBranch(chat, { draggable: false, pinnable: true }));
     }
     if (sidebarEntries.length) desired.push(takeSectionHead('Chats', unpinnedChats.length));
   }
@@ -1106,8 +1242,8 @@ export function renderSidebar(): void {
           membersEl.replaceChildren();
           appendBoardGroupWaveMembers(membersEl, group, members, highlightChatId);
         } else {
-          const memberRows = members.map((chat) =>
-            takeRow(chat, { inGroup: true, group, pinnable: true }),
+          const memberRows = members.flatMap((chat) =>
+            takeBranch(chat, { inGroup: true, group, pinnable: true }),
           );
           reconcileChildren(membersEl, memberRows);
         }
@@ -1115,17 +1251,14 @@ export function renderSidebar(): void {
       }
       continue;
     }
-    desired.push(takeRow(entry.chat, { pinnable: true }));
+    desired.push(...takeBranch(entry.chat, { pinnable: true }));
   }
 
-  const unassigned = getUnassignedChats(sessionState)
-    .filter((c) => !isHiddenFromMainSidebar(c))
-    .filter((c) => !isBoardOwnedChat(c))
-    .filter(excludeAssistantChats);
+  const unassigned = listedRoots.filter(chat => !workspaceIds.has(chat.id));
   if (unassigned.length) {
     desired.push(takeSectionHead('Unassigned', unassigned.length));
     for (const chat of unassigned) {
-      desired.push(takeRow(chat, { draggable: false }));
+      desired.push(...takeBranch(chat, { draggable: false }));
     }
   }
   if (desired.length === 0) {
@@ -1213,13 +1346,15 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
         return;
       }
       const prevActiveId = sessionState?.activeId;
-      clearChatSelection();
       const { modelId } = readDefaultModelBinding();
-      let lastResult: ReturnType<typeof removeChatById> | null = null;
+      let lastResult: RemoveChatResult | null = null;
       for (const chat of deletable) {
-        const r = removeChatById(chat.id, modelId);
-        if (r.ok) lastResult = r;
+        try {
+          const r = await removeChatByIdAsync(chat.id, modelId);
+          if (r.ok) { lastResult = r; selectedChatIds.delete(chat.id); if (lastSelectedChatId === chat.id) lastSelectedChatId = null; }
+        } catch (error) { showToast(error instanceof Error ? error.message : 'Could not delete this conversation.', 'error'); break; }
       }
+      updateSelectionVisuals();
       const activeChanged = prevActiveId !== sessionState?.activeId;
       if (lastResult) {
         onChatRemoved({ ...lastResult, activeChanged });
@@ -1286,6 +1421,7 @@ export function showChatItemContextMenu(
   const menu = document.createElement('div');
   menu.id = 'chatItemContextMenu';
   menu.className = 'chat-group-context-menu';
+  markPreviewOccluder(menu, 'menu');
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
@@ -1313,7 +1449,7 @@ export function showChatItemContextMenu(
   });
 
   let pinItem: HTMLButtonElement | null = null;
-  if (options?.pinnable) {
+  if (options?.pinnable && !chat.agentConversation) {
     const pinned = isChatPinned(chat);
     pinItem = document.createElement('button');
     pinItem.type = 'button';
@@ -1383,6 +1519,22 @@ export function showChatItemContextMenu(
 
   if (pinItem) menu.appendChild(pinItem);
   menu.appendChild(renameItem);
+  const linkItem = document.createElement('button');
+  linkItem.type = 'button'; linkItem.textContent = 'Copy chat link';
+  linkItem.addEventListener('click', () => {
+    closeMenu();
+    const url = new URL(window.location.href); url.hash = chatLink(chat.id);
+    void navigator.clipboard.writeText(url.href).then(() => showToast('Chat link copied'), () => showToast('Could not copy this chat link', 'error'));
+  });
+  menu.append(linkItem);
+  if (chat.agentConversation?.parentChatId) {
+    const parentItem = document.createElement('button');
+    parentItem.type = 'button'; parentItem.textContent = 'Open parent';
+    parentItem.addEventListener('click', () => {
+      closeMenu(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(chat.agentConversation!.parentChatId!));
+    });
+    menu.append(parentItem);
+  }
   for (const [format, label] of [
     ['text', 'Copy chat transcript'],
     ['html', 'Export chat as HTML'],
@@ -1473,10 +1625,15 @@ function onChatRemoved(result: RemoveChatResult): void {
   if (result.activeChanged) {
     clearAttachments();
     const active = result.activeChat;
+    switchComposerDraft(result.removed?.id, active);
+    syncAskQuestionModalOnChatSwitch(result.removed?.id ?? '', active.id);
+    notifyAskQuestionDisplayContextChanged();
     recordChatOpened(active.id);
     syncModelSelectForActiveChat();
     renderStatsForChat(active);
     renderChatFromHistory(active);
+    syncCreateChatChrome(active.id);
+    syncComposerFromStreamingState();
   }
   refreshSessionListUIs();
   if (isOrchestrateHubMounted()) {
@@ -1514,12 +1671,18 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
   const idx = sessionState!.chats.findIndex((c) => c.id === chatId);
   if (idx < 0) return;
   const victim = sessionState!.chats[idx];
+  const family = projectChatRelationships(sessionState!.chats);
+  const descendants = sessionState!.chats.filter(chat => family.ancestors(chat.id).some(parent => parent.id === chatId));
+  if ([victim, ...descendants].some(chat => hasUnsettledAgentWork(chat, id => isChatStreaming(id) || isChatRunningRemotely(id)))) {
+    showToast('Stop this conversation and its agents, and resolve pending requests before deleting it.');
+    return;
+  }
   const victimLabel =
     getChatMessageCount(victim) === 0 && hasComposerDraft(victim)
       ? formatDraftChatSidebarName(victim)
       : victim.name;
   if (
-    !(await appConfirm(`Delete "${victimLabel}"? Messages in this chat cannot be recovered.`, {
+    !(await appConfirm(`Delete "${victimLabel}"? Messages in this chat cannot be recovered.${descendants.length ? ` Its ${descendants.length === 1 ? 'agent chat stays' : `${descendants.length} agent chats stay`} available in the chat list.` : ''}`, {
       confirmLabel: 'Delete',
       danger: true,
     }))
@@ -1528,8 +1691,8 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
   }
 
   const { modelId } = readDefaultModelBinding();
-  const result = removeChatById(chatId, modelId);
-  onChatRemoved(result);
+  try { onChatRemoved(await removeChatByIdAsync(chatId, modelId)); }
+  catch (error) { showToast(error instanceof Error ? error.message : 'Could not delete this conversation.', 'error'); }
 }
 
 export async function switchChat(id: string): Promise<void> {

@@ -56,6 +56,7 @@ import { runHeadlessSharedTurn } from './shared-turn';
 import type { TranscriptMessage } from '../../server/runner/transcript-store';
 import type { TurnEvent } from '../../server/runner/run-turn.js';
 import { resolveHeadlessContextLimits } from './context-policy';
+import { runManagedChatIfPresent } from './managed-chat';
 
 /** Apply --profile in memory only (does not write ~/.minnow). */
 async function loadPromptMetaWithProfile(profile: string): Promise<void> {
@@ -264,8 +265,10 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
   const t0 = Date.now();
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
 
-  installHeadlessLocalStorage();
   installHeadlessFetch(options.cli.baseUrl, resolveHeadlessToken(options.cli.token), options.workspaceAbs ?? '');
+  const managed = await runManagedChatIfPresent(options);
+  if (managed) return managed;
+  installHeadlessLocalStorage();
 
   await detectConfigServer();
   await detectLocalServer();

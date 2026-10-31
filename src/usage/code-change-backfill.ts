@@ -168,6 +168,9 @@ export async function rebuildCodeChangeTotalsFromHistory(
   chat: Chat,
   options?: { force?: boolean },
 ): Promise<void> {
+  // Canonical chats own these tool rows on the server. A viewer must not turn
+  // reading their history into a stale session write (or estimate file edits).
+  if (chat.chatCommandVersion === 1 || chat.agentConversation) return;
   if (!options?.force && chat.codeChangeBackfillAt && chat.codeChangeTotals) {
     return;
   }

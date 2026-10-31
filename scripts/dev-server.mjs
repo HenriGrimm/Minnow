@@ -4,6 +4,11 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { observeRuntimeProcess } from './runtime-process-log.mjs';
+import { buildChatPreparation } from './build-headless-runner.mjs';
+
+// The server imports plain JS in both checkout and packaged installations.
+// Rebuild on each dev startup so it never consumes a stale/missing TS adapter.
+await buildChatPreparation();
 
 const server = fileURLToPath(new URL('../server.js', import.meta.url));
 const child = spawn(process.execPath, [server, ...process.argv.slice(2)], {

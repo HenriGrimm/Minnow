@@ -12,6 +12,8 @@ export interface EvalTask {
   allowedTools: string[];
   deniedTools: string[];
   rubricPrompt: string;
+  /** Explicit simulation: every tool response comes from this bounded script. */
+  toolFixtures?: import('../../server/evals/tool-fixtures').EvalToolFixtures;
 }
 
 /** Task pack (built-in or user under ~/.minnow/evals/packs/). */
@@ -101,6 +103,7 @@ export interface EvalCellResult {
   error?: string;
   transcriptExcerpt?: string;
   messages?: ApiMessage[];
+  fixtureReport?: { pass: boolean; completedSteps: number; expectedSteps: number; actualCalls: number; violations: string[] };
 }
 
 /** Aggregated leaderboard row per model target. */

@@ -59,6 +59,8 @@ export function isComposerPasteTarget(target: EventTarget | null): boolean {
 
 function onComposerPaste(event: ClipboardEvent): void {
   if (!isComposerPasteTarget(event.target)) return;
+  const input = event.target instanceof HTMLTextAreaElement ? event.target : (event.target as HTMLElement).closest('textarea');
+  if (input?.disabled || input?.readOnly) return;
   const data = event.clipboardData;
   if (!pasteIsImageOnly(data)) return;
   const files = imageFilesFromClipboard(data);

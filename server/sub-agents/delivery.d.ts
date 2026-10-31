@@ -11,6 +11,7 @@ export interface DeliveryMeta {
   kind: 'completion' | 'check_in_nudge';
   runIds: string[];
 }
+export interface CanonicalDeliveryAcceptance { acceptedRunIds: string[] }
 
 export interface ParentStatus {
   streaming: boolean;
@@ -59,6 +60,8 @@ export interface DeliveryOptions {
   sleep?: (ms: number) => Promise<void>;
   retryDelayMs?: number;
   requiresAcceptanceAck?: boolean;
+  /** Null preserves legacy SSE. Any object owns managed delivery and suppresses renderer fallback. */
+  deliverCanonical?: (parentChatId: string, meta: DeliveryMeta) => Promise<CanonicalDeliveryAcceptance | null>;
   onDeliverError?: (err: unknown) => void;
 }
 

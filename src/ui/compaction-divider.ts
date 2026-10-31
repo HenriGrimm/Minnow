@@ -1,5 +1,6 @@
 import type { ContextNoticeMessage } from '../types';
 import { createIcon } from './icon';
+import { createCompactionSummary } from './compaction-summary';
 
 /** Compact token count: 142000 → "142k", 1450 → "1.5k". */
 function formatK(tokens: number): string {
@@ -75,16 +76,16 @@ export function createCompactionDivider(
   const note = document.createElement('p');
   note.className = 'compaction-divider__note';
   note.textContent = options.superseded
-    ? 'An earlier checkpoint. A later one folded more of the conversation.'
-    : 'Messages above this line are not in the model context. The model reads this summary instead, and can look up exact details with recall_history.';
+    ? 'An earlier summary. A newer checkpoint includes more of the conversation.'
+    : 'The model uses this summary in place of earlier messages. The full conversation stays available for reference.';
   body.appendChild(note);
   const summaryText = notice.compaction?.summary ?? notice.summaryText ?? '';
-  if (summaryText.trim()) {
-    const pre = document.createElement('pre');
-    pre.className = 'compaction-divider__text';
-    pre.textContent = summaryText;
-    body.appendChild(pre);
-  }
+  let rendered = false;
+  details.addEventListener('toggle', () => {
+    if (!details.open || rendered) return;
+    body.appendChild(createCompactionSummary(summaryText));
+    rendered = true;
+  });
 
   details.append(summary, body);
   wrap.appendChild(details);

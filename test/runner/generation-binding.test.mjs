@@ -262,6 +262,22 @@ describe('in-process generation binding', { concurrency: false }, () => {
     }
   });
 
+  test('captured options stay internal and explicit models cannot fall back', { timeout: 20_000 }, async () => {
+    const options = { reasoningEffort: 'high' };
+    const stream = await createCompletionStream(PROVIDER_ID, {
+      model: 'test-model', messages: [{ role: 'user', content: 'Exact model.' }], stream: true,
+    }, { agentModelOptions: options, exactModel: true });
+    options.reasoningEffort = 'low';
+    const state = getGenerationState(stream.generationId);
+    assert.deepEqual(state.agentModelOptions, { reasoningEffort: 'high' });
+    assert.equal(state.failoverDisabled, true);
+    assert.deepEqual(state.candidates, [{ providerId: PROVIDER_ID, modelId: 'test-model' }]);
+    const upstream = JSON.parse(state.requestBody.toString());
+    assert.equal(upstream.agentModelOptions, undefined);
+    assert.equal(upstream.exactModel, undefined);
+    for await (const _ of stream) { /* consume production completion */ }
+  });
+
   test('aborting mid-stream cancels upstream and leaves no streaming state', { timeout: 20_000 }, async () => {
     let upstreamClosed = false;
     const slow = http.createServer((req, res) => {

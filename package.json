@@ -85,6 +85,7 @@
     "test:settings": "node test/run-all.mjs --suite settings",
     "test:engine": "node test/run-all.mjs --suite engine",
     "test:runner": "node test/run-all.mjs --suite runner",
+    "test:chats": "node test/run-all.mjs --suite chats",
     "test:production-boundary": "node --test test/headless/production-boundary.test.mjs",
     "test:packaged-boundary": "npm run electron:build && node --test test/headless/packaged-boundary.test.mjs",
     "test:agent-cli": "node test/run-all.mjs --suite agent-cli",

@@ -32,6 +32,7 @@ import { unsupportedSearchOptions } from '../../server/tools/tavily-options.js';
 import { reefToolAllowed, reefProtectedPath } from '../../server/reef/tool-policy.js';
 import path from 'node:path';
 import { getHeadlessWorkspace } from './server-context';
+import { AGENT_CHAT_TOOL_IDS } from '../../server/chats/tool-catalog.js';
 
 /** Browser-catalog tools that run on the server when the tool server is up (BUG-011). */
 const SERVER_PROXY_BROWSER_TOOLS = new Set(['fetch_web_content', 'rag_web_content']);
@@ -62,6 +63,9 @@ function isBrowserOnlyTool(name: string): boolean {
 export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefinition[] {
   const normalized = normalizeModeId(modeId);
   const catalog = BUILT_IN_TOOLS.filter((tool) => {
+    // Managed --chat-id runs execute these through the canonical server owner.
+    // A fresh legacy CLI session has no persisted sender or execution lease.
+    if (AGENT_CHAT_TOOL_IDS.includes(tool.id)) return false;
     if (!isToolEnabled(tool.id)) return false;
     if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
     const fn = tool.definition.function.name;
@@ -148,6 +152,7 @@ export async function executeHeadlessTool(
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
+  if (AGENT_CHAT_TOOL_IDS.includes(name)) return { content: 'Error: conversation tools require a managed --chat-id execution; this local CLI session has no canonical sender.' };
   if (process.env.MINNOW_REEF_PHASE) {
     const workspace = getHeadlessWorkspace();
     for (const [key, value] of Object.entries(args)) {

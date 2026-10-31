@@ -2,11 +2,12 @@
  * Server-side eval pack validation (mirrors client pack-schema rules).
  */
 
-import { ALL_TOOL_IDS } from '../config/tool-ids.js';
+import { BUILT_IN_TOOLS } from '../tools/builtin-catalog.js';
+import { validateEvalToolFixtures } from './tool-fixtures.js';
 
 const PACK_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TASK_ID_RE = /^[a-z0-9][a-z0-9_-]*$/;
-const KNOWN_TOOL_IDS = new Set(ALL_TOOL_IDS);
+const KNOWN_TOOL_IDS = new Set(BUILT_IN_TOOLS.map(tool => tool.id));
 
 function isStringArray(value) {
   return (
@@ -51,6 +52,7 @@ function validateTask(raw, index) {
     allowedTools,
     deniedTools,
     rubricPrompt,
+    ...(raw.toolFixtures === undefined ? {} : { toolFixtures: validateEvalToolFixtures(raw.toolFixtures, allowedTools, deniedTools, KNOWN_TOOL_IDS) }),
   };
 }
 

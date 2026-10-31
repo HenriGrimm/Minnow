@@ -72,7 +72,13 @@
         "browser_click",
         "browser_fill",
         "browser_eval",
-        "browser_screenshot"
+        "browser_screenshot",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -134,7 +140,13 @@
         "browser_click",
         "browser_fill",
         "browser_eval",
-        "browser_screenshot"
+        "browser_screenshot",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -152,7 +164,7 @@
       ],
       "systemPromptPath": null,
       "sampler": {
-        "temperature": 1.0,
+        "temperature": 1,
         "topP": 0.95,
         "topK": 20
       }
@@ -177,7 +189,13 @@
         "get_datetime",
         "read_file",
         "read_document",
-        "list_directory"
+        "list_directory",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -250,7 +268,13 @@
         "browser_click",
         "browser_fill",
         "browser_eval",
-        "browser_screenshot"
+        "browser_screenshot",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -320,7 +344,13 @@
         "git_log",
         "issue_get_state",
         "issue_update",
-        "issue_link"
+        "issue_link",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -364,7 +394,13 @@
         "get_file_metadata",
         "git_status",
         "git_log",
-        "web_search"
+        "web_search",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",
@@ -412,7 +448,13 @@
         "git_status",
         "git_log",
         "git_diff",
-        "execute_command"
+        "execute_command",
+        "agent_capabilities",
+        "chat_list",
+        "chat_read",
+        "chat_send",
+        "chat_wait",
+        "chat_stop"
       ],
       "deniedTools": [
         "spawn_sub_agent",

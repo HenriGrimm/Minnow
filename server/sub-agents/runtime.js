@@ -11,9 +11,26 @@ import {
   readEvents,
 } from './journal.js';
 import { emitDeliver } from '../orchestrator/live-events.js';
+import { getSessionsDb } from '../config/sessions-db.js';
+import { useJsonSessionsStore } from '../config/sessions-repo.js';
 
 /** @type {import('./delivery.js').DeliveryHandle | null} */
 let production = null;
+let canonicalDelivery = null;
+function deliverCanonical(parentChatId, meta) {
+  if (canonicalDelivery) return canonicalDelivery(parentChatId, meta);
+  // A request can arrive before runtime recovery installs its ready callback.
+  // A protected target must never be acknowledged through a legacy renderer.
+  const managed = !useJsonSessionsStore() && getSessionsDb().prepare('SELECT 1 FROM chat_conversation_state WHERE chat_id=?').get(parentChatId);
+  return Promise.resolve(managed ? { acceptedRunIds: [] } : null);
+}
+
+/** Register only the ready canonical runtime; an old disposer cannot erase a replacement. */
+export function setProductionCanonicalDelivery(fn) {
+  if (typeof fn !== 'function') throw new TypeError('A canonical delivery callback is required');
+  canonicalDelivery = fn;
+  return () => { if (canonicalDelivery === fn) canonicalDelivery = async () => ({ acceptedRunIds: [] }); };
+}
 
 /** @type {(parentChatId: string) => import('./delivery.js').ParentStatus} */
 let parentStatusProbe = () => ({ streaming: false, skip: null });
@@ -74,6 +91,7 @@ export function getProductionDelivery() {
       journal: diskJournal(),
       deliverToParent: productionDeliver,
       requiresAcceptanceAck: true,
+      deliverCanonical,
       buildMessage: buildProductionParentMessage,
       parentStatus: (parentChatId) => parentStatusProbe(parentChatId),
       onDeliverError: (err) => {
@@ -101,5 +119,6 @@ export async function bootAgentsRuntime() {
 export function resetProductionDelivery() {
   production?.reset();
   production = null;
+  canonicalDelivery = null;
   parentStatusProbe = () => ({ streaming: false, skip: null });
 }

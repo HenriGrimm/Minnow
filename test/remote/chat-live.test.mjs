@@ -15,6 +15,16 @@ function fixture() {
   return { turns, broker, host, phone, disconnect };
 }
 
+test('queued edit commands reach the host with bounded text and item validation', async () => {
+  const { broker, host } = fixture();
+  await broker.submit({ id: 'edit', chatId: 'chat', action: 'edit', itemId: 'queued', text: 'revised' }, 'phone');
+  assert.equal(host.at(-1).command.action, 'edit');
+  assert.equal(host.at(-1).command.text, 'revised');
+  await assert.rejects(broker.submit({ id: 'blank', chatId: 'chat', action: 'edit', itemId: 'queued', text: ' ' }, 'phone'), /Add a message/);
+  await assert.rejects(broker.submit({ id: 'missing', chatId: 'chat', action: 'edit', text: 'revised' }, 'phone'), /Invalid queued message/);
+  await assert.rejects(broker.submit({ id: 'long', chatId: 'chat', action: 'edit', itemId: 'queued', text: 'x'.repeat(100_001) }, 'phone'), /Add a message/);
+});
+
 test('live text and tools reach the same chat immediately and reconnect replays a coalesced snapshot', async () => {
   const { turns, broker, phone } = fixture();
   turns.claim('chat', 'owner', 'pc');

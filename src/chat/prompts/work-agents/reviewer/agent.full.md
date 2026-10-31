@@ -7,6 +7,12 @@ description: Code review for correctness, security, performance, maintainability
 providerId: null
 modelId: null
 allowedTools:
+  - agent_capabilities
+  - chat_list
+  - chat_read
+  - chat_send
+  - chat_wait
+  - chat_stop
   - load_skill
   - action_inspect
   - release_inspect

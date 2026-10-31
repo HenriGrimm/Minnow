@@ -7,6 +7,8 @@
  * without a circular import through getSessionsDb → importJsonSessionsIfNeeded.
  */
 
+import { initChatConversationSchema } from '../chats/schema.js';
+
 /** SQLite table-layout version (distinct from SESSION_SCHEMA_VERSION wire shape = 6). */
 export const SESSIONS_DB_SCHEMA_VERSION = 1;
 
@@ -249,6 +251,7 @@ export function initSessionsSchema(database) {
   }
 
   migrateAddedColumns(database);
+  initChatConversationSchema(database);
 
   const version = database.pragma('user_version', { simple: true });
   if (version < SESSIONS_DB_SCHEMA_VERSION) {

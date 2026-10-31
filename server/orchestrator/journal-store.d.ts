@@ -35,7 +35,7 @@ export interface JournalStore {
   appendEvent(
     id: string,
     event: Record<string, unknown>,
-    options?: { now?: () => number },
+    options?: { now?: () => number; idempotencyKey?: string },
   ): Promise<Record<string, unknown>>;
   appendEvents(
     id: string,

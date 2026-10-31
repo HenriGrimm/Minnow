@@ -16,6 +16,7 @@ import type { TurnSnapshot } from '../types';
 import { truncateChatHistory } from './history-truncate';
 import { renderChatFromHistory } from '../ui/messages';
 import { setStatus } from '../ui/status';
+import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/chat-relationships';
 
 export interface ForkOverrides {
   providerId?: string;
@@ -57,6 +58,8 @@ export async function forkFromUserIndex(
     setStatus('err', 'Chat not found');
     return;
   }
+
+  if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
 
   try {
     await ensureChatHistoryLoaded(chatId);

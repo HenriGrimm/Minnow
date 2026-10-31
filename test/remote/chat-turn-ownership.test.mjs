@@ -3,6 +3,24 @@ import { test } from 'node:test';
 import http from 'node:http';
 import { createChatTurnRegistry, createChatTurnsMiddleware } from '../../server/chat-turns/middleware.js';
 
+test('quiescent renderer expiry releases durable queued work once and never releases a live generation', () => {
+  let clock = 1000;
+  const generations = [];
+  const releases = [];
+  const registry = createChatTurnRegistry({ now: () => clock, generations: () => generations,
+    onRelease: (chatId, ownerId) => releases.push({ chatId, ownerId }) });
+  assert.equal(registry.claim('chat', 'owner'), true);
+  generations.push({ chatId: 'chat', status: 'streaming', subscribers: new Set() });
+  clock += 31000;
+  assert.equal(registry.listLegacy().length, 1);
+  assert.deepEqual(releases, []);
+  generations.length = 0;
+  assert.deepEqual(registry.listLegacy(), []);
+  assert.deepEqual(releases, [{ chatId: 'chat', ownerId: 'owner' }]);
+  registry.listLegacy();
+  assert.equal(releases.length, 1);
+});
+
 test('chat ownership covers tool gaps and stale owners cannot release a replacement', () => {
   let clock = 0;
   const registry = createChatTurnRegistry({ now: () => clock, generations: () => [] });

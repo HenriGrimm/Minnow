@@ -427,7 +427,10 @@ export async function readResource(resource) {
  * @param {string} resource
  * @param {unknown} body
  */
-export async function writeResource(resource, body) {
+export async function writeResource(resource, body, { sessionReceipt = false } = {}) {
+  if (resource === 'sessions' && (body?.conversationArchive || body?.kind === 'minnow.conversation-archive')) {
+    throw Object.assign(new Error('Import a versioned conversation archive through /api/chats/archive/import'), { statusCode: 400 });
+  }
   const key = resourceToRelativeKey(resource);
   if (!key) throw new Error('Unknown resource');
 
@@ -444,15 +447,16 @@ export async function writeResource(resource, body) {
       return validated;
     }
     await ensureMinnowLayout();
-    writeWholeSessionState(validated, {
+    const committed = writeWholeSessionState(validated, {
       rawChats,
       deleteChatIds: Array.isArray(raw.deleteChatIds) ? raw.deleteChatIds : [],
       deleteGroupIds: Array.isArray(raw.deleteGroupIds) ? raw.deleteGroupIds : [],
       pruneMissingChats: raw.pruneMissingChats === true,
       baseRevision: raw.baseRevision,
       chatBaseRevisions: raw.chatBaseRevisions,
+      chatBasePresentationRevisions: raw.chatBasePresentationRevisions,
     });
-    return validated;
+    return sessionReceipt ? { state: validated, ...committed } : validated;
   }
   if (resource === 'tools') {
     const normalized = normalizeToolConfig(body);
@@ -617,6 +621,9 @@ async function mergeJsonSessionHistories(key, validated, rawChats, options = {})
  * @returns {Promise<{ ok: true, applied: Record<string, unknown> }>}
  */
 export async function patchResource(resource, body) {
+  if (resource === 'sessions' && (body?.conversationArchive || body?.kind === 'minnow.conversation-archive')) {
+    throw Object.assign(new Error('Import a versioned conversation archive through /api/chats/archive/import'), { statusCode: 400 });
+  }
   if (resource !== 'sessions') {
     const err = new Error('PATCH is only supported for sessions');
     /** @type {Error & { statusCode?: number }} */ (err).statusCode = 405;

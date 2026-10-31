@@ -9,6 +9,7 @@ import { modelProducerLogoSvg } from '../providers/model-producer';
 import { isModelLoadUnloadBusy } from './model-load-unload-button';
 import { resolveModelState } from './model-state-dot';
 import { getActiveChat } from '../state/sessions';
+import { isManagedModelBusy, managedModelReadOnlyReason } from './managed-chat-model';
 import { isChatAppForeground } from './chat-mount';
 import {
   onActiveChatModelChange,
@@ -370,11 +371,15 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
   }
 
+  const composerChat = !trigger.app && ['desktop', 'code', 'chat'].includes(trigger.variant) ? getActiveChat() : null;
+  const managed = composerChat?.chatCommandVersion === 1;
   const hasSelectable =
     Boolean(sel) &&
     [...sel!.options].some((o) => o.value.trim() !== '') &&
-    !sel!.disabled;
-  trigger.trigger.disabled = !hasSelectable || Boolean(trigger.appBusy);
+    (managed || !sel!.disabled);
+  const readOnly = composerChat ? managedModelReadOnlyReason(composerChat) : null;
+  trigger.trigger.disabled = !hasSelectable || Boolean(trigger.appBusy) || Boolean(readOnly) || Boolean(managed && isManagedModelBusy(composerChat!.id));
+  if (readOnly) trigger.trigger.title = readOnly;
 }
 
 /** Sync every mounted composer model trigger. */
@@ -1131,6 +1136,7 @@ export function unmountSuperPlanComposerModelTrigger(): void {
 /** Wire desktop + Code + Chat composer model triggers (idempotent). */
 export function initComposerModelTriggers(): void {
   window.addEventListener('minnow-router-assignment', syncComposerModelTriggers);
+  window.addEventListener('minnow:managed-model-state', syncComposerModelTriggers);
   ensureGlobals();
   initChatModelSelectShortcut();
 
@@ -1152,6 +1158,7 @@ export function initComposerModelTriggers(): void {
 /** Close the app-wide activity stream (called on quit). */
 export function teardownComposerModelTriggers(): void {
   window.removeEventListener('minnow-router-assignment', syncComposerModelTriggers);
+  window.removeEventListener('minnow:managed-model-state', syncComposerModelTriggers);
   activityFeedUnsub?.();
   activityFeedUnsub = null;
 }

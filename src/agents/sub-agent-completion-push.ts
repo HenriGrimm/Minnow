@@ -46,8 +46,31 @@ const resumedDeliveryKeys = new Set<string>();
 // result unacknowledged for the server's next offer without reporting an error.
 class ParentChatDeliveryDeferredError extends Error {}
 
+function hasManagedParent(chatId: string): boolean {
+  const chat = findChatById(chatId);
+  return chat?.chatCommandVersion === 1 || Boolean(chat?.agentConversation);
+}
+
 function deliveryKey(frame: DeliverFrame & { parentChatId: string }): string {
   return `${frame.parentChatId}:${[...frame.runIds].sort().join(',')}`;
+}
+
+function hasPersistentBinding(parentChatId: string, runId: string, run?: SubAgentRun): boolean {
+  return Boolean(run?.childChatId || getSubAgentRun(runId)?.childChatId ||
+    findChatById(parentChatId)?.subAgentRuns?.find(row => row.runId === runId)?.childChatId);
+}
+
+/** The durable task service alone publishes results for canonical child chats. */
+function legacyDeliveryFrame(frame: DeliverFrame & { parentChatId: string }): (DeliverFrame & { parentChatId: string }) | null {
+  const runIds = frame.runIds.filter(id => !hasPersistentBinding(frame.parentChatId, id));
+  if (runIds.length === frame.runIds.length) return frame;
+  if (!runIds.length) return null;
+  const runs = runIds.map(id => resolveSubAgentRunForParentSession(id, frame.parentChatId));
+  if (!runs.every((run): run is SubAgentRun => run !== undefined)) return null;
+  const message = frame.kind === 'check_in_nudge'
+    ? buildSubAgentParentResumeMessage(frame.kind, runs, { run: runs[0], elapsedSec: elapsedSeconds(runs[0]) })
+    : buildSubAgentParentResumeMessage(frame.kind, runs);
+  return { ...frame, runIds, message };
 }
 
 // ── Adapter ──────────────────────────────────────────────────────────────────
@@ -71,6 +94,7 @@ function createAdapterDelivery(): DeliveryHandle {
 function adapterParentStatus(chatId: string): ParentStatus {
   const chat = findChatById(chatId);
   if (!chat) return { streaming: false, skip: 'missing_chat' };
+  if (hasManagedParent(chatId)) return { streaming: true, skip: null };
   if (normalizeModeId(chat.modeId) === 'orchestrate') {
     return { streaming: false, skip: 'orchestrate' };
   }
@@ -124,23 +148,30 @@ async function adapterDeliver(
   message: string,
   meta: { kind: string; runIds: string[] },
 ): Promise<void> {
+  if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
+  const frame = legacyDeliveryFrame({ parentChatId: chatId, message, runIds: meta.runIds,
+    kind: meta.kind === 'check_in_nudge' ? 'check_in_nudge' : 'completion' });
+  if (!frame) return;
   const deliver = deliverHook ?? defaultDeliverResume;
-  if (deliverHook) await deliver(chatId, message, meta.runIds);
-  else await defaultDeliverResume(chatId, message, meta.runIds, meta.kind);
+  if (deliverHook) await deliver(chatId, frame.message, frame.runIds);
+  else await defaultDeliverResume(chatId, frame.message, frame.runIds, meta.kind);
 }
 
 function adapterNotify(chatId: string, run: RunState): void {
+  if (hasManagedParent(chatId)) return;
+  if (hasPersistentBinding(chatId, run.runId)) return;
   const live = getSubAgentRun(run.runId) ?? foldRunToSubAgentRun(run);
   if (notifyHook) {
     notifyHook(chatId, live);
     return;
   }
   void import('../state/sub-agent-session-sync')
-    .then((m) => m.persistSubAgentRunSnapshot(live))
+    .then((m) => { if (!hasManagedParent(chatId) && !hasPersistentBinding(chatId, run.runId)) m.persistSubAgentRunSnapshot(live); })
     .catch((err) => reportBackgroundError('sub-agent-completion-persist', err));
 
   void import('../notifications/push')
     .then(({ pushNotification }) => {
+      if (hasManagedParent(chatId) || hasPersistentBinding(chatId, run.runId)) return;
       const summary = live.summary?.trim() || live.error?.trim() || '';
       const chat = findChatById(chatId);
       const parent = live.parentTurnId ? chat?.runs?.find((candidate) => candidate.parentTurnId === live.parentTurnId) : undefined;
@@ -165,11 +196,18 @@ async function defaultDeliverResume(
   runIdsToMark: string[],
   kind: string = 'completion',
 ): Promise<void> {
+  if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
+  const frame = legacyDeliveryFrame({ parentChatId: chatId, message, runIds: runIdsToMark,
+    kind: kind === 'check_in_nudge' ? 'check_in_nudge' : 'completion' });
+  if (!frame) return;
+  message = frame.message; runIdsToMark = frame.runIds;
   const chat = findChatById(chatId);
   if (!chat) throw new Error('Parent chat is unavailable');
   const { ensureChatHistoryLoaded } = await import('../state/sessions');
   await ensureChatHistoryLoaded(chatId);
   const { persistSessionsBeforeDeliveryAck } = await import('../state/sessions');
+  if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
+  if (runIdsToMark.some(id => hasPersistentBinding(chatId, id))) return defaultDeliverResume(chatId, message, runIdsToMark, kind);
   const completion = kind === 'completion';
   const receipts = new Set(chat.subAgentDeliveryReceipts ?? []);
   const freshIds = completion ? runIdsToMark.filter((id) => !receipts.has(id)) : runIdsToMark;
@@ -178,6 +216,7 @@ async function defaultDeliverResume(
     return;
   }
   const recordAcceptance = async (): Promise<void> => {
+    if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
     if (completion) {
       chat.subAgentDeliveryReceipts = [...new Set([...(chat.subAgentDeliveryReceipts ?? []), ...freshIds])];
       touchChat(chat);
@@ -200,6 +239,8 @@ async function defaultDeliverResume(
     return;
   }
   const { resumeParentChatWithMessage } = await import('../chat/run-turn-chat');
+  if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
+  if (runIdsToMark.some(id => hasPersistentBinding(chatId, id))) return defaultDeliverResume(chatId, message, runIdsToMark, kind);
   // Stop can land while the turn module is being loaded.
   if (chat.subAgentAutoResumeBlocked || isResumeGateHeld()) {
     return defaultDeliverResume(chatId, message, runIdsToMark, kind);
@@ -251,8 +292,12 @@ async function ingestControllerRun(run: SubAgentRun): Promise<void> {
   if (!delivery) return;
   const chatId = run.parentChatId?.trim();
   if (!chatId) return;
+  if (hasManagedParent(chatId)) return;
+  if (hasPersistentBinding(chatId, run.runId, run)) return;
   const journal = delivery.journal;
   const state = await journal.loadState(chatId);
+  if (hasManagedParent(chatId)) return;
+  if (hasPersistentBinding(chatId, run.runId, run)) return;
   let rec = state.runs.get(run.runId);
 
   if (!rec) {
@@ -334,6 +379,8 @@ async function ingestAndTick(run: SubAgentRun): Promise<void> {
 function onSubAgentRunUpdated(run: SubAgentRun): void {
   if (!delivery) return;
   if (!run.parentChatId) return;
+  if (hasManagedParent(run.parentChatId)) return;
+  if (hasPersistentBinding(run.parentChatId, run.runId, run)) return;
   if (!isSubAgentRunTerminal(run.status)) return;
   void follow(() => ingestAndTick(run))
     .catch((err) => reportBackgroundError('sub-agent-completion-push', err));
@@ -342,6 +389,10 @@ function onSubAgentRunUpdated(run: SubAgentRun): void {
 async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }): Promise<void> {
   const chatId = frame.parentChatId;
   const key = deliveryKey(frame);
+  if (hasManagedParent(chatId)) { queuedDeliveryKeys.delete(key); return; }
+  const legacyFrame = legacyDeliveryFrame(frame);
+  if (!legacyFrame) { queuedDeliveryKeys.delete(key); return; }
+  frame = legacyFrame;
   const chat = findChatById(chatId);
   if (!chat) {
     const run = getSubAgentRun(frame.runIds[0] ?? '');
@@ -361,7 +412,9 @@ async function resumeDeliverFrame(frame: DeliverFrame & { parentChatId: string }
       await deliver(chatId, frame.message, frame.runIds);
       resumedDeliveryKeys.add(key);
     }
-    await acknowledgeSubAgentDelivery(chatId, frame.runIds);
+    const acknowledged = legacyDeliveryFrame(frame);
+    if (!acknowledged || hasManagedParent(chatId)) return;
+    await acknowledgeSubAgentDelivery(chatId, acknowledged.runIds);
     resumedDeliveryKeys.delete(key);
   } catch (err) {
     if (!(err instanceof ParentChatDeliveryDeferredError)) throw err;
@@ -376,7 +429,9 @@ function onDeliverFrame(frame: DeliverFrame & { runId: string }): void {
     getSubAgentRun(frame.runId)?.parentChatId ??
     '';
   if (!parentChatId) return;
-  const packed = { ...frame, parentChatId };
+  if (hasManagedParent(parentChatId)) return;
+  const packed = legacyDeliveryFrame({ ...frame, parentChatId });
+  if (!packed) return;
   const key = deliveryKey(packed);
   if (queuedDeliveryKeys.has(key)) return;
   queuedDeliveryKeys.add(key);
@@ -409,11 +464,17 @@ export function flushAllPendingSubAgentCompletions(): void {
 export function fireSubAgentCheckInNudge(runId: string): Promise<void> {
   const run = getSubAgentRun(runId);
   if (!run?.parentChatId) return Promise.resolve();
+  if (hasManagedParent(run.parentChatId)) return Promise.resolve();
+  if (hasPersistentBinding(run.parentChatId, runId, run)) return Promise.resolve();
   if (run.status !== 'running' && run.status !== 'queued') return Promise.resolve();
   if (!delivery) return Promise.resolve();
   const handle = delivery;
   return follow(async () => {
+    if (hasManagedParent(run.parentChatId!)) return;
+    if (hasPersistentBinding(run.parentChatId!, runId, run)) return;
     await ingestControllerRun(run);
+    if (hasManagedParent(run.parentChatId!)) return;
+    if (hasPersistentBinding(run.parentChatId!, runId, run)) return;
     await handle.offerNudge({
       parentChatId: run.parentChatId as string,
       runId,
@@ -487,6 +548,13 @@ function persistedRowToSubAgentRun(
 ): SubAgentRun {
   return {
     runId: row.runId,
+    ...(row.phase ? { phase: row.phase } : {}),
+    ...(row.childChatId ? { childChatId: row.childChatId } : {}),
+    ...(row.executionId ? { executionId: row.executionId } : {}),
+    ...(row.commandId ? { commandId: row.commandId } : {}),
+    ...(row.journalOwnerId ? { journalOwnerId: row.journalOwnerId } : {}),
+    ...(row.completionPolicy ? { completionPolicy: row.completionPolicy } : {}),
+    ...(row.modelOptions ? { modelOptions: row.modelOptions } : {}),
     type: row.type,
     modelSource: row.modelSource,
     resolvedModel: row.resolvedModel,

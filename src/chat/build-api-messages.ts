@@ -1,4 +1,5 @@
 import { getPendingAttachments } from '../attachments/store';
+import { projectChatAttribution } from '../../server/chats/attribution.js';
 import type { Attachment } from '../attachments/types';
 import {
   attachmentImageDataUrl,
@@ -336,6 +337,7 @@ export function buildApiMessages(
     : new Set<number>();
 
   const pushFromHistory = (message: ApiMessage, historyIndex: number): void => {
+    message = projectChatAttribution(message, (outboundHistory[historyIndex] as UserMessage)?.provenance);
     tagApiMessageHistoryIndex(message, historyIndex);
     messages.push(message);
   };
@@ -481,9 +483,8 @@ export function overlayMultimodalHistoryForRunTurn(
   const pending = (options?.attachments ?? getPendingAttachments()).filter(
     (a) => a.kind !== 'error',
   );
-  const history = chat.history
-    .filter((m) => !isUiOnlyTranscriptMessage(m))
-    .map((m) => stripInternalOnlyFields(m));
+  const sourceHistory = chat.history.filter((m) => !isUiOnlyTranscriptMessage(m));
+  const history = sourceHistory.map((m) => stripInternalOnlyFields(m));
   const multimodalUserIdx = indexOfMultimodalUserMessage(history, pending);
   const sendUserImages = options?.vision ?? true;
   const replayIndices = sendUserImages
@@ -506,7 +507,7 @@ export function overlayMultimodalHistoryForRunTurn(
         replayUserImageContent(m);
     }
   }
-  return history;
+  return history.map((message, index) => projectChatAttribution(message, (sourceHistory[index] as UserMessage)?.provenance));
 }
 
 /** True when this turn needs VLM overlay (pending files or persisted user images). */

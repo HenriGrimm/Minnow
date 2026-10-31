@@ -9,6 +9,7 @@ import { createPresentedFileCards } from './presented-file-cards';
 import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
+import { supportsLocalHistoryMutation } from '../state/chat-relationships';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -76,7 +77,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (!target) return false;
       // Streaming markdown can change every token; only structural/phase changes
       // affect the work disclosure. Never walk the transcript for prose deltas.
-      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow')) return false;
+      if (target.closest('.chat-work, .chat-turn-changes, .chat-turn-todos, .chat-presented-files, .chat-reply-foot, .msg-bubble, .thoughts-flow, .managed-chat-requests')) return false;
       // Token counts and elapsed clocks rewrite every ~80ms while streaming; the
       // 1s live tick picks them up. Phase changes still land via classes/data-stream-phase.
       if (target.closest(LIVE_TEXT_LEAVES)) return false;
@@ -209,6 +210,9 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     for (const row of activity) {
       // Corrections, recovery controls, the active checkpoint and open questions stay visible while collapsed.
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated, .msg--steered')
+        || row.matches('.sub-agent-card--persistent, .sub-agent-group')
+        || row.matches('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')
+        || Boolean(row.querySelector('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]'))
         || Boolean(row.querySelector('.msg-bubble--error'))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && (row.dataset.toolName === 'ask_question'
@@ -260,11 +264,11 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       }
       const last = group.presentedFiles ?? lastRow;
       if (group.card && last.nextElementSibling !== group.card) last.after(group.card);
-      syncReplyFoot(group, replies, latest && !full, group.card ?? last, chat.id);
+      syncReplyFoot(group, replies, latest && !full, group.card ?? last, chat);
     } else {
       group.card?.remove();
       group.cardKey = undefined;
-      syncReplyFoot(group, [], false, null, chat.id);
+      syncReplyFoot(group, [], false, null, chat);
     }
   }
 
@@ -287,7 +291,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);
       if (!current || node.matches('.msg.user:not(.msg--steered)')) continue;
-      if (!node.matches('.msg.assistant, .msg--steered, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .msg-stopped-row, .compaction-divider')) continue;
+      if (!node.matches('.msg.assistant, .msg--steered, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .sub-agent-group, .msg-stopped-row, .compaction-divider')) continue;
       const bucket = buckets.get(current) ?? [];
       bucket.push(node);
       buckets.set(current, bucket);
@@ -466,7 +470,7 @@ function syncReplyFoot(
   replies: HTMLElement[],
   show: boolean,
   after: Element | null,
-  chatId: string,
+  chat: Chat,
 ): void {
   group.replies = replies;
   const final = replies.at(-1);
@@ -477,20 +481,22 @@ function syncReplyFoot(
     return;
   }
   let foot = group.foot;
-  if (!foot || foot.dataset.index !== String(index)) {
+  const canRewrite = supportsLocalHistoryMutation(chat);
+  if (!foot || foot.dataset.index !== String(index) || foot.dataset.canRewrite !== String(canRewrite)) {
     foot?.remove();
     foot = document.createElement('div');
     foot.className = 'chat-reply-foot';
     foot.dataset.index = String(index);
+    foot.dataset.canRewrite = String(canRewrite);
     const stats = document.createElement('span');
     stats.className = 'chat-reply-foot__stats';
     foot.append(
       footButton('copy', 'Copy reply', () => {
         void import('./message-actions').then((m) => m.copyMessageRows(group.replies ?? []));
       }),
-      footButton('refresh', 'Remake reply', () => {
-        void import('./message-actions').then((m) => m.remakeAssistantRow(chatId, index));
-      }),
+      ...(canRewrite ? [footButton('refresh', 'Remake reply', () => {
+        void import('./message-actions').then((m) => m.remakeAssistantRow(chat.id, index));
+      })] : []),
       stats,
     );
     group.foot = foot;

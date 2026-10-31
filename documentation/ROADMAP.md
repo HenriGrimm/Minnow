@@ -18,6 +18,7 @@ This is the one page that talks about work not yet shipped. The manual describes
 | Area | Direction |
 |---|---|
 | Build loop | Make plan-to-board-to-tested-change reliable across local and cloud models. |
+| Agent conversations | Persistent child chats, explicit per-agent model selection, chat coordination, and integrated parent/child navigation. See the [implementation plan](plans/persistent-agent-chats.md). |
 | Documentation | Keep the in-app and GitHub wikis generated from the versioned documentation source. |
 | Model runtime | Improve local model setup, routing, constrained tool use, and hardware-aware recommendations. |
 | Extensibility | Deepen skills, prompt packs, native tools, MCP, themes, and agent packs without closed services. |

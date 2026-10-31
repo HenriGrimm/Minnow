@@ -56,6 +56,7 @@ import {
  * @property {string | null} fallbackRole
  * @property {string | null} chatId
  * @property {boolean} [routerPreferAvailable]
+ * @property {import('../chats/contracts').ModelOptions} [agentModelOptions] internal captured constraints, never upstream JSON
  * @property {Record<string, SendReasoningCapabilities>} [modelCapabilities] reasoning
  *   capabilities by model id, for the upstream sanitize pass
  */

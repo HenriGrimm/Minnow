@@ -6,3 +6,6 @@
  * `package.json` `build.files` and `.gitignore`.
  */
 export const HEADLESS_RUNNER_BUNDLE = 'dist-headless/minnow-run.mjs';
+
+/** Export-only shared prompt/policy composer, imported by the server chat host. */
+export const CHAT_PREPARATION_BUNDLE = 'dist-headless/chat-preparation.mjs';

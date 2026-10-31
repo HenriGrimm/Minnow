@@ -1,0 +1,28 @@
+{
+  "status": 409,
+  "response": {
+    "error": "Chat qa-explore presentation changed in another window; reload before saving",
+    "revision": 46,
+    "conflictingChatIds": [
+      "qa-explore"
+    ],
+    "presentationConflict": {
+      "chatId": "qa-explore",
+      "expectedRevision": 2,
+      "currentRevision": 3
+    },
+    "chatPresentationRevisions": {
+      "qa-explore": 3
+    }
+  },
+  "chatBasePresentationRevisions": {
+    "qa-explore": 2
+  },
+  "chats": [
+    {
+      "id": "qa-explore",
+      "name": "Explore orchestration (observed rename)",
+      "composerDraft": "Keep this unsaved draft when another viewer edits."
+    }
+  ]
+}

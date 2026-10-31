@@ -56,6 +56,9 @@ async function resolveBasePrompt(typeId, typeRow, profile) {
   return `You are a focused sub-agent (${typeId}). Complete tasks efficiently and return a concise summary.`;
 }
 
+/** Reuse role instructions in durable chats without the legacy task/report wrapper. */
+export { resolveBasePrompt as resolveSubAgentBasePrompt };
+
 /**
  * @param {string} rawPath
  * @returns {Promise<string | null>}

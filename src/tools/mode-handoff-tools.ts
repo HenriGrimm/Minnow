@@ -7,10 +7,10 @@ import { launchBoardFromPlan } from '../ui/orchestrate-launch';
 import { createChatWithMode } from '../ui/sidebar';
 import { setChatMode } from '../ui/mode-selector';
 import { enqueueAskQuestion } from './ask-question-queue';
+import { validateProposeModeSwitchArgs } from '../../server/runner/mode-proposal.js';
 import {
   validateAskQuestionArgs,
   stringifyAskQuestionResult,
-  type AskQuestionArgs,
 } from './ask-question-types';
 
 const HANDOFF_MODES = new Set<ModeId>([
@@ -19,65 +19,6 @@ const HANDOFF_MODES = new Set<ModeId>([
   'build',
   'orchestrate',
 ]);
-
-type HandoffSituation =
-  | 'implement_in_wrong_mode'
-  | 'plan_in_build';
-
-// ── Propose ──────────────────────────────────────────────────────────────────
-
-/** Preset ask_question payloads per situation. */
-function buildProposeModeSwitchQuestions(situation: HandoffSituation): AskQuestionArgs {
-  if (situation === 'implement_in_wrong_mode') {
-    return {
-      title: 'Switch mode?',
-      questions: [
-        {
-          id: 'mode_switch',
-          prompt: 'Implementation needs Build mode. How do you want to proceed?',
-          options: [
-            {
-              id: 'build',
-              label: 'Switch to Build',
-              description: 'Change this chat to Build mode.',
-            },
-            {
-              id: 'stay',
-              label: 'Stay in current mode',
-              description: 'Continue without switching (limited tools).',
-            },
-          ],
-        },
-      ],
-    };
-  }
-
-  if (situation === 'plan_in_build') {
-    return {
-      title: 'Switch mode?',
-      questions: [
-        {
-          id: 'mode_switch',
-          prompt: 'Planning works best in Plan mode. Switch?',
-          options: [
-            {
-              id: 'plan',
-              label: 'Switch to Plan',
-              description: 'Change this chat to Plan mode.',
-            },
-            {
-              id: 'stay_build',
-              label: 'Stay in Build',
-              description: 'Keep planning informally in Build.',
-            },
-          ],
-        },
-      ],
-    };
-  }
-
-  throw new Error(`Unknown handoff situation: ${String(situation)}`);
-}
 
 // ── Set ──────────────────────────────────────────────────────────────────────
 
@@ -173,17 +114,9 @@ export async function executeProposeModeSwitch(
   args: Record<string, unknown>,
   context: { subAgentType?: string; chatId?: string },
 ): Promise<string> {
-  const situationRaw =
-    typeof args.situation === 'string' ? args.situation.trim() : '';
-  const validSituations = new Set<HandoffSituation>([
-    'implement_in_wrong_mode',
-    'plan_in_build',
-  ]);
-  if (!validSituations.has(situationRaw as HandoffSituation)) {
-    return `Error: situation must be one of: ${[...validSituations].join(', ')}`;
-  }
-
-  const askArgs = buildProposeModeSwitchQuestions(situationRaw as HandoffSituation);
+  const proposal = validateProposeModeSwitchArgs(args);
+  if (!proposal.ok) return proposal.error;
+  const askArgs = proposal.args;
   const parsed = validateAskQuestionArgs(askArgs);
   if (parsed.ok === false) {
     return stringifyAskQuestionResult({ status: 'error', message: parsed.error });

@@ -1,7 +1,7 @@
 import { escapeHtml } from '../lib/format-model-label';
 import { formatRelativeTime } from '../notifications/preview';
 import type { NotificationPrefs } from '../notifications/types';
-import { activityNeedsAttention, type ActivityFeed, type ActivityItem } from '../state/activity-feed';
+import { activityNeedsAttention, getRunningAgentCount, type ActivityFeed, type ActivityItem } from '../state/activity-feed';
 import { formatAgentActivityElapsed, formatAgentActivityStatusLine, formatAgentActivityToolRounds } from '../state/agent-activity-registry';
 import { iconHtml, type IconName } from './icon';
 
@@ -32,10 +32,10 @@ function rowHtml(item: ActivityItem, open: boolean): string {
   const title = escapeHtml(item.title);
   const live = item.live;
   const time = live ? formatAgentActivityElapsed(live.elapsedMs) : item.status === 'running' ? formatAgentActivityElapsed(Date.now() - item.timestamp) : formatRelativeTime(item.timestamp);
-  const timer = live && !live.elapsedFrozen ? `data-started-at="${live.startedAtMs}"` : item.status === 'running' ? `data-started-at="${item.timestamp}"` : '';
+  const timer = live ? live.elapsedFrozen ? '' : `data-started-at="${live.startedAtMs}"` : item.status === 'running' ? `data-started-at="${item.timestamp}"` : '';
   const unread = item.unread && !activityNeedsAttention(item) ? '<span class="activity-unread" aria-label="Unseen update"></span>' : '';
   const started = item.notifications.at(-1)?.kind.endsWith('_started');
-  const label = item.status === 'question' ? 'Waiting for your input' : item.status === 'failed' ? 'Failed' : item.status === 'blocked' ? 'Needs review' : item.status === 'stopped' ? 'Stopped' : item.status === 'completed' ? started ? 'Started' : 'Completed' : item.detail;
+  const label = item.status === 'question' ? item.requestKind === 'approval' || live?.status === 'pending_approval' ? 'Needs approval' : 'Waiting for your input' : item.status === 'failed' ? 'Failed' : item.status === 'blocked' ? 'Needs review' : item.status === 'stopped' ? 'Stopped' : item.status === 'completed' ? started ? 'Started' : 'Completed' : item.detail;
   const statusLine = item.detail && item.status !== 'running' && item.status !== 'question' ? `${label} · ${item.detail}` : label;
   const primary = item.status === 'question' ? action('Reply / review', 'open', item.id, true) : '';
   const meta = live ? `${escapeHtml(live.modelDisplay)}${live.contextPercent == null ? '' : ` · ${live.contextIsEstimate ? '~' : ''}${Math.round(live.contextPercent)}% context`}` : escapeHtml(item.source);
@@ -55,7 +55,7 @@ function rowHtml(item: ActivityItem, open: boolean): string {
         ${item.detail && item.detail !== label ? `<p class="activity-details__preview">${escapeHtml(item.detail)}</p>` : ''}
         <p class="activity-details__meta">${meta}</p>
         ${children || settledChildren ? `<ul class="activity-children">${children}${settledChildren}</ul>` : ''}
-        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live ? action('Stop this work', 'stop', item.id) : ''}${retry}</div>
+        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live && (live.kind !== 'agent_chat' || live.canStop) ? action(live.kind === 'agent_chat' ? 'Stop this reply' : 'Stop this work', 'stop', item.id) : ''}${retry}</div>
       </details>
     </div>
   </li>`;
@@ -97,9 +97,9 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
     });
     mute.innerHTML = `${iconHtml(prefs.muted ? 'bellOff' : 'bell', { size: 14 })}<span>${prefs.muted ? 'Alerts muted' : 'Mute alerts'}</span>`;
     mute.setAttribute('aria-pressed', String(prefs.muted));
-    const summaryText = `${feed.attention.length ? `${feed.attention.length} need you · ` : ''}${feed.runningCount} running · ${label || 'This workspace'}`;
+    const summaryText = `${feed.attention.length ? `${feed.attention.length} need you · ` : ''}${getRunningAgentCount(feed)} agents working · ${label || 'This workspace'}`;
     if (summary.textContent !== summaryText) summary.textContent = summaryText;
-    body.innerHTML = `${feed.attention.length ? section(`Needs you · ${feed.attention.length}`, feed.attention) : ''}${feed.running.length || feed.background.length ? `<section class="activity-section" aria-label="Running"><div class="activity-section__heading"><h3>Running · ${feed.runningCount}</h3></div><ul class="activity-list">${feed.running.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul>${feed.background.length ? `<details class="activity-background" data-detail-id="background"${expanded.has('background') ? ' open' : ''}><summary>${feed.background.length} background task${feed.background.length === 1 ? '' : 's'}</summary><ul class="activity-list">${feed.background.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul></details>` : ''}</section>` : ''}${!feed.attention.length && !feed.runningCount ? `<div class="activity-empty">${iconHtml('check', { size: 22 })}<p>All caught up</p><small>No work running. Nothing needs your attention.</small></div>` : ''}${feed.recent.length ? section('Recent', historyExpanded ? feed.recent : feed.recent.slice(0, 3), true) : ''}`;
+    body.innerHTML = `${feed.attention.length ? section(`Needs you · ${feed.attention.length}`, feed.attention) : ''}${feed.running.length || feed.background.length ? `<section class="activity-section" aria-label="In progress"><div class="activity-section__heading"><h3>In progress · ${feed.runningCount}</h3></div><ul class="activity-list">${feed.running.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul>${feed.background.length ? `<details class="activity-background" data-detail-id="background"${expanded.has('background') ? ' open' : ''}><summary>${feed.background.length} background task${feed.background.length === 1 ? '' : 's'}</summary><ul class="activity-list">${feed.background.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul></details>` : ''}</section>` : ''}${!feed.attention.length && !feed.runningCount ? `<div class="activity-empty">${iconHtml('check', { size: 22 })}<p>All caught up</p><small>No work running. Nothing needs your attention.</small></div>` : ''}${feed.recent.length ? section('Recent', historyExpanded ? feed.recent : feed.recent.slice(0, 3), true) : ''}`;
     panel.querySelector<HTMLButtonElement>('[data-action="stop-all"]')!.disabled = !canStop;
     const history = panel.querySelector<HTMLButtonElement>('[data-action="history"]')!;
     history.hidden = feed.recent.length <= 3;

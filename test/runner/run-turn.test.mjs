@@ -1852,10 +1852,15 @@ describe('P10-C settled incremental persist (MIN-768)', () => {
     throw new Error(`timed out waiting for ${label}`);
   }
 
-  test('sub-agent retries still use createMemoryTranscriptStore', () => {
+  test('sub-agent retries still use the shared memory-backed dependencies', async () => {
     // P8-D continue retries hit isContinueTurn; persist must stay a no-op there.
     const source = fs.readFileSync(EFFECTOR_JS, 'utf8');
-    assert.match(source, /createMemoryTranscriptStore\s*\(/);
+    assert.match(source, /createServerRunnerDeps\s*\(/);
+    const { createServerRunnerDeps } = await import('../../server/runtime/server-runner-deps.js');
+    const first = createServerRunnerDeps(async () => new Response());
+    first.transcriptStore.append('memory-only', { role: 'user', content: 'scratch' });
+    assert.equal(first.transcriptStore.load('memory-only').messages.length, 1);
+    assert.equal(createServerRunnerDeps(async () => new Response()).transcriptStore.load('memory-only'), null);
     assert.match(source, /seedKind:\s*'continue'/);
   });
 

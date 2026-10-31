@@ -43,7 +43,7 @@ function clearDropHighlight(host: HTMLElement): void {
 function isWorkspaceChatDraggable(chatId: string): boolean {
   if (!sessionState) return false;
   const chat = sessionState.chats.find((c) => c.id === chatId);
-  if (!chat) return false;
+  if (!chat || chat.agentConversation) return false;
   const ws = normalizeWorkspacePath(getWorkspacePath());
   return normalizeWorkspacePath(chat.workspacePath ?? '') === ws;
 }

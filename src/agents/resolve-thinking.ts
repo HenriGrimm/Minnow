@@ -18,6 +18,8 @@ export interface ResolveThinkingInput {
   agentKey: string | null;
   chatThinkingMode?: ThinkingTriState | null;
   subAgentType?: SubAgentTypeConfig | null;
+  /** Server composition supplies a persisted snapshot instead of browser state. */
+  global?: { defaultMode: ThinkingResolvedMode; thinkingBudgetTokens: number | null };
 }
 
 export interface ResolvedThinking {
@@ -29,6 +31,7 @@ export interface ResolveThinkingBudgetInput {
   kind: ThinkingResolveKind;
   agentKey: string | null;
   subAgentType?: SubAgentTypeConfig | null;
+  global?: { defaultMode: ThinkingResolvedMode; thinkingBudgetTokens: number | null };
 }
 
 export interface ResolvedThinkingBudget {
@@ -80,12 +83,12 @@ function mergeThinkingBudgetLayers(
   return resolved;
 }
 
-function sourceForWorkAgentBudget(agentKey: string | null): string {
+function sourceForWorkAgentBudget(agentKey: string | null, budget = globalBudget()): string {
   if (!agentKey || isPassthroughWorkAgentId(agentKey)) return 'global default';
   const user = getUserWorkAgentOverride(agentKey)?.thinkingBudgetTokens;
   if (user === 0) return `work agent (${agentKey})`;
   if (user != null && user > 0) return `work agent (${agentKey})`;
-  const global = globalBudget();
+  const global = budget;
   if (global != null && global > 0) return 'global default';
   return 'global default';
 }
@@ -134,7 +137,7 @@ export function resolveThinkingMode(input: ResolveThinkingInput): ResolvedThinki
     };
   }
 
-  const global = globalDefault();
+  const global = input.global?.defaultMode ?? globalDefault();
 
   if (input.kind === 'sub-agent') {
     const key = input.agentKey;
@@ -164,7 +167,7 @@ export function resolveThinkingMode(input: ResolveThinkingInput): ResolvedThinki
 export function resolveThinkingBudgetTokens(
   input: ResolveThinkingBudgetInput,
 ): ResolvedThinkingBudget {
-  const global = globalBudget();
+  const global = input.global ? input.global.thinkingBudgetTokens : globalBudget();
 
   if (input.kind === 'sub-agent') {
     const typeBudget = input.subAgentType?.thinkingBudgetTokens;
@@ -182,6 +185,6 @@ export function resolveThinkingBudgetTokens(
   const budgetTokens = mergeThinkingBudgetLayers(global, userBudget);
   return {
     budgetTokens,
-    sourceLabel: sourceForWorkAgentBudget(key),
+    sourceLabel: sourceForWorkAgentBudget(key, global),
   };
 }

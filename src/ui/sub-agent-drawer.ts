@@ -14,6 +14,9 @@ import { subAgentLiveStatusLine, subAgentTranscriptLiveFromRun } from './sub-age
 import { createIcon, type IconName } from './icon';
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import { formatWorkDuration } from '../chat/transcript-turns';
+import { getAgentConversationsCapabilitySync, loadAgentConversationsCapability } from '../config/agent-conversations-enabled';
+import { continueLegacyAgentChat } from '../chat/legacy-chat-continue';
+import { showToast } from './toast';
 import {
   formatSubAgentProse, renderSubAgentConversation, subAgentFinalResponse,
   type SubAgentConversationDisclosures,
@@ -58,6 +61,8 @@ interface OverlayState {
   switcherKey: string | null;
   loadingRunId: string | null;
   refreshFrame: number | null;
+  continuingRunId?: string;
+  continueError?: { runId: string; message: string };
 }
 let overlay: OverlayState | null = null;
 let unsubscribe: (() => void) | null = null;
@@ -117,7 +122,7 @@ function chatRuns(chatId: string): AnyRun[] {
   const runs = new Map<string, AnyRun>();
   for (const run of findChatById(chatId)?.subAgentRuns ?? []) runs.set(run.runId, run);
   for (const run of listSubAgentRunsForParentChat(chatId)) runs.set(run.runId, run);
-  return [...runs.values()].sort((a, b) => Date.parse(a.startedAt ?? '') - Date.parse(b.startedAt ?? ''));
+  return [...runs.values()].filter(run => !run.childChatId).sort((a, b) => Date.parse(a.startedAt ?? '') - Date.parse(b.startedAt ?? ''));
 }
 export function resolveOutcome(run: AnyRun, _live = false): SubAgentStructuredOutcome | null {
   return run.structuredOutcome ?? (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
@@ -200,7 +205,8 @@ function renderResult(root: HTMLElement, run: AnyRun): void {
 function renderFooter(state: OverlayState, run: AnyRun, live: boolean): void {
   const text = subAgentFinalResponse(run.messages) || resolveOutcome(run)?.summary || '';
   const line = live ? subAgentLiveStatusLine(run, true) : run.status === 'completed' ? (text ? 'Agent complete' : 'Agent finished without a response') : 'Available conversation saved';
-  const key = JSON.stringify([run.runId, run.status, line, text]);
+  const canContinue = !run.childChatId && terminal(run.status) && getAgentConversationsCapabilitySync()?.creationEnabled === true;
+  const key = JSON.stringify([run.runId, run.status, line, text, canContinue, state.continuingRunId, state.continueError]);
   if (key === state.footerKey) return;
   state.footerKey = key;
   state.footer.replaceChildren(el('span', 'sub-agent-overlay__footer-status', line));
@@ -229,6 +235,26 @@ function renderFooter(state: OverlayState, run: AnyRun, live: boolean): void {
       catch { copy.textContent = 'Could not copy'; }
     });
     state.footer.appendChild(copy);
+  }
+  if (canContinue) {
+    const start = action(state.continuingRunId === run.runId ? 'Creating chat…' : 'Continue as chat', 'chevronRight');
+    start.disabled = Boolean(state.continuingRunId);
+    start.title = 'Start a new chat with partial saved context. The original task stays saved.';
+    start.addEventListener('click', () => {
+      if (state.continuingRunId) return;
+      state.continuingRunId = run.runId; state.continueError = undefined; renderFooter(state, run, live);
+      void (async () => { try {
+        const receipt = await continueLegacyAgentChat(state.chatId, run.runId);
+        if (overlay === state) closeSubAgentDrawer();
+        await (await import('../os/chat-launch')).launchCodeWithChat(receipt.childChatId);
+      } catch (error) {
+        state.continuingRunId = undefined; state.continueError = { runId: run.runId, message: error instanceof Error ? error.message : 'Could not create the chat.' };
+        if (overlay === state && state.activeRunId === run.runId) renderFooter(state, run, live);
+        else showToast(state.continueError.message);
+      } })();
+    });
+    const note = el('span', 'sub-agent-overlay__continuation-note', state.continueError?.runId === run.runId ? state.continueError.message : 'New chat · partial saved context');
+    note.setAttribute('role', 'status'); state.footer.append(note, start);
   }
 }
 
@@ -331,6 +357,8 @@ async function loadTranscript(state: OverlayState, runId: string): Promise<void>
 function setActiveRun(runId: string): void {
   if (!overlay || overlay.activeRunId === runId) return;
   const state = overlay;
+  const childChatId = resolveRun(runId, state.chatId)?.run.childChatId;
+  if (childChatId) { closeSubAgentDrawer(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(childChatId)); return; }
   viewFor(state).scroll = state.scroll.scrollTop;
   state.activeRunId = runId;
   state.transcriptKey = state.resultKey = state.footerKey = null;
@@ -373,6 +401,8 @@ export function closeSubAgentDrawer(): void {
   if (state.returnFocus?.isConnected) state.returnFocus.focus();
 }
 export async function openSubAgentDrawer(runId: string, chatId: string): Promise<void> {
+  const childChatId = resolveRun(runId, chatId)?.run.childChatId;
+  if (childChatId) { closeSubAgentDrawer(); await (await import('../os/chat-launch')).launchCodeWithChat(childChatId); return; }
   closeSubAgentDrawer();
   bindSubscription();
   if (resolveRun(runId, chatId)) mountSubAgentDrawer(runId, chatId);
@@ -382,6 +412,7 @@ export async function openSubAgentDrawer(runId: string, chatId: string): Promise
   if (!overlay) mountSubAgentDrawer(runId, chatId);
   const state = overlay;
   if (state) await loadTranscript(state, runId);
+  void loadAgentConversationsCapability().then(() => { if (overlay === state && state) { const current = resolveRun(state.activeRunId, state.chatId); if (current) renderFooter(state, current.run, current.live); } });
 }
 function mountSubAgentDrawer(runId: string, chatId: string): void {
   const mount = resolveSubAgentOverlayMount();

@@ -10,6 +10,7 @@ import { providerSupportsChatTemplateKwargs } from './provider-host';
 import { resolvedApiForModel } from './resolve-model-api';
 import type { ModelCapabilities } from '../types';
 import { isOpenCodeGoBaseUrl, shouldUseOpenAiResponses } from '../lib/openai-responses-route.mjs';
+import { projectChatAttribution } from '../../server/chats/attribution.js';
 
 /** True when OpenAI o-series / gpt-5 models expect max_completion_tokens. */
 function modelUsesMaxCompletionTokens(modelId: string): boolean {
@@ -100,8 +101,11 @@ function stripInternalApiMessageFields(
     ...body,
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
-      const msg = { ...(raw as Record<string, unknown>) };
+      const msg = { ...projectChatAttribution(raw as Record<string, unknown>) };
       delete msg.toolImageFollowUp;
+      delete msg.provenance;
+      delete msg.messageId;
+      delete msg.commandId;
       return msg;
     }),
   };

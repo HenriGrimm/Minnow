@@ -34,6 +34,12 @@ export interface HeadlessRunCliOptions {
   schedulerRun: boolean;
   /** Session token override; falls back to MINNOW_TOKEN env, then ~/.minnow/session-token. */
   token: string | null;
+  /** Existing server-owned conversation controls; never creates a new chat. */
+  chatAction?: 'send' | 'queue' | 'steer';
+  clientRequestId?: string | null;
+  waitTimeoutSec?: number;
+  managedModeExplicit?: boolean;
+  managedProfileExplicit?: boolean;
 }
 
 const RUN_HELP = `minnow run — execute one agent turn without the SPA
@@ -73,7 +79,10 @@ Output:
 
 Session:
   --persist-chat          Save transcript to ~/.minnow sessions (requires --chat-id)
-  --chat-id <id>          Chat id to create or update when persisting
+  --chat-id <id>          Continue an existing chat safely; an absent id may be used for fresh persistence
+  --chat-action <action>  send | queue | steer (requires existing managed --chat-id)
+  --client-request-id <id>  Retry an existing managed message receipt without duplicates
+  --wait-timeout <s>      Managed command wait deadline; expiry keeps accepted work running
   --chat-name <label>     Sidebar title for the persisted chat (default: Headless run)
   --scheduler-run         Scheduled-job context (suppress routine save_memory)
 
@@ -83,7 +92,7 @@ Env:
   MINNOW_HEADLESS=1                          Skips browser open in server.js
 
 Exit codes:
-  0 success | 1 run failed | 2 usage | 3 server unavailable | 4 workspace invalid | 130 SIGINT
+  0 success | 1 run failed | 2 usage | 3 server unavailable | 4 workspace invalid | 124 wait timeout | 130 SIGINT
 `;
 
 export function printRunHelp(): void {
@@ -137,6 +146,9 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       'chat-id': { type: 'string' },
       'chat-name': { type: 'string' },
       'scheduler-run': { type: 'boolean', default: false },
+      'chat-action': { type: 'string' },
+      'client-request-id': { type: 'string' },
+      'wait-timeout': { type: 'string' },
     },
     allowPositionals: true,
     strict: true,
@@ -184,6 +196,13 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
   if (values['stream-json'] && (values.json || values.stream)) return { ok: false, message: '--stream-json cannot be combined with --json or --stream; use --json-out for the result artifact' };
   const chatId = values['chat-id'] ? String(values['chat-id']).trim() : null;
   const chatName = values['chat-name'] ? String(values['chat-name']).trim() : null;
+  const chatAction = values['chat-action'] ? String(values['chat-action']).trim() : undefined;
+  const clientRequestId = values['client-request-id'] ? String(values['client-request-id']).trim() : null;
+  const waitTimeoutSec = values['wait-timeout'] === undefined ? 0 : Number(values['wait-timeout']);
+  if (chatAction && !['send', 'queue', 'steer'].includes(chatAction)) return { ok: false, message: '--chat-action must be send, queue or steer' };
+  if ((chatAction || clientRequestId || values['wait-timeout'] !== undefined) && !chatId) return { ok: false, message: 'Chat messaging controls require --chat-id' };
+  if (clientRequestId && !/^[A-Za-z0-9_-]{1,120}$/.test(clientRequestId)) return { ok: false, message: '--client-request-id must be an identifier up to 120 characters' };
+  if (!Number.isFinite(waitTimeoutSec) || waitTimeoutSec < 0) return { ok: false, message: '--wait-timeout must be a non-negative number of seconds' };
   if (persistChat && !chatId) {
     return { ok: false, message: '--persist-chat requires --chat-id' };
   }
@@ -215,6 +234,10 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       chatName,
       schedulerRun: Boolean(values['scheduler-run']),
       token: values.token ? String(values.token).trim() : null,
+      ...(chatAction ? { chatAction: chatAction as 'send' | 'queue' | 'steer' } : {}),
+      clientRequestId, waitTimeoutSec,
+      managedModeExplicit: argv.some(arg => arg === '--mode' || arg.startsWith('--mode=')),
+      managedProfileExplicit: argv.some(arg => arg === '--profile' || arg.startsWith('--profile=')),
     },
   };
 }

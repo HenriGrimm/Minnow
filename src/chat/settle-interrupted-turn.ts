@@ -41,7 +41,7 @@ import {
   rollbackFailedTurnHistory,
   turnProducedOutput,
 } from './history';
-import { clearPendingSteer } from './steer-message';
+import { preservePendingSteer } from './message-queue';
 import { isStreamDomVisible } from './streaming-state';
 import { resolveForkHistoryIndex } from './turn-snapshot';
 import type { ChatTurnEventPainter } from './run-turn-chat-paint';
@@ -235,7 +235,7 @@ function tearDownLiveStreamChrome(chrome: InterruptedTurnChrome): void {
 
 export function settleStoppedTurn(chrome: InterruptedTurnChrome): SettleStoppedResult {
   const { chat } = chrome;
-  clearPendingSteer(chat);
+  preservePendingSteer(chat);
   const stopReason = takeChatStopReason(chat.id);
 
   const text = livePartialTextFromPainter(chrome.painter).trim();

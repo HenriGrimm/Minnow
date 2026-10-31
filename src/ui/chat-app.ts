@@ -37,6 +37,7 @@ import {
   handleComposerPrimaryAction,
   initComposerSteerInputListener,
   syncComposerFromStreamingState,
+  shouldSubmitComposerOnEnter,
 } from './composer-send';
 import { handleComposerPromptHistoryKeydown } from './composer-prompt-history';
 import { autoResize, composerFieldSizingSupported } from './input';
@@ -471,11 +472,17 @@ function bindStaticControls(): void {
     syncComposerSendState();
   });
   input?.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (handleSkillPickerKeydown(e)) return;
     if (handleComposerPromptHistoryKeydown(e, input)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       if (isSkillPickerOpen()) return;
       e.preventDefault();
+      if (!shouldSubmitComposerOnEnter(input.value)) return;
+      if (e.altKey) {
+        void import('./composer-send').then(m => m.submitComposerFollowup('queue'));
+        return;
+      }
       void handleChatAppSend();
     }
   });

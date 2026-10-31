@@ -98,6 +98,9 @@ function applyCwdGuard(name, args, cwd) {
  *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
  *   activityChatId?: string,
  *   signal?: AbortSignal,
+ *   filesystemAccessCeiling?: 'workspace'|'full',
+ *   shellSandboxMode?: 'off'|'prefer'|'require',
+ *   interactiveApproval?: boolean,
  * }} options
  * @returns {Promise<{ content: string, attachments?: unknown, codeChange?: unknown }>}
  */
@@ -121,10 +124,12 @@ export async function executeInProcessTool(name, args = {}, options) {
     args && typeof args === 'object' && !Array.isArray(args) ? { ...args } : {};
 
   const allowed = normalizeAllowed(options.allowedToolNames);
-  if (toolName === 'plugin_manage' && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'full') {
+  if (toolName === 'plugin_manage' && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'full' &&
+      !(options.interactiveApproval === true && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'off')) {
     return { content: 'Error: unattended plugin management requires Full permission for Manage plugins in Settings → Tools' };
   }
-  if (toolName.startsWith('plugin__') && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'full') {
+  if (toolName.startsWith('plugin__') && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'full' &&
+      !(options.interactiveApproval === true && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'off')) {
     return { content: 'Error: unattended plugin calls require Full permission in Settings → Plugins' };
   }
   if (allowed && !allowed.has(toolName) && !toolName.startsWith('mcp__') && !toolName.startsWith('plugin__')) {
@@ -167,6 +172,8 @@ export async function executeInProcessTool(name, args = {}, options) {
     // Lets a tool that spawns a child process kill it on stop, instead of the batch
     // abandoning the call and leaving the process running.
     abortSignal: options.signal,
+    filesystemAccessCeiling: options.filesystemAccessCeiling,
+    shellSandboxMode: options.shellSandboxMode,
   });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */
   const result = { content: String(out.result ?? '') };
@@ -186,6 +193,9 @@ export async function executeInProcessTool(name, args = {}, options) {
  *   allowedToolNames?: Iterable<string> | Set<string> | null,
  *   runtimeOwner?: { chatId: string, runId: string, agentId: string },
  *   activityChatId?: string,
+ *   filesystemAccessCeiling?: 'workspace'|'full',
+ *   shellSandboxMode?: 'off'|'prefer'|'require',
+ *   interactiveApproval?: boolean,
  * }} options
  * @returns {{
  *   execute: (name: string, args: unknown, ctx?: { toolCallId?: string }) => Promise<{ content: string }>,
@@ -212,6 +222,9 @@ export function createInProcessToolDispatch(options) {
         runtimeOwner,
         activityChatId,
         signal: ctx?.signal,
+        filesystemAccessCeiling: options.filesystemAccessCeiling,
+        shellSandboxMode: options.shellSandboxMode,
+        interactiveApproval: options.interactiveApproval,
       },
     );
   }

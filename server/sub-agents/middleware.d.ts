@@ -12,8 +12,10 @@ export function matchRoute(
 export function setAgentsEffectorFactory(
   factory: (parentChatId: string) => Effector,
 ): void;
+export function configurePersistentAgentSpawner(handler: ((req: import('node:http').IncomingMessage, body: Record<string, any>, context: { signal: AbortSignal }) => Promise<null | Record<string, any>> | null | Record<string, any>) | null): void;
 
-export function getAgentsEngine(parentChatId: string): Promise<Engine>;
+export function configureAgentRecoveryGate(gate: (() => Promise<unknown>) | null): void;
+export function getAgentsEngine(parentChatId: string, options?: { skipRecoveryGate?: boolean }): Promise<Engine>;
 
 export function subscribeAgentEvents(runId: string, transport: {
   send(type: string, data: unknown, id?: number): boolean;

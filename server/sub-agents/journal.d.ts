@@ -10,7 +10,7 @@ export function readHighestSeq(parentChatId: string): Promise<number>;
 export function appendEvent(
   parentChatId: string,
   event: Record<string, unknown>,
-  options?: { now?: () => number },
+  options?: { now?: () => number; idempotencyKey?: string },
 ): Promise<Record<string, unknown>>;
 export function appendEvents(
   parentChatId: string,

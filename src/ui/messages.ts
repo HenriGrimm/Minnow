@@ -1,4 +1,7 @@
 import { syncChatWorktreeSetup } from './chat-worktree-setup';
+import { notifyManagedChatView } from '../chat/managed-chat-view';
+import { captureAgentConversationFocus, createAttributedAgentMessage, isAttributedAgentMessage, syncAgentConversationHeader } from './agent-conversation';
+import { syncManagedChatRequests } from './managed-chat-requests';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
@@ -222,12 +225,15 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
   const sharedHost = mount == null ? getSharedChatHost(getActiveChat().id)?.transcript : null;
   const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
+  if (!area) return;
   disposeChatWorkView(area);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
 
   if (codeMount && !embeddedHost && isMainColumnOverlaySuppressingChatDom()) {
     return;
   }
+
+  notifyManagedChatView(getActiveChat().id);
 
   const boardGroup = codeMount && !embeddedHost ? getActiveBoardGroup() : null;
   if (boardGroup?.viewMode === 'board') {
@@ -459,6 +465,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     if (isHiddenTranscriptUserMessage(userMsg)) {
       return;
     }
+    if (isAttributedAgentMessage(userMsg)) { host.append(createAttributedAgentMessage(chat, userMsg, i)); return; }
     const { wrap } = appendBubble('user', apiMessageContentToText(userMsg.content), {
       historyIndex: i,
       turnKind: 'user',
@@ -675,7 +682,8 @@ function prependPreservingScroll(area: HTMLElement, nodes: Node[]): void {
   const root = getChatScrollRoot();
   const prevTop = root?.scrollTop ?? 0;
   const prevHeight = root?.scrollHeight ?? 0;
-  area.prepend(...nodes);
+  const context = area.querySelector(':scope > .agent-chat-context');
+  if (context) context.after(...nodes); else area.prepend(...nodes);
   if (!root) return;
   const delta = root.scrollHeight - prevHeight;
   if (delta !== 0) root.scrollTop = prevTop + delta;
@@ -751,8 +759,11 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   const sharedHost = mount == null ? getSharedChatHost(chat.id)?.transcript : null;
   const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
+  // Mode changes and background updates can arrive without a mounted chat surface.
+  if (!area) return;
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
   const scrollAnchor = captureChatScrollAnchor();
+  const restoreAgentFocus = captureAgentConversationFocus(area, chat.id);
   disposeChatWorkView(area);
   // A newer paint owns the transcript; the previous chat's chunks must not land in it.
   cancelChatHistoryBackfill();
@@ -765,6 +776,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     return;
   }
 
+  notifyManagedChatView(chat.id);
   runWithChatMount(area, () => {
   suppressBubbleScroll = true;
   try {
@@ -827,7 +839,10 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   clearSubAgentCardDomRegistry();
   if (!chat.history.length) {
-    if (chat.worktreeSetupRequired) {
+    if (chat.agentConversation) {
+      if (codeMount) teardownHub();
+      area.replaceChildren();
+    } else if (chat.worktreeSetupRequired) {
       if (codeMount) teardownHub();
       area.replaceChildren();
     } else if (mapChatHost || sharedHost) {
@@ -879,6 +894,9 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   } finally {
     suppressBubbleScroll = false;
+    syncAgentConversationHeader(chat, area);
+    syncManagedChatRequests(chat, area);
+    restoreAgentFocus();
     syncChatWorktreeSetup(chat, area);
     void import('./loop-active-hint').then(({ syncLoopStatusUi }) => {
       syncLoopStatusUi(chat.id);

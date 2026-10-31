@@ -39,6 +39,13 @@ export function persistSubAgentRunSnapshot(run: SubAgentRun): void {
 
   const row: PersistedSubAgentRun = {
     runId: run.runId,
+    ...(run.commandId ? { commandId: run.commandId } : {}),
+    ...(run.modelOptions ? { modelOptions: run.modelOptions } : {}),
+    ...(run.phase ? { phase: run.phase } : {}),
+    ...(run.journalOwnerId ? { journalOwnerId: run.journalOwnerId } : {}),
+    ...(run.completionPolicy ? { completionPolicy: run.completionPolicy } : {}),
+    ...(run.childChatId ? { childChatId: run.childChatId } : {}),
+    ...(run.executionId ? { executionId: run.executionId } : {}),
     parentTurnId: run.parentTurnId ?? '',
     ...(run.parentToolCallId ? { parentToolCallId: run.parentToolCallId } : {}),
     type: run.type,
@@ -55,7 +62,7 @@ export function persistSubAgentRunSnapshot(run: SubAgentRun): void {
     startedAt: run.startedAt,
     endedAt: run.endedAt,
     toolTurns: run.toolTurns,
-    messages: capMessages(run.messages),
+    messages: run.childChatId ? [] : capMessages(run.messages),
     ...(run.category ? { category: run.category } : {}),
     ...(run.boardTaskId !== undefined ? { boardTaskId: run.boardTaskId } : {}),
   };

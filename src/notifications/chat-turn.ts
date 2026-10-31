@@ -31,6 +31,7 @@ function chatTitle(chat: Chat): string {
 export function notifyChatTurnEnded(chatId: string, runId: string): void {
   const chat = findChatById(chatId);
   if (!chat) return;
+  if (chat.chatCommandVersion === 1) return;
 
   const run = findRunById(chat, runId);
   if (!run || run.status === 'running' || run.status === 'superseded') return;

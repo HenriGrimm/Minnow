@@ -2544,6 +2544,162 @@
     ]
   },
   {
+    "key": "integrations.tools.permission.agent_capabilities",
+    "label": "Tool permission: agent_capabilities",
+    "description": "Permission mode for the agent_capabilities tool (off, ask, or full).",
+    "keywords": [
+      "agent_capabilities",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.agent_capabilities",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.chat_list",
+    "label": "Tool permission: chat_list",
+    "description": "Permission mode for the chat_list tool (off, ask, or full).",
+    "keywords": [
+      "chat_list",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.chat_list",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.chat_read",
+    "label": "Tool permission: chat_read",
+    "description": "Permission mode for the chat_read tool (off, ask, or full).",
+    "keywords": [
+      "chat_read",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.chat_read",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.chat_send",
+    "label": "Tool permission: chat_send",
+    "description": "Permission mode for the chat_send tool (off, ask, or full).",
+    "keywords": [
+      "chat_send",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.chat_send",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.chat_wait",
+    "label": "Tool permission: chat_wait",
+    "description": "Permission mode for the chat_wait tool (off, ask, or full).",
+    "keywords": [
+      "chat_wait",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.chat_wait",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
+    "key": "integrations.tools.permission.chat_stop",
+    "label": "Tool permission: chat_stop",
+    "description": "Permission mode for the chat_stop tool (off, ask, or full).",
+    "keywords": [
+      "chat_stop",
+      "permission",
+      "tools"
+    ],
+    "category": "integrations",
+    "area": "tools",
+    "storage": "resource",
+    "resource": "tools",
+    "path": "permissions.default.chat_stop",
+    "type": "enum",
+    "allowedValues": [
+      "off",
+      "ask",
+      "full"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "tools"
+    ]
+  },
+  {
     "key": "integrations.tools.permission.action_inspect",
     "label": "Tool permission: action_inspect",
     "description": "Permission mode for the action_inspect tool (off, ask, or full).",

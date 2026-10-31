@@ -270,15 +270,16 @@ export function createEngine(options) {
    * @param {Record<string, unknown>[]} events
    * @returns {Promise<Record<string, unknown>[]>}
    */
-  async function append(events) {
+  async function append(events, options = {}) {
     if (disposed || events.length === 0) return [];
+    if (options.idempotencyKey && events.length !== 1) throw new Error('An idempotent journal append requires exactly one event');
     if (state?.recoveryVersion && events.some((event) => ['board.stopped', 'board.model.set', 'board.reopened', 'board.rewound', 'task.reset', 'task.updated', 'task.waived', 'task.abandoned'].includes(event.type))) {
       for (const controller of startControllers.values()) controller.abort();
     }
     let stamped;
     try {
       stamped = events.length === 1
-        ? [await journal.appendEvent(boardId, events[0], { now: clock.now })]
+        ? [await journal.appendEvent(boardId, events[0], { now: clock.now, ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}) })]
         : await journal.appendEvents(boardId, events, { now: clock.now });
     } catch (error) {
       // A failed batch may have persisted a valid prefix. Reconcile that prefix
@@ -288,7 +289,7 @@ export function createEngine(options) {
       throw error;
     }
     graph.foldInto(state, stamped);
-    highestSeq = Number(stamped[stamped.length - 1].seq) || highestSeq;
+    highestSeq = Math.max(highestSeq, Number(stamped[stamped.length - 1].seq) || 0);
     for (const event of stamped) {
       for (const subscriber of subscribers) {
         try {
@@ -579,6 +580,7 @@ export function createEngine(options) {
       if (startControllers.get(key) === startController) startControllers.delete(key);
       startingEngineRoles.delete(key);
     }
+    if (handle?.deferred === true) { startFailures.delete(key); return; }
     startFailures.delete(key);
 
     if (disposed || generation !== (taskGenerations.get(want.taskId) ?? 0) || revision !== state.recoveryRevision) {
@@ -604,8 +606,16 @@ export function createEngine(options) {
             ...(want.seedKind ? { seedKind: want.seedKind } : {}),
           }),
         ];
-    if (events.length > 0) await append(events);
-    journaledStarts.add(handle.attemptId);
+    try {
+      if (events.length > 0) await append(events);
+      journaledStarts.add(handle.attemptId);
+      if (typeof effector.onStarted === 'function') await effector.onStarted(handle, want);
+    } catch (error) {
+      // A prepared owner has not started its provider yet. Failed journal
+      // commits must dispose that reservation rather than launch invisible work.
+      await effector.stop(handle.attemptId);
+      throw error;
+    }
 
     const early = bufferedEnds.get(handle.attemptId);
     if (early) {
@@ -752,6 +762,14 @@ export function createEngine(options) {
           );
         }
       }
+      // Reattach a verified suspended boundary to its existing journaled start.
+      // The effector reserves ownership first; activation follows registration.
+      for (const recovered of await effector.reattach?.(state) ?? []) {
+        journaledStarts.add(recovered.handle.attemptId);
+        await effector.onStarted?.(recovered.handle, recovered.desired);
+        const early = bufferedEnds.get(recovered.handle.attemptId);
+        if (early) { bufferedEnds.delete(recovered.handle.attemptId); await handleAttemptEnd(early); }
+      }
       if (state.finished && graph.onFinished) {
         try { await graph.onFinished({ id: boardId, state }); }
         catch (error) { console.warn('[orchestrator] Completion cleanup deferred:', error.message); }
@@ -788,8 +806,8 @@ export function createEngine(options) {
      * @param {Record<string, unknown>[]} events
      * @returns {Promise<Record<string, unknown>[]>}
      */
-    append(events) {
-      return append(events);
+    append(events, options) {
+      return append(events, options);
     },
 
     /** @returns {Promise<void>} */

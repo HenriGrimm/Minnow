@@ -4,6 +4,7 @@
 
 import { BUILT_IN_TOOLS } from '../tools/definitions';
 import type { EvalPack, EvalTask } from './types';
+import { validateEvalToolFixtures } from '../../server/evals/tool-fixtures.js';
 
 const PACK_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TASK_ID_RE = /^[a-z0-9][a-z0-9_-]*$/;
@@ -53,6 +54,7 @@ function validateTask(raw: unknown, index: number): EvalTask {
     allowedTools,
     deniedTools,
     rubricPrompt,
+    ...(t.toolFixtures === undefined ? {} : { toolFixtures: validateEvalToolFixtures(t.toolFixtures, allowedTools, deniedTools, KNOWN_TOOL_IDS) }),
   };
 }
 

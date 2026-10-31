@@ -133,6 +133,21 @@ test('PC admits phone send once, queues and steers on its engine, and Stop abort
   await reloadedHandler(command);
 });
 
+test('phone queue edits and steering cancellation reach the owner without replacing its draft', async () => {
+  const chat = setup();
+  chat.composerDraft = 'computer draft';
+  chat.pendingMessageQueue = [{ id: 'queued', text: 'original', createdAt: 1 }];
+  chat.pendingSteerMessage = 'correction';
+  setStreaming(true, CHAT);
+  const handler = createHostChatCommandHandler(async () => {}, { persist: async () => true });
+  await handler({ id: 'edit', chatId: CHAT, action: 'edit', itemId: 'queued', text: 'revised' });
+  await handler({ id: 'cancel', chatId: CHAT, action: 'cancel-steer' });
+  assert.equal(chat.pendingMessageQueue[0].text, 'revised');
+  assert.equal(chat.pendingSteerMessage, undefined);
+  assert.equal(chat.composerDraft, 'computer draft');
+  assert.equal(streamingChatIds.has(CHAT), true);
+});
+
 test('an already-open stale phone transcript hydrates its missing prefix before applying the live turn', async () => {
   const chat = setup();
   const observer = createSharedChatObserver(() => {});

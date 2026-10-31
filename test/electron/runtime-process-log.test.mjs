@@ -142,7 +142,18 @@ test('server launcher echoes output, preserves failure status and saves diagnost
   for (const name of ['dev-server.mjs', 'runtime-process-log.mjs']) {
     fs.copyFileSync(new URL(`../../scripts/${name}`, import.meta.url), path.join(scripts, name));
   }
+  // This fixture exercises the launcher/logging lifecycle. Real composition
+  // bundling has its own production boundary tests; pin this dependency and
+  // prove the launcher awaits it before starting the child.
+  fs.writeFileSync(path.join(scripts, 'build-headless-runner.mjs'), `
+    import fs from 'node:fs/promises';
+    export async function buildChatPreparation() {
+      await fs.writeFile(new URL('../preparation-ready', import.meta.url), 'ready');
+    }
+  `);
   fs.writeFileSync(path.join(env.MINNOW_HOME, 'server.js'), `
+    const fs = require('node:fs');
+    if (!fs.existsSync(require('node:path').join(__dirname, 'preparation-ready'))) process.exit(24);
     console.log('fixture ready');
     process.stderr.write('fatal server fixture\\n', () => process.exit(23));
   `);

@@ -21,6 +21,7 @@ import { renderChatInForegroundShell, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
 import { setStatus } from './status';
 import { iconHtml } from './icon';
+import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/chat-relationships';
 
 function branchIndexLabel(index: number, total: number): string {
   return `Branch ${index + 1} of ${total}`;
@@ -92,7 +93,7 @@ export function attachBranchPicker(
   const chat =
     findChatById(chatId) ??
     (getActiveChat().id === chatId ? getActiveChat() : undefined);
-  if (!chat) return;
+  if (!chat || !supportsLocalHistoryMutation(chat)) return;
 
   const branches = listSelectableBranchesAtFork(chat, forkHistoryIndex);
   if (!shouldAttachBranchPicker(chat, forkHistoryIndex, branches.length)) return;
@@ -128,6 +129,7 @@ export function attachBranchPicker(
 
   pill.addEventListener('click', (ev) => {
     ev.stopPropagation();
+    if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
     if (isActiveChatStreaming()) {
       showToast('Finish or stop the current reply first');
       return;
@@ -215,6 +217,7 @@ async function switchBranch(
   forkHistoryIndex: number,
   branchId: string,
 ): Promise<void> {
+  if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
   const targetRun = listSelectableBranchesAtFork(chat, forkHistoryIndex).find(
     (r) => r.branchId === branchId,
   );

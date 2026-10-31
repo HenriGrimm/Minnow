@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { validateSessionState } from './validators.js';
+import { importChatArchive } from '../chats/archive.js';
 import {
   sessionsJsonMigratedPath,
   sessionsJsonPath,
@@ -37,6 +38,18 @@ const CHAT_HOT_KEYS = new Set([
   'lastMessagePreview',
   'sortIndex',
   'historyDigest',
+  'agentConversation',
+  'chatCommandVersion',
+  'profileReference',
+  'agentExecution',
+  'agentPresentationRevision',
+  'agentPendingCommand',
+  'agentActivityCursor',
+  'agentRequestSummary',
+  'agentRequests',
+  'agentTaskAttention',
+  'agentModelSelection',
+  'agentAuthority',
   'terminalHistory',
   'runs',
   'subAgentRuns',
@@ -570,20 +583,22 @@ export function importJsonSessionsIfNeeded(db, options = {}) {
 
   let state;
   try {
-    state = validateSessionState(parsed);
+    state = parsed.conversationArchive || parsed.kind === 'minnow.conversation-archive' ? null : validateSessionState(parsed);
   } catch (err) {
     writeSessionMeta(db, 'jsonImportFailedAt', nowIso());
     writeSessionMeta(db, 'jsonImportFailedMessage', String(/** @type {Error} */ (err).message ?? err));
     return { migrated: false, reason: 'validation_failed', error: String(err) };
   }
 
-  const expectedChats = Array.isArray(state.chats) ? state.chats.length : 0;
-  const expectedMessages = Array.isArray(state.chats)
+  const archive = parsed.conversationArchive ?? (parsed.kind === 'minnow.conversation-archive' ? parsed : null);
+  const expectedChats = archive ? archive.tables?.chats?.length ?? 0 : Array.isArray(state.chats) ? state.chats.length : 0;
+  const expectedMessages = archive ? archive.tables?.messages?.length ?? 0 : Array.isArray(state.chats)
     ? state.chats.reduce((sum, chat) => sum + (Array.isArray(chat.history) ? chat.history.length : 0), 0)
     : 0;
 
   const tx = db.transaction(() => {
-    writeValidatedSessionState(db, state);
+    if (archive) importChatArchive(db, archive);
+    else writeValidatedSessionState(db, state);
     writeSessionMeta(db, 'jsonImportedAt', nowIso());
     writeSessionMeta(db, 'jsonImportFailedAt', null);
     writeSessionMeta(db, 'jsonImportFailedMessage', null);

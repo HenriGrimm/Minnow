@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from '../process-runner.js';
+import { runWorktreeSetupProcess } from './setup-process.js';
 import { parseGitNumstat } from '../tools/git-change-stats.js';
 import { invalidateRegisteredWorktreeCache } from './allowlist.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
@@ -21,11 +22,11 @@ import { runGh } from '../git/gh-cli.js';
 
 const GIT_TIMEOUT_MS = 120_000;
 
-async function git(args, cwd = getEffectiveWorkspaceRoot()) {
+async function git(args, cwd = getEffectiveWorkspaceRoot(), options = {}) {
   // Managed checkouts add several directories to otherwise valid project paths.
   // Scope Windows long-path support to our commands, leaving user config alone.
   const gitArgs = process.platform === 'win32' ? ['-c', 'core.longpaths=true', ...args] : args;
-  return runProcess('git', gitArgs, { cwd, timeout: GIT_TIMEOUT_MS });
+  return (options.signal ? runWorktreeSetupProcess : runProcess)('git', gitArgs, { cwd, timeout: GIT_TIMEOUT_MS, ...options });
 }
 
 const ok = (r) => r.code === 0;
@@ -1332,9 +1333,10 @@ export function enableChatWorktree({ chatId, title }) {
 }
 
 /**
- * @param {{ chatId: string, branch: string, baseRef?: string, checkoutExisting?: boolean }} input
+ * @param {{ chatId: string, branch: string, baseRef?: string, checkoutExisting?: boolean, requireNewBranch?: boolean, signal?: AbortSignal }} input
  */
-export async function createChatWorktree({ chatId, branch, baseRef, checkoutExisting }) {
+export async function createChatWorktree({ chatId, branch, baseRef, checkoutExisting, requireNewBranch = false, signal }) {
+  signal?.throwIfAborted();
   if (!chatId || typeof chatId !== 'string' || !chatId.trim()) {
     return { ok: false, error: 'chatId is required' };
   }
@@ -1347,6 +1349,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   const branchName = checkout ? branch.trim() : slugifyGitRefName(branch, 'worktree');
   const base = (baseRef && baseRef.trim()) || 'HEAD';
   const depSource = getEffectiveWorkspaceRoot();
+  if (requireNewBranch && checkout) return { ok: false, error: 'A new owned checkout cannot attach an existing branch' };
 
   let exists = false;
   try {
@@ -1356,6 +1359,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   }
 
   if (exists) {
+    if (requireNewBranch) return { ok: false, error: 'The owned worktree slot already exists; verify its allocation before reuse', path: wtPath, branch: branchName };
     if (!(await isWorktreeCheckout(wtPath))) return { ok: false, error: 'The managed worktree folder is not a valid checkout. Inspect it in Source Control.' };
     const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
     if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD.' };
@@ -1380,7 +1384,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
         output: added.error,
       };
     }
-    const deps = await ensureDependencyDirs(depSource, wtPath);
+    const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
     invalidateRegisteredWorktreeCache();
     return {
       ok: true,
@@ -1391,22 +1395,26 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
     };
   }
 
-  const baseSha = await resolveRef(base);
+  const resolvedBase = signal ? await git(['rev-parse', '--verify', base], depSource, { signal }) : null;
+  const baseSha = signal ? ok(resolvedBase) ? resolvedBase.stdout.trim().split(/\s/)[0] : null : await resolveRef(base);
   if (!baseSha) {
     return { ok: false, error: `invalid baseRef: ${base}`, path: wtPath, branch: branchName };
   }
 
-  if (await branchExists(branchName)) {
-    const w = await git(['worktree', 'add', wtPath, branchName]);
+  signal?.throwIfAborted();
+  if (!requireNewBranch && await branchExists(branchName)) {
+    const w = await git(['worktree', 'add', wtPath, branchName], depSource, { signal });
     if (!ok(w)) return { ok: false, path: wtPath, branch: branchName, output: out(w) };
-    const deps = await ensureDependencyDirs(depSource, wtPath);
+    const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
     invalidateRegisteredWorktreeCache();
     return { ok: true, path: wtPath, branch: branchName, created: true, deps };
   }
 
-  const r = await git(['worktree', 'add', '-b', branchName, wtPath, baseSha]);
+  const r = await git(['worktree', 'add', '-b', branchName, wtPath, baseSha], depSource, { signal });
   if (!ok(r)) return { ok: false, path: wtPath, branch: branchName, output: out(r) };
-  const deps = await ensureDependencyDirs(depSource, wtPath);
+  signal?.throwIfAborted();
+  const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
+  signal?.throwIfAborted();
   invalidateRegisteredWorktreeCache();
   return { ok: true, path: wtPath, branch: branchName, created: true, deps };
 }

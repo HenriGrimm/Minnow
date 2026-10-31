@@ -136,7 +136,7 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 | **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
 | **Autocomplete** | Inline ghost text, with language-server context behind it. |
 | **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
-| **Sub-agents** | Hand research, review, or a long grind to an agent with its own prompt, model, and context budget. |
+| **Sub-agents** | Delegate research or review into saved child chats, each with its own model, requests and follow-up messages. [Agent conversations](documentation/manual/chat/persistent-agent-chats.md). |
 | **Loops and goals** | `/loop` re-runs a prompt on a schedule; `/goal` keeps working until an evaluator agent says the condition is met. |
 | **Voice** | Dictate into the composer and get spoken replies, on local speech models. |
 | **Phone access** | Scan a QR and use your workspace from a phone, on your Wi-Fi or anywhere, with nothing to install. |

@@ -8,6 +8,7 @@ import { getToolById } from '../../src/tools/definitions.ts';
 import { resolveSubAgentTools } from '../../src/agents/sub-agent-tools.ts';
 import type { SubAgentTypeConfig } from '../../src/agents/types.ts';
 import subAgents from '../../src/agents/defaults/sub-agents.json' with { type: 'json' };
+import { parseWorkAgentMetaFromMarkdown } from '../../src/agents/work-agent-meta-parse.ts';
 
 test('client defaults and backfill make Load skill callable without replacing saved permissions', () => {
   assert.equal(defaultToolConfig().permissions.default.load_skill, 'full');
@@ -32,7 +33,10 @@ test('composer modes and every shipped sub-agent type allow skill reads through 
 test('restricted work-agent prompts and model guidance expose skill loading', async () => {
   for (const id of ['planner', 'reviewer', 'researcher', 'ui-designer']) {
     const prompt = await readFile(new URL(`../../src/chat/prompts/work-agents/${id}/agent.full.md`, import.meta.url), 'utf8');
-    assert.match(prompt, /allowedTools:\r?\n  - load_skill/);
+    const meta = parseWorkAgentMetaFromMarkdown(prompt, `work-agents/${id}/agent.full.md`);
+    assert.equal(meta?.id, id);
+    assert.ok(meta?.allowedTools?.length, `${id} keeps an explicit restricted tool allowlist`);
+    assert.ok(meta.allowedTools.includes('load_skill'), `${id} permits skill reads regardless of allowlist ordering`);
   }
   for (const profile of ['full', 'lite']) {
     const prompt = await readFile(new URL(`../../src/chat/prompts/tool-usage/default.${profile}.md`, import.meta.url), 'utf8');

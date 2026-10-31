@@ -8,6 +8,8 @@ import {
   initComposerSteerInputListener,
   setComposerStreamingMode,
   setSendLoading,
+  submitComposerFollowup,
+  shouldSubmitComposerOnEnter,
 } from './composer-send';
 
 export {
@@ -37,6 +39,7 @@ export function initComposerInput(el: HTMLTextAreaElement): void {
 }
 
 export function handleKey(e: KeyboardEvent): void {
+  if (e.isComposing || e.keyCode === 229) return;
   if (handleSkillPickerKeydown(e)) return;
   const input = e.target;
   if (
@@ -48,6 +51,12 @@ export function handleKey(e: KeyboardEvent): void {
   if (e.key === 'Enter' && !e.shiftKey) {
     if (isSkillPickerOpen()) return;
     e.preventDefault();
+    // Repeated Enter after a send must never turn into a Stop click.
+    if (!(input instanceof HTMLTextAreaElement) || !shouldSubmitComposerOnEnter(input.value)) return;
+    if (e.altKey) {
+      submitComposerFollowup('queue');
+      return;
+    }
     handleComposerPrimaryAction();
   }
 }

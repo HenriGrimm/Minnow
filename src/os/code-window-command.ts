@@ -59,8 +59,8 @@ async function applyCommand(command: CodeWindowCommand): Promise<void> {
       openBoardGroup(command.boardGroupId);
       return;
     }
-    const { switchChat } = await import('../ui/sidebar');
-    await switchChat(command.chatId);
+    const { switchToCodeChat } = await import('./chat-launch');
+    await switchToCodeChat(command.chatId);
     if (command.runId) {
       const { openSubAgentDrawer } = await import('../ui/sub-agent-drawer');
       openSubAgentDrawer(command.runId, command.chatId);

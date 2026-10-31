@@ -14,13 +14,13 @@ The composer is a card at the bottom of the chat column: the message field on to
 | **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, prompt profile, and compaction |
 | **Model · reasoning** | Per-chat model and reasoning level. Open the menu to change either. **Ctrl+M** / **Cmd+M** opens it with search focused. |
 | **Microphone** | Dictation — see [Voice](../extend/voice.md) |
-| **Send / Stop** | Enter sends; Enter again stops while streaming |
+| **Send / Stop** | Enter sends or steers a running turn; the Stop button ends the reply |
 
-**Enter** sends, **Shift+Enter** adds a line. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
+**Enter** sends, **Shift+Enter** adds a line. While a turn is running, **Enter** steers it and **Alt+Enter** queues a follow-up for later. Empty Enter does nothing. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
 
 Drafts survive switching chats.
 
-Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. Changing the model during a response stops that generation; the next turn uses the new selection.
+Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. Changing the model during an ordinary chat response stops that generation; the next turn uses the new selection. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
 
 Clicking the **branch icon** enables Worktree for this chat without creating a
 checkout. Send your message to create a named branch from the current commit and
@@ -56,17 +56,17 @@ Claude and Codex reasoning summaries appear under **Reasoning summary**. A separ
 
 You do not have to sit still and wait.
 
-**Type your next message and press Enter.** It queues, and runs when the current turn settles. The follow-up appears in the transcript as a muted **Queued** bubble (and in the compact strip above the composer) so it is not sent-and-forgotten. Edit, push it in as a steer, or delete it from either place. The bubble leaves as soon as that turn starts.
+**Type a correction or more context and press Enter.** Minnow applies it at the next step between tool rounds, keeping the current turn intact. Until then, the strip above the composer shows **Steering at next step** and your text, with a cancel button. Successive corrections are kept in send order. Once applied, the correction appears in the transcript as **You steered**. If the reply finishes without another tool round, the correction starts a follow-up turn.
 
-**Steer instead, when the run is going wrong.** A correction sent mid-turn is injected at the next tool-loop boundary rather than aborting the stream — so the model gets "actually, use the existing helper" before it writes the next file, without losing the work it has already done. This is almost always better than stopping and re-prompting: stopping throws away the context the model had built up.
+**Choose Queue for later**, or press **Alt+Enter**, for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. Attachments stay in the composer until the running reply finishes; mid-turn messages are text only. `/compact` also waits for the reply to finish.
 
 On a local llama.cpp or MLX model the status line beside the assistant row shows a load percent while weights come up, a prefill percent while the prompt is ingested, then a live token count while it generates (including while it is calling a tool).
 
-**Stop** when the run is genuinely off the rails. The partial reply stays.
+**Stop** stays available while you type. It ends the run and keeps the partial reply. Unapplied corrections return to the follow-up queue, where you can review, send, edit, or delete them. Repeated Enter never stops the run or sends queued work.
 
 ## When a turn fails
 
-If a reply errors mid-stream, the partial stays on screen. **Continue** retries with the full conversation still in context. **Clear** removes the failed assistant output and keeps your prompt. Neither control wipes earlier turns.
+If a reply errors mid-stream, the partial stays on screen. In ordinary chats, **Continue** retries with the full conversation still in context and **Clear** removes the failed assistant output while keeping your prompt. Agent conversations retain their saved history: send a new message to continue, and resolve any request or recovery notice in that chat.
 
 Very large replies can stop with a replay memory limit error. Minnow budgets about 32 MiB of retained stream data and chunk overhead per generation, and 128 MiB across generation requests and replay. The retained prefix ends with an explicit error; it is not treated as a completed reply. Ask for a smaller output or wait for other replies to finish before retrying.
 
@@ -76,9 +76,9 @@ A connection that accumulates more than 4 MiB of pending stream data or stalls f
 
 - **Inference metrics** — tokens, tok/s and totals for the turn. In Code, the strip at the bottom of the chat column.
 - **Activity** — the menubar dropdown shows what needs your input, what is running, and recent outcomes across the current workspace. Expand a running item to inspect its sub-agents, model, and context usage.
-- **Sub-agent cards and inspector** — every spawned agent gets a card in the transcript. Open it for its Conversation: available thoughts, responses, grouped tool calls, and a Result tab. Conversations remain accessible after reopening the chat.
+- **Agent cards and chats** — delegated assignments are grouped in the parent transcript. Open a saved child chat for its own conversation, composer, model controls and requests. The original assignment result remains on its card. Older tasks retain their inspector and can offer **Continue as chat** from partial saved context. See [Agent conversations](persistent-agent-chats.md).
 
-A background sub-agent that finishes while you are elsewhere pushes its result to the parent conversation, so the model sees it without a wall of text appearing in your transcript.
+The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. **Stop turn** stops the current reply; use **Stop agents** or **Stop conversation and agents** for a wider scope.
 
 ## Undoing a turn
 
@@ -90,7 +90,7 @@ Details worth knowing:
 - The message **⋮** menu always offers **Undo turn** for a conversation-only rewind.
 - Undo does not auto-regenerate. You get your prompt back and decide what to do.
 - The undone reply stays redoable through the branch picker.
-- Orchestrate, board-linked and worktree-isolated chats do not support undo; the control is disabled with the reason.
+- Orchestrate, board-linked and worktree-isolated chats do not support undo; the control is disabled with the reason. Agent conversations also keep immutable saved history, so undo, regeneration, past-message edits and branch rewinds are unavailable; continue with a new message.
 
 Snapshots are made with dangling commits, so your index, HEAD and branch are never moved. If two chats share one repository, the last restore wins.
 
@@ -102,7 +102,7 @@ An assistant can present saved project files and generated deliverables as compa
 
 ## Branches
 
-Regenerating or forking a turn creates a **branch** — a separate continuation from the same point. The branch picker appears on that message and lets you move between them; the branch you leave keeps its follow-up messages, so switching back and forth does not destroy either side.
+In ordinary chats that support history changes, regenerating or forking a turn creates a **branch** — a separate continuation from the same point. The branch picker appears on that message and lets you move between them; the branch you leave keeps its follow-up messages, so switching back and forth does not destroy either side.
 
 This is how you try "do it with X" and "do it with Y" without two chats and manual copy-paste.
 
@@ -113,7 +113,7 @@ This is how you try "do it with X" and "do it with Y" without two chats and manu
 - **Groups** organise related chats; orchestrate boards appear as folders with their member chats nested.
 - Chats belong to a workspace folder, so the rail shows what is relevant to where you are.
 
-There is no fixed limit on how many chats you can keep. Deleting a chat is immediate and confirmed in-app.
+There is no fixed limit on how many chats you can keep. Chat deletion is confirmed in-app. Agent conversations cannot be deleted while they or their descendants have active work, queued input or pending requests. Deleting a settled parent retains its child conversations and checkout files.
 
 Chats with an active `/loop` show a rotating icon in the rail — spinning while a loop is live, still when every loop on that chat is paused.
 
@@ -133,6 +133,7 @@ The model can ask *you* something mid-run with a question card rather than guess
 
 ## Related
 
+- [Agent conversations](persistent-agent-chats.md)
 - [Skills and slash commands](skills-and-commands.md)
 - [Modes](../concepts/modes.md)
 - [Context, memory, and rules](../concepts/context-and-memory.md)

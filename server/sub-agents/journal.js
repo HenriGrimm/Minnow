@@ -31,3 +31,4 @@ export const entryExists = agents.entryExists;
 export const deleteEntry = agents.deleteEntry;
 export const listEntries = agents.listEntries;
 export const resetJournalCache = agents.resetCache;
+export const restoreEvents = agents.restoreEvents;

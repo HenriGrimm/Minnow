@@ -21,8 +21,8 @@ import { registerStreamDomRemount, type StreamDomHandles } from '../tools/stream
 import { isStreamDomVisible } from './streaming-state';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
-import { enqueueComposerMessage, pushQueuedMessageNow, removeQueuedMessage } from './message-queue';
-import { enqueueSteerMessage } from './steer-message';
+import { enqueueComposerMessage, pushQueuedMessageNow, removeQueuedMessage, updateQueuedMessage } from './message-queue';
+import { clearPendingSteer, enqueueSteerMessage } from './steer-message';
 import { stopGeneration } from './stop-generation';
 import { setChatPinned } from '../state/chat-groups';
 import type { Chat } from '../types';
@@ -31,6 +31,10 @@ import type { TurnEvent } from '../../server/runner/run-turn';
 import type { SendProgrammaticChatTextOptions } from './messaging';
 import { randomUUID } from '../lib/random-id';
 import { getChatTranscript } from '../config/api-client';
+import { startManagedChatBridge } from './managed-chat-bridge';
+import { startManagedChatRequests } from '../ui/managed-chat-requests';
+import { startChatHostCapabilities } from './host-capabilities';
+import { getChatTurnOwnerId } from './turn-ownership';
 
 const FIELD_KEYS = ['name', 'workspacePath', 'modelId', 'providerId', 'modeId', 'updatedAt',
   'currentGenerationId', 'lastStats', 'modelInfo', 'turnError', 'unread', 'pinnedAt', 'pendingMessageQueue',
@@ -293,7 +297,8 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
       await remember(); return;
     }
     if (command.action === 'stop') {
-      starting.get(chat.id)?.abort(); stopGeneration(chat.id); await remember(); return;
+      if (command.expectedOwnerId && getChatTurnOwnerId(chat.id) !== command.expectedOwnerId) return;
+      starting.get(chat.id)?.abort(); stopGeneration(chat.id, 'user', { ownedByThisView: true, serverControl: Boolean(command.expectedOwnerId) }); await remember(); return;
     }
     if (command.action === 'push') {
       if (!pushQueuedMessageNow(chat, command.itemId ?? '')) throw new Error('Queued message is no longer available.');
@@ -301,6 +306,14 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
     }
     if (command.action === 'remove') {
       if (!removeQueuedMessage(chat, command.itemId ?? '')) throw new Error('Queued message is no longer available.');
+      await remember(); return;
+    }
+    if (command.action === 'cancel-steer') {
+      clearPendingSteer(chat);
+      await remember(); return;
+    }
+    if (command.action === 'edit') {
+      if (!updateQueuedMessage(chat, command.itemId ?? '', command.text ?? '')) throw new Error('Queued message is no longer available.');
       await remember(); return;
     }
     if (busy) {
@@ -344,6 +357,9 @@ export function startSharedChatBridge(onChange: (activeChanged: boolean) => void
   const hostId = getChatHostId();
   const publisher = createSharedChatPublisher(frame => post('publish', { hostId, frame }));
   const observer = createSharedChatObserver(onChange);
+  const disposeManagedBridge = startManagedChatBridge(observer, onChange);
+  const disposeManagedRequests = startManagedChatRequests();
+  const disposeHostCapabilities = hasHostSessionToken() ? startChatHostCapabilities() : () => {};
   const handle = createHostChatCommandHandler((id, running) => publisher.update(id, undefined, running));
   let events: StreamEventSource | undefined;
   let host: StreamEventSource | undefined;
@@ -399,6 +415,7 @@ export function startSharedChatBridge(onChange: (activeChanged: boolean) => void
   document.addEventListener('visibilitychange', wake);
   connect();
   return () => {
+    disposeManagedBridge(); disposeManagedRequests(); disposeHostCapabilities();
     events?.close(); host?.close(); unsubscribeStatus(); unsubscribeWorkspace();
     setSharedChatPublisher(undefined); publisher.dispose(); observer.dispose();
     window.removeEventListener('online', wake);

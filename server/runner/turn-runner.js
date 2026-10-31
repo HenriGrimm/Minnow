@@ -1000,6 +1000,9 @@ function createTurnRunner(deps) {
           if ("content" in row) next.content = row.content;
           if (typeof row.tool_call_id === "string") next.tool_call_id = row.tool_call_id;
           if (Array.isArray(row.tool_calls)) next.tool_calls = row.tool_calls;
+          if (typeof row.messageId === 'string') next.messageId = row.messageId;
+          if (typeof row.commandId === 'string') next.commandId = row.commandId;
+          if (row.provenance && typeof row.provenance === 'object') next.provenance = row.provenance;
           messages.push(next);
           spliced += 1;
         }

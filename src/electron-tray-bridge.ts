@@ -19,7 +19,8 @@ import {
   collectLocalModelTraySnapshot,
   unloadAllLocalModels,
 } from './providers/local-model-tray';
-import { buildAgentActivitySnapshot } from './state/agent-activity-registry';
+import { buildAgentActivitySnapshot, countRunningAgentRows } from './state/agent-activity-registry';
+import { subscribeManagedChatMetadata } from './chat/managed-chat-view';
 import { getChatItemDotContext } from './ui/chat-item-dot';
 import { sessionState } from './state/sessions';
 import { openSettings } from './ui/settings-page';
@@ -31,6 +32,8 @@ let ready = false;
 let pendingCommands: MinnowTrayCommand[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let lastSnapshotJson = '';
+const subscriptions: Array<() => void> = [];
+let lifetime = 0;
 
 function trayApi(): NonNullable<typeof window.minnow>['tray'] | null {
   return window.minnow?.tray ?? null;
@@ -47,7 +50,7 @@ function countRunningAgents(): number {
     titleJobs: listTitleJobActivity(),
     questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
   });
-  return rows.length;
+  return countRunningAgentRows(rows);
 }
 
 async function buildTrayStatus(): Promise<MinnowTrayStatusSnapshot> {
@@ -71,8 +74,10 @@ function scheduleStatusPublish(): void {
 async function publishTrayStatus(): Promise<void> {
   const api = trayApi();
   if (!api) return;
+  const version = lifetime;
   try {
     const snapshot = await buildTrayStatus();
+    if (version !== lifetime) return;
     const json = JSON.stringify(snapshot);
     if (json === lastSnapshotJson) return;
     lastSnapshotJson = json;
@@ -143,6 +148,7 @@ function flushPendingCommands(): void {
 }
 
 function markTrayReady(): void {
+  if (ready) return;
   ready = true;
   trayApi()?.notifyReady();
   flushPendingCommands();
@@ -151,9 +157,7 @@ function markTrayReady(): void {
 
 function bindActivityListeners(): void {
   const refresh = () => scheduleStatusPublish();
-  subscribeMainTurnActivity(refresh);
-  subscribeSubAgentRuns(refresh);
-  subscribeTitleJobActivity(refresh);
+  subscriptions.push(subscribeMainTurnActivity(refresh), subscribeSubAgentRuns(refresh), subscribeTitleJobActivity(refresh), subscribeManagedChatMetadata(refresh));
 }
 
 /** Initialize tray bridge once Electron preload is available. */
@@ -162,24 +166,33 @@ export function initElectronTrayBridge(): void {
   const api = trayApi();
   if (!api) return;
   initDone = true;
+  const version = ++lifetime;
 
-  api.onCommand((command) => {
+  subscriptions.push(api.onCommand((command) => {
     if (!ready) {
       pendingCommands.push(command);
       return;
     }
     void dispatchTrayCommand(command);
-  });
+  }));
 
   bindActivityListeners();
 
   void import('./state/sessions').then(({ sessionsReady }) => {
-    void sessionsReady.then(() => markTrayReady());
+    void sessionsReady.then(() => { if (initDone && version === lifetime) markTrayReady(); });
   });
 
   if (sessionState) {
     markTrayReady();
   }
+}
+
+/** Release app-lifetime listeners when the renderer is unmounted or reinitialized. */
+export function disposeElectronTrayBridge(): void {
+  lifetime++;
+  subscriptions.splice(0).forEach(unsubscribe => unsubscribe());
+  if (statusTimer) clearTimeout(statusTimer);
+  statusTimer = null; initDone = false; ready = false; pendingCommands = []; lastSnapshotJson = '';
 }
 
 /** Re-publish tray status when models change (e.g. after manual unload). */

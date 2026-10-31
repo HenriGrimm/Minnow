@@ -25,6 +25,7 @@ import type {
 } from './types';
 import { extractMessageText } from '../api/chat';
 import type { ApiMessage } from '../types';
+import { composeSystemPrompt } from '../chat/prompts/prompt-composer';
 
 const activeAbort = new Map<string, AbortController>();
 
@@ -70,11 +71,14 @@ async function runOneCell(params: {
 
   const config = await fetchEvalConfig();
   const tools = resolveEvalTaskTools(task, params.modeId);
-  const systemPrompt =
-    task.systemPrompt?.trim() ||
-    'You are running an offline eval task. Follow the user prompt precisely.';
+  const taskSystem = task.systemPrompt?.trim() || 'You are running an offline eval task. Follow the user prompt precisely.';
+  const sharedSystem = task.toolFixtures ? composeSystemPrompt({ profile: 'full', cwd: params.workspacePath,
+    modeId: params.modeId, expertId: null, workAgentId: null, skillBody: null, memoryBlock: null,
+    codeMapBlock: null, contextDocumentsBlock: null, infoPresetId: 'general-assistant',
+    flaticonIconGuidanceEnabled: false, enabledToolIds: tools.map(tool => tool.function.name) }) : '';
+  const systemPrompt = [sharedSystem, taskSystem].filter(Boolean).join('\n\n');
 
-  const executeTool = createEvalExecuteTool(config, params.workspacePath);
+  const executeTool = createEvalExecuteTool(config, params.workspacePath, task);
 
   let runnerOut;
   try {
@@ -127,7 +131,10 @@ async function runOneCell(params: {
   }
 
   const excerpt = transcriptExcerpt(runnerOut.messages);
-  const grader = await getEvalGrader().grade({
+  const fixtureReport = executeTool.fixtureReport?.();
+  const grader = fixtureReport && !fixtureReport.pass ? {
+    score: 0, pass: false, rationale: fixtureReport.violations.join('; '), tags: ['scripted-tool-contract'],
+  } : await getEvalGrader().grade({
     rubricPrompt: task.rubricPrompt,
     candidateSummary: runnerOut.summary,
     transcriptExcerpt: excerpt,
@@ -156,6 +163,7 @@ async function runOneCell(params: {
     transcriptExcerpt: excerpt,
     error: runnerOut.error,
     ...(params.saveTranscripts ? { messages: runnerOut.messages } : {}),
+    ...(fixtureReport ? { fixtureReport } : {}),
   };
 
   return cell;

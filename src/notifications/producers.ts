@@ -13,19 +13,23 @@ import { isSubAgentRunTerminal } from '../agents/sub-agent-outcome.ts';
 import { subscribeSubAgentRuns } from '../agents/sub-agent-events.ts';
 import type { SubAgentRun } from '../agents/types.ts';
 import { onGenerationQuotaExceeded } from '../api/generations.ts';
-import { findChatById } from '../state/sessions.ts';
+import { findChatById, sessionState } from '../state/sessions.ts';
 import { truncatePreview } from './preview.ts';
 import { noticeOutOfUsage } from './provider-quota.ts';
-import { pushNotification } from './push.ts';
+import { pushNotification, pushNotificationOrActiveChatSound } from './push.ts';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
+import { createManagedChatNotificationProducer } from './managed-chat';
 
 let initialized = false;
 const notifiedSubAgentRuns = new Set<string>();
+let disposeProducers: (() => void) | undefined;
 
 function chatTitle(chat: { name?: string }): string {
   return chat.name?.trim() || 'Chat';
 }
 
 function handleSubAgentRun(run: SubAgentRun): void {
+  if (run.childChatId) return;
   if (!isSubAgentRunTerminal(run.status)) return;
   if (notifiedSubAgentRuns.has(run.runId)) return;
   notifiedSubAgentRuns.add(run.runId);
@@ -70,16 +74,21 @@ function handleSubAgentRun(run: SubAgentRun): void {
 }
 
 /** Register notification event producers (call once from main.ts). */
-export function initNotificationProducers(): void {
-  if (initialized) return;
+export function initNotificationProducers(): () => void {
+  if (initialized) return disposeNotificationProducers;
   initialized = true;
-  subscribeSubAgentRuns(handleSubAgentRun);
-  onGenerationQuotaExceeded((event) => noticeOutOfUsage(event));
+  const disposers = [subscribeSubAgentRuns(handleSubAgentRun), onGenerationQuotaExceeded((event) => noticeOutOfUsage(event)),
+    createManagedChatNotificationProducer({ chats: () => sessionState?.chats ?? [], subscribe: subscribeManagedChatMetadata,
+      push: pushNotification, pushOutcome: pushNotificationOrActiveChatSound })];
+  disposeProducers = () => disposers.forEach(dispose => dispose());
+  return disposeNotificationProducers;
 }
+
+export function disposeNotificationProducers(): void { disposeProducers?.(); disposeProducers = undefined; initialized = false; }
 
 /** Reset producer state (tests). */
 export function resetNotificationProducersForTests(): void {
-  initialized = false;
+  disposeNotificationProducers();
   notifiedSubAgentRuns.clear();
 }
 

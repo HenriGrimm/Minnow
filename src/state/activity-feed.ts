@@ -2,7 +2,7 @@ import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import { kindLabel } from '../notifications/preview';
 import type { NotificationRecord } from '../notifications/types';
 import type { Chat } from '../types';
-import { formatAgentActivityStatusLine, type AgentActivityRow } from './agent-activity-registry';
+import { countRunningAgentRows, formatAgentActivityStatusLine, type AgentActivityRow } from './agent-activity-registry';
 
 export type ActivityStatus = 'running' | 'question' | 'blocked' | 'failed' | 'completed' | 'stopped';
 
@@ -20,6 +20,9 @@ export interface ActivityItem {
   unread: boolean;
   resolved: boolean;
   background: boolean;
+  requestId?: string;
+  requestKind?: 'question' | 'approval';
+  activityCursor?: Chat['agentActivityCursor'];
 }
 
 export interface ActivityFeed {
@@ -52,7 +55,10 @@ function notificationStatus(record: NotificationRecord): ActivityStatus {
 }
 
 function liveStatus(row: AgentActivityRow): ActivityStatus {
-  return row.status === 'pending_question' ? 'question' : 'running';
+  if (row.status === 'pending_question' || row.status === 'pending_approval') return 'question';
+  if (row.status === 'recovery_required') return 'blocked';
+  if (row.status === 'failed' || row.status === 'completed' || row.status === 'stopped') return row.status;
+  return 'running';
 }
 
 export function activityNeedsAttention(item: ActivityItem): boolean {
@@ -61,15 +67,8 @@ export function activityNeedsAttention(item: ActivityItem): boolean {
 
 /** Count individual agents, including nested workers, rather than parent work items. */
 export function getRunningAgentCount(feed: ActivityFeed): number {
-  const active = new Set<string>();
-  for (const item of feed.running) {
-    if (!item.live) active.add(item.id);
-    for (const row of [...(item.live ? [item.live] : []), ...item.children]) {
-      if (row.status === 'queued' || row.status === 'waiting' || row.status === 'pending_question') continue;
-      active.add(row.id);
-    }
-  }
-  return active.size;
+  const items = [...feed.running, ...feed.background];
+  return countRunningAgentRows(items.flatMap(item => [...(item.live ? [item.live] : []), ...item.children])) + items.filter(item => !item.live).length;
 }
 
 /** Project runtime snapshots and session outcomes into one row per piece of work. */
@@ -81,24 +80,26 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
   const mainByChat = new Map<string, ActivityItem>();
   const scopedLive = input.live.filter((row) => inScope(chats.get(row.chatId)?.workspacePath));
 
-  for (const row of scopedLive.filter((candidate) => candidate.kind === 'main_turn')) {
+  for (const row of scopedLive.filter((candidate) => candidate.kind === 'main_turn' || candidate.kind === 'agent_chat')) {
     const chat = chats.get(row.chatId);
     const run = [...(chat?.runs ?? [])].reverse().find((candidate) => candidate.status === 'running');
-    const id = run ? `turn:${run.runId}` : row.id;
+    const id = row.kind === 'agent_chat' ? row.id : run ? `turn:${run.runId}` : row.id;
     const item: ActivityItem = {
       id, title: row.chatTitle, status: liveStatus(row), detail: formatAgentActivityStatusLine(row),
-      source: row.label || 'Chat', timestamp: row.startedAtMs, chatId: row.chatId, live: row,
-      children: [], notifications: [], unread: false, resolved: false, background: false,
+      source: row.label || 'Chat', timestamp: row.updatedAtMs ?? row.startedAtMs, chatId: row.chatId, live: row,
+      children: [], notifications: [], unread: row.unread === true, resolved: false, background: false,
+      requestId: row.requestIds?.[0], activityCursor: row.activityCursor,
+      requestKind: chat?.agentRequestSummary?.find(request => request.requestId === row.requestIds?.[0])?.kind,
     };
     items.set(id, item);
-    mainByChat.set(row.chatId, item);
+    if (!mainByChat.has(row.chatId) || item.status === 'running' || item.status === 'question') mainByChat.set(row.chatId, item);
   }
 
   for (const chatId of input.pendingChatIds) {
     const existing = mainByChat.get(chatId);
     if (existing) {
       existing.status = 'question';
-      existing.detail = 'Waiting for your input';
+      existing.detail = existing.live?.status === 'pending_approval' ? 'Needs approval' : 'Waiting for your input';
       continue;
     }
     const chat = chats.get(chatId);
@@ -106,14 +107,15 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
     const run = [...(chat.runs ?? [])].reverse().find((candidate) => candidate.status === 'running');
     const item: ActivityItem = {
       id: run ? `turn:${run.runId}` : `main:${chatId}`, title: chat.name || 'Chat', status: 'question',
-      detail: 'Waiting for your input', source: 'Chat', timestamp: chat.updatedAt ?? Date.now(), chatId,
+      detail: chat.agentRequestSummary?.some(request => request.kind === 'approval') ? 'Needs approval' : 'Waiting for your input', source: 'Chat', timestamp: chat.updatedAt ?? Date.now(), chatId,
       children: [], notifications: [], unread: false, resolved: false, background: false,
+      requestId: chat.agentRequestSummary?.[0]?.requestId, requestKind: chat.agentRequestSummary?.[0]?.kind,
     };
     items.set(item.id, item);
     mainByChat.set(chatId, item);
   }
 
-  for (const row of scopedLive.filter((candidate) => candidate.kind !== 'main_turn')) {
+  for (const row of scopedLive.filter((candidate) => candidate.kind !== 'main_turn' && candidate.kind !== 'agent_chat')) {
     const parent = mainByChat.get(row.chatId);
     if (row.kind === 'sub_agent' && parent) {
       parent.children.push(row);
@@ -137,6 +139,7 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
     if (!inScope(record.workspacePath ?? chats.get(record.chatId ?? '')?.workspacePath)) continue;
     const status = notificationStatus(record);
     const isQuestion = status === 'question';
+    if (record.activityId?.startsWith('sub:') && input.chats.some(chat => chat.subAgentRuns?.some(run => Boolean(run.childChatId) && record.activityId === `sub:${run.runId}`))) continue;
     const parent = record.parentActivityId ? items.get(record.parentActivityId) : undefined;
     const liveParent = record.chatId ? mainByChat.get(record.chatId) : undefined;
     const nested = record.kind === 'sub_agent_complete' || record.kind === 'sub_agent_failed';
@@ -152,7 +155,10 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
       items.set(id, item);
     }
     item.notifications.push(record);
-    item.unread ||= !record.read;
+    const canonicalChat = record.chatId ? chats.get(record.chatId) : undefined;
+    const canonicalOutcome = record.activityId === `execution:${canonicalChat?.agentExecution?.executionId}` && canonicalChat?.chatCommandVersion === 1;
+    item.unread ||= canonicalOutcome ? canonicalChat.unread === true : !record.read;
+    if (canonicalOutcome && !canonicalChat.turnError && !canonicalChat.unread && ['failed', 'recovery_required'].includes(canonicalChat.agentExecution!.status)) item.resolved = true;
     if (isQuestion && input.pendingChatIds.has(record.chatId ?? '')) {
       item.detail = record.preview;
       if (!item.live) item.timestamp = record.createdAt;
@@ -165,7 +171,7 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
     item.detail = record.preview;
     item.source = kindLabel(record.kind);
     item.timestamp = record.createdAt;
-    item.resolved = record.resolved === true;
+    item.resolved ||= record.resolved === true;
   }
 
   const all = [...items.values()];

@@ -9,6 +9,8 @@ import { executeTool } from '../tools/client';
 import type { OpenAIFunctionDefinition } from '../tools/definitions';
 import type { EvalConfig, EvalTask } from './types';
 import type { ToolExecutionResult } from '../types';
+import { BUILT_IN_TOOLS } from '../tools/definitions';
+import { createScriptedEvalToolExecutor, type EvalFixtureReport } from './tool-fixtures';
 
 /** Synthetic sub-agent config from task allow/deny lists. */
 function taskToTypeConfig(task: EvalTask): SubAgentTypeConfig {
@@ -29,20 +31,22 @@ export function resolveEvalTaskTools(
   task: EvalTask,
   modeId = 'build',
 ): OpenAIFunctionDefinition[] {
+  if (task.toolFixtures) return BUILT_IN_TOOLS.filter(tool => task.allowedTools.includes(tool.id) && !task.deniedTools.includes(tool.id)).map(tool => tool.definition);
   const parentEnabled = getEnabledToolDefinitionsForMode(modeId);
   const typeConfig = taskToTypeConfig(task);
   return resolveSubAgentTools(typeConfig, 'eval', parentEnabled);
 }
 
 /** Execute tool during eval with optional approval skip. */
+export type EvalExecuteTool = ((
+  name: string, args: Record<string, unknown>, toolContext?: import('../tools/client').ExecuteToolContext,
+) => Promise<ToolExecutionResult>) & { fixtureReport?(): EvalFixtureReport };
 export function createEvalExecuteTool(
   _config: EvalConfig,
   _workspacePath: string,
-): (
-  name: string,
-  args: Record<string, unknown>,
-  toolContext?: import('../tools/client').ExecuteToolContext,
-) => Promise<ToolExecutionResult> {
+  task?: EvalTask,
+): EvalExecuteTool {
+  if (task?.toolFixtures) return createScriptedEvalToolExecutor(task);
   return async (name, args, toolContext) => {
     return executeTool(name, args, {
       ...toolContext,

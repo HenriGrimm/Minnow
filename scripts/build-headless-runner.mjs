@@ -5,15 +5,15 @@
  *
  * In a checkout `bin/minnow.mjs` runs `src/headless/cli-main.ts` through tsx.
  * An installed build ships neither tsx nor the TypeScript sources, so the
- * Scheduler (the one packaged caller) spawns this bundle instead — see
- * `server/scheduler/headless-entry.js`.
+ * Scheduler spawns this bundle instead — see `server/scheduler/headless-entry.js`.
+ * The second export-only bundle shares Code's prompt composition with the server.
  */
 
 import fs from 'node:fs';
 import { isBuiltin } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HEADLESS_RUNNER_BUNDLE } from '../server/constants/headless-runner.js';
+import { HEADLESS_RUNNER_BUNDLE, CHAT_PREPARATION_BUNDLE } from '../server/constants/headless-runner.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -30,12 +30,12 @@ const REQUIRE_SHIM = [
  * @param {{ outfile?: string, logLevel?: 'silent' | 'error' | 'warning' | 'info' }} [options]
  * @returns {Promise<{ outfile: string, bytes: number, externals: string[] }>}
  */
-export async function buildHeadlessRunner(options = {}) {
+async function buildEntry(entry, defaultOutfile, options = {}) {
   const { build } = await import('esbuild');
-  const outfile = path.resolve(repoRoot, options.outfile ?? HEADLESS_RUNNER_BUNDLE);
+  const outfile = path.resolve(repoRoot, options.outfile ?? defaultOutfile);
   const result = await build({
     absWorkingDir: repoRoot,
-    entryPoints: ['src/headless/cli-main.ts'],
+    entryPoints: [entry],
     outfile,
     bundle: true,
     platform: 'node',
@@ -65,13 +65,21 @@ export async function buildHeadlessRunner(options = {}) {
   return { outfile, bytes: output?.bytes ?? fs.statSync(outfile).size, externals };
 }
 
+export function buildHeadlessRunner(options = {}) {
+  return buildEntry('src/headless/cli-main.ts', HEADLESS_RUNNER_BUNDLE, options);
+}
+
+export function buildChatPreparation(options = {}) {
+  return buildEntry('src/headless/chat-preparation.ts', CHAT_PREPARATION_BUNDLE, options);
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   try {
-    const { outfile, bytes } = await buildHeadlessRunner();
-    console.log(
-      `[build-headless-runner] ${path.relative(repoRoot, outfile).replace(/\\/g, '/')} (${Math.round(bytes / 1024)} KB)`,
-    );
+    for (const build of [buildHeadlessRunner, buildChatPreparation]) {
+      const { outfile, bytes } = await build();
+      console.log(`[build-headless-runner] ${path.relative(repoRoot, outfile).replace(/\\/g, '/')} (${Math.round(bytes / 1024)} KB)`);
+    }
   } catch (err) {
     console.error('[build-headless-runner]', err instanceof Error ? err.message : err);
     process.exit(1);

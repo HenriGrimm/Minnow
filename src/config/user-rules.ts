@@ -7,6 +7,8 @@ import { bumpPromptConfigEpoch } from '../chat/outbound-estimate-epochs';
 import { detectConfigServer, isConfigServerMode } from './storage-mode';
 import { getRules, putRules } from './api-client';
 import { defaultUserRulesSettings } from './defaults';
+import { composeUserRulesPayload } from './user-rules-compose';
+export { composeUserRulesPayload, getUserRulesPayloadForSend } from './user-rules-compose';
 
 /** Default group id for migrated and new rules. */
 export const DEFAULT_USER_RULES_GROUP_ID = 'general';
@@ -200,40 +202,6 @@ export function computeUserRulesTotalBytes(settings: UserRulesSettings): number 
   ).length;
 }
 
-/** Compose markdown-ish payload from enabled rules for the second system message. */
-export function composeUserRulesPayload(settings: UserRulesSettings): string {
-  const groupOrder = new Map(settings.groups.map((group, index) => [group.id, index]));
-  const activeRules = settings.rules.filter((rule) => rule.enabled && rule.text.trim());
-
-  activeRules.sort((a, b) => {
-    const groupDelta =
-      (groupOrder.get(a.groupId) ?? 999) - (groupOrder.get(b.groupId) ?? 999);
-    if (groupDelta !== 0) return groupDelta;
-    return settings.rules.indexOf(a) - settings.rules.indexOf(b);
-  });
-
-  const parts: string[] = [];
-  let currentGroupId: string | null = null;
-
-  for (const rule of activeRules) {
-    const group = settings.groups.find((row) => row.id === rule.groupId);
-    if (rule.groupId !== currentGroupId) {
-      currentGroupId = rule.groupId;
-      if (group?.name) parts.push(`## ${group.name}`);
-    }
-
-    const title = rule.title.trim();
-    const text = rule.text.trim();
-    if (title) {
-      parts.push(`### ${title}\n${text}`);
-    } else {
-      parts.push(text);
-    }
-  }
-
-  return parts.join('\n\n');
-}
-
 /** Legacy single-string export for setup profiles. */
 export function exportUserRulesLegacyText(settings: UserRulesSettings): string {
   return composeUserRulesPayload(settings);
@@ -299,14 +267,4 @@ export async function saveUserRules(settings: UserRulesSettings): Promise<void> 
 /** Clear in-memory cache (tests or after external edits). */
 export function resetUserRulesCache(): void {
   cachedRules = null;
-}
-
-/**
- * Trimmed rules body for the second system message on send.
- * Returns null when disabled or empty.
- */
-export function getUserRulesPayloadForSend(settings: UserRulesSettings): string | null {
-  if (!settings.enabled) return null;
-  const composed = composeUserRulesPayload(settings).trim();
-  return composed || null;
 }

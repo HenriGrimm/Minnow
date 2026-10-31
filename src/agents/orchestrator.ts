@@ -1,7 +1,10 @@
 import { resolveSubAgentBinding } from './sub-agent-binding.mjs';
 import { loadSubAgentConfig } from './sub-agent-config';
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
-import { findChatById, getActiveChat } from '../state/sessions';
+import { findChatById, getActiveChat, persistSessionsBeforeDeliveryAck } from '../state/sessions';
+import { isServerStorageMode } from '../config/storage-mode';
+import { loadAgentConversationsCapability } from '../config/agent-conversations-enabled';
+import { getChatTurnOwnerId } from '../chat/turn-ownership';
 import { resolveChatSpawnCwd } from '../state/chat-worktree';
 import { getSubAgentExecutorContext } from '../tools/sub-agent-executor-context';
 import { getWorkspacePath } from '../state/workspace';
@@ -63,6 +66,7 @@ const transcriptHydrateAttempted = new Set<string>();
 /** Spawn requests stopped before their run id was known to the renderer. */
 const pendingSpawnTokens = new Map<string, Set<symbol>>();
 const cancelledSpawnTokens = new Set<symbol>();
+const persistentSpawnTokens = new Set<symbol>();
 /**
  * A chat switch re-runs the parent hydrate; without this the whole run list is refetched and
  * every run re-published on each switch, fanning out to the card and activity-panel listeners.
@@ -102,7 +106,7 @@ async function request(path: string, init?: RequestInit): Promise<any> {
     body = null;
   }
   if (!response.ok) {
-    throw new Error(body?.error ?? `${response.status} from /api/agents${path}`);
+    throw new Error((typeof body?.error === 'string' ? body.error : body?.error?.message) ?? `${response.status} from /api/agents${path}`);
   }
   return body;
 }
@@ -177,6 +181,13 @@ export function subAgentRunFromFold(
   return {
     ...extra,
     runId: String(raw.runId ?? extra.runId ?? ''),
+    ...(typeof raw.childChatId === 'string' ? { phase } : {}),
+    ...(typeof raw.commandId === 'string' ? { commandId: raw.commandId } : {}),
+    ...(raw.modelOptions ? { modelOptions: raw.modelOptions as SubAgentRun['modelOptions'] } : {}),
+    ...(typeof raw.childChatId === 'string' ? { childChatId: raw.childChatId } : {}),
+    ...(typeof raw.executionId === 'string' ? { executionId: raw.executionId } : {}),
+    ...(typeof raw.journalOwnerId === 'string' ? { journalOwnerId: raw.journalOwnerId } : {}),
+    ...(raw.completionPolicy ? { completionPolicy: raw.completionPolicy as SubAgentRun['completionPolicy'] } : {}),
     type: String(raw.type ?? extra.type ?? ''),
     task: String(raw.task ?? extra.task ?? ''),
     status,
@@ -612,6 +623,16 @@ export async function spawnSubAgent(
   input: SpawnSubAgentInput,
 ): Promise<SpawnSubAgentResult | AggregateResult> {
   const parentChatId = resolveParentChatId(input);
+  input.signal?.throwIfAborted();
+  const capability = isServerStorageMode() ? await loadAgentConversationsCapability() : null;
+  const persistent = capability?.creationEnabled === true;
+  if (!persistent && (input.target || input.title || input.workspaceStrategy || input.workspaceId)) {
+    throw new Error('Persistent agent conversation creation is unavailable on this server.');
+  }
+  const ownerId = persistent ? getChatTurnOwnerId(parentChatId) : undefined;
+  if (persistent && !ownerId) throw new Error('Delegation requires the currently executing parent conversation.');
+  if (persistent && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the delegating conversation.');
+  input.signal?.throwIfAborted();
   const cwd = resolveSpawnCwd(parentChatId);
   let providerId = input.providerId?.trim() ?? '';
   let modelId = input.modelId?.trim() ?? '';
@@ -626,21 +647,33 @@ export async function spawnSubAgent(
     pendingSpawnTokens.set(parentChatId, pending);
   }
   pending.add(spawnToken);
+  if (persistent) persistentSpawnTokens.add(spawnToken);
   let body: any;
   try {
     body = await request('', {
       method: 'POST',
+      ...(input.signal ? { signal: input.signal } : {}),
       body: JSON.stringify({
         type: input.type,
         task: input.task,
         parentChatId,
-        cwd,
-        ...(input.parentTurnId ? { parentTurnId: input.parentTurnId } : {}),
+        ...(!persistent ? { cwd } : {}),
+        ...(persistent ? {
+          conversationVersion: 1, ownerId,
+          ...(input.wait === undefined ? {} : { wait: input.wait }),
+          ...(input.title ? { title: input.title } : {}),
+          ...(input.target ? { target: input.target } : {}),
+          ...(input.clientRequestId ? { client_request_id: input.clientRequestId } : {}),
+          ...(input.workspaceStrategy ? { workspace_strategy: input.workspaceStrategy } : {}),
+          ...(input.workspaceId ? { workspace_id: input.workspaceId } : {}),
+        } : {}),
+        ...(!persistent && input.parentTurnId ? { parentTurnId: input.parentTurnId } : {}),
         ...(input.parentToolCallId ? { parentToolCallId: input.parentToolCallId } : {}),
-        ...(providerId ? { providerId } : {}),
-        ...(modelId ? { modelId } : {}),
-        modelSource,
-        ...(parentModel ? { parentModel, parentWorkspace: parent?.workspacePath } : {}),
+        ...(persistent && input.category ? { category: input.category } : {}),
+        ...(persistent && input.boardTaskId ? { board_task_id: input.boardTaskId } : {}),
+        ...(!persistent ? { ...(providerId ? { providerId } : {}), ...(modelId ? { modelId } : {}), modelSource,
+          ...(parentModel ? { parentModel, parentWorkspace: parent?.workspacePath } : {}) }
+          : input.providerId || input.modelId ? { providerId: input.providerId, modelId: input.modelId } : {}),
       }),
     });
   } catch (err) {
@@ -648,6 +681,7 @@ export async function spawnSubAgent(
     throw err;
   } finally {
     pending.delete(spawnToken);
+    persistentSpawnTokens.delete(spawnToken);
     if (pending.size === 0) pendingSpawnTokens.delete(parentChatId);
   }
   if (body.run && typeof body.run === 'object') adoptRaw(body.run, Number(body.seq) || 0);
@@ -657,6 +691,10 @@ export async function spawnSubAgent(
   const result: SpawnSubAgentResult = {
     runId: String(body.runId),
     status: (body.status as SubAgentStatus) ?? 'queued',
+    ...(typeof body.childChatId === 'string' ? { childChatId: body.childChatId } : {}),
+    ...(typeof body.executionId === 'string' ? { executionId: body.executionId } : {}),
+    ...(typeof body.commandId === 'string' ? { commandId: body.commandId } : {}),
+    ...(typeof body.link === 'string' ? { link: body.link } : {}),
   };
   if (cancelledSpawnTokens.delete(spawnToken)) {
     cancelSubAgent(result.runId, 'parent_chat_abort');
@@ -742,14 +780,18 @@ function optimisticallyCancelSubAgent(runId: string): void {
   releaseClient(runId);
 }
 
-export function cancelAllForParentChat(parentChatId: string): void {
+export function cancelAllForParentChat(parentChatId: string, options: { includePersistent?: boolean } = {}): void {
   const previous = listSubAgentRunsForParentChat(parentChatId).filter(
-    (run) => !isSubAgentRunTerminal(run.status),
+    (run) => !isSubAgentRunTerminal(run.status) && (options.includePersistent !== false || !run.childChatId),
   );
   for (const run of previous) optimisticallyCancelSubAgent(run.runId);
 
   const pending = pendingSpawnTokens.get(parentChatId);
-  for (const token of pending ?? []) cancelledSpawnTokens.add(token);
+  for (const token of pending ?? []) if (options.includePersistent !== false || !persistentSpawnTokens.has(token)) cancelledSpawnTokens.add(token);
+  if (options.includePersistent === false) {
+    for (const run of previous) cancelSubAgent(run.runId, 'parent_chat_abort');
+    return;
+  }
   if (previous.length === 0 && !pending?.size) return;
 
   void request(`/cancel?parentChatId=${encodeURIComponent(parentChatId)}`, { method: 'POST' })
@@ -892,13 +934,22 @@ function outcomeForRun(run: SubAgentRun) {
 }
 
 export function formatAggregateResult(result: AggregateResult): string {
-  let json = JSON.stringify(result, null, 2);
+  const json = JSON.stringify(result, null, 2);
   if (utf8ByteLength(json) <= AGGREGATE_MAX_BYTES) return json;
-  const suffix = '\n…[truncated]';
-  while (utf8ByteLength(json + suffix) > AGGREGATE_MAX_BYTES && json.length > 0) {
-    json = json.slice(0, Math.floor(json.length * 0.9));
+  const bounded = {
+    runId: result.runId, type: result.type, status: result.status, summary: result.summary,
+    outcome: { summary: result.outcome.summary, findings: [], artifacts: [] },
+    startedAt: result.startedAt, endedAt: result.endedAt, toolTurns: result.toolTurns,
+    cancelled: result.cancelled, terminalReason: result.terminalReason, truncated: true,
+  };
+  let output = JSON.stringify(bounded, null, 2);
+  while (utf8ByteLength(output) > AGGREGATE_MAX_BYTES && (bounded.summary.length || bounded.outcome.summary.length)) {
+    bounded.summary = bounded.summary.slice(0, Math.floor(bounded.summary.length / 2));
+    bounded.outcome.summary = bounded.outcome.summary.slice(0, Math.floor(bounded.outcome.summary.length / 2));
+    output = JSON.stringify(bounded, null, 2);
   }
-  return json + suffix;
+  if (utf8ByteLength(output) > AGGREGATE_MAX_BYTES) throw new Error('The task result identity exceeds the supported response size.');
+  return output;
 }
 
 export function buildAggregateResult(run: SubAgentRun): AggregateResult {

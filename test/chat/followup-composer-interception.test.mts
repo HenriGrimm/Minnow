@@ -114,15 +114,23 @@ describe('/followup composer interception', () => {
     assert.equal(chat.history.some((row) => row.content === '/followup review the build'), false);
   });
 
-  test('leaves ordinary text on the normal path', async () => {
+  test('ordinary mid-turn text steers the current run', async () => {
     const chat = setup({ streaming: true });
     setComposerText('keep going with the refactor');
 
     await sendMessageWithTools();
 
     assert.equal(getFollowupChain(chat), null);
-    assert.equal(getPendingMessageQueue(chat).length, 1);
-    assert.equal(getPendingMessageQueue(chat)[0]?.text, 'keep going with the refactor');
+    assert.equal(getPendingMessageQueue(chat).length, 0);
+    assert.equal(chat.pendingSteerMessage, 'keep going with the refactor');
+  });
+
+  test('an explicit queue action waits for the current turn', async () => {
+    const chat = setup({ streaming: true });
+    setComposerText('review the result afterwards');
+    await sendMessageWithTools({ followupDelivery: 'queue' });
+    assert.equal(chat.pendingSteerMessage, undefined);
+    assert.equal(getPendingMessageQueue(chat)[0]?.text, 'review the result afterwards');
   });
 
   test('strict programmatic send rejects when no model is selected', async () => {

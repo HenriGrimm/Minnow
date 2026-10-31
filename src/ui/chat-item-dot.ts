@@ -2,6 +2,7 @@ import { streamingChatIds } from '../app-state';
 import { chatAwaitingUserInputTool } from '../chat/incomplete-tool-batch';
 import { getActiveChat, markChatDirty, sessionState } from '../state/sessions';
 import type { Chat } from '../types';
+import { projectChatRelationships } from '../state/chat-relationships';
 
 /** Ephemeral "last time user viewed this chat" for unread detection (not persisted). */
 const chatLastOpenedAt = new Map<string, number>();
@@ -49,6 +50,7 @@ export function getChatItemDotContext(activeChatId: string | null): ChatItemDotC
 
 /** True when this chat has an in-flight model turn (any stream phase). */
 function isChatStreamWorking(chat: Chat, ctx: ChatItemDotContext): boolean {
+  if (chat.chatCommandVersion === 1 && chat.agentExecution) return ['running', 'loading_model'].includes(chat.agentExecution.status);
   const phase = ctx.streamPhaseByChatId.get(chat.id);
   const streamingThisChat = ctx.streamingChatIds.has(chat.id);
   if (streamingThisChat) {
@@ -74,6 +76,7 @@ function isChatInputPending(chatId: string, ctx: ChatItemDotContext): boolean {
 
 /** One resolved visual state per chat. */
 export function resolveChatItemDotState(chat: Chat, ctx: ChatItemDotContext): ChatItemDotState {
+  if ((chat.agentRequestSummary ?? chat.agentRequests?.filter(request => request.state === 'pending'))?.length) return 'needs-input';
   if (isChatInputPending(chat.id, ctx)) {
     return 'needs-input';
   }
@@ -82,10 +85,10 @@ export function resolveChatItemDotState(chat: Chat, ctx: ChatItemDotContext): Ch
   if (chat.superPlanView?.needsInput && !chat.superPlanView.finished) {
     return 'needs-input';
   }
-  if (chatAwaitingUserInputTool(chat)) {
+  if (!chat.chatCommandVersion && !chat.agentConversation && chatAwaitingUserInputTool(chat)) {
     return 'needs-input';
   }
-  if (chat.id !== ctx.activeChatId && chat.turnError === true) {
+  if (chat.id !== ctx.activeChatId && (chat.turnError === true || chat.agentExecution?.status === 'recovery_required')) {
     return 'error';
   }
   if (isChatStreamWorking(chat, ctx)) {
@@ -95,6 +98,20 @@ export function resolveChatItemDotState(chat: Chat, ctx: ChatItemDotContext): Ch
     return 'unread';
   }
   return 'idle';
+}
+
+/** Fold lightweight descendant attention once; no child histories are needed. */
+export function resolveAgentAncestorDotStates(chats: readonly Chat[], ctx: ChatItemDotContext): Map<string, ChatItemDotState> {
+  const graph = projectChatRelationships(chats), result = new Map(chats.map(chat => [chat.id, resolveChatItemDotState(chat, ctx)]));
+  const rank: Record<ChatItemDotState, number> = { idle: 0, working: 1, unread: 2, error: 3, 'needs-input': 4 };
+  const ordered = [...graph.roots];
+  for (let index = 0; index < ordered.length; index++) ordered.push(...(graph.children.get(ordered[index]!.id) ?? []));
+  for (let index = ordered.length - 1; index >= 0; index--) {
+    const child = ordered[index]!, parent = graph.parentById.get(child.id); if (!parent) continue;
+    const next = result.get(child.id)!;
+    if (rank[next] > rank[result.get(parent)!]) result.set(parent, next);
+  }
+  return result;
 }
 
 /** True when the sidebar should render a colored status dot (not idle/working). */
@@ -108,11 +125,12 @@ const GROUP_DOT_PRIORITY: readonly ChatItemDotState[] = ['needs-input', 'error',
 export function resolveGroupHeaderDotState(
   members: readonly Chat[],
   ctx: ChatItemDotContext,
+  attention?: ReadonlyMap<string, ChatItemDotState>,
 ): ChatItemDotState | null {
   let best: ChatItemDotState | null = null;
   let bestRank = GROUP_DOT_PRIORITY.length;
   for (const chat of members) {
-    const state = resolveChatItemDotState(chat, ctx);
+    const state = attention?.get(chat.id) ?? resolveChatItemDotState(chat, ctx);
     if (!isChatItemDotVisible(state)) continue;
     const rank = GROUP_DOT_PRIORITY.indexOf(state);
     if (rank >= 0 && rank < bestRank) {
@@ -191,6 +209,7 @@ export function syncChatItemDotsInDom(): void {
   if (!list) return;
   // One pass over chats instead of a find/filter per row and per group header (MIN-793).
   const chatById = new Map(state.chats.map((c) => [c.id, c]));
+  const attention = resolveAgentAncestorDotStates(state.chats, ctx);
   const chatsByGroupId = new Map<string, typeof state.chats>();
   for (const chat of state.chats) {
     const groupId = chat.groupId;
@@ -204,7 +223,8 @@ export function syncChatItemDotsInDom(): void {
     if (!id) continue;
     const chat = chatById.get(id);
     if (!chat) continue;
-    const dotState = resolveChatItemDotState(chat, ctx);
+    const dotState = attention.get(chat.id) ?? resolveChatItemDotState(chat, ctx);
+    row.dataset.agentAttention = dotState;
     const inGroup = row.classList.contains('chat-item-row--in-group');
     const dot = row.querySelector('.chat-item-dot');
     if (inGroup) {
@@ -229,7 +249,7 @@ export function syncChatItemDotsInDom(): void {
     const groupId = head.dataset.groupId;
     if (!groupId) continue;
     const members = chatsByGroupId.get(groupId) ?? [];
-    applyGroupHeaderDotClasses(head, resolveGroupHeaderDotState(members, ctx));
+    applyGroupHeaderDotClasses(head, resolveGroupHeaderDotState(members, ctx, attention));
   }
 }
 

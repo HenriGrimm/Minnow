@@ -365,7 +365,23 @@ export function createJournalStore(options) {
 
     return serialise(safe, async () => {
       const seq = (await nextSeq(safe)) + 1;
-      const stamped = { v: 1, ...event, seq, ts: now() };
+      if (opts.idempotencyKey !== undefined) {
+        safeSegment(opts.idempotencyKey, 'event key');
+        const previous = (await readEvents(safe)).find(row => row.idempotencyKey === opts.idempotencyKey);
+        if (previous) {
+          const canonical = value => {
+            if (Array.isArray(value)) return value.map(canonical);
+            if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])]));
+            return value;
+          };
+          const { seq: _seq, ts: _ts, idempotencyKey: _key, ...payload } = previous;
+          if (JSON.stringify(canonical(payload)) !== JSON.stringify(canonical({ v: 1, ...event }))) {
+            throw Object.assign(new Error('Journal event identity was reused with different content'), { code: 'idempotency_conflict' });
+          }
+          return previous;
+        }
+      }
+      const stamped = { v: 1, ...event, ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}), seq, ts: now() };
       assertValid(stamped);
 
       await fs.mkdir(dirOf(safe), { recursive: true });
@@ -573,6 +589,42 @@ export function createJournalStore(options) {
     highestSeq.clear();
   }
 
+  /** Restore exact stamped events through the same per-entry lock as every append. */
+  function restoreEvents(id, events) {
+    const safe = safeSegment(id, idKind);
+    if (!Array.isArray(events)) return Promise.reject(new Error('Restored journal events must be an array'));
+    return serialise(safe, async () => {
+      for (const event of events) assertValid(event);
+      for (const target of [dirOf(safe), journalOf(safe)]) {
+        try { if ((await fs.lstat(target)).isSymbolicLink()) throw new Error('Cannot restore a journal through a linked path'); }
+        catch (error) { if (error?.code !== 'ENOENT') throw error; }
+      }
+      const existing = await readEvents(safe);
+      const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+      const append = [];
+      for (const event of events) {
+        if (event.seq <= existing.length) {
+          if (JSON.stringify(canonical(existing[event.seq - 1])) !== JSON.stringify(canonical(event))) throw Object.assign(new Error('Restored journal diverges from the existing timeline'), { code: 'recovery_required' });
+        } else {
+          if (event.seq !== existing.length + append.length + 1) throw Object.assign(new Error('Restored journal has a sequence gap'), { code: 'recovery_required' });
+          append.push(event);
+        }
+      }
+      if (!append.length) return;
+      await fs.mkdir(dirOf(safe), { recursive: true });
+      let text = '';
+      try { text = await fs.readFile(journalOf(safe), 'utf8'); } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+      // Normal replay tolerates a torn final write. Appending after that byte
+      // fragment would turn it into permanent mid-file corruption.
+      for (const line of text.split(/\r?\n/).filter(line => line.trim())) {
+        try { JSON.parse(line); } catch { throw Object.assign(new Error('The existing journal has a torn tail; preserve it before recovery'), { code: 'recovery_required' }); }
+      }
+      await durableAppend(journalOf(safe), (text && !text.endsWith('\n') ? '\n' : '') + append.map(event => JSON.stringify(event) + '\n').join(''));
+      await recordTail(safe, append.at(-1).seq);
+    });
+  }
+
   return {
     namespace,
     entryDir: dirOf,
@@ -592,5 +644,6 @@ export function createJournalStore(options) {
     deleteEntry,
     listEntries,
     resetCache,
+    restoreEvents,
   };
 }

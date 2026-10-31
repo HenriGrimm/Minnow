@@ -30,6 +30,8 @@ async function loadDelegationPromptMap() {
     path.join(toolDir, 'sub-agent-delegation.lite.md'),
     'utf8',
   );
+  for (const profile of ['full', 'lite']) map[`./tool-usage/chat-coordination.${profile}.md`] =
+    await fs.readFile(path.join(toolDir, `chat-coordination.${profile}.md`), 'utf8');
   map['./tool-usage/default.full.md'] = await fs.readFile(
     path.join(toolDir, 'default.full.md'),
     'utf8',
@@ -38,6 +40,8 @@ async function loadDelegationPromptMap() {
     path.join(baseDir, 'default.full.md'),
     'utf8',
   );
+  map['./tool-usage/default.lite.md'] = await fs.readFile(path.join(toolDir, 'default.lite.md'), 'utf8');
+  map['./base/default.lite.md'] = await fs.readFile(path.join(baseDir, 'default.lite.md'), 'utf8');
   return map;
 }
 
@@ -102,5 +106,30 @@ describe('sub-agent-delegation prompts', () => {
       enabledToolIds: ['spawn_sub_agent'],
     });
     assert.doesNotMatch(out, /Sub-agent delegation/);
+  });
+
+  test('full and lite guidance preserves explicit counts/options and persistent follow-up semantics', async () => {
+    registerPromptFilesFromRaw(await loadDelegationPromptMap());
+    for (const profile of ['full', 'lite']) {
+      const body = loadPromptById('tool-usage', 'sub-agent-delegation', profile).body;
+      assert.match(body, /counts|count/); assert.match(body, /provider.*model/i);
+      assert.match(body, /unsupported/); assert.match(body, /childChatId/); assert.match(body, /fresh/i);
+      assert.match(body, /no polling|[Dd]o \*\*not\*\* poll|do not poll/);
+    }
+  });
+
+  test('coordination guidance is tool- and mode-gated in both profiles', async () => {
+    registerPromptFilesFromRaw(await loadDelegationPromptMap());
+    const base = { cwd: '/proj', expertId: null, workAgentId: null, skillBody: null, memoryBlock: null };
+    for (const profile of ['full', 'lite']) for (const modeId of ['general', 'build', 'plan', 'debug']) {
+      const body = composeSystemPrompt({ ...base, profile, modeId, enabledToolIds: ['chat_send', 'chat_wait'] });
+      assert.match(body, /## Chat coordination/); assert.match(body, /execution_id/); assert.match(body, /timeout.*never.*stop|[Tt]imeout.*not.*stop|timeout never cancels/);
+      assert.match(body, /human authorization/);
+    }
+    for (const modeId of ['build', 'orchestrate', 'onboarding']) {
+      const body = composeSystemPrompt({ ...base, profile: 'full', modeId,
+        enabledToolIds: modeId === 'build' ? ['read_file'] : ['chat_send'] });
+      assert.doesNotMatch(body, /## Chat coordination/);
+    }
   });
 });

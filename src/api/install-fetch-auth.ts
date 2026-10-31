@@ -52,17 +52,13 @@ export function installFetchAuth(): void {
     // A workspace-bound view must name its folder even before it has a token,
     // or an early request would silently resolve against the server's global.
     // Paired devices authenticate with their HttpOnly cookie (same-origin).
-    const request =
-      !token && !workspace
-        ? nativeFetch(input, init)
-        : (() => {
-            const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-            if (token) headers.set(TOKEN_HEADER, token);
-            if (workspace) headers.set(WORKSPACE_HEADER, workspace);
-            return input instanceof Request
-              ? nativeFetch(new Request(input, { ...init, headers }))
-              : nativeFetch(input, { ...init, headers });
-          })();
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+    headers.set('X-Minnow-Chat-Protocol', '1');
+    if (token) headers.set(TOKEN_HEADER, token);
+    if (workspace) headers.set(WORKSPACE_HEADER, workspace);
+    const request = input instanceof Request
+      ? nativeFetch(new Request(input, { ...init, headers }))
+      : nativeFetch(input, { ...init, headers });
     return request.then((response) => {
       noticeDeviceUnauthorized(input, response);
       return response;

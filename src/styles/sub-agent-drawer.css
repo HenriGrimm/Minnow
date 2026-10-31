@@ -23,6 +23,74 @@
   animation: fadeUp 0.22s var(--ease-out);
 }
 
+.sub-agent-card--persistent { cursor: default; }
+.sub-agent-card--persistent > a { color: inherit; text-decoration: none; cursor: pointer; }
+.sub-agent-card--persistent > a:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 1px; }
+.sub-agent-card__selection { padding: 0 8px 3px 23px; color: var(--mn-fg-subtle); font-size: 11px; }
+.sub-agent-card__progress { margin-inline-start: 23px; color: var(--mn-fg-muted); font-size: 12px; }
+.sub-agent-card__result { margin: 0 0 4px 23px; color: var(--mn-fg-muted); }
+.sub-agent-card__result summary { cursor: pointer; font-size: 12px; }
+.sub-agent-card__result pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.5; }
+.sub-agent-group { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); }
+.sub-agent-group__summary { padding: 6px 0; color: var(--mn-fg-muted); font-size: 12px; cursor: pointer; }
+.sub-agent-group__body { display: flex; flex-direction: column; gap: 4px; padding-inline-start: 12px; }
+.sub-agent-group__summary:focus-visible,
+.sub-agent-card__result summary:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+
+.agent-chat-context { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--mn-border); font-size: 12px; color: var(--mn-fg-muted); }
+.agent-chat-context__heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-weight: 500; color: var(--mn-fg); }
+.agent-chat-context a,
+.agent-message a { color: var(--mn-accent-ink); }
+.agent-chat-context__path { margin-top: 5px; overflow-wrap: anywhere; }
+.agent-chat-context__state { display: block; margin-top: 5px; }
+.agent-chat-context__policy,
+.agent-chat-context__model-hint { margin: 5px 0 0; font-size: 11px; line-height: 1.5; }
+.agent-chat-context__controls:empty { display: none; }
+.managed-chat-requests { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); margin-bottom: 12px; font-family: var(--font-ui); font-size: 12px; color: var(--mn-fg); }
+.managed-chat-requests:has(.managed-chat-scopes:empty):has(.managed-chat-requests__list:empty):has(.managed-chat-requests__notice[hidden]) { display: none; }
+.managed-chat-scopes, .managed-chat-request__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.managed-chat-requests__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--mn-fg-muted); margin: 8px 0; font-size: 11px; }
+.managed-chat-requests[hidden], .managed-chat-scopes[hidden], .managed-chat-requests__pager[hidden], .managed-chat-request__form[hidden], .managed-chat-request textarea[hidden] { display: none; }
+.managed-chat-scopes { margin-bottom: 8px; }
+.managed-chat-scopes__status { color: var(--mn-fg-muted); }
+.managed-chat-scopes p { flex-basis: 100%; color: var(--mn-warning); }
+.managed-chat-requests button { padding: 5px 9px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.managed-chat-requests button:disabled { opacity: 0.5; cursor: default; }
+.managed-chat-requests button:focus-visible, .managed-chat-requests input:focus-visible, .managed-chat-requests textarea:focus-visible, .managed-chat-request summary:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.managed-chat-request { padding: 10px 0 12px; border-top: 1px solid var(--mn-border); }
+.managed-chat-request h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.managed-chat-request__status, .managed-chat-request__scope { margin: 5px 0; color: var(--mn-fg-muted); font-size: 11px; overflow-wrap: anywhere; }
+.managed-chat-request__status:focus { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.managed-chat-request fieldset { border: 0; padding: 0; margin: 12px 0; min-width: 0; }
+.managed-chat-request legend { padding: 0; margin-bottom: 7px; font-weight: 500; }
+.managed-chat-request__option { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.managed-chat-request__option input { margin-top: 2px; accent-color: var(--mn-accent); }
+.managed-chat-request__option small { display: block; color: var(--mn-fg-muted); font-size: 11px; margin-top: 3px; }
+.managed-chat-request textarea { width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: var(--mn-surface-1); color: var(--mn-fg); font: inherit; resize: vertical; }
+.managed-chat-request pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; font-size: 11px; }
+.managed-chat-request details { margin: 8px 0; }
+.managed-chat-request summary { cursor: pointer; }
+@media (pointer: coarse) { .managed-chat-requests button, .managed-chat-request__option { min-height: 44px; } }
+.agent-message { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); font-size: 12px; }
+.agent-message > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 7px 0; cursor: pointer; color: var(--mn-fg-muted); }
+.agent-message > summary::before { content: '▸'; }
+.agent-message[open] > summary::before { content: '▾'; }
+.agent-message__title { font-weight: 500; color: var(--mn-fg); }
+.agent-message__preview { flex: 1; min-width: 100px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.agent-message__delivery,
+.agent-message time { font-size: 11px; color: var(--mn-fg-subtle); }
+.agent-message > .agent-message__body { max-width: 100%; background: transparent; border: 0; padding: 8px 0; }
+.agent-message > summary:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.agent-message__task-link { margin-top: 8px; padding: 5px 8px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: transparent; color: var(--mn-fg); font: inherit; cursor: pointer; }
+.agent-message__task-link:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+@media (pointer: coarse) {
+  .sub-agent-card--persistent > a,
+  .sub-agent-group__summary,
+  .sub-agent-card__result summary,
+  .agent-message > summary,
+  .agent-chat-context a { min-height: 44px; }
+}
+
 /* The spawn row (and a round of only spawns) is told by the card instead. */
 .tool-call-msg--delegated,
 .tool-call-batch--delegated {

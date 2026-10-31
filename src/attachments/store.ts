@@ -384,6 +384,7 @@ export function renderAttachPreview(): void {
 /** Handles change on the hidden #fileInput (also exposed on window for inline HTML). */
 export function onFileSelected(event: Event): void {
   const input = event.target as HTMLInputElement;
+  if (input.disabled) { input.value = ''; return; }
   const list = input.files;
   if (!list?.length) return;
 

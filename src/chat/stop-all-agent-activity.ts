@@ -18,6 +18,9 @@ import {
 } from '../research/panel';
 import type { ChatGroup, LeftoverBoardTask } from '../types';
 import { forceCloseAskQuestionModal } from '../ui/question-cards-modal';
+import { sendManagedChatAction } from './managed-chat-client';
+import { chatReadOnlyReason } from '../state/chat-relationships';
+import { reportBackgroundError } from '../boot/report-background-error';
 
 function leftoverBoardHasLiveWork(group: ChatGroup): boolean {
   if (isLeftoverBoardRunning(group)) return true;
@@ -56,7 +59,7 @@ function hasAgentActivityPanelRows(): boolean {
     })),
     questionPendingChatIds: getChatItemDotContext(null).inputPendingChatIds,
   });
-  return rows.length > 0;
+  return rows.some(row => row.kind !== 'agent_chat' || row.canStop === true);
 }
 
 /** True when global stop-all would affect any in-flight agent work. */
@@ -82,7 +85,7 @@ function collectPresentationChatIds(extra?: ReadonlySet<string>): Set<string> {
       if (chat.currentGenerationId?.trim()) ids.add(chat.id);
     }
   }
-  return ids;
+  return new Set([...ids].filter(id => sessionState?.chats.find(chat => chat.id === id)?.chatCommandVersion !== 1));
 }
 
 function flushStoppedAgentPresentation(extraChatIds?: ReadonlySet<string>): void {
@@ -96,8 +99,17 @@ export function stopAllAgentActivity(): void {
   forceCloseAskQuestionModal();
 
   const handledChatIds = new Set<string>();
+  const managedChatIds = new Set<string>();
 
   if (sessionState) {
+    for (const chat of sessionState.chats) {
+      if (chat.chatCommandVersion !== 1) continue;
+      managedChatIds.add(chat.id);
+      const execution = chat.agentExecution;
+      if (!execution || ['completed', 'failed', 'stopped', 'stopping', 'recovery_required'].includes(execution.status) || chatReadOnlyReason(chat) || chat.agentConversation?.capabilities?.canStop === false) continue;
+      void sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'turn' })
+        .catch(error => reportBackgroundError('activity-stop-all', error));
+    }
     for (const group of sessionState.groups ?? []) {
       if (!leftoverBoardHasLiveWork(group)) continue;
       const planner = getPlannerChatForGroup(group);
@@ -124,15 +136,16 @@ export function stopAllAgentActivity(): void {
   }
 
   for (const chatId of streamingChatIds) {
-    if (handledChatIds.has(chatId)) continue;
+    if (handledChatIds.has(chatId) || managedChatIds.has(chatId)) continue;
     stopGeneration(chatId, 'user');
   }
   for (const chatId of abortByChatId.keys()) {
-    if (handledChatIds.has(chatId)) continue;
+    if (handledChatIds.has(chatId) || managedChatIds.has(chatId)) continue;
     stopGeneration(chatId, 'user');
   }
 
   for (const run of listActiveSubAgentRuns()) {
+    if (run.childChatId && managedChatIds.has(run.childChatId)) continue;
     if (run.parentChatId && !handledChatIds.has(run.parentChatId)) {
       stopGeneration(run.parentChatId, 'user');
       handledChatIds.add(run.parentChatId);

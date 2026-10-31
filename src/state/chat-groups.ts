@@ -124,7 +124,7 @@ function sortBoardGroupMembers(group: ChatGroup, members: Chat[]): Chat[] {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export function isChatPinned(chat: Chat): boolean {
-  return typeof chat.pinnedAt === 'number' && chat.pinnedAt > 0;
+  return !chat.agentConversation && typeof chat.pinnedAt === 'number' && chat.pinnedAt > 0;
 }
 
 /**
@@ -132,6 +132,7 @@ export function isChatPinned(chat: Chat): boolean {
  * not activity, so the chat keeps its slot when it is unpinned again.
  */
 export function setChatPinned(chat: Chat, pinned: boolean): void {
+  if (chat.agentConversation) return;
   if (shouldRelayChat(chat.id)) {
     void sendRemoteChatCommand(chat.id, 'configure', { patch: { pinned } })
       .catch(error => setStatus('err', String(error?.message || error)));
@@ -278,10 +279,15 @@ export function deleteGroup(
   const fallbackModelId = options.fallbackModelId ?? '';
 
   if (group.orchestrateBoard) {
+    const chatIds = listBoardGroupChatIds(group, state.chats);
+    if (chatIds.some(chatId => state.chats.some(chat => chat.id === chatId && (chat.agentConversation || chat.chatCommandVersion === 1)) ||
+      state.chats.some(chat => chat.agentConversation?.parentChatId === chatId))) {
+      setStatus('err', 'Delete persistent agent conversations individually before deleting this board folder.');
+      return { ok: false, activeChanged: false };
+    }
     if (state.activeBoardGroupId === id) {
       dismissActiveBoardView();
     }
-    const chatIds = listBoardGroupChatIds(group, state.chats);
     teardownBoardGroup(group, chatIds);
     groups.splice(idx, 1);
     if (state.lastBoardGroupId === id) {
@@ -326,7 +332,7 @@ export function deleteGroup(
 export function assignChatToGroup(chatId: string, groupId: string | null): void {
   const state = requireSession();
   const chat = state.chats.find((c) => c.id === chatId);
-  if (!chat) return;
+  if (!chat || chat.agentConversation) return;
   if (groupId) {
     const group = (state.groups ?? []).find((g) => g.id === groupId);
     if (!group) return;

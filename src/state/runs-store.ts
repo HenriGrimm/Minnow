@@ -3,6 +3,7 @@
  */
 
 import { randomUUID } from '../lib/random-id.ts';
+import { supportsLocalHistoryMutation } from './chat-relationships';
 import type {
   Chat,
   ChatStopReason,
@@ -354,6 +355,7 @@ export function activateBranch(
   forkHistoryIndex: number,
   branchId: string,
 ): boolean {
+  if (!supportsLocalHistoryMutation(chat)) return false;
   const currentActive = getActiveRun(chat, forkHistoryIndex);
   if (currentActive?.branchId === branchId) {
     persistActiveBranchSuffix(chat, forkHistoryIndex);

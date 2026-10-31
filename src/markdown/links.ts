@@ -8,6 +8,7 @@
  */
 
 import { isMarkdownFilePath } from '../ui/file-markdown-path';
+import { chatIdFromLink } from '../state/chat-relationships';
 
 const HTTP_URL_RE = /^https?:\/\//i;
 
@@ -65,6 +66,7 @@ export type MarkdownLinkAction =
   | { type: 'ignore' }
   | { type: 'http'; url: string }
   | { type: 'heading'; id: string }
+  | { type: 'chat'; chatId: string }
   | {
       type: 'workspace';
       path: string;
@@ -238,6 +240,8 @@ export function classifyMarkdownHref(
   }
 
   if (trimmed.startsWith('#')) {
+    const chatId = chatIdFromLink(trimmed);
+    if (chatId) return { type: 'chat', chatId };
     if (IN_APP_HASH_RE.test(trimmed)) return { type: 'pass' };
     let id = trimmed.slice(1);
     try {
@@ -382,6 +386,11 @@ export function handleMarkdownLinkClick(event: MouseEvent): void {
   event.stopPropagation();
 
   if (action.type === 'ignore') return;
+
+  if (action.type === 'chat') {
+    void import('../os/chat-launch').then(module => module.launchCodeWithChat(action.chatId));
+    return;
+  }
 
   if (action.type === 'http') {
     void import('../ui/minnow-browser-links').then((mod) => {

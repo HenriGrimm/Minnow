@@ -1,4 +1,6 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
+import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
+import { getAgentConversationsCapabilitySync } from '../config/agent-conversations-enabled';
 import { createRefreshGate } from './refresh-gate';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeTodoWrite } from './todo-tools';
@@ -159,6 +161,9 @@ export function getLocalServerAvailable(): boolean {
 
 /** Optional context for streaming terminal runs and approval UI. */
 export interface ExecuteToolContext {
+  /** Private proof from the authenticated server host channel; never model JSON. */
+  serverAdmission?: import('./server-admission').ServerToolAdmission;
+  executionId?: string;
   /** Pins panel calls to the release the user opened, including time spent awaiting approval. */
   pluginRelease?: string;
   chatId?: string;
@@ -281,6 +286,13 @@ async function executeToolInner(
   context: ExecuteToolContext = {},
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
+
+  if (AGENT_CHAT_TOOL_IDS.includes(name)) {
+    if (getToolPermissionForId(loadToolConfig(), name) === 'off') return { content: `Error: tool "${name}" is disabled.` };
+    // The server owns Ask receipts; a renderer modal is not execution proof.
+    const { executeChatTool } = await import('./chat-executor');
+    return executeChatTool(name, args, context);
+  }
 
   if (
     name === 'ask_question' ||
@@ -439,7 +451,7 @@ async function executeToolInner(
   ) {
     const blocked = await maybeBlockToolForUserApproval(name, args, context, name);
     if (blocked) return blocked;
-    const text = await executeSubAgentTool(name, args);
+    const text = await executeSubAgentTool(name, args, context);
     return { content: text };
   }
 
@@ -738,10 +750,10 @@ function getEnabledDynamicToolDefinitions(): OpenAIFunctionDefinition[] {
 }
 
 export function getEnabledToolDefinitions(): OpenAIFunctionDefinition[] {
-  return [
+  return projectAgentConversationTools([
     ...getEnabledToolCatalogEntries().map((tool) => tool.definition),
     ...getEnabledDynamicToolDefinitions(),
-  ];
+  ], { creationEnabled: getAgentConversationsCapabilitySync()?.creationEnabled === true });
 }
 
 /**
@@ -749,6 +761,7 @@ export function getEnabledToolDefinitions(): OpenAIFunctionDefinition[] {
  */
 export function getEnabledToolDefinitionsForMode(
   modeId: ModeId | string | null | undefined,
+  options?: { includeRecoveryTools?: boolean },
 ): OpenAIFunctionDefinition[] {
   const normalized = normalizeModeId(
     typeof modeId === 'string' ? modeId : modeId ?? undefined,
@@ -759,7 +772,10 @@ export function getEnabledToolDefinitionsForMode(
   const dynamic = getEnabledDynamicToolDefinitions().filter((def) =>
     isToolAllowedForMode(normalized, def.function.name),
   );
-  return [...builtins, ...dynamic];
+  return projectAgentConversationTools([...builtins, ...dynamic], {
+    creationEnabled: getAgentConversationsCapabilitySync()?.creationEnabled === true,
+    includeRecoveryTools: options?.includeRecoveryTools,
+  });
 }
 
 /**
@@ -770,7 +786,7 @@ export function getEnabledToolDefinitionsForChat(
   options?: { skillId?: string | null },
 ): OpenAIFunctionDefinition[] {
   const normalized = normalizeModeId(chat.modeId);
-  let defs = getEnabledToolDefinitionsForMode(normalized);
+  let defs = getEnabledToolDefinitionsForMode(normalized, { includeRecoveryTools: chat.chatCommandVersion === 1 });
   defs = filterToolsByExpertSnapshot(chat, defs);
   if (options?.skillId === GIT_SETUP_SKILL_ID) {
     defs = injectGitSetupSkillTools(defs);

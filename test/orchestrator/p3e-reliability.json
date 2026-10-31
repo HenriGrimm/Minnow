@@ -14,7 +14,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2797
+      "ms": 1920
     },
     {
       "n": 2,
@@ -23,7 +23,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2996
+      "ms": 2869
     },
     {
       "n": 3,
@@ -32,7 +32,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2843
+      "ms": 2443
     },
     {
       "n": 4,
@@ -41,7 +41,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2270
+      "ms": 1878
     },
     {
       "n": 5,
@@ -50,7 +50,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2873
+      "ms": 3046
     },
     {
       "n": 6,
@@ -59,7 +59,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2458
+      "ms": 2481
     },
     {
       "n": 7,
@@ -68,7 +68,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2531
+      "ms": 1899
     },
     {
       "n": 8,
@@ -77,7 +77,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2000
+      "ms": 1938
     },
     {
       "n": 9,
@@ -86,7 +86,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 2151
+      "ms": 2357
     },
     {
       "n": 10,
@@ -95,7 +95,7 @@
       "retries": 0,
       "abandoned": 0,
       "overflowEvents": 0,
-      "ms": 1858
+      "ms": 2427
     }
   ],
   "recordedAt": "2026-08-29",

@@ -92,6 +92,7 @@ export const ALL_TOOL_IDS = [
   'run_javascript',
   'run_python',
   'spawn_sub_agent',
+  'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
   'cancel_sub_agent',
   'list_sub_agents',
   'get_sub_agent_status',

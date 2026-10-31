@@ -67,11 +67,14 @@ describe('steer-message helpers', () => {
     assert.equal(chat.pendingSteerMessage, undefined);
   });
 
-  test('enqueueSteerMessage last write wins', () => {
+  test('enqueueSteerMessage preserves successive corrections in send order', () => {
     const chat = seedChat();
     assert.equal(enqueueSteerMessage(chat, 'first'), true);
     assert.equal(enqueueSteerMessage(chat, STEER_TEXT), true);
-    assert.equal(chat.pendingSteerMessage, STEER_TEXT);
+    assert.equal(chat.pendingSteerMessage, `first\n\n${STEER_TEXT}`);
+    const result = consumePendingSteer(chat, { renderDom: false });
+    assert.equal(result.content, `first\n\n${STEER_TEXT}`);
+    assert.equal(chat.pendingSteerMessage, undefined);
   });
 
   test('clearPendingSteer removes queued text', () => {

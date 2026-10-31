@@ -104,6 +104,8 @@ function bindDropTarget(
   element.addEventListener('dragenter', (event) => {
     if (!hasComposerDrag(event.dataTransfer)) return;
     event.preventDefault();
+    const input = resolveComposerInputFromDropTarget(element);
+    if (input?.disabled || input?.readOnly) return;
     dragDepth += 1;
     setDropActive(dropTargets, true);
   });
@@ -111,6 +113,8 @@ function bindDropTarget(
   element.addEventListener('dragover', (event) => {
     if (!hasComposerDrag(event.dataTransfer)) return;
     event.preventDefault();
+    const input = resolveComposerInputFromDropTarget(element);
+    if (input?.disabled || input?.readOnly) { if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'; return; }
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'copy';
     }
@@ -133,6 +137,8 @@ function bindDropTarget(
     event.stopPropagation();
     dragDepth = 0;
     setDropActive(dropTargets, false);
+    const input = resolveComposerInputFromDropTarget(element);
+    if (input?.disabled || input?.readOnly) return;
 
     if (kind === 'tabLink' && event.dataTransfer) {
       applyTabDrop(event.dataTransfer);

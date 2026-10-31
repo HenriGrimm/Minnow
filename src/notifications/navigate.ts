@@ -38,6 +38,10 @@ export async function openNotificationTarget(record: NotificationRecord): Promis
   if (record.chatId) {
     const { launchCodeWithChat } = await import('../os/chat-launch');
     await launchCodeWithChat(record.chatId);
+    if (record.activityId?.startsWith('request:')) {
+      const { focusManagedChatRequest } = await import('../ui/managed-chat-requests');
+      await focusManagedChatRequest(record.chatId, record.activityId.slice('request:'.length));
+    }
     return;
   }
 

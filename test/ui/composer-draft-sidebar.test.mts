@@ -59,8 +59,9 @@ test('draft rail work waits for a typing pause, including repeat-backspace throu
     assert.equal(renders, before, 'draft presence does not change membership for a sent chat');
   } finally {
     unsubscribe();
+    await import('../../src/state/issues-store.ts');
     setSessionStateForTests(null);
     resetWorkspaceStateForTests();
-    win.close();
+    await win.happyDOM.close();
   }
 });

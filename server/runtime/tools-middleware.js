@@ -1,4 +1,5 @@
 import { ACTION_TOOL_HANDLERS } from '../git/action-tools.js';
+import { toolGetDatetime, toolCalculate, parseWaitDuration, formatWaitDuration, waitWithSignal } from '../tools/utility-core.js';
 import { withWorktreeMutation } from '../git/action-run-lock.js';
 import { execFile } from 'node:child_process';
 import { toolApplyPatch } from '../tools/apply-patch.js';
@@ -1436,6 +1437,14 @@ async function toolSendNotification(args) {
 }
 
 const SERVER_TOOL_HANDLERS = {
+  get_datetime: toolGetDatetime,
+  calculate: toolCalculate,
+  wait: async (args, options) => {
+    const parsed = parseWaitDuration(args.duration);
+    if (!parsed.ok) return parsed.error;
+    await waitWithSignal(parsed.ms, options?.abortSignal);
+    return `Waited ${formatWaitDuration(parsed.ms)}. ${typeof args.reason === 'string' ? args.reason.trim() : ''}`.trim();
+  },
   ...Object.fromEntries(Object.entries(ACTION_TOOL_HANDLERS).map(([name, handler]) => [name, async (args, options) => JSON.stringify(await handler({ ...args, chatId: options?.activityChatId || args?.chatId }))])),
   web_search_ddg: toolWebSearchDdg,
   web_search_tavily: toolWebSearchTavily,
@@ -1572,14 +1581,19 @@ const SERVER_TOOL_HANDLERS = {
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
+/** Exact handler availability for execution hosts; it does not grant permission. */
+export function isServerToolAvailable(name) {
+  return Object.hasOwn(SERVER_TOOL_HANDLERS, name) || isPluginToolName(name) || isMcpToolName(name) || isAgentBrowserTool(name);
+}
+
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string }} [options]
+ * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
-  const allowOutsideWorkspace = fsAccess === 'full';
+  const allowOutsideWorkspace = options.filesystemAccessCeiling === 'workspace' ? false : fsAccess === 'full';
   const toolsRaw = await readConfigJson('tools.json');
   const tools = normalizeToolConfig(toolsRaw);
   const outputPolicy = resolveOutputCapPolicy(tools.toolOutput, args ?? {});
@@ -1592,6 +1606,7 @@ export async function executeServerTool(name, args, options = {}) {
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
       if (isMcpToolName(name)) {
+        if (tools.permissions.default[name] === 'off') return { result: 'Error: MCP tool is disabled in Settings' };
         const result = await callMcpTool(name, args ?? {});
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
@@ -1643,6 +1658,8 @@ export async function executeServerTool(name, args, options = {}) {
     allowOutsideWorkspace,
     workspaceRoot: options.workspaceRoot,
     abortSignal: options.abortSignal,
+    enforceWorkspace: options.filesystemAccessCeiling === 'workspace',
+    shellSandboxMode: options.shellSandboxMode,
   });
 }
 

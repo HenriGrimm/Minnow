@@ -4,6 +4,7 @@ import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from '../generations/fallback.js';
 import { pumpUpstream } from '../generations/upstream.js';
 import { pumpRouterGeneration } from '../model-routers/generation.js';
+import { validateModelOptions } from '../chats/contracts.js';
 import {
   addLocalSubscriber,
   cancel as cancelGeneration,
@@ -141,13 +142,22 @@ async function startInProcessCompletion(providerId, body, options = {}) {
   const bodyObj = body && typeof body === 'object' ? /** @type {{ model?: string }} */ (body) : {};
   const primaryModelId = typeof bodyObj.model === 'string' ? bodyObj.model : '';
 
-  const candidates = resolveFallbackChain({
+  const fallbackCandidates = resolveFallbackChain({
     role: fallbackRole,
     primaryProviderId: id,
     primaryModelId,
     config,
     enabledProviderIds,
   });
+  const candidates = options.exactModel === true && id !== 'minnow-router'
+    ? [{ providerId: id, modelId: primaryModelId }]
+    : fallbackCandidates;
+  let agentModelOptions;
+  if (options.agentModelOptions !== undefined) {
+    const parsed = validateModelOptions(options.agentModelOptions);
+    if (!parsed.ok) throw new Error(`Invalid captured model options: ${parsed.error.message}`);
+    agentModelOptions = parsed.value;
+  }
 
   const state = createGenerationState({
     providerId: id,
@@ -161,6 +171,8 @@ async function startInProcessCompletion(providerId, body, options = {}) {
 
   const signal = options.signal;
   state.routerPreferAvailable = options.routerPreferAvailable === true;
+  if (agentModelOptions !== undefined) state.agentModelOptions = agentModelOptions;
+  if (options.exactModel === true && id !== 'minnow-router') state.failoverDisabled = true;
   const onAbort = () => cancelGeneration(state);
   if (signal) {
     if (signal.aborted) {
@@ -202,6 +214,8 @@ export async function postChatCompletionsInProcess(provider, body, signal, optio
     chatId: options?.chatId,
     routerPreferAvailable: options?.routerPreferAvailable,
     modelCapabilities: options?.modelCapabilities,
+    agentModelOptions: options?.agentModelOptions,
+    exactModel: options?.exactModel,
   });
 
   const encoder = new TextEncoder();

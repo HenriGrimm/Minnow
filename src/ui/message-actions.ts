@@ -26,6 +26,7 @@ import { renderChatFromHistory, renderStatsForChat } from './messages';
 import { renderSidebar } from './sidebar';
 import { appConfirm } from './app-dialog';
 import { setStatus } from './status';
+import { CANONICAL_HISTORY_HINT, supportsLocalHistoryMutation } from '../state/chat-relationships';
 
 export type MessageTurnKind = 'user' | 'assistant' | 'assistant-tools';
 
@@ -86,7 +87,9 @@ export function copyMessageRows(rows: readonly HTMLElement[]): void {
 /** Resend the user turn that produced this assistant row. */
 export function remakeAssistantRow(chatId: string, historyIndex: number): void {
   if (guardStreaming()) return;
-  const chat = getActiveChat();
+  const chat = findChatById(chatId);
+  if (!chat) return;
+  if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
   const userIdx = indexOfUserBeforeBlock(chat.history, historyIndex);
   if (userIdx < 0) {
     setStatus('err', 'No user message to resend from');
@@ -203,13 +206,15 @@ export function attachMessageActions(
       buildMenuButton('Copy', () => copyMessageRow(wrap)),
     );
 
-    if (target.turnKind === 'user') {
+    const canRewrite = supportsLocalHistoryMutation(findChatById(target.chatId) ?? getActiveChat());
+    if (canRewrite && target.turnKind === 'user') {
       items.push(
         buildMenuButton('Edit', () => {
-          const chat = getActiveChat();
+          const chat = findChatById(target.chatId);
+          if (!chat || !supportsLocalHistoryMutation(chat)) return;
           const row = chat.history[target.historyIndex];
           if (!row || row.role !== 'user') return;
-          truncateChatHistory(target.chatId, target.historyIndex, 'inclusive');
+          if (!truncateChatHistory(target.chatId, target.historyIndex, 'inclusive').ok) return;
           renderChatFromHistory(getActiveChat());
           const draft = messageEditDraft(row.content);
           replacePendingAttachments(draft.attachments);
@@ -248,7 +253,7 @@ export function attachMessageActions(
       );
     }
 
-    if (target.turnKind === 'assistant' || target.turnKind === 'assistant-tools') {
+    if (canRewrite && (target.turnKind === 'assistant' || target.turnKind === 'assistant-tools')) {
       items.push(
         buildMenuButton('Remake', () => remakeAssistantRow(target.chatId, target.historyIndex)),
       );
@@ -263,7 +268,7 @@ export function attachMessageActions(
         target.turnKind === 'user' &&
         eligibility.ok &&
         eligibility.target?.forkHistoryIndex === target.historyIndex;
-      if (isAssistantRow || isTargetUserFork) {
+      if (canRewrite && (isAssistantRow || isTargetUserFork)) {
         items.push(
           buildMenuButton(
             'Undo turn',
@@ -281,7 +286,7 @@ export function attachMessageActions(
       }
     }
 
-    items.push(
+    if (canRewrite) items.push(
       buildMenuButton('Delete message', () => {
         void (async () => {
           if (shouldConfirmDelete(target.historyIndex)) {
@@ -325,6 +330,8 @@ export async function completePendingMessageEdit(
   attachments: Attachment[] = [],
 ): Promise<void> {
   if (guardStreaming()) return;
+  const chat = findChatById(chatId);
+  if (!chat || !supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
   const trimmed = newContent.trim();
   const { attachMentionedIssues } = await import('../chat/issue-mention-context');
   const tagged = attachMentionedIssues(buildHistoryUserContent(trimmed, attachments), trimmed);

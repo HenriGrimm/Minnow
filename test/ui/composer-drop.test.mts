@@ -17,6 +17,7 @@ function setupNestedCodeComposerDom(): { input: HTMLTextAreaElement; window: Win
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
+  globalThis.HTMLTextAreaElement = window.HTMLTextAreaElement;
   globalThis.window = window as unknown as Window & typeof globalThis.window;
   globalThis.File = window.File;
   globalThis.DragEvent = window.DragEvent;
@@ -95,6 +96,20 @@ describe('initComposerDrop', () => {
     document.body.replaceChildren();
     testWindow?.close();
     testWindow = undefined;
+  });
+
+  it('a disabled inspect-only composer rejects files and durable tab links before any mutation', async () => {
+    const setup = setupNestedCodeComposerDom(); testWindow = setup.window;
+    const chat = seedChat(); setup.input.disabled = true; initComposerDrop();
+    const target = setup.input.closest('.input-bar')!;
+    for (const transfer of [makeFileDropTransfer(new File(['text'], 'a.txt', { type: 'text/plain' })),
+      makeTypedTransfer({ [VIEWER_TAB_MIME]: JSON.stringify({ kind: 'file', path: 'src/a.ts', label: 'a.ts' }) })]) {
+      const event = new window.DragEvent('drop', { bubbles: true, cancelable: true }); Object.defineProperty(event, 'dataTransfer', { value: transfer });
+      target.dispatchEvent(event); assert.equal(event.defaultPrevented, true);
+    }
+    await Promise.resolve();
+    assert.deepEqual(getPendingAttachments(), []); assert.equal(chat.links, undefined);
+    assert.equal(target.classList.contains('composer-drop-active'), false);
   });
 
   it('adds one attachment when an external file is dropped on a nested composer', async () => {
