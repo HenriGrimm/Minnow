@@ -127,7 +127,8 @@
 
 /* Conversation references share the same compact treatment in both message roles. */
 .msg-bubble a.chat-reference-chip,
-.attach-chip a.chat-reference-chip {
+.attach-chip a.chat-reference-chip,
+.composer-inline-editor .chat-reference-chip {
   display: inline-flex;
   vertical-align: middle;
   align-items: center;

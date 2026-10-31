@@ -2221,7 +2221,13 @@
     </div>
     <div id="chatSidebarMain" class="chat-sidebar-main">
     <div class="chat-sidebar-header">
-      <span class="chat-sidebar-title">Chats</span>
+      <span class="chat-sidebar-title" id="sidebarTitle">Chats</span>
+      <button type="button" class="chat-sidebar-branch" id="sidebarBranch" title="Switch branch or worktree" hidden>
+        <i class="fi fi-sr-code-branch icon-svg" aria-hidden="true"></i>
+        <span class="chat-sidebar-branch__name"></span>
+        <span class="chat-sidebar-branch__sync" aria-hidden="true"></span>
+        <span class="chat-sidebar-branch__changed" aria-hidden="true"></span>
+      </button>
       <div class="chat-sidebar-header-actions">
         <button
           class="icon-btn"
@@ -2233,7 +2239,6 @@
         >
           <i class="fi fi-rr-search icon-svg" aria-hidden="true"></i>
         </button>
-        <!-- Secondary to New chat: same icon vocabulary as search, not a second full-width button. -->
         <button
           class="icon-btn"
           type="button"
@@ -2241,11 +2246,19 @@
           aria-label="New group"
           title="New group"
         >
-          <i class="fi fi-rr-folder-download icon-svg" aria-hidden="true"></i>
+          <i class="fi fi-rr-add-folder icon-svg" aria-hidden="true"></i>
+        </button>
+        <button
+          class="icon-btn"
+          type="button"
+          id="btnSidebarNewChat"
+          aria-label="New chat"
+          title="New chat"
+        >
+          <i class="fi fi-rr-edit icon-svg" aria-hidden="true"></i>
         </button>
       </div>
     </div>
-    <button type="button" class="chat-new-wide">+ New chat</button>
     <div class="chat-list" id="chatList" role="list"></div>
     </div>
     <div

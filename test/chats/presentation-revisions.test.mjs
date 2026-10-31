@@ -60,6 +60,54 @@ function patch(chat, revision = 0, extra = {}) {
   return { chats: [{ id: 'managed', name: 'Managed', groupId: '', ...chat }], chatBasePresentationRevisions: { managed: revision }, ...extra };
 }
 
+test('legacy approval admission, answer and expiry do not invalidate transcript and draft autosaves', async t => {
+  const f = await fixture(t);
+  let snapshot = (await f.request('/api/config/sessions')).body;
+  const approval = id => ({ version: 1, requestId: id, chatId: 'ordinary', executionId: 'renderer-turn',
+    toolCallId: id, kind: 'approval', state: 'pending', title: 'Allow tool?', presentation: {}, createdAt: 1000 });
+  const save = async (text, method = 'PATCH') => {
+    const chat = { ...snapshot.chats.find(chat => chat.id === 'ordinary'), composerDraft: text,
+      history: [{ role: 'user', content: 'Delegating work' }, { role: 'assistant', content: text }] };
+    const body = method === 'PATCH' ? { chats: [chat] } : { ...snapshot, chats: [chat] };
+    const result = await f.request('/api/config/sessions', method, { ...body, chatBaseRevisions: snapshot.chatRevisions });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    const saved = (await f.request('/api/config/sessions')).body;
+    assert.equal(saved.chats.find(chat => chat.id === 'ordinary').composerDraft, text);
+    assert.equal(f.repository.readTranscript('ordinary').messages.at(-1).content, text);
+    assert.equal(f.repository.getChat('ordinary').chatCommandVersion, undefined);
+    snapshot = saved;
+  };
+  f.repository.saveLegacyRequest(approval('pending-approval'), { assertOwner: () => true });
+  const changed = (await f.request(`/api/config/sessions/summaries?sinceRevision=${snapshot.revision}`)).body;
+  assert.ok(changed.chats.some(chat => chat.id === 'ordinary'), 'request changes remain visible to delta polling');
+  await save('Unsent draft during approval');
+  f.repository.respondToRequest('pending-approval', { answerCommandId: 'answer', answer: { decision: 'allow_once' } });
+  await save('Draft after answer', 'PUT');
+  f.repository.saveLegacyRequest(approval('expired-approval'), { assertOwner: () => true });
+  f.repository.settleRequest('expired-approval', { state: 'expired' });
+  await save('Draft after expiry');
+  assert.equal(f.repository.getRequest('pending-approval').state, 'answered');
+  assert.equal(f.repository.getRequest('expired-approval').state, 'expired');
+});
+
+test('request-only revision rebasing cannot bypass a competing save, deletion or managed takeover', async t => {
+  const f = await fixture(t), before = (await f.request('/api/config/sessions')).body;
+  const request = id => f.repository.saveLegacyRequest({ version: 1, requestId: id, chatId: 'ordinary', executionId: 'renderer-turn',
+    toolCallId: id, kind: 'approval', state: 'pending', title: 'Allow?', presentation: {}, createdAt: 1000 }, { assertOwner: () => true });
+  const stale = { chats: [{ id: 'ordinary', name: 'Stale', composerDraft: 'Must remain local' }], chatBaseRevisions: before.chatRevisions };
+  request('first-request');
+  const deletion = await f.request('/api/config/sessions', 'PATCH', { deleteChatIds: ['ordinary'], chatBaseRevisions: before.chatRevisions });
+  assert.equal(deletion.status, 409, 'deletion still requires the exact observed revision');
+  const winner = await f.request('/api/config/sessions', 'PATCH', { chats: [{ id: 'ordinary', name: 'Winner', composerDraft: 'Other draft' }], chatBaseRevisions: before.chatRevisions });
+  assert.equal(winner.status, 200, JSON.stringify(winner.body));
+  request('second-request');
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', stale)).status, 409);
+  assert.equal(f.repository.getChat('ordinary').composerDraft, 'Other draft');
+  const current = (await f.request('/api/config/sessions')).body;
+  f.repository.ensureManagedChat('ordinary');
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', { ...stale, chatBaseRevisions: current.chatRevisions })).status, 409);
+});
+
 test('real HTTP ACK and canonical output do not invalidate a captured draft presentation revision', async t => {
   const f = await fixture(t), first = (await f.request('/api/config/sessions')).body;
   assert.equal(first.chatPresentationRevisions.managed, 0); assert.equal(first.chatPresentationRevisions.ordinary, undefined);

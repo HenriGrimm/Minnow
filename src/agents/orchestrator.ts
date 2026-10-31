@@ -631,7 +631,7 @@ export async function spawnSubAgent(
   }
   const ownerId = persistent ? getChatTurnOwnerId(parentChatId) : undefined;
   if (persistent && !ownerId) throw new Error('Delegation requires the currently executing parent conversation.');
-  if (persistent && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the delegating conversation.');
+  if (persistent && !await persistSessionsBeforeDeliveryAck(parentChatId)) throw new Error('Could not save the delegating conversation.');
   input.signal?.throwIfAborted();
   const cwd = resolveSpawnCwd(parentChatId);
   let providerId = input.providerId?.trim() ?? '';

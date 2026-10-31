@@ -79,7 +79,9 @@ function createMessagesFtsTable(database) {
  * @param {import('better-sqlite3').Database} database
  */
 function migrateAddedColumns(database) {
-  void database;
+  if (ensureColumn(database, 'chat_revisions', 'write_revision', 'INTEGER NOT NULL DEFAULT 0')) {
+    database.exec('UPDATE chat_revisions SET write_revision = revision');
+  }
 }
 
 /**

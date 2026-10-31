@@ -171,40 +171,6 @@
   white-space: nowrap;
 }
 
-/* ── Sidebar: session rows carry the picker chip; agent rows lead with their mark ── */
-.chat-item-model .agent-model-chip {
-  height: 18px;
-  padding: 0 6px 0 4px;
-  gap: 4px;
-  font-size: 11px;
-}
-
-.chat-item-row.active .chat-item-model .agent-model-chip {
-  border-color: color-mix(in srgb, var(--mn-accent) 35%, var(--mn-border));
-}
-
-.chat-item-agent-mark {
-  --agent-mark-size: 24px;
-  --agent-mark-ring: var(--mn-surface-1);
-}
-
-.chat-item-agent-mark .agent-mark__badge {
-  right: -3px;
-  bottom: -3px;
-  width: 11px;
-  height: 11px;
-}
-
-.chat-item-agent-mark[data-state='running'] .agent-mark__badge { border-width: 1.5px; }
-
-/* The mark's badge already spins for a working agent; one spinner per row. */
-.chat-item-row.chat-item-row--agent:has(.chat-item-agent-mark) .chat-item-dot[data-dot-state='working'] { display: none; }
-
-.chat-item-agent-summary .agent-mark--stacked {
-  --agent-mark-size: 18px;
-  box-shadow: 0 0 0 2px var(--mn-surface-1);
-}
-
 /* ── Shimmer: a light band sweeping across live agent activity text ── */
 .agent-shimmer {
   background: linear-gradient(90deg, var(--mn-fg-muted) 0%, var(--mn-fg-muted) 35%, var(--mn-fg) 50%, var(--mn-fg-muted) 65%, var(--mn-fg-muted) 100%);

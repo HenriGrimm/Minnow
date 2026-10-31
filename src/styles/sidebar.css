@@ -512,19 +512,6 @@
   margin-top: 2px;
 }
 
-.chat-list-section-badge {
-  min-width: 18px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--mn-surface-elevated);
-  border: 1px solid var(--mn-border);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-  color: var(--mn-fg-muted);
-}
-
 .chat-item-row--draggable {
   cursor: grab;
 }
@@ -634,22 +621,6 @@
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
-}
-
-.chat-item-model {
-  font-size: 9px;
-  color: var(--mn-fg-subtle);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-item-stats {
-  font-size: 9px;
-  color: var(--mn-fg-muted);
-  margin-top: 2px;
-  line-height: 1.25;
 }
 
 /* Worktree indicator; local chats have no leading icon. */
@@ -818,116 +789,6 @@
   min-width: 0;
 }
 
-/* Session rows: the model chip and diff stats share one line. */
-.chat-item-row:not(.chat-item-row--agent) > .chat-item-model,
-.chat-item-row:not(.chat-item-row--agent) > .chat-item-stats {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  margin-top: 5px;
-  vertical-align: middle;
-}
-
-.chat-item-row:not(.chat-item-row--agent) > .chat-item-model + .chat-item-stats {
-  margin-inline-start: 8px;
-}
-
-.chat-item-row > .chat-item-stats {
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-/* A parent's agents: disclosure, provider stack, then a one-line tally. */
-.chat-item-agent-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 5px;
-  color: var(--mn-fg-muted);
-  font-size: 11px;
-}
-
-.chat-item-agent-summary .chat-agent-toggle {
-  min-height: 20px;
-  margin-inline-start: -6px;
-  padding: 0 4px;
-}
-
-.chat-item-agent-summary__label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.chat-item-agent-summary[data-live='true'] .chat-item-agent-summary__label { color: var(--mn-fg); }
-
-/* Tree rail from a parent down through its agents. */
-.chat-agent-children { position: relative; }
-
-.chat-agent-children::before {
-  content: '';
-  position: absolute;
-  top: 2px;
-  bottom: 6px;
-  left: calc(var(--agent-depth, 0) * 12px + 6px);
-  width: 1px;
-  background: var(--mn-border);
-}
-
-/* Agent rows: mark on the left spanning both lines; name, then model · status · clock. */
-.chat-item-row.chat-item-row--agent {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  column-gap: 8px;
-  width: auto;
-  margin-inline-start: calc(var(--agent-depth, 0) * 12px);
-}
-
-.chat-item-row--agent > .chat-item-agent-mark {
-  grid-row: 1 / span 4;
-  align-self: start;
-  margin-top: 1px;
-}
-
-.chat-item-row--agent > :not(.chat-item-agent-mark) {
-  grid-column: 2;
-  min-width: 0;
-}
-
-.chat-item-row--agent > .chat-item-model { display: none; }
-
-.chat-item-row--agent > .chat-item-stats { margin-top: 2px; }
-
-.chat-item-agent-meta {
-  display: flex;
-  min-width: 0;
-  margin-top: 1px;
-  color: var(--mn-fg-subtle);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.chat-item-agent-meta__text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-item-agent-clock {
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  white-space: pre;
-}
-
-.chat-item-agent-clock:not(:empty)::before { content: ' · '; }
-
-.chat-item-agent-clock[data-started-at] { color: var(--mn-accent-ink, var(--mn-accent)); }
 
 .chat-agent-disclosure {
   appearance: none;
@@ -1011,5 +872,1017 @@
 
   .chat-sidebar.collapsed.mobile-open {
     width: min(280px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 24px));
+  }
+}
+
+/* ══ Ledger sidebar ═══════════════════════════════════════════════════════════
+ * One line per chat: provider logo (status rides its corner) · title · git
+ * state, Archive on hover. "Needs you" answers agent requests in place; the
+ * Working / Archive switch sits at the bottom.
+ */
+
+/* Header: project (opens the switcher), bare icon actions, then the branch. */
+.chat-sidebar-header {
+  border-bottom: 0;
+  padding: 10px 8px 8px;
+}
+
+.chat-sidebar-header-actions {
+  gap: 2px;
+  margin-inline-start: auto;
+  border: 0;
+  background: transparent;
+}
+
+.chat-sidebar-header-actions .icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+}
+
+.chat-sidebar-header-actions .icon-btn + .icon-btn {
+  border-left: 0;
+}
+
+.chat-sidebar-header-actions .icon-btn .icon-svg {
+  --mn-icon-size: 15px;
+}
+
+.chat-sidebar-branch {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-sidebar-branch[hidden],
+.chat-sidebar-title[hidden] {
+  display: none;
+}
+
+/* Outside git the old title holds the slot, aligned with the rows below. */
+.chat-sidebar-header > .chat-sidebar-title {
+  padding-inline-start: 8px;
+}
+
+.chat-sidebar-branch > .icon-svg {
+  --mn-icon-size: 13px;
+  flex-shrink: 0;
+  color: var(--mn-accent-ink, var(--mn-accent));
+}
+
+.chat-sidebar-branch__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sidebar-branch__sync,
+.chat-sidebar-branch__changed {
+  flex-shrink: 0;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-sidebar-branch__sync:empty,
+.chat-sidebar-branch__changed:empty {
+  display: none;
+}
+
+/* "· 3 changed" reads as part of the same instrument line. */
+.chat-sidebar-branch__changed::before {
+  content: '· ';
+  color: var(--mn-fg-subtle);
+}
+
+.chat-sidebar-branch:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-sidebar-branch:hover {
+    background: var(--mn-surface-elevated);
+  }
+}
+
+/* Sections: quiet uppercase label, optional "Archive N finished" on the right. */
+.chat-list-section-head {
+  justify-content: flex-start;
+  min-height: 22px;
+  margin: 12px 0 2px;
+  padding: 0 4px 0 8px;
+}
+
+.chat-list-section-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  margin-inline-start: auto;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.chat-list-section-action:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+/* Rows */
+.chat-item-row {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 8px;
+  border-color: transparent;
+}
+
+.chat-item-row .chat-item-head {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-item-row .chat-item-title-row {
+  gap: 9px;
+}
+
+.chat-item-row .chat-item-name {
+  color: var(--mn-fg);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.chat-item-row.active {
+  border-color: transparent;
+  background: var(--mn-accent-soft);
+}
+
+.chat-item-row.active .chat-item-name,
+.chat-item-row[data-dot-state='unread'] .chat-item-name {
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-item-row:hover:not(.active) {
+    border-color: transparent;
+  }
+}
+
+/* The old worktree marker moved into the git state on the right. */
+#chatList .chat-item-icon {
+  display: none;
+}
+
+.chat-item-logo {
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--mn-fg-muted);
+}
+
+.chat-item-logo > svg {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.chat-item-logo > .icon-svg {
+  --mn-icon-size: 13px;
+}
+
+.chat-item-row.active .chat-item-logo {
+  color: var(--mn-accent-ink, var(--mn-accent));
+}
+
+/* Status rides the logo: a corner dot, or a ring around it while working. */
+.chat-item-logo > .chat-item-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 0 2px var(--mn-surface-1);
+}
+
+.chat-item-logo > .chat-item-dot[data-dot-state='unread'] {
+  background: var(--mn-accent);
+}
+
+.chat-sidebar:not(.collapsed) .chat-item-logo > .chat-item-dot[data-dot-state='working'] {
+  inset: -3px;
+  width: auto;
+  height: auto;
+  box-shadow: none;
+}
+
+.chat-item-logo > .chat-item-dot .chat-item-dot__spinner {
+  width: 100%;
+  height: 100%;
+  border-width: 1.5px;
+  border-color: var(--mn-accent);
+  border-right-color: transparent;
+  animation-duration: 0.8s;
+}
+
+/* Agent rows: their own state drives the logo, so their dot stays out of it. */
+.chat-item-row--agent .chat-item-logo > .chat-item-dot {
+  display: none;
+}
+
+.chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after,
+.chat-item-row--agent[data-agent-state='waiting'] .chat-item-logo::after,
+.chat-item-row--agent[data-agent-state='failed'] .chat-item-logo::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--mn-surface-1);
+}
+
+.chat-item-row--agent[data-agent-state='waiting'] .chat-item-logo::after { background: var(--mn-warning); }
+.chat-item-row--agent[data-agent-state='failed'] .chat-item-logo::after { background: var(--mn-danger); }
+
+.chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after {
+  inset: -3px;
+  width: auto;
+  height: auto;
+  border: 1.5px solid var(--mn-accent);
+  border-right-color: transparent;
+  box-shadow: none;
+  animation: tool-call-spin 0.8s linear infinite;
+}
+
+/* Agents: a tree rail under their parent, shorter rows, time then a check. */
+.chat-agent-children {
+  margin: 1px 0 3px 15px;
+  padding-left: 8px;
+  border-left: 1px solid var(--mn-border-strong);
+}
+
+.chat-item-row.chat-item-row--agent {
+  min-height: 26px;
+  margin-inline-start: 0;
+}
+
+.chat-item-row--agent .chat-item-name {
+  color: var(--mn-fg-muted);
+  font-size: 12.5px;
+}
+
+.chat-item-row--agent[data-agent-state='running'] .chat-item-name,
+.chat-item-row--agent.active .chat-item-name {
+  color: var(--mn-fg);
+}
+
+.chat-item-row--agent .chat-item-logo > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-item-row--agent .chat-item-git {
+  display: none;
+}
+
+.chat-item-agent-clock {
+  flex-shrink: 0;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-item-agent-clock:empty {
+  display: none;
+}
+
+.chat-item-agent-clock[data-started-at] {
+  color: var(--mn-accent-ink, var(--mn-accent));
+}
+
+.chat-item-agent-done {
+  flex-shrink: 0;
+  color: var(--mn-success);
+}
+
+.chat-item-title-row > .chat-agent-toggle {
+  min-height: 20px;
+  padding: 0 4px;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.chat-agent-previous-toggle,
+.chat-agent-show-more {
+  min-height: 24px;
+  margin-inline-start: 0;
+  color: var(--mn-fg-subtle);
+  font-size: 12px;
+}
+
+/* Git state on the right edge. */
+.chat-item-git {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--mn-fg-muted);
+}
+
+.chat-item-git[hidden] {
+  display: none;
+}
+
+.chat-item-git__icon {
+  --mn-icon-size: 13px;
+}
+
+.chat-item-git__icon[data-tone='open'] { color: var(--mn-success); }
+.chat-item-git__icon[data-tone='merged'] { color: var(--mn-git-merged); }
+.chat-item-git__icon[data-tone='closed'] { color: var(--mn-danger-ink, var(--mn-danger)); }
+
+.chat-item-git__counts,
+.chat-item-git__commit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-item-git__add { color: var(--mn-success); }
+.chat-item-git__del { color: var(--mn-danger-ink, var(--mn-danger)); }
+
+/* Archive / Restore: replaces the git state while the row is hovered or focused. */
+.chat-item-archive {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 24px;
+  margin-inline-end: -4px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chat-item-archive .icon-svg {
+  --mn-icon-size: 14px;
+}
+
+.chat-item-row:focus-within .chat-item-archive {
+  display: inline-flex;
+}
+
+.chat-item-row:focus-within .chat-item-git {
+  display: none;
+}
+
+.chat-item-archive:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-item-row:hover .chat-item-archive {
+    display: inline-flex;
+  }
+
+  .chat-item-row:hover .chat-item-git {
+    display: none;
+  }
+
+  .chat-item-archive:hover,
+  .chat-list-section-action:hover {
+    background: var(--mn-surface-elevated);
+    color: var(--mn-fg);
+  }
+}
+
+/* Archive view: muted rows; the logo becomes a checkbox for bulk restore. */
+.chat-list[data-chat-view='archive'] .chat-item-row .chat-item-name {
+  color: var(--mn-fg-muted);
+}
+
+.chat-item-select {
+  display: none;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-item-select__box {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--mn-fg-muted);
+  border-radius: var(--radius-sm);
+}
+
+.chat-item-select[aria-pressed='true'] .chat-item-select__box {
+  border-color: var(--mn-accent);
+  background: var(--mn-accent);
+}
+
+.chat-item-select[aria-pressed='true'] .chat-item-select__box::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 3.5px;
+  height: 7px;
+  border: solid var(--mn-fg-on-accent, var(--mn-bg));
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.chat-list--selecting .chat-item-select,
+.chat-item-row:focus-within .chat-item-select {
+  display: inline-grid;
+}
+
+.chat-list--selecting .chat-item-select + .chat-item-logo,
+.chat-item-row:focus-within .chat-item-select + .chat-item-logo {
+  display: none;
+}
+
+.chat-item-select:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chat-item-row:hover .chat-item-select {
+    display: inline-grid;
+  }
+
+  .chat-item-row:hover .chat-item-select + .chat-item-logo {
+    display: none;
+  }
+}
+
+.chat-archive-search {
+  position: relative;
+  padding: 2px 0 6px;
+}
+
+.chat-archive-search > .icon-svg {
+  position: absolute;
+  top: 11px;
+  left: 10px;
+  color: var(--mn-fg-subtle);
+  pointer-events: none;
+}
+
+.chat-archive-search__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.chat-archive-search__input {
+  width: 100%;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px 0 30px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.chat-archive-search__input:focus-visible {
+  outline: none;
+  border-color: var(--mn-accent);
+}
+
+.chat-archive-search__hint {
+  margin: 8px 4px 0;
+  color: var(--mn-fg-subtle);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.chat-archive-bulk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin-bottom: 4px;
+  padding: 0 6px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--mn-accent) 45%, var(--mn-border));
+  border-radius: var(--radius-md);
+  background: var(--mn-accent-soft);
+  font-size: 12.5px;
+}
+
+.chat-archive-bulk[hidden] {
+  display: none;
+}
+
+.chat-archive-bulk__count {
+  flex: 1;
+  color: var(--mn-fg);
+  font-weight: 500;
+}
+
+.chat-archive-bulk__restore,
+.chat-archive-bulk__cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.chat-archive-bulk__restore {
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent, var(--mn-bg));
+  font-weight: 600;
+}
+
+.chat-archive-bulk__cancel {
+  background: transparent;
+  color: var(--mn-fg-muted);
+}
+
+/* Undo toast above the view switch. */
+.chat-list-toast {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+  font-size: 12.5px;
+  animation: fadeUp 0.22s var(--ease-out);
+}
+
+.chat-list-toast[hidden] {
+  display: none;
+}
+
+.chat-list-toast > .icon-svg {
+  flex-shrink: 0;
+  color: var(--mn-fg-muted);
+}
+
+.chat-list-toast__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-toast__undo {
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--mn-accent-ink, var(--mn-accent));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Working / Archive: a quiet two-tab bar. */
+.chat-list-views {
+  flex-direction: row;
+  padding: 8px;
+  border-top: 1px solid var(--mn-border);
+}
+
+.chat-list-view {
+  flex: 1;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+
+.chat-list-view[aria-pressed='true'],
+.chat-list-view:active {
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+}
+
+.chat-list-view__count {
+  min-width: 0;
+  margin-inline-start: 0;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: start;
+}
+
+.chat-list-view > .icon-svg {
+  --mn-icon-size: 14px;
+}
+
+/* ── Needs you ── */
+.needs-you {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+
+.needs-you[hidden] {
+  display: none;
+}
+
+.needs-you__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px 2px;
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.needs-you__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--mn-warning) 20%, transparent);
+  color: var(--mn-warning);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.needs-you__count[hidden] {
+  display: none;
+}
+
+.needs-you-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mn-warning) 35%, var(--mn-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--mn-warning) 6%, var(--mn-bg));
+}
+
+.needs-you-card[aria-busy='true'] {
+  opacity: 0.7;
+}
+
+.needs-you-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.needs-you-card__logo {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--mn-fg-muted);
+}
+
+.needs-you-card__logo > svg {
+  width: 12px;
+  height: 12px;
+}
+
+.needs-you-card__chat {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.needs-you-card__tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.needs-you-card__age {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.needs-you-card__prompt {
+  margin: 0;
+  color: var(--mn-fg);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.needs-you-card__sub {
+  margin: 0;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+}
+
+.needs-you-card__options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.needs-you-card__option {
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--mn-warning) 30%, var(--mn-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--mn-warning) 10%, var(--mn-bg));
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.needs-you-card__reply {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 3px 0 10px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--mn-bg);
+}
+
+.needs-you-card__reply:focus-within {
+  border-color: var(--mn-accent);
+}
+
+.needs-you-card__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--mn-fg);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.needs-you-card__send {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent, var(--mn-bg));
+  cursor: pointer;
+}
+
+.needs-you-card__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.needs-you-card__code {
+  display: block;
+  padding: 6px 8px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.needs-you-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.needs-you-card__primary,
+.needs-you-card__secondary,
+.needs-you-card__link {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.needs-you-card__primary {
+  border: 0;
+  background: var(--mn-accent);
+  color: var(--mn-fg-on-accent, var(--mn-bg));
+  font-weight: 600;
+}
+
+.needs-you-card__secondary {
+  border: 1px solid var(--mn-border-strong);
+  background: transparent;
+  color: var(--mn-fg);
+}
+
+.needs-you-card__link {
+  margin-inline-start: auto;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--mn-fg-muted);
+}
+
+.needs-you-card__error {
+  margin: 0;
+  color: var(--mn-danger-ink, var(--mn-danger));
+  font-size: 12px;
+}
+
+.needs-you-card__error:empty {
+  display: none;
+}
+
+.needs-you-card button:disabled,
+.needs-you-card input:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.needs-you-card button:focus-visible,
+.needs-you-card__chat:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 1px;
+}
+
+.needs-you-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  animation: fadeUp 0.22s var(--ease-out);
+}
+
+.needs-you-done--ok {
+  background: color-mix(in srgb, var(--mn-success) 10%, transparent);
+  color: var(--mn-success-ink, var(--mn-success));
+}
+
+.needs-you-done--muted {
+  background: var(--mn-surface-1);
+  color: var(--mn-fg-muted);
+}
+
+.needs-you-done__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.needs-you-done__after {
+  flex-shrink: 0;
+  color: var(--mn-fg-subtle);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .needs-you-card__option:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--mn-warning) 18%, var(--mn-bg));
+  }
+
+  .needs-you-card__chat:hover {
+    color: var(--mn-accent-ink, var(--mn-accent));
+  }
+
+  .chat-list-toast__undo:hover,
+  .chat-archive-bulk__cancel:hover,
+  .needs-you-card__link:hover {
+    background: var(--mn-surface-elevated);
+  }
+}
+
+@media (pointer: coarse) {
+  .chat-item-row {
+    min-height: 44px;
+  }
+
+  .chat-list-view,
+  .chat-list-section-action,
+  .needs-you-card__option,
+  .needs-you-card__primary,
+  .needs-you-card__secondary,
+  .needs-you-card__link,
+  .chat-archive-bulk__restore,
+  .chat-archive-bulk__cancel,
+  .chat-list-toast__undo {
+    min-height: 44px;
+  }
+
+  .needs-you-card__reply {
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-list-toast,
+  .needs-you-done,
+  .chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after {
+    animation: none;
+  }
+
+  .chat-item-row--agent[data-agent-state='running'] .chat-item-logo::after {
+    border-right-color: var(--mn-accent);
   }
 }

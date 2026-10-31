@@ -122,11 +122,13 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
   function revision(chatId) {
     return db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?').get(chatId)?.revision ?? 0;
   }
-  function touch(chatId) {
+  function touch(chatId, { requestOnly = false } = {}) {
     const next = (readSessionMeta(db, 'revision', 0) || 0) + 1;
     writeSessionMeta(db, 'revision', next);
-    db.prepare('INSERT INTO chat_revisions (chat_id, revision) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET revision = excluded.revision')
-      .run(chatId, next);
+    db.prepare(`INSERT INTO chat_revisions (chat_id, revision, write_revision) VALUES (?, ?, ?)
+      ON CONFLICT(chat_id) DO UPDATE SET revision = excluded.revision,
+      write_revision = CASE WHEN ? THEN chat_revisions.write_revision ELSE excluded.write_revision END`)
+      .run(chatId, next, next, requestOnly ? 1 : 0);
     db.prepare('UPDATE chats SET updated_at = MAX(updated_at, ?) WHERE id = ?').run(time(), chatId);
     return next;
   }
@@ -830,7 +832,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (db.prepare("SELECT count(*) AS count FROM chat_requests WHERE chat_id=? AND state='pending'").get(request.chatId).count >= 128) fail('queue_full', 'This conversation already has 128 unanswered requests');
         db.prepare('INSERT INTO chat_requests (request_id,chat_id,execution_id,state,payload_json,updated_at) VALUES (?,?,?,?,?,?)')
           .run(request.requestId, request.chatId, request.executionId, request.state, json(request), time());
-        touch(request.chatId); return request;
+        touch(request.chatId, { requestOnly: true }); return request;
       });
     },
     saveLegacyRequest(input, { assertOwner } = {}) {
@@ -852,7 +854,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (db.prepare("SELECT count(*) AS count FROM chat_requests WHERE chat_id=? AND state='pending'").get(request.chatId).count >= 128) fail('queue_full', 'This conversation already has 128 unanswered requests');
         db.prepare('INSERT INTO chat_requests(request_id,chat_id,execution_id,state,payload_json,updated_at) VALUES(?,?,?,?,?,?)')
           .run(request.requestId, request.chatId, request.executionId, request.state, json(request), time());
-        touch(request.chatId); return request;
+        touch(request.chatId, { requestOnly: true }); return request;
       });
     },
     getRequest(requestId) { return parse(db.prepare('SELECT payload_json FROM chat_requests WHERE request_id=?').get(identity(requestId))?.payload_json); },
@@ -895,7 +897,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (updated.state === 'pending') fail('invalid_request', 'Request settlement must be terminal');
         db.prepare('UPDATE chat_requests SET state=?,payload_json=?,updated_at=? WHERE request_id=?')
           .run(updated.state, json(updated), time(), requestId);
-        touch(prior.chatId); return updated;
+        touch(prior.chatId, { requestOnly: true }); return updated;
       });
     },
     respondToRequest(requestId, { answerCommandId, answer, settledAt } = {}) {
@@ -921,7 +923,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         }));
         db.prepare("UPDATE chat_requests SET state='answered',payload_json=?,response_hash=?,response_json=?,updated_at=? WHERE request_id=?")
           .run(json(updated), responseHash, json(response), time(), requestId);
-        touch(prior.chatId);
+        touch(prior.chatId, { requestOnly: true });
         return { request: updated, answer: response, replayed: false };
       });
     },

@@ -25,8 +25,14 @@ export function agentMarkStateFromLabel(label: string): AgentMarkState {
   return 'waiting';
 }
 
-function fillLogo(host: HTMLElement, modelId: string): void {
-  const svg = modelId ? modelProducerLogoSvg(modelId) : null;
+/**
+ * Producer logo for a model id into `host`. A bare alias (`sonnet`) has no family
+ * of its own, so the connection it runs on (`claude-cli`, `codex`) breaks the tie;
+ * failing both, the generic agent glyph.
+ */
+export function fillProducerLogo(host: HTMLElement, modelId: string, providerId = ''): void {
+  const svg = (modelId ? modelProducerLogoSvg(modelId) : null)
+    ?? (providerId ? modelProducerLogoSvg(providerId.replace(/^codex\b/i, 'openai')) : null);
   if (svg) host.innerHTML = svg;
   else host.replaceChildren(createIcon('appAgentActivity', { size: 12 }));
   host.dataset.hasLogo = svg ? 'true' : 'false';
@@ -53,7 +59,7 @@ export function syncAgentMark(mark: HTMLElement, modelId: string, state: AgentMa
   const logo = mark.querySelector<HTMLElement>(':scope > .agent-mark__logo');
   if (logo && mark.dataset.model !== modelId) {
     mark.dataset.model = modelId;
-    fillLogo(logo, modelId);
+    fillProducerLogo(logo, modelId);
   }
   const previous = mark.dataset.state as AgentMarkState | undefined;
   if (previous === state) return;

@@ -19,6 +19,7 @@ import {
   getActiveBoardGroup,
   getBoardGroupForChat,
   buildSortedWorkspaceSidebarEntries,
+  getGroupActivityAt,
   getGroupsForWorkspace,
   isBoardOwnedChat,
   isBoardOwnedGroup,
@@ -34,7 +35,9 @@ import {
 import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
-import { agentMarkStateFromLabel, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentMarkStack, syncAgentModelChip, type AgentMarkState } from './agent-model-mark';
+import { agentMarkStateFromLabel, fillProducerLogo, type AgentMarkState } from './agent-model-mark';
+import { chatGitState, getWorkspaceGitSummary, initSidebarGitState, isChatWorkFinished, subscribeSidebarGitState, syncChatGitState } from './sidebar-git-state';
+import { syncSidebarNeedsYou } from './sidebar-needs-you';
 import { formatWorkDuration } from '../chat/transcript-turns';
 import { isChatAppForeground } from './chat-mount';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
@@ -47,6 +50,7 @@ import { syncTodoPanel } from './todo-panel';
 import {
   createEmptyChatObject,
   ensureChatHistoryLoaded,
+  findChatById,
   formatDraftChatSidebarName,
   getActiveChat,
   getChatMessageCount,
@@ -71,6 +75,7 @@ import {
   renderExpertScopeHeader,
 } from './experts/experts-scope';
 import { getWorkspacePath } from '../state/workspace';
+import { getChatLastMessageAt } from '../state/session-workspace-scope';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import type { BoardCategory, Chat, ChatGroup, LeftoverBoardTask } from '../types';
@@ -89,12 +94,10 @@ import {
   showCachedModelInfo,
 } from './messages';
 import {
-  appendChatItemCodeChangeStats,
   formatChatItemCodeChangeAria,
   updateCodeChangeStrip,
 } from './code-change-strip';
 import { updateWorkspaceCodeChangeDisplay } from './workspace-code-change';
-import { hasCodeChangeTotals } from '../usage/code-change-ledger';
 import { getDefaultWorkAgentForMode } from '../agents/work-agent-registry';
 import { syncModeSelectorFromActiveChat } from './mode-selector';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
@@ -291,6 +294,7 @@ function clearChatSelection(): void {
   document.querySelectorAll<HTMLElement>('.chat-item-row--selected').forEach((el) => {
     el.classList.remove('chat-item-row--selected');
   });
+  syncArchiveBulkBar();
 }
 
 function toggleChatSelected(chatId: string): void {
@@ -334,6 +338,7 @@ function updateSelectionVisuals(): void {
   list.querySelectorAll<HTMLElement>('.chat-item-row[data-chat-id]').forEach((row) => {
     row.classList.toggle('chat-item-row--selected', selectedChatIds.has(row.dataset.chatId ?? ''));
   });
+  syncArchiveBulkBar();
 }
 
 /** Refresh composer model UI from the active chat (default #modelSelect stays put). */
@@ -472,39 +477,126 @@ function syncAgentClock(clock: HTMLElement, chat: Chat, state: AgentMarkState): 
   }
 }
 
-/** Under a parent: its agents' provider stack and a one-line tally, beside the disclosure. */
-function syncAgentSummary(row: HTMLElement, children: readonly Chat[], running: (id: string) => boolean, toggle: HTMLElement): void {
-  let summary = row.querySelector<HTMLElement>(':scope > .chat-item-agent-summary');
-  if (!summary) {
-    summary = document.createElement('div'); summary.className = 'chat-item-agent-summary';
-    const stack = document.createElement('span'); stack.className = 'agent-mark-stack'; stack.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span'); label.className = 'chat-item-agent-summary__label';
-    summary.append(stack, label);
-    row.append(summary);
-  }
-  if (summary.firstElementChild !== toggle) summary.prepend(toggle);
-  const states = children.map(child => agentMarkStateFromLabel(agentChatStatusLabel(child, running)));
-  const working = states.filter(state => state === 'running').length;
-  const waiting = states.filter(state => state === 'waiting' || state === 'queued').length;
-  const failed = states.filter(state => state === 'failed').length;
-  syncAgentMarkStack(summary.querySelector<HTMLElement>('.agent-mark-stack')!, children.map(chatAgentModelId));
-  summary.dataset.live = String(working > 0);
-  summary.querySelector('.chat-item-agent-summary__label')!.textContent = [
-    `${children.length} ${children.length === 1 ? 'agent' : 'agents'}`,
-    working ? `${working} running` : '', waiting ? `${waiting} waiting` : '', failed ? `${failed} failed` : '',
-    !working && !waiting && !failed ? 'all done' : '',
-  ].filter(Boolean).join(' · ');
+/** The provider logo leads every row; the status dot rides on its corner. */
+function syncChatItemLogo(row: HTMLElement, chat: Chat): void {
+  const logo = row.querySelector<HTMLElement>('.chat-item-logo');
+  const modelId = chatAgentModelId(chat);
+  const providerId = chat.agentExecution?.resolvedModel?.providerId ?? chat.providerId ?? '';
+  const key = `${providerId}|${modelId}`;
+  if (!logo || logo.dataset.model === key) return;
+  logo.dataset.model = key;
+  const dot = logo.querySelector('.chat-item-dot');
+  fillProducerLogo(logo, modelId, providerId);
+  if (dot) logo.append(dot);
 }
 
-/** Session model line: the picker's producer logo + model label. */
-function syncChatItemModel(modelEl: HTMLElement, chat: Chat): void {
-  let chip = modelEl.querySelector<HTMLElement>(':scope > .agent-model-chip');
-  if (!chip) {
-    chip = createAgentModelChip();
-    modelEl.replaceChildren(chip);
+/**
+ * Right edge of a row: git state, then a hover action — Archive in Working,
+ * Restore in Archive. Agents archive with their parent, so their rows get none.
+ */
+function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
+  syncChatItemLogo(row, chat);
+  const titleRow = row.querySelector<HTMLElement>('.chat-item-title-row');
+  const git = row.querySelector<HTMLElement>('.chat-item-git');
+  if (git) syncChatGitState(git, chatGitState(chat, chat.workspacePath || getWorkspacePath()));
+  const archived = isChatArchived(chat);
+  const archivable = !chat.agentConversation && !isBoardOwnedChat(chat);
+  let action = row.querySelector<HTMLButtonElement>('.chat-item-archive');
+  let select = row.querySelector<HTMLButtonElement>('.chat-item-select');
+  if (!archivable || !titleRow) {
+    action?.remove();
+    select?.remove();
+    return;
   }
-  syncAgentModelChip(chip, chat.modelId ?? '', routerChatModelLabel(chat) || '\u2014');
-  chip.removeAttribute('title');
+  if (!action) {
+    action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'chat-item-archive';
+    action.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const current = findChatById(chat.id) ?? chat;
+      setChatsArchivedWithUndo([current], !isChatArchived(current));
+    });
+    titleRow.append(action);
+  }
+  if (action.dataset.mode !== (archived ? 'restore' : 'archive')) {
+    action.dataset.mode = archived ? 'restore' : 'archive';
+    action.replaceChildren(createIcon(archived ? 'unarchive' : 'archive', { size: 14 }));
+    if (archived) action.append('Restore');
+    action.title = archived ? 'Restore to Working' : 'Archive';
+  }
+  action.setAttribute('aria-label', `${archived ? 'Restore' : 'Archive'} ${chat.name}`);
+  // Archive view: the logo turns into a checkbox for bulk restore.
+  if (!archived) { select?.remove(); return; }
+  if (!select) {
+    select = document.createElement('button');
+    select.type = 'button';
+    select.className = 'chat-item-select';
+    const box = document.createElement('span');
+    box.className = 'chat-item-select__box';
+    select.append(box);
+    select.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleChatSelected(chat.id);
+    });
+    titleRow.prepend(select);
+  }
+  const selected = selectedChatIds.has(chat.id);
+  select.setAttribute('aria-pressed', String(selected));
+  select.setAttribute('aria-label', `${selected ? 'Deselect' : 'Select'} ${chat.name}`);
+}
+
+// ── Archive feedback ─────────────────────────────────────────────────────────
+
+const TOAST_MS = 6000;
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** One line above the view switch, with Undo. */
+function showSidebarToast(text: string, undo: () => void): void {
+  const list = document.getElementById('chatList');
+  if (!list) return;
+  let toast = document.getElementById('chatListToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'chatListToast';
+    toast.className = 'chat-list-toast';
+    toast.setAttribute('role', 'status');
+    const views = document.getElementById('chatListViews');
+    if (views) views.before(toast); else list.after(toast);
+  }
+  const label = document.createElement('span');
+  label.className = 'chat-list-toast__text';
+  label.textContent = text;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'chat-list-toast__undo';
+  button.textContent = 'Undo';
+  button.addEventListener('click', () => { hideSidebarToast(); undo(); });
+  toast.replaceChildren(createIcon('archive', { size: 14 }), label, button);
+  toast.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideSidebarToast, TOAST_MS);
+  (toastTimer as { unref?: () => void }).unref?.();
+}
+
+function hideSidebarToast(): void {
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = null;
+  const toast = document.getElementById('chatListToast');
+  if (toast) toast.hidden = true;
+}
+
+/** Archive or restore, then offer Undo — the row leaves the list immediately. */
+function setChatsArchivedWithUndo(chats: readonly Chat[], archived: boolean, label?: string): void {
+  const targets = chats.filter(chat => isChatArchived(chat) !== archived);
+  if (!targets.length) return;
+  for (const chat of targets) setChatArchived(chat, archived);
+  renderSidebar();
+  const one = targets.length === 1 ? `“${targets[0]!.name}”` : `${targets.length} chats`;
+  showSidebarToast(label ?? (archived ? `Archived ${one}` : `Restored ${one} to Working`), () => {
+    for (const chat of targets) setChatArchived(findChatById(chat.id) ?? chat, !archived);
+    renderSidebar();
+  });
 }
 
 /** Shared session row builder (main sidebar + expert-scoped list). */
@@ -618,12 +710,16 @@ function buildChatRow(
 
   const dotCtx = getChatItemDotContext(sessionState?.activeId ?? null);
   const dotState = resolveChatItemDotState(chat, dotCtx);
+  const logo = document.createElement('span');
+  logo.className = 'chat-item-logo';
+  logo.setAttribute('aria-hidden', 'true');
+  titleRow.appendChild(logo);
   if (!inGroup) {
     const dot = document.createElement('div');
     dot.className = 'chat-item-dot';
     dot.setAttribute('aria-hidden', 'true');
     applyChatItemDotClasses(dot, dotState, row);
-    titleRow.appendChild(dot);
+    logo.appendChild(dot);
   } else if (isChatItemDotVisible(dotState)) {
     row.dataset.dotState = dotState;
   }
@@ -645,6 +741,12 @@ function buildChatRow(
   applyChatItemLoopIcon(loopIcon, resolveChatItemLoopIconState(chat), chat);
   titleRow.appendChild(loopIcon);
 
+  const git = document.createElement('span');
+  git.className = 'chat-item-git';
+  git.setAttribute('role', 'img');
+  git.hidden = true;
+  titleRow.appendChild(git);
+
   head.appendChild(titleRow);
 
   row.addEventListener('contextmenu', (e) => {
@@ -658,21 +760,7 @@ function buildChatRow(
   });
 
   row.appendChild(head);
-  if (!inGroup) {
-    const modelEl = document.createElement('div');
-    modelEl.className = 'chat-item-model';
-    syncChatItemModel(modelEl, chat);
-
-    row.appendChild(modelEl);
-    if (hasCodeChangeTotals(chat.codeChangeTotals)) {
-      const statsEl = document.createElement('div');
-      statsEl.className = 'chat-item-stats';
-      const statsFrag = document.createDocumentFragment();
-      appendChatItemCodeChangeStats(statsFrag, chat, chat.codeChangeTotals!);
-      statsEl.appendChild(statsFrag);
-      row.appendChild(statsEl);
-    }
-  }
+  syncChatItemTrailing(row, chat);
   row.dataset.rowLayout = inGroup ? 'group' : 'flat';
   row.dataset.boardCategory = boardCategory ?? '';
   syncChatItemWorktreeIcon(row, chat);
@@ -892,6 +980,18 @@ export function wireSidebarNewGroupButton(): void {
     );
     if (head instanceof HTMLSpanElement) beginRenameGroup(g.id, head);
   });
+
+  // The branch opens the Git panel's checkout picker, which owns switching and worktrees.
+  document.getElementById('sidebarBranch')?.addEventListener('click', () => {
+    void import('./git-panel').then(async (module) => {
+      await module.openGitSidePanel();
+      const trigger = document.getElementById('gitCheckoutTrigger');
+      if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click();
+    });
+  });
+  // Fresh git facts repaint rows and the branch.
+  subscribeSidebarGitState(scheduleRenderSidebar);
+  initSidebarGitState();
 }
 
 /** Rebuild the session list in the left sidebar (workspace-scoped + Unassigned). */
@@ -961,24 +1061,7 @@ function syncChatRow(
 
   syncChatItemWorktreeIcon(row, chat);
 
-  const modelEl = row.querySelector<HTMLElement>('.chat-item-model');
-  if (modelEl) syncChatItemModel(modelEl, chat);
-
-  let statsEl = row.querySelector<HTMLElement>('.chat-item-stats');
-  if (!inGroup && hasCodeChangeTotals(chat.codeChangeTotals)) {
-    if (!statsEl) {
-      statsEl = document.createElement('div');
-      statsEl.className = 'chat-item-stats';
-      // Beside the model chip, ahead of any agent meta or summary lines.
-      if (modelEl) modelEl.after(statsEl); else row.appendChild(statsEl);
-    }
-    statsEl.replaceChildren();
-    const statsFrag = document.createDocumentFragment();
-    appendChatItemCodeChangeStats(statsFrag, chat, chat.codeChangeTotals!);
-    statsEl.appendChild(statsFrag);
-  } else {
-    statsEl?.remove();
-  }
+  syncChatItemTrailing(row, chat);
 }
 
 function syncGroupHeader(
@@ -1029,7 +1112,7 @@ function reconcileChildren(parent: HTMLElement, desired: HTMLElement[]): void {
   }
 }
 
-function buildChatListSectionHead(title: string, count: number): HTMLElement {
+function buildChatListSectionHead(title: string): HTMLElement {
   const head = document.createElement('div');
   head.className = 'chat-list-section-head';
   head.dataset.section = title.toLowerCase();
@@ -1037,12 +1120,131 @@ function buildChatListSectionHead(title: string, count: number): HTMLElement {
   const titleEl = document.createElement('span');
   titleEl.className = 'chat-list-section-title';
   titleEl.textContent = title;
-  const badge = document.createElement('span');
-  badge.className = 'chat-list-section-badge';
-  badge.textContent = String(count);
-  badge.setAttribute('aria-hidden', 'true');
-  head.append(titleEl, badge);
+  head.append(titleEl);
   return head;
+}
+
+/** "Archive N finished": chats in this section whose pull request merged or closed. */
+function syncSectionFinishedAction(head: HTMLElement, finished: readonly Chat[]): void {
+  let action = head.querySelector<HTMLButtonElement>('.chat-list-section-action');
+  if (!finished.length) { action?.remove(); return; }
+  if (!action) {
+    action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'chat-list-section-action';
+    action.title = 'Archive chats whose pull request merged or closed';
+    head.append(action);
+  }
+  action.replaceChildren(createIcon('archive', { size: 12 }), `Archive ${finished.length} finished`);
+  action.onclick = () => setChatsArchivedWithUndo(finished, true, `Archived ${finished.length} finished ${finished.length === 1 ? 'chat' : 'chats'}`);
+}
+
+/** Pending agent questions and approvals, first in the Working view. */
+function takeNeedsYouSection(list: HTMLElement): HTMLElement {
+  let section = list.querySelector<HTMLElement>(':scope > #sidebarNeedsYou');
+  if (!section) {
+    section = document.createElement('section');
+    section.id = 'sidebarNeedsYou';
+    section.className = 'needs-you';
+  }
+  return section;
+}
+
+let archiveQuery = '';
+
+/** Archive search; kept across renders so typing never loses focus. */
+function takeArchiveSearch(list: HTMLElement, count: number): HTMLElement {
+  let box = list.querySelector<HTMLElement>(':scope > .chat-archive-search');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'chat-archive-search';
+    const label = document.createElement('label');
+    label.className = 'chat-archive-search__label';
+    label.htmlFor = 'chatArchiveSearch';
+    label.textContent = 'Search archived chats';
+    const input = document.createElement('input');
+    input.id = 'chatArchiveSearch';
+    input.type = 'search';
+    input.className = 'chat-archive-search__input';
+    input.autocomplete = 'off';
+    input.addEventListener('input', () => { archiveQuery = input.value; renderSidebar(); });
+    const hint = document.createElement('p');
+    hint.className = 'chat-archive-search__hint';
+    hint.textContent = 'Archived chats keep their transcript, worktree, pin and group. Open one to keep working.';
+    box.append(createIcon('search', { size: 14 }), label, input, hint);
+  }
+  const input = box.querySelector<HTMLInputElement>('input')!;
+  input.placeholder = `Search ${count} archived ${count === 1 ? 'chat' : 'chats'}`;
+  if (input.value !== archiveQuery) input.value = archiveQuery;
+  return box;
+}
+
+/** Bulk restore bar: appears once any archived chat is ticked. */
+function takeArchiveBulkBar(list: HTMLElement): HTMLElement {
+  let bar = list.querySelector<HTMLElement>(':scope > .chat-archive-bulk');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'chat-archive-bulk';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Selected archived chats');
+    const count = document.createElement('span');
+    count.className = 'chat-archive-bulk__count';
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'chat-archive-bulk__restore';
+    restore.append(createIcon('unarchive', { size: 13 }), 'Restore');
+    restore.addEventListener('click', () => {
+      const chats = [...selectedChatIds].map(id => findChatById(id)).filter((chat): chat is Chat => Boolean(chat));
+      clearChatSelection();
+      setChatsArchivedWithUndo(chats, false);
+    });
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'chat-archive-bulk__cancel';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => clearChatSelection());
+    bar.append(count, restore, cancel);
+  }
+  syncArchiveBulkBar(bar);
+  return bar;
+}
+
+function syncArchiveBulkBar(bar = document.querySelector<HTMLElement>('#chatList > .chat-archive-bulk')): void {
+  const list = document.getElementById('chatList');
+  const selecting = list?.dataset.chatView === 'archive' && selectedChatIds.size > 0;
+  list?.classList.toggle('chat-list--selecting', Boolean(selecting));
+  if (!bar) return;
+  bar.hidden = !selecting;
+  const count = bar.querySelector('.chat-archive-bulk__count');
+  if (count) count.textContent = `${selectedChatIds.size} selected`;
+  for (const select of list?.querySelectorAll<HTMLButtonElement>('.chat-item-select') ?? []) {
+    const row = select.closest<HTMLElement>('[data-chat-id]');
+    const on = selectedChatIds.has(row?.dataset.chatId ?? '');
+    select.setAttribute('aria-pressed', String(on));
+  }
+}
+
+/** Header: the checked-out branch, its push / pull counts and uncommitted files; "Chats" outside git. */
+function syncSidebarHeader(): void {
+  const button = document.getElementById('sidebarBranch');
+  if (!button) return;
+  const summary = getWorkspaceGitSummary(getWorkspacePath());
+  button.hidden = !summary;
+  const title = document.getElementById('sidebarTitle');
+  if (title) title.hidden = Boolean(summary);
+  if (!summary) return;
+  const { branch, ahead, behind, changed } = summary;
+  button.querySelector('.chat-sidebar-branch__name')!.textContent = branch;
+  button.querySelector('.chat-sidebar-branch__sync')!.textContent = [ahead ? `↑${ahead}` : '', behind ? `↓${behind}` : ''].filter(Boolean).join(' ');
+  button.querySelector('.chat-sidebar-branch__changed')!.textContent = changed ? `${changed} changed` : '';
+  const spoken = [
+    `Branch ${branch}`,
+    ahead ? `${ahead} ${ahead === 1 ? 'commit' : 'commits'} to push` : '',
+    behind ? `${behind} to pull` : '',
+    ahead === 0 && behind === 0 ? 'up to date' : '',
+    changed ? `${changed} changed ${changed === 1 ? 'file' : 'files'}` : '',
+  ].filter(Boolean).join(', ');
+  button.setAttribute('aria-label', `${spoken}. Switch branch or worktree`);
 }
 
 let sidebarRenderFrame: number | null = null;
@@ -1127,38 +1329,44 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
       row.classList.toggle('chat-item-row--agent', child);
       row.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT)));
       if (child) {
-        let meta = row.querySelector<HTMLElement>('.chat-item-agent-meta');
-        if (!meta) {
-          meta = document.createElement('div'); meta.className = 'chat-item-agent-meta';
-          const text = document.createElement('span'); text.className = 'chat-item-agent-meta__text';
-          const clock = document.createElement('span'); clock.className = 'chat-item-agent-clock';
-          meta.append(text, clock); row.append(meta);
-        }
+        row.querySelector(':scope > .chat-item-agent-meta')?.remove();
+        const titleRow = row.querySelector<HTMLElement>('.chat-item-title-row');
         const missing = !relationships.parentById.has(chat.id) && Boolean(chat.agentConversation?.parentChatId || chat.agentConversation?.missingParent);
         const status = agentChatStatusLabel(chat, running);
         const state = agentMarkStateFromLabel(status);
-        // Model · status · clock reads as one instrument line; the agent type moves to the label.
-        const metaText = [routerChatModelLabel(chat) || null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
-        meta.querySelector('.chat-item-agent-meta__text')!.textContent = metaText;
-        syncAgentClock(meta.querySelector<HTMLElement>('.chat-item-agent-clock')!, chat, state);
-        let mark = row.querySelector<HTMLElement>(':scope > .chat-item-agent-mark');
-        if (!mark) { mark = createAgentMark('chat-item-agent-mark'); row.prepend(mark); }
-        syncAgentMark(mark, chatAgentModelId(chat), state);
-        const described = [chat.agentTypeId, metaText].filter(Boolean).join(' · ');
+        // The logo carries the state; the right edge reads time, then a check once done.
+        row.dataset.agentState = state;
+        let clock = row.querySelector<HTMLElement>('.chat-item-agent-clock');
+        if (!clock && titleRow) {
+          clock = document.createElement('span'); clock.className = 'chat-item-agent-clock';
+          titleRow.insertBefore(clock, titleRow.querySelector('.chat-item-git'));
+        }
+        if (clock) syncAgentClock(clock, chat, state);
+        let done = row.querySelector<HTMLElement>('.chat-item-agent-done');
+        if (state === 'done' && !done && titleRow) {
+          done = createIcon('check', { className: 'chat-item-agent-done', size: 12 });
+          titleRow.insertBefore(done, titleRow.querySelector('.chat-item-git'));
+        } else if (state !== 'done') done?.remove();
+        const described = [chat.agentTypeId, routerChatModelLabel(chat) || null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
         row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${described}`);
         row.title += `\n${chatReadOnlyReason(chat) ?? described}`;
-      } else { row.querySelector('.chat-item-agent-meta')?.remove(); row.querySelector('.chat-item-agent-mark')?.remove(); }
+      } else {
+        delete row.dataset.agentState;
+        row.querySelector('.chat-item-agent-clock')?.remove();
+        row.querySelector('.chat-item-agent-done')?.remove();
+      }
       const children = relationships.children.get(chat.id) ?? [];
-      if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); row.querySelector(':scope > .chat-item-agent-summary')?.remove(); continue; }
+      if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); continue; }
       const activeChildren = children.filter(entry => activeIds.has(entry.id));
       const previousChildren = children.filter(entry => !activeIds.has(entry.id));
       if (!expandedAgentChats.has(chat.id)) expandedAgentChats.set(chat.id, activeChildren.length > 0);
       const expanded = expandedAgentChats.get(chat.id) ?? activeChildren.length > 0;
-      const toggle = button(`toggle:${chat.id}`, expanded ? '▾' : '▸', expanded,
+      const toggle = button(`toggle:${chat.id}`, `${expanded ? '▾' : '▸'} ${children.length}`, expanded,
         () => expandedAgentChats.set(chat.id, !expanded));
       toggle.classList.add('chat-agent-toggle');
       toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${children.length} agents of ${chat.name}`);
-      syncAgentSummary(row, children, running, toggle);
+      const titleRow = row.querySelector<HTMLElement>('.chat-item-title-row');
+      if (titleRow && toggle.parentElement !== titleRow) titleRow.insertBefore(toggle, titleRow.querySelector('.chat-item-git'));
       if (!expanded) continue;
       const group = take(`children:${chat.id}`);
       group.className = 'chat-agent-children'; group.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT))); group.setAttribute('role', 'group'); group.setAttribute('aria-label', `Agents of ${chat.name}`);
@@ -1280,6 +1488,7 @@ export function renderSidebar(): void {
 
   const list = document.getElementById('chatList');
   if (!list || !sessionState) return;
+  syncSidebarHeader();
 
   const existingRows = new Map<string, HTMLElement>();
   list.querySelectorAll<HTMLElement>('.chat-item-row[data-chat-id]').forEach((el) => {
@@ -1301,13 +1510,8 @@ export function renderSidebar(): void {
     const id = el.dataset.section;
     if (id && !existingSectionHeads.has(id)) existingSectionHeads.set(id, el);
   });
-  const takeSectionHead = (title: string, count: number): HTMLElement => {
-    const prev = existingSectionHeads.get(title.toLowerCase());
-    if (!prev) return buildChatListSectionHead(title, count);
-    const badge = prev.querySelector('.chat-list-section-badge');
-    if (badge) badge.textContent = String(count);
-    return prev;
-  };
+  const takeSectionHead = (title: string): HTMLElement =>
+    existingSectionHeads.get(title.toLowerCase()) ?? buildChatListSectionHead(title);
   const existingEmpty = list.querySelector<HTMLElement>('.chat-list-empty');
 
   const ws = getWorkspacePath();
@@ -1361,25 +1565,50 @@ export function renderSidebar(): void {
   const takeBranch = agentSidebarBranches(list, relationships, highlightChatId, takeRow);
 
   if (archivedView) {
+    desired.push(takeArchiveSearch(list, archivedCount), takeArchiveBulkBar(list));
+    const query = archiveQuery.trim().toLowerCase();
     const archived = [...listedRoots]
+      .filter(chat => !query || chat.name.toLowerCase().includes(query))
       .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
-    for (const chat of archived) desired.push(...takeBranch(chat, { draggable: false }));
-    if (!desired.length) desired.push(buildChatListEmptyState('archive'));
+    // Newest archive first, split where it stops being this week's work.
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = archived.filter(chat => (chat.archivedAt ?? 0) >= weekAgo);
+    const earlier = archived.filter(chat => (chat.archivedAt ?? 0) < weekAgo);
+    for (const [title, chats] of [['This week', recent], ['Earlier', earlier]] as const) {
+      if (!chats.length) continue;
+      desired.push(takeSectionHead(title));
+      for (const chat of chats) desired.push(...takeBranch(chat, { draggable: false }));
+    }
+    if (!archived.length) desired.push(buildChatListEmptyState('archive', Boolean(query)));
     reconcileChildren(list, desired);
+    syncArchiveBulkBar();
     syncChatItemDotsInDom();
     syncChatItemLoopIconsInDom();
     return;
   }
+  list.classList.remove('chat-list--selecting');
+
+  const needsYou = takeNeedsYouSection(list);
+  syncSidebarNeedsYou(needsYou, candidates, {
+    rerender: scheduleRenderSidebar,
+    openChat: (chatId, requestId) => {
+      void switchChat(chatId).then(async () => {
+        if (!requestId) return;
+        const { focusManagedChatRequest } = await import('./managed-chat-requests');
+        await focusManagedChatRequest(chatId, requestId);
+      });
+    },
+  });
+  desired.push(needsYou);
 
   if (pinned.length) {
-    desired.push(takeSectionHead('Pinned', pinned.length));
+    desired.push(takeSectionHead('Pinned'));
     for (const chat of pinned) {
       desired.push(...takeBranch(chat, { draggable: false, pinnable: true }));
     }
-    if (sidebarEntries.length) desired.push(takeSectionHead('Chats', unpinnedChats.length));
   }
 
-  for (const entry of sidebarEntries) {
+  const pushEntry = (entry: (typeof sidebarEntries)[number]) => {
     if (entry.kind === 'group') {
       const { group, members } = entry;
       const prevHead = existingHeaders.get(group.id);
@@ -1396,7 +1625,7 @@ export function renderSidebar(): void {
       desired.push(head);
 
       const hideMembersInIconRail =
-        sessionState.sidebarCollapsed === true && Boolean(group.orchestrateBoard);
+        sessionState!.sidebarCollapsed === true && Boolean(group.orchestrateBoard);
       if (!group.collapsed && members.length > 0 && !hideMembersInIconRail) {
         let membersEl = existingMembers.get(group.id);
         if (!membersEl) {
@@ -1418,19 +1647,39 @@ export function renderSidebar(): void {
         }
         desired.push(membersEl);
       }
-      continue;
+      return;
     }
     desired.push(...takeBranch(entry.chat, { pinnable: true }));
+  };
+
+  // Today, then everything older; a group sits where its latest chat does.
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const activityAt = (entry: (typeof sidebarEntries)[number]) =>
+    entry.kind === 'group' ? getGroupActivityAt(entry.group, entry.members) : getChatLastMessageAt(entry.chat);
+  const today = sidebarEntries.filter(entry => activityAt(entry) >= startOfToday.getTime());
+  const older = sidebarEntries.filter(entry => activityAt(entry) < startOfToday.getTime());
+  const cwd = getWorkspacePath();
+  for (const [title, entries] of [['Today', today], ['Older', older]] as const) {
+    if (!entries.length) continue;
+    const finished = entries
+      .filter((entry): entry is Extract<typeof entry, { kind: 'chat' }> => entry.kind === 'chat')
+      .map(entry => entry.chat)
+      .filter(chat => !isBoardOwnedChat(chat) && isChatWorkFinished(chatGitState(chat, cwd)));
+    const head = takeSectionHead(title);
+    syncSectionFinishedAction(head, finished);
+    desired.push(head);
+    for (const entry of entries) pushEntry(entry);
   }
 
   const unassigned = listedRoots.filter(chat => !workspaceIds.has(chat.id));
   if (unassigned.length) {
-    desired.push(takeSectionHead('Unassigned', unassigned.length));
+    desired.push(takeSectionHead('Unassigned'));
     for (const chat of unassigned) {
       desired.push(...takeBranch(chat, { draggable: false }));
     }
   }
-  if (desired.length === 0) {
+  if (desired.length === 1 && needsYou.hidden) {
     desired.push(existingEmpty?.dataset.chatView === 'working' ? existingEmpty : buildChatListEmptyState());
   }
 
@@ -1439,17 +1688,17 @@ export function renderSidebar(): void {
   syncChatItemLoopIconsInDom();
 }
 
-function buildChatListEmptyState(view: SidebarChatView = 'working'): HTMLElement {
+function buildChatListEmptyState(view: SidebarChatView = 'working', searching = false): HTMLElement {
   const empty = document.createElement('div');
   empty.className = 'chat-list-empty';
   empty.dataset.chatView = view;
   const title = document.createElement('p');
   title.className = 'chat-list-empty__title';
-  title.textContent = view === 'archive' ? 'No archived chats' : 'No working chats';
+  title.textContent = view === 'archive' ? (searching ? 'No archived chats match' : 'No archived chats') : 'No working chats';
   const hint = document.createElement('p');
   hint.className = 'chat-list-empty__hint';
   hint.textContent = view === 'archive'
-    ? 'Right-click a chat and choose Archive chat to keep it here.'
+    ? (searching ? 'Try a different search.' : 'Hover a chat and choose Archive to keep it here.')
     : 'Start a new chat to work on this folder.';
   empty.append(title, hint);
   return empty;

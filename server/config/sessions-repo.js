@@ -72,9 +72,9 @@ function assertSessionRevision(baseRevision, db = getSessionsDb()) {
 }
 
 /** Reject a write composed from an older version of any chat it changes. */
-function assertChatRevisions(db, ids, bases) {
+function assertChatRevisions(db, ids, bases, { allowRequestChanges = false } = {}) {
   if (!bases || typeof bases !== 'object' || Array.isArray(bases)) return;
-  const read = db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?');
+  const read = db.prepare('SELECT revision, write_revision FROM chat_revisions WHERE chat_id = ?');
   for (const id of ids) {
     const expected = bases[id];
     if (!Number.isSafeInteger(expected) || expected < 0) {
@@ -84,8 +84,10 @@ function assertChatRevisions(db, ids, bases) {
       err.conflictingChatIds = [id];
       throw err;
     }
-    const current = read.get(id)?.revision ?? 0;
+    const row = read.get(id);
+    const current = row?.revision ?? 0;
     if (current === expected) continue;
+    if (allowRequestChanges && !isManagedConversation(db, id) && expected >= (row?.write_revision ?? current) && expected < current) continue;
     const err = new Error(`Chat ${id} changed in another window; reload before saving`);
     err.statusCode = 409;
     err.revision = readSessionRevision(db);
@@ -126,9 +128,9 @@ export function readSessionChatPresentationRevisions(ids, db = getSessionsDb()) 
 }
 
 function stampChatRevisions(db, ids, revision) {
-  const write = db.prepare(`INSERT INTO chat_revisions (chat_id, revision) VALUES (?, ?)
-    ON CONFLICT(chat_id) DO UPDATE SET revision = excluded.revision`);
-  for (const id of ids) write.run(id, revision);
+  const write = db.prepare(`INSERT INTO chat_revisions (chat_id, revision, write_revision) VALUES (?, ?, ?)
+    ON CONFLICT(chat_id) DO UPDATE SET revision = excluded.revision, write_revision = excluded.write_revision`);
+  for (const id of ids) write.run(id, revision, revision);
 }
 
 function readChatRevisions(db, ids) {
@@ -834,8 +836,9 @@ export function writeWholeSessionState(state, options = {}) {
     assertSessionRevision(options.baseRevision);
     const changedIds = chats.map((chat) => String(chat?.id ?? '')).filter(Boolean);
     const presentationIds = assertChatPresentationBases(db, changedIds, options.chatBasePresentationRevisions);
-    assertChatRevisions(db, [...changedIds.filter(id => !presentationIds.has(id)), ...deleteChatIds],
-      options.chatBasePresentationRevisions === undefined ? options.chatBaseRevisions : options.chatBaseRevisions ?? {});
+    const chatBases = options.chatBasePresentationRevisions === undefined ? options.chatBaseRevisions : options.chatBaseRevisions ?? {};
+    assertChatRevisions(db, changedIds.filter(id => !presentationIds.has(id)), chatBases, { allowRequestChanges: true });
+    assertChatRevisions(db, deleteChatIds, chatBases);
     const prunedChatIds = [];
     writeScalars(db, state);
 
@@ -1570,8 +1573,9 @@ export function patchSessionState(delta, { db: suppliedDb, deferDeleteCleanup = 
       !(Array.isArray(body.groups) && body.groups.length) && !(Array.isArray(body.deleteGroupIds) && body.deleteGroupIds.length) &&
       !(body.scalars && typeof body.scalars === 'object' && Object.keys(body.scalars).length);
     if (!presentationOnly) assertSessionRevision(body.baseRevision, db);
-    assertChatRevisions(db, [...changedIds.filter(id => !presentationIds.has(id)), ...deletedIds],
-      body.chatBasePresentationRevisions === undefined ? body.chatBaseRevisions : body.chatBaseRevisions ?? {});
+    const chatBases = body.chatBasePresentationRevisions === undefined ? body.chatBaseRevisions : body.chatBaseRevisions ?? {};
+    assertChatRevisions(db, changedIds.filter(id => !presentationIds.has(id)), chatBases, { allowRequestChanges: true });
+    assertChatRevisions(db, deletedIds, chatBases);
 
     const changedChatIds = [];
 

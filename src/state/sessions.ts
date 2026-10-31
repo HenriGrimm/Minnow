@@ -2454,8 +2454,8 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
   }
 }
 
-/** Flush a parent resume before acknowledging external delivery. */
-export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
+/** Flush a parent resume or delegation without depending on unrelated conflicted chats. */
+export async function persistSessionsBeforeDeliveryAck(chatId?: string): Promise<boolean> {
   if (!sessionState || (isServerStorageMode() && !sessionsHydratedFromServer)) return false;
   if (saveTimer) {
     clearTimeout(saveTimer);
@@ -2464,8 +2464,8 @@ export async function persistSessionsBeforeDeliveryAck(): Promise<boolean> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     if (saveSessionsNow() !== 'ok') return false;
     if (inFlightSessionSave) await inFlightSessionSave;
-    if (!hasSessionDirtyWork(true)) return true;
-    if (conflictedChatIds.size > 0 || sessionWriteBlockedByChatConflict) return false;
+    if (chatId ? !dirtyChatIds.has(chatId) && !deletedChatIds.has(chatId) : !hasSessionDirtyWork(true)) return true;
+    if ((chatId ? conflictedChatIds.has(chatId) : conflictedChatIds.size > 0) || sessionWriteBlockedByChatConflict) return false;
     if (sessionRetryTimer !== null) return false;
   }
   return false;

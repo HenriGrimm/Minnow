@@ -13,7 +13,7 @@ import type { Chat } from '../types';
 import { clearComposerInput, getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
 import { clearAttachments } from '../attachments/store';
-import { attachChatReferences, clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
+import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 import { isPairedDevice } from '../api/session-token';
 
@@ -164,7 +164,6 @@ export function applyComposerDraftForChat(chat: Chat): void {
   draftRestoreSuspended = true;
   input.value = isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft ?? '';
   clearComposerChatReferences();
-  input.value = attachChatReferences(input.value) ?? input.value;
   resetComposerPromptHistory(chat.id);
   autoResize(input);
   draftRestoreSuspended = false;

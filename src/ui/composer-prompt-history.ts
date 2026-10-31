@@ -168,12 +168,13 @@ export function handleComposerPromptHistoryKeydown(
 
   if (!e.altKey) {
     // Wrapped lines need the same caret navigation as explicit newlines.
-    const style = input.ownerDocument.defaultView?.getComputedStyle(input);
+    const layout = input.parentElement?.querySelector<HTMLElement>('.composer-inline-editor') ?? input;
+    const style = input.ownerDocument.defaultView?.getComputedStyle(layout);
     const lineHeight = parseFloat(style?.lineHeight ?? '') || 22;
     const padding = (parseFloat(style?.paddingTop ?? '') || 0)
       + (parseFloat(style?.paddingBottom ?? '') || 0);
     const singleLineHeight = Math.max(lineHeight + padding, parseFloat(style?.minHeight ?? '') || 0);
-    if (input.value.includes('\n') || (input.value && input.scrollHeight > singleLineHeight + 1)) return false;
+    if (input.value.includes('\n') || (input.value && layout.scrollHeight > singleLineHeight + 1)) return false;
     if (e.key === 'ArrowUp' && !isComposerCaretAtStart(input)) return false;
     if (e.key === 'ArrowDown' && !isComposerCaretAtEnd(input)) return false;
   }

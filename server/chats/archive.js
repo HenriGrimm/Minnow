@@ -101,7 +101,8 @@ export function validateChatArchive(db, input) {
     const rows = input.tables[table], allowed = columnsFor(db, table).map(column => column.name);
     if (!Array.isArray(rows)) fail('invalid_request', 'Invalid conversation archive table');
     for (const row of rows) {
-      if (!plain(row) || Object.keys(row).length !== allowed.length || Object.keys(row).some(key => !allowed.includes(key)) ||
+      const legacyRevision = table === 'chat_revisions' && plain(row) && !Object.hasOwn(row, 'write_revision');
+      if (!plain(row) || Object.keys(row).length !== allowed.length - (legacyRevision ? 1 : 0) || Object.keys(row).some(key => !allowed.includes(key)) ||
         Object.values(row).some(value => value !== null && typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value)))) fail('invalid_request', 'Invalid conversation archive row in ' + table);
       for (const [key, value] of Object.entries(row)) if (key.endsWith('_json') || table === 'session_meta' && key === 'value') {
         try { JSON.parse(value); } catch { fail('invalid_request', 'Invalid archived JSON in ' + table); }
@@ -159,7 +160,8 @@ export function importChatArchive(db, input, { now = Date.now } = {}) {
       const lookup = db.prepare('SELECT 1 FROM ' + table + ' WHERE ' + keys.map(key => key + '=?').join(' AND '));
       const insert = db.prepare('INSERT INTO ' + table + '(' + names.join(',') + ') VALUES (' + names.map(() => '?').join(',') + ')');
       for (const row of archive.tables[table]) {
-        const restored = table === 'chat_commands' ? { ...row, position: row.position + positionOffset }
+        const restored = table === 'chat_revisions' ? { write_revision: row.revision, ...row }
+          : table === 'chat_commands' ? { ...row, position: row.position + positionOffset }
           : table === 'board_log' ? { ...row, seq: row.seq + logOffset } : row;
         if (lookup.get(...keys.map(key => restored[key]))) fail('idempotency_conflict', 'This archive overlaps existing ' + table + ' records. Restore a backup to replace an existing home.');
         insert.run(...names.map(name => restored[name]));
@@ -218,7 +220,7 @@ export function importChatArchive(db, input, { now = Date.now } = {}) {
     }
     const sourceRevision = Number(JSON.parse(archive.tables.session_meta.find(row => row.key === 'revision')?.value ?? '0')) || 0;
     const revision = Math.max(priorRevision, sourceRevision) + 1; writeSessionMeta(db, 'revision', revision);
-    if (hadChats) for (const chatId of importedIds) db.prepare('INSERT INTO chat_revisions(chat_id,revision) VALUES(?,?) ON CONFLICT(chat_id) DO UPDATE SET revision=excluded.revision').run(chatId, revision);
+    if (hadChats) for (const chatId of importedIds) db.prepare('INSERT INTO chat_revisions(chat_id,revision,write_revision) VALUES(?,?,?) ON CONFLICT(chat_id) DO UPDATE SET revision=excluded.revision,write_revision=excluded.write_revision').run(chatId, revision, revision);
     const receipt = { version: 1, digest: archive.digest, chatIds: importedIds, sourceRevision, revision, journalChunks: chunks, held: true };
     db.prepare("INSERT INTO chat_outbox(outbox_id,chat_id,kind,payload_hash,payload_json,state,created_at,updated_at) VALUES(?,NULL,'archive.imported',?,?,'applied',?,?)")
       .run(receiptId, hashChatArchive({ chatId: null, kind: 'archive.imported', payload: receipt }), JSON.stringify(receipt), now(), now());

@@ -32,6 +32,8 @@ body {
   --mn-menu-hover-bg: var(--mn-surface-elevated);
   --mn-menu-selected-bg: var(--mn-accent-soft);
   --mn-menu-shadow: 0 12px 32px -8px var(--mn-shadow);
+  /* Merged pull requests read purple in every family; mixed toward ink for light themes. */
+  --mn-git-merged: color-mix(in oklch, oklch(0.72 0.13 300) 82%, var(--mn-fg));
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 0.15s;
   --duration-normal: 0.22s;

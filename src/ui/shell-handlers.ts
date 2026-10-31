@@ -101,6 +101,7 @@ export function initShellHandlers(): void {
     void import('./chat-search-popover').then((m) => m.toggleChatSearchPopover(btn));
   });
   wireClickAll('.chat-new-wide', createChat);
+  wireClick('btnSidebarNewChat', createChat);
   wireClick('btnOrchestrate', () => {
     void import('./orchestrate-hub').then((m) => m.toggleOrchestrateHubFromTopbar());
   });

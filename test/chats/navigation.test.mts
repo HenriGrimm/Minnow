@@ -69,8 +69,8 @@ test('sidebar root counts, pinning, and manual groups ignore nested agent rows',
   child.agentExecution = { executionId: 'execution', status: 'running' };
   const list = setup([root, child, other]);
   renderSidebar();
-  assert.equal(list.querySelector('[data-section="pinned"] .chat-list-section-badge')?.textContent, '1');
-  assert.equal(list.querySelector('[data-section="chats"] .chat-list-section-badge')?.textContent, '1');
+  assert.ok(list.querySelector('[data-section="pinned"]'));
+  assert.deepEqual([...list.querySelectorAll<HTMLElement>(':scope > .chat-item-row')].map(row => row.dataset.chatId), ['root', 'other']);
   assert.equal(list.querySelectorAll('[data-chat-id="child"]').length, 1);
   assert.ok(list.querySelector('.chat-agent-children [data-chat-id="child"]'));
   assert.equal((list.querySelector('[data-chat-id="child"]') as HTMLElement).draggable, false);
@@ -106,7 +106,9 @@ test('children move from active to Previous in place and a settled parent with w
   sessionState!.activeId = grandchild.id; renderSidebar();
   grandchild.agentExecution.status = 'completed'; renderSidebar();
   assert.equal(list.querySelector('[data-chat-id="grandchild"]'), row);
-  assert.match(row!.textContent!, /Complete/);
+  assert.match(row!.getAttribute('aria-label')!, /Complete/);
+  assert.equal((row as HTMLElement).dataset.agentState, 'done');
+  assert.ok(row!.querySelector('.chat-item-agent-done'), 'settled agents end with a check');
 });
 
 test('completion preserves the parent disclosure and an in-progress title edit while children update', () => {
@@ -156,7 +158,7 @@ test('parent deletion promotes surviving children without changing durable linea
   sessionState!.chats = [child]; renderSidebar();
   const row = list.querySelector('[data-chat-id="child"]'); assert.ok(row);
   assert.equal(row!.parentElement, list);
-  assert.match(row!.textContent!, /Parent unavailable/);
+  assert.match(row!.getAttribute('aria-label')!, /Parent unavailable/);
   assert.equal(child.agentConversation!.parentChatId, 'root');
   assert.equal(child.agentConversation!.journalOwnerId, 'root');
 });
@@ -344,23 +346,24 @@ test('a cached conversation deleted in another window is verified without loadin
   assert.match(document.body.textContent!, /conversation is unavailable/);
 });
 
-test('parent rows tally their agents with a provider stack; agent rows lead with a mark and read model · status · clock', () => {
+test('ledger rows: one line each, the producer logo leads, agents read time then a check', () => {
   const root = chat('root'), working = chat('working', 'root'), done = chat('done', 'root');
+  root.modelId = 'gpt-5';
   working.modelId = 'claude-sonnet-5-5'; working.agentTypeId = 'explore';
   working.agentExecution = { executionId: 'live', status: 'running', createdAt: Date.now() - 65_000 };
   done.modelId = 'gpt-5'; done.agentExecution = { executionId: 'old', status: 'completed', createdAt: 1_000, settledAt: 42_000 };
   const list = setup([root, working, done]);
   renderSidebar();
   const rootRow = list.querySelector<HTMLElement>('[data-chat-id="root"]')!;
-  const summary = rootRow.querySelector<HTMLElement>(':scope > .chat-item-agent-summary')!;
-  assert.ok(summary.querySelector('.chat-agent-toggle'), 'the disclosure moves onto the tally line');
-  assert.equal(summary.querySelector('.chat-item-agent-summary__label')!.textContent, '2 agents · 1 running');
-  assert.equal(summary.querySelectorAll('.agent-mark-stack .agent-mark').length, 2);
+  assert.equal(rootRow.querySelector('.chat-item-model'), null, 'the model moves to the label and tooltip');
+  assert.ok(rootRow.querySelector('.chat-item-logo svg'), 'the picker logo leads the row');
+  assert.ok(rootRow.querySelector('.chat-item-logo > .chat-item-dot'), 'status rides the logo');
+  assert.equal(rootRow.querySelector('.chat-item-title-row > .chat-agent-toggle')!.textContent, '▾ 2');
+  assert.ok(rootRow.querySelector('.chat-item-archive'), 'root chats archive from the row');
 
   const live = list.querySelector<HTMLElement>('[data-chat-id="working"]')!;
-  const mark = live.querySelector<HTMLElement>(':scope > .chat-item-agent-mark')!;
-  assert.equal(live.firstElementChild, mark); assert.equal(mark.dataset.state, 'running');
-  assert.equal(live.querySelector('.chat-item-agent-meta__text')!.textContent, 'claude-sonnet-5-5 · Working');
+  assert.equal(live.dataset.agentState, 'running');
+  assert.equal(live.querySelector('.chat-item-archive'), null, 'agents archive with their parent');
   const clock = live.querySelector<HTMLElement>('.chat-item-agent-clock')!;
   assert.ok(clock.dataset.startedAt); assert.match(clock.textContent!, /1m/);
   assert.match(live.getAttribute('aria-label')!, /explore · claude-sonnet-5-5 · Working/);
@@ -369,4 +372,5 @@ test('parent rows tally their agents with a provider stack; agent rows lead with
   const settled = list.querySelector<HTMLElement>('[data-chat-id="done"]')!;
   assert.equal(settled.querySelector<HTMLElement>('.chat-item-agent-clock')!.dataset.startedAt, undefined);
   assert.equal(settled.querySelector('.chat-item-agent-clock')!.textContent, '41s');
+  assert.ok(settled.querySelector('.chat-item-agent-done'));
 });
