@@ -1,5 +1,5 @@
-import { getAppById, isAppId } from './app-registry';
-import { getAppUnavailableReason, isAppAvailable } from './app-preferences';
+import { isAppId } from './app-registry';
+import { isAppAvailable } from './app-preferences';
 import { DEFAULT_MODELS_SECTION } from '../ui/models-section-ids';
 import { closeShellOverlay, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
 import {
@@ -23,20 +23,9 @@ function legacyHashForApp(appId: AppId): string {
   return `#/app/${appId}`;
 }
 
-/** Explain blocked deep links for user-disabled apps; stay quiet for developer-hidden. */
-function notifyAppUnavailable(appId: AppId): void {
-  const reason = getAppUnavailableReason(appId);
-  if (reason !== 'user-disabled') return;
-  const name = getAppById(appId)?.name ?? 'That app';
-  void import('../ui/toast').then((m) => {
-    m.showToast(`${name} is turned off. Restore it in Settings → Apps.`, 'error');
-  });
-}
-
-/** Block unavailable apps: toast (when user-disabled) and return to desktop. */
+/** Block unavailable apps: return to desktop. */
 function rejectUnavailableApp(appId: AppId): boolean {
   if (isAppAvailable(appId)) return false;
-  notifyAppUnavailable(appId);
   navigateToDesktop();
   return true;
 }
@@ -272,7 +261,6 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
   }
 
   if (!isAppAvailable(route.appId)) {
-    notifyAppUnavailable(route.appId);
     syncForegroundLifecycle(null);
     showWorkspaces();
     if (typeof window !== 'undefined' && window.location.hash !== '#/workspaces') {

@@ -9,7 +9,7 @@
   padding: 12px;
   background: var(--mn-surface-2, var(--mn-surface-1));
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   box-shadow: var(--mn-shadow-lg, 0 8px 32px rgb(0 0 0 / 0.25));
   font-size: 13px;
   color: var(--mn-fg);
@@ -63,7 +63,7 @@
   color: var(--mn-fg);
   background: var(--mn-surface-1);
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 8px);
+  border-radius: 8px;
   resize: vertical;
 }
 
@@ -80,7 +80,7 @@
   font-size: 12px;
   line-height: 1.45;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 8px);
+  border-radius: 8px;
 }
 
 .editor-quick-edit-diff__line {
@@ -127,7 +127,7 @@
   padding: 6px 12px;
   font: inherit;
   font-size: 12px;
-  border-radius: var(--mn-radius-sm, 8px);
+  border-radius: 8px;
   border: 1px solid var(--mn-border);
   background: var(--mn-surface-1);
   color: var(--mn-fg);

@@ -86,7 +86,7 @@ Full-page sections at `#/app/settings` (legacy `#/settings/<section>` redirects)
 
 ## Behind the release gate
 
-Each app has developer `releaseState` (`released` | `hidden`) and `core` / `optional` availability ([`src/os/app-registry.ts`](../../src/os/app-registry.ts)). Hidden apps stay in the tree and tests, but are omitted from onboarding, Settings, the app rail, menubar switcher, shortcuts, notifications, and `launch_minnow_app`. [`parseOsHash`](../../src/os/router.ts) still recognizes `#/app/<appId>` for every registry id; [`applyRoute`](../../src/os/router.ts) blocks developer-hidden apps (redirect to **`#/workspaces`**, no toast) or user-disabled optional apps (toast + redirect).
+Each app has developer `releaseState` (`released` | `hidden`) and `core` / `optional` availability ([`src/os/app-registry.ts`](../../src/os/app-registry.ts)). Hidden apps stay in the tree and tests, but are omitted from onboarding, Settings, the app rail, menubar switcher, shortcuts, notifications, and `launch_minnow_app`. [`parseOsHash`](../../src/os/router.ts) still recognizes `#/app/<appId>` for every registry id; [`applyRoute`](../../src/os/router.ts) blocks unavailable apps (redirect to **`#/workspaces`**, no toast).
 
 Currently hidden (MIN-471):
 

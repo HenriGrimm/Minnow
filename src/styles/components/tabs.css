@@ -1,0 +1,152 @@
+/* Shared tabs (src/ui/components/tabs.ts). */
+
+.mn-tabs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mn-tabs__list {
+  display: flex;
+  align-items: stretch;
+  gap: var(--mn-space-1);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mn-tabs__list::-webkit-scrollbar {
+  display: none;
+}
+
+.mn-tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-control-gap);
+  flex-shrink: 0;
+  height: var(--mn-control-h-lg);
+  margin: 0;
+  padding: 0 var(--mn-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.mn-tabs__tab .icon-svg {
+  --mn-icon-size: var(--mn-icon-md);
+}
+
+.mn-tabs__count {
+  min-width: var(--mn-icon-md);
+  padding: 0 var(--mn-space-1);
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--mn-icon-md);
+  text-align: center;
+}
+
+.mn-tabs__count[hidden] {
+  display: none;
+}
+
+.mn-tabs__tab.is-selected {
+  color: var(--mn-fg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-tabs__tab:hover:not(:disabled):not(.is-selected) {
+    color: var(--mn-fg);
+  }
+}
+
+.mn-tabs__tab:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+.mn-tabs__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mn-tabs__panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mn-tabs__panel[hidden] {
+  display: none;
+}
+
+.mn-tabs__panel:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+/* Underline: panes and pages. The selected tab carries an accent rule. */
+
+.mn-tabs--underline > .mn-tabs__list {
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.mn-tabs--underline .mn-tabs__tab::after {
+  content: '';
+  position: absolute;
+  right: var(--mn-space-2);
+  bottom: -1px;
+  left: var(--mn-space-2);
+  height: 2px;
+  border-radius: var(--mn-radius-pill);
+  background: transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.mn-tabs--underline .mn-tabs__tab.is-selected::after {
+  background: var(--mn-accent);
+}
+
+/* Contained: tabs inside a card or toolbar, shown as soft pills. */
+
+.mn-tabs--contained > .mn-tabs__list {
+  gap: var(--mn-space-0-5);
+}
+
+.mn-tabs--contained .mn-tabs__tab {
+  height: var(--mn-control-h-md);
+  padding-inline: var(--mn-space-2-5);
+  border-radius: var(--mn-radius-sm);
+}
+
+.mn-tabs--contained .mn-tabs__tab.is-selected {
+  background: var(--mn-surface-2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-tabs--contained .mn-tabs__tab:hover:not(:disabled):not(.is-selected) {
+    background: var(--mn-surface-elevated);
+  }
+}
+
+@media (pointer: coarse) {
+  .mn-tabs__tab,
+  .mn-tabs--contained .mn-tabs__tab {
+    min-height: var(--touch-min);
+  }
+}

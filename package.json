@@ -77,6 +77,7 @@
     "test:brain": "node test/run-all.mjs --suite brain",
     "test:product-wiki": "node test/run-all.mjs --suite product-wiki",
     "test:onboarding": "node test/run-all.mjs --suite onboarding",
+    "test:components": "node test/run-all.mjs --suite components",
     "test:issues": "node test/run-all.mjs --suite issues",
     "test:scheduler": "node test/run-all.mjs --suite scheduler",
     "test:backup": "node test/run-all.mjs --suite backup",

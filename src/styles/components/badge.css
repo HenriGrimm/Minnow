@@ -1,0 +1,176 @@
+/* Shared badges and chips (src/ui/components/badge.ts). */
+
+.mn-badge,
+.mn-chip {
+  --mn-tone-fg: var(--mn-fg-muted);
+  --mn-tone-bg: transparent;
+  --mn-tone-border: var(--mn-border-strong);
+  --mn-tone-dot: var(--mn-fg-subtle);
+}
+
+.mn-badge--accent,
+.mn-chip--accent {
+  --mn-tone-fg: var(--mn-accent-ink);
+  --mn-tone-bg: var(--mn-accent-soft);
+  --mn-tone-border: var(--mn-accent-border);
+  --mn-tone-dot: var(--mn-accent);
+}
+
+.mn-badge--success,
+.mn-chip--success {
+  --mn-tone-fg: var(--mn-success-ink);
+  --mn-tone-bg: var(--mn-success-soft);
+  --mn-tone-border: var(--mn-success-border);
+  --mn-tone-dot: var(--mn-success);
+}
+
+.mn-badge--warning,
+.mn-chip--warning {
+  /* There is no --mn-warning-ink; raw --mn-warning drops to ~2:1 on light themes. */
+  --mn-tone-fg: color-mix(in srgb, var(--mn-warning) 45%, var(--mn-fg));
+  --mn-tone-bg: var(--mn-warning-soft);
+  --mn-tone-border: var(--mn-warning-border);
+  --mn-tone-dot: var(--mn-warning);
+}
+
+.mn-badge--danger,
+.mn-chip--danger {
+  --mn-tone-fg: var(--mn-danger-ink);
+  --mn-tone-bg: var(--mn-danger-soft);
+  --mn-tone-border: var(--mn-danger-border);
+  --mn-tone-dot: var(--mn-danger);
+}
+
+/* Badge */
+
+.mn-badge {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1);
+  max-width: 100%;
+  height: 20px;
+  padding: 0 var(--mn-space-1-5);
+  border: 1px solid var(--mn-tone-border);
+  border-radius: var(--mn-radius-xs);
+  background: var(--mn-tone-bg);
+  color: var(--mn-tone-fg);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-xs);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-none);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.mn-badge--sm {
+  height: 16px;
+  padding-inline: var(--mn-space-1);
+  font-size: var(--mn-type-2xs);
+}
+
+.mn-badge--mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.mn-badge__label,
+.mn-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mn-badge__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mn-tone-dot);
+}
+
+.mn-badge .icon-svg,
+.mn-chip .icon-svg {
+  --mn-icon-size: var(--mn-type-sm);
+}
+
+/* Chip */
+
+.mn-chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: var(--mn-control-h-sm);
+  border: 1px solid var(--mn-tone-border);
+  border-radius: var(--mn-radius-pill);
+  background: var(--mn-tone-bg);
+  color: var(--mn-tone-fg);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-none);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.mn-chip__main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1);
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--mn-space-2-5);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+button.mn-chip__main {
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+button.mn-chip__main:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: var(--mn-focus-ring-offset);
+}
+
+button.mn-chip__main:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mn-chip.is-selected {
+  --mn-tone-fg: var(--mn-accent-ink);
+  --mn-tone-bg: var(--mn-accent-soft);
+  --mn-tone-border: var(--mn-accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-chip:not(.is-selected):has(> button.mn-chip__main:hover:not(:disabled)) {
+    border-color: var(--mn-fg-subtle);
+    color: var(--mn-fg);
+  }
+}
+
+.mn-chip:has(> .mn-chip__remove) .mn-chip__main {
+  padding-right: var(--mn-space-1);
+}
+
+.mn-chip__remove.mn-btn {
+  --mn-btn-h: calc(var(--mn-control-h-sm) - var(--mn-space-1-5));
+  --mn-btn-icon: var(--mn-type-sm);
+  margin-right: var(--mn-space-0-5);
+  border-radius: var(--mn-radius-pill);
+  color: inherit;
+}
+
+@media (pointer: coarse) {
+  .mn-chip {
+    height: var(--touch-min);
+  }
+}

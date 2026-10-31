@@ -1,0 +1,127 @@
+/* Shared modal dialog (src/ui/components/dialog.ts). */
+
+.mn-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--mn-z-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--mn-space-3);
+  background: var(--mn-overlay);
+  /* Frameless Electron on macOS treats untitled regions as window-drag. */
+  -webkit-app-region: no-drag;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.mn-dialog {
+  --mn-dialog-w: 28rem;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--mn-dialog-w), calc(100vw - var(--mn-space-6)));
+  max-height: min(85dvh, calc(100dvh - var(--mn-space-6)));
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-lg);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  box-shadow: var(--shadow-popover-tall);
+  outline: none;
+  overflow: hidden;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out);
+}
+
+.mn-dialog--sm {
+  --mn-dialog-w: 360px;
+}
+
+.mn-dialog--lg {
+  --mn-dialog-w: 640px;
+}
+
+@starting-style {
+  .mn-dialog-overlay {
+    opacity: 0;
+  }
+
+  .mn-dialog {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.mn-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-4) var(--mn-space-4) 0;
+}
+
+.mn-dialog__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding-block: var(--mn-space-1);
+  color: var(--mn-fg);
+  font-size: var(--mn-type-lg);
+  font-weight: var(--mn-weight-semibold);
+  line-height: var(--mn-leading-tight);
+  letter-spacing: var(--mn-tracking-title);
+  overflow-wrap: anywhere;
+}
+
+.mn-dialog__close.mn-btn {
+  margin: calc(-1 * var(--mn-space-1)) calc(-1 * var(--mn-space-1-5)) 0 0;
+  color: var(--mn-fg-muted);
+}
+
+.mn-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--mn-space-3) var(--mn-space-4) var(--mn-space-4);
+  font-size: var(--mn-type-base);
+  line-height: var(--mn-leading-normal);
+}
+
+.mn-dialog__body[hidden],
+.mn-dialog__footer[hidden] {
+  display: none;
+}
+
+.mn-dialog__description,
+.mn-dialog__text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mn-dialog__description {
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-md);
+}
+
+.mn-dialog__description + * {
+  margin-top: var(--mn-space-3);
+}
+
+.mn-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-3) var(--mn-space-4);
+  border-top: 1px solid var(--mn-border);
+}
+
+/* With no body the footer follows the header directly. */
+.mn-dialog__body[hidden] + .mn-dialog__footer {
+  margin-top: var(--mn-space-3);
+}

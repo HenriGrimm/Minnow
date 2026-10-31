@@ -10,7 +10,7 @@
   max-width: min(420px, calc(100% - 24px));
   padding: 8px 12px;
   border: 1px solid var(--mn-danger-border);
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   background: var(--mn-danger-soft);
   color: var(--mn-danger-ink);
   font-size: 12px;
@@ -46,7 +46,7 @@
   max-width: calc(100% - 16px);
   padding: 6px 10px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   background: var(--mn-surface-2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
   pointer-events: auto;
@@ -98,7 +98,7 @@
   height: 28px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -131,7 +131,7 @@
   width: 160px;
   padding: 4px 6px;
   border: 1px solid var(--mn-accent);
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-surface-2);
   color: var(--mn-fg);
   font-family: var(--font-ui);
@@ -184,7 +184,7 @@
   max-width: 280px;
   padding: 8px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   background: var(--mn-surface-2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
   font-family: var(--font-ui);
@@ -220,7 +220,7 @@
   color: var(--mn-fg-muted);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
 }
 
 .mn-design-pin-popover__delete:hover {
@@ -238,7 +238,7 @@
 
 .mn-design-pin-popover__note {
   padding: 4px 6px;
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
   color: var(--mn-fg);
   white-space: pre-wrap;
@@ -247,7 +247,7 @@
 .mn-design-pin-popover__input {
   padding: 4px 6px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-surface-1);
   color: var(--mn-fg);
   font-family: var(--font-ui);
@@ -259,7 +259,7 @@
   flex-shrink: 0;
   padding: 2px 8px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -341,7 +341,7 @@
 .mn-design-annotations-panel__filter {
   max-width: 90px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-surface-1);
   color: var(--mn-fg);
   font-family: inherit;
@@ -350,7 +350,7 @@
 
 .mn-design-annotations-panel__bulk-delete {
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: transparent;
   color: var(--mn-fg-muted);
   font-family: inherit;
@@ -380,7 +380,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 4px;
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
 }
 
 .mn-design-annotations-panel__row:hover {
@@ -397,7 +397,7 @@
 
 .mn-design-annotations-panel__row-badge {
   padding: 1px 6px;
-  border-radius: var(--mn-radius-sm, 4px);
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-warn-soft, rgba(217, 119, 6, 0.18));
   color: var(--mn-warn, #d97706);
   font-size: 0.68rem;

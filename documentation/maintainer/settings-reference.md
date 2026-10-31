@@ -98,7 +98,7 @@ Choose which Minnow apps appear in the dock, menubar shortcuts, notifications, a
 - New users and installs with no stored preference start with every released optional app selected.
 - Disabling an optional app removes it from launch surfaces and closes any running instance of that app.
 - Developer-hidden apps (`releaseState: 'hidden'` in [`src/os/app-registry.ts`](../../src/os/app-registry.ts)) are omitted from this page and from all launch paths.
-- Blocked deep links for user-disabled apps return to the desktop and point users here to restore the app.
+- Blocked deep links for unavailable apps return to the desktop without a toast.
 - Shared UI with onboarding: [`src/os/app-picker-ui.ts`](../../src/os/app-picker-ui.ts).
 
 Search keys: `apps.visibility`, `apps.core.<id>` (on the core note names), `apps.optional.<id>`.

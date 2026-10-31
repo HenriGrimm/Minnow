@@ -14,12 +14,8 @@ async function toastUnavailableApp(appId: AppId): Promise<void> {
   const reason = getAppUnavailableReason(appId);
   if (!reason) return;
   const name = getAppById(appId)?.name ?? 'That app';
-  const message =
-    reason === 'user-disabled'
-      ? `${name} is turned off. Restore it in Settings → Apps.`
-      : `${name} is not available in this build.`;
   const { showToast } = await import('../ui/toast');
-  showToast(message, 'error');
+  showToast(`${name} is not available in this build.`, 'error');
 }
 
 /** Launch the owning app and switch to the linked chat when present. */

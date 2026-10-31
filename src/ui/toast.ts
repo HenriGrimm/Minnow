@@ -7,6 +7,7 @@
 
 import { iconHtml, type IconName } from './icon';
 import { markPreviewOccluder } from './preview-occlusion';
+import { findSettingsLink } from './settings-link';
 
 export type ToastVariant = 'success' | 'error';
 export type NotifyTone = 'success' | 'error' | 'attention' | 'info';
@@ -488,6 +489,14 @@ export function notify(input: NotifyOptions): NotifyHandle | null {
   const opts: NotifyOptions = { ...input, message: input.message?.trim() || undefined, title: input.title?.trim() || undefined };
   if ((!opts.title && !opts.message) || typeof document === 'undefined' || !document.body) return null;
   if (!document.defaultView) return null;
+  if (!opts.open) {
+    // "Check Settings → Providers" opens Providers when the card is clicked.
+    const link = findSettingsLink(`${opts.title ?? ''} ${opts.message ?? ''}`);
+    if (link) {
+      opts.open = () => { void import('./settings-page').then((m) => m.openSettings(link.section)); };
+      opts.openLabel ??= `Open ${link.label}`;
+    }
+  }
   for (const [key, entry] of entries) {
     if (!entry.el.isConnected) {
       stopTimer(entry);

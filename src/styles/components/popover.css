@@ -1,0 +1,46 @@
+/* Shared popover (src/ui/components/popover.ts). Same surface as menus and selects. */
+
+.mn-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--mn-z-popover);
+  box-sizing: border-box;
+  min-width: 160px;
+  max-width: min(360px, calc(100vw - var(--mn-space-4)));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--mn-menu-padding);
+  border: 1px solid var(--mn-menu-border);
+  border-radius: var(--mn-menu-radius);
+  background: var(--mn-menu-bg);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-md);
+  line-height: var(--mn-leading-normal);
+  box-shadow: var(--mn-menu-shadow);
+  outline: none;
+  -webkit-app-region: no-drag;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.mn-popover:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+@starting-style {
+  .mn-popover {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  .mn-popover[data-placement^='top'] {
+    transform: translateY(3px);
+  }
+}

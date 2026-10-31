@@ -3,7 +3,7 @@
 .tool-call-diff {
   margin-top: 0;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   overflow: hidden;
   background: color-mix(in srgb, var(--mn-bg) 92%, var(--mn-fg) 8%);
 }

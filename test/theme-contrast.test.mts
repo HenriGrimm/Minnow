@@ -137,6 +137,15 @@ describe('theme-contrast', () => {
         );
       }
     });
+
+    test(`${themeId}: primary button text (fg-on-accent on accent) meets WCAG AA`, () => {
+      const vars = readThemeBlock(css, themeId);
+      const accent = resolveToken(vars, '--mn-accent');
+      const onAccent = resolveToken(vars, '--mn-fg-on-accent');
+      assert.ok(accent && onAccent, `missing accent tokens for ${themeId}`);
+      const ratio = contrastRatio(onAccent, accent);
+      assert.ok(ratio >= 4.5, `fg-on-accent on accent ${ratio.toFixed(2)} < 4.5 for ${themeId}`);
+    });
   }
 
   test('human-dark subtle text remains readable on the app background', () => {

@@ -4,7 +4,7 @@ import { categoryForArea, type SettingsSectionId } from '../ui/settings-page-typ
 import { buildSettingsSearchIndex } from '../ui/settings-search-index';
 import { rankSettingsSearch } from '../ui/settings-search-rank';
 import { getAppById, isAppId } from '../os/app-registry';
-import { getAppUnavailableReason, isAppAvailable } from '../os/app-preferences';
+import { isAppAvailable } from '../os/app-preferences';
 import { launchApp as defaultLaunchApp } from '../os/router';
 import type { AppId, LaunchOptions } from '../os/types';
 
@@ -81,11 +81,7 @@ export function toolLaunchMinnowApp(
   }
 
   if (!isAppAvailable(appId)) {
-    const reason = getAppUnavailableReason(appId);
     const name = getAppById(appId)?.name ?? appId;
-    if (reason === 'user-disabled') {
-      return `Error: ${name} is turned off. Enable it in Settings → Apps, then try again.`;
-    }
     return `Error: ${name} is not available`;
   }
 

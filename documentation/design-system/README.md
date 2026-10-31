@@ -1,6 +1,6 @@
 # Minnow design system (current state)
 
-Living inventory of Minnow's UI layer as implemented in code. Minnow has **no React component library**; the design system is **CSS tokens + DOM modules** (`src/ui/`, `src/os/`) paired with **96 stylesheets** under `src/styles/`.
+Living inventory of Minnow's UI layer as implemented in code. The design system is **CSS tokens** (palette plus type, spacing, radius, control and layer scales), a **framework-free component library** in [`src/ui/components/`](../../src/ui/components/) with one stylesheet per component in `src/styles/components/`, and the feature modules (`src/ui/`, `src/os/`) and stylesheets that build on them.
 
 **North star:** Calm local instrument — conversation first, metrics as instrumentation, borders instead of card stacks.
 
@@ -8,7 +8,8 @@ Living inventory of Minnow's UI layer as implemented in code. Minnow has **no Re
 
 | Layer | Path |
 |-------|------|
-| Palette tokens (hex/rgba only here) | [`src/styles/tokens.css`](../../src/styles/tokens.css) |
+| Palette and scale tokens (hex/rgba only here) | [`src/styles/tokens.css`](../../src/styles/tokens.css) |
+| Component library | [`src/ui/components/`](../../src/ui/components/) + `src/styles/components/` — see [components.md](components.md) |
 | Theme runtime | [`src/theme.ts`](../../src/theme.ts) → [`src/ui/theme.ts`](../../src/ui/theme.ts) |
 | Custom overrides | [`src/appearance/types.ts`](../../src/appearance/types.ts), [`custom-theme.ts`](../../src/appearance/custom-theme.ts) |
 | Shared settings primitives | [`src/ui/settings-controls.ts`](../../src/ui/settings-controls.ts) + [`settings-controls.css`](../../src/styles/settings-controls.css) |
@@ -22,7 +23,8 @@ Living inventory of Minnow's UI layer as implemented in code. Minnow has **no Re
 
 | Doc | Contents |
 |-----|----------|
-| [tokens.md](tokens.md) | `--mn-*` catalog, layout/motion tokens, derived semantics |
+| [tokens.md](tokens.md) | `--mn-*` catalog, scale tokens, layout/motion tokens, derived semantics |
+| [components.md](components.md) | Shared component library: API, keyboard model, ARIA contract, gallery |
 | [themes.md](themes.md) | 16 palette themes, storage keys, customization |
 | [primitives.md](primitives.md) | Buttons, chips, inputs, settings controls, toast |
 | [dropdowns.md](dropdowns.md) | Shared menu tokens, native selects, custom menus, keyboard focus |
@@ -33,11 +35,11 @@ Living inventory of Minnow's UI layer as implemented in code. Minnow has **no Re
 ## Architecture
 
 ```
-tokens.css (16 themes × --mn-*)
+tokens.css (16 themes × --mn-* colours + scale tokens)
     ↓
-global.css + feature CSS (--mn-* consumers)
+src/ui/components/ + src/styles/components/ (shared primitives)
     ↓
-src/ui/*.ts (DOM builders, no shared widget kit)
+global.css + feature CSS, src/ui/*.ts (surfaces built from primitives)
     ↓
 index.html shell + Minnow (src/os/)
 ```

@@ -322,7 +322,7 @@ html.onboarding-active .mn-os-shell {
   min-height: var(--mn-touch-min, 44px);
   padding: 0 22px;
   border: 1px solid var(--mn-accent, var(--accent));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: var(--mn-accent, var(--accent));
   color: var(--mn-fg-on-accent, var(--mn-bg, var(--text-hover)));
   font: 600 14px/1 var(--mn-font, var(--font-ui, system-ui, sans-serif));
@@ -354,7 +354,7 @@ html.onboarding-active .mn-os-shell {
   min-height: 40px;
   padding: 0 14px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted, var(--text-muted));
   font: 500 13px/1 var(--mn-font, var(--font-ui, system-ui, sans-serif));
@@ -722,7 +722,7 @@ html.onboarding-active .mn-os-shell {
   width: 100%;
   padding: 16px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: var(--mn-surface-1, var(--mn-bg, var(--bg)));
   text-align: left;
   cursor: pointer;
@@ -847,7 +847,7 @@ html.onboarding-active .mn-os-shell {
   gap: 6px;
   padding: 8px 12px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   font-size: 13px;
   cursor: pointer;
@@ -902,7 +902,7 @@ html.onboarding-active .mn-os-shell {
   margin-bottom: 12px;
   padding: 10px 12px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-bg, var(--bg));
   color: var(--mn-fg, var(--text));
   font-size: 14px;
@@ -947,7 +947,7 @@ html.onboarding-active .mn-os-shell {
   margin: 0 0 20px;
   padding: 12px 14px;
   border: 1px solid var(--mn-warning-border, var(--mn-border, var(--border)));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: var(--mn-warning-soft, color-mix(in oklch, var(--mn-warning, var(--warning)) 8%, var(--mn-bg, var(--bg))));
   font-size: 13px;
   line-height: 1.45;
@@ -956,7 +956,7 @@ html.onboarding-active .mn-os-shell {
 .mn-onboarding-info-card {
   padding: 16px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: var(--mn-surface-1, var(--mn-bg, var(--bg)));
   font-size: 14px;
   line-height: 1.5;
@@ -1058,7 +1058,7 @@ html.onboarding-active .mn-os-shell {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -1258,7 +1258,7 @@ html.onboarding-active .mn-os-shell {
   margin: 16px 0;
   padding: 16px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
 }
 
 .mn-onboarding-recommend-body {
@@ -1342,7 +1342,7 @@ html.onboarding-active .mn-os-shell {
   align-items: flex-start;
   padding: 12px 14px;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   cursor: pointer;
 }
 
@@ -1396,7 +1396,7 @@ html.onboarding-active .mn-os-shell {
 .mn-onboarding-install-console {
   margin: 16px 0 0;
   border: 1px solid var(--mn-border, var(--border));
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   background: color-mix(in oklch, var(--mn-fg, var(--text)) 2%, var(--mn-bg, var(--bg)));
   overflow: hidden;
 }

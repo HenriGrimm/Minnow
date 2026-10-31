@@ -49,9 +49,6 @@ Set in each `data-theme` block; built with `color-mix` where noted.
 Not theme-specific; shared across all palettes.
 
 ```css
---radius-sm: 6px;
---radius-md: 10px;
---radius-lg: 14px;
 --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 --duration-fast: 0.15s;
 --duration-normal: 0.22s;
@@ -69,14 +66,34 @@ Not theme-specific; shared across all palettes.
 --viewer-min-w: 280px;
 --split-ratio: 0.55;
 --touch-min: 44px;
---chat-msg-max: 900px;
+--chat-msg-max: 1024px;
+--chat-composer-max: calc(var(--chat-msg-max) + 40px);
 --chat-msg-md-ch: 88ch;
 --chat-tool-call-max: 520px;
 ```
 
+## Scale tokens (`:root`)
+
+Theme-independent scales. Application CSS uses these instead of literals; [`DESIGN.md`](../../DESIGN.md) gives the usage rules and literal-to-token mapping.
+
+| Group | Tokens |
+|-------|--------|
+| Type size | `--mn-type-2xs` 10px, `-xs` 11px, `-sm` 12px, `-md` 13px, `-base` 14px, `-lg` 15px, `-xl` 16px, `-2xl` 18px, `-3xl` 20px, `-4xl` 24px, `-display` 28px |
+| Line height | `--mn-leading-none` 1, `-tight` 1.2, `-snug` 1.35, `-normal` 1.5, `-relaxed` 1.6 |
+| Weight | `--mn-weight-regular` 400, `-medium` 500, `-semibold` 600 |
+| Tracking | `--mn-tracking-title` -0.02em, `--mn-tracking-label` 0.06em |
+| Spacing | `--mn-space-0-5` 2px, `-1` 4px, `-1-5` 6px, `-2` 8px, `-2-5` 10px, `-3` 12px, `-3-5` 14px, `-4` 16px, `-5` 20px, `-6` 24px, `-7` 28px, `-8` 32px, `-10` 40px, `-12` 48px |
+| Radius | `--mn-radius-xs` 4px, `-sm` 6px, `-md` 10px, `-lg` 14px, `-xl` 20px, `-pill` 999px (legacy `--radius-sm/md/lg` alias the same values) |
+| Controls | `--mn-control-h-sm` 28px, `-md` 32px, `-lg` 40px; `--mn-control-px-sm/md/lg` 8/12/16px; `--mn-control-gap` 6px |
+| Icons | `--mn-icon-sm` 14px, `-md` 16px, `-lg` 18px (`--mn-icon-size` stays the per-element override) |
+| Focus | `--mn-focus-ring-width` 2px, `--mn-focus-ring-offset` 2px |
+| Layers | `--mn-z-raised` 1, `-sticky` 20, `-shell` 50, `-capture` 95, `-menu` 96, `-toast` 100025, `-dialog` 100030, `-popover` 100040, `-tooltip` 100050 |
+
+`--mn-text-*` names (`--mn-text-muted`, `--mn-text-hover`, …) are colour aliases in older stylesheets, which is why the type scale uses `--mn-type-*`.
+
 ## Typography presets
 
-`--font-ui` and `--font-mono` are the only typography tokens. Stylesheets must use those names — `--mn-font-mono` is not defined, so `var(--mn-font-mono, …)` ignores the user's Appearance → Fonts choice.
+`--font-ui` and `--font-mono` are the only font-family tokens. Stylesheets must use those names — `--mn-font-mono` is not defined, so `var(--mn-font-mono, …)` ignores the user's Appearance → Fonts choice.
 
 Font stacks override via [`src/appearance/fonts.ts`](../../src/appearance/fonts.ts):
 
@@ -87,11 +104,12 @@ Hierarchy (from DESIGN.md, implemented in CSS):
 
 | Step | Size | Weight | Use |
 |------|------|--------|-----|
-| Title | 15px | 600 | Top bar title, drawer headers |
-| Body | 14px | 400 | Messages, inputs, settings |
-| Label | 11px | 600 uppercase | Sidebar sections, stat names |
-| Caption | 9–12px | 500 | Model id, hints, chips |
-| Mono stat | 17px | 600 tabular-nums | Stats strip values |
+| Title | `--mn-type-lg` 15px | 600 | Top bar title, drawer headers |
+| Body | `--mn-type-base` 14px | 400 | Messages, inputs, settings |
+| Control | `--mn-type-md` 13px | 500 | Buttons, menus, list rows |
+| Label | `--mn-type-xs` 11px | 600 uppercase | Sidebar sections, stat names |
+| Caption | `--mn-type-2xs`–`--mn-type-sm` 10–12px | 500 | Model id, hints, chips |
+| Mono stat | `--mn-type-2xl` 18px | 600 tabular-nums | Stats strip values |
 
 ## Named rules
 

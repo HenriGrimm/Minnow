@@ -41,7 +41,7 @@
   color: var(--mn-fg-muted);
   background: var(--mn-surface-raised, rgba(15, 18, 22, 0.04));
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
 }
 
 .welcome-page__actions {
@@ -67,7 +67,7 @@
   text-align: left;
   background: transparent;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 10px);
+  border-radius: var(--mn-radius-md);
   cursor: pointer;
   color: inherit;
   font: inherit;
@@ -133,7 +133,7 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: var(--mn-radius-sm, 8px);
+  border-radius: 8px;
   color: var(--mn-accent);
   background: var(--mn-accent-soft);
   border: 1px solid var(--mn-accent-border);
@@ -167,7 +167,7 @@
   margin-bottom: 28px;
   padding: 16px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-lg, 10px);
+  border-radius: var(--mn-radius-md);
   background: var(--mn-surface-raised, rgba(15, 18, 22, 0.03));
 }
 
@@ -186,7 +186,7 @@
   font-size: 14px;
   font-family: inherit;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   background: var(--mn-bg);
   color: var(--mn-fg);
 }
@@ -288,7 +288,7 @@
   padding: 8px 14px;
   font-size: 13px;
   font-family: inherit;
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   cursor: pointer;
   border: 1px solid var(--mn-border);
   background: var(--mn-bg);
@@ -312,7 +312,7 @@
   padding: 0;
   list-style: none;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-lg, 10px);
+  border-radius: var(--mn-radius-md);
   overflow: hidden;
 }
 
@@ -454,7 +454,7 @@
   font-size: 12px;
   white-space: nowrap;
   border: 1px solid var(--mn-border);
-  border-radius: var(--mn-radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-subtle);
   cursor: pointer;

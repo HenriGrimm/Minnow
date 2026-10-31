@@ -2,24 +2,24 @@
 name: Minnow
 description: Multi-family palette themes (8× dark/light) on --mn-* tokens; swamp-dark default; family accent, semantic metric colors, flat chrome.
 colors:
-  bg: "oklch(100% 0.00011 271.152)"
-  surface: "oklch(100% 0.00011 271.152)"
-  surface-elevated: "oklch(0% 0 0 / 0.84)"
-  border: "oklch(28.094% 0.00003 271.152)"
-  border-strong: "oklch(0.34 0.028 250)"
-  text: "oklch(31.714% 0.00004 271.152)"
-  text-muted: "oklch(0.52 0.028 250)"
-  text-hover: "oklch(100% 0.00011 271.152)"
-  accent: "oklch(0% 0 0)"
-  accent-subtle: "oklch(27.685% 0.00003 271.152)"
-  success: "oklch(0.72 0.14 155)"
-  warning: "oklch(0.8 0.12 85)"
-  danger: "oklch(0.62 0.18 15)"
-  overlay: "oklch(0.12 0.02 250 / 0.65)"
-  user-bg: "oklch(88.769% 0.2563 138.508 / 0.336)"
-  user-bdr: "oklch(0.72 0.12 220 / 0.28)"
-  code-bg: "oklch(0.97 0.012 250)"
-  code-inline-bg: "oklch(0.94 0.015 250)"
+  bg: "#0f1216"
+  surface-0: "#0b0d11"
+  surface-1: "#161a20"
+  surface-2: "#1f242b"
+  border: "rgba(255,255,255,0.06)"
+  border-strong: "rgba(255,255,255,0.12)"
+  fg: "#dfe3e8"
+  fg-muted: "#8a929c"
+  fg-subtle: "#5a626c"
+  fg-on-accent: "#0b1410"
+  accent: "#9ec5a7"
+  accent-soft: "rgba(158,197,167,0.14)"
+  accent-border: "rgba(158,197,167,0.28)"
+  accent-ink: "#cfe5d4"
+  success: "#9ec5a7"
+  warning: "#d4a574"
+  danger: "#e07a6f"
+  focus-ring: "#9ec5a7"
 typography:
   body:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -32,11 +32,16 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: "-0.02em"
+  control:
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontSize: "13px"
+    fontWeight: 500
+    lineHeight: 1.2
   label:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     fontSize: "11px"
     fontWeight: 600
-    lineHeight: 1.3
+    lineHeight: 1.35
     letterSpacing: "0.06em"
   caption:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -49,29 +54,54 @@ typography:
     fontWeight: 400
     lineHeight: 1.5
 rounded:
+  xs: "4px"
   sm: "6px"
   md: "10px"
   lg: "14px"
+  xl: "20px"
+  pill: "999px"
 spacing:
+  0-5: "2px"
+  1: "4px"
+  1-5: "6px"
+  2: "8px"
+  2-5: "10px"
+  3: "12px"
+  3-5: "14px"
+  4: "16px"
+  5: "20px"
+  6: "24px"
+  7: "28px"
+  8: "32px"
+  10: "40px"
+  12: "48px"
+  control-h-sm: "28px"
+  control-h-md: "32px"
+  control-h-lg: "40px"
   topbar-h: "52px"
   sidebar-w: "300px"
   sidebar-rail: "48px"
   touch-min: "44px"
 components:
-  send-btn:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.text-hover}"
-    rounded: "{rounded.md}"
-    size: "44px"
-  icon-btn:
-    backgroundColor: "transparent"
-    textColor: "{colors.text}"
+  button-secondary:
+    backgroundColor: "{colors.bg}"
+    textColor: "{colors.fg}"
     rounded: "{rounded.sm}"
-    size: "40px"
-  icon-btn-hover:
+    height: "32px"
+  button-primary:
     backgroundColor: "{colors.accent}"
-    textColor: "{colors.bg}"
+    textColor: "{colors.fg-on-accent}"
     rounded: "{rounded.sm}"
+    height: "32px"
+  button-ghost-hover:
+    backgroundColor: "color-mix(in srgb, {colors.fg} 10%, transparent)"
+    textColor: "{colors.fg}"
+    rounded: "{rounded.sm}"
+  input:
+    backgroundColor: "{colors.bg}"
+    textColor: "{colors.fg}"
+    rounded: "{rounded.sm}"
+    height: "32px"
 ---
 
 # Design System: Minnow
@@ -100,7 +130,7 @@ Minnow is a long-session chat bench: conversation first, metrics as instrumentat
 
 ## Colors
 
-Palette is **family-dependent** (hex in `tokens.css`). The YAML frontmatter above documents **swamp-light** as a reference snapshot; other families swap accent and neutrals while keeping the same token roles.
+Palette is **family-dependent** (hex in `tokens.css`). The YAML frontmatter above documents **swamp-dark**, the default theme, as a reference snapshot; other families swap accent and neutrals while keeping the same token roles.
 
 ### Primary (accent family)
 
@@ -155,6 +185,28 @@ for component usage and accessibility rules.
 - **Caption** (500, 9–12px): Session model id, sidebar stats line, stat chips, field hints.
 - **Mono stat** (600, 17px tabular-nums): Stats strip values; chips at 9px uppercase with bold inner span.
 
+### Type scale
+
+Font sizes come from `--mn-type-*` in [`tokens.css`](src/styles/tokens.css). (`--mn-text-*` names are colour aliases, not sizes.)
+
+| Token | Size | Typical use |
+|-------|------|-------------|
+| `--mn-type-2xs` | 10px | Stat chips, dense metadata |
+| `--mn-type-xs` | 11px | Labels, uppercase section heads |
+| `--mn-type-sm` | 12px | Captions, hints, tooltips, small controls |
+| `--mn-type-md` | 13px | Controls, menus, list rows |
+| `--mn-type-base` | 14px | Body, messages, inputs |
+| `--mn-type-lg` | 15px | Titles, drawer headers |
+| `--mn-type-xl` | 16px | Section titles; touch inputs (avoids iOS zoom) |
+| `--mn-type-2xl` | 18px | Panel titles, stats strip values |
+| `--mn-type-3xl` | 20px | Page titles |
+| `--mn-type-4xl` | 24px | Inspector titles |
+| `--mn-type-display` | 28px | Empty states, onboarding |
+
+Line heights: `--mn-leading-none` 1 (icon controls), `-tight` 1.2 (controls, titles), `-snug` 1.35, `-normal` 1.5 (body), `-relaxed` 1.6 (long prose). Weights: `--mn-weight-regular` 400, `-medium` 500, `-semibold` 600; nothing else. Tracking: `--mn-tracking-title` -0.02em, `--mn-tracking-label` 0.06em (uppercase labels).
+
+When replacing a literal, half-pixel sizes round up to the next step and rem sizes map to their pixel step (0.75rem → `sm`).
+
 ### Named Rules
 
 **The 72ch Rule.** Assistant markdown bubbles cap at `min(720px, 72ch)` for readable line length. User bubbles use full width of the column with pre-wrap.
@@ -173,15 +225,30 @@ Flat-by-default. Surfaces share `--surface` / `--bg`; separation is borders, not
 
 **The Flat Chrome Rule.** Top bar, sidebar, input bar, and stats strip do not use box-shadow at rest. If it looks like a floating SaaS card, remove the shadow.
 
+## Spacing, radius, controls and layers
+
+- **Spacing** uses `--mn-space-*` on a 4px grid with half steps: `-0-5` 2px, `-1` 4px, `-1-5` 6px, `-2` 8px, `-2-5` 10px, `-3` 12px, `-3-5` 14px, `-4` 16px, `-5` 20px, `-6` 24px, `-7` 28px, `-8` 32px, `-10` 40px, `-12` 48px. Odd pixel values snap to the nearest step; 1px is for hairline borders only.
+- **Radius** uses `--mn-radius-xs` 4px, `-sm` 6px (controls), `-md` 10px (cards, composer, menu rows), `-lg` 14px (menus, panels), `-xl` 20px, `-pill` 999px. `--radius-sm/md/lg` are legacy aliases of the same values.
+- **Control heights** are `--mn-control-h-sm` 28px, `-md` 32px (default), `-lg` 40px, with padding `--mn-control-px-*` and icon-to-label gap `--mn-control-gap`. Under `(pointer: coarse)` every control grows to `--touch-min` (44px).
+- **Icons** are `--mn-icon-sm` 14px, `-md` 16px, `-lg` 18px.
+- **Focus** rings are `--mn-focus-ring-width` (2px) of `--mn-focus-ring` at `--mn-focus-ring-offset` (2px).
+- **Layers** are named, never numbered: `--mn-z-raised`, `-sticky`, `-shell`, `-capture`, `-menu`, `-toast`, `-dialog`, `-popover`, `-tooltip` (lowest to highest). Popovers and tooltips sit above dialogs so they work inside one.
+
 ## Components
+
+Controls come from the shared library in [`src/ui/components/`](src/ui/components/) (import from `src/ui/components/index.ts`). Each component is a TypeScript factory that returns a real element and loads its own stylesheet from `src/styles/components/`. Reference: [`documentation/design-system/components.md`](documentation/design-system/components.md). Gallery: `test/fixtures/components-gallery.html` under the Vite dev server.
 
 ### Buttons
 
-- **Shape:** `--radius-sm` (6px) icon buttons; `--radius-md` (10px) send and message input.
-- **Icon button:** 40×40px, transparent, 1px `--border`. Fine-pointer hover: black fill, white stroke (`--text-hover` on label color).
-- **Send:** 44×44px black square; icon stroke near-white. Hover: white fill, black border, dark icon stroke, slightly larger icon (27px).
-- **New chat (sidebar):** Outlined black border/text; hover fills black with white text.
-- **Drawer clear:** Ghost border; hover border and text `--danger`.
+- **Factories:** `createButton()` and `createIconButton()`. Variants: `secondary` (default), `primary`, `ghost`, `danger`. Sizes: `sm` 28px, `md` 32px (default), `lg` 40px.
+- **Shape:** `--mn-radius-sm`; 1px border; `--mn-type-md` medium weight.
+- **Secondary:** `--mn-bg` fill and a `--mn-border-strong` hairline (the plain `--mn-border` is too faint to tell it from ghost on dark themes); fine-pointer hover tints toward `--mn-fg` and strengthens the border. Inputs use the same edge.
+- **Primary:** `--mn-accent` fill with `--mn-fg-on-accent` text. One per view region. Hover (16%) and press (20%) shift the fill toward black or white, never toward the label: light themes move away from the label colour, and dark themes darken pale accents and lighten mid-tone ones. The label stays at 4.5:1 or better in every theme.
+- **Ghost:** transparent until hover (`--mn-surface-elevated`). Toolbars and icon actions.
+- **Danger:** `--mn-danger` mixed 65% into `--mn-fg` for text (raw danger is about 4:1 on light themes); hover adds the danger-soft fill and border.
+- **Icon button:** square at the control height; the label is required and becomes the accessible name and tooltip.
+- **Pressed toggles** (`aria-pressed="true"`) use `--mn-accent-soft` fill and `--mn-accent-border`.
+- **Send:** a large primary icon button; 44px under coarse pointers.
 
 ### Chips
 
@@ -224,7 +291,8 @@ Flat-by-default. Surfaces share `--surface` / `--bg`; separation is borders, not
 
 ### Do:
 
-- **Do** use OKLCH tokens from `:root` in `index.html`; keep legacy aliases (`--cyan` → `--accent`) when touching older rules.
+- **Do** use `--mn-*` tokens from [`tokens.css`](src/styles/tokens.css); keep legacy aliases (`--cyan` → `--accent`) when touching older rules.
+- **Do** build controls from [`src/ui/components/`](src/ui/components/) and size type, space, radius and layers from the scale tokens instead of literals.
 - **Do** respect `prefers-reduced-motion` and limit transitions to color, border, opacity, and transform (not layout).
 - **Do** use `(hover: hover) and (pointer: fine)` for hover-heavy styles; keep 44px touch targets on session actions.
 - **Do** treat stats as instrumentation: mono, tabular nums, compact chips.

@@ -47,7 +47,7 @@
 .research-panel-banner {
   margin: 0 0 12px;
   padding: 12px 14px;
-  border-radius: var(--mn-radius-md, 8px);
+  border-radius: 8px;
   background: var(--mn-surface-elevated);
   border: 1px solid var(--mn-border);
   color: var(--mn-fg-muted);

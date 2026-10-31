@@ -147,11 +147,10 @@ export function isAppAvailable(appId: AppId): boolean {
 /** Why an app cannot be launched, or null when it can. */
 export function getAppUnavailableReason(
   appId: AppId,
-): 'unknown' | 'developer-hidden' | 'user-disabled' | null {
+): 'unknown' | 'developer-hidden' | null {
   const def = getAppById(appId);
   if (!def) return 'unknown';
   if (!isDeveloperReleased(appId)) return 'developer-hidden';
-  if (!isAppEnabled(appId)) return 'user-disabled';
   return null;
 }
 

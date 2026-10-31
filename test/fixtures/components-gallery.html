@@ -1,0 +1,345 @@
+<!doctype html>
+<html data-theme="swamp-dark">
+<head>
+<meta charset="utf-8">
+<title>Minnow components</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Gallery chrome only. Components style themselves. */
+  html, body { height: 100%; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  #galleryBar {
+    position: sticky; top: 0; z-index: var(--mn-z-sticky);
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--mn-space-2);
+    padding: var(--mn-space-2) var(--mn-space-4);
+    border-bottom: 1px solid var(--mn-border); background: var(--mn-surface-1);
+  }
+  #galleryBar h1 { margin-right: auto; font-size: var(--mn-type-lg); font-weight: var(--mn-weight-semibold); letter-spacing: var(--mn-tracking-title); }
+  #galleryBar .mn-select { width: auto; }
+  #gallery { flex: 1; overflow: auto; padding: var(--mn-space-6) var(--mn-space-4) var(--mn-space-12); }
+  #gallery[data-narrow] { max-width: 380px; margin-inline: auto; border-inline: 1px dashed var(--mn-border-strong); }
+  .g-section { max-width: 1080px; margin: 0 auto var(--mn-space-10); }
+  .g-section > h2 {
+    margin-bottom: var(--mn-space-3); padding-bottom: var(--mn-space-1-5); border-bottom: 1px solid var(--mn-border);
+    color: var(--mn-fg-muted); font-size: var(--mn-type-xs); font-weight: var(--mn-weight-semibold);
+    letter-spacing: var(--mn-tracking-label); text-transform: uppercase;
+  }
+  .g-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--mn-space-2); margin-bottom: var(--mn-space-3); }
+  .g-label { width: 88px; color: var(--mn-fg-subtle); font: var(--mn-type-2xs) var(--font-mono); }
+  .g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--mn-space-4); }
+  .g-panel { padding: var(--mn-space-3); border: 1px solid var(--mn-border); border-radius: var(--mn-radius-md); }
+  .g-note { color: var(--mn-fg-muted); font-size: var(--mn-type-sm); }
+  .g-swatch { display: flex; align-items: baseline; gap: var(--mn-space-3); padding-block: var(--mn-space-0-5); }
+  .g-swatch > span { white-space: nowrap; }
+  .g-swatch code { flex-shrink: 0; width: 150px; color: var(--mn-fg-muted); font: var(--mn-type-2xs) var(--font-mono); }
+  .g-space { height: var(--mn-space-2); background: var(--mn-accent-soft); border: 1px solid var(--mn-accent-border); }
+  .g-radius { width: 56px; height: 36px; border: 1px solid var(--mn-border-strong); background: var(--mn-surface-2); }
+  .g-tab-panel { padding: var(--mn-space-3) 0; color: var(--mn-fg-muted); font-size: var(--mn-type-sm); }
+  #galleryLog { color: var(--mn-fg-muted); font: var(--mn-type-2xs) var(--font-mono); }
+</style>
+</head>
+<body>
+<header id="galleryBar"><h1>Minnow components</h1></header>
+<main id="gallery"></main>
+<script type="module">
+import '/src/styles/tokens.css';
+import '/src/styles/global.css';
+import '/src/styles/icons.css';
+import '/src/styles/dropdowns.css';
+import '/src/styles/context-menu.css';
+import '/src/styles/toast.css';
+import {
+  attachTooltip, createBadge, createButton, createCheckbox, createChip, createField, createIconButton,
+  createSegmentedControl, createSelect, createSwitch, createTabs, createTextarea, createTextInput,
+  openContextMenu, openDialog, setButtonBusy, setButtonPressed, togglePopover,
+} from '/src/ui/components/index.ts';
+
+const THEMES = ['swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint']
+  .flatMap((family) => [`${family}-dark`, `${family}-light`]);
+const root = document.documentElement;
+const gallery = document.getElementById('gallery');
+const bar = document.getElementById('galleryBar');
+
+const el = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+};
+const section = (title) => {
+  const s = el('section', 'g-section');
+  s.appendChild(el('h2', null, title));
+  gallery.appendChild(s);
+  return s;
+};
+const row = (parent, label, ...children) => {
+  const r = el('div', 'g-row');
+  if (label) r.appendChild(el('span', 'g-label', label));
+  r.append(...children);
+  parent.appendChild(r);
+  return r;
+};
+const log = el('span', null, '');
+log.id = 'galleryLog';
+const say = (text) => { log.textContent = text; };
+
+/* Toolbar */
+const params = new URLSearchParams(location.search);
+const initialTheme = THEMES.includes(params.get('theme')) ? params.get('theme') : 'swamp-dark';
+root.dataset.theme = initialTheme;
+const themeSelect = createSelect({
+  size: 'sm',
+  ariaLabel: 'Theme',
+  value: initialTheme,
+  options: THEMES.map((id) => ({ value: id, label: id })),
+  onChange: (value) => { root.dataset.theme = value; },
+});
+const narrow = createButton({ label: 'Narrow', icon: 'deviceMobile', size: 'sm', pressed: false, onClick: () => {
+  const on = narrow.getAttribute('aria-pressed') !== 'true';
+  setButtonPressed(narrow, on);
+  gallery.toggleAttribute('data-narrow', on);
+} });
+bar.append(log, themeSelect, narrow);
+
+/* Buttons */
+{
+  const s = section('Buttons');
+  for (const size of ['sm', 'md', 'lg']) {
+    row(s, size, ...['primary', 'secondary', 'ghost', 'danger'].map((variant) =>
+      createButton({ label: variant[0].toUpperCase() + variant.slice(1), variant, size, onClick: () => say(`${variant} ${size}`) })));
+  }
+  row(s, 'icon + label',
+    createButton({ label: 'New chat', icon: 'plus', variant: 'primary' }),
+    createButton({ label: 'Open folder', icon: 'folder' }),
+    createButton({ label: 'Branch', iconEnd: 'chevronDown', variant: 'ghost' }),
+    createButton({ label: 'Docs', iconEnd: 'externalLink', size: 'sm' }));
+  row(s, 'icon only',
+    ...['sm', 'md', 'lg'].map((size) => createIconButton({ icon: 'settings', label: `Settings (${size})`, size })),
+    createIconButton({ icon: 'refresh', label: 'Refresh', variant: 'secondary' }),
+    createIconButton({ icon: 'send', label: 'Send', variant: 'primary', size: 'lg' }),
+    createIconButton({ icon: 'close', label: 'Delete', variant: 'danger' }));
+  const toggle = createButton({ label: 'Wrap lines', icon: 'menu', pressed: true, onClick: () => setButtonPressed(toggle, toggle.getAttribute('aria-pressed') !== 'true') });
+  const iconToggle = createIconButton({ icon: 'terminal', label: 'Toggle terminal', pressed: false, onClick: () => setButtonPressed(iconToggle, iconToggle.getAttribute('aria-pressed') !== 'true') });
+  row(s, 'pressed', toggle, iconToggle);
+  row(s, 'disabled', ...['primary', 'secondary', 'ghost', 'danger'].map((variant) => createButton({ label: 'Disabled', variant, disabled: true })));
+  const busy = createButton({ label: 'Save changes', variant: 'primary', onClick: () => {
+    setButtonBusy(busy, true);
+    setTimeout(() => setButtonBusy(busy, false), 1500);
+  } });
+  row(s, 'busy', busy, el('span', 'g-note', 'Click to show the busy state for 1.5s'));
+  const block = el('div');
+  block.style.maxWidth = '320px';
+  block.appendChild(createButton({ label: 'Full width', block: true }));
+  row(s, 'block', block);
+}
+
+/* Form controls */
+{
+  const s = section('Form controls');
+  const grid = el('div', 'g-grid');
+  s.appendChild(grid);
+  const panel = (...children) => { const p = el('div', 'g-panel'); p.append(...children); grid.appendChild(p); return p; };
+
+  panel(createField({ label: 'Workspace name', control: createTextInput({ placeholder: 'minnow' }), hint: 'Shown in the sidebar' }).root);
+  const port = createField({ label: 'Port', control: createTextInput({ value: '9473', type: 'number' }), required: true });
+  port.setError('Port 9473 is already in use');
+  panel(port.root);
+  panel(createField({ label: 'Theme', control: createSelect({ options: THEMES.slice(0, 6).map((id) => ({ value: id, label: id })), value: 'ocean-dark' }) }).root);
+  panel(createField({ label: 'Commit message', control: createTextarea({ placeholder: 'Describe the change' }) }).root);
+  const sizes = el('div');
+  sizes.style.display = 'grid';
+  sizes.style.gap = 'var(--mn-space-2)';
+  for (const size of ['sm', 'md', 'lg']) sizes.appendChild(createTextInput({ size, placeholder: `Input ${size}`, ariaLabel: `Input ${size}` }));
+  sizes.appendChild(createTextInput({ placeholder: 'Disabled', disabled: true, ariaLabel: 'Disabled input' }));
+  panel(sizes);
+  panel(
+    createCheckbox({ label: 'Remember this choice', checked: true }).root,
+    el('br'),
+    createCheckbox({ label: 'Run tests before commit', description: 'Adds about a minute to each commit' }).root,
+    el('br'),
+    createCheckbox({ label: 'Disabled option', disabled: true }).root,
+  );
+}
+
+/* Switches */
+{
+  const s = section('Switches');
+  const labelled = (text, options) => {
+    const id = `sw-${Math.random().toString(36).slice(2)}`;
+    const label = el('span', 'g-note', text);
+    label.id = id;
+    const { root: control } = createSwitch({ ...options, labelledBy: id });
+    const wrap = el('span');
+    wrap.style.display = 'inline-flex';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = 'var(--mn-space-2)';
+    wrap.append(control, label);
+    return wrap;
+  };
+  row(s, 'md', labelled('Off', {}), labelled('On', { checked: true }), labelled('Disabled', { disabled: true }), labelled('Disabled on', { checked: true, disabled: true }));
+  row(s, 'sm', labelled('Off', { size: 'sm' }), labelled('On', { size: 'sm', checked: true }));
+}
+
+/* Segmented */
+{
+  const s = section('Segmented control');
+  row(s, 'md', createSegmentedControl({
+    ariaLabel: 'View', value: 'list',
+    options: [{ value: 'list', label: 'List' }, { value: 'board', label: 'Board' }, { value: 'graph', label: 'Graph' }],
+    onChange: (v) => say(`view: ${v}`),
+  }).root);
+  row(s, 'sm + icons', createSegmentedControl({
+    ariaLabel: 'Device', value: 'desktop', size: 'sm',
+    options: [
+      { value: 'mobile', label: 'Mobile', icon: 'deviceMobile', iconOnly: true },
+      { value: 'tablet', label: 'Tablet', icon: 'deviceTablet', iconOnly: true },
+      { value: 'desktop', label: 'Desktop', icon: 'deviceDesktop', iconOnly: true },
+    ],
+  }).root);
+  row(s, 'disabled', createSegmentedControl({
+    ariaLabel: 'Effort', value: 'medium',
+    options: [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High', disabled: true }],
+  }).root);
+}
+
+/* Tabs */
+{
+  const s = section('Tabs');
+  const panel = (text) => el('div', 'g-tab-panel', text);
+  s.appendChild(createTabs({
+    ariaLabel: 'Inspector',
+    tabs: [
+      { id: 'files', label: 'Files', icon: 'fileTree', panel: panel('Files panel. Arrow keys move and select.') },
+      { id: 'changes', label: 'Changes', count: 3, panel: panel('Changes panel') },
+      { id: 'blame', label: 'Blame', disabled: true },
+      { id: 'log', label: 'Log', panel: panel('Log panel') },
+    ],
+  }).root);
+  const contained = createTabs({
+    ariaLabel: 'Output', variant: 'contained', activation: 'manual',
+    tabs: [
+      { id: 'out', label: 'Output', panel: panel('Manual activation: arrows move focus, Enter selects.') },
+      { id: 'problems', label: 'Problems', count: 12, panel: panel('Problems panel') },
+      { id: 'terminal', label: 'Terminal', panel: panel('Terminal panel') },
+    ],
+  });
+  contained.root.style.marginTop = 'var(--mn-space-6)';
+  s.appendChild(contained.root);
+}
+
+/* Badges and chips */
+{
+  const s = section('Badges and chips');
+  const tones = ['neutral', 'accent', 'success', 'warning', 'danger'];
+  row(s, 'md', ...tones.map((tone) => createBadge({ label: tone, tone })));
+  row(s, 'sm mono', ...tones.map((tone) => createBadge({ label: tone === 'success' ? '42 tok/s' : '1.2 s', tone, size: 'sm', mono: true })));
+  row(s, 'dot', createBadge({ label: 'Running', tone: 'accent', dot: true }), createBadge({ label: 'Ready', tone: 'success', dot: true }), createBadge({ label: 'Blocked', tone: 'danger', dot: true }), createBadge({ label: 'PR #812', icon: 'pullRequest' }));
+  row(s, 'chips', createChip({ label: 'frontend' }), createChip({ label: 'bug', tone: 'danger' }), createChip({ label: 'docs', icon: 'fileText' }));
+  const filters = ['Open', 'Mine', 'Has PR'].map((label, i) => {
+    const chip = createChip({ label, selected: i === 0, onClick: () => {
+      const on = !chip.classList.contains('is-selected');
+      chip.classList.toggle('is-selected', on);
+      chip.querySelector('button').setAttribute('aria-pressed', String(on));
+    } });
+    return chip;
+  });
+  row(s, 'toggle', ...filters);
+  const removable = el('span');
+  removable.style.display = 'contents';
+  for (const label of ['agents', 'ui', 'perf']) {
+    const chip = createChip({ label, tone: 'accent', onRemove: () => { chip.remove(); say(`removed ${label}`); } });
+    removable.appendChild(chip);
+  }
+  row(s, 'removable', removable);
+}
+
+/* Overlays */
+{
+  const s = section('Overlays');
+  const popoverContent = () => {
+    const box = el('div');
+    box.style.display = 'grid';
+    box.style.gap = 'var(--mn-space-2)';
+    box.style.padding = 'var(--mn-space-2)';
+    box.style.width = '240px';
+    box.append(
+      createField({ label: 'Filter', control: createTextInput({ placeholder: 'Type to filter', size: 'sm' }) }).root,
+      createCheckbox({ label: 'Only my issues' }).root,
+      createButton({ label: 'Apply', variant: 'primary', size: 'sm', block: true, onClick: () => say('applied') }),
+    );
+    return box;
+  };
+  const popoverBtn = createButton({ label: 'Popover', iconEnd: 'chevronDown', onClick: () => togglePopover({ anchor: popoverBtn, content: popoverContent(), ariaLabel: 'Filters' }) });
+  const menuBtn = createButton({ label: 'Menu', iconEnd: 'chevronDown', onClick: () => openContextMenu({
+    anchor: menuBtn,
+    restoreFocus: menuBtn,
+    label: 'File actions',
+    items: [
+      { id: 'copy', label: 'Copy path', shortcut: 'Ctrl+Shift+C', onSelect: () => say('copy') },
+      { id: 'rename', label: 'Rename', onSelect: () => say('rename') },
+      { kind: 'separator' },
+      { id: 'delete', label: 'Delete', danger: true, onSelect: () => say('delete') },
+    ],
+  }) });
+  const dialogBtn = createButton({ label: 'Dialog', onClick: () => {
+    const inner = createButton({ label: 'Popover inside dialog', iconEnd: 'chevronDown', size: 'sm' });
+    inner.addEventListener('click', () => togglePopover({ anchor: inner, content: popoverContent() }));
+    const body = el('div');
+    body.style.display = 'grid';
+    body.style.gap = 'var(--mn-space-3)';
+    body.append(createField({ label: 'Branch name', control: createTextInput({ value: 'feature/components' }) }).root, inner);
+    openDialog({
+      title: 'Create branch',
+      description: 'Creates a branch from the current HEAD and switches to it.',
+      body,
+      actions: [
+        { id: 'cancel', label: 'Cancel' },
+        { id: 'create', label: 'Create branch', variant: 'primary', run: () => new Promise((r) => setTimeout(r, 800)) },
+      ],
+      onClose: (result) => say(`dialog: ${result}`),
+    });
+  } });
+  const confirmBtn = createButton({ label: 'Destructive confirm', variant: 'danger', onClick: () => openDialog({
+    title: 'Discard 3 changed files?', size: 'sm', body: 'This cannot be undone.',
+    actions: [{ id: 'cancel', label: 'Cancel', autoFocus: true }, { id: 'discard', label: 'Discard', variant: 'danger' }],
+    onClose: (result) => say(`confirm: ${result}`),
+  }) });
+  const tipTarget = createButton({ label: 'Hover or focus me' });
+  attachTooltip(tipTarget, 'Tooltips appear after a short hover delay, or immediately on keyboard focus.');
+  row(s, null, popoverBtn, menuBtn, dialogBtn, confirmBtn, tipTarget);
+}
+
+/* Tokens */
+{
+  const s = section('Scale tokens');
+  const grid = el('div', 'g-grid');
+  s.appendChild(grid);
+  const type = el('div', 'g-panel');
+  for (const step of ['2xs', 'xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', 'display']) {
+    const line = el('div', 'g-swatch');
+    const sample = el('span', null, 'Calm local instrument');
+    sample.style.fontSize = `var(--mn-type-${step})`;
+    line.append(el('code', null, `--mn-type-${step}`), sample);
+    type.appendChild(line);
+  }
+  const space = el('div', 'g-panel');
+  for (const step of ['0-5', '1', '1-5', '2', '2-5', '3', '3-5', '4', '5', '6', '7', '8', '10', '12']) {
+    const line = el('div', 'g-swatch');
+    const bar = el('span', 'g-space');
+    bar.style.width = `var(--mn-space-${step})`;
+    line.append(el('code', null, `--mn-space-${step}`), bar);
+    space.appendChild(line);
+  }
+  const radius = el('div', 'g-panel');
+  for (const step of ['xs', 'sm', 'md', 'lg', 'xl', 'pill']) {
+    const line = el('div', 'g-swatch');
+    const box = el('span', 'g-radius');
+    box.style.borderRadius = `var(--mn-radius-${step})`;
+    line.append(el('code', null, `--mn-radius-${step}`), box);
+    radius.appendChild(line);
+  }
+  grid.append(type, space, radius);
+}
+</script>
+</body>
+</html>

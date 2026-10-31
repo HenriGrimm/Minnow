@@ -18,9 +18,76 @@ body {
 }
 
 :root {
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* Type scale. `--mn-text-*` names are colour aliases, so sizes use `--mn-type-*`. */
+  --mn-type-2xs: 10px;
+  --mn-type-xs: 11px;
+  --mn-type-sm: 12px;
+  --mn-type-md: 13px;
+  --mn-type-base: 14px;
+  --mn-type-lg: 15px;
+  --mn-type-xl: 16px;
+  --mn-type-2xl: 18px;
+  --mn-type-3xl: 20px;
+  --mn-type-4xl: 24px;
+  --mn-type-display: 28px;
+  --mn-leading-none: 1;
+  --mn-leading-tight: 1.2;
+  --mn-leading-snug: 1.35;
+  --mn-leading-normal: 1.5;
+  --mn-leading-relaxed: 1.6;
+  --mn-weight-regular: 400;
+  --mn-weight-medium: 500;
+  --mn-weight-semibold: 600;
+  --mn-tracking-title: -0.02em;
+  --mn-tracking-label: 0.06em;
+  /* Spacing: 4px grid with half steps (`-1-5` = 6px). */
+  --mn-space-0-5: 2px;
+  --mn-space-1: 4px;
+  --mn-space-1-5: 6px;
+  --mn-space-2: 8px;
+  --mn-space-2-5: 10px;
+  --mn-space-3: 12px;
+  --mn-space-3-5: 14px;
+  --mn-space-4: 16px;
+  --mn-space-5: 20px;
+  --mn-space-6: 24px;
+  --mn-space-7: 28px;
+  --mn-space-8: 32px;
+  --mn-space-10: 40px;
+  --mn-space-12: 48px;
+  /* Radius. `--radius-*` are legacy aliases of the canonical `--mn-radius-*`. */
+  --mn-radius-xs: 4px;
+  --mn-radius-sm: 6px;
+  --mn-radius-md: 10px;
+  --mn-radius-lg: 14px;
+  --mn-radius-xl: 20px;
+  --mn-radius-pill: 999px;
+  --radius-sm: var(--mn-radius-sm);
+  --radius-md: var(--mn-radius-md);
+  --radius-lg: var(--mn-radius-lg);
+  /* Control sizes shared by buttons, inputs, selects and segmented controls. */
+  --mn-control-h-sm: 28px;
+  --mn-control-h-md: 32px;
+  --mn-control-h-lg: 40px;
+  --mn-control-px-sm: var(--mn-space-2);
+  --mn-control-px-md: var(--mn-space-3);
+  --mn-control-px-lg: var(--mn-space-4);
+  --mn-control-gap: var(--mn-space-1-5);
+  --mn-icon-sm: 14px;
+  --mn-icon-md: 16px;
+  --mn-icon-lg: 18px;
+  --mn-focus-ring-width: 2px;
+  --mn-focus-ring-offset: 2px;
+  /* Layers. Values name the stacking the app already uses; popovers and tooltips sit above dialogs. */
+  --mn-z-raised: 1;
+  --mn-z-sticky: 20;
+  --mn-z-shell: 50;
+  --mn-z-capture: 95;
+  --mn-z-menu: 96;
+  --mn-z-toast: 100025;
+  --mn-z-dialog: 100030;
+  --mn-z-popover: 100040;
+  --mn-z-tooltip: 100050;
   /* Dropdowns share one surface and row vocabulary across native and custom menus. */
   --mn-menu-radius: var(--radius-lg);
   --mn-menu-item-radius: var(--radius-md);
@@ -331,7 +398,7 @@ body {
   --mn-fg: #2a2418;
   --mn-fg-muted: #6f6550;
   --mn-fg-subtle: #a89e84;
-  --mn-fg-on-accent: #1f1505;
+  --mn-fg-on-accent: #0d0803;
   --mn-accent: #a36f2a;
   --mn-accent-soft: rgba(163,111,42,0.14);
   --mn-accent-border: rgba(163,111,42,0.30);
@@ -647,7 +714,7 @@ body {
   --mn-fg: #1c1c1f;
   --mn-fg-muted: #62605c;
   --mn-fg-subtle: #92908c;
-  --mn-fg-on-accent: #fdf2f1;
+  --mn-fg-on-accent: #130706;
   --mn-accent: #c75651;
   --mn-accent-soft: rgba(199,86,81,0.10);
   --mn-accent-border: rgba(199,86,81,0.28);
@@ -1043,7 +1110,7 @@ body {
   --mn-fg: #ffdbbd;
   --mn-fg-muted: #a89482;
   --mn-fg-subtle: #8f7b6e;
-  --mn-fg-on-accent: #fbf1ea;
+  --mn-fg-on-accent: #1e1005;
   --mn-accent: #d27428;
   --mn-accent-soft: rgba(210, 116, 40, 0.14);
   --mn-accent-border: rgba(210, 116, 40, 0.28);
@@ -1118,7 +1185,7 @@ body {
   --mn-fg: #2e2218;
   --mn-fg-muted: #6f6550;
   --mn-fg-subtle: #c2b7af;
-  --mn-fg-on-accent: #f9f0e9;
+  --mn-fg-on-accent: #120a03;
   --mn-accent: #c46820;
   --mn-accent-soft: rgba(196, 104, 32, 0.14);
   --mn-accent-border: rgba(196, 104, 32, 0.28);
@@ -1272,7 +1339,7 @@ body {
   --mn-fg: #121a16;
   --mn-fg-muted: #5d6b66;
   --mn-fg-subtle: #b3bbb7;
-  --mn-fg-on-accent: #e9f6f0;
+  --mn-fg-on-accent: #062215;
   --mn-accent: #1fa86a;
   --mn-accent-soft: rgba(31, 168, 106, 0.14);
   --mn-accent-border: rgba(31, 168, 106, 0.28);

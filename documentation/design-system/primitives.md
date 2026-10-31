@@ -1,6 +1,8 @@
 # UI primitives
 
-Reusable patterns implemented as **CSS classes** + **DOM factories** (not a shared component package). Prefer these over one-off styles.
+**New controls come from the component library** in [`src/ui/components/`](../../src/ui/components/): Button/IconButton, Tooltip, Switch, input/textarea/select/checkbox/Field, SegmentedControl, Tabs, Badge/Chip, Popover and Dialog. See [components.md](components.md).
+
+The classes and factories below are the **existing per-surface primitives**. They keep working, and [the migration plan](../plans/design-system-component-library.md) moves them onto the library surface by surface. Do not add new `*-btn` families or copy these patterns into new code.
 
 ## Buttons
 
@@ -78,7 +80,7 @@ Used across Settings, Compare, Scheduler, and other settings-like surfaces.
 
 ## Extraction candidates (not yet shared)
 
-These repeat 2× but differ in context; do **not** extract until a third identical use appears:
+These repeat twice but differ in context. Extract one into `src/ui/components/` only when a third identical use appears:
 
 - App-specific page headers (Research, Brain)
 - Orchestrate board card chrome (domain-specific layout)

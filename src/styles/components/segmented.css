@@ -1,0 +1,81 @@
+/* Shared segmented control (src/ui/components/segmented.ts). */
+
+.mn-segmented {
+  --mn-segmented-h: var(--mn-control-h-md);
+
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: stretch;
+  gap: var(--mn-space-0-5);
+  height: var(--mn-segmented-h);
+  padding: var(--mn-space-0-5);
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-bg);
+  -webkit-app-region: no-drag;
+}
+
+.mn-segmented--sm {
+  --mn-segmented-h: var(--mn-control-h-sm);
+}
+
+.mn-segmented__option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mn-control-gap);
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--mn-space-2-5);
+  border: 0;
+  border-radius: var(--mn-radius-xs);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-tight);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.mn-segmented--sm .mn-segmented__option {
+  padding-inline: var(--mn-space-2);
+  font-size: var(--mn-type-sm);
+}
+
+.mn-segmented__option .icon-svg {
+  --mn-icon-size: var(--mn-icon-sm);
+}
+
+.mn-segmented__option.is-selected {
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-segmented__option:hover:not(:disabled):not(.is-selected) {
+    background: var(--mn-surface-elevated);
+    color: var(--mn-fg);
+  }
+}
+
+.mn-segmented__option:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: 0;
+}
+
+.mn-segmented__option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .mn-segmented {
+    height: var(--touch-min);
+  }
+}

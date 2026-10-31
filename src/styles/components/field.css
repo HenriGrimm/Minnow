@@ -1,0 +1,196 @@
+/*
+ * Shared form controls (src/ui/components/field.ts).
+ *
+ * Selects only get size and type here: border, radius, colours and the popup
+ * come from dropdowns.css, which styles every native select in the app.
+ */
+
+.mn-input,
+.mn-select {
+  --mn-input-h: var(--mn-control-h-md);
+  --mn-input-px: var(--mn-space-2-5);
+
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: var(--mn-input-h);
+  margin: 0;
+  padding: 0 var(--mn-input-px);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-regular);
+  line-height: var(--mn-leading-tight);
+  -webkit-app-region: no-drag;
+}
+
+.mn-input {
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-bg);
+  color: var(--mn-fg);
+  outline: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.mn-input--sm,
+.mn-select--sm {
+  --mn-input-h: var(--mn-control-h-sm);
+  --mn-input-px: var(--mn-space-2);
+  font-size: var(--mn-type-sm);
+}
+
+.mn-input--lg,
+.mn-select--lg {
+  --mn-input-h: var(--mn-control-h-lg);
+  --mn-input-px: var(--mn-space-3);
+  font-size: var(--mn-type-base);
+}
+
+.mn-input--multiline {
+  height: auto;
+  min-height: calc(var(--mn-control-h-md) * 2);
+  padding: var(--mn-space-2) var(--mn-input-px);
+  font-size: var(--mn-type-base);
+  line-height: var(--mn-leading-normal);
+  resize: vertical;
+}
+
+.mn-input--no-resize {
+  resize: none;
+}
+
+.mn-input::placeholder {
+  color: var(--mn-fg-subtle);
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mn-input:hover:not(:disabled):not(:focus) {
+    border-color: color-mix(in srgb, var(--mn-fg) 24%, transparent);
+  }
+}
+
+.mn-input:focus,
+.mn-input:focus-visible {
+  border-color: var(--mn-accent);
+  outline: none;
+}
+
+.mn-input[aria-invalid='true'] {
+  border-color: var(--mn-danger-border);
+}
+
+.mn-input[aria-invalid='true']:focus {
+  border-color: var(--mn-danger);
+}
+
+.mn-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mn-select[aria-invalid='true'] {
+  border-color: var(--mn-danger-border);
+}
+
+/* Checkbox */
+
+.mn-checkbox {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--mn-space-2);
+  min-height: var(--mn-control-h-sm);
+  padding-block: var(--mn-space-1);
+  color: var(--mn-fg);
+  font-size: var(--mn-type-md);
+  line-height: var(--mn-leading-snug);
+  cursor: pointer;
+}
+
+.mn-checkbox__input {
+  flex-shrink: 0;
+  width: var(--mn-icon-md);
+  height: var(--mn-icon-md);
+  margin: 1px 0 0;
+  accent-color: var(--mn-accent);
+  cursor: inherit;
+}
+
+.mn-checkbox__input:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: var(--mn-focus-ring-offset);
+}
+
+.mn-checkbox:has(.mn-checkbox__input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mn-checkbox__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-0-5);
+  min-width: 0;
+}
+
+.mn-checkbox__description {
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+}
+
+/* Field */
+
+.mn-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mn-space-1-5);
+  min-width: 0;
+}
+
+.mn-field__label {
+  color: var(--mn-fg);
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-tight);
+}
+
+.mn-field__required {
+  margin-left: var(--mn-space-0-5);
+  color: var(--mn-danger);
+}
+
+.mn-field__hint,
+.mn-field__error {
+  margin: 0;
+  font-size: var(--mn-type-sm);
+  line-height: var(--mn-leading-snug);
+}
+
+.mn-field__hint {
+  color: var(--mn-fg-muted);
+}
+
+.mn-field__error {
+  color: var(--mn-danger-ink);
+}
+
+.mn-field__hint[hidden],
+.mn-field__error[hidden] {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  /* 16px stops iOS zooming into focused inputs. */
+  .mn-input,
+  .mn-select {
+    min-height: var(--touch-min);
+    font-size: var(--mn-type-xl);
+  }
+
+  .mn-checkbox {
+    min-height: var(--touch-min);
+    align-items: center;
+  }
+}

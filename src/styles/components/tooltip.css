@@ -1,0 +1,34 @@
+/* Shared tooltip (src/ui/components/tooltip.ts). One element, placed per target. */
+
+.mn-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--mn-z-tooltip);
+  box-sizing: border-box;
+  max-width: min(280px, calc(100vw - var(--mn-space-4)));
+  padding: var(--mn-space-1) var(--mn-space-2);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  font-size: var(--mn-type-sm);
+  font-weight: var(--mn-weight-medium);
+  line-height: var(--mn-leading-snug);
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-popover-soft);
+  -webkit-app-region: no-drag;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.mn-tooltip[hidden] {
+  display: none;
+}
+
+@starting-style {
+  .mn-tooltip {
+    opacity: 0;
+  }
+}

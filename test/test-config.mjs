@@ -246,6 +246,9 @@ export const SCOPED_SUITES = {
     patterns: ['test/ui-designer/**/*.test.mts'],
     post: ['node scripts/step15-smoke.mjs'],
   },
+  components: {
+    patterns: ['test/ui/components/**/*.test.mts', 'test/theme-contrast.test.mts'],
+  },
   design: {
     patterns: [
       'test/design/**/*.test.mjs',
