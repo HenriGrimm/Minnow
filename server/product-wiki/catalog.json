@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "2f9231203a8fbd8929eb783a678807bc4871e88cda27580924aca4b9080b519f"
+      "hash": "83eff4520f6d6f26a88ad9735d9b46eaccc2248d04bdbf896fc0f75da184f590"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -304,7 +304,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "82d24c3de898c3445b1cb228a4d29e1c84f927dc3a1d08eab4b3672be00ca10c"
+      "hash": "4dd232d952021db85750393780fbda1c56121c8822f8195e2eca4e0b50d5c88f"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -461,7 +461,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "3ec0a3c614a011123eefa2f5bfc0785a96191e915aa5dacdf2df617242e1d18b"
+      "hash": "36a54806dcf4eb85aa3157956e95f0a4e55c370b14a75fba8fda4c3254cb1e96"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -616,7 +616,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "1c040d5be0b843711bea48db79855e11f19b6dfd7e89f303d08308493cdd4277"
+      "hash": "7136e6968e938a117b955b924da2c01638283b24649bcf69de832bf57dfe38f8"
     },
     {
       "path": "documentation/manual/apps/home.md",

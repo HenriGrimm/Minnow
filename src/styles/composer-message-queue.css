@@ -145,27 +145,6 @@
   outline-offset: 1px;
 }
 
-.composer-run-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding-block-start: 6px;
-  color: var(--mn-fg-muted);
-  font-size: 0.75rem;
-}
-
-.composer-run-controls__hint {
-  flex: 1;
-  min-width: 120px;
-}
-
-.input-bar .input-bar-composer > .composer-run-controls {
-  order: 3;
-  margin: 0;
-  padding: 6px 12px 10px;
-}
-
 .composer-message-queue__text-action {
   min-height: 32px;
   padding: 4px 8px;

@@ -14,7 +14,7 @@ export interface RemoteChatCommand {
   itemId?: string;
   attachments?: Attachment[];
   patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean };
-  /** Managed Stop pins a single execution; model changes do not stop it implicitly. */
+  /** Managed Stop pins the displayed execution before capturing its descendants. */
   executionId?: string;
   scope?: 'turn' | 'tree';
   deliveryId?: string;

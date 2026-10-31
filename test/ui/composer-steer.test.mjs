@@ -11,10 +11,12 @@ const {
 const { enqueueComposerMessageForTests } = await import('../../src/chat/message-queue.ts');
 const { handleComposerPrimaryAction, submitComposerFollowup } = await import('../../src/ui/composer-send.ts');
 const { handleKey } = await import('../../src/ui/input.ts');
+const { syncComposerFollowUpPlaceholder } = await import('../../src/ui/composer-message-queue.ts');
 const { clearAttachments, pushAttachment, getPendingAttachments } = await import('../../src/attachments/store.ts');
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
 const STEER_TEXT = 'Use pnpm not npm';
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
 
 function setupDom() {
   const window = new Window();
@@ -49,6 +51,8 @@ function seedStreamingChat() {
 
 describe('composer queue vs stop', () => {
   afterEach(async () => {
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
     clearAttachments();
     appState.setStreaming(false);
     flushScheduledSessionSaveForTests();
@@ -165,6 +169,40 @@ describe('composer queue vs stop', () => {
     assert.equal(chat.pendingSteerMessage, undefined);
     assert.equal(input.value, '');
   });
+
+  for (const [platform, modifier, placeholder] of [
+    ['MacIntel', 'metaKey', '↵ to send, ⌘↵ to queue for later'],
+    ['Win32', 'ctrlKey', '↵ to send, Ctrl+↵ to queue for later'],
+    ['Linux x86_64', 'ctrlKey', '↵ to send, Ctrl+↵ to queue for later'],
+  ]) {
+    test(`${platform} queue shortcut matches the placeholder and queues without steering`, () => {
+      const chat = seedStreamingChat();
+      const { input } = setupDom();
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { platform } });
+      syncComposerFollowUpPlaceholder(true);
+      assert.equal(input.placeholder, placeholder);
+      input.value = STEER_TEXT;
+      input.addEventListener('keydown', handleKey);
+      input.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', [modifier]: true, bubbles: true }));
+      assert.equal(chat.pendingMessageQueue?.[0]?.text, STEER_TEXT);
+      assert.equal(chat.pendingSteerMessage, undefined);
+      assert.equal(input.value, '');
+    });
+
+    for (const guard of ['shiftKey', 'isComposing']) {
+      test(`${platform} queue shortcut respects ${guard}`, () => {
+        const chat = seedStreamingChat();
+        const { input } = setupDom();
+        Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { platform } });
+        input.value = STEER_TEXT;
+        input.addEventListener('keydown', handleKey);
+        input.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', [modifier]: true, [guard]: true, bubbles: true }));
+        assert.equal(chat.pendingMessageQueue?.length ?? 0, 0);
+        assert.equal(chat.pendingSteerMessage, undefined);
+        assert.equal(input.value, STEER_TEXT);
+      });
+    }
+  }
 
   test('Enter after a steer cannot accidentally stop the run', () => {
     const chat = seedStreamingChat();

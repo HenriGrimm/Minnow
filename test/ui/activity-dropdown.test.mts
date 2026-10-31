@@ -11,7 +11,7 @@ let actions: ActivityDropdownActions;
 const notice = (patch: Partial<NotificationRecord> = {}): NotificationRecord => ({ id: 'failure', activityId: 'scheduler:r1', jobId: 'job1', activityStatus: 'failed', kind: 'scheduler', title: '<unsafe title>', preview: 'Provider unavailable', createdAt: Date.now(), read: false, appId: 'scheduler', workspacePath: '/work', ...patch });
 const feed = (records: NotificationRecord[]) => buildActivityFeed({ chats: [], live: [], notifications: records, pendingChatIds: new Set(), workspacePath: '/work' });
 
-test('a canonical waiting row keeps a frozen timer and offers only the explicit current-reply Stop', () => {
+test('a canonical waiting row keeps a frozen timer and offers Stop chat', () => {
   const view = createActivityDropdown(panel, actions);
   const live = { id: 'execution:e', kind: 'agent_chat' as const, chatId: 'child', chatTitle: 'Child', label: 'Reviewer', status: 'waiting' as const,
     waitReason: 'for model', modelDisplay: 'Captured model', contextPercent: null, contextIsEstimate: true, startedAtMs: 100, elapsedMs: 200,
@@ -20,7 +20,7 @@ test('a canonical waiting row keeps a frozen timer and offers only the explicit 
   view.render(current, DEFAULT_NOTIFICATION_PREFS, 'Minnow', true);
   assert.equal(panel.querySelectorAll('[data-started-at]').length, 0);
   assert.match(panel.textContent!, /Waiting for model/); assert.match(panel.textContent!, /0 agents working/);
-  assert.equal(panel.querySelector('[data-action="stop"]')!.textContent, 'Stop this reply');
+  assert.equal(panel.querySelector('[data-action="stop"]')!.textContent, 'Stop chat');
   const before = panel.querySelector('.activity-row__time')!.textContent; view.tick(100000);
   assert.equal(panel.querySelector('.activity-row__time')!.textContent, before); view.destroy();
 });

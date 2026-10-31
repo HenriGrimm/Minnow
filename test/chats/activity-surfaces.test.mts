@@ -28,7 +28,7 @@ function setup() {
   setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
   return chat;
 }
-test('Activity Stop pins its displayed execution, uses turn scope, and never cancels the task mirror or replacement', async () => {
+test('Activity Stop pins its displayed execution, stops its descendant tree, and never cancels the task mirror or replacement', async () => {
   const chat = setup(), bodies: any[] = [];
   const rows = buildAgentActivitySnapshot({ nowMs: 1000, chats: [chat], mainTurns: [], subAgents: [], titleJobs: [] });
   const item = buildActivityFeed({ chats: [chat], live: rows, notifications: [], pendingChatIds: new Set(), workspacePath: '' }).running[0];
@@ -36,7 +36,7 @@ test('Activity Stop pins its displayed execution, uses turn scope, and never can
   globalThis.fetch = async (url, options) => { bodies.push({ url: String(url), body: JSON.parse(String(options?.body)) }); return Response.json({}); };
   await stopAgentActivityItem(item);
   assert.equal(bodies.length, 1); assert.equal(bodies[0].url, '/api/chats/activity-child/commands');
-  assert.equal(bodies[0].body.executionId, 'pinned'); assert.equal(bodies[0].body.scope, 'turn'); assert.equal(bodies[0].body.action, 'stop');
+  assert.equal(bodies[0].body.executionId, 'pinned'); assert.equal(bodies[0].body.scope, 'tree'); assert.equal(bodies[0].body.action, 'stop');
   item.live!.canStop = false; await stopAgentActivityItem(item); assert.equal(bodies.length, 1);
 });
 test('panel metadata subscription is singular, responds to canonical waiting states, and releases on disposal', async () => {

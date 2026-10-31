@@ -101,9 +101,6 @@ export function isCodeStageOverlayMounted(): boolean {
 /** Notify Code view chrome (Chats toggle) after a stage view opens or closes. */
 export function notifyCodeStageViewChanged(): void {
   emitChatSidebarChanged();
-  void import('./agent-cli-view').then((m) => {
-    m.syncAgentCliView();
-  });
   void import('./preview-electron-visibility').then((m) => {
     m.scheduleElectronPreviewHostLayoutSync();
   });

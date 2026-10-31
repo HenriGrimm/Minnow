@@ -1,0 +1,238 @@
+/**
+ * Provider identity for agents (src/ui/agent-model-mark.ts): the model picker's
+ * producer logo on a quiet tile, a status badge on its corner, and the picker's
+ * logo + name chip. Used by sub-agent cards, their group header and the sidebar.
+ */
+
+.agent-mark {
+  --agent-mark-size: 24px;
+  /* The surface the badge cuts out of; set per host. */
+  --agent-mark-ring: var(--mn-bg);
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--agent-mark-size);
+  height: var(--agent-mark-size);
+  box-sizing: border-box;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
+  color: var(--mn-fg);
+}
+
+.agent-mark__logo {
+  display: grid;
+  place-items: center;
+  width: 58%;
+  height: 58%;
+}
+
+.agent-mark__logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-mark__logo[data-has-logo='false'] { color: var(--mn-fg-subtle); }
+
+.agent-mark[data-state='queued'] { border-style: dashed; }
+.agent-mark[data-state='queued'] .agent-mark__logo { opacity: 0.45; }
+
+.agent-mark__badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: none;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--agent-mark-ring);
+}
+
+.agent-mark[data-state='running'] .agent-mark__badge {
+  display: block;
+  border: 2px solid var(--mn-accent);
+  border-right-color: transparent;
+  background: var(--agent-mark-ring);
+  animation: agent-mark-spin 0.8s linear infinite;
+}
+
+.agent-mark[data-state='waiting'] .agent-mark__badge {
+  display: block;
+  background: var(--mn-warning);
+}
+
+.agent-mark[data-state='done'] .agent-mark__badge {
+  display: grid;
+  background: var(--mn-success);
+  color: var(--mn-bg);
+}
+
+.agent-mark[data-state='failed'] .agent-mark__badge {
+  display: grid;
+  background: var(--mn-danger);
+  color: var(--mn-bg);
+}
+
+.agent-mark[data-state='stopped'] .agent-mark__badge {
+  display: grid;
+  background: var(--mn-fg-subtle);
+}
+
+.agent-mark[data-state='stopped'] .agent-mark__badge::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  background: var(--agent-mark-ring);
+}
+
+/* Plays once when an agent settles in front of you (see syncAgentMark). */
+.agent-mark--settled .agent-mark__badge {
+  animation: agent-mark-pop 0.42s var(--ease-out) both;
+}
+
+@keyframes agent-mark-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes agent-mark-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  65% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* ── Stack: which providers worked on a run, three marks then +N ── */
+.agent-mark-stack {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.agent-mark-stack:empty { display: none; }
+
+.agent-mark--stacked {
+  --agent-mark-size: 20px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--mn-bg);
+  background: color-mix(in srgb, var(--mn-fg) 6%, var(--mn-bg));
+}
+
+.agent-mark--stacked + .agent-mark--stacked { margin-left: -6px; }
+
+.agent-mark-stack .agent-mark[data-state] .agent-mark__badge { display: none; }
+
+.agent-mark--more {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+
+/* ── Model chip: same logo + name the composer picker shows ── */
+.agent-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 7px 0 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--mn-fg) 4%, transparent);
+  color: var(--mn-fg-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.agent-model-chip__logo {
+  display: grid;
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  color: var(--mn-fg);
+}
+
+.agent-model-chip__logo[hidden] { display: none; }
+
+.agent-model-chip__logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-model-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Sidebar ── */
+.chat-item-model .agent-model-chip {
+  height: auto;
+  padding: 0;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.chat-item-model .agent-model-chip__logo {
+  width: 10px;
+  height: 10px;
+  opacity: 0.8;
+}
+
+.chat-item-agent-mark {
+  --agent-mark-size: 18px;
+  --agent-mark-ring: var(--mn-surface-1);
+  border-radius: var(--radius-sm);
+}
+
+.chat-item-agent-mark .agent-mark__badge {
+  right: -3px;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+}
+
+.chat-item-agent-mark[data-state='running'] .agent-mark__badge { border-width: 1.5px; }
+
+/* Too small for a glyph; the row's status text already says it. */
+.chat-item-agent-mark .agent-mark__badge .icon-svg { display: none; }
+
+/* ── Shimmer: a light band sweeping across live agent activity text ── */
+.agent-shimmer {
+  background: linear-gradient(90deg, var(--mn-fg-muted) 0%, var(--mn-fg-muted) 35%, var(--mn-fg) 50%, var(--mn-fg-muted) 65%, var(--mn-fg-muted) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: agent-shimmer 1.8s linear infinite;
+}
+
+@keyframes agent-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .agent-mark__badge,
+  .agent-mark--settled .agent-mark__badge {
+    animation: none;
+  }
+
+  .agent-mark[data-state='running'] .agent-mark__badge { border-right-color: var(--mn-accent); }
+}

@@ -27,7 +27,7 @@ Open **Search** from the magnifying glass in the header or with the command pale
 | Keys | Action |
 |------|--------|
 | **Enter** | Send a message, or steer the current run at its next step; empty input does nothing |
-| **Alt+Enter** | Queue a follow-up until the current reply finishes |
+| **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) | Queue a follow-up until the current reply finishes |
 | **Shift+Enter** | New line |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |

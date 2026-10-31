@@ -16,7 +16,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 | **Microphone** | Dictation — see [Voice](../extend/voice.md) |
 | **Send / Stop** | Enter sends or steers a running turn; the Stop button ends the reply |
 
-**Enter** sends, **Shift+Enter** adds a line. While a turn is running, **Enter** steers it and **Alt+Enter** queues a follow-up for later. Empty Enter does nothing. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
+**Enter** sends, **Shift+Enter** adds a line. While a turn is running, **Enter** steers it and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a follow-up for later. Empty Enter does nothing. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
 
 Drafts survive switching chats.
 
@@ -58,11 +58,11 @@ You do not have to sit still and wait.
 
 **Type a correction or more context and press Enter.** Minnow applies it at the next step between tool rounds, keeping the current turn intact. Until then, the strip above the composer shows **Steering at next step** and your text, with a cancel button. Successive corrections are kept in send order. Once applied, the correction appears in the transcript as **You steered**. If the reply finishes without another tool round, the correction starts a follow-up turn.
 
-**Choose Queue for later**, or press **Alt+Enter**, for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. Attachments stay in the composer until the running reply finishes; mid-turn messages are text only. `/compact` also waits for the reply to finish.
+Press **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. Attachments stay in the composer until the running reply finishes; mid-turn messages are text only. `/compact` also waits for the reply to finish.
 
 On a local llama.cpp or MLX model the status line beside the assistant row shows a load percent while weights come up, a prefill percent while the prompt is ingested, then a live token count while it generates (including while it is calling a tool).
 
-**Stop** stays available while you type. It ends the run and keeps the partial reply. Unapplied corrections return to the follow-up queue, where you can review, send, edit, or delete them. Repeated Enter never stops the run or sends queued work.
+**Stop** stays available while you type. It stops the chat and all its sub-agents, including nested agents, and keeps the partial reply. Unapplied corrections return to the follow-up queue, where you can review, send, edit, or delete them. Repeated Enter never stops the run or sends queued work.
 
 ## When a turn fails
 
@@ -78,7 +78,7 @@ A connection that accumulates more than 4 MiB of pending stream data or stalls f
 - **Activity** — the menubar dropdown shows what needs your input, what is running, and recent outcomes across the current workspace. Expand a running item to inspect its sub-agents, model, and context usage.
 - **Agent cards and chats** — delegated assignments are grouped in the parent transcript. Open a saved child chat for its own conversation, composer, model controls and requests. The original assignment result remains on its card. Older tasks retain their inspector and can offer **Continue as chat** from partial saved context. See [Agent conversations](persistent-agent-chats.md).
 
-The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. **Stop turn** stops the current reply; use **Stop agents** or **Stop conversation and agents** for a wider scope.
+The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. **Stop chat** stops the current reply and all its sub-agents. **Stop agents** stops only delegated work while the parent continues.
 
 ## Undoing a turn
 

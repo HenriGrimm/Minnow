@@ -23,10 +23,13 @@ import {
 import { batchPersistentAgentActivity, clearPersistentAgentActivity, persistentAgentActivityOwner, refreshPersistentAgentActivity, upsertPersistentAgentActivity } from './persistent-agent-activity';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { syncAgentConversationHeader } from './agent-conversation';
+import { agentModelId, createAgentMark, syncAgentMark, type AgentMarkState } from './agent-model-mark';
 
 /** Maps run id to the card element for the current chat render. */
 const cards = new Map<string, HTMLElement>();
 const cardRenderKeys = new WeakMap<HTMLElement, string>();
+/** Marks survive card refills so a live → settled change can play its badge pop. */
+const cardMarks = new WeakMap<HTMLElement, HTMLElement>();
 
 let liveSubscriptionBound = false;
 /** Pending coalesced tail scroll — one per frame, not one per card (MIN-793). */
@@ -151,6 +154,7 @@ function cardRenderKey(
     run.status,
     run.type,
     run.task,
+    agentModelId(run),
     metaLabel(run, live),
     detail.text,
     detail.error,
@@ -158,6 +162,14 @@ function cardRenderKey(
 }
 
 // ── Card fill ────────────────────────────────────────────────────────────────
+
+function markState(run: SubAgentRun | PersistedSubAgentRun): AgentMarkState {
+  if (run.status === 'completed') return 'done';
+  if (run.status === 'failed') return 'failed';
+  if (run.status === 'cancelled') return 'stopped';
+  if (run.status === 'queued') return 'queued';
+  return 'running';
+}
 
 /**
  * One timeline step: icon · agent · brief title · status, then a single
@@ -178,9 +190,12 @@ function fillCard(
   const body = document.createElement('div');
   body.className = 'sub-agent-card__body';
 
-  const mark = document.createElement('span');
-  mark.className = 'sub-agent-card__mark';
-  mark.appendChild(createIcon('appAgentActivity', { size: 14 }));
+  let mark = cardMarks.get(el);
+  if (!mark) {
+    mark = createAgentMark('sub-agent-card__mark');
+    cardMarks.set(el, mark);
+  }
+  syncAgentMark(mark, agentModelId(run), markState(run));
 
   const type = document.createElement('span');
   type.className = 'sub-agent-card__type';
@@ -208,7 +223,9 @@ function fillCard(
     const line = document.createElement('div');
     line.className = detail.error
       ? 'sub-agent-card__detail sub-agent-card__error'
-      : 'sub-agent-card__detail';
+      : live && subAgentLiveStatusLine(run, true)
+        ? 'sub-agent-card__detail agent-shimmer'
+        : 'sub-agent-card__detail';
     line.textContent = detail.text;
     body.appendChild(line);
   }

@@ -67,13 +67,13 @@ async function fixture(t) {
     if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome;
     resetMinnowHomeCache(); await fs.rm(home, { recursive: true, force: true });
   });
-  async function spawn(runId, { local = false, inline = false, childChatId = 'child-' + runId } = {}) {
+  async function spawn(runId, { local = false, inline = false, childChatId = 'child-' + runId, parentChatId = 'parent' } = {}) {
     const completionPolicy = local ? { version: 1, kind: 'local_only' } : { version: 1, kind: 'wake_delegator',
-      recipientChatId: 'parent', subscriptionId: 'subscription-' + runId, cancellationEpoch: repository.getCancellationEpoch('parent') };
+      recipientChatId: parentChatId, subscriptionId: 'subscription-' + runId, cancellationEpoch: repository.getCancellationEpoch(parentChatId) };
     const command = { version: 1, commandId: 'assignment-' + runId, chatId: childChatId, kind: 'send', mode: 'auto',
       message: 'Task ' + runId, requestedAt: clock, modelSelection: { providerId: 'provider', modelId: 'model' },
       provenance: { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message', sourceChatId: 'parent', sourceTurnId: 'parent-execution' } };
-    repository.createChild({ chat: chat(childChatId), relation: { version: 1, childChatId, parentChatId: 'parent', rootChatId: 'parent',
+    repository.createChild({ chat: chat(childChatId), relation: { version: 1, childChatId, parentChatId, rootChatId: 'parent',
       journalOwnerId: 'family', origin: 'delegated', createdAt: clock }, profile: { profileId: 'profile-' + runId, profileVersion: 1, snapshot: { policy } },
       projectId: 'project', command, producerId: 'spawn', requestKey: runId, captured: { runId, policy, scope, completionPolicy,
         ...(inline ? { inlineWait: { chatId: 'parent', executionId: 'parent-execution', toolCallId: 'spawn-' + runId } } : {}) } });
@@ -290,6 +290,45 @@ test('restart preserves an ambiguous real effect as a held recovery barrier and 
   assert.equal((await f.service.startAdmittedChildTask({ commandId: task.commandId, runId: task.runId, attemptId: 'unsafe-repeat' })).deferred, true);
   assert.equal(await fs.readFile(path.join(f.home, 'effect.txt'), 'utf8'), 'One effect');
   assert.equal((await f.journal.readEvents('family')).filter(event => event.type === 'attempt.ended').length, 1);
+});
+
+test('chat Stop cancels running and queued descendants, retains partials and holds queued parent input', async t => {
+  const f = await fixture(t);
+  const child = await f.spawn('running-child');
+  const grandchild = await f.spawn('running-grandchild', { parentChatId: child.childChatId });
+  const queued = await f.spawn('queued-grandchild', { parentChatId: child.childChatId });
+  f.setExecute(async input => {
+    const store = createChatTranscriptStore({ chatId: input.command.chatId, fence: input.fence, repository: f.repository });
+    store.append(input.command.chatId, { role: 'assistant', content: 'Saved partial output' });
+    await new Promise(resolve => input.signal.addEventListener('abort', resolve, { once: true }));
+    return { outcome: 'crashed', error: 'Stopped' };
+  });
+  const parent = await f.service.send(f.caller, { chatId: 'parent', message: 'Delegate work', clientRequestId: 'parent-work' });
+  const handles = [];
+  for (const task of [child, grandchild]) {
+    const handle = await f.service.startAdmittedChildTask({ commandId: task.commandId, runId: task.runId, attemptId: 'attempt-' + task.runId });
+    await f.journal.appendEvent('family', makeEvent('attempt.started', { runId: task.runId, attemptId: handle.attemptId,
+      executionId: handle.executionId, seed: { kind: 'initial' } }));
+    void handle.activate(); handles.push(handle);
+  }
+  for (let i = 0; i < 100 && f.calls.length < 3; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(f.calls.length, 3);
+  const followup = await f.service.send(f.caller, { chatId: 'parent', message: 'Preserve this next turn', mode: 'queue', clientRequestId: 'queued-parent' });
+  const executionId = f.repository.getCommand(parent.commandId).executionId;
+  const stopped = await f.service.stop(f.caller, { chatId: 'parent', executionId, scope: 'tree', clientRequestId: 'stop-chat' });
+  await f.service.idle();
+  assert.equal(stopped.state, 'settled');
+  for (const id of [executionId, ...handles.map(handle => handle.executionId)]) {
+    const execution = f.repository.getExecution(id);
+    assert.equal(execution.status, 'stopped');
+    assert.ok(f.repository.readTranscript(execution.chatId).messages.some(row => row.content === 'Saved partial output'));
+  }
+  for (const task of [child, grandchild, queued]) {
+    assert.equal(f.delivery.tasks.getResult(task.runId).status, 'cancelled');
+  }
+  assert.equal(f.repository.getCommand(followup.commandId).held, true);
+  await f.delivery.drain();
+  assert.equal(f.calls.length, 3, 'cancelled children cannot wake the parent or start queued work');
 });
 
 test('tree cancellation snapshots its scope, stops a live child and cannot cancel newer work on replay', async t => {

@@ -14,7 +14,7 @@ import { getChatTurnOwnerId } from './turn-ownership';
 import { reportBackgroundError } from '../boot/report-background-error';
 
 /**
- * Stop a chat turn: cancel the backend generation (if any) and abort the local SSE reader.
+ * Stop a chat and its delegated work, retaining saved output and queued input.
  * @param reason Recorded on the turn run when the stream ends with status `stopped`.
  */
 export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user', options: { ownedByThisView?: boolean; serverControl?: boolean } = {}): void {
@@ -23,7 +23,11 @@ export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user',
   if (!chat) return;
   const id = chat.id;
   if (!options.ownedByThisView && shouldRelayChat(id)) {
-    void sendRemoteChatCommand(id, 'stop').catch(error => setStatus('err', String(error?.message || error)));
+    void sendRemoteChatCommand(id, 'stop', {
+      scope: 'tree',
+      ...(chat.agentExecution && !['completed', 'failed', 'stopped', 'recovery_required'].includes(chat.agentExecution.status)
+        ? { executionId: chat.agentExecution.executionId } : {}),
+    }).catch(error => setStatus('err', String(error?.message || error)));
     return;
   }
   if (reason === 'user') {
@@ -31,32 +35,34 @@ export function stopGeneration(chatId?: string, reason: ChatStopReason = 'user',
     touchChat(chat);
     scheduleSaveSessions();
   }
-  const persistentScope = getAgentConversationsCapabilitySync()?.creationEnabled === true || chat.subAgentRuns?.some(run => Boolean(run.childChatId));
+  const persistentScope = getAgentConversationsCapabilitySync()?.recoveryEnabled === true || chat.subAgentRuns?.some(run => Boolean(run.childChatId));
   const ownerId = getChatTurnOwnerId(id);
-  if (reason === 'user' && persistentScope && ownerId && isServerStorageMode() && !options.serverControl) {
-    void import('./managed-chat-client').then(module => module.stopLegacyConversationScope(id, ownerId))
-      .catch(error => reportBackgroundError('conversation-stop', error));
-  }
   forceCloseAskQuestionModalForChat(id);
   setChatStopReason(id, reason);
   const generationId = chat.currentGenerationId?.trim();
-  if (generationId) {
-    void cancelGeneration(generationId).catch(() => {
-    });
-  }
+  const abort = getChatAbort(id);
+  const stopLocal = () => {
+    if (generationId) void cancelGeneration(generationId).catch(() => {});
+    abort?.abort();
+    // A delayed scope receipt must not clear a replacement turn's presentation.
+    if (getChatAbort(id) === abort && (!chat.currentGenerationId || chat.currentGenerationId === generationId)) {
+      flushStoppedChatPresentation([id], { keepGenerationId: reason === 'system' });
+    }
+  };
   if (persistentScope) cancelAllForParentChat(id, { includePersistent: false });
   else cancelAllForParentChat(id);
-
   preservePendingSteer(chat);
 
-  const abort = getChatAbort(chat.id);
-  if (abort) {
-    abort.abort();
+  if (reason === 'user' && persistentScope && isServerStorageMode() && !options.serverControl) {
+    // Keep the renderer lease alive until the server captures the family Stop.
+    // Releasing it first makes the owner-pinned command stale and strands children.
+    void import('./managed-chat-client').then(async module => {
+      if (ownerId) await module.stopLegacyConversationScope(id, ownerId);
+      else await module.sendManagedChatAction(id, 'stop', { scope: 'tree' });
+    })
+      .catch(error => reportBackgroundError('conversation-stop', error))
+      .finally(stopLocal);
+  } else {
+    stopLocal();
   }
-
-  // Settle the visible state synchronously. The aborted turn's finally block
-  // remains idempotent, while the user no longer sees a spinner until it runs.
-  flushStoppedChatPresentation([chat.id], {
-    keepGenerationId: reason === 'system',
-  });
 }

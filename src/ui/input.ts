@@ -2,6 +2,7 @@ import { scrollChatIfPinned } from './chat-scroll';
 import { handleComposerPromptHistoryKeydown } from './composer-prompt-history';
 import { handleSkillPickerKeydown, isSkillPickerOpen } from './skill-picker';
 import { bindComposerAutoResize } from './composer-auto-resize';
+import { isComposerQueueShortcut } from './composer-shortcuts';
 
 import {
   handleComposerPrimaryAction,
@@ -53,7 +54,7 @@ export function handleKey(e: KeyboardEvent): void {
     e.preventDefault();
     // Repeated Enter after a send must never turn into a Stop click.
     if (!(input instanceof HTMLTextAreaElement) || !shouldSubmitComposerOnEnter(input.value)) return;
-    if (e.altKey) {
+    if (isComposerQueueShortcut(e)) {
       submitComposerFollowup('queue');
       return;
     }

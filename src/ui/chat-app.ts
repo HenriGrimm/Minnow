@@ -1,4 +1,5 @@
 import { sendMessage } from '../chat/messaging';
+import { isComposerQueueShortcut } from './composer-shortcuts';
 import { clearAttachments } from '../attachments/store';
 import { stopGeneration } from '../chat/stop-generation';
 import { isActiveChatStreaming, subscribeChatStreamEnd } from '../chat/streaming-state';
@@ -53,7 +54,6 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { setStatus } from './status';
-import { syncAgentCliView } from './agent-cli-view';
 
 const CHAT_APP_MOUNT = '#chatAppMessageCol';
 
@@ -291,7 +291,6 @@ async function applyConciergeSeed(seed?: string): Promise<void> {
 
 /** Refresh rail, messages, outputs, and composer chrome. */
 function renderChatAppSurface(): void {
-  syncAgentCliView();
   renderSessionRail();
   renderChatAppMessages();
   void refreshChatAppOutputsPanel();
@@ -479,7 +478,7 @@ function bindStaticControls(): void {
       if (isSkillPickerOpen()) return;
       e.preventDefault();
       if (!shouldSubmitComposerOnEnter(input.value)) return;
-      if (e.altKey) {
+      if (isComposerQueueShortcut(e)) {
         void import('./composer-send').then(m => m.submitComposerFollowup('queue'));
         return;
       }

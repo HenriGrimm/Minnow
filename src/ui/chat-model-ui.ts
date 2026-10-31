@@ -14,7 +14,6 @@ import {
 } from '../state/sessions';
 import { syncComposerModelTriggers } from './composer-model-trigger';
 import { syncComposerReasoningEffortFromActiveChat } from './composer-reasoning-effort';
-import { syncAgentCliView } from './agent-cli-view';
 import {
   applyModelReasoningDefaultToChat,
   resolveEffectiveChatModelBinding,
@@ -22,7 +21,6 @@ import {
 
 /** Refresh composer model UI from the saved chat binding. */
 export function syncActiveChatModelUi(): void {
-  syncAgentCliView();
   syncComposerModelTriggers();
   syncComposerReasoningEffortFromActiveChat();
   void import('./context-usage-ring').then((m) => m.refreshContextUsageRing());
@@ -57,7 +55,6 @@ export function onActiveChatModelChange(selectValue: string, chat = getActiveCha
   applyModelSelectValueToChat(chat, raw);
   void persistDefaultModelValue(raw).catch((error) => showToast(`${error.message}. Select the model again to retry.`, 'error'));
   applyModelReasoningDefaultToChat(chat, raw);
-  syncAgentCliView();
   touchChat(chat);
   scheduleSaveSessions();
   scheduleCapabilityProbeForSelectValue(raw);

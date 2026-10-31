@@ -100,7 +100,7 @@ export async function acknowledgeManagedChatActivity(chatId: string, cursor: imp
 
 export async function stopLegacyConversationScope(chatId: string, ownerId: string): Promise<void> {
   const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/commands`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
-    body: JSON.stringify({ action: 'stop', scope: 'turn', expectedLegacyOwnerId: ownerId, clientRequestId: `stop-${ownerId}` }),
+    body: JSON.stringify({ action: 'stop', scope: 'tree', expectedLegacyOwnerId: ownerId, clientRequestId: `stop-${ownerId}` }),
     signal: AbortSignal.timeout(8000) });
   if (!response.ok) throw new Error(errorMessage(await response.json()));
 }
@@ -150,7 +150,10 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   } else if (action === 'cancel-steer') {
     throw new Error('Remove an individual pending correction from the queue.');
   } else if (action === 'stop') {
-    payload.scope = data.scope ?? 'turn';
+    payload.scope = data.scope ?? 'tree';
+    if (data.scope === undefined && chat.agentExecution && !['completed', 'failed', 'stopped', 'recovery_required'].includes(chat.agentExecution.status)) {
+      payload.executionId = chat.agentExecution.executionId;
+    }
     if (data.executionId) payload.executionId = data.executionId;
   } else {
     const item = chat.pendingMessageQueue?.find(row => row.id === data.itemId);
@@ -228,7 +231,7 @@ export async function waitForManagedCommand(receipt: ManagedChatReceipt, signal?
         current = await read(false);
         if (!['settled', 'failed', 'cancelled'].includes(current.state)) {
           const control = current.executionId && current.state === 'running'
-            ? { action: 'stop', scope: 'turn', executionId: current.executionId }
+            ? { action: 'stop', scope: 'tree', executionId: current.executionId }
             : { action: 'remove', itemId: current.commandId, expectedRevision: current.revision };
           await fetch(`/api/chats/${encodeURIComponent(current.chatId)}/commands`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
             body: JSON.stringify({ ...control, clientRequestId: randomUUID() }), signal: AbortSignal.timeout(5000) });

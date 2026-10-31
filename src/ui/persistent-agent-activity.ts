@@ -4,9 +4,13 @@ import { findChatById } from '../state/sessions';
 import { agentChatStatusLabel, chatLink } from '../state/chat-relationships';
 import { createIcon } from './icon';
 import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome';
+import { formatWorkDuration } from '../chat/transcript-turns';
+import { agentMarkStateFromLabel, agentModelId, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentMarkStack, syncAgentModelChip, type AgentMarkState } from './agent-model-mark';
+import { subAgentLiveStatusLine } from './sub-agent-live-status';
+import { getPerFileChangeSummary, getPerFileChangeSummaryForMessages } from '../usage/code-change-ledger';
 
 type ActivityRun = SubAgentRun | PersistedSubAgentRun;
-interface Entry { run: ActivityRun; row: HTMLElement; key: string; chatId: string }
+interface Entry { run: ActivityRun; row: HTMLElement; key: string; chatId: string; state?: AgentMarkState }
 const entries = new Map<string, Entry>();
 const disclosure = new Map<string, boolean>();
 const groups = new Map<string, HTMLDetailsElement>();
@@ -27,7 +31,7 @@ export function persistentAgentActivityOwner(run: ActivityRun, fallbackChatId?: 
     findChatById(run.childChatId)?.agentConversation?.parentChatId ?? ('parentChatId' in run ? run.parentChatId : fallbackChatId ?? null);
 }
 
-export function clearPersistentAgentActivity(): void { entries.clear(); groups.clear(); }
+export function clearPersistentAgentActivity(): void { entries.clear(); groups.clear(); stopClock(); }
 
 function stateLabel(run: ActivityRun): string {
   if (run.status === 'completed') return 'Complete';
@@ -41,13 +45,140 @@ function stateLabel(run: ActivityRun): string {
   return run.status === 'queued' ? 'Queued for agent slot' : 'Working';
 }
 
-function modelLabel(run: ActivityRun): string {
+/** The model name for the chip, and the semantic options that trail it. */
+function modelParts(run: ActivityRun): { model: string; options: string[] } {
   const requested = run.modelId ?? '';
   const actual = run.resolvedModel;
-  const label = run.providerId === 'minnow-router' ? `Pool ${requested}${actual?.id && (actual.id !== requested || actual.providerId !== run.providerId) ? ` → ${actual.id}` : ''}` : requested || actual?.id || 'Model selection pending';
+  const model = run.providerId === 'minnow-router' ? `Pool ${requested}${actual?.id && (actual.id !== requested || actual.providerId !== run.providerId) ? ` → ${actual.id}` : ''}` : requested || actual?.id || 'Model selection pending';
   const options = run.modelOptions;
-  return [label, options?.reasoningEffort ? `effort ${options.reasoningEffort}` : '', options?.thinkingMode && options.thinkingMode !== 'inherit' ? `thinking ${options.thinkingMode}` : '',
-    typeof options?.thinkingBudgetTokens === 'number' ? `${options.thinkingBudgetTokens} thinking tokens` : ''].filter(Boolean).join(' · ');
+  return { model, options: [options?.reasoningEffort ? `effort ${options.reasoningEffort}` : '', options?.thinkingMode && options.thinkingMode !== 'inherit' ? `thinking ${options.thinkingMode}` : '',
+    typeof options?.thinkingBudgetTokens === 'number' ? `${options.thinkingBudgetTokens} thinking tokens` : ''].filter(Boolean) };
+}
+
+/** Wall time once settled; live cards show their status instead of a ticking clock. */
+function settledDuration(run: ActivityRun): string {
+  if (!run.startedAt || !run.endedAt) return '';
+  const ms = Date.parse(run.endedAt) - Date.parse(run.startedAt);
+  return Number.isFinite(ms) && ms >= 0 ? formatWorkDuration(ms) : '';
+}
+
+const LIVE_MARK_STATES: ReadonlySet<AgentMarkState> = new Set(['queued', 'running', 'waiting']);
+
+/** One-shot outline pulse when a card settles while you watch; rebuilt history stays still. */
+function flashSettled(row: HTMLElement, panel: HTMLElement): void {
+  row.classList.add('sub-agent-card--settled');
+  const done = (event: AnimationEvent): void => {
+    if (event.target !== panel) return;
+    row.classList.remove('sub-agent-card--settled');
+    panel.removeEventListener('animationend', done);
+  };
+  panel.addEventListener('animationend', done);
+}
+
+/** Panel (the visible card) inside the row, so timeline step padding stays outside its border. */
+function buildCard(row: HTMLElement, entry: Entry): void {
+  const panel = document.createElement('div'); panel.className = 'sub-agent-card__panel';
+  const link = document.createElement('a'); link.className = 'sub-agent-card__body';
+  const heading = document.createElement('span'); heading.className = 'sub-agent-card__heading';
+  const title = document.createElement('span'); title.className = 'sub-agent-card__task';
+  const type = document.createElement('span'); type.className = 'sub-agent-card__type';
+  heading.append(title, type);
+  const meta = document.createElement('span'); meta.className = 'sub-agent-card__meta';
+  const statusText = document.createElement('span'); statusText.className = 'sub-agent-card__status';
+  const clock = document.createElement('span'); clock.className = 'sub-agent-card__clock';
+  meta.append(statusText, clock);
+  link.append(createAgentMark('sub-agent-card__mark'), heading, meta);
+  link.addEventListener('click', event => { event.preventDefault(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(entry.run.childChatId!)); });
+  const selection = document.createElement('div'); selection.className = 'sub-agent-card__selection';
+  const options = document.createElement('span'); options.className = 'sub-agent-card__options';
+  selection.append(createAgentModelChip(), options);
+  const activity = document.createElement('div'); activity.className = 'sub-agent-card__activity agent-shimmer'; activity.hidden = true;
+  const files = document.createElement('div'); files.className = 'sub-agent-card__files'; files.hidden = true;
+  files.setAttribute('aria-label', 'Files changed');
+  panel.append(link, selection, activity, files);
+  row.append(panel);
+}
+
+// ── Live clock: one shared ticker for every live card, stopped when none remain ──
+
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+function liveElapsed(run: ActivityRun): string {
+  const start = run.startedAt ? Date.parse(run.startedAt) : NaN;
+  return Number.isFinite(start) ? formatWorkDuration(Math.max(0, Date.now() - start)) : '';
+}
+
+function tickClocks(): void {
+  let live = false;
+  for (const entry of entries.values()) {
+    if (!entry.state || !LIVE_MARK_STATES.has(entry.state) || !entry.row.isConnected) continue;
+    const clock = entry.row.querySelector<HTMLElement>('.sub-agent-card__clock');
+    if (!clock) continue;
+    live = true;
+    clock.textContent = liveElapsed(entry.run);
+  }
+  if (!live) stopClock();
+}
+
+function startClock(): void {
+  if (clockTimer != null || typeof setInterval !== 'function') return;
+  clockTimer = setInterval(tickClocks, 1000);
+  // Node test runners must not be held open by a UI clock.
+  (clockTimer as { unref?: () => void }).unref?.();
+}
+
+function stopClock(): void {
+  if (clockTimer != null) clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+// ── File chips ──
+
+interface FileChip { path: string; additions: number; deletions: number }
+const MAX_FILE_CHIPS = 3;
+
+/**
+ * Files this task changed: its own tool results first, else the child chat's
+ * ledger while this task is the child's current one (later work stays out of
+ * a settled card), else just the child's line totals.
+ */
+function runFileChanges(run: ActivityRun, live: boolean): { files: FileChip[]; totals: FileChip | null } {
+  const own = Array.isArray(run.messages) ? getPerFileChangeSummaryForMessages(run.messages) : [];
+  if (own.length) return { files: own.map(({ path, additions, deletions }) => ({ path, additions, deletions })), totals: null };
+  const child = run.childChatId ? findChatById(run.childChatId) : undefined;
+  const current = live || (Boolean(run.executionId) && child?.agentExecution?.executionId === run.executionId);
+  if (!child || !current) return { files: [], totals: null };
+  const ledger = getPerFileChangeSummary(child);
+  if (ledger.length) return { files: ledger.map(({ path, additions, deletions }) => ({ path, additions, deletions })), totals: null };
+  const totals = child.codeChangeTotals;
+  return { files: [], totals: totals && (totals.additions || totals.deletions) ? { path: '', ...totals } : null };
+}
+
+function fileChip(file: FileChip): HTMLElement {
+  const chip = document.createElement('span'); chip.className = 'sub-agent-card__file';
+  if (file.path) {
+    chip.title = file.path;
+    const name = document.createElement('span'); name.className = 'sub-agent-card__file-name';
+    name.textContent = file.path.split(/[\\/]/).pop() || file.path;
+    chip.append(name);
+  }
+  if (file.additions) { const add = document.createElement('span'); add.className = 'sub-agent-card__file-add'; add.textContent = `+${file.additions}`; chip.append(add); }
+  if (file.deletions) { const del = document.createElement('span'); del.className = 'sub-agent-card__file-del'; del.textContent = `−${file.deletions}`; chip.append(del); }
+  return chip;
+}
+
+function syncFileChips(host: HTMLElement, changes: { files: FileChip[]; totals: FileChip | null }): void {
+  const chips = changes.files.slice(0, MAX_FILE_CHIPS).map(fileChip);
+  const extra = changes.files.length - chips.length;
+  if (extra > 0) {
+    const more = document.createElement('span'); more.className = 'sub-agent-card__file sub-agent-card__file--more';
+    more.textContent = `+${extra} more`;
+    more.title = changes.files.slice(MAX_FILE_CHIPS).map(file => file.path).join('\n');
+    chips.push(more);
+  }
+  if (!chips.length && changes.totals) chips.push(fileChip(changes.totals));
+  host.replaceChildren(...chips);
+  host.hidden = chips.length === 0;
 }
 
 function sourceAnchor(index: Map<string, HTMLElement>, run: ActivityRun): HTMLElement | null {
@@ -66,43 +197,48 @@ function sourceAnchor(index: Map<string, HTMLElement>, run: ActivityRun): HTMLEl
 
 function fill(entry: Entry): void {
   const { run, row } = entry;
-  const status = stateLabel(run), model = modelLabel(run);
+  const status = stateLabel(run), { model, options } = modelParts(run), modelId = agentModelId(run), duration = settledDuration(run);
   const startError = (run as SubAgentRun).startError;
-  const key = JSON.stringify([run.task, run.type, status, model, run.summary, run.error, startError?.message, startError?.consecutive]);
+  const generating = ['Working', 'Loading model'].includes(status);
+  const activityText = generating ? (status === 'Loading model' ? 'Loading model…' : subAgentLiveStatusLine(run, true) || 'Working…') : '';
+  const changes = runFileChanges(run, generating);
+  const key = JSON.stringify([run.task, run.type, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
   if (entry.key === key) return;
   entry.key = key;
   row.dataset.status = run.status;
   row.dataset.parentToolCallId = run.parentToolCallId ?? '';
-  const generating = ['Working', 'Loading model'].includes(status);
   row.classList.toggle('sub-agent-card--active', generating);
   row.setAttribute('aria-busy', String(generating));
-  let link = row.querySelector<HTMLAnchorElement>(':scope > a');
-  if (!link) {
-    link = document.createElement('a'); link.className = 'sub-agent-card__body';
-    const icon = createIcon('appAgentActivity', { size: 14 }); icon.classList.add('sub-agent-card__mark');
-    const type = document.createElement('span'); type.className = 'sub-agent-card__type';
-    const title = document.createElement('span'); title.className = 'sub-agent-card__task';
-    const meta = document.createElement('span'); meta.className = 'sub-agent-card__meta';
-    link.append(icon, type, title, meta, createIcon('chevronRight', { className: 'sub-agent-card__chevron', size: 14 }));
-    link.addEventListener('click', event => { event.preventDefault(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(entry.run.childChatId!)); });
-    row.append(link);
-  }
+  if (!row.querySelector(':scope > .sub-agent-card__panel')) buildCard(row, entry);
+  const panel = row.querySelector<HTMLElement>(':scope > .sub-agent-card__panel')!;
+  const link = panel.querySelector<HTMLAnchorElement>(':scope > a')!;
+  const markState = agentMarkStateFromLabel(status);
+  if (entry.state && LIVE_MARK_STATES.has(entry.state) && (markState === 'done' || markState === 'failed')) flashSettled(row, panel);
+  entry.state = markState;
+  syncAgentMark(link.querySelector<HTMLElement>('.sub-agent-card__mark')!, modelId, markState);
   link.href = chatLink(run.childChatId!);
   link.querySelector('.sub-agent-card__type')!.textContent = run.type.replace(/[-_]/g, ' ').replace(/^./, letter => letter.toUpperCase());
   link.querySelector('.sub-agent-card__task')!.textContent = run.task.trim().split('\n')[0] ?? 'Agent assignment';
   link.querySelector<HTMLElement>('.sub-agent-card__task')!.title = run.task;
-  link.querySelector('.sub-agent-card__meta')!.textContent = status;
-  link.setAttribute('aria-label', `${run.type} agent, ${status}. ${run.task}. Open agent chat`);
-  let selection = row.querySelector<HTMLElement>(':scope > .sub-agent-card__selection');
-  if (!selection) { selection = document.createElement('div'); selection.className = 'sub-agent-card__selection'; row.append(selection); }
-  selection.textContent = model;
-  let progress = row.querySelector<HTMLElement>(':scope > .sub-agent-card__progress');
+  link.querySelector('.sub-agent-card__status')!.textContent = status;
+  const clock = link.querySelector<HTMLElement>('.sub-agent-card__clock')!;
+  clock.textContent = LIVE_MARK_STATES.has(markState) ? liveElapsed(run) : duration;
+  if (LIVE_MARK_STATES.has(markState) && clock.textContent) startClock();
+  link.setAttribute('aria-label', `${run.type} agent on ${model}, ${status}. ${run.task}. Open agent chat`);
+  const selection = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__selection')!;
+  syncAgentModelChip(selection.querySelector<HTMLElement>('.agent-model-chip')!, modelId, model);
+  selection.querySelector<HTMLElement>('.sub-agent-card__options')!.textContent = options.join(' · ');
+  const activity = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__activity')!;
+  activity.textContent = activityText;
+  activity.hidden = !activityText;
+  syncFileChips(panel.querySelector<HTMLElement>(':scope > .sub-agent-card__files')!, changes);
+  let progress = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__progress');
   if (startError) {
-    if (!progress) { progress = document.createElement('div'); progress.className = 'sub-agent-card__progress'; row.append(progress); }
+    if (!progress) { progress = document.createElement('div'); progress.className = 'sub-agent-card__progress'; selection.after(progress); }
     progress.textContent = startError.message;
   } else progress?.remove();
   const result = run.summary?.trim() || run.error?.trim() || '';
-  let details = row.querySelector<HTMLDetailsElement>(':scope > .sub-agent-card__result');
+  let details = panel.querySelector<HTMLDetailsElement>(':scope > .sub-agent-card__result');
   if (result) {
     if (!details) {
       details = document.createElement('details'); details.className = 'sub-agent-card__result';
@@ -113,7 +249,7 @@ function fill(entry: Entry): void {
         resultsOpen.set(run.runId, resultDisclosure.open);
         if (resultsOpen.size > 512) resultsOpen.delete(resultsOpen.keys().next().value!);
       });
-      details.append(document.createElement('summary'), document.createElement('pre')); row.append(details);
+      details.append(document.createElement('summary'), document.createElement('pre')); panel.append(details);
     }
     const outcome = run.structuredOutcome ?? legacyOutcomeFromSummary(result);
     details.querySelector('summary')!.textContent = (outcome?.summary || result.split('\n').find(line => line.trim())!).slice(0, 180);
@@ -146,7 +282,10 @@ function reconcile(area: HTMLElement, chatId: string): void {
       group = document.createElement('details'); group.className = 'sub-agent-group'; group.dataset.parentTurnId = members[0]!.run.parentTurnId ?? '';
       group.dataset.agentGroupKey = key;
       group.open = disclosure.get(key) ?? members.some(entry => ['queued', 'running'].includes(entry.run.status));
-      const summary = document.createElement('summary'); summary.className = 'sub-agent-group__summary'; group.append(summary);
+      const summary = document.createElement('summary'); summary.className = 'sub-agent-group__summary';
+      const stack = document.createElement('span'); stack.className = 'agent-mark-stack'; stack.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span'); label.className = 'sub-agent-group__label';
+      summary.append(stack, label, createIcon('chevronRight', { className: 'sub-agent-group__chevron', size: 12 })); group.append(summary);
       const body = document.createElement('div'); body.className = 'sub-agent-group__body'; body.setAttribute('role', 'group'); body.setAttribute('aria-label', 'Delegated agents'); group.append(body);
       group.addEventListener('toggle', () => { if (groups.get(key) !== group) return; disclosure.set(key, group!.open); if (disclosure.size > 512) disclosure.delete(disclosure.keys().next().value!); });
       groups.set(key, group);
@@ -156,7 +295,9 @@ function reconcile(area: HTMLElement, chatId: string): void {
     const queued = states.filter(state => state.startsWith('Queued')).length;
     const attention = states.filter(state => state.startsWith('Needs') || state === 'Failed').length;
     const waiting = states.filter(state => state.startsWith('Waiting')).length;
-    group.querySelector('summary')!.textContent = [`${members.length} agents`, working ? `${working} working` : '', queued ? `${queued} queued` : '',
+    group.dataset.live = String(working + queued + waiting > 0);
+    syncAgentMarkStack(group.querySelector<HTMLElement>('.agent-mark-stack')!, members.map(entry => agentModelId(entry.run)));
+    group.querySelector('.sub-agent-group__label')!.textContent = [`${members.length} agents`, working ? `${working} working` : '', queued ? `${queued} queued` : '',
       attention ? `${attention} need attention` : '', waiting ? `${waiting} waiting` : '', states.every(state => state === 'Complete') ? 'Complete' : ''].filter(Boolean).join(' · ');
     const body = group.querySelector<HTMLElement>('.sub-agent-group__body')!;
     let next = body.firstChild;

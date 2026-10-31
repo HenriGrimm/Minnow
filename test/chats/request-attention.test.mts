@@ -112,11 +112,11 @@ test('ordinary raw chat summaries display durable requests without taking owners
   assert.equal(owner.history, history); assert.equal(owner.composerDraft, 'Keep this draft'); assert.equal(owner.chatCommandVersion, undefined); assert.equal(owner.agentExecution, undefined);
 });
 
-test('scoped Stop controls keep paused turn identity and separate agents from the combined tree', async () => {
+test('Stop chat pins the paused parent and includes descendants; Stop agents preserves the parent', async () => {
   const parent = chat('stop-parent'), child = chat('stop-child', parent.id); parent.agentExecution = { executionId: 'paused-parent', status: 'waiting_for_input' }; child.agentExecution = { executionId: 'running-child', status: 'running' };
   const area = setup([parent, child]); dispose = startManagedChatRequests(); syncManagedChatRequests(parent, area); await idle();
-  clickText(area, 'Stop turn'); await idle(); clickText(area, 'Stop agents'); await idle(); clickText(area, 'Stop conversation and agents'); await idle();
-  assert.deepEqual(posts.map(item => [item.body.scope, item.body.executionId]), [['turn', 'paused-parent'], ['agents', undefined], ['tree', undefined]]);
+  clickText(area, 'Stop chat'); await idle(); clickText(area, 'Stop agents'); await idle();
+  assert.deepEqual(posts.map(item => [item.body.scope, item.body.executionId]), [['tree', 'paused-parent'], ['agents', undefined]]);
 });
 
 test('ancestor attention prioritizes input, failure and unread before working without wait spinners', () => {

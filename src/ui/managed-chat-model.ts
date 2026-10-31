@@ -77,7 +77,7 @@ export async function stopAndSwitchManagedChat(chat: Chat): Promise<void> {
   const state: ModelControlState = { busy: true, stopping: true };
   retainState(chat.id, state); changed(chat);
   try {
-    await sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'turn' });
+    await sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'tree' });
     state.stoppedExecutionId = execution.executionId;
   }
   catch (error) { state.error = error instanceof Error ? error.message : String(error); throw error; }
@@ -106,7 +106,7 @@ export function syncAgentModelControls(chat: Chat, host?: HTMLElement): void {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'agent-model-controls__stop';
       button.textContent = 'Stop and switch'; button.disabled = state?.busy === true;
       button.dataset.agentModelAction = 'stop';
-      button.title = 'Stop this reply only. Queued messages keep their saved model.';
+      button.title = 'Stop this chat and its sub-agents. Queued messages keep their saved model.';
       button.addEventListener('click', () => { void stopAndSwitchManagedChat(chat).catch(() => {}); }); root.append(button);
     }
     if (state?.error || unavailable) {

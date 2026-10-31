@@ -59,6 +59,21 @@ test('managed queue edits include the observed revision and stale UI cannot manu
   await assert.rejects(sendRemoteChatCommand(chatId, 'remove', { itemId: 'missing' }), /changed/);
 });
 
+test('default human Stop includes descendants and pins the current execution', async () => {
+  const chat = setup();
+  chat.agentExecution = { executionId: 'current-reply', status: 'waiting_for_input' };
+  const bodies: any[] = [];
+  globalThis.fetch = async (_url, options) => { bodies.push(JSON.parse(String(options?.body))); return Response.json({}); };
+  await sendRemoteChatCommand(chatId, 'stop');
+  assert.equal(bodies[0].scope, 'tree');
+  assert.equal(bodies[0].executionId, 'current-reply');
+
+  chat.agentExecution.status = 'completed';
+  await sendRemoteChatCommand(chatId, 'stop');
+  assert.equal(bodies[1].scope, 'tree');
+  assert.equal(bodies[1].executionId, undefined, 'an idle parent can still stop its running agents');
+});
+
 test('managed configuration captures a complete pair without writing a remembered default or stopping work', async () => {
   setup();
   const calls: { url: string; body: any; method: string }[] = [];
@@ -109,5 +124,5 @@ test('aborting a programmatic send pins Stop to its own execution', async () => 
   await assert.rejects(run, /Stopped by caller/);
   assert.equal(controls.length, 1);
   assert.equal(controls[0].executionId, 'own-execution');
-  assert.equal(controls[0].scope, 'turn');
+  assert.equal(controls[0].scope, 'tree');
 });

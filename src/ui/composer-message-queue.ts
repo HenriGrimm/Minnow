@@ -16,12 +16,10 @@ import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { getActiveChat } from '../state/sessions';
 import { getActiveComposerSurface } from './composer-surface';
 import { createIcon, type IconName } from './icon';
-import { refreshComposerStreamingAffordance, submitComposerFollowup } from './composer-send';
-import { stopGeneration } from '../chat/stop-generation';
+import { refreshComposerStreamingAffordance } from './composer-send';
 import type { QueuedComposerMessage } from '../types';
 import { formatManagedModelSelection } from './managed-chat-model';
-
-const COMPOSER_FOLLOW_UP_PLACEHOLDER = 'Add a correction or more context…';
+import { composerFollowUpPlaceholder } from './composer-shortcuts';
 
 const DEFAULT_PLACEHOLDERS: Record<string, string> = {
   msgInput: 'Ask Minnow to plan, build, or debug…',
@@ -251,36 +249,6 @@ function bindQueueChangedListener(): void {
   setSteerEnqueuedListener(() => syncComposerMessageQueue());
 }
 
-/** Explicit actions stay available while a draft is being composed. */
-function syncRunControls(chatId: string, busy: boolean): void {
-  let controls = document.getElementById('composerRunControls');
-  if (!busy) { controls?.remove(); return; }
-  if (!controls) {
-    controls = document.createElement('div');
-    controls.id = 'composerRunControls';
-    controls.className = 'composer-run-controls';
-    const hint = document.createElement('span');
-    hint.className = 'composer-run-controls__hint';
-    hint.textContent = 'Enter steers · Alt+Enter queues';
-    const queue = document.createElement('button');
-    queue.type = 'button';
-    queue.className = 'composer-message-queue__text-action';
-    queue.textContent = 'Queue for later';
-    queue.title = 'Send after the current reply (Alt+Enter)';
-    queue.addEventListener('click', () => submitComposerFollowup('queue'));
-    const stop = document.createElement('button');
-    stop.type = 'button';
-    stop.className = 'composer-message-queue__text-action';
-    stop.textContent = 'Stop';
-    stop.setAttribute('aria-label', 'Stop generating');
-    stop.addEventListener('click', () => stopGeneration(controls!.dataset.chatId));
-    controls.append(hint, queue, stop);
-  }
-  controls.dataset.chatId = chatId;
-  const mount = resolveComposerQueueMount();
-  if (mount) mount.host.insertBefore(controls, mount.before?.nextSibling ?? null);
-}
-
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
 /** Show or hide the queued follow-up strip for the active streaming chat. */
@@ -294,13 +262,11 @@ export function syncComposerMessageQueue(): void {
   } catch {
     const orphan = document.getElementById('composerMessageQueue');
     orphan?.classList.add('hidden');
-    document.getElementById('composerRunControls')?.remove();
     return;
   }
 
   const root = ensureQueueRoot();
   const busy = isChatTurnInProgress(chat.id);
-  syncRunControls(chat.id, busy);
   const count = getPendingMessageQueueCount(chat);
   const pendingSteer = chat.pendingSteerMessage?.trim();
   const orphanEdits = [...edits.keys()].filter(key => key.startsWith(`${chat.id}:`) &&
@@ -395,7 +361,7 @@ export function syncComposerFollowUpPlaceholder(streaming: boolean): void {
   }
 
   inputEl.placeholder = streaming
-    ? COMPOSER_FOLLOW_UP_PLACEHOLDER
+    ? composerFollowUpPlaceholder()
     : inputEl.dataset.defaultPlaceholder;
 }
 

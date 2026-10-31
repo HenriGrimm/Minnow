@@ -33,6 +33,7 @@ import {
 import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
+import { agentMarkStateFromLabel, agentModelId, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentModelChip } from './agent-model-mark';
 import { isChatAppForeground } from './chat-mount';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { syncComposerFromStreamingState } from './composer-send';
@@ -433,6 +434,17 @@ function sidebarHighlightChatId(): string | null {
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
 
+/** Session model line: the picker's producer logo + model label. */
+function syncChatItemModel(modelEl: HTMLElement, chat: Chat): void {
+  let chip = modelEl.querySelector<HTMLElement>(':scope > .agent-model-chip');
+  if (!chip) {
+    chip = createAgentModelChip();
+    modelEl.replaceChildren(chip);
+  }
+  syncAgentModelChip(chip, chat.modelId ?? '', routerChatModelLabel(chat) || '\u2014');
+  chip.removeAttribute('title');
+}
+
 /** Shared session row builder (main sidebar + expert-scoped list). */
 export function appendChatRow(
   list: HTMLElement,
@@ -580,7 +592,7 @@ function buildChatRow(
   if (!inGroup) {
     const modelEl = document.createElement('div');
     modelEl.className = 'chat-item-model';
-    modelEl.textContent = routerChatModelLabel(chat) || '\u2014';
+    syncChatItemModel(modelEl, chat);
 
     row.appendChild(modelEl);
     if (hasCodeChangeTotals(chat.codeChangeTotals)) {
@@ -881,7 +893,7 @@ function syncChatRow(
   syncChatItemWorktreeIcon(row, chat);
 
   const modelEl = row.querySelector<HTMLElement>('.chat-item-model');
-  if (modelEl) modelEl.textContent = routerChatModelLabel(chat) || '\u2014';
+  if (modelEl) syncChatItemModel(modelEl, chat);
 
   let statsEl = row.querySelector<HTMLElement>('.chat-item-stats');
   if (!inGroup && hasCodeChangeTotals(chat.codeChangeTotals)) {
@@ -1048,10 +1060,14 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
         let meta = row.querySelector<HTMLElement>('.chat-item-agent-meta');
         if (!meta) { meta = document.createElement('div'); meta.className = 'chat-item-agent-meta'; row.append(meta); }
         const missing = !relationships.parentById.has(chat.id) && Boolean(chat.agentConversation?.parentChatId || chat.agentConversation?.missingParent);
-        meta.textContent = [chat.agentTypeId, options?.inGroup ? routerChatModelLabel(chat) : null, agentChatStatusLabel(chat, running), missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
+        const status = agentChatStatusLabel(chat, running);
+        meta.textContent = [chat.agentTypeId, options?.inGroup ? routerChatModelLabel(chat) : null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
+        let mark = row.querySelector<HTMLElement>('.chat-item-agent-mark');
+        if (!mark) { mark = createAgentMark('chat-item-agent-mark'); row.querySelector('.chat-item-title-row')?.prepend(mark); }
+        syncAgentMark(mark, agentModelId(chat), agentMarkStateFromLabel(status));
         row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${meta.textContent}`);
         row.title += `\n${chatReadOnlyReason(chat) ?? meta.textContent}`;
-      } else row.querySelector('.chat-item-agent-meta')?.remove();
+      } else { row.querySelector('.chat-item-agent-meta')?.remove(); row.querySelector('.chat-item-agent-mark')?.remove(); }
       const children = relationships.children.get(chat.id) ?? [];
       if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); continue; }
       const activeChildren = children.filter(entry => activeIds.has(entry.id));

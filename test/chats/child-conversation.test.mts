@@ -245,3 +245,39 @@ test('failed prompt-driven delegation remains an inline error without manufactur
   assert.equal(container.classList.contains('chat-work-hidden'), false);
   assert.equal(area.querySelectorAll('.sub-agent-card').length, 0);
 });
+
+test('live persistent cards show the activity line, a running clock and the files the agent changed', () => {
+  const parent = shell('parent'), child = shell('child-files', parent.id); const area = setup([parent, child]);
+  const live = { ...run('files-task', child.id), startedAt: new Date(Date.now() - 65_000).toISOString(), liveCurrentToolName: 'save_file',
+    messages: [
+      { role: 'tool', tool_call_id: 'a', content: 'ok', codeChange: { additions: 54, deletions: 0, path: 'src/world.js' } },
+      { role: 'tool', tool_call_id: 'b', content: 'ok', codeChange: { additions: 22, deletions: 3, path: 'src/ui.js' } },
+    ] } as SubAgentRun;
+  const row = upsertPersistentAgentActivity(live, parent.id, area)!;
+  const activity = row.querySelector<HTMLElement>('.sub-agent-card__activity')!;
+  assert.equal(activity.hidden, false); assert.ok(activity.classList.contains('agent-shimmer'));
+  assert.match(activity.textContent!, /Calling/);
+  assert.match(row.querySelector('.sub-agent-card__clock')!.textContent!, /1m/);
+  const chips = [...row.querySelectorAll<HTMLElement>('.sub-agent-card__file')];
+  assert.deepEqual(chips.map(chip => chip.textContent), ['world.js+54', 'ui.js+22−3']);
+  assert.equal(chips[0]!.title, 'src/world.js');
+
+  const settled = { ...live, status: 'completed' as const, endedAt: new Date(Date.parse(live.startedAt!) + 41_000).toISOString(), summary: 'Built both modules.' };
+  upsertPersistentAgentActivity(settled, parent.id, area);
+  assert.equal(activity.hidden, true);
+  assert.equal(row.querySelector('.sub-agent-card__clock')!.textContent, '41s');
+  assert.equal(row.querySelectorAll('.sub-agent-card__file').length, 2, 'settled cards keep their own files');
+});
+
+test('file chips cap at three with an overflow count, and fall back to the child line totals', () => {
+  const parent = shell('parent'), child = shell('child-many', parent.id); const area = setup([parent, child]);
+  const messages = ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'].map((path, i) => ({ role: 'tool', tool_call_id: path, content: 'ok', codeChange: { additions: 10 - i, deletions: 0, path } }));
+  const row = upsertPersistentAgentActivity({ ...run('many-files', child.id), messages } as SubAgentRun, parent.id, area)!;
+  const chips = [...row.querySelectorAll<HTMLElement>('.sub-agent-card__file')];
+  assert.equal(chips.length, 4); assert.equal(chips[3]!.textContent, '+2 more');
+
+  const other = shell('child-totals', parent.id); other.codeChangeTotals = { additions: 148, deletions: 0 };
+  setSessionStateForTests({ ...defaultSessionState(), chats: [parent, child, other], activeId: parent.id });
+  const totalsRow = upsertPersistentAgentActivity(run('totals-only', other.id, 'other-turn'), parent.id, area)!;
+  assert.deepEqual([...totalsRow.querySelectorAll('.sub-agent-card__file')].map(chip => chip.textContent), ['+148']);
+});

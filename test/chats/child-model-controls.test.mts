@@ -106,7 +106,7 @@ test('an unsupported option fails visibly, keeps the saved pair, and permits an 
   assert.equal(host.querySelector('[role="alert"]'), null);
 });
 
-test('Stop and switch pins the visible execution to turn scope and cannot stop a replacement or duplicate its receipt', async () => {
+test('Stop and switch pins the visible execution and stops its descendant tree and cannot stop a replacement or duplicate its receipt', async () => {
   const { chat, host } = setup(); chat.agentModelSelection = { providerId: 'provider', modelId: 'next', options: {} };
   syncAgentModelControls(chat, host); const button = host.querySelector<HTMLButtonElement>('button')!; button.focus();
   const sameButton = host.querySelector('button'); notifyManagedChatMetadata(chat.id);
@@ -121,7 +121,7 @@ test('Stop and switch pins the visible execution to turn scope and cannot stop a
   chat.agentExecution = { executionId: 'replacement', status: 'running', modelSelection: chat.agentModelSelection };
   release(); await stopping;
   assert.equal(requests.length, 1); assert.equal(requests[0].action, 'stop');
-  assert.equal(requests[0].executionId, 'running-execution'); assert.equal(requests[0].scope, 'turn');
+  assert.equal(requests[0].executionId, 'running-execution'); assert.equal(requests[0].scope, 'tree');
   chat.agentExecution = { executionId: 'running-execution', status: 'running', modelSelection: { providerId: 'provider', modelId: 'old' } };
   await stopAndSwitchManagedChat(chat); assert.equal(requests.length, 1);
 });

@@ -107,7 +107,7 @@ export function stopAllAgentActivity(): void {
       managedChatIds.add(chat.id);
       const execution = chat.agentExecution;
       if (!execution || ['completed', 'failed', 'stopped', 'stopping', 'recovery_required'].includes(execution.status) || chatReadOnlyReason(chat) || chat.agentConversation?.capabilities?.canStop === false) continue;
-      void sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'turn' })
+      void sendManagedChatAction(chat.id, 'stop', { executionId: execution.executionId, scope: 'tree' })
         .catch(error => reportBackgroundError('activity-stop-all', error));
     }
     for (const group of sessionState.groups ?? []) {

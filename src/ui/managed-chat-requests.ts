@@ -194,15 +194,15 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
   controls.dataset.key = key; controls.replaceChildren();
   const status = document.createElement('span'); status.className = 'managed-chat-scopes__status'; status.setAttribute('role', 'status'); status.tabIndex = -1;
-  const stop = (label: string, scope: 'turn' | 'agents' | 'tree') => {
-    const executionId = scope === 'turn' ? turn?.executionId : undefined;
+  const stop = (label: string, scope: 'agents' | 'tree') => {
+    const executionId = scope === 'tree' ? turn?.executionId : undefined;
     const action = button(label, () => {
       if (action.disabled) return; action.disabled = true; status.textContent = 'Stopping…';
       void sendManagedChatAction(chat.id, 'stop', { scope, ...(executionId ? { executionId } : {}) }).then(() => { status.textContent = scope === 'agents' ? 'Agent stop requested' : 'Stop requested'; }, error => { status.textContent = error instanceof Error ? error.message : 'Stop failed'; }).finally(() => { if (action.isConnected) action.disabled = false; });
     }); action.dataset.scope = scope; controls!.append(action);
   };
-  if (canStop && turn && turn.status !== 'stopping') stop('Stop turn', 'turn');
-  if (canStop && agents.length) { stop('Stop agents', 'agents'); stop('Stop conversation and agents', 'tree'); }
+  if (canStop && (turn && turn.status !== 'stopping' || agents.length)) stop('Stop chat', 'tree');
+  if (canStop && agents.length) stop('Stop agents', 'agents');
   if (attention.length) {
     const first = attention[0]!, requestId = first.agentRequestSummary![0]!.requestId;
     controls.append(button(`${attention.length} agent${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} your attention`, () => void import('../os/chat-launch').then(async module => { await module.launchCodeWithChat(first.id); await focusManagedChatRequest(first.id, requestId); })));

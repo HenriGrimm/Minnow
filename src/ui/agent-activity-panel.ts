@@ -174,7 +174,7 @@ async function activate(item: ActivityItem, childRunId?: string): Promise<void> 
 
 export async function stopAgentActivityItem(item: ActivityItem): Promise<void> {
   if (item.live?.kind === 'agent_chat') {
-    if (canStop(item)) await sendManagedChatAction(item.chatId!, 'stop', { scope: 'turn', executionId: item.live.executionId });
+    if (canStop(item)) await sendManagedChatAction(item.chatId!, 'stop', { scope: 'tree', executionId: item.live.executionId });
     return;
   }
   if (item.background && item.chatId) abortChatTitleGeneration(item.chatId);
@@ -185,7 +185,7 @@ export async function stopAgentActivityItem(item: ActivityItem): Promise<void> {
 
 async function stop(item?: ActivityItem): Promise<void> {
   if (item) { await stopAgentActivityItem(item); refresh(); return; }
-  const accepted = await appConfirm('Stop active turns in this workspace? Each displayed conversation’s current turn and background title jobs will stop. Saved queued messages keep their place.');
+  const accepted = await appConfirm('Stop active chats in this workspace? Each displayed conversation, its sub-agents and background title jobs will stop. Saved queued messages keep their place.');
   if (!accepted) return;
   const current = snapshot();
   const seen = new Set<string>();

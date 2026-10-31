@@ -10,6 +10,7 @@ const { setSessionStateForTests, createEmptyChatObject } = await import(
 );
 const { enqueueComposerMessage, removeQueuedMessage } = await import('../../src/chat/message-queue.ts');
 const appState = await import('../../src/app-state.ts');
+const { composerFollowUpPlaceholder } = await import('../../src/ui/composer-shortcuts.ts');
 const { enqueueSteerMessage } = await import('../../src/chat/steer-message.ts');
 
 const FIXED_CHAT_ID = '11111111-1111-1111-1111-111111111111';
@@ -110,7 +111,7 @@ describe('composer message queue mount', () => {
     queue.querySelector('button[aria-label="Cancel pending steering"]').click();
     assert.equal(chat.pendingSteerMessage, undefined);
     assert.equal(appState.streamingChatIds.has(chat.id), true);
-    assert.equal(document.getElementById('msgInput').placeholder, 'Add a correction or more context…');
+    assert.equal(document.getElementById('msgInput').placeholder, composerFollowUpPlaceholder());
   });
 
   test('a remotely removed queue item cannot take an unsaved edit with it', () => {
@@ -129,18 +130,21 @@ describe('composer message queue mount', () => {
     [...document.querySelectorAll('.composer-message-queue__text-action')].find(el => el.textContent === 'Cancel').click();
   });
 
-  test('Stop is reachable while the composer contains a draft', () => {
-    const { chat, input } = seed();
-    input.value = 'keep this draft';
-    const controller = new AbortController();
-    appState.setChatAbort(chat.id, controller);
+  test('running chat shows follow-up shortcuts as a placeholder without an extra controls row', () => {
+    const { input } = seed();
     syncComposerMessageQueue();
-    const controls = document.getElementById('composerRunControls');
-    assert.ok(controls);
-    assert.match(controls.textContent, /Queue for later/);
-    controls.querySelector('button[aria-label="Stop generating"]').click();
-    assert.equal(controller.signal.aborted, true);
+    assert.equal(input.placeholder, composerFollowUpPlaceholder());
+    assert.equal(document.getElementById('composerRunControls'), null);
+    input.value = 'keep this draft';
+    syncComposerMessageQueue();
     assert.equal(input.value, 'keep this draft');
+    assert.equal(document.getElementById('composerRunControls'), null);
+    input.value = '';
+    syncComposerMessageQueue();
+    assert.equal(input.placeholder, composerFollowUpPlaceholder());
+    appState.setStreaming(false);
+    syncComposerMessageQueue();
+    assert.equal(input.placeholder, 'Ask Minnow to plan, build, or debug…');
   });
 
   test('resolveComposerQueueMount targets the active code composer input row', () => {

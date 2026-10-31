@@ -24,7 +24,7 @@ A parent can show **Waiting for agents** after its own reply ends. That is an ou
 
 Open the child chat's model controls to select the provider and model for new messages. Reasoning and thinking controls appear only where that model supports them. The saved selection also shows any captured thinking-token budget. Changing a child model does not change the remembered model for new ordinary chats.
 
-Changing the model applies to new messages while an active reply keeps its captured model. Select **Stop and switch** to stop that reply. It does not stop sibling agents. Already queued messages keep the model and options saved when they were accepted; changing the dropdown does not silently rebind them.
+Changing the model applies to new messages while an active reply keeps its captured model. Select **Stop and switch** to stop that chat and all its sub-agents. Already queued messages keep the model and options saved when they were accepted; changing the dropdown does not silently rebind them.
 
 For a new delegation, model selection follows this order:
 
@@ -39,7 +39,7 @@ An unavailable explicit model or unsupported option produces an error instead of
 
 ## Send, queue and steer
 
-The child uses the familiar composer: **Enter** steers a running reply, and **Alt+Enter** queues a separate follow-up. A correction is applied at the next tool-round boundary. If the reply finishes before another boundary, the correction becomes the next turn.
+The child uses the familiar composer: **Enter** steers a running reply, and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a separate follow-up. A correction is applied at the next tool-round boundary. If the reply finishes before another boundary, the correction becomes the next turn.
 
 Queued rows show their saved model. Use **Edit queued message**, **Delete queued message**, or the send arrow. The arrow steers the current run while one is active and sends the queued message while idle. Editing the queued text preserves your current composer draft and the item's saved model.
 
@@ -59,9 +59,8 @@ Some tools need a connected desktop host, browser or other capability. **Waiting
 
 | Control | Scope |
 |---|---|
-| **Stop turn** | Stops this chat's current reply. Its independent child agents continue. Unapplied corrections and queued work are held for review. |
+| **Stop chat** | Stops this chat's current reply and all its sub-agents, including nested agents, and prevents old results from waking it. Unapplied corrections and queued work are held for review. |
 | **Stop agents** | Stops this conversation's child work and prevents old results from automatically waking it. The parent's own reply and queued human messages remain. |
-| **Stop conversation and agents** | Stops the current conversation and its descendants, and prevents old result wake-ups. |
 
 Stopping retains saved messages and partial output. A stale stop or answer from an older turn cannot act on a replacement turn. Restarting Minnow does not grant permission to repeat an uncertain file or native-tool effect.
 

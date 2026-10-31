@@ -55,7 +55,7 @@ function rowHtml(item: ActivityItem, open: boolean): string {
         ${item.detail && item.detail !== label ? `<p class="activity-details__preview">${escapeHtml(item.detail)}</p>` : ''}
         <p class="activity-details__meta">${meta}</p>
         ${children || settledChildren ? `<ul class="activity-children">${children}${settledChildren}</ul>` : ''}
-        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live && (live.kind !== 'agent_chat' || live.canStop) ? action(live.kind === 'agent_chat' ? 'Stop this reply' : 'Stop this work', 'stop', item.id) : ''}${retry}</div>
+        <div class="activity-row__actions">${action(item.chatId ? 'Open chat' : 'Open source', 'open', item.id)}${live && (live.kind !== 'agent_chat' || live.canStop) ? action(live.kind === 'agent_chat' ? 'Stop chat' : 'Stop this work', 'stop', item.id) : ''}${retry}</div>
       </details>
     </div>
   </li>`;
