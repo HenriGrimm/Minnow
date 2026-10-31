@@ -55,7 +55,6 @@ import './styles/composer-model-trigger.css';
 import './styles/view-mode-toggle.css';
 import './styles/toast.css';
 import './styles/git-activity-overlay.css';
-import './styles/memory-saved-toast.css';
 import './styles/plan-progress.css';
 import './styles/minnowos-shell.css';
 import './styles/minnowos-responsive.css';
@@ -97,6 +96,7 @@ import { runMigrationIfNeeded } from './config/migrate';
 import { detectLocalServer } from './tools/client';
 import { startSchedulerNotificationPoll } from './scheduler/notifications-poll';
 import { initNotificationProducers } from './notifications/producers';
+import { initNotificationCards } from './notifications/cards';
 import { refreshSkillCatalog } from './skills/client';
 import { loadSkillConfigFromStorage } from './skills/config';
 import { initAllComposerSlashPickers } from './ui/skill-picker';
@@ -360,6 +360,7 @@ export async function initApp(): Promise<void> {
   startSchedulerNotificationPoll();
   releaseFirstRunReveal();
   initNotificationProducers();
+  initNotificationCards();
   if (hasChatSurface) {
     onWelcomeServerAvailabilityChanged();
   }

@@ -431,6 +431,29 @@ function mountFriendlyBodyElement(body: FriendlyToolBody): HTMLElement {
   }
 
   if (body.kind === 'questions') {
+    const answered =
+      !body.cancelled && body.items.some((item) => item.other || item.options.some((o) => o.selected));
+    // Answered: a quiet question → answer receipt. Otherwise the offered options as pills.
+    if (answered) {
+      const receipt = document.createElement('dl');
+      receipt.className = 'tool-call-qa';
+      for (const item of body.items) {
+        const row = document.createElement('div');
+        row.className = 'tool-call-qa__row';
+        const question = document.createElement('dt');
+        question.className = 'tool-call-qa__question';
+        question.textContent = item.prompt;
+        const answer = document.createElement('dd');
+        answer.className = 'tool-call-qa__answer';
+        const picked = item.options.filter((o) => o.selected).map((o) => o.label);
+        if (item.other) picked.push(item.other);
+        answer.textContent = picked.length ? picked.join(', ') : '—';
+        row.append(question, answer);
+        receipt.appendChild(row);
+      }
+      root.appendChild(receipt);
+      return root;
+    }
     const list = document.createElement('ol');
     list.className = 'tool-call-questions';
     for (const item of body.items) {

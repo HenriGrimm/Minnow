@@ -9,10 +9,8 @@
 import {
   formatOutOfUsageMessage,
   OUT_OF_USAGE_TITLE,
-  parseQuotaResetHint,
 } from '../../server/generations/quota-error.js';
 import type { GenerationEndEvent } from '../api/generations';
-import { showToast } from '../ui/toast';
 import { pushNotification } from './push';
 
 /**
@@ -45,7 +43,6 @@ export function noticeOutOfUsage(event: GenerationEndEvent, now = Date.now()): b
 
   const detail = event.errorMessage?.trim() ?? '';
   const providerLabel = event.chosenProviderId?.trim() || null;
-  const hint = parseQuotaResetHint(detail);
 
   pushNotification({
     kind: 'provider_quota',
@@ -56,11 +53,6 @@ export function noticeOutOfUsage(event: GenerationEndEvent, now = Date.now()): b
     os: true,
   });
 
-  showToast(
-    hint ? `${OUT_OF_USAGE_TITLE} — resets in ${hint}` : OUT_OF_USAGE_TITLE,
-    'error',
-    8_000,
-  );
   return true;
 }
 
@@ -91,6 +83,5 @@ export function noticeBoardOutOfUsage(
     dedupeKey: `provider-quota-board:${boardId}:${eventTs}`,
     os: true,
   });
-  showToast(`${OUT_OF_USAGE_TITLE} — board stopped`, 'error', 8_000);
   return true;
 }

@@ -1,0 +1,114 @@
+<!doctype html>
+<html data-theme="swamp-dark">
+<head>
+<meta charset="utf-8">
+<title>Question cards QA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* QA chrome only: a bar to switch scenarios, theme and width. */
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--mn-bg); }
+  #qaBar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 8px 12px; border-bottom: 1px solid var(--mn-border);
+    font: 12px var(--font-mono, monospace); color: var(--mn-fg-muted);
+  }
+  #qaBar button {
+    padding: 3px 8px; border: 1px solid var(--mn-border); border-radius: 4px;
+    background: transparent; color: var(--mn-fg); font: inherit; cursor: pointer;
+  }
+  #qaBar button[aria-pressed='true'] { border-color: var(--mn-accent); background: var(--mn-accent-soft); }
+  #qaBar .sep { width: 1px; height: 18px; background: var(--mn-border); margin: 0 4px; }
+  #qaStage { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 24px; }
+  #qaResult { margin: 0 auto 12px; width: min(720px, calc(100% - 32px)); font: 12px var(--font-mono, monospace); color: var(--mn-fg-muted); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="qaBar" role="toolbar" aria-label="Question cards QA"></div>
+<div id="qaStage" style="--chat-composer-max: 720px">
+  <pre id="qaResult"></pre>
+  <div id="qaHost" class="question-host" hidden></div>
+</div>
+<script type="module">
+import '/src/styles/tokens.css';
+import '/src/styles/global.css';
+import '/src/styles/icons.css';
+import '/src/styles/question-cards.css';
+import { createEmptyChatObject, setSessionStateForTests } from '/src/state/sessions.ts';
+import { showQuestionCardsModal, forceCloseAskQuestionModal } from '/src/ui/question-cards-modal.ts';
+
+const SCENARIOS = {
+  batch: {
+    title: 'Set up auth',
+    questions: [
+      { id: 'provider', prompt: 'Which auth provider should we use?', options: [
+        { id: 'clerk', label: 'Clerk', description: 'Hosted UI, fastest to wire up' },
+        { id: 'authjs', label: 'Auth.js', description: 'Self-hosted, more control' },
+        { id: 'own', label: 'Roll our own' },
+      ] },
+      { id: 'sessions', prompt: 'Where should sessions live?', options: [
+        { id: 'cookie', label: 'Cookies' }, { id: 'jwt', label: 'JWT in memory' }, { id: 'db', label: 'Database' },
+      ] },
+      { id: 'social', prompt: 'Add social logins now?', options: [
+        { id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }, { id: 'later', label: 'Later' },
+      ] },
+    ],
+  },
+  chips: {
+    questions: [{ id: 'go', prompt: 'Run the migration against staging first?', options: [
+      { id: 'yes', label: 'Yes' }, { id: 'no', label: 'No, go straight to prod' },
+    ] }],
+  },
+  multi: {
+    questions: [{ id: 'checks', prompt: 'Which checks should run before merging?', allow_multiple: true, options: [
+      { id: 'unit', label: 'Unit tests' }, { id: 'types', label: 'Type check' },
+      { id: 'e2e', label: 'Browser tests', description: 'Slow, about 6 minutes' }, { id: 'lint', label: 'Lint' },
+    ] }],
+  },
+  long: {
+    questions: [{ id: 'ref', prompt: 'The refactor touches the session store, the sync layer and three UI surfaces. How should we split it so each piece can land on its own?', options: [
+      { id: 'layer', label: 'By layer', description: 'Store first, then sync, then each surface in its own change' },
+      { id: 'feature', label: 'By feature', description: 'One vertical slice per surface, store and sync changes ride along with the first' },
+      { id: 'one', label: 'One change', description: 'Land it all at once behind a flag' },
+    ] }],
+  },
+};
+
+const chat = createEmptyChatObject('qa-questions');
+setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat], sidebarCollapsed: false });
+
+const bar = document.getElementById('qaBar');
+const host = document.getElementById('qaHost');
+const out = document.getElementById('qaResult');
+const buttons = {};
+
+async function load(name) {
+  forceCloseAskQuestionModal();
+  for (const [key, btn] of Object.entries(buttons)) btn.setAttribute('aria-pressed', String(key === name));
+  out.textContent = '';
+  const result = await showQuestionCardsModal(SCENARIOS[name], {}, { host, embedded: true, chatId: chat.id });
+  out.textContent = JSON.stringify(result, null, 2);
+}
+
+function button(label, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  bar.appendChild(b);
+  return b;
+}
+
+for (const name of Object.keys(SCENARIOS)) buttons[name] = button(name, () => void load(name));
+bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+for (const theme of ['swamp-dark', 'swamp-light']) {
+  button(theme, () => document.documentElement.setAttribute('data-theme', theme));
+}
+bar.appendChild(Object.assign(document.createElement('span'), { className: 'sep' }));
+button('narrow', () => document.getElementById('qaStage').style.setProperty('--chat-composer-max', '380px'));
+button('wide', () => document.getElementById('qaStage').style.setProperty('--chat-composer-max', '720px'));
+
+void load(new URLSearchParams(location.search).get('s') ?? 'batch');
+</script>
+</body>
+</html>

@@ -1,16 +1,15 @@
 /**
- * Floating git activity overlay: bouncing progress while an op runs, then a
- * parsed error popover with Send to chat. Success uses the existing toast.
+ * Floating git activity overlay: bouncing progress while an op runs. Success
+ * and parsed errors (with Send to chat) go out as shared notification cards.
  */
 
-import { parseGitError, splitGitErrorDetails } from '../lib/git-error-parse';
+import { parseGitError } from '../lib/git-error-parse';
 import {
   sendGitErrorToChat,
   type GitErrorChatContext,
   type GitErrorChatKind,
 } from './git-error-to-chat';
-import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
-import { showToast } from './toast';
+import { notify, showToast, type NotifyHandle } from './toast';
 
 /** Wait this long before showing progress so instant ops do not flash. */
 export const GIT_ACTIVITY_SHOW_DELAY_MS = 180;
@@ -42,8 +41,6 @@ let overlayEl: HTMLElement | null = null;
 let showTimer: number | undefined;
 let hideTimer: number | undefined;
 let visible = false;
-let errorMode = false;
-let escapeHandler: ((event: KeyboardEvent) => void) | null = null;
 
 function clearShowTimer(): void {
   if (showTimer === undefined) return;
@@ -77,8 +74,6 @@ function setVisible(el: HTMLElement, on: boolean): void {
 
 function paintProgress(label: string): void {
   const el = ensureOverlay();
-  errorMode = false;
-  el.classList.remove('mn-git-activity--error');
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
   el.removeAttribute('aria-modal');
@@ -107,25 +102,8 @@ function topLabel(): string {
 }
 
 function showProgressIfNeeded(): void {
-  if (stack.length === 0 || errorMode) return;
+  if (stack.length === 0) return;
   paintProgress(topLabel());
-}
-
-function detachEscape(): void {
-  if (!escapeHandler) return;
-  document.removeEventListener('keydown', escapeHandler, true);
-  escapeHandler = null;
-}
-
-function attachEscape(): void {
-  detachEscape();
-  escapeHandler = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopPropagation();
-    hideGitActivityOverlay();
-  };
-  document.addEventListener('keydown', escapeHandler, true);
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -138,7 +116,14 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function paintError(options: GitActivityErrorOptions): void {
+let errorCard: NotifyHandle | null = null;
+
+function dismissErrorCard(): void {
+  errorCard?.dismiss();
+  errorCard = null;
+}
+
+function showErrorCard(options: GitActivityErrorOptions): void {
   const parsed = parseGitError(options.error);
   const chatKind = options.chatKind ?? 'generic';
   const chatCtx: GitErrorChatContext = {
@@ -146,95 +131,39 @@ function paintError(options: GitActivityErrorOptions): void {
     title: parsed.title,
     summary: parsed.summary,
   };
-  const { preview, rest } = splitGitErrorDetails(parsed.details);
-
-  const el = ensureOverlay();
-  errorMode = true;
-  el.classList.add('mn-git-activity--error');
-  el.setAttribute('role', 'alertdialog');
-  el.setAttribute('aria-modal', 'false');
-  el.setAttribute('aria-live', 'assertive');
-  el.setAttribute('aria-labelledby', 'mnGitActivityErrorTitle');
-  el.setAttribute('aria-describedby', 'mnGitActivityErrorSummary');
-
-  const body = document.createElement('div');
-  body.className = 'mn-git-activity__body';
-
-  const eyebrow = document.createElement('p');
-  eyebrow.className = 'mn-git-activity__eyebrow';
-  eyebrow.textContent = 'Git error';
-
-  const title = document.createElement('h2');
-  title.className = 'mn-git-activity__title';
-  title.id = 'mnGitActivityErrorTitle';
-  title.textContent = parsed.title;
-
-  const summary = document.createElement('p');
-  summary.className = 'mn-git-activity__summary';
-  summary.id = 'mnGitActivityErrorSummary';
-  summary.textContent = parsed.summary;
-
-  const details = document.createElement('details');
-  details.className = 'mn-git-activity__details';
-  const toggle = document.createElement('summary');
-  toggle.className = 'mn-git-activity__details-toggle';
-  toggle.textContent = 'Details';
-  const pre = document.createElement('pre');
-  pre.className = 'mn-git-activity__pre';
-  pre.textContent = preview;
-  details.append(toggle, pre);
-  if (rest) {
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'mn-git-activity__more';
-    more.textContent = 'Show more';
-    more.addEventListener('click', () => {
-      pre.textContent = parsed.details;
-      more.remove();
-      details.open = true;
-    });
-    details.appendChild(more);
-  }
-
-  body.append(eyebrow, title, summary, details);
-
-  const actions = document.createElement('div');
-  actions.className = 'mn-git-activity__actions';
-
-  const dismiss = document.createElement('button');
-  dismiss.type = 'button';
-  dismiss.className = 'mn-git-activity__button';
-  dismiss.textContent = 'Dismiss';
-  dismiss.addEventListener('click', () => hideGitActivityOverlay());
-
-  const copy = document.createElement('button');
-  copy.type = 'button';
-  copy.className = 'mn-git-activity__button';
-  copy.textContent = 'Copy';
-  copy.addEventListener('click', () => {
-    void copyText(parsed.details).then((ok) => {
-      copy.textContent = ok ? 'Copied' : 'Copy failed';
-    });
+  const context = [chatKind === 'generic' ? '' : chatKind, options.ctx?.branch ?? ''].filter(Boolean).join(' · ');
+  dismissErrorCard();
+  errorCard = notify({
+    tone: 'error',
+    icon: 'gitBranch',
+    source: 'Source Control',
+    context: context || undefined,
+    title: parsed.title,
+    message: parsed.summary,
+    detail: parsed.details,
+    dedupeKey: `git-error:${chatKind}:${parsed.title}:${parsed.details}`,
+    open: () => {
+      void import('../os/router').then(({ launchApp }) => launchApp('source-control'));
+    },
+    openLabel: 'Open Source Control',
+    actions: [
+      {
+        label: 'Send to chat',
+        variant: 'primary',
+        ariaLabel: 'Send git error to chat',
+        run: () => {
+          void sendGitErrorToChat(chatKind, parsed.details, chatCtx);
+        },
+      },
+      {
+        label: 'Copy',
+        keepOpen: { doneLabel: 'Copied' },
+        run: async () => {
+          if (!(await copyText(parsed.details))) throw new Error('Could not copy to the clipboard.');
+        },
+      },
+    ],
   });
-
-  const send = document.createElement('button');
-  send.type = 'button';
-  send.className = 'mn-git-activity__button mn-git-activity__button--primary';
-  send.textContent = 'Send to chat';
-  send.title = 'Start a new chat and ask the agent to fix this';
-  send.setAttribute('aria-label', 'Send git error to chat');
-  send.addEventListener('click', () => {
-    hideGitActivityOverlay();
-    void sendGitErrorToChat(chatKind, parsed.details, chatCtx);
-  });
-
-  actions.append(dismiss, copy, send);
-  el.replaceChildren(body, actions);
-  visible = true;
-  setVisible(el, true);
-  markPreviewOccluder(el, 'panel');
-  attachEscape();
-  dismiss.focus();
 }
 
 function removeFromStack(id: number): void {
@@ -251,18 +180,8 @@ export function beginGitActivity(
   const id = nextId++;
   stack.push({ id, label: label.trim() || 'Working…' });
 
-  const replacingError = errorMode;
-  if (errorMode) {
-    detachEscape();
-    if (overlayEl) unmarkPreviewOccluder(overlayEl);
-    errorMode = false;
-  }
-
   const delay = options?.delayMs ?? GIT_ACTIVITY_SHOW_DELAY_MS;
-  if (replacingError) {
-    clearShowTimer();
-    paintProgress(topLabel());
-  } else if (stack.length === 1) {
+  if (stack.length === 1) {
     clearShowTimer();
     if (delay <= 0) {
       showProgressIfNeeded();
@@ -272,7 +191,7 @@ export function beginGitActivity(
         showProgressIfNeeded();
       }, delay);
     }
-  } else if (visible && !errorMode) {
+  } else if (visible) {
     paintProgress(topLabel());
   }
 
@@ -284,7 +203,7 @@ export function updateGitActivity(handle: GitActivityHandle, label: string): voi
   const item = stack.find((row) => row.id === handle.id);
   if (!item) return;
   item.label = label.trim() || item.label;
-  if (visible && !errorMode && stack[stack.length - 1]?.id === handle.id) {
+  if (visible && stack[stack.length - 1]?.id === handle.id) {
     paintProgress(item.label);
   }
 }
@@ -303,7 +222,7 @@ export function finishGitActivitySuccess(
 ): void {
   finishHandle(handle);
   if (stack.length > 0) {
-    if (visible && !errorMode) paintProgress(topLabel());
+    if (visible) paintProgress(topLabel());
     return;
   }
   hideGitActivityOverlay();
@@ -322,24 +241,17 @@ export function finishGitActivityError(
   showGitErrorPopover(options);
 }
 
-/** Open the parsed error popover without a matching begin handle (Issues sync, etc.). */
+/** Show the parsed git error card without a matching begin handle (Issues sync, etc.). */
 export function showGitErrorPopover(options: GitActivityErrorOptions): void {
+  hideGitActivityOverlay();
   const error = options.error.trim();
-  if (!error || error.toLowerCase() === 'cancelled') {
-    hideGitActivityOverlay();
-    return;
-  }
-  clearShowTimer();
-  clearHideTimer();
-  paintError(options);
+  if (!error || error.toLowerCase() === 'cancelled') return;
+  showErrorCard(options);
 }
 
-/** Dismiss progress or the error popover. */
+/** Dismiss the progress card. */
 export function hideGitActivityOverlay(): void {
   clearShowTimer();
-  detachEscape();
-  if (overlayEl) unmarkPreviewOccluder(overlayEl);
-  errorMode = false;
   visible = false;
   stack.length = 0;
   const el = overlayEl;
@@ -357,9 +269,7 @@ export function hideGitActivityOverlay(): void {
 export function resetGitActivityOverlayForTests(): void {
   clearShowTimer();
   clearHideTimer();
-  detachEscape();
-  if (overlayEl) unmarkPreviewOccluder(overlayEl);
-  errorMode = false;
+  dismissErrorCard();
   visible = false;
   stack.length = 0;
   nextId = 1;

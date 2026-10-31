@@ -1518,6 +1518,35 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   color: var(--mn-fg-muted);
 }
 
+/* ask_question once answered: each prompt with the answer the user gave. */
+.tool-call-qa {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--mn-border-strong);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tool-call-qa__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.tool-call-qa__question {
+  color: var(--mn-fg-muted);
+}
+
+.tool-call-qa__answer {
+  margin: 0;
+  color: var(--mn-fg);
+  font-weight: 500;
+}
+
 /* The option the user actually chose. */
 .tool-call-question__option--picked {
   border-color: var(--mn-accent-border);

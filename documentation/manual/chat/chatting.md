@@ -133,6 +133,8 @@ The menubar **Activity** icon appears before Models and opens live work and noti
 
 **Mute alerts** silences sounds and desktop notifications while Activity keeps updating. **Settings → General → Notifications** controls delivery categories and sounds, including whether cues play while you are already watching the active chat. **Stop all…** cancels chats, their sub-agents, and title jobs in the current workspace after confirmation.
 
+Notices also appear briefly as cards in the bottom-right corner: an agent finishing or failing, a question, a git error, a saved memory, a phone asking to connect. The top line says which app sent the card and for which chat, branch or issue. Click a card to open what sent it. Buttons on the card depend on what it shows, such as **Send to chat** and **Copy** for git errors, **Reject** for a saved memory, **Answer** for a question, or **Approve** and **Deny** for a device. Errors with raw output have a **Details** button. Most cards close on their own after a few seconds. Hovering or focusing a card pauses it. Cards that need your answer stay until you act and show **Needs you**. Press **Escape** or click **×** to close a card; it stays in Activity. At most three cards show at once, and **+N more** shows the rest.
+
 Desktop notifications appear when an agent asks a question or finishes its turn while Minnow is in the background. Use **Test desktop notification** in notification settings to check delivery without starting a chat. In a browser, the test requests notification permission if needed. If the test reports that it was sent but no banner appears, check your system's notification settings and Do not disturb. On Windows, development builds appear separately as **Minnow Dev**.
 
 ## Asking you questions

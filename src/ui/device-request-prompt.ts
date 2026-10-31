@@ -16,7 +16,7 @@ import {
   type CompanionDevice,
   type PendingAccessRequest,
 } from '../api/remote-admin.ts';
-import { showToast } from './toast.ts';
+import { notify, type NotifyHandle, type NotifyOptions } from './toast.ts';
 import '../styles/device-request-prompt.css';
 
 const VISIBLE_POLL_MS = 3_000;
@@ -32,32 +32,22 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-function stack(): HTMLElement {
-  let node = document.getElementById('deviceRequestPrompts');
-  if (!node) {
-    node = el('div', 'device-request-stack');
-    node.id = 'deviceRequestPrompts';
-    node.dataset.aboveShellOverlay = '';
-    node.setAttribute('aria-live', 'polite');
-    document.body.appendChild(node);
-  }
-  return node;
-}
+/** Open request cards by request id. */
+const cards = new Map<string, NotifyHandle>();
+/** Requests the user closed without answering; they stay in Activity and Settings. */
+const closed = new Set<string>();
 
 /** Same-kind devices the phone might be (e.g. its browser is already connected). */
 function candidates(request: PendingAccessRequest, devices: CompanionDevice[]): CompanionDevice[] {
   return devices.filter((device) => device.kind === request.kind || device.kind === 'unknown');
 }
 
-function renderCard(request: PendingAccessRequest, devices: CompanionDevice[], onAnswered: () => void): HTMLElement {
-  const card = el('section', 'device-request');
-  card.dataset.requestId = request.id;
-  card.setAttribute('role', 'alertdialog');
-  card.setAttribute('aria-labelledby', `deviceRequestTitle-${request.id}`);
-  const title = el('strong', 'device-request__title', `${request.name} wants to connect`);
-  title.id = `deviceRequestTitle-${request.id}`;
-  const copy = el('p', 'device-request__copy', 'Approve only if the phone shows this number:');
+function showCard(request: PendingAccessRequest, devices: CompanionDevice[], onAnswered: () => void): void {
+  const content = el('div', 'device-request');
+  content.dataset.requestId = request.id;
   const code = el('p', 'device-request__code', request.verifyCode.split('').join(' '));
+  code.setAttribute('aria-label', `Number ${request.verifyCode}`);
+  content.append(code);
 
   const options = candidates(request, devices);
   let select: HTMLSelectElement | null = null;
@@ -76,47 +66,61 @@ function renderCard(request: PendingAccessRequest, devices: CompanionDevice[], o
     const sameName = options.find((device) => device.name === request.name);
     if (request.installed && sameName) select.value = sameName.id;
     field.append(select);
-    card.append(title, copy, code, field);
-  } else {
-    card.append(title, copy, code);
+    content.append(field);
   }
 
-  const actions = el('div', 'device-request__actions');
-  const deny = el('button', 'settings-action-btn', 'Deny');
-  deny.type = 'button';
-  const approve = el('button', 'settings-action-btn settings-action-btn--primary', 'Approve');
-  approve.type = 'button';
-  const answer = (action: () => Promise<void>, message: string) => {
-    deny.disabled = true;
-    approve.disabled = true;
-    void action().then(
-      () => {
-        card.remove();
-        showToast(message);
-        notifyDevicesChanged();
-        onAnswered();
-      },
-      (err: Error) => {
-        deny.disabled = false;
-        approve.disabled = false;
-        showToast(err.message || 'Could not answer the request', 'error');
-        if (/expired/i.test(err.message)) card.remove();
-      },
-    );
+  const answer = async (action: () => Promise<void>, message: string): Promise<NotifyOptions> => {
+    try {
+      await action();
+    } catch (err) {
+      if (err instanceof Error && /expired/i.test(err.message)) {
+        cards.get(request.id)?.dismiss();
+        cards.delete(request.id);
+      }
+      throw err instanceof Error && err.message ? err : new Error('Could not answer the request');
+    }
+    cards.delete(request.id);
+    notifyDevicesChanged();
+    onAnswered();
+    return { tone: 'success', icon: 'deviceMobile', message };
   };
-  deny.addEventListener('click', () => answer(() => denyAccessRequest(request.id), `${request.name} declined`));
-  approve.addEventListener('click', () =>
-    answer(
-      () => approveAccessRequest(request.id, select?.value ? { attachToDeviceId: select.value } : {}),
-      `${request.name} connected`,
-    ),
-  );
-  actions.append(deny, approve);
-  card.append(actions);
-  return card;
+
+  const handle = notify({
+    tone: 'attention',
+    icon: 'deviceMobile',
+    source: 'Devices',
+    title: `${request.name} wants to connect`,
+    message: 'Approve only if the phone shows this number:',
+    content,
+    durationMs: null,
+    dedupeKey: `device-request:${request.id}`,
+    open: () => {
+      void import('./settings-page').then(({ openSettings }) => openSettings('devices'));
+    },
+    openLabel: 'Open device settings',
+    actions: [
+      {
+        label: 'Approve',
+        variant: 'primary',
+        run: () => answer(
+          () => approveAccessRequest(request.id, select?.value ? { attachToDeviceId: select.value } : {}),
+          `${request.name} connected`,
+        ),
+      },
+      {
+        label: 'Deny',
+        run: () => answer(() => denyAccessRequest(request.id), `${request.name} declined`),
+      },
+    ],
+    onDismiss: () => {
+      cards.delete(request.id);
+      closed.add(request.id);
+    },
+  });
+  if (handle) cards.set(request.id, handle);
 }
 
-async function notify(request: PendingAccessRequest): Promise<void> {
+async function pushRequestNotification(request: PendingAccessRequest): Promise<void> {
   try {
     const { pushNotification } = await import('../notifications/push.ts');
     pushNotification({
@@ -161,19 +165,20 @@ export function initDeviceRequestPrompt(): void {
       if (Date.now() - lastStatusAt > STATUS_REFRESH_MS) await refreshStatus();
       if (!remoteOn) return;
       const requests = await fetchAccessRequests();
-      const container = stack();
       const live = new Set(requests.map((request) => request.id));
-      for (const node of [...container.children] as HTMLElement[]) {
-        if (!live.has(node.dataset.requestId ?? '')) node.remove();
+      for (const [id, handle] of cards) {
+        if (live.has(id)) continue;
+        handle.dismiss();
+        cards.delete(id);
       }
-      const fresh = requests.filter((request) => !container.querySelector(`[data-request-id="${request.id}"]`));
+      const fresh = requests.filter((request) => !cards.get(request.id)?.isOpen && !closed.has(request.id));
       if (fresh.length) {
         const devices = await fetchDevices().catch(() => []);
         for (const request of fresh) {
-          container.append(renderCard(request, devices, () => void poll()));
+          showCard(request, devices, () => void poll());
           if (!seen.has(request.id)) {
             seen.add(request.id);
-            void notify(request);
+            void pushRequestNotification(request);
           }
         }
       }

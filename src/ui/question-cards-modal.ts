@@ -22,6 +22,7 @@ import { iconHtml } from './icon';
 import {
   areAllDraftsValid,
   buildAnswerEntries,
+  isDraftValidForQuestion,
   type AskQuestionAnswerDraft,
 } from './question-cards-state';
 import { getActiveComposerSurface } from './composer-surface';
@@ -86,31 +87,31 @@ const EMBEDDED_QUESTIONS_HOST_IDS = new Set([
 /** Pause after a single-choice pick so the selection is visible before the card flips. */
 const AUTO_ADVANCE_DELAY_MS = 220;
 
-const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/** Longest option label that still reads well as a chip. */
+const CHIP_LABEL_MAX = 24;
+
+type QuestionCard = {
+  root: HTMLElement;
+  promptId: string;
+  rows: HTMLLabelElement[];
+  inputs: HTMLInputElement[];
+  otherRow: HTMLElement;
+  otherInput: HTMLInputElement;
+};
+
+/** Short, undescribed options lay out as a row of chips instead of a list. */
+function prefersChipLayout(q: AskQuestionItem): boolean {
+  return (
+    q.options.length > 0 &&
+    q.options.length <= 6 &&
+    q.options.every((o) => !o.description && o.label.length <= CHIP_LABEL_MAX)
+  );
+}
 
 function getActiveHTMLElement(): HTMLElement | null {
   const active = document.activeElement;
   if (!active || typeof (active as HTMLElement).focus !== 'function') return null;
   return active as HTMLElement;
-}
-
-/** Focusable controls inside the open question panel (visible, enabled). */
-function listPanelFocusables(panel: HTMLElement): HTMLElement[] {
-  return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) =>
-      !el.hidden &&
-      el.getAttribute('aria-hidden') !== 'true' &&
-      !el.hasAttribute('disabled'),
-  );
-}
-
-function focusFirstPanelControl(panel: HTMLElement): void {
-  const nodes = listPanelFocusables(panel);
-  const firstOption = panel.querySelector<HTMLElement>(
-    '.question-cards-options input:not([disabled])',
-  );
-  (firstOption ?? nodes[0])?.focus();
 }
 
 function isEmbeddedQuestionsHost(host: HTMLElement): boolean {
@@ -494,39 +495,38 @@ export function showQuestionCardsModal(
 
     const previousFocus = getActiveHTMLElement();
 
+    const multiQuestion = questions.length > 1;
+
     const header = document.createElement('div');
     header.className = 'question-cards-panel__header';
 
-    const headerMain = document.createElement('div');
-    headerMain.className = 'question-cards-panel__header-main';
+    // One tab per question; an answered tab shows its answer instead of the prompt.
+    const tabs = document.createElement('div');
+    tabs.className = 'question-cards-tabs';
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Questions');
+    const tabButtons = questions.map((q, i) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'question-cards-tab';
+      tab.setAttribute('role', 'tab');
+      tab.title = q.prompt;
+      tab.addEventListener('click', () => goToCard(i));
+      tabs.appendChild(tab);
+      return tab;
+    });
 
-    if (args.title) {
+    if (multiQuestion) {
+      header.appendChild(tabs);
+    } else if (args.title) {
       const eyebrow = document.createElement('p');
       eyebrow.className = 'question-cards-panel__eyebrow';
       eyebrow.textContent = args.title;
-      headerMain.appendChild(eyebrow);
+      header.appendChild(eyebrow);
     }
 
     const headerActions = document.createElement('div');
     headerActions.className = 'question-cards-panel__header-actions';
-
-    const nav = document.createElement('div');
-    nav.className = 'question-cards-nav';
-    nav.hidden = questions.length <= 1;
-    const btnPrev = document.createElement('button');
-    btnPrev.type = 'button';
-    btnPrev.className = 'question-cards-nav-btn';
-    btnPrev.setAttribute('aria-label', 'Previous question');
-    btnPrev.innerHTML = iconHtml('chevronLeft');
-    const indicator = document.createElement('span');
-    indicator.className = 'question-cards-nav-indicator';
-    const btnNext = document.createElement('button');
-    btnNext.type = 'button';
-    btnNext.className = 'question-cards-nav-btn';
-    btnNext.setAttribute('aria-label', 'Next question');
-    btnNext.innerHTML = iconHtml('chevronRight');
-    nav.append(btnPrev, indicator, btnNext);
-    headerActions.appendChild(nav);
 
     if (context.subAgentType) {
       const badge = document.createElement('span');
@@ -539,21 +539,26 @@ export function showQuestionCardsModal(
     btnClose.type = 'button';
     btnClose.className = 'question-cards-icon-btn';
     btnClose.setAttribute('aria-label', 'Close and cancel questions');
+    btnClose.title = 'Cancel (Esc)';
     btnClose.innerHTML = iconHtml('close');
     headerActions.appendChild(btnClose);
 
-    header.append(headerMain, headerActions);
+    header.appendChild(headerActions);
+    // A lone close button floats beside the prompt instead of taking a row of its own.
+    if (!header.querySelector('.question-cards-tabs, .question-cards-panel__eyebrow, .question-cards-badge')) {
+      header.classList.add('question-cards-panel__header--floating');
+    }
 
     const cardBody = document.createElement('div');
     cardBody.className = 'question-cards-panel__body';
+    const cards = questions.map((q, i) => buildCard(q, i));
+    for (const card of cards) cardBody.appendChild(card.root);
 
     const footer = document.createElement('div');
     footer.className = 'question-cards-panel__footer';
 
-    const btnSubmit = document.createElement('button');
-    btnSubmit.type = 'button';
-    btnSubmit.className = 'question-cards-submit';
-    btnSubmit.textContent = 'Submit answers';
+    const hints = document.createElement('p');
+    hints.className = 'question-cards-hints';
 
     const validation = document.createElement('p');
     validation.className = 'question-cards-validation';
@@ -561,11 +566,16 @@ export function showQuestionCardsModal(
     validation.setAttribute('aria-live', 'polite');
     validation.hidden = true;
 
-    const hints = document.createElement('p');
-    hints.className = 'question-cards-hints';
-    hints.textContent = 'Esc to cancel · Arrow keys to change card';
+    const btnNext = document.createElement('button');
+    btnNext.type = 'button';
+    btnNext.className = 'question-cards-next';
+    btnNext.textContent = 'Next';
 
-    footer.append(validation, btnSubmit, hints);
+    const btnSubmit = document.createElement('button');
+    btnSubmit.type = 'button';
+    btnSubmit.className = 'question-cards-submit';
+
+    footer.append(hints, validation, btnNext, btnSubmit);
     panel.append(header, cardBody, footer);
 
     const modalState: ActiveQuestionModalState = {
@@ -639,6 +649,222 @@ export function showQuestionCardsModal(
       }
     }
 
+    function keyHint(n: number): HTMLElement {
+      const kbd = document.createElement('kbd');
+      kbd.className = 'question-cards-key';
+      kbd.setAttribute('aria-hidden', 'true');
+      kbd.textContent = n <= 9 ? String(n) : '';
+      return kbd;
+    }
+
+    /**
+     * Builds one question once. Selection changes only toggle classes and
+     * `checked` (see {@link syncSelection}), so nothing re-renders under the pointer.
+     */
+    function buildCard(q: AskQuestionItem, index: number): QuestionCard {
+      const multi = isAskQuestionMultiSelect(q);
+      const root = document.createElement('section');
+      root.className = 'question-cards-card';
+
+      const promptId = `question-cards-prompt-${index}-${q.id}`;
+      const promptEl = document.createElement('h2');
+      promptEl.className = 'question-cards-prompt';
+      promptEl.id = promptId;
+      promptEl.textContent = q.prompt;
+
+      const list = document.createElement('div');
+      list.className = prefersChipLayout(q)
+        ? 'question-cards-options question-cards-options--chips'
+        : 'question-cards-options';
+      list.setAttribute('role', multi ? 'group' : 'radiogroup');
+      list.setAttribute('aria-labelledby', promptId);
+
+      const groupName = `ask-q-${index}-${q.id}`;
+      const rows: HTMLLabelElement[] = [];
+      const inputs: HTMLInputElement[] = [];
+      q.options.forEach((opt, i) => {
+        const row = document.createElement('label');
+        row.className = 'question-cards-option';
+        const input = document.createElement('input');
+        input.type = multi ? 'checkbox' : 'radio';
+        if (!multi) input.name = groupName;
+        input.value = opt.id;
+        input.addEventListener('change', () => toggleOption(q, opt.id, input.checked));
+        const label = document.createElement('span');
+        label.className = 'question-cards-option-label';
+        label.textContent = opt.label;
+        row.append(input, keyHint(i + 1), label);
+        if (opt.description) {
+          const desc = document.createElement('span');
+          desc.className = 'question-cards-option-desc';
+          desc.textContent = opt.description;
+          row.appendChild(desc);
+        }
+        list.appendChild(row);
+        rows.push(row);
+        inputs.push(input);
+      });
+
+      // "Other" is a text field in the list itself: typing selects it.
+      const otherRow = document.createElement('div');
+      otherRow.className = 'question-cards-option question-cards-option--other';
+      const otherInput = document.createElement('input');
+      otherInput.type = 'text';
+      otherInput.className = 'question-cards-other-input';
+      otherInput.placeholder = 'Something else…';
+      otherInput.setAttribute('aria-label', 'Other answer');
+      otherInput.addEventListener('input', () => setOtherText(q, otherInput.value));
+      otherRow.append(keyHint(q.options.length + 1), otherInput);
+      otherRow.addEventListener('click', (ev) => {
+        if (ev.target !== otherInput) otherInput.focus();
+      });
+      list.appendChild(otherRow);
+
+      root.append(promptEl, list);
+      return { root, promptId, rows, inputs, otherRow, otherInput };
+    }
+
+    function toggleOption(q: AskQuestionItem, optionId: string, checked: boolean): void {
+      const d = getOrCreateDraft(drafts, q.id);
+      d.otherText = '';
+      if (isAskQuestionMultiSelect(q)) {
+        const kept = d.selectedIds.filter((id) => id !== optionId && id !== ASK_QUESTION_OTHER_ID);
+        d.selectedIds = checked ? [...kept, optionId] : kept;
+        syncSelection();
+        return;
+      }
+      d.selectedIds = [optionId];
+      syncSelection();
+      advanceAfterSingleSelect();
+    }
+
+    function setOtherText(q: AskQuestionItem, text: string): void {
+      cancelAutoAdvance();
+      const d = getOrCreateDraft(drafts, q.id);
+      d.otherText = text;
+      if (text.trim()) {
+        d.selectedIds = [ASK_QUESTION_OTHER_ID];
+      } else if (d.selectedIds.includes(ASK_QUESTION_OTHER_ID)) {
+        d.selectedIds = [];
+      }
+      syncSelection();
+    }
+
+    function summarizeDraft(q: AskQuestionItem): string {
+      const d = drafts.get(q.id);
+      if (!d || !isDraftValidForQuestion(q, d)) return '';
+      if (d.selectedIds.includes(ASK_QUESTION_OTHER_ID)) return d.otherText.trim();
+      return d.selectedIds
+        .map((id) => q.options.find((o) => o.id === id)?.label ?? id)
+        .join(', ');
+    }
+
+    function syncSelection(): void {
+      questions.forEach((q, i) => {
+        const card = cards[i];
+        const picked = drafts.get(q.id)?.selectedIds ?? [];
+        q.options.forEach((opt, j) => {
+          const on = picked.includes(opt.id);
+          card.inputs[j].checked = on;
+          card.rows[j].classList.toggle('question-cards-option--selected', on);
+        });
+        const otherOn = picked.includes(ASK_QUESTION_OTHER_ID);
+        card.otherRow.classList.toggle('question-cards-option--selected', otherOn);
+        if (!otherOn && card.otherInput.value && document.activeElement !== card.otherInput) {
+          card.otherInput.value = '';
+        }
+
+        const tab = tabButtons[i];
+        const answer = summarizeDraft(q);
+        const current = i === cardIndex;
+        tab.textContent = answer || q.prompt;
+        tab.classList.toggle('question-cards-tab--answered', Boolean(answer));
+        tab.classList.toggle('question-cards-tab--current', current);
+        tab.setAttribute('aria-selected', String(current));
+        tab.tabIndex = current ? 0 : -1;
+      });
+      syncFooter();
+    }
+
+    function syncFooter(): void {
+      const q = questions[cardIndex];
+      const multiSelect = isAskQuestionMultiSelect(q);
+      const onLast = cardIndex === questions.length - 1;
+      btnNext.hidden = onLast;
+      btnSubmit.hidden = !onLast;
+      btnSubmit.textContent = multiQuestion ? 'Send answers' : 'Continue';
+      const keys = Math.min(9, q.options.length + 1);
+      const parts = [
+        multiSelect ? `1–${keys} to toggle · Enter to continue` : `1–${keys} to pick`,
+      ];
+      if (multiQuestion) parts.push('←→ to switch');
+      parts.push('Esc to cancel');
+      hints.textContent = parts.join(' · ');
+      validation.hidden = true;
+      hints.hidden = false;
+    }
+
+    function showValidation(message: string): void {
+      validation.textContent = message;
+      validation.hidden = false;
+      hints.hidden = true;
+    }
+
+    function showCard(): void {
+      cards.forEach((card, i) => {
+        const current = i === cardIndex;
+        card.root.classList.toggle('question-cards-card--current', current);
+        card.root.toggleAttribute('inert', !current);
+        card.root.setAttribute('aria-hidden', String(!current));
+      });
+      panel.setAttribute('aria-labelledby', cards[cardIndex].promptId);
+      syncSelection();
+    }
+
+    /** Focus the picked option on the current card, else its first option. */
+    function focusCardControl(): void {
+      const card = cards[cardIndex];
+      const picked = card.inputs.find((input) => input.checked);
+      if (picked) {
+        picked.focus();
+      } else if (card.otherRow.classList.contains('question-cards-option--selected')) {
+        card.otherInput.focus();
+      } else {
+        (card.inputs[0] ?? card.otherInput).focus();
+      }
+    }
+
+    function goToCard(next: number): void {
+      if (next < 0 || next >= questions.length || next === cardIndex) return;
+      cancelAutoAdvance();
+      const keepFocus = panel.contains(document.activeElement);
+      cardIndex = next;
+      showCard();
+      if (keepFocus) focusCardControl();
+    }
+
+    function submitAnswers(): void {
+      cancelAutoAdvance();
+      if (!areAllDraftsValid(questions, drafts)) {
+        const firstOpen = questions.findIndex((q) => !isDraftValidForQuestion(q, drafts.get(q.id)));
+        goToCard(firstOpen);
+        showValidation(multiQuestion ? 'Answer every question to send.' : 'Pick an answer first.');
+        return;
+      }
+      finish({ status: 'answered', answers: buildAnswerEntries(questions, drafts) });
+    }
+
+    /** Enter: move on from an answered card, or send from the last one. */
+    function confirmCurrentCard(): void {
+      const q = questions[cardIndex];
+      if (!isDraftValidForQuestion(q, drafts.get(q.id))) {
+        showValidation(isAskQuestionMultiSelect(q) ? 'Pick at least one answer.' : 'Pick an answer first.');
+        return;
+      }
+      if (cardIndex < questions.length - 1) goToCard(cardIndex + 1);
+      else submitAnswers();
+    }
+
     function tryAutoSubmitAfterSingleSelect(): void {
       if (questions.length !== 1) return;
       const only = questions[0];
@@ -650,7 +876,7 @@ export function showQuestionCardsModal(
     /**
      * Picking a preset answer on a single-choice card moves to the next card in the
      * batch (short delay so the selection is visible first). The last card stays put
-     * so the user can review before submitting.
+     * so the user can review before sending.
      */
     function advanceAfterSingleSelect(): void {
       if (questions.length === 1) {
@@ -658,215 +884,22 @@ export function showQuestionCardsModal(
         return;
       }
       const from = cardIndex;
-      if (from >= questions.length - 1) return;
       cancelAutoAdvance();
+      if (from >= questions.length - 1) {
+        if (areAllDraftsValid(questions, drafts) && panel.contains(document.activeElement)) {
+          btnSubmit.focus();
+        }
+        return;
+      }
       autoAdvanceTimer = setTimeout(() => {
         autoAdvanceTimer = null;
         if (settled || cardIndex !== from) return;
-        const keepFocus = panel.contains(document.activeElement);
-        cardIndex = from + 1;
-        showCard();
-        if (keepFocus) focusFirstPanelControl(panel);
+        goToCard(from + 1);
       }, AUTO_ADVANCE_DELAY_MS);
     }
 
-    function syncSubmitLabel(): void {
-      const singleMulti =
-        questions.length === 1 && isAskQuestionMultiSelect(questions[0]);
-      btnSubmit.textContent = singleMulti ? 'Continue' : 'Submit answers';
-    }
-
-    function syncNav(): void {
-      const last = questions.length - 1;
-      btnPrev.disabled = cardIndex <= 0;
-      btnNext.disabled = cardIndex >= last;
-      indicator.textContent = `${cardIndex + 1} / ${questions.length}`;
-      const onLast = cardIndex === last;
-      const allValid = areAllDraftsValid(questions, drafts);
-      const current = questions[cardIndex];
-      const multiSelect = isAskQuestionMultiSelect(current);
-      btnSubmit.hidden = !onLast;
-      btnSubmit.disabled = !allValid;
-      syncSubmitLabel();
-      if (onLast && !allValid) {
-        validation.textContent = multiSelect
-          ? 'Select at least one answer, then continue.'
-          : 'Answer every question to continue.';
-        validation.hidden = false;
-      } else {
-        validation.textContent = '';
-        validation.hidden = true;
-      }
-      hints.textContent = multiSelect
-        ? 'Select all that apply, then continue · Esc to cancel'
-        : 'Esc to cancel · Arrow keys to change card';
-    }
-
-    function renderQuestion(q: AskQuestionItem): void {
-      cardBody.replaceChildren();
-
-      const promptEl = document.createElement('h2');
-      promptEl.className = 'question-cards-prompt';
-      promptEl.id = `question-cards-prompt-${q.id}`;
-      promptEl.textContent = q.prompt;
-      panel.setAttribute('aria-labelledby', promptEl.id);
-      cardBody.appendChild(promptEl);
-
-      const list = document.createElement('div');
-      list.className = 'question-cards-options';
-      list.dataset.optionCount = String(q.options.length + 1);
-      list.setAttribute('role', isAskQuestionMultiSelect(q) ? 'group' : 'radiogroup');
-      list.setAttribute(
-        'aria-label',
-        isAskQuestionMultiSelect(q) ? 'Select one or more answers' : 'Select one answer',
-      );
-
-      const draft = getOrCreateDraft(drafts, q.id);
-      const groupName = `ask-q-${q.id}`;
-
-      for (const opt of q.options) {
-        const row = document.createElement('label');
-        row.className = 'question-cards-option';
-        const selected = draft.selectedIds.includes(opt.id);
-        if (selected) row.classList.add('question-cards-option--selected');
-
-        const input = document.createElement('input');
-        if (isAskQuestionMultiSelect(q)) {
-          input.type = 'checkbox';
-          input.checked = selected;
-          input.addEventListener('change', () => {
-            const d = getOrCreateDraft(drafts, q.id);
-            if (input.checked) {
-              d.selectedIds = d.selectedIds.filter((id) => id !== ASK_QUESTION_OTHER_ID);
-              if (!d.selectedIds.includes(opt.id)) d.selectedIds.push(opt.id);
-            } else {
-              d.selectedIds = d.selectedIds.filter((id) => id !== opt.id);
-            }
-            renderQuestion(q);
-            syncNav();
-          });
-        } else {
-          input.type = 'radio';
-          input.name = groupName;
-          input.value = opt.id;
-          input.checked = selected && !draft.selectedIds.includes(ASK_QUESTION_OTHER_ID);
-          input.addEventListener('change', () => {
-            const d = getOrCreateDraft(drafts, q.id);
-            d.selectedIds = [opt.id];
-            d.otherText = '';
-            renderQuestion(q);
-            syncNav();
-            advanceAfterSingleSelect();
-          });
-        }
-
-        const textWrap = document.createElement('span');
-        textWrap.className = 'question-cards-option-text';
-        const title = document.createElement('span');
-        title.className = 'question-cards-option-label';
-        title.textContent = opt.label;
-        textWrap.appendChild(title);
-        if (opt.description) {
-          const desc = document.createElement('span');
-          desc.className = 'question-cards-option-desc';
-          desc.textContent = opt.description;
-          textWrap.appendChild(desc);
-        }
-        row.append(input, textWrap);
-        list.appendChild(row);
-      }
-
-      const otherRow = document.createElement('label');
-      otherRow.className = 'question-cards-option question-cards-option--other';
-      const otherSelected = draft.selectedIds.includes(ASK_QUESTION_OTHER_ID);
-      if (otherSelected) otherRow.classList.add('question-cards-option--selected');
-
-      const otherInput = document.createElement('input');
-      if (isAskQuestionMultiSelect(q)) {
-        otherInput.type = 'checkbox';
-        otherInput.checked = otherSelected;
-        otherInput.addEventListener('change', () => {
-          const d = getOrCreateDraft(drafts, q.id);
-          if (otherInput.checked) {
-            d.selectedIds = [ASK_QUESTION_OTHER_ID];
-          } else {
-            d.selectedIds = [];
-            d.otherText = '';
-          }
-          renderQuestion(q);
-          syncNav();
-        });
-      } else {
-        otherInput.type = 'radio';
-        otherInput.name = groupName;
-        otherInput.value = ASK_QUESTION_OTHER_ID;
-        otherInput.checked = otherSelected;
-        otherInput.addEventListener('change', () => {
-          const d = getOrCreateDraft(drafts, q.id);
-          d.selectedIds = [ASK_QUESTION_OTHER_ID];
-          renderQuestion(q);
-          syncNav();
-        });
-      }
-
-      const otherTextWrap = document.createElement('span');
-      otherTextWrap.className = 'question-cards-option-text';
-      const otherLabel = document.createElement('span');
-      otherLabel.className = 'question-cards-option-label';
-      otherLabel.textContent = 'Other';
-      otherTextWrap.appendChild(otherLabel);
-
-      otherRow.append(otherInput, otherTextWrap);
-      list.appendChild(otherRow);
-
-      const otherFieldWrap = document.createElement('div');
-      otherFieldWrap.className = 'question-cards-other-field';
-      otherFieldWrap.hidden = !otherSelected;
-      const ta = document.createElement('textarea');
-      ta.className = 'question-cards-other-input';
-      ta.rows = 2;
-      ta.placeholder = 'Please specify…';
-      ta.value = draft.otherText;
-      ta.addEventListener('input', () => {
-        getOrCreateDraft(drafts, q.id).otherText = ta.value;
-        syncNav();
-      });
-      otherFieldWrap.appendChild(ta);
-      cardBody.appendChild(list);
-      cardBody.appendChild(otherFieldWrap);
-
-      if (otherSelected) {
-        requestAnimationFrame(() => ta.focus());
-      }
-    }
-
-    function showCard(): void {
-      renderQuestion(questions[cardIndex]);
-      syncNav();
-    }
-
-    btnPrev.addEventListener('click', () => {
-      cancelAutoAdvance();
-      if (cardIndex > 0) {
-        cardIndex -= 1;
-        showCard();
-      }
-    });
-    btnNext.addEventListener('click', () => {
-      cancelAutoAdvance();
-      if (cardIndex < questions.length - 1) {
-        cardIndex += 1;
-        showCard();
-      }
-    });
-
-    btnSubmit.addEventListener('click', () => {
-      cancelAutoAdvance();
-      if (!areAllDraftsValid(questions, drafts)) return;
-      const answers = buildAnswerEntries(questions, drafts);
-      finish({ status: 'answered', answers });
-    });
-
+    btnNext.addEventListener('click', () => goToCard(cardIndex + 1));
+    btnSubmit.addEventListener('click', submitAnswers);
     btnClose.addEventListener('click', () => finish({ status: 'cancelled', answers: [] }));
 
     const onDocKeyDown = (ev: KeyboardEvent): void => {
@@ -878,15 +911,44 @@ export function showQuestionCardsModal(
         finish({ status: 'cancelled', answers: [] });
         return;
       }
-      if (ev.key === 'ArrowLeft' && !isTypingInModal(panel, document.activeElement)) {
-        ev.preventDefault();
-        btnPrev.click();
+      if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
+      const active = document.activeElement;
+      const card = cards[cardIndex];
+      if (active === card.otherInput) {
+        if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+          ev.preventDefault();
+          confirmCurrentCard();
+        }
         return;
       }
-      if (ev.key === 'ArrowRight' && !isTypingInModal(panel, document.activeElement)) {
-        ev.preventDefault();
-        btnNext.click();
+      if (isTypingInModal(panel, active)) return;
+      if (/^[1-9]$/.test(ev.key)) {
+        const q = questions[cardIndex];
+        const n = Number(ev.key);
+        if (n <= q.options.length) {
+          ev.preventDefault();
+          const input = card.inputs[n - 1];
+          input.focus();
+          toggleOption(q, q.options[n - 1].id, isAskQuestionMultiSelect(q) ? !input.checked : true);
+        } else if (n === q.options.length + 1) {
+          ev.preventDefault();
+          card.otherInput.focus();
+        }
         return;
+      }
+      if (ev.key === 'Enter' && active?.tagName !== 'BUTTON') {
+        ev.preventDefault();
+        confirmCurrentCard();
+        return;
+      }
+      if (ev.key === 'ArrowLeft' && multiQuestion) {
+        ev.preventDefault();
+        goToCard(cardIndex - 1);
+        return;
+      }
+      if (ev.key === 'ArrowRight' && multiQuestion) {
+        ev.preventDefault();
+        goToCard(cardIndex + 1);
       }
     };
 
@@ -899,11 +961,7 @@ export function showQuestionCardsModal(
       const modal = modalsByChatId.get(chatIdForAbort);
       if (!modal || !isModalForeground(modal)) return;
       host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      if (questions.length === 1) {
-        focusFirstPanelControl(panel);
-      } else {
-        btnPrev.focus();
-      }
+      focusCardControl();
     });
   });
 }

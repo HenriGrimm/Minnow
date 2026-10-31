@@ -55,15 +55,17 @@ test('shows the number to match, preselects the known device for a Home Screen a
   for (let i = 0; i < 100 && !document.querySelector('.device-request'); i += 1) {
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  const cards = document.querySelectorAll('.device-request');
+  const cards = [...document.querySelectorAll('.mn-toast')].filter((card) => card.querySelector('.device-request'));
   assert.equal(cards.length, 1, 'one card per request, even if initialized twice');
-  assert.match(cards[0].textContent!, /iPhone wants to connect/);
+  assert.match(cards[0].querySelector('.mn-toast__title')!.textContent!, /iPhone wants to connect/);
+  assert.equal(cards[0].querySelector('.mn-toast__tag')!.textContent, 'Needs you');
   assert.equal(cards[0].querySelector('.device-request__code')!.textContent, '4 8 2 1');
   const select = cards[0].querySelector<HTMLSelectElement>('select')!;
   assert.equal(select.value, 'a'.repeat(24));
 
-  [...cards[0].querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Approve')!.click();
+  [...cards[0].querySelectorAll<HTMLButtonElement>('.mn-toast__action')].find((b) => b.textContent === 'Approve')!.click();
   await new Promise<void>((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(posts, [{ url: `/api/auth/requests/${request.id}/approve`, body: { attachToDeviceId: 'a'.repeat(24) } }]);
   assert.equal(document.querySelectorAll('.device-request').length, 0);
+  assert.match(document.querySelector('.mn-toast__message')!.textContent!, /iPhone connected/);
 });

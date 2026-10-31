@@ -9,6 +9,7 @@ const {
   memorySavedPayloadFromTool,
   showMemorySavedToast,
 } = await import('../../src/ui/memory-saved-toast.ts');
+const { resetToastsForTests } = await import('../../src/ui/toast.ts');
 
 function setupDom() {
   const window = new Window();
@@ -32,57 +33,20 @@ describe('memory saved toast', () => {
 
   afterEach(() => {
     dismissAllMemorySavedToasts();
+    resetToastsForTests();
     document.body.replaceChildren();
   });
 
 
-  test('keeps preview markers through exit and queued card transitions', async () => {
-    const payload = { title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } };
-    const dismissFirst = showMemorySavedToast(payload);
-    showMemorySavedToast({ ...payload, title: 'Next' });
-    const first = document.querySelector('.memory-saved-toast');
-    const assertMarked = (card) => {
-      assert.equal(card.isConnected, true);
-      assert.equal(card.hidden, false);
-      assert.equal(card.classList.contains('mn-occludes-preview'), true);
-      assert.equal(card.getAttribute('data-occluder-kind'), 'notification');
-    };
-    assertMarked(first);
-    assert.equal(first.classList.contains('memory-saved-toast--visible'), true);
-    dismissFirst();
-    first.querySelector('.memory-saved-toast__progress-fill').dispatchEvent(new window.Event('transitionend', { bubbles: true }));
-    assert.equal(document.querySelectorAll('.memory-saved-toast').length, 1, 'child progress transition must not end card exit');
-    assert.equal(first.classList.contains('memory-saved-toast--visible'), false);
-    assertMarked(first);
-    await wait(190);
-    assert.equal(document.querySelectorAll('.memory-saved-toast').length, 2);
-    const next = document.querySelector('.memory-saved-toast--visible');
-    assert.notEqual(next, first);
-    assertMarked(first);
-    assertMarked(next);
-    first.dispatchEvent(new window.Event('transitionend'));
-    assert.equal(first.isConnected, false);
-    assertMarked(next);
-    await wait(80);
-    assertMarked(next);
-    assert.equal(document.querySelectorAll('.memory-saved-toast').length, 1, 'fallback removal cannot remove the next card');
-    dismissAllMemorySavedToasts();
-    assert.equal(next.isConnected, false);
-    assert.equal(document.querySelector('.memory-saved-toast.mn-occludes-preview'), null);
-  });
-
-  test('teardown removes exiting cards and preserves independent preview holds', async () => {
+  test('cards occlude the preview and teardown leaves independent holds alone', () => {
     holdPreviewGuestHidden();
     try {
-      const dismiss = showMemorySavedToast({ title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } });
-      const card = document.querySelector('.memory-saved-toast');
-      dismiss();
+      showMemorySavedToast({ title: 'Note', description: 'Saved.', target: { kind: 'page', relPath: 'note.md' } });
+      const card = document.querySelector('.mn-toast');
+      assert.equal(card.classList.contains('mn-occludes-preview'), true);
+      assert.equal(card.getAttribute('data-occluder-kind'), 'notification');
       dismissAllMemorySavedToasts();
       assert.equal(card.isConnected, false);
-      assert.equal(document.querySelector('.memory-saved-toast'), null);
-      assert.equal(isPreviewHideHeld(), true);
-      await wait(270);
-      assert.equal(document.querySelector('.memory-saved-toast'), null);
       assert.equal(isPreviewHideHeld(), true);
     } finally {
       releasePreviewGuestHidden();
@@ -90,28 +54,25 @@ describe('memory saved toast', () => {
     assert.equal(isPreviewHideHeld(), false);
   });
 
-  test('renders the saved memory title, description, actions, and progress', () => {
+  test('renders the saved memory on the shared card with a Reject action', () => {
     showMemorySavedToast({
       title: 'Editor preference',
       description: 'Use tabs for indentation.',
       target: { kind: 'memory', id: '11111111-1111-1111-1111-111111111111' },
     });
 
-    const card = document.querySelector('.memory-saved-toast');
+    const card = document.querySelector('.mn-toast');
     assert.ok(card);
-    assert.equal(card.getAttribute('role'), 'status');
-    assert.equal(card.querySelector('.memory-saved-toast__title')?.textContent, 'Editor preference');
-    assert.equal(
-      card.querySelector('.memory-saved-toast__description')?.textContent,
-      'Use tabs for indentation.',
-    );
-    assert.equal(card.querySelector('.memory-saved-toast__button--reject')?.textContent, 'Reject');
-    assert.equal(card.querySelector('.memory-saved-toast__button--open')?.textContent, 'Open memory');
-    const progress = Number(card.style.getPropertyValue('--memory-saved-progress'));
-    assert.ok(progress <= 1 && progress > 0.99);
+    assert.equal(card.querySelector('[role="status"]')?.getAttribute('aria-live'), 'polite');
+    assert.equal(card.querySelector('.mn-toast__source')?.textContent, 'Brain');
+    assert.equal(card.querySelector('.mn-toast__title')?.textContent, 'Editor preference');
+    assert.equal(card.querySelector('.mn-toast__message')?.textContent, 'Use tabs for indentation.');
+    assert.equal(card.querySelector('.mn-toast__action--danger')?.textContent, 'Reject');
+    assert.match(card.querySelector('.mn-toast__open')?.getAttribute('aria-label') ?? '', /Open memory/);
+    assert.ok(card.querySelector('.mn-toast__timer-fill'));
   });
 
-  test('opens the saved memory through the injected action', async () => {
+  test('clicking the card opens the saved memory through the injected action', async () => {
     let openedTitle = '';
     showMemorySavedToast(
       {
@@ -126,10 +87,11 @@ describe('memory saved toast', () => {
       },
     );
 
-    document.querySelector('.memory-saved-toast__button--open')?.click();
+    document.querySelector('.mn-toast__open')?.click();
     await wait(0);
 
     assert.equal(openedTitle, 'Project facts');
+    assert.equal(document.querySelector('.mn-toast'), null);
   });
 
   test('snapshots the displayed payload and action target', async () => {
@@ -148,13 +110,10 @@ describe('memory saved toast', () => {
     payload.title = 'Changed title';
     payload.description = 'Changed description.';
     payload.target.relPath = 'facts/changed.md';
-    document.querySelector('.memory-saved-toast__button--open')?.click();
+    assert.equal(document.querySelector('.mn-toast__title')?.textContent, 'Original title');
+    document.querySelector('.mn-toast__open')?.click();
     await wait(0);
 
-    assert.equal(
-      document.querySelector('.memory-saved-toast__title')?.textContent,
-      'Original title',
-    );
     assert.deepEqual(openedPayload, {
       title: 'Original title',
       description: 'Original description.',
@@ -162,7 +121,7 @@ describe('memory saved toast', () => {
     });
   });
 
-  test('rejects the saved memory through the injected action', async () => {
+  test('rejects the saved memory and confirms in place', async () => {
     let rejectedId = '';
     showMemorySavedToast(
       {
@@ -178,11 +137,14 @@ describe('memory saved toast', () => {
       },
     );
 
-    document.querySelector('.memory-saved-toast__button--reject')?.click();
+    document.querySelector('.mn-toast__action--danger')?.click();
     await wait(0);
 
     assert.equal(rejectedId, '22222222-2222-2222-2222-222222222222');
-    assert.equal(document.querySelector('.memory-saved-toast--visible'), null);
+    const cards = document.querySelectorAll('.mn-toast');
+    assert.equal(cards.length, 1);
+    assert.equal(cards[0].querySelector('.mn-toast__message')?.textContent, 'Memory rejected');
+    assert.equal(cards[0].querySelector('.mn-toast__action'), null);
   });
 
   test('keeps a failed rejection visible with a useful error', async () => {
@@ -195,20 +157,17 @@ describe('memory saved toast', () => {
       { onReject: () => false },
     );
 
-    document.querySelector('.memory-saved-toast__button--reject')?.click();
+    document.querySelector('.mn-toast__action--danger')?.click();
     await wait(0);
 
     assert.equal(
-      document.querySelector('.memory-saved-toast__error')?.textContent,
+      document.querySelector('.mn-toast__error')?.textContent,
       'Could not reject this memory. Try again.',
     );
-    assert.equal(
-      document.querySelector('.memory-saved-toast__button--reject')?.disabled,
-      false,
-    );
+    assert.equal(document.querySelector('.mn-toast__action--danger')?.disabled, false);
   });
 
-  test('queues concurrent saves and shows each card in order', async () => {
+  test('concurrent saves stack as separate cards', () => {
     const dismissFirst = showMemorySavedToast({
       title: 'First memory',
       description: 'First description.',
@@ -220,18 +179,10 @@ describe('memory saved toast', () => {
       target: { kind: 'page', relPath: 'facts/second.md' },
     });
 
-    assert.equal(
-      document.querySelector('.memory-saved-toast__title')?.textContent,
-      'First memory',
-    );
-
+    const titles = () => [...document.querySelectorAll('.mn-toast__title')].map((node) => node.textContent);
+    assert.deepEqual(titles(), ['First memory', 'Second memory']);
     dismissFirst();
-    await wait(200);
-
-    assert.equal(
-      document.querySelector('.memory-saved-toast--visible .memory-saved-toast__title')?.textContent,
-      'Second memory',
-    );
+    assert.deepEqual(titles(), ['Second memory']);
   });
 
   test('dismisses after the configured grace period', async () => {
@@ -246,7 +197,7 @@ describe('memory saved toast', () => {
 
     await wait(80);
 
-    assert.equal(document.querySelector('.memory-saved-toast--visible'), null);
+    assert.equal(document.querySelector('.mn-toast'), null);
   });
 
   test('parses successful save_memory and brain_write_page results', () => {

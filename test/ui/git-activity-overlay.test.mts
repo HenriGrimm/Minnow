@@ -20,6 +20,8 @@ describe('git activity overlay', () => {
       '../../src/ui/git-activity-overlay.ts'
     );
     resetGitActivityOverlayForTests();
+    const { resetToastsForTests } = await import('../../src/ui/toast.ts');
+    resetToastsForTests();
     document.body.replaceChildren();
   });
 
@@ -51,7 +53,7 @@ describe('git activity overlay', () => {
     assert.equal(card.classList.contains('mn-git-activity--error'), false);
   });
 
-  it('opens a parsed error popover with Send to chat', async () => {
+  it('shows a parsed error card with Send to chat and details', async () => {
     setupDom();
     const { showGitErrorPopover } = await import('../../src/ui/git-activity-overlay.ts');
     showGitErrorPopover({
@@ -60,17 +62,24 @@ describe('git activity overlay', () => {
       ctx: { branch: 'main' },
     });
 
-    const card = document.querySelector('.mn-git-activity.mn-git-activity--error');
+    const card = document.querySelector('.mn-toast.mn-toast--error');
     assert.ok(card);
-    assert.equal(card.getAttribute('role'), 'alertdialog');
-    assert.equal(card.querySelector('.mn-git-activity__title')?.textContent, 'Push rejected');
-    assert.match(
-      card.querySelector('.mn-git-activity__summary')?.textContent ?? '',
-      /Pull or rebase/,
-    );
-    const send = card.querySelector('.mn-git-activity__button--primary');
+    assert.equal(card.querySelector('[role="alert"]')?.getAttribute('aria-live'), 'assertive');
+    assert.equal(card.querySelector('.mn-toast__source')?.textContent, 'Source Control');
+    assert.equal(card.querySelector('.mn-toast__context')?.textContent, 'push · main');
+    assert.equal(card.querySelector('.mn-toast__title')?.textContent, 'Push rejected');
+    assert.match(card.querySelector('.mn-toast__message')?.textContent ?? '', /Pull or rebase/);
+    const send = card.querySelector('.mn-toast__action--primary');
     assert.ok(send);
     assert.equal(send.textContent, 'Send to chat');
-    assert.ok(card.querySelector('.mn-git-activity__pre')?.textContent?.includes('non-fast-forward'));
+    assert.ok(card.querySelector('.mn-toast__detail')?.textContent?.includes('non-fast-forward'));
+    assert.equal(document.querySelector('.mn-git-activity--visible'), null, 'progress card is gone');
+  });
+
+  it('ignores cancelled operations', async () => {
+    setupDom();
+    const { showGitErrorPopover } = await import('../../src/ui/git-activity-overlay.ts');
+    showGitErrorPopover({ error: 'cancelled' });
+    assert.equal(document.querySelector('.mn-toast'), null);
   });
 });

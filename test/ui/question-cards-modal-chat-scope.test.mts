@@ -291,7 +291,10 @@ describe('question-cards-modal chat scope', () => {
 
     assert.match(host?.textContent ?? '', /Question from chat A/);
     assert.doesNotMatch(host?.textContent ?? '', /Question from chat B/);
-    assert.match(host?.textContent ?? '', /1 \/ 2/);
+    assert.equal(
+      host?.querySelector<HTMLElement>('.question-cards-tab--current')?.title,
+      'Question from chat A',
+    );
 
     const { forceCloseAskQuestionModalForChat } = await import(
       '../../src/ui/question-cards-modal.ts'
