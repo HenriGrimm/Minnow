@@ -382,6 +382,18 @@
   font-size: 11px;
   color: var(--mn-fg-muted);
 }
+.sub-agent-overlay__chip-model {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--mn-fg-muted);
+}
+.sub-agent-overlay__model {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .sub-agent-overlay__status {
   display: inline-flex;
   align-items: center;

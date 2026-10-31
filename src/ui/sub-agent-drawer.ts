@@ -84,6 +84,16 @@ function taskTitle(task: string): string {
   const first = task.split('\n').map((line) => line.replace(/^\s*(?:#+|[-*>]|\d+[.)])\s*/, '').trim()).find(Boolean) || 'Untitled assignment';
   return first.length > 110 ? `${first.slice(0, 110)}…` : first;
 }
+function modelLabel(run: AnyRun): string {
+  return run.resolvedModel?.id?.trim() || run.modelId?.trim() || 'Model not recorded';
+}
+function modelMeta(run: AnyRun, className: string): HTMLElement {
+  const label = modelLabel(run);
+  const node = el('span', className, `Model: ${label}`);
+  const provider = run.resolvedModel?.id?.trim() ? run.resolvedModel.providerId : run.providerId;
+  node.title = provider ? `${label} · ${provider}` : label;
+  return node;
+}
 function badge(run: AnyRun): HTMLElement {
   const { label, tone, icon } = statusMeta(run.status);
   const span = document.createElement('span');
@@ -130,7 +140,7 @@ export function resolveOutcome(run: AnyRun, _live = false): SubAgentStructuredOu
 
 function renderSwitcher(state: OverlayState): void {
   const runs = chatRuns(state.chatId);
-  const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.task])]);
+  const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.task, run.modelId, run.providerId, run.resolvedModel])]);
   if (key === state.switcherKey) return;
   state.switcherKey = key;
   const focusedRun = state.switcher.contains(document.activeElement)
@@ -145,12 +155,12 @@ function renderSwitcher(state: OverlayState): void {
     button.dataset.runId = run.runId;
     button.setAttribute('aria-pressed', String(run.runId === state.activeRunId));
     button.title = run.task;
-    button.append(el('span', 'sub-agent-overlay__chip-label', taskTitle(run.task)), el('span', 'sub-agent-overlay__chip-role', agentLabel(run.type)), badge(run));
+    button.append(el('span', 'sub-agent-overlay__chip-label', taskTitle(run.task)), el('span', 'sub-agent-overlay__chip-role', agentLabel(run.type)), modelMeta(run, 'sub-agent-overlay__chip-model'), badge(run));
     button.addEventListener('click', () => setActiveRun(run.runId));
     state.switcher.appendChild(button);
     const option = document.createElement('option');
     option.value = run.runId;
-    option.textContent = `${taskTitle(run.task)} · ${statusMeta(run.status).label}`;
+    option.textContent = `${taskTitle(run.task)} · ${modelLabel(run)} · ${statusMeta(run.status).label}`;
     option.selected = run.runId === state.activeRunId;
     state.mobileSelect.appendChild(option);
   }
@@ -268,7 +278,7 @@ function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'st
   state.title.textContent = taskTitle(run.task);
   state.title.title = run.task;
   const duration = run.startedAt && run.endedAt ? formatWorkDuration(Date.parse(run.endedAt) - Date.parse(run.startedAt)) : '';
-  state.meta.replaceChildren(badge(run), el('span', '', agentLabel(run.type)));
+  state.meta.replaceChildren(badge(run), el('span', '', agentLabel(run.type)), modelMeta(run, 'sub-agent-overlay__model'));
   if (duration) state.meta.appendChild(el('span', '', duration));
   if (run.toolTurns) state.meta.appendChild(el('span', '', `${run.toolTurns} tool ${run.toolTurns === 1 ? 'call' : 'calls'}`));
   state.promptText.textContent = run.task || 'No assignment was recorded.';
