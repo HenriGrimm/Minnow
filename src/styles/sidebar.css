@@ -221,7 +221,8 @@
   transition: background 0.12s var(--ease-out), outline-color 0.12s var(--ease-out);
 }
 
-.chat-group-header--drop-target {
+.chat-group-header--drop-target,
+.chat-item-row.chat-item-row--drop-target {
   background: var(--mn-accent-soft);
   outline: 1px dashed var(--mn-accent);
   outline-offset: -1px;

@@ -2,6 +2,7 @@ import { showToast } from '../ui/toast';
 import { chatReadOnlyReason } from '../state/chat-relationships';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import type { Attachment } from '../attachments/types';
+import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import {
   getAttachmentEpoch,
   clearAttachments,
@@ -351,8 +352,8 @@ export async function sendMessageWithTools(
     try {
       if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
       const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
-      await sendRemoteChatCommand(chat.id, action, { text: rawTextEarly,
-        attachments: attachments.filter(attachment => attachment.kind !== 'error') });
+      await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(rawTextEarly, attachments),
+        attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
       // Clear only the draft that was actually accepted; keep text typed during delivery.
       if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
         clearComposerAfterSend(chat, input);
@@ -388,15 +389,17 @@ export async function sendMessageWithTools(
     return;
   }
   if (isChatTurnInProgress(chat.id)) {
-    if (!rawTextEarly) return;
+    const followupText = withComposerChatReferences(rawTextEarly);
+    if (!followupText.trim()) return;
     const pendingSteer = getPendingAttachments();
-    const pendingOk = pendingSteer.filter((a) => a.kind !== 'error');
+    const pendingOk = pendingSteer.filter((a) => a.kind !== 'error' && a.kind !== 'chatRef');
     if (pendingOk.length > 0) {
       setStatus('err', 'Follow-ups are text only — wait for this turn to finish for attachments');
       return;
     }
     const queue = composer?.followupDelivery === 'queue' || Boolean(parseCompactSlashInput(rawTextEarly));
-    if ((queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, rawTextEarly)) {
+    if ((queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, followupText)) {
+      clearComposerChatReferences();
       clearComposerAfterSend(chat, input);
       if (parseCompactSlashInput(rawTextEarly)) showToast('Compaction queued for after this reply');
       refreshComposerStreamingAffordance();

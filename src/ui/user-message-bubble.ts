@@ -17,9 +17,10 @@ import { parseSkillTagFromHistory } from '../skills/history-content';
 import { appendHighlightedSkillText, restoreLeadingSkillToken } from '../skills/skill-chip';
 import { createCodeRefLinkButton } from './code-ref-link';
 import { linkifyIssueMentions } from './issue-mention-link';
+import { linkifyChatReferences } from './chat-reference-chip';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { hardenMarkdownAnchors } from '../markdown/links';
+import { hardenMarkdownAnchors, initMarkdownLinkRouting } from '../markdown/links';
 import { displayIssueAttachmentSrc } from '../state/issue-attachments-api';
 
 /** Optional live attachments when the bubble is painted at send time. */
@@ -298,6 +299,8 @@ export function renderUserMessageBubble(
     const textEl = document.createElement('div');
     textEl.className = 'user-msg-text';
     appendHighlightedSkillText(textEl, parsed.text, extraSkillIds);
+    linkifyChatReferences(textEl);
+    initMarkdownLinkRouting();
     linkifyIssueMentions(textEl, parsed.issueRefIds);
     bubble.appendChild(textEl);
   }

@@ -13,6 +13,7 @@ import type { Chat } from '../types';
 import { clearComposerInput, getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
 import { clearAttachments } from '../attachments/store';
+import { attachChatReferences, clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 import { isPairedDevice } from '../api/session-token';
 
@@ -148,7 +149,7 @@ export function persistComposerDraftForChatId(chatId: string): boolean {
   if (!chat) return false;
   cancelScheduledDraftInput();
   const input = getActiveComposerSurface().inputEl;
-  const text = input ? composerPromptHistoryDraft(input, chatId) : '';
+  const text = input ? withComposerChatReferences(composerPromptHistoryDraft(input, chatId)) : '';
   const changed = persistComposerDraftOnChat(chat, text);
   if (draftSaveChatId === chatId || changed || text.trim()) {
     flushComposerDraftSessionSave(chatId);
@@ -162,6 +163,8 @@ export function applyComposerDraftForChat(chat: Chat): void {
   if (!input) return;
   draftRestoreSuspended = true;
   input.value = isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft ?? '';
+  clearComposerChatReferences();
+  input.value = attachChatReferences(input.value) ?? input.value;
   resetComposerPromptHistory(chat.id);
   autoResize(input);
   draftRestoreSuspended = false;
@@ -177,7 +180,7 @@ export function handleComposerDraftInput(): void {
   if (!chat) return;
 
   const input = getActiveComposerSurface().inputEl;
-  const text = input ? composerPromptHistoryDraft(input) : '';
+  const text = input ? withComposerChatReferences(composerPromptHistoryDraft(input)) : '';
   const visibilityChanged = persistComposerDraftOnChat(chat, text);
   if (isPairedDevice()) return;
   if (!visibilityChanged && !hasComposerDraft(chat)) {

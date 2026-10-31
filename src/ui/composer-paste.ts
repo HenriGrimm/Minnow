@@ -1,4 +1,15 @@
 import { addAttachments } from '../attachments/store';
+import { attachChatReferences } from '../attachments/chat-ref';
+
+/** Pasted conversation links become removable chips in the existing attachment row. */
+export function pasteChatReferences(input: HTMLTextAreaElement, text: string): boolean {
+  if (input.disabled || input.readOnly) return false;
+  const remaining = attachChatReferences(text);
+  if (remaining === null) return false;
+  input.setRangeText(remaining, input.selectionStart, input.selectionEnd, 'end');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
 
 /** Clipboard images are nameless blobs; give them a stable, sortable filename. */
 function nameForPastedImage(file: File, index: number): string {
@@ -62,6 +73,10 @@ function onComposerPaste(event: ClipboardEvent): void {
   const input = event.target instanceof HTMLTextAreaElement ? event.target : (event.target as HTMLElement).closest('textarea');
   if (input?.disabled || input?.readOnly) return;
   const data = event.clipboardData;
+  if (input && data && pasteChatReferences(input, data.getData('text/plain'))) {
+    event.preventDefault();
+    return;
+  }
   if (!pasteIsImageOnly(data)) return;
   const files = imageFilesFromClipboard(data);
   if (!files.length) return;

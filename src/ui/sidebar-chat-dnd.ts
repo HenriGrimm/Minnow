@@ -3,10 +3,14 @@ import { assignChatToGroup } from '../state/chat-groups';
 import { sessionState } from '../state/sessions';
 import { getWorkspacePath } from '../state/workspace';
 import { renderSidebar } from './sidebar';
+import { chatReadOnlyReason } from '../state/chat-relationships';
+import { applyChatReferenceDrop, hasChatDrag } from './chat-reference-drop';
+import { showToast } from './toast';
 
 import { CHAT_DRAG_MIME } from '../attachments/chat-drag';
 const DROP_TARGET_CLASS = 'chat-group-header--drop-target';
 const DRAGGING_ROW_CLASS = 'chat-item-row--dragging';
+const LINK_TARGET_CLASS = 'chat-item-row--drop-target';
 
 let listBound: HTMLElement | null = null;
 /** Active drag id (dragover cannot read getData in most browsers). */
@@ -35,8 +39,8 @@ function chatRowFromTarget(target: EventTarget | null): HTMLElement | null {
 }
 
 function clearDropHighlight(host: HTMLElement): void {
-  for (const el of host.querySelectorAll(`.${DROP_TARGET_CLASS}`)) {
-    el.classList.remove(DROP_TARGET_CLASS);
+  for (const el of host.querySelectorAll(`.${DROP_TARGET_CLASS}, .${LINK_TARGET_CLASS}`)) {
+    el.classList.remove(DROP_TARGET_CLASS, LINK_TARGET_CLASS);
   }
 }
 
@@ -67,7 +71,7 @@ function bindChatList(host: HTMLElement): void {
       row.classList.add(DRAGGING_ROW_CLASS);
       const transfer = event.dataTransfer;
       if (!transfer) return;
-      transfer.effectAllowed = 'move';
+      transfer.effectAllowed = 'linkMove';
       transfer.setData(CHAT_DRAG_MIME, chatId);
       transfer.setData('text/plain', chatId);
     },
@@ -91,6 +95,15 @@ function bindChatList(host: HTMLElement): void {
     if (!chatId) return;
 
     const header = groupHeaderFromTarget(event.target);
+    clearDropHighlight(host);
+    const row = chatRowFromTarget(event.target);
+    const target = sessionState?.chats.find(chat => chat.id === row?.dataset.chatId);
+    if (row && target && target.id !== chatId && !chatReadOnlyReason(target)) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'link';
+      row.classList.add(LINK_TARGET_CLASS);
+      return;
+    }
     if (!header?.dataset.groupId) return;
 
     event.preventDefault();
@@ -102,15 +115,25 @@ function bindChatList(host: HTMLElement): void {
   });
 
   host.addEventListener('dragleave', (event) => {
-    const header = groupHeaderFromTarget(event.target);
+    const header = groupHeaderFromTarget(event.target) ?? chatRowFromTarget(event.target);
     if (!header) return;
     const related = event.relatedTarget;
     if (related instanceof Node && header.contains(related)) return;
-    header.classList.remove(DROP_TARGET_CLASS);
+    header.classList.remove(DROP_TARGET_CLASS, LINK_TARGET_CLASS);
   });
 
   host.addEventListener('drop', (event) => {
     clearDropHighlight(host);
+    const row = chatRowFromTarget(event.target);
+    if (row && hasChatDrag(event.dataTransfer)) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (applyChatReferenceDrop(event.dataTransfer, row.dataset.chatId)) {
+        renderSidebar();
+        showToast('Chat link added to draft');
+      }
+      return;
+    }
     const header = groupHeaderFromTarget(event.target);
     const groupId = header?.dataset.groupId?.trim();
     if (!groupId) return;
@@ -142,7 +165,7 @@ function bindChatList(host: HTMLElement): void {
   });
 }
 
-/** Wire group drop targets on `#chatList` (idempotent). */
+/** Wire group and chat-reference drop targets on `#chatList` (idempotent). */
 export function wireSidebarChatDragDrop(): void {
   const host = document.getElementById('chatList');
   if (!host || host === listBound) return;

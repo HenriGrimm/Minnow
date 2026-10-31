@@ -2,6 +2,7 @@ import { showToast } from './toast';
 import { shouldRelayChat } from '../chat/remote-chat-client';
 import { streaming } from '../app-state';
 import { getPendingAttachments } from '../attachments/store';
+import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { enqueueSteerMessage } from '../chat/steer-message';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
@@ -120,17 +121,17 @@ export function syncComposerReadOnlyState(): boolean {
 
 /** True when Send/Enter should run (send, steer, or stop) on the active composer. */
 export function shouldAllowComposerPrimaryAction(inputText: string): boolean {
-  return Boolean(inputText.trim()) || isActiveChatStreaming();
+  return Boolean(withComposerChatReferences(inputText).trim()) || isActiveChatStreaming();
 }
 
 /** Empty Enter is never Stop; attachment-only sends are available when idle. */
 export function shouldSubmitComposerOnEnter(inputText: string): boolean {
-  if (inputText.trim()) return true;
+  if (withComposerChatReferences(inputText).trim()) return true;
   return getPendingAttachments().length > 0 && !(sessionState && isChatTurnInProgress(getActiveChat().id));
 }
 
 function composerInputHasText(): boolean {
-  return Boolean(getActiveComposerSurface().inputEl?.value.trim());
+  return Boolean(withComposerChatReferences(getActiveComposerSurface().inputEl?.value ?? '').trim());
 }
 
 // ── Streaming ────────────────────────────────────────────────────────────────
@@ -265,7 +266,7 @@ export function syncComposerFromStreamingState(): void {
 export function submitComposerFollowup(delivery: 'steer' | 'queue' = 'steer'): void {
   if (sessionState && chatReadOnlyReason(getActiveChat())) { showToast(chatReadOnlyReason(getActiveChat())!); return; }
   const input = getActiveComposerSurface().inputEl;
-  const text = input?.value.trim() ?? '';
+  const text = withComposerChatReferences(input?.value ?? '').trim();
   if (!text) return;
   const chat = getActiveChat();
   if (shouldRelayChat(chat.id) || !isChatTurnInProgress(chat.id) || isPluginSlashCommand(text) || /^\/followup(?:\s|$)/i.test(text)) {
@@ -277,12 +278,13 @@ export function submitComposerFollowup(delivery: 'steer' | 'queue' = 'steer'): v
     showToast('Still reading attached files. Wait for them to finish or remove them.');
     return;
   }
-  if (attachments.some(a => a.kind !== 'error')) {
+  if (attachments.some(a => a.kind !== 'error' && a.kind !== 'chatRef')) {
     showToast('Wait for this reply to finish before sending attachments. Your draft is kept.');
     return;
   }
   const queue = delivery === 'queue' || Boolean(parseCompactSlashInput(text));
   if (!(queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, text)) return;
+  clearComposerChatReferences();
   clearComposerAfterSend(chat, input);
   if (parseCompactSlashInput(text)) showToast('Compaction queued for after this reply');
   refreshComposerStreamingAffordance();

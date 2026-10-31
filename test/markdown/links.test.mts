@@ -40,6 +40,27 @@ describe('markdown links', () => {
     assert.equal(githubHeadingSlug('  '), 'section');
   });
 
+  test('copied chat URLs route internally and decorate as compact references', () => {
+    const url = 'http://localhost:9473/#/app/code/chat?chatId=chat-123';
+    assert.deepEqual(classifyMarkdownHref(url, null), { type: 'chat', chatId: 'chat-123' });
+    assert.deepEqual(classifyMarkdownHref(url.replace('9473', '9474'), null), { type: 'chat', chatId: 'chat-123' });
+    for (const external of [url.replace('localhost', 'example.com'), url.replace('/#', '/other#')]) {
+      assert.equal(classifyMarkdownHref(external, null).type, 'http');
+    }
+    assert.equal(classifyMarkdownHref(`${url}&chatId=other`, null).type, 'http');
+    const root = document.createElement('div');
+    root.innerHTML = `<a href="${url}">${url}</a><pre><code>${url}</code></pre>`;
+    decorateRenderedMarkdown(root);
+    decorateRenderedMarkdown(root);
+    const chip = root.querySelector('a')!;
+    assert.equal(chip.className, 'chat-reference-chip');
+    assert.equal(chip.getAttribute('href'), '#/app/code/chat?chatId=chat-123');
+    assert.equal(chip.hasAttribute('target'), false);
+    assert.match(chip.textContent ?? '', /Chat · chat-123/);
+    assert.equal(root.querySelectorAll('.chat-reference-chip__title').length, 1);
+    assert.equal(root.querySelector('code')!.textContent, url);
+  });
+
   test('recognizes inline filenames and line ranges without linking expressions or URLs', () => {
     for (const [text, href] of [
       ['PRODUCT.md:20', 'PRODUCT.md#L20'],

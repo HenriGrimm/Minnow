@@ -10,7 +10,7 @@ import { createChatPolicy, intersectChatPolicies } from '../../server/chats/poli
 import { createChatCaller, createChatProjectRegistry, resolveProjectScope } from '../../server/chats/caller.js';
 import { createChatTools, installChatTools } from '../../server/chats/tools.js';
 import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
-import { CHAT_READ_MAX_BYTES } from '../../server/chats/tool-reads.js';
+import { CHAT_READ_MAX_BYTES, createChatToolReads } from '../../server/chats/tool-reads.js';
 import { BUILT_IN_TOOLS } from '../../server/tools/builtin-catalog.js';
 import { normalizeToolConfig } from '../../server/config/validators.js';
 import { buildAgentCliToolCatalog } from '../../server/generations/agent-cli/bridge.js';
@@ -32,6 +32,9 @@ async function fixture(run, extra = {}) {
     fileWriteScope: extra.mode === 'plan' ? 'plans' : 'workspace', capabilities: ['chat.read', 'chat.send', 'chat.stop', 'execution.host'] });
   let live = initial, valid = true;
   const policies = new Map();
+  for (let n = 0; n < (extra.foreignChats ?? 0); n++) {
+    repository.createChat({ id: 'unrelated-' + n, name: 'Unrelated chat', workspacePath: foreign, modeId: 'build' });
+  }
   for (const id of ['source', 'target', 'other', 'foreign-chat']) {
     repository.createChat({ id, name: id === 'target' ? 'Target chat' : id, workspacePath: id === 'foreign-chat' ? foreign : root,
       providerId: pair.providerId, modelId: pair.modelId, modeId: initial.modeId });
@@ -140,6 +143,36 @@ test('list cursor binds query and project, and reads never hydrate whole transcr
     const next = await f.execute('chat_read', { chat_id: 'target', after_sequence: page.next_sequence, limit: 1 });
     assert.equal(next.messages[0].sequence, page.next_sequence + 1);
     await assert.rejects(f.execute('chat_read', { chat_id: 'target', view: 'activity', limit: 1000 }), error => error.code === 'invalid_request');
+  });
+});
+
+test('list applies project scope before its scan budget and paginates past unrelated history', async () => {
+  await fixture(async f => {
+    const resolved = [];
+    const resolveTarget = f.context.resolveTarget;
+    f.context.resolveTarget = async (...args) => { resolved.push(args[0]); return resolveTarget(...args); };
+    const first = await f.execute('chat_list', { limit: 2 });
+    assert.deepEqual(first.chats.map(row => row.chat_id), ['source', 'target']);
+    assert.equal(first.partial_scan, false);
+    assert.ok(first.next_cursor);
+    const second = await f.execute('chat_list', { limit: 2, cursor: first.next_cursor });
+    assert.deepEqual(second.chats.map(row => row.chat_id), ['other']);
+    assert.equal(second.next_cursor, null);
+    assert.equal(second.partial_scan, false);
+    assert.equal(resolved.some(id => id.startsWith('unrelated-') || id === 'foreign-chat'), false);
+  }, { foreignChats: 450 });
+});
+
+test('list candidates include registered checkout aliases and use the effective worktree root', async () => {
+  await fixture(async f => {
+    const root = f.repository.getChat('source').workspacePath;
+    const foreign = f.repository.getChat('foreign-chat').workspacePath;
+    const alias = root + '-alias', worktree = root + '-worktree';
+    f.repository.createChat({ id: 'alias-chat', workspacePath: alias });
+    f.repository.createChat({ id: 'worktree-chat', workspacePath: root, worktreeRoot: worktree });
+    f.repository.createChat({ id: 'outside-checkout', workspacePath: root, worktreeRoot: foreign });
+    const rows = createChatToolReads(f.repository).candidates(0, 100, true, [root, alias, worktree]);
+    assert.deepEqual(rows.map(row => row.id), ['source', 'target', 'other', 'alias-chat', 'worktree-chat']);
   });
 });
 

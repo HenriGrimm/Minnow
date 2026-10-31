@@ -36,6 +36,7 @@ function sleep(ms: number): Promise<void> {
 function buildFixture(partial: 'full' | 'unterminated-fence' | 'growing'): string {
   const head = [
     'Intro paragraph with **bold**, `code`, and `src/main.ts:12`.',
+    'Related [conversation](#/app/code/chat?chatId=stream-chat).',
     '',
     'Setext heading',
     '==============',

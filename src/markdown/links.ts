@@ -9,6 +9,7 @@
 
 import { isMarkdownFilePath } from '../ui/file-markdown-path';
 import { chatIdFromLink } from '../state/chat-relationships';
+import { chatIdFromHref, decorateChatReference } from '../ui/chat-reference-chip';
 
 const HTTP_URL_RE = /^https?:\/\//i;
 
@@ -119,6 +120,11 @@ export function hardenMarkdownAnchors(root: ParentNode): void {
   });
   root.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((anchor) => {
     const href = anchor.getAttribute('href')?.trim() ?? '';
+    const chatId = chatIdFromHref(href);
+    if (chatId && !anchor.closest('pre, code')) {
+      decorateChatReference(anchor, chatId);
+      return;
+    }
     if (!href || IN_APP_HASH_RE.test(href) || MAIL_OR_TEL_RE.test(href)) return;
     anchor.target = '_blank';
     anchor.rel = 'noopener noreferrer';
@@ -217,6 +223,8 @@ export function classifyMarkdownHref(
   if (!trimmed) return { type: 'ignore' };
   if (DANGEROUS_SCHEME_RE.test(trimmed)) return { type: 'ignore' };
   if (MAIL_OR_TEL_RE.test(trimmed)) return { type: 'pass' };
+  const linkedChatId = chatIdFromHref(trimmed);
+  if (linkedChatId) return { type: 'chat', chatId: linkedChatId };
 
   if (trimmed.startsWith('//')) {
     try {

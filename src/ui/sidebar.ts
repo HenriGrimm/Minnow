@@ -400,7 +400,7 @@ export async function applyWorkspaceScopedSession(
 }
 
 interface AppendChatRowOptions {
-  /** Workspace chats can be dragged onto group headers; Unassigned rows cannot. */
+  /** Workspace chats can be dragged onto groups or chats; Unassigned rows cannot. */
   draggable?: boolean;
   /** Compact name-only row when listed under a sidebar group. */
   inGroup?: boolean;

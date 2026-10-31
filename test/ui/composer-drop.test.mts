@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { Window } from 'happy-dom';
+import { CHAT_DRAG_MIME } from '../../src/attachments/chat-drag.ts';
+import { resetSessionPersistenceForTests, sessionState } from '../../src/state/sessions.ts';
 import { clearAttachments, getPendingAttachments } from '../../src/attachments/store.ts';
 import { PREVIEW_TAB_MIME, VIEWER_TAB_MIME, resetTabDragForTests } from '../../src/attachments/tab-drag.ts';
 import { initComposerDrop } from '../../src/ui/composer-drop.ts';
@@ -92,6 +94,7 @@ describe('initComposerDrop', () => {
   afterEach(() => {
     clearAttachments();
     resetTabDragForTests();
+    resetSessionPersistenceForTests();
     setSessionStateForTests(null);
     document.body.replaceChildren();
     testWindow?.close();
@@ -110,6 +113,45 @@ describe('initComposerDrop', () => {
     await Promise.resolve();
     assert.deepEqual(getPendingAttachments(), []); assert.equal(chat.links, undefined);
     assert.equal(target.classList.contains('composer-drop-active'), false);
+  });
+
+  it('links a sidebar chat in the unsent draft from the composer or transcript', () => {
+    const { input, window } = setupNestedCodeComposerDom(); testWindow = window;
+    const chat = seedChat();
+    const source = createEmptyChatObject(''); source.id = 'source-chat'; source.name = 'Source chat';
+    sessionState!.chats.push(source);
+    input.value = 'Before after'; input.setSelectionRange(7, 7);
+    initComposerDrop();
+    const transfer = makeTypedTransfer({ [CHAT_DRAG_MIME]: source.id, 'text/plain': source.id });
+    const over = new DragEvent('dragover', { bubbles: true, cancelable: true });
+    Object.defineProperty(over, 'dataTransfer', { value: { ...transfer, getData: () => '' } });
+    input.dispatchEvent(over);
+    assert.equal(over.defaultPrevented, true);
+    assert.equal(document.querySelector('.input-bar')!.classList.contains('composer-drop-active'), true);
+    for (const target of [input, document.querySelector('.chat-viewport')!]) {
+      const event = new DragEvent('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: transfer }); target.dispatchEvent(event);
+      assert.equal(event.defaultPrevented, true);
+    }
+    assert.equal(input.value, 'Before #/app/code/chat?chatId=source-chat\nafter');
+    assert.equal(chat.composerDraft, input.value);
+    assert.equal(chat.history.length, 0);
+    assert.equal(source.composerDraft, undefined);
+    assert.equal(getPendingAttachments().length, 0);
+    assert.equal(document.querySelector('.input-bar')!.classList.contains('composer-drop-active'), false);
+  });
+
+  it('rejects self, missing and disabled chat-reference drops', () => {
+    const { input, window } = setupNestedCodeComposerDom(); testWindow = window;
+    const chat = seedChat(); initComposerDrop();
+    const source = createEmptyChatObject(''); source.id = 'source'; sessionState!.chats.push(source);
+    for (const id of [chat.id, 'missing', source.id]) {
+      input.disabled = id === source.id;
+      const event = new DragEvent('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: makeTypedTransfer({ [CHAT_DRAG_MIME]: id }) });
+      input.dispatchEvent(event);
+    }
+    assert.equal(input.value, ''); assert.equal(chat.composerDraft, undefined);
   });
 
   it('adds one attachment when an external file is dropped on a nested composer', async () => {

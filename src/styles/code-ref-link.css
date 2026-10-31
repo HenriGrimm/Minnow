@@ -124,3 +124,58 @@
     background: var(--mn-surface-1);
   }
 }
+
+/* Conversation references share the same compact treatment in both message roles. */
+.msg-bubble a.chat-reference-chip,
+.attach-chip a.chat-reference-chip {
+  display: inline-flex;
+  vertical-align: middle;
+  align-items: center;
+  gap: 6px;
+  max-width: min(24rem, 100%);
+  padding: 3px 9px;
+  border: 1px solid var(--mn-accent-border);
+  border-radius: 7px;
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent-ink, var(--mn-accent));
+  font-family: var(--font-ui);
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chat-reference-chip__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chat-reference-chip__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg-bubble a.chat-reference-chip:hover,
+.attach-chip a.chat-reference-chip:hover {
+  background: var(--mn-accent-border);
+  text-decoration: none;
+}
+
+.msg-bubble a.chat-reference-chip:focus-visible,
+.attach-chip a.chat-reference-chip:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.attach-chip--chat-ref {
+  padding: 0 5px 0 0;
+  border-color: var(--mn-accent-border);
+  background: var(--mn-accent-soft);
+}
+
+.attach-chip--chat-ref a.chat-reference-chip {
+  border: 0;
+  background: transparent;
+  min-width: 0;
+}

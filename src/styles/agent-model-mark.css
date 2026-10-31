@@ -204,6 +204,9 @@
 
 .chat-item-agent-mark[data-state='running'] .agent-mark__badge { border-width: 1.5px; }
 
+/* The mark's badge already spins for a working agent; one spinner per row. */
+.chat-item-row.chat-item-row--agent:has(.chat-item-agent-mark) .chat-item-dot[data-dot-state='working'] { display: none; }
+
 /* Too small for a glyph; the row's status text already says it. */
 .chat-item-agent-mark .agent-mark__badge .icon-svg { display: none; }
 

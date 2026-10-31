@@ -12,6 +12,7 @@ import { addChatLinkToActiveChat } from '../chat/links';
 import { getActiveComposerSurface } from './composer-surface';
 import { attachWorkspacePathToComposer } from './workspace-composer-link';
 import { syncChatLinkChipsFromActiveChat } from './chat-link-chips';
+import { applyChatReferenceDrop, hasChatDrag } from './chat-reference-drop';
 
 const DROP_ACTIVE_CLASS = 'composer-drop-active';
 
@@ -58,6 +59,7 @@ function setDropActive(targets: HTMLElement[], active: boolean): void {
 
 /** True when this drag can land on the composer or chat transcript. */
 function hasComposerDrag(dataTransfer: DataTransfer | null): boolean {
+  if (hasChatDrag(dataTransfer)) return true;
   if (hasTabDrag(dataTransfer)) return true;
   return classifyFileDrag(dataTransfer) !== null;
 }
@@ -116,7 +118,7 @@ function bindDropTarget(
     const input = resolveComposerInputFromDropTarget(element);
     if (input?.disabled || input?.readOnly) { if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'; return; }
     if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'copy';
+      event.dataTransfer.dropEffect = hasChatDrag(event.dataTransfer) ? 'link' : 'copy';
     }
     setDropActive(dropTargets, true);
   });
@@ -131,7 +133,7 @@ function bindDropTarget(
 
   element.addEventListener('drop', (event) => {
     const tabDrag = hasTabDrag(event.dataTransfer);
-    const kind = tabDrag ? 'tabLink' : classifyFileDrag(event.dataTransfer);
+    const kind = hasChatDrag(event.dataTransfer) ? 'chatLink' : tabDrag ? 'tabLink' : classifyFileDrag(event.dataTransfer);
     if (!kind) return;
     event.preventDefault();
     event.stopPropagation();
@@ -139,6 +141,11 @@ function bindDropTarget(
     setDropActive(dropTargets, false);
     const input = resolveComposerInputFromDropTarget(element);
     if (input?.disabled || input?.readOnly) return;
+
+    if (kind === 'chatLink') {
+      applyChatReferenceDrop(event.dataTransfer, undefined, input);
+      return;
+    }
 
     if (kind === 'tabLink' && event.dataTransfer) {
       applyTabDrop(event.dataTransfer);

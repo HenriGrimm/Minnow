@@ -1,5 +1,6 @@
 import { PLACEHOLDER_CHAT_NAME, SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, STORAGE_KEY } from '../constants';
 import { abortChatTitleGeneration } from '../chat/titles/inflight';
+import { setChatReferenceTitleResolver } from './chat-reference-titles';
 import { cleanupChatWorktreeOnDelete } from './chat-worktree';
 import { isPlaceholderChatName } from '../chat/titles/placeholder';
 import { setSaveTimer, saveTimer, streamingChatIds } from '../app-state';
@@ -134,6 +135,7 @@ function normalizeChatTodoStatus(raw: unknown): ChatTodo['status'] {
 
 /** In-memory session blob mirrored to ~/.minnow or localStorage fallback. */
 export let sessionState: SessionState | null = null;
+setChatReferenceTitleResolver(chatId => sessionState?.chats.find(chat => chat.id === chatId)?.name);
 
 /**
  * Set after a successful GET from ~/.minnow. Blocks PUT until hydration so a boot-time

@@ -16,6 +16,8 @@ Right-click a chat in the sidebar and choose **Pin to top** to keep it in a **Pi
 
 Right-click a chat in the sidebar and choose **Copy chat transcript** to paste its conversation and tool activity into another chat. **Export chat as HTML** downloads a standalone transcript with rendered Markdown, code, embedded image attachments, and expandable tool calls and results. Open the HTML file in a browser to read, share, or print it. Exports include the saved conversation; hidden prompts and private reasoning are omitted.
 
+**Copy chat link** copies a direct link to the conversation. Paste it into the composer to add a removable chip showing the conversation title before sending. The reference stays with your draft when you switch chats and appears as a title chip in sent messages. Select a chip to open that chat in Minnow. The link references the conversation; it does not include a copy of its transcript. Drag a chat from the sidebar onto the open conversation or its composer to add a link to your draft. You can also drop it onto another chat in the sidebar to add the link to that chat’s draft. Existing draft text is preserved; send the message when it is ready.
+
 ## Open a project
 
 The workspace picker offers **Open project**, **Create project**, and your recent workspaces. Choosing a project opens Code.

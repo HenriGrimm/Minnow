@@ -1,6 +1,7 @@
 import { getPendingAttachments } from '../attachments/store';
 import { projectChatAttribution } from '../../server/chats/attribution.js';
 import type { Attachment } from '../attachments/types';
+import { chatLink } from '../state/chat-relationships';
 import {
   attachmentImageDataUrl,
   attachmentsHaveImages,
@@ -105,6 +106,10 @@ export function buildHistoryUserContent(
 
   for (const att of attachments) {
     if (att.kind === 'error') continue;
+    if (att.kind === 'chatRef' && att.chatId) {
+      parts.push(chatLink(att.chatId));
+      continue;
+    }
     if (att.kind === 'image') {
       parts.push(imageHistoryPlaceholder(att.name));
       continue;
@@ -185,6 +190,10 @@ export function buildVlmUserApiContent(
 
   for (const att of attachments) {
     if (att.kind === 'error' || att.kind === 'image') continue;
+    if (att.kind === 'chatRef' && att.chatId) {
+      textParts.push(chatLink(att.chatId));
+      continue;
+    }
     if (isCodeRefAttachment(att)) {
       textParts.push(
         codeRefHistoryBlock(

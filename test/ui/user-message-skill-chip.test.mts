@@ -30,6 +30,33 @@ afterEach(() => {
 });
 
 describe('user message skill chips', () => {
+  test('renders pasted chat links as titled references without changing history', async () => {
+    const bubble = setupDom();
+    const { setSessionStateForTests } = await import('../../src/state/sessions.ts');
+    const { defaultSessionState } = await import('../../src/config/defaults.ts');
+    const state = defaultSessionState();
+    state.chats = [{ ...state.chats[0], id: 'chat-123', name: '<Build & review>' }];
+    setSessionStateForTests(state);
+    window.location.href = 'http://localhost:9473/';
+    const url = 'http://localhost:9473/#/app/code/chat?chatId=chat-123';
+    try {
+      for (const reference of [url, `[${url}](${url})`, `<${url}>`, '#/app/code/chat?chatId=chat-123']) {
+        const content = `/impeccable See ${reference}, then continue.`;
+        renderUserMessageBubble(bubble, content);
+        const chip = bubble.querySelector('a.chat-reference-chip')!;
+        assert.ok(chip, reference);
+        assert.equal(chip.querySelector('.chat-reference-chip__title')?.textContent, '<Build & review>');
+        assert.equal(chip.querySelector('build'), null);
+        assert.equal(chip.getAttribute('href'), '#/app/code/chat?chatId=chat-123');
+        assert.equal(bubble.querySelectorAll('.skill-chip').length, 1);
+        assert.match(bubble.textContent ?? '', /, then continue\.$/);
+        assert.ok(content.includes(reference));
+      }
+    } finally {
+      setSessionStateForTests(null);
+    }
+  });
+
   test('renders a chip for a skill-only send', () => {
     const bubble = setupDom();
     renderUserMessageBubble(bubble, '[skill: impeccable]');

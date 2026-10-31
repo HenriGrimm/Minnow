@@ -96,7 +96,10 @@ export function createChatTools({ repository, context, service, validateCaller, 
               cursor.status !== (args.status ?? null) || cursor.include !== include) fail('Conversation cursor does not match this query');
           position = integer(cursor.position, 0, 0, Number.MAX_SAFE_INTEGER);
         }
-        const candidates = reads.candidates(position, 201, include), chats = [];
+        const workspaceKeys = [...new Set(source.registry.entries
+          .filter(row => row.projectId === source.scope.projectId && !row.revoked)
+          .flatMap(row => row.aliases))];
+        const candidates = reads.candidates(position, 201, include, workspaceKeys), chats = [];
         let visited = 0;
         for (const row of candidates.slice(0, 200)) {
           active(caller, signal); position = row.position; visited++;

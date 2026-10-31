@@ -8,6 +8,7 @@ import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/s
 import { assignChatToGroup, setChatPinned } from '../../src/state/chat-groups.ts';
 import { agentChatStatusLabel, chatIdFromLink, chatLink, chatReadOnlyReason, isAgentChatActive, projectChatRelationships } from '../../src/state/chat-relationships.ts';
 import { deleteChat, renderSidebar, resetSidebarAgentNavigationForTests } from '../../src/ui/sidebar.ts';
+import { CHAT_DRAG_MIME } from '../../src/attachments/chat-drag.ts';
 import { resetSidebarChatDnDForTests, wireSidebarChatDragDrop } from '../../src/ui/sidebar-chat-dnd.ts';
 import { getConversationStorageCapabilitySync, readAgentConversationsCapability, setAgentConversationsCapabilityForTests } from '../../src/config/agent-conversations-enabled.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
@@ -171,6 +172,37 @@ test('child pinning, group reassignment and forged drag events cannot reparent t
   list.querySelector('[data-chat-id="child"]')!.dispatchEvent(event);
   assert.equal(event.defaultPrevented, true);
   assert.equal(child.agentConversation!.parentChatId, root.id);
+});
+
+test('sidebar chat drops append a reference to the target draft while group drops still move', () => {
+  const source = chat('source'), target = chat('target'); target.composerDraft = 'Existing draft';
+  const list = setup([source, target], source.id, [{ id: 'group', name: 'Group', workspacePath: WS, collapsed: false, createdAt: 1 }]);
+  renderSidebar(); wireSidebarChatDragDrop();
+  const data = new Map<string, string>();
+  const transfer = { types: [CHAT_DRAG_MIME, 'text/plain'], effectAllowed: 'none', dropEffect: 'none',
+    setData(type: string, value: string) { data.set(type, value); }, getData(type: string) { return data.get(type) ?? ''; } };
+  const dispatch = (element: Element, type: string) => {
+    const event = new win!.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', { value: transfer }); element.dispatchEvent(event); return event;
+  };
+  const sourceRow = list.querySelector('[data-chat-id="source"]')!;
+  const targetRow = list.querySelector('[data-chat-id="target"]')!;
+  dispatch(sourceRow, 'dragstart');
+  assert.equal(transfer.effectAllowed, 'linkMove');
+  assert.equal(dispatch(targetRow, 'dragover').defaultPrevented, true);
+  assert.equal(transfer.dropEffect, 'link');
+  assert.ok(targetRow.classList.contains('chat-item-row--drop-target'));
+  dispatch(targetRow, 'drop'); dispatch(targetRow, 'drop');
+  assert.equal(target.composerDraft, 'Existing draft\n#/app/code/chat?chatId=source');
+  assert.equal(sessionState!.activeId, source.id);
+  assert.equal(source.groupId, undefined); assert.equal(source.composerDraft, undefined);
+  assert.equal(target.history.length, 0);
+  assert.equal(dispatch(sourceRow, 'dragover').defaultPrevented, false);
+  const group = list.querySelector('.chat-group-header[data-group-id="group"]')!;
+  dispatch(group, 'dragover'); assert.equal(transfer.dropEffect, 'move'); dispatch(group, 'drop');
+  assert.equal(source.groupId, 'group');
+  dispatch(sourceRow, 'dragend');
+  assert.equal(list.querySelector('.chat-item-row--drop-target'), null);
 });
 
 test('native saved conversations remain inspect-only while disabled creation leaves managed saved children writable', async () => {

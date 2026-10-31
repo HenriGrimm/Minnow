@@ -16,10 +16,15 @@ export function createChatToolReads(repository) {
   }
   return {
     execution,
-    candidates(afterPosition, limit, includeChildren) {
+    candidates(afterPosition, limit, includeChildren, workspaceKeys) {
+      // Apply the verified project registry before the scan budget, so older
+      // chats in unrelated projects cannot fill every page with skipped rows.
+      const checkout = "COALESCE(NULLIF(c.worktree_root,''),c.workspace_path)";
+      const workspace = process.platform === 'win32' ? `lower(${checkout})` : checkout;
       return db.prepare(`SELECT c.rowid AS position,c.id FROM chats c LEFT JOIN chat_relations r ON r.chat_id=c.id
         WHERE c.rowid>? AND (? OR r.chat_id IS NULL OR NOT EXISTS(SELECT 1 FROM chats p WHERE p.id=r.parent_chat_id))
-        ORDER BY c.rowid LIMIT ?`).all(afterPosition, includeChildren ? 1 : 0, limit);
+        AND ${workspace} IN (SELECT value FROM json_each(?))
+        ORDER BY c.rowid LIMIT ?`).all(afterPosition, includeChildren ? 1 : 0, JSON.stringify(workspaceKeys), limit);
     },
     activity(chatId, executionId) {
       const current = execution(chatId, executionId);
