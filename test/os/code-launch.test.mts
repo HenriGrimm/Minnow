@@ -1,3 +1,4 @@
+import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { resetWorkspaceStateForTests } from '../../src/state/workspace.ts';
@@ -463,4 +464,39 @@ describe('applyCodeLaunchOptions', () => {
       /Old remembered thread/,
     );
   });
+  test('returning to an unchanged Code chat preserves nodes, disclosures and scroll', async () => {
+    const { getActiveChat } = await import('../../src/state/sessions.ts');
+    const chat = getActiveChat();
+    chat.history = [{ role: 'user', content: 'Keep this view' }, { role: 'assistant', content: 'An answer' }];
+    const { restoreCodeSessionOnForeground } = await import('../../src/os/code-launch.ts');
+    await restoreCodeSessionOnForeground();
+    const area = document.getElementById('chatArea')!;
+    const row = area.querySelector('.msg.user');
+    const detail = document.createElement('details');
+    detail.open = true;
+    area.append(detail);
+    area.scrollTop = 175;
+    await restoreCodeSessionOnForeground();
+    assert.equal(area.querySelector('.msg.user'), row);
+    assert.equal(area.contains(detail), true);
+    assert.equal(detail.open, true);
+    assert.equal(area.scrollTop, 175);
+  });
+
+  test('Code restoration replaces stale or externally removed transcripts', async () => {
+    const { getActiveChat, touchChat } = await import('../../src/state/sessions.ts');
+    const chat = getActiveChat();
+    chat.history = [{ role: 'user', content: 'Original' }];
+    const { restoreCodeSessionOnForeground } = await import('../../src/os/code-launch.ts');
+    await restoreCodeSessionOnForeground();
+    chat.history[0] = { role: 'user', content: 'Updated' };
+    touchChat(chat);
+    await restoreCodeSessionOnForeground();
+    const area = document.getElementById('chatArea')!;
+    assert.match(area.textContent ?? '', /Updated/);
+    area.replaceChildren(document.createElement('section'));
+    await restoreCodeSessionOnForeground();
+    assert.match(area.textContent ?? '', /Updated/);
+  });
+
 });

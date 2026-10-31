@@ -41,6 +41,8 @@ interface RenderState {
   pendingCursor: HTMLElement | null;
   /** Wall time of the last scheduled paint (`0` = never painted via scheduler). */
   lastRenderedAt: number;
+  renderCostMs: number;
+  pendingOptions?: AssistantBubbleRenderOptions;
 }
 
 const renderStateByBubble = new WeakMap<HTMLElement, RenderState>();
@@ -65,6 +67,7 @@ export function removeStreamingCarets(root: ParentNode, keep?: HTMLElement | nul
 function clearPendingPaint(state: RenderState): void {
   state.pendingMarkdown = null;
   state.pendingCursor = null;
+  state.pendingOptions = undefined;
 }
 
 function getRenderState(bubble: HTMLElement): RenderState {
@@ -80,6 +83,7 @@ function getRenderState(bubble: HTMLElement): RenderState {
       pendingMarkdown: null,
       pendingCursor: null,
       lastRenderedAt: 0,
+      renderCostMs: 0,
     };
     renderStateByBubble.set(bubble, state);
   }
@@ -471,6 +475,8 @@ export interface AssistantBubbleRenderOptions {
    * use this so a pending full sentence is not hidden under "Calling…".
    */
   immediate?: boolean;
+  /** Runs only after the pending Markdown actually reaches the DOM, including timer flushes. */
+  onPaint?: () => void;
 }
 
 /** Paint the latest pending markdown for a streaming assistant bubble. */
@@ -485,22 +491,28 @@ export function flushAssistantBubbleRender(
 
   clearBubbleTimers(bubble, state);
 
-  const { pendingMarkdown, pendingCursor } = state;
+  const { pendingMarkdown, pendingCursor, pendingOptions } = state;
+  const paintOptions = opts ?? pendingOptions;
+  clearPendingPaint(state);
+  const started = performance.now();
   setAssistantBubbleContent(bubble, pendingMarkdown, {
     streaming: true,
     streamCursor: pendingCursor,
   });
   announceStreamingProse(pendingMarkdown);
-  if (opts?.pinScroll !== false) {
+  if (paintOptions?.onPaint) {
+    paintOptions.onPaint();
+  } else if (paintOptions?.pinScroll !== false) {
     scrollBottom();
   }
+  state.renderCostMs = Math.max(performance.now() - started, state.renderCostMs * 0.8);
   state.lastRenderedAt = Date.now();
 }
 
 /**
  * Throttled markdown refresh while the assistant reply is still streaming.
- * Paints immediately on first token and at most every ASSISTANT_RENDER_DEBOUNCE_MS;
- * a max-wait timer guarantees paints during continuous fast SSE delivery.
+ * Paints immediately on first token, then uses a short interval with an adaptive
+ * cost budget. A max-wait timer guarantees paints during continuous SSE delivery.
  */
 export function scheduleAssistantBubbleRender(
   bubble: HTMLElement,
@@ -511,6 +523,7 @@ export function scheduleAssistantBubbleRender(
   const state = getRenderState(bubble);
   state.pendingMarkdown = markdown;
   state.pendingCursor = streamCursor;
+  state.pendingOptions = opts;
 
   if (opts?.immediate) {
     flushAssistantBubbleRender(bubble, opts);
@@ -519,7 +532,9 @@ export function scheduleAssistantBubbleRender(
 
   const now = Date.now();
   const neverRendered = state.lastRenderedAt === 0;
-  const throttleElapsed = now - state.lastRenderedAt >= ASSISTANT_RENDER_DEBOUNCE_MS;
+  // Short replies stay fluid; expensive growing Markdown keeps at least 75% of the time free.
+  const interval = Math.max(ASSISTANT_RENDER_DEBOUNCE_MS, Math.min(100, state.renderCostMs * 4));
+  const throttleElapsed = now - state.lastRenderedAt >= interval;
 
   if (neverRendered || throttleElapsed) {
     flushAssistantBubbleRender(bubble, opts);
@@ -527,7 +542,7 @@ export function scheduleAssistantBubbleRender(
   }
 
   if (state.timer == null) {
-    const remaining = ASSISTANT_RENDER_DEBOUNCE_MS - (now - state.lastRenderedAt);
+    const remaining = interval - (now - state.lastRenderedAt);
     const timer = setTimeout(() => {
       flushAssistantBubbleRender(bubble);
     }, remaining);
@@ -539,7 +554,7 @@ export function scheduleAssistantBubbleRender(
   if (state.maxWaitTimer == null) {
     state.maxWaitTimer = setTimeout(() => {
       flushAssistantBubbleRender(bubble);
-    }, ASSISTANT_RENDER_DEBOUNCE_MS);
+    }, interval);
   }
 }
 

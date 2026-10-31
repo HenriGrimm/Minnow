@@ -260,6 +260,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     ) => {
       scheduleAssistantBubbleRender(bubble, markdown, streamCursor, {
         pinScroll: false,
+        onPaint: () => scrollTranscript(),
         immediate: opts?.immediate,
       });
     });
@@ -330,7 +331,8 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       }
     }
 
-    if (visible) scrollTranscript();
+    // The default Markdown scheduler follows only actual DOM paints, not every incoming token.
+    if (visible && (host.scheduleMarkdown || deltaSnap === null)) scrollTranscript();
     host.onCoalescedPaint?.({ lastDelta, lastThinking, toolCallCount });
   };
 
@@ -400,7 +402,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       cancelAssistantBubbleRenderDebounce(bubble);
       finishStreamingBubbleRender(bubble, host.cursor);
     }
-    if (hasProse && bubble) {
+    if (hasProse && bubble && originStreamVisible()) {
       if (!proseRevealed) {
         proseRevealed = true;
         host.revealProse();

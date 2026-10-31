@@ -18,6 +18,9 @@ Right-click a chat in the sidebar and choose **Copy chat transcript** to paste i
 
 **Copy chat link** copies a direct link to the conversation. Paste it into the composer to add a removable chip showing the conversation title before sending. The reference stays with your draft when you switch chats and appears as a title chip in sent messages. Select a chip to open that chat in Minnow. The link references the conversation; it does not include a copy of its transcript. Drag a chat from the sidebar onto the open conversation or its composer to add a link to your draft. You can also drop it onto another chat in the sidebar to add the link to that chat’s draft. Existing draft text is preserved; send the message when it is ready.
 
+Long conversations open at the newest messages. Scroll toward the top to load earlier messages, or select **Show earlier messages**. Loading older messages keeps your reading position. Switching to another app and back preserves an unchanged conversation’s scroll position and expanded sections.
+
+
 ## Open a project
 
 The workspace picker offers **Open project**, **Create project**, and your recent workspaces. Choosing a project opens Code.

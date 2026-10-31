@@ -215,7 +215,7 @@ describe('ticked motion', () => {
     );
   });
 
-  it('parks looping animations that appear via DOM mutation', async () => {
+  it('parks newly inserted looping animations on animationstart', async () => {
     const mounted = mountWindow();
     restore = mounted.restore;
     const doc = mounted.win.document as unknown as { getAnimations?: GetAnimationsFn };
@@ -227,7 +227,7 @@ describe('ticked motion', () => {
     const spinner = mounted.win.document.createElement('div');
     installGetAnimations(
       spinner as unknown as { getAnimations?: GetAnimationsFn },
-      (opts) => (opts?.subtree ? [late] : []),
+      () => [late],
     );
     let rootSubtreeWalks = 0;
     installGetAnimations(
@@ -238,6 +238,7 @@ describe('ticked motion', () => {
       },
     );
     mounted.win.document.body.appendChild(spinner);
+    spinner.dispatchEvent(new mounted.win.Event('animationstart', { bubbles: true }));
 
     const started = Date.now();
     while (late.playState !== 'paused' && Date.now() - started < 250) {
@@ -248,35 +249,22 @@ describe('ticked motion', () => {
     assert.equal(rootSubtreeWalks, 0, 'discovery must be scoped to the added subtree');
   });
 
-  it('falls back to one document walk when a burst adds many subtrees', async () => {
+  it('does not discover animations from ordinary streamed Markdown insertions', async () => {
     const mounted = mountWindow();
     restore = mounted.restore;
     const doc = mounted.win.document as unknown as { getAnimations?: GetAnimationsFn };
-    installGetAnimations(doc, () => []);
-
+    let walks = 0;
+    installGetAnimations(doc, () => { walks += 1; return []; });
     release = acquireTickedMotion();
-
-    const late = new FakeAnimation();
-    let rootSubtreeWalks = 0;
-    installGetAnimations(
-      mounted.win.document.documentElement as unknown as { getAnimations?: GetAnimationsFn },
-      (opts) => {
-        if (!opts?.subtree) return [];
-        rootSubtreeWalks += 1;
-        return [late];
-      },
-    );
-    // A transcript rebuild adds far more rows than it is worth walking one at a time.
+    const initial = walks;
+    installGetAnimations(mounted.win.document.documentElement, () => { walks += 1; return []; });
     for (let i = 0; i < 40; i += 1) {
-      mounted.win.document.body.appendChild(mounted.win.document.createElement('div'));
+      const paragraph = mounted.win.document.createElement('p');
+      installGetAnimations(paragraph, () => { walks += 1; return []; });
+      mounted.win.document.body.appendChild(paragraph);
     }
-
-    const started = Date.now();
-    while (late.playState !== 'paused' && Date.now() - started < 250) {
-      await new Promise((r) => setTimeout(r, 10));
-    }
-    assert.equal(late.playState, 'paused');
-    assert.equal(rootSubtreeWalks, 1, 'a burst collapses to a single document walk');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(walks, initial, 'prose changes never force animation/style discovery');
   });
 
   it('parks looping animations that start via animationstart on existing chrome', () => {

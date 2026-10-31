@@ -33,7 +33,8 @@ import {
 import { appConfirm } from './app-dialog';
 import { createBoardCategoryIcon } from './board-category-icons';
 import { createIcon } from './icon';
-import { agentMarkStateFromLabel, agentModelId, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentModelChip } from './agent-model-mark';
+import { agentMarkStateFromLabel, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentMarkStack, syncAgentModelChip, type AgentMarkState } from './agent-model-mark';
+import { formatWorkDuration } from '../chat/transcript-turns';
 import { isChatAppForeground } from './chat-mount';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { syncComposerFromStreamingState } from './composer-send';
@@ -433,6 +434,65 @@ function sidebarHighlightChatId(): string | null {
 }
 
 // ── Rows ─────────────────────────────────────────────────────────────────────
+
+/** The model an agent chat actually runs on, else the one it asked for. */
+function chatAgentModelId(chat: Chat): string {
+  return chat.agentExecution?.resolvedModel?.modelId?.trim() || chat.modelId?.trim() || '';
+}
+
+const LIVE_AGENT_STATES: ReadonlySet<AgentMarkState> = new Set(['queued', 'running', 'waiting']);
+
+/** Agent rows tick their clocks from one shared timer that stops once none are live. */
+let agentClockTimer: ReturnType<typeof setInterval> | null = null;
+
+function tickAgentClocks(): void {
+  const clocks = document.querySelectorAll<HTMLElement>('.chat-item-agent-clock[data-started-at]');
+  for (const clock of clocks) clock.textContent = formatWorkDuration(Math.max(0, Date.now() - Number(clock.dataset.startedAt)));
+  if (!clocks.length && agentClockTimer != null) { clearInterval(agentClockTimer); agentClockTimer = null; }
+}
+
+/** Live: time since the execution began, ticking. Settled: how long it took. */
+function syncAgentClock(clock: HTMLElement, chat: Chat, state: AgentMarkState): void {
+  const execution = chat.agentExecution;
+  const startedAt = execution?.createdAt;
+  delete clock.dataset.startedAt;
+  clock.textContent = '';
+  if (!startedAt) return;
+  if (LIVE_AGENT_STATES.has(state)) {
+    clock.dataset.startedAt = String(startedAt);
+    clock.textContent = formatWorkDuration(Math.max(0, Date.now() - startedAt));
+    if (agentClockTimer == null && typeof setInterval === 'function') {
+      agentClockTimer = setInterval(tickAgentClocks, 1000);
+      (agentClockTimer as { unref?: () => void }).unref?.();
+    }
+  } else if (execution?.settledAt && execution.settledAt >= startedAt) {
+    clock.textContent = formatWorkDuration(execution.settledAt - startedAt);
+  }
+}
+
+/** Under a parent: its agents' provider stack and a one-line tally, beside the disclosure. */
+function syncAgentSummary(row: HTMLElement, children: readonly Chat[], running: (id: string) => boolean, toggle: HTMLElement): void {
+  let summary = row.querySelector<HTMLElement>(':scope > .chat-item-agent-summary');
+  if (!summary) {
+    summary = document.createElement('div'); summary.className = 'chat-item-agent-summary';
+    const stack = document.createElement('span'); stack.className = 'agent-mark-stack'; stack.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span'); label.className = 'chat-item-agent-summary__label';
+    summary.append(stack, label);
+    row.append(summary);
+  }
+  if (summary.firstElementChild !== toggle) summary.prepend(toggle);
+  const states = children.map(child => agentMarkStateFromLabel(agentChatStatusLabel(child, running)));
+  const working = states.filter(state => state === 'running').length;
+  const waiting = states.filter(state => state === 'waiting' || state === 'queued').length;
+  const failed = states.filter(state => state === 'failed').length;
+  syncAgentMarkStack(summary.querySelector<HTMLElement>('.agent-mark-stack')!, children.map(chatAgentModelId));
+  summary.dataset.live = String(working > 0);
+  summary.querySelector('.chat-item-agent-summary__label')!.textContent = [
+    `${children.length} ${children.length === 1 ? 'agent' : 'agents'}`,
+    working ? `${working} running` : '', waiting ? `${waiting} waiting` : '', failed ? `${failed} failed` : '',
+    !working && !waiting && !failed ? 'all done' : '',
+  ].filter(Boolean).join(' · ');
+}
 
 /** Session model line: the picker's producer logo + model label. */
 function syncChatItemModel(modelEl: HTMLElement, chat: Chat): void {
@@ -900,7 +960,8 @@ function syncChatRow(
     if (!statsEl) {
       statsEl = document.createElement('div');
       statsEl.className = 'chat-item-stats';
-      row.appendChild(statsEl);
+      // Beside the model chip, ahead of any agent meta or summary lines.
+      if (modelEl) modelEl.after(statsEl); else row.appendChild(statsEl);
     }
     statsEl.replaceChildren();
     const statsFrag = document.createDocumentFragment();
@@ -1058,30 +1119,40 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
       row.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT)));
       if (child) {
         let meta = row.querySelector<HTMLElement>('.chat-item-agent-meta');
-        if (!meta) { meta = document.createElement('div'); meta.className = 'chat-item-agent-meta'; row.append(meta); }
+        if (!meta) {
+          meta = document.createElement('div'); meta.className = 'chat-item-agent-meta';
+          const text = document.createElement('span'); text.className = 'chat-item-agent-meta__text';
+          const clock = document.createElement('span'); clock.className = 'chat-item-agent-clock';
+          meta.append(text, clock); row.append(meta);
+        }
         const missing = !relationships.parentById.has(chat.id) && Boolean(chat.agentConversation?.parentChatId || chat.agentConversation?.missingParent);
         const status = agentChatStatusLabel(chat, running);
-        meta.textContent = [chat.agentTypeId, options?.inGroup ? routerChatModelLabel(chat) : null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
-        let mark = row.querySelector<HTMLElement>('.chat-item-agent-mark');
-        if (!mark) { mark = createAgentMark('chat-item-agent-mark'); row.querySelector('.chat-item-title-row')?.prepend(mark); }
-        syncAgentMark(mark, agentModelId(chat), agentMarkStateFromLabel(status));
-        row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${meta.textContent}`);
-        row.title += `\n${chatReadOnlyReason(chat) ?? meta.textContent}`;
+        const state = agentMarkStateFromLabel(status);
+        // Model · status · clock reads as one instrument line; the agent type moves to the label.
+        const metaText = [routerChatModelLabel(chat) || null, status, missing ? 'Parent unavailable' : null].filter(Boolean).join(' · ');
+        meta.querySelector('.chat-item-agent-meta__text')!.textContent = metaText;
+        syncAgentClock(meta.querySelector<HTMLElement>('.chat-item-agent-clock')!, chat, state);
+        let mark = row.querySelector<HTMLElement>(':scope > .chat-item-agent-mark');
+        if (!mark) { mark = createAgentMark('chat-item-agent-mark'); row.prepend(mark); }
+        syncAgentMark(mark, chatAgentModelId(chat), state);
+        const described = [chat.agentTypeId, metaText].filter(Boolean).join(' · ');
+        row.setAttribute('aria-label', `${row.getAttribute('aria-label')}, ${described}`);
+        row.title += `\n${chatReadOnlyReason(chat) ?? described}`;
       } else { row.querySelector('.chat-item-agent-meta')?.remove(); row.querySelector('.chat-item-agent-mark')?.remove(); }
       const children = relationships.children.get(chat.id) ?? [];
-      if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); continue; }
+      if (!children.length) { row.querySelector('.chat-agent-toggle')?.remove(); row.querySelector(':scope > .chat-item-agent-summary')?.remove(); continue; }
       const activeChildren = children.filter(entry => activeIds.has(entry.id));
       const previousChildren = children.filter(entry => !activeIds.has(entry.id));
       if (!expandedAgentChats.has(chat.id)) expandedAgentChats.set(chat.id, activeChildren.length > 0);
       const expanded = expandedAgentChats.get(chat.id) ?? activeChildren.length > 0;
-      const toggle = button(`toggle:${chat.id}`, `${expanded ? '▾' : '▸'} ${children.length}`, expanded,
+      const toggle = button(`toggle:${chat.id}`, expanded ? '▾' : '▸', expanded,
         () => expandedAgentChats.set(chat.id, !expanded));
       toggle.classList.add('chat-agent-toggle');
       toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${children.length} agents of ${chat.name}`);
-      row.querySelector('.chat-item-title-row')?.prepend(toggle);
+      syncAgentSummary(row, children, running, toggle);
       if (!expanded) continue;
       const group = take(`children:${chat.id}`);
-      group.className = 'chat-agent-children'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', `Agents of ${chat.name}`);
+      group.className = 'chat-agent-children'; group.style.setProperty('--agent-depth', String(Math.min(depth, AGENT_VISUAL_DEPTH_LIMIT))); group.setAttribute('role', 'group'); group.setAttribute('aria-label', `Agents of ${chat.name}`);
       nodes.push(group);
       const groupNodes: HTMLElement[] = [];
       pending.push({ parent: group, children: groupNodes });

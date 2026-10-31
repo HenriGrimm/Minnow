@@ -236,7 +236,21 @@ export function createChatLiveMiddleware(turns, options) {
       if (url.pathname === '/api/chat-sync/commands') { send(202, await broker.submit(body, deviceId)); return; }
       hostOnly();
       if (url.pathname === '/api/chat-sync/ack') { send(200, broker.acknowledge(body.id, body.hostId, body)); return; }
-      if (url.pathname === '/api/chat-sync/publish') { send(200, { sequence: await broker.publish(body.hostId, body.frame) }); return; }
+      if (url.pathname === '/api/chat-sync/publish') {
+        if (body.frames !== undefined) {
+          if (!Array.isArray(body.frames) || !body.frames.length || body.frames.length > 64) {
+            throw fault(400, 'Invalid chat publication batch.');
+          }
+          const results = [];
+          // Every frame retains the same host/lease/workspace checks as a single publication.
+          for (const frame of body.frames) {
+            try { results.push({ ok: true, sequence: await broker.publish(body.hostId, frame) }); }
+            catch (error) { results.push({ ok: false, status: error.status || 400, error: error.message }); }
+          }
+          send(200, { results });
+        } else send(200, { sequence: await broker.publish(body.hostId, body.frame) });
+        return;
+      }
       send(404, { error: 'Not found' });
     } catch (error) { send(error.status || 400, { error: error.message || 'Chat connection failed.' }); }
   };

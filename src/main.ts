@@ -508,6 +508,10 @@ export async function initApp(): Promise<void> {
     }
   };
   startSessionLiveSync(renderSharedSessionChanges);
+  if (hasComposerSurface) {
+    const { startChatSurfaceWake } = await import('./ui/chat-surface-wake');
+    startChatSurfaceWake(() => renderSharedSessionChanges(true));
+  }
   if (hasChatSurface) {
     const { startSharedChatBridge } = await import('./chat/shared-chat-bridge');
     startSharedChatBridge(renderSharedSessionChanges);

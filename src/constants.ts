@@ -50,7 +50,7 @@ export {
   THEME_FAMILY_KEY,
   type LegacyThemePreference as ThemePreference,
 } from './theme';
-export const ASSISTANT_RENDER_DEBOUNCE_MS = 100;
+export const ASSISTANT_RENDER_DEBOUNCE_MS = 32;
 
 /** Built-in system prompt preset for the legacy settings drawer fallback. */
 export const SYSTEM_PROMPT_PRESETS: SystemPromptPreset[] = [

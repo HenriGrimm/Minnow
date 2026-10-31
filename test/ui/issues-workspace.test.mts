@@ -128,17 +128,18 @@ test('long issue chats backfill in order and cancel pending work when leaving Ch
   click('Chat'); await flush();
   const transcript = document.querySelector('.shared-chat-host__transcript')!;
   assert.equal(transcript.querySelectorAll('.msg.user').length, 30);
-  while (pending.size) {
-    const [id, callback] = pending.entries().next().value!;
-    pending.delete(id);
-    callback({ didTimeout: false, timeRemaining: () => 50 });
+  assert.equal(pending.size, 0, 'older history is not scheduled eagerly');
+  while (transcript.querySelector('.chat-history-more')) {
+    transcript.querySelector<HTMLButtonElement>('.chat-history-more')!.click();
+    await flush();
   }
   const messages = [...transcript.querySelectorAll('.msg-bubble')].map((node) => node.textContent);
   assert.equal(messages.length, 80);
   assert.equal(messages[0], 'Message 0');
   assert.equal(messages.at(-1), 'Message 79');
   click('Issue'); click('Chat'); await flush();
-  assert.equal(pending.size, 1);
+  assert.ok(document.querySelector('.chat-history-more'));
+  document.querySelector<HTMLButtonElement>('.chat-history-more')!.click();
   click('Issue');
   assert.equal(pending.size, 0);
 });

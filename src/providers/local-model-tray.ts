@@ -29,6 +29,18 @@ export interface UnloadAllLocalModelsResult {
   failures: Array<{ label: string; message: string }>;
 }
 
+const INVENTORY_TTL_MS = 30_000;
+let inventory: LocalModelTraySnapshot | undefined;
+let inventoryAt = 0;
+let inventoryRevision = 0;
+let inventoryPending: Promise<LocalModelTraySnapshot> | undefined;
+let pendingRevision = 0;
+
+export function invalidateLocalModelTraySnapshot(): void {
+  inventoryRevision += 1;
+  inventoryAt = 0;
+}
+
 function labelForModel(providerLabel: string, model: LmModelRecord): string {
   const formatted = formatModelLabel({ id: model.id, quantization: model.quantization });
   const primary = formatted.primary || model.id;
@@ -38,12 +50,32 @@ function labelForModel(providerLabel: string, model: LmModelRecord): string {
 /** Collect loaded LM Studio rows and active Minnow-managed serves. */
 export async function collectLocalModelTraySnapshot(
   signal?: AbortSignal,
+  options: { fresh?: boolean } = {},
 ): Promise<LocalModelTraySnapshot> {
+  // Explicit audit/unload reads remain fresh and retain their caller's cancellation scope.
+  if (signal || options.fresh) return readLocalModelTraySnapshot(signal);
+  if (inventory && inventoryAt > 0 && Date.now() - inventoryAt < INVENTORY_TTL_MS) return inventory;
+  if (!inventoryPending) {
+    pendingRevision = inventoryRevision;
+    const revision = inventoryRevision;
+    const task = readLocalModelTraySnapshot().then(snapshot => {
+      if (revision === inventoryRevision) { inventory = snapshot; inventoryAt = Date.now(); }
+      return snapshot;
+    });
+    inventoryPending = task.finally(() => { inventoryPending = undefined; });
+  }
+  const revision = pendingRevision;
+  const snapshot = await inventoryPending;
+  if (revision !== inventoryRevision) return collectLocalModelTraySnapshot();
+  return snapshot;
+}
+
+async function readLocalModelTraySnapshot(signal?: AbortSignal): Promise<LocalModelTraySnapshot> {
   const rows: LocalModelTrayRow[] = [];
   const seen = new Set<string>();
 
   const { providers } = await listProviders();
-  const enabled = providers.filter((p) => p.enabled !== false);
+  const enabled = providers.filter((p) => p.enabled !== false && providerSupportsModelLoadUnload(p));
   const controller = new AbortController();
   const abortSignal = signal ?? controller.signal;
 

@@ -1,3 +1,4 @@
+import { noteChatMutation } from './chat-mutation-version';
 import { PLACEHOLDER_CHAT_NAME, SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS, STORAGE_KEY } from '../constants';
 import { abortChatTitleGeneration } from '../chat/titles/inflight';
 import { setChatReferenceTitleResolver } from './chat-reference-titles';
@@ -1846,6 +1847,8 @@ export function applySharedChatAttention(chatId: string, fields?: Record<string,
   // Server presentation is not a local edit. Invalidate its verifier baseline,
   // while retaining any independently dirty transcript/draft and conflicts.
   dirtyTrackingShadow.delete(chatId);
+  // Observer updates invalidate presentation without becoming local persistence edits.
+  if (fields || history) noteChatMutation(chat);
   return chat;
 }
 
@@ -1886,6 +1889,7 @@ export function applySharedChatFrame(
     conflictedChatIds.delete(chatId);
   }
   dirtyTrackingShadow.delete(chatId);
+  if (fields || history) noteChatMutation(chat);
   return chat;
 }
 
@@ -1915,6 +1919,7 @@ export function getActiveChat(): Chat {
 }
 
 export function touchChat(chat: Chat): void {
+  noteChatMutation(chat);
   chat.updatedAt = Date.now();
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
@@ -1926,6 +1931,7 @@ export function touchChat(chat: Chat): void {
  * that must persist but are not a user edit — restamping churns sidebar order (MIN-793).
  */
 export function markChatDirty(chat: Chat): void {
+  noteChatMutation(chat);
   addDirtyChatId(chat.id);
   bumpSessionDirtyEpoch();
   notifyPluginContextChanged();

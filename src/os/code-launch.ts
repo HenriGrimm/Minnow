@@ -15,6 +15,7 @@ import type { LaunchOptions } from './types';
 import { executeWorkspaceSwitch } from '../ui/workspace-switch-guard';
 import { createChatWithMode } from '../ui/sidebar';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
+import { hasCurrentChatSurface } from '../ui/chat-surface-state';
 
 /** Repoint file tree / git panel to the Code project workspace. */
 async function syncCodeFileTreeChrome(): Promise<void> {
@@ -23,7 +24,7 @@ async function syncCodeFileTreeChrome(): Promise<void> {
   syncPanelFromActiveChat({ forceFileTree: true });
 }
 
-/** Re-render the Code transcript and sync chrome for the active workspace chat. */
+/** Restore stale transcripts; app-to-app navigation retains an unchanged mounted view. */
 async function refreshCodeChatSurface(): Promise<void> {
   const { ensureSessionsReady, ensureChatHistoryLoaded, getActiveChat } = await import(
     '../state/sessions'
@@ -38,7 +39,9 @@ async function refreshCodeChatSurface(): Promise<void> {
   const { syncViewModeToggleFromActiveChat } = await import('../ui/view-mode-toggle');
   const { refreshChatJumpChipVisibility } = await import('../ui/chat-scroll');
 
-  renderChatFromHistory(chat);
+  const area = document.getElementById('chatArea');
+  const preserved = area != null && hasCurrentChatSurface(area, chat);
+  if (!preserved) renderChatFromHistory(chat);
   renderStatsForChat(chat);
   syncModeSelectorFromActiveChat();
   syncComposerReasoningEffortFromActiveChat();
@@ -46,7 +49,7 @@ async function refreshCodeChatSurface(): Promise<void> {
   syncComposerFromStreamingState();
   renderSidebar();
   refreshChatJumpChipVisibility();
-  await syncCodeFileTreeChrome();
+  if (!preserved) await syncCodeFileTreeChrome();
   const { refreshContextUsageRing } = await import('../ui/context-usage-ring');
   refreshContextUsageRing();
   void import('../tools/stream-chat-dom').then((m) => m.remountStreamDomForChat(chat.id));

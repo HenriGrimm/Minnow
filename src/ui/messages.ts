@@ -5,7 +5,8 @@ import { syncManagedChatRequests } from './managed-chat-requests';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
-import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
+import { mountHistoryPager } from './history-pager';
+import { forgetChatSurface, rememberChatSurface, retainedChatHistoryStart } from './chat-surface-state';
 import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { queryCodeMapChatHost } from './code-map/chat-state';
@@ -226,6 +227,7 @@ export function paintChatTranscriptHistoryPending(mount?: string | HTMLElement):
   const embeddedHost = sharedHost ?? boardChatHost ?? mapChatHost;
   const area = embeddedHost ?? resolveChatMount(mount);
   if (!area) return;
+  forgetChatSurface(area);
   disposeChatWorkView(area);
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
 
@@ -362,12 +364,8 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
   disposeChatWorkView(area);
   const host = document.createElement('div');
   const ctx = historyRenderContext(chat);
-  const tailStart = Math.max(0, chat.history.length - HISTORY_SYNC_TAIL);
-  let end = tailStart;
-  let disposed = false;
-  let cancelBackfill = () => {};
+  const tailStart = Math.min(Math.max(0, chat.history.length - HISTORY_SYNC_TAIL), retainedChatHistoryStart(area, chat) ?? Infinity);
   let liveBubble: HTMLDivElement | null = null;
-
   function paint(target: HTMLElement, callback: () => void): void {
     const wasSuppressed = suppressBubbleScroll;
     const wasEmbedded = embeddedHistoryPaint;
@@ -376,26 +374,6 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
     try { runWithChatMount(target, callback); }
     finally { suppressBubbleScroll = wasSuppressed; embeddedHistoryPaint = wasEmbedded; }
   }
-  function backfill(): void {
-    if (disposed || !area.isConnected) return;
-    const chunk = document.createElement('div');
-    const started = performance.now();
-    let start = end;
-    do {
-      start -= 1;
-      const row = document.createElement('div');
-      paint(row, () => appendHistoryMessageAt(row, ctx, start));
-      chunk.prepend(...row.childNodes);
-    } while (start > 0 && end - start < HISTORY_BACKFILL_CHUNK && performance.now() - started < HISTORY_BACKFILL_BUDGET_MS);
-    const scrollRoot = area.parentElement;
-    const prevTop = scrollRoot?.scrollTop ?? 0;
-    const prevHeight = scrollRoot?.scrollHeight ?? 0;
-    area.prepend(...chunk.childNodes);
-    if (scrollRoot) scrollRoot.scrollTop = prevTop + scrollRoot.scrollHeight - prevHeight;
-    end = start;
-    if (end > 0) cancelBackfill = scheduleBackfillStep(backfill);
-  }
-
   paint(host, () => {
     for (let i = tailStart; i < chat.history.length; i += 1) appendHistoryMessageAt(host, ctx, i);
     if (isChatStreaming(chat.id)) {
@@ -406,8 +384,12 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
   });
   area.replaceChildren(...host.childNodes);
   installChatWorkView(area, chat, () => isChatStreaming(chat.id), { view: 'compact', expanded, isolated: true });
-  if (end > 0) cancelBackfill = scheduleBackfillStep(backfill);
-  return { liveBubble, dispose: () => { disposed = true; cancelBackfill(); disposeChatWorkView(area); } };
+  const cancelBackfill = mountHistoryPager({ mount: area, from: tailStart,
+    scrollRoot: () => area.parentElement,
+    renderRow: (row, index) => paint(row, () => appendHistoryMessageAt(row, ctx, index)),
+  });
+  rememberChatSurface(area, chat);
+  return { liveBubble, dispose: () => { cancelBackfill(); disposeChatWorkView(area); } };
 }
 
 /**
@@ -637,117 +619,25 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
 
 /** Newest messages rendered in the switch's own task — what the user actually looks at. */
 const HISTORY_SYNC_TAIL = 30;
-/** Older messages backfilled this many per idle callback. */
-const HISTORY_BACKFILL_CHUNK = 15;
-/** Yield even before the row limit when tool output/markdown makes a chunk expensive. */
-const HISTORY_BACKFILL_BUDGET_MS = 6;
-
-/** Bumped by every transcript paint so a switch abandons the previous chat's backfill. */
-let historyBackfillEpoch = 0;
+/** Dispose the current main transcript's history pager when another paint takes ownership. */
 let cancelPendingBackfill: (() => void) | null = null;
 
-/** Abort any in-flight chunked backfill (a newer paint owns the transcript now). */
 export function cancelChatHistoryBackfill(): void {
-  historyBackfillEpoch += 1;
   cancelPendingBackfill?.();
   cancelPendingBackfill = null;
 }
 
-/** requestIdleCallback where available, rAF otherwise — chunks must not fight paint. */
-function scheduleBackfillStep(step: () => void): () => void {
-  const w = typeof window !== 'undefined' ? (window as Window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-    cancelIdleCallback?: (handle: number) => void;
-  }) : undefined;
-  if (w?.requestIdleCallback) {
-    const handle = w.requestIdleCallback(step, { timeout: 200 });
-    return () => w.cancelIdleCallback?.(handle);
-  }
-  if (typeof requestAnimationFrame === 'function') {
-    const handle = requestAnimationFrame(step);
-    return () => {
-      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle);
-    };
-  }
-  const handle = setTimeout(step, 0);
-  return () => clearTimeout(handle);
-}
-
-/**
- * Insert older rows above without moving the transcript under the reader: the scroll root's
- * height grows by exactly what we prepended, so scrollTop must grow by the same amount.
- */
-function prependPreservingScroll(area: HTMLElement, nodes: Node[]): void {
-  if (nodes.length === 0) return;
-  const root = getChatScrollRoot();
-  const prevTop = root?.scrollTop ?? 0;
-  const prevHeight = root?.scrollHeight ?? 0;
-  const context = area.querySelector(':scope > .agent-chat-context');
-  if (context) context.after(...nodes); else area.prepend(...nodes);
-  if (!root) return;
-  const delta = root.scrollHeight - prevHeight;
-  if (delta !== 0) root.scrollTop = prevTop + delta;
-}
-
-/**
- * Render `[0, from)` backwards in idle-time chunks, prepending each into the live transcript.
- * The synchronous pass covers only the tail, so a long history no longer lands as one
- * multi-hundred-millisecond task on every chat switch (MIN-793).
- */
-function backfillChatHistory(
-  area: HTMLElement,
-  ctx: HistoryRenderContext,
-  from: number,
-  onDone: () => void,
-): void {
-  if (from <= 0) {
-    onDone();
-    return;
-  }
-  const epoch = historyBackfillEpoch;
-  let end = from;
-  const step = (): void => {
-    cancelPendingBackfill = null;
-    if (epoch !== historyBackfillEpoch) return;
-    if (!area.isConnected) return;
-    if (isRenderIdle()) {
-      cancelPendingBackfill = subscribeRenderIdle((idle) => {
-        if (idle) return;
-        cancelPendingBackfill?.();
-        cancelPendingBackfill = scheduleBackfillStep(step);
-      });
-      return;
-    }
-    let start = end;
-    const started = performance.now();
-    const chunk = document.createElement('div');
-    const wasSuppressed = suppressBubbleScroll;
-    suppressBubbleScroll = true;
-    try {
-      runWithChatMount(chunk, () => {
-        // Build backwards in detached hosts so a variable-size slice stays in history order.
-        do {
-          start -= 1;
-          const row = document.createElement('div');
-          runWithChatMount(row, () => appendHistoryMessageAt(row, ctx, start));
-          chunk.prepend(...row.childNodes);
-        } while (
-          start > 0 && end - start < HISTORY_BACKFILL_CHUNK &&
-          performance.now() - started < HISTORY_BACKFILL_BUDGET_MS
-        );
-      });
-    } finally {
-      suppressBubbleScroll = wasSuppressed;
-    }
-    prependPreservingScroll(area, [...chunk.childNodes]);
-    end = start;
-    if (end <= 0) {
-      onDone();
-      return;
-    }
-    cancelPendingBackfill = scheduleBackfillStep(step);
-  };
-  cancelPendingBackfill = scheduleBackfillStep(step);
+function backfillChatHistory(area: HTMLElement, ctx: HistoryRenderContext, from: number, onPageLoaded: () => void): void {
+  cancelPendingBackfill = mountHistoryPager({ mount: area, from,
+    scrollRoot: getChatScrollRoot,
+    renderRow: (row, index) => {
+      const wasSuppressed = suppressBubbleScroll;
+      suppressBubbleScroll = true;
+      try { runWithChatMount(row, () => appendHistoryMessageAt(row, ctx, index)); }
+      finally { suppressBubbleScroll = wasSuppressed; }
+    },
+    onPageLoaded,
+  });
 }
 
 export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement): void {
@@ -762,6 +652,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   // Mode changes and background updates can arrive without a mounted chat surface.
   if (!area) return;
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
+  const retainedStart = retainedChatHistoryStart(area, chat);
+  forgetChatSurface(area);
   const scrollAnchor = captureChatScrollAnchor();
   const restoreAgentFocus = captureAgentConversationFocus(area, chat.id);
   disposeChatWorkView(area);
@@ -866,7 +758,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   const transcriptHost = document.createElement('div');
   const renderCtx = historyRenderContext(chat);
   const total = chat.history.length;
-  const tailStart = Math.max(0, total - HISTORY_SYNC_TAIL);
+  const tailStart = Math.min(Math.max(0, total - HISTORY_SYNC_TAIL), retainedStart ?? Infinity);
   runWithChatMount(transcriptHost, () => {
     for (let i = tailStart; i < total; i += 1) {
       appendHistoryMessageAt(transcriptHost, renderCtx, i);
@@ -898,6 +790,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     syncManagedChatRequests(chat, area);
     restoreAgentFocus();
     syncChatWorktreeSetup(chat, area);
+    rememberChatSurface(area, chat);
     void import('./loop-active-hint').then(({ syncLoopStatusUi }) => {
       syncLoopStatusUi(chat.id);
     });

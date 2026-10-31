@@ -17,6 +17,7 @@ import type { MinnowTrayCommand, MinnowTrayStatusSnapshot } from './electron.d';
 import { appConfirm } from './ui/app-dialog';
 import {
   collectLocalModelTraySnapshot,
+  invalidateLocalModelTraySnapshot,
   unloadAllLocalModels,
 } from './providers/local-model-tray';
 import { buildAgentActivitySnapshot, countRunningAgentRows } from './state/agent-activity-registry';
@@ -25,12 +26,15 @@ import { getChatItemDotContext } from './ui/chat-item-dot';
 import { sessionState } from './state/sessions';
 import { openSettings } from './ui/settings-page';
 import { setStatus } from './ui/status';
+import { subscribeServeEvents } from './models/api-client';
+import { subscribeModelInventory } from './models/inventory-events';
 
 const STATUS_THROTTLE_MS = 400;
 let initDone = false;
 let ready = false;
 let pendingCommands: MinnowTrayCommand[] = [];
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
+let modelTimer: ReturnType<typeof setInterval> | null = null;
 let lastSnapshotJson = '';
 const subscriptions: Array<() => void> = [];
 let lifetime = 0;
@@ -94,7 +98,7 @@ async function handleUnloadLocalModels(): Promise<void> {
     if (!proceed) return;
   }
 
-  const snapshot = await collectLocalModelTraySnapshot();
+  const snapshot = await collectLocalModelTraySnapshot(undefined, { fresh: true });
   if (!snapshot.rows.length) {
     showToast('No local models to unload');
     await publishTrayStatus();
@@ -109,6 +113,7 @@ async function handleUnloadLocalModels(): Promise<void> {
   } else {
     showToast(`Unloaded ${result.unloaded} local model${result.unloaded === 1 ? '' : 's'}`);
   }
+  invalidateLocalModelTraySnapshot();
   await publishTrayStatus();
 }
 
@@ -177,6 +182,15 @@ export function initElectronTrayBridge(): void {
   }));
 
   bindActivityListeners();
+  subscriptions.push(subscribeModelInventory(refreshTrayStatusNow));
+  modelTimer = setInterval(refreshTrayStatusNow, 30_000);
+  let serveKey = '';
+  if (typeof EventSource !== 'undefined') subscriptions.push(subscribeServeEvents(({ serves }) => {
+    const key = JSON.stringify(serves.map(row => [row.id, row.status, row.modelPath, row.modelLabel]));
+    if (key === serveKey) return;
+    serveKey = key;
+    refreshTrayStatusNow();
+  }));
 
   void import('./state/sessions').then(({ sessionsReady }) => {
     void sessionsReady.then(() => { if (initDone && version === lifetime) markTrayReady(); });
@@ -192,11 +206,14 @@ export function disposeElectronTrayBridge(): void {
   lifetime++;
   subscriptions.splice(0).forEach(unsubscribe => unsubscribe());
   if (statusTimer) clearTimeout(statusTimer);
+  if (modelTimer) clearInterval(modelTimer);
+  modelTimer = null;
   statusTimer = null; initDone = false; ready = false; pendingCommands = []; lastSnapshotJson = '';
 }
 
 /** Re-publish tray status when models change (e.g. after manual unload). */
 export function refreshTrayStatusNow(): void {
+  invalidateLocalModelTraySnapshot();
   lastSnapshotJson = '';
   void publishTrayStatus();
 }

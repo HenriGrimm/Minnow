@@ -758,18 +758,116 @@
   min-width: 0;
 }
 
-.chat-item-row--agent {
-  margin-inline-start: calc(var(--agent-depth, 0) * 10px);
+/* Session rows: the model chip and diff stats share one line. */
+.chat-item-row:not(.chat-item-row--agent) > .chat-item-model,
+.chat-item-row:not(.chat-item-row--agent) > .chat-item-stats {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin-top: 5px;
+  vertical-align: middle;
 }
 
-.chat-item-agent-meta {
+.chat-item-row:not(.chat-item-row--agent) > .chat-item-model + .chat-item-stats {
+  margin-inline-start: 8px;
+}
+
+.chat-item-row > .chat-item-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* A parent's agents: disclosure, provider stack, then a one-line tally. */
+.chat-item-agent-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 5px;
   color: var(--mn-fg-muted);
   font-size: 11px;
+}
+
+.chat-item-agent-summary .chat-agent-toggle {
+  min-height: 20px;
+  margin-inline-start: -6px;
+  padding: 0 4px;
+}
+
+.chat-item-agent-summary__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-item-agent-summary[data-live='true'] .chat-item-agent-summary__label { color: var(--mn-fg); }
+
+/* Tree rail from a parent down through its agents. */
+.chat-agent-children { position: relative; }
+
+.chat-agent-children::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 6px;
+  left: calc(var(--agent-depth, 0) * 12px + 6px);
+  width: 1px;
+  background: var(--mn-border);
+}
+
+/* Agent rows: mark on the left spanning both lines; name, then model · status · clock. */
+.chat-item-row.chat-item-row--agent {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  width: auto;
+  margin-inline-start: calc(var(--agent-depth, 0) * 12px);
+}
+
+.chat-item-row--agent > .chat-item-agent-mark {
+  grid-row: 1 / span 4;
+  align-self: start;
+  margin-top: 1px;
+}
+
+.chat-item-row--agent > :not(.chat-item-agent-mark) {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.chat-item-row--agent > .chat-item-model { display: none; }
+
+.chat-item-row--agent > .chat-item-stats { margin-top: 2px; }
+
+.chat-item-agent-meta {
+  display: flex;
+  min-width: 0;
+  margin-top: 1px;
+  color: var(--mn-fg-subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
   line-height: 1.4;
+}
+
+.chat-item-agent-meta__text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.chat-item-agent-clock {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.chat-item-agent-clock:not(:empty)::before { content: ' · '; }
+
+.chat-item-agent-clock[data-started-at] { color: var(--mn-accent-ink, var(--mn-accent)); }
 
 .chat-agent-disclosure {
   appearance: none;

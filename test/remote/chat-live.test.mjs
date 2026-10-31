@@ -118,11 +118,41 @@ test('HTTP devices may send commands but cannot register as a host, publish, cla
   try {
     assert.equal((await fetch(`${root}/api/chat-sync/host?hostId=phone`)).status, 403);
     assert.equal((await post('/api/chat-sync/publish', { hostId: 'phone', frame: {} })).status, 403);
+    assert.equal((await post('/api/chat-sync/publish', { hostId: 'phone', frames: [{}] })).status, 403);
     assert.equal((await post('/api/chat-turns', { action: 'claim', chatId: 'chat', ownerId: 'phone' })).status, 403);
     assert.equal((await post('/api/generations', { persist: true, chatId: 'chat', providerId: 'cli', body: {} })).status, 403);
     const response = await post('/api/chat-sync/commands', { id: 'send1', chatId: 'chat', action: 'send', text: 'Hello' });
     assert.equal(response.status, 503, 'no host is connected, and no phone engine is started');
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('batched HTTP publications retain individual host and workspace fences', async () => {
+  const turns = createChatTurnRegistry({ generations: () => [] });
+  const broker = createChatLiveBroker({ turns, workspaceForChat: id => id === 'foreign' ? '/other' : '/project' });
+  const disconnect = broker.register('pc', '/project', () => {});
+  const live = createChatLiveMiddleware(turns, { broker });
+  const server = http.createServer((req, res) => {
+    req.minnowAuth = { kind: 'host' };
+    runWithViewWorkspace('/project', () => live(req, res, () => { res.statusCode = 404; res.end(); }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const root = `http://127.0.0.1:${server.address().port}`;
+  const post = frames => fetch(`${root}/api/chat-sync/publish`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hostId: 'pc', frames }) });
+  try {
+    const response = await post(['one', 'two'].map(chatId => ({ chatId, epoch: 'turn', running: true,
+      live: { lastDelta: chatId, lastThinking: '', toolCallCount: 0 } })));
+    assert.equal(response.status, 200);
+    assert.ok((await response.json()).results.every(row => row.ok));
+    assert.equal(broker.snapshot('one', '/project').live.lastDelta, 'one');
+    assert.equal(broker.snapshot('two', '/project').live.lastDelta, 'two');
+    const mixed = await post([{ chatId: 'foreign', epoch: 'turn', running: true },
+      { chatId: 'one', epoch: 'turn', running: false }]);
+    assert.deepEqual((await mixed.json()).results.map(row => row.ok), [false, true]);
+    assert.equal(broker.snapshot('one', '/project').running, false);
+    assert.equal((await post([])).status, 400);
+    assert.equal((await post(Array.from({ length: 65 }, () => ({})))).status, 400);
+  } finally { disconnect(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
 
 test('real event streams deliver phone controls to the PC and push output back without a poll interval', async () => {

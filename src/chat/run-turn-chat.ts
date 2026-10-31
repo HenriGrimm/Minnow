@@ -1966,7 +1966,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       const prose = painted.lastDelta.trim();
       const thinkingDurationMs = thinkingTracker?.finalizeRound() ?? 0;
       const hasProse = Boolean(prose);
-      if (hasProse && wrap?.isConnected && bubble) {
+      if (hasProse && wrap?.isConnected && bubble && isStreamDomVisible(chat.id)) {
         revealProse();
         setAssistantBubbleContent(bubble, prose, { streaming: false, modeId: chat.modeId });
         completeStreamAnnouncer(prose);

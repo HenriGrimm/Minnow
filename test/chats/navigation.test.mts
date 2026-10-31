@@ -343,3 +343,30 @@ test('a cached conversation deleted in another window is verified without loadin
   assert.equal(sessionState!.activeId, root.id); assert.equal(root.composerDraft, 'Keep composing');
   assert.match(document.body.textContent!, /conversation is unavailable/);
 });
+
+test('parent rows tally their agents with a provider stack; agent rows lead with a mark and read model · status · clock', () => {
+  const root = chat('root'), working = chat('working', 'root'), done = chat('done', 'root');
+  working.modelId = 'claude-sonnet-5-5'; working.agentTypeId = 'explore';
+  working.agentExecution = { executionId: 'live', status: 'running', createdAt: Date.now() - 65_000 };
+  done.modelId = 'gpt-5'; done.agentExecution = { executionId: 'old', status: 'completed', createdAt: 1_000, settledAt: 42_000 };
+  const list = setup([root, working, done]);
+  renderSidebar();
+  const rootRow = list.querySelector<HTMLElement>('[data-chat-id="root"]')!;
+  const summary = rootRow.querySelector<HTMLElement>(':scope > .chat-item-agent-summary')!;
+  assert.ok(summary.querySelector('.chat-agent-toggle'), 'the disclosure moves onto the tally line');
+  assert.equal(summary.querySelector('.chat-item-agent-summary__label')!.textContent, '2 agents · 1 running');
+  assert.equal(summary.querySelectorAll('.agent-mark-stack .agent-mark').length, 2);
+
+  const live = list.querySelector<HTMLElement>('[data-chat-id="working"]')!;
+  const mark = live.querySelector<HTMLElement>(':scope > .chat-item-agent-mark')!;
+  assert.equal(live.firstElementChild, mark); assert.equal(mark.dataset.state, 'running');
+  assert.equal(live.querySelector('.chat-item-agent-meta__text')!.textContent, 'claude-sonnet-5-5 · Working');
+  const clock = live.querySelector<HTMLElement>('.chat-item-agent-clock')!;
+  assert.ok(clock.dataset.startedAt); assert.match(clock.textContent!, /1m/);
+  assert.match(live.getAttribute('aria-label')!, /explore · claude-sonnet-5-5 · Working/);
+
+  list.querySelector<HTMLButtonElement>('.chat-agent-previous-toggle')!.click();
+  const settled = list.querySelector<HTMLElement>('[data-chat-id="done"]')!;
+  assert.equal(settled.querySelector<HTMLElement>('.chat-item-agent-clock')!.dataset.startedAt, undefined);
+  assert.equal(settled.querySelector('.chat-item-agent-clock')!.textContent, '41s');
+});

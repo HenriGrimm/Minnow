@@ -2,7 +2,7 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createHostChatCommandHandler, createSharedChatObserver, createSharedChatPublisher } from '../../src/chat/shared-chat-bridge.ts';
-import { createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { applySharedChatFrame, createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { registerChatStreamText, notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
 import { setChatAbort, setStreaming, streamingChatIds } from '../../src/app-state.ts';
 import { setPairedDevice } from '../../src/api/session-token.ts';
@@ -20,6 +20,7 @@ import { renameChatTitle } from '../../src/state/sessions';
 import { setChatPinned } from '../../src/state/chat-groups';
 import { onActiveChatModelChange } from '../../src/ui/chat-model-ui';
 import { setChatMode } from '../../src/ui/mode-selector';
+import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
 
 const CHAT = '11111111-1111-1111-1111-111111111111';
 const originalFetch = globalThis.fetch;
@@ -68,6 +69,17 @@ test('publisher streams token differences, indexed tool messages and a terminal 
     assert.equal(frames.at(-1)!.running, false, 'terminal state is sent even when prose did not change');
     assert.equal(frames.at(-1)!.live, null);
   } finally { publisher.dispose(); }
+});
+
+test('observer-only metadata invalidates a mounted view without marking the transcript dirty', () => {
+  const chat = setup();
+  renderChatFromHistory(chat);
+  const area = document.getElementById('chatArea')!;
+  assert.equal(hasCurrentChatSurface(area, chat), true);
+  const before = getSessionDirtyTrackingForTests().dirtyChatIds;
+  applySharedChatFrame(CHAT, { turnError: true });
+  assert.equal(hasCurrentChatSurface(area, chat), false);
+  assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
 });
 
 test('phone paints live reasoning/prose, reconnects without duplicates, then displays the PC final result', async () => {
