@@ -525,13 +525,14 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory, { repla
     if (replacePresentation) {
       for (const key of ['name', 'groupId', 'composerDraft']) if (rawChat[key] !== undefined && typeof rawChat[key] !== 'string') throw new ChatContractError('invalid_request', 'Invalid conversation presentation field ' + key);
       if (rawChat.pinnedAt !== undefined && (!Number.isFinite(rawChat.pinnedAt) || rawChat.pinnedAt <= 0)) throw new ChatContractError('invalid_request', 'Invalid conversation pinned timestamp');
+      if (rawChat.archivedAt !== undefined && (!Number.isFinite(rawChat.archivedAt) || rawChat.archivedAt <= 0)) throw new ChatContractError('invalid_request', 'Invalid conversation archive timestamp');
     }
     const stored = db.prepare('SELECT name,group_id,meta_json FROM chats WHERE id = ?').get(chatId);
     const meta = parseJson(stored?.meta_json, {});
     const presentationBefore = { ...meta, name: stored.name, groupId: stored.group_id };
     // Legacy viewers can still save presentation state without owning the
     // transcript, captured model, workspace, profile, or execution records.
-    for (const key of ['pinnedAt', 'composerDraft']) {
+    for (const key of ['pinnedAt', 'archivedAt', 'composerDraft']) {
       if (Object.prototype.hasOwnProperty.call(chat, key)) {
         meta[key] = chat[key];
       } else if (replacePresentation) delete meta[key];

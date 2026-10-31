@@ -20,6 +20,8 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 Drafts survive switching chats.
 
+The bottom of the chat list has **Working** and **Archive** views, each with a chat count. Right-click a chat and choose **Archive chat** to move it out of Working. In Archive, right-click and choose **Restore chat** to return it to Working. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
+
 Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. Changing the model during an ordinary chat response stops that generation; the next turn uses the new selection. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
 
 Clicking the **branch icon** enables Worktree for this chat without creating a

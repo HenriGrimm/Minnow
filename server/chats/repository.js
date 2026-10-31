@@ -504,7 +504,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
           fail('stale_revision', 'Conversation profile changed');
         }
         if (!patch || typeof patch !== 'object' || Array.isArray(patch)
-          || Object.keys(patch).some((key) => !['providerId', 'modelId', 'modeId', 'name', 'pinned'].includes(key))) fail('invalid_request', 'Unsupported conversation configuration');
+          || Object.keys(patch).some((key) => !['providerId', 'modelId', 'modeId', 'name', 'pinned', 'archived'].includes(key))) fail('invalid_request', 'Unsupported conversation configuration');
         if (patch.pinned !== undefined && repository.getRelation(chatId)) fail('invalid_request', 'Agent conversations stay within their parent group and cannot be pinned independently');
         let selection = { providerId: existing.provider_id, modelId: existing.model_id };
         if (Object.hasOwn(patch, 'providerId') || Object.hasOwn(patch, 'modelId')) {
@@ -522,6 +522,11 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
           delete meta.pinned;
           if (patch.pinned) meta.pinnedAt = Number.isFinite(meta.pinnedAt) && meta.pinnedAt > 0 ? meta.pinnedAt : time();
           else delete meta.pinnedAt;
+        }
+        if (patch.archived !== undefined) {
+          if (typeof patch.archived !== 'boolean') fail('invalid_request', 'Archived state must be a boolean');
+          if (patch.archived) meta.archivedAt = Number.isFinite(meta.archivedAt) && meta.archivedAt > 0 ? meta.archivedAt : time();
+          else delete meta.archivedAt;
         }
         db.prepare('UPDATE chats SET provider_id=?,model_id=?,mode_id=?,name=?,meta_json=? WHERE id=?')
           .run(selection.providerId, selection.modelId, mode, name, json(meta), chatId);

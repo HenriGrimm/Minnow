@@ -145,7 +145,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
       if (!selected) throw new Error('Select a model with its provider.');
       payload.selection = { ...selected, options: {} };
     }
-    for (const field of ['modeId', 'name', 'pinned'] as const) if (patch[field] !== undefined) payload[field] = patch[field];
+    for (const field of ['modeId', 'name', 'pinned', 'archived'] as const) if (patch[field] !== undefined) payload[field] = patch[field];
     payload.expectedProfileVersion = chat.profileReference?.profileVersion ?? 0;
   } else if (action === 'cancel-steer') {
     throw new Error('Remove an individual pending correction from the queue.');

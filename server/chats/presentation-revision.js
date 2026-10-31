@@ -4,7 +4,7 @@ export function hasChatPresentationChanges(before, after) {
   const pin = value => Number.isFinite(value) && value > 0 ? value : 0;
   const draft = value => typeof value === 'string' ? value : '';
   return String(before.name ?? '') !== String(after.name ?? '') || String(before.groupId ?? '') !== String(after.groupId ?? '') ||
-    pin(before.pinnedAt) !== pin(after.pinnedAt) || draft(before.composerDraft) !== draft(after.composerDraft);
+    pin(before.pinnedAt) !== pin(after.pinnedAt) || pin(before.archivedAt) !== pin(after.archivedAt) || draft(before.composerDraft) !== draft(after.composerDraft);
 }
 
 /** A separate CAS fence for user-editable metadata, never model output or ACKs. */

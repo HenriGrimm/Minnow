@@ -126,3 +126,20 @@ test('aborting a programmatic send pins Stop to its own execution', async () => 
   assert.equal(controls[0].executionId, 'own-execution');
   assert.equal(controls[0].scope, 'tree');
 });
+
+
+test('managed archive and restore use authoritative configuration without changing the local chat', async () => {
+  const chat = setup();
+  const calls: any[] = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), '/api/chats/' + chatId + '/configuration');
+    assert.equal(options!.method, 'PATCH');
+    calls.push(JSON.parse(options!.body as string));
+    return Response.json({});
+  };
+  await sendRemoteChatCommand(chatId, 'configure', { patch: { archived: true } });
+  await sendRemoteChatCommand(chatId, 'configure', { patch: { archived: false } });
+  assert.deepEqual(calls.map(call => call.archived), [true, false]);
+  assert.ok(calls.every(call => call.expectedProfileVersion === 3));
+  assert.equal(chat.archivedAt, undefined);
+});

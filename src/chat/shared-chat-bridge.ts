@@ -25,6 +25,7 @@ import { enqueueComposerMessage, pushQueuedMessageNow, removeQueuedMessage, upda
 import { clearPendingSteer, enqueueSteerMessage } from './steer-message';
 import { stopGeneration } from './stop-generation';
 import { setChatPinned } from '../state/chat-groups';
+import { setChatArchived } from '../state/chat-archive';
 import type { Chat } from '../types';
 import type { SharedChatFrame } from './shared-chat-protocol';
 import type { TurnEvent } from '../../server/runner/run-turn';
@@ -39,7 +40,7 @@ import { createChatPublicationBatch, serializeChatPublicationBatches, type ChatP
 import { chatMutationVersion } from '../state/chat-mutation-version';
 
 const FIELD_KEYS = ['name', 'workspacePath', 'modelId', 'providerId', 'modeId', 'updatedAt',
-  'currentGenerationId', 'lastStats', 'modelInfo', 'turnError', 'unread', 'pinnedAt', 'pendingMessageQueue',
+  'currentGenerationId', 'lastStats', 'modelInfo', 'turnError', 'unread', 'pinnedAt', 'archivedAt', 'pendingMessageQueue',
   'pendingSteerMessage', 'reasoningEffort', 'worktreeRoot', 'worktreeEnabled', 'worktreeSetupRequired',
   'worktreeSetupError', 'subAgentAutoResumeBlocked', 'activeGoal', 'activeLoops', 'remoteCommandReceipts'] as const;
 
@@ -308,6 +309,7 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
       const patch = command.patch ?? {};
       if (typeof patch.name === 'string') renameChatTitle(chat.id, patch.name);
       if (typeof patch.pinned === 'boolean') setChatPinned(chat, patch.pinned);
+      if (typeof patch.archived === 'boolean') setChatArchived(chat, patch.archived);
       if (typeof patch.modelSelectValue === 'string') {
         const { onActiveChatModelChange } = await import('../ui/chat-model-ui');
         onActiveChatModelChange(patch.modelSelectValue, chat);

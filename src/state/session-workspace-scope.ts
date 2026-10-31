@@ -20,6 +20,10 @@ export function hasComposerDraft(chat: Chat): boolean {
   return Boolean(chat.composerDraft?.trim());
 }
 
+export function isChatArchived(chat: Chat): boolean {
+  return typeof chat.archivedAt === 'number' && Number.isFinite(chat.archivedAt) && chat.archivedAt > 0;
+}
+
 /**
  * Whether a chat belongs in session rails (desktop / Code / Chat app).
  * Lazy-boot chats keep `history: []` until hydrate — use denormalized `messageCount`
@@ -27,6 +31,7 @@ export function hasComposerDraft(chat: Chat): boolean {
  */
 export function chatHasListableContent(chat: Chat): boolean {
   if (chat.agentConversation?.version === 1) return true;
+  if (isChatArchived(chat)) return true;
   if (hasComposerDraft(chat)) return true;
   // A Super Plan chat is the home of a server-side run and never has a
   // transcript of its own; it belongs in the sidebar from the run's start.

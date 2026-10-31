@@ -199,3 +199,36 @@ test('presentation receipts perform only unique keyed reads and preserve missing
   assert.equal(Object.getPrototypeOf(receipt), Object.prototype);
   assert.throws(() => readChatPresentationRevisions(keyedDb, ['invalid-counter']), { code: 'recovery_required' });
 });
+
+
+test('archive configuration is durable, projected and fenced against stale presentation saves', async t => {
+  const f = await fixture(t);
+  const originalHistory = f.repository.readTranscript('managed').messages;
+  const archived = await f.request('/api/chats/managed/configuration', 'PATCH', {
+    archived: true, expectedProfileVersion: 1, clientRequestId: 'archive-managed',
+  });
+  assert.equal(archived.status, 200, JSON.stringify(archived.body));
+  const stamp = f.repository.getChat('managed').archivedAt;
+  assert.ok(stamp > 0);
+  assert.equal(f.counter(), 1);
+  const frame = await f.request('/api/chats/managed');
+  assert.equal(frame.body.frame.fields.archivedAt, stamp);
+  const summaries = (await f.request('/api/config/sessions/summaries')).body;
+  assert.equal(summaries.chats.find(chat => chat.id === 'managed').archivedAt, stamp);
+  const stale = await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Old view' }, 0));
+  assert.equal(stale.status, 409);
+  assert.equal(f.repository.getChat('managed').archivedAt, stamp);
+  const preserved = await f.request('/api/config/sessions', 'PATCH', patch({ archivedAt: stamp, composerDraft: 'New view' }, 1));
+  assert.equal(preserved.status, 200, JSON.stringify(preserved.body));
+  assert.equal(f.repository.getChat('managed').archivedAt, stamp);
+  const restored = await f.request('/api/chats/managed/configuration', 'PATCH', {
+    archived: false, expectedProfileVersion: 1, clientRequestId: 'restore-managed',
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.body));
+  assert.equal(f.repository.getChat('managed').archivedAt, undefined);
+  assert.deepEqual(f.repository.readTranscript('managed').messages, originalHistory);
+  const invalid = await f.request('/api/chats/managed/configuration', 'PATCH', {
+    archived: 'yes', expectedProfileVersion: 1, clientRequestId: 'invalid-archive',
+  });
+  assert.equal(invalid.status, 400);
+});

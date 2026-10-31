@@ -11,6 +11,8 @@ import { after, before, describe, test } from 'node:test';
 import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import {
   appendTerminalRun,
+  patchSessionState,
+  readSessionSummariesState,
   readWholeSessionState,
   writeWholeSessionState,
 } from '../../server/config/sessions-repo.js';
@@ -92,5 +94,37 @@ describe('sessions SQLite whole-blob roundtrip', () => {
     assert.deepEqual(restored.subAgentRuns, expected.chats[0].subAgentRuns);
     assert.equal(restored.subAgentRuns[0].messages[0].reasoning, thought);
     assert.equal(restored.subAgentRuns[0].messages[3].content, response);
+  });
+
+  test('archive and restore survive SQLite reopen and lazy summary patches without losing history', () => {
+    const raw = JSON.parse(fs.readFileSync(KITCHEN_SINK, 'utf8'));
+    const chat = raw.chats[0];
+    chat.pinnedAt = 300;
+    chat.archivedAt = 500;
+    writeWholeSessionState(validateSessionState(raw));
+    closeSessionsDb();
+    const archived = readWholeSessionState().chats.find(entry => entry.id === chat.id);
+    assert.equal(archived.archivedAt, 500);
+    assert.equal(archived.pinnedAt, 300);
+    const summary = readSessionSummariesState().chats.find(entry => entry.id === chat.id);
+    assert.equal(summary.archivedAt, 500);
+    assert.equal(summary.history, undefined);
+    assert.equal(summary.messageCount, archived.history.length);
+    delete summary.archivedAt;
+    patchSessionState({ baseVersion: 6, chats: [summary] });
+    closeSessionsDb();
+    const restored = readWholeSessionState().chats.find(entry => entry.id === chat.id);
+    assert.equal(restored.archivedAt, undefined);
+    assert.equal(restored.pinnedAt, 300);
+    assert.equal(restored.groupId, archived.groupId);
+    assert.deepEqual(restored.history, archived.history);
+  });
+
+  test('shared session validation drops invalid archive timestamps', () => {
+    const raw = JSON.parse(fs.readFileSync(KITCHEN_SINK, 'utf8'));
+    for (const invalid of [0, -1, 'yes', NaN, Infinity]) {
+      raw.chats[0].archivedAt = invalid;
+      assert.equal(validateSessionState(raw).chats[0].archivedAt, undefined);
+    }
   });
 });

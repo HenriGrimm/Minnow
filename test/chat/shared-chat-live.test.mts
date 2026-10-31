@@ -18,6 +18,7 @@ import { normalizeChatRow } from '../../src/state/session-schema.mjs';
 import type { Chat } from '../../src/types';
 import { renameChatTitle } from '../../src/state/sessions';
 import { setChatPinned } from '../../src/state/chat-groups';
+import { setChatArchived } from '../../src/state/chat-archive';
 import { onActiveChatModelChange } from '../../src/ui/chat-model-ui';
 import { setChatMode } from '../../src/ui/mode-selector';
 import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
@@ -192,15 +193,37 @@ test('phone chat settings use PC commands instead of racing its transcript persi
   };
   renameChatTitle(CHAT, 'Phone title');
   setChatPinned(chat, true);
+  setChatArchived(chat, true);
   onActiveChatModelChange('another-model');
   assert.equal(setChatMode('build', chat).ok, true);
   await new Promise(resolve => setTimeout(resolve, 10));
-  assert.equal(commands.length, 4);
+  assert.equal(commands.length, 5);
   assert.ok(commands.every(command => command.action === 'configure'));
   assert.equal(chat.name, original.name);
   assert.equal(chat.modelId, original.modelId);
   assert.equal(chat.modeId, original.modeId);
   assert.equal(chat.pinnedAt, undefined);
+  assert.equal(chat.archivedAt, undefined);
+});
+
+test('host archive commands publish metadata and leave the active transcript intact', async () => {
+  const chat = setup();
+  const history = structuredClone(chat.history);
+  const frames: any[] = [];
+  const publisher = createSharedChatPublisher(async frame => { frames.push(frame); });
+  const handler = createHostChatCommandHandler(async (chatId, running) => {
+    await publisher.update(chatId, undefined, running);
+  }, { persist: async () => true });
+  try {
+    await handler({ id: 'archive', chatId: CHAT, action: 'configure', patch: { archived: true } });
+    assert.ok(chat.archivedAt! > 0);
+    assert.equal(frames.at(-1).fields.archivedAt, chat.archivedAt);
+    assert.deepEqual(chat.history, history);
+    await handler({ id: 'restore', chatId: CHAT, action: 'configure', patch: { archived: false } });
+    assert.equal(chat.archivedAt, undefined);
+    assert.equal(frames.at(-1).fields.archivedAt, null);
+    assert.deepEqual(chat.history, history);
+  } finally { publisher.dispose(); }
 });
 
 test('phone send and Stop use the shared command API and keep drafts outside the PC chat', async () => {

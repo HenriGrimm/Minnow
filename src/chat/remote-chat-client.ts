@@ -13,7 +13,7 @@ export interface RemoteChatCommand {
   text?: string;
   itemId?: string;
   attachments?: Attachment[];
-  patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean };
+  patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean; archived?: boolean };
   /** Managed Stop pins the displayed execution before capturing its descendants. */
   executionId?: string;
   scope?: 'turn' | 'tree';

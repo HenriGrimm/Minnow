@@ -203,7 +203,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         presentation.changed(chatId); send(200, { request: result.request, ...snapshot() }); return;
       }
       if (operation === 'configuration' && req.method === 'PATCH') {
-        const body = await readBody(req); fields(body, ['action', 'selection', 'modeId', 'name', 'pinned', 'expectedProfileVersion', 'clientRequestId']);
+        const body = await readBody(req); fields(body, ['action', 'selection', 'modeId', 'name', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
         if (body.action !== undefined && body.action !== 'configure') fail('Unsupported configuration action');
         if (body.expectedProfileVersion !== undefined && (!Number.isSafeInteger(body.expectedProfileVersion) || body.expectedProfileVersion < 0)) fail('Invalid profile revision');
         if (!ID.test(body.clientRequestId ?? '')) fail('A configuration receipt identity is required');
@@ -235,6 +235,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
           patch.name = body.name.trim();
         }
         if (body.pinned !== undefined) { if (typeof body.pinned !== 'boolean') fail('Invalid pin setting'); patch.pinned = body.pinned; }
+        if (body.archived !== undefined) { if (typeof body.archived !== 'boolean') fail('Invalid archive setting'); patch.archived = body.archived; }
         const nextPolicy = patch.modeId ? createChatPolicy(await runtime.resolvePolicyInput({ ...target.chat, modeId: patch.modeId }, target.scope, target.registry)) : target.policy;
         assertChatPolicyWithinCeiling(nextPolicy, target.policy);
         const next = body.selection || patch.modeId ? {

@@ -2,7 +2,7 @@ import { validateModelSelection } from './contracts.js';
 
 const active = new Set(['running', 'loading_model']);
 const terminal = new Set(['completed', 'failed', 'stopped', 'settled', 'cancelled', 'recovery_required']);
-const fields = ['name', 'groupId', 'pinnedAt', 'composerDraft', 'workspacePath', 'worktreeRoot', 'worktreeEnabled', 'providerId', 'modelId', 'modeId',
+const fields = ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'workspacePath', 'worktreeRoot', 'worktreeEnabled', 'providerId', 'modelId', 'modeId',
   'updatedAt', 'lastMessageAt', 'messageCount', 'lastStats', 'modelInfo', 'reasoningEffort',
   'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt'];
 

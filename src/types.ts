@@ -1364,6 +1364,8 @@ export interface Chat {
   unread?: boolean;
   /** Epoch ms the user pinned this chat; pinned chats list above everything else, newest pin first. */
   pinnedAt?: number;
+  /** Epoch ms the user archived this chat; omitted for working chats. */
+  archivedAt?: number;
   /** Sidebar: red dot on inactive rows after a failed turn until the user opens this chat again. */
   turnError?: boolean;
   /** Epoch ms of the last committed assistant reply (unread baseline). */

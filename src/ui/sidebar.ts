@@ -9,6 +9,7 @@ import { decodeModelSelectKey } from '../lib/model-select-key';
 import { routerChatModelLabel, getRouterConfigSync, saveRouterConfig } from '../models/routers';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import { isChatStreaming } from '../chat/streaming-state';
+import { isChatArchived, setChatArchived } from '../state/chat-archive';
 import { stopGeneration } from '../chat/stop-generation';
 import {
   createGroup,
@@ -372,6 +373,7 @@ export async function applyWorkspaceScopedSession(
   options?: { skipFileTreeSync?: boolean },
 ): Promise<void> {
   clearChatSelection();
+  setSidebarChatView('working');
   exitBoardViewForNavigation();
   invalidateComposerUndoGitCache();
   const { activeChat, activeChanged } = await onWorkspaceChanged(newPath, previousPath);
@@ -584,6 +586,13 @@ function buildChatRow(
   });
   row.addEventListener('keydown', (e) => {
     if ((e.target as Element).closest('.chat-rename-input, button, a')) return;
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault();
+      const bounds = row.getBoundingClientRect();
+      showChatItemContextMenu(bounds.left, bounds.bottom, currentChat(), nameSpan, options);
+      document.querySelector<HTMLButtonElement>('#chatItemContextMenu button')?.focus();
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       clearChatSelection();
@@ -1202,6 +1211,55 @@ export function subscribeSidebarRender(listener: () => void): () => void {
   return () => sidebarRenderListeners.delete(listener);
 }
 
+type SidebarChatView = 'working' | 'archive';
+
+function setSidebarChatView(view: SidebarChatView): void {
+  const list = document.getElementById('chatList');
+  if (!list || list.dataset.chatView === view) return;
+  clearChatSelection();
+  list.dataset.chatView = view;
+  list.scrollTop = 0;
+}
+
+/** Keep the two chat views reachable below the scrolling session list. */
+function syncSidebarChatViews(list: HTMLElement, workingCount: number, archivedCount: number): void {
+  let nav = document.getElementById('chatListViews');
+  if (!nav) {
+    nav = document.createElement('nav');
+    nav.id = 'chatListViews';
+    nav.className = 'chat-list-views';
+    nav.setAttribute('aria-label', 'Chat views');
+    for (const [view, label] of [['working', 'Working'], ['archive', 'Archive']] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chat-list-view';
+      button.dataset.chatView = view;
+      button.setAttribute('aria-controls', list.id);
+      const text = document.createElement('span');
+      text.textContent = label;
+      const count = document.createElement('span');
+      count.className = 'chat-list-view__count';
+      button.append(createIcon(view === 'archive' ? 'archive' : 'appChat'), text, count);
+      button.addEventListener('click', () => {
+        setSidebarChatView(view);
+        renderSidebar();
+      });
+      nav.appendChild(button);
+    }
+    list.after(nav);
+  }
+  const selected = list.dataset.chatView ?? 'working';
+  list.setAttribute('aria-label', selected === 'archive' ? 'Archived chats' : 'Working chats');
+  for (const button of nav.querySelectorAll<HTMLButtonElement>('button[data-chat-view]')) {
+    const archived = button.dataset.chatView === 'archive';
+    const count = archived ? archivedCount : workingCount;
+    button.setAttribute('aria-pressed', String(button.dataset.chatView === selected));
+    button.setAttribute('aria-label', `${archived ? 'Archive' : 'Working'} (${count})`);
+    const badge = button.querySelector('.chat-list-view__count');
+    if (badge) badge.textContent = String(count);
+  }
+}
+
 export function renderSidebar(): void {
   cancelScheduledSidebarRender();
   for (const listener of sidebarRenderListeners) {
@@ -1263,7 +1321,20 @@ export function renderSidebar(): void {
     .filter((c) => !isHiddenFromMainSidebar(c))
     .filter((c) => !isBoardOwnedChat(c))
     .filter(excludeAssistantChats);
-  const relationships = projectChatRelationships([...workspaceCandidates, ...unassignedCandidates]);
+  const candidates = [...workspaceCandidates, ...unassignedCandidates];
+  const family = projectChatRelationships(candidates);
+  const archivedIds = new Set<string>();
+  const familyQueue = [...family.roots];
+  for (let index = 0; index < familyQueue.length; index++) {
+    const chat = familyQueue[index]!;
+    if (isChatArchived(chat) || archivedIds.has(family.parentById.get(chat.id) ?? '')) archivedIds.add(chat.id);
+    familyQueue.push(...(family.children.get(chat.id) ?? []));
+  }
+  const archivedView = list.dataset.chatView === 'archive';
+  const allChats = candidates.filter(chat => isSidebarListedChat(chat) || family.children.has(chat.id));
+  const archivedCount = allChats.filter(chat => archivedIds.has(chat.id)).length;
+  syncSidebarChatViews(list, allChats.length - archivedCount, archivedCount);
+  const relationships = projectChatRelationships(candidates.filter(chat => archivedIds.has(chat.id) === archivedView));
   const workspaceIds = new Set(workspaceCandidates.map(chat => chat.id));
   const listedRoots = relationships.roots.filter(chat => isSidebarListedChat(chat) || relationships.children.has(chat.id));
   const workspaceChats = listedRoots.filter(chat => workspaceIds.has(chat.id));
@@ -1288,6 +1359,17 @@ export function renderSidebar(): void {
     return buildChatRow(chat, highlightChatId, options);
   };
   const takeBranch = agentSidebarBranches(list, relationships, highlightChatId, takeRow);
+
+  if (archivedView) {
+    const archived = [...listedRoots]
+      .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
+    for (const chat of archived) desired.push(...takeBranch(chat, { draggable: false }));
+    if (!desired.length) desired.push(buildChatListEmptyState('archive'));
+    reconcileChildren(list, desired);
+    syncChatItemDotsInDom();
+    syncChatItemLoopIconsInDom();
+    return;
+  }
 
   if (pinned.length) {
     desired.push(takeSectionHead('Pinned', pinned.length));
@@ -1349,7 +1431,7 @@ export function renderSidebar(): void {
     }
   }
   if (desired.length === 0) {
-    desired.push(existingEmpty ?? buildChatListEmptyState());
+    desired.push(existingEmpty?.dataset.chatView === 'working' ? existingEmpty : buildChatListEmptyState());
   }
 
   reconcileChildren(list, desired);
@@ -1357,15 +1439,18 @@ export function renderSidebar(): void {
   syncChatItemLoopIconsInDom();
 }
 
-function buildChatListEmptyState(): HTMLElement {
+function buildChatListEmptyState(view: SidebarChatView = 'working'): HTMLElement {
   const empty = document.createElement('div');
   empty.className = 'chat-list-empty';
+  empty.dataset.chatView = view;
   const title = document.createElement('p');
   title.className = 'chat-list-empty__title';
-  title.textContent = 'No chats yet';
+  title.textContent = view === 'archive' ? 'No archived chats' : 'No working chats';
   const hint = document.createElement('p');
   hint.className = 'chat-list-empty__hint';
-  hint.textContent = 'Start one to work on this folder with a model.';
+  hint.textContent = view === 'archive'
+    ? 'Right-click a chat and choose Archive chat to keep it here.'
+    : 'Start a new chat to work on this folder.';
   empty.append(title, hint);
   return empty;
 }
@@ -1391,6 +1476,22 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   label.className = 'chat-context-menu__multi-label';
   label.textContent = `${chats.length} chats selected`;
   menu.appendChild(label);
+  markPreviewOccluder(menu, 'menu');
+
+  const archivable = chats.filter((chat) => !isBoardOwnedChat(chat));
+  if (archivable.length) {
+    const restore = archivable.every(isChatArchived);
+    const archiveItem = document.createElement('button');
+    archiveItem.type = 'button';
+    archiveItem.textContent = `${restore ? 'Restore' : 'Archive'} ${archivable.length} chats`;
+    archiveItem.addEventListener('click', () => {
+      for (const chat of archivable) setChatArchived(chat, !restore);
+      menu.remove();
+      clearChatSelection();
+      renderSidebar();
+    });
+    menu.appendChild(archiveItem);
+  }
 
   const eligible = chats.filter((c) => !isChatStreaming(c.id) && getChatMessageCount(c) > 0);
   const brainItem = document.createElement('button');
@@ -1517,6 +1618,8 @@ export function showChatItemContextMenu(
     document.removeEventListener('pointerdown', onPointerDownOutside, true);
     document.removeEventListener('keydown', onKey);
   };
+
+  markPreviewOccluder(menu, 'menu');
   const onPointerDownOutside = (e: PointerEvent): void => {
     if (menu.contains(e.target as Node)) return;
     closeMenu();
@@ -1604,6 +1707,21 @@ export function showChatItemContextMenu(
     void deleteChat(chat.id);
   });
 
+  if (!isBoardOwnedChat(chat)) {
+    const archived = isChatArchived(chat);
+    const archiveItem = document.createElement('button');
+    archiveItem.type = 'button';
+    archiveItem.textContent = archived ? 'Restore chat' : 'Archive chat';
+    archiveItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu();
+      setChatArchived(chat, !archived);
+      clearChatSelection();
+      renderSidebar();
+    });
+    menu.appendChild(archiveItem);
+  }
   if (pinItem) menu.appendChild(pinItem);
   menu.appendChild(renameItem);
   const linkItem = document.createElement('button');
@@ -1783,6 +1901,11 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
 }
 
 export async function switchChat(id: string): Promise<void> {
+  const target = sessionState?.chats.find((chat) => chat.id === id);
+  if (target) {
+    const archived = isChatArchived(target) || projectChatRelationships(sessionState!.chats).ancestors(id).some(isChatArchived);
+    setSidebarChatView(archived ? 'archive' : 'working');
+  }
   const sharedHost = getSharedChatHost(id);
   if (!sharedHost && document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
@@ -2041,6 +2164,7 @@ export async function createChatWithMode(
   const workspacePath = requestedWorkspace || getWorkspacePath();
   const active = getActiveChat();
   flushActiveComposerDraftBeforeNewChat();
+  setSidebarChatView('working');
 
   const requestedMode = normalizeModeId(options.modeId);
   // An explicit workspace must never reuse (or retarget) the active chat.
@@ -2052,6 +2176,7 @@ export async function createChatWithMode(
     !requestedWorkspace &&
     !options.initialUserMessage?.trim() &&
     isEphemeralEmptyChat(active) &&
+    !isChatArchived(active) &&
     sameWorkspace &&
     !isMainColumnOverlaySuppressingChatDom() &&
     !isBoardAnchorChat(active);

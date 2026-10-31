@@ -1251,6 +1251,9 @@ export function normalizeChatRow(raw) {
     ...(typeof row.pinnedAt === 'number' && Number.isFinite(row.pinnedAt) && row.pinnedAt > 0
       ? { pinnedAt: row.pinnedAt }
       : {}),
+    ...(typeof row.archivedAt === 'number' && Number.isFinite(row.archivedAt) && row.archivedAt > 0
+      ? { archivedAt: row.archivedAt }
+      : {}),
     ...(typeof row.lastAssistantAt === 'number' &&
     Number.isFinite(row.lastAssistantAt) &&
     row.lastAssistantAt > 0
