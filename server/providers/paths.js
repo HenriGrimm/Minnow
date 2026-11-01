@@ -259,7 +259,8 @@ function normalizeOpenAiModelRow(item) {
 
   const src = /** @type {Record<string, unknown>} */ (item);
   const id = String(src.id);
-  const type = typeof src.type === 'string' ? src.type : 'llm';
+  // Hosted catalogs (including OpenCode Go) call conversational models "chat".
+  const type = src.type === 'chat' ? 'llm' : typeof src.type === 'string' ? src.type : 'llm';
   const state = typeof src.state === 'string' ? src.state : 'loaded';
 
   let maxContext = firstPositiveContextField(src, OPENAI_CONTEXT_FIELD_ALIASES);
