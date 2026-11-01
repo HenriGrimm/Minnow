@@ -225,6 +225,7 @@ describe('git-panel-name-popover slug preview (MIN-659)', () => {
     );
     assert.equal(options[0]?.getAttribute('aria-disabled'), 'true');
     assert.equal(options[2]?.getAttribute('aria-disabled'), 'true');
+    assert.equal(options[3]?.querySelector('.git-panel-name-popover__option-tag')?.textContent, 'remote');
 
     options[0]?.click();
     assert.deepEqual(submitted, []);

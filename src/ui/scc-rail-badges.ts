@@ -23,13 +23,13 @@ export async function refreshGitRailBadges(
   options: {
     cwd?: string;
     status: GitOpResult;
-    localBranchCount: number;
+    branchCount: number;
   },
 ): Promise<void> {
   apply('changes', changesBadgeFromStatus(options.status));
   apply(
     'branches',
-    options.localBranchCount > 0 ? { kind: 'count', value: options.localBranchCount } : null,
+    options.branchCount > 0 ? { kind: 'count', value: options.branchCount } : null,
   );
 
   const cwd = options.cwd;

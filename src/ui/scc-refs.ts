@@ -28,6 +28,7 @@ import {
 } from '../lib/worktree-list-parse';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { isProtectedBranchName } from '../lib/git-trunk-branch';
+import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import { confirmDirtyCheckout } from './git-checkout-confirm';
 import { openGitPanelNamePopover, openGitRefNamePopover } from './git-panel-name-popover';
@@ -327,7 +328,6 @@ export function createBranchesView(ctx: SccContext): SccView {
 
   let destroyed = false;
   let filter = '';
-  let showRemote = false;
 
   const search = el('input', 'scc-search');
   search.type = 'search';
@@ -338,19 +338,6 @@ export function createBranchesView(ctx: SccContext): SccView {
     void refresh();
   });
 
-  const remoteToggle = button({
-    label: 'Remote',
-    title: 'Show remote-tracking branches',
-    variant: 'ghost',
-    onClick: () => {
-      showRemote = !showRemote;
-      remoteToggle.classList.toggle('is-active', showRemote);
-      remoteToggle.setAttribute('aria-pressed', String(showRemote));
-      void refresh();
-    },
-  });
-  remoteToggle.setAttribute('aria-pressed', 'false');
-
   const newBranchBtn = button({
     label: 'New branch',
     icon: 'plus',
@@ -358,7 +345,7 @@ export function createBranchesView(ctx: SccContext): SccView {
     onClick: () => openNewBranch(newBranchBtn),
   });
 
-  toolbar.append(search, remoteToggle, newBranchBtn);
+  toolbar.append(search, newBranchBtn);
   const selection = refSelection(toolbar, ctx, 'branches');
   let refreshVersion = 0;
 
@@ -402,7 +389,7 @@ export function createBranchesView(ctx: SccContext): SccView {
     const cwd = ctx.getCwd();
     const [tree, refs] = await Promise.all([
       gitBranchTree(cwd),
-      showRemote ? gitBranches(cwd) : Promise.resolve(undefined),
+      gitBranches(cwd),
     ]);
     if (destroyed || version !== refreshVersion) return;
     selection.begin();
@@ -416,12 +403,13 @@ export function createBranchesView(ctx: SccContext): SccView {
     const entries = tree.branches ?? [];
     const current = tree.current ?? '';
     const trunk = tree.trunk || 'main';
-    const remotes = (refs?.ok ? refs.remote ?? [] : [])
-      .filter((name) => !name.includes(' -> '))
-      .map((name) => name.replace(/^remotes\//, ''));
+    const remotes = [...new Set((refs.ok ? refs.remote ?? [] : [])
+      .filter((name) => !isSkippedRemoteRef(name))
+      .map(displayRemoteRef))];
     const tracked = new Map(entries.filter((entry) => entry.upstream).map((entry) => [entry.upstream!, entry.name]));
 
-    ctx.setBadge('branches', entries.length ? { kind: 'count', value: entries.length } : null);
+    const count = entries.length + remotes.length;
+    ctx.setBadge('branches', count ? { kind: 'count', value: count } : null);
 
     const matches = (name: string) => !filter || name.toLowerCase().includes(filter);
     const forest = buildBranchForest(entries, trunk);

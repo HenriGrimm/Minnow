@@ -136,7 +136,7 @@ In the sidebar and **Source Control → Changes**, click a row to highlight it, 
 Discard asks for confirmation. Working-tree changes restore the staged version; selecting a staged change also restores its committed version and removes that change from staging. New files are deleted. New folders list their individual files, and discarding a folder preserves ignored files. Ignore adds rules to the repository’s `.gitignore`; files already tracked by Git stay tracked.
 
 
-Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
+Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; remote branches appear automatically with a small **remote** badge. Selecting a remote branch creates its local tracking branch if needed. Selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
 
 When you switch branches with uncommitted files, choose **Bring my changes** to carry them to the destination, or **Leave changes** to save them in Git stash. Saved changes include staged, unstaged, and new files; ignored files are excluded. Returning to the saved branch in the same worktree offers **Restore changes**, including the original staging. Commit or stash any current changes before restoring. If restoration conflicts, the saved stash remains available under **Source Control → Stashes**. Browsing a different worktree keeps each checkout’s files in place.
 
@@ -174,7 +174,7 @@ In **Branches** and **Worktrees**, click a row to select it, Ctrl/Cmd-click to t
 
 In **Pull requests**, filter by **Open**, **Merged**, **Closed**, or **All**, and search the loaded list by title, number, branch, author, or label. The current branch's PR opens automatically when present. **Overview** shows the rendered description, check and review summaries, merge status, and reviews; **Checks**, **Files**, and **Commits** have their own tabs. Check **Details** links open the CI result on GitHub. Choose a merge method beside **Merge**; drafts must be marked **Ready for review** before merging. **More → Close pull request** closes without merging. Refreshes preserve the selected tab and an unfinished new-PR form.
 
-Enable **Remote** in Branches to show remote branches. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
+Remote branches appear automatically in **Branches**, marked with a small **remote** badge. Use a row's delete action or include remote branches in a selection to delete them on their remote server. Local branches are kept. Remote `main`, `master`, and symbolic HEAD references are protected. Removing a worktree keeps its branch.
 
 ## Code map
 

@@ -1015,6 +1015,7 @@ function syncCheckoutPicker(): void {
   checkoutPicker?.update({
     cwd: panelCwd ?? ws, workspace: ws, branch: currentBranchName,
     branches: [...new Set([...cachedMergeBranchLists.local, ...cachedMergeBranchLists.lockedLocal, currentBranchName].filter(Boolean))],
+    remoteBranches: cachedMergeBranchLists.remote,
     worktrees: knownWorktrees, savedChanges: savedCheckoutChanges,
   });
 }

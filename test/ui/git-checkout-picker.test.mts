@@ -72,6 +72,47 @@ test('branch checked out elsewhere opens its worktree without a checkout or dirt
   assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);
 });
 
+test('remote branches appear with badges, remain searchable, and retain their start point through a dirty switch', async () => {
+  picker.update({ ...state, remoteBranches: [
+    'remotes/origin/fix/search', 'upstream/fix/search', 'remotes/origin/HEAD -> origin/main', 'upstream/HEAD',
+  ] });
+  click('main');
+  const rows = [...document.querySelectorAll('.git-checkout__item')];
+  assert.deepEqual(rows.map((row) => row.querySelector('.git-checkout__branch')?.textContent),
+    ['main', 'feature', 'occupied', 'origin/fix/search', 'upstream/fix/search']);
+  assert.equal(rows[3].querySelector('.git-checkout__tag')?.textContent, 'remote');
+  const input = document.querySelector('input')!;
+  input.value = 'upstream'; input.dispatchEvent(new win.Event('input') as unknown as Event);
+  assert.equal(document.querySelectorAll('.git-checkout__item').length, 1);
+  click('upstream/fix/search'); await tick();
+  assert.deepEqual(calls[0], { branch: 'fix/search', create: true, startPoint: 'upstream/fix/search', cwd: '/workspace', expectedBranch: 'main' });
+  click('Bring my changes'); await tick();
+  assert.deepEqual(calls[1], { ...calls[0], dirtyHandling: 'bring' });
+});
+
+test('remote rows reuse local branches and open occupied worktrees', async () => {
+  picker.update({ ...state, remoteBranches: ['origin/feature', 'origin/occupied', 'origin/main'] });
+  click('main'); click('origin/occupied');
+  assert.deepEqual(worktrees, ['/other']);
+  assert.equal(calls.length, 0);
+  result = { ok: true };
+  click('main'); click('origin/feature'); await tick();
+  assert.deepEqual(calls, [{ branch: 'feature', cwd: '/workspace', expectedBranch: 'main' }]);
+  click('main'); click('origin/main');
+  assert.equal(calls.length, 1);
+});
+
+test('polling adds remote branches while preserving the open search and focus', () => {
+  click('main');
+  const input = document.querySelector('input')!;
+  input.focus(); input.value = 'remote'; input.dispatchEvent(new win.Event('input') as unknown as Event);
+  picker.update({ ...state, remoteBranches: ['origin/remote-new'] });
+  assert.equal(document.activeElement, input);
+  assert.equal(input.value, 'remote');
+  assert.equal(document.querySelector('.git-checkout__branch')?.textContent, 'main');
+  assert.equal(document.querySelector('.git-checkout__item .git-checkout__branch')?.textContent, 'origin/remote-new');
+});
+
 test('worktree tab browses checkouts without moving uncommitted changes', () => {
   click('main'); click('Worktrees'); click('occupied');
   assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);

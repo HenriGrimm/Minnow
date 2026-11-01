@@ -164,6 +164,41 @@ test('branches render as a collapsible tree with ancestors kept for filter match
   }
 });
 
+test('remote-only branches appear by default, support search, and omit symbolic HEAD refs', async () => {
+  const win = new Window();
+  installHappyDomGlobals(win);
+  setLocalServerAvailable(true);
+  globalThis.fetch = (async (_url, init) => {
+    const args = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify(args.op === 'branchTree'
+      ? { ok: true, branches: [] }
+      : { ok: true, remote: ['remotes/origin/feature/a', 'upstream/feature/b', 'upstream/HEAD', 'remotes/origin/HEAD -> origin/main'] }));
+  }) as typeof fetch;
+  let badge: unknown;
+  let view: SccView;
+  const ctx: SccContext = {
+    getCwd: () => '/remote-repo', getBranch: () => '', refreshAll: async () => view.refresh(),
+    refreshSection: async () => view.refresh(), goTo() {}, setBadge: (_section, value) => { badge = value; },
+  };
+  try {
+    view = createBranchesView(ctx);
+    document.body.append(view.root);
+    await view.refresh();
+    assert.deepEqual(badge, { kind: 'count', value: 2 });
+    assert.equal(view.root.querySelectorAll('.scc-chip--remote').length, 2);
+    assert.doesNotMatch(view.root.textContent ?? '', /HEAD|No branches yet/);
+    const search = view.root.querySelector<HTMLInputElement>('.scc-search')!;
+    search.value = 'upstream';
+    search.dispatchEvent(new win.Event('input') as unknown as Event);
+    await view.refresh();
+    assert.equal(view.root.querySelectorAll('.scc-refrow').length, 1);
+    assert.equal(view.root.querySelector('.scc-refrow__name')?.textContent, 'upstream/feature/b');
+    view.destroy();
+  } finally {
+    await win.happyDOM.close();
+  }
+});
+
 test('branch and worktree selection confirms batches and retains failures', async () => {
   const win = new Window();
   installHappyDomGlobals(win);
@@ -223,10 +258,9 @@ test('branch and worktree selection confirms batches and retains failures', asyn
     branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }) as unknown as KeyboardEvent);
     assert.deepEqual(selectedNames(), []);
     branchRow('main').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }) as unknown as KeyboardEvent);
-    assert.deepEqual(selectedNames(), ['main', 'feature/a', 'feature/b']);
-    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.textContent, 'Delete selected (2)');
-    clickButton('Remote');
-    await settle();
+    assert.deepEqual(selectedNames(), ['main', 'feature/a', 'feature/b', 'origin/feature/a', 'origin/main']);
+    assert.equal(view.root.querySelector<HTMLButtonElement>('.scc-list-view__bulk-delete')!.textContent, 'Delete selected (3)');
+    assert.equal(branchRow('origin/feature/a').querySelector('.scc-chip--remote')?.textContent, 'remote');
     clickRow(branchRow('feature/a'));
     clickRow(branchRow('origin/feature/a'), { shiftKey: true });
     assert.deepEqual(selectedNames(), ['feature/a', 'feature/b', 'origin/feature/a']);

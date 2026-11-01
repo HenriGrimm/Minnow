@@ -441,6 +441,7 @@ function branchSwitchRows(lists: GitRefBranchLists): BranchSwitchRow[] {
       choice: { name, kind: 'remote', startPoint: display },
       label: display,
       group: 'Remote',
+      tag: 'remote',
       title: `Check out ${display} as ${name}`,
     });
   }

@@ -7,6 +7,7 @@ let confirmed = true;
 const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
+let remoteBranches: string[] = [];
 let savedChanges: { sha: string; branch: string; fileCount: number; createdAt: string }[] = [];
 let statusResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
 let pullResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
@@ -57,7 +58,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
   },
   gitBranches: async (cwd?: string) => ({
     ok: true, current: cwd === '/selected-worktree' ? 'feature' : workspaceBranch,
-    local: ['main', 'feature'], remote: [], lockedLocal: [],
+    local: ['main', 'feature'], remote: remoteBranches, lockedLocal: [],
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
   gitDiff: unused, gitDiscard: unused, gitIgnore: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
@@ -112,6 +113,7 @@ beforeEach(() => {
   confirmed = true;
   featureWorktreeExists = true;
   workspaceBranch = 'main';
+  remoteBranches = [];
   savedChanges = [];
   statusResult = { ok: true };
   pullResult = { ok: true };
@@ -159,6 +161,23 @@ test('refresh follows an external checkout even when the previous branch remains
   workspaceBranch = 'feature';
   await panel.refreshGitPanel();
   assert.match(branch.textContent ?? '', /feature/);
+});
+
+test('sidebar automatically lists remote branches and checks out their local tracking branch', async () => {
+  panel.setGitPanelCwd(undefined);
+  remoteBranches = ['remotes/origin/fix/remote-only', 'remotes/origin/HEAD -> origin/main'];
+  await panel.openGitSidePanel();
+  document.getElementById('gitCheckoutTrigger')!.click();
+  const row = [...document.querySelectorAll<HTMLButtonElement>('.git-checkout__item')]
+    .find((row) => row.querySelector('.git-checkout__branch')?.textContent === 'origin/fix/remote-only');
+  assert.ok(row);
+  assert.equal(row.querySelector('.git-checkout__tag')?.textContent, 'remote');
+  assert.doesNotMatch(document.querySelector('.git-checkout__list')?.textContent ?? '', /HEAD/);
+  row.click();
+  await waitForPanel(() => workspaceBranch === 'fix/remote-only');
+  assert.deepEqual(calls.find((call) => Array.isArray(call) && call[0] === 'switch'), ['switch', {
+    branch: 'fix/remote-only', cwd: '/workspace', expectedBranch: 'main', create: true, startPoint: 'origin/fix/remote-only',
+  }]);
 });
 
 test('sidebar saves changes on the source branch and offers restore after switching back', async () => {

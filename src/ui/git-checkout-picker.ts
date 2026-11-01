@@ -2,12 +2,14 @@ import { createIcon, type IconName } from './icon';
 import type { GitCheckoutSwitchInput, GitOpResult, GitSavedCheckoutChanges } from '../state/git-api';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
+import { displayRemoteRef, isSkippedRemoteRef, shortLocalNameFromRemote } from '../lib/git-ref-start.mjs';
 
 export interface CheckoutPickerState {
   cwd: string;
   workspace: string;
   branch: string;
   branches: string[];
+  remoteBranches?: string[];
   worktrees: ParsedWorktree[];
   savedChanges: GitSavedCheckoutChanges[];
 }
@@ -162,20 +164,27 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     list.replaceChildren();
     const needle = query.toLocaleLowerCase();
     if (tab === 'branches') {
-      for (const branch of state.branches.filter((b) => b.toLocaleLowerCase().includes(needle))) {
+      const branches = [
+        ...state.branches.map((branch) => ({ branch, label: branch, remote: false })),
+        ...[...new Set((state.remoteBranches ?? []).filter((ref) => !isSkippedRemoteRef(ref)).map(displayRemoteRef))]
+          .map((ref) => ({ branch: shortLocalNameFromRemote(ref), label: ref, remote: true })),
+      ];
+      for (const { branch, label, remote } of branches.filter((entry) => entry.label.toLocaleLowerCase().includes(needle))) {
+        const create = remote && !state.branches.includes(branch);
         const wt = state.worktrees.find((w) => w.branch === branch && !panelPathsEqual(w.path, state.cwd));
         const current = branch === state.branch;
         const row = button('', 'git-checkout__item', () => {
           if (current) { close(); trigger.focus(); }
           else if (wt) { close(); options.onWorktree(wt.path); trigger.focus(); }
-          else void requestSwitch({ branch, cwd: state.cwd, expectedBranch: state.branch });
+          else void requestSwitch({ branch, cwd: state.cwd, expectedBranch: state.branch, ...(create ? { create: true, startPoint: label } : {}) });
         }, current ? 'check' : 'gitBranch');
         row.disabled = busy;
         const identity = document.createElement('span');
         identity.className = 'git-checkout__identity';
-        identity.append(text(branch, 'git-checkout__branch'));
+        identity.append(text(label, 'git-checkout__branch'));
         if (current || wt) identity.append(text(current ? 'Current branch' : `Open in ${worktreeName(wt)}`, 'git-checkout__detail'));
         row.append(identity);
+        if (remote) row.append(text('remote', 'git-checkout__tag'));
         if (state.savedChanges.some((s) => s.branch === branch)) row.append(text('Saved changes', 'git-checkout__tag'));
         list.append(row);
       }
@@ -301,10 +310,23 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     update(next: CheckoutPickerState) {
       if (JSON.stringify(next) === JSON.stringify(state)) return;
       const moved = !panelPathsEqual(next.cwd, state.cwd) || next.branch !== state.branch;
+      const branchesChanged = JSON.stringify([next.branches, next.remoteBranches]) !== JSON.stringify([state.branches, state.remoteBranches]);
       state = next;
       if (moved) { open = false; pending = undefined; message = ''; query = ''; if (!busy) pendingComplete = undefined; }
       // A poll must not steal focus from a user searching or choosing an action.
-      if (!open || moved) render(); else renderNotices();
+      if (!open || moved) render();
+      else {
+        renderNotices();
+        const list = menu.querySelector<HTMLElement>('.git-checkout__list');
+        if (list && tab === 'branches' && branchesChanged) {
+          const focused = list.contains(document.activeElement)
+            ? document.activeElement?.querySelector('.git-checkout__branch')?.textContent
+            : undefined;
+          renderRows(list);
+          if (focused) [...list.querySelectorAll<HTMLButtonElement>('button')]
+            .find((row) => row.querySelector('.git-checkout__branch')?.textContent === focused)?.focus();
+        }
+      }
     },
     dispose() { disposed = true; document.removeEventListener('pointerdown', outside); root.remove(); },
   };

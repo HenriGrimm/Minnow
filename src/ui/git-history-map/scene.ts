@@ -3,6 +3,7 @@ import { el } from '../scc-shared';
 import type { ViewState } from '../spatial-viewport';
 import { routeGitHistoryEdges, type GitHistoryBox, type GitHistoryLayout } from './layout';
 import type { GitHistoryModel, GitHistoryNode } from './model';
+import { renderGitHistoryRefs } from './refs';
 
 export interface GitHistorySceneApi {
   setSelection(hash: string | null): void;
@@ -61,14 +62,7 @@ export function renderGitHistoryScene(
     card.setAttribute('aria-label', `${subject}, ${node.commit.author}, ${node.commit.relativeTime}, ${node.commit.hash.slice(0, 7)}${node.refs.length ? ', ' + node.refs.map((r) => `${r.kind} ${r.name}`).join(', ') : ''}`);
     card.append(el('span', 'git-history-map__subject', subject));
     card.append(el('span', 'git-history-map__meta', `${node.commit.hash.slice(0, 7)} · ${node.commit.author} · ${node.commit.relativeTime}`));
-    const refs = el('span', 'git-history-map__refs');
-    for (const ref of node.refs) {
-      const chip = el('span', 'git-history-map__ref', ref.kind === 'tag' ? `Tag: ${ref.name}` : ref.name);
-      chip.dataset.kind = ref.kind;
-      chip.title = `${ref.kind}: ${ref.name}`;
-      refs.append(chip);
-    }
-    card.append(refs);
+    card.append(renderGitHistoryRefs(node.refs));
     card.addEventListener('click', () => { if (!options.consumeDrag()) options.onSelect(node); });
     card.addEventListener('focus', () => options.onFocus(node));
     card.addEventListener('keydown', (e) => options.onKey(node, e));

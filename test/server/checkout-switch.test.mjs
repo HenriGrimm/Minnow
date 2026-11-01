@@ -115,3 +115,18 @@ test('clean creation works; stale requests and running actions prevent mutation'
   assert.equal((await checkoutSwitch({ cwd, branch: 'new-feature', create: true, startPoint: 'main' })).ok, true);
   assert.equal(await git('branch', '--show-current'), 'new-feature');
 });
+
+test('remote checkout creates a local branch with its upstream after a dirty-file choice', async (t) => {
+  const { cwd, git, dirty } = await fixture(t);
+  await git('remote', 'add', 'upstream', cwd);
+  await git('update-ref', 'refs/remotes/upstream/fix/search', 'HEAD');
+  await dirty();
+  const input = { cwd, branch: 'fix/search', create: true, startPoint: 'upstream/fix/search', expectedBranch: 'main' };
+  assert.equal((await checkoutSwitch(input)).needsChoice, true);
+  assert.equal(await git('branch', '--show-current'), 'main');
+  assert.equal((await checkoutSwitch({ ...input, dirtyHandling: 'leave' })).ok, true);
+  assert.equal(await git('branch', '--show-current'), 'fix/search');
+  assert.equal(await git('rev-parse', '--abbrev-ref', '@{upstream}'), 'upstream/fix/search');
+  assert.equal(await git('status', '--porcelain'), '');
+  assert.equal((await checkoutSavedChanges({ cwd })).savedChanges[0].branch, 'main');
+});

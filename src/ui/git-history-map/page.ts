@@ -8,6 +8,7 @@ import {
   type GitHistoryModel, type GitHistoryNode, type GitHistoryRefKind,
 } from './model';
 import { gitHistoryColorToken, renderGitHistoryScene, type GitHistorySceneApi } from './scene';
+import { renderGitHistoryRefs } from './refs';
 
 export interface GitHistoryMapOptions {
   cwd?: string;
@@ -242,7 +243,7 @@ export function createGitHistoryMap(host: HTMLElement, options: GitHistoryMapOpt
       row.classList.toggle('is-context', !visibleModel.matches.has(node.commit.hash));
       row.append(el('span', 'git-history-map__subject', node.commit.subject),
         el('span', 'git-history-map__meta', `${node.commit.hash.slice(0, 7)} · ${node.commit.author} · ${node.commit.relativeTime}`),
-        el('span', 'git-history-map__refs', node.refs.map((r) => r.kind === 'tag' ? `Tag: ${r.name}` : r.name).join(' · ')));
+        renderGitHistoryRefs(node.refs));
       row.addEventListener('click', () => select(node));
       row.addEventListener('focus', () => {
         focused = node.commit.hash;

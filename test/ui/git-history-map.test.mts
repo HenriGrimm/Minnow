@@ -104,6 +104,7 @@ describe('history controller', () => {
     head.dispatchEvent(new dom.browser.MouseEvent('contextmenu', { bubbles: true }));
     assert.equal(context, hash(8));
     btn(host, 'List').click();
+    assert.equal(host.querySelector('.git-history-map__list-row .git-history-map__ref[data-kind="remote"] .git-history-map__ref-kind')?.textContent, 'remote');
     assert.equal(localStorage.getItem('minnow.git-history.view'), 'list');
     assert.equal(host.querySelector('.git-history-map__list-row[aria-pressed="true"]')?.getAttribute('data-sha'), selected);
     btn(host, 'Map').click();
@@ -185,6 +186,18 @@ describe('history controller', () => {
     assert.equal(host.querySelector(`button[data-sha="${hash(99)}"]`), null);
     api.destroy();
     assert.equal(host.childElementCount, 0);
+  });
+
+  test('map cards distinguish remote refs with text badges', () => {
+    const model = buildGitHistoryModel(fork);
+    const host = document.createElement('div');
+    const scene = renderGitHistoryScene(host, document.createElement('canvas'), model, layoutGitHistory(model), {
+      onSelect() {}, onFocus() {}, onKey() {}, consumeDrag: () => false,
+    });
+    scene.renderVisible({ x: 0, y: 0, k: 1 }, 10000, 1000);
+    assert.equal(host.querySelectorAll('.git-history-map__ref-kind').length, 2);
+    assert.equal(host.querySelector('.git-history-map__ref[data-kind="remote"] .git-history-map__ref-kind')?.textContent, 'remote');
+    scene.destroy();
   });
 
   test('5,000 commits keep scene DOM bounded at detail and overview scales', () => {

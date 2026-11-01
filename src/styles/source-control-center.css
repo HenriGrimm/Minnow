@@ -2127,12 +2127,18 @@
 }
 
 .git-history-map__ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   padding: 1px 5px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.git-history-map__ref-name { overflow: hidden; text-overflow: ellipsis; }
+.git-history-map__ref-kind { flex-shrink: 0; font-size: 10px; }
 .git-history-map__ref[data-kind="head"] { color: var(--mn-accent-ink); border-color: var(--mn-accent); }
 .git-history-map__ref[data-kind="remote"] { border-style: dashed; }
 .git-history-map__ref[data-kind="tag"] { font-family: var(--font-mono); }

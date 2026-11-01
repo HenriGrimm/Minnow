@@ -19,6 +19,7 @@ import { startPrReview } from '../chat/review/run-pr-review';
 import { getWorkspacePath } from '../state/workspace';
 import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
+import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { appPrompt, isAppDialogOpen } from './app-dialog';
 import { createIcon, iconHtml, type IconName } from './icon';
 import { launchApp } from '../os/router';
@@ -424,7 +425,7 @@ async function refreshGitState(): Promise<void> {
   await refreshGitRailBadges(applyRailBadge, {
     cwd,
     status,
-    localBranchCount: localBranches.length,
+    branchCount: localBranches.length + new Set(remoteBranches.filter((ref) => !isSkippedRemoteRef(ref)).map(displayRemoteRef)).size,
   });
 }
 
