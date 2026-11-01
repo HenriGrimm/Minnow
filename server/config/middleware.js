@@ -47,6 +47,9 @@ import { getTavilyUsage } from '../tools/tavily-usage.js';
 import { loadSearchSettings } from '../research/search.js';
 
 const MAX_MIGRATE_BYTES = 10 * 1024 * 1024;
+// Polls and bulk issue sync can encounter the same damaged file repeatedly.
+// Keep returning the error to every caller, but log each damaged version once.
+const reportedConfigCorruption = new Map();
 
 const STORAGE_KEYS = {
   sessions: 'minnow-sessions-v1',
@@ -683,7 +686,14 @@ export async function handleConfigRequest(req, res, pathname) {
       sendJson(res, 400, { error: message });
       return true;
     }
-    console.error('[config]', message);
+    if (err?.code === 'CONFIG_JSON_CORRUPT') {
+      if (reportedConfigCorruption.get(err.configKey) !== err.fingerprint) {
+        reportedConfigCorruption.set(err.configKey, err.fingerprint);
+        console.error('[config]', message);
+      }
+    } else {
+      console.error('[config]', message);
+    }
     sendJson(res, 500, { error: message });
     return true;
   }

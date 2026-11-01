@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 import { mergeIssuesState } from '../../src/lib/merge-issues-state.mjs';
 import {
   issuesBackupDir,
@@ -166,21 +167,23 @@ async function renameConfigAtomic(src, dest) {
  */
 async function readConfigJsonUnlocked(relativeKey) {
   await ensureMinnowLayout();
-  if (relativeKey === 'sessions/state.json') {
-    try {
-      const raw = await fs.readFile(sessionsJsonPath(), 'utf8');
-      return JSON.parse(raw);
-    } catch (err) {
-      if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') {
-        return null;
-      }
-      throw err;
-    }
-  }
-  const full = resolveConfigPath(relativeKey);
+  const full = relativeKey === 'sessions/state.json'
+    ? sessionsJsonPath() : resolveConfigPath(relativeKey);
   try {
     const raw = await fs.readFile(full, 'utf8');
-    return JSON.parse(raw);
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Never treat corruption as a missing file: that could overwrite user data
+      // with defaults. Avoid including JSON excerpts, which may contain secrets.
+      throw Object.assign(new Error(
+        `Cannot read ${relativeKey}: the saved file contains invalid JSON. Restore it from a backup before retrying.`,
+      ), {
+        code: 'CONFIG_JSON_CORRUPT',
+        configKey: relativeKey,
+        fingerprint: createHash('sha256').update(raw).digest('hex'),
+      });
+    }
   } catch (err) {
     if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') {
       return null;
@@ -214,10 +217,22 @@ async function writeConfigJsonUnlocked(relativeKey, data) {
       ? sessionsJsonPath()
       : resolveConfigPath(relativeKey);
   await fs.mkdir(path.dirname(full), { recursive: true });
-  const tmp = `${full}.tmp-${process.pid}-${Date.now()}`;
+  const tmp = `${full}.tmp-${process.pid}-${randomUUID()}`;
   const body = `${JSON.stringify(data, null, 2)}\n`;
-  await fs.writeFile(tmp, body, 'utf8');
-  await renameConfigAtomic(tmp, full);
+  try {
+    const handle = await fs.open(tmp, 'wx', 0o600);
+    try {
+      await handle.writeFile(body, 'utf8');
+      // Rename alone does not flush file contents. An interrupted host can
+      // otherwise leave the destination allocated but filled with zero bytes.
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await renameConfigAtomic(tmp, full);
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+  }
   if (relativeKey === 'tools.json' || relativeKey === 'search.json') {
     await chmodSecretFile(full);
   }
