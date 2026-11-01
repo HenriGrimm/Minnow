@@ -20,6 +20,8 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 Drafts survive switching chats.
 
+After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use **Models → Routing → Utility tasks** when assigned, otherwise the chat's model, and make a short additional model request. Suggestions stay out of saved drafts until accepted.
+
 Right-click a chat message for **Copy** and **Select All**, alongside **Create issue…** and **Add to issue**. Copy uses your selected text, or the whole message when nothing is selected. Select All stays inside the chat pane. Cut and Paste are disabled on saved messages. In the desktop app, right-click the composer or a message edit field for **Undo**, **Redo**, **Cut**, **Copy**, **Paste**, and **Select All**; unavailable actions are disabled.
 
 The chat list shows one line per chat: the model's provider logo, the title, and the chat's Git state on the right. A ring around the logo means the chat is working; a corner dot means it needs you (amber), has an unread reply (accent) or failed (red). The Git state shows uncommitted line counts, a commit mark (with unpushed commits as `2↑`), a draft, open, merged or closed pull request, and passing or failing checks. A folder mark means the chat runs in its own worktree. Pull request and check state comes from the GitHub CLI and refreshes in the background. Agent chats sit indented under their parent, with their running time and a check once done. Chats are grouped under **Pinned**, **Today** and **Older**.

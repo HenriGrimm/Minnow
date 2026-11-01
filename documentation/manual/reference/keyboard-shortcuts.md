@@ -29,6 +29,8 @@ Open **Search** from the magnifying glass in the header or with the command pale
 | **Enter** | Send a message, or steer the current run at its next step; empty input does nothing |
 | **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) | Queue a follow-up until the current reply finishes |
 | **Shift+Enter** | New line |
+| **Tab** | Fill an empty composer with its suggested follow-up, when one is visible |
+| **Escape** | Dismiss the suggested follow-up |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |
 | **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |

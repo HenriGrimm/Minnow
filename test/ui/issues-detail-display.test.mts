@@ -208,11 +208,12 @@ describe('issues detail display', () => {
       [...scroll.querySelectorAll('.issues-detail__props .issues-detail__property-label')].map((el) => el.textContent),
       ['Status', 'Type', 'Priority'],
     );
-    const workflowMenus = sticky.querySelectorAll('.issues-workflow-menu-wrap');
+    const workflowMenus = scroll.querySelectorAll('.issues-detail__rail .issues-workflow-menu-wrap');
     assert.equal(workflowMenus.length, 1);
     assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
     assert.ok(scroll.querySelector('.issues-detail__properties .issues-detail__labels'));
-    assert.ok(sticky.querySelector('.issues-detail__footer .issues-detail__workflow'));
+    assert.ok(scroll.querySelector('.issues-detail__rail > .issues-detail__workflow'));
+    assert.equal(sticky.querySelector('.issues-detail__workflow'), null);
     assert.equal(sticky.textContent?.includes('Send to background'), false);
     // Priority is a picker like the others, so it carries a glyph too.
     assert.ok(scroll.querySelector('.issues-priority-chip .issues-priority-chip__icon'));

@@ -377,6 +377,7 @@ const ATTACH_PREVIEW_IDS = [
 
 /** Renders chips into composer preview strips when markup exists (SA-15). */
 export function renderAttachPreview(): void {
+  void import('../ui/composer-followup-suggestion').then(m => m.syncComposerFollowupSuggestion());
   const containers = ATTACH_PREVIEW_IDS.map((id) => document.getElementById(id)).filter(
     (el): el is HTMLElement => el != null,
   );

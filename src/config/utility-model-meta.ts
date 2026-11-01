@@ -3,7 +3,7 @@
  *
  * When unset, each caller keeps its existing fallback (composer, top bar, or
  * editor/chat binding). The override is shared by title generation, prompt and
- * issue expansion, and git commit message generation.
+ * issue expansion, suggested chat follow-ups, and git commit message generation.
  */
 
 import { detectConfigServer, isConfigServerMode } from './storage-mode';

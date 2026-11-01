@@ -261,7 +261,7 @@ Controls come from the shared library in [`src/ui/components/`](src/ui/component
 - **Columns:** ID, priority, type, title, labels, then metadata and status. Priority is an identity field, not a trailing chip.
 - **Width:** title takes leftover space (`1fr`). Labels are `max-content`: up to three chips, then a caret for the rest, with **+** hugging the last chip.
 - **Density:** `--issues-row-h: 36px` with 8px vertical padding; `--issues-list-head-h: 32px`. Compact (≤900px container) keeps ID, priority, title, status.
-- **Details:** a centered floating panel (up to 1120px wide) over a dim scrim, with a maximized-size toggle and previous/next issue controls. Title, workflow, and tabs stay pinned. At panel widths of 780px and above, description and comments sit beside a 280px properties/resources rail; narrower containers stack these sections. Escape or the scrim closes the panel and restores list focus.
+- **Details:** a centered floating panel (up to 1120px wide) over a dim scrim, with a maximized-size toggle and straight previous/next arrows. Identity, title, activity, and tabs stay pinned. At panel widths of 780px and above, description and comments sit beside a 256px action/properties/resources rail; narrower containers stack these sections. The rail groups model, worktree, and chat controls under Work on this issue, followed by compact property triggers using Minnow's shared styled menus. Escape or the scrim closes the panel and restores list focus.
 
 ### Cards / Containers
 

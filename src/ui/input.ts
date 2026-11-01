@@ -3,6 +3,7 @@ import { handleComposerPromptHistoryKeydown } from './composer-prompt-history';
 import { handleSkillPickerKeydown, isSkillPickerOpen } from './skill-picker';
 import { bindComposerAutoResize } from './composer-auto-resize';
 import { isComposerQueueShortcut } from './composer-shortcuts';
+import { initComposerFollowupSuggestion } from './composer-followup-suggestion';
 
 import {
   handleComposerPrimaryAction,
@@ -32,6 +33,7 @@ export {
 export function initComposerInput(el: HTMLTextAreaElement): void {
   bindComposerAutoResize(el);
   initComposerSteerInputListener(el);
+  initComposerFollowupSuggestion(el);
   if (el.dataset.composerKeydownWired !== '1') {
     el.dataset.composerKeydownWired = '1';
     el.addEventListener('keydown', handleKey);
@@ -40,7 +42,7 @@ export function initComposerInput(el: HTMLTextAreaElement): void {
 }
 
 export function handleKey(e: KeyboardEvent): void {
-  if (e.isComposing || e.keyCode === 229) return;
+  if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
   if (handleSkillPickerKeydown(e)) return;
   const input = e.target;
   if (

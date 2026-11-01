@@ -497,7 +497,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     btn.className = 'issues-detail__icon-btn';
     btn.setAttribute('aria-label', label);
     btn.title = label;
-    btn.appendChild(createIcon(iconName, { size: 16 }));
+    if (iconName === 'arrowUp' || iconName === 'arrowDown') {
+      const arrow = document.createElement('span');
+      arrow.className = 'issues-detail__step-arrow';
+      if (iconName === 'arrowDown') arrow.classList.add('is-next');
+      arrow.setAttribute('aria-hidden', 'true');
+      btn.appendChild(arrow);
+    } else {
+      btn.appendChild(createIcon(iconName, { size: 16 }));
+    }
     return btn;
   }
 
@@ -849,16 +857,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     const activity = document.createElement('div');
     activity.className = 'issues-detail__run-state';
     activity.append(createIssueExpansionActivity(issue.id, issue.workspacePath), createIssueChatActivity(issue));
-    footer.append(activity, buildWorkflowToolbar(issue));
+    footer.appendChild(activity);
     sticky.appendChild(footer);
     panel.appendChild(sticky);
 
     const scroll = document.createElement('div');
     scroll.className = 'issues-detail__scroll';
 
-    // Three zones, in this DOM order so the docked column reads document →
-    // links → conversation. The expanded sheet re-places them with grid areas:
-    // the rail becomes a right sidebar and the document keeps a readable measure.
+    // The action and property rail sits beside the document on wide panels;
+    // narrow surfaces keep the same controls in the stacked detail view.
     const doc = document.createElement('div');
     doc.className = 'issues-detail__doc';
 
@@ -883,7 +890,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     labelsCaption.className = 'issues-detail__property-label';
     labelsCaption.textContent = 'Labels';
     properties.append(railHeading('Properties'), props, labelsCaption, labelsField);
-    rail.append(properties, railHeading('Resources'));
+    rail.append(buildWorkflowToolbar(issue), properties, railHeading('Resources'));
 
     const planPath = inferIssuePlanPath(issue);
     if (planPath) rail.appendChild(buildPlanSection(issue, planPath));
@@ -927,7 +934,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       tab: workspaceTabs.get(issue.id) ?? 'Issue',
       onTab: (tab) => workspaceTabs.set(issue.id, tab),
       onOpenPlan: (path, workspaceRoot) => planPreview?.open(findIssueById(issue.id) ?? issue, path, workspaceRoot),
-      onStartChat: () => { sticky.querySelector<HTMLButtonElement>('.issues-detail__workflow-secondary button')?.click(); },
+      onStartChat: () => {
+        workspacePanel?.select('Issue');
+        const trigger = rail.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger');
+        trigger?.scrollIntoView({ block: 'nearest' });
+        trigger?.click();
+      },
     });
     bindIssueDropTarget(panel, issue.id, () => refreshIssueDetailIfOpen());
     host.appendChild(panel);
@@ -1871,12 +1883,15 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
 
   // ── Workflow ─────────────────────────────────────────────────────────────────
 
-  /** Build the restrained workflow toolbar for the detail panel. */
+  /** Group the launch controls at the top of the action rail. */
   function buildWorkflowToolbar(issue: IssueCard): HTMLElement {
-    const row = document.createElement('div');
+    const row = document.createElement('section');
     row.className = 'issues-detail__workflow';
-    row.setAttribute('role', 'toolbar');
     row.setAttribute('aria-label', 'Issue workflow');
+    const heading = document.createElement('h3');
+    heading.className = 'issues-detail__workflow-heading';
+    heading.textContent = 'Work on this issue';
+    row.appendChild(heading);
 
     const busy = workflowBusyIds.has(issue.id) || expandingIds.has(issue.id);
     const workflowOk = canRunIssueWorkflow(issue);
@@ -1933,7 +1948,7 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
       primary.appendChild(expandBtn);
     }
 
-    row.appendChild(primary);
+    if (primary.childElementCount) row.appendChild(primary);
 
     const secondary = document.createElement('div');
     secondary.className = 'issues-detail__workflow-secondary';
@@ -1948,11 +1963,12 @@ export function createIssueDetailController(options?: IssueDetailMountOptions) {
     });
     useWorktree.setAttribute('aria-pressed', String(issueUsesWorktree(issue.id)));
     useWorktree.setAttribute('aria-busy', String(workflowBusyIds.has(issue.id)));
-    secondary.appendChild(useWorktree);
+    useWorktree.classList.add('issues-detail__use-worktree');
     const modelButton = createDetailTextButton({ label: issueLaunchModelLabel(issue.id), icon: 'appModels', disabled: !workflowOk || busy, title: 'Model for a new issue chat', onClick: () => pickIssueLaunchModel(issue.id, modelButton, refreshIssueDetailIfOpen) });
     modelButton.classList.add('issues-detail__model');
     modelButton.title = `Model for a new issue chat: ${issueLaunchModelLabel(issue.id)}`;
-    secondary.appendChild(modelButton);
+    modelButton.appendChild(createIcon('chevronDown', { size: 10 }));
+    secondary.append(modelButton, useWorktree);
 
     const foregroundHints: Record<IssueForegroundChatMode, string> = {
       general: 'Triage and discuss with full tool access',

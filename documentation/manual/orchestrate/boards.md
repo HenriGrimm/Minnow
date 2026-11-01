@@ -41,6 +41,8 @@ A final typecheck, lint, test or build failure creates a separate integration re
 
 Credentials, unavailable devices, missing reference files, unsupported verification capabilities and exhausted repair budgets can require your action. The board shows the specific prerequisite and retains its progress.
 
+Open **Needs attention** in the header to inspect recovery prerequisites, unfinished tasks, failed integration checks and board errors. The count badge and inbox are shared by the board and report views. Select a notice to see its details and available actions; command output stays folded until you open it. Informational waits and updates appear under **Board notices**. Close the inbox with its close button, Escape or a click outside it.
+
 Minnow automatically checks supported file, executable, local service, browser and CLI prerequisites. Once they are ready, the board continues. For an uncheckable prerequisite, resolve it and choose **Check again**. There is no additional Start or Rerun step. For a budget hold, increase the corresponding limit in **Settings → Autopilot**, then check again. Changing the board model re-evaluates affected provider holds.
 
 A missing recorded workspace stays held instead of running in another project. Reconnect the original directory to continue.

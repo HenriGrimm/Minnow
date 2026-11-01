@@ -16,6 +16,7 @@ import { clearAttachments } from '../attachments/store';
 import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 import { isPairedDevice } from '../api/session-token';
+import { syncComposerFollowupSuggestion } from './composer-followup-suggestion';
 
 const deviceDrafts = new Map<string, string>();
 function deviceDraft(chatId: string): string {
@@ -167,6 +168,7 @@ export function applyComposerDraftForChat(chat: Chat): void {
   resetComposerPromptHistory(chat.id);
   autoResize(input);
   draftRestoreSuspended = false;
+  syncComposerFollowupSuggestion();
 }
 
 // ── Input ────────────────────────────────────────────────────────────────────

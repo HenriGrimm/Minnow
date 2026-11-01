@@ -69,7 +69,9 @@ describe('issues list CSS contract', () => {
     const css = fs.readFileSync(new URL('../../src/styles/issues.css', import.meta.url), 'utf8');
     assert.match(css, /container-name:\s*issues/);
     assert.match(css, /@container issues \(max-width: 900px\)/);
-    assert.match(css, /--issues-peek-cols: minmax\(0, 1fr\) minmax\(380px, var\(--issues-peek-w\)\)/);
+    assert.match(css, /container: issue-detail \/ inline-size/);
+    assert.match(css, /@container issue-detail \(min-width: 780px\)/);
+    assert.match(css, /grid-template-columns: minmax\(0, 1fr\) 256px/);
     assert.match(css, /\.issues-list-head[\s\S]*color: var\(--mn-fg-muted\)/);
     assert.doesNotMatch(css, /@media \(max-width: 900px\)/);
     assert.doesNotMatch(css, /@media \(max-width: 640px\)/);

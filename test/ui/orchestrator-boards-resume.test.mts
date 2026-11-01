@@ -2,6 +2,7 @@
  * Leaving Boards and opening it again must reconnect the last journal.
  * A leftover selected id with no client paints a skeleton until another click.
  */
+import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { mock } from 'node:test';
@@ -240,6 +241,45 @@ describe('V2 Boards last-opened resume', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.ok(requested.some((url) => url.includes(`/api/boards/${BOARD_ID}/journal`)));
     assert.match(popover.textContent ?? '', /board\.created/);
+  });
+
+  test('the header inbox survives switching between report and board and closes on teardown', async () => {
+    setupDom();
+    const state = {
+      ...BOARD_STATE, status: 'stopped', finished: true,
+      finalTest: { outcome: 'fail', runInstructions: 'npm test', evidence: { output: 'Assertion failed' } },
+    };
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = requestUrl(input);
+      if (url.endsWith('/report')) return jsonResponse({ markdown: 'Recovery report' });
+      if (/\/api\/boards\/[^/?#]+/.test(url)) return jsonResponse({ state, seq: 1 });
+      if (url.includes('/api/boards')) return jsonResponse({ boards: [{ ...BOARD_SUMMARY, status: 'stopped', finished: true }] });
+      return jsonResponse({});
+    }) as typeof fetch;
+    await openBoardsView();
+    showBoard(BOARD_ID);
+    await waitForBoardHeader();
+    assert.ok(document.querySelector('.ov2-report-screen'), document.querySelector('.ov2__board')?.textContent ?? 'No board pane');
+    assert.equal(document.querySelector('.ov2__board .ov2-attention__row'), null);
+    const trigger = document.querySelector<HTMLButtonElement>('.board-header .ov2-inbox-trigger')!;
+    assert.ok(trigger);
+    trigger.click();
+    const popover = document.querySelector('.ov2-inbox-popover')!;
+    const output = popover.querySelector<HTMLDetailsElement>('.ov2-integration-output')!;
+    output.open = true;
+    document.querySelector<HTMLButtonElement>('.board-header__dashboard-toggle')!.click();
+    assert.equal(document.querySelector('.ov2-report-screen'), null);
+    assert.ok(document.querySelector('.ov2-tasks'));
+    assert.equal(document.querySelector('.ov2-inbox-trigger'), trigger);
+    assert.equal(document.querySelector('.ov2-inbox-popover'), popover);
+    assert.equal(document.querySelector('.ov2-integration-output'), output);
+    assert.equal(output.open, true);
+    assert.equal(document.querySelector('.ov2__board > .ov2-errors, .ov2__board > .ov2-recovery, .ov2__board > .ov2-notice'), null);
+    document.querySelector<HTMLButtonElement>('.board-header__dashboard-toggle')!.click();
+    assert.ok(document.querySelector('.ov2-report-screen'));
+    assert.equal(document.querySelector('.ov2-inbox-popover'), popover);
+    teardownBoardsView();
+    assert.equal(document.querySelector('.ov2-inbox-popover'), null);
   });
 });
 

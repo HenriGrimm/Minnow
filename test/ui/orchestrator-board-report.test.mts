@@ -9,6 +9,7 @@ import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
 import { derive } from '../../server/orchestrator/core/derive.js';
 import type { BoardState } from '../../server/orchestrator/core/types';
+import { renderFinalAttention, renderTaskAttention } from '../../src/orchestrator/attention-details';
 
 /** Captures follow-up navigation so tests can assert close-then-create, no seed. */
 const followUpLog: Array<{ kind: string; payload?: unknown }> = [];
@@ -211,8 +212,7 @@ describe('renderBoardReport', () => {
     assert.match(node.textContent ?? '', /Rerun 1 failed task/);
     assert.match(node.textContent ?? '', /Back to board/);
     assert.match(node.textContent ?? '', /Start follow-up chat/);
-    assert.match(node.textContent ?? '', /npx tsc --noEmit/);
-    assert.match(node.textContent ?? '', /Needs attention/);
+    assert.equal(node.querySelector('.ov2-attention__row'), null, 'attention details belong to the shared header inbox');
     assert.match(node.textContent ?? '', /Run notes/);
   });
 
@@ -587,18 +587,12 @@ describe('structured report evidence', () => {
     assert.match(node.textContent!, /Writing the end-of-run report/);
   });
 
-  test('Needs attention lists the issue and a Reset button per unfinished task', () => {
+  test('attention details preserve the blocker and Reset action for an unfinished task', () => {
     setupDom();
     const state = finishedBoard();
     state.tasks.get('W1-B')!.attempts.push({ attemptId: 'a-fail', role: 'builder', worktree: null, seedKind: 'initial', ended: true, outcome: 'blocked', summary: 'Could not reach the database.', evidence: { blockers: ['psql refused the connection'] }, manual: false, retired: false });
     const resets: string[] = [];
-    const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask: (id) => resets.push(id) });
-    const rows = [...node.querySelectorAll<HTMLElement>('.ov2-attention__row')];
-    // The failed integration check leads, then the abandoned task.
-    assert.equal(rows.length, 2);
-    assert.match(rows[0].textContent!, /Integration check/);
-    assert.match(rows[0].textContent!, /npx tsc --noEmit/);
-    const task = rows[1];
+    const task = renderTaskAttention(state.tasks.get('W1-B')!, { fixFinal() {}, resetTask: (id) => resets.push(id) });
     assert.equal(task.dataset.taskId, 'W1-B');
     assert.match(task.textContent!, /The builder failed twice/);
     assert.match(task.textContent!, /psql refused the connection/);
@@ -727,8 +721,7 @@ describe('structured report evidence', () => {
       },
     };
     let fixes = 0;
-    const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() { fixes++; }, resetTask() {} });
-    const row = node.querySelector('.ov2-attention__row--final')!;
+    const row = renderFinalAttention(state, { fixFinal() { fixes++; }, resetTask() {} });
     assert.equal(row.querySelector('.ov2-attention__issue')!.textContent, 'Lint failed (exit code 1).');
     assert.equal(row.querySelector('.ov2-report-screen__run-cmd')!.textContent, state.finalTest.runInstructions);
     const log = row.querySelector('pre')!;
@@ -736,8 +729,8 @@ describe('structured report evidence', () => {
     assert.equal(log.tabIndex, 0);
     assert.equal(row.querySelector('script'), null);
     const disclosure = row.querySelector<HTMLDetailsElement>('.ov2-integration-output')!;
-    assert.equal(disclosure.open, true);
-    disclosure.open = false;
+    assert.equal(disclosure.open, false);
+    disclosure.open = true;
     assert.equal(log.textContent, output);
     const details = [...row.querySelectorAll('details')].find((d) => d.querySelector('summary')?.textContent === 'Check details')!;
     assert.equal(details.open, false);
@@ -759,8 +752,7 @@ describe('structured report evidence', () => {
       setupDom();
       const state = finishedBoard();
       state.finalTest!.evidence = evidence;
-      const node = renderBoardReport(state, null, false, { dismiss() {}, reopen() {}, fixFinal() {}, resetTask() {} });
-      const row = node.querySelector('.ov2-attention__row--final')!;
+      const row = renderFinalAttention(state, { fixFinal() {}, resetTask() {} });
       assert.ok(row.querySelector('.ov2-attention__issue')!.textContent!.includes(explanation));
       assert.equal(row.querySelector('pre')?.textContent ?? null, output);
     });

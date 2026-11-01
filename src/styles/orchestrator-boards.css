@@ -3101,33 +3101,129 @@ select.ov2-create__input {
 
 /* ── Needs attention ───────────────────────────────────────────────────── */
 
-/*
- * One row per unfinished card: what it is, why it stopped, and the one button
- * that unsticks it. Attempts and patches live in the task rows below.
- */
-.ov2-attention {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.ov2-inbox-trigger[data-tone='warn'] {
+  --mn-btn-bg: color-mix(in srgb, var(--mn-warning) 12%, var(--mn-bg));
+  --mn-btn-fg: color-mix(in srgb, var(--mn-warning) 65%, var(--mn-fg));
 }
 
+.ov2-inbox-trigger[hidden] { display: none; }
+
+.ov2-inbox__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ov2-inbox__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--mn-space-5);
+  padding: var(--mn-space-0-5) var(--mn-space-1);
+  border-radius: var(--mn-radius-xs);
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.mn-popover.ov2-inbox-popover {
+  width: min(380px, calc(100vw - var(--mn-space-4)));
+  max-width: calc(100vw - var(--mn-space-4));
+  max-height: min(80dvh, 700px);
+  padding: 0;
+}
+
+.ov2-inbox { min-width: 0; }
+
+.ov2-inbox__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-3) var(--mn-space-4);
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.ov2-inbox__heading strong {
+  font-size: var(--mn-type-base);
+  font-weight: var(--mn-weight-medium);
+}
+
+.ov2-inbox__queue {
+  display: grid;
+  gap: var(--mn-space-1);
+  padding: var(--mn-space-2);
+  max-height: 240px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.ov2-inbox__item.mn-btn {
+  display: grid;
+  grid-template-columns: var(--mn-space-7) minmax(0, 1fr) var(--mn-icon-md);
+  width: 100%;
+  height: auto;
+  min-height: var(--mn-control-h-lg);
+  padding: var(--mn-space-2);
+  gap: var(--mn-space-2);
+  text-align: left;
+  white-space: normal;
+}
+
+.ov2-inbox__item[aria-pressed='true'] { --mn-btn-bg: var(--mn-surface-2); }
+.ov2-inbox__copy { display: grid; min-width: 0; gap: var(--mn-space-0-5); }
+.ov2-inbox__item-title { font-weight: var(--mn-weight-medium); }
+.ov2-inbox__subtitle { font-size: var(--mn-type-xs); color: var(--mn-fg-muted); }
+.ov2-inbox__item-title, .ov2-inbox__subtitle { overflow-wrap: anywhere; }
+
+.ov2-inbox__icon {
+  display: grid;
+  place-items: center;
+  width: var(--mn-space-7);
+  height: var(--mn-space-7);
+  border-radius: var(--mn-radius-sm);
+  color: var(--mn-fg-muted);
+  background: var(--mn-surface-2);
+}
+
+.ov2-inbox__item[data-tone='warn'] .ov2-inbox__icon {
+  color: color-mix(in srgb, var(--mn-warning) 65%, var(--mn-fg));
+  background: color-mix(in srgb, var(--mn-warning) 12%, var(--mn-menu-bg));
+}
+
+.ov2-inbox__item[data-tone='bad'] .ov2-inbox__icon {
+  color: color-mix(in srgb, var(--mn-danger) 65%, var(--mn-fg));
+  background: color-mix(in srgb, var(--mn-danger) 12%, var(--mn-menu-bg));
+}
+
+.ov2-inbox__detail { padding: var(--mn-space-4); min-width: 0; overflow-wrap: anywhere; }
+.ov2-inbox__message { margin: 0; white-space: pre-wrap; }
+.ov2-inbox .ov2-recovery, .ov2-inbox .ov2-errors { margin: 0; padding: 0; border: 0; background: transparent; }
+.ov2-inbox .ov2-recovery__row { display: grid; gap: var(--mn-space-3); }
+.ov2-inbox .ov2-recovery__row > button { justify-self: start; }
+.ov2-inbox .ov2-errors__item { display: grid; gap: var(--mn-space-2); }
+/* Detail rows live inside the header inbox rather than above the board. */
 .ov2-attention__row {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 4px 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--mn-border);
-  border-left: 3px solid var(--mn-warning);
-  border-radius: var(--radius-md, 10px);
-  background: var(--mn-surface-0);
+  gap: var(--mn-space-3);
+  min-width: 0;
 }
 
-.ov2-attention__row--final {
-  border-left-color: var(--mn-danger);
+.ov2-attention__row > .ov2-attention__main {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.ov2-attention__row > .ov2-attention__action {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 .ov2-attention__id {
@@ -4017,15 +4113,6 @@ select.ov2-create__input {
     align-self: center;
   }
 
-  .ov2-attention__row {
-    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
-  }
-
-  .ov2-attention__action {
-    grid-column: 2 / -1;
-    justify-self: start;
-    margin-top: 4px;
-  }
 }
 
 @container (max-width: 520px) {
@@ -4033,16 +4120,9 @@ select.ov2-create__input {
     grid-template-columns: minmax(0, 1fr) 0.75rem;
   }
 
-  .ov2-attention__row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .ov2-report-card__head > .ov2-report-badge,
   .ov2-report-task__runs,
-  .ov2-report-card__head > .ov2-diffstat,
-  .ov2-attention__main,
-  .ov2-attention__row > .ov2-report-badge,
-  .ov2-attention__action {
+  .ov2-report-card__head > .ov2-diffstat {
     grid-column: 1;
   }
 

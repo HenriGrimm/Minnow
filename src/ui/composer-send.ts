@@ -19,6 +19,7 @@ import { refreshModeSelectorDisabled } from './mode-selector';
 import { isChatAppForeground } from './chat-mount';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
 import { syncComposerWave } from './composer-wave';
+import { syncComposerFollowupSuggestion } from './composer-followup-suggestion';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
 import { syncFollowupActiveHint } from './followup-active-hint';
@@ -240,6 +241,7 @@ export function syncComposerFromStreamingState(): void {
   syncGoalActiveHint();
   syncLoopActiveHint();
   syncFollowupActiveHint();
+  syncComposerFollowupSuggestion();
   syncTodoPanel();
   if (!sessionState) return;
   if (isChatWorktreeSetupPending(getActiveChat().id)) {

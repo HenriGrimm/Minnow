@@ -465,7 +465,10 @@ function bindStaticControls(): void {
   const input = document.getElementById('chatAppInput') as HTMLTextAreaElement | null;
   initComposerSteerInputListener(input);
   initComposerDraftListener(input);
-  if (input) initComposerSlashPicker(input);
+  if (input) {
+    initComposerSlashPicker(input);
+    void import('./composer-followup-suggestion').then(m => m.initComposerFollowupSuggestion(input));
+  }
   input?.addEventListener('input', () => {
     if (!composerFieldSizingSupported()) autoResizeComposer(input);
     syncComposerSendState();

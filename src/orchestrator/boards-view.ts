@@ -30,7 +30,6 @@ import {
   formatElapsed,
   renderBoardHeader,
   renderBoardSkeleton,
-  renderEngineErrors,
   renderMergeQueue,
   renderTaskList,
   renderTimeline,
@@ -81,7 +80,7 @@ import { getActiveChat } from '../state/sessions';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 import { boardUsage } from './board-usage';
 import { attemptInterruption } from './attempt-status';
-import { renderRecovery } from './recovery-view';
+import { collectBoardAttention, createBoardAttentionInbox } from './board-attention';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -173,6 +172,7 @@ let timelinePopover: {
 } | null = null;
 const pendingTasks = new Set<string>();
 let notice: { text: string; tone: 'info' | 'warn' | 'bad' } | null = null;
+let attentionInbox: ReturnType<typeof createBoardAttentionInbox> | null = null;
 /** A plan re-sync is in flight; one at a time. */
 let resyncing = false;
 let transcript: TranscriptView | null = null;
@@ -269,6 +269,8 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
 export function teardownBoardsView(): void {
   if (typeof document === 'undefined') return;
   closeTimelinePopover(false);
+  attentionInbox?.dispose();
+  attentionInbox = null;
   document.removeEventListener('keydown', onBoardsDocumentKeydown, true);
   unsubscribeBoard?.();
   unsubscribeBoard = null;
@@ -442,6 +444,8 @@ function reconnectBoard(boardId: string): void {
 function selectBoard(boardId: string | null): void {
   // Same id with a live client is a no-op. Same id with no client must reconnect.
   if (boardId === selectedBoardId && (boardId === null || client)) return;
+  attentionInbox?.dispose();
+  attentionInbox = null;
   unsubscribeBoard?.();
   unsubscribeBoard = null;
   unsubscribeLive?.();
@@ -1234,6 +1238,7 @@ function paintBoard(): void {
   const pane = surface.boardPane;
 
   if (!selectedBoardId) {
+    attentionInbox?.update([]);
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
@@ -1258,6 +1263,7 @@ function paintBoard(): void {
 
   const state = client?.getState() ?? null;
   if (!state) {
+    attentionInbox?.update([]);
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     detachV2BoardHeaderInstruments();
     surface.root.classList.remove('is-detail-open');
@@ -1278,13 +1284,24 @@ function paintBoard(): void {
   pane.replaceChildren();
   pane.appendChild(renderBoardHeader(state, connected, renderControls(state)));
   const recoveryClient = client;
-  const recovery = renderRecovery(state, async (key) => {
-    if (!recoveryClient?.checkRecovery) throw new Error('Reconnect to check recovery.');
-    await recoveryClient.checkRecovery(key);
-  });
-  if (recovery) pane.appendChild(recovery);
   const headerControls = pane.querySelector('.board-header__controls');
   if (headerControls instanceof HTMLElement) {
+    attentionInbox ??= createBoardAttentionInbox();
+    headerControls.prepend(attentionInbox.element);
+    attentionInbox.update(collectBoardAttention(state, {
+      resetTask: (taskId) => {
+        attentionInbox?.close();
+        void commandResetTask(taskId);
+      },
+      fixFinal: () => {
+        attentionInbox?.close();
+        void commandRerun();
+      },
+      checkRecovery: async (key) => {
+        if (!recoveryClient?.checkRecovery) throw new Error('Reconnect to check recovery.');
+        await recoveryClient.checkRecovery(key);
+      },
+    }, client?.getEngineErrors(), notice));
     attachV2BoardHeaderInstruments(headerControls, state, {
       setModel: commandSetModel,
       onNeedModel: () => {
@@ -1294,13 +1311,6 @@ function paintBoard(): void {
     });
   }
   maybeSeedBoardModel(state);
-  const errors = renderEngineErrors(client?.getEngineErrors());
-  if (errors) pane.appendChild(errors);
-  if (notice) {
-    const line = el('p', `ov2-notice ov2-notice--${notice.tone}`, notice.text);
-    line.setAttribute('role', 'status');
-    pane.appendChild(line);
-  }
 
   const showReport = showingReport(state);
   if (finishReportSeq.get(selectedBoardId!) !== client?.getSeq()) {

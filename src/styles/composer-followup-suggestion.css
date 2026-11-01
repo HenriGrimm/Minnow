@@ -1,0 +1,42 @@
+.has-followup-suggestion > textarea::placeholder {
+  opacity: 0;
+}
+
+.has-followup-suggestion > .composer-inline-editor:empty::before {
+  content: none;
+}
+
+.composer-followup-suggestion {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: var(--mn-space-2);
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  color: var(--mn-fg-muted);
+  pointer-events: none;
+}
+
+.composer-followup-suggestion__text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer-followup-suggestion__accept {
+  flex: none;
+  padding: 0 var(--mn-space-1);
+  border: 1px solid var(--mn-border-strong);
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-surface-1);
+  color: var(--mn-fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--mn-type-xs);
+  line-height: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+}

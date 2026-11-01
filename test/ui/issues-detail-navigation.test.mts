@@ -67,6 +67,9 @@ test('editing controls, composition and modifier keys never navigate', () => {
 test('property menus own arrow keys and do not move to another issue', () => {
   (document.querySelector('.issues-detail__prop') as HTMLElement).click();
   assert.equal(isContextMenuOpen(), true);
+  assert.ok(document.querySelector('.mn-menu[role="menu"][aria-label="Status"]'));
+  assert.ok(document.querySelector('.mn-menu__item .mn-menu__icon'));
+  assert.equal(document.querySelector('.issues-detail__properties select'), null);
   key('ArrowDown', document.activeElement!);
   assert.equal(detail.getSelectedIssueId(), 'MIN-2');
   closeContextMenu();
@@ -85,6 +88,23 @@ test('chat-mode menu owns arrows and Escape, then returns focus to its trigger',
   assert.equal(detail.getSelectedIssueId(), 'MIN-2');
   assert.equal(document.activeElement, trigger);
   assert.equal(document.querySelector('.issues-workflow-menu'), null);
+});
+
+test('starting an unlinked chat returns to the action rail and opens chat modes', () => {
+  const trigger = document.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger')!;
+  trigger.disabled = false;
+  const worktree = document.querySelector('.issues-detail__use-worktree')!;
+  const enabled = worktree.getAttribute('aria-pressed');
+  (document.querySelector('[role="tab"][data-tab="Chat"]') as HTMLButtonElement).click();
+  const body = document.querySelector<HTMLElement>('.issues-detail__scroll:not(.issues-work-content)')!;
+  assert.equal(body.hidden, true);
+  (document.querySelector('.issues-work-content .issues-btn--primary') as HTMLButtonElement).click();
+  assert.equal(body.hidden, false);
+  assert.equal(document.querySelector('[data-tab="Issue"]')?.getAttribute('aria-selected'), 'true');
+  assert.ok(document.querySelector('.issues-workflow-menu'));
+  assert.equal(worktree.getAttribute('aria-pressed'), enabled, 'starting chat must not toggle the worktree preference');
+  key('Escape', document.activeElement!);
+  assert.equal(document.activeElement, trigger);
 });
 
 test('comment drafts survive previous/next browsing', () => {

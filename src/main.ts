@@ -32,6 +32,7 @@ import './styles/mode-selector.css';
 import './styles/mode-icons.css';
 import './styles/composer-controls.css';
 import './styles/composer-expand.css';
+import './styles/composer-followup-suggestion.css';
 import './styles/composer-message-queue.css';
 import './styles/editor-quick-edit.css';
 import './styles/editor-intent-mode.css';

@@ -1,8 +1,8 @@
 import type { BoardState } from '../../server/orchestrator/core/types';
 import { button, el } from './dom';
 
-export function renderRecovery(state: BoardState, check: (key: string) => Promise<void>): HTMLElement | null {
-  const holds = Object.values(state.recoveryHolds ?? {});
+export function renderRecovery(state: BoardState, check: (key: string) => Promise<void>, key?: string): HTMLElement | null {
+  const holds = Object.values(state.recoveryHolds ?? {}).filter(hold => key === undefined || hold.key === key);
   if (!holds.length) return null;
   const section = el('section', 'ov2-recovery');
   section.setAttribute('aria-label', 'Board recovery');
