@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 /**
  * Follow-up chain panel in the transcript (MIN-206).
  *
@@ -20,9 +21,9 @@ const FOLLOWUP_STATUS_CLASS = 'followup-status';
 const panelByChatId = new Map<string, HTMLElement>();
 
 function buildStopButton(chat: Chat): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'followup-status__stop icon-btn';
+  setButtonClassName(btn, 'followup-status__stop icon-btn');
   btn.textContent = '×';
   btn.title = 'Stop follow-up chain';
   btn.setAttribute('aria-label', 'Stop follow-up chain');

@@ -29,6 +29,8 @@ export interface FloatingOptions {
   offset?: number;
   /** Minimum distance kept from the viewport edges. */
   edgeGap?: number;
+  /** Preserve fractional CSS coordinates when matching an existing surface. */
+  round?: boolean;
 }
 
 export interface FloatingPosition {
@@ -96,9 +98,10 @@ export function computeFloatingPosition(
     top = anchor.top + (anchor.height - size.height) / 2;
   }
 
+  const coordinate = options.round === false ? (value: number) => value : Math.round;
   return {
-    left: Math.round(clamp(left, gap, viewport.width - size.width - gap)),
-    top: Math.round(clamp(top, gap, viewport.height - size.height - gap)),
+    left: coordinate(clamp(left, gap, viewport.width - size.width - gap)),
+    top: coordinate(clamp(top, gap, viewport.height - size.height - gap)),
     placement: (align ? `${side}-${align}` : side) as FloatingPlacement,
   };
 }

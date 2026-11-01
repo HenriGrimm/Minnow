@@ -1,3 +1,4 @@
+import { createBadge, setTooltip, type BadgeTone } from './components';
 import { syncChatWorktreeSetup } from './chat-worktree-setup';
 import { notifyManagedChatView } from '../chat/managed-chat-view';
 import { captureAgentConversationFocus, createAttributedAgentMessage, isAttributedAgentMessage, syncAgentConversationHeader } from './agent-conversation';
@@ -1370,13 +1371,13 @@ export function appendStats(
 
   for (const [cls, show, html] of defs) {
     if (!show) continue;
-    const chip = document.createElement('div');
-    chip.className = `stat-chip ${cls}`;
+    const tones: Record<string, BadgeTone> = { c: 'accent', g: 'success', y: 'warning', r: 'danger', b: 'neutral', p: 'neutral' };
+    const chip = createBadge({ appearance: 'surface', label: '', tone: tones[cls], mono: true, size: 'sm', className: `stat-chip ${cls}` });
     if (cls === 'c') chip.dataset.pluginSlot = 'chat.message-throughput';
     chip.innerHTML = html;
     if (cls === 'r' && u.total_tokens != null) {
       const formatted = formatStatCount(u.total_tokens);
-      if (formatted.full) chip.setAttribute('title', formatted.full);
+      if (formatted.full) setTooltip(chip, formatted.full);
     }
     chips.appendChild(chip);
   }

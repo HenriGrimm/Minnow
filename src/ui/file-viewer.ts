@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { subscribeModelSelection } from '../models/selection';
 import { captureEditorFocusRequest } from './editor-focus-request';
 import { appAlert, appConfirm, appPrompt } from './app-dialog';
@@ -900,18 +901,18 @@ export function setViewerError(message: string): void {
     if (blockedTool) {
       const actions = document.createElement('div');
       actions.className = 'file-tree-readiness-actions';
-      const settings = document.createElement('button');
+      const settings = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       settings.type = 'button';
-      settings.className = 'file-tree-readiness-action';
+      setButtonClassName(settings, 'file-tree-readiness-action');
       settings.textContent = 'Open file permission';
       settings.addEventListener('click', () => {
         void import('./settings-page').then((m) =>
           m.navigateToSettingsField(`tools.item.${blockedTool}`, 'tools'),
         );
       });
-      const retry = document.createElement('button');
+      const retry = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       retry.type = 'button';
-      retry.className = 'file-tree-readiness-action';
+      setButtonClassName(retry, 'file-tree-readiness-action');
       retry.textContent = 'Retry opening file';
       const path = primarySlotViewerPath();
       retry.addEventListener('click', () => {

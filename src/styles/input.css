@@ -614,7 +614,7 @@
   display: block;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 0;
   background: currentColor;
 }
 

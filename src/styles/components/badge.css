@@ -1,31 +1,31 @@
 /* Shared badges and chips (src/ui/components/badge.ts). */
 
-.mn-badge,
-.mn-chip {
+.mn-badge:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-tone-fg: var(--mn-fg-muted);
   --mn-tone-bg: transparent;
   --mn-tone-border: var(--mn-border-strong);
   --mn-tone-dot: var(--mn-fg-subtle);
 }
 
-.mn-badge--accent,
-.mn-chip--accent {
+.mn-badge--accent:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip--accent:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-tone-fg: var(--mn-accent-ink);
   --mn-tone-bg: var(--mn-accent-soft);
   --mn-tone-border: var(--mn-accent-border);
   --mn-tone-dot: var(--mn-accent);
 }
 
-.mn-badge--success,
-.mn-chip--success {
+.mn-badge--success:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip--success:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-tone-fg: var(--mn-success-ink);
   --mn-tone-bg: var(--mn-success-soft);
   --mn-tone-border: var(--mn-success-border);
   --mn-tone-dot: var(--mn-success);
 }
 
-.mn-badge--warning,
-.mn-chip--warning {
+.mn-badge--warning:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip--warning:where(:not([data-mn-surface], [data-mn-surface] *)) {
   /* There is no --mn-warning-ink; raw --mn-warning drops to ~2:1 on light themes. */
   --mn-tone-fg: color-mix(in srgb, var(--mn-warning) 45%, var(--mn-fg));
   --mn-tone-bg: var(--mn-warning-soft);
@@ -33,8 +33,8 @@
   --mn-tone-dot: var(--mn-warning);
 }
 
-.mn-badge--danger,
-.mn-chip--danger {
+.mn-badge--danger:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip--danger:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-tone-fg: var(--mn-danger-ink);
   --mn-tone-bg: var(--mn-danger-soft);
   --mn-tone-border: var(--mn-danger-border);
@@ -43,7 +43,7 @@
 
 /* Badge */
 
-.mn-badge {
+.mn-badge:where(:not([data-mn-surface], [data-mn-surface] *)) {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -63,25 +63,25 @@
   vertical-align: middle;
 }
 
-.mn-badge--sm {
+.mn-badge--sm:where(:not([data-mn-surface], [data-mn-surface] *)) {
   height: 16px;
   padding-inline: var(--mn-space-1);
   font-size: var(--mn-type-2xs);
 }
 
-.mn-badge--mono {
+.mn-badge--mono:where(:not([data-mn-surface], [data-mn-surface] *)) {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.mn-badge__label,
-.mn-chip__label {
+.mn-badge__label:where(:not([data-mn-surface], [data-mn-surface] *)),
+.mn-chip__label:where(:not([data-mn-surface], [data-mn-surface] *)) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.mn-badge__dot {
+.mn-badge__dot:where(:not([data-mn-surface], [data-mn-surface] *)) {
   flex-shrink: 0;
   width: 6px;
   height: 6px;
@@ -89,14 +89,14 @@
   background: var(--mn-tone-dot);
 }
 
-.mn-badge .icon-svg,
-.mn-chip .icon-svg {
+.mn-badge:where(:not([data-mn-surface], [data-mn-surface] *)) .icon-svg,
+.mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)) .icon-svg {
   --mn-icon-size: var(--mn-type-sm);
 }
 
 /* Chip */
 
-.mn-chip {
+.mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)) {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -114,7 +114,7 @@
   vertical-align: middle;
 }
 
-.mn-chip__main {
+.mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)) {
   display: inline-flex;
   align-items: center;
   gap: var(--mn-space-1);
@@ -129,39 +129,39 @@
   font: inherit;
 }
 
-button.mn-chip__main {
+button.mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)) {
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
-button.mn-chip__main:focus-visible {
+button.mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)):focus-visible {
   outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
   outline-offset: var(--mn-focus-ring-offset);
 }
 
-button.mn-chip__main:disabled {
+button.mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.mn-chip.is-selected {
+.mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)).is-selected {
   --mn-tone-fg: var(--mn-accent-ink);
   --mn-tone-bg: var(--mn-accent-soft);
   --mn-tone-border: var(--mn-accent);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-chip:not(.is-selected):has(> button.mn-chip__main:hover:not(:disabled)) {
+  .mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)):not(.is-selected):has(> button.mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)):hover:not(:disabled)) {
     border-color: var(--mn-fg-subtle);
     color: var(--mn-fg);
   }
 }
 
-.mn-chip:has(> .mn-chip__remove) .mn-chip__main {
+.mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)):has(> .mn-chip__remove:where(:not([data-mn-surface], [data-mn-surface] *))) .mn-chip__main:where(:not([data-mn-surface], [data-mn-surface] *)) {
   padding-right: var(--mn-space-1);
 }
 
-.mn-chip__remove.mn-btn {
+.mn-chip__remove:where(:not([data-mn-surface], [data-mn-surface] *)).mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-h: calc(var(--mn-control-h-sm) - var(--mn-space-1-5));
   --mn-btn-icon: var(--mn-type-sm);
   margin-right: var(--mn-space-0-5);
@@ -170,7 +170,7 @@ button.mn-chip__main:disabled {
 }
 
 @media (pointer: coarse) {
-  .mn-chip {
+  .mn-chip:where(:not([data-mn-surface], [data-mn-surface] *)) {
     height: var(--touch-min);
   }
 }

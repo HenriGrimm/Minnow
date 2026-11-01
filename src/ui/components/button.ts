@@ -1,17 +1,21 @@
 /**
- * Buttons. Every action control in the app should come from here instead of a
- * surface-specific `*-btn` class.
+ * Shared creation and behavior for action controls. Surface appearance retains
+ * an established control's chrome while using the same factory and helpers.
  */
 
 import '../../styles/components/button.css';
 import { createIcon, type IconName } from '../icon';
-import { addClassNames } from './internal';
+import { addClassNames, applyAppearance, type ComponentAppearance } from './internal';
 import { attachTooltip, getTooltipText, setTooltip } from './tooltip';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonOptions {
+  /** `surface` preserves caller-owned sizing, colors and layout. Default `default`. */
+  appearance?: ComponentAppearance;
+  /** Adopt a static button without losing its identity, children or event bindings. */
+  element?: HTMLButtonElement;
   label?: string;
   /** Icon before the label. */
   icon?: IconName;
@@ -50,24 +54,30 @@ function buttonIcon(name: IconName, end: boolean): HTMLElement {
 }
 
 export function createButton(options: ButtonOptions = {}): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = options.type ?? 'button';
-  button.className = `mn-btn mn-btn--${options.variant ?? 'secondary'} mn-btn--${options.size ?? 'md'}`;
-  if (options.block) button.classList.add('mn-btn--block');
+  const button = options.element ?? document.createElement('button');
+  button.type = options.type ?? (button.getAttribute('type') as ButtonOptions['type']) ?? 'button';
+  for (const variant of ['primary', 'secondary', 'ghost', 'danger']) button.classList.remove(`mn-btn--${variant}`);
+  for (const size of ['sm', 'md', 'lg']) button.classList.remove(`mn-btn--${size}`);
+  button.classList.add('mn-btn', `mn-btn--${options.variant ?? 'secondary'}`, `mn-btn--${options.size ?? 'md'}`);
+  if (options.block !== undefined) button.classList.toggle('mn-btn--block', options.block);
   addClassNames(button, options.className);
+  applyAppearance(button, options.appearance);
 
-  if (options.icon) button.appendChild(buttonIcon(options.icon, false));
-  if (options.label) {
+  const renderContent = !options.element || options.label !== undefined || !button.hasChildNodes();
+  if (renderContent) button.replaceChildren();
+  if (renderContent && options.icon) button.appendChild(buttonIcon(options.icon, false));
+  if (renderContent && options.label) {
     const label = document.createElement('span');
     label.className = 'mn-btn__label';
     label.textContent = options.label;
     button.appendChild(label);
   }
-  if (options.iconEnd) button.appendChild(buttonIcon(options.iconEnd, true));
+  if (renderContent && options.iconEnd) button.appendChild(buttonIcon(options.iconEnd, true));
+  if (options.label) button.classList.remove('mn-btn--icon');
   if (!options.label && (options.icon || options.iconEnd)) button.classList.add('mn-btn--icon');
 
   if (options.ariaLabel) button.setAttribute('aria-label', options.ariaLabel);
-  if (options.disabled) button.disabled = true;
+  if (options.disabled !== undefined) button.disabled = options.disabled;
   if (options.pressed !== undefined) setButtonPressed(button, options.pressed);
   if (options.tooltip) attachTooltip(button, options.tooltip);
 
@@ -112,6 +122,13 @@ export function setButtonBusy(button: HTMLButtonElement, busy: boolean): void {
 
 export function setButtonPressed(button: HTMLButtonElement, pressed: boolean): void {
   button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+}
+
+/** Replace surface hooks without discarding the shared control's variant and state. */
+export function setButtonClassName(button: HTMLButtonElement, className: string): void {
+  const shared = [...button.classList].filter((name) => name === 'mn-btn' || name.startsWith('mn-btn--'));
+  button.className = className;
+  button.classList.add(...shared);
 }
 
 /** Change the visible label, or for icon buttons the accessible name and tooltip. */

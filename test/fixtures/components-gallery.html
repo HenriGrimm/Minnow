@@ -48,6 +48,12 @@ import '/src/styles/icons.css';
 import '/src/styles/dropdowns.css';
 import '/src/styles/context-menu.css';
 import '/src/styles/toast.css';
+import '/src/styles/input.css';
+import '/src/styles/mode-selector.css';
+import '/src/styles/composer-controls.css';
+import '/src/styles/composer-model-trigger.css';
+import { createComposerModelButton } from '/src/ui/composer-model-button.ts';
+import { initComposerInput } from '/src/ui/input.ts';
 import {
   attachTooltip, createBadge, createButton, createCheckbox, createChip, createField, createIconButton,
   createSegmentedControl, createSelect, createSwitch, createTabs, createTextarea, createTextInput,
@@ -307,6 +313,26 @@ bar.append(log, themeSelect, narrow);
   const tipTarget = createButton({ label: 'Hover or focus me' });
   attachTooltip(tipTarget, 'Tooltips appear after a short hover delay, or immediately on keyboard focus.');
   row(s, null, popoverBtn, menuBtn, dialogBtn, confirmBtn, tipTarget);
+}
+
+/* Composer chrome uses the real model-button builder and static-send adoption. */
+{
+  const s = section('Code composer with surface appearance');
+  s.id = 'composer-migration';
+  const composer = el('div', 'input-bar');
+  composer.innerHTML = `<div class="input-bar-composer">
+    <div class="composer-controls" id="composerControls"><span class="composer-control-label">Build</span><div class="composer-controls__trail" id="galleryModelAnchor"></div></div>
+    <div class="input-row"><div class="input-wrap input-wrap--inset-actions"><label for="msgInput" class="visually-hidden">Message</label><textarea id="msgInput" rows="1" placeholder="Ask Minnow to plan, build, or debug…"></textarea></div></div>
+  </div><div class="input-bar-send-stack"><div class="input-inset-actions" id="galleryComposerActions"></div><button class="send-btn" id="sendBtn" type="button" aria-label="Send message"><span id="sendIcon"><i class="fi fi-rr-arrow-up icon-svg" aria-hidden="true"></i></span><span id="sendStopIcon" class="hidden"><span class="send-btn__stop" aria-hidden="true"></span></span></button></div>`;
+  s.append(composer);
+  const model = createComposerModelButton('Choose model');
+  model.labelEl.textContent = 'Local coding model';
+  document.getElementById('galleryModelAnchor').append(model.trigger);
+  document.getElementById('galleryComposerActions').append(
+    createIconButton({ appearance: 'surface', icon: 'mic', label: 'Dictate', size: 'sm', className: 'input-inset-btn' }),
+    createIconButton({ appearance: 'surface', icon: 'sparkles', label: 'Expand prompt', size: 'sm', className: 'input-inset-btn' }),
+  );
+  initComposerInput(document.getElementById('msgInput'));
 }
 
 /* Tokens */

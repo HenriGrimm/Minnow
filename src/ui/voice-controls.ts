@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { loadVoiceMeta } from '../config/voice-meta';
 import { AudioPlaybackQueue } from '../voice/audio-playback-queue';
 import { TtsStreamClient } from '../voice/tts-stream-client';
@@ -429,9 +430,9 @@ export function attachVoicePlayButton(wrap: HTMLElement, text: string): void {
   const plain = extractSpeechText(text);
   if (!plain) return;
 
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'voice-play-btn message-actions__trigger';
+  setButtonClassName(btn, 'voice-play-btn message-actions__trigger');
   btn.setAttribute('aria-label', 'Read aloud');
   btn.title = 'Read aloud';
   btn.innerHTML = iconHtml('speaker');

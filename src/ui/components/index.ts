@@ -3,17 +3,21 @@
  * building their own. Reference: documentation/design-system/components.md.
  */
 
+export type { ComponentAppearance } from './internal';
+
 export {
   createButton,
   createIconButton,
   setButtonBusy,
   setButtonLabel,
   setButtonPressed,
+  setButtonClassName,
   type ButtonOptions,
   type ButtonSize,
   type ButtonVariant,
   type IconButtonOptions,
 } from './button';
+export { adoptControl, adoptControls, adoptTabs, type AdoptControlsOptions } from './adopt';
 export {
   attachTooltip,
   getTooltipText,
@@ -26,6 +30,7 @@ export { createSwitch, type SwitchOptions, type SwitchSize } from './switch';
 export {
   createCheckbox,
   createField,
+  setControlClassName,
   createSelect,
   createTextarea,
   createTextInput,

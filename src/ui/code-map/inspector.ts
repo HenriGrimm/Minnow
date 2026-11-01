@@ -1,3 +1,4 @@
+import { adoptControl } from '../components';
 /**
  * Code map inspector: the floating panel describing the selected module, package, folder,
  * file or symbol — what it does, what it links to, and what to do next.
@@ -43,6 +44,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
+  adoptControl(node, { appearance: 'surface' });
   return node;
 }
 

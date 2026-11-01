@@ -1,3 +1,5 @@
+import { createTextarea, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 /**
  * Edit a rendered markdown preview in place, one block at a time.
  *
@@ -62,9 +64,9 @@ export function mountEditableMarkdownPreview(
   const render = (): void => {
     blocks = renderMarkdownSourceBlocks(preview, source);
     if (source.trim()) return;
-    const empty = document.createElement('button');
+    const empty = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     empty.type = 'button';
-    empty.className = 'md-edit-empty';
+    setButtonClassName(empty, 'md-edit-empty');
     empty.textContent = 'Empty document — click to start writing';
     empty.addEventListener('click', (e) => {
       // The preview's own click handler would close the block it just opened.
@@ -98,8 +100,8 @@ export function mountEditableMarkdownPreview(
 
   const beginEdit = (block: MarkdownSourceBlock, anchor: Element): void => {
     const { body, trailing } = splitBlockSource(source.slice(block.start, block.end));
-    const textarea = document.createElement('textarea');
-    textarea.className = 'md-edit-block';
+    const textarea = createTextarea({ appearance: 'surface' });
+    setControlClassName(textarea, 'md-edit-block');
     textarea.value = body;
     textarea.setAttribute('aria-label', 'Edit markdown block');
     active = {

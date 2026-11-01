@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type { Chat } from '../types';
 import { CONTINUE_AFTER_TRUNCATION_INSTRUCTION } from '../tools/turn-continuation';
 
@@ -12,9 +13,9 @@ export function markMessageTruncated(wrap: HTMLElement, chat: Chat): void {
   label.textContent = 'Response truncated';
   chip.appendChild(label);
 
-  const action = document.createElement('button');
+  const action = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   action.type = 'button';
-  action.className = 'msg-truncated-continue-btn';
+  setButtonClassName(action, 'msg-truncated-continue-btn');
   action.textContent = 'Continue';
   action.addEventListener('click', () => {
     action.disabled = true;

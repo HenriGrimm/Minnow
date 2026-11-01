@@ -1,10 +1,11 @@
+import { createButton, setButtonClassName } from './components';
 import { splitIssueIdTokens } from '../chat/issue-mentions';
 
 /** Clickable issue id in a chat bubble; opens the issue in the Issues app. */
 export function createIssueMentionLink(issueId: string): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'issue-mention-link';
+  setButtonClassName(btn, 'issue-mention-link');
   btn.textContent = issueId;
   btn.title = `Open ${issueId}`;
   btn.addEventListener('click', (ev) => {

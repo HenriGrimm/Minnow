@@ -1,3 +1,4 @@
+import { createButton, createIconButton, createTextarea } from './components';
 import { showToast } from './toast';
 import {
   getPendingMessageQueue,
@@ -90,12 +91,7 @@ function iconButton(
   iconName: IconName,
   onClick: () => void,
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = className;
-  btn.setAttribute('aria-label', label);
-  btn.title = label;
-  btn.appendChild(createIcon(iconName, { className: 'composer-message-queue__icon' }));
+  const btn = createIconButton({ appearance: 'surface', icon: iconName, label, className, size: 'sm' });
   btn.addEventListener('click', (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
@@ -114,8 +110,7 @@ function renderQueueItem(item: Pick<QueuedComposerMessage, 'id' | 'text' | 'mode
 
   if (edits.has(editKey)) {
     row.classList.add('is-editing');
-    const editor = document.createElement('textarea');
-    editor.className = 'composer-message-queue__editor';
+    const editor = createTextarea({ appearance: 'surface', className: 'composer-message-queue__editor' });
     editor.setAttribute('aria-label', 'Edit queued message');
     editor.dataset.editKey = editKey;
     editor.value = edits.get(editKey)!;
@@ -123,15 +118,10 @@ function renderQueueItem(item: Pick<QueuedComposerMessage, 'id' | 'text' | 'mode
     editor.addEventListener('input', () => edits.set(editKey, editor.value));
     const actions = document.createElement('div');
     actions.className = 'composer-message-queue__actions';
-    const save = document.createElement('button');
-    save.type = 'button';
-    save.className = 'composer-message-queue__text-action';
+    const save = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-message-queue__text-action' });
     const stillQueued = getPendingMessageQueue(chat).some(entry => entry.id === item.id);
     save.textContent = stillQueued ? 'Save' : 'Send as new message';
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'composer-message-queue__text-action';
-    cancel.textContent = 'Cancel';
+    const cancel = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-message-queue__text-action', label: 'Cancel' });
     const finish = () => {
       edits.delete(editKey);
       setQueuedMessageEditing(chat.id, item.id, false);
@@ -288,9 +278,7 @@ export function syncComposerMessageQueue(): void {
   const editKey = focused?.dataset.editKey;
   const selection = editKey ? [focused!.selectionStart, focused!.selectionEnd] : null;
 
-  const header = document.createElement('button');
-  header.type = 'button';
-  header.className = 'composer-message-queue__header';
+  const header = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-message-queue__header' });
   header.setAttribute('aria-expanded', queueCollapsed ? 'false' : 'true');
 
   const chevron = document.createElement('span');

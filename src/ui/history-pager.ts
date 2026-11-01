@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 
 const PAGE_SIZE = 30;
@@ -18,9 +19,9 @@ export function mountHistoryPager(options: HistoryPagerOptions): () => void {
   mount.dataset.historyStart = String(options.from);
   if (options.from <= 0) return () => {};
   const view = mount.ownerDocument.defaultView!;
-  const button = mount.ownerDocument.createElement('button');
+  const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   button.type = 'button';
-  button.className = 'chat-history-more';
+  setButtonClassName(button, 'chat-history-more');
   button.textContent = 'Show earlier messages';
   mount.prepend(button);
   let end = options.from;

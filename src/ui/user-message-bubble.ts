@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import {
   createFileCardBody,
   estimateTextByteSize,
@@ -181,9 +182,9 @@ function openFilePart(name: string, body: string): void {
 
 /** "View on page" affordance for a linked design-ref (MIN-368): opens the preview at the shape's page, enables Design Mode, and pulses the surviving anchor — or toasts that it's moved/removed when the shape's uid AND selector both fail to resolve on the live page. */
 function createOnPageButton(pageUrl: string, shapeId: string): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'msg-onpage-btn';
+  setButtonClassName(btn, 'msg-onpage-btn');
   btn.title = 'View this mark on the page';
   btn.setAttribute('aria-label', 'View this mark on the page');
   btn.textContent = '◎';
@@ -218,9 +219,9 @@ function createMessageAttachChip(
     onOpen: () => void;
   },
 ): HTMLButtonElement {
-  const chip = document.createElement('button');
+  const chip = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   chip.type = 'button';
-  chip.className = 'msg-attach-chip';
+  setButtonClassName(chip, 'msg-attach-chip');
   if (options.kind === 'image') {
     chip.classList.add('msg-attach-chip--image');
   } else {

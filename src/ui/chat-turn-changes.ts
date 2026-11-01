@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { normalizeModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
@@ -72,28 +73,28 @@ export function createTurnChanges(
     actions.className = 'chat-turn-changes__actions';
     actions.hidden = true;
 
-    const commit = document.createElement('button');
+    const commit = createButton({ appearance: 'surface', variant: 'primary', size: 'sm' });
     commit.type = 'button';
     commit.id = 'btnCodeChangeCommit';
-    commit.className = 'chat-turn-changes__action chat-turn-changes__action--primary';
+    setButtonClassName(commit, 'chat-turn-changes__action chat-turn-changes__action--primary');
     commit.textContent = 'Commit';
     commit.title = 'Stage and commit files changed in this chat';
     commit.hidden = true;
 
-    const pr = document.createElement('button');
+    const pr = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     pr.type = 'button';
     pr.id = 'btnCodeChangeCreatePr';
-    pr.className = 'chat-turn-changes__action';
+    setButtonClassName(pr, 'chat-turn-changes__action');
     pr.textContent = 'Create PR';
     pr.title = 'Push and open a pull request for this branch';
     pr.hidden = true;
 
     actions.append(pr, commit);
 
-    undo = document.createElement('button');
+    undo = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     undo.type = 'button';
     undo.id = 'btnCodeChangeUndo';
-    undo.className = 'chat-turn-changes__undo';
+    setButtonClassName(undo, 'chat-turn-changes__undo');
     undo.setAttribute('aria-label', 'Undo last agent turn');
     undo.title = 'Undo last agent turn';
     undo.disabled = true;
@@ -104,9 +105,9 @@ export function createTurnChanges(
 
   const planPath = findTurnPlanPath(chat, files.map((file) => file.path));
 
-  const review = document.createElement('button');
+  const review = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   review.type = 'button';
-  review.className = 'chat-turn-changes__review';
+  setButtonClassName(review, 'chat-turn-changes__review');
   review.textContent = 'Review';
   review.title = 'Open changes in the diff viewer';
   if (undo) header.append(undo);
@@ -120,9 +121,9 @@ export function createTurnChanges(
     const row = document.createElement('div');
     row.className = 'chat-turn-changes__file';
     row.hidden = rows.length >= 3;
-    const path = document.createElement('button');
+    const path = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     path.type = 'button';
-    path.className = 'chat-turn-changes__path';
+    setButtonClassName(path, 'chat-turn-changes__path');
     const slash = file.path.replace(/\\/g, '/').lastIndexOf('/');
     const dir = document.createElement('span');
     dir.className = 'chat-turn-changes__dir';
@@ -182,9 +183,9 @@ export function createTurnChanges(
     card.append(row);
   }
   let showAll = false;
-  const more = document.createElement('button');
+  const more = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   more.type = 'button';
-  more.className = 'chat-turn-changes__more';
+  setButtonClassName(more, 'chat-turn-changes__more');
   const syncMore = () => {
     rows.forEach((row, i) => { row.hidden = !showAll && i >= 3; });
     more.textContent = showAll ? 'Show fewer files' : `Show ${files.length - 3} more files`;
@@ -226,9 +227,9 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'chat-turn-changes__actions chat-turn-changes__plan-actions';
   const button = (label: string, title: string, onClick: () => void) => {
-    const el = document.createElement('button');
+    const el = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     el.type = 'button';
-    el.className = 'chat-turn-changes__action';
+    setButtonClassName(el, 'chat-turn-changes__action');
     el.textContent = label;
     el.title = title;
     el.addEventListener('click', onClick);

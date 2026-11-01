@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { WORKSPACE_FILE_MIME, WORKSPACE_FILES_MIME } from '../attachments/workspace-ref';
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
 import {
@@ -605,18 +606,18 @@ function renderTreeError(host: HTMLElement, message: string): void {
   if (permissionBlocked) {
     const actions = document.createElement('div');
     actions.className = 'file-tree-readiness-actions';
-    const settings = document.createElement('button');
+    const settings = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     settings.type = 'button';
-    settings.className = 'file-tree-readiness-action';
+    setButtonClassName(settings, 'file-tree-readiness-action');
     settings.textContent = 'List directory permission';
     settings.addEventListener('click', () => {
       void import('./settings-page').then((m) =>
         m.navigateToSettingsField('tools.item.list_directory', 'tools'),
       );
     });
-    const retry = document.createElement('button');
+    const retry = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     retry.type = 'button';
-    retry.className = 'file-tree-readiness-action';
+    setButtonClassName(retry, 'file-tree-readiness-action');
     retry.textContent = 'Retry file browsing';
     retry.addEventListener('click', () => void refreshFileTree());
     actions.append(settings, retry);

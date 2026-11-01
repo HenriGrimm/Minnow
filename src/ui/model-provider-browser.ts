@@ -1,3 +1,5 @@
+import { createSelect, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 import { iconHtml } from './icon';
 import { providerLogoId } from '../providers/identity';
 import { getCachedProviderList } from '../providers/store';
@@ -107,8 +109,8 @@ export function renderModelProviderBrowser<T>(
   toolbar.className = 'model-browser-heading';
   const providersLabel = document.createElement('span');
   providersLabel.textContent = 'Providers';
-  const sort = document.createElement('select');
-  sort.className = 'model-browser-sort';
+  const sort = createSelect({ appearance: 'surface',});
+  setControlClassName(sort, 'model-browser-sort');
   sort.setAttribute('aria-label', 'Sort providers');
   sort.title = 'Smart order puts providers with favorites first, then your most used providers';
   for (const [value, label] of [['smart', 'Smart order'], ['name', 'Name A–Z'], ['local', 'Local first']]) {
@@ -161,9 +163,9 @@ export function renderModelProviderBrowser<T>(
     menu.querySelectorAll('.model-select-option--active').forEach(row => row.classList.remove('model-select-option--active'));
   }
   for (const group of groups) {
-    const button = document.createElement('button');
+    const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     button.type = 'button';
-    button.className = 'model-browser-provider';
+    setButtonClassName(button, 'model-browser-provider');
     button.dataset.providerId = group.id;
     button.setAttribute('aria-controls', id);
     button.setAttribute('aria-expanded', 'false');

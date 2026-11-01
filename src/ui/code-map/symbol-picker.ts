@@ -1,3 +1,5 @@
+import { createTextInput, setControlClassName } from '../components';
+import { createButton, setButtonClassName } from '../components';
 import { fetchCodeMapFile, findBrainCodeSymbol } from '../../brain/client';
 import { kindBadge } from './icons';
 
@@ -21,9 +23,9 @@ export async function renderSymbolPicker(
   description.textContent = options.file
     ? `Choose a symbol in ${options.file}, or search the workspace.`
     : 'Search for a function or method to see what calls it and what it calls.';
-  const input = document.createElement('input');
+  const input = createTextInput({ appearance: 'surface', type: 'search' });
   input.type = 'search';
-  input.className = 'code-map-symbol-picker__input';
+  setControlClassName(input, 'code-map-symbol-picker__input');
   input.placeholder = 'Search functions and methods…';
   input.setAttribute('aria-label', 'Search symbols for the call graph');
   const status = document.createElement('p');
@@ -38,9 +40,9 @@ export async function renderSymbolPicker(
     list.replaceChildren();
     status.textContent = message;
     for (const symbol of symbols) {
-      const button = document.createElement('button');
+      const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       button.type = 'button';
-      button.className = 'code-map-symbol-picker__result';
+      setButtonClassName(button, 'code-map-symbol-picker__result');
       const name = document.createElement('span');
       name.textContent = `${kindBadge(symbol.kind)} · ${symbol.name}`;
       const location = document.createElement('span');

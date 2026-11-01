@@ -45,6 +45,29 @@ describe('button', () => {
     assert.equal(block.classList.contains('a') && block.classList.contains('b'), true);
   });
 
+  test('adopting static buttons preserves their nodes, state, children and bindings', () => {
+    dom = installComponentDom();
+    const element = dom.doc.createElement('button');
+    element.id = 'send';
+    element.className = 'send-control';
+    element.innerHTML = '<span id="send-icon">Send</span>';
+    const icon = element.firstElementChild;
+    let clicks = 0;
+    element.addEventListener('click', () => clicks++);
+    const adopted = createIconButton({ element, icon: 'arrowUp', label: 'Send message', variant: 'primary', size: 'lg', tooltip: false });
+    assert.equal(adopted === element, true);
+    assert.equal(adopted.firstElementChild === icon, true);
+    assert.equal(adopted.id, 'send');
+    assert.equal(adopted.classList.contains('send-control'), true);
+    assert.equal(adopted.classList.contains('mn-btn--icon'), true);
+    adopted.click();
+    assert.equal(clicks, 1);
+    createButton({ element, variant: 'ghost', size: 'sm' });
+    assert.equal(element.classList.contains('mn-btn--primary'), false);
+    assert.equal(element.classList.contains('mn-btn--lg'), false);
+    assert.equal(element.firstElementChild === icon, true);
+  });
+
   test('icons render before and after the label; icon-only gets the square modifier', () => {
     dom = installComponentDom();
     const both = createButton({ label: 'Open', icon: 'folder', iconEnd: 'chevronDown' });

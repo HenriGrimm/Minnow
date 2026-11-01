@@ -1,3 +1,4 @@
+import { createButton } from './components';
 import { getStreamingChatId, isActiveChatStreaming } from '../chat/streaming-state';
 import { findChatById } from '../state/sessions';
 import { isChatAppForeground } from './chat-mount';
@@ -43,10 +44,7 @@ export function syncBackgroundStreamHint(): void {
   text.textContent = `Reply in progress in ${name}. `;
   hint.appendChild(text);
 
-  const link = document.createElement('button');
-  link.type = 'button';
-  link.className = 'composer-background-stream-hint__link';
-  link.textContent = 'Go to chat';
+  const link = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-background-stream-hint__link', label: 'Go to chat' });
   link.addEventListener('click', () => {
     if (isChatAppForeground()) {
       void import('./chat-app').then((m) => m.activateChatAppThread(streamId));

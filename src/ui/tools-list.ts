@@ -1,3 +1,5 @@
+import { createCheckbox, createSelect, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 import {
   isToolPermissionMode,
   saveToolCacheFromUi,
@@ -175,7 +177,7 @@ function createToolSelectAllControl(
   const label = document.createElement('label');
   label.className = 'tool-select-all';
 
-  const checkbox = document.createElement('input');
+  const checkbox = createCheckbox({ appearance: 'surface', label: '' }).input;
   checkbox.type = 'checkbox';
   if (scope === 'global') {
     checkbox.setAttribute('data-select-all', 'global');
@@ -208,9 +210,9 @@ function createToolPermissionSegments(
     { value: 'ask', label: 'Ask' },
     { value: 'full', label: 'Full' },
   ] as const) {
-    const button = document.createElement('button');
+    const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     button.type = 'button';
-    button.className = 'tool-permission-segment';
+    setButtonClassName(button, 'tool-permission-segment');
     button.dataset.value = optDef.value;
     button.setAttribute('role', 'radio');
     button.setAttribute('aria-checked', 'false');
@@ -352,8 +354,8 @@ export function fillToolsSection(
       nameSpan.className = 'tool-label';
       nameSpan.textContent = tool.label;
 
-      const select = document.createElement('select');
-      select.className = 'tool-permission-select';
+      const select = createSelect({ appearance: 'surface',});
+      setControlClassName(select, 'tool-permission-select');
       select.setAttribute('aria-label', `${tool.label} permission`);
       if (variant !== 'composer') {
         select.setAttribute('aria-describedby', `tool-desc-${tool.id}`);

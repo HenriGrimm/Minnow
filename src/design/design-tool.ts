@@ -1,3 +1,5 @@
+import { createTextInput, setControlClassName } from '../ui/components';
+import { createButton, setButtonClassName } from '../ui/components';
 import type { AnnotationOverlay, OverlayMarker } from './overlay';
 import {
   createBestElementPicker,
@@ -298,9 +300,9 @@ function openInlineLabelEditor(
   point: ShapePoint,
   onCommit: (text: string) => void,
 ): void {
-  const input = document.createElement('input');
+  const input = createTextInput({ appearance: 'surface', type: 'text' });
   input.type = 'text';
-  input.className = 'mn-design-label-editor';
+  setControlClassName(input, 'mn-design-label-editor');
   input.placeholder = 'Label…';
   input.setAttribute('aria-label', 'Label text');
   input.style.left = `${Math.round(Math.max(0, Math.min(point.x, host.clientWidth - 160)))}px`;
@@ -595,18 +597,18 @@ export function createCommentDesignTool(): CommentDesignTool {
     title.textContent = `Comment ${pin.index}`;
     header.appendChild(title);
 
-    const deleteBtn = document.createElement('button');
+    const deleteBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     deleteBtn.type = 'button';
-    deleteBtn.className = 'mn-design-pin-popover__delete';
+    setButtonClassName(deleteBtn, 'mn-design-pin-popover__delete');
     deleteBtn.title = 'Delete pin';
     deleteBtn.setAttribute('aria-label', 'Delete pin');
     deleteBtn.textContent = '🗑';
     deleteBtn.addEventListener('click', () => erasePinInternal(pin.id));
     header.appendChild(deleteBtn);
 
-    const closeBtn = document.createElement('button');
+    const closeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     closeBtn.type = 'button';
-    closeBtn.className = 'mn-design-pin-popover__close';
+    setButtonClassName(closeBtn, 'mn-design-pin-popover__close');
     closeBtn.title = 'Close';
     closeBtn.setAttribute('aria-label', 'Close comment thread');
     closeBtn.textContent = '×';
@@ -628,9 +630,9 @@ export function createCommentDesignTool(): CommentDesignTool {
     const inputRow = document.createElement('div');
     inputRow.className = 'mn-design-pin-popover__input-row';
 
-    const input = document.createElement('input');
+    const input = createTextInput({ appearance: 'surface', type: 'text' });
     input.type = 'text';
-    input.className = 'mn-design-pin-popover__input';
+    setControlClassName(input, 'mn-design-pin-popover__input');
     input.placeholder = 'Add a note…';
     inputRow.appendChild(input);
 
@@ -650,9 +652,9 @@ export function createCommentDesignTool(): CommentDesignTool {
       }
     });
 
-    const addBtn = document.createElement('button');
+    const addBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     addBtn.type = 'button';
-    addBtn.className = 'mn-design-pin-popover__add';
+    setButtonClassName(addBtn, 'mn-design-pin-popover__add');
     addBtn.textContent = 'Add';
     addBtn.addEventListener('click', submitNote);
     inputRow.appendChild(addBtn);

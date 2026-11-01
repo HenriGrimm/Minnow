@@ -5,7 +5,7 @@
 
 import '../../styles/components/segmented.css';
 import { createIcon, type IconName } from '../icon';
-import { addClassNames } from './internal';
+import { addClassNames, applyAppearance, type ComponentAppearance } from './internal';
 
 export interface SegmentedOption {
   value: string;
@@ -17,6 +17,9 @@ export interface SegmentedOption {
 }
 
 export interface SegmentedControlOptions {
+  appearance?: ComponentAppearance;
+  /** Adopt an existing host while keeping its id, layout hooks and external bindings. */
+  element?: HTMLDivElement;
   options: SegmentedOption[];
   value?: string;
   ariaLabel: string;
@@ -33,9 +36,15 @@ export interface SegmentedControlHandle {
   setDisabled(value: string, disabled: boolean): void;
 }
 
+const bindings = new WeakMap<HTMLElement, () => void>();
+
 export function createSegmentedControl(options: SegmentedControlOptions): SegmentedControlHandle {
-  const root = document.createElement('div');
-  root.className = `mn-segmented mn-segmented--${options.size ?? 'md'}`;
+  const root = options.element ?? document.createElement('div');
+  applyAppearance(root, options.appearance);
+  bindings.get(root)?.();
+  root.replaceChildren();
+  root.classList.remove('mn-segmented--sm', 'mn-segmented--md');
+  root.classList.add('mn-segmented', `mn-segmented--${options.size ?? 'md'}`);
   root.setAttribute('role', 'radiogroup');
   root.setAttribute('aria-label', options.ariaLabel);
   addClassNames(root, options.className);
@@ -80,7 +89,7 @@ export function createSegmentedControl(options: SegmentedControlOptions): Segmen
     if (!silent) options.onChange?.(value);
   }
 
-  root.addEventListener('keydown', (event) => {
+  const onKeydown = (event: KeyboardEvent) => {
     const list = enabled();
     if (list.length === 0) return;
     const index = list.indexOf(document.activeElement as HTMLButtonElement);
@@ -106,7 +115,9 @@ export function createSegmentedControl(options: SegmentedControlOptions): Segmen
     event.preventDefault();
     next.focus();
     select(next.dataset.value!, false);
-  });
+  };
+  root.addEventListener('keydown', onKeydown);
+  bindings.set(root, () => root.removeEventListener('keydown', onKeydown));
 
   if (options.value != null && buttons.has(options.value)) current = options.value;
   sync();

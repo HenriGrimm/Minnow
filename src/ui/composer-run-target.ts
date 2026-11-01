@@ -1,3 +1,4 @@
+import { createButton, openPopover, type PopoverHandle } from './components';
 import { isActiveChatStreaming, isChatStreaming } from '../chat/streaming-state.ts';
 import {
   branchesLockedToOtherWorktrees,
@@ -27,7 +28,6 @@ import {
 import {
   closeRunTargetPicker,
   fillRunTargetMenu,
-  positionRunTargetMenu,
 } from './composer-run-target-menu.ts';
 import {
   observeModeSelectorComposerSibling,
@@ -40,9 +40,8 @@ let wrapEl: HTMLDivElement | null = null;
 let runTargetBtn: HTMLButtonElement | null = null;
 let runTargetMenu: HTMLDivElement | null = null;
 let runTargetOpen = false;
+let targetPopover: PopoverHandle | null = null;
 let menuGeneration = 0;
-let outsideHandler: ((e: PointerEvent) => void) | null = null;
-let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 const busyChats = new Set<string>();
 let displayedChatId: string | undefined;
 
@@ -58,55 +57,19 @@ function shouldShowForChat(chat: Chat): boolean {
   return isLocalServerAvailable();
 }
 
-function detachGlobalListeners(): void {
-  if (outsideHandler) {
-    document.removeEventListener('pointerdown', outsideHandler, true);
-    outsideHandler = null;
-  }
-  if (escapeHandler) {
-    document.removeEventListener('keydown', escapeHandler, true);
-    escapeHandler = null;
-  }
-}
-
 function closeMenus(): void {
   menuGeneration++;
   runTargetOpen = false;
+  targetPopover?.close();
+  targetPopover = null;
   runTargetBtn?.setAttribute('aria-expanded', 'false');
   runTargetMenu?.classList.add('hidden');
-  detachGlobalListeners();
   closeRunTargetPicker();
 }
 
 /** Close Local / branch menus (compact layout swap and overflow sheet). */
 export function closeComposerRunTargetMenus(): void {
   closeMenus();
-}
-
-function positionMenu(anchor: HTMLElement, menu: HTMLElement): void {
-  positionRunTargetMenu(anchor, menu);
-}
-
-function attachGlobalListeners(): void {
-  outsideHandler = (e: PointerEvent) => {
-    const target = e.target as Node | null;
-    if (
-      runTargetMenu?.contains(target) ||
-      runTargetBtn?.contains(target)
-    ) {
-      return;
-    }
-    closeMenus();
-  };
-  document.addEventListener('pointerdown', outsideHandler, true);
-
-  escapeHandler = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    closeMenus();
-    closeGitPanelNamePopover();
-    runTargetBtn?.focus();
-  };
-  document.addEventListener('keydown', escapeHandler, true);
 }
 
 // ── Controls ─────────────────────────────────────────────────────────────────
@@ -117,10 +80,8 @@ function createMenuButton(
   ariaLabel: string,
   iconKind: 'local' | 'branch' | 'worktree',
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className, ariaLabel });
   btn.id = id;
-  btn.className = className;
   btn.setAttribute('aria-label', ariaLabel);
   btn.setAttribute('aria-haspopup', 'true');
   btn.setAttribute('aria-expanded', 'false');
@@ -154,9 +115,7 @@ function menuItem(
   onClick: () => void,
   options?: { icon?: 'local' | 'branch' | 'worktree'; disabled?: boolean; keepOpen?: boolean },
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'composer-run-target-menu__item';
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-run-target-menu__item' });
   btn.setAttribute('role', 'menuitem');
   btn.disabled = options?.disabled === true;
   if (options?.icon) {
@@ -175,11 +134,20 @@ function menuItem(
 function reopenRunTargetMenu(): void {
   if (!runTargetMenu || !runTargetBtn) return;
   runTargetOpen = true;
-  runTargetBtn?.setAttribute('aria-expanded', 'true');
   runTargetMenu.classList.remove('hidden');
-  positionMenu(runTargetBtn, runTargetMenu);
-  detachGlobalListeners();
-  attachGlobalListeners();
+  if (targetPopover?.isOpen()) { targetPopover.reposition(); return; }
+  targetPopover = openPopover({
+    appearance: 'surface', offset: 4,
+    anchor: runTargetBtn, content: runTargetMenu, ariaLabel: 'Worktree and branch',
+    className: 'composer-run-target-flyout',
+    onClose: () => {
+      targetPopover = null;
+      runTargetOpen = false;
+      menuGeneration++;
+      runTargetMenu?.classList.add('hidden');
+      if (runTargetMenu) document.body.append(runTargetMenu);
+    },
+  });
 }
 
 function ensureControls(): HTMLDivElement {

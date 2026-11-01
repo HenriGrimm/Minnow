@@ -1,3 +1,5 @@
+import { createSelect } from '../components';
+import { createButton, setButtonClassName } from '../components';
 /**
  * Code map page: a pannable map of the workspace at three depths — architecture (layers
  * and modules), files (one folder) and calls (one symbol) — with an inspector, search,
@@ -243,9 +245,9 @@ function showOverlay(title: string, message: string, action?: { label: string; o
   p.textContent = message;
   card.append(h, p);
   if (action) {
-    const btn = document.createElement('button');
+    const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     btn.type = 'button';
-    btn.className = 'code-map-btn is-primary';
+    setButtonClassName(btn, 'code-map-btn is-primary');
     btn.textContent = action.label;
     btn.addEventListener('click', action.onClick);
     card.append(btn);
@@ -810,9 +812,9 @@ function renderTabs(): void {
 }
 
 function toolButton(label: string, icon: string, opts: { pressed?: boolean; onClick: () => void; title?: string }): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'code-map-btn is-floating';
+  setButtonClassName(btn, 'code-map-btn is-floating');
   const i = document.createElement('i');
   i.className = `fi ${icon}`;
   i.setAttribute('aria-hidden', 'true');
@@ -829,7 +831,7 @@ function linkSelect(): HTMLElement {
   const i = document.createElement('i');
   i.className = 'fi fi-rr-network';
   i.setAttribute('aria-hidden', 'true');
-  const select = document.createElement('select');
+  const select = createSelect({ appearance: 'surface',});
   select.setAttribute('aria-label', 'Which links to draw');
   for (const [value, text] of [
     ['strong', 'Strong links'],
@@ -910,9 +912,9 @@ function renderToolbar(): void {
     value.className = 'code-map-stepper__value';
     value.textContent = String(state.callDepth);
     const mk = (text: string, aria: string, next: 1 | 2) => {
-      const b = document.createElement('button');
+      const b = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       b.type = 'button';
-      b.className = 'code-map-icon-btn is-small';
+      setButtonClassName(b, 'code-map-icon-btn is-small');
       b.setAttribute('aria-label', aria);
       b.textContent = text;
       b.disabled = state.callDepth === next;
@@ -946,9 +948,9 @@ function crumb(label: string, onClick?: () => void, mono = false): HTMLElement {
     span.setAttribute('aria-current', 'page');
     return span;
   }
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = `code-map-crumb${mono ? ' is-mono' : ''}`;
+  setButtonClassName(btn, `code-map-crumb${mono ? ' is-mono' : ''}`);
   btn.textContent = label;
   btn.addEventListener('click', onClick);
   return btn;
@@ -1030,7 +1032,7 @@ function showNodeMenu(id: string, ev: MouseEvent): void {
   const grid = document.createElement('div');
   grid.className = 'code-map-icon-grid';
   for (const cls of PICKER_GLYPHS) {
-    const b = document.createElement('button');
+    const b = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     b.type = 'button';
     b.setAttribute('role', 'menuitem');
     b.setAttribute('aria-label', cls.replace('fi-rr-', '').replace(/-/g, ' '));
@@ -1044,9 +1046,9 @@ function showNodeMenu(id: string, ev: MouseEvent): void {
   }
   menu.append(heading, grid);
   if (hasFolderIconOverride(state.repoKey, path)) {
-    const reset = document.createElement('button');
+    const reset = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     reset.type = 'button';
-    reset.className = 'code-map-menu__item';
+    setButtonClassName(reset, 'code-map-menu__item');
     reset.setAttribute('role', 'menuitem');
     reset.textContent = 'Use the automatic icon';
     reset.addEventListener('click', () => {

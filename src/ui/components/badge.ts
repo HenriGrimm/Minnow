@@ -9,11 +9,12 @@
 import '../../styles/components/badge.css';
 import { createIcon, type IconName } from '../icon';
 import { createIconButton } from './button';
-import { addClassNames } from './internal';
+import { addClassNames, applyAppearance, type ComponentAppearance } from './internal';
 
 export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
 
 export interface BadgeOptions {
+  appearance?: ComponentAppearance;
   label: string;
   /** Default `neutral`. */
   tone?: BadgeTone;
@@ -58,6 +59,7 @@ function appendContent(
 export function createBadge(options: BadgeOptions): HTMLSpanElement {
   const badge = document.createElement('span');
   badge.className = `mn-badge mn-badge--${options.tone ?? 'neutral'} mn-badge--${options.size ?? 'md'}`;
+  applyAppearance(badge, options.appearance);
   if (options.mono) badge.classList.add('mn-badge--mono');
   addClassNames(badge, options.className);
   if (options.dot) {

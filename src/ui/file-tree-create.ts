@@ -1,3 +1,4 @@
+import { createTextInput, setControlClassName } from './components';
 import { getFilterQuery } from './file-tree-filter';
 import { getFilePanelState } from '../state/file-panel';
 import { setStatus } from './status';
@@ -61,9 +62,9 @@ function buildCreateRow(kind: FileTreeEntryKind, depth: number): HTMLElement {
     row.style.paddingLeft = `${fileRowPaddingLeftPx(depth)}px`;
   }
 
-  const inp = document.createElement('input');
+  const inp = createTextInput({ appearance: 'surface', type: 'text' });
   inp.type = 'text';
-  inp.className = CREATE_INPUT_CLASS;
+  setControlClassName(inp, CREATE_INPUT_CLASS);
   inp.value = kind === 'dir' ? 'new-folder' : 'untitled.txt';
   inp.maxLength = 255;
   inp.setAttribute(

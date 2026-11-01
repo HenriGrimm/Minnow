@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from '../ui/components';
 /**
  * Pending attachment list and composer preview chips (SA-12).
  * Send path and multimodal API wiring land in SA-13 / SA-15.
@@ -244,9 +245,9 @@ function createAttachChip(attachment: Attachment): HTMLElement {
     const path = attachment.workspacePath;
     const startLine = attachment.lineStart;
     const endLine = attachment.lineEnd;
-    const link = document.createElement('button');
+    const link = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     link.type = 'button';
-    link.className = 'code-ref-link code-ref-link--chip';
+    setButtonClassName(link, 'code-ref-link code-ref-link--chip');
     const label = formatCodeRefLabel(path, startLine, endLine);
     const fileName = label.replace(/\s+L\d+(-\d+)?$/, '');
     const linePart = label.slice(fileName.length).trim();
@@ -293,9 +294,9 @@ function createAttachChip(attachment: Attachment): HTMLElement {
     if (mapping?.file) {
       const file = mapping.file;
       const line = mapping.line;
-      const mapBtn = document.createElement('button');
+      const mapBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       mapBtn.type = 'button';
-      mapBtn.className = `attach-chip-source-map attach-chip-source-map--${mapping.confidence}`;
+      setButtonClassName(mapBtn, `attach-chip-source-map attach-chip-source-map--${mapping.confidence}`);
       mapBtn.textContent = `→ ${file}${line != null ? `:${line}` : ''}`;
       mapBtn.title = `Open ${file}${line != null ? `:${line}` : ''} (${mapping.confidence} match)`;
       mapBtn.addEventListener('click', (event) => {
@@ -349,9 +350,9 @@ function createAttachChip(attachment: Attachment): HTMLElement {
     chip.appendChild(label);
   }
 
-  const removeBtn = document.createElement('button');
+  const removeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   removeBtn.type = 'button';
-  removeBtn.className = 'attach-chip-remove';
+  setButtonClassName(removeBtn, 'attach-chip-remove');
   removeBtn.setAttribute('aria-label', `Remove ${attachment.name}`);
   removeBtn.textContent = '×';
   removeBtn.addEventListener('click', () => {

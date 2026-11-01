@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type { Chat, ChatLink } from '../types';
 import { listChatLinks, removeChatLink } from '../chat/links';
 import { getActiveChat } from '../state/sessions';
@@ -57,9 +58,9 @@ function createChatLinkChip(link: ChatLink, chat: Chat | null): HTMLElement {
     wrap.appendChild(createUrlLinkButton(link.url, { label: link.label }));
   }
 
-  const removeBtn = document.createElement('button');
+  const removeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   removeBtn.type = 'button';
-  removeBtn.className = 'attach-chip-remove chat-link-chip__remove';
+  setButtonClassName(removeBtn, 'attach-chip-remove chat-link-chip__remove');
   removeBtn.setAttribute('aria-label', `Remove ${link.label}`);
   removeBtn.title = `Remove ${link.label}`;
   removeBtn.textContent = '×';

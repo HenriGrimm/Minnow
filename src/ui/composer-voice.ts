@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { getActiveComposerSurface } from './composer-surface';
 import { autoResize } from './input';
 import { setStatus } from './status';
@@ -566,6 +567,7 @@ function onMicClick(): void {
 }
 
 function upgradeMicButton(btn: HTMLButtonElement): void {
+  createIconButton({ appearance: 'surface', element: btn, icon: 'mic', label: 'Dictate with microphone', tooltip: false, size: 'sm' });
   if (btn.id === 'btnDesktopMic') {
     btn.classList.remove('attach-btn', 'input-inset-btn');
     btn.classList.add('mn-os-desktop-comp-btn');
@@ -592,13 +594,11 @@ function ensureMicButton(id: string, anchorId: string): void {
   const host = id === 'btnComposerMic' ? document.getElementById('composerInsetActions') : null;
   if (!anchor?.parentElement && !host) return;
 
-  const btn = document.createElement('button');
-  btn.type = 'button';
+  const btn = createIconButton({ appearance: 'surface',
+    icon: 'mic', label: 'Dictate with microphone', tooltip: false, size: 'sm',
+    className: id === 'btnDesktopMic' ? 'mn-os-desktop-comp-btn composer-mic-btn' : 'input-inset-btn composer-mic-btn',
+  });
   btn.id = id;
-  btn.className =
-    id === 'btnDesktopMic'
-      ? 'mn-os-desktop-comp-btn composer-mic-btn'
-      : 'input-inset-btn composer-mic-btn';
   btn.setAttribute('aria-label', 'Dictate with microphone');
   btn.setAttribute('aria-busy', 'false');
   btn.title = 'Dictate';

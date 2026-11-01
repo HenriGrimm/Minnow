@@ -1,3 +1,4 @@
+import { adoptControls } from './components';
 import '../styles/model-pool-picker.css';
 import { randomUUID } from '../lib/random-id';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
@@ -26,7 +27,8 @@ export interface ModelPoolBrowser {
 }
 interface PoolModelChoice { value: string; providerId: string; modelId: string; label: string; provider: string }
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = ''): HTMLElementTagNameMap[K] {
-  const el = document.createElement(tag); el.textContent = text; el.className = className; return el;
+  const el = document.createElement(tag); el.textContent = text; el.className = className; if (['BUTTON', 'SELECT', 'TEXTAREA'].includes(el.tagName)) adoptControls(el, { appearance: 'surface', size: 'sm', variant: /--(?:mn-)?danger/.test(el.className) ? 'danger' : /--primary/.test(el.className) ? 'primary' : /icon-(?:btn|button)|--ghost/.test(el.className) ? 'ghost' : 'secondary' });
+  return el;
 }
 function button(text: string, action: () => void, className = 'pool-picker-action'): HTMLButtonElement {
   const el = node('button', text, className); el.type = 'button'; el.onclick = action; return el;

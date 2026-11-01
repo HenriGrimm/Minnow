@@ -4,11 +4,12 @@
  */
 
 import '../../styles/components/field.css';
-import { addAttributeToken, addClassNames, nextComponentId, removeAttributeToken } from './internal';
+import { addAttributeToken, addClassNames, applyAppearance, nextComponentId, removeAttributeToken, type ComponentAppearance } from './internal';
 
 export type FieldSize = 'sm' | 'md' | 'lg';
 
 interface ControlBaseOptions {
+  appearance?: ComponentAppearance;
   id?: string;
   name?: string;
   /** Default `md` (32px). */
@@ -22,6 +23,7 @@ interface ControlBaseOptions {
 }
 
 export interface TextInputOptions extends ControlBaseOptions {
+  element?: HTMLInputElement;
   value?: string;
   placeholder?: string;
   type?: 'text' | 'search' | 'email' | 'url' | 'password' | 'number' | 'tel';
@@ -32,6 +34,7 @@ export interface TextInputOptions extends ControlBaseOptions {
 }
 
 export interface TextareaOptions extends Omit<ControlBaseOptions, 'size'> {
+  element?: HTMLTextAreaElement;
   value?: string;
   placeholder?: string;
   /** Default 3. */
@@ -50,12 +53,15 @@ export interface SelectOption {
 }
 
 export interface SelectOptions extends ControlBaseOptions {
-  options: SelectOption[];
+  element?: HTMLSelectElement;
+  options?: SelectOption[];
   value?: string;
   onChange?: (value: string, event: Event) => void;
 }
 
 export interface CheckboxOptions {
+  appearance?: ComponentAppearance;
+  element?: HTMLInputElement;
   label: string;
   id?: string;
   name?: string;
@@ -68,6 +74,7 @@ export interface CheckboxOptions {
 }
 
 export interface FieldOptions {
+  appearance?: ComponentAppearance;
   label: string;
   /** The input, select or textarea; or a wrapper that contains one. */
   control: HTMLElement;
@@ -89,7 +96,15 @@ export interface FieldHandle {
 
 type FormControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
+/** Replace a surface's hooks without discarding the shared field's size or state. */
+export function setControlClassName(control: HTMLElement, className: string): void {
+  const shared = [...control.classList].filter((name) => /^mn-(?:input|select|checkbox|switch)(?:$|--|__)/.test(name));
+  control.className = className;
+  control.classList.add(...shared);
+}
+
 function applyBase(el: FormControl, options: ControlBaseOptions): void {
+  applyAppearance(el, options.appearance);
   if (options.id) el.id = options.id;
   if (options.name) el.name = options.name;
   if (options.disabled) el.disabled = true;
@@ -109,9 +124,9 @@ function bindValueEvents(
 }
 
 export function createTextInput(options: TextInputOptions = {}): HTMLInputElement {
-  const input = document.createElement('input');
-  input.type = options.type ?? 'text';
-  input.className = `mn-input mn-input--${options.size ?? 'md'}`;
+  const input = options.element ?? document.createElement('input');
+  input.type = options.type ?? options.element?.type ?? 'text';
+  input.classList.add('mn-input', `mn-input--${options.size ?? 'md'}`);
   applyBase(input, options);
   if (options.value != null) input.value = options.value;
   if (options.placeholder) input.placeholder = options.placeholder;
@@ -122,11 +137,11 @@ export function createTextInput(options: TextInputOptions = {}): HTMLInputElemen
 }
 
 export function createTextarea(options: TextareaOptions = {}): HTMLTextAreaElement {
-  const textarea = document.createElement('textarea');
-  textarea.className = 'mn-input mn-input--multiline';
+  const textarea = options.element ?? document.createElement('textarea');
+  textarea.classList.add('mn-input', 'mn-input--multiline');
   if (options.resize === 'none') textarea.classList.add('mn-input--no-resize');
   applyBase(textarea, options);
-  textarea.rows = options.rows ?? 3;
+  textarea.rows = options.rows ?? options.element?.rows ?? 3;
   if (options.value != null) textarea.value = options.value;
   if (options.placeholder) textarea.placeholder = options.placeholder;
   if (options.spellcheck != null) textarea.spellcheck = options.spellcheck;
@@ -135,10 +150,11 @@ export function createTextarea(options: TextareaOptions = {}): HTMLTextAreaEleme
 }
 
 export function createSelect(options: SelectOptions): HTMLSelectElement {
-  const select = document.createElement('select');
-  select.className = `mn-select mn-select--${options.size ?? 'md'}`;
+  const select = options.element ?? document.createElement('select');
+  select.classList.add('mn-select', `mn-select--${options.size ?? 'md'}`);
   applyBase(select, options);
-  for (const spec of options.options) {
+  if (options.options) select.replaceChildren();
+  for (const spec of options.options ?? []) {
     const option = document.createElement('option');
     option.value = spec.value;
     option.textContent = spec.label;
@@ -154,17 +170,25 @@ export function createSelect(options: SelectOptions): HTMLSelectElement {
 export function createCheckbox(
   options: CheckboxOptions,
 ): { root: HTMLLabelElement; input: HTMLInputElement } {
-  const root = document.createElement('label');
-  root.className = 'mn-checkbox';
+  const existingLabel = options.element?.closest('label');
+  const root = existingLabel ?? document.createElement('label');
+  root.classList.add('mn-checkbox');
+  applyAppearance(root, options.appearance);
   addClassNames(root, options.className);
 
-  const input = document.createElement('input');
+  const input = options.element ?? document.createElement('input');
   input.type = 'checkbox';
-  input.className = 'mn-checkbox__input';
-  input.id = options.id ?? nextComponentId('checkbox');
+  applyAppearance(input, options.appearance);
+  input.classList.add('mn-checkbox__input');
+  input.id = (options.id ?? input.id) || nextComponentId('checkbox');
   if (options.name) input.name = options.name;
-  if (options.checked) input.checked = true;
-  if (options.disabled) input.disabled = true;
+  if (options.checked !== undefined) input.checked = options.checked;
+  if (options.disabled !== undefined) input.disabled = options.disabled;
+  if (existingLabel) {
+    const onChange = options.onChange;
+    if (onChange) input.addEventListener('change', () => onChange(input.checked));
+    return { root, input };
+  }
 
   const text = document.createElement('span');
   text.className = 'mn-checkbox__text';
@@ -196,6 +220,7 @@ function findControl(el: HTMLElement): FormControl | null {
 export function createField(options: FieldOptions): FieldHandle {
   const root = document.createElement('div');
   root.className = 'mn-field';
+  applyAppearance(root, options.appearance);
   addClassNames(root, options.className);
 
   const control = findControl(options.control);

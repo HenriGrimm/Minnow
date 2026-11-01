@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 export interface FailedTurnRecoveryTarget {
   chatId: string;
   forkHistoryIndex: number;
@@ -14,9 +15,9 @@ export function appendFailedTurnRecoveryActions(
   const actions = document.createElement('div');
   actions.className = 'msg-error-recover-actions';
 
-  const continueBtn = document.createElement('button');
+  const continueBtn = createButton({ appearance: 'surface', variant: 'primary', size: 'sm' });
   continueBtn.type = 'button';
-  continueBtn.className = 'msg-error-recover-btn msg-error-recover-btn--continue';
+  setButtonClassName(continueBtn, 'msg-error-recover-btn msg-error-recover-btn--continue');
   continueBtn.textContent = 'Continue';
   continueBtn.title = 'Retry with the full conversation still in context';
   continueBtn.setAttribute(
@@ -24,9 +25,9 @@ export function appendFailedTurnRecoveryActions(
     'Continue: retry the failed turn with the full conversation still in context',
   );
 
-  const clearBtn = document.createElement('button');
+  const clearBtn = createButton({ appearance: 'surface', variant: 'danger', size: 'sm' });
   clearBtn.type = 'button';
-  clearBtn.className = 'msg-error-recover-btn';
+  setButtonClassName(clearBtn, 'msg-error-recover-btn');
   clearBtn.textContent = 'Clear';
   clearBtn.title = 'Remove the failed reply and keep your message';
   clearBtn.setAttribute(

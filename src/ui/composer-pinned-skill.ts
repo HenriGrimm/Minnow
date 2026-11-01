@@ -1,3 +1,4 @@
+import { createIconButton, createSelect } from './components';
 import { getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
 import { CAVEMAN_SKILL_ID, DEFAULT_CAVEMAN_INTENSITY, isCavemanIntensity } from '../skills/caveman-client';
 import { PARTYMODE_SKILL_ID } from '../skills/partymode-client';
@@ -21,22 +22,8 @@ function ensureStrip(): HTMLDivElement {
   labelEl.className = 'composer-control-label pinned-skill-control__label';
   labelEl.textContent = 'Caveman';
 
-  selectEl = document.createElement('select');
-  selectEl.id = 'pinnedSkillIntensity';
-  selectEl.className = 'pinned-skill-control__select';
-  selectEl.setAttribute('aria-label', 'Caveman intensity');
-  for (const level of listCavemanIntensityOptions()) {
-    const opt = document.createElement('option');
-    opt.value = level;
-    opt.textContent = level;
-    selectEl.appendChild(opt);
-  }
-
-  dismissBtn = document.createElement('button');
-  dismissBtn.type = 'button';
-  dismissBtn.className = 'pinned-skill-control__dismiss';
-  dismissBtn.setAttribute('aria-label', 'Unpin caveman mode');
-  dismissBtn.title = 'Unpin caveman mode';
+  selectEl = createSelect({ appearance: 'surface', id: 'pinnedSkillIntensity', size: 'sm', className: 'pinned-skill-control__select', ariaLabel: 'Caveman intensity', options: listCavemanIntensityOptions().map(level => ({ value: level, label: level })) });
+  dismissBtn = createIconButton({ appearance: 'surface', icon: 'close', label: 'Unpin caveman mode', size: 'sm', className: 'pinned-skill-control__dismiss' });
   dismissBtn.textContent = '×';
 
   dismissBtn.addEventListener('click', () => {

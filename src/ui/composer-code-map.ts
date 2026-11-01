@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { nextThinkingTriStateOnClick } from './composer-thinking';
 import {
   chatUsesDesktopSandboxWorkspace,
@@ -72,16 +73,13 @@ export function initCodeMapInjectionControl(): void {
   rootEl.innerHTML = '';
   rootEl.className = 'code-map-toggle-host';
 
-  toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'code-map-toggle-btn thinking-toggle-btn';
+  toggleBtn = createIconButton({ appearance: 'surface', icon: 'codeMapInjection', label: 'Code map injection', size: 'sm', className: 'code-map-toggle-btn thinking-toggle-btn', tooltip: false });
   toggleBtn.setAttribute('aria-label', 'Code map injection');
   toggleBtn.addEventListener('click', () => {
     void onToggleClick();
   });
 
-  const icon = createIcon('codeMapInjection', { className: 'thinking-toggle-icon' });
-  toggleBtn.appendChild(icon);
+  toggleBtn.querySelector('.mn-btn__icon')!.classList.add('thinking-toggle-icon');
   rootEl.appendChild(toggleBtn);
   void ensureSessionsReady().then(() => syncComposerCodeMapFromActiveChat());
 }

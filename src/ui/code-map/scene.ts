@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from '../components';
 /**
  * Draws a laid-out code map: layer frames, link curves (SVG) and node cards (buttons),
  * plus the focus state — the selected or hovered card lights its links and neighbours
@@ -97,9 +98,9 @@ function markerDefs(svg: SVGSVGElement): void {
 }
 
 function buildCard(repo: string, node: MapNode, review?: GitCommitReview | null): HTMLButtonElement {
-  const card = document.createElement('button');
+  const card = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   card.type = 'button';
-  card.className = `code-map-card code-map-card--${node.kind}`;
+  setButtonClassName(card, `code-map-card code-map-card--${node.kind}`);
   if (node.test) card.classList.add('is-test');
   card.dataset.id = node.id;
 

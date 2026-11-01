@@ -1,3 +1,4 @@
+import { adoptControls } from './components';
 export type ViewerUnsavedChoice = 'save' | 'discard' | 'cancel';
 
 const DIALOG_ID = 'fileViewerUnsavedDialog';
@@ -44,6 +45,7 @@ function ensureDialog(): void {
       </div>
     </div>
   `;
+  adoptControls(overlay, { appearance: 'surface', variants: {"primary":".file-viewer-unsaved-dialog__btn--primary"} });
   host.appendChild(overlay);
 
   dialogEl = overlay;

@@ -1,3 +1,5 @@
+import { adoptTabs } from './components';
+import { createButton, setButtonClassName } from './components';
 import {
   focusPaneSlot,
   isRightPaneSplitLayoutEnabled,
@@ -178,9 +180,9 @@ function appendFileTab(
   label.textContent = tab.isDirty ? `${tab.displayName} ●` : tab.displayName;
   tabEl.appendChild(label);
 
-  const closeBtn = document.createElement('button');
+  const closeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   closeBtn.type = 'button';
-  closeBtn.className = 'unified-tab__close file-viewer-tab__close';
+  setButtonClassName(closeBtn, 'unified-tab__close file-viewer-tab__close');
   closeBtn.setAttribute('aria-label', `Close ${tab.displayName}`);
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', (e) => {
@@ -320,9 +322,9 @@ function appendPreviewTab(
   label.textContent = tab.title;
   tabEl.appendChild(label);
 
-  const closeBtn = document.createElement('button');
+  const closeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   closeBtn.type = 'button';
-  closeBtn.className = 'unified-tab__close preview-tab__close';
+  setButtonClassName(closeBtn, 'unified-tab__close preview-tab__close');
   closeBtn.setAttribute('aria-label', `Close ${tab.title}`);
   closeBtn.textContent = '×';
   closeBtn.addEventListener('click', (e) => {
@@ -435,9 +437,9 @@ function renderSlotTabStrip(slot: PaneSlotId): void {
     appendPreviewTab(container, slot, tab, activePreviewId);
   }
 
-  const addBtn = document.createElement('button');
+  const addBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   addBtn.type = 'button';
-  addBtn.className = 'unified-tab-add preview-tab-add';
+  setButtonClassName(addBtn, 'unified-tab-add preview-tab-add');
   addBtn.setAttribute('aria-label', 'New browser tab');
   addBtn.textContent = '+';
   addBtn.addEventListener('click', () => {
@@ -451,6 +453,9 @@ function renderSlotTabStrip(slot: PaneSlotId): void {
   const keepVisible = isRightPaneSplitLayoutEnabled();
   tabBar?.classList.toggle('hidden', !hasTabs && !keepVisible);
 
+  container.setAttribute('role', 'tablist');
+  container.setAttribute('aria-label', 'Editor and preview tabs');
+  adoptTabs(container, { appearance: 'surface' });
   scrollActiveTabIntoView(slot);
 }
 

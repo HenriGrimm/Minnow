@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { resolveThinkingMode, resolveThinkingBudgetTokens } from '../agents/resolve-thinking';
 import {
   formatThinkingInheritedLabel,
@@ -152,14 +153,11 @@ export function initThinkingControl(): void {
   rootEl.innerHTML = '';
   rootEl.className = 'thinking-toggle-host';
 
-  toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'thinking-toggle-btn';
+  toggleBtn = createIconButton({ appearance: 'surface', icon: 'reasoning', label: 'Reasoning', size: 'sm', className: 'thinking-toggle-btn', tooltip: false });
   toggleBtn.setAttribute('aria-label', 'Reasoning');
   toggleBtn.addEventListener('click', onToggleClick);
 
-  const icon = createIcon('reasoning', { className: 'thinking-toggle-icon' });
-  toggleBtn.appendChild(icon);
+  toggleBtn.querySelector('.mn-btn__icon')!.classList.add('thinking-toggle-icon');
   rootEl.appendChild(toggleBtn);
   void ensureSessionsReady().then(() => syncThinkingControlFromActiveChat());
 }

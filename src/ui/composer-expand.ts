@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { fetchExpandedPrompt, EXPAND_FAILED_MESSAGE } from './composer-expand-client';
 import { iconHtml } from './icon';
 import { autoResize } from './input';
@@ -366,7 +367,8 @@ function bindExpandButton(
   btn: HTMLButtonElement,
   root: ParentNode = document,
 ): void {
-  if (!btn.innerHTML.trim()) btn.innerHTML = EXPAND_MARKUP;
+  createIconButton({ appearance: 'surface', element: btn, icon: 'sparkles', label: IDLE_LABEL, tooltip: false, size: 'sm' });
+  if (!btn.querySelector('.composer-expand-btn__spinner')) btn.innerHTML = EXPAND_MARKUP;
   if (!btn.hasAttribute('aria-label')) btn.setAttribute('aria-label', IDLE_LABEL);
   if (!btn.hasAttribute('aria-busy')) btn.setAttribute('aria-busy', 'false');
   if (!btn.title) btn.title = IDLE_TITLE;
@@ -397,12 +399,10 @@ function ensureUndoButton(target: ExpandTarget, expandBtn: HTMLButtonElement): v
       ? (next as HTMLButtonElement)
       : null;
   if (!undo) {
-    undo = document.createElement('button');
-    undo.type = 'button';
-    undo.className = undoButtonClass(target);
+    undo = createIconButton({ appearance: 'surface', icon: 'undo', label: UNDO_LABEL, tooltip: UNDO_TITLE, size: 'sm', className: undoButtonClass(target) });
     undo.setAttribute('aria-label', UNDO_LABEL);
     undo.title = UNDO_TITLE;
-    undo.innerHTML = iconHtml('undo', { className: 'composer-expand-btn__icon' });
+    undo.querySelector('.mn-btn__icon')!.classList.add('composer-expand-btn__icon');
     undo.hidden = true;
     undo.addEventListener('click', () => undoExpansion(input));
     expandBtn.insertAdjacentElement('afterend', undo);
@@ -424,14 +424,11 @@ function ensureExpandButton(target: ExpandTarget, root: ParentNode = document): 
     .find((el): el is HTMLElement => Boolean(el));
   if (!anchor?.parentElement) return;
 
-  const btn = document.createElement('button');
-  btn.type = 'button';
+  const btn = createIconButton({ appearance: 'surface',
+    icon: 'sparkles', label: IDLE_LABEL, tooltip: IDLE_TITLE, size: 'sm',
+    className: target.bar ? 'composer-expand-btn composer-expand-btn--bar' : target.desktop ? 'mn-os-desktop-comp-btn composer-expand-btn' : 'input-inset-btn composer-expand-btn',
+  });
   btn.id = target.btnId;
-  btn.className = target.bar
-    ? 'composer-expand-btn composer-expand-btn--bar'
-    : target.desktop
-      ? 'mn-os-desktop-comp-btn composer-expand-btn'
-      : 'input-inset-btn composer-expand-btn';
   btn.setAttribute('aria-label', IDLE_LABEL);
   btn.setAttribute('aria-busy', 'false');
   btn.title = IDLE_TITLE;

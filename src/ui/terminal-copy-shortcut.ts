@@ -1,3 +1,4 @@
+import { createTextarea } from './components';
 type TerminalShortcutEvent = {
   key: string;
   ctrlKey: boolean;
@@ -51,7 +52,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
     await navigator.clipboard.writeText(text);
     return;
   }
-  const textarea = document.createElement('textarea');
+  const textarea = createTextarea({ appearance: 'surface' });
   textarea.value = text;
   textarea.setAttribute('readonly', '');
   textarea.style.position = 'fixed';

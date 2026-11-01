@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from '../ui/components';
 /**
  * Before/after diff card (MIN-370 P1): a functional toggle between the pre-reload and
  * post-reload viewport crops for a design-linked chat turn. DOM-only — no store/network
@@ -36,9 +37,9 @@ export function renderBeforeAfterCard(pair: BeforeAfterPair): HTMLElement {
   img.src = (showingAfter ? pair.after?.dataUrl : pair.before?.dataUrl) ?? '';
   root.appendChild(img);
 
-  const toggle = document.createElement('button');
+  const toggle = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   toggle.type = 'button';
-  toggle.className = `${ROOT_CLASS}__toggle`;
+  setButtonClassName(toggle, `${ROOT_CLASS}__toggle`);
   toggle.setAttribute('aria-pressed', String(showingAfter));
 
   function syncToggleLabel(): void {

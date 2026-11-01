@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { createOsIcon } from '../os/icons';
 import { formatRelativeTime } from '../notifications/preview';
 import {
@@ -69,9 +70,9 @@ export function renderViewerRecentFilesEmptyState(host: HTMLElement): void {
     item.className = 'file-viewer-recent__item';
     item.style.setProperty('--fv-recent-i', String(index));
 
-    const openBtn = document.createElement('button');
+    const openBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     openBtn.type = 'button';
-    openBtn.className = 'file-viewer-recent__open';
+    setButtonClassName(openBtn, 'file-viewer-recent__open');
     const name = basename(entry.path);
     const parent = parentLabel(entry.path);
     const when = formatRelativeTime(entry.openedAt);
@@ -101,9 +102,9 @@ export function renderViewerRecentFilesEmptyState(host: HTMLElement): void {
       void import('./file-viewer').then((m) => m.openFileInViewer(entry.path));
     });
 
-    const removeBtn = document.createElement('button');
+    const removeBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     removeBtn.type = 'button';
-    removeBtn.className = 'file-viewer-recent__remove';
+    setButtonClassName(removeBtn, 'file-viewer-recent__remove');
     removeBtn.setAttribute('aria-label', `Remove ${name} from recent files`);
     removeBtn.title = 'Remove from recent';
     removeBtn.appendChild(createOsIcon('close', { size: 14 }));
@@ -121,9 +122,9 @@ export function renderViewerRecentFilesEmptyState(host: HTMLElement): void {
 
   const foot = document.createElement('div');
   foot.className = 'file-viewer-recent__foot';
-  const clearBtn = document.createElement('button');
+  const clearBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   clearBtn.type = 'button';
-  clearBtn.className = 'file-viewer-recent__clear';
+  setButtonClassName(clearBtn, 'file-viewer-recent__clear');
   clearBtn.textContent = 'Clear recent';
   clearBtn.addEventListener('click', () => {
     clearRecentViewerFiles(workspaceRoot);

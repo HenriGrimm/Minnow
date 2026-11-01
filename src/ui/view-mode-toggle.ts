@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { normalizeModeId } from '../chat/modes/types';
 import { isChatStreaming } from '../chat/streaming-state';
 import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
@@ -270,11 +271,10 @@ function wireViewToggleButton(
 }
 
 function createBoardChatViewToggleButton(): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
   btn.id = CHAT_TOGGLE_ID;
-  btn.className =
-    'icon-btn view-mode-toggle-btn view-mode-toggle-btn--to-chat board-header__view-toggle';
+  setButtonClassName(btn, 'icon-btn view-mode-toggle-btn view-mode-toggle-btn--to-chat board-header__view-toggle');
   btn.setAttribute('aria-label', 'Switch to chat view');
   btn.title = 'Chat view';
   btn.disabled = true;

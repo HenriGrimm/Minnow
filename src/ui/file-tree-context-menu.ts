@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { isFileTreeServerAvailable } from './file-tree-server';
 import { getFileTreeClipboard } from './file-tree-clipboard';
 import { pasteTargetDirForPath } from './file-tree-path';
@@ -132,9 +133,9 @@ function renderMenuItems(items: MenuItemDef[]): void {
   const menu = ensureMenuElement();
   menu.innerHTML = '';
   for (const item of items) {
-    const btn = document.createElement('button');
+    const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     btn.type = 'button';
-    btn.className = 'file-tree-context-menu__item';
+    setButtonClassName(btn, 'file-tree-context-menu__item');
     btn.setAttribute('role', 'menuitem');
     btn.textContent = item.label;
     if (item.disabled) {

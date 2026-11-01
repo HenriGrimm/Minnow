@@ -11,6 +11,13 @@ import {
 
 let idCounter = 0;
 
+export type ComponentAppearance = 'default' | 'surface';
+
+/** Keep shared behavior while an established surface owns the control's appearance. */
+export function applyAppearance(root: HTMLElement, appearance?: ComponentAppearance): void {
+  if (appearance !== undefined) root.toggleAttribute('data-mn-surface', appearance === 'surface');
+}
+
 /** Document-unique id for ARIA wiring (`mn-<prefix>-<n>`). */
 export function nextComponentId(prefix: string): string {
   idCounter += 1;

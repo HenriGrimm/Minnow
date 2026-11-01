@@ -15,6 +15,12 @@ function rect(left: number, top: number, width: number, height: number): RectLik
 }
 
 describe('computeFloatingPosition', () => {
+  test('surface placement can preserve fractional anchor coordinates', () => {
+    const anchor = rect(100.25, 100.5, 80, 30);
+    const pos = computeFloatingPosition(anchor, size, viewport, { offset: 4, round: false });
+    assert.deepEqual(pos, { left: 100.25, top: 134.5, placement: 'bottom-start' });
+    assert.equal(computeFloatingPosition(anchor, size, viewport).left, 100);
+  });
   test('bottom-start sits under the anchor at the offset, aligned to its left edge', () => {
     const pos = computeFloatingPosition(rect(100, 100, 80, 30), size, viewport, { placement: 'bottom-start', offset: 4 });
     assert.deepEqual(pos, { left: 100, top: 134, placement: 'bottom-start' });

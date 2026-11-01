@@ -1,3 +1,4 @@
+import { adoptControls } from './components';
 import { basename, joinTreePath } from './file-tree-path';
 
 export interface MoveConfirmDialogOptions {
@@ -57,6 +58,7 @@ function ensureBanner(): void {
       <button type="button" class="file-tree-move-confirm__btn file-tree-move-confirm__btn--primary" data-move-confirm>Move</button>
     </div>
   `;
+  adoptControls(banner, { appearance: 'surface', variants: {"primary":".file-tree-move-confirm__btn--primary"} });
 
   const treeHost = document.getElementById('fileTreeHost');
   if (treeHost) {

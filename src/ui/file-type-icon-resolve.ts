@@ -1,4 +1,12 @@
-import materialIcons from 'material-icon-theme/dist/material-icons.json';
+import {
+  file,
+  folder,
+  folderExpanded,
+  fileNames,
+  fileExtensions,
+  folderNames,
+  light,
+} from 'material-icon-theme/dist/material-icons.json';
 
 type AssociationMap = Record<string, string>;
 
@@ -9,16 +17,22 @@ interface MaterialIconManifest {
   fileNames: AssociationMap;
   fileExtensions: AssociationMap;
   folderNames: AssociationMap;
-  folderNamesExpanded: AssociationMap;
   light?: {
     fileNames?: AssociationMap;
     fileExtensions?: AssociationMap;
     folderNames?: AssociationMap;
-    folderNamesExpanded?: AssociationMap;
   };
 }
 
-const manifest = materialIcons as MaterialIconManifest;
+// Named JSON imports let the bundler omit VS Code metadata and SVG definitions.
+const manifest: MaterialIconManifest = {
+  file, folder, folderExpanded, fileNames, fileExtensions, folderNames, light,
+};
+
+/** Material Icon Theme's expanded folders share the closed id plus `-open`. */
+function expandedFolderIconId(iconId: string): string {
+  return iconId.replace(/(_light)?$/, '-open$1');
+}
 
 function basenameOf(pathOrName: string): string {
   return (pathOrName.split(/[/\\]/).pop() ?? pathOrName).toLowerCase();
@@ -56,9 +70,9 @@ export function resolveFolderIconId(
   const light = options?.light === true;
 
   if (expanded) {
-    const lightMap = light ? manifest.light?.folderNamesExpanded : undefined;
-    if (lightMap?.[lower]) return lightMap[lower]!;
-    if (manifest.folderNamesExpanded[lower]) return manifest.folderNamesExpanded[lower]!;
+    const lightMap = light ? manifest.light?.folderNames : undefined;
+    if (lightMap?.[lower]) return expandedFolderIconId(lightMap[lower]!);
+    if (manifest.folderNames[lower]) return expandedFolderIconId(manifest.folderNames[lower]!);
     return manifest.folderExpanded || 'folder-open';
   }
 

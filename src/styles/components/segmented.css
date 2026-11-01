@@ -1,6 +1,6 @@
 /* Shared segmented control (src/ui/components/segmented.ts). */
 
-.mn-segmented {
+.mn-segmented:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-segmented-h: var(--mn-control-h-md);
 
   box-sizing: border-box;
@@ -15,11 +15,11 @@
   -webkit-app-region: no-drag;
 }
 
-.mn-segmented--sm {
+.mn-segmented--sm:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-segmented-h: var(--mn-control-h-sm);
 }
 
-.mn-segmented__option {
+.mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -43,39 +43,39 @@
     color var(--duration-fast) var(--ease-out);
 }
 
-.mn-segmented--sm .mn-segmented__option {
+.mn-segmented--sm:where(:not([data-mn-surface], [data-mn-surface] *)) .mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)) {
   padding-inline: var(--mn-space-2);
   font-size: var(--mn-type-sm);
 }
 
-.mn-segmented__option .icon-svg {
+.mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)) .icon-svg {
   --mn-icon-size: var(--mn-icon-sm);
 }
 
-.mn-segmented__option.is-selected {
+.mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)).is-selected {
   background: var(--mn-surface-2);
   color: var(--mn-fg);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-segmented__option:hover:not(:disabled):not(.is-selected) {
+  .mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)):hover:not(:disabled):not(.is-selected) {
     background: var(--mn-surface-elevated);
     color: var(--mn-fg);
   }
 }
 
-.mn-segmented__option:focus-visible {
+.mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)):focus-visible {
   outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
   outline-offset: 0;
 }
 
-.mn-segmented__option:disabled {
+.mn-segmented__option:where(:not([data-mn-surface], [data-mn-surface] *)):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
 @media (pointer: coarse) {
-  .mn-segmented {
+  .mn-segmented:where(:not([data-mn-surface], [data-mn-surface] *)) {
     height: var(--touch-min);
   }
 }

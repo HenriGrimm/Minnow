@@ -1,3 +1,4 @@
+import { createButton, createIconButton, openPopover, type PopoverHandle } from './components';
 import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig } from '../tools/config';
 import { ensureToolsSectionFilled } from './tools-list';
 
@@ -8,6 +9,7 @@ interface ToolsPopoverIds {
 }
 
 const popoverState = new Map<string, boolean>();
+const handles = new Map<string, PopoverHandle>();
 const registeredPopovers: ToolsPopoverIds[] = [];
 
 // ── Open ─────────────────────────────────────────────────────────────────────
@@ -28,6 +30,8 @@ function getPopover(ids: ToolsPopoverIds): HTMLElement | null {
 function closeToolsPopover(ids: ToolsPopoverIds): void {
   const popover = getPopover(ids);
   const button = getButton(ids);
+  const handle = handles.get(ids.popoverId);
+  if (handle) handle.close();
   if (!popover || popover.classList.contains('hidden')) {
     popoverState.set(ids.popoverId, false);
     return;
@@ -57,14 +61,22 @@ function openToolsPopover(ids: ToolsPopoverIds): void {
 
   fillToolsPopover(ids);
 
+  const marker = document.createComment('tools popover home');
+  popover.before(marker);
   popover.classList.remove('hidden');
   popoverState.set(ids.popoverId, true);
-  button.setAttribute('aria-expanded', 'true');
-
-  const first = popover.querySelector<HTMLElement>(
-    'select, input, button, [href], [tabindex]:not([tabindex="-1"])',
-  );
-  first?.focus();
+  const handle = openPopover({
+    appearance: 'surface', portal: false,
+    anchor: button, content: popover, placement: 'top-end',
+    ariaLabel: 'Tool permissions', className: 'composer-tools-flyout',
+    onClose: () => {
+      popover.classList.add('hidden');
+      marker.replaceWith(popover);
+      handles.delete(ids.popoverId);
+      popoverState.set(ids.popoverId, false);
+    },
+  });
+  handles.set(ids.popoverId, handle);
 }
 
 // ── Fill ─────────────────────────────────────────────────────────────────────
@@ -108,43 +120,20 @@ function toggleToolsPopover(ids: ToolsPopoverIds): void {
 
 /** Wire button, outside click, Escape, and settings link for one popover. */
 function initToolsPopover(ids: ToolsPopoverIds): void {
-  registeredPopovers.push(ids);
+  if (!registeredPopovers.includes(ids)) registeredPopovers.push(ids);
 
   const button = getButton(ids);
   const popover = getPopover(ids);
   const settingsLink = document.getElementById(ids.settingsLinkId);
 
-  if (!button || !popover) return;
+  if (!button || !popover || button.dataset.toolsPopoverBound === '1') return;
+  button.dataset.toolsPopoverBound = '1';
+  createIconButton({ appearance: 'surface', element: button, icon: 'settings', label: 'Tool permissions', tooltip: false, size: 'sm' });
+  if (settingsLink?.tagName === 'BUTTON') createButton({ appearance: 'surface', element: settingsLink as HTMLButtonElement, variant: 'ghost', size: 'sm' });
 
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     toggleToolsPopover(ids);
-  });
-
-  document.addEventListener('click', (event) => {
-    if (!isPopoverOpen(ids.popoverId)) return;
-    if (
-      ids.popoverId === 'composerToolsPopover' &&
-      document.getElementById('composerControls')?.classList.contains('composer-controls--compact')
-    ) {
-      return;
-    }
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    if (button.contains(target) || popover.contains(target)) return;
-    closeToolsPopover(ids);
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (!isPopoverOpen(ids.popoverId) || event.key !== 'Escape') return;
-    if (
-      ids.popoverId === 'composerToolsPopover' &&
-      document.getElementById('composerControls')?.classList.contains('composer-controls--compact')
-    ) {
-      return;
-    }
-    event.stopPropagation();
-    closeToolsPopover(ids);
   });
 
   settingsLink?.addEventListener('click', () => {

@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { nextThinkingTriStateOnClick } from './composer-thinking';
 import {
   fetchContextDocumentsInjectionDefault,
@@ -72,16 +73,13 @@ export function initContextDocumentsInjectionControl(): void {
   rootEl.innerHTML = '';
   rootEl.className = 'context-documents-toggle-host';
 
-  toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'context-documents-toggle-btn thinking-toggle-btn';
+  toggleBtn = createIconButton({ appearance: 'surface', icon: 'contextDocuments', label: 'Workspace context documents injection', size: 'sm', className: 'context-documents-toggle-btn thinking-toggle-btn', tooltip: false });
   toggleBtn.setAttribute('aria-label', 'Workspace context documents injection');
   toggleBtn.addEventListener('click', () => {
     void onToggleClick();
   });
 
-  const icon = createIcon('contextDocuments', { className: 'thinking-toggle-icon' });
-  toggleBtn.appendChild(icon);
+  toggleBtn.querySelector('.mn-btn__icon')!.classList.add('thinking-toggle-icon');
   rootEl.appendChild(toggleBtn);
   void ensureSessionsReady().then(() => syncComposerContextDocumentsFromActiveChat());
 }

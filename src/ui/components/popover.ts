@@ -14,17 +14,27 @@ import {
   markOverlayRoot,
   nextComponentId,
   unmarkOverlayRoot,
+  applyAppearance,
+  type ComponentAppearance,
 } from './internal';
 import { placeFloating, type FloatingPlacement } from './position';
 
 export type PopoverCloseReason = 'escape' | 'outside' | 'anchor' | 'api';
 
 export interface PopoverOptions {
+  /** `surface` floats the existing content root with its own appearance and identity. */
+  appearance?: ComponentAppearance;
+  /** With surface appearance, keep the existing CSS anchor and containing block. */
+  portal?: boolean;
+  /** Non-portaled surfaces use their CSS positioning unless explicitly set to floating. */
+  positioning?: 'css' | 'floating';
   anchor: HTMLElement;
   content: HTMLElement;
   /** Default `bottom-start`. */
   placement?: FloatingPlacement;
   offset?: number;
+  /** Round floating coordinates to CSS pixels; surface appearance preserves fractions by default. */
+  round?: boolean;
   ariaLabel?: string;
   /** `dialog` (default) for interactive content, `group` for passive content. */
   role?: 'dialog' | 'group';
@@ -37,7 +47,7 @@ export interface PopoverOptions {
 }
 
 export interface PopoverHandle {
-  root: HTMLDivElement;
+  root: HTMLElement;
   close(reason?: PopoverCloseReason): void;
   reposition(): void;
   isOpen(): boolean;
@@ -109,22 +119,35 @@ export function openPopover(options: PopoverOptions): PopoverHandle {
   stack.find((entry) => entry.anchor === options.anchor)?.handle.close('api');
 
   const { anchor } = options;
-  const root = document.createElement('div');
-  root.className = 'mn-popover';
+  const originalAnchorControls = anchor.getAttribute('aria-controls');
+  const surface = options.appearance === 'surface';
+  const portal = !surface || options.portal !== false;
+  const floating = options.positioning ? options.positioning === 'floating' : portal;
+  const root = surface ? options.content : document.createElement('div');
+  const originalClassName = root.className;
+  const originalStyle = root.getAttribute('style');
+  const originalSurface = root.hasAttribute('data-mn-surface');
+  root.classList.add('mn-popover');
+  applyAppearance(root, options.appearance);
   addClassNames(root, options.className);
-  root.id = nextComponentId('popover');
-  root.setAttribute('role', options.role ?? 'dialog');
+  root.id ||= nextComponentId('popover');
+  if (!surface || options.role || !root.hasAttribute('role')) root.setAttribute('role', options.role ?? 'dialog');
   if (options.ariaLabel) root.setAttribute('aria-label', options.ariaLabel);
   root.tabIndex = -1;
-  root.appendChild(options.content);
+  if (!surface) root.appendChild(options.content);
+  else if (floating) {
+    root.style.position = 'fixed';
+    root.style.inset = 'auto';
+    root.style.zIndex = 'var(--mn-z-popover)';
+  }
 
   const placement = options.placement ?? 'bottom-start';
   let open = true;
 
   const reposition = () => {
-    if (!open || !anchor.isConnected) return;
+    if (!open || !anchor.isConnected || !floating) return;
     if (options.matchAnchorWidth) root.style.minWidth = `${anchor.getBoundingClientRect().width}px`;
-    placeFloating(root, anchor, { placement, offset: options.offset });
+    placeFloating(root, anchor, { placement, offset: options.offset, round: options.round ?? !surface });
   };
 
   const close = (reason: PopoverCloseReason = 'api') => {
@@ -137,15 +160,22 @@ export function openPopover(options: PopoverOptions): PopoverHandle {
     const focusWasInside = active != null && root.contains(active);
     root.remove();
     unmarkOverlayRoot(root);
+    if (surface) {
+      root.className = originalClassName;
+      if (originalStyle === null) root.removeAttribute('style');
+      else root.setAttribute('style', originalStyle);
+      root.toggleAttribute('data-mn-surface', originalSurface);
+    }
     anchor.setAttribute('aria-expanded', 'false');
     if (anchor.getAttribute('aria-controls') === root.id) anchor.removeAttribute('aria-controls');
+    if (surface && originalAnchorControls !== null) anchor.setAttribute('aria-controls', originalAnchorControls);
     if ((reason === 'escape' || focusWasInside) && anchor.isConnected) anchor.focus();
     options.onClose?.(reason);
   };
 
   const handle: PopoverHandle = { root, close, reposition, isOpen: () => open };
 
-  document.body.appendChild(root);
+  if (portal) document.body.appendChild(root);
   markOverlayRoot(root, 'menu');
   anchor.setAttribute('aria-expanded', 'true');
   anchor.setAttribute('aria-controls', root.id);

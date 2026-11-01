@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from '../ui/components';
 import { mountNativeDesignStrip } from './native-design-strip';
 import { createAnnotationOverlay, type AnnotationOverlay } from './overlay';
 import {
@@ -189,9 +190,9 @@ const STRIP_ICON_NAMES: Record<string, IconName> = {
 };
 
 function stripButton(icon: string, label: string, className = ''): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = `${STRIP_CLASS}__btn${className ? ` ${className}` : ''}`;
+  setButtonClassName(btn, `${STRIP_CLASS}__btn${className ? ` ${className}` : ''}`);
   btn.title = label;
   btn.setAttribute('aria-label', label);
   const iconName = STRIP_ICON_NAMES[icon];

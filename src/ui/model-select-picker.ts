@@ -1,3 +1,5 @@
+import { createTextInput, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 import { modelCache } from '../app-state';
 import { isServerStorageMode } from '../config/storage-mode';
 import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
@@ -488,9 +490,9 @@ function mountModelHostFilterActions(
   actions.setAttribute('role', 'group');
   actions.setAttribute('aria-label', 'Model actions');
 
-  const refreshBtn = document.createElement('button');
+  const refreshBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   refreshBtn.type = 'button';
-  refreshBtn.className = 'model-host-filter-action model-host-filter-action--refresh';
+  setButtonClassName(refreshBtn, 'model-host-filter-action model-host-filter-action--refresh');
   refreshBtn.innerHTML = MODEL_REFRESH_ICON_HTML;
   refreshBtn.setAttribute('aria-label', 'Refresh models');
   refreshBtn.title = 'Refresh model list';
@@ -519,9 +521,9 @@ function mountModelHostFilterSearch(
   const searchWrap = document.createElement('div');
   searchWrap.className = 'model-host-filter-search-wrap';
 
-  const searchInput = document.createElement('input');
+  const searchInput = createTextInput({ appearance: 'surface', type: 'search' });
   searchInput.type = 'search';
-  searchInput.className = 'model-host-filter-search';
+  setControlClassName(searchInput, 'model-host-filter-search');
   searchInput.placeholder = 'Search models or providers…';
   searchInput.setAttribute('aria-label', 'Search models or providers');
   searchInput.autocomplete = 'off';
@@ -552,10 +554,9 @@ function mountModelHostFilterLibraryToggle(
   toolbarEnd: HTMLDivElement,
   onFilterChange: () => void,
 ): void {
-  const libraryToggle = document.createElement('button');
+  const libraryToggle = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   libraryToggle.type = 'button';
-  libraryToggle.className =
-    'model-host-filter-action model-host-filter-library-toggle';
+  setButtonClassName(libraryToggle, 'model-host-filter-action model-host-filter-library-toggle');
   libraryToggle.innerHTML = MINNOW_GLYPH_HEADER_HTML;
   libraryToggle.setAttribute('aria-label', 'My Models only');
   libraryToggle.setAttribute('aria-pressed', 'false');
@@ -573,10 +574,9 @@ function mountModelHostFilterLoadedToggle(
   toolbarEnd: HTMLDivElement,
   onFilterChange: () => void,
 ): void {
-  const loadedToggle = document.createElement('button');
+  const loadedToggle = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   loadedToggle.type = 'button';
-  loadedToggle.className =
-    'model-host-filter-action model-host-filter-loaded-toggle';
+  setButtonClassName(loadedToggle, 'model-host-filter-action model-host-filter-loaded-toggle');
   loadedToggle.innerHTML = MODEL_LOADED_TOGGLE_ICON_HTML;
   loadedToggle.setAttribute('aria-label', 'Loaded models only');
   loadedToggle.setAttribute('aria-pressed', 'false');
@@ -612,9 +612,9 @@ export function mountModelHostFilterBar(
   segments.className = 'model-host-filter-segmented';
 
   for (const { id, label } of HOST_FILTER_CHOICES) {
-    const btn = document.createElement('button');
+    const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     btn.type = 'button';
-    btn.className = 'model-host-filter-segment';
+    setButtonClassName(btn, 'model-host-filter-segment');
     btn.textContent = label;
     btn.dataset.filter = id;
     btn.setAttribute('role', 'radio');
@@ -714,9 +714,9 @@ export function syncModelMenuReasoningDefaultAction(row: HTMLElement): void {
   ];
   for (const entry of entries) {
     const selected = entry.effort === (validSaved ?? null);
-    const choice = document.createElement('button');
+    const choice = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     choice.type = 'button';
-    choice.className = 'model-menu-reasoning-default__choice';
+    setButtonClassName(choice, 'model-menu-reasoning-default__choice');
     if (entry.effort === null) {
       choice.classList.add('model-menu-reasoning-default__choice--model');
     }
@@ -849,9 +849,9 @@ export function mountModelMenuActions(
   });
   reasoningWrap.append(reasoningHeader, reasoningChoices);
 
-  const loadBtn = document.createElement('button');
+  const loadBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   loadBtn.type = 'button';
-  loadBtn.className = 'model-menu-action model-menu-action--load-unload';
+  setButtonClassName(loadBtn, 'model-menu-action model-menu-action--load-unload');
   loadBtn.textContent = 'Load';
   loadBtn.hidden = true;
   loadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -863,9 +863,9 @@ export function mountModelMenuActions(
     void import('../api/models').then((m) => m.toggleModelLoadForSelectValue(value));
   });
 
-  const settingsBtn = document.createElement('button');
+  const settingsBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   settingsBtn.type = 'button';
-  settingsBtn.className = 'model-menu-action model-menu-action--settings';
+  setButtonClassName(settingsBtn, 'model-menu-action model-menu-action--settings');
   settingsBtn.textContent = 'Open settings';
   settingsBtn.title = 'Open this model in Models → My models load settings';
   settingsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -1121,9 +1121,9 @@ export function mountAuxiliaryModelSelectCombobox(
   const composerButton = appearance === 'composer'
     ? createComposerModelButton(select.getAttribute('aria-label') || 'Active model')
     : undefined;
-  const trigger = composerButton?.trigger ?? document.createElement('button');
+  const trigger = composerButton?.trigger ?? createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   trigger.type = 'button';
-  if (!composerButton) trigger.className = 'model-select-trigger';
+  if (!composerButton) setButtonClassName(trigger, 'model-select-trigger');
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
 
@@ -1162,10 +1162,10 @@ export function mountAuxiliaryModelSelectCombobox(
   filters.setAttribute('aria-label', 'Model filters');
   const searchWrap = document.createElement('div');
   searchWrap.className = 'model-host-filter-search-wrap';
-  const search = document.createElement('input');
+  const search = createTextInput({ appearance: 'surface', type: 'search' });
   search.dataset.modelSearchIsolated = 'true';
   search.type = 'search';
-  search.className = 'model-host-filter-search model-host-filter-search-input';
+  setControlClassName(search, 'model-host-filter-search model-host-filter-search-input');
   search.placeholder = 'Search models or providers…';
   search.setAttribute('aria-label', `Search ${labelledBy || 'models'}`);
   search.setAttribute('role', 'combobox');
@@ -1178,8 +1178,8 @@ export function mountAuxiliaryModelSelectCombobox(
   const segments = document.createElement('div');
   segments.className = 'model-host-filter-segmented';
   for (const { id, label } of HOST_FILTER_CHOICES) {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'model-host-filter-segment';
+    const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
+    button.type = 'button'; setButtonClassName(button, 'model-host-filter-segment');
     button.textContent = label; button.setAttribute('aria-pressed', String(id === 'all'));
     button.addEventListener('click', () => {
       picker.hostFilter = id;
@@ -1359,9 +1359,9 @@ function appendModelOptionRow(
   const wrapper = document.createElement('li');
   wrapper.className = 'model-select-row';
   wrapper.setAttribute('role', 'presentation');
-  const li = document.createElement('button');
+  const li = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   li.type = 'button';
-  li.className = 'model-select-option';
+  setButtonClassName(li, 'model-select-option');
   if (indented) li.classList.add('model-select-option--grouped');
   if (id === selectedValue || variantValues?.includes(selectedValue)) {
     li.classList.add('model-select-option--selected');
@@ -1442,9 +1442,9 @@ function appendModelOptionRow(
     }
   });
 
-  const favorite = document.createElement('button');
+  const favorite = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   favorite.type = 'button';
-  favorite.className = 'model-select-favorite';
+  setButtonClassName(favorite, 'model-select-favorite');
   favorite.dataset.favoriteKey = favoriteKey;
   const starred = readModelPickerPreferences().favorites.includes(favoriteKey);
   favorite.setAttribute('aria-pressed', String(starred));
@@ -1588,9 +1588,9 @@ export function renderModelSelectMenuRows(
   if (resetOption && onSelect) {
     const resetWrap = document.createElement('li');
     resetWrap.setAttribute('role', 'presentation');
-    const reset = document.createElement('button');
+    const reset = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     reset.type = 'button';
-    reset.className = 'model-select-option model-select-reset';
+    setButtonClassName(reset, 'model-select-option model-select-reset');
     reset.dataset.value = '';
     reset.setAttribute('role', 'option');
     reset.setAttribute('aria-selected', String(selectedValue === ''));

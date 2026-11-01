@@ -1,3 +1,5 @@
+import { createButton, openPopover, type PopoverHandle } from './components';
+import { placeFloating } from './components/position';
 /**
  * Shared composer run-target flyout (current workspace / Worktree… / New worktree).
  * Issues Send to chat reuses this panel so the vocabulary stays one control.
@@ -67,8 +69,8 @@ let pickerAnchor: HTMLElement | null = null;
 let pickerGhost: HTMLDivElement | null = null;
 let pickerPicked = false;
 let pickerOnCancel: (() => void) | null = null;
-let pickerOutside: ((e: PointerEvent) => void) | null = null;
-let pickerEscape: ((e: KeyboardEvent) => void) | null = null;
+let pickerPopover: PopoverHandle | null = null;
+let pickerSuspended = false;
 
 function menuSection(title: string): HTMLDivElement {
   const section = document.createElement('div');
@@ -86,9 +88,7 @@ function menuItem(
   options?: { icon?: 'local' | 'branch' | 'worktree'; disabled?: boolean; keepOpen?: boolean },
   closeMenu?: () => void,
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'composer-run-target-menu__item';
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-run-target-menu__item' });
   btn.setAttribute('role', 'menuitem');
   btn.disabled = options?.disabled === true;
   if (options?.icon) {
@@ -106,24 +106,7 @@ function menuItem(
 
 /** Position a run-target flyout under (or above) an anchor. */
 export function positionRunTargetMenu(anchor: HTMLElement, menu: HTMLElement): void {
-  const rect = anchor.getBoundingClientRect();
-  const margin = 8;
-  const gap = 4;
-  const menuHeight = menu.offsetHeight || menu.getBoundingClientRect().height;
-  const menuWidth = menu.offsetWidth || menu.getBoundingClientRect().width;
-
-  let top = rect.bottom + gap;
-  if (top + menuHeight > window.innerHeight - margin) {
-    top = Math.max(margin, rect.top - menuHeight - gap);
-  }
-
-  let left = rect.left;
-  if (left + menuWidth > window.innerWidth - margin) {
-    left = Math.max(margin, window.innerWidth - menuWidth - margin);
-  }
-
-  menu.style.top = `${top}px`;
-  menu.style.left = `${left}px`;
+  placeFloating(menu, anchor, { round: false });
 }
 
 /** Fill current workspace / Worktree… / New worktree into an existing menu element. */
@@ -271,17 +254,6 @@ export async function fillRunTargetMenu(options: FillRunTargetMenuOptions): Prom
   menu.appendChild(wtSection);
 }
 
-function detachPickerListeners(): void {
-  if (pickerOutside) {
-    document.removeEventListener('pointerdown', pickerOutside, true);
-    pickerOutside = null;
-  }
-  if (pickerEscape) {
-    document.removeEventListener('keydown', pickerEscape, true);
-    pickerEscape = null;
-  }
-}
-
 function removePickerGhost(): void {
   pickerGhost?.remove();
   pickerGhost = null;
@@ -291,9 +263,12 @@ function removePickerGhost(): void {
 export function closeRunTargetPicker(): void {
   if (!pickerMenu && !pickerGhost) return;
   const cancelled = Boolean(pickerMenu) && !pickerPicked;
-  detachPickerListeners();
-  pickerMenu?.remove();
+  const menu = pickerMenu;
+  const handle = pickerPopover;
   pickerMenu = null;
+  pickerPopover = null;
+  handle?.close();
+  menu?.remove();
   pickerAnchor = null;
   removePickerGhost();
   const onCancel = pickerOnCancel;
@@ -317,22 +292,20 @@ function ensureGhostAnchor(clientX: number, clientY: number): HTMLDivElement {
   return ghost;
 }
 
-function attachPickerListeners(): void {
-  pickerOutside = (e: PointerEvent) => {
-    const target = e.target as Node | null;
-    if (pickerMenu?.contains(target) || pickerAnchor?.contains(target)) return;
-    const popover = document.querySelector('.git-panel-name-popover');
-    if (popover?.contains(target)) return;
-    closeRunTargetPicker();
-  };
-  document.addEventListener('pointerdown', pickerOutside, true);
-
-  pickerEscape = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    closeGitPanelNamePopover();
-    closeRunTargetPicker();
-  };
-  document.addEventListener('keydown', pickerEscape, true);
+function showPickerPopover(): void {
+  if (!pickerAnchor || !pickerMenu) return;
+  pickerMenu.classList.remove('hidden');
+  if (pickerPopover?.isOpen()) { pickerPopover.reposition(); return; }
+  const menu = pickerMenu;
+  pickerPopover = openPopover({
+    appearance: 'surface', offset: 4,
+    anchor: pickerAnchor, content: menu, ariaLabel: 'Run target', className: 'composer-run-target-flyout',
+    onClose: () => {
+      pickerPopover = null;
+      if (pickerSuspended) { document.body.append(menu); return; }
+      if (pickerMenu === menu) closeRunTargetPicker();
+    },
+  });
 }
 
 /**
@@ -375,13 +348,13 @@ export async function openRunTargetPicker(options: OpenRunTargetPickerOptions): 
     reserved: options.reserved,
     popoverAnchor: anchor,
     closeMenu: () => {
-      // Keep the ghost/anchor until the popover or pick finishes.
+      pickerSuspended = true;
+      pickerPopover?.close();
+      pickerSuspended = false;
       pickerMenu?.classList.add('hidden');
     },
     reopenMenu: () => {
-      if (!pickerMenu || !pickerAnchor) return;
-      pickerMenu.classList.remove('hidden');
-      positionRunTargetMenu(pickerAnchor, pickerMenu);
+      showPickerPopover();
     },
     onPick: finishPick,
     onPopoverDismiss: () => {
@@ -390,6 +363,5 @@ export async function openRunTargetPicker(options: OpenRunTargetPickerOptions): 
   });
 
   if (pickerMenu !== menu) return;
-  positionRunTargetMenu(anchor, menu);
-  attachPickerListeners();
+  showPickerPopover();
 }

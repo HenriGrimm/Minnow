@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type {
   MinnowPreviewBrowserActionResult,
   MinnowPreviewBrowserMenuApi,
@@ -123,9 +124,9 @@ function menuItem(
   run: (action: PreviewBrowserMenuAction) => void,
   options?: { danger?: boolean; hint?: string },
 ): HTMLButtonElement {
-  const button = document.createElement('button');
+  const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   button.type = 'button';
-  button.className = 'preview-browser-menu__item';
+  setButtonClassName(button, 'preview-browser-menu__item');
   button.dataset.action = action;
   button.setAttribute('role', 'menuitem');
   if (options?.danger) button.classList.add('preview-browser-menu__item--danger');
@@ -179,9 +180,9 @@ async function openPreviewBrowserMenu(
     if (!control || control.hidden) continue;
     const checkbox = control.tagName === 'INPUT' && (control as HTMLInputElement).type === 'checkbox';
     const pressed = control.getAttribute('aria-pressed');
-    const item = document.createElement('button');
+    const item = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     item.type = 'button';
-    item.className = 'preview-browser-menu__item';
+    setButtonClassName(item, 'preview-browser-menu__item');
     item.dataset.control = id;
     item.disabled = control.disabled;
     item.textContent = typeof label === 'function' ? label() : label;
@@ -211,19 +212,19 @@ async function openPreviewBrowserMenu(
     const zoomLabel = document.createElement('span');
     zoomLabel.className = 'preview-browser-menu__zoom-label';
     zoomLabel.textContent = 'Zoom';
-    const zoomOut = document.createElement('button');
+    const zoomOut = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     zoomOut.type = 'button';
-    zoomOut.className = 'preview-browser-menu__zoom-button';
+    setButtonClassName(zoomOut, 'preview-browser-menu__zoom-button');
     zoomOut.setAttribute('aria-label', 'Zoom out');
     zoomOut.textContent = '−';
-    const zoomValue = document.createElement('button');
+    const zoomValue = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     zoomValue.type = 'button';
-    zoomValue.className = 'preview-browser-menu__zoom-value';
+    setButtonClassName(zoomValue, 'preview-browser-menu__zoom-value');
     zoomValue.title = 'Reset zoom';
     zoomValue.setAttribute('aria-label', 'Reset page zoom');
-    const zoomIn = document.createElement('button');
+    const zoomIn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     zoomIn.type = 'button';
-    zoomIn.className = 'preview-browser-menu__zoom-button';
+    setButtonClassName(zoomIn, 'preview-browser-menu__zoom-button');
     zoomIn.setAttribute('aria-label', 'Zoom in');
     zoomIn.textContent = '+';
     zoom.append(zoomLabel, zoomOut, zoomValue, zoomIn);

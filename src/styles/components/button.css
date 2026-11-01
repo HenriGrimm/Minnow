@@ -5,7 +5,7 @@
  * so hover, pressed and disabled states work the same for every variant.
  */
 
-.mn-btn {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-h: var(--mn-control-h-md);
   --mn-btn-px: var(--mn-control-px-md);
   --mn-btn-icon: var(--mn-icon-md);
@@ -47,11 +47,13 @@
     color var(--duration-fast) var(--ease-out);
 }
 
-.mn-btn .icon-svg {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)) .icon-svg {
   --mn-icon-size: var(--mn-btn-icon);
 }
 
-.mn-btn__label {
+.mn-btn[hidden] { display: none; }
+
+.mn-btn__label:where(:not([data-mn-surface], [data-mn-surface] *)) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -59,25 +61,25 @@
 
 /* Sizes */
 
-.mn-btn--sm {
+.mn-btn--sm:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-h: var(--mn-control-h-sm);
   --mn-btn-px: var(--mn-control-px-sm);
   --mn-btn-icon: var(--mn-icon-sm);
   font-size: var(--mn-type-sm);
 }
 
-.mn-btn--lg {
+.mn-btn--lg:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-h: var(--mn-control-h-lg);
   --mn-btn-px: var(--mn-control-px-lg);
   --mn-btn-icon: var(--mn-icon-lg);
 }
 
-.mn-btn--icon {
+.mn-btn--icon:where(:not([data-mn-surface], [data-mn-surface] *)) {
   width: var(--mn-btn-h);
   padding: 0;
 }
 
-.mn-btn--block {
+.mn-btn--block:where(:not([data-mn-surface], [data-mn-surface] *)) {
   display: flex;
   width: 100%;
 }
@@ -90,7 +92,7 @@
  * colour. Dark themes darken pale accents and lighten mid-tone ones (human),
  * since mixing toward --mn-fg there barely moves a pale accent at all.
  */
-.mn-btn--primary {
+.mn-btn--primary:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-shift-away: oklch(from var(--mn-fg-on-accent) clamp(0, calc((0.5 - l) * 1000), 1) 0 0);
   --mn-btn-shift-to: var(--mn-btn-shift-away);
   --mn-btn-bg: var(--mn-accent);
@@ -102,16 +104,16 @@
   font-weight: var(--mn-weight-semibold);
 }
 
-:is(:root, .settings-theme-preview)[data-theme$='-dark'] .mn-btn--primary {
+:is(:root, .settings-theme-preview)[data-theme$='-dark'] .mn-btn--primary:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-shift-to: oklch(from var(--mn-accent) clamp(0, calc((0.72 - l) * 1000), 1) 0 0);
 }
 
 /* A light theme preview inside a dark app keeps the light rule. */
-.settings-theme-preview[data-theme$='-light'] .mn-btn--primary {
+.settings-theme-preview[data-theme$='-light'] .mn-btn--primary:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-shift-to: var(--mn-btn-shift-away);
 }
 
-.mn-btn--ghost {
+.mn-btn--ghost:where(:not([data-mn-surface], [data-mn-surface] *)) {
   --mn-btn-bg: transparent;
   --mn-btn-border: transparent;
   --mn-btn-hover-bg: var(--mn-surface-elevated);
@@ -119,7 +121,7 @@
   --mn-btn-active-bg: color-mix(in srgb, var(--mn-fg) 14%, transparent);
 }
 
-.mn-btn--danger {
+.mn-btn--danger:where(:not([data-mn-surface], [data-mn-surface] *)) {
   /* Raw --mn-danger is ~4:1 on light themes; the mix keeps ≥4.5:1 in all 16, hover included. */
   --mn-btn-fg: color-mix(in srgb, var(--mn-danger) 65%, var(--mn-fg));
   --mn-btn-hover-bg: var(--mn-danger-soft);
@@ -129,7 +131,7 @@
 
 /* Toggle state (aria-pressed) */
 
-.mn-btn[aria-pressed='true'] {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *))[aria-pressed='true'] {
   --mn-btn-bg: var(--mn-accent-soft);
   --mn-btn-fg: var(--mn-accent-ink);
   --mn-btn-border: var(--mn-accent-border);
@@ -140,22 +142,22 @@
 /* States */
 
 @media (hover: hover) and (pointer: fine) {
-  .mn-btn:hover:not(:disabled) {
+  .mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)):hover:not(:disabled) {
     background: var(--mn-btn-hover-bg);
     border-color: var(--mn-btn-hover-border);
   }
 }
 
-.mn-btn:active:not(:disabled) {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)):active:not(:disabled) {
   background: var(--mn-btn-active-bg);
 }
 
-.mn-btn:focus-visible {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)):focus-visible {
   outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
   outline-offset: var(--mn-focus-ring-offset);
 }
 
-.mn-btn:disabled {
+.mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)):disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -201,11 +203,11 @@
 }
 
 @media (pointer: coarse) {
-  .mn-btn {
+  .mn-btn:where(:not([data-mn-surface], [data-mn-surface] *)) {
     min-height: var(--touch-min);
   }
 
-  .mn-btn--icon {
+  .mn-btn--icon:where(:not([data-mn-surface], [data-mn-surface] *)) {
     min-width: var(--touch-min);
   }
 }

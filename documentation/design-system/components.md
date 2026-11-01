@@ -12,6 +12,10 @@ The barrel also re-exports the older shared primitives so surfaces have one impo
 
 A component costs nothing until a surface imports it, because its CSS travels with its module.
 
+Code controls use `appearance: 'surface'` to retain their established sizing, colors, spacing and states while sharing the component factories, accessibility and event handling. The resulting `data-mn-surface` marker excludes those controls and their children from the default component skin. Their existing surface CSS remains responsible for their appearance. Other surfaces keep the default skin.
+
+Factories accept an existing `element` when its identity, children or listeners must survive adoption. `adoptControls(root, { appearance: 'surface' })` and `adoptTabs(root, { appearance: 'surface' })` apply the same contract to static controls. Surface popovers reuse the content root; `portal: false` retains its existing CSS anchor and containing block while sharing dismissal, focus restoration and preview occlusion.
+
 **Gallery:** start the Vite dev server (`npm run dev -- --port 5173 --strictPort`) and open `http://localhost:5173/test/fixtures/components-gallery.html`. It renders every component, variant and state, with a theme switcher for all 16 themes (`?theme=coral-light` works too) and a narrow-width toggle.
 
 **Tests:** `npm run test:components`.

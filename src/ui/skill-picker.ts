@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { initComposerSkillHighlight } from './composer-skill-highlight';
 import { isUserPromptLocked } from './user-prompt-lock';
 import { listSlashPickerRows, type SlashPickerRow } from '../chat/slash-commands/picker-catalog';
@@ -40,9 +41,9 @@ function ensurePicker(): void {
   headerEl.className = 'skill-picker__header hidden';
   headerEl.setAttribute('role', 'presentation');
 
-  const backBtn = document.createElement('button');
+  const backBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   backBtn.type = 'button';
-  backBtn.className = 'skill-picker__back';
+  setButtonClassName(backBtn, 'skill-picker__back');
   backBtn.textContent = 'Back';
   backBtn.setAttribute('aria-label', 'Back to skills');
   backBtn.addEventListener('mousedown', (e) => {

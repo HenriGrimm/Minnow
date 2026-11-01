@@ -1,3 +1,4 @@
+import { createButton } from './components';
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
 import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
@@ -455,9 +456,7 @@ function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
   }
   const choices = section.querySelector('.composer-model-reasoning__choices')!;
   choices.replaceChildren(...state.choices.map(choice => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'composer-model-reasoning__choice';
+    const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-model-reasoning__choice' });
     button.dataset.composerReasoning = choice.value;
     button.textContent = choice.label;
     button.setAttribute('aria-pressed', String(choice.value === state.selected));
@@ -893,9 +892,7 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   }
   expandEl.appendChild(expandInner);
 
-  const triggerBtn = document.createElement('button');
-  triggerBtn.type = 'button';
-  triggerBtn.className = 'mn-os-mb-model-icon mn-os-mb-icon';
+  const triggerBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'mn-os-mb-model-icon mn-os-mb-icon' });
   triggerBtn.setAttribute('aria-haspopup', 'listbox');
   triggerBtn.setAttribute('aria-expanded', 'false');
   triggerBtn.setAttribute('aria-label', 'Default model');

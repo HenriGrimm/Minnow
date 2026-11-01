@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type { PresentedFile } from '../chat/presented-files';
 import { getSessionToken } from '../api/session-token';
 import { workspacePreviewUrl } from './preview-load-url';
@@ -91,9 +92,9 @@ export function createPresentedFileCards(files: PresentedFile[]): HTMLElement | 
     if (isPresentedHtmlFile(file)) buttons.push(['Source', openPresentedFileSource, 'View source of']);
     buttons.push(['Download', downloadPresentedFile]);
     for (const [label, action, ariaVerb] of buttons) {
-      const button = document.createElement('button');
+      const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       button.type = 'button';
-      button.className = 'presented-file__action';
+      setButtonClassName(button, 'presented-file__action');
       button.textContent = label;
       button.setAttribute('aria-label', `${ariaVerb ?? label} ${file.title}`);
       button.addEventListener('click', async () => {

@@ -3,6 +3,7 @@ import { handleComposerPromptHistoryKeydown } from './composer-prompt-history';
 import { handleSkillPickerKeydown, isSkillPickerOpen } from './skill-picker';
 import { bindComposerAutoResize } from './composer-auto-resize';
 import { isComposerQueueShortcut } from './composer-shortcuts';
+import { createIconButton } from './components';
 
 import {
   handleComposerPrimaryAction,
@@ -30,6 +31,15 @@ export {
 
 /** Wire Code composer keydown, resize, steer, and draft listeners (idempotent). */
 export function initComposerInput(el: HTMLTextAreaElement): void {
+  const sendId = el.id === 'msgInput' ? 'sendBtn' : el.id === 'chatAppInput' ? 'chatAppSendBtn' : null;
+  const send = sendId ? document.getElementById(sendId) as HTMLButtonElement | null : null;
+  if (send && !send.classList.contains('mn-btn')) {
+    createIconButton({ appearance: 'surface', element: send, icon: 'arrowUp', label: 'Send message', variant: 'primary', size: 'lg', tooltip: false });
+  }
+  if (el.id === 'msgInput') {
+    const overflow = document.getElementById('btnComposerOverflow') as HTMLButtonElement | null;
+    if (overflow && !overflow.classList.contains('mn-btn')) createIconButton({ appearance: 'surface', element: overflow, icon: 'settings', label: 'Composer settings', size: 'sm' });
+  }
   bindComposerAutoResize(el);
   initComposerSteerInputListener(el);
   if (el.dataset.composerKeydownWired !== '1') {

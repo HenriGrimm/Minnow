@@ -1,3 +1,4 @@
+import { adoptControl } from './components';
 /**
  * "Needs you": every pending agent question or approval in this workspace,
  * answerable from the sidebar. A single single-choice question answers in one
@@ -113,6 +114,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
   const node = document.createElement(tag);
   node.className = className;
   if (text != null) node.textContent = text;
+  adoptControl(node, { appearance: 'surface' });
   return node;
 }
 

@@ -5,9 +5,11 @@
 
 import '../../styles/components/tabs.css';
 import { createIcon, type IconName } from '../icon';
-import { addClassNames, nextComponentId } from './internal';
+import { addClassNames, applyAppearance, nextComponentId, type ComponentAppearance } from './internal';
 
 export interface TabSpec {
+  /** Existing tab chrome, including a caller-owned close affordance. */
+  element?: HTMLElement;
   id: string;
   label: string;
   icon?: IconName;
@@ -18,6 +20,9 @@ export interface TabSpec {
 }
 
 export interface TabsOptions {
+  appearance?: ComponentAppearance;
+  element?: HTMLDivElement;
+  list?: HTMLDivElement;
   tabs: TabSpec[];
   /** Defaults to the first enabled tab. */
   selected?: string;
@@ -27,7 +32,7 @@ export interface TabsOptions {
   /** `underline` for panes and pages (default); `contained` for tabs inside a card or toolbar. */
   variant?: 'underline' | 'contained';
   className?: string;
-  onChange?: (id: string) => void;
+  onChange?: (id: string, source: 'click' | 'keyboard' | 'api') => void;
 }
 
 export interface TabsHandle {
@@ -41,44 +46,53 @@ export interface TabsHandle {
 
 interface TabRecord {
   spec: TabSpec;
-  tab: HTMLButtonElement;
+  tab: HTMLElement;
   count: HTMLSpanElement;
 }
 
+const bindings = new WeakMap<HTMLElement, () => void>();
+
 export function createTabs(options: TabsOptions): TabsHandle {
-  const root = document.createElement('div');
-  root.className = `mn-tabs mn-tabs--${options.variant ?? 'underline'}`;
+  const root = options.element ?? document.createElement('div');
+  applyAppearance(root, options.appearance);
+  bindings.get(root)?.();
+  root.classList.add('mn-tabs', `mn-tabs--${options.variant ?? 'underline'}`);
   addClassNames(root, options.className);
 
-  const list = document.createElement('div');
-  list.className = 'mn-tabs__list';
+  const list = options.list ?? document.createElement('div');
+  list.classList.add('mn-tabs__list');
   list.setAttribute('role', 'tablist');
   list.setAttribute('aria-label', options.ariaLabel);
-  root.appendChild(list);
+  if (root !== list) root.appendChild(list);
+  else root.classList.add('mn-tabs--flat');
 
   const baseId = nextComponentId('tabs');
   const records = new Map<string, TabRecord>();
   let current: string | null = null;
   const manual = options.activation === 'manual';
+  const unbind: Array<() => void> = [];
 
   for (const spec of options.tabs) {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'mn-tabs__tab';
-    tab.id = `${baseId}-tab-${spec.id}`;
+    const tab = spec.element ?? document.createElement('button');
+    if (tab.tagName === 'BUTTON') (tab as HTMLButtonElement).type = 'button';
+    for (const name of [...tab.classList]) if (name === 'mn-btn' || name.startsWith('mn-btn--')) tab.classList.remove(name);
+    tab.classList.add('mn-tabs__tab');
+    tab.id ||= `${baseId}-tab-${spec.id}`;
     tab.setAttribute('role', 'tab');
     tab.dataset.tabId = spec.id;
-    if (spec.icon) tab.appendChild(createIcon(spec.icon, { className: 'mn-tabs__icon' }));
+    if (spec.icon && !spec.element) tab.appendChild(createIcon(spec.icon, { className: 'mn-tabs__icon' }));
     const label = document.createElement('span');
     label.className = 'mn-tabs__label';
     label.textContent = spec.label;
-    tab.appendChild(label);
+    if (!spec.element) tab.appendChild(label);
     const count = document.createElement('span');
     count.className = 'mn-tabs__count';
-    tab.appendChild(count);
-    if (spec.disabled) tab.disabled = true;
-    tab.addEventListener('click', () => select(spec.id, false));
-    list.appendChild(tab);
+    if (!spec.element || spec.count != null) tab.appendChild(count);
+    if (spec.disabled) tab.setAttribute('disabled', '');
+    const onClick = () => select(spec.id, false, false, 'click');
+    tab.addEventListener('click', onClick);
+    unbind.push(() => tab.removeEventListener('click', onClick));
+    if (!list.contains(tab)) list.appendChild(tab);
 
     if (spec.panel) {
       const panel = spec.panel;
@@ -101,7 +115,7 @@ export function createTabs(options: TabsOptions): TabsHandle {
     record.count.hidden = value == null;
   }
 
-  const enabledTabs = () => [...records.values()].map((r) => r.tab).filter((tab) => !tab.disabled);
+  const enabledTabs = () => [...records.values()].map((r) => r.tab).filter((tab) => !tab.hasAttribute('disabled') && tab.getAttribute('aria-disabled') !== 'true');
 
   function sync(): void {
     for (const [id, record] of records) {
@@ -117,21 +131,21 @@ export function createTabs(options: TabsOptions): TabsHandle {
     }
   }
 
-  function select(id: string, silent: boolean, focus = false): void {
+  function select(id: string, silent: boolean, focus = false, source: 'click' | 'keyboard' | 'api' = 'api'): void {
     const record = records.get(id);
-    if (!record || record.tab.disabled) return;
+    if (!record || record.tab.hasAttribute('disabled') || record.tab.getAttribute('aria-disabled') === 'true') return;
     if (focus) record.tab.focus();
     if (id === current) return;
     current = id;
     sync();
-    if (!silent) options.onChange?.(id);
+    if (!silent) options.onChange?.(id, source);
   }
 
-  list.addEventListener('keydown', (event) => {
+  const onKeydown = (event: KeyboardEvent) => {
     const tabs = enabledTabs();
     if (tabs.length === 0) return;
-    const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
-    let next: HTMLButtonElement | undefined;
+    const index = tabs.indexOf(document.activeElement as HTMLElement);
+    let next: HTMLElement | undefined;
     switch (event.key) {
       case 'ArrowRight':
         next = tabs[(index + 1) % tabs.length];
@@ -149,18 +163,23 @@ export function createTabs(options: TabsOptions): TabsHandle {
       case ' ':
         if (index < 0) return;
         event.preventDefault();
-        select(tabs[index].dataset.tabId!, false);
+        select(tabs[index].dataset.tabId!, false, false, 'keyboard');
         return;
       default:
         return;
     }
     event.preventDefault();
     next.focus();
-    if (!manual) select(next.dataset.tabId!, false);
+    if (!manual) select(next.dataset.tabId!, false, false, 'keyboard');
+  };
+  list.addEventListener('keydown', onKeydown);
+  bindings.set(root, () => {
+    list.removeEventListener('keydown', onKeydown);
+    for (const remove of unbind) remove();
   });
 
   const initial = options.selected ?? options.tabs.find((tab) => !tab.disabled)?.id;
-  if (initial != null && records.has(initial) && !records.get(initial)!.tab.disabled) current = initial;
+  if (initial != null && records.has(initial) && !records.get(initial)!.tab.hasAttribute('disabled')) current = initial;
   sync();
 
   return {
@@ -175,7 +194,7 @@ export function createTabs(options: TabsOptions): TabsHandle {
     setDisabled: (id, disabled) => {
       const record = records.get(id);
       if (!record) return;
-      record.tab.disabled = disabled;
+      record.tab.toggleAttribute('disabled', disabled);
       sync();
     },
   };

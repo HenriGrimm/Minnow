@@ -1,3 +1,4 @@
+import { createIconButton } from './components';
 import { nextThinkingTriStateOnClick } from './composer-thinking';
 import {
   fetchMemoryInjectionEnabled,
@@ -91,16 +92,13 @@ function mountBrainNotesControl(config: (typeof mounts)[number]): void {
   rootEl.innerHTML = '';
   rootEl.className = 'brain-notes-toggle-host';
 
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = config.buttonClass;
+  const toggleBtn = createIconButton({ appearance: 'surface', icon: 'brainMemories', label: 'Brain notes injection', size: 'sm', className: config.buttonClass, tooltip: false });
   toggleBtn.setAttribute('aria-label', 'Brain notes injection');
   toggleBtn.addEventListener('click', () => {
     void onToggleClick();
   });
 
-  const icon = createIcon('brainMemories', { className: 'thinking-toggle-icon' });
-  toggleBtn.appendChild(icon);
+  toggleBtn.querySelector('.mn-btn__icon')!.classList.add('thinking-toggle-icon');
   rootEl.appendChild(toggleBtn);
 
   config.rootEl = rootEl;

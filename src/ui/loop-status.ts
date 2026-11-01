@@ -1,3 +1,5 @@
+import { createTextInput, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 import {
   INITIAL_LOOP_AUTO_DELAY_MS,
   MAX_LOOP_AUTO_DELAY_MS,
@@ -98,9 +100,9 @@ function applyLoopIntervalChange(chat: Chat, loop: ActiveLoopState, rawToken: st
 }
 
 function buildPausePlayButton(chat: Chat, loop: ActiveLoopState): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'loop-status__pause-play icon-btn';
+  setButtonClassName(btn, 'loop-status__pause-play icon-btn');
   const paused = loop.paused === true;
   btn.textContent = paused ? '▶' : '⏸';
   btn.setAttribute(
@@ -119,9 +121,9 @@ function buildPausePlayButton(chat: Chat, loop: ActiveLoopState): HTMLButtonElem
 }
 
 function buildSkipButton(chat: Chat, loop: ActiveLoopState): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'loop-status__skip icon-btn';
+  setButtonClassName(btn, 'loop-status__skip icon-btn');
   btn.textContent = '⏭';
   btn.setAttribute('aria-label', `Skip wait for loop #${loop.id}`);
   btn.title = 'Run next loop now';
@@ -134,9 +136,9 @@ function buildSkipButton(chat: Chat, loop: ActiveLoopState): HTMLButtonElement {
 }
 
 function buildStopButton(chat: Chat, loopId: number): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'loop-status__stop icon-btn';
+  setButtonClassName(btn, 'loop-status__stop icon-btn');
   btn.setAttribute('aria-label', `Stop loop #${loopId}`);
   btn.textContent = '×';
   btn.addEventListener('click', () => {
@@ -174,9 +176,9 @@ function buildLoopItem(chat: Chat, loop: ActiveLoopState): HTMLElement {
   intervalWrap.title =
     loop.kind === 'interval' ? 'Interval between runs' : 'Current self-paced delay';
 
-  const intervalInput = document.createElement('input');
+  const intervalInput = createTextInput({ appearance: 'surface', type: 'text' });
   intervalInput.type = 'text';
-  intervalInput.className = 'loop-status__interval';
+  setControlClassName(intervalInput, 'loop-status__interval');
   intervalInput.value = formatIntervalMs(loopDelayMs(loop));
   intervalInput.setAttribute('aria-label', `Loop #${loop.id} interval`);
   intervalInput.spellcheck = false;

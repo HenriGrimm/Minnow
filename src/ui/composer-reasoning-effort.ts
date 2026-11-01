@@ -1,3 +1,4 @@
+import { createSegmentedControl, createButton } from './components';
 import { resolveThinkingMode } from '../agents/resolve-thinking';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import {
@@ -106,28 +107,21 @@ function populateSelect(options: EffortOption[], display: EffortOption | undefin
 /** Keep internal reasoning controls aligned with the chat binding. */
 function populateSegments(options: EffortOption[], display: EffortOption | undefined): void {
   if (!segmentsEl) return;
-  segmentsEl.replaceChildren();
-  for (const option of options) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'composer-reasoning-effort-segment';
-    button.dataset.value = option;
-    button.setAttribute('role', 'radio');
-    button.setAttribute('aria-checked', display === option ? 'true' : 'false');
-    button.textContent = formatReasoningEffortLabel(option);
-    segmentsEl.appendChild(button);
-  }
-}
+  const segments = createSegmentedControl({ appearance: 'surface', element: segmentsEl as HTMLDivElement,
+    options: options.map(value => ({ value, label: formatReasoningEffortLabel(value), disabled: selectEl?.disabled })),
+    value: display ?? options[0] ?? '', ariaLabel: 'Reasoning effort', size: 'sm',
+    onChange: value => {
+      if (!selectEl || selectEl.disabled) return;
+      selectEl.value = value;
+      selectEl.dispatchEvent(new Event('change'));
+    },
+  });
+  segments.root.querySelectorAll<HTMLButtonElement>('button').forEach((button, index) => {
+    button.classList.add('composer-reasoning-effort-segment');
+    button.dataset.value = options[index];
+    button.setAttribute('aria-pressed', button.getAttribute('aria-checked') ?? 'false');
+  });
 
-function onSegmentClick(event: Event): void {
-  const target = event.target;
-  if (!(target instanceof HTMLButtonElement)) return;
-  if (!target.classList.contains('composer-reasoning-effort-segment')) return;
-  if (!selectEl || selectEl.disabled) return;
-  const value = target.dataset.value as EffortOption | undefined;
-  if (!value) return;
-  selectEl.value = value;
-  selectEl.dispatchEvent(new Event('change'));
 }
 
 export interface ComposerReasoningChoice {
@@ -228,10 +222,10 @@ function syncCursorModelVariant(): void {
 
 function ensureCursorFastButton(): void {
   if (!wrapEl || (cursorFastButton?.isConnected && cursorFastButton.ownerDocument === document)) return;
-  const button = document.createElement('button');
+  const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   button.type = 'button';
   button.id = 'composerCursorFast';
-  button.className = 'composer-cursor-fast-btn hidden';
+  button.classList.add('composer-cursor-fast-btn', 'hidden');
   const track = document.createElement('span');
   track.className = 'composer-cursor-fast-btn__track';
   track.setAttribute('aria-hidden', 'true');
@@ -287,7 +281,6 @@ export function initComposerReasoningEffort(): void {
   wrapEl = document.getElementById('composerReasoningEffortWrap');
   segmentsEl = document.getElementById('composerReasoningEffortSegments');
   selectEl?.addEventListener('change', onSelectChange);
-  segmentsEl?.addEventListener('click', onSegmentClick);
   ensureCursorFastButton();
   syncComposerReasoningEffortFromActiveChat();
 }

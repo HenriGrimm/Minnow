@@ -1,3 +1,4 @@
+import { createButton, openPopover, type PopoverHandle } from './components';
 import { showToast } from './toast';
 import { isActiveChatStreaming } from '../chat/streaming-state';
 import {
@@ -36,7 +37,7 @@ export interface MessageActionTarget {
   turnKind: MessageTurnKind;
 }
 
-let openMenu: HTMLElement | null = null;
+let openMenu: PopoverHandle | null = null;
 let pendingEdit: { chatId: string; historyIndex: number } | null = null;
 
 /** Pending user-message edit awaiting the next send. */
@@ -52,7 +53,7 @@ export function consumePendingMessageEdit(): {
 /** Close any open message actions dropdown. */
 export function closeMessageActionsMenu(): void {
   if (!openMenu) return;
-  openMenu.remove();
+  openMenu.close();
   openMenu = null;
 }
 
@@ -109,9 +110,7 @@ function buildMenuButton(
   action: () => void,
   options?: { disabled?: boolean; title?: string },
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'message-actions__item';
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'message-actions__item' });
   btn.textContent = label;
   if (options?.title) btn.title = options.title;
   if (options?.disabled) {
@@ -119,8 +118,8 @@ function buildMenuButton(
     btn.classList.add('message-actions__item--disabled');
     return btn;
   }
-  btn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
     closeMessageActionsMenu();
     action();
   });
@@ -159,27 +158,12 @@ function openMenuAt(trigger: HTMLButtonElement, items: HTMLButtonElement[]): voi
   const menu = document.createElement('div');
   menu.className = 'message-actions__menu';
   menu.setAttribute('role', 'menu');
-  for (const item of items) {
-    menu.appendChild(item);
-  }
+  menu.append(...items);
   trigger.after(menu);
-  openMenu = menu;
-
-  const onDocClick = (ev: MouseEvent): void => {
-    const t = ev.target as Node;
-    if (menu.contains(t) || trigger.contains(t)) return;
-    closeMessageActionsMenu();
-    document.removeEventListener('click', onDocClick, true);
-  };
-  const onKey = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape') {
-      closeMessageActionsMenu();
-      document.removeEventListener('keydown', onKey);
-    }
-  };
-  requestAnimationFrame(() => {
-    document.addEventListener('click', onDocClick, true);
-    document.addEventListener('keydown', onKey);
+  openMenu = openPopover({
+    appearance: 'surface', portal: false, anchor: trigger, content: menu,
+    initialFocus: 'none',
+    onClose: () => { openMenu = null; },
   });
 }
 
@@ -190,12 +174,9 @@ export function attachMessageActions(
 ): void {
   if (wrap.dataset.streaming === 'true') return;
 
-  const trigger = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'message-actions__trigger';
-  trigger.setAttribute('aria-label', 'Message actions');
-  trigger.setAttribute('aria-haspopup', 'menu');
+  const trigger = createButton({ appearance: 'surface', variant: 'ghost', ariaLabel: 'Message actions', size: 'sm', className: 'message-actions__trigger' });
   trigger.textContent = '⋮';
+  trigger.setAttribute('aria-haspopup', 'menu');
 
   trigger.addEventListener('click', (ev) => {
     ev.stopPropagation();

@@ -1,3 +1,5 @@
+import { createSelect, createCheckbox, setControlClassName } from '../ui/components';
+import { createButton, setButtonClassName } from '../ui/components';
 /**
  * Annotations panel (MIN-368): collapsible list of every mark (shape/pin) on the current page,
  * filterable by linked chat, with jump-both-ways actions (highlight on page / open the chat
@@ -83,21 +85,21 @@ export function mountAnnotationsPanel(
   header.className = `${ROOT_CLASS}__header`;
   root.appendChild(header);
 
-  const collapseBtn = document.createElement('button');
+  const collapseBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   collapseBtn.type = 'button';
-  collapseBtn.className = `${ROOT_CLASS}__collapse`;
+  setButtonClassName(collapseBtn, `${ROOT_CLASS}__collapse`);
   collapseBtn.textContent = 'Annotations';
   collapseBtn.setAttribute('aria-expanded', 'true');
   header.appendChild(collapseBtn);
 
-  const filterSelect = document.createElement('select');
-  filterSelect.className = `${ROOT_CLASS}__filter`;
+  const filterSelect = createSelect({ appearance: 'surface',});
+  setControlClassName(filterSelect, `${ROOT_CLASS}__filter`);
   filterSelect.setAttribute('aria-label', 'Filter by linked chat');
   header.appendChild(filterSelect);
 
-  const bulkDeleteBtn = document.createElement('button');
+  const bulkDeleteBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   bulkDeleteBtn.type = 'button';
-  bulkDeleteBtn.className = `${ROOT_CLASS}__bulk-delete`;
+  setButtonClassName(bulkDeleteBtn, `${ROOT_CLASS}__bulk-delete`);
   bulkDeleteBtn.textContent = 'Delete selected';
   bulkDeleteBtn.disabled = true;
   header.appendChild(bulkDeleteBtn);
@@ -170,9 +172,9 @@ export function mountAnnotationsPanel(
       row.dataset.itemId = item.id;
       row.dataset.itemType = item.type;
 
-      const checkbox = document.createElement('input');
+      const checkbox = createCheckbox({ appearance: 'surface', label: '' }).input;
       checkbox.type = 'checkbox';
-      checkbox.className = `${ROOT_CLASS}__row-check`;
+      setControlClassName(checkbox, `${ROOT_CLASS}__row-check`);
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) selected.add(item.id);
         else selected.delete(item.id);
@@ -192,9 +194,9 @@ export function mountAnnotationsPanel(
         row.appendChild(badge);
       }
 
-      const highlightBtn = document.createElement('button');
+      const highlightBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       highlightBtn.type = 'button';
-      highlightBtn.className = `${ROOT_CLASS}__row-highlight`;
+      setButtonClassName(highlightBtn, `${ROOT_CLASS}__row-highlight`);
       highlightBtn.title = 'Highlight on page';
       highlightBtn.textContent = '◎';
       highlightBtn.addEventListener('click', () => callbacks.onHighlight(item));
@@ -207,9 +209,9 @@ export function mountAnnotationsPanel(
         for (const link of item.links) {
           if (seenChats.has(link.chatId)) continue;
           seenChats.add(link.chatId);
-          const chip = document.createElement('button');
+          const chip = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
           chip.type = 'button';
-          chip.className = `${ROOT_CLASS}__link-chip`;
+          setButtonClassName(chip, `${ROOT_CLASS}__link-chip`);
           chip.dataset.chatId = link.chatId;
           chip.title = `Open chat turn`;
           chip.textContent = '💬';

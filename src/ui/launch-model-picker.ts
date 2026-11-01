@@ -1,3 +1,5 @@
+import { createSelect } from './components';
+import { createButton, setButtonClassName } from './components';
 import { launchModelLabel } from '../models/launch-selection';
 import { readDefaultModelBinding } from '../models/selection';
 import { loadModelChoices } from '../models/model-choices';
@@ -21,7 +23,7 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
   closePicker?.();
   const abort = new AbortController();
   const host = document.createElement('div');
-  const select = document.createElement('select');
+  const select = createSelect({ appearance: 'surface',});
   select.setAttribute('aria-label', 'Model for new chats');
   select.hidden = true;
   select.disabled = true;
@@ -72,9 +74,9 @@ export function openLaunchModelPicker(anchor: HTMLElement, value: string, onPick
       buttons.setAttribute('aria-label', 'Reasoning for new chat');
       const values: Array<ReasoningEffortOption | undefined> = [undefined, ...(toggle ? ['off' as const] : []), ...(levels.length ? levels : ['on' as const])];
       for (const effort of values) {
-        const button = document.createElement('button');
+        const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
         button.type = 'button';
-        button.className = 'composer-model-reasoning__choice';
+        setButtonClassName(button, 'composer-model-reasoning__choice');
         button.textContent = effort ? formatReasoningEffortLabel(effort) : 'Default';
         button.setAttribute('aria-pressed', String(options.reasoning() === effort));
         button.addEventListener('click', () => {

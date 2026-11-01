@@ -1,3 +1,5 @@
+import { createTextInput, setControlClassName } from './components';
+import { createButton, setButtonClassName } from './components';
 import { loadDefaultModelValue } from '../models/selection';
 import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
@@ -203,9 +205,9 @@ function appendWaveSubgroupHeader(
   head.className = 'chat-wave-subgroup-header';
   head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
 
-  const caret = document.createElement('button');
+  const caret = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   caret.type = 'button';
-  caret.className = 'chat-wave-subgroup-header__caret';
+  setButtonClassName(caret, 'chat-wave-subgroup-header__caret');
   caret.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   caret.setAttribute(
     'aria-label',
@@ -509,9 +511,9 @@ function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
     return;
   }
   if (!action) {
-    action = document.createElement('button');
+    action = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     action.type = 'button';
-    action.className = 'chat-item-archive';
+    setButtonClassName(action, 'chat-item-archive');
     action.addEventListener('click', (event) => {
       event.stopPropagation();
       const current = findChatById(chat.id) ?? chat;
@@ -529,9 +531,9 @@ function syncChatItemTrailing(row: HTMLElement, chat: Chat): void {
   // Archive view: the logo turns into a checkbox for bulk restore.
   if (!archived) { select?.remove(); return; }
   if (!select) {
-    select = document.createElement('button');
+    select = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     select.type = 'button';
-    select.className = 'chat-item-select';
+    setButtonClassName(select, 'chat-item-select');
     const box = document.createElement('span');
     box.className = 'chat-item-select__box';
     select.append(box);
@@ -567,9 +569,9 @@ function showSidebarToast(text: string, undo: () => void): void {
   const label = document.createElement('span');
   label.className = 'chat-list-toast__text';
   label.textContent = text;
-  const button = document.createElement('button');
+  const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   button.type = 'button';
-  button.className = 'chat-list-toast__undo';
+  setButtonClassName(button, 'chat-list-toast__undo');
   button.textContent = 'Undo';
   button.addEventListener('click', () => { hideSidebarToast(); undo(); });
   toast.replaceChildren(createIcon('archive', { size: 14 }), label, button);
@@ -797,9 +799,9 @@ function appendGroupHeader(
     { className: 'chat-group-header__icon', size: 14 },
   );
 
-  const caret = document.createElement('button');
+  const caret = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   caret.type = 'button';
-  caret.className = 'chat-group-header__caret';
+  setButtonClassName(caret, 'chat-group-header__caret');
   caret.setAttribute('aria-expanded', membersHidden ? 'false' : 'true');
   caret.setAttribute(
     'aria-label',
@@ -861,7 +863,7 @@ function showGroupContextMenu(
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
 
-  const renameItem = document.createElement('button');
+  const renameItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   renameItem.type = 'button';
   renameItem.textContent = 'Rename';
   renameItem.addEventListener('click', (e) => {
@@ -870,7 +872,7 @@ function showGroupContextMenu(
     beginRenameGroup(groupId, nameSpan);
   });
 
-  const deleteItem = document.createElement('button');
+  const deleteItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   deleteItem.type = 'button';
   deleteItem.textContent = 'Delete group';
   deleteItem.addEventListener('click', (e) => {
@@ -935,9 +937,9 @@ function beginRenameGroup(groupId: string, nameSpan: HTMLSpanElement): void {
   const groups = sessionState?.groups ?? [];
   const group = groups.find((g) => g.id === groupId);
   if (!group) return;
-  const inp = document.createElement('input');
+  const inp = createTextInput({ appearance: 'surface', type: 'text' });
   inp.type = 'text';
-  inp.className = 'chat-rename-input';
+  setControlClassName(inp, 'chat-rename-input');
   inp.value = group.name;
   inp.maxLength = 80;
   nameSpan.replaceWith(inp);
@@ -1129,9 +1131,9 @@ function syncSectionFinishedAction(head: HTMLElement, finished: readonly Chat[])
   let action = head.querySelector<HTMLButtonElement>('.chat-list-section-action');
   if (!finished.length) { action?.remove(); return; }
   if (!action) {
-    action = document.createElement('button');
+    action = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     action.type = 'button';
-    action.className = 'chat-list-section-action';
+    setButtonClassName(action, 'chat-list-section-action');
     action.title = 'Archive chats whose pull request merged or closed';
     head.append(action);
   }
@@ -1162,10 +1164,10 @@ function takeArchiveSearch(list: HTMLElement, count: number): HTMLElement {
     label.className = 'chat-archive-search__label';
     label.htmlFor = 'chatArchiveSearch';
     label.textContent = 'Search archived chats';
-    const input = document.createElement('input');
+    const input = createTextInput({ appearance: 'surface', type: 'search' });
     input.id = 'chatArchiveSearch';
     input.type = 'search';
-    input.className = 'chat-archive-search__input';
+    setControlClassName(input, 'chat-archive-search__input');
     input.autocomplete = 'off';
     input.addEventListener('input', () => { archiveQuery = input.value; renderSidebar(); });
     const hint = document.createElement('p');
@@ -1189,18 +1191,18 @@ function takeArchiveBulkBar(list: HTMLElement): HTMLElement {
     bar.setAttribute('aria-label', 'Selected archived chats');
     const count = document.createElement('span');
     count.className = 'chat-archive-bulk__count';
-    const restore = document.createElement('button');
+    const restore = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     restore.type = 'button';
-    restore.className = 'chat-archive-bulk__restore';
+    setButtonClassName(restore, 'chat-archive-bulk__restore');
     restore.append(createIcon('unarchive', { size: 13 }), 'Restore');
     restore.addEventListener('click', () => {
       const chats = [...selectedChatIds].map(id => findChatById(id)).filter((chat): chat is Chat => Boolean(chat));
       clearChatSelection();
       setChatsArchivedWithUndo(chats, false);
     });
-    const cancel = document.createElement('button');
+    const cancel = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     cancel.type = 'button';
-    cancel.className = 'chat-archive-bulk__cancel';
+    setButtonClassName(cancel, 'chat-archive-bulk__cancel');
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => clearChatSelection());
     bar.append(count, restore, cancel);
@@ -1438,9 +1440,9 @@ function syncSidebarChatViews(list: HTMLElement, workingCount: number, archivedC
     nav.className = 'chat-list-views';
     nav.setAttribute('aria-label', 'Chat views');
     for (const [view, label] of [['working', 'Working'], ['archive', 'Archive']] as const) {
-      const button = document.createElement('button');
+      const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       button.type = 'button';
-      button.className = 'chat-list-view';
+      setButtonClassName(button, 'chat-list-view');
       button.dataset.chatView = view;
       button.setAttribute('aria-controls', list.id);
       const text = document.createElement('span');
@@ -1730,7 +1732,7 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   const archivable = chats.filter((chat) => !isBoardOwnedChat(chat));
   if (archivable.length) {
     const restore = archivable.every(isChatArchived);
-    const archiveItem = document.createElement('button');
+    const archiveItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     archiveItem.type = 'button';
     archiveItem.textContent = `${restore ? 'Restore' : 'Archive'} ${archivable.length} chats`;
     archiveItem.addEventListener('click', () => {
@@ -1743,7 +1745,7 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   }
 
   const eligible = chats.filter((c) => !isChatStreaming(c.id) && getChatMessageCount(c) > 0);
-  const brainItem = document.createElement('button');
+  const brainItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   brainItem.type = 'button';
   brainItem.textContent = `Add ${eligible.length} to Brain`;
   brainItem.disabled = eligible.length === 0;
@@ -1763,10 +1765,10 @@ function showMultiSelectContextMenu(x: number, y: number, chatIds: string[]): vo
   sep.className = 'chat-context-menu__sep';
 
   const deletable = chats.filter((c) => !isChatStreaming(c.id));
-  const deleteItem = document.createElement('button');
+  const deleteItem = createButton({ appearance: 'surface', variant: 'danger', size: 'sm' });
   deleteItem.type = 'button';
   deleteItem.textContent = `Delete ${deletable.length} chat${deletable.length === 1 ? '' : 's'}`;
-  deleteItem.className = 'chat-context-menu__item--danger';
+  setButtonClassName(deleteItem, 'chat-context-menu__item--danger');
   deleteItem.disabled = deletable.length === 0;
   deleteItem.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1877,7 +1879,7 @@ export function showChatItemContextMenu(
     if (e.key === 'Escape') closeMenu();
   };
 
-  const renameItem = document.createElement('button');
+  const renameItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   renameItem.type = 'button';
   renameItem.textContent = 'Rename';
   renameItem.addEventListener('click', (e) => {
@@ -1890,7 +1892,7 @@ export function showChatItemContextMenu(
   let pinItem: HTMLButtonElement | null = null;
   if (options?.pinnable && !chat.agentConversation) {
     const pinned = isChatPinned(chat);
-    pinItem = document.createElement('button');
+    pinItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     pinItem.type = 'button';
     pinItem.textContent = pinned ? 'Unpin' : 'Pin to top';
     pinItem.addEventListener('click', (e) => {
@@ -1903,7 +1905,7 @@ export function showChatItemContextMenu(
   }
 
   const brainState = chatBrainCaptureState(chat);
-  const brainItem = document.createElement('button');
+  const brainItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   brainItem.type = 'button';
   brainItem.textContent = 'Add to Brain';
   brainItem.title = brainState.title;
@@ -1922,7 +1924,7 @@ export function showChatItemContextMenu(
   const isPlannerChat = normalizeModeId(chat.modeId) === 'orchestrate';
   let orchestrateItem: HTMLButtonElement | null = null;
   if (isPlannerChat && !options?.hideOrchestrateEntry) {
-    orchestrateItem = document.createElement('button');
+    orchestrateItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     orchestrateItem.type = 'button';
     orchestrateItem.textContent = 'Open in orchestrator';
     orchestrateItem.addEventListener('click', (e) => {
@@ -1941,10 +1943,10 @@ export function showChatItemContextMenu(
     });
   }
 
-  const deleteItem = document.createElement('button');
+  const deleteItem = createButton({ appearance: 'surface', variant: 'danger', size: 'sm' });
   deleteItem.type = 'button';
   deleteItem.textContent = 'Delete';
-  deleteItem.className = 'chat-context-menu__item--danger';
+  setButtonClassName(deleteItem, 'chat-context-menu__item--danger');
   deleteItem.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1958,7 +1960,7 @@ export function showChatItemContextMenu(
 
   if (!isBoardOwnedChat(chat)) {
     const archived = isChatArchived(chat);
-    const archiveItem = document.createElement('button');
+    const archiveItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     archiveItem.type = 'button';
     archiveItem.textContent = archived ? 'Restore chat' : 'Archive chat';
     archiveItem.addEventListener('click', (e) => {
@@ -1973,7 +1975,7 @@ export function showChatItemContextMenu(
   }
   if (pinItem) menu.appendChild(pinItem);
   menu.appendChild(renameItem);
-  const linkItem = document.createElement('button');
+  const linkItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   linkItem.type = 'button'; linkItem.textContent = 'Copy chat link';
   linkItem.addEventListener('click', () => {
     closeMenu();
@@ -1982,7 +1984,7 @@ export function showChatItemContextMenu(
   });
   menu.append(linkItem);
   if (chat.agentConversation?.parentChatId) {
-    const parentItem = document.createElement('button');
+    const parentItem = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     parentItem.type = 'button'; parentItem.textContent = 'Open parent';
     parentItem.addEventListener('click', () => {
       closeMenu(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(chat.agentConversation!.parentChatId!));
@@ -1993,7 +1995,7 @@ export function showChatItemContextMenu(
     ['text', 'Copy chat transcript'],
     ['html', 'Export chat as HTML'],
   ] as const) {
-    const item = document.createElement('button');
+    const item = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     item.type = 'button';
     item.textContent = label;
     item.addEventListener('click', (e) => {
@@ -2030,9 +2032,9 @@ function beginRenameChat(
 ): void {
   const chat = sessionState!.chats.find((c) => c.id === chatId);
   if (!chat) return;
-  const inp = document.createElement('input');
+  const inp = createTextInput({ appearance: 'surface', type: 'text' });
   inp.type = 'text';
-  inp.className = 'chat-rename-input';
+  setControlClassName(inp, 'chat-rename-input');
   inp.value = chat.name;
   inp.maxLength = 120;
   inp.setAttribute('aria-label', 'Chat title');

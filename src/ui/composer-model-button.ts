@@ -1,12 +1,11 @@
+import { createButton } from './components';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { modelProducerLogoSvg } from '../providers/model-producer';
 import { iconHtml } from './icon';
 
 /** Shared model button for composer controls and app-scoped model pickers. */
 export function createComposerModelButton(ariaLabel: string) {
-  const trigger = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'composer-model-trigger';
+  const trigger = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm', className: 'composer-model-trigger' });
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.setAttribute('aria-label', ariaLabel);

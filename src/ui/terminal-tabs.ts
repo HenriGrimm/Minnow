@@ -1,3 +1,5 @@
+import { adoptTabs } from './components';
+import { createButton, setButtonClassName } from './components';
 import { fetchShellProfiles, type ShellProfile } from '../api/terminal-pty';
 import { randomUUID } from '../lib/random-id.ts';
 import { openContextMenu } from './context-menu';
@@ -156,9 +158,9 @@ async function persistTabs(activeId: string | null): Promise<void> {
 }
 
 function renderAgentTab(activeId: string | null): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'terminal-tab terminal-tab--agent';
+  setButtonClassName(btn, 'terminal-tab terminal-tab--agent');
   btn.setAttribute('role', 'tab');
   btn.dataset.tabId = AGENT_TAB_ID;
   btn.setAttribute(
@@ -186,9 +188,9 @@ function renderTabBar(activeId: string | null): void {
 
   for (const tab of liveTabs.values()) {
     const displayTitle = resolveTabDisplayTitle(tab);
-    const btn = document.createElement('button');
+    const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     btn.type = 'button';
-    btn.className = 'terminal-tab';
+    setButtonClassName(btn, 'terminal-tab');
     btn.setAttribute('role', 'tab');
     btn.dataset.tabId = tab.tabId;
     btn.setAttribute('aria-selected', tab.tabId === activeId ? 'true' : 'false');
@@ -216,9 +218,9 @@ function renderTabBar(activeId: string | null): void {
     list.appendChild(btn);
   }
 
-  const addBtn = document.createElement('button');
+  const addBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   addBtn.type = 'button';
-  addBtn.className = 'terminal-tab-add';
+  setButtonClassName(addBtn, 'terminal-tab-add');
   addBtn.setAttribute('aria-label', 'New terminal tab');
   addBtn.textContent = '+';
   addBtn.addEventListener('click', () => {
@@ -228,9 +230,9 @@ function renderTabBar(activeId: string | null): void {
   newTab.className = 'terminal-new-tab';
   newTab.appendChild(addBtn);
 
-  const shellMenuBtn = document.createElement('button');
+  const shellMenuBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   shellMenuBtn.type = 'button';
-  shellMenuBtn.className = 'terminal-tab-shell-menu';
+  setButtonClassName(shellMenuBtn, 'terminal-tab-shell-menu');
   shellMenuBtn.setAttribute('aria-label', 'New terminal tab with shell');
   shellMenuBtn.setAttribute('aria-haspopup', 'menu');
   shellMenuBtn.title = 'New terminal tab with shell';
@@ -250,6 +252,7 @@ function renderTabBar(activeId: string | null): void {
   });
   newTab.appendChild(shellMenuBtn);
 
+  adoptTabs(list, { appearance: 'surface' });
   tabBarEl.appendChild(list);
   tabBarEl.appendChild(newTab);
   syncAgentTabActivityBadge();

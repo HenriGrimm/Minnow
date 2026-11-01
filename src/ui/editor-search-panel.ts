@@ -1,3 +1,4 @@
+import { adoptControl } from './components';
 import {
   SearchQuery,
   closeSearchPanel,
@@ -31,6 +32,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
   for (const child of children) {
     node.append(child instanceof Node ? child : document.createTextNode(child));
   }
+  adoptControl(node, { appearance: 'surface' });
   return node;
 }
 

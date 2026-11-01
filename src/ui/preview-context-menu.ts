@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type {
   MinnowPreviewContextMenuItem,
   MinnowPreviewContextMenuOpenPayload,
@@ -57,9 +58,9 @@ function renderMenuItems(items: MinnowPreviewContextMenuItem[]): void {
       continue;
     }
 
-    const btn = document.createElement('button');
+    const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
     btn.type = 'button';
-    btn.className = 'preview-context-menu__item';
+    setButtonClassName(btn, 'preview-context-menu__item');
     btn.setAttribute('role', 'menuitem');
     btn.textContent = item.label;
     if (!item.enabled) {

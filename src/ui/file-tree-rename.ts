@@ -1,3 +1,4 @@
+import { createTextInput, setControlClassName } from './components';
 import { setStatus } from './status';
 import { basename, normalizeTreePath } from './file-tree-path';
 import type { FileTreeEntryKind } from './file-tree-ops';
@@ -93,9 +94,9 @@ export function startInlineRename(path: string, kind: FileTreeEntryKind): void {
   if (!label) return;
 
   const currentName = labelDisplayName(label, norm);
-  const inp = document.createElement('input');
+  const inp = createTextInput({ appearance: 'surface', type: 'text' });
   inp.type = 'text';
-  inp.className = 'file-tree-rename-input';
+  setControlClassName(inp, 'file-tree-rename-input');
   inp.value = currentName;
   inp.maxLength = 255;
   inp.setAttribute(

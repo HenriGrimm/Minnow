@@ -1,3 +1,5 @@
+import { createCheckbox } from './components';
+import { createButton, setButtonClassName } from './components';
 import { randomUUID } from '../lib/random-id';
 import type { ModelRouter, RouterEntry } from '../models/routers';
 import { formatRouterTaskTypeLabel, ROUTER_TASK_TYPES } from '../models/router-task-types.mjs';
@@ -27,7 +29,7 @@ export function poolTaskTypeChoices(entry: RouterEntry, label: string, onChange:
   const group = document.createElement('div'); group.className = 'router-task-types';
   group.setAttribute('aria-label', `Task types for ${label}`);
   const caption = document.createElement('span'); caption.className = 'router-task-types__caption'; caption.textContent = 'Tasks';
-  const trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'router-task-types__trigger';
+  const trigger = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' }); trigger.type = 'button'; setButtonClassName(trigger, 'router-task-types__trigger');
   trigger.setAttribute('aria-haspopup', 'dialog'); trigger.setAttribute('aria-expanded', 'false');
   const valueLabel = document.createElement('span'); valueLabel.className = 'router-task-types__value';
   const chevron = document.createElement('span'); chevron.innerHTML = iconHtml('chevronDown', { size: 10 }); chevron.setAttribute('aria-hidden', 'true');
@@ -38,8 +40,8 @@ export function poolTaskTypeChoices(entry: RouterEntry, label: string, onChange:
   const heading = document.createElement('strong'); heading.textContent = 'Assign task types';
   const hint = document.createElement('p'); hint.textContent = 'Choose specialties, or accept any task.';
   const choices = document.createElement('div'); choices.className = 'router-task-types__choices';
-  const any = document.createElement('button'); any.type = 'button'; any.textContent = 'Any task';
-  any.className = 'router-task-types__any';
+  const any = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' }); any.type = 'button'; any.textContent = 'Any task';
+  setButtonClassName(any, 'router-task-types__any');
   const inputs: HTMLInputElement[] = [];
   const refresh = (): void => {
     const labels = entry.taskTypes?.map(formatRouterTaskTypeLabel) || [];
@@ -53,7 +55,7 @@ export function poolTaskTypeChoices(entry: RouterEntry, label: string, onChange:
   choices.append(any);
   for (const value of ROUTER_TASK_TYPES) {
     const option = document.createElement('label'); option.className = 'router-task-types__option';
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = value;
+    const checkbox = createCheckbox({ appearance: 'surface', label: '' }).input; checkbox.type = 'checkbox'; checkbox.value = value;
     checkbox.setAttribute('aria-label', formatRouterTaskTypeLabel(value));
     checkbox.checked = entry.taskTypes?.includes(value) || false;
     inputs.push(checkbox);
@@ -67,7 +69,7 @@ export function poolTaskTypeChoices(entry: RouterEntry, label: string, onChange:
     const text = document.createElement('span'); text.textContent = formatRouterTaskTypeLabel(value);
     option.append(checkbox, text); choices.append(option);
   }
-  const done = document.createElement('button'); done.type = 'button'; done.className = 'router-task-types__done'; done.textContent = 'Done';
+  const done = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' }); done.type = 'button'; setButtonClassName(done, 'router-task-types__done'); done.textContent = 'Done';
   panel.append(heading, hint, choices, done);
   let observer: MutationObserver | undefined;
   let opened = false;
@@ -129,7 +131,7 @@ export function poolStrategyChoices(policy: ModelRouter['policy'], onChange: (po
   choices.className = 'router-policy-choices';
   choices.setAttribute('role', 'group'); choices.setAttribute('aria-label', 'Routing strategy');
   for (const item of POOL_POLICIES) {
-    const button = document.createElement('button'); button.type = 'button'; button.dataset.policy = item.id;
+    const button = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' }); button.type = 'button'; button.dataset.policy = item.id;
     button.setAttribute('aria-pressed', String(policy === item.id));
     const title = document.createElement('strong'); title.textContent = item.title;
     const detail = document.createElement('span'); detail.textContent = item.detail;

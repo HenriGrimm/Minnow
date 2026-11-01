@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { resolveChatMount } from './chat-mount';
 import { splitThinkingSegments } from '../api/reasoning';
 import { formatThinkingDuration } from './thinking-duration';
@@ -289,9 +290,9 @@ export class ThoughtBubbleController {
       panelWrap.className = 'thoughts-panel-wrap thoughts-panel-wrap--live';
       if (this.options.reasoningFormat === 'summary') panelWrap.dataset.reasoningFormat = 'summary';
 
-      const btn = document.createElement('button');
+      const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
       btn.type = 'button';
-      btn.className = 'thoughts-toggle thoughts-toggle--live';
+      setButtonClassName(btn, 'thoughts-toggle thoughts-toggle--live');
       btn.setAttribute('aria-expanded', 'false');
 
       const labelSpan = document.createElement('span');
@@ -483,9 +484,9 @@ export function renderThoughtsToggle(
     panelWrap.classList.add('thoughts-panel-wrap--live');
   }
 
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = 'thoughts-toggle';
+  setButtonClassName(btn, 'thoughts-toggle');
   btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 
   const labelSpan = document.createElement('span');

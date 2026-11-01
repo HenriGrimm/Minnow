@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { formatCodeRefLabel } from '../attachments/code-ref-format';
 import { iconHtml } from './icon';
 
@@ -62,9 +63,9 @@ export function createCodeRefLinkButton(
   target: CodeRefLinkTarget,
   options?: { className?: string },
 ): HTMLButtonElement {
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = options?.className ?? 'code-ref-link';
+  setButtonClassName(btn, options?.className ?? 'code-ref-link');
   const hasRange =
     target.startLine != null &&
     target.endLine != null &&
@@ -101,9 +102,9 @@ export function createUrlLinkButton(
   options?: { className?: string; label?: string },
 ): HTMLButtonElement {
   const href = url.trim();
-  const btn = document.createElement('button');
+  const btn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   btn.type = 'button';
-  btn.className = options?.className ?? 'code-ref-link';
+  setButtonClassName(btn, options?.className ?? 'code-ref-link');
   let label = (options?.label ?? '').trim();
   if (!label) {
     try {

@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import type { ModelPoolBrowser } from './model-pool-picker';
 
 interface PoolPickerHostOptions {
@@ -23,9 +24,9 @@ const hosts = new WeakMap<HTMLElement, PoolPickerHost>();
 export function mountModelPoolPickerHost(options: PoolPickerHostOptions): void {
   const { panel, menu, filterBar } = options;
   if (hosts.has(panel)) return;
-  const tab = document.createElement('button');
+  const tab = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   tab.type = 'button';
-  tab.className = 'model-host-filter-segment model-pool-tab';
+  setButtonClassName(tab, 'model-host-filter-segment model-pool-tab');
   tab.textContent = 'Pools';
   tab.setAttribute('role', 'radio');
   tab.setAttribute('aria-checked', 'false');
@@ -100,7 +101,7 @@ export function mountModelPoolPickerHost(options: PoolPickerHostOptions): void {
       if (current !== epoch) return;
       content.replaceChildren();
       const message = document.createElement('p'); message.textContent = `Could not open model pools: ${(error as Error).message}`;
-      const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry';
+      const retry = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' }); retry.type = 'button'; retry.textContent = 'Retry';
       retry.onclick = () => { close(); void show(); };
       content.append(message, retry);
     }

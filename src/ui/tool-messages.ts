@@ -1,3 +1,4 @@
+import { createButton, setButtonClassName } from './components';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
 import { withSessionToken } from '../api/session-token.ts';
 import type { CodeChangeDiffLine, CodeChangeStats, ToolImageAttachment } from '../types';
@@ -101,9 +102,9 @@ export function parseBackgroundShellToolPayload(
 }
 
 function appendKillButton(summary: HTMLElement, wrap: HTMLElement): void {
-  const killBtn = document.createElement('button');
+  const killBtn = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   killBtn.type = 'button';
-  killBtn.className = 'tool-call-kill hidden';
+  setButtonClassName(killBtn, 'tool-call-kill hidden');
   killBtn.textContent = 'Stop';
   killBtn.setAttribute('aria-label', 'Stop shell command');
   killBtn.addEventListener('click', (event) => {
@@ -619,9 +620,9 @@ function appendCodeChangeDiffPanel(
         ? ' (estimated)'
         : '';
 
-  const header = document.createElement('button');
+  const header = createButton({ appearance: 'surface', variant: 'ghost', size: 'sm' });
   header.type = 'button';
-  header.className = 'tool-call-diff__header tool-call-diff__header--link';
+  setButtonClassName(header, 'tool-call-diff__header tool-call-diff__header--link');
   header.textContent = `${pathLabel}${sourceHint}`;
   header.title = pathLabel;
   header.setAttribute('aria-label', `Open ${pathLabel}`);
