@@ -119,3 +119,25 @@ test('late status replies cannot restore an older list after a newer refresh', a
   assert.equal(view.root.querySelectorAll('.scc-filerow').length, 1);
   assert.equal(view.root.querySelector<HTMLElement>('.scc-filerow')?.dataset.path, 'newer.ts');
 });
+
+test('Changes keeps its existing rows and buttons while range selection and the batch menu survive refresh', async () => {
+  setup();
+  await view.refresh();
+  const rows = [...view.root.querySelectorAll<HTMLElement>('.scc-filerow')];
+  rows[0]!.click();
+  rows[2]!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, shiftKey: true }));
+  assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 3);
+  assert.equal(view.root.querySelectorAll('.scc-filerow input, .scc-filerow [role="checkbox"]').length, 0);
+  assert.equal(rows[0]!.querySelectorAll('button').length, 2);
+  await view.refresh();
+  assert.equal(view.root.querySelector('.scc-filerow'), rows[0]);
+  assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 3);
+  rows[1]!.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  assert.match(document.querySelector('.mn-menu')?.textContent ?? '', /Discard 3 selected changes/);
+  const { closeContextMenu } = await import('../../src/ui/context-menu.ts');
+  closeContextMenu();
+  const event = new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true });
+  rows[0]!.addEventListener('keydown', (key) => view.onKey?.(key), { capture: true, once: true });
+  rows[0]!.dispatchEvent(event);
+  assert.equal(view.root.querySelectorAll('.scc-filerow.is-selected').length, 81);
+});

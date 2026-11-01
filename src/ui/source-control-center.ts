@@ -1,3 +1,4 @@
+import { isContextMenuOpen } from './context-menu';
 import '../styles/source-control-center.css';
 import '../styles/git-commit-diff.css';
 
@@ -18,7 +19,7 @@ import { startPrReview } from '../chat/review/run-pr-review';
 import { getWorkspacePath } from '../state/workspace';
 import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
-import { appPrompt } from './app-dialog';
+import { appPrompt, isAppDialogOpen } from './app-dialog';
 import { createIcon, iconHtml, type IconName } from './icon';
 import { launchApp } from '../os/router';
 import { getForegroundAppId } from '../os/instances';
@@ -899,7 +900,7 @@ function handleKey(event: KeyboardEvent): void {
 
   const mod = event.ctrlKey || event.metaKey;
 
-  if (isCommandPaletteOpen()) return;
+  if (isCommandPaletteOpen() || isContextMenuOpen() || isAppDialogOpen()) return;
 
   if (mod && /^[1-8]$/.test(event.key)) {
     event.preventDefault();

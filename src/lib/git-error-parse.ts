@@ -144,6 +144,8 @@ function classify(text: string): GitErrorKind {
     /CONFLICT \(/i.test(text) ||
     /merge conflict/i.test(text) ||
     /Automatic merge failed/i.test(text) ||
+    /pull request.+not mergeable.+(?:conflict|cannot be cleanly)/is.test(text) ||
+    /mergeable:\s*CONFLICTING/i.test(text) ||
     /unmerged paths/i.test(text) ||
     /fix conflicts/i.test(text)
   ) {

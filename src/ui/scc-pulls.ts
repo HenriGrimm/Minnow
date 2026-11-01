@@ -12,6 +12,7 @@ import {
   type PullRequestSummary,
 } from '../state/forge-api';
 import { gitBranches } from '../state/git-api';
+import { getWorkspacePath } from '../state/workspace';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { getPrReview, subscribePrReviews } from '../state/pr-review-store';
 import { matchPrForBranch, prReviewKey } from '../chat/review/pr-review-target';
@@ -22,6 +23,7 @@ import { gitUiCtx, runGitUiOp, showGitUiFailure } from './git-ui-op';
 import { showToast } from './toast';
 import { switchChat } from './sidebar';
 import { createIcon } from './icon';
+import { openGitRecoveryPopover, closeGitRecoveryPopover } from './git-recovery';
 import { buildPrDetail, PR_REVIEW_LABEL, prCheckLabel, prStateLabel, type PrDetailTab } from './scc-pr-detail';
 import {
   button,
@@ -333,6 +335,7 @@ export function createPullsView(
     detailCol.removeAttribute('aria-busy');
 
     if (!result.ok || !result.pr) {
+      closeGitRecoveryPopover();
       if (reviewHost) unmountPrReviewPanel(reviewHost);
       reviewHost = null;
       detailData = null;
@@ -343,6 +346,7 @@ export function createPullsView(
     }
 
     if (detailData && JSON.stringify(detailData) === JSON.stringify(result.pr)) return;
+    closeGitRecoveryPopover();
     const scroll = detailCol.scrollTop;
     const focusedId = detailCol.contains(document.activeElement) ? document.activeElement?.id : undefined;
     if (reviewHost) unmountPrReviewPanel(reviewHost);
@@ -369,6 +373,17 @@ export function createPullsView(
     const note = el('span', 'scc-prdetail__merge-note', pr.draft ? 'Mark ready for review to enable merging.' : `Merge into ${pr.baseRef}`);
     bar.appendChild(note);
     if (pr.draft) return bar;
+    if (pr.mergeable === 'conflicting') {
+      note.textContent = 'This pull request has merge conflicts.';
+      const resolve = button({ label: 'Resolve conflicts', icon: 'gitMerge', onClick: () => {
+        openGitRecoveryPopover({
+          anchor: resolve, kind: 'pr', error: `Pull request #${pr.number} has merge conflicts. GitHub reports mergeable: CONFLICTING.`,
+          ctx: { ...gitUiCtx(ctx.getCwd() ?? getWorkspacePath(), ctx.getBranch()), workspacePath: getWorkspacePath(), sourceBranch: pr.headRef, targetBranch: pr.baseRef, prNumber: pr.number },
+        });
+      } });
+      bar.append(resolve);
+      return bar;
+    }
     const method = el('select', 'scc-input scc-prdetail__merge-method');
     method.setAttribute('aria-label', 'Merge method');
     for (const [value, label] of [['squash', 'Squash and merge'], ['merge', 'Merge commit'], ['rebase', 'Rebase and merge']]) {
@@ -378,10 +393,6 @@ export function createPullsView(
     }
     const mergeBtn = button({ label: 'Merge', icon: 'gitMerge', onClick: () => void merge(pr, method.value as 'squash' | 'merge' | 'rebase') });
     if (pr.checks === 'failure') mergeBtn.classList.add('scc-btn--caution');
-    if (pr.mergeable === 'conflicting') {
-      mergeBtn.disabled = true;
-      mergeBtn.title = 'Resolve merge conflicts before merging';
-    }
     bar.append(method, mergeBtn);
     return bar;
   }
@@ -736,6 +747,7 @@ export function createPullsView(
       return navigate(event);
     },
     destroy: () => {
+      closeGitRecoveryPopover();
       destroyed = true;
       ++listRequest;
       ++detailRequest;

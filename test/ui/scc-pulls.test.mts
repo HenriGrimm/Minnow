@@ -110,7 +110,7 @@ test('refresh preserves new PR form and typed content', async () => {
   assert.equal(title.value, 'My unfinished pull request');
 });
 
-test('drafts omit merge controls and conflicts disable direct merge', async () => {
+test('drafts omit merge controls and conflicts offer recovery instead of direct merge', async () => {
   setup();
   const current = pr(2, { draft: true });
   mount([current]);
@@ -121,9 +121,13 @@ test('drafts omit merge controls and conflicts disable direct merge', async () =
   current.draft = false;
   current.mergeable = 'conflicting';
   await view!.refresh();
-  const merge = view!.root.querySelector<HTMLButtonElement>('.scc-prdetail__merge button')!;
-  assert.equal(merge.disabled, true);
-  assert.match(merge.title, /Resolve merge conflicts/);
+  const resolve = view!.root.querySelector<HTMLButtonElement>('.scc-prdetail__merge button')!;
+  assert.equal(resolve.disabled, false);
+  assert.equal(resolve.textContent, 'Resolve conflicts');
+  assert.equal(view!.root.querySelector('[aria-label="Merge method"]'), null);
+  resolve.click();
+  assert.match(document.querySelector('.git-recovery-popover')!.textContent!, /Pull request has merge conflicts/);
+  assert.doesNotMatch(document.querySelector('.git-recovery-popover__summary')!.textContent!, /paused/);
 });
 
 test('an older filter response cannot restore a previous state list', async () => {

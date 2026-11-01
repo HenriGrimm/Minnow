@@ -28,6 +28,8 @@ export interface RunGitUiOpOptions extends BeginGitActivityOptions {
   skipSuccessToast?: boolean;
   /** Caller handles this expected refusal with a follow-up confirmation. */
   handlesError?: (result: GitUiOpResult) => boolean;
+  /** A surface with its own recovery UI replaces the global error notification. */
+  onError?: (error: string) => void;
 }
 
 function isCancelled(error: string | undefined): boolean {
@@ -93,6 +95,11 @@ export async function runGitUiOp<T extends GitUiOpResult>(
         finishGitActivitySuccess(handle);
         return result;
       }
+      if (options.onError) {
+        finishGitActivitySuccess(handle);
+        options.onError(result.error ?? 'Git operation failed');
+        return result;
+      }
       finishGitActivityError(handle, {
         error: result.error ?? 'Git operation failed',
         chatKind: inferGitUiChatKind(options.successMessage, options.chatKind),
@@ -107,6 +114,11 @@ export async function runGitUiOp<T extends GitUiOpResult>(
     return result;
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
+    if (options.onError) {
+      finishGitActivitySuccess(handle);
+      options.onError(error);
+      return { ok: false, error } as T;
+    }
     finishGitActivityError(handle, {
       error,
       chatKind: inferGitUiChatKind(options.successMessage, options.chatKind),

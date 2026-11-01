@@ -18,6 +18,7 @@ function isElectronHostRevealAvailable(): boolean {
 /** POST /api/workspace/reveal-in-explorer for the given tree path. */
 export async function revealPathInSystemExplorer(
   workspaceRelativePath: string,
+  cwd?: string,
 ): Promise<RevealInSystemExplorerResult> {
   const trimmed = workspaceRelativePath?.trim();
   if (!trimmed) {
@@ -35,7 +36,7 @@ export async function revealPathInSystemExplorer(
   const useHostShell = isElectronHostRevealAvailable();
 
   try {
-    const { workspaceRoot } = buildFileTreeToolContext();
+    const workspaceRoot = cwd ?? buildFileTreeToolContext().workspaceRoot;
     const response = await fetch('/api/workspace/reveal-in-explorer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

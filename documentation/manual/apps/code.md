@@ -131,11 +131,20 @@ On Windows, **Git Bash** appears when Git for Windows is installed, and installe
 
 The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
 
+In the sidebar and **Source Control → Changes**, click a row to highlight it, **Shift-click** to select a range, or **Cmd-click** (macOS) / **Ctrl-click** (Windows and Linux) to select separate rows. **Cmd/Ctrl+A** selects all changes while a change row has focus. The existing file rows and action buttons stay in place. Right-click a highlighted row to act on the selection: stage, unstage, discard, ignore paths or file extensions, copy absolute or relative paths, or reveal files in the system explorer.
+
+Discard asks for confirmation. Working-tree changes restore the staged version; selecting a staged change also restores its committed version and removes that change from staging. New files are deleted. New folders list their individual files, and discarding a folder preserves ignored files. Ignore adds rules to the repository’s `.gitignore`; files already tracked by Git stay tracked.
+
+
 Click the branch and worktree name at the top of the sidebar panel to open the **checkout picker**. Search **Branches** or **Worktrees**; selecting a branch already open in another worktree opens that checkout. Creation and removal actions appear below the list.
 
 When you switch branches with uncommitted files, choose **Bring my changes** to carry them to the destination, or **Leave changes** to save them in Git stash. Saved changes include staged, unstaged, and new files; ignored files are excluded. Returning to the saved branch in the same worktree offers **Restore changes**, including the original staging. Commit or stash any current changes before restoring. If restoration conflicts, the saved stash remains available under **Source Control → Stashes**. Browsing a different worktree keeps each checkout’s files in place.
 
 Commit, push, pull, merge, and other git or GitHub actions show a small bouncing progress bar while they run. Success is a short confirmation. Failures open a popover with a plain-language title, a short summary, the raw details, and **Send to chat** so an agent can fix the problem.
+
+In Code’s Source Control side panel, a failure also leaves a recovery notice beside the commit controls. **Resolve** reopens the conflict popover; **Details** reopens other errors. **Technical details** expands the original Git output. Conflicted files appear once under **Merge conflicts**, and selecting one opens it in the editor. Commit stays disabled until the unresolved paths are resolved. The notice survives refreshes and follows the selected checkout’s Git status.
+
+**Send to chat** includes the failed action, checkout, branch, conflicted files, and error. Choose the current Build chat when it is idle and using the same checkout, or start a new Build chat bound to that checkout. Your commit message and existing chat draft are preserved. The recovery request leaves the final merge commit or GitHub PR merge for your review. After sending, **Open chat** returns to the recovery conversation. GitHub pull requests with known conflicts offer **Resolve conflicts** in their merge controls.
 
 - **Commit messages** can be generated from the staged diff: conventional commits with optional gitmoji, an imperative subject, and a body explaining why. The `/git-commit` skill uses the same conventions. History shows gitmoji as emoji even when a commit stored a colon code such as `:sparkles:`.
 - **File diffs:** click a staged or unstaged file in the source-control panel to open the full file in the code editor. Added lines are highlighted; removed lines appear inline with their old line numbers. Unstaged files stay editable, with highlights updating as you type. Staged files open as read-only snapshots of the index, compared with HEAD. Deleted files open as read-only reviews. Commit diffs use the separate side-by-side review, with **Wrap** in the review header.

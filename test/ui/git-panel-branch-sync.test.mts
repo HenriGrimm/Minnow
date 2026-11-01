@@ -8,7 +8,9 @@ const calls: unknown[] = [];
 let featureWorktreeExists = true;
 let workspaceBranch = 'main';
 let savedChanges: { sha: string; branch: string; fileCount: number; createdAt: string }[] = [];
-let statusResult: { ok: boolean; error?: string; staged?: { path: string; status: string }[]; unstaged?: { path: string; status: string }[]; untracked?: { path: string; status: string }[] } = { ok: true };
+let statusResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
+let pullResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
+let commitResult: import('../../src/state/git-api.ts').GitOpResult = { ok: true };
 mock.module('../../src/ui/git-commit-diff-panel.ts', { namedExports: {
   closeGitCommitDiffPanel() {}, getOpenGitCommitDiffSha: () => null,
   GIT_COMMIT_DIFF_CLOSED_EVENT: 'minnow:git-commit-diff-closed',
@@ -58,8 +60,8 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     local: ['main', 'feature'], remote: [], lockedLocal: [],
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
-  gitDiff: unused, gitDiscard: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
-  gitPull: unused, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
+  gitDiff: unused, gitDiscard: unused, gitIgnore: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
+  gitPull: async () => pullResult, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused,
   gitWorktreeRemove: async (options: unknown) => {
     calls.push(['remove', options]);
@@ -77,7 +79,7 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     return { ok: true, current: 'feature', branches: [{ name: 'feature', upstream: null }] };
   },
   gitPush: async (options: unknown) => { calls.push(['push', options]); return { ok: true }; },
-  gitCommit: async (options: unknown) => { calls.push(['commit', options]); return { ok: true }; },
+  gitCommit: async (options: unknown) => { calls.push(['commit', options]); return commitResult; },
 } });
 mock.module('../../src/ui/app-dialog.ts', { namedExports: {
   appAlert: unused, appPrompt: async () => null, appChoice: async () => null,
@@ -112,6 +114,8 @@ beforeEach(() => {
   workspaceBranch = 'main';
   savedChanges = [];
   statusResult = { ok: true };
+  pullResult = { ok: true };
+  commitResult = { ok: true };
   workspace.setWorkspaceFromServer({ path: '/workspace', isDefault: false, label: 'Workspace' });
   panel.initGitPanel();
   panel.setGitPanelCwd('/selected-worktree');
@@ -226,3 +230,78 @@ for (const bucket of ['staged', 'unstaged', 'untracked'] as const) {
 }
 
 
+
+async function waitForPanel(ready: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100 && !ready(); attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(ready(), 'panel action settled');
+}
+
+test('a failed pull opens recovery at the side panel and polling preserves the notice and commit draft', async () => {
+  await panel.openGitSidePanel();
+  const input = document.querySelector<HTMLTextAreaElement>('.git-panel-commit-input')!;
+  input.value = 'Keep my commit draft';
+  statusResult = { ok: true, branch: 'feature', operation: 'merge',
+    conflicted: [{ path: 'src/search.ts', status: 'U' }],
+    staged: [{ path: 'src/search.ts', status: 'U' }],
+    unstaged: [{ path: 'src/search.ts', status: 'U' }] };
+  pullResult = { ok: false, error: 'CONFLICT (content): src/search.ts' };
+  [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Pull')!.click();
+  await waitForPanel(() => Boolean(document.querySelector('.git-recovery-popover')));
+  const popover = document.querySelector('.git-recovery-popover')!;
+  assert.ok(popover);
+  assert.match(popover.textContent!, /Pull paused by conflicts/);
+  assert.equal(document.querySelectorAll('.git-panel-file-row').length, 1, 'unmerged path is not duplicated as staged and unstaged');
+  assert.equal(document.querySelector('.git-panel-section__hdr')?.textContent, 'Merge conflicts (1)');
+  assert.equal(input.value, 'Keep my commit draft');
+  assert.equal([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Commit')!.disabled, true);
+  await panel.refreshGitPanel();
+  assert.equal(document.querySelector('.git-recovery-popover'), popover);
+  assert.equal(document.querySelector<HTMLElement>('.git-recovery-notice')!.hidden, false);
+  (popover.querySelector('.git-recovery-popover__file') as HTMLButtonElement).click();
+  await waitForPanel(() => calls.some(call => Array.isArray(call) && call[0] === 'diff'));
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'diff'),
+    ['diff', { path: 'src/search.ts', staged: false, cwd: '/selected-worktree' }]);
+  statusResult = { ok: true, branch: 'feature', operation: 'merge', conflicted: [], staged: [{ path: 'src/search.ts', status: 'M' }] };
+  await panel.refreshGitPanel();
+  assert.match(document.querySelector('.git-recovery-notice')!.textContent!, /ready for review/);
+  assert.equal([...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Commit')!.disabled, false);
+  assert.equal(input.value, 'Keep my commit draft');
+  statusResult = { ok: true, branch: 'main' };
+  panel.setGitPanelCwd('/workspace');
+  await waitForPanel(() => document.querySelector<HTMLElement>('.git-recovery-notice')!.hidden);
+  assert.equal(document.querySelector<HTMLElement>('.git-recovery-notice')!.hidden, true);
+});
+
+test('a failed commit keeps the draft and readable recovery details across polling', async () => {
+  await panel.openGitSidePanel();
+  commitResult = { ok: false, error: 'pre-commit hook failed: format src/search.ts' };
+  const input = document.querySelector<HTMLTextAreaElement>('.git-panel-commit-input')!;
+  input.value = 'Preserve this message';
+  [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Commit')!.click();
+  await waitForPanel(() => Boolean(document.querySelector('.git-recovery-popover')));
+  assert.equal(input.value, 'Preserve this message');
+  assert.match(document.querySelector('.git-recovery-popover')!.textContent!, /Git hook failed/);
+  await panel.refreshGitPanel();
+  assert.equal(document.querySelector<HTMLElement>('.git-recovery-notice')!.hidden, false);
+  assert.match(document.querySelector('.git-recovery-notice')!.textContent!, /Git hook failed/);
+});
+
+test('sidebar range selection highlights existing rows and keeps the selected batch on right-click and refresh', async () => {
+  statusResult = { ok: true, unstaged: ['a.ts', 'b.ts', 'c.ts'].map((path) => ({ path, status: 'M' })) };
+  await panel.openGitSidePanel();
+  const rows = [...document.querySelectorAll<HTMLElement>('.git-panel-file-row')];
+  rows[0]!.querySelector<HTMLButtonElement>('.git-panel-file-path')!.click();
+  rows[2]!.dispatchEvent(new win.MouseEvent('click', { bubbles: true, shiftKey: true }));
+  assert.equal(document.querySelectorAll('.git-panel-file-row.is-selected').length, 3);
+  assert.equal(rows[0]!.querySelectorAll('input, [role="checkbox"]').length, 0);
+  assert.equal(rows[0]!.querySelectorAll('.git-panel-file-actions button').length, 3);
+  await panel.refreshGitPanel();
+  assert.equal(document.querySelector('.git-panel-file-row'), rows[0]);
+  assert.equal(document.querySelectorAll('.git-panel-file-row.is-selected').length, 3);
+  rows[1]!.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  assert.match(document.querySelector('.mn-menu')?.textContent ?? '', /Discard 3 selected changes/);
+  panel.closeGitSidePanel();
+  assert.equal(document.querySelector('.mn-menu'), null);
+});

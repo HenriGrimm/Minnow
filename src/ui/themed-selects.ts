@@ -12,6 +12,10 @@ export function installThemedSelects(): () => void {
       ownButton?.remove();
       return;
     }
+    if (ownButton) {
+      if (select.firstElementChild !== ownButton) select.prepend(ownButton);
+      return;
+    }
     // Respect a picker that already supplies its own customizable button.
     if (select.querySelector(':scope > button')) return;
     const button = document.createElement('button');

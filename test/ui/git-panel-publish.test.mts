@@ -8,7 +8,7 @@ const calls: unknown[] = [];
 mock.module('../../src/state/git-api.ts', { namedExports: {
   gitCheckoutSwitch: unused, gitCheckoutSavedChanges: unused, gitCheckoutRestoreChanges: unused,
   issueWorkOperation: unused, gitWorktreeStatus: unused,
-  gitBranches: unused, gitCheckout: unused, gitDiff: unused, gitDiscard: unused,
+  gitBranches: unused, gitCheckout: unused, gitDiff: unused, gitDiscard: unused, gitIgnore: unused,
   gitPull: unused, gitStage: unused, gitStatus: unused, gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused, gitWorktreeRemove: unused,
   gitLog: unused, gitShow: unused, gitMerge: unused, gitRemoteUrl: unused,

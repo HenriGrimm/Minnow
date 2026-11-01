@@ -68,6 +68,20 @@ afterEach(async () => {
 });
 
 describe('createChatWithMode workspace option', () => {
+  test('pins a recovery chat to the captured checkout before its first turn', async () => {
+    setup();
+    setWorkspaceFromServer(workspaceInfo(WS_A));
+    seedActiveChat(WS_A);
+    const result = await createChatWithMode({ modeId: 'build', workspacePath: WS_A,
+      gitRecoveryTarget: { cwd: `${WS_A}/.worktrees/conflict`, branch: 'feature' } });
+    assert.equal(result.ok, true);
+    const created = findChatById(result.chatId!)!;
+    const { resolveChatToolWorkspaceRoot } = await import('../../src/state/chat-worktree.ts');
+    assert.equal(resolveChatToolWorkspaceRoot(created), `${WS_A}/.worktrees/conflict`);
+    assert.equal(created.gitBranch, 'feature');
+    assert.equal(created.worktreeSetupRequired, undefined);
+    assert.equal(created.chatWorktreeManaged, false);
+  });
   test('binds an explicit workspace and skips ephemeral reuse', async () => {
     setup();
     setWorkspaceFromServer(workspaceInfo(WS_A));

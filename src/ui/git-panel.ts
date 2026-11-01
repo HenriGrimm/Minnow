@@ -1,3 +1,4 @@
+import { createGitChangeSelection } from './git-change-selection';
 import { createGitCheckoutPicker } from './git-checkout-picker';
 import { createCommitGenerationStatus } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
@@ -34,7 +35,6 @@ import {
 
   gitDiff,
 
-  gitDiscard,
 
   gitPull,
 
@@ -102,7 +102,8 @@ import { openGitFileEditor } from './git-file-editor';
 import { fetchGitCommitMessage } from './git-commit-message-client';
 
 import { showToast } from './toast';
-import { inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
+import { inferGitUiChatKind, inferGitUiLabel, runGitUiOp, showGitUiFailure } from './git-ui-op';
+import { createGitRecoveryNotice } from './git-recovery';
 import { isUnmergedBranchDelete } from './git-branch-delete';
 
 import {
@@ -149,6 +150,9 @@ let commitBtn: HTMLButtonElement | null = null;
 let commitPushBtn: HTMLButtonElement | null = null;
 
 let commitBusy = false;
+let latestGitStatus: GitOpResult | null = null;
+let commitConflictHint: HTMLElement | null = null;
+let recovery: ReturnType<typeof createGitRecoveryNotice> | null = null;
 
 let aiGenerateBtn: HTMLButtonElement | null = null;
 
@@ -175,6 +179,7 @@ let refreshing = false;
 /** When true, run another refresh after the current one finishes. */
 let refreshPending = false;
 let renderedSectionsKey: string | null = null;
+let changesSelection: ReturnType<typeof createGitChangeSelection> | null = null;
 
 let refreshBtn: HTMLButtonElement | null = null;
 
@@ -198,6 +203,10 @@ function setPanelCwd(next: string | undefined): void {
       : panelCwd !== undefined && next !== undefined && panelPathsEqual(panelCwd, next);
   panelCwd = next;
   if (unchanged) return;
+  changesSelection?.clear();
+  recovery?.clear();
+  latestGitStatus = null;
+  syncCommitConflictState();
   cwdGeneration += 1;
   currentBranchName = knownWorktrees.find((wt) => pathsEqual(wt.path, next ?? getWorkspacePath()))?.branch ?? '';
   savedCheckoutChanges = [];
@@ -449,6 +458,7 @@ function openAddWorktreePopover(anchor: HTMLButtonElement): void {
 }
 
 async function handleMergeToMain(): Promise<void> {
+  const generation = cwdGeneration;
   const ws = getWorkspacePath().trim();
   if (!ws) {
     setStatus('No workspace open', true);
@@ -456,6 +466,7 @@ async function handleMergeToMain(): Promise<void> {
   }
 
   const branchResult = await gitBranches(getEffectiveCwdArg());
+  if (generation !== cwdGeneration) return;
   const localBranches = branchResult.ok ? (branchResult.local ?? []) : [];
   const remoteBranches = branchResult.ok ? (branchResult.remote ?? []) : [];
   const lockedLocalBranches = branchResult.ok ? (branchResult.lockedLocal ?? []) : [];
@@ -476,21 +487,26 @@ async function handleMergeToMain(): Promise<void> {
   const { resolveTrunkBranchName } = await import('../lib/git-trunk-branch');
   const trunk = resolveTrunkBranchName(localBranches, remoteBranches, lockedLocalBranches);
   if (!await appConfirm(`Merge branch "${sourceBranch}" into ${trunk}?`)) return;
-
+  if (generation !== cwdGeneration) return;
   setStatus('Merging…');
   const result = await runGitUiOp(() => runMergeToMain(ctx), {
     label: 'Merging…',
     successMessage: `Merged ${sourceBranch} into ${trunk}`,
     chatKind: 'merge',
     ctx: gitErrorChatContext(),
+    onError: () => {},
   });
+  if (generation !== cwdGeneration) return;
   if (!result.ok) {
     if (result.error === 'cancelled') {
       setStatus('');
       return;
     }
-    const error = result.error ?? 'Merge failed';
-    setStatus(error, true, result.conflict || /merge/i.test(error) ? 'merge' : undefined);
+    setPanelCwd(ws);
+    panelCwdUserOverride = true;
+    await showPanelGitFailure(result.error ?? 'Merge failed', 'merge', {
+      cwd: ws, workspacePath: ws, branch: trunk, sourceBranch, targetBranch: trunk,
+    }, cwdGeneration);
     return;
   }
 
@@ -528,7 +544,38 @@ function gitErrorChatContext(): GitErrorChatContext {
   return {
     cwd: (getEffectiveCwdArg() ?? getWorkspacePath().trim()) || undefined,
     branch: currentBranchName || undefined,
+    workspacePath: getWorkspacePath().trim() || undefined,
   };
+}
+
+function syncCommitConflictState(): void {
+  const count = latestGitStatus?.conflicted?.length ?? 0;
+  const rebasing = latestGitStatus?.operation === 'rebase';
+  if (commitBtn) commitBtn.disabled = commitBusy || count > 0 || rebasing;
+  if (commitPushBtn) commitPushBtn.disabled = commitBusy || count > 0 || rebasing;
+  if (commitConflictHint) {
+    commitConflictHint.hidden = !count && !rebasing;
+    commitConflictHint.textContent = count
+      ? `Resolve ${count} ${count === 1 ? 'conflict' : 'conflicts'} before committing.`
+      : 'A rebase is in progress. Continue it from the recovery chat.';
+  }
+}
+
+async function showPanelGitFailure(error: string, kind: GitErrorChatKind, ctx: GitErrorChatContext, generation: number): Promise<void> {
+  if (error.trim().toLowerCase() === 'cancelled') return;
+  const status = await gitStatus(ctx.cwd);
+  if (generation !== cwdGeneration) return;
+  setStatus('');
+  const captured = { ...ctx, branch: status.ok ? status.branch ?? ctx.branch : ctx.branch,
+    conflictedFiles: status.ok ? status.conflicted?.map(file => file.path) : undefined,
+    operation: status.ok ? status.operation : undefined, reviewBeforeFinish: true };
+  if (status.ok) {
+    latestGitStatus = status;
+    recovery?.sync(status, captured);
+    syncCommitConflictState();
+    renderSections(status);
+  }
+  recovery?.showFailure({ error, kind, ctx: captured }, panelOpen);
 }
 
 function setStatus(
@@ -620,6 +667,8 @@ function clearCommitActionsBusy(): void {
     commitPushBtn.textContent = 'Commit & Push';
 
   }
+
+  syncCommitConflictState();
 
 }
 
@@ -757,7 +806,7 @@ function ensurePanelDom(): HTMLElement {
   decorateGitSourceControlButton(pullBtn, 'Pull');
 
   pullBtn.addEventListener('click', () =>
-    void runGitOp(() => gitPull(getEffectiveCwdArg()), { successMessage: 'Pulled changes' }),
+    void runGitOp(() => gitPull(getEffectiveCwdArg()), { successMessage: 'Pulled changes', sendToChat: 'pull' }),
   );
 
   const pushBtn = document.createElement('button');
@@ -769,7 +818,7 @@ function ensurePanelDom(): HTMLElement {
   decorateGitSourceControlButton(pushBtn, 'Push');
 
   pushBtn.addEventListener('click', () =>
-    void runGitOp(() => pushWithPublishPrompt(getEffectiveCwdArg()), { successMessage: 'Pushed changes' }),
+    void runGitOp(() => pushWithPublishPrompt(getEffectiveCwdArg()), { successMessage: 'Pushed changes', sendToChat: 'push' }),
   );
 
   mergeToMainBtn = document.createElement('button');
@@ -868,7 +917,15 @@ function ensurePanelDom(): HTMLElement {
   commitActions.append(commitBtn, commitPushBtn, aiGenerateBtn);
 
   generationStatus = createCommitGenerationStatus();
-  commitBox.append(commitInput, generationStatus, commitActions);
+  commitConflictHint = document.createElement('p');
+  commitConflictHint.className = 'git-panel-status';
+  commitConflictHint.hidden = true;
+  commitBox.append(commitInput, generationStatus, commitActions, commitConflictHint);
+  recovery?.clear();
+  recovery = createGitRecoveryNotice({
+    onOpenFile: (path, cwd) => void openFileDiffInViewer(path, false, cwd),
+    onReview: () => commitInput?.focus(),
+  });
 
   bodyMount = document.createElement('div');
   renderedSectionsKey = null;
@@ -917,7 +974,7 @@ function ensurePanelDom(): HTMLElement {
 
   historySection.append(historyHdr, historyBody);
 
-  scrollMount.append(statusWrap, noRepoMount, commitBox, bodyMount, historySection);
+  scrollMount.append(statusWrap, noRepoMount, recovery.root, commitBox, bodyMount, historySection);
 
   panelRoot.append(toolbar, scrollMount);
 
@@ -999,6 +1056,7 @@ async function handleGenerateCommitMessage(): Promise<void> {
     const staged = status.staged ?? [];
     const unstaged = status.unstaged ?? [];
     const untracked = status.untracked ?? [];
+
     const allChanges = [...staged, ...unstaged, ...untracked];
 
     if (allChanges.length === 0) {
@@ -1090,6 +1148,10 @@ async function handleGenerateCommitMessage(): Promise<void> {
 async function handleCommit(andPush: boolean): Promise<void> {
 
   if (commitBusy) return;
+  if (latestGitStatus?.conflicted?.length || latestGitStatus?.operation === 'rebase') {
+    recovery?.open();
+    return;
+  }
 
   const message = commitInput?.value.trim() ?? '';
 
@@ -1149,18 +1211,24 @@ async function runGitOp(
   fn: () => Promise<GitOpResult>,
   options?: RunGitOpOptions,
 ): Promise<boolean> {
+  const ctx = gitErrorChatContext();
+  const generation = cwdGeneration;
+  const kind = options?.sendToChat ?? inferGitUiChatKind(options?.successMessage) ?? 'generic';
   const result = await runGitUiOp(fn, {
     label: options?.label ?? inferGitUiLabel(options?.successMessage, options?.sendToChat),
     successMessage: options?.successMessage,
     chatKind: options?.sendToChat,
-    ctx: gitErrorChatContext(),
+    ctx,
+    onError: () => {},
   });
+  if (generation !== cwdGeneration) return result.ok;
   if (!result.ok) {
     const error = result.error ?? 'Git operation failed';
-    setStatus(error, true, options?.sendToChat ?? 'generic');
+    await showPanelGitFailure(error, kind, ctx, generation);
     return false;
   }
 
+  recovery?.clear();
   setStatus('');
   await refreshGitPanel();
   void syncFileTreeGitPollCwd();
@@ -1205,7 +1273,7 @@ function buildFileRow(entry: GitFileEntry, staged: boolean): HTMLElement {
 
   path.title = entry.path;
 
-  path.addEventListener('click', () => void openFileDiffInViewer(entry.path, staged));
+
 
   const actions = document.createElement('div');
 
@@ -1266,17 +1334,13 @@ function buildFileRow(entry: GitFileEntry, staged: boolean): HTMLElement {
   discardBtn.title = 'Discard changes';
 
   discardBtn.addEventListener('click', () => {
-    void (async () => {
-      if (!await appConfirm(`Discard changes to ${entry.path}?`)) return;
-      await runGitOp(() => gitDiscard({ paths: [entry.path], cwd: getEffectiveCwdArg() }), {
-        successMessage: `Discarded changes to ${entry.path}`,
-      });
-    })();
+    void changesSelection?.discard([{ path: entry.path, bucket: staged ? 'staged' : entry.status === '?' ? 'untracked' : entry.status === 'U' ? 'conflicted' : 'unstaged' }]);
   });
 
   actions.append(diffBtn, stageBtn, discardBtn);
 
   row.append(badge, path, actions);
+  changesSelection?.bindRow(row, { path: entry.path, bucket: staged ? 'staged' : entry.status === '?' ? 'untracked' : entry.status === 'U' ? 'conflicted' : 'unstaged' }, actions);
 
   return row;
 
@@ -1424,14 +1488,14 @@ async function showCommitDiff(sha: string): Promise<void> {
 
 }
 
-async function openFileDiffInViewer(path: string, staged: boolean): Promise<void> {
+async function openFileDiffInViewer(path: string, staged: boolean, cwd = getEffectiveCwdArg()): Promise<void> {
   selectedCommitSha = null;
   syncGraphSelectedCommit();
 
   const opened = await openGitFileEditor({
     path,
     staged,
-    cwd: getEffectiveCwdArg(),
+    cwd,
   });
 
   if (!opened.ok) {
@@ -1456,13 +1520,28 @@ function renderSections(status: GitOpResult): void {
 
   bodyMount.replaceChildren();
 
-  const staged = status.staged ?? [];
+  const conflicted = status.conflicted ?? [];
+  const conflictPaths = new Set(conflicted.map(file => file.path));
+  const staged = (status.staged ?? []).filter(file => !conflictPaths.has(file.path));
 
-  const unstaged = status.unstaged ?? [];
+  const unstaged = (status.unstaged ?? []).filter(file => !conflictPaths.has(file.path));
 
   const untracked = status.untracked ?? [];
 
-  if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0) {
+  changesSelection ??= createGitChangeSelection({
+    root: bodyMount,
+    getCwd: () => getEffectiveCwdArg() ?? getWorkspacePath().trim(),
+    run: (fn, message) => runGitOp(fn, { successMessage: message }),
+    onOpen: (entry) => void openFileDiffInViewer(entry.path, entry.bucket === 'staged'),
+  });
+  changesSelection.setEntries([
+    ...conflicted.map((entry) => ({ path: entry.path, bucket: 'conflicted' as const })),
+    ...staged.map((entry) => ({ path: entry.path, bucket: 'staged' as const })),
+    ...unstaged.map((entry) => ({ path: entry.path, bucket: 'unstaged' as const })),
+    ...untracked.map((entry) => ({ path: entry.path, bucket: 'untracked' as const })),
+  ]);
+
+  if (staged.length === 0 && unstaged.length === 0 && untracked.length === 0 && conflicted.length === 0) {
 
     const empty = document.createElement('p');
 
@@ -1475,6 +1554,8 @@ function renderSections(status: GitOpResult): void {
     return;
 
   }
+
+  if (conflicted.length) bodyMount.appendChild(buildSection('Merge conflicts', conflicted, false));
 
   if (staged.length > 0) {
 
@@ -1604,14 +1685,19 @@ export async function refreshGitPanel(): Promise<void> {
     if (superseded()) return;
 
     void import('./composer-undo').then((m) => {
+      if (!panelOpen || generation !== cwdGeneration) return;
       m.invalidateComposerUndoGitCache();
       m.syncComposerUndoFromActiveChat();
     });
 
     if (!status.ok) {
+      changesSelection?.clear();
       renderedSectionsKey = null;
 
       if (isMissingGitRepositoryError(status.error)) {
+        recovery?.clear();
+        latestGitStatus = null;
+        syncCommitConflictState();
 
         setStatus('');
 
@@ -1650,6 +1736,10 @@ export async function refreshGitPanel(): Promise<void> {
     setGitPanelNoRepoState(false);
 
     setStatus('');
+    latestGitStatus = status;
+    currentBranchName = status.branch ?? currentBranchName;
+    recovery?.sync(status, gitErrorChatContext());
+    syncCommitConflictState();
 
     renderAheadBehind(status);
 
@@ -1764,7 +1854,9 @@ export async function openGitSidePanel(): Promise<void> {
 export function closeGitSidePanel(): void {
 
   panelOpen = false;
+  changesSelection?.close();
   checkoutPicker?.close();
+  recovery?.close();
 
   syncSidebarChrome();
 
@@ -1876,6 +1968,8 @@ export function resetGitPanelForTests(): void {
 
   noRepoMount = null;
 
+  changesSelection?.destroy();
+  changesSelection = null;
   bodyMount = null;
   renderedSectionsKey = null;
 
@@ -1893,6 +1987,10 @@ export function resetGitPanelForTests(): void {
   commitPushBtn = null;
 
   commitBusy = false;
+  latestGitStatus = null;
+  commitConflictHint = null;
+  recovery?.clear();
+  recovery = null;
 
   aiGenerateBtn = null;
 

@@ -39,3 +39,36 @@ test('mounting and leaving Source Control preserves the chat DOM', async () => {
     await teardownHappyDomAsync(win);
   }
 });
+
+test('change selection keys reach the list and Escape dismisses its menu without leaving Source Control', async () => {
+  const win = new Window();
+  const fetch = async () => new Response(JSON.stringify({ ok: true, unstaged: [{ path: 'a.ts', status: 'M' }, { path: 'b.ts', status: 'M' }] }));
+  installHappyDomGlobals(win, { fetch });
+  Object.assign(globalThis, { HTMLInputElement: win.HTMLInputElement, HTMLTextAreaElement: win.HTMLTextAreaElement });
+  const { setLocalServerAvailable } = await import('../../src/tools/config.ts');
+  setLocalServerAvailable(true);
+  seedMinimalSession('chat-1');
+  document.body.innerHTML = '<div id="mainColumn"><div id="chatArea"></div></div><main id="sourceControlView"></main>';
+  const { launchInstance, resetInstancesForTests } = await import('../../src/os/instances.ts');
+  const scc = await import('../../src/ui/source-control-center.ts');
+  try {
+    launchInstance('source-control');
+    await scc.mountSourceControlCenter();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const row = document.querySelector<HTMLElement>('.scc-filerow')!;
+    assert.ok(row);
+    row.focus();
+    row.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true }));
+    assert.equal(document.querySelectorAll('.scc-filerow.is-selected').length, 2);
+    row.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.ok(document.querySelector('.mn-menu'));
+    document.activeElement!.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(document.querySelector('.mn-menu'), null);
+    assert.equal(scc.isSourceControlCenterOpen(), true);
+    assert.equal(document.querySelectorAll('.scc-filerow.is-selected').length, 2);
+  } finally {
+    scc.resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    await teardownHappyDomAsync(win);
+  }
+});

@@ -1,3 +1,4 @@
+import { createGitChangeSelection } from './git-change-selection';
 import { createCommitGenerationStatus } from './commit-generation-status';
 import { gitStatusRenderKey } from './git-status-render-key';
 import { getWorkspacePath } from '../state/workspace';
@@ -88,6 +89,12 @@ export function createChangesView(ctx: SccContext): SccView {
   let renderedCwd: string | undefined;
 
   const effectiveCwd = (): string => ctx.getCwd() ?? getWorkspacePath().trim();
+  const changesSelection = createGitChangeSelection({
+    root: listScroll,
+    getCwd: effectiveCwd,
+    run: (fn, message) => run(fn, message),
+    onOpen: (entry) => void select(entry.path, entry.bucket === 'conflicted' ? 'unstaged' : entry.bucket),
+  });
 
   const messageInput = el('textarea', 'scc-commit__input');
   messageInput.placeholder = 'Commit message';
@@ -156,6 +163,7 @@ export function createChangesView(ctx: SccContext): SccView {
     if (renderedCwd !== cwd) {
       renderedCwd = cwd;
       selection = null;
+      changesSelection.clear();
       listKey = null;
       diffKey = null;
       ++diffSequence;
@@ -167,6 +175,7 @@ export function createChangesView(ctx: SccContext): SccView {
     if (destroyed || sequence !== refreshSequence || cwd !== effectiveCwd()) return;
 
     if (!status.ok) {
+      changesSelection.clear();
       listKey = null;
       listScroll.replaceChildren(errorStrip(status.error ?? 'Could not read git status', () => void refresh()));
       ctx.setBadge('changes', null);
@@ -201,8 +210,13 @@ export function createChangesView(ctx: SccContext): SccView {
     const total = staged.length + unstaged.length + untracked.length;
     stageAllBtn.disabled = unstaged.length + untracked.length === 0;
     unstageAllBtn.disabled = staged.length === 0;
-    discardAllBtn.disabled = unstaged.length === 0;
+    discardAllBtn.disabled = unstaged.length + untracked.length === 0;
 
+    changesSelection.setEntries([
+      ...staged.map((entry) => ({ path: entry.path, bucket: 'staged' as const })),
+      ...unstaged.map((entry) => ({ path: entry.path, bucket: 'unstaged' as const })),
+      ...untracked.map((entry) => ({ path: entry.path, bucket: 'untracked' as const })),
+    ]);
     if (total === 0) {
       listScroll.replaceChildren(
         emptyState({
@@ -249,10 +263,6 @@ export function createChangesView(ctx: SccContext): SccView {
     badge.title = STATUS_TITLE[letter] ?? 'Changed';
     badge.setAttribute('aria-label', badge.title);
 
-    if (selection?.path === entry.path && selection.bucket === bucket) {
-      row.classList.add('is-selected');
-    }
-
     const actions = el('div', 'scc-filerow__actions');
     const staged = bucket === 'staged';
 
@@ -273,16 +283,17 @@ export function createChangesView(ctx: SccContext): SccView {
       className: 'scc-btn--danger-hover',
       onClick: (event) => {
         event.stopPropagation();
-        void discardOne(entry.path);
+        void changesSelection.discard([{ path: entry.path, bucket }]);
       },
     });
 
     actions.append(discardBtn, toggleBtn);
     row.append(badge, pathLabel(entry.path), actions);
 
-    row.addEventListener('click', () => void select(entry.path, bucket));
-    row.addEventListener('focus', () => void select(entry.path, bucket));
-    row.addEventListener('dblclick', () => void toggleStage(entry.path, bucket));
+    changesSelection.bindRow(row, { path: entry.path, bucket }, actions);
+    row.addEventListener('dblclick', (event) => {
+      if (!actions.contains(event.target as Node) && !event.shiftKey && !event.ctrlKey && !event.metaKey) void toggleStage(entry.path, bucket);
+    });
 
     return row;
   }
@@ -290,13 +301,6 @@ export function createChangesView(ctx: SccContext): SccView {
   async function select(path: string, bucket: Bucket): Promise<void> {
     if (selection?.path === path && selection.bucket === bucket) return;
     selection = { path, bucket };
-    for (const row of listScroll.querySelectorAll('.scc-filerow')) {
-      row.classList.toggle(
-        'is-selected',
-        (row as HTMLElement).dataset.path === path &&
-          (row as HTMLElement).dataset.bucket === bucket,
-      );
-    }
     await renderDiff();
   }
 
@@ -311,7 +315,7 @@ export function createChangesView(ctx: SccContext): SccView {
         emptyState({
           icon: 'fileText',
           title: 'Select a file',
-          body: 'Its diff shows here. Space stages or unstages the highlighted file.',
+          body: 'Its diff shows here. Shift-click for a range; Command or Control-click to select multiple changes.',
         }),
       );
       return;
@@ -411,30 +415,21 @@ export function createChangesView(ctx: SccContext): SccView {
     await run(() => gitUnstage({ paths, cwd: ctx.getCwd() }), 'Unstaged everything');
   }
 
-  async function discardOne(path: string): Promise<void> {
-    const confirmed = await appConfirm(`Discard changes to ${path}?`, {
-      title: 'Discard changes',
-      confirmLabel: 'Discard',
-      danger: true,
-    });
-    if (!confirmed) return;
-    if (selection?.path === path) selection = null;
-    await run(() => gitDiscard({ paths: [path], cwd: ctx.getCwd() }), `Discarded ${path}`);
-  }
-
   async function discardAll(): Promise<void> {
-    const status = await gitStatus(ctx.getCwd());
-    const paths = (status.unstaged ?? []).map((entry) => entry.path);
+    const cwd = effectiveCwd();
+    const status = await gitStatus(cwd);
+    if (destroyed || cwd !== effectiveCwd() || !status.ok) return;
+    const paths = [...(status.unstaged ?? []), ...(status.untracked ?? [])].map((entry) => entry.path);
     if (paths.length === 0) return;
 
     const confirmed = await appConfirm(
       `Discard changes to ${paths.length} file${paths.length === 1 ? '' : 's'}? This cannot be undone.`,
       { title: 'Discard all changes', confirmLabel: 'Discard all', danger: true },
     );
-    if (!confirmed) return;
+    if (!confirmed || destroyed || cwd !== effectiveCwd()) return;
 
     selection = null;
-    await run(() => gitDiscard({ paths, cwd: ctx.getCwd() }), 'Discarded working tree changes');
+    await run(() => gitDiscard({ paths, cwd }), 'Discarded working tree changes');
   }
 
   function syncCommitButtons(): void {
@@ -580,6 +575,7 @@ export function createChangesView(ctx: SccContext): SccView {
   });
 
   function onKey(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented) return true;
     const target = event.target;
     const inField = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement;
 
@@ -590,6 +586,7 @@ export function createChangesView(ctx: SccContext): SccView {
     }
 
     if (inField) return false;
+    if (changesSelection.onKey(event)) return true;
     if (target instanceof Element && target.closest('button, a, select')) return false;
 
     if (event.key === ' ' && selection) {
@@ -609,10 +606,11 @@ export function createChangesView(ctx: SccContext): SccView {
     onKey,
     activate: () => {
       const first = listScroll.querySelector<HTMLElement>('.scc-filerow');
-      if (!selection && first) first.focus();
+      if (!selection && first) { first.click(); first.focus(); }
     },
     destroy: () => {
       destroyed = true;
+      changesSelection.destroy();
       generateAbort?.abort();
       generateAbort = null;
       root.remove();

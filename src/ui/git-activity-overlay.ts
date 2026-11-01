@@ -151,8 +151,8 @@ function showErrorCard(options: GitActivityErrorOptions): void {
         label: 'Send to chat',
         variant: 'primary',
         ariaLabel: 'Send git error to chat',
-        run: () => {
-          void sendGitErrorToChat(chatKind, parsed.details, chatCtx);
+        run: async () => {
+          await sendGitErrorToChat(chatKind, parsed.details, chatCtx);
         },
       },
       {

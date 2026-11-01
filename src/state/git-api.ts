@@ -87,6 +87,9 @@ export interface GitOpResult {
   staged?: GitFileEntry[];
   unstaged?: GitFileEntry[];
   untracked?: GitFileEntry[];
+  /** Unmerged paths; retained in the legacy staged/unstaged buckets for older consumers. */
+  conflicted?: GitFileEntry[];
+  operation?: 'merge' | 'rebase' | 'cherry-pick';
   patch?: string;
   sha?: string;
   /** `stage`: pathspecs actually handed to `git add`. */
@@ -224,9 +227,18 @@ export function gitUnstage(input: {
 
 export function gitDiscard(input: {
   paths: string[];
+  stagedPaths?: string[];
   cwd?: string;
 }): Promise<GitOpResult> {
   return postGit('discard', input);
+}
+
+export function gitIgnore(input: {
+  paths?: string[];
+  extensions?: string[];
+  cwd?: string;
+}): Promise<GitOpResult> {
+  return postGit('ignore', input);
 }
 
 export function gitCommit(input: {

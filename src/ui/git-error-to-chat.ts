@@ -19,6 +19,13 @@ export interface GitErrorChatContext {
   title?: string;
   /** Parsed popover summary when available. */
   summary?: string;
+  workspacePath?: string;
+  conflictedFiles?: string[];
+  operation?: 'merge' | 'rebase' | 'cherry-pick';
+  sourceBranch?: string;
+  targetBranch?: string;
+  prNumber?: number;
+  reviewBeforeFinish?: boolean;
 }
 
 const KIND_INTRO: Record<GitErrorChatKind, string> = {
@@ -102,7 +109,22 @@ export function buildGitErrorFixSeedMessage(
     lines.push('', `Branch: \`${branch}\``);
   }
 
-  lines.push('', ...closingGuidance(kind));
+  if (ctx?.operation) lines.push('', `Paused operation: ${ctx.operation}`);
+  if (ctx?.sourceBranch) lines.push(`Source branch: ${ctx.sourceBranch}`);
+  if (ctx?.targetBranch) lines.push(`Target branch: ${ctx.targetBranch}`);
+  if (ctx?.prNumber) lines.push(`Pull request: #${ctx.prNumber}`);
+  if (ctx?.prNumber && ctx.sourceBranch) lines.push(`Resolve the PR on its source branch (${ctx.sourceBranch}), using its existing checkout when available. Preserve any dirty checkout before switching branches.`);
+  if (ctx?.conflictedFiles?.length) lines.push('', 'Conflicted files:', ...ctx.conflictedFiles.map(path => `- ${path}`));
+
+  if (ctx?.reviewBeforeFinish) {
+    lines.push('', 'Inspect the current git status and branch in the specified checkout before editing. The saved failure may be out of date.',
+      'Preserve both sets of intended changes and all unrelated local work. Fix the reported blocker, resolve any conflicts, and run relevant checks. Stage only paths needed for this fix.',
+      'Do not abort the operation, discard changes, or force-push. Leave the final merge commit or GitHub PR merge for me to review.',
+      'If there is no paused merge or rebase, diagnose the actual blocker instead of assuming conflict markers exist.');
+    if (kind === 'pr' || kind === 'github') lines.push('Use the local `gh` CLI for this repository.');
+  } else {
+    lines.push('', ...closingGuidance(kind));
+  }
 
   return lines.join('\n');
 }
@@ -110,26 +132,88 @@ export function buildGitErrorFixSeedMessage(
 /** Ensure the Code chat composer is visible before starting a fixer chat. */
 async function ensureCodeChatSurface(): Promise<void> {
   const { isCodeOverviewOpen } = await import('./code-overview');
-  if (!isCodeOverviewOpen()) return;
-  const { closeCodeOverview } = await import('./code-overview');
   const { navigateToCodeChat } = await import('../os/router');
-  closeCodeOverview({ skipNavigate: true, restoreChat: false });
+  if (isCodeOverviewOpen()) {
+    const { closeCodeOverview } = await import('./code-overview');
+    closeCodeOverview({ skipNavigate: true, restoreChat: false });
+  }
   navigateToCodeChat();
 }
 
-/** Start a new Build chat seeded with instructions to fix a git/GitHub error. */
+/** An idle Build chat can receive a recovery request only in the same checkout. */
+export async function getGitErrorCurrentChat(ctx: GitErrorChatContext): Promise<{ id: string; name: string } | null> {
+  const { sessionState, getActiveChat } = await import('../state/sessions');
+  if (!sessionState?.activeId) return null;
+  const [{ resolveChatToolWorkspaceRoot }, { getWorkspacePath },
+    { worktreePathsEqual: panelPathsEqual }, { isChatTurnInProgress }, { chatReadOnlyReason, hasUnsettledAgentWork }] = await Promise.all([
+    import('../state/chat-worktree'), import('../state/workspace'),
+    import('../lib/worktree-list-parse'), import('../chat/chat-turn-guard'), import('../state/chat-relationships'),
+  ]);
+  const chat = getActiveChat();
+  const cwd = resolveChatToolWorkspaceRoot(chat, sessionState.groups) ?? getWorkspacePath();
+  if (!ctx.cwd || !panelPathsEqual(cwd, ctx.cwd) || chat.modeId !== 'build' || chat.archivedAt ||
+    chatReadOnlyReason(chat) || hasUnsettledAgentWork(chat, isChatTurnInProgress) ||
+    chat.worktreeSetupRequired || (chat.gitBranch && ctx.branch && chat.gitBranch !== ctx.branch)) return null;
+  return { id: chat.id, name: chat.name || 'Current Build chat' };
+}
+
+/** Send through the shared chat engine without replacing the composer's draft. */
 export async function sendGitErrorToChat(
   kind: GitErrorChatKind,
   error: string,
   ctx?: GitErrorChatContext,
-): Promise<void> {
+  currentChatId?: string,
+): Promise<string> {
+  const [{ getWorkspacePath }, { worktreePathsEqual: panelPathsEqual }] = await Promise.all([
+    import('../state/workspace'), import('../lib/worktree-list-parse'),
+  ]);
+  const workspacePath = ctx?.workspacePath || getWorkspacePath();
+  if (ctx?.workspacePath && !panelPathsEqual(ctx.workspacePath, getWorkspacePath())) {
+    throw new Error('The workspace changed. Reopen Source Control and try again.');
+  }
+  if (ctx?.cwd && ctx.branch) {
+    const { gitStatus } = await import('../state/git-api');
+    const status = await gitStatus(ctx.cwd);
+    if (!status.ok) throw new Error(status.error || 'Could not verify the checkout');
+    if (status.branch !== ctx.branch) throw new Error('The checkout changed branches. Refresh Source Control and try again.');
+  }
   await ensureCodeChatSurface();
-  const { createChatWithMode } = await import('./sidebar');
   const seed = buildGitErrorFixSeedMessage(kind, error, ctx);
-  await createChatWithMode({
+  if (currentChatId) {
+    const eligible = await getGitErrorCurrentChat(ctx ?? {});
+    if (eligible?.id !== currentChatId) throw new Error('This chat is busy or its checkout changed. Choose a new Build chat.');
+    const [{ getActiveChat }, { sendProgrammaticChatText }, { showToast }] = await Promise.all([
+      import('../state/sessions'), import('../chat/messaging'), import('./toast'),
+    ]);
+    const chat = getActiveChat();
+    if (chat.id !== currentChatId || (await getGitErrorCurrentChat(ctx ?? {}))?.id !== currentChatId) {
+      throw new Error('The active chat changed. Reopen the recovery details and try again.');
+    }
+    await new Promise<void>((resolve, reject) => {
+      let accepted = false;
+      void sendProgrammaticChatText(chat, seed, {
+        parseSlash: false,
+        clearComposerOnSend: false,
+        requireCompletedTurn: true,
+        onUserMessageAccepted: async () => { accepted = true; resolve(); },
+        reportStatus: (level, message) => {
+          if (level !== 'err') return;
+          if (accepted) showToast(message, 'error'); else reject(new Error(message));
+        },
+      }).then(resolve, reject);
+    });
+    return currentChatId;
+  }
+  const { createChatWithMode } = await import('./sidebar');
+  const result = await createChatWithMode({
     modeId: 'build',
     initialUserMessage: seed,
+    forceNewChat: true,
+    workspacePath,
+    gitRecoveryTarget: ctx?.cwd ? { cwd: ctx.cwd, branch: ctx.branch } : undefined,
   });
+  if (!result.ok || !result.chatId) throw new Error(result.error || 'Could not create the recovery chat');
+  return result.chatId;
 }
 
 /** Update a git panel status row: message text plus optional Send to chat action. */
@@ -156,7 +240,7 @@ export function renderGitStatusWithSendToChat(
   btn.title = 'Start a new chat and ask the agent to fix this';
   btn.setAttribute('aria-label', 'Send git error to chat');
   btn.addEventListener('click', () => {
-    void sendGitErrorToChat(sendToChat, message, ctx);
+    void sendGitErrorToChat(sendToChat, message, ctx).catch(reportHandoffFailure);
   });
   host.appendChild(btn);
 }
@@ -175,7 +259,11 @@ export function appendGitErrorSendToChatButton(
   btn.title = 'Start a new chat and ask the agent to fix this';
   btn.setAttribute('aria-label', 'Send git error to chat');
   btn.addEventListener('click', () => {
-    void sendGitErrorToChat(kind, error, ctx);
+    void sendGitErrorToChat(kind, error, ctx).catch(reportHandoffFailure);
   });
   actions.appendChild(btn);
+}
+
+function reportHandoffFailure(error: unknown): void {
+  void import('./toast').then(({ showToast }) => showToast(error instanceof Error ? error.message : 'Could not send to chat', 'error'));
 }

@@ -2325,6 +2325,8 @@ export interface CreateChatWithModeOptions {
    * source chat's workspace even when the user has since switched folders.
    */
   workspacePath?: string;
+  /** Pin a recovery handoff to the checkout where the action failed, before its first turn. */
+  gitRecoveryTarget?: { cwd: string; branch?: string };
 }
 
 // ── Create ───────────────────────────────────────────────────────────────────
@@ -2397,6 +2399,7 @@ export async function createChatWithMode(
   const originChatId = sessionState?.activeId;
   try { await loadDefaultModelValue(); }
   catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Could not read the last selected model' }; }
+  if (options.gitRecoveryTarget && originWorkspace !== getWorkspacePath()) return { ok: false, error: 'The workspace changed. Reopen Source Control and try again.' };
   if (!options.workspacePath && (originWorkspace !== getWorkspacePath() || originChatId !== sessionState?.activeId)) return { ok: false, error: 'The chat context changed. Try New chat again.' };
   if (document.getElementById('codeMapChatSidebar')) {
     teardownCodeBrainMapBeforeChatPaint();
@@ -2421,6 +2424,7 @@ export async function createChatWithMode(
     !requestedWorkspace &&
     normalizeWorkspacePath(active.workspacePath ?? '') === normalizeWorkspacePath(workspacePath);
   const canReuseEphemeral =
+    !options.gitRecoveryTarget &&
     !options.forceNewChat &&
     !requestedWorkspace &&
     !options.initialUserMessage?.trim() &&
@@ -2491,7 +2495,15 @@ export async function createChatWithMode(
     recordChatMessage(chat);
   }
 
-  seedNewChatComposerRunTarget(chat);
+  if (options.gitRecoveryTarget) {
+    chat.worktreeRoot = options.gitRecoveryTarget.cwd;
+    chat.gitBranch = options.gitRecoveryTarget.branch;
+    chat.chatWorktreeManaged = false;
+    delete chat.worktreeSetupRequired;
+    delete chat.worktreeEnabled;
+  } else {
+    seedNewChatComposerRunTarget(chat);
+  }
 
   sessionState!.chats.unshift(chat);
   pruneEphemeralEmptyChats(sessionState!, chat.id);

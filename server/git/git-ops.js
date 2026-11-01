@@ -51,16 +51,18 @@ async function requireGitRepo(cwd) {
 /**
  * @param {string} text
  */
-export function parsePorcelainStatus(text) {
+export function parsePorcelainStatus(text, nulDelimited = false) {
   const staged = [];
   const unstaged = [];
   const untracked = [];
+  const conflicted = [];
   let branch = '';
   let ahead = 0;
   let behind = 0;
 
-  for (const rawLine of String(text ?? '').split('\n')) {
-    const line = rawLine.trimEnd();
+  const lines = String(text ?? '').split(nulDelimited ? '\0' : '\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = nulDelimited ? lines[index] : lines[index].trimEnd();
     if (!line) continue;
 
     if (line.startsWith('##')) {
@@ -93,13 +95,18 @@ export function parsePorcelainStatus(text) {
 
     if (x === 'R' || y === 'R' || x === 'C' || y === 'C') {
       status = 'R';
-      const arrow = path.indexOf(' -> ');
+      if (nulDelimited) index += 1;
+      const arrow = nulDelimited ? -1 : path.indexOf(' -> ');
       if (arrow !== -1) {
         path = path.slice(arrow + 4);
       }
     }
 
     const entry = { path, status };
+
+    if (['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(`${x}${y}`)) {
+      conflicted.push({ path, status: 'U' });
+    }
 
     if (x !== ' ' && x !== '?') {
       staged.push(entry);
@@ -109,7 +116,7 @@ export function parsePorcelainStatus(text) {
     }
   }
 
-  return { branch, ahead, behind, staged, unstaged, untracked };
+  return { branch, ahead, behind, staged, unstaged, untracked, conflicted };
 }
 
 /**
@@ -295,13 +302,24 @@ export async function status({ cwd } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
-  const result = await git(['status', '--porcelain=v1', '-b'], repo.cwd);
+  const result = await git(['status', '--porcelain=v1', '-z', '-b', '--untracked-files=all'], repo.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
 
-  const parsed = parsePorcelainStatus(result.stdout);
-  return { ok: true, ...parsed };
+  const parsed = parsePorcelainStatus(result.stdout, true);
+  const gitDir = await git(['rev-parse', '--absolute-git-dir'], repo.cwd);
+  let operation;
+  if (gitDir.code === 0) {
+    const dir = gitDir.stdout.trim();
+    const markers = await Promise.all(['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD'].map(
+      (name) => fs.access(path.join(dir, name)).then(() => true, () => false),
+    ));
+    if (markers[0] || markers[1]) operation = 'rebase';
+    else if (markers[2]) operation = 'merge';
+    else if (markers[3]) operation = 'cherry-pick';
+  }
+  return { ok: true, ...parsed, ...(operation ? { operation } : {}) };
 }
 
 async function diffWorkingTree(repoCwd) {
@@ -439,7 +457,7 @@ export async function diff({ cwd, cached, path: filePath, workingTree } = {}) {
 }
 
 async function partitionStageablePaths(paths, cwd) {
-  const listed = await git(['ls-files', '-z', '--', ...paths], cwd);
+  const listed = await git(['--literal-pathspecs', 'ls-files', '-z', '--', ...paths], cwd);
   const tracked = new Set(
     listed.code === 0
       ? (listed.stdout ?? '').split('\0').filter(Boolean).map((p) => p.replace(/\\/g, '/'))
@@ -471,14 +489,15 @@ export async function stage({ cwd, paths } = {}) {
     return { ok: false, error: 'paths array is required' };
   }
 
-  const requested = paths.map(String);
+  let requested;
+  try { requested = changePaths(paths); } catch (error) { return { ok: false, error: error.message }; }
   const { stageable, skipped } = await partitionStageablePaths(requested, repo.cwd);
 
   if (stageable.length === 0) {
     return { ok: true, stagedPaths: [], skippedPaths: skipped };
   }
 
-  const result = await git(['add', ...stageable], repo.cwd);
+  const result = await git(['--literal-pathspecs', 'add', '--', ...stageable], repo.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
@@ -498,36 +517,121 @@ export async function stageAll({ cwd } = {}) {
   return { ok: true };
 }
 
+function changePaths(paths) {
+  if (!Array.isArray(paths) || paths.length === 0) throw new Error('paths array is required');
+  return [...new Set(paths.map((value) => {
+    if (typeof value !== 'string' || !value || value.includes('\0') || path.isAbsolute(value)
+      || /^[A-Za-z]:/.test(value) || value.includes('\\')
+      || value.split('/').some((part) => part === '..' || part === '.' || part.toLowerCase() === '.git')) {
+      throw new Error('A workspace-relative change path is required');
+    }
+    const relative = value.replace(/\/+$/, '');
+    if (!relative) throw new Error('A workspace-relative change path is required');
+    return relative;
+  }))];
+}
+
+async function expandStagedRenamePaths(paths, cwd) {
+  const result = await git(['diff', '--cached', '--name-status', '-z', '--find-renames'], cwd);
+  if (result.code !== 0) throw new Error(processError(result));
+  const names = (result.stdout ?? '').split('\0');
+  const expanded = new Set(paths);
+  for (let i = 0; i < names.length && names[i];) {
+    const kind = names[i++];
+    const source = names[i++];
+    if (/^[RC]/.test(kind)) {
+      const target = names[i++];
+      if (kind.startsWith('R') && paths.some((p) => target === p || target.startsWith(`${p}/`))) expanded.add(source);
+    }
+  }
+  return [...expanded];
+}
+
 export async function unstage({ cwd, paths } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
-
-  if (!Array.isArray(paths) || paths.length === 0) {
-    return { ok: false, error: 'paths array is required' };
+  try {
+    const requested = await expandStagedRenamePaths(changePaths(paths), repo.cwd);
+    const head = await git(['rev-parse', '--verify', 'HEAD'], repo.cwd);
+    const args = head.code === 0
+      ? ['reset', 'HEAD', '--', ...requested]
+      : ['rm', '--cached', '-r', '--ignore-unmatch', '--', ...requested];
+    const result = await git(['--literal-pathspecs', ...args], repo.cwd);
+    return result.code === 0 ? { ok: true } : { ok: false, error: processError(result) };
+  } catch (error) {
+    return { ok: false, error: error.message };
   }
-
-  const result = await git(['reset', 'HEAD', '--', ...paths.map(String)], repo.cwd);
-  if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
-  }
-
-  return { ok: true };
 }
 
-export async function discard({ cwd, paths } = {}) {
+/** Restore working files from the index; explicitly selected staged changes from HEAD. */
+export async function discard({ cwd, paths, stagedPaths = [] } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
-
-  if (!Array.isArray(paths) || paths.length === 0) {
-    return { ok: false, error: 'paths array is required' };
+  try {
+    const requested = changePaths(paths);
+    const staged = stagedPaths.length ? changePaths(stagedPaths) : [];
+    if (staged.some((file) => !requested.includes(file))) throw new Error('Staged paths must be selected changes');
+    return await withWorktreeMutation(repo.cwd, async () => {
+      const run = async (args) => {
+        const result = await git(['--literal-pathspecs', ...args], repo.cwd);
+        if (result.code !== 0) throw new Error(processError(result));
+        return result.stdout ?? '';
+      };
+      const unmerged = (await run(['diff', '--name-only', '--diff-filter=U', '-z', '--', ...requested])).split('\0').filter(Boolean);
+      for (const file of unmerged) if (!staged.includes(file)) staged.push(file);
+      if (staged.length) {
+        const restorePaths = await expandStagedRenamePaths(staged, repo.cwd);
+        const head = await git(['rev-parse', '--verify', 'HEAD'], repo.cwd);
+        if (head.code === 0) {
+          await run(['restore', '--source=HEAD', '--staged', '--worktree', '--', ...restorePaths]);
+        } else {
+          await run(['rm', '--cached', '-r', '--ignore-unmatch', '--', ...staged]);
+        }
+      }
+      const working = requested.filter((p) => !staged.includes(p));
+      if (working.length) {
+        const tracked = [...new Set((await run(['ls-files', '--cached', '-z', '--', ...working])).split('\0').filter(Boolean))];
+        if (tracked.length) await run(['restore', '--worktree', '--', ...tracked]);
+      }
+      await run(['clean', '-f', '-d', '--', ...requested]);
+      return { ok: true };
+    });
+  } catch (error) {
+    return { ok: false, error: error.message };
   }
+}
 
-  const result = await git(['checkout', '--', ...paths.map(String)], repo.cwd);
-  if (result.code !== 0) {
-    return { ok: false, error: processError(result) };
+/** Append literal paths or extension rules without removing files from the index. */
+export async function ignore({ cwd, paths, extensions } = {}) {
+  const repo = await requireGitRepo(cwd);
+  if (!repo.ok) return repo;
+  try {
+    const requested = paths?.length ? changePaths(paths) : [];
+    if (requested.some((p) => /[\r\n]/.test(p))) throw new Error('Paths containing newlines cannot be added to .gitignore');
+    if (extensions !== undefined && (!Array.isArray(extensions)
+      || extensions.some((ext) => typeof ext !== 'string' || !/^\.[a-zA-Z0-9_-]+$/.test(ext)))) {
+      throw new Error('Valid file extensions are required');
+    }
+    const rules = [...requested.map((p) => '/' + p.replace(/([\\*?\[\]#! ])/g, '\\$1')), ...(extensions ?? []).map((ext) => `*${ext}`)];
+    if (!rules.length) throw new Error('Paths or extensions are required');
+    return await withWorktreeMutation(repo.cwd, async () => {
+      const rootResult = await git(['rev-parse', '--show-toplevel'], repo.cwd);
+      if (rootResult.code !== 0) throw new Error(processError(rootResult));
+      const ignorePath = path.join(rootResult.stdout.trim(), '.gitignore');
+      const stat = await fs.lstat(ignorePath).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+        return null;
+      });
+      if (stat && !stat.isFile()) throw new Error('.gitignore must be a regular file');
+      const existing = stat ? await fs.readFile(ignorePath, 'utf8') : '';
+      const existingRules = new Set(existing.split(/\r?\n/));
+      const additions = [...new Set(rules)].filter((rule) => !existingRules.has(rule));
+      if (additions.length) await fs.appendFile(ignorePath, `${existing && !existing.endsWith('\n') ? '\n' : ''}${additions.join('\n')}\n`);
+      return { ok: true };
+    });
+  } catch (error) {
+    return { ok: false, error: error.message };
   }
-
-  return { ok: true };
 }
 
 export async function commit({ cwd, message } = {}) {

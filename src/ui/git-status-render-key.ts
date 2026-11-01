@@ -4,7 +4,7 @@ import type { GitOpResult } from '../state/git-api';
 export function gitStatusRenderKey(cwd: string | undefined, status: GitOpResult): string {
   return JSON.stringify([
     cwd ?? '',
-    ...[status.staged, status.unstaged, status.untracked].map((files) =>
+    ...[status.staged, status.unstaged, status.untracked, status.conflicted].map((files) =>
       (files ?? []).map(({ path, status }) => [path, status]),
     ),
   ]);

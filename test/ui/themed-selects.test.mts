@@ -74,6 +74,25 @@ test('generated buttons retain the accessible field name while options refresh',
   assert.equal(select.querySelector('button')?.getAttribute('aria-label'), 'Saved view');
 });
 
+test('prepending an asynchronous option keeps the selected-content button first', async () => {
+  const doc = setup('<select aria-label="Destination chat"><option value="new">New Build chat</option></select>');
+  disposers.push(installThemedSelects());
+  const select = doc.querySelector('select')!;
+  const button = select.querySelector(':scope > button')!;
+  const option = doc.createElement('option');
+  option.value = 'current';
+  option.textContent = 'Current Build chat';
+  select.prepend(option);
+  select.value = 'current';
+  await settle();
+  assert.equal(select.firstElementChild, button);
+  assert.equal(select.querySelectorAll(':scope > button').length, 1);
+  assert.deepEqual([...select.options].map(item => item.value), ['current', 'new']);
+  assert.equal(select.value, 'current');
+  select.value = 'new';
+  assert.equal(select.value, 'new');
+});
+
 test('listboxes, backing model selects, and existing custom buttons keep their markup', () => {
   const doc = setup('<select multiple><option>A</option></select><select size="4"><option>B</option></select><select class="model-select-native"><option>C</option></select><select><button id="custom"><selectedcontent></selectedcontent></button><option>D</option></select>');
   disposers.push(installThemedSelects());

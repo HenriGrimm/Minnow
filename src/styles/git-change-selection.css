@@ -1,0 +1,15 @@
+.git-panel-file-row.is-selected {
+  background: var(--mn-accent-soft);
+  color: var(--mn-fg);
+  box-shadow: inset 2px 0 var(--mn-accent);
+}
+
+.git-panel-file-row:focus-visible {
+  outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring);
+  outline-offset: calc(-1 * var(--mn-focus-ring-width));
+}
+
+.git-panel-file-row,
+.scc-filerow {
+  user-select: none;
+}

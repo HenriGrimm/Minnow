@@ -82,4 +82,20 @@ describe('git activity overlay', () => {
     showGitErrorPopover({ error: 'cancelled' });
     assert.equal(document.querySelector('.mn-toast'), null);
   });
+
+  for (const throws of [false, true]) {
+    it(`routes ${throws ? 'thrown' : 'returned'} failures to surface recovery without a duplicate notification`, async () => {
+      setupDom();
+      const { runGitUiOp } = await import('../../src/ui/git-ui-op.ts');
+      const errors: string[] = [];
+      const result = await runGitUiOp(async () => {
+        if (throws) throw new Error('CONFLICT in file.ts');
+        return { ok: false, error: 'CONFLICT in file.ts' };
+      }, { onError: error => errors.push(error), delayMs: 0 });
+      assert.equal(result.ok, false);
+      assert.deepEqual(errors, ['CONFLICT in file.ts']);
+      assert.equal(document.querySelector('.mn-toast--error'), null);
+      assert.equal(document.querySelector('.mn-git-activity--visible'), null);
+    });
+  }
 });
