@@ -195,6 +195,31 @@ test('an initial canonical turn skips its system row without duplicating input o
   } finally { db.close(); }
 });
 
+test('renderer-projected screenshot messages retain their text through the shared runner', async () => {
+  const images = [{ name: 'shot.png', dataUrl: 'data:image/png;base64,aA==' }];
+  const content = [{ type: 'text', text: 'Fix the alignment shown in this screenshot.' },
+    { type: 'image_url', image_url: { url: images[0].dataUrl, detail: 'auto' } }];
+  for (const vision of [true, false, undefined]) {
+    const memory = createMemoryTranscriptStore();
+    const saved = { role: 'user', content: 'Fix the alignment shown in this screenshot.\n\n[image: shot.png]', images };
+    memory.append('chat', saved);
+    let request;
+    const result = await runTurn({ ...options, seed: '', messages: [{ ...saved, content }], model: { ...model, vision },
+      deps: dependencies(memory, async (_provider, body) => { request = body; return response(); }) });
+    assert.equal(result.outcome, 'no_report');
+    const sent = request.messages.find(row => row.role === 'user');
+    assert.equal(sent.images, undefined);
+    if (vision !== false) assert.deepEqual(sent.content, content);
+    else {
+      assert.match(sent.content, /^Fix the alignment shown in this screenshot\./);
+      assert.match(sent.content, /current model cannot accept image input/);
+      assert.equal(JSON.stringify(sent).includes(images[0].dataUrl), false);
+    }
+    assert.deepEqual(memory.load('chat').messages[0], saved);
+    assert.equal(content.length, 2);
+  }
+});
+
 test('only explicit negative vision capability omits persisted image bytes on the wire', async () => {
   const images = [{ name: 'diagram.png', dataUrl: 'data:image/png;base64,aA==' }];
   for (const vision of [true, false, undefined]) {
