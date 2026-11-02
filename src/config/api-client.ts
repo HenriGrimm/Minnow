@@ -47,6 +47,8 @@ export interface SessionsPatchDelta {
   /** Revisions of changed chats at the time this viewer loaded or last saved them. */
   chatBaseRevisions?: Record<string, number>;
   chatBasePresentationRevisions?: Record<string, number>;
+  /** Atomically archive a competing saved version before applying an explicit edit. */
+  recoverConflicts?: boolean;
   chats?: Chat[];
   deleteChatIds?: string[];
   groups?: ChatGroup[];
@@ -545,6 +547,7 @@ function splitSessionsPatchBeacons(delta: SessionsPatchDelta): boolean {
   let allQueued = true;
   for (const chat of chats) {
     const piece: SessionsPatchDelta = { baseVersion: delta.baseVersion, chats: [chat],
+      recoverConflicts: delta.recoverConflicts,
       chatBaseRevisions: { [chat.id]: delta.chatBaseRevisions?.[chat.id] ?? 0 } };
     if (delta.chatBasePresentationRevisions?.[chat.id] !== undefined) piece.chatBasePresentationRevisions = { [chat.id]: delta.chatBasePresentationRevisions[chat.id] };
     if (utf8ByteLength(JSON.stringify(piece)) >= SESSIONS_BEACON_MAX_BYTES) {

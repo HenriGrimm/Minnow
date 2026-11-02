@@ -32,6 +32,13 @@
   overflow-y: auto;
   pointer-events: none;
 }
+/* Keep notifications away from the browser while either preview slot is visible. */
+body:has(#appBody:not(.hidden) #rightPaneColumn:not(.hidden) .preview-pane:not(.hidden)) .mn-toast-stack,
+body:has(#desktopPreviewMount.is-active) .mn-toast-stack {
+  right: auto;
+  left: max(1rem, env(safe-area-inset-left));
+  align-items: flex-start;
+}
 .mn-toast {
   --mn-toast-tone: var(--mn-success-ink);
   --mn-toast-tint: var(--mn-success-soft);

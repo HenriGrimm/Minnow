@@ -30,7 +30,7 @@ export function ensureCodeWorkspaceModules(): Promise<void> {
     initPromise = (async () => {
       await step('server detection', async () => {
         const { detectLocalServer } = await import('../tools/client');
-        await detectLocalServer();
+        await detectLocalServer({ refreshTools: false });
       });
 
       const filePanel = await import('../ui/init-file-panel');

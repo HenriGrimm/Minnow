@@ -122,8 +122,9 @@ export function setWaitCapabilityFactoryForTests(
 
 /**
  * Probes the dev server tools API with a short timeout and updates availability in config.
+ * Boot skips discovery: external MCP connections must not gate local server readiness.
  */
-export async function detectLocalServer(): Promise<boolean> {
+export async function detectLocalServer(options?: { refreshTools?: boolean }): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
 
@@ -139,9 +140,9 @@ export async function detectLocalServer(): Promise<boolean> {
     const body = (await response.json()) as { ok?: boolean };
     const available = body?.ok === true;
     setLocalServerAvailable(available);
-    if (available) {
+    if (available && options?.refreshTools !== false) {
       await Promise.all([refreshMcpToolCache(), refreshPluginToolCache()]);
-    } else {
+    } else if (!available) {
       cachedMcpToolDefinitions = [];
       cachedPluginToolDefinitions = [];
     }

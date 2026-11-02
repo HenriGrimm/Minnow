@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { defaultSessionStateJson } from './home.js';
 import {
@@ -94,6 +95,65 @@ function assertChatRevisions(db, ids, bases, { allowRequestChanges = false } = {
     err.conflictingChatIds = [id];
     throw err;
   }
+}
+
+/** Preserve the version displaced by an automatic save recovery, in the same transaction. */
+function preserveConflictingChat(db, row) {
+  const meta = parseJson(row.meta_json, {});
+  const id = randomUUID();
+  // A recovery is a passive transcript, never a second owner of agents, loops or a worktree.
+  const chat = normalizeChatRow({
+    id, name: `${row.name || 'Chat'} (recovered)`, workspacePath: row.workspace_path,
+    providerId: row.provider_id, modelId: row.model_id, modeId: row.mode_id,
+    composerDraft: meta.composerDraft, archivedAt: Date.now(), subAgentAutoResumeBlocked: true,
+    history: db.prepare('SELECT payload_json FROM messages WHERE chat_id=? ORDER BY seq').all(row.id)
+      .map(message => JSON.parse(message.payload_json)),
+    updatedAt: row.updated_at, lastMessageAt: row.last_message_at,
+  });
+  const sortIndex = db.prepare('SELECT COALESCE(MAX(sort_index), -1) + 1 AS next FROM chats').get().next;
+  upsertChatWithOptionalHistory(db, chat, sortIndex, true);
+  return id;
+}
+
+/** Only explicit user edits opt in; whole-state boot descriptions retain strict CAS. */
+function recoverSessionPatchConflicts(db, body) {
+  if (body.recoverConflicts !== true) return [];
+  const recovered = [];
+  const bases = { ...body.chatBaseRevisions }, presentationBases = { ...body.chatBasePresentationRevisions };
+  for (const raw of Array.isArray(body.chats) ? body.chats : []) {
+    const id = raw?.id, expected = bases[id];
+    if (!Number.isSafeInteger(expected) || expected < 0) continue;
+    const row = db.prepare('SELECT * FROM chats WHERE id=?').get(id);
+    if (!row) continue;
+    const revision = db.prepare('SELECT revision,write_revision FROM chat_revisions WHERE chat_id=?').get(id);
+    const presentation = readChatPresentationRevision(db, id);
+    const expectedPresentation = presentationBases[id];
+    const usesPresentation = presentation !== null && Number.isSafeInteger(expectedPresentation) && expectedPresentation >= 0;
+    const conflict = usesPresentation ? expectedPresentation < presentation
+      : expected < (revision?.revision ?? 0) && (isManagedConversation(db, id) || expected < (revision?.write_revision ?? 0));
+    if (!conflict) continue;
+    const storedHistory = db.prepare('SELECT payload_json FROM messages WHERE chat_id=? ORDER BY seq').all(id)
+      .map(message => JSON.parse(message.payload_json));
+    const meta = parseJson(row.meta_json, {});
+    const historyChanged = !isManagedConversation(db, id) && wireChatIncludesHistory(raw) && JSON.stringify(raw.history) !== JSON.stringify(storedHistory);
+    if (historyChanged || hasChatPresentationChanges({ ...meta, name: row.name, groupId: row.group_id }, raw)) {
+      recovered.push(preserveConflictingChat(db, row));
+    }
+    bases[id] = revision?.revision ?? 0;
+    if (usesPresentation) presentationBases[id] = presentation;
+  }
+  for (const id of Array.isArray(body.deleteChatIds) ? body.deleteChatIds : []) {
+    const expected = bases[id];
+    if (!Number.isSafeInteger(expected) || expected < 0 || isManagedConversation(db, id)) continue;
+    const revision = db.prepare('SELECT revision FROM chat_revisions WHERE chat_id=?').get(id)?.revision ?? 0;
+    if (expected >= revision) continue;
+    const row = db.prepare('SELECT * FROM chats WHERE id=?').get(id);
+    if (row) recovered.push(preserveConflictingChat(db, row));
+    bases[id] = revision;
+  }
+  body.chatBaseRevisions = bases;
+  if (body.chatBasePresentationRevisions !== undefined) body.chatBasePresentationRevisions = presentationBases;
+  return recovered;
 }
 
 /** New clients fence managed safe metadata independently of canonical activity. */
@@ -1536,7 +1596,7 @@ export function patchSessionState(delta, { db: suppliedDb, deferDeleteCleanup = 
     throw err;
   }
 
-  const body = /** @type {Record<string, unknown>} */ (delta);
+  const body = /** @type {Record<string, unknown>} */ ({ ...delta });
   if (body.conversationArchive || body.kind === 'minnow.conversation-archive') throw new ChatContractError('invalid_request', 'Import a versioned conversation archive through /api/chats/archive/import');
   const baseVersion = body.baseVersion;
   if (
@@ -1566,6 +1626,9 @@ export function patchSessionState(delta, { db: suppliedDb, deferDeleteCleanup = 
   let revision = 0;
   let chatPresentationRevisions = {};
   const tx = db.transaction(() => {
+    // The outer revision still fences groups/scalars. A failed transaction rolls
+    // recovery copies back too, so retries never leave duplicate archives.
+    const recoveredChatIds = recoverSessionPatchConflicts(db, body);
     const changedIds = Array.isArray(body.chats) ? body.chats.map(chat => String(chat?.id ?? '')).filter(Boolean) : [];
     const deletedIds = Array.isArray(body.deleteChatIds) ? body.deleteChatIds.filter(id => typeof id === 'string') : [];
     const presentationIds = assertChatPresentationBases(db, changedIds, body.chatBasePresentationRevisions);
@@ -1659,7 +1722,7 @@ export function patchSessionState(delta, { db: suppliedDb, deferDeleteCleanup = 
 
     writeSessionMeta(db, 'schemaVersion', SESSION_SCHEMA_VERSION);
     revision = bumpSessionRevision(db);
-    stampChatRevisions(db, changedChatIds, revision);
+    stampChatRevisions(db, [...changedChatIds, ...recoveredChatIds], revision);
     chatPresentationRevisions = readChatPresentationRevisions(db, changedChatIds);
   });
   tx();

@@ -3,7 +3,7 @@ import { postChatCompletionsInProcess } from '../runner/generation-binding.js';
 import { readCapabilities } from '../providers/capabilities-store.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
 
-/** The same Node runner dependencies, supplied with this admission's verified model facts. */
+/** The same Node runner dependencies, supplied with this admission's model facts. */
 export async function createChatRunnerDeps(prepared) {
   const base = createServerRunnerDeps(postChatCompletionsInProcess);
   const model = prepared.model;
@@ -17,6 +17,6 @@ export async function createChatRunnerDeps(prepared) {
     readProviderCapabilities: providerId => providerId === model.providerId ? Promise.resolve(capabilities) : readCapabilities(providerId),
     resolveSendCapabilities: (providerId, modelId) => providerId === model.providerId && modelId === model.id ? sendCapabilities : {},
     resolveModelContextLimit: () => limit,
-    isVisionModel: modelId => modelId === model.id && model.vision === true,
+    isVisionModel: modelId => modelId === model.id && model.vision !== false,
   };
 }

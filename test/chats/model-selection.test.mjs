@@ -33,6 +33,36 @@ function fixture() {
 }
 
 describe('agent model selection preflight', () => {
+  it('delivers attachments when catalogs omit vision metadata or retain an inferred catalog negative', async () => {
+    const images = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,aA==' } }] }];
+    for (const stored of [undefined, { vision: false, sources: { vision: 'catalog' } }]) {
+      const { context, adapters, models } = fixture();
+      models.api[0].type = 'llm';
+      adapters.readCapabilities = async () => ({ models: stored ? { small: stored } : {} });
+      const selected = await resolveAgentModelSelection({ target: { providerId: 'api', modelId: 'small' } }, { ...context, request: { messages: images } });
+      assert.equal(selected.vision, true);
+    }
+  });
+
+  it('keeps explicit text-only catalogs and negative vision probes authoritative', async () => {
+    const images = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,aA==' } }] }];
+    for (const source of ['probe', 'catalog', 'row', 'lm-studio']) {
+      const { context, adapters, models, providers } = fixture();
+      if (source === 'probe') {
+        models.api[0].catalogVision = true;
+        adapters.readCapabilities = async () => ({ models: { small: { vision: false, sources: { vision: 'probe' } } } });
+      } else if (source === 'catalog') models.api[0].catalogVision = false;
+      else if (source === 'row') models.api[0].capabilities = { vision: false };
+      else {
+        providers[0].apiKind = 'lm-studio-v0';
+        models.api[0].type = 'llm';
+      }
+      const input = { target: { providerId: 'api', modelId: 'small' } };
+      assert.equal((await resolveAgentModelSelection(input, context)).vision, false, source);
+      await assert.rejects(resolveAgentModelSelection(input, { ...context, request: { messages: images } }), error => error.code === 'model_unavailable', source);
+    }
+  });
+
   it('captures explicit/type/routing/parent pairs without global writes or model loading', async () => {
     const { context, calls } = fixture();
     const input = { parentSelection: { providerId: 'api', modelId: 'small' }, defaultModel: { providerId: 'cli', modelId: 'cli-model' }, typeConfig: { providerId: 'api', modelId: 'large' } };

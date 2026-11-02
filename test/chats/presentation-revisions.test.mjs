@@ -15,7 +15,7 @@ import { createChatMiddleware } from '../../server/chats/middleware.js';
 import { runWithViewWorkspace } from '../../server/runtime/path-access.js';
 import { readChatPresentationRevision, readChatPresentationRevisions } from '../../server/chats/presentation-revision.js';
 
-async function fixture(t) {
+async function fixture(t, serviceOptions = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-presentation-cas-')), prior = process.env.MINNOW_HOME;
   const workspace = path.join(root, 'project'); fs.mkdirSync(workspace);
   process.env.MINNOW_HOME = path.join(root, 'home'); resetMinnowHomeCache();
@@ -27,8 +27,8 @@ async function fixture(t) {
   repository.ensureManagedChat('managed', { profile: { profileId: 'profile', profileVersion: 1, snapshot: { prompt: 'Private captured prompt' } } });
   const context = createChatContext({ repository, validateRoot: async () => {}, runGit: async () => ({ code: 1, stdout: '' }),
     resolvePolicyInput: async (_chat, _scope, registry) => ({ modeId: 'build', toolPermissions: {}, toolEffects: {},
-      workspaceIds: registry.entries.map(row => row.workspaceId), capabilities: ['chat.read', 'chat.send', 'request.respond'] }) });
-  const presentation = createChatPresentation({ repository }), service = createChatCommandService({ repository, context });
+      workspaceIds: registry.entries.map(row => row.workspaceId), capabilities: ['chat.read', 'chat.send', 'chat.stop', 'request.respond'] }) });
+  const presentation = createChatPresentation({ repository }), service = createChatCommandService({ repository, context, ...serviceOptions });
   const runtime = { repository, context, presentation, service };
   const chatMiddleware = createChatMiddleware({ getRuntime: () => runtime }), configMiddleware = createConfigMiddleware();
   const server = http.createServer((req, res) => {
@@ -60,6 +60,38 @@ function patch(chat, revision = 0, extra = {}) {
   return { chats: [{ id: 'managed', name: 'Managed', groupId: '', ...chat }], chatBasePresentationRevisions: { managed: revision }, ...extra };
 }
 
+test('a renderer transcript saves during and after its owner-pinned family Stop', async t => {
+  let signalStop, finishStop;
+  const signalled = new Promise(resolve => { signalStop = resolve; });
+  const finishing = new Promise(resolve => { finishStop = resolve; });
+  const f = await fixture(t, {
+    getExternalOwner: () => ({ ownerId: 'renderer-owner' }),
+    stopExternalOwner: async () => { signalStop(); await finishing; return { stopRequested: true }; },
+    cancelTree: async () => {},
+  });
+  t.after(() => finishStop());
+  const snapshot = (await f.request('/api/config/sessions')).body;
+  const stopping = f.request('/api/chats/ordinary/commands', 'POST', {
+    action: 'stop', scope: 'tree', expectedLegacyOwnerId: 'renderer-owner', clientRequestId: 'stop-owner',
+  });
+  await Promise.race([signalled, stopping.then(result => { throw new Error(JSON.stringify(result)); })]);
+  const save = async content => {
+    const result = await f.request('/api/config/sessions', 'PATCH', {
+      chats: [{ ...snapshot.chats.find(chat => chat.id === 'ordinary'), subAgentAutoResumeBlocked: true,
+        history: [{ role: 'assistant', content }] }], chatBaseRevisions: snapshot.chatRevisions,
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+  };
+  await save('Partial output while stopping');
+  const during = (await f.request('/api/config/sessions')).body;
+  snapshot.chatRevisions = during.chatRevisions;
+  finishStop();
+  assert.equal((await stopping).status, 202);
+  await save('Stopped output');
+  assert.equal(f.repository.readTranscript('ordinary').messages.at(-1).content, 'Stopped output');
+  assert.equal(f.repository.getChat('ordinary').chatCommandVersion, undefined);
+});
+
 test('legacy approval admission, answer and expiry do not invalidate transcript and draft autosaves', async t => {
   const f = await fixture(t);
   let snapshot = (await f.request('/api/config/sessions')).body;
@@ -88,6 +120,63 @@ test('legacy approval admission, answer and expiry do not invalidate transcript 
   await save('Draft after expiry');
   assert.equal(f.repository.getRequest('pending-approval').state, 'answered');
   assert.equal(f.repository.getRequest('expired-approval').state, 'expired');
+});
+
+test('automatic save recovery preserves the competing transcript and draft in an inert archive', async t => {
+  const f = await fixture(t), snapshot = (await f.request('/api/config/sessions')).body;
+  const chat = snapshot.chats.find(chat => chat.id === 'ordinary');
+  const save = fields => f.request('/api/config/sessions', 'PATCH', {
+    chats: [{ ...chat, ...fields }], chatBaseRevisions: snapshot.chatRevisions, recoverConflicts: true,
+  });
+  assert.equal((await save({ name: 'Other window', composerDraft: 'Other draft', activeLoops: [{ id: 1,
+    promptText: 'Never resume a recovered copy', kind: 'auto', dueAt: 1, createdAt: 1, expiresAt: 99999, runCount: 0 }],
+    history: [{ role: 'assistant', content: 'Other output' }] })).status, 200);
+  const local = { name: 'Current window', composerDraft: 'Local draft', history: [{ role: 'assistant', content: 'Stopped output' }] };
+  assert.equal((await save(local)).status, 200);
+  let saved = (await f.request('/api/config/sessions')).body;
+  const recovered = saved.chats.find(chat => chat.id !== 'ordinary' && chat.id !== 'managed');
+  assert.equal(recovered.name, 'Other window (recovered)');
+  assert.equal(recovered.history[0].content, 'Other output');
+  assert.equal(recovered.composerDraft, 'Other draft');
+  assert.ok(recovered.archivedAt > 0);
+  assert.equal(recovered.subAgentAutoResumeBlocked, true);
+  for (const key of ['activeLoops', 'activeGoal', 'currentGenerationId', 'agentConversation', 'chatCommandVersion', 'worktreeRoot']) {
+    assert.equal(recovered[key], undefined, key);
+  }
+  assert.equal(f.repository.readTranscript('ordinary').messages[0].content, 'Stopped output');
+  assert.equal(f.repository.getChat('ordinary').composerDraft, 'Local draft');
+  assert.equal((await save(local)).status, 200, 'a lost acknowledgement is safe to retry');
+  saved = (await f.request('/api/config/sessions')).body;
+  assert.equal(saved.chats.length, 3, 'an identical retry does not duplicate the recovery');
+});
+
+test('automatic presentation recovery keeps server-owned execution and transcript authoritative', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Other draft' }))).status, 200);
+  await f.canonicalReply();
+  const saved = await f.request('/api/config/sessions', 'PATCH', patch({ composerDraft: 'Current draft',
+    history: [{ role: 'assistant', content: 'Forged output' }], modelId: 'forged' }, 0,
+  { chatBaseRevisions: { managed: 0 }, recoverConflicts: true }));
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(f.repository.getChat('managed').composerDraft, 'Current draft');
+  assert.equal(f.repository.getChat('managed').modelId, 'model');
+  assert.equal(f.repository.readTranscript('managed').messages[0].content, 'Canonical reply execution');
+  const state = (await f.request('/api/config/sessions')).body;
+  assert.ok(state.chats.some(chat => chat.archivedAt && chat.composerDraft === 'Other draft'));
+});
+
+test('failed recovery saves roll back their archives with the rejected write', async t => {
+  const f = await fixture(t), before = (await f.request('/api/config/sessions')).body;
+  const chat = before.chats.find(chat => chat.id === 'ordinary');
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', {
+    chats: [{ ...chat, name: 'Winner' }], chatBaseRevisions: before.chatRevisions,
+  })).status, 200);
+  const stale = { baseRevision: before.revision, recoverConflicts: true,
+    chats: [{ ...chat, name: 'Stale' }], chatBaseRevisions: before.chatRevisions };
+  assert.equal((await f.request('/api/config/sessions', 'PATCH', stale)).status, 409);
+  const after = (await f.request('/api/config/sessions')).body;
+  assert.equal(after.chats.length, 2);
+  assert.equal(f.repository.getChat('ordinary').name, 'Winner');
 });
 
 test('request-only revision rebasing cannot bypass a competing save, deletion or managed takeover', async t => {

@@ -195,7 +195,7 @@ test('an initial canonical turn skips its system row without duplicating input o
   } finally { db.close(); }
 });
 
-test('validated vision capability projects persisted image bytes only on the wire', async () => {
+test('only explicit negative vision capability omits persisted image bytes on the wire', async () => {
   const images = [{ name: 'diagram.png', dataUrl: 'data:image/png;base64,aA==' }];
   for (const vision of [true, false, undefined]) {
     const memory = createMemoryTranscriptStore();
@@ -208,7 +208,7 @@ test('validated vision capability projects persisted image bytes only on the wir
     assert.equal(sent.images, undefined);
     assert.equal(sent.messageId, undefined);
     assert.equal(request.messages.filter(row => row.role === 'user').length, 1);
-    if (vision) {
+    if (vision !== false) {
       assert.deepEqual(sent.content, [{ type: 'text', text: 'Inspect [image: diagram.png]' },
         { type: 'image_url', image_url: { url: images[0].dataUrl, detail: 'auto' } }]);
     } else {

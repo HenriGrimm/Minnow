@@ -1,7 +1,8 @@
 /**
  * The one notification card. Every transient notice — plain feedback, git
  * errors, saved memories, agent alerts, device requests — renders here, in a
- * single bottom-right stack. Activity (the bell) keeps the durable record;
+ * single bottom-right stack (bottom-left while the browser is visible).
+ * Activity (the bell) keeps the durable record;
  * a card is only a short-lived view.
  */
 

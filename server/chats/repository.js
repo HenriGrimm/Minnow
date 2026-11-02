@@ -122,7 +122,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
   function revision(chatId) {
     return db.prepare('SELECT revision FROM chat_revisions WHERE chat_id = ?').get(chatId)?.revision ?? 0;
   }
-  // Request receipts notify viewers without invalidating a renderer-owned transcript save.
+  // Request and Stop receipts notify viewers without invalidating a renderer-owned transcript save.
   function touch(chatId, { requestOnly = false } = {}) {
     const next = (readSessionMeta(db, 'revision', 0) || 0) + 1;
     writeSessionMeta(db, 'revision', next);
@@ -209,7 +209,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
       const stamp = time();
       db.prepare('INSERT INTO chat_commands (command_id,producer_id,request_key,chat_id,input_hash,payload_json,effective_json,captured_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
         .run(command.commandId, producer, key, command.chatId, inputHash, json(command), json(command), json(captured), stamp, stamp);
-      touch(command.chatId);
+      touch(command.chatId, { requestOnly: command.kind === 'stop' });
       return { ...getCommand(command.commandId), replayed: false };
     });
   }
@@ -609,7 +609,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
           .run(state, update.executionId ?? current.executionId, update.runId ?? current.runId, update.messageId ?? current.messageId,
             json(nextResult), json(nextError), update.held === undefined ? (current.held ? 1 : 0) : update.held === true ? 1 : 0,
             time(), commandId);
-        touch(current.chatId); return getCommand(commandId);
+        touch(current.chatId, { requestOnly: current.command.kind === 'stop' }); return getCommand(commandId);
       });
     },
     editQueuedCommand(commandId, { message, expectedRevision }) {
@@ -642,7 +642,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         chatRow(chatId); integer(throughPosition, 'stop boundary');
         const changed = db.prepare("UPDATE chat_commands SET held=1,revision=revision+1,updated_at=? WHERE chat_id=? AND position<=? AND state IN ('accepted','queued','waiting_for_host') AND held=0")
           .run(time(), chatId, throughPosition).changes;
-        if (changed) touch(chatId);
+        if (changed) touch(chatId, { requestOnly: true });
         return changed;
       });
     },

@@ -567,7 +567,7 @@ export async function runTurn(options) {
   const lastPrior = priorMessages?.[priorMessages.length - 1];
   const openingSeed = lastPrior?.role === 'user' && lastPrior.content === seed ? '' : seed;
   if (priorMessages) {
-    priorMessages = priorMessages.map(message => projectUserContent(message, { vision: model.vision === true }));
+    priorMessages = priorMessages.map(message => projectUserContent(message, { vision: model.vision !== false }));
   }
   const isContinueTurn = priorMessages !== undefined;
 

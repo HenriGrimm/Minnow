@@ -20,6 +20,8 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 Drafts survive switching chats.
 
+Chats save automatically across windows. If two windows save competing edits, Minnow keeps saving and preserves the displaced transcript and draft as an archived chat with **(recovered)** in its title. Recovery copies do not start agents or scheduled work.
+
 After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use **Models → Routing → Utility tasks** when assigned, otherwise the chat's model, and make a short additional model request. Suggestions stay out of saved drafts until accepted.
 
 Right-click a chat message for **Copy** and **Select All**, alongside **Create issue…** and **Add to issue**. Copy uses your selected text, or the whole message when nothing is selected. Select All stays inside the chat pane. Cut and Paste are disabled on saved messages. In the desktop app, right-click the composer or a message edit field for **Undo**, **Redo**, **Cut**, **Copy**, **Paste**, and **Select All**; unavailable actions are disabled.

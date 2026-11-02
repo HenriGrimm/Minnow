@@ -3,7 +3,7 @@ import { USER_IMAGE_NO_VISION_HINT } from './tool-image-follow-up.js';
 const IMAGE_DATA = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 /** Project persisted image bytes into provider content without mutating history. */
-export function projectUserContent(message, { vision = false } = {}) {
+export function projectUserContent(message, { vision = true } = {}) {
   if (message?.role !== 'user' || !Object.hasOwn(message, 'images')) return message;
   const { images: savedImages, ...wire } = message;
   if (!Array.isArray(savedImages) || !savedImages.length) return wire;

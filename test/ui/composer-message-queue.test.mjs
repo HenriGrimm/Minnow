@@ -61,6 +61,63 @@ describe('composer message queue mount', () => {
     return { ...dom, chat };
   }
 
+  test('an idle managed send shows Sending until it starts, counting only later inputs as queued', () => {
+    const { chat } = seed();
+    appState.setStreaming(false);
+    chat.agentExecution = { executionId: 'previous-turn', status: 'completed', createdAt: 1, updatedAt: 2 };
+    chat.pendingMessageQueue = [{ id: 'new-message', text: 'Continue working', createdAt: 3 }];
+    chat.agentPendingCommand = { commandId: 'new-message', runId: null, state: 'queued', held: false };
+    const label = () => document.querySelector('.composer-message-queue__count').textContent;
+    syncComposerMessageQueue();
+    assert.equal(label(), 'Sending…');
+    assert.match(document.querySelector('.composer-message-queue__text').textContent, /Continue working/);
+
+    chat.pendingMessageQueue.push({ id: 'later-message', text: 'Then run the tests', createdAt: 4 });
+    syncComposerMessageQueue();
+    assert.equal(label(), 'Sending… · 1 queued for later');
+
+    chat.pendingMessageQueue.shift();
+    chat.agentPendingCommand = { commandId: 'later-message', runId: null, state: 'queued', held: false };
+    chat.agentExecution = { executionId: 'new-turn', status: 'running', createdAt: 3, updatedAt: 3 };
+    syncComposerMessageQueue();
+    assert.equal(label(), '1 queued for later', 'canonical ownership blocks sending even before the local streaming flag updates');
+
+    chat.pendingMessageQueue = undefined;
+    chat.agentPendingCommand = undefined;
+    syncComposerMessageQueue();
+    assert.equal(document.getElementById('composerMessageQueue').classList.contains('hidden'), true);
+  });
+
+  test('held, blocked and unconfirmed managed input never claims to be sending', () => {
+    const { chat } = seed();
+    appState.setStreaming(false);
+    chat.pendingMessageQueue = [{ id: 'pending', text: 'Retained input', createdAt: 3 }];
+    chat.agentPendingCommand = { commandId: 'pending', runId: null, state: 'queued', held: false };
+    const check = expected => {
+      syncComposerMessageQueue();
+      assert.equal(document.querySelector('.composer-message-queue__count').textContent, expected);
+    };
+    check('Sending…');
+    chat.agentPendingCommand.held = true;
+    check('1 queued for later');
+    chat.agentPendingCommand.held = false;
+    chat.agentPendingCommand.state = 'waiting_for_host';
+    check('1 queued for later');
+    chat.agentPendingCommand.state = 'queued';
+    chat.agentPendingCommand.errorCode = 'capability_unavailable';
+    check('1 queued for later');
+    delete chat.agentPendingCommand.errorCode;
+    for (const status of ['waiting_for_model', 'waiting_for_agents', 'recovery_required', 'stopping']) {
+      chat.agentExecution = { executionId: 'blocked-turn', status, createdAt: 1, updatedAt: 2 };
+      check('1 queued for later');
+    }
+    chat.agentExecution = undefined;
+    chat.agentPendingCommand.commandId = 'different-input';
+    check('1 queued for later');
+    chat.agentPendingCommand = undefined;
+    check('1 queued for later');
+  });
+
   test('queued turns show their saved model options even when the next-message selection changes', () => {
     const { chat } = seed();
     chat.pendingMessageQueue = [{ id: 'captured-model', text: 'Saved task', createdAt: 1,

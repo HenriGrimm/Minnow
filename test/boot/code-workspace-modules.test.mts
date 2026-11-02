@@ -25,7 +25,8 @@ function stub(name: string, extra: Record<string, unknown> = {}): Record<string,
 
 mock.module('../../src/tools/client.ts', {
   namedExports: {
-    detectLocalServer: async () => {
+    detectLocalServer: async (options?: { refreshTools?: boolean }) => {
+      assert.equal(options?.refreshTools, false, 'Code boot must not wait on external tool discovery');
       calls.push('detectLocalServer');
       return true;
     },

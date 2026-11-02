@@ -168,6 +168,17 @@ test('current catalog support is mandatory and probe vision false wins over cata
   await assert.rejects(f.prepare, error => error.code === 'options_unsupported');
 });
 
+test('chat preparation preserves attachment delivery without vision metadata and with stale catalog negatives', async () => {
+  for (const stored of [undefined, { vision: false, sources: { vision: 'catalog' } }]) {
+    const f = fixture();
+    if (stored) f.caps.models.model = stored;
+    else delete f.caps.models.model;
+    f.setTranscript({ messages: [{ role: 'user', commandId: 'command', content: 'Inspect [image: sample.png]',
+      images: [{ name: 'sample.png', dataUrl: 'data:image/png;base64,aGk=' }] }], meta: {} });
+    assert.equal((await f.prepare()).model.vision, true);
+  }
+});
+
 test('custom prompt disappearance fails explicitly and per-call registries never leak', async () => {
   const f = fixture();
   f.settings.meta.activePromptProfile = 'custom';

@@ -278,7 +278,11 @@ export async function initApp(): Promise<void> {
   // startApp normally primes these before routing. Keep initApp independently
   // callable without paying for the same probes and session read twice on boot.
   if (!bootPrerequisitesLoaded) {
-    await Promise.all([detectConfigServer(), loadSessionsFromStorage(), detectLocalServer()]);
+    await Promise.all([
+      detectConfigServer(),
+      loadSessionsFromStorage(),
+      detectLocalServer({ refreshTools: false }),
+    ]);
     bootPrerequisitesLoaded = true;
   }
   refreshConfigStorageBanner();
@@ -643,7 +647,9 @@ async function startApp(): Promise<void> {
       window.location.replace(isMobileShell() ? '#/app/code/chat' : '#/workspaces');
     }
   }
-  await Promise.all([loadSessionsFromStorage(), detectLocalServer()]);
+  // Chat send refreshes tool catalogs. MCP discovery can wait on remote services
+  // for minutes, so only the local health probe belongs on the reveal path.
+  await Promise.all([loadSessionsFromStorage(), detectLocalServer({ refreshTools: false })]);
   bootPrerequisitesLoaded = true;
   markBootPhase('sessions');
   const { initPluginUi } = await import('./plugins/ui-runtime');

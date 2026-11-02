@@ -268,6 +268,15 @@ export function syncComposerMessageQueue(): void {
   const root = ensureQueueRoot();
   const busy = isChatTurnInProgress(chat.id);
   const count = getPendingMessageQueueCount(chat);
+  const pending = chat.agentPendingCommand;
+  const execution = chat.agentExecution;
+  // Managed sends enter the durable inbox before the host starts. An idle
+  // conversation's first runnable input is sending, not a later follow-up.
+  const sending = !busy && pending && !pending.held && !pending.errorCode &&
+    ['accepted', 'queued'].includes(pending.state) &&
+    pending.commandId === getPendingMessageQueue(chat)[0]?.id &&
+    (!execution || ['completed', 'failed', 'stopped', 'cancelled'].includes(execution.status));
+  const queuedCount = count - (sending ? 1 : 0);
   const pendingSteer = chat.pendingSteerMessage?.trim();
   const orphanEdits = [...edits.keys()].filter(key => key.startsWith(`${chat.id}:`) &&
     !getPendingMessageQueue(chat).some(item => key === `${chat.id}:${item.id}`));
@@ -275,7 +284,7 @@ export function syncComposerMessageQueue(): void {
 
   root.classList.toggle('hidden', !show);
   syncComposerFollowUpPlaceholder(busy);
-  const renderKey = JSON.stringify([chat.id, busy, queueCollapsed, pendingSteer, orphanEdits,
+  const renderKey = JSON.stringify([chat.id, busy, Boolean(sending), queueCollapsed, pendingSteer, orphanEdits,
     getPendingMessageQueue(chat).map(item => [item.id, item.text, item.modelSelection, edits.get(`${chat.id}:${item.id}`)])]);
   if (root.dataset.renderKey === renderKey) return;
   root.dataset.renderKey = renderKey;
@@ -300,7 +309,7 @@ export function syncComposerMessageQueue(): void {
 
   const label = document.createElement('span');
   label.className = 'composer-message-queue__count';
-  label.textContent = [pendingSteer ? 'Steering at next step' : '', count ? `${count} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
+  label.textContent = [sending ? 'Sending…' : '', pendingSteer ? 'Steering at next step' : '', queuedCount ? `${queuedCount} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
   label.setAttribute('role', 'status');
   header.setAttribute('aria-label', label.textContent);
   header.setAttribute('aria-controls', 'composerMessageQueueList');

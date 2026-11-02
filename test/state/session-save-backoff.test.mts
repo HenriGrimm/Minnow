@@ -58,6 +58,36 @@ test('failed saves back off, retain new edits, and resume promptly after recover
   assert.equal(bodies.length, 4, 'successful recovery clears the backoff');
 });
 
+test('an unexpected revision conflict retries quietly instead of permanently blocking saves', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.method(Math, 'random', () => 0.5);
+  setStorageModeForTests('server');
+  resetSessionPersistenceForTests();
+  const state = defaultSessionState();
+  setSessionStateForTests(state);
+  const chat = state.chats[0]!;
+  touchChat(chat);
+  let conflicting = true;
+  const writes: Array<{ recoverConflicts?: boolean; chats?: Array<{ name: string }> }> = [];
+  globalThis.fetch = async (_url, init) => {
+    writes.push(JSON.parse(String(init?.body)));
+    return Response.json(conflicting ? { error: 'Chat changed', conflictingChatIds: [chat.id] } : { ok: true, revision: 3 },
+      { status: conflicting ? 409 : 200 });
+  };
+  saveSessionsNow();
+  await waitForSessionSaveForTests();
+  assert.equal(writes.length, 2, 'retry once immediately, then back off');
+  chat.name = 'Edited while recovering';
+  touchChat(chat);
+  conflicting = false;
+  t.mock.timers.tick(1000);
+  await waitForSessionSaveForTests();
+  assert.equal(writes.length, 3);
+  assert.equal(writes[2]?.recoverConflicts, true);
+  assert.equal(writes[2]?.chats?.[0]?.name, chat.name);
+  assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+});
+
 test('shutdown bypasses backoff and cancels retry after dispatching the pending edits', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   setStorageModeForTests('server');

@@ -148,19 +148,25 @@ export function libraryCatalogModels(rows) {
   return [...new Map(models.map((row) => [row.id, row])).values()];
 }
 
-function checkRequestCapabilities(model, caps, request = {}) {
+function checkRequestCapabilities(model, caps, request = {}, provider = {}) {
   const row = caps.models?.[model.id] ?? {};
   if (request.tools?.length && row.tools === false) unavailable('Tool calling is unsupported by the selected model');
   if (request.stream !== false && row.streaming === false) unavailable('Streaming is unsupported by the selected model');
   const images = request.messages?.some((message) => Array.isArray(message.content) && message.content.some((part) => part.type === 'image_url'));
-  if (images && !verifiedVision(model, caps)) unavailable('Image input is unsupported or unverified for the selected model');
+  if (images && !canSendModelImages(model, caps, provider)) unavailable('Image input is unsupported by the selected model');
 }
 
-function verifiedVision(model, caps) {
-  const probed = caps.models?.[model.id]?.vision;
-  if (typeof probed === 'boolean') return probed;
-  if (typeof model.capabilities?.vision === 'boolean') return model.capabilities.vision;
-  return model.catalogVision === true || model.type === 'vlm';
+/** Missing catalog metadata is not a negative vision result. Live rejection is recoverable in the runner. */
+function canSendModelImages(model, caps, provider = {}) {
+  const stored = caps.models?.[model.id];
+  const authoritativeType = provider.apiKind === 'lm-studio-v0';
+  // Catalog ingestion historically saved vision:false for bare OpenAI model rows.
+  // Only a probe (or an explicit non-catalog result) can make that a negative.
+  if (typeof stored?.vision === 'boolean' && stored.sources?.vision !== 'catalog') return stored.vision;
+  if (model.catalogVision === true || model.type === 'vlm' || model.capabilities?.vision === true || stored?.vision === true) return true;
+  if (model.catalogVision === false || model.capabilities?.vision === false) return false;
+  if (authoritativeType && (model.type === 'llm' || stored?.vision === false)) return false;
+  return true;
 }
 
 export async function inspectAgentModel(selection, context = {}) {
@@ -175,7 +181,7 @@ export async function inspectAgentModel(selection, context = {}) {
     checkRequestCapabilities(model, caps, snapshot.request);
     const serve = serves.find((row) => row.libraryId === selected.modelId && ['running', 'starting', 'unhealthy'].includes(row.status));
     const availability = { state: serve?.status === 'running' ? 'available' : serve ? 'loading_model' : 'loadable', reason: serve?.status === 'running' ? 'Available' : serve ? 'Loading model' : 'Available to load' };
-    return { model, provider: { id: AGENT_LIBRARY_PROVIDER_ID, label: 'My Models' }, capabilities: caps, support: modelOptionSupport(model, caps), availability, vision: verifiedVision(model, caps) };
+    return { model, provider: { id: AGENT_LIBRARY_PROVIDER_ID, label: 'My Models' }, capabilities: caps, support: modelOptionSupport(model, caps), availability, vision: canSendModelImages(model, caps) };
   }
   const provider = (await snapshot.providers()).find((row) => row.id === selected.providerId);
   if (!provider || provider.enabled === false) unavailable('The selected provider is missing or disabled');
@@ -189,13 +195,13 @@ export async function inspectAgentModel(selection, context = {}) {
   const caps = await snapshot.capabilities(provider.id);
   abort(snapshot);
   if (caps.models?.[model.id]?.denyReason) unavailable('The selected model is disabled by its current capabilities');
-  checkRequestCapabilities(model, caps, snapshot.request);
+  checkRequestCapabilities(model, caps, snapshot.request, provider);
   const health = await snapshot.adapters.modelAvailability(selected);
   abort(snapshot);
   const availability = health?.available === false
     ? { state: 'unavailable', reason: health.kind === 'quota' ? 'Provider usage limit reached' : 'The selected provider is temporarily unavailable' }
     : { state: 'available', reason: 'Available' };
-  return { model, provider, capabilities: caps, support: modelOptionSupport(model, caps, provider), availability, vision: verifiedVision(model, caps) };
+  return { model, provider, capabilities: caps, support: modelOptionSupport(model, caps, provider), availability, vision: canSendModelImages(model, caps, provider) };
 }
 
 export async function inspectAgentPool(selection, context = {}) {

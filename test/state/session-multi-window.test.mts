@@ -33,6 +33,7 @@ const THEIRS = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
 interface PatchBody {
   baseRevision?: number;
+  recoverConflicts?: boolean;
   chats?: { id: string; name?: string }[];
   chatBaseRevisions?: Record<string, number>;
 }
@@ -43,6 +44,7 @@ class FakeSessionsStore {
   readonly chatRevisions = new Map([[MINE, 0], [THEIRS, 0]]);
   readonly chatNames = new Map([[MINE, 'Mine'], [THEIRS, 'Theirs']]);
   readonly writes: PatchBody[] = [];
+  readonly recoveries: string[] = [];
   readonly summaryRequests: string[] = [];
 
   /** Another window wrote: the shared revision counter moves on. */
@@ -95,6 +97,10 @@ class FakeSessionsStore {
         for (const chat of body.chats ?? []) {
           const expected = body.chatBaseRevisions?.[chat.id];
           if (typeof expected === 'number' && expected !== (this.chatRevisions.get(chat.id) ?? 0)) {
+            if (body.recoverConflicts && expected < (this.chatRevisions.get(chat.id) ?? 0)) {
+              this.recoveries.push(this.chatNames.get(chat.id)!);
+              continue;
+            }
             return this.json({ error: 'Chat changed in another window', revision: this.revision,
               conflictingChatIds: [chat.id] }, 409);
           }
@@ -223,7 +229,8 @@ describe('multi-window session writes', () => {
     saveSessionsNow();
     await waitForSessionSaveForTests();
     assert.equal(store.writes[0].chatBaseRevisions?.[MINE], 0);
-    assert.equal(store.chatNames.get(MINE), 'Mine updated elsewhere');
+    assert.equal(store.chatNames.get(MINE), 'Unsaved desktop work');
+    assert.deepEqual(store.recoveries, ['Mine updated elsewhere']);
   });
 
   test('live refresh preserves a draft before its deferred dirty marker is written', async () => {
@@ -436,7 +443,7 @@ describe('multi-window session writes', () => {
     assert.deepEqual((followUps[1]?.chats ?? []).map((c) => c.id), [MINE]);
   });
 
-  test('a same-chat conflict stops retrying and retains the unsaved edit', async () => {
+  test('a same-chat conflict saves automatically and preserves the competing version', async () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);
     saveSessionsNow();
@@ -446,15 +453,18 @@ describe('multi-window session writes', () => {
     store.advanceChat(MINE);
     const mine = sessionState?.chats.find((chat) => chat.id === MINE);
     assert.ok(mine);
+    mine.name = 'Local edit';
     touchChat(mine);
     saveSessionsNow();
     await waitForSessionSaveForTests();
 
-    assert.equal(store.writes.length, before + 2, 'global conflict retries once; chat conflict stops');
+    assert.equal(store.writes.length, before + 2, 'global conflict retries once; chat conflict recovers');
     assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[MINE], 0);
-    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(MINE), true);
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+    assert.equal(store.chatNames.get(MINE), 'Local edit');
+    assert.deepEqual(store.recoveries, ['Mine updated elsewhere']);
     saveSessionsNow();
-    assert.equal(store.writes.length, before + 2, 'blocked viewer must not overwrite on another flush');
+    assert.equal(store.writes.length, before + 2, 'recovered edits are already saved');
   });
 
   test('a conflicted chat does not prevent new chats or unrelated edits surviving reload', async () => {
@@ -481,13 +491,15 @@ describe('multi-window session writes', () => {
     await waitForSessionSaveForTests();
     const landed = store.writes.slice(before).flatMap((write) => write.chats ?? []);
     assert.deepEqual(landed.map((chat) => chat.id).sort(), [fresh.id, THEIRS].sort());
-    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, [MINE]);
-    assert.equal(mine.name, 'Unsaved conflicting edit', 'retain the conflict for copying');
-    assert.equal(store.chatNames.get(MINE), 'Mine updated elsewhere');
-    assert.equal(await persistSessionsBeforeDeliveryAck(), false, 'conflicted edits are not durably acknowledged');
-    assert.equal(await persistSessionsBeforeDeliveryAck(THEIRS), true, 'an unrelated conflicted chat cannot block delegation');
-    assert.equal(await persistSessionsBeforeDeliveryAck(MINE), false, 'the delegating chat must still save its own edits');
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+    assert.equal(mine.name, 'Unsaved conflicting edit');
+    assert.equal(store.chatNames.get(MINE), mine.name);
+    assert.deepEqual(store.recoveries, ['Mine updated elsewhere']);
+    assert.equal(await persistSessionsBeforeDeliveryAck(), true);
+    assert.equal(await persistSessionsBeforeDeliveryAck(THEIRS), true);
+    assert.equal(await persistSessionsBeforeDeliveryAck(MINE), true);
     await bootWindow(store);
+    assert.equal(sessionState!.chats.find((chat) => chat.id === MINE)?.name, 'Unsaved conflicting edit');
     assert.equal(sessionState!.chats.find((chat) => chat.id === fresh.id)?.name, 'Recent chat');
     assert.equal(sessionState!.chats.find((chat) => chat.id === THEIRS)?.name, 'Unrelated edit');
   });
@@ -508,15 +520,13 @@ describe('multi-window session writes', () => {
     assert.equal(store.chatNames.get(MINE), 'My first edit');
   });
 
-  test('shutdown excludes a conflicted row and retains its unsaved dirty marker', async () => {
+  test('shutdown opts pending edits into automatic conflict recovery', async () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);
     saveSessionsNow();
     await waitForSessionSaveForTests();
     store.advanceChat(MINE);
     touchChat(sessionState!.chats.find((chat) => chat.id === MINE)!);
-    saveSessionsNow();
-    await waitForSessionSaveForTests();
     const fresh = createEmptyChatObject('m', '/a');
     sessionState!.chats.unshift(fresh);
     touchChat(fresh);
@@ -531,8 +541,9 @@ describe('multi-window session writes', () => {
     try {
       saveSessionsNow({ keepalive: true });
       await new Promise((resolve) => setImmediate(resolve));
-      assert.deepEqual(beacons.flatMap((body) => body.chats ?? []).map((chat) => chat.id), [fresh.id]);
-      assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, [MINE]);
+      assert.deepEqual(beacons.flatMap((body) => body.chats ?? []).map((chat) => chat.id).sort(), [MINE, fresh.id].sort());
+      assert.equal(beacons[0]?.recoverConflicts, true);
+      assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
     } finally {
       if (descriptor) Object.defineProperty(globalThis, 'navigator', descriptor);
       else Reflect.deleteProperty(globalThis, 'navigator');
@@ -550,7 +561,7 @@ describe('multi-window session writes', () => {
     assert.equal(store.writes.length, 1);
   });
 
-  test('lazy hydration retains stale metadata base and rejects its later overwrite', async () => {
+  test('lazy hydration retains the stale base so automatic recovery preserves the other version', async () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);
     saveSessionsNow();
@@ -569,7 +580,8 @@ describe('multi-window session writes', () => {
 
     assert.equal(store.writes.length, before + 2);
     assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 0);
-    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+    assert.deepEqual(store.recoveries, ['Theirs updated elsewhere']);
   });
 
   test('lazy hydration keeps an older base when the chat was edited locally', async () => {
@@ -589,6 +601,7 @@ describe('multi-window session writes', () => {
 
     assert.equal(store.writes.length, before + 2);
     assert.equal(store.writes.at(-1)?.chatBaseRevisions?.[THEIRS], 0);
-    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(THEIRS), true);
+    assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
+    assert.deepEqual(store.recoveries, ['Theirs updated elsewhere']);
   });
 });
