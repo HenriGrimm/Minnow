@@ -18,6 +18,36 @@ const anywhereOff = { state: 'off' };
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
 
+test('slow device polls coalesce event triggers and abort when their settings surface is removed', async () => {
+  const { renderDevicesSettings } = await import('../../src/ui/settings-devices.ts');
+  const mount = document.createElement('div'); document.body.append(mount);
+  const reads: { path: string; signal: AbortSignal; resolve: (response: Response) => void }[] = [];
+  const originalInterval = window.setInterval;
+  let tick!: () => void;
+  window.setInterval = ((callback: () => void) => { tick = callback; return 1; }) as any;
+  globalThis.fetch = ((path: string, init?: RequestInit) => new Promise<Response>(resolve => {
+    reads.push({ path: String(path), signal: init!.signal!, resolve });
+  })) as typeof fetch;
+  try {
+    const rendered = renderDevicesSettings(mount);
+    await flush();
+    for (let i = 0; i < 20; i++) {
+      window.dispatchEvent(new window.Event('minnow-devices-changed'));
+      tick();
+    }
+    await flush();
+    assert.equal(reads.length, 2, 'one status and one device-list request');
+    mount.replaceChildren(); tick();
+    assert.ok(reads.every(read => read.signal.aborted));
+    for (const read of reads) read.resolve(new Response(JSON.stringify(read.path.endsWith('/status')
+      ? { lan: lanOn, anywhere: { state: 'starting' } } : { devices: [] })));
+    await rendered;
+    window.dispatchEvent(new window.Event('minnow-devices-changed'));
+    await flush();
+    assert.equal(reads.length, 2, 'late results must not restart a removed view');
+  } finally { window.setInterval = originalInterval; }
+});
+
 before(() => {
   mock.module('qrcode', {
     namedExports: {

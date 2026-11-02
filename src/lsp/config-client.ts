@@ -145,9 +145,11 @@ export async function fetchLspBundles(): Promise<LspBundlesResponse | null> {
 /** Poll install/uninstall progress for one bundle. */
 export async function fetchLspBundleProgress(
   bundleId: string,
+  signal = AbortSignal.timeout(10_000),
 ): Promise<{ job: LspBundleJob | null } | null> {
   return lspFetch<{ job: LspBundleJob | null }>(
     `/api/lsp/bundles/progress?bundleId=${encodeURIComponent(bundleId)}`,
+    { signal },
   );
 }
 

@@ -179,8 +179,11 @@ function bindBundleInstallActions(
 ): void {
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let installRequestInFlight = false;
+  let progressController: AbortController | null = null;
 
   const stopPoll = () => {
+    progressController?.abort();
+    progressController = null;
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
@@ -242,9 +245,13 @@ function bindBundleInstallActions(
 
   const startPolling = (alreadyInstalled: boolean) => {
     const pollProgress = () => {
-      void fetchLspBundleProgress(bundle.id).then((payload) => {
-        handleInstallJob(payload?.job, alreadyInstalled);
-      });
+      if (!progress.isConnected) { stopPoll(); return; }
+      if (progressController || document.hidden) return;
+      const controller = new AbortController();
+      progressController = controller;
+      void fetchLspBundleProgress(bundle.id, AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)])).then((payload) => {
+        if (!controller.signal.aborted && progress.isConnected) handleInstallJob(payload?.job, alreadyInstalled);
+      }).catch(() => {}).finally(() => { if (progressController === controller) progressController = null; });
     };
     stopPoll();
     pollTimer = setInterval(pollProgress, 500);
@@ -264,6 +271,7 @@ function bindBundleInstallActions(
 
         const result = await installLspBundle(bundle.id);
         installRequestInFlight = false;
+        if (!progress.isConnected) { finishBundleUiOperation(); return; }
 
         if (!result.ok) {
           setStatus('err', result.error ?? 'Install failed');

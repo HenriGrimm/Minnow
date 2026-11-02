@@ -7,6 +7,7 @@
 import '../../styles/code-map.css';
 
 import { appConfirm } from '../app-dialog';
+import { createPollingTask } from '../../lib/polling-task';
 import {
   clearBrainCodeIndex,
   fetchBrainCodeCallsOf,
@@ -214,17 +215,26 @@ function renderStatus(): void {
   el.append(dot, text, counts);
 }
 
-async function refreshStatus(): Promise<BrainCodeStatus | null> {
-  state.status = await fetchBrainCodeStatus(ctx());
+const statusTask = createPollingTask(async signal => {
+  const context = ctx();
+  const status = await fetchBrainCodeStatus({ ...context, signal });
+  if (signal.aborted || context.workspaceRoot !== ctx().workspaceRoot) return;
+  state.status = status;
   renderStatus();
   if (statusPoll) clearTimeout(statusPoll);
-  if (state.status?.indexing) {
+  const map = $('codeMap');
+  if (state.status?.indexing && map?.isConnected && !document.hidden
+    && (typeof map.checkVisibility !== 'function' || map.checkVisibility())) {
     statusPoll = setTimeout(() => {
       void refreshStatus().then((s) => {
         if (s && !s.indexing) void reloadArchitecture();
-      });
+      }).catch(() => {});
     }, 2000);
   }
+});
+
+async function refreshStatus(): Promise<BrainCodeStatus | null> {
+  await statusTask.run();
   return state.status;
 }
 

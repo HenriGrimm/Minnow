@@ -118,6 +118,7 @@ function scheduleActivityEmit(): void {
   });
 }
 let serveReconcileTimer: number | null = null;
+let serveReconcileController: AbortController | null = null;
 /** Fallback when SSE drops — keep this slow; live updates come from commitServes. */
 const SERVE_RECONCILE_MS = 15_000;
 
@@ -371,10 +372,13 @@ function ensureServeListWatch(): void {
   }
   if (serveReconcileTimer == null) {
     serveReconcileTimer = window.setInterval(() => {
-      void listModelServes()
-        .then(applyServes)
+      if (document.hidden || serveReconcileController) return;
+      const controller = new AbortController();
+      serveReconcileController = controller;
+      void listModelServes(AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]))
+        .then(serves => { if (!controller.signal.aborted) applyServes(serves); })
         .catch(() => {
-        });
+        }).finally(() => { if (serveReconcileController === controller) serveReconcileController = null; });
     }, SERVE_RECONCILE_MS);
   }
 }
@@ -823,4 +827,6 @@ export function teardownModelsStore(): void {
     window.clearInterval(serveReconcileTimer);
     serveReconcileTimer = null;
   }
+  serveReconcileController?.abort();
+  serveReconcileController = null;
 }

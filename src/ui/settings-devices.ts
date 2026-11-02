@@ -19,6 +19,7 @@ import { iconHtml } from './icon.ts';
 import { showToast } from './toast.ts';
 import { isAnywhereSettling, renderAnywhereState } from './settings-devices-anywhere.ts';
 import '../styles/settings-devices.css';
+import { createPollingTask } from '../lib/polling-task';
 
 const STATUS_POLL_MS = 2_000;
 const LIST_REFRESH_MS = 15_000;
@@ -242,31 +243,38 @@ export async function renderDevicesSettings(mount: HTMLElement): Promise<void> {
       statusTimer = window.setTimeout(() => void loadStatus(), STATUS_POLL_MS);
     }
   };
-  const loadStatus = async () => {
+  const statusPoll = createPollingTask(async signal => {
     if (disposed || !root.isConnected) {
       disposed = true;
       return;
     }
     try {
-      renderStatus(await fetchRemoteStatus());
+      const next = await fetchRemoteStatus(signal);
+      if (signal.aborted || disposed || !root.isConnected) return;
+      renderStatus(next);
     } catch {
+      if (signal.aborted || disposed || !root.isConnected) return;
       anywhere.body.replaceChildren(el('p', 'devices-card__copy', 'Could not load remote access status.'));
     }
-  };
-  const loadDevices = async () => {
+  });
+  const loadStatus = () => statusPoll.run();
+  const devicesPoll = createPollingTask(async signal => {
     if (disposed || !root.isConnected) {
       disposed = true;
       return;
     }
     try {
-      const devices = await fetchDevices();
+      const devices = await fetchDevices(signal);
+      if (signal.aborted || disposed || !root.isConnected) return;
       list.replaceChildren(...devices.map((device) => renderDeviceRow(device, () => void loadDevices())));
       empty.hidden = devices.length > 0;
     } catch {
+      if (signal.aborted || disposed || !root.isConnected) return;
       empty.hidden = false;
       empty.textContent = 'Could not load devices.';
     }
-  };
+  });
+  const loadDevices = () => devicesPoll.run();
 
   connect.addEventListener('click', () => {
     void import('./settings-devices-connect.ts').then(({ openConnectSheet }) =>
@@ -286,6 +294,7 @@ export async function renderDevicesSettings(mount: HTMLElement): Promise<void> {
   const listTimer = window.setInterval(() => {
     if (!root.isConnected) {
       disposed = true;
+      statusPoll.cancel(); devicesPoll.cancel();
       window.clearInterval(listTimer);
       window.clearTimeout(statusTimer);
       window.removeEventListener('minnow-devices-changed', onChanged);

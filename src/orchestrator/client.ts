@@ -1,4 +1,5 @@
 import { StreamEventSource as EventSource } from '../api/stream-event-source';
+import { createPollingTask } from '../lib/polling-task';
 import type { DiffLine } from '../chat/prompts/text-diff';
 import { foldInto } from '../../server/orchestrator/core/derive.js';
 import { noticeBoardOutOfUsage } from '../notifications/provider-quota';
@@ -258,8 +259,8 @@ function sealMap<K, V>(map: Map<K, V>): Map<K, V> {
 
 // ── REST ─────────────────────────────────────────────────────────────────────
 
-export async function listBoards(): Promise<BoardSummary[]> {
-  const body = await request('');
+export async function listBoards(signal = AbortSignal.timeout(10_000)): Promise<BoardSummary[]> {
+  const body = await request('', { signal });
   return body.boards ?? [];
 }
 
@@ -297,11 +298,12 @@ export async function readJournal(
 export async function readAttemptTranscript(
   boardId: string,
   attemptId: string,
-  options: { limit?: number } = {},
+  options: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<{ events: Record<string, unknown>[]; truncated: boolean; capped: boolean }> {
   const query = options.limit && options.limit > 0 ? `?limit=${options.limit}` : '';
   const body = await request(
     `/${encodeURIComponent(boardId)}/attempts/${encodeURIComponent(attemptId)}${query}`,
+    { signal: options.signal ?? AbortSignal.timeout(10_000) },
   );
   const events: Record<string, unknown>[] = body.events ?? [];
   if (body.modelSelection?.type === 'model_selected' && !events.some((event) => event.type === 'model_selected')) {
@@ -391,7 +393,7 @@ export interface BoardListClient {
 }
 
 export function createBoardListClient(
-  options: { intervalMs?: number; fetchBoards?: () => Promise<BoardSummary[]> } = {},
+  options: { intervalMs?: number; fetchBoards?: (signal?: AbortSignal) => Promise<BoardSummary[]> } = {},
 ): BoardListClient {
   const intervalMs = options.intervalMs ?? 5_000;
   const fetchBoards = options.fetchBoards ?? listBoards;
@@ -412,9 +414,10 @@ export function createBoardListClient(
     }
   };
 
-  const refresh = async () => {
+  const polling = createPollingTask(async signal => {
     try {
-      const next = await fetchBoards();
+      const next = await fetchBoards(signal);
+      if (signal.aborted) return;
       error = null;
       const nextSignature = JSON.stringify(next);
       if (nextSignature === signature) return;
@@ -422,9 +425,11 @@ export function createBoardListClient(
       boards = Object.freeze(next.map((b) => Object.freeze({ ...b }))) as BoardSummary[];
       emit();
     } catch (err) {
+      if (signal.aborted) return;
       error = err instanceof Error ? err : new Error(String(err));
     }
-  };
+  });
+  const refresh = () => polling.run();
 
   return {
     getBoards: () => boards,
@@ -440,6 +445,7 @@ export function createBoardListClient(
       timer = setInterval(() => void refresh(), intervalMs);
     },
     stop() {
+      polling.cancel();
       if (timer === null) return;
       clearInterval(timer);
       timer = null;

@@ -6,6 +6,7 @@ import { refreshSkillCatalog } from '../skills/client';
 import { getToolPermissionForId, invalidateToolConfigCache, loadToolConfig, loadToolConfigFromStorage, setToolPermission } from '../tools/config';
 import { mountPluginPanel, type PluginPanelContent } from '../plugins/panel';
 import { refreshPluginUi, pluginUiError } from '../plugins/ui-runtime';
+import { createPollingTask } from '../lib/polling-task';
 
 interface ConnectionField { id: string; label: string; secret: boolean; required: boolean }
 interface PluginPackage {
@@ -26,8 +27,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, classN
   return node;
 }
 
-async function api<T>(suffix = '', body?: unknown, method = 'POST'): Promise<T> {
-  const response = await fetch(`/api/plugins/packages${suffix}`, body === undefined ? {} : {
+async function api<T>(suffix = '', body?: unknown, method = 'POST', signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`/api/plugins/packages${suffix}`, body === undefined ? { signal } : {
     method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   const data = await response.json();
@@ -72,6 +73,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   let revision = -1;
   let installedIds = new Set<string>();
   let busy = false;
+  let refreshing: Promise<void> | undefined;
   let disposePanel: (() => void) | undefined;
   const alive = () => mount.firstChild === shell;
   const closePanel = () => { disposePanel?.(); disposePanel = undefined; panelHost.replaceChildren(); panelHost.hidden = true; };
@@ -159,12 +161,21 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
     status.textContent = 'Secret values stay encrypted on this computer.';
   }
 
-  async function refresh(force = false) {
-    const catalog = await api<Catalog>();
-    if (!alive() || (!force && revision === catalog.revision)) return;
+  async function refresh(force = false, signal?: AbortSignal): Promise<void> {
+    if (refreshing) {
+      try { await refreshing; } catch { /* A mutation still needs a fresh catalog. */ }
+      if (!force || signal?.aborted || !alive()) return;
+    }
+    const pending = refreshCatalog(force, signal);
+    refreshing = pending;
+    try { await pending; } finally { if (refreshing === pending) refreshing = undefined; }
+  }
+  async function refreshCatalog(force: boolean, signal?: AbortSignal) {
+    const catalog = await api<Catalog>('', undefined, 'GET', signal);
+    if (signal?.aborted || !alive() || (!force && revision === catalog.revision)) return;
     revision = catalog.revision;
     await Promise.all([refreshPluginToolCache(), refreshSkillCatalog()]);
-    if (!alive()) return;
+    if (signal?.aborted || !alive()) return;
     installedIds = new Set(catalog.packages.map(p => p.id));
     closePanel();
     list.replaceChildren();
@@ -261,10 +272,11 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       status.textContent = 'Folder selected. Select Review plugin to continue.';
     } else status.textContent = '';
   }));
-  try { await refresh(); } catch (error) { status.textContent = `Cannot load plugins. ${error instanceof Error ? error.message : String(error)}`; }
+  const polling = createPollingTask(signal => refresh(false, signal));
+  try { await polling.run(); } catch (error) { status.textContent = `Cannot load plugins. ${error instanceof Error ? error.message : String(error)}`; }
   const timer = window.setInterval(() => {
-    if (!alive() || !mount.isConnected) { window.clearInterval(timer); closePanel(); return; }
+    if (!alive() || !mount.isConnected) { polling.cancel(); window.clearInterval(timer); closePanel(); return; }
     if (disposePanel && typeof shell.checkVisibility === 'function' && !shell.checkVisibility()) closePanel();
-    if (!busy) void refresh().catch(() => { status.textContent = 'Cannot refresh plugins. Check the local server and retry.'; });
+    if (!busy && !document.hidden) void polling.run().catch(() => { if (alive()) status.textContent = 'Cannot refresh plugins. Check the local server and retry.'; });
   }, 3000);
 }

@@ -101,7 +101,12 @@ export function renderMenubar(root: HTMLElement): () => void {
       }).catch(() => { if (request === modelsRequest) closeShellOverlay(); });
     }
   };
-  const refreshSelection = () => { if (!document.hidden) void loadDefaultModelValue().catch(() => {}); };
+  let refreshingSelection = false;
+  const refreshSelection = () => {
+    if (document.hidden || refreshingSelection) return;
+    refreshingSelection = true;
+    void loadDefaultModelValue().catch(() => {}).finally(() => { refreshingSelection = false; });
+  };
   window.addEventListener('focus', refreshSelection);
   const selectionTimer = window.setInterval(refreshSelection, 5000);
   const cleanupModelChip = () => { modelsRequest++; if (isShellOverlayOpen('models')) closeShellOverlay(); closeModels?.(); unbindModels(); window.clearInterval(selectionTimer); window.removeEventListener('focus', refreshSelection); };

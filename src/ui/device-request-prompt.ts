@@ -144,6 +144,7 @@ export function initDeviceRequestPrompt(): void {
   let remoteOn = false;
   let lastStatusAt = 0;
   let timer: number | undefined;
+  let polling = false;
   const seen = new Set<string>();
 
   const refreshStatus = async () => {
@@ -161,6 +162,9 @@ export function initDeviceRequestPrompt(): void {
   };
 
   const poll = async () => {
+    if (polling) return;
+    polling = true;
+    window.clearTimeout(timer);
     try {
       if (Date.now() - lastStatusAt > STATUS_REFRESH_MS) await refreshStatus();
       if (!remoteOn) return;
@@ -185,6 +189,7 @@ export function initDeviceRequestPrompt(): void {
     } catch {
       /* try again on the next tick */
     } finally {
+      polling = false;
       schedule();
     }
   };

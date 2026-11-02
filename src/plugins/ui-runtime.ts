@@ -24,6 +24,7 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
   let queued = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   const abort = new AbortController();
+  const requestSignal = () => AbortSignal.any([abort.signal, AbortSignal.timeout(10_000)]);
 
   async function withDeadline<T>(work: Promise<T>): Promise<T> {
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -35,7 +36,7 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
   }
 
   async function sync() {
-    const response = await fetch('/api/plugins/packages', { signal: abort.signal });
+    const response = await fetch('/api/plugins/packages', { signal: requestSignal() });
     if (!response.ok) throw new Error(`Cannot load plugin UI (${response.status})`);
     const catalog: Catalog = await response.json();
     if (stopped) return;
@@ -52,14 +53,14 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
       if (stopped || active.has(plugin.id) || failures.get(plugin.id)?.release === plugin.release) continue;
       let owner: ReturnType<typeof createPluginUiContext> | undefined;
       try {
-        const source = await fetch(`/api/plugins/packages/${plugin.id}/ui/${plugin.release}`, { signal: abort.signal });
+        const source = await fetch(`/api/plugins/packages/${plugin.id}/ui/${plugin.release}`, { signal: requestSignal() });
         if (!source.ok) throw new Error(`Cannot load UI entry (${source.status})`);
         const body = await source.json() as { code: string; release: string; tools: string[] };
         if (body.release !== plugin.release) throw new Error('Plugin changed during UI loading');
         const module = await withDeadline(loadModule(body.code));
         if (stopped) return;
         // Loading a module can be asynchronous; do not activate a revoked release.
-        const check = await fetch('/api/plugins/packages', { signal: abort.signal });
+        const check = await fetch('/api/plugins/packages', { signal: requestSignal() });
         if (!check.ok) throw new Error('Cannot verify plugin UI release');
         const latest: Catalog = await check.json();
         if (!latest.packages.some(p => p.id === plugin.id && p.enabled && p.ui && p.release === plugin.release)) continue;
@@ -94,7 +95,7 @@ export function createPluginUiRuntime(loadModule: ModuleLoader = importUi) {
     status(id: string): string | null { return failures.get(id)?.message ?? null; },
     async start() {
       try { await refresh(); } catch (error) { console.error('[plugin-ui] catalog unavailable', error); }
-      if (!stopped && !timer) timer = setInterval(() => { void refresh().catch(() => {}); }, 3000);
+      if (!stopped && !timer) timer = setInterval(() => { if (!refreshing) void refresh().catch(() => {}); }, 3000);
     },
     stop() {
       stopped = true;

@@ -15,6 +15,8 @@ export type {
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastServers: DevServerListItem[] = [];
+let mountedCell: HTMLElement | null = null;
+let refreshController: AbortController | null = null;
 
 function stopPolling(): void {
   if (pollTimer) {
@@ -26,7 +28,7 @@ function stopPolling(): void {
 function startPolling(refresh: () => void): void {
   stopPolling();
   pollTimer = setInterval(() => {
-    void refresh();
+    if (!document.hidden && mountedCell?.isConnected) void refresh();
   }, 2000);
 }
 
@@ -71,6 +73,7 @@ function applySummaryToDom(
 }
 
 async function refreshDevServerCell(): Promise<void> {
+  if (!mountedCell || refreshController) return;
   const online = isLocalServerAvailable();
   if (!online) {
     applySummaryToDom('offline', 'Dev servers', 'server offline', true);
@@ -78,8 +81,12 @@ async function refreshDevServerCell(): Promise<void> {
     return;
   }
 
+  const controller = new AbortController();
+  refreshController = controller;
   try {
-    lastServers = await fetchDevServers();
+    const result = await fetchDevServers(controller.signal);
+    if (controller.signal.aborted) return;
+    lastServers = result;
     const summary = deriveHubDevServersSummary(true, lastServers);
     applySummaryToDom(
       summary.uiState,
@@ -91,7 +98,9 @@ async function refreshDevServerCell(): Promise<void> {
     if (busy) startPolling(() => void refreshDevServerCell());
     else stopPolling();
   } catch {
-    applySummaryToDom('error', 'Dev servers', 'status unavailable', false);
+    if (!controller.signal.aborted) applySummaryToDom('error', 'Dev servers', 'status unavailable', false);
+  } finally {
+    if (refreshController === controller) refreshController = null;
   }
 }
 
@@ -108,6 +117,8 @@ export async function stopHubDevServer(): Promise<void> {
 
 /** Mount hub cell: click opens Dev Servers screen. */
 export function initHubDevServer(cell: HTMLElement, _chat: Chat): void {
+  teardownHubDevServer();
+  mountedCell = cell;
   const openScreen = (): void => {
     if (cell.getAttribute('aria-disabled') === 'true') return;
     navigateToCodeDevServers();
@@ -131,5 +142,8 @@ export function updateHubDevServer(): void {
 /** Tear down polling when hub unmounts. */
 export function teardownHubDevServer(): void {
   stopPolling();
+  mountedCell = null;
+  refreshController?.abort();
+  refreshController = null;
   lastServers = [];
 }

@@ -259,13 +259,14 @@ export async function fetchBrainUsage(): Promise<BrainUsageReport | null> {
 /** Code index status for the active workspace. */
 export async function fetchBrainCodeStatus(options?: {
   workspaceRoot?: string;
+  signal?: AbortSignal;
 }): Promise<BrainCodeStatus | null> {
   const qs = new URLSearchParams();
   if (options?.workspaceRoot?.trim()) {
     qs.set('workspaceRoot', options.workspaceRoot.trim());
   }
   const suffix = qs.toString() ? `?${qs}` : '';
-  return brainFetch<BrainCodeStatus>(`/api/brain/code/status${suffix}`);
+  return brainFetch<BrainCodeStatus>(`/api/brain/code/status${suffix}`, { signal: options?.signal });
 }
 
 /** Load config.brain.code settings. */

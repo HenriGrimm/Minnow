@@ -42,7 +42,7 @@ export async function loadDefaultModelValue(): Promise<void> {
   if (!isServerStorageMode()) return;
   const revision = selectionRevision;
   await pendingSave;
-  const response = await fetch('/api/config/default-model', { cache: 'no-store' });
+  const response = await fetch('/api/config/default-model', { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error('Could not load the last selected chat model');
   const saved = await response.json() as { value: string | null; revision?: number };
   if (revision !== selectionRevision || (saved.revision ?? 0) < serverRevision) return;

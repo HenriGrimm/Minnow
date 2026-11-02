@@ -474,15 +474,18 @@ export async function mountRoutersPanel(): Promise<void> {
       void refresh();
     }
 
+    let refreshingActivity = false;
     async function refresh(): Promise<void> {
       const router = current();
-      if (!router || !alive || !host?.classList.contains('is-active')) return;
+      if (!router || !alive || refreshingActivity || document.hidden || !host?.classList.contains('is-active')) return;
+      refreshingActivity = true;
       const epoch = liveEpoch;
       try {
         const activity = await routerApi<RouterActivity>(`/${router.id}/activity`);
         if (!alive || epoch !== liveEpoch || live.contains(document.activeElement) || dirty) return;
         drawActivity(router, activity);
       } catch (error) { if (!dirty && alive && epoch === liveEpoch) live.replaceChildren(node('p', (error as Error).message)); }
+      finally { refreshingActivity = false; }
     }
 
     function drawActivity(router: ModelRouter, activity: RouterActivity): void {

@@ -1,4 +1,5 @@
 import { isContextMenuOpen } from './context-menu';
+import { createPollingTask } from '../lib/polling-task';
 import '../styles/source-control-center.css';
 import '../styles/git-commit-diff.css';
 
@@ -99,6 +100,20 @@ let forgeTimer: number | undefined;
 let keyHandler: ((event: KeyboardEvent) => void) | null = null;
 let busy = false;
 let forgePollInFlight = false;
+let gitPollInFlight = false;
+const viewRefreshes = new WeakMap<SccView, Promise<void>>();
+
+function refreshActiveView(): Promise<void> {
+  const view = activeView;
+  if (!view || !isSourceControlCenterOpen()) return Promise.resolve();
+  const pending = viewRefreshes.get(view);
+  if (pending) return pending;
+  const refresh = Promise.resolve().then(() => {
+    if (activeView === view && isSourceControlCenterOpen()) return view.refresh();
+  }).finally(() => viewRefreshes.delete(view));
+  viewRefreshes.set(view, refresh);
+  return refresh;
+}
 
 // Header elements, rebuilt only on open.
 let repoNameEl: HTMLElement | null = null;
@@ -395,9 +410,11 @@ function paintRailBadge(section: SccSectionId): void {
 
 // ── Refresh ──────────────────────────────────────────────────────────────────
 
-async function refreshGitState(): Promise<void> {
+const gitStatePoll = createPollingTask(async signal => {
   const cwd = effectiveCwd();
-  const status = await gitStatus(cwd);
+  const current = () => !signal.aborted && isSourceControlCenterOpen() && cwd === effectiveCwd();
+  const status = await gitStatus(cwd, signal);
+  if (!current()) return;
 
   if (!status.ok) {
     if (isMissingGitRepositoryError(status.error)) {
@@ -412,7 +429,8 @@ async function refreshGitState(): Promise<void> {
   ahead = status.ahead ?? 0;
   behind = status.behind ?? 0;
 
-  const branchResult = await gitBranches(cwd);
+  const branchResult = await gitBranches(cwd, signal);
+  if (!current()) return;
   if (branchResult.ok) {
     currentBranch = branchResult.current ?? '';
     localBranches = filterUserFacingBranches(branchResult.local ?? []);
@@ -427,13 +445,26 @@ async function refreshGitState(): Promise<void> {
     status,
     branchCount: localBranches.length + new Set(remoteBranches.filter((ref) => !isSkippedRemoteRef(ref)).map(displayRemoteRef)).size,
   });
+});
+
+function refreshGitState(): Promise<void> { return gitStatePoll.run(); }
+
+let forgeStatePending: Promise<void> | undefined;
+function refreshForgeState(): Promise<void> {
+  if (forgeStatePending) return forgeStatePending;
+  const pending = refreshForgeStateInner().finally(() => { if (forgeStatePending === pending) forgeStatePending = undefined; });
+  forgeStatePending = pending;
+  return pending;
 }
 
-async function refreshForgeState(): Promise<void> {
-  forge = await forgeStatus(effectiveCwd());
+async function refreshForgeStateInner(): Promise<void> {
+  const cwd = effectiveCwd();
+  const result = await forgeStatus(cwd);
+  if (!isSourceControlCenterOpen() || cwd !== effectiveCwd()) return;
+  forge = result;
   paintForgeChip();
   await refreshForgeRailBadges(applyRailBadge, {
-    cwd: effectiveCwd(),
+    cwd,
     branch: currentBranch,
     forge,
   });
@@ -524,7 +555,7 @@ async function refreshAll(): Promise<void> {
     forge = await forgeRefresh(effectiveCwd());
     paintForgeChip();
   }
-  await activeView?.refresh();
+  await refreshActiveView();
 }
 
 async function runOp(fn: () => Promise<GitOpResult>, successMessage?: string): Promise<boolean> {
@@ -932,9 +963,14 @@ function handleKey(event: KeyboardEvent): void {
 function startPolling(): void {
   stopPolling();
   gitTimer = window.setInterval(() => {
-    if (document.hidden || busy || !isSourceControlCenterOpen()) return;
-    void refreshGitState();
-    if (activeSection !== 'pulls' && activeSection !== 'checks') void activeView?.refresh();
+    if (document.hidden || busy || gitPollInFlight || !isSourceControlCenterOpen()) return;
+    gitPollInFlight = true;
+    void (async () => {
+      try {
+        await refreshGitState();
+        if (activeSection !== 'pulls' && activeSection !== 'checks') await refreshActiveView();
+      } finally { gitPollInFlight = false; }
+    })().catch(() => {});
   }, GIT_POLL_MS);
 
   forgeTimer = window.setInterval(() => {
@@ -944,10 +980,10 @@ function startPolling(): void {
       try {
         await refreshForgeState();
         if (isSourceControlCenterOpen() && (activeSection === 'pulls' || activeSection === 'checks')) {
-          await activeView?.refresh();
+          await refreshActiveView();
         }
       } finally { forgePollInFlight = false; }
-    })();
+    })().catch(() => {});
   }, FORGE_POLL_MS);
 }
 
@@ -1004,9 +1040,9 @@ export async function mountSourceControlCenter(): Promise<void> {
   await refreshGitState();
   startPolling();
 
-  void refreshForgeState().then(() => {
-    if (activeSection === 'pulls' || activeSection === 'checks') void activeView?.refresh();
-  });
+  void refreshForgeState().then(async () => {
+    if (activeSection === 'pulls' || activeSection === 'checks') await refreshActiveView();
+  }).catch(() => {});
 
   const { notifyAskQuestionDisplayContextChanged } = await import('../chat/ask-question-display');
   notifyAskQuestionDisplayContextChanged();
@@ -1014,6 +1050,7 @@ export async function mountSourceControlCenter(): Promise<void> {
 
 /** Return to Code without replacing or rebuilding the chat transcript. */
 export function closeSourceControlCenter(): void {
+  gitStatePoll.cancel();
   if (isSourceControlCenterOpen()) launchApp('code');
 }
 
@@ -1025,6 +1062,7 @@ export function toggleSourceControlCenter(): void {
 
 /** Reset module state (tests). */
 export function resetSourceControlCenterForTests(): void {
+  gitStatePoll.cancel();
   stopPolling();
   if (keyHandler) {
     document.removeEventListener('keydown', keyHandler, true);
@@ -1050,6 +1088,7 @@ export function resetSourceControlCenterForTests(): void {
   forge = null;
   busy = false;
   forgePollInFlight = false;
+  gitPollInFlight = false;
   activeSection = 'changes';
   badges.clear();
 }

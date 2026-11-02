@@ -78,17 +78,20 @@ async function pollRunningJobs(): Promise<void> {
   if (!active.length) return;
   const fallback = active.some((job) => !job.workspacePath) ? await fetchSchedulerDefaultWorkspace() : null;
   const { pushNotification } = await import('../notifications/push');
-  await Promise.allSettled(active.map(async (job) => {
-    const runs = await fetchSchedulerRuns(job.id);
-    for (const run of runs.filter((candidate) => candidate.status === 'running')) {
-      pushNotification({
-        kind: 'scheduler', activityId: `scheduler:${run.id}`, activityStatus: 'running',
-        jobId: job.id, chatId: run.chatId, workspacePath: job.workspacePath || fallback?.path,
-        title: job.label, preview: 'Running scheduled job', appId: 'scheduler',
-        createdAt: Date.parse(run.startedAt), dedupeKey: `scheduler-running:${run.id}`, silent: true,
-      });
-    }
-  }));
+  // One background run-history read at a time leaves connections for the editor.
+  for (const job of active) {
+    try {
+      const runs = await fetchSchedulerRuns(job.id);
+      for (const run of runs.filter((candidate) => candidate.status === 'running')) {
+        pushNotification({
+          kind: 'scheduler', activityId: `scheduler:${run.id}`, activityStatus: 'running',
+          jobId: job.id, chatId: run.chatId, workspacePath: job.workspacePath || fallback?.path,
+          title: job.label, preview: 'Running scheduled job', appId: 'scheduler',
+          createdAt: Date.parse(run.startedAt), dedupeKey: `scheduler-running:${run.id}`, silent: true,
+        });
+      }
+    } catch { /* Keep checking other jobs if one history is unavailable. */ }
+  }
 }
 
 export function pollSchedulerNotifications(): Promise<void> {

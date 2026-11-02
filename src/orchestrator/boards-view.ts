@@ -1502,9 +1502,14 @@ function clearTaskDetailState(): void {
 
 const LOG_POLL_MS = 1_200;
 let logPollTimer: ReturnType<typeof setInterval> | null = null;
+let transcriptRefreshController: AbortController | null = null;
 let finalTranscriptAttemptId: string | null = null;
 
-function stopLogPolling(): void {
+function stopLogPolling(cancelPending = true): void {
+  if (cancelPending) {
+    transcriptRefreshController?.abort();
+    transcriptRefreshController = null;
+  }
   if (logPollTimer === null) return;
   clearInterval(logPollTimer);
   logPollTimer = null;
@@ -1518,16 +1523,18 @@ function syncLogPolling(state: BoardState): void {
     : undefined;
   const wanted = Boolean(attempt && !attempt.ended);
   if (!wanted) {
-    stopLogPolling();
+    stopLogPolling(false);
     if (attempt?.ended && transcript?.status === 'ready' && finalTranscriptAttemptId !== attempt.attemptId) {
       finalTranscriptAttemptId = attempt.attemptId;
+      transcriptRefreshController?.abort();
+      transcriptRefreshController = null;
       void refreshTranscript(attempt.attemptId);
     }
     return;
   }
   if (logPollTimer !== null) return;
   logPollTimer = setInterval(() => {
-    if (!transcript || transcript.status === 'loading') return;
+    if (document.hidden || !transcript || transcript.status === 'loading') return;
     void refreshTranscript(transcript.attemptId);
   }, LOG_POLL_MS);
 }
@@ -1535,8 +1542,13 @@ function syncLogPolling(state: BoardState): void {
 async function refreshTranscript(attemptId: string): Promise<void> {
   const boardId = selectedBoardId;
   if (!boardId) return;
+  if (transcriptRefreshController) return;
+  const controller = new AbortController();
+  transcriptRefreshController = controller;
   try {
-    const result = await readAttemptTranscript(boardId, attemptId, { limit: 500 });
+    const result = await readAttemptTranscript(boardId, attemptId, { limit: 500,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) });
+    if (controller.signal.aborted) return;
     if (transcript?.attemptId !== attemptId || boardId !== selectedBoardId) return;
     const previous = transcript;
     const sameStructure =
@@ -1554,7 +1566,9 @@ async function refreshTranscript(attemptId: string): Promise<void> {
       return;
     }
     paintBoard();
-  } catch {}
+  } catch {} finally {
+    if (transcriptRefreshController === controller) transcriptRefreshController = null;
+  }
 }
 
 function taskFilesView(): TaskFilesView | null {

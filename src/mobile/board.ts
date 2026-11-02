@@ -106,12 +106,20 @@ function createAttemptScreen(boardId: string, task: TaskState, attempt: Attempt)
   body.append(el('div', { className: 'm-skeleton' }), el('div', { className: 'm-skeleton' }));
   const root = el('section', { className: 'm-screen', dataset: { screen: `attempt:${attempt.attemptId}` } }, header.el, body);
   let timer = 0;
+  let visible = false;
+  let controller: AbortController | undefined;
 
   const load = async () => {
+    if (!visible || controller || document.hidden) return;
+    const request = new AbortController();
+    controller = request;
     try {
-      const { events, truncated } = await readAttemptTranscript(boardId, attempt.attemptId, { limit: 4000 });
+      const { events, truncated } = await readAttemptTranscript(boardId, attempt.attemptId, { limit: 4000,
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(10_000)]) });
+      if (request.signal.aborted) return;
       const adapted = adaptAttemptTranscript(events);
       const { renderTranscriptView } = await import('../ui/transcript-view');
+      if (request.signal.aborted) return;
       const holder = el('div', { className: 'm-transcript__messages' });
       renderTranscriptView(holder, adapted.messages);
       const nodes: HTMLElement[] = [];
@@ -134,7 +142,10 @@ function createAttemptScreen(boardId: string, task: TaskState, attempt: Attempt)
       body.replaceChildren(...nodes);
       if (atBottom && !attempt.ended) body.scrollTop = body.scrollHeight;
     } catch (error) {
+      if (request.signal.aborted) return;
       body.replaceChildren(emptyState({ glyph: 'fi-rr-cloud-disabled', title: 'Could not load the run', body: errorText(error) }));
+    } finally {
+      if (controller === request) controller = undefined;
     }
   };
 
@@ -142,13 +153,19 @@ function createAttemptScreen(boardId: string, task: TaskState, attempt: Attempt)
     key: `attempt:${attempt.attemptId}`,
     el: root,
     onShow() {
+      visible = true;
+      window.clearInterval(timer);
       void load();
       if (!attempt.ended) timer = window.setInterval(() => void load(), 5_000);
     },
     onHide() {
+      visible = false;
+      controller?.abort(); controller = undefined;
       window.clearInterval(timer);
     },
     dispose() {
+      visible = false;
+      controller?.abort(); controller = undefined;
       window.clearInterval(timer);
     },
   };

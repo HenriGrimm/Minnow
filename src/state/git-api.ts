@@ -153,6 +153,7 @@ export function gitCheckoutRestoreChanges(input: { cwd?: string; sha: string; ex
 async function postGit(
   op: string,
   args: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<GitOpResult> {
   if (!isLocalServerAvailable()) {
     return { ok: false, error: 'server_off' };
@@ -162,6 +163,7 @@ async function postGit(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ op, ...args }),
+      signal,
     });
     if (!res.ok) {
       const payload = await res.json().catch(() => null) as { error?: unknown } | null;
@@ -178,6 +180,7 @@ async function postGit(
     }
     return result;
   } catch (err) {
+    if (signal?.aborted) return { ok: false, error: 'Request cancelled' };
     // A failed Git request is not a health check: other project/chat requests
     // can still succeed. Only server detection should change availability.
     reportBackgroundError('git-op', err);
@@ -187,8 +190,8 @@ async function postGit(
 
 // ── Working tree ─────────────────────────────────────────────────────────────
 
-export function gitStatus(cwd?: string): Promise<GitOpResult> {
-  return postGit('status', cwd ? { cwd } : {});
+export function gitStatus(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
+  return postGit('status', cwd ? { cwd } : {}, signal);
 }
 
 export async function gitFileDiff(input: { cwd?: string; cached: boolean; path: string }): Promise<
@@ -282,8 +285,8 @@ export function gitLog(input?: {
 
 // ── Branches ─────────────────────────────────────────────────────────────────
 
-export function gitBranches(cwd?: string): Promise<GitOpResult> {
-  return postGit('branches', cwd ? { cwd } : {});
+export function gitBranches(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
+  return postGit('branches', cwd ? { cwd } : {}, signal);
 }
 
 export interface GitWorktreeStatusResult {

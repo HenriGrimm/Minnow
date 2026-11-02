@@ -66,7 +66,7 @@ async function refreshV2BoardActivity(): Promise<void> {
   refreshing = true;
   try {
     const { listBoards } = await import('../orchestrator/client');
-    const boards = await listBoards();
+    const boards = await listBoards(AbortSignal.timeout(10_000));
     v2Running = boards.some(boardSummaryIsRunning);
   } catch {
     // Server may be offline during boot; keep the last known state.

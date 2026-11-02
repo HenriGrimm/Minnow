@@ -80,6 +80,8 @@ Do not start a long-running server with execute_command (30s timeout). Use manag
 let initialized = false;
 let returnChatId: string | null = null;
 let pollTimer: number | undefined;
+let refreshController: AbortController | null = null;
+let portsController: AbortController | null = null;
 let servers: DevServerListItem[] = [];
 let ports: ListeningPortRow[] = [];
 let selectedId: string | null = null;
@@ -121,8 +123,9 @@ function stopPolling(): void {
 
 function startPolling(): void {
   stopPolling();
+  if (!isDevServerScreenOpen()) return;
   const tick = () => {
-    if (document.hidden) return;
+    if (document.hidden || !isDevServerScreenOpen()) return;
     void refreshAll();
   };
   const busy = servers.some((s) => s.status === 'starting' || s.status === 'running');
@@ -517,14 +520,19 @@ function renderPorts(): void {
 }
 
 async function refreshPorts(manual = false): Promise<void> {
-  if (!isLocalServerAvailable()) return;
+  if (!isLocalServerAvailable() || !isDevServerScreenOpen() || portsController) return;
+  const controller = new AbortController();
+  portsController = controller;
   const btn = document.querySelector<HTMLButtonElement>('[data-action="ports-refresh"]');
   if (manual) btn?.classList.add('is-busy');
   try {
-    ports = await fetchListeningPorts();
+    const result = await fetchListeningPorts(controller.signal);
+    if (controller.signal.aborted) return;
+    ports = result;
     renderPorts();
   } catch {
   } finally {
+    if (portsController === controller) portsController = null;
     if (manual) btn?.classList.remove('is-busy');
   }
 }
@@ -555,39 +563,50 @@ function syncSectionCollapse(): void {
 }
 
 async function refreshAll(): Promise<void> {
-  if (!isLocalServerAvailable()) {
-    servers = [];
-    ports = [];
+  if (!isDevServerScreenOpen() || refreshController) return;
+  const controller = new AbortController();
+  refreshController = controller;
+  try {
+    if (!isLocalServerAvailable()) {
+      servers = [];
+      ports = [];
+      syncServerSummary();
+      renderServerList();
+      renderPorts();
+      startPolling();
+      return;
+    }
+    try {
+      const result = await fetchDevServers(controller.signal);
+      if (controller.signal.aborted) return;
+      servers = result;
+    } catch {
+      if (controller.signal.aborted) return;
+      servers = [];
+    }
+    if (portsAuto) {
+      await refreshPorts();
+    }
+    if (controller.signal.aborted) return;
+    const visible = visibleServers();
+    if (!selectedId || !visible.some((server) => server.id === selectedId)) {
+      selectedId = visible[0]?.id ?? null;
+    }
     syncServerSummary();
     renderServerList();
     renderPorts();
-    startPolling();
-    return;
+    await syncDevServerLogs(
+      visible.map((s) => ({
+        id: s.id,
+        name: s.name,
+        runId: s.runId,
+        command: s.command,
+      })),
+    );
+    if (!controller.signal.aborted) startPolling();
+  } finally {
+    if (refreshController === controller) refreshController = null;
   }
-  try {
-    servers = await fetchDevServers();
-  } catch {
-    servers = [];
-  }
-  if (portsAuto) {
-    await refreshPorts();
-  }
-  const visible = visibleServers();
-  if (!selectedId || !visible.some((server) => server.id === selectedId)) {
-    selectedId = visible[0]?.id ?? null;
-  }
-  syncServerSummary();
-  renderServerList();
-  renderPorts();
-  await syncDevServerLogs(
-    visible.map((s) => ({
-      id: s.id,
-      name: s.name,
-      runId: s.runId,
-      command: s.command,
-    })),
-  );
-  startPolling();
 }
 
 function syncServerSummary(): void {
@@ -788,6 +807,10 @@ export function closeDevServerScreen(options?: {
 
   hideEditForm();
   stopPolling();
+  refreshController?.abort();
+  refreshController = null;
+  portsController?.abort();
+  portsController = null;
   teardownDevServerLogView();
   const savedReturnChatId = returnChatId;
   document.getElementById(ROOT_ID)?.remove();

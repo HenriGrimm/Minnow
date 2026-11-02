@@ -54,8 +54,8 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 /** List registry definitions joined with live status. */
-export async function fetchDevServers(): Promise<DevServerListItem[]> {
-  const res = await fetch('/api/workspace/dev-servers', { cache: 'no-store' });
+export async function fetchDevServers(signal?: AbortSignal): Promise<DevServerListItem[]> {
+  const res = await fetch('/api/workspace/dev-servers', { cache: 'no-store', signal });
   if (!res.ok) throw new Error(`dev-servers list failed (${res.status})`);
   const json = await readJson<{ ok?: boolean; servers?: DevServerListItem[] }>(res);
   return Array.isArray(json.servers) ? json.servers : [];
@@ -156,8 +156,8 @@ export async function postDevServerRestartById(
 }
 
 /** Full listening-port table for the ports panel. */
-export async function fetchListeningPorts(): Promise<ListeningPortRow[]> {
-  const res = await fetch('/api/workspace/ports', { cache: 'no-store' });
+export async function fetchListeningPorts(signal?: AbortSignal): Promise<ListeningPortRow[]> {
+  const res = await fetch('/api/workspace/ports', { cache: 'no-store', signal });
   if (!res.ok) throw new Error(`ports list failed (${res.status})`);
   const json = await readJson<{ ok?: boolean; ports?: ListeningPortRow[] }>(res);
   return Array.isArray(json.ports) ? json.ports : [];

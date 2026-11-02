@@ -42,6 +42,30 @@ test('empty state exposes the authoring workflow and a labelled install form', a
 });
 
 const reviewedPlugin = { id: 'remote-demo', name: 'Remote demo', description: 'Example', version: '1.0.0', tools: [], panels: [], skills: [], connections: [] };
+
+test('catalog polling never overlaps and leaving Settings cancels the pending read', async () => {
+  let tick;
+  let finish;
+  let signal;
+  let catalogReads = 0;
+  win.setInterval = callback => { tick = callback; return 1; };
+  globalThis.fetch = async (url, options) => {
+    if (url !== '/api/plugins/packages') return Response.json({ tools: [], skills: [] });
+    if (++catalogReads === 1) return Response.json({ revision: 0, packages: [] });
+    signal = options.signal;
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const mount = document.getElementById('mount');
+  await renderPluginPackagesSection(mount);
+  for (let i = 0; i < 30; i++) tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(catalogReads, 2, 'only one poll may remain pending');
+  mount.replaceChildren(); tick();
+  assert.equal(signal.aborted, true);
+  finish(Response.json({ revision: 1, packages: [] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(mount.childElementCount, 0);
+});
 async function until(predicate) {
   for (let i = 0; i < 100; i++) {
     if (predicate()) return;

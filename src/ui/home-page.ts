@@ -34,6 +34,7 @@ import type { IssueCard } from '../types';
 let initialized = false, generation = 0, mountedWorkspace = '';
 let timer: ReturnType<typeof setTimeout> | undefined, liveTimer: ReturnType<typeof setInterval> | undefined;
 let planAbort: AbortController | undefined;
+let refreshController: AbortController | undefined;
 let dockCleanup: (() => void) | undefined, dockUpdate: (() => void) | undefined;
 let dockKey = '', dockOpen = false, dockMaximized = false, focusedId = '';
 let dockHeight = 62;
@@ -266,20 +267,26 @@ function mountDockResize(handle: HTMLElement): void {
 async function refresh(): Promise<void> {
   clearTimeout(timer); if (getForegroundAppId() !== 'home' || document.hidden) return;
   if (!workspacePathsEqual(getWorkspacePath(), mountedWorkspace)) { await openHome(); return; }
+  if (refreshController) return;
+  const controller = new AbortController(); refreshController = controller;
   const version = generation, workspace = mountedWorkspace;
   try {
-    await ensureSessionsReady(); if (!isIssuesStoreLoaded()) await loadIssuesFromStorage(); else await refreshIssuesFromStorage();
-    if (!current(version, workspace)) return; loaded = true; errorHost.hidden = true; reconcileHomeFlow(); renderBoard(); renderSelection(); renderDock(); void pumpHomeQueue(); void drainHomeMerges();
-  } catch { if (current(version, workspace)) showRefreshError(loaded ? 'Showing the last update. Could not refresh.' : 'Could not load project issues.'); }
-  const result = await gitBranches(workspace);
-  if (!current(version, workspace)) return;
-  if (result.ok) { const local = result.local ?? []; baseBranch = local.includes('main') ? 'main' : local.includes('master') ? 'master' : ''; }
-  else showRefreshError('Showing the last update. Could not refresh project branches.');
-  renderSelection(); timer = setTimeout(() => void refresh(), 10000);
+    try {
+      await ensureSessionsReady(); if (!isIssuesStoreLoaded()) await loadIssuesFromStorage(); else await refreshIssuesFromStorage();
+      if (!current(version, workspace)) return; loaded = true; errorHost.hidden = true; reconcileHomeFlow(); renderBoard(); renderSelection(); renderDock(); void pumpHomeQueue(); void drainHomeMerges();
+    } catch { if (current(version, workspace)) showRefreshError(loaded ? 'Showing the last update. Could not refresh.' : 'Could not load project issues.'); }
+    if (controller.signal.aborted || !current(version, workspace)) return;
+    const result = await gitBranches(workspace, AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]));
+    if (!current(version, workspace)) return;
+    if (result.ok) { const local = result.local ?? []; baseBranch = local.includes('main') ? 'main' : local.includes('master') ? 'master' : ''; }
+    else showRefreshError('Showing the last update. Could not refresh project branches.');
+    renderSelection(); timer = setTimeout(() => void refresh(), 10000);
+  } finally { if (refreshController === controller) refreshController = undefined; }
 }
 function showRefreshError(message: string): void { errorHost.hidden = false; errorHost.replaceChildren(el('span', message), button('Retry', () => void refresh())); }
 
 export async function openHome(): Promise<void> {
+  refreshController?.abort(); refreshController = undefined;
   initHomePage(); generation++; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); dockCleanup?.(); dockCleanup = undefined; dockUpdate = undefined; dockKey = '';
   const version = generation; if (!getWorkspacePath()) await loadWorkspaceFromServer(); if (version !== generation || getForegroundAppId() !== 'home') return;
   const workspace = getWorkspacePath();
@@ -309,6 +316,6 @@ export function initHomePage(): void {
   if (initialized) return; initialized = true; initHomeFlow();
   const update = () => { if (getForegroundAppId() === 'home' && page?.isConnected) { renderBoard(); renderSelection(); renderDock(); } };
   subscribeIssuesChanges(() => queueMicrotask(update)); subscribeIssuesTaxonomyChanges(() => queueMicrotask(update)); subscribeMainTurnActivity(update); subscribeHomeFlow(update);
-  subscribeInstances(() => { if (getForegroundAppId() !== 'home') { generation++; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); planAbort = undefined; dockCleanup?.(); dockCleanup = undefined; dockKey = ''; closeIssueLabelPopovers(); closeContextMenu({ restoreFocus: false }); } });
+  subscribeInstances(() => { if (getForegroundAppId() !== 'home') { generation++; refreshController?.abort(); refreshController = undefined; clearTimeout(timer); clearInterval(liveTimer); planAbort?.abort(); planAbort = undefined; dockCleanup?.(); dockCleanup = undefined; dockKey = ''; closeIssueLabelPopovers(); closeContextMenu({ restoreFocus: false }); } });
   document.addEventListener('visibilitychange', () => { if (document.hidden) clearTimeout(timer); else if (getForegroundAppId() === 'home') void refresh(); });
 }

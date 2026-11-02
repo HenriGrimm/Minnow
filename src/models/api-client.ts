@@ -733,8 +733,8 @@ export async function stopModelServe(serveId: string): Promise<ServeRecord> {
   return data.serve;
 }
 
-export async function listModelServes(): Promise<ServeRecord[]> {
-  const res = await fetch('/api/models/serve');
+export async function listModelServes(signal = AbortSignal.timeout(10_000)): Promise<ServeRecord[]> {
+  const res = await fetch('/api/models/serve', { signal });
   const data = await parseJson<{ serves: ServeRecord[] }>(res);
   return data.serves;
 }

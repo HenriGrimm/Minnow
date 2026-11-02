@@ -57,6 +57,24 @@ describe('shouldScheduleFileTreeRefresh', () => {
 });
 
 describe('scheduleFileTreeRefreshAfterTool', () => {
+  test('slow refreshes coalesce later tool bursts into one trailing refresh', async () => {
+    setFileTreeServerAvailable(true);
+    let complete!: () => void;
+    let calls = 0;
+    setFileTreeAutoRefreshRunnerForTests(async () => {
+      calls++;
+      if (calls === 1) await new Promise<void>(resolve => { complete = resolve; });
+    });
+    scheduleFileTreeRefreshAfterTool('save_file', { content: 'ok' });
+    await new Promise(resolve => setTimeout(resolve, FILE_TREE_AUTO_REFRESH_DEBOUNCE_MS + 40));
+    assert.equal(calls, 1);
+    for (let i = 0; i < 20; i++) scheduleFileTreeRefreshAfterTool('save_file', { content: 'ok' });
+    await new Promise(resolve => setTimeout(resolve, FILE_TREE_AUTO_REFRESH_DEBOUNCE_MS + 40));
+    assert.equal(calls, 1, 'a slow refresh must not overlap the next tool burst');
+    complete();
+    await new Promise(resolve => setTimeout(resolve, FILE_TREE_INTERACTION_FLUSH_MS + 40));
+    assert.equal(calls, 2);
+  });
   test('debounces two rapid schedules into one runner invocation', async () => {
     setFileTreeServerAvailable(true);
     let refreshCount = 0;

@@ -118,7 +118,7 @@ export async function fetchSchedulerDefaultWorkspace(): Promise<SchedulerDefault
 
 /** Load all scheduled jobs. */
 export async function fetchSchedulerJobs(): Promise<ScheduledJob[]> {
-  const res = await fetch('/api/scheduler/jobs');
+  const res = await fetch('/api/scheduler/jobs', { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
     throw new Error(`Failed to load scheduler jobs (${res.status})`);
   }
@@ -194,7 +194,7 @@ export async function runSchedulerJobNow(id: string): Promise<unknown> {
 
 /** Recent run history for one job. */
 export async function fetchSchedulerRuns(jobId: string): Promise<SchedulerRun[]> {
-  const res = await fetch(`/api/scheduler/runs/${encodeURIComponent(jobId)}`);
+  const res = await fetch(`/api/scheduler/runs/${encodeURIComponent(jobId)}`, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
     throw new Error(`Failed to load run history (${res.status})`);
   }
@@ -204,7 +204,7 @@ export async function fetchSchedulerRuns(jobId: string): Promise<SchedulerRun[]>
 
 /** Unacknowledged in-app reminders. */
 export async function fetchSchedulerNotifications(): Promise<SchedulerNotification[]> {
-  const res = await fetch('/api/scheduler/notifications');
+  const res = await fetch('/api/scheduler/notifications', { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
     return [];
   }

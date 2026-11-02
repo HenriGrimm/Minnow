@@ -53,6 +53,7 @@ let interactionFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let userInteractingWithTree = false;
 /** True after a mutating tool schedules refresh; cleared when the refresh runs or is reset. */
 let refreshPending = false;
+let refreshRunning = false;
 let pendingRefreshDirs: Set<string> | null = null;
 let interactionTrackingBound = false;
 
@@ -131,7 +132,7 @@ function clearPendingRefreshIndicator(): void {
 // ── Flush ────────────────────────────────────────────────────────────────────
 
 function flushDebouncedRefresh(): void {
-  if (!refreshPending) {
+  if (!refreshPending || refreshRunning) {
     return;
   }
 
@@ -153,8 +154,11 @@ function flushDebouncedRefresh(): void {
   const dirs = pendingRefreshDirs ? [...pendingRefreshDirs] : null;
   pendingRefreshDirs = null;
   clearPendingRefreshIndicator();
-
+  refreshRunning = true;
   void refreshRunner(dirs).catch(() => {
+  }).finally(() => {
+    refreshRunning = false;
+    if (refreshPending) scheduleInteractionFlush();
   });
 }
 

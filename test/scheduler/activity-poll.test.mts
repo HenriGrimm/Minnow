@@ -8,6 +8,29 @@ import { resetNotificationPrefsForTests, saveNotificationPref } from '../../src/
 import { buildActivityFeed } from '../../src/state/activity-feed.ts';
 
 const originalFetch = globalThis.fetch;
+
+test('many running jobs share a poll pass and never fan out into all HTTP connections', async () => {
+  let active = 0, maximum = 0, histories = 0;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url === '/api/scheduler/notifications') return Response.json({ notifications: [] });
+    if (url === '/api/scheduler/jobs') return Response.json({ jobs: Array.from({ length: 12 }, (_, id) => ({
+      id: String(id), label: `Job ${id}`, running: true, workspacePath: '/work',
+    })) });
+    if (url.startsWith('/api/scheduler/runs/')) {
+      active++; histories++; maximum = Math.max(maximum, active);
+      await new Promise(resolve => setImmediate(resolve));
+      active--;
+      return Response.json({ runs: [] });
+    }
+    return Response.json({});
+  };
+  const pass = pollSchedulerNotifications();
+  for (let i = 0; i < 20; i++) assert.equal(pollSchedulerNotifications(), pass);
+  await pass;
+  assert.equal(histories, 12);
+  assert.equal(maximum, 1);
+});
 beforeEach(() => {
   const win = new Window();
   Object.assign(globalThis, { window: win, document: win.document, localStorage: win.localStorage });

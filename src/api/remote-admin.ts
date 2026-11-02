@@ -95,8 +95,8 @@ function post(url: string, body: unknown = {}): Promise<Response> {
   });
 }
 
-export async function fetchRemoteStatus(): Promise<RemoteStatus> {
-  return json(await fetch('/api/remote/status', { cache: 'no-store' }), 'Could not load remote access status');
+export async function fetchRemoteStatus(signal = AbortSignal.timeout(10_000)): Promise<RemoteStatus> {
+  return json(await fetch('/api/remote/status', { cache: 'no-store', signal }), 'Could not load remote access status');
 }
 
 export async function setLanEnabled(enabled: boolean): Promise<RemoteStatus> {
@@ -117,14 +117,14 @@ export async function createConnectSession(): Promise<ConnectSession> {
 
 export async function fetchConnectSession(id: string): Promise<ConnectSessionStatus> {
   return json(
-    await fetch(`/api/auth/connect-sessions/${encodeURIComponent(id)}`, { cache: 'no-store' }),
+    await fetch(`/api/auth/connect-sessions/${encodeURIComponent(id)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }),
     'Could not check the connect code',
   );
 }
 
-export async function fetchDevices(): Promise<CompanionDevice[]> {
+export async function fetchDevices(signal = AbortSignal.timeout(10_000)): Promise<CompanionDevice[]> {
   const payload = await json<{ devices?: CompanionDevice[] }>(
-    await fetch('/api/auth/devices', { cache: 'no-store' }),
+    await fetch('/api/auth/devices', { cache: 'no-store', signal }),
     'Could not load devices',
   );
   return Array.isArray(payload.devices) ? payload.devices : [];
@@ -145,7 +145,7 @@ export async function revokeDevice(id: string): Promise<void> {
 
 export async function fetchAccessRequests(): Promise<PendingAccessRequest[]> {
   const payload = await json<{ requests?: PendingAccessRequest[] }>(
-    await fetch('/api/auth/requests', { cache: 'no-store' }),
+    await fetch('/api/auth/requests', { cache: 'no-store', signal: AbortSignal.timeout(10_000) }),
     'Could not load access requests',
   );
   return Array.isArray(payload.requests) ? payload.requests : [];

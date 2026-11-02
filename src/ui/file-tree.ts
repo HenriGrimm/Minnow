@@ -195,7 +195,7 @@ async function pollFileTreeGitStatus(): Promise<void> {
         ? gitStatusPollCwd
         : undefined;
 
-    const result = await gitStatus(cwdArg);
+    const result = await gitStatus(cwdArg, AbortSignal.timeout(10_000));
     if (!result.ok) {
       setFileTreeGitStatus(new Map());
       if (!isFileTreeServerAvailable() && gitStatusPollTimer !== undefined) {
