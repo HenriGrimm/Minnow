@@ -14,12 +14,14 @@ const OUTSET = 12;
 
 let canvas: HTMLCanvasElement | null = null;
 let rim: ReturnType<typeof mountWaveRim> | null = null;
+let hoverEvents: AbortController | null = null;
 let listening = false;
 /** How much of each live turn the rim has already played, so only new text ripples. */
 const heard = new Map<string, ChatStreamText>();
 
 function mount(button: HTMLElement): NonNullable<typeof rim> {
   if (rim && canvas?.parentElement === button) return rim;
+  hoverEvents?.abort();
   rim?.dispose();
   canvas = document.createElement('canvas');
   canvas.className = 'composer-wave';
@@ -27,6 +29,10 @@ function mount(button: HTMLElement): NonNullable<typeof rim> {
   canvas.style.setProperty('--composer-wave-outset', `${OUTSET}px`);
   button.prepend(canvas);
   rim = mountWaveRim(canvas, { kind: 'border', outset: OUTSET });
+  hoverEvents = new AbortController();
+  const refreshPalette = () => rim?.refreshPalette();
+  button.addEventListener('pointerenter', refreshPalette, { signal: hoverEvents.signal });
+  button.addEventListener('pointerleave', refreshPalette, { signal: hoverEvents.signal });
   return rim;
 }
 

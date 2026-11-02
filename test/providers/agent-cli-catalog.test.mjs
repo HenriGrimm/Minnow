@@ -200,7 +200,7 @@ describe('agent CLI provider seam and static catalog', () => {
     assert.deepEqual(rows.map(row => row.id), ['account-model']);
     assert.equal(rows[0].display_name, 'Account Model');
     assert.equal(rows[0].max_context_length, 272000);
-    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'max']);
+    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'high', 'xhigh']);
     assert.equal(rows[0].reasoning.default, 'low');
     assert.equal(rows[0].catalogVision, true);
   });
@@ -213,6 +213,22 @@ describe('agent CLI provider seam and static catalog', () => {
     ]);
     assert.deepEqual(Object.fromEntries(rows.map(row => [row.id, row.catalogVision])),
       { older: true, 'text-only': false, vision: true });
+  });
+
+  test('Codex preserves native effort choices and defaults, including distinct extra high and max', () => {
+    for (const level of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      const [row] = codexCatalogRows([{ slug: 'native-efforts', visibility: 'list',
+        supported_reasoning_levels: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'xhigh', 'invalid'],
+        default_reasoning_level: level }]);
+      assert.deepEqual(row.reasoning.allowed_options, ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+      assert.equal(row.reasoning.default, level === 'none' ? 'off' : level);
+    }
+    assert.deepEqual(listAgentCliModels('codex-cli')[0].reasoning.allowed_options, ['low', 'medium', 'high', 'xhigh']);
+    const claude = listAgentCliModels('claude-code-cli', { cliVersion: '2.1.296' });
+    for (const alias of ['sonnet', 'opus', 'haiku']) {
+      assert.deepEqual(claude.find(row => row.id === alias).reasoning,
+        { allowed_options: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' });
+    }
   });
 
   test('Cursor static catalog is more than Auto', () => {

@@ -90,6 +90,26 @@ test('two owners browse concurrently with isolated state and render full screens
   assert.equal(valueA, 'A');
   assert.equal(valueB, 'B');
 
+  // Keep a viewer open while another tab works. Each pair must share one real
+  // Chromium capture, without turning the frame loop into catalog updates.
+  let viewerTabChanges = 0;
+  const onTabChanged = (tab) => { if (tab.tabId === a.tab.tabId) viewerTabChanges += 1; };
+  service.on('tab-changed', onTabChanged);
+  for (let index = 0; index < 5; index += 1) {
+    const frames = await Promise.all([
+      service.captureFrame(a.tab.tabId),
+      service.captureFrame(a.tab.tabId),
+      service.evaluate({ ...ownerCall(b, ownerB), expression: 'document.title' }),
+    ]);
+    assert.equal(frames[0].revision, frames[1].revision);
+    assert.equal(frames[0].width, 1440);
+    assert.equal(frames[0].height, 900);
+    assert.equal(frames[2], 'Agent fixture');
+  }
+  service.off('tab-changed', onTabChanged);
+  assert.equal(viewerTabChanges, 0);
+  assert.equal(await service.evaluate({ ...ownerCall(a, ownerA), expression: '1 + 1' }), 2);
+
   const snap = await service.snapshot(ownerCall(a, ownerA));
   const input = [...snap.byUid.values()].find((node) => node.role === 'textbox');
   const button = [...snap.byUid.values()].find((node) => node.role === 'button');

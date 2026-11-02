@@ -672,7 +672,16 @@ export function createAgentBrowserMiddleware() {
         const browser = getService();
         if (action.action === 'frame' && req.method === 'GET') {
           await refreshTrustedTabPolicy(browser, action.tabId);
-          const frame = await browser.captureFrame(action.tabId);
+          let frame;
+          try {
+            frame = await browser.captureFrame(action.tabId);
+          } catch (error) {
+            if (error?.code !== 'busy') throw error;
+            res.statusCode = 204;
+            res.setHeader('Cache-Control', 'no-store');
+            res.end();
+            return;
+          }
           res.statusCode = 200;
           res.setHeader('Content-Type', 'image/png');
           res.setHeader('Cache-Control', 'no-store');

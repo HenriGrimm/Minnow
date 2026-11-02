@@ -128,3 +128,77 @@ test('keeps an address draft and focus while a live update redraws controls', as
     testWindow.close();
   }
 });
+
+async function waitFor(check: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (!check() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(check(), 'viewer did not reach the expected state');
+}
+
+async function viewerHarness(t: { after: (cleanup: () => void) => void }, mode = 'watch') {
+  const testWindow = new Window();
+  const prior = { window: globalThis.window, document: globalThis.document, fetch: globalThis.fetch };
+  const frames: string[] = [];
+  let targets = 0;
+  let busy = false;
+  let stream: ReadableStreamDefaultController<Uint8Array>;
+  Object.assign(globalThis, {
+    window: testWindow,
+    document: testWindow.document,
+    fetch: async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/events')) return new Response(new ReadableStream<Uint8Array>({
+        start(controller) { stream = controller; },
+      }), { headers: { 'Content-Type': 'text/event-stream' } });
+      if (url.endsWith('/tabs')) return Response.json({ tabs: ['a', 'b'].map((id) => ({ tabId: id, controlMode: mode })) });
+      if (url.endsWith('/targets')) { targets += 1; return Response.json({ targets: [] }); }
+      if (url.endsWith('/guide/select')) return Response.json({ selectionToken: 'selection', owner: 'Agent' });
+      if (url.endsWith('/frame')) {
+        frames.push(url);
+        return busy ? new Response(null, { status: 204 }) : new Response(new Blob(['frame']));
+      }
+      return Response.json({});
+    },
+  });
+  t.after(() => {
+    resetAgentBrowserViewerForTests();
+    Object.assign(globalThis, prior);
+    testWindow.close();
+  });
+  await initAgentBrowserViewer();
+  await waitFor(() => Boolean(testWindow.document.querySelector('[data-agent-browser-frame]')));
+  return {
+    window: testWindow, frames,
+    setBusy() { busy = true; },
+    targetRequests: () => targets,
+    async changed() {
+      stream!.enqueue(new TextEncoder().encode('data: {"type":"tabs-changed"}\n\n'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    },
+  };
+}
+
+test('busy frames preserve the displayed image and tab events do not flood assignment reads', async (t) => {
+  const viewer = await viewerHarness(t);
+  const image = viewer.window.document.querySelector<HTMLImageElement>('[data-agent-browser-frame]')!;
+  const src = image.src;
+  viewer.setBusy();
+  const initialFrames = viewer.frames.length;
+  for (let index = 0; index < 10; index += 1) await viewer.changed();
+  await waitFor(() => viewer.frames.length > initialFrames);
+  assert.equal(viewer.window.document.querySelector('[data-agent-browser-frame]'), image);
+  assert.equal(image.src, src, '204 is a skipped capture, never an empty image');
+  assert.equal(viewer.targetRequests(), 1, 'tab activity must not repeatedly read every saved chat');
+});
+
+test('switching away from a frozen Guide frame resumes captures on the next Guide tab', async (t) => {
+  const viewer = await viewerHarness(t, 'guide');
+  const doc = viewer.window.document;
+  const image = doc.querySelector<HTMLImageElement>('[data-agent-browser-frame]')!;
+  image.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1440, height: 900 }) as DOMRect;
+  doc.querySelector('[data-agent-browser-canvas]')!.dispatchEvent(new viewer.window.MouseEvent('click', { clientX: 10, clientY: 20 }));
+  await waitFor(() => Boolean(doc.querySelector('[data-agent-browser-target]')) && !doc.querySelector<HTMLButtonElement>('[data-agent-browser-send-guide]')!.disabled);
+  doc.querySelector<HTMLButtonElement>('[data-agent-browser-tab="b"]')!.click();
+  await waitFor(() => viewer.frames.some((url) => url.includes('/tabs/b/frame')));
+  assert.ok(doc.querySelector('[data-agent-browser-frame]'));
+});

@@ -66,6 +66,8 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
   let items = new Map<string, ActivityItem>();
   let lastFingerprint = '';
   let historyExpanded = false;
+  let pressing = false;
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined;
   let latest: { feed: ActivityFeed; prefs: NotificationPrefs; label: string; canStop: boolean } | null = null;
   const expanded = new Set<string>();
   const retrying = new Set<string>();
@@ -82,6 +84,7 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
 
   function render(feed: ActivityFeed, prefs: NotificationPrefs, label: string, canStop: boolean): void {
     latest = { feed, prefs, label, canStop };
+    if (pressing) return;
     items = new Map([...feed.attention, ...feed.running, ...feed.background, ...feed.recent].map((item) => [item.id, item]));
     const fingerprint = JSON.stringify(latest, (key, value) => key === 'elapsedMs' ? undefined : value) + historyExpanded;
     if (fingerprint === lastFingerprint) return;
@@ -99,7 +102,9 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
     mute.setAttribute('aria-pressed', String(prefs.muted));
     const summaryText = `${feed.attention.length ? `${feed.attention.length} need you · ` : ''}${getRunningAgentCount(feed)} agents working · ${label || 'This workspace'}`;
     if (summary.textContent !== summaryText) summary.textContent = summaryText;
+    const scrollTop = body.scrollTop;
     body.innerHTML = `${feed.attention.length ? section(`Needs you · ${feed.attention.length}`, feed.attention) : ''}${feed.running.length || feed.background.length ? `<section class="activity-section" aria-label="In progress"><div class="activity-section__heading"><h3>In progress · ${feed.runningCount}</h3></div><ul class="activity-list">${feed.running.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul>${feed.background.length ? `<details class="activity-background" data-detail-id="background"${expanded.has('background') ? ' open' : ''}><summary>${feed.background.length} background task${feed.background.length === 1 ? '' : 's'}</summary><ul class="activity-list">${feed.background.map((item) => rowHtml(item, expanded.has(item.id))).join('')}</ul></details>` : ''}</section>` : ''}${!feed.attention.length && !feed.runningCount ? `<div class="activity-empty">${iconHtml('check', { size: 22 })}<p>All caught up</p><small>No work running. Nothing needs your attention.</small></div>` : ''}${feed.recent.length ? section('Recent', historyExpanded ? feed.recent : feed.recent.slice(0, 3), true) : ''}`;
+    body.scrollTop = scrollTop;
     panel.querySelector<HTMLButtonElement>('[data-action="stop-all"]')!.disabled = !canStop;
     const history = panel.querySelector<HTMLButtonElement>('[data-action="history"]')!;
     history.hidden = feed.recent.length <= 3;
@@ -142,6 +147,17 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
     }
   }
   const click = (event: MouseEvent) => { void onClick(event); };
+  const press = () => { clearTimeout(releaseTimer); pressing = true; };
+  const release = () => {
+    if (!pressing) return;
+    releaseTimer = setTimeout(() => {
+      pressing = false;
+      if (latest) render(latest.feed, latest.prefs, latest.label, latest.canStop);
+    }, 0);
+  };
+  panel.addEventListener('pointerdown', press);
+  panel.ownerDocument.addEventListener('pointerup', release);
+  panel.ownerDocument.addEventListener('pointercancel', release);
   panel.addEventListener('click', click);
   return {
     render,
@@ -149,6 +165,12 @@ export function createActivityDropdown(panel: HTMLElement, actions: ActivityDrop
       for (const el of panel.querySelectorAll<HTMLElement>('[data-started-at]')) el.textContent = formatAgentActivityElapsed(now - Number(el.dataset.startedAt));
       for (const el of panel.querySelectorAll<HTMLElement>('[data-timestamp]')) el.textContent = formatRelativeTime(Number(el.dataset.timestamp), now);
     },
-    destroy(): void { panel.removeEventListener('click', click); },
+    destroy(): void {
+      clearTimeout(releaseTimer);
+      panel.removeEventListener('pointerdown', press);
+      panel.ownerDocument.removeEventListener('pointerup', release);
+      panel.ownerDocument.removeEventListener('pointercancel', release);
+      panel.removeEventListener('click', click);
+    },
   };
 }

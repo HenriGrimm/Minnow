@@ -101,6 +101,23 @@ test('expanded details and keyboard focus survive source updates', () => {
   assert.equal((document.activeElement as HTMLElement).dataset.action, 'retry');
 });
 
+test('a live refresh cannot remove a pressed Open button before its click arrives', async () => {
+  let opened = '';
+  actions.open = item => { opened = item.id; };
+  const view = createActivityDropdown(panel, actions);
+  view.render(feed([notice()]), DEFAULT_NOTIFICATION_PREFS, 'Minnow', false);
+  const button = panel.querySelector<HTMLButtonElement>('[data-action="open"]')!;
+  button.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
+  view.render(feed([notice({ preview: 'Live update during the press' })]), DEFAULT_NOTIFICATION_PREFS, 'Minnow', false);
+  assert.equal(button.isConnected, true);
+  button.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true }));
+  button.click();
+  assert.equal(opened, 'scheduler:r1');
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.match(panel.textContent!, /Live update during the press/);
+  view.destroy();
+});
+
 test('retry is single-flight and a rejected retry stays visible with its error', async () => {
   let calls = 0;
   let reject!: (error: Error) => void;

@@ -89,6 +89,8 @@ let frameGeneration = 0;
 let nextFrameAt = 0;
 let stageResizeObserver: ResizeObserver | null = null;
 let guideFrameFrozen = false;
+let targetsLoading = false;
+let nextTargetsRefreshAt = 0;
 
 function tabId(tab: AgentBrowserTab | null | undefined): string {
   return typeof tab?.tabId === 'string' ? tab.tabId : typeof tab?.id === 'string' ? tab.id : '';
@@ -160,6 +162,7 @@ function clearFrameUrl(): void {
 }
 
 function invalidateFrame(): void {
+  guideFrameFrozen = false;
   frameGeneration += 1;
   frameAbort?.abort();
   frameAbort = null;
@@ -251,6 +254,9 @@ async function refreshTabs(): Promise<void> {
 }
 
 async function refreshTargets(): Promise<void> {
+  if (targetsLoading || !state.visible || Date.now() < nextTargetsRefreshAt) return;
+  targetsLoading = true;
+  nextTargetsRefreshAt = Date.now() + TAB_REFRESH_INTERVAL_MS;
   try {
     const payload = await requestJson<{ targets?: AgentBrowserTarget[] }>('/targets');
     const next = Array.isArray(payload.targets) ? payload.targets : [];
@@ -262,6 +268,8 @@ async function refreshTargets(): Promise<void> {
     // A target picker is an enhancement. Existing tabs still remain operable
     // when no assignment candidates are currently available.
     state.targets = [];
+  } finally {
+    targetsLoading = false;
   }
 }
 
@@ -280,6 +288,8 @@ async function refreshFrame(): Promise<void> {
       cache: 'no-store',
       signal: controller.signal,
     });
+    // Busy tabs prioritize agent work and operator input; retain the last frame.
+    if (response.status === 204) return;
     if (!response.ok) throw new Error(`Live frame unavailable (HTTP ${response.status})`);
     const width = Number(response.headers.get('X-Minnow-Agent-Browser-Viewport-Width'));
     const height = Number(response.headers.get('X-Minnow-Agent-Browser-Viewport-Height'));
@@ -826,11 +836,19 @@ export function resetAgentBrowserViewerForTests(): void {
   frameAbort?.abort();
   frameAbort = null;
   guideFrameFrozen = false;
+  targetsLoading = false;
+  nextTargetsRefreshAt = 0;
+  tabsLoading = false;
+  frameLoading = false;
+  frameGeneration += 1;
+  nextFrameAt = 0;
   eventSource?.close();
   eventSource = null;
   stageResizeObserver?.disconnect();
   stageResizeObserver = null;
   clearFrameUrl();
+  stopIdleTracking?.();
+  stopIdleTracking = null;
   Object.assign(state, {
     tabs: [],
     targets: [],

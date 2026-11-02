@@ -151,7 +151,7 @@ function claudeCatalogForVersion(version) {
         ? { id: 'claude-opus-4-8', max_context_length: 1_000_000, reasoning: 'adaptive' }
         : { id: 'claude-opus-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
   const sonnet = claudeVersionAtLeast(version, 2, 1, 284)
-    ? { id: 'claude-sonnet-5-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
+    ? { id: 'claude-sonnet-5-5', max_context_length: 1_000_000, reasoning: 'adaptive', reasoningDefault: 'medium' }
     : claudeVersionAtLeast(version, 2, 1, 197)
       ? { id: 'claude-sonnet-5', max_context_length: 1_000_000, reasoning: 'adaptive' }
       : { id: 'claude-sonnet-4-6', max_context_length: 200_000, reasoning: 'adaptive' };
@@ -279,8 +279,8 @@ async function fetchCursorListModelsText(options = {}) {
 }
 
 const REASONING = Object.freeze({
-  claude: Object.freeze({ allowed_options: ['off', 'low', 'medium', 'high', 'max'], default: 'high' }),
-  codex: Object.freeze({ allowed_options: ['low', 'medium', 'high', 'max'], default: 'medium' }),
+  claude: Object.freeze({ allowed_options: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' }),
+  codex: Object.freeze({ allowed_options: ['low', 'medium', 'high', 'xhigh'], default: 'medium' }),
   cursor: Object.freeze({ allowed_options: [], default: 'off' }),
 });
 
@@ -308,20 +308,20 @@ export function listAgentCliModels(providerId, options = {}) {
   return kind === 'cursor' ? cursorReasoningForModels(rows) : rows;
 }
 
-const MINNOW_REASONING_OPTIONS = new Set(['off', 'low', 'medium', 'high', 'max']);
+const MINNOW_REASONING_OPTIONS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 /** @param {unknown} raw */
 function normalizeCodexReasoning(raw, advertisedDefault) {
   if (!Array.isArray(raw)) return REASONING.codex;
   const options = raw
     .map((entry) => typeof entry === 'string' ? entry : entry?.effort)
-    .map((value) => value === 'xhigh' ? 'max' : value)
+    .map((value) => value === 'none' ? 'off' : value)
     .filter((value) => typeof value === 'string' && MINNOW_REASONING_OPTIONS.has(value));
   const allowed_options = [...new Set(options)];
   return {
     allowed_options: allowed_options.length > 0 ? allowed_options : REASONING.codex.allowed_options,
-    default: allowed_options.includes(advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
-      ? (advertisedDefault === 'xhigh' ? 'max' : advertisedDefault)
+    default: allowed_options.includes(advertisedDefault === 'none' ? 'off' : advertisedDefault)
+      ? (advertisedDefault === 'none' ? 'off' : advertisedDefault)
       : allowed_options.includes('medium') ? 'medium' : allowed_options[0] ?? REASONING.codex.default,
   };
 }
@@ -379,7 +379,7 @@ export function claudeCatalogRows(models, fallback = []) {
     const advertisedContext = Number(model.contextWindow ?? model.context_window);
     const allowed_options = model.supportsEffort === true
       ? [...new Set((Array.isArray(model.supportedEffortLevels) ? model.supportedEffortLevels : REASONING.claude.allowed_options)
-        .map(value => value === 'xhigh' ? 'max' : value).filter(value => MINNOW_REASONING_OPTIONS.has(value) && value !== 'off'))]
+        .filter(value => MINNOW_REASONING_OPTIONS.has(value) && value !== 'off'))]
       : model.supportsEffort === false ? [] : known?.reasoning?.allowed_options ?? [];
     const preferred = model.defaultEffort
       ?? (/^claude-(?:opus|sonnet|haiku)-5-5/.test(resolved) ? 'medium' : known?.reasoning?.default ?? 'high');

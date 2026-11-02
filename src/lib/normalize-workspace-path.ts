@@ -11,9 +11,12 @@ export function normalizeWorkspacePath(fsPath: string): string {
   return normalizePathForComparison(fsPath.trim());
 }
 
-/** True when both strings name the same folder after slash and drive normalization. */
+/** Compare Windows drive paths without casing differences; preserve POSIX case. */
 export function workspacePathsEqual(a: string, b: string): boolean {
   const left = normalizeWorkspacePath(a);
   const right = normalizeWorkspacePath(b);
-  return Boolean(left) && left === right;
+  if (!left || !right) return false;
+  return /^[A-Z]:\//.test(left)
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
 }

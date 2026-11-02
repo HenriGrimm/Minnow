@@ -30,7 +30,7 @@ test('Claude discovery reads the installed catalog without a prompt, caches, and
     assert.deepEqual(rows.map(row => row.id), ['haiku', 'claude-haiku-5-5']);
     assert.equal(rows[0].display_name, 'Claude Haiku 5.5 (CLI default)');
     assert.equal(rows[0].max_context_length, 1_000_000);
-    assert.deepEqual(rows[0].reasoning, { allowed_options: ['low', 'medium', 'high', 'max'], default: 'medium' });
+    assert.deepEqual(rows[0].reasoning, { allowed_options: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'medium' });
     assert.ok(!JSON.stringify(rows).includes('private-must-not-appear'));
     await fs.writeFile(modelsFile, JSON.stringify([haiku, { value: 'new-model', resolvedModel: 'claude-new-7',
       displayName: 'New 7', contextWindow: 500000, supportsEffort: true, supportedEffortLevels: ['low', 'high'] }]));
@@ -91,4 +91,11 @@ test('Claude catalog preserves restrictions, raw IDs, advertised controls and un
   assert.equal(sonnet[0].reasoning.default, 'medium');
   const olderSdk = claudeCatalogRows([{ value: 'sonnet', displayName: 'Sonnet 5.5' }], fallback);
   assert.ok(olderSdk[0].reasoning.allowed_options.includes('high'), 'older SDK rows retain known reasoning when the field is absent');
+});
+
+test('Claude retains extra high defaults and never invents max for a restricted model', () => {
+  for (const levels of [['low', 'high', 'xhigh'], ['low', 'high', 'xhigh', 'max']]) {
+    const [row] = claudeCatalogRows([{ ...haiku, defaultEffort: 'xhigh', supportedEffortLevels: levels }]);
+    assert.deepEqual(row.reasoning, { allowed_options: levels, default: 'xhigh' });
+  }
 });

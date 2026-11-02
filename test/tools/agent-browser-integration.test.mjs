@@ -152,6 +152,20 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
     await rmTestHome(homeDir);
   });
 
+  test('busy viewer captures return no content instead of an error or empty PNG', async () => {
+    const { tab } = await fake.reserveTab({ chatId: 'busy-chat', runId: 'run', agentId: 'main' });
+    fake.captureFrame = async () => { throw new AgentBrowserError('tab is busy', 'busy'); };
+    const { server, baseUrl } = await listen(createAgentBrowserMiddleware());
+    try {
+      const response = await fetch(`${baseUrl}/api/browser-agent/tabs/${tab.tabId}/frame`);
+      assert.equal(response.status, 204);
+      assert.equal(await response.text(), '');
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   test('board and subagent dispatches cannot observe each other and screenshots carry image data', async () => {
     const boardOwner = { chatId: 'board-1', runId: 'task-1', agentId: 'attempt-board' };
     const subagentOwner = { chatId: 'chat-1', runId: 'sub-run-1', agentId: 'attempt-sub' };

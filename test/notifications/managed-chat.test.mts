@@ -3,6 +3,19 @@ import { test } from 'node:test';
 import type { Chat } from '../../src/types.ts';
 import type { PushNotificationInput } from '../../src/notifications/types.ts';
 import { createManagedChatNotificationProducer } from '../../src/notifications/managed-chat.ts';
+import { appendNotification, getNotifications, resetNotificationStoreForTests } from '../../src/notifications/store.ts';
+
+test('resolved managed requests clear only their own question notification', () => {
+  resetNotificationStoreForTests();
+  const f = fixture();
+  try {
+    f.chat.agentRequestSummary = [{ requestId: 'a', kind: 'question' }, { requestId: 'b', kind: 'question' }]; f.change();
+    for (const [index, notice] of f.notices.entries()) appendNotification({ ...notice, id: String(index), createdAt: 0, read: false });
+    f.chat.agentRequestSummary = [{ requestId: 'b', kind: 'question' }]; f.change();
+    assert.equal(getNotifications().find(row => row.dedupeKey === 'request:a')?.resolved, true);
+    assert.equal(getNotifications().find(row => row.dedupeKey === 'request:b')?.resolved, undefined);
+  } finally { f.dispose(); resetNotificationStoreForTests(); }
+});
 
 function fixture() {
   const chat = { id: 'child', name: 'Reviewer', workspacePath: '/project', chatCommandVersion: 1,

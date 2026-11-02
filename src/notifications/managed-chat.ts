@@ -1,5 +1,6 @@
 import type { Chat } from '../types';
 import type { PushNotificationInput } from './types';
+import { resolveQuestionNotification } from './store';
 
 interface Snapshot { executionId?: string; status?: string; requests: Set<string> }
 interface Metadata { baseline?: boolean }
@@ -20,6 +21,9 @@ export function createManagedChatNotificationProducer(options: {
     const chat = options.chats().find(row => row.id === chatId);
     if (!chat) { snapshots.delete(chatId); return; }
     const previous = snapshots.get(chatId), next = capture(chat);
+    for (const requestId of previous?.requests ?? []) {
+      if (!next.requests.has(requestId)) resolveQuestionNotification(chatId, `request:${requestId}`);
+    }
     snapshots.delete(chatId); snapshots.set(chatId, next);
     while (snapshots.size > 512) snapshots.delete(snapshots.keys().next().value!);
     const baseline = metadata.baseline === true;

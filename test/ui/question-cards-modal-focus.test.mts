@@ -68,6 +68,51 @@ describe('question-cards-modal focus scope', () => {
     }
   });
 
+  for (const answer of [true, false]) test(`${answer ? 'answering' : 'cancelling'} in chat dismisses its toast without clicking it`, async () => {
+    const { initNotificationCards } = await import('../../src/notifications/cards.ts');
+    const { getNotifications, resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
+    const { pushNotification } = await import('../../src/notifications/push.ts');
+    const { showQuestionCardsModal, forceCloseAskQuestionModal } = await import('../../src/ui/question-cards-modal.ts');
+    resetNotificationStoreForTests();
+    const stopCards = initNotificationCards();
+    try {
+      pushNotification({ kind: 'chat_question', title: 'Another chat', preview: 'Still pending', chatId: 'other', appId: 'code' });
+      const pending = showQuestionCardsModal({ questions: [{ id: 'q1', prompt: 'Pick one', options: [{ id: 'a', label: 'Alpha' }] }] });
+      // Allow the lazy toast import to render both cards.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(document.querySelectorAll('.mn-toast').length, 2);
+      if (answer) (document.querySelector('.question-cards-options input') as HTMLInputElement).click();
+      else forceCloseAskQuestionModal();
+      assert.equal((await pending).status, answer ? 'answered' : 'cancelled');
+      assert.equal(document.querySelectorAll('.mn-toast').length, 1);
+      const own = getNotifications().find((row) => row.chatId === 'chat-focus');
+      assert.equal(own?.resolved, true);
+      assert.equal(own?.read, true);
+      assert.equal(getNotifications().find((row) => row.chatId === 'other')?.resolved, undefined);
+    } finally {
+      stopCards();
+      resetNotificationStoreForTests();
+    }
+  });
+
+  test('a question settled before the toast loads never leaves a stale card', async () => {
+    const { initNotificationCards } = await import('../../src/notifications/cards.ts');
+    const { resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
+    const { showQuestionCardsModal, forceCloseAskQuestionModal } = await import('../../src/ui/question-cards-modal.ts');
+    resetNotificationStoreForTests();
+    const stopCards = initNotificationCards();
+    try {
+      const pending = showQuestionCardsModal({ questions: [{ id: 'quick', prompt: 'Pick one', options: [{ id: 'a', label: 'Alpha' }] }] });
+      forceCloseAskQuestionModal();
+      await pending;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(document.querySelectorAll('.mn-toast').length, 0);
+    } finally {
+      stopCards();
+      resetNotificationStoreForTests();
+    }
+  });
+
   test('panel is nonmodal dialog with labelled prompt', async () => {
     const { showQuestionCardsModal } = await import('../../src/ui/question-cards-modal.ts');
     const promise = showQuestionCardsModal({

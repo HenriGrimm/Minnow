@@ -78,7 +78,7 @@ export function buildActivityFeed(input: ActivityFeedInput): ActivityFeed {
   const inScope = (path?: string) => !scope || normalizeWorkspacePath(path ?? '') === scope;
   const items = new Map<string, ActivityItem>();
   const mainByChat = new Map<string, ActivityItem>();
-  const scopedLive = input.live.filter((row) => inScope(chats.get(row.chatId)?.workspacePath));
+  const scopedLive = input.live.filter((row) => inScope(chats.get(row.chatId)?.workspacePath ?? row.workspacePath));
 
   for (const row of scopedLive.filter((candidate) => candidate.kind === 'main_turn' || candidate.kind === 'agent_chat')) {
     const chat = chats.get(row.chatId);

@@ -292,4 +292,18 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     assert.equal(document.querySelector('.sub-agent-overlay__prompt-text')?.textContent, 'Second task');
   });
 
+  test('a child discovered after restart follows its conversation link instead of mounting a legacy drawer', async () => {
+    setupOverlayDom();
+    setStorageModeForTests('localStorage');
+    const parent = createEmptyChatObject('model', 'C:/scratch'); parent.id = CHAT_ID;
+    setSessionStateForTests({ chats: [parent], activeId: CHAT_ID, sidebarCollapsed: false });
+    setSubAgentOpenStreamForTests(() => ({ addEventListener() {}, close() {} }));
+    setSubAgentApiFetchForTests(async () => Response.json({ ok: true, seq: 1, state: { runs: [{
+      runId: FIXED_RUN_ID, childChatId: 'restored-child', parentChatId: CHAT_ID, phase: 'running', type: 'explore', attempts: [],
+    }] } }));
+    await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    assert.equal(document.querySelector('.sub-agent-overlay'), null);
+    assert.match(document.body.textContent!, /conversation is unavailable/);
+  });
+
 });

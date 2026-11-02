@@ -256,6 +256,15 @@ export function clearForegroundSeed(): void {
   emit();
 }
 
+/** A completed chat link must not replay on later foreground or unread updates. */
+export function consumeCodeChatLaunch(options: LaunchOptions): void {
+  const inst = instances.find(row => row.appId === 'code');
+  if (!inst || inst.launchOptions !== options || !options.chatId) return;
+  const remaining = { ...options };
+  delete remaining.chatId;
+  inst.launchOptions = remaining;
+}
+
 /** Clear unread badges on all instances without changing the foreground app. */
 export function clearAllUnread(): void {
   const hasUnread = instances.some((i) => i.unread > 0);

@@ -7,7 +7,7 @@ import {
 } from '../chat/ask-question-display';
 import { registerAskQuestionDisplayContextSync } from '../chat/ask-question-display-sync';
 import { isActiveChatStreaming } from '../chat/streaming-state';
-import { notifyAskQuestionShown } from '../notifications/ask-question';
+import { notifyAskQuestionFinished, notifyAskQuestionShown } from '../notifications/ask-question';
 import { getActiveChat } from '../state/sessions';
 import {
   ASK_QUESTION_OTHER_ID,
@@ -606,6 +606,7 @@ export function showQuestionCardsModal(
     const finish = (result: AskQuestionToolResult): void => {
       if (settled) return;
       settled = true;
+      notifyAskQuestionFinished(chatIdForAbort, args);
       cancelAutoAdvance();
       document.removeEventListener('keydown', onDocKeyDown, true);
       if (abortListener) {

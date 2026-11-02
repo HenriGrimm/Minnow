@@ -473,8 +473,10 @@
 
 @media (hover: hover) and (pointer: fine) {
   .send-btn.send-btn--stop:hover:not(:disabled) {
-    background: var(--mn-danger-soft);
-    border-color: var(--mn-danger-border);
+    color: var(--mn-danger-ink);
+  }
+
+  .send-btn.send-btn--stop:hover:not(:disabled) .composer-wave {
     color: var(--mn-danger-ink);
   }
 }

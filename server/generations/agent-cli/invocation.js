@@ -21,8 +21,7 @@ function tomlString(value) {
 
 function normalizeEffort(kind, value) {
   if (!value) return '';
-  if (value === 'off') return kind === 'cursor' ? '' : 'low';
-  if (kind === 'codex' && value === 'max') return 'xhigh';
+  if (value === 'off') return kind === 'cursor' ? '' : kind === 'codex' ? 'none' : 'low';
   return value;
 }
 

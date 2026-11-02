@@ -1,4 +1,4 @@
-import { listActiveSubAgentRuns, cancelSubAgent } from '../agents/orchestrator';
+import { listActiveSubAgentRuns, cancelSubAgent, cancelSubAgentAndWait } from '../agents/orchestrator';
 import { getSubAgentTypeConfig } from '../agents/sub-agent-config';
 import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
 import { getContextBudget } from '../chat/context-usage';
@@ -13,7 +13,7 @@ import { loadNotificationPrefs, saveNotificationPref, subscribeNotificationPrefs
 import { getNotifications, markNotificationRead, resolveActivityNotifications, subscribeNotifications } from '../notifications/store';
 import { buildAgentActivitySnapshot, type AgentActivityContextFill } from '../state/agent-activity-registry';
 import { buildActivityFeed, getRunningAgentCount, type ActivityFeed, type ActivityItem } from '../state/activity-feed';
-import { sessionState } from '../state/sessions';
+import { findChatById, sessionState } from '../state/sessions';
 import { sendManagedChatAction } from '../chat/managed-chat-client';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { acknowledgeObservedManagedActivity } from '../notifications/acknowledge';
@@ -65,7 +65,7 @@ function snapshot(): ActivityFeed {
 }
 
 function canStop(item: ActivityItem): boolean {
-  if (item.live?.kind === 'agent_chat') return item.live.canStop === true && Boolean(item.live.executionId);
+  if (item.live?.kind === 'agent_chat') return item.live.canStop === true && Boolean(item.live.executionId || item.live.runId);
   return Boolean(item.live || item.status === 'question');
 }
 
@@ -174,7 +174,9 @@ async function activate(item: ActivityItem, childRunId?: string): Promise<void> 
 
 export async function stopAgentActivityItem(item: ActivityItem): Promise<void> {
   if (item.live?.kind === 'agent_chat') {
-    if (canStop(item)) await sendManagedChatAction(item.chatId!, 'stop', { scope: 'tree', executionId: item.live.executionId });
+    if (!canStop(item)) return;
+    if (!findChatById(item.chatId!) && item.live.runId) await cancelSubAgentAndWait(item.live.runId);
+    else await sendManagedChatAction(item.chatId!, 'stop', { scope: 'tree', executionId: item.live.executionId });
     return;
   }
   if (item.background && item.chatId) abortChatTitleGeneration(item.chatId);

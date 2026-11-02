@@ -120,6 +120,12 @@ export function resolveActivityNotifications(ids: readonly string[]): void {
   if (changed) emit();
 }
 
+/** Resolve only the alert belonging to this question batch or managed request. */
+export function resolveQuestionNotification(chatId: string, dedupeKey: string): void {
+  resolveActivityNotifications(items.filter((row) => row.kind === 'chat_question'
+    && row.chatId === chatId && row.dedupeKey === dedupeKey).map((row) => row.id));
+}
+
 /** Reset store (tests). */
 export function resetNotificationStoreForTests(): void {
   items.length = 0;

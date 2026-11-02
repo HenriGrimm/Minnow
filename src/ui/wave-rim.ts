@@ -320,6 +320,11 @@ export function mountWaveRim(canvas: HTMLCanvasElement, shape: WaveRimShape) {
   if (context) { try { palette(); resize(); } catch { context = null; } }
 
   return {
+    /** Repaint CSS colour changes immediately, including when motion is reduced. */
+    refreshPalette() {
+      if (disposed || !context) return;
+      try { palette(); draw(); } catch { context = null; halt(); }
+    },
     /** Newly streamed text: each character becomes a sample written at the head. */
     feed(text: string, gain = 1) {
       if (!text || tone !== 'live') return;

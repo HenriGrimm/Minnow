@@ -5,7 +5,7 @@
 
 import { AUTO_TITLE_MAX_LEN, PLACEHOLDER_CHAT_NAME } from '../constants';
 import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { Chat, SessionState } from '../types';
 
 // ── Visibility ───────────────────────────────────────────────────────────────
@@ -183,7 +183,7 @@ export function getChatsForWorkspace(workspacePath: string, state: SessionState)
     .filter(
       (c) =>
         isSidebarVisibleChat(c) &&
-        normalizeWorkspacePath(c.workspacePath ?? '') === key,
+        workspacePathsEqual(c.workspacePath ?? '', key),
     )
     .sort((a, b) => getChatLastMessageAt(b) - getChatLastMessageAt(a));
 }

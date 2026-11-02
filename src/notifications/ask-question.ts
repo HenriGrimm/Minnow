@@ -8,6 +8,16 @@ import type { AskQuestionArgs } from '../tools/ask-question-types';
 import { appIdForChat } from './app-for-chat';
 import { truncatePreview } from './preview';
 import { pushNotification } from './push';
+import { resolveQuestionNotification } from './store';
+
+function questionKey(chatId: string, args: AskQuestionArgs): string {
+  return `ask:${chatId}:${args.questions.map((q) => q.id).join(',')}`;
+}
+
+/** Clear the alert when its question strip is answered or cancelled. */
+export function notifyAskQuestionFinished(chatId: string, args: AskQuestionArgs): void {
+  resolveQuestionNotification(chatId, questionKey(chatId, args));
+}
 
 /** Build a compact preview from the first question (and count when batched). */
 export function buildAskQuestionPreview(args: AskQuestionArgs): string {
@@ -27,7 +37,6 @@ export function notifyAskQuestionShown(chatId: string, args: AskQuestionArgs): v
   const title = chat.name?.trim() || 'Chat';
   const body = buildAskQuestionPreview(args);
   const preview = args.title?.trim() ? `${args.title.trim()} — ${body}` : body;
-  const questionIds = args.questions.map((q) => q.id).join(',');
 
   pushNotification({
     kind: 'chat_question',
@@ -35,7 +44,7 @@ export function notifyAskQuestionShown(chatId: string, args: AskQuestionArgs): v
     preview,
     chatId,
     appId: appIdForChat(chat),
-    dedupeKey: `ask:${chatId}:${questionIds}`,
+    dedupeKey: questionKey(chatId, args),
     os: true,
   });
 }

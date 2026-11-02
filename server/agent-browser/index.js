@@ -237,6 +237,8 @@ export class AgentBrowserService extends EventEmitter {
       policyViolation: null,
       policyTasks: new Set(),
       tail: Promise.resolve(),
+      pendingCommands: 0,
+      framePromise: null,
       active: null,
       frameRevision: 0,
       documentRevision: 0,
@@ -496,11 +498,18 @@ export class AgentBrowserService extends EventEmitter {
 
   /** @param {string} tabId @param {{timeoutMs?:number}} [opts] */
   captureFrame(tabId, opts = {}) {
-    return this.#runOperator(tabId, 'capture-frame', null, async (tab) => {
+    const tab = this.#tab(tabId);
+    if (tab.status !== 'ready') throw new AgentBrowserError(`tab is ${tab.status}`, 'busy');
+    if (tab.framePromise) return tab.framePromise;
+    // Frames are disposable observations. Never queue them behind agent/input work,
+    // or broadcast them as tab changes (which makes viewers refresh their catalogs).
+    if (tab.pendingCommands) throw new AgentBrowserError('tab is busy', 'busy');
+    const timeoutMs = Math.min(opts.timeoutMs ?? 3_000, 3_000);
+    const capture = this.#runOperator(tabId, 'capture-frame', null, async (tab) => {
       const result = await tab.session.client.send(
         'Page.captureScreenshot',
         { format: 'png', fromSurface: true, captureBeyondViewport: false },
-        { timeoutMs: opts.timeoutMs },
+        { timeoutMs },
       );
       if (typeof result.data !== 'string' || !result.data) {
         throw new AgentBrowserError('browser returned no screenshot frame', 'invalid');
@@ -517,7 +526,9 @@ export class AgentBrowserService extends EventEmitter {
         capturedAt: Date.now(),
         revision: tab.frameRevision,
       };
-    });
+    }, { notify: false, timeoutMs });
+    tab.framePromise = capture.finally(() => { tab.framePromise = null; });
+    return tab.framePromise;
   }
 
   /** @param {string} tabId @param {{x:number,y:number,message?:string,timeoutMs?:number}} input */
@@ -826,6 +837,7 @@ export class AgentBrowserService extends EventEmitter {
   /** @param {any} input @param {string} action @param {(tab:any)=>Promise<any>} operation @param {{checkCurrentPage?:boolean}} [opts] */
   #run(input, action, operation, { checkCurrentPage = true } = {}) {
     const reservation = this.#reservation(input);
+    reservation.tab.pendingCommands += 1;
     const queued = reservation.tab.tail.catch(() => {}).then(async () => {
       const { tab } = reservation;
       if (tab.revision !== reservation.revision || tab.lease !== reservation.lease || !sameOwner(tab.owner, reservation.owner)) {
@@ -850,39 +862,46 @@ export class AgentBrowserService extends EventEmitter {
         this.#changed(tab);
       }
     });
-    reservation.tab.tail = queued.catch(() => {});
-    return queued;
+    const settled = queued.finally(() => { reservation.tab.pendingCommands -= 1; });
+    reservation.tab.tail = settled.catch(() => {});
+    return settled;
   }
 
-  /** @param {string} tabId @param {string} action @param {string[] | null} modes @param {(tab:any)=>Promise<any>} operation @param {{checkCurrentPage?:boolean}} [opts] */
-  #runOperator(tabId, action, modes, operation, { checkCurrentPage = true } = {}) {
+  /** @param {string} tabId @param {string} action @param {string[] | null} modes @param {(tab:any)=>Promise<any>} operation @param {{checkCurrentPage?:boolean,notify?:boolean,timeoutMs?:number}} [opts] */
+  #runOperator(tabId, action, modes, operation, { checkCurrentPage = true, notify = true, timeoutMs } = {}) {
     const tab = this.#tab(tabId);
     if (tab.status !== 'ready') throw new AgentBrowserError(`tab is ${tab.status}`, 'busy');
     if (modes && !modes.includes(tab.controlMode)) {
       throw new AgentBrowserError(`${action} requires ${modes.join(' or ')} mode`, 'busy');
     }
     const revision = tab.revision;
+    tab.pendingCommands += 1;
     const queued = tab.tail.catch(() => {}).then(async () => {
       if (this.tabs.get(tabId) !== tab || tab.status !== 'ready' || tab.revision !== revision) {
         throw new AgentBrowserError('operator command was revoked before it started', 'busy');
       }
       const active = { revision, action, startedAt: Date.now() };
       tab.active = active;
-      this.#changed(tab);
+      if (notify) this.#changed(tab);
       try {
-        if (checkCurrentPage) await this.#assertCurrentUrlAllowed(tab);
+        if (checkCurrentPage) await this.#assertCurrentUrlAllowed(tab, timeoutMs);
         return await operation(tab);
       } catch (error) {
-        if (isUncertainProtocolFailure(error)) await this.#quarantine(tab, error instanceof Error ? error.message : String(error));
+        // A late read-only frame cannot mutate the page. Its short viewer
+        // deadline must not revoke an otherwise usable agent reservation.
+        if (action !== 'capture-frame' && isUncertainProtocolFailure(error)) {
+          await this.#quarantine(tab, error instanceof Error ? error.message : String(error));
+        }
         throw error;
       } finally {
         if (tab.active === active) tab.active = null;
         tab.updatedAt = Date.now();
-        this.#changed(tab);
+        if (notify) this.#changed(tab);
       }
     });
-    tab.tail = queued.catch(() => {});
-    return queued;
+    const settled = queued.finally(() => { tab.pendingCommands -= 1; });
+    tab.tail = settled.catch(() => {});
+    return settled;
   }
 
   /** @param {any} tab @param {number | undefined} timeoutMs */

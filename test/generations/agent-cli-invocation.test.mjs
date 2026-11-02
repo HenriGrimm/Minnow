@@ -155,12 +155,16 @@ test('maps CLI effort, budget, and scoped credentials', async () => {
     ...common, kind: 'codex', body: { reasoning_effort: 'off' }, secrets: { cliToken: 'test-codex-token' },
   });
   assert.equal(codex.env.OPENAI_API_KEY, 'test-codex-token');
-  assert.ok(codex.args.includes('model_reasoning_effort="low"'));
+  assert.ok(codex.args.includes('model_reasoning_effort="none"'));
 });
 
-test('Codex maps highest effort and leaves unspecified effort to the model default', async () => {
-  const max = await prepareAgentCliInvocation({ ...common, kind: 'codex', body: { reasoning_effort: 'max' } });
-  assert.ok(max.args.includes('model_reasoning_effort="xhigh"'));
+test('CLI efforts preserve distinct native levels and leave unspecified effort to the model default', async () => {
+  for (const effort of ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+    const codex = await prepareAgentCliInvocation({ ...common, kind: 'codex', body: { reasoning_effort: effort } });
+    assert.ok(codex.args.includes(`model_reasoning_effort="${effort}"`));
+    const claude = await prepareAgentCliInvocation({ ...common, kind: 'claude', body: { reasoning_effort: effort } });
+    assert.equal(claude.args[claude.args.indexOf('--effort') + 1], effort);
+  }
   const defaults = await prepareAgentCliInvocation({ ...common, kind: 'codex' });
   assert.ok(!defaults.args.some(arg => arg.startsWith('model_reasoning_effort=')));
 });

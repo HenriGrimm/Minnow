@@ -324,7 +324,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       }
       if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
       session.starting = true;
-      const effort = { off: 'low', none: 'low', minimal: 'minimal', max: 'xhigh' }[body.reasoning_effort] ?? body.reasoning_effort;
+      const effort = body.reasoning_effort === 'off' ? 'none' : body.reasoning_effort;
       const outputSchema = body.response_format?.json_schema?.schema ?? (body.response_format?.type === 'json_object' ? { type: 'object', additionalProperties: true } : undefined);
       session.inferenceStarted = true;
       const started = await session.rpc.request('turn/start', { threadId: session.threadId, input: seed.input,

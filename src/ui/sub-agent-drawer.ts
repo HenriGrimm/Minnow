@@ -419,6 +419,12 @@ export async function openSubAgentDrawer(runId: string, chatId: string): Promise
   const request = ++openRequest;
   await hydrateSubAgentRunsForParentChat(chatId, { force: true });
   if (request !== openRequest) return;
+  const restoredChildChatId = resolveRun(runId, chatId)?.run.childChatId;
+  if (restoredChildChatId) {
+    closeSubAgentDrawer();
+    await (await import('../os/chat-launch')).launchCodeWithChat(restoredChildChatId);
+    return;
+  }
   if (!overlay) mountSubAgentDrawer(runId, chatId);
   const state = overlay;
   if (state) await loadTranscript(state, runId);

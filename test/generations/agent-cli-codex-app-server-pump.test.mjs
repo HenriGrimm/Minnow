@@ -31,6 +31,17 @@ const tools = [{ type: 'function', function: { name: 'read_file', parameters: { 
 const imageUrl = 'data:image/png;base64,aW1hZ2U=';
 const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
 
+test('native turns receive the selected reasoning level without conflating extra high and max', async () => {
+  const log = path.join(root, 'reasoning-levels.jsonl');
+  setup([{ text: 'Done.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  for (const effort of ['off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']) {
+    const result = await generate([{ role: 'user', content: 'Start.' }], { reasoning_effort: effort });
+    assert.equal(result.state.status, 'complete', result.state.errorMessage);
+  }
+  const starts = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.method === 'turn/start');
+  assert.deepEqual(starts.map(row => row.params.effort), ['none', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+});
+
 test('revised native prose is delivered as a replacement and reused with the corrected transcript', async () => {
   setup([{ deltas: ['Wrong.'], text: 'Correct.' }, { text: 'Next.' }]);
   const messages = [{ role: 'user', content: 'Start.' }];

@@ -4,6 +4,8 @@ import {
   getInstanceSnapshot,
   launchInstance,
   resetInstancesForTests,
+  consumeCodeChatLaunch,
+  ensureBackgroundInstance,
 } from '../../src/os/instances.ts';
 
 function codeLaunchOptions() {
@@ -30,5 +32,23 @@ describe('instance launch options', () => {
     launchInstance('brain', { brainSection: 'graph' });
     const brain = getInstanceSnapshot().instances.find((i) => i.appId === 'brain');
     assert.equal(brain?.launchOptions?.brainEditPath, 'a.md');
+  });
+
+  test('a consumed child link cannot replay on a background update or return to Code', () => {
+    launchInstance('code', { chatId: 'restored-child', codeSection: 'chat' });
+    consumeCodeChatLaunch(codeLaunchOptions()!);
+    launchInstance('models');
+    ensureBackgroundInstance('scheduler');
+    launchInstance('code');
+    assert.equal(codeLaunchOptions()?.chatId, undefined);
+    assert.equal(codeLaunchOptions()?.codeSection, 'chat');
+  });
+
+  test('a late chat activation cannot consume a newer launch', () => {
+    launchInstance('code', { chatId: 'old-child' });
+    const previous = codeLaunchOptions()!;
+    launchInstance('code', { chatId: 'new-child' });
+    consumeCodeChatLaunch(previous);
+    assert.equal(codeLaunchOptions()?.chatId, 'new-child');
   });
 });

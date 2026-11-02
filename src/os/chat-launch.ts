@@ -5,7 +5,8 @@
 import { isMinnowSandboxWorkspacePath } from '../lib/workspace-sandbox';
 import { sessionState } from '../state/sessions';
 import { isCurrentWindowWorkspace } from '../state/workspace';
-import { launchApp } from './router';
+import { getCurrentRoute, launchApp } from './router';
+import { getForegroundAppId } from './instances';
 
 async function verifyLinkedChat(chatId: string): Promise<boolean> {
   const { isServerStorageMode } = await import('../config/storage-mode');
@@ -83,11 +84,13 @@ export async function launchCodeWithChat(chatId: string): Promise<void> {
     return;
   }
 
+  const originHash = window.location.hash;
+  const originApp = getForegroundAppId();
   const allowed = await ensureWorkspaceForCodeChat(trimmed);
-  if (!allowed) return;
+  if (!allowed || window.location.hash !== originHash || getForegroundAppId() !== originApp) return;
 
   launchApp('code', { chatId: trimmed, codeSection: 'chat' });
-  await switchToCodeChat(trimmed);
+  await switchToCodeChat(trimmed, { isCurrent: () => getForegroundAppId() === 'code' && getCurrentRoute().chatId === trimmed });
 }
 
 /** Foreground Code chat and activate the given assistant thread (legacy desktop/chat deep-links). */
@@ -101,14 +104,17 @@ export async function launchChatWithThread(chatId: string): Promise<void> {
   await launchCodeWithChat(trimmed);
 }
 
-/** Switch sidebar to a chat after Code app is foreground (app-host / deep-link). */
-export async function switchToCodeChat(chatId: string): Promise<void> {
+/** Activate a link already routed to this window; never forward received commands again. */
+export async function switchToCodeChat(chatId: string, options: { isCurrent?: () => boolean } = {}): Promise<void> {
   const trimmed = chatId.trim();
   if (!trimmed) return;
-  if (!await ensureWorkspaceForCodeChat(trimmed)) return;
+  const isCurrent = options.isCurrent ?? (() => true);
+  if (!isCurrent() || !await findLinkedChat(trimmed) || !isCurrent()) return;
+  if (!await verifyLinkedChat(trimmed) || !isCurrent()) return;
 
   const { switchChat } = await import('../ui/sidebar');
   const trySwitch = async (attempt = 0): Promise<void> => {
+    if (!isCurrent()) return;
     const chatList = document.getElementById('chatList');
     if (chatList || attempt >= 20) {
       await switchChat(trimmed);
@@ -129,7 +135,7 @@ export async function launchCodeChat(): Promise<void> {
 
 /** Activate an assistant thread after Code chat is active (notification deep-link). */
 export async function switchToDesktopChatThread(chatId: string): Promise<void> {
-  await switchToCodeChat(chatId);
+  await launchCodeWithChat(chatId);
 }
 
 /** @deprecated Legacy Chat app thread switch — routes to Code chat. */

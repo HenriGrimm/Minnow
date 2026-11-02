@@ -15,7 +15,7 @@ import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { syncComposerFromStreamingState, syncComposerReadOnlyState } from '../../src/ui/composer-send.ts';
 import { parseOsHash } from '../../src/os/router.ts';
 import { classifyMarkdownHref } from '../../src/markdown/links.ts';
-import { launchCodeWithChat } from '../../src/os/chat-launch.ts';
+import { launchCodeWithChat, switchToCodeChat } from '../../src/os/chat-launch.ts';
 import type { Chat, SessionState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\agent-navigation';
@@ -75,6 +75,26 @@ test('sidebar root counts, pinning, and manual groups ignore nested agent rows',
   assert.ok(list.querySelector('.chat-agent-children [data-chat-id="child"]'));
   assert.equal((list.querySelector('[data-chat-id="child"]') as HTMLElement).draggable, false);
   assert.equal(child.historyLoaded, false);
+});
+
+test('sidebar nests saved agents when their Windows workspace casing differs from the parent', () => {
+  const root = chat('case-root'), working = chat('case-working', root.id), done = chat('case-done', root.id);
+  const elsewhere = chat('case-other-project', root.id);
+  root.workspacePath = 'C:/Users/Developer/Projects/Navigation';
+  working.workspacePath = root.workspacePath.toLowerCase();
+  done.workspacePath = root.workspacePath.toLowerCase();
+  elsewhere.workspacePath = `${root.workspacePath}-other`;
+  working.agentExecution = { executionId: 'case-live', status: 'running' };
+  done.agentExecution = { executionId: 'case-settled', status: 'completed' };
+  const list = setup([root, working, done, elsewhere]);
+  setWorkspaceFromServer({ path: root.workspacePath, label: 'Navigation fixture', isDefault: false });
+  renderSidebar();
+  assert.equal(list.querySelectorAll(':scope > .chat-item-row').length, 1);
+  assert.ok(list.querySelector('.chat-agent-children [data-chat-id="case-working"]'));
+  assert.equal(list.querySelector('[data-chat-id="case-other-project"]'), null);
+  assert.equal(working.historyLoaded, false, 'listing must not hydrate the child transcript');
+  list.querySelector<HTMLButtonElement>('.chat-agent-previous-toggle')!.click();
+  assert.ok(list.querySelector('.chat-agent-previous [data-chat-id="case-done"]'));
 });
 
 test('settled children use Previous agents; opening one reveals its ancestor without losing keyed rows or focus', () => {
@@ -280,6 +300,51 @@ test('a rejected Code window bridge keeps navigation and drafts and displays its
   await launchCodeWithChat(child.id);
   assert.equal(sessionState!.activeId, root.id); assert.equal(root.composerDraft, 'Keep this draft');
   assert.match(document.body.textContent!, /Checkout is unavailable/);
+});
+
+test('a received chat link checks local access without forwarding itself to another Code window', async () => {
+  const root = chat('local-root'), child = chat('routed-child', root.id);
+  child.workspacePath = 'C:\\workspace\\canonical-project';
+  setup([root, child]); setStorageModeForTests('server');
+  setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
+  let forwards = 0;
+  window.minnow = { viewContext: { workspacePath: WS }, window: { sendCodeCommand: async () => { forwards++; return { ok: true }; } } } as typeof window.minnow;
+  const urls: string[] = [];
+  globalThis.fetch = (async url => { urls.push(String(url)); return Response.json({ error: 'Out of scope' }, { status: 403 }); }) as typeof fetch;
+  await switchToCodeChat(child.id);
+  assert.equal(forwards, 0);
+  assert.deepEqual(urls, [`/api/chats/${child.id}?view=navigation`]);
+  assert.equal(sessionState!.activeId, root.id);
+});
+
+test('leaving Code while a chat link is loading cancels the late selection', async () => {
+  const root = chat('waiting-root'), child = chat('waiting-child', root.id);
+  setup([root, child]); setStorageModeForTests('server');
+  setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
+  let resolve!: (response: Response) => void;
+  globalThis.fetch = (() => new Promise<Response>(done => { resolve = done; })) as typeof fetch;
+  let current = true;
+  const opening = switchToCodeChat(child.id, { isCurrent: () => current });
+  while (!resolve) await new Promise(done => setImmediate(done));
+  current = false;
+  resolve(Response.json({ chatId: child.id, available: true }));
+  await opening;
+  assert.equal(sessionState!.activeId, root.id);
+});
+
+test('a late child-link response cannot reopen Code after the user switches apps', async () => {
+  const root = chat('origin-root'), child = chat('origin-child', root.id);
+  setup([root, child]); setStorageModeForTests('server');
+  setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
+  let resolve!: (response: Response) => void;
+  globalThis.fetch = (() => new Promise<Response>(done => { resolve = done; })) as typeof fetch;
+  const opening = launchCodeWithChat(child.id);
+  while (!resolve) await new Promise(done => setImmediate(done));
+  window.location.hash = '#/app/models';
+  resolve(Response.json({ chatId: child.id, available: true }));
+  await opening;
+  assert.equal(window.location.hash, '#/app/models');
+  assert.equal(sessionState!.activeId, root.id);
 });
 
 test('managed deletion keeps local state and worktree untouched until its guarded receipt is acknowledged', async () => {

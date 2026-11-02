@@ -708,31 +708,37 @@ export async function spawnSubAgent(
 // ── Cancel ───────────────────────────────────────────────────────────────────
 
 export function cancelSubAgent(runId: string, _reason = 'cancelled'): CancelSubAgentResult {
+  void cancelSubAgentAndWait(runId).catch(() => {});
+  return { ok: true, runId, status: 'cancelled' };
+}
+
+/** Recovery controls must await the server even when the child shell is missing. */
+export async function cancelSubAgentAndWait(runId: string): Promise<CancelSubAgentResult> {
   const prev = runs.get(runId);
   optimisticallyCancelSubAgent(runId);
-  void request(`/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
-    .then((body) => {
-      if (body?.state?.runs) {
-        for (const raw of body.state.runs) {
-          if (raw && typeof raw === 'object') adoptRaw(raw, Number(body?.seq) || 0);
-        }
-      } else if (body?.status && prev) {
-        publish({ ...prev, status: body.status, cancelled: body.status === 'cancelled' });
+  try {
+    const body = await request(`/${encodeURIComponent(runId)}/cancel`, { method: 'POST', signal: AbortSignal.timeout(10_000) });
+    if (body?.state?.runs) {
+      for (const raw of body.state.runs) {
+        if (raw && typeof raw === 'object') adoptRaw(raw, Number(body?.seq) || 0);
       }
-    })
-    .catch((err) => {
-      console.error('[agents] cancel failed', err);
-      if (prev && !isSubAgentRunTerminal(prev.status)) {
-        publish({
-          ...prev,
-          startError: { message: 'Could not stop this sub-agent.', consecutive: 1 },
-        });
-        if (prev.parentChatId) {
-          void hydrateSubAgentRunsForParentChat(prev.parentChatId, { force: true });
-        }
+    } else if (body?.status && prev) {
+      publish({ ...prev, status: body.status, cancelled: body.status === 'cancelled' });
+    }
+    return { ok: true, runId, status: body?.status ?? runs.get(runId)?.status ?? 'running' };
+  } catch (err) {
+    console.error('[agents] cancel failed', err);
+    if (prev && !isSubAgentRunTerminal(prev.status)) {
+      publish({
+        ...prev,
+        startError: { message: 'Could not stop this sub-agent.', consecutive: 1 },
+      });
+      if (prev.parentChatId) {
+        void hydrateSubAgentRunsForParentChat(prev.parentChatId, { force: true });
       }
-    });
-  return { ok: true, runId, status: 'cancelled' };
+    }
+    throw err;
+  }
 }
 
 export async function restartSubAgent(

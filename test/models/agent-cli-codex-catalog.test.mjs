@@ -31,7 +31,7 @@ test('Codex picker queries its installed CLI, isolates desktop metadata, caches 
     assert.equal(rows[0].display_name, 'CLI Model');
     assert.equal(rows[0].catalogVision, true, 'model/list modalities override cached metadata');
     assert.equal(rows[0].max_context_length, 272000);
-    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'max']);
+    assert.deepEqual(rows[0].reasoning.allowed_options, ['low', 'xhigh']);
     assert.equal(rows[0].reasoning.default, 'low');
     await listAgentCliModelsWithConfig('codex-cli', options);
     let runs = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);

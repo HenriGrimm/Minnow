@@ -5,8 +5,9 @@
 
 import { getAppById } from '../os/app-registry';
 import type { IconName } from '../ui/icon';
-import type { NotifyAction, NotifyOptions, NotifyTone } from '../ui/toast';
+import type { NotifyAction, NotifyHandle, NotifyOptions, NotifyTone } from '../ui/toast';
 import { onNewNotification } from './push';
+import { subscribeNotifications } from './store';
 import type { NotificationKind, NotificationRecord } from './types';
 
 interface CardKind {
@@ -71,16 +72,32 @@ let stop: (() => void) | null = null;
 /** Raise a card for each new unread Activity record (call once from main.ts). */
 export function initNotificationCards(): () => void {
   if (stop) return stop;
+  const handles = new Map<string, NotifyHandle>();
+  let disposed = false;
+  const unsubscribe = subscribeNotifications((records) => {
+    for (const [id, handle] of handles) {
+      if (records.find((row) => row.id === id)?.resolved) handle.dismiss();
+      if (!handle.isOpen) handles.delete(id);
+    }
+  });
   const dispose = onNewNotification((record) => {
     const openTarget = (target: NotificationRecord) => {
       void import('./navigate').then((m) => m.openNotificationTarget(target));
     };
     const options = notificationCardOptions(record, openTarget);
     if (!options) return;
-    void import('../ui/toast').then(({ notify }) => notify(options));
+    void import('../ui/toast').then(({ notify }) => {
+      if (disposed || record.resolved) return;
+      const handle = notify(options);
+      if (handle) handles.set(record.id, handle);
+    });
   });
   stop = () => {
+    disposed = true;
     dispose();
+    unsubscribe();
+    for (const handle of handles.values()) handle.dismiss();
+    handles.clear();
     stop = null;
   };
   return stop;

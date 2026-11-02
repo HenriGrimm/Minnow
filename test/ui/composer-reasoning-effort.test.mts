@@ -23,6 +23,7 @@ const { resolveSendCapabilities } = await import('../../src/providers/model-capa
 const { catalogCapabilitiesFromRow } = await import('../../src/providers/model-capabilities.ts');
 const { cursorReasoningForModels, resolveCursorVariantId } =
   await import('../../src/models/cursor-variants.mjs');
+const { codexCatalogRows, claudeCatalogRows } = await import('../../server/models/agent-cli-catalog.js');
 const { initThinkingControl } = await import('../../src/ui/composer-thinking.ts');
 const { initComposerModelTriggers, teardownComposerModelTriggers } = await import('../../src/ui/composer-model-trigger.ts');
 const {
@@ -123,6 +124,38 @@ test('OpenCode catalog efforts reach the composer and request without losing Mus
     resetModelsDevContextCacheForTests();
     teardownDom();
   }
+});
+
+test('CLI catalogs show native reasoning labels and submit extra high separately from max', () => {
+  const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
+  const catalogs = [
+    { providerId: 'codex-cli', row: codexCatalogRows([{ slug: 'cli-efforts', visibility: 'list',
+      supported_reasoning_levels: levels, default_reasoning_level: 'xhigh' }])[0] },
+    { providerId: 'claude-code-cli', row: claudeCatalogRows([{ value: 'cli-efforts', supportsEffort: true,
+      supportedEffortLevels: levels, defaultEffort: 'xhigh' }])[0] },
+  ];
+  try {
+    for (const { providerId, row } of catalogs) {
+      setupDom();
+      const chat = seedChat({ providerId, modelId: row.id });
+      modelCache.set(encodeModelSelectKey(providerId, row.id), row);
+      initThinkingControl();
+      initComposerReasoningEffort();
+      const state = getComposerReasoningState();
+      assert.deepEqual(state.choices.map(({ value, label }) => [value, label]), [
+        ['inherit', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max'],
+      ]);
+      assert.equal(state.label, 'Extra high');
+      for (const level of levels) {
+        setComposerReasoningChoice(level);
+        assert.equal(chat.reasoningEffort, level);
+        const patch = reasoningEffortToCompletionBody(chat.reasoningEffort!, 'agent-cli-v1',
+          resolveSendCapabilities(providerId, row.id, 'agent-cli-v1'), undefined, row.id);
+        assert.equal(patch.body.reasoning_effort, level);
+      }
+      teardownDom();
+    }
+  } finally { teardownDom(); }
 });
 
 describe('composer reasoning effort HTML', () => {

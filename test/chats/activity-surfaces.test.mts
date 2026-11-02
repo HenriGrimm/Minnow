@@ -10,6 +10,7 @@ import { buildActivityFeed } from '../../src/state/activity-feed.ts';
 import { __testHooks as legacyProducer } from '../../src/notifications/producers.ts';
 import { getNotifications, resetNotificationStoreForTests } from '../../src/notifications/store.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
+import { resetSubAgentOrchestrator, setSubAgentApiFetchForTests } from '../../src/agents/orchestrator.ts';
 
 Object.assign(globalThis, { localStorage: window.localStorage, sessionStorage: window.sessionStorage });
 const originalFetch = globalThis.fetch;
@@ -18,6 +19,7 @@ afterEach(() => {
   disposePanel?.(); disposePanel = undefined; disposeElectronTrayBridge(); delete window.minnow;
   globalThis.fetch = originalFetch; resetSessionPersistenceForTests(); setSessionStateForTests(null); resetNotificationStoreForTests();
   setStorageModeForTests(null); document.body.replaceChildren();
+  resetSubAgentOrchestrator(); setSubAgentApiFetchForTests(null);
 });
 function setup() {
   const chat = createEmptyChatObject('next-model'); chat.id = 'activity-child'; chat.chatCommandVersion = 1;
@@ -50,6 +52,30 @@ test('panel metadata subscription is singular, responds to canonical waiting sta
   assert.equal(first.dataset.agentCount, '1', 'replaced mount no longer receives metadata');
   disposePanel(); chat.agentExecution!.status = 'running'; notifyManagedChatMetadata(chat.id);
   await new Promise(resolve => setTimeout(resolve, 130)); assert.equal(second.dataset.agentCount, '0');
+});
+
+test('Activity can stop a restored run before its child shell has hydrated', async () => {
+  const parent = setup(); parent.workspacePath = '/restored-project';
+  const rows = buildAgentActivitySnapshot({ nowMs: 1000, chats: [parent], mainTurns: [], titleJobs: [], subAgents: [{
+    runId: 'restored-run', childChatId: 'missing-child', parentChatId: parent.id, type: 'explore', status: 'queued', messages: [], toolTurns: 0,
+  } as any] });
+  const feed = buildActivityFeed({ chats: [parent], live: rows, notifications: [], pendingChatIds: new Set(), workspacePath: parent.workspacePath });
+  const item = feed.running.find(row => row.live?.runId === 'restored-run')!;
+  assert.ok(item, 'the restored run stays visible in its parent workspace');
+  assert.equal(buildActivityFeed({ chats: [parent], live: rows, notifications: [], pendingChatIds: new Set(), workspacePath: '/another-project' }).running.length, 0);
+  const requests: string[] = [];
+  setSubAgentApiFetchForTests(async (url, options) => {
+    requests.push(`${options?.method} ${url}`);
+    return Response.json({ ok: true, status: 'cancelled' });
+  });
+  await stopAgentActivityItem(item);
+  assert.deepEqual(requests, ['POST /api/agents/restored-run/cancel']);
+});
+
+test('a failed recovery stop is reported to Activity instead of appearing successful', async () => {
+  setup();
+  setSubAgentApiFetchForTests(async () => Response.json({ error: 'Execution host unavailable' }, { status: 503 }));
+  await assert.rejects(stopAgentActivityItem({ chatId: 'missing-child', live: { kind: 'agent_chat', canStop: true, runId: 'restored-run' } } as any), /Execution host unavailable/);
 });
 test('tray uses the same canonical running count and cleans up its metadata and command subscriptions', async () => {
   const chat = setup(), published: any[] = []; let commands = 0;

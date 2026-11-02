@@ -32,6 +32,7 @@ export interface AgentActivityRow {
   id: string;
   kind: AgentActivityKind;
   chatId: string;
+  workspacePath?: string;
   chatTitle: string;
   label: string;
   status: AgentActivityStatus;
@@ -243,6 +244,7 @@ function buildSubAgentRows(input: BuildAgentActivitySnapshotInput): AgentActivit
       id: run.childChatId ? run.executionId ? `execution:${run.executionId}` : run.commandId ? `command:${run.commandId}` : `task:${run.runId}` : `sub:${run.runId}`,
       kind: run.childChatId ? 'agent_chat' : 'sub_agent',
       chatId,
+      workspacePath: child?.workspacePath ?? input.chats.find(chat => chat.id === run.parentChatId)?.workspacePath,
       chatTitle: chatId ? chatTitleFor(input.chats, chatId) : '—',
       label: resolveLabel(run.type),
       status,
@@ -259,7 +261,7 @@ function buildSubAgentRows(input: BuildAgentActivitySnapshotInput): AgentActivit
       runId: run.runId,
       parentToolCallId: run.parentToolCallId,
       ...(run.childChatId ? { executionId: run.executionId, commandId: run.commandId,
-        canStop: Boolean(run.executionId) && (!child || !chatReadOnlyReason(child)) && child?.agentConversation?.capabilities?.canStop !== false,
+        canStop: Boolean(run.runId) && (!child || !chatReadOnlyReason(child)) && child?.agentConversation?.capabilities?.canStop !== false,
         ...(status === 'waiting' ? { waitReason: waitingLabels[run.phase ?? ''] ?? 'for execution' } : {}) } : {}),
     };
   });

@@ -48,6 +48,69 @@ function fakeLauncher() {
   return { launcher, connector, sessions };
 }
 
+test('viewer captures are coalesced and do not broadcast tab changes', async (t) => {
+  const fake = fakeLauncher();
+  const service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector });
+  t.after(() => service.close());
+  const { tab } = await service.reserveTab(ownerA);
+  const gate = deferred();
+  const png = Buffer.alloc(24);
+  png.write('PNG', 1);
+  png.writeUInt32BE(1440, 16);
+  png.writeUInt32BE(900, 20);
+  let captures = 0;
+  let changes = 0;
+  const timeouts = [];
+  fake.sessions[0].client.send = async (method, _params, opts) => {
+    if (method !== 'Page.captureScreenshot') return {};
+    captures += 1;
+    timeouts.push(opts.timeoutMs);
+    await gate.promise;
+    return { data: png.toString('base64') };
+  };
+  service.on('tabs-changed', () => { changes += 1; });
+  const frames = [service.captureFrame(tab.tabId), service.captureFrame(tab.tabId)];
+  await new Promise((resolve) => setImmediate(resolve));
+  gate.resolve();
+  const result = await Promise.all(frames);
+  assert.equal(captures, 1, 'overlapping viewers must share one capture');
+  assert.equal(changes, 0, 'frames must not trigger tabs/assignment-list refreshes');
+  assert.equal(result[0].revision, result[1].revision);
+  assert.ok(timeouts[0] > 0 && timeouts[0] <= 3000, 'captures must not hold input for the 15s command timeout');
+});
+
+test('viewer frames do not queue behind busy agent work', async (t) => {
+  const fake = fakeLauncher();
+  const service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector });
+  t.after(() => service.close());
+  const reservation = await service.reserveTab(ownerA);
+  const active = service.evaluate({ owner: ownerA, tabId: reservation.tab.tabId, lease: reservation.lease, expression: 'wait:active' });
+  while (!fake.sessions[0].gates.length) await new Promise((resolve) => setImmediate(resolve));
+  const frame = Promise.resolve().then(() => service.captureFrame(reservation.tab.tabId));
+  const result = await Promise.race([
+    frame.then(() => 'captured', (error) => error.code),
+    new Promise((resolve) => setImmediate(() => resolve('queued'))),
+  ]);
+  fake.sessions[0].gates[0].resolve();
+  await active;
+  await frame.catch(() => {});
+  assert.equal(result, 'busy', 'live frames should skip busy tabs instead of building up stale work');
+});
+
+test('a viewer capture timeout releases the queue without revoking the agent lease', async (t) => {
+  const fake = fakeLauncher();
+  const service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector });
+  t.after(() => service.close());
+  const reservation = await service.reserveTab(ownerA);
+  fake.sessions[0].client.send = async (method) => {
+    if (method === 'Page.captureScreenshot') throw Object.assign(new Error('capture timed out'), { code: 'timeout' });
+    return {};
+  };
+  await assert.rejects(() => service.captureFrame(reservation.tab.tabId), /capture timed out/);
+  assert.equal(service.listTabs()[0].status, 'ready');
+  assert.equal(await service.evaluate({ owner: ownerA, tabId: reservation.tab.tabId, lease: reservation.lease, expression: 'still usable' }), 'still usable');
+});
+
 test('reservation is owner and lease scoped', async (t) => {
   const fake = fakeLauncher();
   const service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector });

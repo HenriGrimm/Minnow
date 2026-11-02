@@ -5,6 +5,7 @@ import {
   getForegroundAppId,
   getInstanceSnapshot,
   subscribeInstances,
+  consumeCodeChatLaunch,
   type InstanceSnapshot,
 } from './instances';
 import { getCurrentRoute } from './router';
@@ -318,7 +319,9 @@ async function openAppPage(
     case 'code': {
       const { ensureCodeWorkspaceModules } = await import('../boot/code-workspace-modules');
       await ensureCodeWorkspaceModules();
+      if (generation != null && generation !== syncGeneration) return;
       const welcome = await import('../ui/welcome-page');
+      if (generation != null && generation !== syncGeneration) return;
       const launchWorkspacePath = options?.workspacePath?.trim();
       if (welcome.shouldPromptCodeWorkspaceWelcome(launchWorkspacePath)) {
         welcome.openWelcome({ skipHash: true });
@@ -337,15 +340,20 @@ async function openAppPage(
       const { closeOtherCodeStageViews, showCodeStageSection } = await import(
         '../ui/main-column-overlay'
       );
+      if (generation != null && generation !== syncGeneration) return;
       const section = wantsChat ? 'chat' : (route.codeSection ?? 'chat');
       if (section !== 'chat') {
         await showCodeStageSection(section);
         break;
       }
       await closeOtherCodeStageViews();
+      if (generation != null && generation !== syncGeneration) return;
       if (options?.chatId?.trim()) {
         const { switchToCodeChat } = await import('./chat-launch');
-        await switchToCodeChat(options.chatId);
+        const isCurrent = () => generation == null || generation === syncGeneration;
+        await switchToCodeChat(options.chatId, { isCurrent });
+        if (!isCurrent()) return;
+        consumeCodeChatLaunch(options);
       } else if (options?.seed?.trim() || options?.modeId || options?.workspacePath?.trim()) {
         const { applyCodeLaunchOptions } = await import('./code-launch');
         await applyCodeLaunchOptions(options);
