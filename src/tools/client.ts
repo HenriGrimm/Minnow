@@ -2,6 +2,7 @@ import { STOPPED_TOOL_MSG } from './execute-tool-batch';
 import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
 import { getAgentConversationsCapabilitySync } from '../config/agent-conversations-enabled';
 import { createRefreshGate } from './refresh-gate';
+import { rpcFetch } from '../api/stream-fetch';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeTodoWrite } from './todo-tools';
 import { executeBugBoardTool } from './bug-board-tools';
@@ -989,12 +990,9 @@ async function executeServerTool(
     ? AbortSignal.any([context.signal, controller.signal])
     : controller.signal;
   try {
-    response = await fetch('/api/tools', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal,
-    });
+    // A tool may run for minutes; holding an HTTP connection that long lets a
+    // few busy chats starve every other request, including lease renewals.
+    response = await rpcFetch('/api/tools', JSON.stringify(payload), { signal });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (context?.signal?.aborted) {

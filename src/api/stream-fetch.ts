@@ -49,6 +49,33 @@ export function streamFetch(path: string, init: RequestInit = {}): Promise<Respo
   const url = new URL(path, window.location.href);
   if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')
     || (init.method && init.method !== 'GET')) return Promise.reject(new Error('Invalid stream request'));
+  return tunnel(url, init);
+}
+
+/** Mirrors STREAM_RPC_PATHS in server/runtime/stream-ws.js. */
+const RPC_PATHS = new Set(['/api/chat-turns', '/api/tools']);
+// Leave headroom under the server's 1 MiB frame limit for the JSON envelope.
+const MAX_RPC_BODY_BYTES = 768 * 1024;
+
+/** POST JSON to a tunnelled RPC route. Lease renewals and tool calls ride the
+ * shared socket so several running chats cannot exhaust Chromium's six HTTP
+ * connections and starve each other's heartbeats. Oversized bodies (one-off
+ * file writes) and non-browser callers keep using HTTP.
+ */
+export function rpcFetch(path: '/api/chat-turns' | '/api/tools', body: string, init: { signal?: AbortSignal } = {}): Promise<Response> {
+  const viaHttp = () => fetch(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: init.signal,
+  });
+  // Tokenless views (paired devices, harnesses) never run leases or tools: plain HTTP.
+  if (typeof window === 'undefined' || !/^https?:/.test(window.location.href)
+    || typeof WebSocket === 'undefined' || !RPC_PATHS.has(path) || !getSessionToken()) return viaHttp();
+  // The body travels as an escaped JSON string inside the envelope.
+  const framed = JSON.stringify(body);
+  if (framed.length * 3 > MAX_RPC_BODY_BYTES && new TextEncoder().encode(framed).length > MAX_RPC_BODY_BYTES) return viaHttp();
+  return tunnel(new URL(path, window.location.href), { signal: init.signal }, body);
+}
+
+function tunnel(url: URL, init: RequestInit, rpcBody?: string): Promise<Response> {
   if (init.signal?.aborted) return Promise.reject(init.signal.reason);
   return new Promise((resolve, reject) => {
     const id = String(++nextId);
@@ -81,6 +108,7 @@ export function streamFetch(path: string, init: RequestInit = {}): Promise<Respo
         path: url.pathname + url.search,
         workspace: getViewWorkspacePath() || url.searchParams.get('workspace') || '',
         lastEventId: new Headers(init.headers).get('Last-Event-ID') ?? '',
+        ...(rpcBody !== undefined ? { method: 'POST', body: rpcBody } : {}),
       }),
       receive(message) {
         if (message.type === 'headers') {

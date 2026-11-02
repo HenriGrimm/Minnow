@@ -4,12 +4,17 @@ import { authorizeUpgrade } from './request-auth.js';
 import { authenticateMinnowToken } from './authenticate-token.js';
 import { getRequestRelayHeaders } from '../network/ingress.js';
 
-/** Multiplex read-only API streams, keeping Chromium's HTTP pool free for RPCs.
+/** POST routes allowed through the tunnel: chat leases must renew and tool calls
+ * may run for minutes, so neither may queue behind (or occupy) the HTTP pool. */
+export const STREAM_RPC_PATHS = new Set(['/api/chat-turns', '/api/tools']);
+export const STREAM_WS_MAX_PAYLOAD = 1024 * 1024;
+
+/** Multiplex API streams and long-lived RPCs, keeping Chromium's HTTP pool free.
  * Loopback requests deliberately traverse the existing auth/workspace middleware.
  * Each channel has one chunk of credit; a slow reader cannot buffer without bound.
  */
 export function attachStreamWebSocketServer(server) {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: STREAM_WS_MAX_PAYLOAD });
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/api/streams/ws') return;
@@ -71,14 +76,24 @@ export function attachStreamWebSocketServer(server) {
           send({ id, type: 'error', error: 'Invalid stream path' }); return;
         }
         target.searchParams.delete('token');
+        const method = message.method === undefined ? 'GET' : message.method;
+        const isRpc = method === 'POST' && STREAM_RPC_PATHS.has(target.pathname) && typeof message.body === 'string';
+        if (method !== 'GET' && !isRpc) {
+          send({ id, type: 'error', error: 'Invalid stream method' }); return;
+        }
         // Re-enter through the same listener as the browser did, so the inner
         // request authenticates against the same ingress.
         const headers = {
           Host: req.headers.host ?? '',
           ...getRequestRelayHeaders(req),
           'X-Minnow-Token': access.token,
-          Accept: 'text/event-stream',
+          Accept: isRpc ? 'application/json' : 'text/event-stream',
         };
+        const body = isRpc ? Buffer.from(message.body, 'utf8') : null;
+        if (body) {
+          headers['Content-Type'] = 'application/json';
+          headers['Content-Length'] = String(body.length);
+        }
         if (typeof message.workspace === 'string') headers['X-Minnow-Workspace'] = message.workspace;
         if (typeof message.lastEventId === 'string') headers['Last-Event-ID'] = message.lastEventId;
         const channel = { request: null, response: null, waiting: false };
@@ -92,7 +107,7 @@ export function attachStreamWebSocketServer(server) {
             hostname: req.socket.localAddress,
             port: req.socket.localPort,
             path: target.pathname + target.search,
-            method: 'GET', headers, agent: false,
+            method, headers, agent: false,
           }, (response) => {
             channel.response = response;
             send({ id, type: 'headers', status: response.statusCode,
@@ -108,7 +123,7 @@ export function attachStreamWebSocketServer(server) {
           });
           channels.set(id, channel);
           channel.request.on('error', fail);
-          channel.request.end();
+          channel.request.end(body ?? undefined);
         } catch { send({ id, type: 'error', error: 'Invalid stream request' }); stop(id); }
       });
     });

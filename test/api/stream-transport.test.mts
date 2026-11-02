@@ -10,7 +10,7 @@ import { attachStreamWebSocketServer } from '../../server/runtime/stream-ws.js';
 import { createAuthMiddleware } from '../../server/runtime/auth-middleware.js';
 import { getSessionToken, resetSessionTokenCache } from '../../server/runtime/session-token.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
-import { streamFetch } from '../../src/api/stream-fetch.ts';
+import { rpcFetch, streamFetch } from '../../src/api/stream-fetch.ts';
 import { StreamEventSource } from '../../src/api/stream-event-source.ts';
 import { subscribeReef } from '../../src/reef/client.ts';
 import { handleGenerationsRequest } from '../../server/generations/routes.js';
@@ -23,6 +23,7 @@ resetMinnowHomeCache(); resetSessionTokenCache();
 const token = getSessionToken();
 const auth = createAuthMiddleware();
 const active = new Set<http.ServerResponse>();
+const heldRpcs = new Set<http.ServerResponse>();
 let lastId = '';
 let connections = 0;
 const server = http.createServer((req, res) => auth(req, res, async () => {
@@ -33,6 +34,15 @@ const server = http.createServer((req, res) => auth(req, res, async () => {
   if (req.url === '/api/ping') { res.end('pong'); return; }
   if (req.url === '/api/missing') { res.writeHead(404); res.end('missing'); return; }
   if (req.url === '/api/no-content') { res.writeHead(204); res.end(); return; }
+  if (req.method === 'POST') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (body.hold) { heldRpcs.add(res); res.once('close', () => heldRpcs.delete(res)); return; }
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ path: req.url, echo: body, contentType: req.headers['content-type'] }));
+    return;
+  }
   res.writeHead(200, { 'Content-Type': 'text/event-stream' });
   active.add(res);
   res.once('close', () => active.delete(res));
@@ -71,6 +81,7 @@ after(async () => {
   deleteGenerationsForProviderShutdown();
   for (const ws of wss.clients) ws.terminate();
   for (const res of active) res.destroy();
+  for (const res of heldRpcs) res.destroy();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   Object.assign(globalThis, { window: originalWindow, WebSocket: originalWs });
@@ -218,4 +229,43 @@ test('cancelling before headers releases the pending request', async () => {
   await assert.rejects(pending, { name: 'AbortError' });
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(active.size, 0);
+});
+
+test('long tool calls ride the shared socket and cannot starve a chat lease renewal', async () => {
+  const before = connections;
+  const controllers = Array.from({ length: 8 }, () => new AbortController());
+  const tools = controllers.map((controller, index) =>
+    rpcFetch('/api/tools', JSON.stringify({ name: 'execute_command', hold: true, index }), { signal: controller.signal })
+      .catch(() => 'aborted'));
+  await until(() => heldRpcs.size === 8);
+  const renewal = await rpcFetch('/api/chat-turns', JSON.stringify({ action: 'renew', chatId: 'c1' }),
+    { signal: AbortSignal.timeout(1000) });
+  assert.equal(renewal.status, 200);
+  assert.deepEqual(await renewal.json(), { path: '/api/chat-turns', echo: { action: 'renew', chatId: 'c1' }, contentType: 'application/json' });
+  assert.equal(connections, before, 'tool calls and renewals share the existing socket');
+  controllers[0].abort();
+  assert.equal(await tools[0], 'aborted');
+  await until(() => heldRpcs.size === 7);
+  for (const res of heldRpcs) res.end(JSON.stringify({ result: 'ok' }));
+  const settled = await Promise.all(tools.slice(1));
+  for (const response of settled) assert.deepEqual(await (response as Response).json(), { result: 'ok' });
+});
+
+test('the tunnel refuses POST to routes outside the RPC allowlist', async () => {
+  const ws = new NodeWebSocket(`${base.replace('http:', 'ws:')}/api/streams/ws?token=${token}`);
+  await once(ws, 'open');
+  const [raw] = await (ws.send(JSON.stringify({ id: 'x', type: 'open', path: '/api/settings', method: 'POST', body: '{}' })),
+    once(ws, 'message'));
+  assert.deepEqual(JSON.parse(String(raw)), { id: 'x', type: 'error', error: 'Invalid stream method' });
+  ws.close();
+});
+
+test('an oversized tool body falls back to HTTP instead of exceeding the frame limit', async () => {
+  const original = globalThis.fetch;
+  let httpPath = '';
+  globalThis.fetch = (async (input: RequestInfo | URL) => { httpPath = String(input); return new Response('{}'); }) as typeof fetch;
+  try {
+    await rpcFetch('/api/tools', JSON.stringify({ name: 'save_file', args: { content: 'x'.repeat(900 * 1024) } }));
+  } finally { globalThis.fetch = original; }
+  assert.equal(httpPath, '/api/tools');
 });

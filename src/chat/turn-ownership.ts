@@ -6,6 +6,7 @@ import { getChatHostId } from './remote-chat-client';
 import { createTurnLease, ChatLeaseRequestError, type LeaseGrant } from './turn-lease';
 import { reportBackgroundError } from '../boot/report-background-error';
 import { findChatById } from '../state/sessions';
+import { rpcFetch } from '../api/stream-fetch';
 
 const owners = new Map<string, string>();
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -39,12 +40,9 @@ async function request(action: string, chatId: string, ownerId: string, signal?:
   const options = chat?.reasoningEffort ? { reasoningEffort: chat.reasoningEffort }
     : chat?.thinkingMode && chat.thinkingMode !== 'inherit' ? { thinkingMode: chat.thinkingMode } : undefined;
   const modelSelection = chat?.providerId && chat.modelId ? { providerId: chat.providerId, modelId: chat.modelId, ...(options ? { options } : {}) } : undefined;
-  const response = await fetch('/api/chat-turns', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId(), ...(modelSelection ? { modelSelection } : {}) }),
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  const response = await rpcFetch('/api/chat-turns',
+    JSON.stringify({ action, chatId, ownerId, hostId: getChatHostId(), ...(modelSelection ? { modelSelection } : {}) }),
+    { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (response.status === 409) return null;
   if (!response.ok) throw new ChatLeaseRequestError(response.status >= 500 || response.status === 408 || response.status === 429);
   if (action === 'release') return { startedAt, leaseMs: 0 };
