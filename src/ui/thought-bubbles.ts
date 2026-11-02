@@ -1,7 +1,12 @@
 import { resolveChatMount } from './chat-mount';
 import { splitThinkingSegments } from '../api/reasoning';
 import { formatThinkingDuration } from './thinking-duration';
-import { setAssistantBubbleContent } from '../markdown/renderer';
+import {
+  cancelAssistantBubbleRenderDebounce,
+  flushAssistantBubbleRender,
+  scheduleAssistantBubbleRender,
+  setAssistantBubbleContent,
+} from '../markdown/renderer';
 
 /** Label shown on the live collapsed thinking row. */
 const LIVE_THINKING_LABEL = 'Thinking…';
@@ -256,8 +261,9 @@ export class ThoughtBubbleController {
     return segments;
   }
 
-  /** Await hook retained for tests (no async queue in collapsed UI). */
+  /** Flush the latest expanded reasoning; collapsed reasoning has no DOM work queued. */
   flushPendingWork(): Promise<void> {
+    if (this.flowTextEl) flushAssistantBubbleRender(this.flowTextEl);
     return Promise.resolve();
   }
 
@@ -272,6 +278,7 @@ export class ThoughtBubbleController {
   private ensureThinkingPanel(): void {
     if (this.disposed) return;
     if (this.stageEl && !this.stageEl.isConnected) {
+      if (this.flowTextEl) cancelAssistantBubbleRenderDebounce(this.flowTextEl);
       if (this.summaryTimer != null) clearInterval(this.summaryTimer);
       this.summaryTimer = null;
       this.stageEl = null;
@@ -382,12 +389,17 @@ export class ThoughtBubbleController {
     syncThoughtsCaretPulse(thoughtsScopeFromEl(this.caretEl));
     if (this.expanded) {
       this.syncFlowContent();
+    } else if (this.flowTextEl) {
+      cancelAssistantBubbleRenderDebounce(this.flowTextEl);
     }
   }
 
   private syncFlowContent(): void {
     if (!this.expanded || !this.flowTextEl) return;
-    setAssistantBubbleContent(this.flowTextEl, this.getDisplayText(), { streaming: true });
+    scheduleAssistantBubbleRender(this.flowTextEl, this.getDisplayText(), null, {
+      pinScroll: false,
+      announce: false,
+    });
   }
 
   private updateToggleLabel(): void {
@@ -404,6 +416,7 @@ export class ThoughtBubbleController {
   }
 
   private teardownStage(): void {
+    if (this.flowTextEl) cancelAssistantBubbleRenderDebounce(this.flowTextEl);
     if (this.summaryTimer != null) clearInterval(this.summaryTimer);
     this.summaryTimer = null;
     if (this.stageEl) {

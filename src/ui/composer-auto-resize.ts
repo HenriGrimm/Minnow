@@ -67,6 +67,13 @@ export function setComposerFieldSizingSupportedForTests(value: boolean | null): 
  * release the pin once content shrinks back under the cap.
  */
 function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
+  // A fixed textarea's scrollHeight still reports overflowing content. Keep the
+  // pin until it fits; clearing it on every key forces two transcript layouts.
+  if (el.style.getPropertyValue('field-sizing') === 'fixed' && el.scrollHeight > maxPx + 1) {
+    const height = `${maxPx}px`;
+    if (el.style.height !== height) el.style.height = height;
+    return;
+  }
   const scrollTop = el.scrollTop;
   const wasPinned = el.style.height !== '';
   if (wasPinned) {

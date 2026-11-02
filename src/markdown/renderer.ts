@@ -470,6 +470,8 @@ export interface AssistantBubbleRenderOptions {
    * Debounce-timer flushes keep the default (true) so a paused stream still pins.
    */
   pinScroll?: boolean;
+  /** Reasoning uses the same scheduler without announcing it as assistant prose. */
+  announce?: boolean;
   /**
    * Paint now even inside the debounce window. Tool-start / tool-call flushes
    * use this so a pending full sentence is not hidden under "Calling…".
@@ -485,7 +487,7 @@ export function flushAssistantBubbleRender(
   opts?: AssistantBubbleRenderOptions,
 ): void {
   const state = renderStateByBubble.get(bubble);
-  if (!state || state.pendingMarkdown == null || state.pendingCursor == null) {
+  if (!state || state.pendingMarkdown == null) {
     return;
   }
 
@@ -499,7 +501,7 @@ export function flushAssistantBubbleRender(
     streaming: true,
     streamCursor: pendingCursor,
   });
-  announceStreamingProse(pendingMarkdown);
+  if (paintOptions?.announce !== false) announceStreamingProse(pendingMarkdown);
   if (paintOptions?.onPaint) {
     paintOptions.onPaint();
   } else if (paintOptions?.pinScroll !== false) {
@@ -517,7 +519,7 @@ export function flushAssistantBubbleRender(
 export function scheduleAssistantBubbleRender(
   bubble: HTMLElement,
   markdown: string,
-  streamCursor: HTMLElement,
+  streamCursor: HTMLElement | null,
   opts?: AssistantBubbleRenderOptions,
 ): void {
   const state = getRenderState(bubble);

@@ -26,6 +26,28 @@ function setupTextarea() {
 }
 
 describe('autoResize', () => {
+  test('typing into an overflowing composer does not repeatedly unpin its height', () => {
+    setComposerFieldSizingSupportedForTests(true);
+    const el = setupTextarea();
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 320 });
+    autoResize(el);
+    const height = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el.style), 'height');
+    let heightWrites = 0;
+    Object.defineProperty(el.style, 'height', {
+      get() { return height.get.call(this); },
+      set(value) { heightWrites++; height.set.call(this, value); },
+    });
+    for (let i = 0; i < 20; i++) {
+      el.value += 'a';
+      autoResize(el);
+    }
+    assert.equal(heightWrites, 0, 'an overflowing draft must keep its fixed height while typing');
+    Object.defineProperty(el, 'scrollHeight', { value: 320 });
+    autoResize(el);
+    assert.equal(el.style.height, '', 'release the pin when content can fit again');
+  });
+
   test('field-sizing restores scrolling after composer clear and preserves the offset on reclamp', () => {
     setComposerFieldSizingSupportedForTests(true);
     const el = setupTextarea();

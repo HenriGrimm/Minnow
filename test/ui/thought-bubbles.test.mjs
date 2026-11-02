@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 
 const {
   ThoughtBubbleController,
@@ -33,6 +34,55 @@ function assistantWrap() {
 }
 
 describe('ThoughtBubbleController', { concurrency: false }, () => {
+  test('expanded reasoning coalesces Markdown work during a fast response', async (t) => {
+    setupDom();
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+    t.mock.method(performance, 'now', () => 0);
+    const lexer = t.mock.method(marked, 'lexer');
+    const wrap = assistantWrap();
+    document.body.append(wrap);
+    const ctrl = new ThoughtBubbleController(wrap, {}, { expanded: true });
+    ctrl.appendReasoningDelta('First thought');
+    const content = wrap.querySelector('.thoughts-content');
+    const initialCalls = lexer.mock.callCount();
+    for (let i = 0; i < 40; i++) ctrl.appendReasoningDelta(` word${i}`);
+    assert.equal(lexer.mock.callCount(), initialCalls, 'chunks must not each parse the growing reasoning');
+    assert.equal(content.textContent.trim(), 'First thought');
+    t.mock.timers.tick(32);
+    assert.equal(lexer.mock.callCount(), initialCalls + 1);
+    assert.match(content.textContent, /word39/);
+    ctrl.appendReasoningDelta(' final');
+    await ctrl.flushPendingWork();
+    assert.match(content.textContent, /final/);
+    ctrl.endReasoningPhase();
+  });
+
+  for (const action of ['abort', 'resetFailedResponse', 'endReasoningPhase', 'collapse']) {
+    test(`${action} cancels the live reasoning panel's pending Markdown paint`, (t) => {
+      setupDom();
+      t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+      t.mock.method(performance, 'now', () => 0);
+      const lexer = t.mock.method(marked, 'lexer');
+      const wrap = assistantWrap();
+      document.body.append(wrap);
+      const ctrl = new ThoughtBubbleController(wrap, {}, { expanded: true });
+      ctrl.appendReasoningDelta('First thought');
+      const content = wrap.querySelector('.thoughts-content');
+      ctrl.appendReasoningDelta(' pending');
+      if (action === 'collapse') wrap.querySelector('.thoughts-toggle').click();
+      else ctrl[action]();
+      const calls = lexer.mock.callCount();
+      t.mock.timers.tick(1000);
+      assert.equal(lexer.mock.callCount(), calls, 'discarded or hidden reasoning must not repaint');
+      assert.equal(content.textContent.trim(), 'First thought');
+      if (action === 'endReasoningPhase') {
+        assert.match(wrap.querySelector('.thoughts-content').textContent, /pending/,
+          'settling reasoning retains the latest text even before its scheduled paint');
+      }
+      ctrl.abort();
+    });
+  }
+
   test('summaries keep a separate working indicator through quiet gaps and expansion', (t) => {
     setupDom();
     t.mock.timers.enable({ apis: ['setInterval'] });
@@ -124,7 +174,7 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     ctrl.endReasoningPhase();
   });
 
-  test('expanded streaming thoughts render markdown as it arrives', () => {
+  test('expanded streaming thoughts render markdown as it arrives', async () => {
     setupDom();
     const wrap = assistantWrap();
     const ctrl = new ThoughtBubbleController(wrap);
@@ -132,6 +182,7 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     ctrl.appendReasoningDelta('A **bold** note\n\n```ts\nconst value = 1;');
     wrap.querySelector('.thoughts-toggle')?.click();
     ctrl.appendReasoningDelta('\n```');
+    await ctrl.flushPendingWork();
 
     const content = wrap.querySelector('.thoughts-content');
     assert.equal(content?.querySelector('strong')?.textContent, 'bold');
