@@ -6,8 +6,9 @@ import { OB_CHAT_SCROLL_SELECTOR } from './orchestrate-board-chat-state';
 /** Distance from bottom that still counts as "pinned" (larger than terminal — more padding in .chat-area). */
 export const CHAT_PIN_THRESHOLD_PX = 80;
 
-/** Ignore trackpad jitter so a 1px bounce does not unpin follow. */
-const WHEEL_INTENT_PX = 2;
+/** Touch direction needs a little slack; wheel deltas can legitimately be subpixel. */
+const TOUCH_INTENT_PX = 2;
+const CHAT_TAIL_TOLERANCE_PX = 1;
 
 export const CHAT_JUMP_CHIP_ID = 'chatJumpLatest';
 export const CHAT_APP_JUMP_CHIP_ID = 'chatAppJumpLatest';
@@ -18,12 +19,14 @@ let programmaticScroll = false;
 /** Only the newest scheduled release clears the flag — overlapping scrolls must not unpin (MIN-793). */
 let programmaticScrollToken = 0;
 /**
- * Last user gesture that will move the transcript. Scroll events without this
- * are layout or delayed programmatic fires and must not change pin state.
+ * Last explicit user gesture that will move the transcript. Native scrollbars
+ * can deliver only scroll events, so those also use the recorded position.
  */
 let userScrollIntent: 'up' | 'down' | null = null;
 /** True while the pointer is down on the transcript (scrollbar drag). */
 let pointerScrubbing = false;
+/** Compare actual movement with our last write, including native scrollbar events without a gesture. */
+const scrollPositions = new WeakMap<HTMLElement, { top: number; height: number; viewport: number }>();
 let chatAreaEl: HTMLElement | null = null;
 let jumpChipEl: HTMLButtonElement | null = null;
 let chatAppJumpChipEl: HTMLButtonElement | null = null;
@@ -92,35 +95,45 @@ function unpinFromUser(): void {
 
 /** Re-pin only when this downward gesture actually landed on the tail. */
 function pinIfAtBottom(root: HTMLElement): void {
-  stickToBottom = isChatAtBottom(root);
+  stickToBottom = root.scrollHeight - root.scrollTop - root.clientHeight <= CHAT_TAIL_TOLERANCE_PX;
   updateJumpChipVisibility();
 }
 
+function rememberScrollPosition(root: HTMLElement) {
+  const position = { top: root.scrollTop, height: root.scrollHeight, viewport: root.clientHeight };
+  scrollPositions.set(root, position);
+  return position;
+}
+
 function onChatScrollTargetScroll(boundEl: HTMLElement): void {
-  if (programmaticScroll) {
-    releaseUserScrollIntent();
-    return;
-  }
   const root = getChatScrollRoot();
   if (!root || boundEl !== root) return;
+  const previous = scrollPositions.get(root);
+  const position = rememberScrollPosition(root);
+  const sameLayout = previous?.height === position.height && previous?.viewport === position.viewport;
+  const movedUp = previous != null && position.top < previous.top;
+  const movedDown = previous != null && position.top > previous.top;
 
   const intent = userScrollIntent;
   releaseUserScrollIntent();
 
-  if (intent === 'up') {
-    // Still inside the 80px slack after the first notch — stay unpinned.
+  // User movement wins even during the two-frame guard after an automatic write.
+  // A height/viewport change alone is layout, not evidence of scrolling up.
+  if (intent === 'up' || (movedUp && (sameLayout || pointerScrubbing))) {
     unpinFromUser();
     return;
   }
 
-  if (intent === 'down' || pointerScrubbing) {
+  if (programmaticScroll && !pointerScrubbing) return;
+
+  if (intent === 'down' || pointerScrubbing || (movedDown && sameLayout)) {
     pinIfAtBottom(root);
     return;
   }
 
   // No user gesture: delayed programmatic / overflow-anchor / image layout.
   // Stay glued when following; never steal the viewport when the user is up-thread.
-  if (stickToBottom) {
+  if (stickToBottom && position.height - position.top - position.viewport > CHAT_TAIL_TOLERANCE_PX) {
     applyInstantScroll(root, root.scrollHeight);
   }
   updateJumpChipVisibility();
@@ -130,16 +143,16 @@ function onChatScrollTargetScroll(boundEl: HTMLElement): void {
 function onChatScrollTargetWheel(ev: WheelEvent, boundEl: HTMLElement): void {
   const root = getChatScrollRoot();
   if (!root || boundEl !== root) return;
-  if (ev.deltaY < -WHEEL_INTENT_PX) {
+  if (ev.deltaY < 0) {
     userScrollIntent = 'up';
     unpinFromUser();
     return;
   }
-  if (ev.deltaY > WHEEL_INTENT_PX) {
+  if (ev.deltaY > 0) {
     userScrollIntent = 'down';
     // Pin on this event if the tail is already in view (smooth CSS may not
     // emit another scroll until later, by which time the stream has grown).
-    if (isChatAtBottom(root)) pinIfAtBottom(root);
+    pinIfAtBottom(root);
   }
 }
 
@@ -228,6 +241,7 @@ function applyInstantScroll(area: HTMLElement, scrollTop: number): void {
   const token = programmaticScrollToken;
   area.style.scrollBehavior = 'auto';
   area.scrollTop = scrollTop;
+  rememberScrollPosition(area);
   // Two frames: Chromium often delivers the `scroll` event after the first rAF.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -348,6 +362,7 @@ export function restoreChatScrollAnchor(anchor: ChatScrollAnchor | null): void {
 function bindScrollTarget(el: HTMLElement | null): void {
   if (!el || el.dataset.chatScrollBound === '1') return;
   el.dataset.chatScrollBound = '1';
+  rememberScrollPosition(el);
   el.addEventListener('scroll', () => onChatScrollTargetScroll(el), { passive: true });
   el.addEventListener('wheel', (ev) => onChatScrollTargetWheel(ev, el), { passive: true });
   let touchY: number | null = null;
@@ -358,7 +373,7 @@ function bindScrollTarget(el: HTMLElement | null): void {
     if (touchY === null || ev.touches.length !== 1 || getChatScrollRoot() !== el) return;
     const nextY = ev.touches[0].clientY;
     const delta = touchY - nextY;
-    if (Math.abs(delta) <= WHEEL_INTENT_PX) return;
+    if (Math.abs(delta) <= TOUCH_INTENT_PX) return;
     touchY = nextY;
     userScrollIntent = delta < 0 ? 'up' : 'down';
     if (delta < 0) unpinFromUser();

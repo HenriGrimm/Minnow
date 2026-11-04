@@ -112,6 +112,47 @@ test('retryable attempt failures retain one command and user input while new att
   assert.equal(runs, 2);
 });
 
+for (const status of ['completed', 'failed', 'cancelled']) {
+  test(`exact ${status} task publication survives child deletion without granting new publication authority`, async t => {
+    const events = [];
+    const f = await fixture(t, { onEvent: event => events.push(event) });
+    f.host(async () => ({ outcome: 'pass', summary: 'Done' }));
+    const command = await f.send('Deleted task');
+    const handle = await f.service.startAdmittedChildTask(f.input(command)); await handle.activate();
+    const result = f.terminal(command, handle, { status });
+    const input = { commandId: command.commandId, runId: command.runId, result };
+    const receipt = f.service.settleChildTask(input);
+    await f.service.idle('child');
+    f.db.prepare('DELETE FROM chats WHERE id=?').run('child');
+    assert.equal(f.repository.getRelation('child'), null);
+    events.length = 0;
+
+    assert.deepEqual(f.service.settleChildTask(input), receipt);
+    await f.service.idle('child');
+    assert.deepEqual(events, []);
+    assert.deepEqual(f.errors, []);
+    assert.throws(() => f.service.settleChildTask({ ...input, runId: 'another-run' }), code('ownership_conflict'));
+    for (const patch of [{ runId: 'another-run' }, { childChatId: 'another-child' }, { journalOwnerId: 'another-family' },
+      { summary: 'Changed result' }, { status: status === 'completed' ? 'failed' : 'completed' }]) {
+      assert.throws(() => f.service.settleChildTask({ ...input, result: { ...result, ...patch } }), code('ownership_conflict'));
+    }
+    assert.throws(() => f.service.settleChildTask({ ...input,
+      error: { code: 'internal_error', message: 'Changed error', retryable: false } }), code('ownership_conflict'));
+    assert.deepEqual(f.repository.getCommand(command.commandId).result, result);
+  });
+}
+
+test('a missing child relation still rejects first-time terminal publication', async t => {
+  const f = await fixture(t);
+  f.host(async () => ({ outcome: 'pass', summary: 'Done' }));
+  const command = await f.send('Unpublished task');
+  const handle = await f.service.startAdmittedChildTask(f.input(command)); await handle.activate();
+  f.db.prepare('DELETE FROM chat_relations WHERE chat_id=?').run('child');
+  assert.throws(() => f.service.settleChildTask({ commandId: command.commandId, runId: command.runId,
+    result: f.terminal(command, handle) }), code('ownership_conflict'));
+  assert.equal(f.repository.getCommand(command.commandId).state, 'queued');
+});
+
 test('FIFO, missing host and existing ownership defer graph starts without manufacturing attempts', async t => {
   const f = await fixture(t);
   const first = await f.send('First task'), second = await f.send('Next task');

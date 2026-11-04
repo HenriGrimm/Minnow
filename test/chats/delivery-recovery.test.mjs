@@ -224,6 +224,33 @@ test('restart reconstructs missing publication after terminal journal durability
   assert.equal(f.calls.filter(call => call.chatId === 'parent').length, 1);
 });
 
+test('restart replays a published task after child deletion without blocking recovery or waking its parent again', async t => {
+  const f = await fixture(t), task = await f.spawn('deleted-child');
+  await f.complete(task); await f.service.idle('parent');
+  const result = f.delivery.tasks.getResult(task.runId);
+  const receipt = f.repository.getCommand(task.commandId);
+  const events = await f.journal.readEvents('family');
+  f.db.prepare('INSERT INTO chat_conversation_tombstones(chat_id,deleted_at) VALUES (?,?)').run(task.childChatId, 2000);
+  f.db.prepare('DELETE FROM chats WHERE id=?').run(task.childChatId);
+  assert.equal(f.repository.getRelation(task.childChatId), null);
+
+  await f.reopen();
+  await f.delivery.recover(); await f.delivery.start(); await f.service.idle();
+  await f.delivery.recover();
+  assert.deepEqual(f.delivery.tasks.getResult(task.runId), result);
+  assert.deepEqual(f.repository.getCommand(task.commandId), receipt);
+  assert.deepEqual(await f.journal.readEvents('family'), events);
+  assert.equal(f.delivery.tasks.getSubscription(task.runId).state, 'delivered');
+  assert.equal(f.calls.filter(call => call.chatId === 'parent').length, 1);
+  assert.equal(f.calls.filter(call => call.chatId === task.childChatId).length, 1);
+  assert.throws(() => f.repository.getChat(task.childChatId), failCode('chat_not_found'));
+
+  const next = await f.spawn('after-deletion'); await f.complete(next); await f.service.idle('parent');
+  assert.equal(f.repository.getCommand(next.commandId).state, 'settled');
+  assert.equal(f.calls.filter(call => call.chatId === 'parent').length, 2);
+  assert.deepEqual(f.errors, []);
+});
+
 test('recovery reconciles a removed queued command before graph admission and preserves its cancellation receipt', async t => {
   const f = await fixture(t), task = await f.spawn('removed-before-journal');
   const original = f.repository.getCommand(task.commandId);

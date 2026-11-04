@@ -29,6 +29,122 @@ function makeChatArea({ scrollHeight, clientHeight, scrollTop }) {
 }
 
 describe('chat-scroll', () => {
+  for (const gesture of ['small wheel', 'native scrollbar', 'scrollbar during follow', 'downward correction']) {
+    test(`${gesture} does not snap an up-thread reader back to the bottom`, async () => {
+      const window = new Window();
+      globalThis.document = window.document;
+      let frames = [];
+      globalThis.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+      globalThis.cancelAnimationFrame = () => {};
+      const flushFrames = () => {
+        while (frames.length) {
+          const pending = frames;
+          frames = [];
+          for (const cb of pending) cb();
+        }
+      };
+      const area = document.createElement('main');
+      area.id = 'chatArea';
+      const chip = document.createElement('button');
+      chip.id = 'chatJumpLatest';
+      document.body.append(area, chip);
+      let height = 1200;
+      let top = 800;
+      Object.defineProperties(area, {
+        scrollHeight: { get: () => height }, clientHeight: { value: 400 },
+        scrollTop: { get: () => top, set: value => { top = Math.min(value, height - 400); } },
+      });
+      try {
+        initChatScroll();
+        scrollChatToBottom();
+        if (gesture !== 'scrollbar during follow') flushFrames();
+        if (gesture === 'small wheel') {
+          area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -0.5 }));
+          assert.equal(isChatScrollPinned(), false, 'release before the next stream tick');
+          top = 799.5;
+        } else if (gesture === 'downward correction') {
+          area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -40 }));
+          top = 760;
+          area.dispatchEvent(new window.Event('scroll'));
+          area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 5 }));
+          top = 765;
+        } else {
+          if (gesture === 'scrollbar during follow') {
+            area.dispatchEvent(new window.PointerEvent('pointerdown', { pointerType: 'mouse' }));
+          }
+          top = 780;
+        }
+        area.dispatchEvent(new window.Event('scroll'));
+        document.dispatchEvent(new window.PointerEvent('pointerup'));
+        flushFrames();
+        assert.equal(isChatScrollPinned(), false);
+        assert.equal(chip.classList.contains('hidden'), false);
+        const readingTop = top;
+        height = 1600;
+        scrollChatIfPinned();
+        area.dispatchEvent(new window.Event('load'));
+        assert.equal(top, readingTop, 'stream and image layout preserve the reading position');
+
+        area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 500 }));
+        top = 1200;
+        area.dispatchEvent(new window.Event('scroll'));
+        assert.equal(isChatScrollPinned(), true, 'reaching the actual bottom resumes follow');
+        height = 1800;
+        scrollChatIfPinned();
+        assert.equal(top, 1400);
+      } finally {
+        flushFrames();
+        await window.happyDOM.close();
+      }
+    });
+  }
+
+  test('delayed automatic scroll events and layout shrink keep follow enabled', async () => {
+    const window = new Window();
+    globalThis.document = window.document;
+    let frames = [];
+    globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+    globalThis.cancelAnimationFrame = () => {};
+    const frame = () => {
+      const pending = frames;
+      frames = [];
+      for (const cb of pending) cb();
+    };
+    const area = document.createElement('main');
+    area.id = 'chatArea';
+    document.body.append(area);
+    let height = 1200;
+    let top = 800;
+    Object.defineProperties(area, {
+      scrollHeight: { get: () => height }, clientHeight: { value: 400 },
+      scrollTop: { get: () => top, set: value => { top = Math.min(value, height - 400); } },
+    });
+    try {
+      initChatScroll();
+      scrollChatToBottom();
+      frame();
+      height = 1600;
+      scrollChatIfPinned();
+      frame(); // The first write's release must not interfere with the second write.
+      area.dispatchEvent(new window.Event('scroll'));
+      assert.equal(isChatScrollPinned(), true);
+      assert.equal(top, 1200);
+      while (frames.length) frame();
+
+      // Chromium clamps scrollTop when a disclosure collapses.
+      height = 1000;
+      top = 600;
+      area.dispatchEvent(new window.Event('scroll'));
+      assert.equal(isChatScrollPinned(), true, 'layout shrink is not user movement');
+      height = 1500;
+      scrollChatIfPinned();
+      assert.equal(top, 1100);
+    } finally {
+      while (frames.length) frame();
+      await window.happyDOM.close();
+    }
+  });
+
   test('touch scrolling releases follow before movement and remains released through iOS momentum', async () => {
     const window = new Window();
     globalThis.document = window.document;

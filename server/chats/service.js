@@ -618,17 +618,23 @@ export function createChatCommandService({
     return reserveExecution(record, target, { task: { runId: input.runId, attemptId: input.attemptId }, signal: input.signal });
   }
   function settleChildTask({ commandId, runId, result, error } = {}) {
-    let alreadyConsumed = false;
+    let unchanged = false;
     checked(validateChatId(commandId)); checked(validateChatId(runId));
     const terminal = checked(validateChatTaskResult(result));
+    const state = terminal.status === 'completed' ? 'settled' : terminal.status === 'cancelled' ? 'cancelled' : 'failed';
     const issue = error === undefined ? null : checked(validateChatError(error));
     const settled = repository.atomic(() => {
       const record = repository.getCommand(commandId);
       if (!record) failure('command_not_found', 'Task command does not exist');
+      // Published receipts outlive deleted child shells and their relations.
+      // Exact replay needs no new authority and must not schedule that chat.
+      if (record.runId === runId && terminal.runId === runId && terminal.childChatId === record.chatId
+        && record.state === state
+        && same(record.result, terminal) && same(record.error, issue)) { unchanged = true; return record; }
       const relation = repository.getRelation(record.chatId);
       if (!relation || record.runId !== runId || terminal.runId !== runId || terminal.childChatId !== record.chatId
         || terminal.journalOwnerId !== relation.journalOwnerId) failure('ownership_conflict', 'Task publication does not match the admitted child command');
-      if (['settled', 'cancelled'].includes(record.state) && ['steered', 'removed'].includes(record.result?.disposition)) { alreadyConsumed = true; return record; }
+      if (['settled', 'cancelled'].includes(record.state) && ['steered', 'removed'].includes(record.result?.disposition)) { unchanged = true; return record; }
       if (!['settled', 'failed', 'cancelled'].includes(record.state) && (active.has(record.chatId)
         || repository.getLease(record.chatId)?.state === 'active')) failure('ownership_conflict', 'Task execution must settle before terminal publication');
       if (terminal.executionId) {
@@ -636,10 +642,9 @@ export function createChatCommandService({
         if (!execution || execution.chatId !== record.chatId || execution.runId !== runId
           || (terminal.attemptId && execution.attemptId !== terminal.attemptId)) failure('ownership_conflict', 'Task result references another execution');
       }
-      return repository.updateCommand(commandId, { state: terminal.status === 'completed' ? 'settled'
-        : terminal.status === 'cancelled' ? 'cancelled' : 'failed', result: terminal, error: issue, held: false });
+      return repository.updateCommand(commandId, { state, result: terminal, error: issue, held: false });
     });
-    if (!alreadyConsumed) { announce(settled, 'execution'); schedule(settled.chatId); }
+    if (!unchanged) { announce(settled, 'execution'); schedule(settled.chatId); }
     return receipt(settled);
   }
   async function pump(chatId) {
