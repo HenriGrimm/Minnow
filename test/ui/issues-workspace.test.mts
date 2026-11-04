@@ -126,11 +126,12 @@ test('long issue chats backfill in order and cancel pending work when leaving Ch
   dom.cancelIdleCallback = (id) => { pending.delete(id); };
   sessionState!.chats[0].history = Array.from({ length: 80 }, (_, index) => ({ role: 'user', content: `Message ${index}` }));
   click('Chat'); await flush();
-  const transcript = document.querySelector('.shared-chat-host__transcript')!;
+  const transcript = document.querySelector<HTMLElement>('.shared-chat-host__transcript')!;
   assert.equal(transcript.querySelectorAll('.msg.user').length, 30);
   assert.equal(pending.size, 0, 'older history is not scheduled eagerly');
-  while (transcript.querySelector('.chat-history-more')) {
-    transcript.querySelector<HTMLButtonElement>('.chat-history-more')!.click();
+  assert.equal(transcript.querySelector('.chat-history-more'), null);
+  for (let page = 0; Number(transcript.dataset.historyStart) > 0 && page < 10; page++) {
+    transcript.dispatchEvent(new dom.WheelEvent('wheel', { deltaY: -40 }));
     await flush();
   }
   const messages = [...transcript.querySelectorAll('.msg-bubble')].map((node) => node.textContent);
@@ -138,8 +139,9 @@ test('long issue chats backfill in order and cancel pending work when leaving Ch
   assert.equal(messages[0], 'Message 0');
   assert.equal(messages.at(-1), 'Message 79');
   click('Issue'); click('Chat'); await flush();
-  assert.ok(document.querySelector('.chat-history-more'));
-  document.querySelector<HTMLButtonElement>('.chat-history-more')!.click();
+  const reopened = document.querySelector<HTMLElement>('.shared-chat-host__transcript')!;
+  assert.ok(Number(reopened.dataset.historyStart) > 0);
+  reopened.dispatchEvent(new dom.WheelEvent('wheel', { deltaY: -40 }));
   click('Issue');
   assert.equal(pending.size, 0);
 });

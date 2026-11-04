@@ -14,6 +14,8 @@ import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import type { Chat, LmModelRecord } from '../types';
 import { resolveLastRequestMetrics } from '../usage/chat-turn-metrics';
 import { resolveNativeContext } from './native-context';
+import { resolveChatContextBudget } from './context/chat-context-budget';
+import { resolveCompactionConfig } from '../../server/runner/compaction/index.js';
 import {
   estimateInFlightOverlayTokens,
   type ContextInFlightOverlay,
@@ -108,6 +110,8 @@ export interface GetContextBudgetOptions {
   pendingAttachmentTokens?: number;
   /** Streaming / not-yet-persisted turn content (BUG-019). */
   inFlight?: Omit<ContextInFlightOverlay, 'chatId'>;
+  /** A closed meter needs only measured usage; defer transcript estimates until its panel opens. */
+  includeBreakdown?: boolean;
 }
 
 // ── Breakdown ────────────────────────────────────────────────────────────────
@@ -461,8 +465,22 @@ export async function getContextBudget(
     chat.modelId?.trim() ||
     '';
 
-  const { resolveOutboundPromptEstimate } = await import('./prompts/token-estimate');
-  const estimate = await resolveOutboundPromptEstimate({ chat, modelId });
+  const nativeContext = resolveNativeContext(chat, modelId);
+  let estimate: OutboundPromptEstimate;
+  if (nativeContext && options?.includeBreakdown === false) {
+    // Native CLI context is authoritative. Predicting a compaction over the entire
+    // transcript every stream tick blocks input without changing the meter's value.
+    const config = resolveChatContextBudget(chat);
+    estimate = {
+      total: nativeContext.used, history: nativeContext.used,
+      composedSystem: 0, userRules: 0, tools: 0, legacyFallback: false,
+      trimAtShare: config.enforcementPolicy === 'compact'
+        ? resolveCompactionConfig(config, nativeContext.limit ?? resolveContextLimit(modelId, chat)).highWater : 1,
+    };
+  } else {
+    const { resolveOutboundPromptEstimate } = await import('./prompts/token-estimate');
+    estimate = await resolveOutboundPromptEstimate({ chat, modelId });
+  }
   const composerTokens = estimateTokensFromText(options?.pendingComposerText?.trim() ?? '');
   const attachmentTokens = options?.pendingAttachmentTokens ?? 0;
   const inFlightTokens = estimateInFlightOverlayTokens(options?.inFlight);
@@ -480,7 +498,7 @@ export async function getContextBudget(
     lastTurnPromptTokens: lastTurn?.prompt_tokens ?? null,
     lastTurnCompletionTokens: lastTurn?.completion_tokens ?? null,
     lastTurnTotalTokens: lastTurn?.total_tokens ?? null,
-    nativeContext: resolveNativeContext(chat, modelId),
+    nativeContext,
     sessionUsage: chat.tokenLedger?.totals,
   });
 }

@@ -167,6 +167,7 @@ async function runRefresh(generation: number): Promise<void> {
       pendingComposerText: readPendingComposerText(),
       pendingAttachmentTokens: estimateAttachmentTokens(getPendingAttachments()),
       inFlight: getContextInFlightOverlay(chat.id),
+      includeBreakdown: isContextUsageBreakdownOpen(),
     });
     if (!shouldApplyRefreshResult(generation, chatIdAtStart)) return;
     lastBudget = budget;
@@ -246,10 +247,14 @@ function bindRingButton(surface: ContextUsageSurface): void {
     if (surface.ringId !== active.ringId) return;
     if (lastBudget) {
       toggleContextUsageBreakdown(lastBudget, surface);
+      if (isContextUsageBreakdownOpen()) refreshContextUsageRing();
     } else {
       const generation = ++refreshGeneration;
       void runRefresh(generation).then(() => {
-        if (lastBudget) toggleContextUsageBreakdown(lastBudget, surface);
+        if (lastBudget) {
+          toggleContextUsageBreakdown(lastBudget, surface);
+          if (isContextUsageBreakdownOpen()) refreshContextUsageRing();
+        }
       });
     }
   });

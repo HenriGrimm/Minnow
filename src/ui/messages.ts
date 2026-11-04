@@ -387,6 +387,7 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
   const cancelBackfill = mountHistoryPager({ mount: area, from: tailStart,
     scrollRoot: () => area.parentElement,
     renderRow: (row, index) => paint(row, () => appendHistoryMessageAt(row, ctx, index)),
+    onPageLoaded: () => installChatWorkView(area, chat, () => isChatStreaming(chat.id), { view: 'compact', expanded, isolated: true }),
   });
   rememberChatSurface(area, chat);
   return { liveBubble, dispose: () => { cancelBackfill(); disposeChatWorkView(area); } };
@@ -774,6 +775,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     // Cards anchor to their spawn tool row; re-place now that the older rows exist.
     runWithChatMount(area, () => renderPersistedSubAgentCardsForChat(chat));
     syncThoughtsCaretPulse(area);
+    // Settle disclosures before the pager measures height and restores the reader's position.
+    installChatWorkView(area, chat, () => isChatStreaming(chat.id));
   });
   renderPersistedSubAgentCardsForChat(chat);
   syncThoughtsCaretPulse(area);

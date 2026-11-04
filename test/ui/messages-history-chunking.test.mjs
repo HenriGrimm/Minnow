@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import DOMPurify from 'dompurify';
 import {
   installHappyDomGlobals,
   teardownHappyDomAsync,
@@ -14,7 +15,7 @@ const { setSessionStateForTests, createEmptyChatObject } = await import(
   '../../src/state/sessions.ts'
 );
 const { resetInstancesForTests } = await import('../../src/os/instances.ts');
-const { renderChatFromHistory, cancelChatHistoryBackfill } = await import(
+const { renderChatFromHistory, renderEmbeddedChatTranscript, cancelChatHistoryBackfill } = await import(
   '../../src/ui/messages.ts'
 );
 const { initChatScroll } = await import('../../src/ui/chat-scroll.ts');
@@ -26,11 +27,16 @@ let domWindow;
 function setup(count, chatId) {
   domWindow = new Window();
   installHappyDomGlobals(domWindow);
+  DOMPurify.sanitize = DOMPurify(domWindow).sanitize;
   resetInstancesForTests();
 
   const chatArea = document.createElement('div');
   chatArea.id = 'chatArea';
   document.body.appendChild(chatArea);
+  Object.defineProperties(chatArea, {
+    clientHeight: { value: 600, configurable: true },
+    scrollHeight: { get: () => bubbleTexts(chatArea).length * 100, configurable: true },
+  });
   initChatScroll();
 
   const chat = createEmptyChatObject('');
@@ -59,6 +65,11 @@ function bubbleTexts(chatArea) {
   return [...chatArea.querySelectorAll('.msg.user .msg-bubble')].map((el) => el.textContent);
 }
 
+function scrollEarlier(root, top = 800) {
+  root.scrollTop = top;
+  root.dispatchEvent(new domWindow.WheelEvent('wheel', { deltaY: -40 }));
+}
+
 describe('chunked transcript rebuild', { concurrency: false }, () => {
   afterEach(async () => {
     cancelChatHistoryBackfill();
@@ -81,11 +92,12 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
       `switch must not render all 80 rows synchronously (got ${immediate.length})`,
     );
     assert.equal(immediate.at(-1), 'message 79', 'the newest message is what the user looks at');
+    assert.equal(chatArea.querySelector('.chat-history-more'), null, 'history has no load button');
 
     await drain();
     assert.equal(bubbleTexts(chatArea).length, immediate.length, 'idle time must not eagerly mount history');
-    while (chatArea.querySelector('.chat-history-more')) {
-      chatArea.querySelector('.chat-history-more').click();
+    for (let page = 0; Number(chatArea.dataset.historyStart) > 0 && page < 10; page++) {
+      scrollEarlier(chatArea);
       await drain();
     }
 
@@ -106,7 +118,7 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
   test('a same-chat repaint retains earlier pages the reader has already loaded', async () => {
     const { chatArea, chat } = setup(100, 'retained-pages');
     renderChatFromHistory(chat);
-    chatArea.querySelector('.chat-history-more').click();
+    scrollEarlier(chatArea);
     await drain();
     assert.equal(bubbleTexts(chatArea)[0], 'message 40');
     chat.history.push({ role: 'user', content: 'new message' });
@@ -116,11 +128,11 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     assert.equal(bubbleTexts(chatArea).length, 61);
   });
 
-  test('one request loads one page without changing existing row identity', async () => {
+  test('scrolling up preloads off-screen history without changing existing row identity', async () => {
     const { chatArea, chat } = setup(100, 'paged-chat');
     renderChatFromHistory(chat);
     const last = chatArea.querySelector('.msg:last-child');
-    chatArea.querySelector('.chat-history-more').click();
+    scrollEarlier(chatArea);
     await drain();
     assert.equal(bubbleTexts(chatArea).length, 60);
     assert.equal(chatArea.querySelector('.msg:last-child'), last);
@@ -130,10 +142,12 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
 
   test('scrolling toward older messages loads one page and preserves the scroll anchor', async () => {
     const { chatArea, chat } = setup(100, 'scroll-page');
+    Object.defineProperty(chatArea, 'clientHeight', { value: 100 });
     Object.defineProperty(chatArea, 'scrollHeight', { get: () => bubbleTexts(chatArea).length * 20 });
     chatArea.scrollTop = 25;
     renderChatFromHistory(chat);
     await drain();
+    const initiallyLoaded = bubbleTexts(chatArea).length;
     chatArea.scrollTop = 25;
     chatArea.style.scrollBehavior = 'smooth';
     let top = 25;
@@ -144,19 +158,62 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     });
     chatArea.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -20 }));
     await drain();
-    assert.equal(bubbleTexts(chatArea).length, 60);
+    assert.equal(bubbleTexts(chatArea).length, initiallyLoaded + 30);
     assert.equal(chatArea.scrollTop, 625, 'the same row remains at the same screen position');
     assert.equal(anchorBehavior, 'auto', 'anchor correction must not animate on smooth-scroll hosts');
     assert.equal(chatArea.style.scrollBehavior, 'smooth', 'the host scroll preference is restored');
     await drain();
-    assert.equal(bubbleTexts(chatArea).length, 60, 'one gesture must not drain all history');
+    assert.equal(bubbleTexts(chatArea).length, initiallyLoaded + 30, 'stop loading once the off-screen buffer is full');
   });
+
+  for (const surface of ['main', 'embedded']) {
+    test(`${surface} paging settles compact work before restoring the scroll position`, async () => {
+      const { chatArea, chat } = setup(0, `compact-page-${surface}`);
+      Object.defineProperty(chatArea, 'clientHeight', { value: 100 });
+      chat.history = Array.from({ length: 8 }, (_, turn) => [
+        { role: 'user', content: `Question ${turn}` },
+        ...Array.from({ length: 20 }, (_, step) => {
+          const id = `${turn}-${step}`;
+          return [
+            { role: 'assistant', content: 'Checking the file.', tool_calls: [
+              { id, type: 'function', function: { name: 'read_file', arguments: '{"path":"src/chat.ts"}' } },
+            ] },
+            { role: 'tool', tool_call_id: id, content: 'File contents' },
+          ];
+        }).flat(),
+        { role: 'assistant', content: `Final answer ${turn}` },
+      ]).flat();
+      const mount = surface === 'main' ? chatArea : chatArea.appendChild(document.createElement('div'));
+      // Model layout height so a deferred compact-view collapse changes scrollHeight.
+      Object.defineProperty(chatArea, 'scrollHeight', { get: () =>
+        [...mount.children].filter(row => !row.classList.contains('chat-work-hidden')).length * 100,
+      });
+      let dispose;
+      try {
+        if (surface === 'main') renderChatFromHistory(chat);
+        else ({ dispose } = renderEmbeddedChatTranscript(chat, mount, new Set()));
+        await drain();
+        chatArea.scrollTop = 500;
+        const height = chatArea.scrollHeight;
+        const start = mount.dataset.historyStart;
+        scrollEarlier(chatArea, 500);
+        await drain();
+
+        assert.ok(Number(mount.dataset.historyStart) < Number(start), 'load earlier pages beyond the initial buffer');
+        assert.ok(mount.querySelectorAll('.tool-call-msg.chat-work-hidden').length > 0);
+        assert.equal(chatArea.scrollTop, 500 + chatArea.scrollHeight - height,
+          'the anchor uses the settled height, with no second-frame collapse jump');
+      } finally {
+        dispose?.();
+      }
+    });
+  }
 
   test('switching away abandons the previous chat backfill', async () => {
     const { chatArea, chat } = setup(80, 'abandoned-chat');
     renderChatFromHistory(chat);
     const partial = bubbleTexts(chatArea).length;
-    chatArea.querySelector('.chat-history-more').click();
+    scrollEarlier(chatArea);
 
     // A second paint owns the transcript now; the first chat's chunks must not land in it.
     const other = createEmptyChatObject('');

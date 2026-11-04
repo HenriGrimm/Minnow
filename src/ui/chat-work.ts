@@ -275,6 +275,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
   function sync(): void {
     if (disposed) return;
+    if (frame !== undefined) { view!.cancelAnimationFrame(frame); frame = undefined; }
     observer.disconnect();
     if (timer) { clearTimeout(timer); timer = undefined; }
     liveView = null;
