@@ -35,7 +35,7 @@
   gap: 8px;
   min-width: 0;
   max-width: 380px;
-  height: 100%;
+  flex: 1;
   box-sizing: border-box;
   padding: 10px 12px;
   overflow: hidden;
@@ -152,8 +152,14 @@
 .sub-agent-group[data-live='true'] .sub-agent-group__label { color: var(--mn-fg); }
 .sub-agent-group__chevron { color: var(--mn-fg-subtle); transition: transform var(--duration-fast) var(--ease-out); }
 .sub-agent-group[open] .sub-agent-group__chevron { transform: rotate(90deg); }
-.sub-agent-group__body { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 8px; padding-top: 4px; }
+.sub-agent-group__body { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); grid-auto-rows: 1fr; gap: 8px; padding-top: 4px; }
 .sub-agent-group__body .sub-agent-card__panel { max-width: none; }
+.sub-agent-group__body > .sub-agent-card {
+  align-self: stretch;
+  display: flex;
+  min-width: 0;
+}
+.sub-agent-group__body > .sub-agent-card > .sub-agent-card__panel { width: 100%; }
 .sub-agent-group__summary:focus-visible,
 .sub-agent-card__result summary:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
 
@@ -377,6 +383,26 @@
     grid-row: 3;
   }
 }
+
+/* Persistent card headers keep the assignment readable instead of squeezing it
+ * between the provider mark and a single-line status. Also overrides the narrow
+ * inline-card layout above, whose task is a direct grid child. */
+.sub-agent-card--persistent .sub-agent-card__body { grid-template-columns: auto minmax(0, 1fr); }
+.sub-agent-card--persistent .sub-agent-card__task,
+.sub-agent-card--persistent .sub-agent-card__type {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sub-agent-card--persistent .sub-agent-card__meta {
+  grid-column: 2;
+  justify-self: start;
+  white-space: normal;
+}
+.sub-agent-card__selection { flex-wrap: wrap; }
+.sub-agent-card__options { white-space: normal; overflow-wrap: anywhere; }
+.sub-agent-card__selection .agent-model-chip { height: auto; min-height: 20px; }
+.sub-agent-card__selection .agent-model-chip__label { white-space: normal; overflow-wrap: anywhere; }
+.sub-agent-card__result { margin-top: auto; }
 
 /* Conversation inspector, sized to the chat column rather than the viewport. */
 .sub-agent-overlay {

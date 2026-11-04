@@ -262,6 +262,19 @@ function placeAfter(anchor: HTMLElement | null, node: HTMLElement, area: HTMLEle
   else if (!area.contains(node)) area.append(node);
 }
 
+/** Keep cards in their parent turn when the original spawn row is unavailable. */
+function turnAnchor(area: HTMLElement, chatId: string, run: ActivityRun): HTMLElement | null {
+  if (!run.parentTurnId) return null;
+  const chat = findChatById(chatId);
+  const turn = chat?.runs?.find(turn => turn.parentTurnId === run.parentTurnId);
+  if (!turn) return null;
+  const nextFork = chat!.runs?.filter(candidate => candidate.forkHistoryIndex > turn.forkHistoryIndex)
+    .reduce((end, candidate) => Math.min(end, candidate.forkHistoryIndex), Infinity) ?? Infinity;
+  return [...area.children].filter((node): node is HTMLElement => node instanceof HTMLElement)
+    .filter(node => node.dataset.historyIndex != null && Number(node.dataset.historyIndex) >= turn.forkHistoryIndex
+      && Number(node.dataset.historyIndex) < nextFork).at(-1) ?? null;
+}
+
 function reconcile(area: HTMLElement, chatId: string): void {
   const anchorsById = new Map<string, HTMLElement>();
   area.querySelectorAll<HTMLElement>('[data-tool-call-id]').forEach(row => { if (!anchorsById.has(row.dataset.toolCallId!)) anchorsById.set(row.dataset.toolCallId!, row); });
@@ -275,7 +288,8 @@ function reconcile(area: HTMLElement, chatId: string): void {
   for (const [key, members] of buckets) {
     const anchors = members.map(entry => sourceAnchor(anchorsById, entry.run)).filter((anchor): anchor is HTMLElement => Boolean(anchor));
     // DOM order, not completion order, chooses the original delegation anchor.
-    const anchor = anchors.sort((a, b) => (anchorOrder.get(a) ?? Infinity) - (anchorOrder.get(b) ?? Infinity))[0] ?? null;
+    const anchor = anchors.sort((a, b) => (anchorOrder.get(a) ?? Infinity) - (anchorOrder.get(b) ?? Infinity))[0]
+      ?? turnAnchor(area, chatId, members[0]!.run);
     if (members.length === 1) { groups.get(key)?.remove(); groups.delete(key); placeAfter(anchor, members[0]!.row, area); continue; }
     let group = groups.get(key);
     if (!group) {

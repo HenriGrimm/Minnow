@@ -119,6 +119,26 @@ test('one persistent delegation is a direct child link; same-turn siblings form 
   assert.equal(document.activeElement, link); assert.match(row.textContent!, /effort high/);
 });
 
+test('settled delegations without spawn rows stay in their parent turn after refresh and remount', () => {
+  const parent = shell('parent'), child = shell('child', parent.id);
+  const area = setup([parent, child]);
+  parent.runs = [
+    { parentTurnId: 'parent-turn', forkHistoryIndex: 0 },
+    { parentTurnId: 'later-turn', forkHistoryIndex: 2 },
+  ] as Chat['runs'];
+  const answer = document.createElement('div'); answer.dataset.historyIndex = '1';
+  const later = document.createElement('div'); later.dataset.historyIndex = '2';
+  area.append(answer, later);
+  const settled = { ...run('settled', child.id), status: 'completed' as const };
+  for (let i = 0; i < 2; i++) {
+    const row = upsertPersistentAgentActivity(settled, parent.id, area)!;
+    refreshPersistentAgentActivity(parent.id, area);
+    assert.equal(answer.nextElementSibling, row);
+    assert.equal(row.nextElementSibling, later);
+    clearPersistentAgentActivity(); row.remove();
+  }
+});
+
 test('unrelated turns never merge; queued and durable request waits have honest labels without generating spinners', () => {
   const parent = shell('parent'), a = shell('child-a', parent.id), b = shell('child-b', parent.id), c = shell('child-c', parent.id); const area = setup([parent, a, b, c]);
   const first = run('wait-one', a.id), second = run('wait-two', b.id), other = run('wait-three', c.id, 'different-turn');

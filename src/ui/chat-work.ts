@@ -210,7 +210,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     for (const row of activity) {
       // Corrections, recovery controls, the active checkpoint and open questions stay visible while collapsed.
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated, .msg--steered')
-        || row.matches('.sub-agent-card--persistent, .sub-agent-group')
+        || row.matches('.sub-agent-card--persistent:not([data-status="completed"]):not([data-status="cancelled"]), .sub-agent-group[data-live="true"]')
+        || Boolean(row.querySelector('.sub-agent-card--persistent[data-status="failed"]'))
         || row.matches('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')
         || Boolean(row.querySelector('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]'))
         || Boolean(row.querySelector('.msg-bubble--error'))
