@@ -101,6 +101,7 @@ import {
 } from './chat-mount';
 import { dismissCodeOverviewForNavigation } from './code-overview';
 import { dismissDevServerScreenForNavigation } from './dev-server-screen';
+import { closeSubAgentDrawer } from './sub-agent-drawer';
 import { isBoardViewActive, syncBoardViewChrome } from './view-mode-toggle';
 import { closeDrawer } from './settings';
 import { appConfirm } from './app-dialog';
@@ -626,6 +627,15 @@ let cancelPendingBackfill: (() => void) | null = null;
 export function cancelChatHistoryBackfill(): void {
   cancelPendingBackfill?.();
   cancelPendingBackfill = null;
+}
+
+/** Release transcript-owned work before another Code section reuses its column. */
+export function unmountCodeChatTranscript(area: HTMLElement): void {
+  closeSubAgentDrawer();
+  cancelChatHistoryBackfill();
+  disposeChatWorkView(area);
+  clearSubAgentCardDomRegistry();
+  forgetChatSurface(area);
 }
 
 function backfillChatHistory(area: HTMLElement, ctx: HistoryRenderContext, from: number, onPageLoaded: () => void): void {

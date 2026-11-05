@@ -16,6 +16,7 @@ import { syncComposerFromStreamingState, syncComposerReadOnlyState } from '../..
 import { parseOsHash } from '../../src/os/router.ts';
 import { classifyMarkdownHref } from '../../src/markdown/links.ts';
 import { launchCodeWithChat, switchToCodeChat } from '../../src/os/chat-launch.ts';
+import { setRemoteChatRunning } from '../../src/chat/remote-turn-state.ts';
 import type { Chat, SessionState } from '../../src/types.ts';
 
 const WS = 'C:\\workspace\\agent-navigation';
@@ -97,22 +98,27 @@ test('sidebar nests saved agents when their Windows workspace casing differs fro
   assert.ok(list.querySelector('.chat-agent-previous [data-chat-id="case-done"]'));
 });
 
-test('settled children use Previous agents; opening one reveals its ancestor without losing keyed rows or focus', () => {
-  const root = chat('root'), child = chat('child', 'root');
+test('opening a completed child reveals its path while other unread completions stay under Previous agents', t => {
+  const root = chat('root'), child = chat('child', 'root'), sibling = chat('sibling', 'root');
   child.agentExecution = { executionId: 'execution', status: 'completed' };
-  const list = setup([root, child], 'child');
+  sibling.agentExecution = { executionId: 'other', status: 'completed' }; sibling.unread = true;
+  const list = setup([root, child, sibling], 'child');
+  setRemoteChatRunning(child.id, true);
+  t.after(() => setRemoteChatRunning(child.id, false));
   renderSidebar();
   const rootRow = list.querySelector<HTMLElement>('[data-chat-id="root"]')!;
   const childRow = list.querySelector<HTMLElement>('[data-chat-id="child"]')!;
   const previous = list.querySelector<HTMLButtonElement>('.chat-agent-previous-toggle')!;
-  assert.equal(previous.getAttribute('aria-expanded'), 'true');
+  assert.equal(previous.getAttribute('aria-expanded'), 'false');
+  assert.equal(childRow.dataset.agentState, 'done');
+  assert.equal(list.querySelector('[data-chat-id="sibling"]'), null);
   previous.focus(); root.name = 'Parent renamed'; renderSidebar();
   assert.equal(list.querySelector('[data-chat-id="root"]'), rootRow);
   assert.equal(list.querySelector('[data-chat-id="child"]'), childRow);
   assert.equal(document.activeElement, previous);
   previous.click();
   assert.equal(sessionState?.activeId, child.id, 'disclosure must not activate a row');
-  assert.equal(list.querySelector('[data-chat-id="child"]'), null);
+  assert.ok(list.querySelector('.chat-agent-previous [data-chat-id="sibling"]'));
   assert.match(rootRow.querySelector('.chat-agent-toggle')!.getAttribute('aria-label')!, /Parent renamed/);
 });
 

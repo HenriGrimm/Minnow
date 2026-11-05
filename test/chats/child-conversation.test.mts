@@ -11,6 +11,7 @@ import { setSubAgentApiFetchForTests } from '../../src/agents/orchestrator.ts';
 import { createAttributedAgentMessage, syncAgentConversationHeader } from '../../src/ui/agent-conversation.ts';
 import { batchPersistentAgentActivity, clearPersistentAgentActivity, persistentAgentActivityOwner, refreshPersistentAgentActivity, upsertPersistentAgentActivity } from '../../src/ui/persistent-agent-activity.ts';
 import { renderChatFromHistory } from '../../src/ui/messages.ts';
+import { closeDevServerScreen, openDevServerScreen } from '../../src/ui/dev-server-screen.ts';
 import { attachMessageActions, closeMessageActionsMenu, completePendingMessageEdit, remakeAssistantRow } from '../../src/ui/message-actions.ts';
 import { attachBranchPicker } from '../../src/ui/branch-picker.ts';
 import { activateBranch } from '../../src/state/runs-store.ts';
@@ -162,6 +163,36 @@ test('settled delegations without spawn rows stay in their parent turn after ref
   }
 });
 
+test('paged-out assignments appear with their spawn rows when older history loads', () => {
+  const parent = shell('parent'), child = shell('child', parent.id);
+  const area = setup([parent, child]);
+  const task = { ...run('old-assignment', child.id), status: 'completed' as const };
+  const latest = document.createElement('div'); latest.dataset.historyIndex = '55'; area.append(latest);
+  const card = upsertPersistentAgentActivity(task, parent.id, area)!;
+  assert.equal(area.querySelector('.sub-agent-card'), null);
+  const spawn = document.createElement('div'); spawn.className = 'tool-call-msg';
+  spawn.dataset.toolCallId = task.parentToolCallId!; area.prepend(spawn);
+  refreshPersistentAgentActivity(parent.id, area);
+  assert.equal(spawn.nextElementSibling, card); assert.equal(card.nextElementSibling, latest);
+});
+
+test('Dev Servers keeps the column when a long child transcript has pending history pages', async () => {
+  const parent = shell('parent'), child = shell('child', parent.id);
+  const area = setup([parent, child], child.id);
+  child.history = Array.from({ length: 68 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `Saved message ${i}` }));
+  renderChatFromHistory(child);
+  assert.ok(Number(area.dataset.historyStart) > 0);
+  await openDevServerScreen();
+  try {
+    area.dispatchEvent(new win!.WheelEvent('wheel', { deltaY: -500, bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 80));
+    renderChatFromHistory(child);
+    assert.deepEqual([...area.children].map(node => node.id), ['devServerScreenRoot']);
+  } finally { closeDevServerScreen({ skipNavigate: true, restoreChat: false }); }
+  renderChatFromHistory(child);
+  assert.match(area.textContent!, /Saved message 67/);
+});
+
 test('unrelated turns never merge; queued and durable request waits have honest labels without generating spinners', () => {
   const parent = shell('parent'), a = shell('child-a', parent.id), b = shell('child-b', parent.id), c = shell('child-c', parent.id); const area = setup([parent, a, b, c]);
   const first = run('wait-one', a.id), second = run('wait-two', b.id), other = run('wait-three', c.id, 'different-turn');
@@ -184,6 +215,7 @@ test('unrelated turns never merge; queued and durable request waits have honest 
 test('old task results remain immutable when the same child continues, and local-only work does not add a parent delegation', () => {
   const parent = shell('parent'), child = shell('child', parent.id); const area = setup([parent, child]);
   const completed = { ...run('completed-task', child.id), status: 'completed' as const, summary: 'Original published result.' };
+  anchors(area, [completed]);
   const row = upsertPersistentAgentActivity(completed, parent.id, area)!;
   child.agentExecution = { executionId: 'a-later-execution', status: 'running' }; refreshPersistentAgentActivity(parent.id, area);
   assert.match(row.textContent!, /Complete/); assert.match(row.textContent!, /Original published result/);
@@ -274,6 +306,21 @@ test('published results use their own attributed event and normal assistant turn
   const row = area.querySelector('.agent-message--result')!;
   assert.ok(row); assert.match(row.textContent!, /Agent results/); assert.match(row.textContent!, /Published result/);
   assert.equal(area.querySelectorAll('.msg.user').length, 0); assert.ok(area.textContent!.includes('The final answer.'));
+});
+
+test('a saved spawn result anchors a completed child even when its parent tool call ID is missing', () => {
+  const parent = shell('parent'), child = shell('old-child', parent.id);
+  const area = setup([parent, child]);
+  const task = { ...run('old-run', child.id), status: 'completed' as const, parentToolCallId: undefined };
+  persistSubAgentRunSnapshot(task);
+  parent.history = [{ role: 'user', content: 'Inspect the changes.' },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'old-call', type: 'function', function: { name: 'spawn_sub_agent', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'old-call', content: JSON.stringify({ runId: task.runId }) },
+    { role: 'assistant', content: 'Inspection complete.' }, { role: 'user', content: 'A later task.' }];
+  renderChatFromHistory(parent);
+  const receipt = area.querySelector<HTMLElement>('[data-spawned-run-id="old-run"]')!;
+  assert.ok(receipt);
+  assert.ok((receipt.closest('.tool-call-batch') ?? receipt).nextElementSibling?.matches('.sub-agent-card'));
 });
 
 test('failed prompt-driven delegation remains an inline error without manufacturing a child activity card', () => {

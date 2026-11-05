@@ -119,14 +119,20 @@ test('Stop chat pins the paused parent and includes descendants; Stop agents pre
   assert.deepEqual(posts.map(item => [item.body.scope, item.body.executionId]), [['tree', 'paused-parent'], ['agents', undefined]]);
 });
 
-test('ancestor attention prioritizes input, failure and unread before working without wait spinners', () => {
+test('ancestor attention shows input and failures first, then live work, then unread replies', () => {
   const parent = chat('attention-parent'), child = chat('attention-child', parent.id), sibling = chat('attention-sibling', parent.id), grandchild = chat('attention-grandchild', child.id);
   const ctx: ChatItemDotContext = { activeChatId: parent.id, streamingChatIds: new Set([child.id]), streamPhaseByChatId: new Map(), inputPendingChatId: null };
   child.agentExecution = { executionId: 'waiting', status: 'waiting_for_host' }; sibling.agentExecution = { executionId: 'working', status: 'running' }; grandchild.agentRequestSummary = [{ requestId: 'nested-question', kind: 'question' }];
   assert.equal(resolveChatItemDotState(child, ctx), 'idle');
   let states = resolveAgentAncestorDotStates([parent, child, sibling, grandchild], ctx); assert.equal(states.get(parent.id), 'needs-input'); assert.equal(states.get(child.id), 'needs-input');
   grandchild.agentRequestSummary = []; grandchild.turnError = true; states = resolveAgentAncestorDotStates([parent, child, sibling, grandchild], ctx); assert.equal(states.get(parent.id), 'error');
-  grandchild.turnError = false; grandchild.unread = true; states = resolveAgentAncestorDotStates([parent, child, sibling, grandchild], ctx); assert.equal(states.get(parent.id), 'unread');
+  grandchild.turnError = false; grandchild.unread = true;
+  states = resolveAgentAncestorDotStates([parent, child, sibling, grandchild], ctx);
+  assert.equal(states.get(child.id), 'unread');
+  assert.equal(states.get(parent.id), 'working');
+  sibling.agentExecution.status = 'completed';
+  states = resolveAgentAncestorDotStates([parent, child, sibling, grandchild], ctx);
+  assert.equal(states.get(parent.id), 'unread');
 });
 
 test('paged old requests remain reachable and preserve form focus and selections on a same-chat repaint', async () => {

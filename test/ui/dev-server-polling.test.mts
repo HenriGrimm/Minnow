@@ -5,6 +5,7 @@ import { Window } from 'happy-dom';
 const win = new Window({ url: 'http://localhost/#/app/code/chat' });
 Object.assign(globalThis, { window: win, document: win.document, HTMLElement: win.HTMLElement });
 const noop = () => {};
+mock.module('../../src/ui/messages.ts', { namedExports: { unmountCodeChatTranscript: noop } });
 mock.module('../../src/ui/app-dialog.ts', { namedExports: { appAlert: noop, appConfirm: async () => false } });
 mock.module('../../src/chat/ask-question-display.ts', { namedExports: { notifyAskQuestionDisplayContextChanged: noop } });
 mock.module('../../src/os/router.ts', { namedExports: { navigateToCodeChat: noop, navigateToCodeDevServers: noop } });

@@ -4,14 +4,13 @@ import { readChatModelBinding, readChatWorkspacePath, useJsonSessionsStore } fro
 import { readResource } from '../config/store.js';
 import { randomUUID } from 'node:crypto';
 
-import { AGENTS_NAMESPACE, isTerminal, lastEndedAttempt, stateToJSON } from './derive.js';
+import { AGENTS_NAMESPACE, derive, isTerminal, lastEndedAttempt, stateToJSON } from './derive.js';
 import { makeEvent } from './events.js';
 import { createSubAgentGraph } from './graph.js';
 import { getSubAgentTypeRow, loadSubAgentFile } from './config.js';
 import {
   agentsDir,
   listEntries,
-  loadState,
   readEvents,
   resetJournalCache,
 } from './journal.js';
@@ -171,22 +170,27 @@ export function statusFromPhase(run) {
   return 'queued';
 }
 
+/** Read a state and its replay cursor from the same journal prefix. */
+async function journalSnapshot(parentChatId) {
+  const engine = peekEngine(parentChatId, AGENTS_NAMESPACE);
+  if (engine) return { state: /** @type {import('./types').AgentsState} */ (engine.getState()), seq: engine.getHighestSeq() };
+  const events = await readEvents(parentChatId);
+  return { state: derive(events), seq: Number(events.at(-1)?.seq) || 0 };
+}
+
 /**
  * Scan parent journals for a run id. The journal is per chat, the URL is
  * per run — this join is the cost of that shape.
  *
  * @param {string} runId
- * @returns {Promise<{ parentChatId: string, run: import('./types').RunState, state: import('./types').AgentsState } | null>}
+ * @returns {Promise<{ parentChatId: string, run: import('./types').RunState, seq: number } | null>}
  */
 async function findRun(runId) {
   const ids = await listEntries();
   for (const parentChatId of ids) {
-    const engine = peekEngine(parentChatId, AGENTS_NAMESPACE);
-    const state = engine
-      ? /** @type {import('./types').AgentsState} */ (engine.getState())
-      : await loadState(parentChatId);
+    const { state, seq } = await journalSnapshot(parentChatId);
     const run = state.runs.get(runId);
-    if (run) return { parentChatId, run, state };
+    if (run) return { parentChatId, run, seq };
   }
   return null;
 }
@@ -273,16 +277,7 @@ async function dispatch(route, req, res) {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      const engine = peekEngine(parentChatId, AGENTS_NAMESPACE);
-      const state = engine
-        ? /** @type {import('./types').AgentsState} */ (engine.getState())
-        : await loadState(parentChatId);
-      const seq = engine
-        ? engine.getHighestSeq()
-        : (await readEvents(parentChatId)).reduce((h, e) => {
-            const n = Number(e.seq);
-            return Number.isSafeInteger(n) && n > h ? n : h;
-          }, 0);
+      const { state, seq } = await journalSnapshot(parentChatId);
       return json(res, 200, {
         ok: true,
         parentChatId,
@@ -369,12 +364,10 @@ async function dispatch(route, req, res) {
     case 'get': {
       const found = await findRun(runId);
       if (!found) return json(res, 404, { ok: false, error: 'no such run' });
-      const engine = peekEngine(found.parentChatId, AGENTS_NAMESPACE);
-      const seq = engine ? engine.getHighestSeq() : Number((await readEvents(found.parentChatId)).at(-1)?.seq) || 0;
       return json(res, 200, {
         ok: true,
         parentChatId: found.parentChatId,
-        seq,
+        seq: found.seq,
         run: runToJSON(found.run),
         status: statusFromPhase(found.run),
       });
@@ -595,7 +588,8 @@ async function streamParentEvents(req, res, parentChatId) {
   // Flush headers immediately even if every known run settles during connect.
   res.write(': connected\n\n');
 
-  const lastEventId = Number(req.headers['last-event-id']);
+  const initialCursor = new URLSearchParams((req.url ?? '').split('?')[1]).get('since');
+  const lastEventId = Number(req.headers['last-event-id'] || initialCursor);
   const resumeFrom = Number.isSafeInteger(lastEventId) && lastEventId > 0 ? lastEventId : 0;
 
   /**

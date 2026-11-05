@@ -548,7 +548,13 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
       label(projectId, 'project identity', 4096);
       integer(limit, 'activity list limit', 1); if (limit > 100) fail('invalid_request', 'Activity list limit exceeds 100');
       const attention = "EXISTS (SELECT 1 FROM chat_task_subscriptions t LEFT JOIN chat_cancellation_epochs ce ON ce.chat_id=t.recipient_chat_id WHERE t.recipient_chat_id=s.chat_id AND t.cancellation_epoch=COALESCE(ce.epoch,0) AND t.state IN ('active','inline_hold','inline_returned'))";
-      return db.prepare("SELECT s.chat_id FROM chat_conversation_state s LEFT JOIN chat_executions e ON e.rowid=(SELECT MAX(x.rowid) FROM chat_executions x WHERE x.chat_id=s.chat_id) WHERE s.project_id=? AND (e.status IN ('queued','running','waiting','waiting_for_model','loading_model','waiting_for_agents','waiting_for_input','waiting_for_approval','waiting_for_host','stopping','recovery_required') OR EXISTS (SELECT 1 FROM chat_requests r WHERE r.chat_id=s.chat_id AND r.state='pending') OR " + attention + ") ORDER BY EXISTS (SELECT 1 FROM chat_requests r WHERE r.chat_id=s.chat_id AND r.state='pending') DESC," + attention + " DESC,COALESCE(e.updated_at,0) DESC,s.chat_id LIMIT ?")
+      const queued = "EXISTS (SELECT 1 FROM chat_commands c WHERE c.chat_id=s.chat_id AND c.state IN ('accepted','queued','waiting_for_host') AND json_extract(c.effective_json,'$.kind') IN ('send','steer'))";
+      const request = "EXISTS (SELECT 1 FROM chat_requests r WHERE r.chat_id=s.chat_id AND r.state='pending')";
+      return db.prepare(`SELECT s.chat_id FROM chat_conversation_state s
+        LEFT JOIN chat_executions e ON e.rowid=(SELECT MAX(x.rowid) FROM chat_executions x WHERE x.chat_id=s.chat_id)
+        WHERE s.project_id=? AND (e.status IN ('queued','running','waiting','waiting_for_model','loading_model','waiting_for_agents',
+          'waiting_for_input','waiting_for_approval','waiting_for_host','stopping','recovery_required') OR ${request} OR ${queued} OR ${attention})
+        ORDER BY ${request} DESC,${attention} DESC,COALESCE(e.updated_at,0) DESC,s.chat_id LIMIT ?`)
         .all(projectId, limit).map(row => row.chat_id);
     },
     saveProfile: (chatId, profile) => transaction(() => { chatRow(chatId); return saveProfile(chatId, profile); }),

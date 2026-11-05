@@ -4,7 +4,9 @@ Delegating a task creates a saved conversation for that agent. Open it to read t
 
 ## Open an agent chat
 
-Expand the parent in the chat list to see its agents. Active agents and those needing your attention stay easy to find; **Show more** reveals additional children. The parent transcript also groups delegated tasks into agent cards. Select a card to open the agent's normal chat, with its own composer, thoughts, tool calls and saved messages.
+Expand the parent in the chat list to see agents that are working, waiting, or need your attention. Finished conversations are under **Previous agents**. Opening a child keeps its path visible. **Show more** reveals additional children.
+
+In the parent transcript, each delegation appears with the turn that started it. Scroll back to that turn to find an earlier assignment. Select an agent card to open its chat, with its own composer, thoughts, tool calls and saved messages.
 
 The header identifies the parent, links back with **Open parent**, and shows the agent's inherited permission ceiling. Deeper conversations show an ancestor path. A missing or deleted parent does not erase its retained children.
 

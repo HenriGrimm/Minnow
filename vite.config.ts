@@ -1,5 +1,11 @@
+import { createRequire } from 'node:module';
+import { dirname } from 'node:path';
 import type { Plugin } from 'vite';
-import { defineConfig } from 'vite';
+import { defineConfig, normalizePath } from 'vite';
+
+// The full highlight.js entry requires lib/ grammars. Use those same modules
+// for common fences so each grammar is bundled once across both paths.
+const highlightLib = normalizePath(dirname(createRequire(import.meta.url).resolve('highlight.js/lib/core')));
 
 /**
  * Vite injects the module script before extracted CSS in `index.html`, so JS can run
@@ -123,15 +129,6 @@ function manualChunkForNodeModule(id: string): string | undefined {
   if (id.includes('/recharts/') || id.includes('/d3-')) {
     return 'vendor-charts';
   }
-  if (id.includes('highlight.js')) {
-    const normalized = id.replace(/\\/g, '/');
-    // Core + per-language grammars stay with their importers (small eager path).
-    // Only the full package entry is forced into vendor-highlight so the exotic-language
-    // fallback remains a single lazy chunk (not merged into the eager core build).
-    if (normalized.includes('highlight.js/lib/')) return undefined;
-    if (normalized.includes('highlight.js/styles/')) return undefined;
-    return 'vendor-highlight';
-  }
   return undefined;
 }
 
@@ -139,6 +136,9 @@ function manualChunkForNodeModule(id: string): string | undefined {
 export default defineConfig({
   base: './',
   envPrefix: ['VITE_', 'MINNOW_'],
+  resolve: {
+    alias: [{ find: /^highlight\.js\/lib\/(core|languages\/[\w-]+)$/, replacement: `${highlightLib}/$1.js` }],
+  },
   plugins: [uiconsWoff2OnlyPlugin(), cssBeforeEntryScriptPlugin()],
   optimizeDeps: {
     // Finish the first dep crawl before serving requests (avoids stale dist-* chunk URLs).
@@ -162,17 +162,11 @@ export default defineConfig({
     outDir: 'dist',
     chunkSizeWarningLimit: 1500,
     modulePreload: {
-      // Belt-and-suspenders: even if a shared helper still points at these vendor
-      // chunks, do not modulepreload them for non-editor/non-fallback hosts.
+      // A shared helper can reference CodeMirror. Only editor hosts preload it.
       resolveDependencies(filename, deps) {
         const isEditorHost =
           /file-viewer|editor-|lsp-editor|codemirror|git-commit/i.test(filename);
-        return deps.filter((dep) => {
-          if (/vendor-codemirror/i.test(dep) && !isEditorHost) return false;
-          // Full highlight.js bundle is an exotic-language fallback only — never preload.
-          if (/vendor-highlight/i.test(dep)) return false;
-          return true;
-        });
+        return isEditorHost ? deps : deps.filter((dep) => !/vendor-codemirror/i.test(dep));
       },
     },
     rollupOptions: {

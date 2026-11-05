@@ -24,6 +24,7 @@ import {
 } from './sub-agent-events';
 import { withSessionToken } from '../api/session-token';
 import { createSubAgentRunClient, type EventStream, type DeliverFrame } from './sub-agent-client';
+import { derive } from '../../server/sub-agents/derive.js';
 import { applyTurnEventToMessages, countToolCalls, turnEventsToMessages, mergeTranscriptMessages } from '../../server/orchestrator/transcript-messages.js';
 import type { PersistedSubAgentRun } from '../types';
 import type {
@@ -42,6 +43,7 @@ const AGGREGATE_MAX_BYTES = 32 * 1024;
 const STATUS_PREVIEW_MAX = 240;
 
 const runs = new Map<string, SubAgentRun>();
+const runSequences = new Map<string, number>();
 const clients = new Map<string, ReturnType<typeof createSubAgentRunClient>>();
 interface SharedParentStream {
   source: EventStream;
@@ -248,6 +250,7 @@ function mergeClientView(runId: string): void {
   const prev = runs.get(runId);
   const raw = client?.getRun();
   if (!raw && !prev) return;
+  if (raw && client) runSequences.set(runId, client.getSeq());
   const live = client?.getLive();
   const err = client?.getEngineError();
   const liveMessages = live?.messages;
@@ -286,7 +289,7 @@ function mergeClientView(runId: string): void {
   // 6-connection pool (MIN-584). An undelivered result still needs the parent's
   // delivery lease after the run-card lease closes.
   if (terminal) {
-    if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
+    if (!next.childChatId && !next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
     releaseClient(runId);
     hydrateFinishedTranscript(runId);
     if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
@@ -306,19 +309,32 @@ const SHARED_STREAM_EVENT_TYPES = ['snapshot', 'event', 'live', 'error', 'done',
  * Browsers commonly allow only six HTTP/1.1 requests per origin; a socket per
  * child agent starved ordinary Settings, file-tree, and cancellation requests.
  */
-function acquireParentStream(parentChatId: string): EventStream {
+function acquireParentStream(parentChatId: string, since?: number): EventStream {
   let shared = parentStreams.get(parentChatId);
   if (!shared) {
     const source = (openStream ?? openAuthenticatedStream)(
-      `/api/agents/events?parentChatId=${encodeURIComponent(parentChatId)}`,
+      `/api/agents/events?parentChatId=${encodeURIComponent(parentChatId)}${since ? `&since=${since}` : ''}`,
     );
     shared = { source, leases: new Set() };
     parentStreams.set(parentChatId, shared);
     for (const type of SHARED_STREAM_EVENT_TYPES) {
       source.addEventListener(type, (event) => {
         const current = parentStreams.get(parentChatId);
-        if (!current) return;
-        for (const lease of [...current.leases]) lease.dispatch(type, event);
+        if (!current || current !== shared) return;
+        const leases = [...current.leases];
+        // A sibling may start and finish here before its spawn response reaches this window.
+        if (type === 'event' || type === 'snapshot') {
+          try {
+            const payload = JSON.parse(event.data);
+            if (type === 'snapshot' && payload.run?.parentChatId === parentChatId && !runs.has(payload.run.runId)) {
+              adoptRaw(payload.run, Number(payload.seq) || 0);
+            } else if (type === 'event' && payload.type === 'run.requested' && payload.parentChatId === parentChatId && !runs.has(payload.runId)) {
+              const seed = derive([payload]).runs.get(payload.runId);
+              if (seed) adoptRaw({ ...seed }, Number(payload.seq) || 0);
+            }
+          } catch { /* Individual run subscribers handle malformed frames. */ }
+        }
+        for (const lease of leases) lease.dispatch(type, event);
       });
     }
   }
@@ -361,9 +377,9 @@ function releaseClient(runId: string): void {
   clients.delete(runId);
 }
 
-function ensureParentDeliveryLease(parentChatId: string): void {
+function ensureParentDeliveryLease(parentChatId: string, since?: number): void {
   if (parentDeliveryLeases.has(parentChatId)) return;
-  const lease = acquireParentStream(parentChatId);
+  const lease = acquireParentStream(parentChatId, since);
   lease.addEventListener('deliver', (event) => {
     try {
       const frame = JSON.parse(event.data) as DeliverFrame & { parentChatId?: string };
@@ -386,7 +402,7 @@ function ensureParentDeliveryLease(parentChatId: string): void {
 
 function releaseParentDeliveryLeaseIfSettled(parentChatId: string): void {
   for (const run of runs.values()) {
-    if (run.parentChatId === parentChatId &&
+    if (!run.childChatId && run.parentChatId === parentChatId &&
         (!isSubAgentRunTerminal(run.status) || !run.delivered)) return;
   }
   parentDeliveryLeases.get(parentChatId)?.close();
@@ -430,10 +446,10 @@ function ensureClient(
     typeof initialRun?.parentChatId === 'string'
       ? initialRun.parentChatId
       : existing?.parentChatId ?? '';
-  if (parentChatId) ensureParentDeliveryLease(parentChatId);
+  if (parentChatId && !initialRun?.childChatId) ensureParentDeliveryLease(parentChatId, initialSeq);
   const client = createSubAgentRunClient(runId, {
     openStream: parentChatId
-      ? () => acquireParentStream(parentChatId)
+      ? () => acquireParentStream(parentChatId, initialSeq)
       : openStream ?? openAuthenticatedStream,
     initialRun,
     initialSeq,
@@ -457,6 +473,13 @@ export function subscribeSubAgentDeliver(
 
 function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
   const runId = String(raw.runId ?? '');
+  if (seq !== undefined && seq < (runSequences.get(runId) ?? 0)) return;
+  if (seq !== undefined) runSequences.set(runId, seq);
+  const client = clients.get(runId);
+  if (client) {
+    client.applySnapshot(raw, seq ?? 0);
+    return;
+  }
   const persisted = typeof raw.parentChatId === 'string'
     ? findChatById(raw.parentChatId)?.subAgentRuns?.find((run) => run.runId === runId)
     : undefined;
@@ -465,7 +488,7 @@ function adoptRaw(raw: Record<string, unknown>, seq?: number): void {
   const next = runs.get(runId);
   if (next && isSubAgentRunTerminal(next.status)) {
     // Journal snapshot is enough for finished runs; do not occupy an HTTP/1.1 socket.
-    if (!next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId);
+    if (!next.childChatId && !next.delivered && next.parentChatId) ensureParentDeliveryLease(next.parentChatId, seq);
     else if (next.parentChatId) releaseParentDeliveryLeaseIfSettled(next.parentChatId);
     releaseClient(runId);
     hydrateFinishedTranscript(runId);
@@ -882,6 +905,7 @@ export function resetSubAgentOrchestrator(): void {
   for (const stream of parentStreams.values()) stream.source.close();
   parentStreams.clear();
   runs.clear();
+  runSequences.clear();
   parentIndex.clear();
   turnIndex.clear();
   hydrating.clear();

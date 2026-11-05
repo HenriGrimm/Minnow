@@ -8,7 +8,7 @@ import http from 'node:http';
 import { getSessionsDb, closeSessionsDb } from '../../server/config/sessions-db.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { createConfigMiddleware } from '../../server/config/middleware.js';
-import { patchSessionState } from '../../server/config/sessions-repo.js';
+import { patchSessionState, readWholeSessionState } from '../../server/config/sessions-repo.js';
 import { createChatRepository } from '../../server/chats/repository.js';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { setAgentConversationsCapabilityForTests } from '../../src/config/agent-conversations-enabled.ts';
@@ -93,23 +93,34 @@ test('approval updates during a renderer turn preserve mid-save drafts and allow
   assert.equal(findChatById(PARENT)!.composerDraft, parent.composerDraft, 'the unsent draft survives reload');
 });
 
-test('delegation saves its parent despite another conflicted draft and still rejects a conflicting parent', async t => {
+test('delegation recovers competing drafts and starts only after its parent is saved', async t => {
   const { repository, parent, other } = await fixture(t);
   patchSessionState({ chats: [{ id: OTHER, name: 'Renamed elsewhere', composerDraft: 'Other window draft' }] });
   other.name = 'Local conflicting title'; other.composerDraft = 'Preserve unrelated unsent text'; touchChat(other);
   saveSessionsNow(); await waitForSessionSaveForTests();
   parent.history.push({ role: 'user', content: 'Delegate' }); parent.composerDraft = 'Parent draft'; touchChat(parent);
-  let spawned = 0;
+  const savedDraftsAtSpawn: string[] = [];
   setSubAgentApiFetchForTests(async (_url, init) => {
-    if (init?.method === 'POST') { spawned++; assert.equal(repository.getChat(PARENT).composerDraft, 'Parent draft'); }
+    if (init?.method === 'POST') savedDraftsAtSpawn.push(repository.getChat(PARENT).composerDraft);
     return Response.json({ runId: 'review-run', status: 'queued' });
   });
   await spawnSubAgent({ type: 'explore', task: 'Review', parentChatId: PARENT });
-  assert.equal(spawned, 1); assert.equal(other.composerDraft, 'Preserve unrelated unsent text');
-  assert.equal(repository.getChat(OTHER).composerDraft, 'Other window draft');
+  assert.equal(repository.getChat(OTHER).composerDraft, 'Preserve unrelated unsent text');
   patchSessionState({ chats: [{ id: PARENT, name: 'Parent changed elsewhere', composerDraft: 'Competing parent draft' }] });
-  parent.composerDraft = 'Unsaved local parent draft'; touchChat(parent);
-  await assert.rejects(spawnSubAgent({ type: 'explore', task: 'Another review', parentChatId: PARENT }), /Could not save the delegating conversation/);
-  assert.equal(spawned, 1); assert.equal(parent.composerDraft, 'Unsaved local parent draft');
-  assert.equal(repository.getChat(PARENT).composerDraft, 'Competing parent draft');
+  parent.composerDraft = 'New local parent draft'; touchChat(parent);
+  await spawnSubAgent({ type: 'explore', task: 'Another review', parentChatId: PARENT });
+  const archivedDrafts = readWholeSessionState().chats.filter(chat => chat.archivedAt && chat.subAgentAutoResumeBlocked)
+    .map(chat => chat.composerDraft).sort();
+  assert.deepEqual(archivedDrafts, ['Competing parent draft', 'Other window draft']);
+  assert.deepEqual(savedDraftsAtSpawn, ['Parent draft', 'New local parent draft']);
+
+  const fetchServer = globalThis.fetch;
+  globalThis.fetch = (url, init) => init?.method === 'PATCH'
+    ? Promise.resolve(new Response(null, { status: 503 }))
+    : fetchServer(url, init);
+  parent.composerDraft = 'Still unsaved'; touchChat(parent);
+  await assert.rejects(spawnSubAgent({ type: 'explore', task: 'Retry later', parentChatId: PARENT }), /Could not save the delegating conversation/);
+  assert.equal(savedDraftsAtSpawn.length, 2);
+  assert.equal(repository.getChat(PARENT).composerDraft, 'New local parent draft');
+  assert.equal(parent.composerDraft, 'Still unsaved');
 });

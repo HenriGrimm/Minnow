@@ -29,7 +29,7 @@ export function captureAgentConversationFocus(mount: HTMLElement | null, chatId:
     let next: HTMLElement | null | undefined = active.isConnected ? active : null;
     if (!next && card) {
       const row = [...mount.querySelectorAll<HTMLElement>('.sub-agent-card--persistent')].find(node => node.dataset.runId === card.dataset.runId);
-      next = row?.querySelector<HTMLElement>(resultSummary ? '.sub-agent-card__result > summary' : ':scope > a');
+      next = row?.querySelector<HTMLElement>(resultSummary ? '.sub-agent-card__result > summary' : '.sub-agent-card__body');
     } else if (!next && groupSummary && group) next = [...mount.querySelectorAll<HTMLElement>('.sub-agent-group')].find(node => node.dataset.agentGroupKey === group.dataset.agentGroupKey)?.querySelector<HTMLElement>(':scope > summary');
     else if (!next && message) next = [...mount.querySelectorAll<HTMLElement>('.agent-message')].find(node => node.dataset.messageId === message.dataset.messageId && node.dataset.historyIndex === message.dataset.historyIndex)?.querySelector<HTMLElement>(href ? 'summary a' : ':scope > summary');
     else if (!next && context && href) next = [...mount.querySelectorAll<HTMLElement>('.agent-chat-context a')].find(node => node.getAttribute('href') === href);
@@ -134,10 +134,13 @@ export function createAttributedAgentMessage(chat: Chat, message: UserMessage, h
       const mount = row.closest<HTMLElement>('.chat-area') ?? row.parentElement;
       if (!mount) return;
       const activity = upsertPersistentAgentActivity(run, chat.id, mount);
-      if (!activity) return;
+      if (!activity || !mount.contains(activity)) {
+        void import('../os/chat-launch').then(module => module.launchCodeWithChat(run.childChatId!));
+        return;
+      }
       const group = activity.closest<HTMLDetailsElement>('.sub-agent-group'); if (group) group.open = true;
       const resultView = activity.querySelector<HTMLDetailsElement>('.sub-agent-card__result'); if (resultView) resultView.open = true;
-      activity.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }); activity.querySelector<HTMLElement>(':scope > a')?.focus({ preventScroll: true });
+      activity.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }); activity.querySelector<HTMLElement>('.sub-agent-card__body')?.focus({ preventScroll: true });
     });
     body.append(task);
   }

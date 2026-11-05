@@ -4,7 +4,7 @@ import { subscribeSubAgentRuns } from '../agents/sub-agent-events';
 import type { SubAgentRun } from '../agents/types';
 import { initSubAgentCompletionPush } from '../agents/sub-agent-completion-push';
 import { initSubAgentSessionPersistence } from '../state/sub-agent-session-sync';
-import { getActiveChat } from '../state/sessions';
+import { findChatById, getActiveChat } from '../state/sessions';
 import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome';
 import type { Chat, PersistedSubAgentRun } from '../types';
 import { getActiveChatMountElement, appendChatTranscriptNode } from './chat-mount';
@@ -21,7 +21,7 @@ import {
   subAgentLiveBadgeLabel,
   subAgentLiveStatusLine,
 } from './sub-agent-live-status';
-import { batchPersistentAgentActivity, clearPersistentAgentActivity, persistentAgentActivityOwner, refreshPersistentAgentActivity, upsertPersistentAgentActivity } from './persistent-agent-activity';
+import { batchPersistentAgentActivity, clearPersistentAgentActivity, persistentAgentActivityOwner, refreshPersistentAgentActivity, subAgentTurnAnchor, upsertPersistentAgentActivity } from './persistent-agent-activity';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { syncAgentConversationHeader } from './agent-conversation';
 import { agentModelId, createAgentMark, syncAgentMark, type AgentMarkState } from './agent-model-mark';
@@ -241,7 +241,9 @@ function parentToolCallAnchorId(
 }
 
 /** The spawn tool row in this transcript, if it is mounted. */
-function findSpawnToolAnchor(area: HTMLElement, anchorId: string): HTMLElement | null {
+function findSpawnToolAnchor(area: HTMLElement, runId: string, anchorId: string | null): HTMLElement | null {
+  const receipt = area.querySelector<HTMLElement>(`[data-spawned-run-id="${escapeAttributeValue(runId)}"]`);
+  if (receipt || !anchorId) return receipt;
   const selector = `[data-tool-call-id="${escapeAttributeValue(anchorId)}"]`;
   return (
     area.querySelector<HTMLElement>(`.tool-call-msg${selector}`) ??
@@ -300,7 +302,7 @@ function placeSubAgentCard(
 ): void {
   const anchorId =
     parentToolCallAnchorId(run) ?? (persisted ? parentToolCallAnchorId(persisted) : null);
-  const anchor = anchorId ? findSpawnToolAnchor(area, anchorId) : null;
+  const anchor = findSpawnToolAnchor(area, run.runId, anchorId);
 
   if (anchor?.parentNode) {
     markDelegated(anchor);
@@ -310,7 +312,12 @@ function placeSubAgentCard(
     return;
   }
 
-  if (!area.contains(el)) {
+  const turn = subAgentTurnAnchor(area, el.dataset.chatId!, run);
+  if (turn) {
+    if (!sitsAfterHost(el, turn)) insertionPoint(turn, el).insertAdjacentElement('afterend', el);
+  } else if (run.status !== 'queued' && run.status !== 'running') {
+    el.remove();
+  } else if (!area.contains(el)) {
     appendChatTranscriptNode(el, area);
   }
 }
@@ -321,9 +328,8 @@ function isCardPlacementStable(
 ): boolean {
   if (!el.isConnected) return false;
   const anchorId = parentToolCallAnchorId(run);
-  if (!anchorId) return true;
   const area = el.parentElement;
-  const anchor = area ? findSpawnToolAnchor(area, anchorId) : null;
+  const anchor = area ? findSpawnToolAnchor(area, run.runId, anchorId) : null;
   return (
     anchor != null &&
     anchor.classList.contains(DELEGATED_ROW) &&
@@ -342,13 +348,13 @@ export function upsertSubAgentCardForRun(
 ): HTMLElement | null {
   const active = getActiveChat();
   if (active.id !== chatId) return null;
-  if (run.childChatId && persistentAgentActivityOwner(run, chatId) !== chatId) return null;
-  const orchestratorRun = getSubAgentRun(run.runId);
-  const isLive =
-    run.status === 'running' ||
-    run.status === 'queued' ||
-    orchestratorRun?.status === 'running' ||
-    orchestratorRun?.status === 'queued';
+  const displayRun = getSubAgentRun(run.runId) ?? run;
+  if (displayRun.childChatId) {
+    cards.get(run.runId)?.remove();
+    cards.delete(run.runId);
+    if (persistentAgentActivityOwner(displayRun, chatId) !== chatId) return null;
+  } else if ('parentChatId' in displayRun && displayRun.parentChatId !== chatId) return null;
+  const isLive = displayRun.status === 'running' || displayRun.status === 'queued';
   if (
     normalizeModeId(active.modeId) === 'orchestrate' &&
     active.viewMode === 'board'
@@ -359,10 +365,9 @@ export function upsertSubAgentCardForRun(
     return null;
   }
   if (isEmptyChatLandingMounted()) return null;
-  if (run.childChatId) return upsertPersistentAgentActivity(orchestratorRun ?? run, chatId, getActiveChatMountElement());
+  if (displayRun.childChatId) return upsertPersistentAgentActivity(displayRun, chatId, getActiveChatMountElement());
 
   let el = cards.get(run.runId);
-  const displayRun = orchestratorRun ?? run;
   const renderKey = cardRenderKey(displayRun, isLive);
   if (
     el &&
@@ -406,7 +411,7 @@ export function upsertSubAgentCardForRun(
   el.title = 'Open sub-agent details';
   fillCard(el, displayRun, isLive);
   cardRenderKeys.set(el, renderKey);
-  scheduleScrollBottom();
+  if (isLive && el.isConnected) scheduleScrollBottom();
   return el;
 }
 
@@ -469,10 +474,16 @@ export function initSubAgentUi(): void {
   }
   if (liveSubscriptionBound) return;
   liveSubscriptionBound = true;
-  subscribeManagedChatMetadata(() => {
+  subscribeManagedChatMetadata(changedId => {
     try {
       const chat = getActiveChat(), area = getActiveChatMountElement();
       if (!area.isConnected || isEmptyChatLandingMounted() || (!isBoardChatEmbedOpenForChat(chat.id) && isMainColumnOverlaySuppressingChatDom())) return;
+      const child = findChatById(changedId);
+      const relation = child?.agentConversation;
+      const runId = child?.agentExecution?.runId ?? child?.agentPendingCommand?.runId ?? relation?.initialRunId;
+      if (relation?.parentChatId === chat.id && runId && !getSubAgentRun(runId)) {
+        void hydrateSubAgentRunsForParentChat(relation.journalOwnerId, { force: true });
+      }
       refreshPersistentAgentActivity(chat.id, area); syncAgentConversationHeader(chat, area);
     } catch { /* No chat mount is visible during workspace teardown. */ }
   });

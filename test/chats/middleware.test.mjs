@@ -256,6 +256,10 @@ test('navigation availability is scoped and contains no transcript, request bodi
   assert.equal(own.status, 200); assert.deepEqual(own.body, { chatId: 'chat', available: true });
   assert.equal((await f.request('/api/chats/foreign?view=navigation')).status, 403);
   assert.equal((await f.request('/api/chats/deleted?view=navigation')).status, 404);
+  const summary = await f.request('/api/chats/chat?view=activity');
+  assert.equal(summary.status, 200);
+  assert.deepEqual(summary.body, { chatId: 'chat', fields: f.repository.getActivity('chat') });
+  assert.equal((await f.request('/api/chats/foreign?view=activity')).status, 403);
 });
 
 test('real HTTP command retries return one durable receipt and server-derived human provenance', async t => {

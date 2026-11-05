@@ -765,10 +765,14 @@ export async function openDevServerScreen(): Promise<void> {
     return;
   }
 
-  await closeCompetingMainColumnViews();
+  const originHash = window.location.hash;
+  const [{ unmountCodeChatTranscript }] = await Promise.all([
+    import('./messages'), closeCompetingMainColumnViews(),
+  ]);
 
   const area = document.getElementById('chatArea');
-  if (!area) return;
+  if (!area || isDevServerScreenOpen() || window.location.hash !== originHash) return;
+  unmountCodeChatTranscript(area);
 
   if (!returnChatId && sessionState?.activeId) {
     returnChatId = sessionState.activeId;

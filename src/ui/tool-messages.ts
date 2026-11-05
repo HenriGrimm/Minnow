@@ -822,6 +822,12 @@ export function renderToolResult(
 
   const toolName = wrap.dataset.toolName || 'tool';
   const failed = isToolResultFailure(result);
+  if (toolName === 'spawn_sub_agent' && !failed) {
+    try {
+      const receipt = JSON.parse(result);
+      if (typeof receipt?.runId === 'string') wrap.dataset.spawnedRunId = receipt.runId;
+    } catch { /* Historical prose receipts still use the parent tool call. */ }
+  }
   // Detect exit 2 still used to ship an Error: banner; drop it for display.
   const displayResult = isImpeccableDetectFindingsResult(result)
     ? stripImpeccableDetectExitBanner(result)

@@ -112,7 +112,7 @@ function liveElapsed(run: ActivityRun): string {
 function tickClocks(): void {
   let live = false;
   for (const entry of entries.values()) {
-    if (!entry.state || !LIVE_MARK_STATES.has(entry.state) || !entry.row.isConnected) continue;
+    if (entry.state !== 'running' || !entry.row.isConnected) continue;
     const clock = entry.row.querySelector<HTMLElement>('.sub-agent-card__clock');
     if (!clock) continue;
     live = true;
@@ -182,10 +182,9 @@ function syncFileChips(host: HTMLElement, changes: { files: FileChip[]; totals: 
   host.hidden = chips.length === 0;
 }
 
-function sourceAnchor(index: Map<string, HTMLElement>, run: ActivityRun): HTMLElement | null {
-  if (!run.parentToolCallId) return null;
+function sourceAnchor(calls: Map<string, HTMLElement>, receipts: Map<string, HTMLElement>, run: ActivityRun): HTMLElement | null {
   // Compare identity as data, rather than interpolating provider tool ids into CSS.
-  const row = index.get(run.parentToolCallId);
+  const row = receipts.get(run.runId) ?? (run.parentToolCallId ? calls.get(run.parentToolCallId) : undefined);
   if (!row) return null;
   row.classList.add('tool-call-msg--delegated');
   const batch = row.closest<HTMLElement>('.tool-call-batch');
@@ -203,10 +202,9 @@ function fill(entry: Entry): void {
   const generating = ['Working', 'Loading model'].includes(status);
   const activityText = generating ? (status === 'Loading model' ? 'Loading model…' : subAgentLiveStatusLine(run, true) || 'Working…') : '';
   const changes = runFileChanges(run, generating);
-  const key = JSON.stringify([run.title, run.type, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
+  const key = JSON.stringify([run.title, run.type, run.status, run.parentToolCallId, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
   if (entry.key === key) return;
   entry.key = key;
-  row.dataset.status = run.status;
   row.dataset.parentToolCallId = run.parentToolCallId ?? '';
   row.classList.toggle('sub-agent-card--active', generating);
   row.setAttribute('aria-busy', String(generating));
@@ -214,6 +212,7 @@ function fill(entry: Entry): void {
   const panel = row.querySelector<HTMLElement>(':scope > .sub-agent-card__panel')!;
   const link = panel.querySelector<HTMLAnchorElement>(':scope > a')!;
   const markState = agentMarkStateFromLabel(status);
+  row.dataset.status = markState === 'done' ? 'completed' : markState === 'stopped' ? 'cancelled' : markState === 'failed' ? 'failed' : run.status;
   if (entry.state && LIVE_MARK_STATES.has(entry.state) && (markState === 'done' || markState === 'failed')) flashSettled(row, panel);
   entry.state = markState;
   syncAgentMark(link.querySelector<HTMLElement>('.sub-agent-card__mark')!, modelId, markState);
@@ -223,8 +222,8 @@ function fill(entry: Entry): void {
   link.querySelector<HTMLElement>('.sub-agent-card__task')!.title = subAgentTitle(run);
   link.querySelector('.sub-agent-card__status')!.textContent = status;
   const clock = link.querySelector<HTMLElement>('.sub-agent-card__clock')!;
-  clock.textContent = LIVE_MARK_STATES.has(markState) ? liveElapsed(run) : duration;
-  if (LIVE_MARK_STATES.has(markState) && clock.textContent) startClock();
+  clock.textContent = markState === 'running' ? liveElapsed(run) : duration;
+  if (markState === 'running' && clock.textContent) startClock();
   link.setAttribute('aria-label', `${subAgentTitle(run)}, ${run.type} agent on ${model}, ${status}. Open agent chat`);
   const selection = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__selection')!;
   syncAgentModelChip(selection.querySelector<HTMLElement>('.agent-model-chip')!, modelId, model);
@@ -258,26 +257,39 @@ function fill(entry: Entry): void {
   } else details?.remove();
 }
 
-function placeAfter(anchor: HTMLElement | null, node: HTMLElement, area: HTMLElement): void {
+function placeAfter(anchor: HTMLElement | null, node: HTMLElement, area: HTMLElement, live: boolean): void {
   if (anchor?.parentElement) { if (anchor.nextElementSibling !== node) anchor.after(node); }
+  else if (!live) node.remove();
   else if (!area.contains(node)) area.append(node);
 }
 
 /** Keep cards in their parent turn when the original spawn row is unavailable. */
-function turnAnchor(area: HTMLElement, chatId: string, run: ActivityRun): HTMLElement | null {
+export function subAgentTurnAnchor(area: HTMLElement, chatId: string, run: ActivityRun): HTMLElement | null {
   if (!run.parentTurnId) return null;
   const chat = findChatById(chatId);
-  const turn = chat?.runs?.find(turn => turn.parentTurnId === run.parentTurnId);
-  if (!turn) return null;
-  const nextFork = chat!.runs?.filter(candidate => candidate.forkHistoryIndex > turn.forkHistoryIndex)
-    .reduce((end, candidate) => Math.min(end, candidate.forkHistoryIndex), Infinity) ?? Infinity;
-  return [...area.children].filter((node): node is HTMLElement => node instanceof HTMLElement)
-    .filter(node => node.dataset.historyIndex != null && Number(node.dataset.historyIndex) >= turn.forkHistoryIndex
-      && Number(node.dataset.historyIndex) < nextFork).at(-1) ?? null;
+  const turn = chat?.runs?.find(candidate => candidate.parentTurnId === run.parentTurnId && candidate.status !== 'superseded');
+  if (!turn || turn.forkHistoryIndex < Number(area.dataset.historyStart ?? 0)) return null;
+  const branch = chat?.activeBranchByFork?.[String(turn.forkHistoryIndex)];
+  if (branch && branch !== turn.branchId) return null;
+  let end = (turn.outputHistoryEnd ?? Infinity) + 1;
+  for (const candidate of chat?.runs ?? []) {
+    if (candidate.forkHistoryIndex > turn.forkHistoryIndex) end = Math.min(end, candidate.forkHistoryIndex);
+  }
+  let anchor: HTMLElement | null = null;
+  for (const node of area.children) {
+    if (!(node instanceof HTMLElement) || node.dataset.historyIndex == null) continue;
+    const index = Number(node.dataset.historyIndex);
+    if (index < turn.forkHistoryIndex) continue;
+    if (index >= end || (index > turn.forkHistoryIndex && node.matches('.msg.user:not(.msg--steered), .agent-message'))) break;
+    anchor = node;
+  }
+  return anchor;
 }
 
 function reconcile(area: HTMLElement, chatId: string): void {
   const anchorsById = new Map<string, HTMLElement>();
+  const receipts = new Map<string, HTMLElement>();
+  area.querySelectorAll<HTMLElement>('[data-spawned-run-id]').forEach(row => receipts.set(row.dataset.spawnedRunId!, row));
   area.querySelectorAll<HTMLElement>('[data-tool-call-id]').forEach(row => { if (!anchorsById.has(row.dataset.toolCallId!)) anchorsById.set(row.dataset.toolCallId!, row); });
   const anchorOrder = new Map([...area.querySelectorAll<HTMLElement>('.tool-call-msg, .tool-call-batch')].map((row, i) => [row, i]));
   const buckets = new Map<string, Entry[]>();
@@ -287,16 +299,17 @@ function reconcile(area: HTMLElement, chatId: string): void {
     const members = buckets.get(key) ?? []; members.push(entry); buckets.set(key, members);
   }
   for (const [key, members] of buckets) {
-    const anchors = members.map(entry => sourceAnchor(anchorsById, entry.run)).filter((anchor): anchor is HTMLElement => Boolean(anchor));
+    const anchors = members.map(entry => sourceAnchor(anchorsById, receipts, entry.run)).filter((anchor): anchor is HTMLElement => Boolean(anchor));
     // DOM order, not completion order, chooses the original delegation anchor.
     const anchor = anchors.sort((a, b) => (anchorOrder.get(a) ?? Infinity) - (anchorOrder.get(b) ?? Infinity))[0]
-      ?? turnAnchor(area, chatId, members[0]!.run);
-    if (members.length === 1) { groups.get(key)?.remove(); groups.delete(key); placeAfter(anchor, members[0]!.row, area); continue; }
+      ?? subAgentTurnAnchor(area, chatId, members[0]!.run);
+    const live = members.some(entry => entry.state && LIVE_MARK_STATES.has(entry.state));
+    if (members.length === 1) { groups.get(key)?.remove(); groups.delete(key); placeAfter(anchor, members[0]!.row, area, live); continue; }
     let group = groups.get(key);
     if (!group) {
       group = document.createElement('details'); group.className = 'sub-agent-group'; group.dataset.parentTurnId = members[0]!.run.parentTurnId ?? '';
       group.dataset.agentGroupKey = key;
-      group.open = disclosure.get(key) ?? members.some(entry => ['queued', 'running'].includes(entry.run.status));
+      group.open = disclosure.get(key) ?? live;
       const summary = document.createElement('summary'); summary.className = 'sub-agent-group__summary';
       const stack = document.createElement('span'); stack.className = 'agent-mark-stack'; stack.setAttribute('aria-hidden', 'true');
       const label = document.createElement('span'); label.className = 'sub-agent-group__label';
@@ -305,19 +318,19 @@ function reconcile(area: HTMLElement, chatId: string): void {
       group.addEventListener('toggle', () => { if (groups.get(key) !== group) return; disclosure.set(key, group!.open); if (disclosure.size > 512) disclosure.delete(disclosure.keys().next().value!); });
       groups.set(key, group);
     }
-    const working = members.filter(entry => !['queued', 'completed', 'failed', 'cancelled'].includes(entry.run.status) && stateLabel(entry.run) === 'Working').length;
+    const working = members.filter(entry => entry.state === 'running').length;
     const states = members.map(entry => stateLabel(entry.run));
     const queued = states.filter(state => state.startsWith('Queued')).length;
     const attention = states.filter(state => state.startsWith('Needs') || state === 'Failed').length;
     const waiting = states.filter(state => state.startsWith('Waiting')).length;
-    group.dataset.live = String(working + queued + waiting > 0);
+    group.dataset.live = String(live);
     syncAgentMarkStack(group.querySelector<HTMLElement>('.agent-mark-stack')!, members.map(entry => agentModelId(entry.run)));
     group.querySelector('.sub-agent-group__label')!.textContent = [`${members.length} agents`, working ? `${working} working` : '', queued ? `${queued} queued` : '',
       attention ? `${attention} need attention` : '', waiting ? `${waiting} waiting` : '', states.every(state => state === 'Complete') ? 'Complete' : ''].filter(Boolean).join(' · ');
     const body = group.querySelector<HTMLElement>('.sub-agent-group__body')!;
     let next = body.firstChild;
     for (const entry of members) { if (next !== entry.row) body.insertBefore(entry.row, next); next = entry.row.nextSibling; }
-    placeAfter(anchor, group, area);
+    placeAfter(anchor, group, area, live);
   }
 }
 

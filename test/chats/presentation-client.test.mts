@@ -40,13 +40,20 @@ test('another viewer metadata update never rebases a locally dirty draft onto th
   const chat = setup(); chat.name = 'Local title'; chat.composerDraft = 'Keep unsaved text'; touchChat(chat);
   applySharedChatFrame(chat.id, { name: 'Other viewer title', pinnedAt: 1000, agentPresentationRevision: 3 });
   assert.equal(chat.name, 'Local title'); assert.equal(chat.pinnedAt, undefined);
-  let writes = 0;
+  const writes: any[] = [];
   globalThis.fetch = async (_url, options) => {
-    writes++; const body = JSON.parse(String(options?.body)); assert.equal(body.chatBasePresentationRevisions.managed, 2);
+    writes.push(JSON.parse(String(options?.body)));
     return Response.json({ error: 'Presentation changed in another window', revision: 44, conflictingChatIds: ['managed'] }, { status: 409 });
   };
   saveSessionsNow(); await waitForSessionSaveForTests();
-  assert.equal(writes, 1); assert.equal(chat.composerDraft, 'Keep unsaved text');
+  assert.equal(writes.length, 2, 'one immediate retry before backoff');
+  for (const body of writes) {
+    assert.equal(body.chatBasePresentationRevisions.managed, 2);
+    assert.equal(body.recoverConflicts, true);
+    assert.equal(body.chats[0].composerDraft, 'Keep unsaved text');
+    assert.equal(body.chats[0].name, 'Local title');
+  }
+  assert.equal(chat.composerDraft, 'Keep unsaved text');
   assert.ok(getSessionDirtyTrackingForTests().dirtyChatIds.includes(chat.id));
 });
 

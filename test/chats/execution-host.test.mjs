@@ -80,7 +80,10 @@ test('host uses canonical continue history, preserves input images and emits obs
     assert.equal(rows[0].images[0].dataUrl, 'data:image/png;base64,YQ==');
     assert.equal(wire.messages.filter(row => row.role === 'user').length, 1);
     assert.equal(wire.messages.some(row => row.provenance || row.commandId || row.messageId || row.images || Object.hasOwn(row, 'createdAt')), false);
-    assert.match(wire.messages.find(row => row.role === 'user').content, /Work on this/);
+    assert.deepEqual(wire.messages.find(row => row.role === 'user').content, [
+      { type: 'text', text: command.message },
+      { type: 'image_url', image_url: { url: rows[0].images[0].dataUrl, detail: 'auto' } },
+    ]);
   } finally { s.cleanup(); }
 });
 

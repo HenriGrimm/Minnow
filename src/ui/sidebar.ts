@@ -90,6 +90,7 @@ import { syncAskQuestionModalOnChatSwitch } from './question-cards-modal';
 import {
   paintChatHistoryPendingInForegroundShell,
   renderChatFromHistory,
+  renderChatInForegroundShell,
   renderStatsForChat,
   showCachedModelInfo,
 } from './messages';
@@ -447,8 +448,6 @@ function chatAgentModelId(chat: Chat): string {
   return chat.agentExecution?.resolvedModel?.modelId?.trim() || chat.modelId?.trim() || '';
 }
 
-const LIVE_AGENT_STATES: ReadonlySet<AgentMarkState> = new Set(['queued', 'running', 'waiting']);
-
 /** Agent rows tick their clocks from one shared timer that stops once none are live. */
 let agentClockTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -459,13 +458,17 @@ function tickAgentClocks(): void {
 }
 
 /** Live: time since the execution began, ticking. Settled: how long it took. */
-function syncAgentClock(clock: HTMLElement, chat: Chat, state: AgentMarkState): void {
+function syncAgentClock(clock: HTMLElement, chat: Chat, state: AgentMarkState, label: string): void {
   const execution = chat.agentExecution;
   const startedAt = execution?.createdAt;
   delete clock.dataset.startedAt;
   clock.textContent = '';
+  if (state === 'queued' || state === 'waiting') {
+    clock.textContent = label;
+    return;
+  }
   if (!startedAt) return;
-  if (LIVE_AGENT_STATES.has(state)) {
+  if (state === 'running') {
     clock.dataset.startedAt = String(startedAt);
     clock.textContent = formatWorkDuration(Math.max(0, Date.now() - startedAt));
     if (agentClockTimer == null && typeof setInterval === 'function') {
@@ -1288,7 +1291,7 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
   list.querySelectorAll<HTMLElement>('[data-agent-key]').forEach(node => existing.set(node.dataset.agentKey!, node));
   const ancestors = activeId ? relationships.ancestors(activeId) : [];
   const priorityIds = new Set([...ancestors.map(chat => chat.id), ...(activeId ? [activeId] : [])]);
-  const activeIds = new Set<string>();
+  const activeIds = new Set(priorityIds);
   for (const chat of relationships.byId.values()) {
     if (!isAgentChatActive(chat, running)) continue;
     activeIds.add(chat.id);
@@ -1299,7 +1302,7 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
   }
   if (activeId !== revealedAgentChatId) {
     revealedAgentChatId = activeId;
-    for (const ancestor of ancestors) { expandedAgentChats.set(ancestor.id, true); expandedPreviousAgents.set(ancestor.id, true); }
+    for (const ancestor of ancestors) expandedAgentChats.set(ancestor.id, true);
     const root = ancestors[0];
     const group = root?.groupId ? findGroupById(root.groupId) : undefined;
     if (group?.collapsed) toggleGroupCollapsed(group.id);
@@ -1341,7 +1344,7 @@ function agentSidebarBranches(list: HTMLElement, relationships: ChatRelationship
           clock = document.createElement('span'); clock.className = 'chat-item-agent-clock';
           titleRow.insertBefore(clock, titleRow.querySelector('.chat-item-git'));
         }
-        if (clock) syncAgentClock(clock, chat, state);
+        if (clock) syncAgentClock(clock, chat, state, status);
         let done = row.querySelector<HTMLElement>('.chat-item-agent-done');
         if (state === 'done' && !done && titleRow) {
           done = createIcon('check', { className: 'chat-item-agent-done', size: 12 });
@@ -2149,7 +2152,7 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
   catch (error) { showToast(error instanceof Error ? error.message : 'Could not delete this conversation.', 'error'); }
 }
 
-export async function switchChat(id: string): Promise<void> {
+export async function switchChat(id: string, isCurrent: () => boolean = () => true): Promise<void> {
   const target = sessionState?.chats.find((chat) => chat.id === id);
   if (target) {
     const archived = isChatArchived(target) || projectChatRelationships(sessionState!.chats).ancestors(id).some(isChatArchived);
@@ -2165,7 +2168,7 @@ export async function switchChat(id: string): Promise<void> {
     .then((m) => m.flushAllPendingSubAgentCompletions())
     .catch((err) => reportBackgroundError('sub-agent-completion-flush', err));
   void import('../agents/orchestrator')
-    .then((m) => m.hydrateSubAgentRunsForParentChat(id))
+    .then((m) => m.hydrateSubAgentRunsForParentChat(target?.agentConversation?.journalOwnerId ?? id))
     .catch((err) => reportBackgroundError('sub-agent-hydrate', err));
   if (!sharedHost && isOrchestrateHubMounted()) {
     teardownOrchestrateHub();
@@ -2183,6 +2186,7 @@ export async function switchChat(id: string): Promise<void> {
   const issuesEmbedded = !sharedHost && document.getElementById('chatArea')?.classList.contains('chat-area--issues');
   if (issuesEmbedded) {
     const { teardownIssuesEmbedBeforeChatPaint } = await import('./issues-page');
+    if (!isCurrent()) return;
     teardownIssuesEmbedBeforeChatPaint();
   }
 
@@ -2227,8 +2231,10 @@ export async function switchChat(id: string): Promise<void> {
       chatSurfaceEmpty
     ) {
       if (sameChat) {
+        if (!sharedHost && codeOverviewOpen) dismissCodeOverviewForNavigation();
+        if (!sharedHost && devServerScreenOpen) dismissDevServerScreenForNavigation();
         await ensureChatHistoryLoaded(id);
-        if (sessionState.activeId !== id) return;
+        if (sessionState.activeId !== id || !isCurrent()) return;
         if (sharedHost) {
           syncModelSelectForActiveChat();
           syncModeSelectorFromActiveChat();
@@ -2239,7 +2245,7 @@ export async function switchChat(id: string): Promise<void> {
           void bootGenerationResumeForChat(sameChat);
           void resumeIncompleteToolBatchOnChatSwitch(sameChat);
         }
-        paintActiveChatInForegroundShell(sameChat);
+        renderChatInForegroundShell(sameChat);
         syncViewModeToggleFromActiveChat();
         syncComposerFromStreamingState();
         renderSidebar();
@@ -2267,14 +2273,15 @@ export async function switchChat(id: string): Promise<void> {
   if (historyPending) {
     paintChatHistoryPendingInForegroundShell();
     await ensureChatHistoryLoaded(id);
-    if (!sessionState || sessionState.activeId !== id) return;
+    if (!sessionState || sessionState.activeId !== id || !isCurrent()) return;
   }
   syncAskQuestionModalOnChatSwitch(prevActiveId, id);
   notifyAskQuestionDisplayContextChanged();
   acknowledgeChatViewed(id);
   switchComposerDraft(prevActiveId, chat);
   syncModelSelectForActiveChat();
-  paintActiveChatInForegroundShell(chat);
+  if (historyPending) renderChatInForegroundShell(chat);
+  else paintActiveChatInForegroundShell(chat);
   void import('../usage/code-change-backfill').then((m) =>
     m.ensureChatCodeChangeBackfillOnSwitch(chat).then(() => {
       updateCodeChangeStrip(chat);

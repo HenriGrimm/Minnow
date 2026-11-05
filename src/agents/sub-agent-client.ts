@@ -96,6 +96,7 @@ export interface SubAgentRunClient {
   readonly runId: string;
   getRun(): Record<string, unknown> | null;
   getSeq(): number;
+  applySnapshot(run: Record<string, unknown>, at: number): void;
   getEngineError(): EngineError | null;
   getLive(): {
     phase: string | null;
@@ -165,7 +166,7 @@ export function createSubAgentRunClient(
     }
     foldInto(state, [event]);
     const next = state.runs.get(runId);
-    if (next) raw = runToRaw(next);
+    if (next) raw = { ...next };
     if (next && ['passed', 'cancelled', 'abandoned'].includes(next.phase) && livePartialText) {
       liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
       livePartialText = '';
@@ -183,20 +184,21 @@ export function createSubAgentRunClient(
     return changed;
   };
 
+  const applySnapshot = (run: Record<string, unknown>, at: number) => {
+    if (run?.runId !== runId || (raw !== null && at < seq)) return;
+    raw = run;
+    if (['passed', 'cancelled', 'abandoned'].includes(String(raw.phase)) && livePartialText) {
+      liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
+      livePartialText = '';
+    }
+    seq = at;
+    drainPending();
+    emit();
+  };
   const onSnapshot = (event: { data: string }) => {
     try {
       const payload = JSON.parse(event.data);
-      if (payload?.run?.runId !== runId) return;
-      const at = Number(payload.seq) || 0;
-      if (raw !== null && at < seq) return;
-      raw = payload.run && typeof payload.run === 'object' ? payload.run : null;
-      if (raw && ['passed', 'cancelled', 'abandoned'].includes(String(raw.phase)) && livePartialText) {
-        liveMessages = applyTurnEventToMessages(liveMessages, { type: 'round_end', text: livePartialText });
-        livePartialText = '';
-      }
-      seq = at;
-      drainPending();
-      emit();
+      applySnapshot(payload?.run, Number(payload?.seq) || 0);
     } catch (err) {
       console.error('[agents] could not read the run snapshot', err);
     }
@@ -312,6 +314,7 @@ export function createSubAgentRunClient(
     runId,
     getRun: () => raw,
     getSeq: () => seq,
+    applySnapshot,
     getEngineError: () => engineError,
     getLive: () => ({
       phase: livePhase,
@@ -387,6 +390,7 @@ function foldRun(raw: Record<string, unknown>): RunState | null {
   const runId = typeof raw.runId === 'string' ? raw.runId : '';
   if (!runId) return null;
   return {
+    ...raw,
     runId,
     type: String(raw.type ?? ''),
     task: String(raw.task ?? ''),
@@ -417,31 +421,5 @@ function foldRun(raw: Record<string, unknown>): RunState | null {
       raw.model && typeof raw.model === 'object' && !Array.isArray(raw.model)
         ? (raw.model as { providerId: string; id: string })
         : null,
-  };
-}
-
-function runToRaw(run: RunState): Record<string, unknown> {
-  return {
-    runId: run.runId,
-    type: run.type,
-    task: run.task,
-    title: run.title,
-    parentChatId: run.parentChatId,
-    cwd: run.cwd,
-    requestedAt: run.requestedAt,
-    endedAt: run.endedAt,
-    phase: run.phase,
-    attempts: run.attempts,
-    abandonedReason: run.abandonedReason,
-    abandonedEvidence: run.abandonedEvidence,
-    cancelledReason: run.cancelledReason,
-    delivered: run.delivered,
-    deliveredSkipReason: run.deliveredSkipReason,
-    nudged: run.nudged,
-    parentTurnId: run.parentTurnId,
-    parentToolCallId: run.parentToolCallId,
-    model: run.model,
-    modelSource: run.modelSource,
-    resolvedModel: run.resolvedModel,
   };
 }

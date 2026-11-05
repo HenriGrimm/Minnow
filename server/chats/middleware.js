@@ -106,7 +106,11 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
           const { caller, target } = await human(chatId);
           assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
         }
-        openEvents(req, res, write => presentation.subscribe({ projectId: project.projectId, chatId, send: write })); return;
+        openEvents(req, res, write => {
+          const unsubscribe = presentation.subscribe({ projectId: project.projectId, chatId, send: write });
+          write({ kind: 'baseline-end' });
+          return unsubscribe;
+        }); return;
       }
       const commandMatch = /^\/api\/chat-commands\/([A-Za-z0-9_-]{1,160})$/.exec(url.pathname);
       if (commandMatch && req.method === 'GET') {
@@ -176,6 +180,9 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
       }
       if (!operation && req.method === 'GET' && url.searchParams.get('view') === 'navigation') {
         send(200, { chatId, available: true }); return;
+      }
+      if (!operation && req.method === 'GET' && url.searchParams.get('view') === 'activity') {
+        send(200, { chatId, fields: repository.getActivity(chatId) }); return;
       }
       const snapshot = receipt => ({ ...(receipt ? { receipt } : {}), frame: presentation.frame(chatId) });
       if (operation === 'ack' && req.method === 'POST' && !requestId) {

@@ -210,8 +210,10 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     setSubAgentApiFetchForTests(async () => Response.json({ ok: true, events: [], state: { runs: [] } }));
     adoptSubAgentRunForTests(completedRun({ type: 'researcher', title: 'Verify model sources', task: 'Inspect the source documents in detail.' }));
     adoptSubAgentRunForTests(completedRun({ runId: 'second-run', type: 'researcher', title: 'Check Windows runtime', task: 'Read the Windows runtime implementation and verify its behavior.' }));
+    adoptSubAgentRunForTests(completedRun({ runId: 'old-run', parentTurnId: 'previous-turn' }));
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('.sub-agent-overlay__chip')];
+    assert.equal(buttons.length, 2);
     assert.ok(buttons[0].textContent?.includes('Verify model sources'));
     assert.ok(buttons[1].textContent?.includes('Check Windows runtime'));
     buttons[1].click();

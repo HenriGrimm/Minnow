@@ -66,12 +66,13 @@ const unsettled = new Set(['accepted', 'queued', 'running', 'loading_model', 'wa
 
 export function hasUnsettledAgentWork(chat: Chat, isRunning: (chatId: string) => boolean = () => false): boolean {
   const requests = chat.agentRequestSummary ?? chat.agentRequests?.filter(request => request.state === 'pending');
-  return isRunning(chat.id) || unsettled.has(chat.agentExecution?.status ?? '') || Boolean(chat.agentPendingCommand) || Boolean(requests?.length) || Boolean(chat.pendingMessageQueue?.length);
+  return unsettled.has(chat.agentExecution?.status ?? '') || Boolean(chat.agentPendingCommand) || Boolean(requests?.length) ||
+    (chat.chatCommandVersion !== 1 && (isRunning(chat.id) || Boolean(chat.pendingMessageQueue?.length)));
 }
 
 /** Waiting and queued work remain visible without claiming to be generating. */
 export function isAgentChatActive(chat: Chat, isRunning: (chatId: string) => boolean = () => false): boolean {
-  return hasUnsettledAgentWork(chat, isRunning) || chat.turnError === true || chat.unread === true;
+  return hasUnsettledAgentWork(chat, isRunning) || chat.turnError === true;
 }
 
 export function agentChatStatusLabel(chat: Chat, isRunning: (chatId: string) => boolean = () => false): string {
@@ -92,8 +93,8 @@ export function agentChatStatusLabel(chat: Chat, isRunning: (chatId: string) => 
   if (status === 'waiting') return 'Waiting';
   if (status === 'loading_model') return 'Loading model';
   if (status === 'stopping') return 'Stopping';
-  if (isRunning(chat.id) || status === 'running') return 'Working';
-  if (chat.agentPendingCommand || chat.pendingMessageQueue?.length || status === 'queued' || status === 'accepted') return 'Queued';
+  if (status === 'running' || (chat.chatCommandVersion !== 1 && isRunning(chat.id))) return 'Working';
+  if (chat.agentPendingCommand || (chat.chatCommandVersion !== 1 && chat.pendingMessageQueue?.length) || status === 'queued' || status === 'accepted') return 'Queued';
   if (status === 'stopped' || status === 'cancelled') return 'Stopped';
   if (status === 'completed' || status === 'settled') return 'Complete';
   return 'Ready';

@@ -183,6 +183,14 @@ test('each pending human request and held command remains independently visible 
   assert.equal(frame.fields.pendingMessageQueue[0].commandRevision, 1);
 });
 
+test('project activity includes queued work before its execution is created', t => {
+  const f = fixture(t);
+  const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
+  f.repository.admitCommand({ version: 1, commandId: 'early-input', chatId: 'chat', kind: 'send', message: 'Investigate',
+    requestedAt: 1000, provenance }, { producerId: 'human', requestKey: 'queued' });
+  assert.ok(f.repository.listActiveChatIds({ projectId: 'project' }).includes('chat'));
+});
+
 test('initial project activity replay is bounded, lightweight and ignores an older active-looking execution', t => {
   const f = fixture(t);
   for (let index = 0; index < 105; index += 1) {

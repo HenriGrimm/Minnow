@@ -5,6 +5,9 @@ const terminal = new Set(['completed', 'failed', 'stopped', 'settled', 'cancelle
 const fields = ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'workspacePath', 'worktreeRoot', 'worktreeEnabled', 'providerId', 'modelId', 'modeId',
   'updatedAt', 'lastMessageAt', 'messageCount', 'lastStats', 'modelInfo', 'reasoningEffort',
   'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt'];
+const summaryFields = ['name', 'workspacePath', 'worktreeRoot', 'modelId', 'providerId', 'modeId', 'messageCount',
+  'lastMessageAt', 'updatedAt', 'agentConversation', 'agentTypeId', 'chatCommandVersion', 'agentExecution',
+  'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'unread', 'turnError'];
 
 /** Bounded view state only. SQLite remains the transcript and command authority. */
 export function createChatPresentation({ repository, now = Date.now, flushMs = 40 } = {}) {
@@ -14,10 +17,10 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
     return repository.getActivity(chatId);
   }
   function notice(chatId) {
-    const projection = activity(chatId), execution = projection.agentExecution, requests = projection.agentRequestSummary;
+    const chat = repository.getChat(chatId), execution = chat.agentExecution, requests = chat.agentRequestSummary;
     return { kind: 'chat-changed', chatId, sequence: ++sequence, at: now(),
       execution: execution ? { executionId: execution.executionId, status: execution.status } : null, requests,
-      fields: { ...projection, agentTaskAttention: repository.getTaskAttention(chatId) },
+      fields: { ...Object.fromEntries(summaryFields.map(name => [name, chat[name] ?? null])), agentTaskAttention: repository.getTaskAttention(chatId) },
     };
   }
   function frame(chatId, { history = true, metadata = true } = {}) {

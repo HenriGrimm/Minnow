@@ -125,24 +125,26 @@ function resolveRun(runId: string, chatId: string): { run: AnyRun; live: boolean
   const persisted = findChatById(chatId)?.subAgentRuns?.find((run) => run.runId === runId);
   return persisted ? { run: persisted, live: false } : null;
 }
-function chatRuns(chatId: string): AnyRun[] {
+function chatRuns(chatId: string, activeId: string): AnyRun[] {
   const runs = new Map<string, AnyRun>();
   for (const run of findChatById(chatId)?.subAgentRuns ?? []) runs.set(run.runId, run);
   for (const run of listSubAgentRunsForParentChat(chatId)) runs.set(run.runId, run);
-  return [...runs.values()].filter(run => !run.childChatId).sort((a, b) => Date.parse(a.startedAt ?? '') - Date.parse(b.startedAt ?? ''));
+  const turn = runs.get(activeId)?.parentTurnId;
+  return [...runs.values()].filter(run => !run.childChatId && (run.runId === activeId || (turn && run.parentTurnId === turn)))
+    .sort((a, b) => Date.parse(a.startedAt ?? '') - Date.parse(b.startedAt ?? ''));
 }
 export function resolveOutcome(run: AnyRun, _live = false): SubAgentStructuredOutcome | null {
   return run.structuredOutcome ?? (run.summary?.trim() ? legacyOutcomeFromSummary(run.summary) : null);
 }
 
 function renderSwitcher(state: OverlayState): void {
-  const runs = chatRuns(state.chatId);
+  const runs = chatRuns(state.chatId, state.activeRunId);
   const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.title, run.modelId, run.providerId, run.resolvedModel])]);
   if (key === state.switcherKey) return;
   state.switcherKey = key;
   const focusedRun = state.switcher.contains(document.activeElement)
     ? (document.activeElement as HTMLElement).dataset.runId : null;
-  state.switcher.replaceChildren(el('p', 'sub-agent-overlay__rail-label', 'This conversation'));
+  state.switcher.replaceChildren(el('p', 'sub-agent-overlay__rail-label', 'This turn'));
   state.mobileSelect.replaceChildren();
   const working = runs.filter((run) => run.status === 'running').length;
   state.count.textContent = `${runs.length} ${runs.length === 1 ? 'agent' : 'agents'}${working ? ` · ${working} working` : ''}`;
@@ -462,7 +464,7 @@ function mountSubAgentDrawer(runId: string, chatId: string): void {
   header.append(heading, count, expand, close);
   const layout = el('div', 'sub-agent-overlay__layout');
   const switcher = el('nav', 'sub-agent-overlay__switcher');
-  switcher.setAttribute('aria-label', 'Subagents in this chat');
+  switcher.setAttribute('aria-label', 'Subagents in this turn');
   const main = el('div', 'sub-agent-overlay__main');
   const top = el('div', 'sub-agent-overlay__top');
   const mobileSelect = el('select', 'sub-agent-overlay__mobile-select');

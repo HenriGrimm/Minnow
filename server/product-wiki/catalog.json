@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "e901f4c09bbe5af0b8eab0e1b54297f11c0937a3b7656b2089b4e7864e75f0ca"
+      "hash": "72fc7f45a39a8ac7c4ec1f137e45d237c0195bb5d5f9b528ba5e146817dadb17"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f639e283c30a081dde7797f068ab94f5c98bede6ac87820476ae82c2b39b94ad"
+      "hash": "10b69406eaad05386bc221bd76c8c2ec03917b48c77c5ed6dfca789ad0ba0946"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -406,7 +406,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "c5f453bf509c1a6fc753c645c6cec5fc8d552f06e95c3cf359bbd13c266241c8"
+      "hash": "b961c02349600089b1be877cefac64067c8d9981a6b6bd0bcf4cf51a78d88cf0"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -616,7 +616,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "7136e6968e938a117b955b924da2c01638283b24649bcf69de832bf57dfe38f8"
+      "hash": "1858c38b19318065251d98af5f54016d2e0a6b6b8075881e4cb9ed84533901ee"
     },
     {
       "path": "documentation/manual/apps/home.md",

@@ -117,7 +117,7 @@ export async function switchToCodeChat(chatId: string, options: { isCurrent?: ()
     if (!isCurrent()) return;
     const chatList = document.getElementById('chatList');
     if (chatList || attempt >= 20) {
-      await switchChat(trimmed);
+      await switchChat(trimmed, isCurrent);
       return;
     }
     await new Promise<void>(resolve => window.setTimeout(resolve, 50));

@@ -496,6 +496,16 @@ describe('POST /api/agents/cancel', () => {
 });
 
 describe('GET /api/agents/events parent SSE', () => {
+  it('replays a cancellation between the initial run list and the first connection', async () => {
+    const run = await spawnOk();
+    const list = await call('GET', `/api/agents?parentChatId=${PARENT}`);
+    assert.ok(list.body.seq > 0);
+    await call('POST', `/api/agents/${run.runId}/cancel`);
+    const frames = await readSse(`/api/agents/events?parentChatId=${PARENT}&since=${list.body.seq}`,
+      frames => frames.some(frame => frame.data?.runId === run.runId && frame.data.type === 'run.cancelled'));
+    assert.ok(frames.some(frame => frame.event === 'event' && frame.data.runId === run.runId
+      && frame.data.type === 'run.cancelled' && Number(frame.id) > list.body.seq));
+  });
   it('multiplexes sibling run frames over one connection', async () => {
     const first = await spawnOk({ task: 'run a' });
     const second = await spawnOk({ task: 'run b' });

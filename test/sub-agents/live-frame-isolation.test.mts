@@ -228,6 +228,15 @@ describe('sub-agent live frames isolate per run (P10-M)', () => {
     assert.equal(b?.livePartialReasoning, 'sibling thought');
   });
 
+  test('a sibling that finishes over the shared stream stays settled when its older spawn response arrives', async () => {
+    await spawnSubAgent({ type: 'explore', task: 'scan A', parentChatId: PARENT, wait: false });
+    bus.emit('event', { seq: 8, type: 'run.requested', runId: RUN_B, parentChatId: PARENT, agentType: 'explore', task: 'scan B', cwd: '/tmp', requestedAt: 1 });
+    bus.emit('event', { seq: 9, type: 'run.cancelled', runId: RUN_B, reason: 'user' });
+    assert.equal(getSubAgentRun(RUN_B)?.status, 'cancelled');
+    await spawnSubAgent({ type: 'explore', task: 'scan B', parentChatId: PARENT, wait: false });
+    assert.equal(getSubAgentRun(RUN_B)?.status, 'cancelled');
+  });
+
   test('terminal snapshot drops the generating tail', async () => {
     await spawnSubAgent({
       type: 'explore',
@@ -372,6 +381,23 @@ describe('live frames after cancel vs genuine end (P10-L)', () => {
     });
     assert.equal(client.getLive().toolName, 'read_file');
     assert.equal(client.getLive().phase, 'tools');
+    client.close();
+  });
+
+  test('journal updates preserve persistent child identity and reject an older HTTP snapshot', () => {
+    const stream = new FakeStream();
+    const client = createSubAgentRunClient(RUN_A, { openStream: () => stream });
+    const snapshot = runningSnapshot(RUN_A, [{ attemptId: ATTEMPT_A1, ended: false }]);
+    const run = { ...(snapshot.run as Record<string, unknown>), childChatId: 'child', executionId: 'exec',
+      completionPolicy: { version: 1, kind: 'local_only' } };
+    client.connect();
+    client.applySnapshot(run, 1);
+    stream.emit('event', { v: 1, seq: 2, type: 'run.cancelled', runId: RUN_A, reason: 'user' });
+    client.applySnapshot(run, 1);
+    assert.equal(client.getRun()?.phase, 'cancelling');
+    assert.equal(client.getRun()?.childChatId, 'child');
+    assert.equal(client.getRun()?.executionId, 'exec');
+    assert.deepEqual(client.getRun()?.completionPolicy, run.completionPolicy);
     client.close();
   });
 
