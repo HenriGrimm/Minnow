@@ -5,14 +5,14 @@ import http from 'node:http';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { createServer as createVite } from 'vite';
-import { createDevRemoteHandler, createDevRemotePathPolicy } from '../../server/remote/dev-remote-filter.js';
+import { createDevRemoteHandler, createDevRemotePathPolicy, isDevClientImport } from '../../server/remote/dev-remote-filter.js';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-'));
 for (const dir of ['src', 'node_modules', 'public/icons', 'server', 'documentation']) {
   fs.mkdirSync(path.join(root, dir), { recursive: true });
 }
 for (const file of ['server.js', 'package.json', 'AGENTS.md', 'index.html', '.DS_Store', '.env', 'public/manifest.json', 'public/sw.js']) {
-  fs.writeFileSync(path.join(root, file), '');
+  fs.writeFileSync(path.join(root, file), file === 'package.json' ? '{}' : '');
 }
 fs.writeFileSync(path.join(root, 'public/icons/icon-192.png'), '');
 const viteFsRoot = '/@fs/' + root.replaceAll('\\', '/');
@@ -30,7 +30,6 @@ describe('dev remote path policy', () => {
       '/node_modules/.vite/deps/qrcode.js',
       `${viteFsRoot}/node_modules/.vite/deps/chunk.js`,
       '/@vite/client',
-      '/@id/__x00__virtual',
       `${viteFsRoot}/src/main.ts`,
       `${viteFsRoot}/node_modules/pkg/index.js`,
       '/manifest.json',
@@ -96,16 +95,33 @@ describe('dev remote path policy', () => {
     assert.deepEqual(seen, ['/connect', '/settings/network']);
   });
 
-  test('Vite fallback cannot serve a late-created file or a case alias', async () => {
+  test('Vite fallback serves the client import graph and rejects private files, including module ID aliases', async () => {
+    fs.writeFileSync(path.join(root, 'server/private.js'), 'export default "private"');
+    fs.writeFileSync(path.join(root, 'server/shared.js'), 'export default "shared"');
+    fs.writeFileSync(path.join(root, 'src/importer.js'), "import '../server/shared.js'; import 'virtual:fixture';");
     const vite = await createVite({ root, configFile: false, logLevel: 'silent', appType: 'custom',
+      plugins: [{ name: 'fixture-virtual', resolveId: id => id === 'virtual:fixture' ? '\0' + id : undefined,
+        load: id => id === '\0virtual:fixture' ? 'export default 1' : undefined }],
       server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true } });
-    const server = http.createServer(createDevRemoteHandler(vite.middlewares, { root }));
+    const server = http.createServer(createDevRemoteHandler(vite.middlewares, { root,
+      isImportedModule: pathname => isDevClientImport(vite.environments.client.moduleGraph, pathname, root),
+    }));
     try {
       await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
       const base = 'http://127.0.0.1:' + server.address().port;
       fs.writeFileSync(path.join(root, 'new-secret.txt'), 'private');
-      for (const file of ['/new-secret.txt', '/SeRvEr.Js']) {
+      // A desktop visit puts even an unimported file in Vite's cache.
+      await vite.transformRequest('/server/private.js');
+      for (const file of ['/new-secret.txt', '/SeRvEr.Js', '/server/private.js', '/@id/server/private.js',
+        '/@id//server/private.js?raw', '/@id/' + root.replaceAll('\\', '/') + '/server/private.js?raw']) {
         assert.equal((await fetch(base + file)).status, 404);
+      }
+      const importer = await fetch(base + '/src/importer.js');
+      assert.equal(importer.status, 200);
+      const source = await importer.text();
+      for (const imported of ['/server/shared.js', '/@id/__x00__virtual:fixture']) {
+        assert.ok(source.includes(imported), imported);
+        assert.equal((await fetch(base + imported)).status, 200, imported);
       }
     } finally {
       server.closeAllConnections();

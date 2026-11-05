@@ -12,13 +12,36 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 
-/** First path segments the SPA loads in dev. */
-const ALLOWED_ROOTS = new Set(['api', '@vite', '@id']);
+const CLIENT_PATHS = new Set(['/index.html', '/@vite/client', '/@vite/env', '/@react-refresh', '/__vite_ping']);
 
 /** @param {string} child @param {string} parent */
 function isInside(child, parent) {
   const rel = path.relative(parent, child);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function isPublicFileWithin(file, dir) {
+  try {
+    return isInside(file, dir) && isResolvedPathUnderRoot(file, dir);
+  } catch {
+    return false;
+  }
+}
+
+/** A direct desktop request also enters Vite's graph. Only follow imports from client code. */
+export function isDevClientImport(graph, pathname, root) {
+  const id = pathname.startsWith('/@id/') ? pathname.slice(5).replace('__x00__', '\0') : pathname;
+  const module = graph.urlToModuleMap.get(pathname) ?? graph.urlToModuleMap.get(id) ?? graph.getModuleById(id);
+  const pending = Array.from(module?.importers ?? []);
+  const seen = new Set();
+  while (pending.length) {
+    const importer = pending.pop();
+    if (seen.has(importer)) continue;
+    seen.add(importer);
+    if (importer.file && ['src', 'node_modules'].some(dir => isPublicFileWithin(importer.file, path.join(root, dir)))) return true;
+    for (const parent of importer.importers) pending.push(parent);
+  }
+  return false;
 }
 
 /**
@@ -49,15 +72,15 @@ export function createDevRemotePathPolicy({ root, publicDir = path.join(root, 'p
       segment.startsWith('.') && !(segment === '.vite' && segments[i - 1] === 'node_modules');
     if (segments.some((segment, i) => hidden(segment, i) || segment.includes('\\'))) return false;
     const [first] = segments;
-    if (ALLOWED_ROOTS.has(first) || ['/index.html', '/@react-refresh', '/__vite_ping'].includes(decoded)) return true;
+    if (first === 'api' || CLIENT_PATHS.has(decoded)) return true;
     // `/@fs/<absolute path>`: Vite's own fs.allow is the whole checkout; narrow it.
     if (first === '@fs' || first === 'src' || first === 'node_modules') {
       const target = first === '@fs' ? path.resolve('/', decoded.slice('/@fs/'.length)) : path.join(root, ...segments);
-      return fsAllowed.some(dir => isInside(target, dir) && isResolvedPathUnderRoot(target, dir));
+      return fsAllowed.some(dir => isPublicFileWithin(target, dir));
     }
     if (isImportedModule(pathname)) return true;
     const asset = path.join(publicDir, ...segments);
-    return fs.existsSync(asset) && isResolvedPathUnderRoot(asset, publicDir) && !fs.existsSync(path.join(root, ...segments));
+    return fs.existsSync(asset) && isPublicFileWithin(asset, publicDir) && !fs.existsSync(path.join(root, ...segments));
   };
 }
 

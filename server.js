@@ -18,7 +18,7 @@ import { deleteGenerationsForProviderShutdown } from './server/generations/store
 import { disposeCodexSessions } from './server/generations/codex-app-server/lifecycle.js';
 import { shutdownAgentCliLogins } from './server/models/agent-cli-middleware.js';
 import { getAppRoot } from './server/workspace/root.js';
-import { createDevRemoteHandler } from './server/remote/dev-remote-filter.js';
+import { createDevRemoteHandler, isDevClientImport } from './server/remote/dev-remote-filter.js';
 import { getMinnowHome } from './server/config/home.js';
 import { applyMinnowMiddlewares } from './server/runtime/middlewares.js';
 import { getSessionToken } from './server/runtime/session-token.js';
@@ -209,7 +209,7 @@ async function main() {
         indexPath: path.join(appRoot, 'index.html'),
         transformHtml: (url, html) => vite.transformIndexHtml(url, html),
       }),
-      isImportedModule: (pathname) => vite.environments.client.moduleGraph.urlToModuleMap.has(pathname),
+      isImportedModule: (pathname) => isDevClientImport(vite.environments.client.moduleGraph, pathname, appRoot),
       bundle: remoteBundle,
     }),
   });
