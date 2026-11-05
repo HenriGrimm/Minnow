@@ -13,6 +13,7 @@ import { checkIngressAccess } from '../network/access.js';
 import { ingressScheme } from '../network/ingress.js';
 import { readDeviceCookie } from '../auth/cookie.js';
 import { touchDevice } from '../auth/device-store.js';
+import { trackDeviceTransport } from '../auth/device-transports.js';
 import { authenticateMinnowToken } from './authenticate-token.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
@@ -109,7 +110,10 @@ export function resolveRequestAuth(req, url, opts = {}) {
 export function authorizeUpgrade(req, socket) {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const result = resolveRequestAuth(req, url, { upgrade: true });
-  if (result.ok) return result;
+  if (result.ok) {
+    trackDeviceTransport(result.auth, socket);
+    return result;
+  }
   const line = result.status === 403 ? '403 Forbidden' : result.status === 503 ? '503 Service Unavailable' : '401 Unauthorized';
   socket.end(`HTTP/1.1 ${line}\r\nConnection: close\r\n\r\n`);
   return null;

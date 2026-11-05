@@ -5,6 +5,7 @@
  * are returned once; only SHA-256 digests are written to ~/.minnow/auth/devices.json.
  */
 
+import { closeDeviceTransports } from './device-transports.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -453,6 +454,7 @@ export function revokeDevice(id) {
   if (nextDevices.length === store.devices.length) return false;
   pendingActivity.delete(id);
   writeStore({ ...store, devices: nextDevices });
+  closeDeviceTransports(id);
   return true;
 }
 
@@ -471,6 +473,7 @@ export function revokeCredential(deviceId, credentialId) {
       : candidate,
   );
   writeStore({ ...store, devices });
+  closeDeviceTransports(deviceId, credentialId);
   return true;
 }
 

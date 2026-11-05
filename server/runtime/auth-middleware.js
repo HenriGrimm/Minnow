@@ -7,6 +7,7 @@
  * unauthenticated or cross-host request. No CORS header is ever emitted.
  */
 
+import { trackDeviceTransport } from '../auth/device-transports.js';
 import { authenticateMcpToken } from '../auth/mcp-store.js';
 import { clearDeviceCookie, setDeviceCookie, shouldRefreshDeviceCookie } from '../auth/cookie.js';
 import { checkIngressAccess } from '../network/access.js';
@@ -120,6 +121,7 @@ export function createAuthMiddleware() {
 
     req.minnowAuth = auth;
     req.minnowIngress = result.ingress;
+    trackDeviceTransport(auth, res);
     next();
   };
 }
