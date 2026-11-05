@@ -144,7 +144,7 @@ export async function handleAgentPacksRequest(req, res, pathname) {
         sendJson(res, 400, { error: 'Upload must be a .zip file' });
         return true;
       }
-      const installed = await installAgentPackFromZip(file.buffer);
+      const installed = await installAgentPackFromZip(file.buffer, builtinIds);
       await refreshAgentPackCache(PROJECT_ROOT, builtinIds);
       const pack = getCachedAgentPackList().find((p) => p.id === installed.packId);
       if (!pack) {

@@ -3,11 +3,14 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
+import { deflateRawSync } from 'node:zlib';
+import { readZipEntries } from '../../server/agent-packs/zip.js';
+import { createStoreZip } from '../../server/agent-packs/template.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { installAgentPackFromZip } from '../../server/agent-packs/install.js';
 import { handleAgentPacksRequest } from '../../server/agent-packs/routes.js';
 import { scanAgentPacks } from '../../server/agent-packs/scan.js';
-import { buildAgentPackTemplateZip } from '../../server/agent-packs/template.js';
+import { buildAgentPackTemplateZip, getAgentPackTemplateFileMap, buildZipFromFileMap } from '../../server/agent-packs/template.js';
 
 const builtinIds = new Set(['default', 'builder', 'planner']);
 
@@ -54,6 +57,36 @@ describe('agent-packs upload', () => {
     assert.ok(installed);
     assert.equal(installed.valid, true);
     assert.equal(installed.agents.length, 1);
+  });
+
+  test('bounded ZIP expansion rejects total size and underdeclared deflate data', () => {
+    const limits = {maxEntries:3, maxFileBytes:40, maxTotalBytes:45};
+    const stored = createStoreZip(['a','b'].map(name => ({name, data:Buffer.alloc(30)})));
+    assert.throws(() => readZipEntries(stored, limits), /total expanded byte limit/);
+    const bomb = createStoreZip([{name:'a', data:deflateRawSync(Buffer.alloc(300_000))}]);
+    const central = bomb.readUInt32LE(bomb.length - 6);
+    bomb.writeUInt16LE(8, central + 10);
+    bomb.writeUInt32LE(30, central + 24);
+    assert.throws(() => readZipEntries(bomb, limits), {code:'ERR_BUFFER_TOO_LARGE'});
+  });
+
+  test('invalid upgrade leaves the installed manifest and prompt intact', async () => {
+    const files = getAgentPackTemplateFileMap();
+    const first = await installAgentPackFromZip(buildZipFromFileMap(files, 'pack'));
+    const old = await readFile(join(first.packRoot, 'manifest.json'), 'utf8');
+    const manifest = JSON.parse(old);
+    manifest.version = '2';
+    const update = {...files, 'manifest.json': JSON.stringify(manifest)};
+    const oversized = {...update, 'large.bin': 'x'.repeat(2 * 1024 * 1024 + 1)};
+    await assert.rejects(installAgentPackFromZip(buildZipFromFileMap(oversized, 'pack')), /limit/);
+    const prompt = manifest.agents[0].prompts.full;
+    delete update[prompt];
+    await assert.rejects(installAgentPackFromZip(buildZipFromFileMap(update, 'pack')), /ENOENT|Missing agent prompt/);
+    assert.equal(await readFile(join(first.packRoot, 'manifest.json'), 'utf8'), old);
+    assert.equal(await readFile(join(first.packRoot, prompt), 'utf8'), files[prompt]);
+    update[prompt] = 'new prompt';
+    await installAgentPackFromZip(buildZipFromFileMap(update, 'pack'));
+    assert.equal(await readFile(join(first.packRoot, prompt), 'utf8'), 'new prompt');
   });
 
   test('installAgentPackFromZip rejects archives without manifest.json', async () => {

@@ -3,9 +3,10 @@
  */
 
 import fs from 'node:fs/promises';
+import { renameSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { packDirectoryPath, PACK_ID_RE } from './paths.js';
-import { shouldExposePackDir } from './validate.js';
+import { packDirectoryPath, PACK_ID_RE, resolvePackPromptPath } from './paths.js';
+import { shouldExposePackDir, validatePackManifest } from './validate.js';
 import { readZipEntries } from './zip.js';
 
 /** Max zip upload size for agent packs (10 MB). */
@@ -28,13 +29,15 @@ const SKIP_ENTRY_PREFIXES = ['__macosx/', '.ds_store'];
  * @param {Buffer} zipBuffer
  * @returns {Promise<AgentPackInstallResult>}
  */
-export async function installAgentPackFromZip(zipBuffer) {
-  const entries = readZipEntries(zipBuffer);
+export async function installAgentPackFromZip(zipBuffer, builtinIds = new Set()) {
+  if (zipBuffer.length > AGENT_PACK_ZIP_MAX_BYTES) throw new Error('Zip upload exceeds 10 MB');
+  const entries = readZipEntries(zipBuffer, {
+    maxEntries: AGENT_PACK_ZIP_MAX_ENTRIES,
+    maxFileBytes: AGENT_PACK_MAX_FILE_BYTES,
+    maxTotalBytes: 32 * 1024 * 1024,
+  });
   if (!entries.length) {
     throw new Error('Zip archive is empty');
-  }
-  if (entries.length > AGENT_PACK_ZIP_MAX_ENTRIES) {
-    throw new Error(`Zip exceeds ${AGENT_PACK_ZIP_MAX_ENTRIES} entry limit`);
   }
 
   const manifestEntry = findManifestEntry(entries);
@@ -56,20 +59,42 @@ export async function installAgentPackFromZip(zipBuffer) {
   }
 
   const packRoot = packDirectoryPath(packId);
-  await fs.mkdir(packRoot, { recursive: true });
-
-  let filesWritten = 0;
-  for (const [relPath, data] of filesToWrite) {
-    if (data.length > AGENT_PACK_MAX_FILE_BYTES) {
-      throw new Error(`File ${relPath} exceeds ${AGENT_PACK_MAX_FILE_BYTES} byte limit`);
+  const validated = validatePackManifest(manifest, packRoot, builtinIds);
+  if (!validated.ok) throw new Error(validated.errors.join('; '));
+  const parent = path.dirname(packRoot);
+  await fs.mkdir(parent, { recursive: true });
+  const stage = await fs.mkdtemp(path.join(parent, '_install-'));
+  try {
+    for (const [relPath, data] of filesToWrite) {
+      const target = path.join(stage, relPath);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, data, {flag: 'wx'});
     }
-    const target = path.join(packRoot, relPath);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, data);
-    filesWritten += 1;
-  }
+    for (const agent of manifest.agents) {
+      for (const prompt of [agent.prompts.full, agent.prompts.lite].filter(Boolean)) {
+        if (!(await fs.stat(resolvePackPromptPath(stage, prompt))).isFile()) throw new Error('Missing agent prompt');
+      }
+    }
 
-  return { packId, filesWritten, packRoot };
+    // Short synchronous promotion keeps scan and concurrent installs in this host
+    // from observing an intermediate directory. Scan recovers a hard interruption.
+    const previous = path.join(parent, '_previous-' + packId);
+    if (existsSync(previous)) {
+      if (existsSync(packRoot)) rmSync(previous, {recursive:true});
+      else renameSync(previous, packRoot);
+    }
+    if (existsSync(packRoot)) renameSync(packRoot, previous);
+    try {
+      renameSync(stage, packRoot);
+    } catch (error) {
+      if (existsSync(previous)) renameSync(previous, packRoot);
+      throw error;
+    }
+    if (existsSync(previous)) renameSync(previous, stage);
+    return { packId, filesWritten: filesToWrite.size, packRoot };
+  } finally {
+    await fs.rm(stage, {recursive:true, force:true});
+  }
 }
 
 /**

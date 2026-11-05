@@ -20,13 +20,15 @@ const METHOD_DEFLATE = 8;
  * @param {Buffer} buffer
  * @returns {ZipEntry[]}
  */
-export function readZipEntries(buffer) {
+export function readZipEntries(buffer, { maxEntries, maxFileBytes, maxTotalBytes }) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 22) {
     throw new Error('Invalid zip archive');
   }
 
   const eocdOffset = findEndOfCentralDirectory(buffer);
   const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+  if (totalEntries > maxEntries) throw new Error(`Zip exceeds ${maxEntries} entry limit`);
+  let totalBytes = 0;
   const centralDirSize = buffer.readUInt32LE(eocdOffset + 12);
   const centralDirOffset = buffer.readUInt32LE(eocdOffset + 16);
 
@@ -49,6 +51,9 @@ export function readZipEntries(buffer) {
     const compressionMethod = buffer.readUInt16LE(offset + 10);
     const compressedSize = buffer.readUInt32LE(offset + 20);
     const uncompressedSize = buffer.readUInt32LE(offset + 24);
+    if (uncompressedSize > maxFileBytes) throw new Error('Zip file exceeds per-file byte limit');
+    totalBytes += uncompressedSize;
+    if (totalBytes > maxTotalBytes) throw new Error('Zip exceeds total expanded byte limit');
     const nameLength = buffer.readUInt16LE(offset + 28);
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
@@ -78,10 +83,10 @@ export function readZipEntries(buffer) {
 
     const compressed = buffer.slice(dataStart, dataEnd);
     const normalizedPath = normalizeZipEntryPath(entryName);
-    const isDirectory = normalizedPath.endsWith('/');
+    const isDirectory = /[/\\\\]$/.test(entryName);
 
     if (isDirectory) {
-      entries.push({ path: normalizedPath.slice(0, -1), data: Buffer.alloc(0), isDirectory: true });
+      entries.push({ path: normalizedPath, data: Buffer.alloc(0), isDirectory: true });
       continue;
     }
 
@@ -120,8 +125,8 @@ function decompressEntry(method, compressed, uncompressedSize, entryName) {
     return compressed;
   }
   if (method === METHOD_DEFLATE) {
-    const data = inflateRawSync(compressed);
-    if (uncompressedSize > 0 && data.length !== uncompressedSize) {
+    const data = inflateRawSync(compressed, { maxOutputLength: Math.max(1, uncompressedSize) });
+    if (data.length !== uncompressedSize) {
       throw new Error(`Corrupt deflated entry: ${entryName}`);
     }
     return data;
@@ -137,7 +142,8 @@ export function normalizeZipEntryPath(rawPath) {
   const normalized = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
   const segments = normalized.split('/').filter((segment) => segment.length > 0);
   for (const segment of segments) {
-    if (segment === '..') {
+    if (segment === '..' || segment === '.' || /[\x00-\x1f:]/.test(segment) ||
+        /[. ]$/.test(segment) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(segment)) {
       throw new Error('Zip entry path traversal is not allowed');
     }
   }
