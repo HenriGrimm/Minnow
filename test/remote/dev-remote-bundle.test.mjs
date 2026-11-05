@@ -61,11 +61,11 @@ describe('dev remote bundle', () => {
   });
 
   after(async () => {
-    bundle.stop();
+    await bundle.stop();
     await new Promise((resolve) => server.close(resolve));
     if (savedHome === undefined) delete process.env.MINNOW_HOME;
     else process.env.MINNOW_HOME = savedHome;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   test('the first page load waits for the build, then gets the bundled shell', async () => {
@@ -121,9 +121,9 @@ describe('dev remote bundle fallback', () => {
       const res = await request(server, '/src/main.ts');
       assert.equal(res.body.toString(), 'live /src/main.ts');
     } finally {
-      bundle.stop();
+      await bundle.stop();
       await new Promise((resolve) => server.close(resolve));
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });

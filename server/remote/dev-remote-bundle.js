@@ -117,8 +117,11 @@ export function createDevRemoteBundle({ root, outDir, script = path.join(root, '
     const proc = child;
     child = null;
     if (!proc) return;
+    const closed = new Promise(resolve => proc.once('close', resolve));
     try { proc.stdin?.end(); } catch { /* already closed */ }
-    setTimeout(() => { try { proc.kill(); } catch { /* gone */ } }, 3_000).unref?.();
+    const timer = setTimeout(() => { try { proc.kill(); } catch { /* gone */ } }, 3_000);
+    timer.unref?.();
+    return closed.finally(() => clearTimeout(timer));
   }
 
   /** Resolves true once a build exists, false after `timeoutMs`. */
