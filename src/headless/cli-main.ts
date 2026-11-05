@@ -51,10 +51,10 @@ async function resolveWorkspace(
   return { ok: true, path: abs };
 }
 
-async function ensureServer(cli: HeadlessRunCliOptions): Promise<number | null> {
+export async function ensureServer(cli: Pick<HeadlessRunCliOptions, 'baseUrl' | 'token' | 'minnowHome' | 'startServer' | 'serverTimeoutSec'>): Promise<number | null> {
   const base = normalizeBaseUrl(cli.baseUrl);
-  installHeadlessFetch(base, resolveHeadlessToken(cli.token));
-  if (await waitForServer({ baseUrl: base, timeoutSec: 3 })) {
+  const auth = { token: cli.token, minnowHome: cli.minnowHome };
+  if (await waitForServer({ baseUrl: base, timeoutSec: 3, ...auth })) {
     return null;
   }
   if (!cli.startServer) {
@@ -63,7 +63,7 @@ async function ensureServer(cli: HeadlessRunCliOptions): Promise<number | null> 
   }
   log('Starting Minnow dev server (BROWSER=none)…');
   spawnMinnowServer({ minnowHome: cli.minnowHome, log });
-  const ok = await waitForServer({ baseUrl: base, timeoutSec: cli.serverTimeoutSec, log });
+  const ok = await waitForServer({ baseUrl: base, timeoutSec: cli.serverTimeoutSec, log, ...auth });
   if (!ok) {
     stopSpawnedServer();
     return 3;
@@ -91,8 +91,10 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
 
   const base = normalizeBaseUrl(cli.baseUrl);
 
-  // Preflight installed authenticated, unscoped fetch. Register a fresh folder
-  // before naming it as the request scope, or the allowlist rejects the claim.
+  // Snapshot the credential only after the server has published its boot token.
+  const token = resolveHeadlessToken(cli.token, cli.minnowHome);
+  installHeadlessFetch(base, token);
+  // Register a fresh folder before naming it as the request scope.
   if (workspaceResolved.path) {
     try {
       await openWorkspace(base, workspaceResolved.path);
@@ -101,7 +103,7 @@ async function runCommand(cli: HeadlessRunCliOptions): Promise<number> {
       return 4;
     }
   }
-  installHeadlessFetch(base, resolveHeadlessToken(cli.token), workspaceResolved.path || '');
+  installHeadlessFetch(base, token, workspaceResolved.path || '');
 
   const controller = new AbortController();
   let activeGeneration: ActiveHeadlessGeneration | null = null;

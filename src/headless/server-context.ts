@@ -18,17 +18,17 @@ function resolveMinnowHome(): string {
 }
 
 /** Read the session token a running server wrote to disk at boot. Empty string if absent. */
-export function readSessionTokenFile(): string {
+export function readSessionTokenFile(minnowHome?: string | null): string {
   try {
-    return fs.readFileSync(path.join(resolveMinnowHome(), 'session-token'), 'utf8').trim();
+    return fs.readFileSync(path.join(minnowHome?.trim() || resolveMinnowHome(), 'session-token'), 'utf8').trim();
   } catch {
     return '';
   }
 }
 
 /** --token flag > MINNOW_TOKEN env > the token file a running server wrote at boot. */
-export function resolveHeadlessToken(explicitToken?: string | null): string {
-  return explicitToken?.trim() || process.env.MINNOW_TOKEN?.trim() || readSessionTokenFile();
+export function resolveHeadlessToken(explicitToken?: string | null, minnowHome?: string | null): string {
+  return explicitToken?.trim() || process.env.MINNOW_TOKEN?.trim() || readSessionTokenFile(minnowHome);
 }
 
 /** Normalize base URL (no trailing slash). */

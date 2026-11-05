@@ -14,6 +14,7 @@ export interface WaitForServerOptions {
   timeoutSec: number;
   /** Session token override; defaults to MINNOW_TOKEN env or ~/.minnow/session-token. */
   token?: string | null;
+  minnowHome?: string | null;
   log?: (line: string) => void;
 }
 
@@ -23,28 +24,31 @@ export async function waitForServer(options: WaitForServerOptions): Promise<bool
   const log = options.log ?? (() => undefined);
   const deadline = Date.now() + options.timeoutSec * 1000;
 
+  const timeoutMs = Math.max(0, Math.ceil(deadline - Date.now()));
+  const signal = AbortSignal.timeout(timeoutMs);
   while (Date.now() < deadline) {
-    const token = resolveHeadlessToken(options.token);
+    const token = resolveHeadlessToken(options.token, options.minnowHome);
     try {
       const [configOk, toolsOk] = await Promise.all([
-        pingEndpoint(`${base}/api/config/ping`, token),
-        pingEndpoint(`${base}/api/tools/ping`, token),
+        pingEndpoint(`${base}/api/config/ping`, token, signal),
+        pingEndpoint(`${base}/api/tools/ping`, token, signal),
       ]);
-      if (configOk && toolsOk) {
+      if (configOk && toolsOk && Date.now() < deadline) {
         return true;
       }
     } catch {}
-    await new Promise((r) => setTimeout(r, 250));
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
   }
   log(`Timed out after ${options.timeoutSec}s waiting for ${base}`);
   return false;
 }
 
-async function pingEndpoint(url: string, token: string): Promise<boolean> {
+async function pingEndpoint(url: string, token: string, signal: AbortSignal): Promise<boolean> {
   const headers: Record<string, string> = {};
   if (token) headers['X-Minnow-Token'] = token;
-  const res = await fetch(url, { cache: 'no-store', headers });
-  if (!res.ok) return false;
+  const res = await fetch(url, { cache: 'no-store', headers, signal });
+  if (!res.ok) { await res.body?.cancel(); return false; }
   const body = (await res.json()) as { ok?: boolean };
   return body.ok === true;
 }
