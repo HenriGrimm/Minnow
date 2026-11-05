@@ -73,6 +73,7 @@ function sendJson(res, status, payload) {
 
 /** Missing files are 404; allowlist / path errors stay 400. */
 function previewCatchStatus(err) {
+  if (err?.code === 'EPREVIEWDENIED') return 403;
   if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
     return 404;
   }

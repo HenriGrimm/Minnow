@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
+import path from 'node:path';
 import { getConfigNetworkAccess } from '../network/access.js';
 import { getEffectiveWorkspaceRoot, resolveSafePath } from '../runtime/path-access.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
-import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
+import { isResolvedPathUnderRoot, realpathForBoundaryCheck } from '../workspace/safe-path.js';
 import { handlePreviewRequest } from './middleware.js';
 
 const CAPABILITY_LIFETIME_MS = 10 * 60 * 1000;
@@ -46,14 +47,18 @@ async function servePreview(req, res) {
   } catch {
     return reject(res, 400);
   }
-  if (decodedPath.split('/').some((segment) => segment.startsWith('.'))) return reject(res);
+  if (decodedPath.includes('\\') || decodedPath.split('/').some((segment) => segment.startsWith('.'))) return reject(res);
   url.searchParams.delete('workspaceRoot');
   await runWithToolContext(
     () => handlePreviewRequest(req, res, pathname, url.searchParams, {
       resolveSafePath: (userPath) => {
-        const resolved = resolveSafePath(userPath);
+        const resolved = realpathForBoundaryCheck(resolveSafePath(userPath));
         if (!isResolvedPathUnderRoot(resolved, grant.workspaceRoot)) {
           throw new Error('Preview path is outside its workspace');
+        }
+        const relative = path.relative(realpathForBoundaryCheck(grant.workspaceRoot), resolved);
+        if (relative.split(path.sep).some((segment) => segment.startsWith('.'))) {
+          throw Object.assign(new Error('Hidden preview path'), { code: 'EPREVIEWDENIED' });
         }
         return resolved;
       },
