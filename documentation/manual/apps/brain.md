@@ -45,6 +45,8 @@ Whichever route, an individual save raises a ten-second review card with the tit
 
 ## How things come out
 
+Each checkout has its own workspace notes and code index, even when two folders have the same name. If a note from an older project or a moved checkout belongs with the current one, open it in Brain and choose **Assign to this workspace** in the inspector. Links to the page keep working.
+
 On the first user turn of a chat, when memory is enabled, Minnow retrieves relevant pages and saves their excerpts with the chat. Later turns replay that saved snapshot; edits to Brain do not automatically refresh it. For current notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`, or start a new chat to refresh automatic retrieval.
 
 Retrieval is hybrid — keyword plus semantic vectors, with embeddings on by default. Roughly 12 hits, with a query-relevant excerpt from each rather than a generic first line, capped at about 8,000 characters injected on the full prompt profile.
