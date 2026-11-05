@@ -77,3 +77,36 @@ test('exclusive cross-volume file move keeps its source if the copy fails', asyn
   assert.match((await call('move_file', { source, destination: 'other-volume.txt', no_replace: true })).result, /Disk full/);
   assert.equal(await fs.readFile(source, 'utf8'), 'original');
 });
+
+test('patch and replacement serialize the entire read-modify-write cycle', async t => {
+  const name = 'parallel.txt';
+  const target = path.join(workspace, name);
+  await fs.writeFile(target, 'one\r\ntwo\r\n');
+  const originalRead = fs.readFile.bind(fs);
+  const first = Promise.withResolvers();
+  const second = Promise.withResolvers();
+  let reads = 0;
+  t.mock.method(fs, 'readFile', async (file, ...options) => {
+    const bytes = await originalRead(file, ...options);
+    if (file === target && ++reads === 1) {
+      first.resolve();
+      // Without a shared lock the second operation reads the same old bytes.
+      await Promise.race([second.promise, new Promise(resolve => setTimeout(resolve, 500))]);
+    } else if (file === target) {
+      second.resolve();
+    }
+    return bytes;
+  });
+  const replace = (before, after) => call('replace_text_in_file', {
+    path: name, search: before, replace: after, expected_count: 1,
+  });
+  const saving = replace('one', 'first');
+  await first.promise;
+  const patch = '*** Begin Patch\n*** Update File: parallel.txt\n@@\n-two\n+second\n*** End Patch';
+  const changed = await Promise.all([saving, call('apply_patch', { patch })]);
+  assert.ok(changed.every(row => !row.result.startsWith('Error:')));
+  assert.equal(await originalRead(target, 'utf8'), 'first\r\nsecond\r\n');
+  const overlap = await Promise.all([replace('first', 'A'), replace('first', 'B')]);
+  assert.equal(overlap.filter(row => row.result.startsWith('Replaced 1 occurrence')).length, 1);
+  assert.match(await originalRead(target, 'utf8'), /^[AB]\r\nsecond\r\n$/);
+});

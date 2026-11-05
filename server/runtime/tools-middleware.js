@@ -136,6 +136,7 @@ import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { getAppRoot } from '../workspace/root.js';
 import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 import { moveExclusive } from '../workspace/move-exclusive.js';
+import { withFileWriteLocks } from '../workspace/file-write-lock.js';
 import { wrapServerToolResult, wrapUntrusted } from '../security/untrusted.js';
 import {
   getEffectiveWorkspaceRoot,
@@ -524,21 +525,14 @@ async function toolReadFileRange(args) {
   return decoded.note ? `[${decoded.note}]\n${numbered}` : numbered;
 }
 
-const fileSaveChains = new Map();
-
-async function toolSaveFile(args) {
-  const filePath = resolveSafePath(args?.path, { write: true });
-  const previous = fileSaveChains.get(filePath) ?? Promise.resolve();
-  const result = previous.then(() => saveFileUnlocked(args, filePath), () => saveFileUnlocked(args, filePath));
-  const settled = result.then(() => {}, () => {});
-  fileSaveChains.set(filePath, settled);
-  void settled.then(() => {
-    if (fileSaveChains.get(filePath) === settled) fileSaveChains.delete(filePath);
-  });
-  return result;
+function lockTextWrite(handler) {
+  return args => {
+    const filePath = resolveSafePath(args?.path, { write: true });
+    return withFileWriteLocks([filePath], () => handler(args, filePath));
+  };
 }
 
-async function saveFileUnlocked(args, filePath) {
+async function toolSaveFile(args, filePath) {
   if (args?.content === undefined) {
     return 'Error: content is required';
   }
@@ -574,8 +568,7 @@ async function saveFileUnlocked(args, filePath) {
   return withCodeChange(message, codeChangeFromDiff(before, normalizedContent, rel));
 }
 
-async function toolAppendFile(args) {
-  const filePath = resolveSafePath(args?.path, { write: true });
+async function toolAppendFile(args, filePath) {
   if (args?.content === undefined) {
     return 'Error: content is required';
   }
@@ -605,8 +598,7 @@ async function toolAppendFile(args) {
   );
 }
 
-async function toolInsertAtLine(args) {
-  const filePath = resolveSafePath(args?.path, { write: true });
+async function toolInsertAtLine(args, filePath) {
   if (args?.content === undefined) {
     return 'Error: content is required';
   }
@@ -686,8 +678,7 @@ function stripReadLineNumbers(text) {
   return lines.map((line) => line.replace(prefix, '')).join('\n');
 }
 
-async function toolReplaceTextInFile(args) {
-  const filePath = resolveSafePath(args?.path, { write: true });
+async function toolReplaceTextInFile(args, filePath) {
   const search = args?.search;
   const replace = args?.replace ?? '';
   if (search === undefined) {
@@ -1472,11 +1463,11 @@ const SERVER_TOOL_HANDLERS = {
   read_file: toolReadFile,
   read_file_range: toolReadFileRange,
   check_plan: toolCheckPlan,
-  save_file: toolSaveFile,
+  save_file: lockTextWrite(toolSaveFile),
   apply_patch: toolApplyPatch,
-  append_file: toolAppendFile,
-  insert_at_line: toolInsertAtLine,
-  replace_text_in_file: toolReplaceTextInFile,
+  append_file: lockTextWrite(toolAppendFile),
+  insert_at_line: lockTextWrite(toolInsertAtLine),
+  replace_text_in_file: lockTextWrite(toolReplaceTextInFile),
   search_in_file: toolSearchInFile,
   grep: toolGrep,
   make_directory: toolMakeDirectory,

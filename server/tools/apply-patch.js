@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parsePatch, patchText } from '../../src/lib/apply-patch.mjs';
 import { resolveSafePath } from '../runtime/path-access.js';
 import { codeChangeFromDiff } from './line-diff-stats.js';
+import { withFileWriteLocks } from '../workspace/file-write-lock.js';
 
 // Refuse symlink traversal even when a lexical path is inside the workspace.
 async function checkPath(target) {
@@ -16,6 +17,11 @@ async function checkPath(target) {
 
 export async function toolApplyPatch(args) {
   const files = parsePatch(args.patch);
+  const paths = files.flatMap(file => file.move ? [file.path, file.move] : [file.path]);
+  return withFileWriteLocks(paths.map(name => resolveSafePath(name, { write: true })), () => applyLockedPatch(files));
+}
+
+async function applyLockedPatch(files) {
   const plans = [], targets = new Set();
   // Validate every path and every hunk before changing any file.
   for (const file of files) {
