@@ -17,6 +17,7 @@ import {
 } from '../../server/memory/store.js';
 import { getVectorCount, upsertEntryVector, clearVectorStore } from '../../server/memory/vector-store.js';
 import { syncEntryVector, drainVectorDeletes } from '../../server/memory/vector-sync.js';
+import { createVectorSync } from '../../server/engine/vector-sync.js';
 import { createPage } from '../../server/brain/store.js';
 
 const FIXTURE_ID = '33333333-3333-3333-3333-333333333333';
@@ -64,6 +65,32 @@ after(async () => {
 });
 
 describe('memory vector sync', { concurrency: 1 }, () => {
+  test('slow embeddings cannot resurrect deletes or overwrite a newer revision', async () => {
+    const rows = new Map();
+    const sync = createVectorSync({
+      loadVectorStore: async () => ({vectors:{}}),
+      upsertEntryVector: async (id, vec) => rows.set(id, vec),
+      deleteEntryVector: async id => rows.delete(id),
+    }, {patchEmbeddingsConfig:async () => {}});
+    for (const op of ['delete', 'update']) {
+      const started = Promise.withResolvers();
+      const delayed = Promise.withResolvers();
+      const meta = {id:FIXTURE_ID};
+      const config = {embeddings:{enabled:true}};
+      const getEmbedder = async () => ({id:'test', dim:1});
+      const first = sync.syncEntryVector(meta, 'old', config, {getEmbedder, embedTexts:() => {
+        started.resolve();
+        return delayed.promise;
+      }});
+      await started.promise;
+      if (op === 'delete') await sync.syncDeleteEntryVector(meta.id);
+      else await sync.syncEntryVector(meta, 'new', config, {getEmbedder, embedTexts:async () => [[2]]});
+      delayed.resolve([[1]]);
+      await first;
+      assert.deepEqual(rows.get(meta.id), op === 'delete' ? undefined : [2]);
+    }
+  });
+
   test('syncEntryVector marks reindex when embedder fails', async () => {
     const config = await loadMemoryConfig();
     await syncEntryVector(

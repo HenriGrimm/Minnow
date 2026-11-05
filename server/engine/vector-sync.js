@@ -17,6 +17,10 @@ export function createVectorSync(vectorStore, deps) {
     loadVectorStore,
   } = vectorStore;
 
+  // File writes already serialize in the vector store. Order slow embeddings
+  // before they enter that queue so a completed older request cannot win.
+  const pendingEmbeds = new Map();
+
   /** Mark embeddings reindex flag in config.json. */
   async function markReindexNeeded() {
     await deps.patchEmbeddingsConfig({ reindexNeeded: true });
@@ -52,8 +56,10 @@ export function createVectorSync(vectorStore, deps) {
         ? memoryConfig.embeddings
         : {}),
     };
+    pendingEmbeds.delete(meta.id);
     if (!emb.enabled) return;
-
+    const ticket = {};
+    pendingEmbeds.set(meta.id, ticket);
     try {
       const embedder = await getEmbedderFn(memoryConfig);
       const store = await loadVectorStore();
@@ -74,6 +80,7 @@ export function createVectorSync(vectorStore, deps) {
         [entryEmbedText(meta, body)],
         emb.queryTimeoutMs,
       );
+      if (pendingEmbeds.get(meta.id) !== ticket) return;
       await upsertEntryVector(meta.id, vector, {
         model: embedder.id,
         backend: emb.backend,
@@ -81,8 +88,11 @@ export function createVectorSync(vectorStore, deps) {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (pendingEmbeds.get(meta.id) !== ticket) return;
       console.warn(`[memory] vector sync failed for ${meta.id}: ${message}`);
       await markReindexNeeded();
+    } finally {
+      if (pendingEmbeds.get(meta.id) === ticket) pendingEmbeds.delete(meta.id);
     }
   }
 
@@ -103,6 +113,7 @@ export function createVectorSync(vectorStore, deps) {
   const pendingDeletes = new Set();
 
   function syncDeleteEntryVector(entryId) {
+    pendingEmbeds.delete(entryId);
     const operation = (async () => {
       try {
         await deleteEntryVector(entryId);
