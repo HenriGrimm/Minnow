@@ -85,7 +85,7 @@ export function isNavigationAllowed(url: string, patterns: string[]): boolean {
       }
     } catch {}
     for (const candidate of candidates) {
-      if (patternToRegExp(candidate).test(originKey) || patternToRegExp(candidate).test(url)) {
+      if (patternToRegExp(candidate).test(originKey)) {
         return true;
       }
     }
