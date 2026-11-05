@@ -6,6 +6,7 @@ import { createChatPreparationAdapters } from './preparation.js';
 import { getAgentConversationsFeature } from './feature.js';
 import { AGENT_CHAT_TOOL_IDS } from './tool-catalog.js';
 import { createChatToolReads } from './tool-reads.js';
+import { CHAT_WAIT_TIMEOUT_MS } from '../tools/chat-catalog.js';
 
 const terminal = new Set(['completed', 'failed', 'stopped', 'recovery_required']);
 const recoveryTools = new Set(['chat_list', 'chat_read', 'chat_wait', 'chat_stop']);
@@ -24,9 +25,9 @@ function fields(args, allowed) {
       Reflect.ownKeys(args).some(key => typeof key !== 'string' || !allowed.includes(key) || !Object.hasOwn(Object.getOwnPropertyDescriptor(args, key), 'value'))) fail('Unsupported conversation tool input');
 }
 function id(value) { const result = validateChatId(value); if (!result.ok) fail(result.error.message); return result.value; }
-function integer(value, fallback, minimum, maximum) {
+function integer(field, value, fallback, minimum, maximum) {
   const result = value ?? fallback;
-  if (!Number.isSafeInteger(result) || result < minimum || result > maximum) fail('Conversation limit is outside its supported range');
+  if (!Number.isSafeInteger(result) || result < minimum || result > maximum) fail(`${field} must be an integer from ${minimum} to ${maximum}`);
   return result;
 }
 function text(value, maximum, optional = false) {
@@ -86,7 +87,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
         const query = args.query === undefined ? '' : text(args.query, 200).trim().toLowerCase();
         if (args.status !== undefined && !['idle', ...CHAT_EXECUTION_STATES].includes(args.status)) fail('Unknown conversation status');
         if (args.include_subagents !== undefined && typeof args.include_subagents !== 'boolean') fail('include_subagents must be a boolean');
-        const include = args.include_subagents === true, limit = integer(args.limit, 20, 1, 100);
+        const include = args.include_subagents === true, limit = integer('limit', args.limit, 20, 1, 100);
         let position = 0;
         if (args.cursor !== undefined) {
           if (typeof args.cursor !== 'string' || !/^[A-Za-z0-9_-]{1,1024}$/.test(args.cursor)) fail('Invalid conversation cursor');
@@ -94,7 +95,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
           try { cursor = JSON.parse(Buffer.from(args.cursor, 'base64url').toString('utf8')); } catch { fail('Invalid conversation cursor'); }
           if (cursor?.version !== 1 || cursor.projectId !== source.scope.projectId || cursor.query !== query ||
               cursor.status !== (args.status ?? null) || cursor.include !== include) fail('Conversation cursor does not match this query');
-          position = integer(cursor.position, 0, 0, Number.MAX_SAFE_INTEGER);
+          position = integer('cursor.position', cursor.position, 0, 0, Number.MAX_SAFE_INTEGER);
         }
         const workspaceKeys = [...new Set(source.registry.entries
           .filter(row => row.projectId === source.scope.projectId && !row.revoked)
@@ -122,7 +123,7 @@ export function createChatTools({ repository, context, service, validateCaller, 
       if (name === 'chat_read') {
         fields(args, ['chat_id', 'view', 'after_sequence', 'limit']);
         const view = args.view ?? 'messages'; if (!['messages', 'activity'].includes(view)) fail('Choose messages or activity');
-        const after = integer(args.after_sequence, -1, -1, Number.MAX_SAFE_INTEGER), limit = integer(args.limit, 20, 1, 100);
+        const after = integer('after_sequence', args.after_sequence, -1, -1, Number.MAX_SAFE_INTEGER), limit = integer('limit', args.limit, 20, 1, 100);
         const target = await targetFor(caller, source, args.chat_id); active(caller, signal);
         const activity = reads.activity(target.chat.id);
         return { chat_id: target.chat.id, title: String(target.chat.name ?? '').slice(0, 240), link: link(target.chat.id), ...activity,
@@ -144,7 +145,8 @@ export function createChatTools({ repository, context, service, validateCaller, 
         return service.stop(caller, { chatId, scope, clientRequestId: key, ...(args.execution_id !== undefined ? { executionId: id(args.execution_id) } : {}) });
       }
       fields(args, ['chat_id', 'execution_id', 'timeout_ms']);
-      const chatId = id(args.chat_id), timeoutMs = integer(args.timeout_ms, 10000, 0, 60000);
+      const chatId = id(args.chat_id);
+      const timeoutMs = integer('timeout_ms', args.timeout_ms, CHAT_WAIT_TIMEOUT_MS.default, CHAT_WAIT_TIMEOUT_MS.minimum, CHAT_WAIT_TIMEOUT_MS.maximum);
       await targetFor(caller, source, chatId); active(caller, signal);
       const selected = reads.execution(chatId, args.execution_id === undefined ? undefined : id(args.execution_id));
       if (args.execution_id !== undefined && !selected) throw new ChatContractError('request_not_found', 'This execution does not belong to the selected conversation');

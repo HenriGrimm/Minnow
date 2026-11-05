@@ -112,10 +112,10 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
     if (initial && binding.strategy === 'new_worktree' && destination.head !== binding.baseSha) fail('The allocated checkout did not start at the captured parent commit');
     return { scope, destination };
   }
-  function output(binding, project, verified) {
-    return { binding, project, scope: verified.scope,
+  function output(binding, source, verified) {
+    return { binding, project: source.project, scope: verified.scope,
       ...(binding.strategy === 'new_worktree' ? { derivedFromWorkspaceId: binding.sourceWorkspaceId } : {}),
-      chatPatch: { workspacePath: binding.sourceCanonicalPath, worktreeRoot: verified.scope.canonicalKey,
+      chatPatch: { workspacePath: source.target.chat.workspacePath || binding.sourceCanonicalPath, worktreeRoot: verified.scope.canonicalKey,
         gitBranch: verified.destination.branch ?? binding.branch ?? '', chatWorktreeManaged: binding.strategy === 'new_worktree',
         workspaceStrategy: binding.strategy, workspaceAllocationId: binding.allocationId } };
   }
@@ -129,7 +129,7 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
           source.project.registry.entries.find(row => same(row.canonicalKey, binding.targetPath))?.workspaceId) !== strategy.workspaceId)) {
         throw new ChatContractError('idempotency_conflict', 'Workspace allocation identity was reused');
       }
-      if (binding.setupState === 'ready') return output(binding, source.project, await verify(binding, source.project, signal));
+      if (binding.setupState === 'ready') return output(binding, source, await verify(binding, source.project, signal));
       if (binding.setupState !== 'failed' || input.retrySetup !== true) throw attach(new ChatContractError(
         binding.setupState === 'allocating' ? 'recovery_required' : 'capability_unavailable', `Workspace setup is ${binding.setupState}; its checkout is retained`), binding);
     }
@@ -191,7 +191,7 @@ export function createChatWorkspaceResolver({ workspaceRepository = createChatWo
       signal?.throwIfAborted();
       binding = workspaceRepository.update(binding.allocationId, { setupState: 'ready', targetWorkspaceId: verified.scope.workspaceId,
         targetCanonicalPath: verified.scope.canonicalKey, dependencies: dependencies ?? null }, { expectedRevision: binding.revision, ownerId });
-      return output(binding, currentSource.project, verified);
+      return output(binding, currentSource, verified);
     } catch (error) {
       const current = workspaceRepository.getByAllocation(binding.allocationId);
       if (current?.setupState === 'allocating' && current.ownerId === ownerId) {

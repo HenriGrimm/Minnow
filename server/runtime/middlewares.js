@@ -168,7 +168,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
       },
     });
     publishProductionChatRuntime(runtime);
-    installChatWorkspaces(runtime);
+    const workspaceResolver = installChatWorkspaces(runtime);
     installLegacyChatImporter(runtime);
     installChatTools(runtime);
     installChatDelegation(runtime, { getEngine: parentChatId => getAgentsEngine(parentChatId, { skipRecoveryGate: true }),
@@ -178,11 +178,7 @@ export function applyMinnowMiddlewares(connectApp, { resolveSafePath, runWithPat
         return runtime.taskDelivery.cancelTree(input);
       },
       resolveWorkspace: async input => {
-        if (!runtime.workspaceResolver) {
-          if (input.strategy.kind !== 'shared') throw new ChatContractError('capability_unavailable', 'Checkout isolation is unavailable');
-          return { workspacePath: input.target.scope.canonicalKey, scope: input.target.scope, registry: input.target.registry };
-        }
-        const result = await runtime.workspaceResolver.resolve({ ...input, sourceTarget: input.target });
+        const result = await workspaceResolver.resolve({ ...input, sourceTarget: input.target });
         const project = await runtime.context.project(input.target.scope.canonicalKey);
         return { ...result.chatPatch, scope: result.scope, registry: project.registry, binding: result.binding };
       },

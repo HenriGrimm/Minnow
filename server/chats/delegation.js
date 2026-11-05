@@ -138,7 +138,8 @@ export function createChatDelegation({ repository, context, service, getEngine, 
         defaultModel: config.defaultModel, parentSelection }, { workspacePath: target.scope.canonicalKey });
       assertLive();
       const workspace = resolveWorkspace ? await resolveWorkspace({ caller, target, strategy: intent.strategy, allocationId, childChatId, signal })
-        : { workspacePath: target.scope.canonicalKey, scope: target.scope, registry: target.registry };
+        : { workspacePath: target.chat.workspacePath || target.scope.canonicalKey, worktreeRoot: target.scope.canonicalKey,
+          scope: target.scope, registry: target.registry };
       assertLive();
       if (!workspace?.scope || !workspace.registry || (workspace.worktreeRoot || workspace.workspacePath) !== workspace.scope.canonicalKey) fail('workspace_denied', 'A verified child checkout is required');
       sourcePolicy = projectChatPolicyToWorkspace(sourcePolicy, workspace.scope, workspace.registry);

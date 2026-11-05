@@ -85,6 +85,27 @@ function migrateAddedColumns(database) {
   })();
 }
 
+/** Older delegated chats stored the spawning checkout as their window's workspace. */
+function repairDelegatedChatWorkspaces(db) {
+  db.transaction(() => {
+    const repaired = db.prepare(`
+      UPDATE chats AS child
+      SET workspace_path = parent.workspace_path,
+          worktree_root = COALESCE(NULLIF(child.worktree_root, ''), child.workspace_path)
+      FROM chat_relations AS relation JOIN chats AS parent ON parent.id = relation.parent_chat_id
+      WHERE child.id = relation.chat_id AND json_extract(relation.payload_json, '$.origin') = 'delegated'
+        AND parent.workspace_path != '' AND child.workspace_path != ''
+        AND child.workspace_path != parent.workspace_path
+      RETURNING id
+    `).all();
+    if (!repaired.length) return;
+    const revision = readSessionMeta(db, 'revision', 0) + 1;
+    writeSessionMeta(db, 'revision', revision);
+    const stamp = db.prepare('INSERT OR REPLACE INTO chat_revisions (chat_id, revision, write_revision) VALUES (?, ?, ?)');
+    for (const { id } of repaired) stamp.run(id, revision, revision);
+  })();
+}
+
 /**
  * Initialize tables + indices on a fresh or existing connection.
  * Create FTS5 up front so user_version never moves solely for search.
@@ -255,6 +276,7 @@ export function initSessionsSchema(database) {
 
   migrateAddedColumns(database);
   initChatConversationSchema(database);
+  repairDelegatedChatWorkspaces(database);
 
   const version = database.pragma('user_version', { simple: true });
   if (version < SESSIONS_DB_SCHEMA_VERSION) {

@@ -101,6 +101,18 @@ function fixture(overrides = {}) {
   };
 }
 
+test('shared delegation without an allocator persists the parent workspace and the execution checkout separately', async () => {
+  const s = fixture();
+  try {
+    const project = path.join(s.home, 'project');
+    s.db.prepare('UPDATE chats SET workspace_path=?,worktree_root=? WHERE id=?').run(project, s.home, 'parent');
+    const receipt = await s.delegation.spawn(s.caller, { type: 'explore', task: 'Inspect', client_request_id: 'shared' });
+    const child = s.repository.getChat(receipt.childChatId);
+    assert.equal(path.resolve(child.workspacePath), project);
+    assert.equal(path.resolve(child.worktreeRoot), s.home);
+  } finally { await s.cleanup(); }
+});
+
 test('a family engine cached before chat runtime boot later executes canonical managed tasks', async () => {
   let runtime, lookups = 0;
   const s = fixture({ bridgeFactory: ({ service, repository, onSettled, ...options }) => createLazyPersistentSubAgentEffector({ ...options,

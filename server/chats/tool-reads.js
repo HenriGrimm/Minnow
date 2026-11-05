@@ -3,11 +3,15 @@ import { createHash } from 'node:crypto';
 
 export const CHAT_READ_MAX_BYTES = 48 * 1024;
 const parse = value => value ? JSON.parse(value) : null;
+const windowsCheckoutKey = value => value?.replaceAll('\\', '/').toLowerCase() ?? null;
 
 /** SQL projections never hydrate attachment bytes, signed reasoning, or profile bodies. */
 export function createChatToolReads(repository) {
   const db = repository.getDatabase?.();
   if (!db) throw new ChatContractError('capability_unavailable', 'Bounded conversation reads require the canonical SQLite store');
+  // Sessions store forward slashes while registered checkouts can use native
+  // separators. Use JS case folding on both sides, including non-ASCII names.
+  if (process.platform === 'win32') db.function('chat_checkout_key', { deterministic: true }, windowsCheckoutKey);
   function execution(chatId, executionId) {
     return db.prepare(`SELECT execution_id AS executionId,chat_id AS chatId,command_id AS commandId,run_id AS runId,
       status,created_at AS createdAt,updated_at AS updatedAt,settled_at AS settledAt
@@ -20,11 +24,13 @@ export function createChatToolReads(repository) {
       // Apply the verified project registry before the scan budget, so older
       // chats in unrelated projects cannot fill every page with skipped rows.
       const checkout = "COALESCE(NULLIF(c.worktree_root,''),c.workspace_path)";
-      const workspace = process.platform === 'win32' ? `lower(${checkout})` : checkout;
+      const windows = process.platform === 'win32';
+      const workspace = windows ? `chat_checkout_key(${checkout})` : checkout;
+      const keys = windows ? workspaceKeys.map(windowsCheckoutKey) : workspaceKeys;
       return db.prepare(`SELECT c.rowid AS position,c.id FROM chats c LEFT JOIN chat_relations r ON r.chat_id=c.id
         WHERE c.rowid>? AND (? OR r.chat_id IS NULL OR NOT EXISTS(SELECT 1 FROM chats p WHERE p.id=r.parent_chat_id))
         AND ${workspace} IN (SELECT value FROM json_each(?))
-        ORDER BY c.rowid LIMIT ?`).all(afterPosition, includeChildren ? 1 : 0, JSON.stringify(workspaceKeys), limit);
+        ORDER BY c.rowid LIMIT ?`).all(afterPosition, includeChildren ? 1 : 0, JSON.stringify(keys), limit);
     },
     activity(chatId, executionId) {
       const current = execution(chatId, executionId);

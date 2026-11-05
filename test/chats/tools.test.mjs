@@ -176,11 +176,12 @@ test('list candidates include registered checkout aliases and use the effective 
   await fixture(async f => {
     const root = f.repository.getChat('source').workspacePath;
     const foreign = f.repository.getChat('foreign-chat').workspacePath;
-    const alias = root + '-alias', worktree = root + '-worktree';
+    const alias = root + '-Équipe', worktree = root + '-worktree';
     f.repository.createChat({ id: 'alias-chat', workspacePath: alias });
     f.repository.createChat({ id: 'worktree-chat', workspacePath: root, worktreeRoot: worktree });
     f.repository.createChat({ id: 'outside-checkout', workspacePath: root, worktreeRoot: foreign });
-    const rows = createChatToolReads(f.repository).candidates(0, 100, true, [root, alias, worktree]);
+    const aliasKey = process.platform === 'win32' ? alias.toLowerCase() : alias;
+    const rows = createChatToolReads(f.repository).candidates(0, 100, true, [root, aliasKey, worktree]);
     assert.deepEqual(rows.map(row => row.id), ['source', 'target', 'other', 'alias-chat', 'worktree-chat']);
   });
 });
@@ -196,6 +197,24 @@ test('wait reports no work, blocks on required host, times out without stopping 
     await assert.rejects(f.execute('chat_wait', { chat_id: 'source' }), error => error.code === 'wait_cycle');
     await assert.rejects(f.execute('chat_wait', { chat_id: 'target', execution_id: 'foreign-execution' }), error => error.code === 'request_not_found');
   });
+});
+
+test('chat_wait accepts a two-minute observation and identifies invalid timeout_ms values', async () => {
+  let clock = 0;
+  await fixture(async f => {
+    f.repository.claimExecution({ chatId: 'target', executionId: 'target-execution', ownerId: 'target-host' });
+    const args = { chat_id: 'target', execution_id: 'target-execution' };
+    const result = await f.execute('chat_wait', { ...args, timeout_ms: 120000 });
+    assert.equal(result.state, 'timed_out');
+    assert.equal(result.status, 'running');
+    assert.equal(result.execution_id, args.execution_id);
+    const schema = BUILT_IN_TOOLS.find(row => row.id === 'chat_wait').definition.function.parameters.properties.timeout_ms;
+    assert.equal(schema.maximum, 120000);
+    for (const timeout_ms of [-1, 120001, 1.5, '120000']) {
+      await assert.rejects(f.execute('chat_wait', { ...args, timeout_ms }),
+        error => error.code === 'invalid_request' && /timeout_ms.*0.*120000/.test(error.message));
+    }
+  }, { options: { now: () => { clock += 120000; return clock; } } });
 });
 
 test('activity preserves the exact pending request count while bounding request details', async () => {

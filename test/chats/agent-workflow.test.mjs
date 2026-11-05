@@ -107,6 +107,12 @@ test('production delegation runs two independent durable child requests, coalesc
     errors: f.installation.errors.map(error => String(error)),
   })); });
   assert.equal(requests.q.kind, 'question'); assert.equal(requests.a.kind, 'approval');
+  const { caller } = await f.runtime.context.executionCaller(f.repository.getLatestExecution('workflow-parent').executionId);
+  const wait = await f.runtime.chatTools.execute('chat_wait', {
+    chat_id: question.chatId, execution_id: requests.q.executionId, timeout_ms: 120000,
+  }, { caller });
+  assert.equal(wait.state, 'blocked');
+  assert.equal(wait.requests[0].requestId, requests.q.requestId);
   assert.equal(f.repository.getActivity(question.chatId).agentExecution.status, 'waiting_for_input');
   assert.equal(f.repository.getActivity(approval.chatId).agentExecution.status, 'waiting_for_approval');
   assert.equal(f.repository.readTranscript(approval.chatId).messages.some(row => row.role === 'tool' && row.tool_call_id === 'child-read'), false);

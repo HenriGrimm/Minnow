@@ -74,7 +74,7 @@ Agents can discover, read and contact conversations in the same project when the
 | `chat_list` | List permitted same-project chats with bounded results. |
 | `chat_read` | Read a bounded message page or current activity. |
 | `chat_send` | Submit an attributed auto, queue or steer message. |
-| `chat_wait` | Observe a selected execution until it ends, blocks or reaches the wait timeout. |
+| `chat_wait` | Observe a selected execution until it ends, blocks or reaches the wait timeout. The default is 10 seconds. Use `timeout_ms: 0` for an immediate check or up to `120000` for a two-minute wait. |
 | `chat_stop` | Stop a permitted turn, or its tree when allowed. |
 
 Incoming messages identify the source chat; they are not presented as something you typed. Waiting observes one execution, not every future message in that chat. A wait timeout leaves accepted work running. Self-waits, circular waits and unbounded message exchanges are refused with a visible tool result.

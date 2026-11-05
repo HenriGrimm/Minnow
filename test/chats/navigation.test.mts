@@ -293,6 +293,17 @@ test('a cross-workspace link forwards its exact child id to the existing Code wi
   assert.equal(sessionState!.activeId, root.id);
 });
 
+test('opening a sub-agent sharing its parent worktree selects the child in the project window', async () => {
+  const root = chat('root'), child = chat('child', root.id);
+  root.worktreeRoot = child.worktreeRoot = 'C:/worktrees/task';
+  setup([root, child]);
+  const sent: unknown[] = [];
+  window.minnow = { viewContext: { workspacePath: WS }, window: { sendCodeCommand: async (command: unknown) => { sent.push(command); return { ok: true }; } } } as typeof window.minnow;
+  await launchCodeWithChat(child.id);
+  assert.deepEqual(sent, []);
+  assert.equal(sessionState!.activeId, child.id);
+});
+
 test('a rejected Code window bridge keeps navigation and drafts and displays its explanation', async () => {
   const root = chat('root'), child = chat('child', 'foreign-parent'); child.workspacePath = 'C:\\workspace\\another-project'; root.composerDraft = 'Keep this draft';
   setup([root, child]);

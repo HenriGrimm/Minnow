@@ -21,7 +21,7 @@ import { installChatWorkspaces } from '../../server/chats/workspace-runtime.js';
 import { runWorktreeSetupProcess } from '../../server/worktree/setup-process.js';
 
 const exec = promisify(execFile);
-async function fixture(run, { gitRepository = true, committed = true, existing = false } = {}) {
+async function fixture(run, { gitRepository = true, committed = true, existing = false, parentInWorktree = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-child-worktree-'));
   const repo = path.join(root, 'project'), home = path.join(root, 'home');
   const previous = process.env.MINNOW_HOME;
@@ -38,24 +38,26 @@ async function fixture(run, { gitRepository = true, committed = true, existing =
     await fs.writeFile(path.join(repo, 'README.md'), 'committed base');
     if (gitRepository && committed) { await git(['add', 'README.md']); await git(['commit', '-m', 'base']); }
     let existingPath;
-    if (existing) {
+    if (existing || parentInWorktree) {
       existingPath = path.join(root, 'existing');
       await git(['worktree', 'add', '-b', 'existing-fixture', existingPath, 'HEAD']);
     }
-    const project = await load(repo);
+    const parentCheckout = parentInWorktree ? existingPath : repo;
+    const project = await load(parentCheckout);
     const inputPolicy = { modeId: 'build', toolPermissions: { spawn_sub_agent: 'full', read_file: 'full', save_file: 'full', execute_command: 'full' },
       toolEffects: { spawn_sub_agent: 'external-write', read_file: 'read', save_file: 'file-write', execute_command: 'shell' },
       workspaceIds: project.registry.entries.map(entry => entry.workspaceId), filesystemAccess: 'workspace', fileWriteScope: 'workspace',
       capabilities: ['agent.spawn', 'execution.host', 'chat.read', 'chat.send', 'chat.stop'] };
     let currentPolicy = createChatPolicy(inputPolicy);
     const capturedPolicy = currentPolicy;
-    chats.createChat({ id: 'parent', name: 'Parent', workspacePath: repo, modeId: 'build' });
+    chats.createChat({ id: 'parent', name: 'Parent', workspacePath: repo, modeId: 'build',
+      ...(parentInWorktree ? { worktreeRoot: parentCheckout } : {}) });
     // The fixture has no host keepalive while its real Git subprocesses run.
     const fence = chats.claimExecution({ chatId: 'parent', executionId: 'source-execution', ownerId: 'source-host', leaseMs: 120000 });
     const caller = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'parent', executionId: fence.executionId,
       executionActive: true, scope: project.scope, policy: capturedPolicy });
     async function target() {
-      const fresh = await load(repo);
+      const fresh = await load(parentCheckout);
       return { chat: chats.getChat('parent'), ...fresh, scope: fresh.scope, project: fresh,
         currentPolicy, policy: intersectChatPolicies(capturedPolicy, currentPolicy), profile: null };
     }
@@ -92,6 +94,29 @@ test('shared default binds the actual spawning checkout, including non-git proje
     assert.equal(result.binding.baseSha, null);
     assert.equal(path.resolve(f.chats.getChat('parent').workspacePath), path.resolve(f.repo));
   }, { gitRepository: false, committed: false });
+});
+
+test('a worktree parent keeps child chats in its project window across checkout strategies and retries', async () => {
+  await fixture(async f => {
+    const main = (await f.load(f.repo)).scope;
+    const strategies = [
+      { kind: 'shared' },
+      { kind: 'existing_worktree', workspaceId: main.workspaceId },
+      { kind: 'new_worktree' },
+    ];
+    for (const strategy of strategies) {
+      const input = { ...f.base, strategy, childChatId: strategy.kind, allocationId: 'allocation-' + strategy.kind };
+      const allocated = await f.resolver.resolve(input);
+      const replayed = await f.resolver.resolve(input);
+      assert.deepEqual(replayed.chatPatch, allocated.chatPatch);
+      assert.equal(allocated.chatPatch.workspacePath, f.base.sourceTarget.chat.workspacePath);
+      assert.equal(allocated.chatPatch.worktreeRoot, allocated.scope.canonicalKey);
+      assert.equal(allocated.binding.sourceCanonicalPath, f.project.scope.canonicalKey);
+      if (strategy.kind === 'shared') assert.equal(allocated.scope.workspaceId, f.project.scope.workspaceId);
+      if (strategy.kind === 'existing_worktree') assert.equal(allocated.scope.workspaceId, main.workspaceId);
+      if (strategy.kind === 'new_worktree') assert.notEqual(allocated.scope.workspaceId, f.project.scope.workspaceId);
+    }
+  }, { parentInWorktree: true });
 });
 
 test('new checkout pins parent commit, excludes dirty/untracked files and coalesces durable retries', async () => {

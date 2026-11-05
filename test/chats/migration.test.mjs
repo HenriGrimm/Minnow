@@ -47,6 +47,28 @@ function fixture(t) {
   return { root, useHome, database };
 }
 const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
+
+test('reopening repairs delegated workspace routing and preserves the effective checkout exactly once', () => {
+  const db = new Database(':memory:');
+  try {
+    initSessionsSchema(db);
+    const insert = db.prepare('INSERT INTO chats (id, workspace_path, worktree_root) VALUES (?, ?, ?)');
+    insert.run('parent', '/project', '/checkout');
+    insert.run('shared', '/checkout', '');
+    insert.run('isolated', '/checkout', '/isolated');
+    insert.run('other', '/checkout', '');
+    const relate = db.prepare('INSERT INTO chat_relations (chat_id,parent_chat_id,root_chat_id,journal_owner_id,payload_json) VALUES (?,?,?,?,?)');
+    for (const id of ['shared', 'isolated']) relate.run(id, 'parent', 'parent', 'parent', JSON.stringify({ origin: 'delegated' }));
+    initSessionsSchema(db);
+    const paths = id => db.prepare('SELECT workspace_path,worktree_root FROM chats WHERE id=?').get(id);
+    assert.deepEqual(paths('shared'), { workspace_path: '/project', worktree_root: '/checkout' });
+    assert.deepEqual(paths('isolated'), { workspace_path: '/project', worktree_root: '/isolated' });
+    assert.deepEqual(paths('other'), { workspace_path: '/checkout', worktree_root: '' });
+    assert.equal(readSessionMeta(db, 'revision'), 1);
+    initSessionsSchema(db);
+    assert.equal(readSessionMeta(db, 'revision'), 1);
+  } finally { db.close(); }
+});
 const command = { version: 1, commandId: 'assignment', chatId: 'child', requestedAt: 1, kind: 'send', provenance, message: 'Inspect safely' };
 const requested = () => makeEvent('run.requested', { runId: 'task', agentType: 'reviewer', task: 'Inspect safely', parentChatId: 'parent', cwd: 'C:/fixture', requestedAt: 1,
   childChatId: 'child', commandId: 'assignment', journalOwnerId: 'family', executionKind: 'chat' });
