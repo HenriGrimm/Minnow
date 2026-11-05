@@ -141,6 +141,10 @@ test('spawn atomically captures one child/profile/command and append-once journa
     const replay = await s.delegation.spawn(s.caller, input, { toolCallId: 'spawn' }); assert.equal(replay.replayed, true);
     await assert.rejects(s.delegation.spawn(s.caller, { ...input, title: 'Changed title' }, { toolCallId: 'spawn' }), { code: 'idempotency_conflict' });
     const events = await agentsJournal.readEvents('parent'); assert.equal(events.length, 1); assert.equal(events[0].childChatId, first.childChatId);
+    assert.equal(events[0].title, 'Build inspection');
+    assert.equal((await s.getEngine('parent')).getState().runs.get(first.runId).title, 'Build inspection');
+    assert.equal((await agentsJournal.loadState('parent')).runs.get(first.runId).title, 'Build inspection');
+    assert.equal(s.repository.getChat(first.childChatId).name, 'Build inspection');
     assert.equal(s.posts, 0);
   } finally { await s.cleanup(); }
 });

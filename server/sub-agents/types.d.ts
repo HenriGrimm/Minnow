@@ -73,6 +73,7 @@ export interface RunState {
   runId: string;
   type: string;
   task: string;
+  title?: string;
   parentChatId: string;
   cwd: string;
   requestedAt: number | null;

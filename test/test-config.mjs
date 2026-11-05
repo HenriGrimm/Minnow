@@ -224,7 +224,7 @@ export const SCOPED_SUITES = {
     patterns: ['test/lsp/**/*.test.mjs'],
   },
   mcp: {
-    patterns: ['test/mcp/**/*.test.mjs'],
+    patterns: ['test/mcp/**/*.test.mjs', 'test/mcp/**/*.test.mts'],
   },
   research: {
     patterns: ['test/research/**/*.test.mjs', 'test/research/**/*.test.mts'],

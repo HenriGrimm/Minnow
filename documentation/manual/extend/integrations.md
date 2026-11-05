@@ -26,6 +26,8 @@ You can also give this configuration to an agent and ask it to add the servers. 
 
 **Adding a server approves its tools.** MCP tools are available across modes and agents without per-tool permission prompts. Disable or remove the server to stop access.
 
+Minnow discovers tools when it connects and updates them when the server announces a change. It does not poll tool lists. For a server that does not announce changes, choose **Refresh tools** on its Settings row. A failed connection waits for **Refresh connection**, a configuration change, or completed sign-in before trying again.
+
 Remote servers support Streamable HTTP and legacy SSE (`"type": "sse"`). Local servers accept `command`, `args`, `env`, and optional `cwd`; remote servers accept `url` and optional `headers`. Local commands must be installed and available on your PATH.
 
 When a remote server requires OAuth, choose **Sign in** and complete the provider's login in your browser. Minnow handles discovery, dynamic client registration, PKCE, and token refresh, with tokens encrypted locally. Servers that need a registered client can include an `oauth` object with `clientId`, optional `clientSecret`, `scope`, or `clientMetadataUrl`. Service accounts can specify `grantType: "client_credentials"` in that object. Command-based bridges such as `mcp-remote` manage their own provider login and credential storage.

@@ -10,6 +10,8 @@ test('MCP settings import standard JSON and show provider sign-in', async () => 
   document.body.innerHTML = '<div id="settingsMcpBody"></div>';
   const originalFetch = globalThis.fetch;
   let imported;
+  let connected = false;
+  let refreshed = 0;
   let completed;
   const saved = new Promise(resolve => { completed = resolve; });
   globalThis.fetch = async (url, options) => {
@@ -17,7 +19,12 @@ test('MCP settings import standard JSON and show provider sign-in', async () => 
       imported = JSON.parse(options.body);
       return { ok: true, json: async () => ({ servers: [] }) };
     }
-    if (url === '/api/mcp/servers') return { ok: true, json: async () => ({ servers: [{ id: 'remote', label: 'Remote', enabled: true, connected: false, authorizationUrl: 'https://example.com/authorize' }] }) };
+    if (url === '/api/mcp/servers/remote/refresh' && options?.method === 'POST') {
+      refreshed++;
+      connected = true;
+      return { ok: true };
+    }
+    if (url === '/api/mcp/servers') return { ok: true, json: async () => ({ servers: [{ id: 'remote', label: 'Remote', enabled: true, connected, ...(!connected ? { authorizationUrl: 'https://example.com/authorize' } : {}) }] }) };
     if (url === '/api/mcp/secrets') return { ok: true, json: async () => ({ hasContext7ApiKey: false }) };
     if (url === '/api/mcp/tools') { completed(); return { ok: true, json: async () => ({ tools: [] }) }; }
     throw new Error(`Unexpected request ${url}`);
@@ -38,6 +45,15 @@ test('MCP settings import standard JSON and show provider sign-in', async () => 
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     assert.equal(document.querySelector('#settingsMcpAddJson').value, '');
+    [...document.querySelectorAll('#settingsMcpServerList button')].find(button => button.textContent === 'Refresh connection').click();
+    for (let i = 0; i < 20 && !document.body.textContent.includes('Refresh tools'); i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    assert.equal(refreshed, 1, 'Refresh connection explicitly retries the selected server');
+    assert.ok(document.body.textContent.includes('Refresh tools'), 'connected servers also offer explicit discovery');
+    [...document.querySelectorAll('#settingsMcpServerList button')].find(button => button.textContent === 'Refresh tools').click();
+    for (let i = 0; i < 20 && refreshed < 2; i += 1) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(refreshed, 2);
   } finally {
     globalThis.fetch = originalFetch;
     await window.happyDOM.close();

@@ -1810,7 +1810,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
-        await Promise.all([refreshMcpToolCache(30_000), refreshPluginToolCache()]);
+        await Promise.all([refreshMcpToolCache(false), refreshPluginToolCache()]);
         const nextTools = chatToolDefinitionsForTurn(chat, skillId);
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;

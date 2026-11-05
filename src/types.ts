@@ -531,6 +531,7 @@ export interface PersistedSubAgentRun {
   type: string;
   task: string;
   status: PersistedSubAgentStatus;
+  title?: string;
   summary: string;
   /** Structured handoff for drawer restore (MIN-43). */
   structuredOutcome?: SubAgentStructuredOutcome;

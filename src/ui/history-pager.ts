@@ -1,4 +1,5 @@
 import { isRenderIdle, subscribeRenderIdle } from '../boot/render-idle';
+import { getTranscriptScroller } from './transcript-scroll';
 
 const PAGE_SIZE = 30;
 const SLICE_MS = 6;
@@ -21,6 +22,7 @@ export function mountHistoryPager(options: HistoryPagerOptions): () => void {
   if (options.from <= 0) return () => {};
   const view = mount.ownerDocument.defaultView!;
   const root = scrollRoot() ?? mount;
+  const scroller = getTranscriptScroller(root);
   let end = options.from;
   let disposed = false;
   let loading = false;
@@ -67,17 +69,12 @@ export function mountHistoryPager(options: HistoryPagerOptions): () => void {
       if (index > start) { schedule(step); return; }
 
       // Resolve layout once per requested page, after every construction slice is finished.
-      const top = root.scrollTop;
-      const height = root.scrollHeight;
-      mount.prepend(...chunk.childNodes);
-      end = start;
-      mount.dataset.historyStart = String(start);
-      onPageLoaded?.();
-      // A page insertion preserves the reader's anchor immediately, even on smooth-scroll hosts.
-      const behavior = root.style.scrollBehavior;
-      root.style.scrollBehavior = 'auto';
-      root.scrollTop = top + root.scrollHeight - height;
-      root.style.scrollBehavior = behavior;
+      scroller.preserve(mount, () => {
+        mount.prepend(...chunk.childNodes);
+        end = start;
+        mount.dataset.historyStart = String(start);
+        onPageLoaded?.();
+      });
       lastTop = root.scrollTop;
       loading = false;
       // Tool-only pages can add no visible height in Compact view. Keep filling

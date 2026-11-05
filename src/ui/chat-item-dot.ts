@@ -103,7 +103,8 @@ export function resolveChatItemDotState(chat: Chat, ctx: ChatItemDotContext): Ch
 /** Fold lightweight descendant attention once; no child histories are needed. */
 export function resolveAgentAncestorDotStates(chats: readonly Chat[], ctx: ChatItemDotContext): Map<string, ChatItemDotState> {
   const graph = projectChatRelationships(chats), result = new Map(chats.map(chat => [chat.id, resolveChatItemDotState(chat, ctx)]));
-  const rank: Record<ChatItemDotState, number> = { idle: 0, working: 1, unread: 2, error: 3, 'needs-input': 4 };
+  // Unread replies from earlier child turns must not hide live work in the family.
+  const rank: Record<ChatItemDotState, number> = { idle: 0, unread: 1, working: 2, error: 3, 'needs-input': 4 };
   const ordered = [...graph.roots];
   for (let index = 0; index < ordered.length; index++) ordered.push(...(graph.children.get(ordered[index]!.id) ?? []));
   for (let index = ordered.length - 1; index >= 0; index--) {

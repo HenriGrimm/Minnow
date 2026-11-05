@@ -152,15 +152,17 @@ describe('chunked transcript rebuild', { concurrency: false }, () => {
     chatArea.style.scrollBehavior = 'smooth';
     let top = 25;
     let anchorBehavior;
+    const scrollBy = chatArea.scrollBy.bind(chatArea);
+    chatArea.scrollBy = options => { anchorBehavior = options.behavior; scrollBy(options); };
     Object.defineProperty(chatArea, 'scrollTop', {
       get: () => top,
-      set: value => { top = value; anchorBehavior = chatArea.style.scrollBehavior; },
+      set: value => { top = value; },
     });
     chatArea.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -20 }));
     await drain();
     assert.equal(bubbleTexts(chatArea).length, initiallyLoaded + 30);
     assert.equal(chatArea.scrollTop, 625, 'the same row remains at the same screen position');
-    assert.equal(anchorBehavior, 'auto', 'anchor correction must not animate on smooth-scroll hosts');
+    assert.equal(anchorBehavior, 'instant', 'anchor correction must not animate on smooth-scroll hosts');
     assert.equal(chatArea.style.scrollBehavior, 'smooth', 'the host scroll preference is restored');
     await drain();
     assert.equal(bubbleTexts(chatArea).length, initiallyLoaded + 30, 'stop loading once the off-screen buffer is full');

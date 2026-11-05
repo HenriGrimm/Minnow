@@ -97,6 +97,7 @@ export interface SubAgentRun {
   runId: string;
   type: string;
   task: string;
+  title?: string;
   status: SubAgentStatus;
   lifecycle?: RunLifecycle;
   parentChatId: string | null;

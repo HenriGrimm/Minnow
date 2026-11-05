@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 const {
   resolveChatItemDotState,
+  resolveAgentAncestorDotStates,
   resolveGroupHeaderDotState,
   isChatItemDotVisible,
 } = await import('../../src/ui/chat-item-dot.ts');
@@ -153,6 +154,31 @@ describe('chat-item-dot resolveChatItemDotState', () => {
 });
 
 describe('chat-item-dot visibility helpers', () => {
+  test('family activity outranks unread replies while errors and requests retain priority', () => {
+    const parent = chat({ id: 'parent', unread: true });
+    const child = chat({ id: 'child', unread: true, agentConversation: { version: 1, childChatId: 'child', parentChatId: 'parent' } });
+    const grandchild = chat({ id: 'grandchild', agentConversation: { version: 1, childChatId: 'grandchild', parentChatId: 'child' } });
+    const chats = [grandchild, parent, child];
+    const c = ctx({ streamingChatIds: new Set(['grandchild']) });
+    let states = resolveAgentAncestorDotStates(chats, c);
+    assert.equal(states.get('parent'), 'working');
+    assert.equal(states.get('child'), 'working');
+    assert.equal(parent.unread, true);
+    assert.equal(child.unread, true);
+
+    child.turnError = true;
+    states = resolveAgentAncestorDotStates(chats, c);
+    assert.equal(states.get('parent'), 'error');
+    c.inputPendingChatId = 'grandchild';
+    states = resolveAgentAncestorDotStates(chats, c);
+    assert.equal(states.get('parent'), 'needs-input');
+
+    child.turnError = false;
+    c.inputPendingChatId = null;
+    c.streamingChatIds.clear();
+    assert.equal(resolveAgentAncestorDotStates(chats, c).get('parent'), 'unread');
+  });
+
   test('isChatItemDotVisible is true only for actionable states', () => {
     assert.equal(isChatItemDotVisible('unread'), true);
     assert.equal(isChatItemDotVisible('needs-input'), true);

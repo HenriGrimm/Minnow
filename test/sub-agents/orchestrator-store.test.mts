@@ -70,10 +70,11 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
   test('durable fold uses recorded end time and retains total with a capped transcript', () => {
     const run = subAgentRunFromFold({
       runId: FIXED_RUN_ID, phase: 'passed', requestedAt: Date.parse('2026-05-19T12:00:00Z'),
-      endedAt: Date.parse('2026-05-19T12:01:05Z'), attempts: [],
+      endedAt: Date.parse('2026-05-19T12:01:05Z'), attempts: [], title: 'Build inspection',
     }, { toolTurns: 7, messages: [{ role: 'assistant', content: 'Done' }] });
     assert.equal(run.endedAt, '2026-05-19T12:01:05.000Z');
     assert.equal(run.toolTurns, 7);
+    assert.equal(run.title, 'Build inspection');
     const legacy = subAgentRunFromFold({ runId: FIXED_RUN_ID, phase: 'passed', requestedAt: 1 });
     assert.equal(legacy.endedAt, null);
   });
@@ -164,6 +165,7 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
     const result = await spawnSubAgent({
       type: 'explore',
       task: 'scan',
+      title: 'Repository overview',
       wait: false,
       parentChatId: CHAT_ID,
       parentTurnId: 'turn-1',
@@ -173,9 +175,10 @@ describe('orchestrator SSE store (spawn / cancel / wait)', () => {
     assert.equal(result.status, 'running');
     const spawn = posts.find((p) => p.method === 'POST' && p.url.endsWith('/api/agents'));
     assert.ok(spawn);
-    const body = JSON.parse(spawn.body) as { type: string; task: string; parentChatId: string };
+    const body = JSON.parse(spawn.body) as { type: string; task: string; title: string; parentChatId: string };
     assert.equal(body.type, 'explore');
     assert.equal(body.task, 'scan');
+    assert.equal(body.title, 'Repository overview');
     assert.equal(body.parentChatId, CHAT_ID);
   });
 

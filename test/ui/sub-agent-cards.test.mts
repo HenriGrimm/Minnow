@@ -37,6 +37,7 @@ function setupCodeDom() {
 const sampleRun = (chatId: string) => ({
   runId: '22222222-2222-2222-2222-222222222222',
   type: 'explore',
+  title: 'List files',
   task: 'List files under src/',
   status: 'running' as const,
   parentChatId: chatId,
@@ -260,7 +261,8 @@ describe('sub-agent cards', { concurrency: false }, () => {
     const el = upsertSubAgentCardForRun(
       {
         ...sampleRun(chat.id),
-        task: '## Read-only research\nInspect the docs and report back.',
+        title: 'Read-only research',
+        task: 'Inspect the docs and report back. Keep all detailed constraints in the assignment.',
         status: 'completed',
         summary: 'Found the frontend-design skill.',
         endedAt: '2026-05-20T12:01:05.000Z',
@@ -271,6 +273,9 @@ describe('sub-agent cards', { concurrency: false }, () => {
     );
     assert.ok(el);
     assert.equal(el.querySelector('.sub-agent-card__task')?.textContent, 'Read-only research');
+    assert.equal(el.querySelector('.sub-agent-card__task')?.getAttribute('title'), 'Read-only research');
+    assert.ok(!el.textContent?.includes('Keep all detailed constraints'));
+    assert.ok(!el.getAttribute('aria-label')?.includes('Inspect the docs'));
     assert.equal(el.querySelector('.sub-agent-card__meta')?.textContent, 'Done · 3 tool calls · 1m 5s');
     assert.equal(
       el.querySelector('.sub-agent-card__detail')?.textContent,

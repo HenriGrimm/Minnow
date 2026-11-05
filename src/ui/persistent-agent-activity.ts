@@ -7,6 +7,7 @@ import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome
 import { formatWorkDuration } from '../chat/transcript-turns';
 import { agentMarkStateFromLabel, agentModelId, createAgentMark, createAgentModelChip, syncAgentMark, syncAgentMarkStack, syncAgentModelChip, type AgentMarkState } from './agent-model-mark';
 import { subAgentLiveStatusLine } from './sub-agent-live-status';
+import { subAgentTitle } from './sub-agent-title';
 import { getPerFileChangeSummary, getPerFileChangeSummaryForMessages } from '../usage/code-change-ledger';
 
 type ActivityRun = SubAgentRun | PersistedSubAgentRun;
@@ -202,7 +203,7 @@ function fill(entry: Entry): void {
   const generating = ['Working', 'Loading model'].includes(status);
   const activityText = generating ? (status === 'Loading model' ? 'Loading model…' : subAgentLiveStatusLine(run, true) || 'Working…') : '';
   const changes = runFileChanges(run, generating);
-  const key = JSON.stringify([run.task, run.type, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
+  const key = JSON.stringify([run.title, run.type, status, model, options, modelId, duration, run.startedAt, activityText, changes, run.summary, run.error, startError?.message, startError?.consecutive]);
   if (entry.key === key) return;
   entry.key = key;
   row.dataset.status = run.status;
@@ -218,13 +219,13 @@ function fill(entry: Entry): void {
   syncAgentMark(link.querySelector<HTMLElement>('.sub-agent-card__mark')!, modelId, markState);
   link.href = chatLink(run.childChatId!);
   link.querySelector('.sub-agent-card__type')!.textContent = run.type.replace(/[-_]/g, ' ').replace(/^./, letter => letter.toUpperCase());
-  link.querySelector('.sub-agent-card__task')!.textContent = run.task.trim().split('\n')[0] ?? 'Agent assignment';
-  link.querySelector<HTMLElement>('.sub-agent-card__task')!.title = run.task;
+  link.querySelector('.sub-agent-card__task')!.textContent = subAgentTitle(run);
+  link.querySelector<HTMLElement>('.sub-agent-card__task')!.title = subAgentTitle(run);
   link.querySelector('.sub-agent-card__status')!.textContent = status;
   const clock = link.querySelector<HTMLElement>('.sub-agent-card__clock')!;
   clock.textContent = LIVE_MARK_STATES.has(markState) ? liveElapsed(run) : duration;
   if (LIVE_MARK_STATES.has(markState) && clock.textContent) startClock();
-  link.setAttribute('aria-label', `${run.type} agent on ${model}, ${status}. ${run.task}. Open agent chat`);
+  link.setAttribute('aria-label', `${subAgentTitle(run)}, ${run.type} agent on ${model}, ${status}. Open agent chat`);
   const selection = panel.querySelector<HTMLElement>(':scope > .sub-agent-card__selection')!;
   syncAgentModelChip(selection.querySelector<HTMLElement>('.agent-model-chip')!, modelId, model);
   selection.querySelector<HTMLElement>('.sub-agent-card__options')!.textContent = options.join(' · ');

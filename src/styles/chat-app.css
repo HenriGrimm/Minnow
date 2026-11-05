@@ -322,7 +322,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scroll-padding-bottom: 12px;
   overflow-anchor: none;
 }

@@ -58,6 +58,7 @@ import {
   deleteMcpServer,
   fetchMcpSecrets,
   fetchMcpServers,
+  refreshMcpConnection,
   setMcpServerEnabled,
   updateMcpSecrets,
   type McpServerSummary,
@@ -1553,14 +1554,15 @@ function createMcpSettingsRow(
   } else if (server.error) {
     detail.append(el('p', 'field-hint', server.error));
   }
-  if (server.enabled && !server.connected) {
+  if (server.enabled) {
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'settings-inline-btn';
-    retry.textContent = 'Refresh connection';
+    retry.textContent = server.connected ? 'Refresh tools' : 'Refresh connection';
     retry.addEventListener('click', async () => {
       retry.disabled = true;
-      await refreshMcpToolCache();
+      const refreshed = await refreshMcpConnection(server.id);
+      if (!refreshed) setStatus('err', 'Could not refresh the MCP connection.');
       await renderMcpSection();
     });
     detail.append(retry);
@@ -1792,7 +1794,7 @@ async function renderMcpSection(): Promise<void> {
     mcpSignInRefreshBound = true;
     window.addEventListener('focus', () => {
       if (mount.isConnected && mount.getClientRects().length) {
-        void refreshMcpToolCache().then(() => renderMcpSection());
+        void refreshMcpToolCache(false).then(() => renderMcpSection());
       }
     });
   }

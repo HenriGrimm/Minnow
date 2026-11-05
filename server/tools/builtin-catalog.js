@@ -1204,7 +1204,7 @@ export const BUILT_IN_TOOLS = [
             'Configured agent type ID.',
         },
         task: { type: 'string', description: 'Task for the agent.' },
-          title: { type: 'string', description: 'Child chat title.' },
+          title: { type: 'string', minLength: 1, maxLength: 240, description: 'Short, distinctive assignment title (3–8 words), shown on the sub-agent card. Use it to refer to this agent; keep instructions in task.' },
           target: {
             type: 'object', description: 'Exact model; discover IDs/options with agent_capabilities.',
             properties: {
@@ -1234,7 +1234,7 @@ export const BUILT_IN_TOOLS = [
           description: 'Legacy board task ID.',
         },
       },
-      ['type', 'task'],
+      ['type', 'task', 'title'],
     ),
   },
   {

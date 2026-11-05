@@ -14,6 +14,9 @@ import {
   deleteMcpServer,
   importMcpServers,
   setMcpServerEnabled,
+  refreshMcpServer,
+  getMcpCatalogRevision,
+  subscribeMcpCatalogChanges,
 } from './registry.js';
 import { readMcpSecrets, updateMcpSecrets } from './secrets.js';
 
@@ -53,6 +56,23 @@ export function createMcpMiddleware() {
     }
 
     try {
+      if (url === '/api/mcp/events' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+        const send = revision => {
+          if (res.destroyed || res.writableEnded) return;
+          if (res.writableLength > 64 * 1024) { res.destroy(); return; }
+          res.write(`data: ${JSON.stringify({ revision })}\n\n`);
+        };
+        const unsubscribe = subscribeMcpCatalogChanges(send);
+        send(getMcpCatalogRevision());
+        const heartbeat = setInterval(() => {
+          if (!res.destroyed) res.write(': ping\n\n');
+        }, 15_000);
+        heartbeat.unref?.();
+        res.once('close', () => { clearInterval(heartbeat); unsubscribe(); });
+        return;
+      }
+
       if (url === '/api/mcp/ping' && req.method === 'GET') {
         sendJson(res, 200, {
           ok: true,
@@ -95,8 +115,9 @@ export function createMcpMiddleware() {
       }
 
       if (url === '/api/mcp/tools' && req.method === 'GET') {
+        const revision = getMcpCatalogRevision();
         const tools = await listEnabledMcpTools();
-        sendJson(res, 200, { tools });
+        sendJson(res, 200, { tools, revision });
         return;
       }
 
@@ -131,6 +152,13 @@ export function createMcpMiddleware() {
         const id = decodeURIComponent(enableMatch[1]);
         const body = await readJsonBody(req);
         await setMcpServerEnabled(id, body.enabled !== false);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      const refreshMatch = url.match(/^\/api\/mcp\/servers\/([^/]+)\/refresh$/);
+      if (refreshMatch && req.method === 'POST') {
+        await refreshMcpServer(decodeURIComponent(refreshMatch[1]));
         sendJson(res, 200, { ok: true });
         return;
       }

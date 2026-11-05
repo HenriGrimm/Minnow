@@ -68,6 +68,7 @@ function runningSnapshot(
       runId,
       type: 'explore',
       task: runId === RUN_A ? 'scan A' : 'scan B',
+      title: runId === RUN_A ? 'Repository overview' : 'Runtime review',
       parentChatId: PARENT,
       cwd: '/tmp',
       requestedAt: 1,
@@ -363,6 +364,7 @@ describe('live frames after cancel vs genuine end (P10-L)', () => {
       reason: 'user',
     });
     assert.equal(client.getRun()?.phase, 'cancelling');
+    assert.equal(client.getRun()?.title, 'Repository overview');
     stream.emit('live', {
       taskId: RUN_A,
       attemptId: ATTEMPT_A1,

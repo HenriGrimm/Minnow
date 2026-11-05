@@ -25,6 +25,7 @@ export const EVENT_SCHEMAS = /** @type {const} */ ({
       requestedAt: 'int',
     },
     optional: {
+      title: 'str',
       parentTurnId: 'str',
       parentToolCallId: 'str',
       model: 'obj',

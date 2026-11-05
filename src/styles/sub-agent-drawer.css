@@ -384,7 +384,7 @@
   }
 }
 
-/* Persistent card headers keep the assignment readable instead of squeezing it
+/* Persistent card headers keep the title readable instead of squeezing it
  * between the provider mark and a single-line status. Also overrides the narrow
  * inline-card layout above, whose task is a direct grid child. */
 .sub-agent-card--persistent .sub-agent-card__body { grid-template-columns: auto minmax(0, 1fr); }
@@ -392,6 +392,11 @@
 .sub-agent-card--persistent .sub-agent-card__type {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.sub-agent-card--persistent .sub-agent-card__task {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .sub-agent-card--persistent .sub-agent-card__meta {
   grid-column: 2;

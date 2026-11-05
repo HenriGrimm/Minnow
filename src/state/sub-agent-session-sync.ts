@@ -54,6 +54,7 @@ export function persistSubAgentRunSnapshot(run: SubAgentRun): void {
     providerId: run.providerId,
     modelId: run.modelId,
     task: run.task,
+    title: run.title,
     status: run.status,
     summary: run.summary,
     ...(run.structuredOutcome ? { structuredOutcome: run.structuredOutcome } : {}),

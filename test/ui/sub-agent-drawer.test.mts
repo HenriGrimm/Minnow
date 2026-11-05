@@ -205,17 +205,18 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     assert.equal(reopened.querySelectorAll('.sub-agent-conversation__final').length, 1);
   });
 
-  test('same-role agents have task titles and selection follows the chosen run', async () => {
+  test('same-role agents use explicit titles and retain the full assignment separately', async () => {
     setupOverlayDom();
     setSubAgentApiFetchForTests(async () => Response.json({ ok: true, events: [], state: { runs: [] } }));
-    adoptSubAgentRunForTests(completedRun({ type: 'researcher', task: 'Verify model sources' }));
-    adoptSubAgentRunForTests(completedRun({ runId: 'second-run', type: 'researcher', task: 'Check Windows runtime' }));
+    adoptSubAgentRunForTests(completedRun({ type: 'researcher', title: 'Verify model sources', task: 'Inspect the source documents in detail.' }));
+    adoptSubAgentRunForTests(completedRun({ runId: 'second-run', type: 'researcher', title: 'Check Windows runtime', task: 'Read the Windows runtime implementation and verify its behavior.' }));
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('.sub-agent-overlay__chip')];
     assert.ok(buttons[0].textContent?.includes('Verify model sources'));
     assert.ok(buttons[1].textContent?.includes('Check Windows runtime'));
     buttons[1].click();
     assert.equal(document.querySelector('.sub-agent-overlay__title')?.textContent, 'Check Windows runtime');
+    assert.equal(document.querySelector('.sub-agent-overlay__prompt-text')?.textContent, 'Read the Windows runtime implementation and verify its behavior.');
     assert.equal(document.querySelector('.sub-agent-overlay__chip[aria-pressed="true"]')?.getAttribute('data-run-id'), 'second-run');
   });
 

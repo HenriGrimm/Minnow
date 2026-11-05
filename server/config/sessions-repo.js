@@ -611,11 +611,7 @@ function upsertChatWithOptionalHistory(db, chat, sortIndex, syncHistory, { repla
   const keep = { keepPriorMetaKeys: CHAT_DETAIL_META_KEYS };
   if (syncHistory) {
     const history = Array.isArray(chat.history) ? chat.history : [];
-    upsertChatRow(db, chat, sortIndex, {
-      messageCount: history.length,
-      lastMessagePreview: '',
-      historyDigest: '',
-    }, keep);
+    upsertChatRow(db, chat, sortIndex, readChatMessageDerived(db, chatId), keep);
     const derived = syncMessages(db, chatId, history);
     upsertChatRow(db, chat, sortIndex, derived, keep);
   } else {
@@ -705,16 +701,7 @@ export function syncMessages(db, chatId, history) {
     .prepare('SELECT seq, row_hash FROM messages WHERE chat_id = ? ORDER BY seq ASC')
     .all(chatId);
 
-  let k = 0;
-  const limit = Math.min(existing.length, messages.length);
-  while (k < limit && existing[k].row_hash === hashes[k]) {
-    k += 1;
-  }
-
-  if (k < existing.length) {
-    db.prepare('DELETE FROM messages WHERE chat_id = ? AND seq >= ?').run(chatId, k);
-    db.prepare('DELETE FROM messages_fts WHERE chat_id = ? AND seq >= ?').run(chatId, k);
-  } else if (messages.length < existing.length) {
+  if (existing.some(row => row.seq >= messages.length)) {
     db.prepare('DELETE FROM messages WHERE chat_id = ? AND seq >= ?').run(
       chatId,
       messages.length,
@@ -725,8 +712,10 @@ export function syncMessages(db, chatId, history) {
     );
   }
 
-  for (let seq = k; seq < messages.length; seq += 1) {
-    upsertMessageRow(db, chatId, seq, messages[seq]);
+  // Settling an earlier assistant's stats must not rewrite its unchanged tail.
+  const existingHashes = new Map(existing.map(row => [row.seq, row.row_hash]));
+  for (let seq = 0; seq < messages.length; seq += 1) {
+    if (existingHashes.get(seq) !== hashes[seq]) upsertMessageRow(db, chatId, seq, messages[seq]);
   }
 
   return derived;

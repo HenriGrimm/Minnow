@@ -470,6 +470,9 @@ async function spawnRun(req, res) {
 
   if (!type) return json(res, 400, { ok: false, error: 'type is required' });
   if (!task) return json(res, 400, { ok: false, error: 'task is required' });
+  if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 240)) {
+    return json(res, 400, { ok: false, error: 'A delegation title must be at most 240 characters' });
+  }
   if (!parentChatId) return json(res, 400, { ok: false, error: 'parentChatId is required' });
   if (!cwd) {
     return json(res, 400, {
@@ -536,6 +539,7 @@ async function spawnRun(req, res) {
     runId,
     agentType: type,
     task,
+    ...(typeof body.title === 'string' ? { title: body.title.trim() } : {}),
     parentChatId,
     cwd,
     requestedAt: Date.now(),

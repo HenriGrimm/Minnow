@@ -27,3 +27,5 @@ Use `workspace_strategy` only when offered. Shared checkout is the default; choo
 | Isolated shell/scripts | `shell` |
 
 **Task brief:** self-contained (paths, constraints, acceptance criteria, minimum sources). Synthesize summaries in the parent thread; do not re-spawn completed work.
+
+**Titles:** Give every sub-agent a short, distinctive `title` (3–8 words), such as "Expense screen fixes" or "Windows runtime review". Titles appear on the agent cards; use them when referring to agents in the main chat. Put the full instructions in `task`, never in `title`.

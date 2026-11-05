@@ -17,6 +17,7 @@ import { formatWorkDuration } from '../chat/transcript-turns';
 import { getAgentConversationsCapabilitySync, loadAgentConversationsCapability } from '../config/agent-conversations-enabled';
 import { continueLegacyAgentChat } from '../chat/legacy-chat-continue';
 import { showToast } from './toast';
+import { subAgentTitle } from './sub-agent-title';
 import {
   formatSubAgentProse, renderSubAgentConversation, subAgentFinalResponse,
   type SubAgentConversationDisclosures,
@@ -80,10 +81,6 @@ function agentLabel(type: string): string {
   const text = type.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ');
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
-function taskTitle(task: string): string {
-  const first = task.split('\n').map((line) => line.replace(/^\s*(?:#+|[-*>]|\d+[.)])\s*/, '').trim()).find(Boolean) || 'Untitled assignment';
-  return first.length > 110 ? `${first.slice(0, 110)}…` : first;
-}
 function modelLabel(run: AnyRun): string {
   return run.resolvedModel?.id?.trim() || run.modelId?.trim() || 'Model not recorded';
 }
@@ -140,7 +137,7 @@ export function resolveOutcome(run: AnyRun, _live = false): SubAgentStructuredOu
 
 function renderSwitcher(state: OverlayState): void {
   const runs = chatRuns(state.chatId);
-  const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.task, run.modelId, run.providerId, run.resolvedModel])]);
+  const key = JSON.stringify([state.activeRunId, runs.map((run) => [run.runId, run.status, run.type, run.title, run.modelId, run.providerId, run.resolvedModel])]);
   if (key === state.switcherKey) return;
   state.switcherKey = key;
   const focusedRun = state.switcher.contains(document.activeElement)
@@ -154,13 +151,13 @@ function renderSwitcher(state: OverlayState): void {
     button.type = 'button';
     button.dataset.runId = run.runId;
     button.setAttribute('aria-pressed', String(run.runId === state.activeRunId));
-    button.title = run.task;
-    button.append(el('span', 'sub-agent-overlay__chip-label', taskTitle(run.task)), el('span', 'sub-agent-overlay__chip-role', agentLabel(run.type)), modelMeta(run, 'sub-agent-overlay__chip-model'), badge(run));
+    button.title = subAgentTitle(run);
+    button.append(el('span', 'sub-agent-overlay__chip-label', subAgentTitle(run)), el('span', 'sub-agent-overlay__chip-role', agentLabel(run.type)), modelMeta(run, 'sub-agent-overlay__chip-model'), badge(run));
     button.addEventListener('click', () => setActiveRun(run.runId));
     state.switcher.appendChild(button);
     const option = document.createElement('option');
     option.value = run.runId;
-    option.textContent = `${taskTitle(run.task)} · ${modelLabel(run)} · ${statusMeta(run.status).label}`;
+    option.textContent = `${subAgentTitle(run)} · ${modelLabel(run)} · ${statusMeta(run.status).label}`;
     option.selected = run.runId === state.activeRunId;
     state.mobileSelect.appendChild(option);
   }
@@ -229,7 +226,7 @@ function renderFooter(state: OverlayState, run: AnyRun, live: boolean): void {
     retry.addEventListener('click', async () => {
       retry.disabled = true;
       try {
-        const next = await restartSubAgent(run.runId, { type: run.type, task: run.task, parentChatId: state.chatId, parentTurnId: run.parentTurnId });
+        const next = await restartSubAgent(run.runId, { type: run.type, task: run.task, title: run.title, parentChatId: state.chatId, parentTurnId: run.parentTurnId });
         if (overlay === state) setActiveRun(next.runId);
       } catch {
         retry.textContent = 'Retry failed. Try again';
@@ -274,9 +271,9 @@ function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'st
   const { run, live } = resolved;
   const view = viewFor(state);
   const wasNearBottom = state.scroll.scrollHeight - state.scroll.scrollTop - state.scroll.clientHeight < 56;
-  state.sheet.setAttribute('aria-label', `Subagent ${taskTitle(run.task)}, ${statusMeta(run.status).label}`);
-  state.title.textContent = taskTitle(run.task);
-  state.title.title = run.task;
+  state.sheet.setAttribute('aria-label', `Subagent ${subAgentTitle(run)}, ${statusMeta(run.status).label}`);
+  state.title.textContent = subAgentTitle(run);
+  state.title.title = subAgentTitle(run);
   const duration = run.startedAt && run.endedAt ? formatWorkDuration(Date.parse(run.endedAt) - Date.parse(run.startedAt)) : '';
   state.meta.replaceChildren(badge(run), el('span', '', agentLabel(run.type)), modelMeta(run, 'sub-agent-overlay__model'));
   if (duration) state.meta.appendChild(el('span', '', duration));

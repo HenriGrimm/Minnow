@@ -190,6 +190,7 @@ export function subAgentRunFromFold(
     ...(raw.completionPolicy ? { completionPolicy: raw.completionPolicy as SubAgentRun['completionPolicy'] } : {}),
     type: String(raw.type ?? extra.type ?? ''),
     task: String(raw.task ?? extra.task ?? ''),
+    title: typeof raw.title === 'string' ? raw.title : extra.title,
     status,
     parentChatId: typeof raw.parentChatId === 'string' ? raw.parentChatId : extra.parentChatId ?? null,
     parentToolCallId:
@@ -626,7 +627,7 @@ export async function spawnSubAgent(
   input.signal?.throwIfAborted();
   const capability = isServerStorageMode() ? await loadAgentConversationsCapability() : null;
   const persistent = capability?.creationEnabled === true;
-  if (!persistent && (input.target || input.title || input.workspaceStrategy || input.workspaceId)) {
+  if (!persistent && (input.target || input.workspaceStrategy || input.workspaceId)) {
     throw new Error('Persistent agent conversation creation is unavailable on this server.');
   }
   const ownerId = persistent ? getChatTurnOwnerId(parentChatId) : undefined;
@@ -656,12 +657,12 @@ export async function spawnSubAgent(
       body: JSON.stringify({
         type: input.type,
         task: input.task,
+        ...(input.title ? { title: input.title } : {}),
         parentChatId,
         ...(!persistent ? { cwd } : {}),
         ...(persistent ? {
           conversationVersion: 1, ownerId,
           ...(input.wait === undefined ? {} : { wait: input.wait }),
-          ...(input.title ? { title: input.title } : {}),
           ...(input.target ? { target: input.target } : {}),
           ...(input.clientRequestId ? { client_request_id: input.clientRequestId } : {}),
           ...(input.workspaceStrategy ? { workspace_strategy: input.workspaceStrategy } : {}),
@@ -750,6 +751,7 @@ export async function restartSubAgent(
   return spawnSubAgent({
     type: extra.type ?? prev?.type ?? 'explore',
     task: extra.task ?? prev?.task ?? '',
+    title: extra.title ?? prev?.title,
     parentChatId: extra.parentChatId ?? prev?.parentChatId,
     parentTurnId: extra.parentTurnId ?? prev?.parentTurnId,
     parentToolCallId: extra.parentToolCallId ?? prev?.parentToolCallId,
@@ -1006,6 +1008,7 @@ export function formatSubAgentListToolResult(parentTurnId: string | null | undef
   const rows = listSubAgentRunsForParentTurn(parentTurnId).map((r) => ({
     runId: r.runId,
     type: r.type,
+    title: r.title,
     status: r.status,
     taskPreview: r.task.length > 120 ? `${r.task.slice(0, 120)}…` : r.task,
     startedAt: r.startedAt,
@@ -1024,6 +1027,7 @@ export function formatSubAgentListToolResultForChat(
   const rows = live.map((r) => ({
     runId: r.runId,
     type: r.type,
+    title: r.title,
     status: r.status,
     taskPreview: r.task.length > 120 ? `${r.task.slice(0, 120)}…` : r.task,
     startedAt: r.startedAt,
@@ -1035,6 +1039,7 @@ export function formatSubAgentListToolResultForChat(
     rows.push({
       runId: p.runId,
       type: p.type,
+      title: p.title,
       status: p.status,
       taskPreview: p.task.length > 120 ? `${p.task.slice(0, 120)}…` : p.task,
       startedAt: p.startedAt ?? null,
@@ -1053,6 +1058,7 @@ export function buildSubAgentStatusPayload(run: SubAgentRun): Record<string, unk
   const payload: Record<string, unknown> = {
     runId: run.runId,
     type: run.type,
+    title: run.title,
     status: run.status,
     success,
     summary: outcome?.summary ?? preview,

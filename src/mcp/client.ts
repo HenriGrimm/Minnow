@@ -57,6 +57,16 @@ export async function fetchMcpServers(): Promise<McpServerSummary[] | null> {
   }
 }
 
+/** Explicitly retry discovery for one server, including servers without notifications. */
+export async function refreshMcpConnection(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/mcp/servers/${encodeURIComponent(id)}/refresh`, { method: 'POST' });
+    if (!response.ok) return false;
+    await refreshMcpToolCache();
+    return true;
+  } catch { return false; }
+}
+
 export {
   fetchMcpToolCatalog,
   type McpCatalogTool,
@@ -130,7 +140,6 @@ export async function setMcpServerEnabled(
       },
     );
     if (!res.ok) return false;
-    await fetch('/api/mcp/reload', { method: 'POST' });
     await refreshMcpToolCache();
     return true;
   } catch {
@@ -169,7 +178,6 @@ export async function deleteMcpServer(id: string): Promise<boolean> {
       method: 'DELETE',
     });
     if (!res.ok) return false;
-    await fetch('/api/mcp/reload', { method: 'POST' });
     await refreshMcpToolCache();
     return true;
   } catch {

@@ -77,7 +77,7 @@ export function createChatDelegation({ repository, context, service, getEngine, 
     const completionPolicy = record.captured?.completionPolicy ?? { version: 1, kind: 'local_only' };
     return makeEvent('run.requested', {
       runId, agentType: target.chat.agentTypeId ?? profile.snapshot.typeId,
-      task: command.message, parentChatId: relation.journalOwnerId, cwd: target.scope.canonicalKey,
+      task: command.message, title: target.chat.name, parentChatId: relation.journalOwnerId, cwd: target.scope.canonicalKey,
       requestedAt: command.requestedAt, childChatId: command.chatId, journalOwnerId: relation.journalOwnerId,
       commandId: command.commandId, executionKind: 'chat', profileReference: { profileId: profile.profileId, profileVersion: profile.profileVersion },
       policy: record.captured?.policy ?? profile.snapshot.policy,
@@ -177,7 +177,7 @@ export function createChatDelegation({ repository, context, service, getEngine, 
         ...(intent.category ? { category: intent.category } : {}), ...(intent.boardTaskId ? { boardTaskId: intent.boardTaskId } : {}) };
       const relation = { version: 1, childChatId, parentChatId: caller.chatId, rootChatId, journalOwnerId, origin: 'delegated',
         createdAt: stamp, initialRunId: runId, profileReference, capabilities: { canSend: true, canStop: true, canChooseModel: true } };
-      const event = makeEvent('run.requested', { runId, agentType: intent.type, task: intent.task, parentChatId: journalOwnerId,
+      const event = makeEvent('run.requested', { runId, agentType: intent.type, task: intent.task, ...(input.title ? { title: intent.title } : {}), parentChatId: journalOwnerId,
         cwd: workspace.scope.canonicalKey, requestedAt: stamp, parentTurnId: caller.executionId,
         ...(toolCallId ? { parentToolCallId: toolCallId } : {}), model: { providerId: model.selection.providerId, id: model.selection.modelId },
         modelSource: model.source, ...(model.selection.options !== undefined ? { modelOptions: model.selection.options } : {}),

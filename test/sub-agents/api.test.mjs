@@ -269,13 +269,16 @@ describe('POST /api/agents spawn 400 without model', () => {
 
 describe('POST /api/agents spawn ok', () => {
   it('spawns a run and returns derived state', async () => {
-    const body = await spawnOk({ parentTurnId: 'turn-1' });
+    const body = await spawnOk({ parentTurnId: 'turn-1', title: 'Repository overview' });
     assert.equal(typeof body.runId, 'string');
     assert.ok(body.runId.length > 0);
     assert.ok(body.status === 'queued' || body.status === 'running');
     assert.equal(body.run?.type, 'explore');
     assert.equal(body.run?.parentChatId, PARENT);
     assert.equal(body.run?.parentTurnId, 'turn-1');
+    assert.equal(body.run?.title, 'Repository overview');
+    const restored = await call('GET', `/api/agents/${body.runId}`);
+    assert.equal(restored.body.run.title, 'Repository overview');
   });
 });
 

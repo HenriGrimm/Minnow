@@ -14,6 +14,7 @@ import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
 import { isOrchestrateHubMounted } from './orchestrate-hub';
 import { scrollBottom } from './input';
 import { createIcon } from './icon';
+import { subAgentTitle } from './sub-agent-title';
 import { formatWorkDuration } from '../chat/transcript-turns';
 import { initSubAgentDrawerLiveUpdates, openSubAgentDrawer } from './sub-agent-drawer';
 import {
@@ -74,20 +75,6 @@ export function clearSubAgentCardDomRegistry(): void {
 
 function statusLabel(run: SubAgentRun | PersistedSubAgentRun, live: boolean): string {
   return subAgentLiveBadgeLabel(run, live);
-}
-
-function taskPreview(task: string): string {
-  const t = task.trim();
-  return t.length > 120 ? `${t.slice(0, 120)}…` : t;
-}
-
-/** First meaningful line of the brief — the row's title; the full brief stays in the tooltip. */
-function taskTitle(task: string): string {
-  const line = task
-    .split('\n')
-    .map((l) => l.replace(/^\s*(?:#+|[-*>]|\d+[.)])\s*/, '').trim())
-    .find(Boolean) ?? '';
-  return line.length > 160 ? `${line.slice(0, 160)}…` : line;
 }
 
 function agentTypeLabel(type: string): string {
@@ -154,6 +141,7 @@ function cardRenderKey(
     run.status,
     run.type,
     run.task,
+    run.title,
     agentModelId(run),
     metaLabel(run, live),
     detail.text,
@@ -203,8 +191,8 @@ function fillCard(
 
   const task = document.createElement('span');
   task.className = 'sub-agent-card__task';
-  task.textContent = taskTitle(run.task);
-  task.title = run.task.trim();
+  task.textContent = subAgentTitle(run);
+  task.title = subAgentTitle(run);
 
   const meta = document.createElement('span');
   meta.className = 'sub-agent-card__meta';
@@ -412,7 +400,7 @@ export function upsertSubAgentCardForRun(
 
   el.setAttribute(
     'aria-label',
-    `Sub-agent ${agentTypeLabel(displayRun.type)}, ${statusLabel(displayRun, isLive)}. ${taskPreview(displayRun.task)}`,
+    `Sub-agent ${agentTypeLabel(displayRun.type)}, ${statusLabel(displayRun, isLive)}. ${subAgentTitle(displayRun)}`,
   );
   el.setAttribute('aria-busy', isLive ? 'true' : 'false');
   el.title = 'Open sub-agent details';

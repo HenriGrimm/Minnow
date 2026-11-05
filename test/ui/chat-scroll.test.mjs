@@ -29,6 +29,45 @@ function makeChatArea({ scrollHeight, clientHeight, scrollTop }) {
 }
 
 describe('chat-scroll', () => {
+  test('an up/down reversal during a follow write reaches the tail without Jump to latest', async () => {
+    const window = new Window();
+    globalThis.document = window.document;
+    const frames = [];
+    globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
+    globalThis.cancelAnimationFrame = () => {};
+    const area = document.createElement('main');
+    area.id = 'chatArea';
+    const chip = document.createElement('button');
+    chip.id = 'chatJumpLatest';
+    document.body.append(area, chip);
+    let height = 1200;
+    let top = 800;
+    Object.defineProperties(area, {
+      scrollHeight: { get: () => height }, clientHeight: { value: 400 },
+      scrollTop: { get: () => top, set: value => { top = Math.min(value, height - 400); } },
+    });
+    try {
+      initChatScroll();
+      scrollChatToBottom();
+      // No frame release yet: actual user input must win over an earlier automatic write.
+      area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -100 }));
+      top = 700;
+      area.dispatchEvent(new window.Event('scroll'));
+      assert.equal(isChatScrollPinned(), false);
+      area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 100 }));
+      top = 800;
+      area.dispatchEvent(new window.Event('scroll'));
+      assert.equal(isChatScrollPinned(), true, 'reaching the bottom must reattach immediately');
+      assert.equal(chip.classList.contains('hidden'), true);
+      height = 1500;
+      scrollChatIfPinned();
+      assert.equal(top, 1100, 'late reply layout must remain reachable and followed');
+    } finally {
+      while (frames.length) frames.shift()();
+      await window.happyDOM.close();
+    }
+  });
+
   for (const gesture of ['small wheel', 'native scrollbar', 'scrollbar during follow', 'downward correction']) {
     test(`${gesture} does not snap an up-thread reader back to the bottom`, async () => {
       const window = new Window();

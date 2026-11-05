@@ -61,6 +61,47 @@ afterEach(() => {
 });
 
 describe('sidebar keyed reuse (MIN-584)', () => {
+  for (const managed of [false, true]) {
+    test(`a continued ${managed ? 'managed' : 'local'} parent shows working despite an unread completed agent`, () => {
+      const list = setupList();
+      setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });
+      const parent = listedChat('Parent', 'parent');
+      const child = listedChat('Completed agent', 'child');
+      child.chatCommandVersion = 1;
+      child.agentConversation = { version: 1, childChatId: child.id, parentChatId: parent.id,
+        rootChatId: parent.id, journalOwnerId: parent.id, origin: 'delegated', createdAt: 1 };
+      child.agentExecution = { executionId: 'child-execution', status: 'completed' };
+      child.unread = true;
+      if (managed) {
+        parent.chatCommandVersion = 1;
+        parent.agentExecution = { executionId: 'parent-execution', status: 'completed' };
+      }
+      setSessionStateForTests({ ...defaultSessionState(), chats: [parent, child], activeId: parent.id });
+      renderSidebar();
+      const row = list.querySelector<HTMLElement>('[data-chat-id="parent"]')!;
+      const dot = row.querySelector<HTMLElement>('.chat-item-dot')!;
+      assert.equal(dot.dataset.dotState, 'unread');
+
+      if (managed) parent.agentExecution = { executionId: 'follow-up', status: 'running' };
+      else setStreaming(true, parent.id);
+      syncChatItemDotsInDom();
+      assert.equal(dot.dataset.dotState, 'working');
+      assert.equal(row.getAttribute('aria-busy'), 'true');
+      assert.ok(dot.querySelector('.chat-item-dot__spinner'));
+      renderSidebar();
+      assert.equal(list.querySelector('[data-chat-id="parent"]'), row);
+      assert.equal(dot.dataset.dotState, 'working', 'a full repaint agrees with the live update');
+      assert.equal(child.unread, true, 'showing live work must not acknowledge the child reply');
+
+      if (managed) parent.agentExecution!.status = 'completed';
+      else setStreaming(false, parent.id);
+      syncChatItemDotsInDom();
+      assert.equal(dot.dataset.dotState, 'unread', 'the pending reply reappears after the turn settles');
+      assert.equal(row.hasAttribute('aria-busy'), false);
+      assert.equal(dot.querySelector('.chat-item-dot__spinner'), null);
+    });
+  }
+
   test('a completed chat replaces its spinner with an unread dot until opened', () => {
     const list = setupList();
     setWorkspaceFromServer({ path: WS, label: 'ws', isDefault: false });

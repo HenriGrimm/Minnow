@@ -63,6 +63,15 @@ async function fixture(run, extra = {}) {
   } finally { await service.dispose(); db.close(); }
 }
 
+test('spawn requires a reference title in both legacy and persistent tool schemas', () => {
+  const spawn = BUILT_IN_TOOLS.find(row => row.id === 'spawn_sub_agent').definition;
+  for (const creationEnabled of [false, true]) {
+    const [tool] = projectAgentConversationTools([spawn], { creationEnabled });
+    assert.ok(tool.function.parameters.required.includes('title'));
+    assert.equal(tool.function.parameters.properties.title.maxLength, 240);
+  }
+});
+
 test('six catalog schemas and defaults stay gated, with explicit off/ask preserved', () => {
   const catalog = BUILT_IN_TOOLS.filter(row => AGENT_CHAT_TOOL_IDS.includes(row.id));
   assert.equal(catalog.length, 6);

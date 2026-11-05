@@ -19,6 +19,7 @@ import { forkFromUserIndex } from '../../src/chat/fork-from-run.ts';
 import { getUndoEligibility, undoLastAgentTurn } from '../../src/chat/undo-turn.ts';
 import type { Chat, UserMessage } from '../../src/types.ts';
 import type { SubAgentRun } from '../../src/agents/types.ts';
+import { persistSubAgentRunSnapshot } from '../../src/state/sub-agent-session-sync.ts';
 
 let win: Window | undefined;
 const priorFetch = globalThis.fetch;
@@ -97,6 +98,28 @@ test('background managed updates tolerate a mode-only surface without creating a
   child.agentRequestSummary = [{ requestId: 'background-question', kind: 'question' }];
   assert.doesNotThrow(() => renderChatFromHistory(child));
   assert.equal(document.querySelector('.managed-chat-requests'), null); assert.equal(document.querySelector('.agent-chat-context'), null);
+});
+
+test('persistent cards show assignment titles through updates and saved history without exposing prompts', () => {
+  const parent = shell('parent'), child = shell('titled-child', parent.id); const area = setup([parent, child]);
+  const task = { ...run('titled-task', child.id), title: 'Expense screen fixes', task: 'Work in shared checkout. '.repeat(200) };
+  let row = upsertPersistentAgentActivity(task, parent.id, area)!;
+  assert.equal(row.querySelector('.sub-agent-card__task')?.textContent, task.title);
+  assert.equal(row.querySelector('.sub-agent-card__task')?.getAttribute('title'), task.title);
+  assert.ok(!row.outerHTML.includes(task.task));
+  task.title = 'Expense regression checks';
+  upsertPersistentAgentActivity(task, parent.id, area);
+  assert.equal(row.querySelector('.sub-agent-card__task')?.textContent, task.title);
+  persistSubAgentRunSnapshot({ ...task, status: 'completed' });
+  const saved = JSON.parse(JSON.stringify(parent.subAgentRuns![0]));
+  assert.equal(saved.task, task.task, 'the complete assignment stays available in stored run details');
+  clearPersistentAgentActivity(); area.replaceChildren();
+  row = upsertPersistentAgentActivity(saved, parent.id, area)!;
+  assert.equal(row.querySelector('.sub-agent-card__task')?.textContent, task.title);
+  assert.ok(!row.outerHTML.includes(task.task));
+  row = upsertPersistentAgentActivity({ ...task, title: undefined }, parent.id, area)!;
+  assert.equal(row.querySelector('.sub-agent-card__task')?.textContent, 'Agent assignment');
+  assert.ok(!row.outerHTML.includes('Work in shared checkout'));
 });
 
 test('one persistent delegation is a direct child link; same-turn siblings form one keyed group and retain per-call anchors', () => {

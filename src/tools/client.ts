@@ -1,7 +1,7 @@
 import { STOPPED_TOOL_MSG } from './execute-tool-batch';
 import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
 import { getAgentConversationsCapabilitySync } from '../config/agent-conversations-enabled';
-import { createRefreshGate } from './refresh-gate';
+import { createMcpToolCache } from '../mcp/tool-cache';
 import { rpcFetch } from '../api/stream-fetch';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeTodoWrite } from './todo-tools';
@@ -104,7 +104,7 @@ async function executeBrowserPreviewTool(...args: Parameters<typeof import('./br
 const PING_TIMEOUT_MS = 2500;
 
 /** Cached MCP tool definitions from GET /api/mcp/tools. */
-let cachedMcpToolDefinitions: OpenAIFunctionDefinition[] = [];
+const mcpToolCache = createMcpToolCache();
 
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
 let cachedPluginToolDefinitions: OpenAIFunctionDefinition[] = [];
@@ -142,9 +142,9 @@ export async function detectLocalServer(options?: { refreshTools?: boolean }): P
     const available = body?.ok === true;
     setLocalServerAvailable(available);
     if (available && options?.refreshTools !== false) {
-      await Promise.all([refreshMcpToolCache(), refreshPluginToolCache()]);
+      await Promise.all([refreshMcpToolCache(false), refreshPluginToolCache()]);
     } else if (!available) {
-      cachedMcpToolDefinitions = [];
+      mcpToolCache.clear();
       cachedPluginToolDefinitions = [];
     }
     return available;
@@ -213,20 +213,8 @@ const BROWSER_SURFACE_TOOL_NAMES = new Set([
 /** Plan alias: readable flag after detectLocalServer(). */
 export { getLocalServerAvailable as localServerAvailable };
 
-/** Refresh MCP tool definitions when the local server is available. */
-export const refreshMcpToolCache = createRefreshGate(async () => {
-  try {
-    const response = await fetch('/api/mcp/tools');
-    if (!response.ok) {
-      cachedMcpToolDefinitions = [];
-      return;
-    }
-    const body = (await response.json()) as { tools?: OpenAIFunctionDefinition[] };
-    cachedMcpToolDefinitions = Array.isArray(body.tools) ? body.tools : [];
-  } catch {
-    cachedMcpToolDefinitions = [];
-  }
-});
+/** Settings refresh explicitly; turn boundaries reuse the event-driven cache. */
+export const refreshMcpToolCache = mcpToolCache.refresh;
 
 /** Refresh native plugin tool definitions when the local server is available. */
 export async function refreshPluginToolCache(): Promise<void> {
@@ -746,7 +734,7 @@ export function getEnabledToolCatalogEntries(): ToolDefinition[] {
 }
 
 function getEnabledDynamicToolDefinitions(): OpenAIFunctionDefinition[] {
-  return [...cachedMcpToolDefinitions, ...cachedPluginToolDefinitions].filter(
+  return [...mcpToolCache.tools, ...cachedPluginToolDefinitions].filter(
     (def) => isToolEnabled(def.function.name),
   );
 }

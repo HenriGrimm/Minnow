@@ -849,7 +849,7 @@ main#chatArea.chat-area:has(.ob-page) {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   overflow-anchor: none;
 }
 

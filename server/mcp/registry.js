@@ -6,10 +6,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { getMcpOAuthProvider, closeMcpOAuth } from './oauth.js';
 import { getMinnowHome } from '../config/home.js';
 import {
@@ -37,6 +39,58 @@ const connecting = new Map();
 const connectionErrors = new Map();
 const authProviders = new Map();
 const fingerprints = new Map();
+const connectionFailures = new Map();
+const loggedErrors = new Map();
+const toolListings = new WeakMap();
+const catalogListeners = new Set();
+const catalogEpoch = randomUUID();
+let catalogVersion = 0;
+
+export function getMcpCatalogRevision() {
+  return `${catalogEpoch}:${catalogVersion}`;
+}
+
+export function subscribeMcpCatalogChanges(listener) {
+  catalogListeners.add(listener);
+  return () => catalogListeners.delete(listener);
+}
+
+function catalogChanged() {
+  catalogVersion++;
+  for (const listener of catalogListeners) {
+    try { listener(getMcpCatalogRevision()); } catch { /* observers cannot break discovery */ }
+  }
+}
+
+/** Catalog freshness is independent of permissions, which callers still read live. */
+async function serverTools(client) {
+  let state = toolListings.get(client);
+  if (!state) {
+    state = { valid: false, version: 0 };
+    toolListings.set(client, state);
+  }
+  if (state.pending) return state.pending;
+  if (state.valid) {
+    if (state.error) throw state.error;
+    return state.listed;
+  }
+  state.pending = (async () => {
+    while (true) {
+      const version = state.version;
+      let listed, error;
+      try { listed = await allTools(client); }
+      catch (failure) { error = failure; }
+      // Readers arriving after a notification must not share its older result.
+      if (state.version !== version) continue;
+      state.listed = listed;
+      state.error = error;
+      state.valid = true;
+      if (error) throw error;
+      return listed;
+    }
+  })().finally(() => { state.pending = undefined; });
+  return state.pending;
+}
 
 async function allTools(client) {
   const tools = [];
@@ -141,20 +195,27 @@ function resolveMcpToolName(namespacedName, parsed) {
 
 async function connectServer(serverId, config) {
   if (connecting.has(serverId)) return connecting.get(serverId);
+  const fingerprint = JSON.stringify(config);
+  const failure = connectionFailures.get(serverId);
+  if (failure?.fingerprint === fingerprint) throw failure.error;
   const pending = connectServerNow(serverId, config);
   connecting.set(serverId, pending);
-  try { return await pending; }
+  try {
+    const client = await pending;
+    connectionFailures.delete(serverId);
+    return client;
+  } catch (error) {
+    connectionFailures.set(serverId, { fingerprint, error });
+    throw error;
+  }
   finally { connecting.delete(serverId); }
 }
 
 async function connectServerNow(serverId, config) {
   const fingerprint = JSON.stringify(config);
   if (clients.has(serverId) && fingerprints.get(serverId) !== fingerprint) {
-    await clients.get(serverId).close().catch(() => {});
-    clients.delete(serverId);
-    toolMaps.delete(serverId);
-    authProviders.get(serverId)?.close();
-    authProviders.delete(serverId);
+    await closeServer(serverId);
+    catalogChanged();
   }
   if (clients.has(serverId)) {
     await authProviders.get(serverId)?.prepare();
@@ -163,7 +224,7 @@ async function connectServerNow(serverId, config) {
 
   if (serverId === 'fixture') {
     const client = createFixtureClient();
-    const listed = await allTools(client);
+    const listed = await serverTools(client);
     rememberTools(serverId, listed.tools ?? []);
     clients.set(serverId, client);
     fingerprints.set(serverId, fingerprint);
@@ -179,9 +240,13 @@ async function connectServerNow(serverId, config) {
   if (transportCfg.url) {
     const provider = await getMcpOAuthProvider(serverId, transportCfg.url, async () => {
       connectionErrors.delete(serverId);
+      connectionFailures.delete(serverId);
+      const state = toolListings.get(clients.get(serverId));
+      if (state) { state.version++; state.valid = false; }
       const index = await loadIndex();
       if (index.servers?.[serverId]?.enabled !== false && index.servers?.[serverId]) {
-        await connectServer(serverId, await loadServerConfig(serverId));
+        try { await connectServer(serverId, await loadServerConfig(serverId)); }
+        finally { catalogChanged(); }
       }
     }, transportCfg.oauth);
     authProviders.set(serverId, provider);
@@ -208,9 +273,21 @@ async function connectServerNow(serverId, config) {
     { name: 'minnow', version: '1.0.0' },
     { capabilities: {} },
   );
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+    const state = toolListings.get(client);
+    if (state) { state.version++; state.valid = false; }
+    catalogChanged();
+  });
+  client.onclose = () => {
+    if (clients.get(serverId) !== client) return;
+    clients.delete(serverId);
+    fingerprints.delete(serverId);
+    toolMaps.delete(serverId);
+    catalogChanged();
+  };
   try {
     await client.connect(transport);
-    const listed = await allTools(client);
+    const listed = await serverTools(client);
     rememberTools(serverId, listed.tools ?? []);
     clients.set(serverId, client);
     fingerprints.set(serverId, fingerprint);
@@ -331,7 +408,7 @@ export async function listServers() {
 }
 
 /**
- * Connect every enabled server and collect its live tool listing.
+ * Connect every enabled server and collect its cached tool listing.
  * Servers that fail to start are returned with `error` set rather than dropped,
  * so callers can tell "no tools" apart from "never connected".
  * Refresh the dispatch map — the live listing can differ from connect time.
@@ -347,12 +424,18 @@ async function collectEnabledServerTools() {
       entry.label = config.label ?? serverId;
       if (config.enabled === false) continue;
       const client = await connectServer(serverId, config);
-      const listed = await allTools(client);
+      const listed = await serverTools(client);
       entry.tools = listed.tools ?? [];
       rememberTools(serverId, entry.tools);
+      connectionErrors.delete(serverId);
+      loggedErrors.delete(serverId);
     } catch (err) {
       entry.error = err instanceof Error ? err.message : String(err);
       connectionErrors.set(serverId, entry.error);
+      if (loggedErrors.get(serverId) !== entry.error) {
+        console.warn(`MCP server ${serverId} skipped: ${entry.error}`);
+        loggedErrors.set(serverId, entry.error);
+      }
     }
     out.push(entry);
   }
@@ -367,7 +450,6 @@ export async function listEnabledMcpTools() {
   } }];
   for (const server of await collectEnabledServerTools()) {
     if (server.error) {
-      console.warn(`MCP server ${server.id} skipped: ${server.error}`);
       continue;
     }
     defs.push(...toOpenAIDefinitions(server.id, server.tools));
@@ -410,8 +492,10 @@ export async function callMcpTool(namespacedName, args) {
   }
   const config = await loadServerConfig(parsed.serverId);
   if (config.enabled === false) return 'Error: MCP server is disabled';
-  await connectServer(parsed.serverId, config);
-  const client = clients.get(parsed.serverId);
+  const client = await connectServer(parsed.serverId, config);
+  // A tool-list notification can arrive between rounds or before a direct call.
+  const listed = await serverTools(client);
+  rememberTools(parsed.serverId, listed.tools ?? []);
   const { toolName, known } = resolveMcpToolName(namespacedName, parsed);
   if (!toolName) {
     const available = known.length > 0 ? known.join(', ') : 'none';
@@ -434,21 +518,41 @@ export function isMcpToolName(name) {
   return name.startsWith('mcp__');
 }
 
+async function closeServer(serverId) {
+  const client = clients.get(serverId);
+  // Drop ownership before close so an intentional reset is not a disconnect event.
+  clients.delete(serverId);
+  fingerprints.delete(serverId);
+  toolMaps.delete(serverId);
+  connectionErrors.delete(serverId);
+  connectionFailures.delete(serverId);
+  loggedErrors.delete(serverId);
+  authProviders.get(serverId)?.close();
+  authProviders.delete(serverId);
+  await client?.close().catch(() => {});
+}
+
+/** Explicit retry for a failed or non-notifying server, without closing its peers. */
+export async function refreshMcpServer(serverId) {
+  const index = await loadIndex();
+  if (!index.servers?.[serverId]) throw new Error('Unknown MCP server');
+  await connecting.get(serverId)?.catch(() => {});
+  await closeServer(serverId);
+  catalogChanged();
+}
+
 export async function reloadMcp() {
   await Promise.allSettled([...connecting.values()]);
-  for (const [, client] of clients) {
-    try {
-      await client.close();
-    } catch {
-      /* ignore */
-    }
-  }
+  await Promise.all([...clients.keys()].map(closeServer));
   clients.clear();
   fingerprints.clear();
   toolMaps.clear();
   connectionErrors.clear();
+  connectionFailures.clear();
+  loggedErrors.clear();
   authProviders.clear();
   closeMcpOAuth();
+  catalogChanged();
 }
 
 async function writeIndex(index) {

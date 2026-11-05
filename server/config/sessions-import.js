@@ -184,6 +184,10 @@ export function upsertMessageRow(db, chatId, seq, message) {
   const hasAttachments =
     Array.isArray(message.attachments) && message.attachments.length > 0 ? 1 : 0;
   const hidden = message.hidden === true ? 1 : 0;
+  const prior = db.prepare('SELECT role, payload_json FROM messages WHERE chat_id = ? AND seq = ?').get(chatId, seq);
+  // FTS chat/sequence columns are UNINDEXED: deleting by them scans the whole
+  // mirror. Appends need no delete, and usage/stats changes need no reindex.
+  const searchChanged = !prior || prior.role !== role || messageTextContent(JSON.parse(prior.payload_json)) !== text;
 
   db.prepare(
     `INSERT INTO messages (
@@ -212,10 +216,12 @@ export function upsertMessageRow(db, chatId, seq, message) {
     rowHash,
   );
 
-  db.prepare('DELETE FROM messages_fts WHERE chat_id = ? AND seq = ?').run(chatId, seq);
-  db.prepare(
-    `INSERT INTO messages_fts (chat_id, seq, role, body) VALUES (?, ?, ?, ?)`,
-  ).run(chatId, seq, role, text);
+  if (searchChanged) {
+    if (prior) db.prepare('DELETE FROM messages_fts WHERE chat_id = ? AND seq = ?').run(chatId, seq);
+    db.prepare(
+      `INSERT INTO messages_fts (chat_id, seq, role, body) VALUES (?, ?, ?, ?)`,
+    ).run(chatId, seq, role, text);
+  }
 
   return rowHash;
 }
