@@ -57,7 +57,7 @@ const PLAN_CONTENT_ARG_KEYS: Record<string, readonly string[]> = {
  */
 export function isUnderDocumentationPlans(relativePath: string): boolean {
   const trimmed = relativePath.trim().replace(/\\/g, '/');
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.split('/').includes('..')) return false;
   const lower = trimmed.toLowerCase();
   return lower === PLANS_PREFIX_LOWER.slice(0, -1) || lower.startsWith(PLANS_PREFIX_LOWER);
 }
@@ -76,7 +76,7 @@ export function isPlanMarkdownPath(relativePath: string): boolean {
  */
 export function isUnderSuperPlanReferences(relativePath: string): boolean {
   const trimmed = relativePath.trim().replace(/\\/g, '/');
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.split('/').includes('..')) return false;
   const lower = trimmed.toLowerCase();
   return (
     lower === SUPER_PLAN_REFERENCES_PREFIX_LOWER.slice(0, -1) ||

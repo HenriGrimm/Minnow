@@ -37,6 +37,7 @@ import { toolLoadSkill } from '../skills/load-skill.js';
 import {
   blockPlanModeWrite,
   resolveModeIdFromToolsBody,
+  resolvePlanWriteArgs,
 } from '../tools/plan-write-guard.js';
 import { assessHostKillCommand } from '../tools/host-kill-guard.js';
 import { assessHostPortBindCommand } from '../tools/host-port-bind-guard.js';
@@ -1603,7 +1604,7 @@ export function isServerToolAvailable(name) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
+ * @param {{ modeId?: string, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1614,6 +1615,7 @@ export async function executeServerTool(name, args, options = {}) {
   return runWithToolContext(async () => {
     return runWithOutputCapPolicy(outputPolicy, async () => {
     try {
+      args = resolvePlanWriteArgs(options.modeId, name, args, getEffectiveWorkspaceRoot());
       if (isPluginToolName(name)) {
         if (tools.permissions.default[name] === 'off') return { result: 'Error: plugin tool is disabled in Settings' };
         const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
@@ -1811,7 +1813,7 @@ export function createToolsMiddleware() {
         let out;
         try {
           out = await executeServerTool(name, args, {
-            workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+            modeId, workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
             abortSignal: toolController?.signal,

@@ -2,6 +2,9 @@
  * Server-side Plan / Super Plan write guard (mirrors src/chat/modes/plan-write-guard.ts).
  */
 
+import path from 'node:path';
+import { realpathForBoundaryCheck } from '../workspace/safe-path.js';
+
 const ORCHESTRATE_PLANS_PREFIX = 'documentation/plans/';
 const PLANS_ROOT = ORCHESTRATE_PLANS_PREFIX.replace(/\/$/, '');
 const PLANS_PREFIX_LOWER = ORCHESTRATE_PLANS_PREFIX.toLowerCase();
@@ -83,7 +86,7 @@ export function resolveModeIdFromToolsBody(body) {
  */
 export function isUnderDocumentationPlans(relativePath) {
   const trimmed = relativePath.trim().replace(/\\/g, '/');
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.split('/').includes('..')) return false;
   const lower = trimmed.toLowerCase();
   return lower === PLANS_PREFIX_LOWER.slice(0, -1) || lower.startsWith(PLANS_PREFIX_LOWER);
 }
@@ -102,7 +105,7 @@ export function isPlanMarkdownPath(relativePath) {
  */
 export function isUnderSuperPlanReferences(relativePath) {
   const trimmed = relativePath.trim().replace(/\\/g, '/');
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.split('/').includes('..')) return false;
   const lower = trimmed.toLowerCase();
   return (
     lower === SUPER_PLAN_REFERENCES_PREFIX_LOWER.slice(0, -1) ||
@@ -202,4 +205,20 @@ export function blockPlanModeWrite(modeId, toolName, args) {
   }
 
   return null;
+}
+
+/** Resolve against the actual workspace immediately before dispatching a Plan tool. */
+export function resolvePlanWriteArgs(modeId, toolName, args, workspaceRoot) {
+  if (!isPlanFamilyMode(modeId)) return args;
+  const blocked = blockPlanModeWrite(modeId, toolName, args);
+  if (blocked) throw new Error(blocked.replace(/^Error: /, ''));
+  if (!PLAN_SCOPED_WRITE_TOOLS.has(toolName)) return args;
+  const planRoot = path.join(realpathForBoundaryCheck(workspaceRoot), PLANS_ROOT);
+  const target = realpathForBoundaryCheck(path.resolve(workspaceRoot, args.path));
+  const relative = path.relative(planRoot, target);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative) ||
+      (toolName !== 'make_directory' && path.extname(target).toLowerCase() !== '.md')) {
+    throw new Error(`Plan mode may only write markdown plans under ${ORCHESTRATE_PLANS_PREFIX}`);
+  }
+  return { ...args, path: target };
 }

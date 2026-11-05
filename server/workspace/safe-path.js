@@ -26,6 +26,11 @@ export function realpathForBoundaryCheck(resolvedAbs) {
   } catch (err) {
     const code = err && typeof err === 'object' && 'code' in err ? err.code : null;
     if (code === 'ENOENT' || code === 'ENOTDIR') {
+      // A dangling link is an existing directory entry. A subsequent write can
+      // follow it outside the workspace even though realpath reported ENOENT.
+      if (code === 'ENOENT' && fs.lstatSync(resolvedAbs, { throwIfNoEntry: false })?.isSymbolicLink()) {
+        throw new Error('Cannot resolve a dangling symlink for a workspace boundary check');
+      }
       const parent = path.dirname(resolvedAbs);
       if (parent === resolvedAbs) {
         throw err;

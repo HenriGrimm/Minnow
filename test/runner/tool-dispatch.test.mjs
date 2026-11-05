@@ -202,6 +202,27 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     assert.equal(inProcess.content, httpOut.json.result);
   });
 
+  test('plan writes stay beneath the physical plans directory through both transports', async () => {
+    const plans = path.join(codeWorkspace, 'documentation', 'plans');
+    const elsewhere = path.join(codeWorkspace, 'unrelated');
+    await fs.mkdir(plans, { recursive: true });
+    await fs.mkdir(elsewhere);
+    await fs.symlink(elsewhere, path.join(plans, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+    for (const file of ['documentation/plans/../../escape.md', 'documentation/plans/alias/new.md']) {
+      const args = { path: file, content: 'forbidden' };
+      const out = await postTools(baseUrl, { name: 'save_file', args, modeId: 'plan', workspaceRoot: codeWorkspace });
+      assert.match(out.json.result, /Error:.*documentation\/plans/);
+      const run = await executeInProcessTool('save_file', args, { cwd: codeWorkspace, modeId: 'plan' });
+      assert.equal(run.content, out.json.result);
+    }
+    await assert.rejects(fs.stat(path.join(codeWorkspace, 'escape.md')), { code: 'ENOENT' });
+    await assert.rejects(fs.stat(path.join(elsewhere, 'new.md')), { code: 'ENOENT' });
+    const args = { path: 'documentation/plans/new/valid.md', content: 'safe plan' };
+    const saved = await postTools(baseUrl, { name: 'save_file', args, modeId: 'plan', workspaceRoot: codeWorkspace });
+    assert.doesNotMatch(saved.json.result, /^Error:/);
+    assert.equal(await fs.readFile(path.join(plans, 'new', 'valid.md'), 'utf8'), 'safe plan');
+  });
+
   test('output-cap truncation matches HTTP byte for byte', async () => {
     // Line count is derived from the cap, not a literal: MIN-667 made the cap
     // configurable and raised the default 32k -> 128k, which left a fixed
