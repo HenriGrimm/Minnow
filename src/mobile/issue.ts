@@ -8,6 +8,8 @@ import {
   scheduleSaveIssues,
   updateIssue,
 } from '../state/issues-store';
+import { workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { getWorkspacePath } from '../state/workspace';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 import { findPriority, findStatus, findType, isClosedStatus, sortedPriorities, sortedStatuses, sortedTypes } from '../issues/taxonomy';
@@ -30,12 +32,6 @@ export interface IssueScreenDeps {
 async function toast(message: string, variant: 'success' | 'error' = 'success'): Promise<void> {
   const { showToast } = await import('../ui/toast');
   showToast(message, variant);
-}
-
-function save(issueId: string, patch: Parameters<typeof updateIssue>[1]): void {
-  updateIssue(issueId, patch);
-  scheduleSaveIssues();
-  haptic();
 }
 
 function propRow(label: string, value: HTMLElement, onClick?: () => void): HTMLElement {
@@ -71,6 +67,20 @@ function commentNode(comment: IssueComment): HTMLElement {
 }
 
 export function createIssueScreen(issueId: string, deps: IssueScreenDeps): MobileScreen {
+  let disposed = false;
+  function currentIssue(): IssueCard | undefined {
+    if (disposed) return;
+    const issue = findIssueById(issueId);
+    return issue && workspacePathsEqual(issue.workspacePath, getWorkspacePath()) ? issue : undefined;
+  }
+
+  function save(patch: Parameters<typeof updateIssue>[1]): void {
+    if (!currentIssue()) return;
+    updateIssue(issueId, patch);
+    scheduleSaveIssues();
+    haptic();
+  }
+
   const header = screenHeader({
     title: issueId,
     back: true,
@@ -100,7 +110,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
   commentForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = commentInput.value.trim();
-    if (!text) return;
+    if (!text || !currentIssue()) return;
     if (addIssueComment(issueId, { body: text, authorKind: 'user' })) {
       scheduleSaveIssues();
       commentInput.value = '';
@@ -122,7 +132,9 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
     ]);
     if (!mode) return;
     const { runIssueWorkspaceChat } = await import('../chat/issues/workspace-chat');
+    if (!currentIssue()) return;
     const result = await runIssueWorkspaceChat(issue.id, mode);
+    if (!currentIssue()) return;
     if (!result.ok) {
       void toast(result.error ?? 'Could not start', 'error');
       if (result.chatId) deps.openChat(result.chatId);
@@ -133,7 +145,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
 
   function render(): void {
     frame = 0;
-    const issue = findIssueById(issueId);
+    const issue = currentIssue();
     if (!issue) {
       content.replaceChildren(emptyState({ glyph: 'fi-rr-ticket', title: 'This issue is gone', body: 'It was deleted or moved.' }));
       commentForm.hidden = true;
@@ -158,7 +170,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
           on: {
             click: async () => {
               const next = await promptSheet({ title: 'Title', value: issue.title, confirmLabel: 'Save' });
-              if (next && next !== issue.title) save(issue.id, { title: next });
+              if (next && next !== issue.title) save({ title: next });
             },
           },
         },
@@ -175,19 +187,19 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
           const next = await pickFromSheet('Status', sortedStatuses(taxonomy).map((item) => ({
             value: item.id, label: item.label, glyph: resolveIssueStatusIcon(item.id, item), selected: item.id === issue.status,
           })));
-          if (next && next !== issue.status) save(issue.id, { status: next });
+          if (next && next !== issue.status) save({ status: next });
         }),
         propRow('Priority', withText(priorityGlyph(issue.priority), priority?.label ?? issue.priority), async () => {
           const next = await pickFromSheet('Priority', sortedPriorities(taxonomy).map((item) => ({
             value: item.id, label: item.label, glyph: resolveIssuePriorityIcon(item.id, item), selected: item.id === issue.priority,
           })));
-          if (next && next !== issue.priority) save(issue.id, { priority: next });
+          if (next && next !== issue.priority) save({ priority: next });
         }),
         propRow('Type', withText(icon(resolveIssueTypeIcon(issue.type, type), 14), type?.label ?? issue.type), async () => {
           const next = await pickFromSheet('Type', sortedTypes(taxonomy).map((item) => ({
             value: item.id, label: item.label, glyph: resolveIssueTypeIcon(item.id, item), selected: item.id === issue.type,
           })));
-          if (next && next !== issue.type) save(issue.id, { type: next });
+          if (next && next !== issue.type) save({ type: next });
         }),
         issue.labels.length
           ? propRow('Labels', el('span', { className: 'm-chip-row' }, ...issue.labels.map(labelChip)))
@@ -245,7 +257,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
             on: {
               click: async () => {
                 const next = await promptSheet({ title: 'Description', value: issue.description, confirmLabel: 'Save', multiline: true });
-                if (next != null && next !== issue.description) save(issue.id, { description: next });
+                if (next != null && next !== issue.description) save({ description: next });
               },
             },
           }),
@@ -334,7 +346,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
   }
 
   function openMenu(): void {
-    const issue = findIssueById(issueId);
+    const issue = currentIssue();
     if (!issue) return;
     openActionSheet(issue.id, [
       {
@@ -355,7 +367,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
         danger: true,
         run: async () => {
           const ok = await confirmSheet({ title: `Delete ${issue.id}?`, body: 'This cannot be undone.', confirmLabel: 'Delete', danger: true });
-          if (!ok) return;
+          if (!ok || !currentIssue()) return;
           deleteIssue(issue.id);
           scheduleSaveIssues();
           popScreen();
@@ -380,6 +392,7 @@ export function createIssueScreen(issueId: string, deps: IssueScreenDeps): Mobil
       visible = false;
     },
     dispose() {
+      disposed = true;
       unsub();
       cancelAnimationFrame(frame);
     },

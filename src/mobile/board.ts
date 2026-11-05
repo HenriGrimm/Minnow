@@ -231,6 +231,7 @@ function createTaskFilesScreen(boardId: string, task: TaskState): MobileScreen {
 
 export function createBoardScreen(boardId: string): MobileScreen {
   const client: BoardClient = createBoardClient(boardId);
+  let disposed = false;
   const pending = new Set<string>();
   let filter: Filter = 'all';
   let openTaskSheet: { taskId: string; sheet: SheetHandle; render: () => void } | null = null;
@@ -259,6 +260,7 @@ export function createBoardScreen(boardId: string): MobileScreen {
   const root = el('section', { className: 'm-screen m-board', dataset: { screen: `board:${boardId}` } }, header.el, body, controls);
 
   const run = async (label: string, action: () => Promise<unknown>) => {
+    if (disposed) return;
     try {
       haptic();
       await action();
@@ -696,6 +698,7 @@ export function createBoardScreen(boardId: string): MobileScreen {
       clock = 0;
     },
     dispose() {
+      disposed = true;
       for (const unsub of unsubs) unsub();
       window.clearInterval(clock);
       cancelAnimationFrame(liveFrame);

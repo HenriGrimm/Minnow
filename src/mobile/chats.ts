@@ -85,6 +85,7 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
   let query = '';
   let frame = 0;
   let visible = true;
+  let disposed = false;
 
   const header = screenHeader({
     title: 'Chats',
@@ -170,7 +171,9 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
   }
 
   const unsubs: (() => void)[] = [];
-  void import('../ui/sidebar').then(({ subscribeSidebarRender }) => unsubs.push(subscribeSidebarRender(schedule)));
+  void import('../ui/sidebar').then(({ subscribeSidebarRender }) => {
+    if (!disposed) unsubs.push(subscribeSidebarRender(schedule));
+  });
   unsubs.push(subscribeWorkspace(schedule));
   unsubs.push(subscribeChatStreamEnd(schedule));
   unsubs.push(subscribeChatInputPending(schedule));
@@ -198,6 +201,9 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
       visible = false;
     },
     dispose() {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      window.clearTimeout(streamTimer);
       for (const unsub of unsubs) unsub();
     },
   };

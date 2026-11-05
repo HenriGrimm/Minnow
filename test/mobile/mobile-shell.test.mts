@@ -4,7 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { afterEach, before, test } from 'node:test';
+import { after, afterEach, before, test } from 'node:test';
 import { Window } from 'happy-dom';
 
 let win: Window;
@@ -68,9 +68,15 @@ before(() => {
     Event: win.Event,
     PopStateEvent: win.PopStateEvent,
     localStorage: win.localStorage,
+    cancelAnimationFrame: clearTimeout,
     requestAnimationFrame: (cb: (t: number) => void) => setTimeout(() => cb(0), 0) as unknown as number,
   });
   setMatchMedia(false);
+});
+
+after(async () => {
+  win.dispatchEvent(new win.Event('pagehide'));
+  await win.happyDOM.close();
 });
 
 // ── Boot decision ────────────────────────────────────────────────────────────
@@ -181,9 +187,10 @@ test('the back gesture pops the top screen; in-app back does not pop twice', asy
   nav.registerTab('issues', host, await screen('issues', log));
   nav.selectTab('issues');
   nav.pushScreen(await screen('issue:1', log));
+  const priorState = win.history.state;
   nav.pushScreen(await screen('issue:2', log));
 
-  win.dispatchEvent(new win.PopStateEvent('popstate', { state: null }));
+  win.dispatchEvent(new win.PopStateEvent('popstate', { state: priorState }));
   assert.equal(nav.getTopScreen()?.key, 'issue:1');
 
   // An in-app pop calls history.back(); the popstate it causes is swallowed.
@@ -192,6 +199,72 @@ test('the back gesture pops the top screen; in-app back does not pop twice', asy
   assert.equal(nav.getTopScreen()?.key, 'issues');
   win.dispatchEvent(new win.PopStateEvent('popstate', { state: null }));
   assert.equal(nav.getTopScreen()?.key, 'issues');
+});
+
+test('changing workspaces retires file and issue screens, stale history and pending issue edits', async () => {
+  const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  const { addIssue, findIssueById, parseIssuesState, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
+  const { createFileViewerScreen } = await import('../../src/mobile/file-viewer.ts');
+  const { mountMobileShell } = await import('../../src/mobile/shell.ts');
+  const nav = await import('../../src/mobile/nav.ts');
+  const switchTo = (path: string) => setWorkspaceFromServer({ path, label: path, isDefault: false });
+  const click = (selector: string) => {
+    const node = document.querySelector<HTMLButtonElement>(selector);
+    assert.ok(node, selector);
+    node.click();
+  };
+
+  win.localStorage.clear();
+  switchTo('C:/projects/one');
+  setIssuesStateForTests(parseIssuesState({ issues: [] }));
+  try {
+    const first = addIssue({ title: 'Original title', workspacePath: 'C:/projects/one' });
+    const second = addIssue({ title: 'Second workspace', workspacePath: 'C:/projects/two' });
+    mountMobileShell();
+    nav.pushScreen(createFileViewerScreen('logo.png', { openDir() {} }), 'files');
+    click('button[data-tab="issues"]');
+    click(`button[data-issue-id="${first.id}"]`);
+    const staleHistory = win.history.state;
+    const firstScreen = nav.getTopScreen()!;
+    const staleComment = firstScreen.el.querySelector('form')!;
+    staleComment.querySelector('textarea')!.value = 'From the old workspace';
+    click('[aria-label="Edit title"]');
+    const editForm = document.querySelector<HTMLFormElement>('.m-sheet .m-prompt')!;
+    editForm.querySelector('input')!.value = 'Stale edit';
+    click('button[data-tab="chats"]');
+    switchTo('c:/projects/ONE/');
+    click('button[data-tab="issues"]');
+    assert.equal(nav.getTopScreen(), firstScreen, 'equivalent path keeps the open screen');
+
+    // Resolve the pending editor, then publish the workspace change before its continuation runs.
+    editForm.dispatchEvent(new Event('submit', { cancelable: true }));
+    click('button[data-tab="chats"]');
+    switchTo('C:/projects/two');
+    await Promise.resolve();
+    assert.equal(nav.getActiveTab(), 'chats');
+    click('button[data-tab="issues"]');
+    assert.equal(nav.getTopScreen()?.key, 'issues');
+    assert.equal(document.querySelector(`[data-issue-id="${first.id}"]`), null);
+    assert.ok(document.querySelector(`[data-issue-id="${second.id}"]`));
+    staleComment.dispatchEvent(new Event('submit', { cancelable: true }));
+    assert.equal(findIssueById(first.id)?.title, 'Original title');
+    assert.equal(findIssueById(first.id)?.comments?.length ?? 0, 0);
+    click('button[data-tab="files"]');
+    assert.equal(nav.getTopScreen()?.key, 'dir:.');
+    assert.equal(document.querySelector('[data-screen="file:logo.png"]'), null);
+
+    click('button[data-tab="issues"]');
+    click(`button[data-issue-id="${second.id}"]`);
+    win.dispatchEvent(new win.PopStateEvent('popstate', { state: staleHistory }));
+    assert.equal(nav.getTopScreen()?.key, `issue:${second.id}`, 'old history cannot pop a new detail');
+    const form = nav.getTopScreen()!.el.querySelector('form')!;
+    form.querySelector('textarea')!.value = 'Current workspace';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    assert.equal(findIssueById(second.id)?.comments?.[0]?.body, 'Current workspace');
+  } finally {
+    nav.resetWorkspaceScreens();
+    setIssuesStateForTests(null);
+  }
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

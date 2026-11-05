@@ -22,7 +22,7 @@ import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import type { IssueCard } from '../types';
 import { attachPullToRefresh, fab, screenHeader, searchField, segmented } from './chrome';
 import { el, emptyState, icon, shortTime } from './dom';
-import type { MobileScreen } from './nav';
+import { getMobileWorkspaceScope, type MobileScreen } from './nav';
 import { openSheet, pickFromSheet } from './sheet';
 
 type IssueFilter = 'open' | 'active' | 'triage' | 'closed' | 'all';
@@ -124,6 +124,7 @@ function buildRow(issue: IssueCard, open: (id: string) => void): HTMLElement {
 
 /** New-issue sheet: title, type, priority and an optional description. */
 export function openNewIssueSheet(onCreated: (issueId: string) => void): void {
+  const scope = getMobileWorkspaceScope();
   const taxonomy = getIssuesTaxonomySync();
   let type = defaultIssueTypeId(taxonomy);
   let priority = defaultIssuePriorityId(taxonomy);
@@ -166,7 +167,7 @@ export function openNewIssueSheet(onCreated: (issueId: string) => void): void {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const text = title.value.trim();
-    if (!text) return;
+    if (!text || scope !== getMobileWorkspaceScope()) return;
     try {
       const card = addIssue({ title: text, description: description.value, type, priority, workspacePath: getWorkspacePath() });
       scheduleSaveIssues();

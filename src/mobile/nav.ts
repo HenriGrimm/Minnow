@@ -28,6 +28,18 @@ interface TabStack {
 }
 
 const HISTORY_MARK = 'minnowMobile';
+const HISTORY_SCOPE = 'minnowMobileScope';
+let workspaceScope = Date.now();
+
+export function getMobileWorkspaceScope(): number {
+  return workspaceScope;
+}
+
+function markRootHistory(): void {
+  try {
+    history.replaceState({ ...history.state, [HISTORY_MARK]: 1, [HISTORY_SCOPE]: workspaceScope }, '');
+  } catch {}
+}
 
 const stacks = new Map<MobileTabId, TabStack>();
 const tabListeners = new Set<(tab: MobileTabId) => void>();
@@ -53,12 +65,12 @@ function animateIn(screen: MobileScreen): void {
   });
 }
 
-function onPopState(): void {
+function onPopState(event: PopStateEvent): void {
   if (skipPopstate > 0) {
     skipPopstate -= 1;
     return;
   }
-  popScreen({ fromHistory: true });
+  if (event.state?.[HISTORY_SCOPE] === workspaceScope) popScreen({ fromHistory: true });
 }
 
 /** Register a tab's host and root screen. */
@@ -68,8 +80,24 @@ export function registerTab(tab: MobileTabId, host: HTMLElement, root: MobileScr
   setScreenVisible(root, tab === activeTab);
   if (!installed) {
     installed = true;
+    markRootHistory();
     window.addEventListener('popstate', onPopState);
   }
+}
+
+/** Retire every screen, including hidden tabs, without traversing the previous workspace's history. */
+export function resetWorkspaceScreens(): void {
+  workspaceScope++;
+  skipPopstate = 0;
+  markRootHistory();
+  top(activeTab)?.onHide?.();
+  for (const stack of stacks.values()) {
+    for (const screen of stack.screens.reverse()) {
+      screen.dispose?.();
+      screen.el.remove();
+    }
+  }
+  stacks.clear();
 }
 
 export function getActiveTab(): MobileTabId {
@@ -127,7 +155,9 @@ export function pushScreen(screen: MobileScreen, tab: MobileTabId = activeTab): 
   animateIn(screen);
   screen.onShow?.();
   try {
-    history.pushState({ [HISTORY_MARK]: stack.screens.length }, '');
+    // A back gesture at the workspace root may have landed on an obsolete entry.
+    if (history.state?.[HISTORY_SCOPE] !== workspaceScope) markRootHistory();
+    history.pushState({ ...history.state, [HISTORY_MARK]: stack.screens.length, [HISTORY_SCOPE]: workspaceScope }, '');
   } catch {}
 }
 
@@ -144,7 +174,7 @@ export function popScreen(options: { fromHistory?: boolean } = {}): void {
     setScreenVisible(current, true);
     current.onShow?.();
   }
-  if (!options.fromHistory && (history.state as Record<string, unknown> | null)?.[HISTORY_MARK]) {
+  if (!options.fromHistory && history.state?.[HISTORY_SCOPE] === workspaceScope && history.state[HISTORY_MARK] > 1) {
     skipPopstate += 1;
     history.back();
   }

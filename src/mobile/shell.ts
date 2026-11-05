@@ -9,8 +9,8 @@ import { subscribeChatStreamEnd } from '../chat/streaming-state';
 import { listIssues } from '../state/issues-store';
 import { subscribeIssuesChanges } from '../state/issues-events';
 import { sessionState } from '../state/sessions';
-import { getWorkspacePath } from '../state/workspace';
-import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
+import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
+import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { NotificationRecord } from '../notifications/types';
 import { createBoardScreen } from './board';
 import { createBoardsScreen } from './boards';
@@ -22,8 +22,8 @@ import { createDirScreen } from './files';
 import { createIssueScreen } from './issue';
 import { createIssuesScreen } from './issues';
 import { setMobileShellPreference } from './mode';
-import { getActiveTab, onTabChange, popToRoot, pushScreen, registerTab, selectTab, type MobileTabId } from './nav';
-import { openSheet, pickFromSheet } from './sheet';
+import { getActiveTab, getMobileWorkspaceScope, getTopScreen, onTabChange, popToRoot, pushScreen, registerTab, resetWorkspaceScreens, selectTab, type MobileTabId } from './nav';
+import { closeMobileSheets, openSheet, pickFromSheet } from './sheet';
 
 const TABS: { id: MobileTabId; label: string; glyph: string; glyphActive: string }[] = [
   { id: 'chats', label: 'Chats', glyph: 'fi-rr-comment', glyphActive: 'fi-sr-comment' },
@@ -43,11 +43,14 @@ function openChat(chatId: string): void {
 }
 
 async function newChat(): Promise<void> {
+  const scope = getMobileWorkspaceScope();
   const { createChatWithMode } = await import('../ui/sidebar');
   const { normalizeModeId } = await import('../chat/modes/registry');
   const { getActiveChat } = await import('../state/sessions');
+  if (scope !== getMobileWorkspaceScope()) return;
   const lastMode = normalizeModeId(getActiveChat()?.modeId);
   const result = await createChatWithMode({ modeId: lastMode === 'orchestrate' ? 'general' : lastMode, forceNewChat: true });
+  if (scope !== getMobileWorkspaceScope()) return;
   if (!result.ok || !result.chatId) {
     const { showToast } = await import('../ui/toast');
     showToast(result.error ?? 'Could not start a chat', 'error');
@@ -231,10 +234,25 @@ export function mountMobileShell(): void {
   const shell = el('div', { className: 'm-app', attrs: { id: 'mobileShell' } }, stage, tabBar.el);
   document.body.append(shell);
 
-  registerTab('chats', hosts.get('chats')!, createChatsScreen({ openChat, newChat: () => void newChat(), openSettings }));
-  registerTab('boards', hosts.get('boards')!, createBoardsScreen({ openBoard }));
-  registerTab('issues', hosts.get('issues')!, createIssuesScreen({ openIssue }));
-  registerTab('files', hosts.get('files')!, createDirScreen('.', { openDir, openFile }));
+  function mountRoots(): void {
+    registerTab('chats', hosts.get('chats')!, createChatsScreen({ openChat, newChat: () => void newChat(), openSettings }));
+    registerTab('boards', hosts.get('boards')!, createBoardsScreen({ openBoard }));
+    registerTab('issues', hosts.get('issues')!, createIssuesScreen({ openIssue }));
+    registerTab('files', hosts.get('files')!, createDirScreen('.', { openDir, openFile }));
+  }
+
+  let workspace = getWorkspacePath();
+  subscribeWorkspace(() => {
+    const next = getWorkspacePath();
+    if (workspace === next || workspacePathsEqual(workspace, next)) return;
+    workspace = next;
+    resetWorkspaceScreens();
+    closeMobileSheets();
+    mountRoots();
+    getTopScreen()?.onShow?.();
+    syncBadges();
+  });
+  mountRoots();
 
   const initial = restoredTab();
   if (initial !== 'chats') selectTab(initial);

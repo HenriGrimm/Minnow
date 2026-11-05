@@ -1,6 +1,7 @@
 /** Bottom sheets: the phone app's menus, pickers and detail panels. */
 
 import { el, haptic, icon } from './dom';
+import { getMobileWorkspaceScope } from './nav';
 
 export interface SheetHandle {
   el: HTMLElement;
@@ -15,7 +16,11 @@ export interface SheetOptions {
   onClose?: () => void;
 }
 
-let openCount = 0;
+const openSheets = new Set<() => void>();
+
+export function closeMobileSheets(): void {
+  for (const close of openSheets) close();
+}
 
 /** Open a modal bottom sheet. Swipe down on the handle, tap the scrim or Escape to close. */
 export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOptions = {}): SheetHandle {
@@ -48,8 +53,9 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   const close = () => {
     if (closed) return;
     closed = true;
-    openCount = Math.max(0, openCount - 1);
-    document.documentElement.classList.toggle('m-sheet-open', openCount > 0);
+    openSheets.delete(close);
+    root.inert = true;
+    document.documentElement.classList.toggle('m-sheet-open', openSheets.size > 0);
     document.removeEventListener('keydown', onKey, true);
     root.classList.remove('is-open');
     const finish = () => {
@@ -104,10 +110,11 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   });
 
   (document.getElementById('mobileShell') ?? document.body).append(root);
-  openCount += 1;
+  openSheets.add(close);
   document.documentElement.classList.add('m-sheet-open');
-  requestAnimationFrame(() => root.classList.add('is-open'));
+  requestAnimationFrame(() => { if (!closed) root.classList.add('is-open'); });
   queueMicrotask(() => {
+    if (closed) return;
     // Only text sheets focus a field: focusing one in a list would raise the keyboard.
     const focusTarget =
       body.querySelector<HTMLElement>('[autofocus]') ??
@@ -191,6 +198,7 @@ export interface ActionItem {
 
 /** Action menu ("…" buttons). */
 export function openActionSheet(title: string, actions: ActionItem[]): void {
+  const scope = getMobileWorkspaceScope();
   void pickFromSheet(
     title,
     actions.map((action, index) => ({
@@ -201,7 +209,7 @@ export function openActionSheet(title: string, actions: ActionItem[]): void {
       disabled: action.disabled,
     })),
   ).then((index) => {
-    if (index == null) return;
+    if (index == null || scope !== getMobileWorkspaceScope()) return;
     void actions[index]?.run();
   });
 }

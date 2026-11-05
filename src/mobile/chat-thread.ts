@@ -83,6 +83,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
 
   let handle: ReturnType<typeof mountSharedChatHost> | null = null;
   let visible = false;
+  let disposed = false;
 
   function syncMeta(): void {
     const chat = findChat(chatId);
@@ -141,6 +142,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
     const next = await pickMode(chat.modeId);
     if (!next || next === chat.modeId) return;
     const { setChatMode } = await import('../ui/mode-selector');
+    if (disposed) return;
     const result = setChatMode(next, chat);
     if (!result.ok) {
       const { showToast } = await import('../ui/toast');
@@ -159,7 +161,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
         glyph: 'fi-rr-pencil',
         run: async () => {
           const name = await promptSheet({ title: 'Rename chat', value: titleOf(chat), confirmLabel: 'Rename' });
-          if (!name) return;
+          if (!name || disposed) return;
           renameChatTitle(chatId, name);
           const { renderSidebar } = await import('../ui/sidebar');
           renderSidebar();
@@ -170,6 +172,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
         label: pinned ? 'Unpin' : 'Pin to top',
         glyph: 'fi-rr-thumbtack',
         run: async () => {
+          if (disposed) return;
           setChatPinned(chat, !pinned);
           scheduleSaveSessions();
           const { renderSidebar } = await import('../ui/sidebar');
@@ -181,7 +184,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
         glyph: 'fi-rr-microchip',
         run: async () => {
           const { openModelSheet } = await import('./models');
-          await openModelSheet();
+          if (!disposed) await openModelSheet();
         },
       },
       { label: 'Browse files', glyph: 'fi-rr-folder', run: () => deps.openFiles() },
@@ -191,8 +194,9 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
         danger: true,
         run: async () => {
           const { deleteChat } = await import('../ui/sidebar');
-          await deleteChat(chatId);
-          if (!findChat(chatId)) popScreen();
+          if (disposed) return;
+          await deleteChat(chatId, undefined, () => !disposed);
+          if (!disposed && !findChat(chatId)) popScreen();
         },
       },
     ]);
@@ -212,6 +216,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
   }));
   unsubs.push(subscribeChatStreamEnd(() => syncMeta()));
   void import('../ui/sidebar').then(({ subscribeSidebarRender }) => {
+    if (disposed) return;
     unsubs.push(subscribeSidebarRender(() => {
       if (visible) scheduleMeta();
     }));
@@ -229,6 +234,7 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
       visible = false;
     },
     dispose() {
+      disposed = true;
       for (const unsub of unsubs) unsub();
       window.clearTimeout(metaTimer);
       handle?.dispose();

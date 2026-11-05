@@ -2119,7 +2119,7 @@ function paintActiveChatInForegroundShell(chat: Chat): void {
 
 // ── Switch ───────────────────────────────────────────────────────────────────
 
-export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
+export async function deleteChat(chatId: string, evt?: Event, isCurrent: () => boolean = () => true): Promise<void> {
   if (evt) evt.stopPropagation();
   if (isChatStreaming(chatId)) {
     showToast('Finish the current reply first');
@@ -2147,6 +2147,7 @@ export async function deleteChat(chatId: string, evt?: Event): Promise<void> {
     return;
   }
 
+  if (!isCurrent()) return;
   const { modelId } = readDefaultModelBinding();
   try { onChatRemoved(await removeChatByIdAsync(chatId, modelId)); }
   catch (error) { showToast(error instanceof Error ? error.message : 'Could not delete this conversation.', 'error'); }

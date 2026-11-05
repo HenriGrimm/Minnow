@@ -178,6 +178,7 @@ export function createFileViewerScreen(path: string, deps: { openDir(path: strin
     }
     try {
       const { text, excerpt, size } = await loadText(path);
+      if (disposed) return;
       if (text.includes('\u0000')) {
         wrapBtn.hidden = true;
         body.replaceChildren(
@@ -255,6 +256,7 @@ export function createFileViewerScreen(path: string, deps: { openDir(path: strin
   }
 
   let loaded = false;
+  let disposed = false;
   return {
     key: `file:${path}`,
     el: root,
@@ -262,6 +264,9 @@ export function createFileViewerScreen(path: string, deps: { openDir(path: strin
       if (loaded) return;
       loaded = true;
       void load();
+    },
+    dispose() {
+      disposed = true;
     },
   };
 }

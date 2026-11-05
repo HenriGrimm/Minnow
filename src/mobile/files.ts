@@ -190,15 +190,7 @@ export function createDirScreen(path: string, deps: FilesDeps): MobileScreen {
     await load();
   });
 
-  const unsubWorkspace = isRoot
-    ? subscribeWorkspace(() => {
-        index = null;
-        header.setSubtitle(getWorkspaceLabel());
-        list.replaceChildren();
-        void load();
-        renderRecents();
-      })
-    : () => {};
+  const unsubWorkspace = isRoot ? subscribeWorkspace(() => header.setSubtitle(getWorkspaceLabel())) : () => {};
 
   let loaded = false;
   return {
