@@ -452,6 +452,7 @@ export async function cancelPendingRestore(home) {
   const resolvedHome = path.resolve(home);
   const marker = readPendingRestore(resolvedHome);
   if (!marker) return { cancelled: false };
+  if (marker.moves?.length) throw new BackupError('Restart to finish interrupted recovery before cancelling.', 'restore_pending');
   await fsp.rm(restorePendingPath(resolvedHome), { force: true });
   if (marker.kind !== 'rollback') {
     await fsp.rm(restoreStagingDir(resolvedHome, marker.id), { recursive: true, force: true });
@@ -468,6 +469,7 @@ export async function retryPendingRestore(home) {
   const resolvedHome = path.resolve(home);
   const marker = readPendingRestore(resolvedHome);
   if (!marker) return { retried: false };
+  if (marker.moves?.length) throw new BackupError('Restart to finish interrupted recovery.', 'restore_pending');
   const next = { ...marker, attempts: 0, failed: false };
   await fsp.writeFile(restorePendingPath(resolvedHome), `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   return { retried: true };
@@ -520,6 +522,7 @@ async function directorySize(dir) {
 export async function discardPreRestoreData(home) {
   const resolvedHome = path.resolve(home);
   const pending = readPendingRestore(resolvedHome);
+  if (pending?.moves?.length) throw new BackupError('Restart to finish interrupted recovery.', 'restore_pending');
   if (pending?.kind === 'rollback') {
     throw new BackupError('An undo is waiting for a restart. Cancel it first.', 'restore_pending');
   }

@@ -1546,20 +1546,16 @@ async function resolveLoadUrl(): Promise<string> {
   return inProcessServer.url;
 }
 
-/** Never blocks startup: a restore that cannot be applied is retried next launch. */
+/** Recover a staged restore before any store opens a potentially mixed home. */
 async function applyStagedRestoreBeforeBoot(): Promise<void> {
-  try {
-    const { applyPendingRestore } = await importServerModule<{
-      applyPendingRestore: () => { applied: boolean; kind?: string; error?: string };
-    }>('backup/restore-apply.js');
-    const result = applyPendingRestore();
-    if (result.applied) {
-      console.log(`[backup] ${result.kind === 'rollback' ? 'Restore undone' : 'Restore applied'}.`);
-    } else if (result.error) {
-      console.warn(`[backup] Pending ${result.kind ?? 'restore'} could not be applied: ${result.error}`);
-    }
-  } catch (err) {
-    console.warn('[backup] Could not check for a pending restore:', err);
+  const { applyPendingRestore } = await importServerModule<{
+    applyPendingRestore: () => { applied: boolean; kind?: string; error?: string };
+  }>('backup/restore-apply.js');
+  const result = applyPendingRestore();
+  if (result.applied) {
+    console.log(`[backup] ${result.kind === 'rollback' ? 'Restore undone' : 'Restore applied'}.`);
+  } else if (result.error) {
+    console.warn(`[backup] Pending ${result.kind ?? 'restore'} could not be applied: ${result.error}`);
   }
 }
 

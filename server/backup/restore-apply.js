@@ -82,7 +82,7 @@ function readJsonFile(filePath) {
  */
 function writeJsonFile(filePath, value) {
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flush: true });
   fs.renameSync(tmp, filePath);
 }
 
@@ -122,37 +122,50 @@ function renameWithRetry(from, to) {
   }
 }
 
-/** Renames performed so far, newest last, so a failure can be unwound. */
+/** A persisted rename intent is resolved from its endpoints after a process crash. */
 class Journal {
-  constructor() {
-    /** @type {Array<{ from: string, to: string }>} */
-    this.moves = [];
+  constructor(home, marker) {
+    this.home = path.resolve(home);
+    this.marker = marker;
+    this.moves = marker.moves ??= [];
   }
 
-  /**
-   * @param {string} from
-   * @param {string} to
-   */
+  persist() {
+    writeJsonFile(restorePendingPath(this.home), this.marker);
+  }
+
+  resolve(relative) {
+    const target = path.resolve(this.home, relative);
+    const rel = path.relative(this.home, target);
+    if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+      throw new Error('Invalid path in restore journal');
+    }
+    return target;
+  }
+
   move(from, to) {
+    if (exists(to)) throw new Error('Restore destination already exists: ' + to);
     fs.mkdirSync(path.dirname(to), { recursive: true });
+    this.moves.push([path.relative(this.home, from), path.relative(this.home, to)]);
+    this.persist();
     renameWithRetry(from, to);
-    this.moves.push({ from, to });
   }
 
-  /** Put everything back. Best effort: reports what could not be moved. */
   unwind() {
-    /** @type {string[]} */
-    const stuck = [];
-    for (const { from, to } of this.moves.reverse()) {
-      try {
+    while (this.moves.length) {
+      const [source, destination] = this.moves.at(-1);
+      const from = this.resolve(source);
+      const to = this.resolve(destination);
+      const atSource = exists(from);
+      const atDestination = exists(to);
+      if (atSource === atDestination) throw new Error('Cannot safely reconcile restore move: ' + source);
+      if (atDestination) {
         fs.mkdirSync(path.dirname(from), { recursive: true });
         renameWithRetry(to, from);
-      } catch {
-        stuck.push(to);
       }
+      this.moves.pop();
+      this.persist();
     }
-    this.moves = [];
-    return stuck;
   }
 }
 
@@ -161,8 +174,9 @@ function exists(target) {
   try {
     fs.lstatSync(target);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+    throw error;
   }
 }
 
@@ -346,7 +360,7 @@ function sameFileContent(a, b) {
  * @param {string} home
  * @param {Record<string, any>} marker
  */
-function applyRestore(home, marker) {
+function applyRestore(home, marker, journal) {
   const stagedTree = path.join(restoreStagingDir(home, marker.id), 'tree');
   if (!exists(stagedTree)) {
     throw new Error('The staged restore is missing. Start the restore again from the backup file.');
@@ -362,53 +376,41 @@ function applyRestore(home, marker) {
 
   refillStagedSecrets(home, stagedTree, marker.redacted);
 
-  const journal = new Journal();
   /** @type {string[]} */
   const setAside = [];
-  try {
-    for (const root of roots) {
-      swapRoot({
-        journal,
-        home,
-        root,
-        incomingTree: stagedTree,
-        outgoingTree: parked,
-        carryCredentials: !includeCredentials,
-      });
-    }
+  for (const root of roots) {
+    swapRoot({
+      journal,
+      home,
+      root,
+      incomingTree: stagedTree,
+      outgoingTree: parked,
+      carryCredentials: !includeCredentials,
+    });
+  }
 
-    // Credential files whose own root was not part of this restore.
-    for (const rel of looseFiles) {
-      const parts = String(rel).split('/');
-      const staged = path.join(stagedTree, ...parts);
-      if (!exists(staged)) continue;
-      const live = path.join(home, ...parts);
-      if (exists(live)) journal.move(live, path.join(parked, ...parts));
-      journal.move(staged, live);
-    }
+  // Credential files whose own root was not part of this restore.
+  for (const rel of looseFiles) {
+    const parts = String(rel).split('/');
+    const staged = path.join(stagedTree, ...parts);
+    if (!exists(staged)) continue;
+    const live = path.join(home, ...parts);
+    if (exists(live)) journal.move(live, path.join(parked, ...parts));
+    journal.move(staged, live);
+  }
 
-    // A new key cannot open what the old key sealed. Park those files instead of
-    // leaving stores that fail on every read.
-    if (keyChanges) {
-      const stranded = findStrandedCredentialFiles(
-        home,
-        roots.map((root) => root.path),
-        looseFiles,
-      );
-      for (const rel of stranded) {
-        journal.move(path.join(home, ...rel.split('/')), path.join(parked, ...rel.split('/')));
-        setAside.push(rel);
-      }
+  // A new key cannot open what the old key sealed. Park those files instead of
+  // leaving stores that fail on every read.
+  if (keyChanges) {
+    const stranded = findStrandedCredentialFiles(
+      home,
+      roots.map((root) => root.path),
+      looseFiles,
+    );
+    for (const rel of stranded) {
+      journal.move(path.join(home, ...rel.split('/')), path.join(parked, ...rel.split('/')));
+      setAside.push(rel);
     }
-  } catch (err) {
-    const stuck = journal.unwind();
-    if (stuck.length) {
-      const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `${detail} Some folders could not be moved back; they are in ${parked}.`,
-      );
-    }
-    throw err;
   }
 
   return { parked, setAside, keyChanged: keyChanges };
@@ -418,53 +420,46 @@ function applyRestore(home, marker) {
  * @param {string} home
  * @param {Record<string, any>} last
  */
-function applyRollback(home, last) {
+function applyRollback(home, last, journal) {
   const parked = preRestoreDir(home, last.id);
   if (!exists(parked)) {
     throw new Error('The data from before the restore is no longer on disk, so it cannot be put back.');
   }
   const undone = path.join(parked, UNDONE_DIRNAME);
   const roots = Array.isArray(last.roots) ? last.roots : [];
-  const journal = new Journal();
-  try {
-    for (const root of [...roots].reverse()) {
-      const parts = root.path.split('/');
-      const parkedRoot = path.join(parked, ...parts);
-      const live = path.join(home, ...parts);
-      if (!exists(parkedRoot)) {
-        // Nothing was here before the restore: take the restored copy back out.
-        if (exists(live) && last.createdRoots?.includes(root.path)) {
-          journal.move(live, path.join(undone, ...parts));
-        }
-        continue;
+  for (const root of [...roots].reverse()) {
+    const parts = root.path.split('/');
+    const parkedRoot = path.join(parked, ...parts);
+    const live = path.join(home, ...parts);
+    if (!exists(parkedRoot)) {
+      // Nothing was here before the restore: take the restored copy back out.
+      if (exists(live) && last.createdRoots?.includes(root.path)) {
+        journal.move(live, path.join(undone, ...parts));
       }
-      swapRoot({
-        journal,
-        home,
-        root,
-        incomingTree: parked,
-        outgoingTree: undone,
-        carryCredentials: last.includeCredentials !== true,
-      });
+      continue;
     }
-    for (const rel of Array.isArray(last.looseFiles) ? last.looseFiles : []) {
-      const parts = String(rel).split('/');
-      const live = path.join(home, ...parts);
-      const before = path.join(parked, ...parts);
-      if (exists(live)) journal.move(live, path.join(undone, ...parts));
-      if (exists(before)) journal.move(before, live);
-    }
-    for (const rel of Array.isArray(last.setAside) ? last.setAside : []) {
-      const parts = String(rel).split('/');
-      const before = path.join(parked, ...parts);
-      const live = path.join(home, ...parts);
-      if (exists(before) && !exists(live)) journal.move(before, live);
-    }
-  } catch (err) {
-    journal.unwind();
-    throw err;
+    swapRoot({
+      journal,
+      home,
+      root,
+      incomingTree: parked,
+      outgoingTree: undone,
+      carryCredentials: last.includeCredentials !== true,
+    });
   }
-  fs.rmSync(parked, { recursive: true, force: true });
+  for (const rel of Array.isArray(last.looseFiles) ? last.looseFiles : []) {
+    const parts = String(rel).split('/');
+    const live = path.join(home, ...parts);
+    const before = path.join(parked, ...parts);
+    if (exists(live)) journal.move(live, path.join(undone, ...parts));
+    if (exists(before)) journal.move(before, live);
+  }
+  for (const rel of Array.isArray(last.setAside) ? last.setAside : []) {
+    const parts = String(rel).split('/');
+    const before = path.join(parked, ...parts);
+    const live = path.join(home, ...parts);
+    if (exists(before) && !exists(live)) journal.move(before, live);
+  }
 }
 
 /**
@@ -501,8 +496,8 @@ function removeIfEmpty(dir) {
 
 /**
  * Apply the pending restore or rollback, if there is one. Call before any
- * other code reads the home. Never throws: a failure leaves the home as it was
- * and records the error on the marker for Settings to show.
+ * other code reads the home. Ordinary failures are unwound and recorded. If a
+ * consistent home cannot be recovered, throw before any store can open it.
  *
  * @param {{ home?: string, now?: () => Date }} [options]
  * @returns {{ applied: boolean, kind?: 'restore' | 'rollback', id?: string, error?: string }}
@@ -510,29 +505,35 @@ function removeIfEmpty(dir) {
 export function applyPendingRestore(options = {}) {
   const home = options.home ?? getMinnowHome();
   const now = options.now ?? (() => new Date());
+  if (!exists(restorePendingPath(home))) return { applied: false };
   const marker = readPendingRestore(home);
-  if (!marker || marker.failed === true) return { applied: false };
-
+  if (!marker || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(marker.id)) {
+    throw new Error('Cannot read pending restore marker. Startup paused to preserve your data.');
+  }
   const kind = marker.kind === 'rollback' ? 'rollback' : 'restore';
+  const journal = new Journal(home, marker);
+  const last = readLastRestore(home);
+  const committed = last?.id === marker.id && (kind === 'restore' ? !last.rolledBackAt : !!last.rolledBackAt);
+  if (!committed) journal.unwind();
+  if (!committed && marker.failed === true) return { applied: false };
   try {
-    if (kind === 'rollback') {
-      const last = readLastRestore(home);
+    if (!committed && kind === 'rollback') {
       if (!last || last.id !== marker.id) {
         throw new Error('There is no completed restore to roll back.');
       }
-      applyRollback(home, last);
+      applyRollback(home, last, journal);
       writeJsonFile(restoreLastPath(home), {
         ...last,
         rolledBackAt: now().toISOString(),
         preRestoreDir: null,
       });
-    } else {
+    } else if (!committed) {
       const liveBefore = new Set(
         (Array.isArray(marker.roots) ? marker.roots : [])
           .filter((root) => exists(path.join(home, ...root.path.split('/'))))
           .map((root) => root.path),
       );
-      const result = applyRestore(home, marker);
+      const result = applyRestore(home, marker, journal);
       writeJsonFile(restoreLastPath(home), {
         version: 1,
         id: marker.id,
@@ -550,14 +551,9 @@ export function applyPendingRestore(options = {}) {
         preRestoreDir: exists(result.parked) ? result.parked : null,
         rolledBackAt: null,
       });
-      fs.rmSync(restoreStagingDir(home, marker.id), { recursive: true, force: true });
-      removeIfEmpty(path.join(home, RESTORE_STAGING_DIRNAME));
-      removeSupersededPreRestoreData(home, marker.id);
     }
-    fs.rmSync(restorePendingPath(home), { force: true });
-    removeIfEmpty(path.join(home, PRE_RESTORE_DIRNAME));
-    return { applied: true, kind, id: marker.id };
   } catch (err) {
+    journal.unwind();
     const error = err instanceof Error ? err.message : String(err);
     const attempts = (Number(marker.attempts) || 0) + 1;
     try {
@@ -572,4 +568,16 @@ export function applyPendingRestore(options = {}) {
     }
     return { applied: false, kind, id: marker.id, error };
   }
+
+  // restore-last.json is the commit record. Cleanup can restart independently.
+  if (kind === 'rollback') {
+    fs.rmSync(preRestoreDir(home, marker.id), { recursive: true, force: true });
+  } else {
+    fs.rmSync(restoreStagingDir(home, marker.id), { recursive: true, force: true });
+    removeIfEmpty(path.join(home, RESTORE_STAGING_DIRNAME));
+    removeSupersededPreRestoreData(home, marker.id);
+  }
+  fs.rmSync(restorePendingPath(home), { force: true });
+  removeIfEmpty(path.join(home, PRE_RESTORE_DIRNAME));
+  return { applied: true, kind, id: marker.id };
 }
