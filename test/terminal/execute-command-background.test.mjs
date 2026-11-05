@@ -103,6 +103,25 @@ describe('execute_command background lifecycle', () => {
     assert.equal(after.finished, true);
   });
 
+  it('applies the required shell sandbox to both agent background entry points', async () => {
+    for (const tool of ['execute_command', 'start_background_command']) {
+      const { result } = await executeServerTool(tool, {
+        command: 'echo sandbox-check', background: true, cwd: '.', allow_unsandboxed: true,
+      }, { workspaceRoot: repoRoot, shellSandboxMode: 'require' });
+      if (result.startsWith('Error:')) {
+        assert.match(result, /shell sandbox is required but unavailable/i);
+      } else {
+        const started = JSON.parse(result);
+        try {
+          assert.ok(started.pid);
+          assert.equal(getRun(started.runId)?.sandbox?.applied, true);
+        } finally {
+          await stopActiveRun(started.runId);
+        }
+      }
+    }
+  });
+
   it('honors a stop requested while a foreground command is still starting', async () => {
     const started = await createRun({
       command: longRunningCommand(),

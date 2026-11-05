@@ -259,6 +259,7 @@ export function applyAgentShellSandbox(spawnTarget, params) {
         reason: SANDBOX_UNAVAILABLE_REASON.NATIVE_WIN_SHELL,
         detail: describeSandboxUnavailable(SANDBOX_UNAVAILABLE_REASON.NATIVE_WIN_SHELL),
         mode,
+        ...(mode === 'require' ? { blocked: true } : {}),
       },
     };
   }

@@ -434,7 +434,7 @@ export async function createRun({
  * @param {'off'|'prefer'|'require'} [params.shellSandboxMode]
  * @param {boolean} [params.allowUnsandboxed]
  * @param {string} [params.worktreeRoot]
- * @returns {Promise<{ runId: string, startedAt: number, logPath: string, pid: number | null }>}
+ * @returns {Promise<{ runId: string, startedAt: number, logPath: string, pid: number | null, error?: string }>}
  */
 export async function createBackgroundRun({
   command,
@@ -531,7 +531,7 @@ export async function createBackgroundRun({
     emit(state, { type: 'error', message });
     await appendLogFile(logPath, `\n${message}\n`);
     await finishRun(runId);
-    return { runId, startedAt, logPath: relLog, pid: null };
+    return { runId, startedAt, logPath: relLog, pid: null, error: message };
   }
 
   const execCommand = spawnTarget.command;

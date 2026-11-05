@@ -850,11 +850,12 @@ export async function toolStartBackgroundCommand(args) {
       shell: false,
       source: 'agent',
       chatId,
-      sandbox: false,
+      allowUnsandboxed: args?.allow_unsandboxed === true,
       logSubdir: 'dev-server',
       shellProfile,
       ...(spawnEnv ? { env: spawnEnv } : {}),
     });
+    if (started.error) return started.error;
 
     const root = path.resolve(getEffectiveWorkspaceRoot());
     const startup = await readStartupGuide(root);

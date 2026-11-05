@@ -1162,6 +1162,7 @@ async function toolExecuteCommand(args) {
         worktreeRoot: worktreeRoot || undefined,
         ...(spawnEnv ? { env: spawnEnv } : {}),
       });
+      if (started.error) return started.error;
       const blockUntilMs = clampBlockUntilMs(args?.block_until_ms);
       const rawOutput =
         blockUntilMs > 0

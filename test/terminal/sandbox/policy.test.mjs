@@ -338,5 +338,9 @@ describe('shouldApplyShellSandbox / applyAgentShellSandbox', () => {
     assert.equal(out.sandbox.needsEscalation, undefined);
     assert.equal(out.sandbox.blocked, undefined);
     assert.equal(out.sandbox.reason, SANDBOX_UNAVAILABLE_REASON.NATIVE_WIN_SHELL);
+    assert.equal(applyAgentShellSandbox(spawn, {
+      source: 'agent', mode: 'require', cwd: FAKE_WORKSPACE, workspaceRoot: FAKE_WORKSPACE,
+      platform: 'win32', runtime: 'git-bash', allowUnsandboxed: true,
+    }).sandbox.blocked, true);
   });
 });
