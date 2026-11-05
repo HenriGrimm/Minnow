@@ -321,6 +321,13 @@ export async function commitRename(
   return movePath(path, destination, 'rename');
 }
 
+function hasConflictingNames(paths: string[]): boolean {
+  const names = paths.map(basename);
+  if (new Set(names).size === names.length) return false;
+  setStatus('err', 'Two selected items have the same name. Rename one before moving or copying them here.');
+  return true;
+}
+
 /** Move or rename with move_file. */
 export async function movePath(
   source: string,
@@ -331,6 +338,7 @@ export async function movePath(
   const result = await runFileTreeTool('move_file', {
     source: normalizeTreePath(source),
     destination: normalizeTreePath(destination),
+    no_replace: true,
   });
   if (!result.ok) return false;
   await finishMutation(source, destination, operation);
@@ -357,6 +365,7 @@ export async function movePaths(
     showToast('Nothing to move there');
     return 0;
   }
+  if (hasConflictingNames(targets.map(target => target.path))) return 0;
   if (targets.length === 1) {
     const only = targets[0]!;
     return (await movePath(only.path, only.destination, 'move')) ? 1 : 0;
@@ -369,6 +378,7 @@ export async function movePaths(
     const result = await runFileTreeTool('move_file', {
       source: target.path,
       destination: target.destination,
+      no_replace: true,
     });
     if (!result.ok) {
       failed += 1;
@@ -397,6 +407,7 @@ export async function pasteInto(targetDir: string): Promise<boolean> {
 
   const dir = normalizeTreePath(targetDir === '.' ? '.' : targetDir);
   const sources = dropNestedEntries(clip.paths.map((path) => ({ path: normalizeTreePath(path) })));
+  if (hasConflictingNames(sources.map(source => source.path))) return false;
   const toolName = clip.mode === 'cut' ? 'move_file' : 'copy_file';
   const op: FileTreeMutationOp = clip.mode === 'cut' ? 'move' : 'create';
   const verb = clip.mode === 'cut' ? 'Moving' : 'Copying';
@@ -409,7 +420,7 @@ export async function pasteInto(targetDir: string): Promise<boolean> {
       'spin',
       sources.length === 1 ? `${verb}…` : `${verb} ${done + failed + 1} of ${sources.length}…`,
     );
-    const result = await runFileTreeTool(toolName, { source, destination: dest });
+    const result = await runFileTreeTool(toolName, { source, destination: dest, no_replace: true });
     if (!result.ok) {
       failed += 1;
       continue;

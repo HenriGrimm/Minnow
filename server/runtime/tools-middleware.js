@@ -134,6 +134,7 @@ import { runFindFilesSearch, runGrepSearch } from '../tools/grep.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { getAppRoot } from '../workspace/root.js';
 import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
+import { moveExclusive } from '../workspace/move-exclusive.js';
 import { wrapServerToolResult, wrapUntrusted } from '../security/untrusted.js';
 import {
   getEffectiveWorkspaceRoot,
@@ -782,10 +783,11 @@ async function toolMoveFile(args) {
 
   await fs.mkdir(path.dirname(destination), { recursive: true });
   try {
-    await fs.rename(source, destination);
+    if (args?.no_replace === true) await moveExclusive(source, destination);
+    else await fs.rename(source, destination);
   } catch (err) {
     const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-    if (code === 'EXDEV') {
+    if (code === 'EXDEV' && args?.no_replace !== true) {
       try {
         await fs.cp(source, destination, { recursive: true, force: true });
         await fs.rm(source, { recursive: true, force: true });
@@ -820,7 +822,7 @@ async function toolCopyFile(args) {
   const destBefore = canDiff ? await readUtf8OrEmpty(destination) : '';
   const sourceContent = canDiff ? await fs.readFile(source, 'utf8') : '';
   await fs.mkdir(path.dirname(destination), { recursive: true });
-  await fs.copyFile(source, destination);
+  await fs.copyFile(source, destination, args?.no_replace === true ? fs.constants.COPYFILE_EXCL : 0);
   const message = `Copied ${toRelativePath(source)} -> ${destRel}`;
   return canDiff
     ? withCodeChange(message, codeChangeFromDiff(destBefore, sourceContent, destRel))

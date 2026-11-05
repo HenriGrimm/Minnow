@@ -44,3 +44,36 @@ test('delete refuses the active root and its aliases while allowing a child dire
   assert.doesNotMatch((await call('delete_path', { path: 'child' })).result, /^Error/);
   await assert.rejects(fs.stat(path.join(workspace, 'child')), { code: 'ENOENT' });
 });
+
+test('two simultaneous no-replace moves retain both input payloads', async () => {
+  const names = ['move-a.txt', 'move-b.txt'];
+  await Promise.all(names.map(name => fs.writeFile(path.join(workspace, name), name)));
+  const dest = 'combined.txt';
+  const results = await Promise.all(names.map(source => call('move_file', { source, destination: dest, no_replace: true })));
+  const winner = results.findIndex(r => !r.result.startsWith('Error:'));
+  assert.notEqual(winner, -1);
+  const losingName = names[1 - winner];
+  assert.match(results[1 - winner].result, /^Error:/);
+  assert.equal(await fs.readFile(path.join(workspace, dest), 'utf8'), names[winner]);
+  assert.equal(await fs.readFile(path.join(workspace, losingName), 'utf8'), losingName);
+  assert.match((await call('copy_file', { source: losingName, destination: dest, no_replace: true })).result, /^Error:/);
+  assert.equal(await fs.readFile(path.join(workspace, dest), 'utf8'), names[winner]);
+});
+
+test('exclusive directory move refuses an existing empty directory', async () => {
+  for (const name of ['from-dir', 'to-dir']) await fs.mkdir(path.join(workspace, name));
+  await fs.writeFile(path.join(workspace, 'from-dir', 'keep.txt'), 'data');
+  const move = destination => call('move_file', { source: 'from-dir', destination, no_replace: true });
+  assert.match((await move('to-dir')).result, /^Error:/);
+  assert.doesNotMatch((await move('new-dir')).result, /^Error:/);
+  assert.equal(await fs.readFile(path.join(workspace, 'new-dir', 'keep.txt'), 'utf8'), 'data');
+});
+
+test('exclusive cross-volume file move keeps its source if the copy fails', async t => {
+  const source = path.join(workspace, 'cross-device.txt');
+  await fs.writeFile(source, 'original');
+  t.mock.method(fs, 'link', async () => { throw Object.assign(new Error('Cross-device'), { code: 'EXDEV' }); });
+  t.mock.method(fs, 'copyFile', async () => { throw Object.assign(new Error('Disk full'), { code: 'ENOSPC' }); });
+  assert.match((await call('move_file', { source, destination: 'other-volume.txt', no_replace: true })).result, /Disk full/);
+  assert.equal(await fs.readFile(source, 'utf8'), 'original');
+});
