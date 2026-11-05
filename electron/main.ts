@@ -14,7 +14,7 @@ import {
   session,
   shell,
 } from 'electron';
-import { configurePreviewSession } from './preview-session.js';
+import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
 import { allowedExternalUrl } from './navigation-policy.js';
 import { wireShellNavigation } from './shell-navigation.js';
 import { setTrustedShellUrl, trustShellWebContents, trustedIpc, untrustShellWebContents } from './trusted-ipc.js';
@@ -1583,7 +1583,6 @@ async function bootstrapInner(): Promise<void> {
   // The packaged app is its own server: swap in a staged restore before any
   // preference below reads the home. In dev, server.js has already done it.
   if (!isDev) await applyStagedRestoreBeforeBoot();
-  configurePreviewSession(session.fromPartition('persist:minnow-preview'));
   registerIpcHandlers();
   wirePowerWakeNotifications();
   initUpdater({ prepareQuitForUpdate });
@@ -1600,6 +1599,7 @@ async function bootstrapInner(): Promise<void> {
   // later `fetch failed` against the leftover Vite port.
   shellLoadUrlPromise = resolveLoadUrl();
   shellBaseUrl = await shellLoadUrlPromise;
+  configurePreviewSession(session.fromPartition(PREVIEW_SESSION_PARTITION), shellBaseUrl);
   setTrustedShellUrl(shellBaseUrl);
   await installWorkspaceKeyNormalizer();
 }

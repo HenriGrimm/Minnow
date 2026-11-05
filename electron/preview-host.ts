@@ -24,7 +24,7 @@ import {
   resolvePreviewGuestAttachMode,
   showPreviewGuestIfHidden,
 } from './preview-guest-reveal.js';
-import { configurePreviewSession, PREVIEW_SESSION_PARTITION } from './preview-session.js';
+import { PREVIEW_SESSION_PARTITION } from './preview-session.js';
 import { previewCaptureGate as captureGate, createPreviewCaptureVisibility } from './preview-capture-gate.js';
 import { enableCdpPicking, type CdpPickSession } from './preview-cdp-pick.js';
 import {
@@ -128,10 +128,6 @@ function rememberPreviewBounds(win: BrowserWindow, bounds: PreviewBounds, instan
 }
 
 // ── Window wiring ────────────────────────────────────────────────────────────
-
-function ensurePreviewSession(): void {
-  configurePreviewSession(session.fromPartition(PREVIEW_SESSION_PARTITION));
-}
 
 function ensureWindowWiring(win: BrowserWindow): void {
   if (wiredWindowIds.has(win.id)) return;
@@ -729,14 +725,13 @@ function detachAllInstanceViews(win: BrowserWindow): void {
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
 function createTabGuest(win: BrowserWindow, tabId: string, instanceId: string): PreviewHostEntry {
-  ensurePreviewSession();
   const view = new WebContentsView({
     webPreferences: {
       partition: PREVIEW_SESSION_PARTITION,
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false,
+      webSecurity: true,
     },
   });
   view.setBackgroundColor('#ffffff');
