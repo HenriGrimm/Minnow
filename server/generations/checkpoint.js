@@ -19,6 +19,7 @@ export const INTERRUPTED_BY_RESTART_MESSAGE =
  * @property {Buffer[]} pending
  * @property {number} pendingBytes
  * @property {ReturnType<typeof setTimeout> | null} timer
+ * @property {number} confirmedBytes
  * @property {boolean} broken
  */
 
@@ -76,12 +77,12 @@ function sidecarPayload(state) {
   };
 }
 
-function writeSidecar(state) {
+function writeSidecar(state, replay = {}) {
   if (!ensureDir()) return;
   try {
     fs.writeFileSync(
       metaPath(state.id),
-      `${JSON.stringify(sidecarPayload(state), null, 2)}\n`,
+      `${JSON.stringify({ ...sidecarPayload(state), ...replay }, null, 2)}\n`,
       'utf8',
     );
   } catch {
@@ -95,7 +96,7 @@ function writeSidecar(state) {
 function getWriter(id) {
   let w = writers.get(id);
   if (!w) {
-    w = { pending: [], pendingBytes: 0, timer: null, broken: false };
+    w = { pending: [], pendingBytes: 0, timer: null, confirmedBytes: 0, broken: false };
     writers.set(id, w);
   }
   return w;
@@ -121,6 +122,7 @@ function flushWriter(id) {
   }
   try {
     fs.appendFileSync(ssePath(id), buf);
+    w.confirmedBytes += buf.length;
   } catch {
     w.broken = true;
   }
@@ -154,8 +156,12 @@ export function checkpointAppend(state, buf) {
 export function checkpointFinalize(state) {
   if (!shouldCheckpoint(state)) return;
   flushWriter(state.id);
+  const writer = writers.get(state.id);
   writers.delete(state.id);
-  writeSidecar(state);
+  writeSidecar(state, {
+    expectedBytes: state.totalBytes,
+    ...(writer?.broken ? { confirmedPrefix: writer.confirmedBytes } : {}),
+  });
 }
 
 export function flushAllCheckpoints() {
@@ -193,6 +199,11 @@ export function readCheckpoint(id, maxReplayBytes = GENERATION_REPLAY_BYTES) {
       return { id, status: 'error', sse: Buffer.alloc(0), meta: { ...meta, errorMessage: CHECKPOINT_LIMIT_MESSAGE } };
     }
     sse = Buffer.alloc(0);
+  }
+  const partialWrite = Number.isSafeInteger(meta?.confirmedPrefix) && meta.confirmedPrefix >= 0;
+  if (partialWrite || (Number.isSafeInteger(meta?.expectedBytes) && meta.expectedBytes !== sse.length)) {
+    const prefix = partialWrite ? sse.subarray(0, meta.confirmedPrefix) : sse;
+    return { id, status: 'error', sse: prefix, meta: { ...meta, errorMessage: 'The saved reply is incomplete.' } };
   }
   const stored = typeof meta?.status === 'string' ? meta.status : '';
   const interrupted = stored !== 'complete' && stored !== 'error' && stored !== 'cancelled';

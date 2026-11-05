@@ -111,6 +111,28 @@ describe('generation checkpoints', () => {
     deleteCheckpoint(id);
   });
 
+  test('failed disk flush replays only the confirmed prefix while the live reply completes', (t) => {
+    for (const prefix of [Buffer.alloc(0), Buffer.alloc(65536, 'p')]) {
+      const state = createGenerationState({ providerId: 'p1', body: {}, persist: true });
+      if (prefix.length) appendChunk(state, prefix);
+      const append = t.mock.method(fs, 'appendFileSync', () => { throw Object.assign(new Error('full'), { code: 'ENOSPC' }); });
+      try {
+        appendChunk(state, sseChunk('lost'));
+        markComplete(state);
+      } finally { append.mock.restore(); }
+      assert.equal(state.status, 'complete');
+      const checkpoint = readCheckpoint(state.id);
+      assert.equal(checkpoint.status, 'error');
+      assert.match(checkpoint.meta.errorMessage, /incomplete/);
+      assert.deepEqual(checkpoint.sse, prefix);
+      deleteCheckpoint(state.id);
+    }
+    const empty = createGenerationState({ providerId: 'p1', body: {}, persist: true });
+    markComplete(empty);
+    assert.equal(readCheckpoint(empty.id).status, 'complete');
+    deleteCheckpoint(empty.id);
+  });
+
   test('a stream killed mid-flight comes back as an error carrying its bytes', () => {
     // A killed process leaves a sidecar still reading `streaming` next to whatever
     // bytes were already flushed. Build exactly that pair — a graceful shutdown
