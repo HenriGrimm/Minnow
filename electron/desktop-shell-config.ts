@@ -71,24 +71,19 @@ export async function readShellZoomPercent(): Promise<number> {
   }
 }
 
-export async function writeShellZoomPercent(percent: number): Promise<number> {
-  const next = clampShellZoomPercent(percent);
-  const { readConfigJson, writeConfigJson } = await importServerModule<{
-    readConfigJson: (rel: string) => Promise<Record<string, unknown> | null>;
-    writeConfigJson: (rel: string, data: Record<string, unknown>) => Promise<void>;
+async function updateDesktopShell(patch: Record<string, unknown>): Promise<void> {
+  const { updateConfigJson } = await importServerModule<{
+    updateConfigJson: (rel: string, mutate: (current: unknown) => unknown) => Promise<unknown>;
   }>('config/store.js');
   const { mergeConfigMeta } = await importServerModule<{
-    mergeConfigMeta: (
-      existing: Record<string, unknown> | null,
-      patch: Record<string, unknown>,
-    ) => Record<string, unknown>;
+    mergeConfigMeta: (current: unknown, fields: Record<string, unknown>) => Record<string, unknown>;
   }>('config/validators.js');
+  await updateConfigJson(CONFIG_FILE, current => mergeConfigMeta(current, { desktopShell: patch }));
+}
 
-  const existing = (await readConfigJson(CONFIG_FILE)) ?? {};
-  const merged = mergeConfigMeta(existing, {
-    desktopShell: { zoomPercent: next },
-  });
-  await writeConfigJson(CONFIG_FILE, merged);
+export async function writeShellZoomPercent(percent: number): Promise<number> {
+  const next = clampShellZoomPercent(percent);
+  await updateDesktopShell({ zoomPercent: next });
   return next;
 }
 
@@ -104,22 +99,7 @@ export async function readCloseToTrayPreference(): Promise<boolean> {
 }
 
 export async function writeCloseToTrayPreference(enabled: boolean): Promise<boolean> {
-  const { readConfigJson, writeConfigJson } = await importServerModule<{
-    readConfigJson: (rel: string) => Promise<Record<string, unknown> | null>;
-    writeConfigJson: (rel: string, data: Record<string, unknown>) => Promise<void>;
-  }>('config/store.js');
-  const { mergeConfigMeta } = await importServerModule<{
-    mergeConfigMeta: (
-      existing: Record<string, unknown> | null,
-      patch: Record<string, unknown>,
-    ) => Record<string, unknown>;
-  }>('config/validators.js');
-
-  const existing = (await readConfigJson(CONFIG_FILE)) ?? {};
-  const merged = mergeConfigMeta(existing, {
-    desktopShell: { closeToTray: enabled },
-  });
-  await writeConfigJson(CONFIG_FILE, merged);
+  await updateDesktopShell({ closeToTray: enabled });
   return enabled;
 }
 
@@ -137,22 +117,7 @@ export async function writeWindowCloseAction(
   action: WindowCloseAction,
 ): Promise<WindowCloseAction> {
   const next = normalizeWindowCloseAction(action);
-  const { readConfigJson, writeConfigJson } = await importServerModule<{
-    readConfigJson: (rel: string) => Promise<Record<string, unknown> | null>;
-    writeConfigJson: (rel: string, data: Record<string, unknown>) => Promise<void>;
-  }>('config/store.js');
-  const { mergeConfigMeta } = await importServerModule<{
-    mergeConfigMeta: (
-      existing: Record<string, unknown> | null,
-      patch: Record<string, unknown>,
-    ) => Record<string, unknown>;
-  }>('config/validators.js');
-
-  const existing = (await readConfigJson(CONFIG_FILE)) ?? {};
-  const merged = mergeConfigMeta(existing, {
-    desktopShell: { windowCloseAction: next },
-  });
-  await writeConfigJson(CONFIG_FILE, merged);
+  await updateDesktopShell({ windowCloseAction: next });
   return next;
 }
 
@@ -193,21 +158,6 @@ export async function readHardwareAccelerationPreference(): Promise<boolean> {
 }
 
 export async function writeHardwareAccelerationPreference(enabled: boolean): Promise<boolean> {
-  const { readConfigJson, writeConfigJson } = await importServerModule<{
-    readConfigJson: (rel: string) => Promise<Record<string, unknown> | null>;
-    writeConfigJson: (rel: string, data: Record<string, unknown>) => Promise<void>;
-  }>('config/store.js');
-  const { mergeConfigMeta } = await importServerModule<{
-    mergeConfigMeta: (
-      existing: Record<string, unknown> | null,
-      patch: Record<string, unknown>,
-    ) => Record<string, unknown>;
-  }>('config/validators.js');
-
-  const existing = (await readConfigJson(CONFIG_FILE)) ?? {};
-  const merged = mergeConfigMeta(existing, {
-    desktopShell: { hardwareAcceleration: enabled },
-  });
-  await writeConfigJson(CONFIG_FILE, merged);
+  await updateDesktopShell({ hardwareAcceleration: enabled });
   return enabled;
 }
