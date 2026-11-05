@@ -1,5 +1,6 @@
 /** Runner effector: start real builder and tester attempts. */
 
+import { registerAgentBrowserRuntime, formatAgentBrowserGuideForTranscript } from '../browser-agent-api.js';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { readConfigJson } from '../config/store.js';
@@ -983,6 +984,7 @@ export function createRunnerEffector(options = {}) {
       void (async () => {
         let liveRoundIndex = 0;
         /** @type {import('../runner/run-turn').TurnResult} */
+        let browserRuntime;
         let result;
         try {
           recordTranscriptEvent({
@@ -992,6 +994,9 @@ export function createRunnerEffector(options = {}) {
             },
           });
           result = await runTurnFn({
+          if (tools.some(tool => tool.function?.name === 'browser_reserve_tab')) {
+            browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'board' });
+          }
             chatId: attemptId,
             seed,
             tools,
@@ -1031,6 +1036,9 @@ export function createRunnerEffector(options = {}) {
             },
             execute: dispatch.execute,
             reportToolName: REPORT_TOOL_NAME,
+            onRoundBoundary: () => browserRuntime?.drainGuides().map(guide => ({
+              role: 'user', content: formatAgentBrowserGuideForTranscript(guide),
+            })) ?? null,
             parseReport: (raw) => {
               const parsed = parseReportFor(desired.role)(raw);
               if (parsed.ok && parsed.result.outcome === 'pass' && contract.length) {
@@ -1095,6 +1103,8 @@ export function createRunnerEffector(options = {}) {
           deps.transcriptStore?.load?.(attemptId)?.messages,
           desired.role,
         );
+        } finally {
+          browserRuntime?.close();
         if (result.outcome === 'pass' && contract.length) {
           const error = validateVerificationChecks(result.checks, contract);
           if (error) result = { outcome: 'crashed', error: `Verification reporting interrupted: ${error}`, failure: { category: 'interrupted' } };

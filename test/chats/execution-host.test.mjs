@@ -14,6 +14,8 @@ import { createServerChatExecutionHost, chatInputMessageId } from '../../server/
 import { executeToolCallBatch } from '../../server/runner/tool-batch.js';
 import { openWorkspace, closeWorkspace } from '../../server/workspace/open-workspaces.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
+import { getSessionsDb, closeSessionsDb } from '../../server/config/sessions-db.js';
+import { resetAgentBrowserRuntimeForTests } from '../../server/browser-agent-api.js';
 import { createChatHostCapabilities } from '../../server/chats/host-capabilities.js';
 
 const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
@@ -332,6 +334,37 @@ test('ordered durable steers enter the current runner once with stable provenanc
       assert.ok(text.endsWith(['First correction', 'Second correction'][index]));
     }
   } finally { s.cleanup(); }
+});
+
+test('saved browser Guide enters the managed model request and canonical transcript once', async () => {
+  const s = setup();
+  const previous = process.env.MINNOW_HOME;
+  process.env.MINNOW_HOME = path.join(s.scratch, 'guide-home');
+  resetMinnowHomeCache();
+  try {
+    const db = getSessionsDb();
+    db.prepare('INSERT INTO chats(id,workspace_path) VALUES(?,?)').run('chat', s.scratch);
+    const guide = { id: 'guide-fixture', tabId: 'closed-tab', message: 'Inspect the selected form',
+      elementSummary: 'button “Sign in”', createdAt: Date.now(), durable: true };
+    db.prepare('INSERT INTO pending_browser_guides VALUES(?,?,?,?)').run(guide.id, 'chat', guide.createdAt, JSON.stringify(guide));
+    let wire;
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareExecution: s.prepare(async (_provider, body) => { wire = body; return response(); }, { tools: [schema('browser_reserve_tab')] }) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+    assert.equal(result.outcome, 'no_report');
+    const notes = rows => rows.filter(row => row.role === 'user' && row.content.includes(guide.message));
+    assert.equal(notes(wire.messages).length, 1);
+    assert.match(notes(wire.messages)[0].content, /button “Sign in”/);
+    assert.equal(notes(s.repository.readTranscript('chat').messages).length, 1);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM pending_browser_guides').get().n, 0);
+  } finally {
+    resetAgentBrowserRuntimeForTests();
+    closeSessionsDb();
+    if (previous === undefined) delete process.env.MINNOW_HOME;
+    else process.env.MINNOW_HOME = previous;
+    resetMinnowHomeCache();
+    s.cleanup();
+  }
 });
 
 test('a durable steer failure cannot be swallowed by the inner boundary callback', async () => {

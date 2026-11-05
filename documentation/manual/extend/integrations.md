@@ -48,11 +48,17 @@ Configure under **Settings → Integrations → Language servers**. The agent ge
 
 ## Browser automation
 
-Minnow has two browser surfaces. The visible preview uses the Electron Chromium view; the isolated **Agent Browser** uses a server-owned headless Chrome, Edge, Brave, or Chromium session. The `browser_*` tools cover navigation, snapshots, clicks, fills, screenshots, evaluation, and tab management on either surface.
+Minnow has two browser surfaces. The visible preview uses Electron Chromium. The isolated **Agent Browser** can use a live desktop tab or a server-owned headless browser. The `browser_*` tools cover navigation, snapshots, clicks, fills, screenshots, evaluation, and tab management on either surface.
 
 Use `surface: "agent"` for private work: call `browser_reserve_tab` first, keep the returned `tab_id`, and pass it explicitly to every later action. Agent `browser_list` shows only tabs owned by that run. Use `surface: "user"` only when you intentionally want the visible preview; list or create a tab, then pass its explicit `tab_id`. A tab id does not grant control over another agent's tab, and an agent should not navigate or close tabs it does not own. Release a finished agent tab for inspection or reassignment, or close it to release its browser resources.
 
-Agent Browser tabs use disposable session profiles, do not restore between sessions, allow up to 8 tabs per service, and close popup/page targets. The service does not download a browser; install Chrome, Edge, Brave, or Chromium, or set `MINNOW_BROWSER_PATH`. `browser_screenshot` can capture an Agent Browser tab even when its viewer is closed. Open the viewer from the browser sidebar button; **Watch**, **Guide**, and **Take control** are deliberate user controls. The viewer can assign or unassign a tab, close one tab, or clear all tabs. Closing the viewer leaves the service running; quitting Minnow shuts it down.
+For a live page inside the desktop viewer, enable **Settings → Integrations → Browser → Use native browser for new agent tabs**, then ask the agent to reserve a new tab. Open the viewer from the browser sidebar button. **Watch** shows the live page. **Take control** gives you native keyboard, pointer and clipboard input and pauses agent browser commands. **Watch** returns the same page and its signed-in session to the agent. Closing the viewer while you have control keeps the tab paused.
+
+If sign-in redirects to a blocked identity provider, choose **Take control → Retry navigation** and review the destination in the desktop prompt. A user-initiated sign-in popup shares the tab’s isolated session. Complete or close it and return to the approved app before handing back control. Some identity providers require their own supported browser flow.
+
+In **Guide**, select a page element, enter your note, and choose **Send to owner**. The viewer distinguishes a queued note from one received at the owning turn’s next boundary. A saved chat can receive a pending note for up to 24 hours. If the original tab closes, the note supplies context for the chat.
+
+Each tab uses disposable storage. You can close one tab or clear all tabs. The service supports up to eight tabs. Headless sessions use an installed Chrome, Edge, Brave, or Chromium browser, optionally selected with `MINNOW_BROWSER_PATH`. An agent can request a screenshot while it owns the tab, including with the viewer closed.
 
 Both surfaces use the browser navigation allowlist. Localhost is allowed by default. For a new external origin, use the structured `ask_question` flow and then `request_browser_origin_access` before retrying navigation; unattended Agent Browser work cannot approve its own blocked origin. The preview tools require the Electron desktop app, while Agent Browser actions are server-dispatched and need Minnow's local server.
 
@@ -61,6 +67,7 @@ Both surfaces use the browser navigation allowlist. Localhost is allowed by defa
 | Setting | Default |
 |---------|---------|
 | Allow navigation | On |
+| Use native browser for new agent tabs (desktop) | Off |
 | Allowed origin patterns | `http://localhost:*`, `http://127.0.0.1:*`, `https://localhost:*` |
 | Restore tabs | On |
 | DevTools dock | Bottom |

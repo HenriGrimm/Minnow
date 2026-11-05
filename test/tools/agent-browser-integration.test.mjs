@@ -13,6 +13,7 @@ import {
 } from '../../server/browser-agent-api.js';
 import { AgentBrowserError } from '../../server/agent-browser/index.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
+import { getSessionsDb } from '../../server/config/sessions-db.js';
 import { createInProcessToolDispatch } from '../../server/runner/tool-dispatch.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { rmTestHome, setTestHome } from '../config/test-helpers.js';
@@ -217,13 +218,16 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
         point: { x: 10, y: 20 }, frameRevision: 1, viewport: { width: 1440, height: 900 },
       });
       assert.equal(selected.status, 200);
-      const delivered = await post(baseUrl, `/api/browser-agent/tabs/${tab.tabId}/guide`, {
+      const submission = {
         selectionToken: selected.body.selectionToken,
         owner: selected.body.owner,
         documentRevision: selected.body.documentRevision,
         message: 'Use the Submit form button after checking the values.',
-      });
+      };
+      const submit = () => post(baseUrl, `/api/browser-agent/tabs/${tab.tabId}/guide`, submission);
+      const [delivered, retried] = await Promise.all([submit(), submit()]);
       assert.equal(delivered.body.outcome, 'queued');
+      assert.deepEqual(retried.body, delivered.body);
 
       const nextOwner = { chatId: idleOwner.chatId, runId: 'turn-2', agentId: 'different-work-agent' };
       const runtime = await registerAgentBrowserRuntime(nextOwner, { kind: 'chat' });
@@ -237,6 +241,9 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
       assert.deepEqual((await (await fetch(`${baseUrl}/api/browser-agent/runtime/${other.token}/guides`)).json()).guides, []);
       other.close();
       await post(baseUrl, `/api/browser-agent/runtime/${runtime.token}/ack`, { guideId: guides[0].id });
+      const { tabs } = await (await fetch(baseUrl + '/api/browser-agent/tabs')).json();
+      assert.deepEqual(tabs.find(row => row.tabId === tab.tabId).guideReceipt,
+        { id: delivered.body.guideId, state: 'received' });
       assert.deepEqual((await (await fetch(guideUrl)).json()).guides, []);
       const messages = guides;
       assert.equal(messages.length, 1);
@@ -246,6 +253,36 @@ describe('agent browser trusted runtime integration', { concurrency: false }, ()
       runtime.close();
     } finally {
       await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('a saved chat recovers an unconsumed Guide after service restart and acknowledges it once', async () => {
+    const chatId = 'saved-guide-recovery';
+    const db = getSessionsDb();
+    db.prepare('INSERT INTO chats(id,workspace_path) VALUES(?,?)').run(chatId, process.cwd());
+    const { tab } = await fake.reserveTab({ chatId, runId: 'idle', agentId: 'main' });
+    const { server, baseUrl } = await listen(createAgentBrowserMiddleware());
+    try {
+      const selected = await post(baseUrl, `/api/browser-agent/tabs/${tab.tabId}/guide/select`, {
+        point: { x: 3, y: 4 }, frameRevision: 1, viewport: tab.viewport,
+      });
+      const sent = await post(baseUrl, `/api/browser-agent/tabs/${tab.tabId}/guide`, {
+        ...selected.body, message: 'Inspect the sign-in form.',
+      });
+      assert.equal(sent.body.outcome, 'queued');
+      resetAgentBrowserRuntimeForTests();
+      fake.tabs.clear();
+      setAgentBrowserServiceForTests(fake);
+      const owner = { chatId, runId: 'next-turn', agentId: 'main' };
+      const runtime = await registerAgentBrowserRuntime(owner);
+      const [row] = runtime.drainGuides();
+      assert.equal(row.id, sent.body.guideId);
+      assert.equal(row.tabClosed, true);
+      runtime.close();
+      assert.deepEqual((await registerAgentBrowserRuntime(owner)).drainGuides(), []);
+    } finally {
+      db.prepare('DELETE FROM chats WHERE id=?').run(chatId);
+      await new Promise(resolve => server.close(resolve));
     }
   });
 });

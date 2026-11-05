@@ -100,6 +100,19 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
     searchKey: 'integrations.browser.allowNavigate',
   });
   behaviorGroup.appendChild(allowNavRow);
+  if (window.minnow?.window?.openAgentBrowserViewer) {
+    const { row, input } = createSettingsToggleRow('Use native browser for new agent tabs', {
+      id: 'settingsBrowserNativeAgentTabs', checked: Boolean(meta.nativeAgentTabs),
+      searchKey: 'integrations.browser.nativeAgentTabs',
+    });
+    behaviorGroup.appendChild(row);
+    input.addEventListener('change', async () => {
+      input.disabled = true;
+      try { await saveBrowserMeta({ nativeAgentTabs: input.checked }); }
+      catch { input.checked = !input.checked; setStatus('err', 'Could not save browser settings'); }
+      finally { input.disabled = false; }
+    });
+  }
 
   const { row: restoreTabsRow, input: restoreTabsCb } = createSettingsToggleRow(
     'Restore browser tabs',

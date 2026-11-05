@@ -515,6 +515,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.browser.allowNavigate', 'Allow browser navigation', 'integrations', 'browser'),
   field('integrations.browser.restoreTabs', 'Restore browser tabs', 'integrations', 'browser'),
+  field('integrations.browser.nativeAgentTabs', 'Use native browser for new agent tabs', 'integrations', 'browser'),
   field('integrations.browser.patterns', 'Allowed origin patterns', 'integrations', 'browser'),
   field('integrations.browser.devtoolsDock', 'DevTools dock', 'integrations', 'browser'),
 

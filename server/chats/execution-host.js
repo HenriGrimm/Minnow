@@ -7,6 +7,7 @@ import { createChatTranscriptStore } from './transcript-store.js';
 import { createChatRequestService } from './requests.js';
 import { isHostToolNotStartedError } from './host-capabilities.js';
 import { createChatUsage } from './usage.js';
+import { registerAgentBrowserRuntime, formatAgentBrowserGuideForTranscript } from '../browser-agent-api.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 48);
 export const chatInputMessageId = commandId => commandId.length <= 154 ? `input-${commandId}`
@@ -50,6 +51,7 @@ export function createServerChatExecutionHost({
       const combinedSignal = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal;
       let recoveryError = null;
       let effectsStarted = 0;
+      let browserRuntime;
       const status = value => {
         repository.updateExecution(executionId, { status: value }, { fence });
         present(onStatus, { chatId, executionId, status: value });
@@ -212,6 +214,9 @@ export function createServerChatExecutionHost({
         let completionIndex = usage.nextRoundIndex(executionId);
         let actualModel = { providerId: prepared.model.providerId, modelId: prepared.model.id };
         if (actualModel.providerId !== 'minnow-router') repository.updateExecutionActivity(executionId, { resolvedModel: actualModel }, { fence });
+        if (prepared.tools.some(tool => tool.function?.name === 'browser_reserve_tab')) {
+          browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'chat' });
+        }
         const result = await runTurn({
           ...(prepared.runOptions ?? {}),
           // The accepted input is already canonical, including image policy
@@ -224,7 +229,20 @@ export function createServerChatExecutionHost({
               catch (error) { throw recovery(error); }
             } },
           signal: combinedSignal, limits: prepared.limits, ask, execute,
-          onRoundBoundary: takeSteers,
+          onRoundBoundary: () => {
+            const steer = takeSteers?.();
+            const messages = [...(Array.isArray(steer) ? steer : steer?.messages ?? [])];
+            const rowIds = [...(steer?.rowIds ?? messages.map(() => null))];
+            browserRuntime?.drainGuides(guide => {
+              const messageId = 'guide-' + guide.id;
+              if (repository.readMessageByIdentity(chatId, messageId)) return;
+              const message = { role: 'user', content: formatAgentBrowserGuideForTranscript(guide) };
+              const row = repository.appendMessage(chatId, message, { fence, messageId });
+              messages.push(message);
+              rowIds.push(row.rowId);
+            });
+            return messages.length ? { messages, rowIds } : null;
+          },
           onEvent: event => {
             try {
               if (event.type === 'model_selected') {
@@ -256,6 +274,7 @@ export function createServerChatExecutionHost({
           ...(error?.waitingForHost === true ? { waitingForHost: true, requiredCapabilities: error.requiredCapabilities ?? [] } : {}),
           ...(signal?.aborted ? { stopped: true } : {}) });
       } finally {
+        browserRuntime?.close();
         active.delete(executionId);
         requests.expireExecution(executionId, chatId, combinedSignal.aborted ? 'cancelled' : 'expired');
       }

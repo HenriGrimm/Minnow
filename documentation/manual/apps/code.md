@@ -208,7 +208,7 @@ The toolbar keeps navigation, the address field, expand, and close visible. Open
 
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 
-For isolated work, the agent can use **Agent Browser**. It reserves a private headless tab, then passes the returned `tab_id` to every later browser call. Open the Agent Browser viewer from the browser sidebar button to watch a tab, select **Guide** to send a page-element note to its owner, or choose **Take control** for deliberate user input. Closing the viewer leaves browser work running, and screenshots still work while it is closed.
+For isolated work, the agent can use **Agent Browser**. It reserves a private browser tab, then passes the returned `tab_id` to every later browser call. Open the Agent Browser viewer from the browser sidebar button to watch a tab, select **Guide** to send a page-element note to its owner, or choose **Take control** for deliberate user input. Closing the viewer leaves browser work running, and screenshots still work while it is closed.
 
 ## Working with the assistant here
 

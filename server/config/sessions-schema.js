@@ -151,6 +151,14 @@ export function initSessionsSchema(database) {
       meta_json TEXT NOT NULL DEFAULT '{}'
     );
 
+    CREATE TABLE IF NOT EXISTS pending_browser_guides (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      payload TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pending_browser_guides_chat ON pending_browser_guides(chat_id, created_at);
+
     CREATE TABLE IF NOT EXISTS messages (
       chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
       seq INTEGER NOT NULL,

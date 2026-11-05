@@ -197,8 +197,11 @@ test('switching away from a frozen Guide frame resumes captures on the next Guid
   const image = doc.querySelector<HTMLImageElement>('[data-agent-browser-frame]')!;
   image.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1440, height: 900 }) as DOMRect;
   doc.querySelector('[data-agent-browser-canvas]')!.dispatchEvent(new viewer.window.MouseEvent('click', { clientX: 10, clientY: 20 }));
+  const note = doc.querySelector<HTMLInputElement>('[data-agent-browser-guide-message]')!;
+  note.value = 'Inspect this field';
+  note.dispatchEvent(new viewer.window.Event('input'));
   await waitFor(() => Boolean(doc.querySelector('[data-agent-browser-target]')) && !doc.querySelector<HTMLButtonElement>('[data-agent-browser-send-guide]')!.disabled);
   doc.querySelector<HTMLButtonElement>('[data-agent-browser-tab="b"]')!.click();
   await waitFor(() => viewer.frames.some((url) => url.includes('/tabs/b/frame')));
-  assert.ok(doc.querySelector('[data-agent-browser-frame]'));
+  await waitFor(() => Boolean(doc.querySelector('[data-agent-browser-frame]')));
 });

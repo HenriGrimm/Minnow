@@ -70,7 +70,7 @@ Copying by hand has two traps. `sessions/sessions.db` is a live database: copy i
 
 Some folders in there are scaffolded ahead of the features that fill them and stay empty. That is normal, and nothing needs cleaning up.
 
-Browser preferences live in the `browser` block of `config.json`: whether browser automation is enabled, whether navigation is allowed, the allowed origin patterns, and whether visible preview tabs are restored on boot. Agent Browser tabs use temporary profiles under `browser-profiles/` and are closed with their service, so they are not restored.
+Browser preferences live in the `browser` block of `config.json`: whether browser automation is enabled, whether navigation is allowed, the allowed origin patterns, and whether visible preview tabs are restored on boot. The desktop setting `browser.nativeAgentTabs` enables live Electron guests for new reservations. Native tabs use ephemeral partitions and headless tabs use temporary profiles under `browser-profiles/`. Both close with their service.
 
 One exception: older profiles may still hold a large `sessions/state.json.backup`. It was an earlier backup format, nothing reads it any more, and the `sessions/snapshots/` copies replace it. Minnow leaves it alone — delete it yourself if you want the space back.
 

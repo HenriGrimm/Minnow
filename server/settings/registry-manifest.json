@@ -2402,6 +2402,20 @@
     ]
   },
   {
+    "key": "integrations.browser.nativeAgentTabs",
+    "label": "Use native browser for new agent tabs",
+    "category": "integrations",
+    "area": "browser",
+    "storage": "meta",
+    "path": "browser.nativeAgentTabs",
+    "type": "boolean",
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "browser"
+    ]
+  },
+  {
     "key": "integrations.browser.patterns",
     "label": "Allowed origin patterns",
     "category": "integrations",

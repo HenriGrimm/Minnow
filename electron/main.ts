@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   app,
+  BaseWindow,
   BrowserWindow,
+  WebContentsView,
   crashReporter,
   dialog,
   Menu,
@@ -95,6 +97,11 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const chatPowerGuard = createChatPowerGuard(powerSaveBlocker);
+type NativeAgentHost = {
+  present(win: BrowserWindow, id: string | null, bounds: Electron.Rectangle | null): void;
+  unmount(): void;
+};
+let nativeAgentHost: NativeAgentHost | undefined;
 
 function appIconPath(): string {
   const root = app.isPackaged
@@ -1275,6 +1282,7 @@ async function openNewShellWindow(): Promise<
 }
 
 function wireAgentBrowserViewerState(win: BrowserWindow): void {
+  win.on('close', () => nativeAgentHost?.unmount());
   const emitMaximized = (): void => {
     if (!win.isDestroyed()) {
       win.webContents.send(channels.WINDOW_MAXIMIZED_CHANGED, win.isMaximized());
@@ -1597,6 +1605,21 @@ async function bootstrapInner(): Promise<void> {
   shellBaseUrl = await shellLoadUrlPromise;
   configurePreviewSession(session.fromPartition(PREVIEW_SESSION_PARTITION), shellBaseUrl);
   setTrustedShellUrl(shellBaseUrl);
+  if (process.env.MINNOW_NATIVE_AGENT_BROWSER !== '0' && ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(shellBaseUrl).hostname)) {
+    const { startDesktopBrowserHost } = await importServerModule<{
+      startDesktopBrowserHost(options: Record<string, unknown>): NativeAgentHost;
+    }>('agent-browser/desktop-host.js');
+    nativeAgentHost = startDesktopBrowserHost({
+      electron: { app, BaseWindow, WebContentsView, dialog },
+      baseUrl: shellBaseUrl, token: readServerSessionToken, getViewer: () => agentBrowserViewer.live(),
+      onPick: (id: string, point: { x: number; y: number }) =>
+        agentBrowserViewer.live()?.webContents.send(channels.AGENT_BROWSER_PICK, id, point),
+    });
+  }
+  trustedIpc.on(channels.AGENT_BROWSER_PRESENT, (event, id, bounds) => {
+    const viewer = agentBrowserViewer.live();
+    if (viewer?.webContents === event.sender) nativeAgentHost?.present(viewer, id, bounds);
+  });
   await installWorkspaceKeyNormalizer();
 }
 

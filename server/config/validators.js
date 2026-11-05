@@ -2329,6 +2329,9 @@ export function mergeConfigMeta(existing, patch) {
     if (typeof b.restoreBrowserTabs === 'boolean') {
       existingBrowser.restoreBrowserTabs = b.restoreBrowserTabs;
     }
+    if (typeof b.nativeAgentTabs === 'boolean') {
+      existingBrowser.nativeAgentTabs = b.nativeAgentTabs;
+    }
     if (Array.isArray(b.allowedOriginPatterns)) {
       existingBrowser.allowedOriginPatterns = b.allowedOriginPatterns.filter(
         (row) => typeof row === 'string' && row.trim(),

@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 import { AgentBrowserError, createAgentBrowserService } from './agent-browser/index.js';
+import { launchAgentPage } from './agent-browser/native-transport.js';
+import { getRequestIngress } from './network/ingress.js';
 import {
   consumeEphemeralNavigation,
   isNavigationAllowed,
@@ -10,6 +12,7 @@ import {
 } from './cdp/allowlist.js';
 import { loadBrowserConfig } from './cdp/browser-config.js';
 import { readChatSummaries } from './config/sessions-repo.js';
+import { getSessionsDb } from './config/sessions-db.js';
 
 export const AGENT_BROWSER_TOOL_NAMES = Object.freeze([
   'browser_reserve_tab',
@@ -34,6 +37,33 @@ const pendingGuides = new Map();
 const targetTokens = new Map();
 const assignmentTargetIds = new Map();
 const guideSelectionTokens = new Map();
+const guideReceipts = new Map();
+
+function recordGuideReceipt(guide, state) {
+  guideReceipts.set(guide.tabId, { id: guide.id, state });
+  if (guideReceipts.size > 256) guideReceipts.delete(guideReceipts.keys().next().value);
+}
+
+function acknowledgeGuide(guide) {
+  if (guide.durable) getSessionsDb().prepare('DELETE FROM pending_browser_guides WHERE id=?').run(guide.id);
+  if (guideReceipts.get(guide.tabId)?.id === guide.id) recordGuideReceipt(guide, 'received');
+}
+
+// Keep only user-authored instructions and display context. Backend node IDs,
+// callback parameters, credentials and browser sessions are never restored.
+const GUIDE_RETENTION_MS = 24 * 60 * 60 * 1000;
+function saveChatGuide(chatId, guide) {
+  const db = getSessionsDb();
+  db.transaction(() => {
+    db.prepare('DELETE FROM pending_browser_guides WHERE created_at < ?').run(Date.now() - GUIDE_RETENTION_MS);
+    const count = db.prepare('SELECT count(*) AS n FROM pending_browser_guides WHERE chat_id=?').get(chatId).n;
+    if (count >= 50) throw new Error('This chat has 50 pending Guide notes. Let the chat receive them before sending more.');
+    const { id, tabId, message, elementSummary, url, createdAt } = guide;
+    const result = db.prepare('INSERT INTO pending_browser_guides(id,chat_id,created_at,payload) SELECT ?,id,?,? FROM chats WHERE id=?')
+      .run(id, createdAt, JSON.stringify({ id, tabId, message, elementSummary, url, createdAt, durable: true }), chatId);
+    guide.durable = result.changes === 1;
+  })();
+}
 let service = null;
 
 function requiredId(value, field) {
@@ -83,7 +113,7 @@ function sameOwner(left, right) {
 }
 
 function getService() {
-  if (!service) service = createAgentBrowserService();
+  if (!service) service = createAgentBrowserService({ launcher: launchAgentPage });
   return service;
 }
 
@@ -122,7 +152,7 @@ async function rebindDormantTabs(owner) {
   for (const tab of browser.listTabs()) {
     if (sameOwner(tab.owner, owner)) continue;
     if (!canRebindFrom(tab.owner, owner)) continue;
-    const reservation = await browser.reassignTab(tab.tabId, owner);
+    const reservation = await browser.reassignTab(tab.tabId, owner, { continuingChat: true });
     deleteLeasesForTab(tab.tabId);
     if (reservation.lease) leases.set(leaseKey(owner, tab.tabId), reservation.lease);
   }
@@ -174,7 +204,16 @@ function deliverQueuedGuides(runtime) {
     : [];
   pendingGuides.delete(ownerKey(runtime.owner));
   if (runtime.kind === 'chat') pendingGuides.delete(assignmentKey(runtime.owner, 'chat'));
-  for (const guide of [...exact, ...assigned]) {
+  const saved = runtime.kind === 'chat' ? getSessionsDb()
+    .prepare('SELECT payload FROM pending_browser_guides WHERE chat_id=? AND created_at>=? ORDER BY created_at,rowid LIMIT 50')
+    .all(runtime.owner.chatId, Date.now() - GUIDE_RETENTION_MS).map(row => JSON.parse(row.payload)) : [];
+  const liveTabs = new Set(getService().listTabs().filter(tab => sameOwner(runtime.owner, tab.owner)).map(tab => tab.tabId));
+  const unique = new Map([...saved, ...exact, ...assigned].map(guide => [guide.id, guide]));
+  const claimed = new Set([...runtimes.values()].filter(other => other !== runtime && !other.ended && other.owner.chatId === runtime.owner.chatId)
+    .flatMap(other => other.guides.map(row => row.id)));
+  for (const guide of unique.values()) {
+    if (claimed.has(guide.id) || guide.createdAt < Date.now() - GUIDE_RETENTION_MS) continue;
+    if (!liveTabs.has(guide.tabId)) guide.tabClosed = true;
     runtime.guides.push(guide);
     emitRuntimeEvent(runtime, guide);
   }
@@ -200,9 +239,14 @@ export async function registerAgentBrowserRuntime(rawOwner, options = {}) {
   runtime.handle = {
     owner,
     token: runtime.token,
-    drainGuides() {
-      const rows = runtime.guides.splice(0);
-      for (const row of rows) runtime.acked.add(row.id);
+    drainGuides(accept) {
+      const rows = runtime.guides.slice();
+      for (const row of rows) {
+        accept?.(row);
+        runtime.guides.shift();
+        runtime.acked.add(row.id);
+        acknowledgeGuide(row);
+      }
       return rows;
     },
     close() {
@@ -222,8 +266,13 @@ export async function registerAgentBrowserRuntime(rawOwner, options = {}) {
   };
   runtimes.set(key, runtime);
   runtimeTokens.set(runtime.token, runtime);
-  await rebindDormantTabs(owner);
-  deliverQueuedGuides(runtime);
+  try {
+    await rebindDormantTabs(owner);
+    deliverQueuedGuides(runtime);
+  } catch (error) {
+    runtime.handle.close();
+    throw error;
+  }
   return runtime.handle;
 }
 
@@ -317,6 +366,7 @@ export async function executeAgentBrowserTool(name, args = {}, options = {}) {
       const viewport = Number.isFinite(width) || Number.isFinite(height)
         ? { width: Number.isFinite(width) ? width : 1440, height: Number.isFinite(height) ? height : 900 }
         : undefined;
+      await rebindDormantTabs(owner);
       const reservation = await browser.reserveTab(owner, { viewport });
       if (!reservation.lease) throw new Error('browser reservation did not return a lease');
       leases.set(leaseKey(owner, reservation.tab.tabId), reservation.lease);
@@ -325,6 +375,10 @@ export async function executeAgentBrowserTool(name, args = {}, options = {}) {
         try {
           navigation = `\n${await navigateOwned(browser, owner, reservation.tab.tabId, reservation.lease, url, timeoutMs)}`;
         } catch (error) {
+          const retained = browser.listTabs().find(row => row.tabId === reservation.tab.tabId);
+          if (retained?.native && retained.blockedOrigin) {
+            return { result: `Reserved agent browser tab ${retained.tabId}. Navigation stopped at ${retained.blockedOrigin}. Ask the user to choose Take control and Retry navigation in the viewer.` };
+          }
           await browser.closeOwnedTab({ owner, tabId: reservation.tab.tabId, lease: reservation.lease }).catch(() => null);
           leases.delete(leaseKey(owner, reservation.tab.tabId));
           throw error;
@@ -441,6 +495,7 @@ export function formatAgentBrowserGuideForTranscript(guide) {
     lines.push(`Selected point: (${Number(guide.point.x)}, ${Number(guide.point.y)})`);
   }
   if (typeof guide.url === 'string' && guide.url.trim()) lines.push(`Page: ${guide.url.trim()}`);
+  if (guide.tabClosed) lines.push('The original browser tab has closed. Use the note as context.');
   return lines.join('\n');
 }
 
@@ -455,6 +510,7 @@ function ownerLabel(owner, kind = 'chat') {
 }
 
 function tabWithOwnerLabel(tab) {
+  tab = { ...tab, guideReceipt: guideReceipts.get(tab.tabId) };
   if (!tab.owner) return tab;
   const runtime = runtimeFor(tab.owner);
   return { ...tab, owner: { ...tab.owner, label: ownerLabel(tab.owner, runtime?.kind) } };
@@ -501,13 +557,20 @@ async function selectGuideTarget(tabId, body) {
 async function deliverGuide(tabId, body) {
   const token = requiredId(body?.selectionToken, 'selectionToken');
   const selected = guideSelectionTokens.get(token);
-  guideSelectionTokens.delete(token);
   if (!selected || selected.expiresAt < Date.now() || selected.tabId !== tabId) {
     throw new Error('Guide selection expired; select the element again');
   }
   if (body.owner !== selected.ownerLabel || String(body.documentRevision) !== String(selected.documentRevision)) {
     throw new Error('Guide selection changed; select the element again');
   }
+  if (selected.submission) return selected.submission;
+  const message = requiredId(body.message, 'message');
+  if (message.length > 4000) throw new Error('Guide notes can contain up to 4,000 characters');
+  selected.submission = submitSelectedGuide(tabId, selected, message);
+  return selected.submission;
+}
+
+async function submitSelectedGuide(tabId, selected, message) {
   const browser = getService();
   await refreshTrustedTabPolicy(browser, tabId);
   const tab = browser.listTabs().find((row) => row.tabId === tabId);
@@ -516,26 +579,30 @@ async function deliverGuide(tabId, body) {
   }
   const detail = await browser.deliverGuide(tabId, {
     selectionToken: selected.serviceSelectionToken,
-    message: requiredId(body.message, 'message'),
+    message,
   });
   const runtime = runtimeFor(tab.owner);
   const guide = {
     id: randomUUID(),
     tabId,
-    message: body.message.trim(),
+    message,
     point: detail.point ?? null,
     element: detail.element ?? null,
     elementSummary: elementSummary(detail.element),
-    url: detail.url ?? tab.url,
+    url: URL.canParse(detail.url ?? tab.url) ? new URL(detail.url ?? tab.url).origin : '',
     createdAt: Date.now(),
   };
   if (runtime && runtime.ended !== true) {
+    if (runtime.kind === 'chat') saveChatGuide(tab.owner.chatId, guide);
     runtime.guides.push(guide);
+    recordGuideReceipt(guide, 'queued');
     emitRuntimeEvent(runtime, guide);
-    return { outcome: 'delivered', owner: ownerLabel(tab.owner, runtime.kind), element: guide.elementSummary, guideId: guide.id };
+    return { outcome: 'queued', owner: ownerLabel(tab.owner, runtime.kind), element: guide.elementSummary, guideId: guide.id };
   }
   if (tab.owner.runId === 'idle' || runtime?.kind === 'chat') {
+    saveChatGuide(tab.owner.chatId, guide);
     enqueuePendingGuide(assignmentKey(tab.owner, 'chat'), guide);
+    recordGuideReceipt(guide, 'queued');
     return { outcome: 'queued', owner: ownerLabel(tab.owner, 'chat'), element: guide.elementSummary, guideId: guide.id };
   }
   return { outcome: 'owner_finished', owner: ownerLabel(tab.owner, runtime?.kind), element: guide.elementSummary, guideId: guide.id };
@@ -573,7 +640,7 @@ function readJsonBody(req, maxBytes = 1024 * 1024) {
 }
 
 function tabAction(pathname) {
-  const match = /^\/api\/browser-agent\/tabs\/([^/]+)\/(frame|unassign|reassign|close|guide\/select|guide|control|navigate|back|forward|reload|input)$/u.exec(pathname);
+  const match = /^\/api\/browser-agent\/tabs\/([^/]+)\/(frame|unassign|reassign|close|guide\/select|guide|control|navigate|retry|back|forward|reload|input)$/u.exec(pathname);
   return match ? { tabId: decodeURIComponent(match[1]), action: match[2] } : null;
 }
 
@@ -581,6 +648,9 @@ export function createAgentBrowserMiddleware() {
   return async (req, res, next) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     if (!url.pathname.startsWith('/api/browser-agent')) return next();
+    if (getRequestIngress(req) !== 'loopback') {
+      return sendJson(res, 403, { error: 'Agent Browser operator access requires the local desktop' });
+    }
     try {
       const now = Date.now();
       for (const [key, value] of targetTokens) {
@@ -658,6 +728,8 @@ export function createAgentBrowserMiddleware() {
         if (action === 'ack' && req.method === 'POST') {
           const body = await readJsonBody(req);
           const id = requiredId(body.guideId, 'guideId');
+          const guide = runtime.guides.find(row => row.id === id);
+          if (guide) acknowledgeGuide(guide);
           runtime.acked.add(id);
           runtime.guides = runtime.guides.filter((row) => row.id !== id);
           return sendJson(res, 200, { ok: true });
@@ -722,8 +794,8 @@ export function createAgentBrowserMiddleware() {
           await refreshTrustedTabPolicy(browser, action.tabId);
           return sendJson(res, 200, await browser.setControlMode(action.tabId, body.mode));
         }
-        if (action.action === 'navigate' && req.method === 'POST') {
-          const targetUrl = requiredId(body.url, 'url');
+        if ((action.action === 'navigate' || action.action === 'retry') && req.method === 'POST') {
+          const targetUrl = action.action === 'retry' ? browser.operatorRetryUrl(action.tabId) : requiredId(body.url, 'url');
           await refreshTrustedTabPolicy(browser, action.tabId, targetUrl);
           const out = await browser.navigateOperator(action.tabId, targetUrl);
           consumeEphemeralNavigation(originFromUrl(targetUrl));
@@ -789,6 +861,7 @@ export async function shutdownAgentBrowserService() {
   targetTokens.clear();
   assignmentTargetIds.clear();
   guideSelectionTokens.clear();
+  guideReceipts.clear();
 }
 
 export function resetAgentBrowserRuntimeForTests() {
@@ -799,5 +872,6 @@ export function resetAgentBrowserRuntimeForTests() {
   targetTokens.clear();
   assignmentTargetIds.clear();
   guideSelectionTokens.clear();
+  guideReceipts.clear();
   service = null;
 }

@@ -61,6 +61,8 @@ function normalizeViewport(input) {
 function publicTab(tab) {
   return {
     tabId: tab.tabId,
+    native: tab.session?.native === true,
+    blockedOrigin: tab.blockedOrigin,
     status: tab.status,
     title: tab.title,
     url: tab.url,
@@ -210,10 +212,15 @@ export class AgentBrowserService extends EventEmitter {
   /** @param {ReturnType<typeof normalizeOwner>} owner @param {object} [opts] */
   async reserveTab(owner, opts = {}) {
     if (this.closed) throw new AgentBrowserError('agent browser service is closed', 'closed');
-    if (this.tabs.size >= this.maxTabs) {
-      throw new AgentBrowserError(`agent browser capacity reached (${this.maxTabs} tabs)`, 'busy');
-    }
     const trustedOwner = normalizeOwner(owner);
+    if (this.tabs.size >= this.maxTabs) {
+      const tabs = [...this.tabs.values()];
+      const reusable = tabs.filter(tab => sameOwner(tab.owner, trustedOwner) && tab.status === 'ready' && tab.controlMode === 'watch' && !tab.active);
+      const kept = tabs.filter(tab => tab.owner === null).length;
+      const advice = reusable.length ? 'Reuse an owned tab: ' + reusable.map(tab => tab.tabId).join(', ')
+        : kept ? 'Ask the user to close a retained inspection tab when finished.' : 'Wait for an occupied tab to become available.';
+      throw new AgentBrowserError(`agent browser capacity reached (${this.maxTabs} tabs, ${kept} retained for inspection). ${advice}`, 'busy');
+    }
     const viewport = normalizeViewport(opts.viewport ?? this.defaultViewport);
     const now = Date.now();
     const tabId = randomUUID();
@@ -251,6 +258,7 @@ export class AgentBrowserService extends EventEmitter {
     delete tabLaunchOptions.profileDir;
     tab.launchPromise = (async () => {
       const launched = await this.launcher({
+        tabId,
         label: `agent-${trustedOwner.agentId}-${tabId.slice(0, 8)}`,
         hardTimeoutMs: DEFAULT_AGENT_BROWSER_HARD_TIMEOUT_MS,
         ...this.launchOptions,
@@ -298,7 +306,7 @@ export class AgentBrowserService extends EventEmitter {
   /** @param {any} tab */
   async #initializeTab(tab) {
     const timeoutMs = this.launchOptions.commandTimeoutMs;
-    await tab.session.client.send(
+    if (!tab.session.native) await tab.session.client.send(
       'Emulation.setDeviceMetricsOverride',
       {
         width: tab.viewport.width,
@@ -337,6 +345,19 @@ export class AgentBrowserService extends EventEmitter {
       tab.guideSelections.clear();
     });
     await tab.session.client.send('DOM.enable', {}, { timeoutMs });
+
+    if (tab.session.native) {
+      tab.session.client.on('operator-origin', (origin) => {
+        if (tab.controlMode !== 'control' || tab.status !== 'ready') return;
+        tab.url = origin;
+        tab.title = '';
+        this.#changed(tab);
+      });
+      tab.session.client.once('closed', () => {
+        if (tab.status !== 'closing') void this.closeTab(tab.tabId).catch(() => {});
+      });
+      return;
+    }
 
     tab.browserClient = await this.connector(tab.session.handle.browserWsUrl, {
       commandTimeoutMs: timeoutMs,
@@ -393,8 +414,15 @@ export class AgentBrowserService extends EventEmitter {
       if (tab.policyViolation) {
         const blocked = tab.policyViolation;
         tab.policyViolation = null;
+        if (tab.session.native) {
+          tab.blockedOrigin = URL.canParse(blocked) ? new URL(blocked).origin : 'unknown origin';
+          tab.retryUrl = input.url;
+          throw new BrowserDriverError(`Navigation needs approval for ${tab.blockedOrigin}. Open Take control to retry.`, 'allowlist');
+        }
         throw new BrowserDriverError(`navigation blocked by allowlist: ${blocked}`, 'allowlist');
       }
+      tab.blockedOrigin = null;
+      tab.retryUrl = null;
       tab.url = await tab.session.evaluate('location.href', { timeoutMs: input.timeoutMs });
       tab.title = result.title;
       tab.session.lastSnapshot = null;
@@ -481,7 +509,6 @@ export class AgentBrowserService extends EventEmitter {
     if (tab.controlMode === mode) return publicTab(tab);
     const revision = ++tab.revision;
     tab.status = 'transferring';
-    tab.controlMode = mode;
     if (mode !== 'guide') tab.guideSelections.clear();
     tab.updatedAt = Date.now();
     this.#changed(tab);
@@ -490,6 +517,26 @@ export class AgentBrowserService extends EventEmitter {
       throw new AgentBrowserError('tab changed while switching control mode', 'closed');
     }
     if (!tab.session?.alive) throw new AgentBrowserError('browser ended while switching control mode', 'unsafe-transfer');
+    let handoff;
+    try {
+      handoff = await tab.session.setMode?.(mode);
+    } catch (error) {
+      await this.#quarantine(tab, 'Desktop browser handoff failed');
+      throw error;
+    }
+    if (tab.revision !== revision || tab.status !== 'transferring') {
+      throw new AgentBrowserError('tab closed during handoff', 'closed');
+    }
+    if (handoff?.blocked) {
+      tab.status = 'ready';
+      this.#changed(tab);
+      throw new AgentBrowserError(handoff.blocked, 'busy');
+    }
+    if (tab.session.native && tab.controlMode === 'control') {
+      tab.session.lastSnapshot = null;
+      tab.documentRevision += 1;
+    }
+    tab.controlMode = mode;
     tab.status = 'ready';
     tab.updatedAt = Date.now();
     this.#changed(tab);
@@ -499,6 +546,7 @@ export class AgentBrowserService extends EventEmitter {
   /** @param {string} tabId @param {{timeoutMs?:number}} [opts] */
   captureFrame(tabId, opts = {}) {
     const tab = this.#tab(tabId);
+    if (tab.session?.native) throw new AgentBrowserError('Native tabs use the desktop view', 'busy');
     if (tab.status !== 'ready') throw new AgentBrowserError(`tab is ${tab.status}`, 'busy');
     if (tab.framePromise) return tab.framePromise;
     // Frames are disposable observations. Never queue them behind agent/input work,
@@ -557,7 +605,8 @@ export class AgentBrowserService extends EventEmitter {
           tab.session,
           objectId,
           `function () {
-            const text = String(this.innerText || this.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500);
+            const editable = this.isContentEditable || this.matches('input,textarea,select,option');
+            const text = editable ? '' : String(this.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 160);
             const rect = this.getBoundingClientRect();
             const part = (el) => {
               if (el.id) return '#' + CSS.escape(el.id);
@@ -582,6 +631,7 @@ export class AgentBrowserService extends EventEmitter {
       }
       const selection = {
         selectionToken: randomUUID(),
+        backendNodeId,
         tabId,
         owner: tab.owner ? { ...tab.owner } : null,
         url: tab.url,
@@ -620,6 +670,15 @@ export class AgentBrowserService extends EventEmitter {
         tab.guideSelections.delete(input.selectionToken);
         throw new AgentBrowserError('guide selection no longer belongs to this page and owner', 'stale-lease');
       }
+      if (tab.session.native) {
+        const hit = await tab.session.client.send('DOM.getNodeForLocation', {
+          ...selection.point, includeUserAgentShadowDOM: true, ignorePointerEventsNone: true,
+        });
+        if (hit.backendNodeId !== selection.backendNodeId) {
+          tab.guideSelections.delete(input.selectionToken);
+          throw new AgentBrowserError('The selected element moved. Select it again to send your note.', 'invalid');
+        }
+      }
       const message = requiredId(input.message, 'message');
       tab.guideSelections.delete(input.selectionToken);
       return this.#emitGuide(tab, selection, message);
@@ -647,6 +706,8 @@ export class AgentBrowserService extends EventEmitter {
     return this.#runOperator(tabId, 'user-navigate', ['control'], async (tab) => {
       tab.policyViolation = null;
       const result = await tab.session.navigate(url, opts);
+      tab.blockedOrigin = null;
+      tab.retryUrl = null;
       await Promise.allSettled([...tab.policyTasks]);
       if (tab.policyViolation) {
         const blocked = tab.policyViolation;
@@ -664,6 +725,13 @@ export class AgentBrowserService extends EventEmitter {
 
   operatorNavigate(tabId, url, opts = {}) {
     return this.navigateOperator(tabId, url, opts);
+  }
+
+  operatorRetryUrl(tabId) {
+    const tab = this.#tab(tabId);
+    if (!tab.session.native || tab.controlMode !== 'control' || !tab.retryUrl)
+      throw new AgentBrowserError('Take control of a blocked tab to retry', 'invalid');
+    return tab.retryUrl;
   }
 
   operatorBack(tabId, opts = {}) {
@@ -779,8 +847,8 @@ export class AgentBrowserService extends EventEmitter {
   }
 
   /** @param {string} tabId @param {unknown} owner */
-  async reassignTab(tabId, owner) {
-    return this.#transfer(tabId, normalizeOwner(owner));
+  async reassignTab(tabId, owner, { continuingChat = false } = {}) {
+    return this.#transfer(tabId, normalizeOwner(owner), continuingChat);
   }
 
   /** @param {string} tabId */
@@ -932,9 +1000,19 @@ export class AgentBrowserService extends EventEmitter {
   }
 
   /** @param {string} tabId @param {ReturnType<typeof normalizeOwner> | null} owner */
-  async #transfer(tabId, owner) {
+  async #transfer(tabId, owner, continuingChat = false) {
     const tab = this.#tab(tabId);
     if (tab.status !== 'ready') throw new AgentBrowserError(`tab is ${tab.status}`, 'busy');
+    const previous = tab.owner ?? tab.lastOwner;
+    if (tab.session.native && owner && previous && !sameOwner(previous, owner) &&
+        !(continuingChat && previous.chatId === owner.chatId)) {
+      const revision = tab.revision;
+      const approved = await tab.session.confirmTransfer(owner.chatId + ' / ' + owner.agentId);
+      if (!approved) throw new AgentBrowserError('Session transfer cancelled', 'invalid');
+      if (tab.status !== 'ready' || revision !== tab.revision || this.tabs.get(tabId) !== tab)
+        throw new AgentBrowserError('Tab changed during transfer confirmation', 'stale-lease');
+    }
+    tab.lastOwner = tab.owner ?? tab.lastOwner;
     tab.status = 'transferring';
     const revision = ++tab.revision;
     tab.lease = null;

@@ -104,6 +104,8 @@ export const WINDOW_OPEN_APP = 'minnow:window:open-app';
 export const WINDOW_HAS_APP = 'minnow:window:has-app';
 /** Open or focus the standalone Agent Browser viewer window. */
 export const WINDOW_OPEN_AGENT_BROWSER_VIEWER = 'minnow:window:open-agent-browser-viewer';
+export const AGENT_BROWSER_PRESENT = 'minnow:agent-browser:present';
+export const AGENT_BROWSER_PICK = 'minnow:agent-browser:pick';
 
 export const TRAY_PUBLISH_STATUS = 'minnow:tray:publish-status';
 export const TRAY_NOTIFY_READY = 'minnow:tray:notify-ready';

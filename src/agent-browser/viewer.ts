@@ -18,6 +18,10 @@ export interface AgentBrowserViewport {
 }
 
 export interface AgentBrowserTab {
+  native?: boolean;
+  blockedOrigin?: string;
+  guideReceipt?: { id: string; state: string };
+  frameRevision?: number;
   tabId?: string;
   id?: string;
   title?: string;
@@ -89,6 +93,7 @@ let frameGeneration = 0;
 let nextFrameAt = 0;
 let stageResizeObserver: ResizeObserver | null = null;
 let guideFrameFrozen = false;
+let sentGuideId: string | undefined;
 let targetsLoading = false;
 let nextTargetsRefreshAt = 0;
 
@@ -97,7 +102,7 @@ function tabId(tab: AgentBrowserTab | null | undefined): string {
 }
 
 function tabStructure(tabs: AgentBrowserTab[]): string {
-  return tabs.map((tab) => tabId(tab)).join('\u0000');
+  return tabs.map((tab) => `${tabId(tab)}:${tab.native === true}:${tab.blockedOrigin ?? ''}`).join('\u0000');
 }
 
 function targetsEqual(a: AgentBrowserTarget[], b: AgentBrowserTarget[]): boolean {
@@ -187,6 +192,8 @@ function stopFramePolling(): void {
 
 function scheduleFramePolling(delay = 0): void {
   stopFramePolling();
+  const tab = activeTab();
+  if (tab?.native || (tab?.status && tab.status !== 'ready')) return;
   if (guideFrameFrozen) return;
   if (!shouldPollAgentBrowserFrames(isVisibleForFrames(), state.activeTabId)) return;
   frameTimer = setTimeout(() => void refreshFrame(), Math.max(delay, nextFrameAt - Date.now()));
@@ -225,9 +232,14 @@ async function refreshTabs(): Promise<void> {
         invalidateFrame();
       }
       const tab = activeTab();
+      if (sentGuideId && tab?.guideReceipt?.id === sentGuideId && tab.guideReceipt.state === 'received') {
+        state.noticeMessage = 'Guide note received by the owning turn.';
+        sentGuideId = undefined;
+        needsRender = true;
+      }
       state.mode = tab?.controlMode ?? state.mode;
       if (state.mode !== 'guide') guideFrameFrozen = false;
-      needsRender = priorStructure !== tabStructure(state.tabs) || priorActiveTabId !== state.activeTabId;
+      needsRender ||= priorStructure !== tabStructure(state.tabs) || priorActiveTabId !== state.activeTabId;
       needsModePatch = priorMode !== state.mode;
       if (state.selectedGuide?.owner && tab && ownerLabel(tab.owner) !== state.selectedGuide.owner) {
         state.selectedGuide = null;
@@ -274,6 +286,8 @@ async function refreshTargets(): Promise<void> {
 }
 
 async function refreshFrame(): Promise<void> {
+  const tab = activeTab();
+  if (tab?.native || (tab?.status && tab.status !== 'ready')) return;
   if (frameLoading || !shouldPollAgentBrowserFrames(isVisibleForFrames(), state.activeTabId)) return;
   const id = state.activeTabId;
   if (!id) return;
@@ -325,6 +339,7 @@ async function setMode(mode: AgentBrowserMode): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mode }),
   });
+  if (id !== state.activeTabId) return;
   state.mode = mode;
   state.selectedGuide = null;
   guideFrameFrozen = false;
@@ -349,7 +364,7 @@ async function sendGuide(): Promise<void> {
   const selection = state.selectedGuide;
   if (!message || !selection) return;
   try {
-    const outcome = await requestJson<{ outcome?: string; owner?: string }>(
+    const outcome = await requestJson<{ outcome?: string; owner?: string; guideId?: string }>(
       `/tabs/${encodeURIComponent(state.activeTabId ?? '')}/guide`,
       {
         method: 'POST',
@@ -362,6 +377,15 @@ async function sendGuide(): Promise<void> {
         }),
       },
     );
+    if (outcome.outcome === 'owner_finished') {
+      state.errorMessage = 'The owner finished. Assign this tab to an active agent and select the element again.';
+      state.selectedGuide = null;
+      guideFrameFrozen = false;
+      render();
+      scheduleFramePolling();
+      return;
+    }
+    sentGuideId = outcome.guideId;
     state.noticeMessage = outcome.owner
       ? `Guide note ${outcome.outcome ?? 'delivered'} to ${outcome.owner}.`
       : `Guide note ${outcome.outcome ?? 'delivered'}.`;
@@ -392,7 +416,7 @@ async function selectGuidePoint(point: { x: number; y: number }): Promise<void> 
     }>(`/tabs/${encodeURIComponent(id)}/guide/select`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ point, frameRevision: state.frameRevision, viewport: state.viewport }),
+      body: JSON.stringify({ point, frameRevision: activeTab()?.native ? activeTab()?.frameRevision : state.frameRevision, viewport: state.viewport }),
     });
     if (!selection.selectionToken || id !== state.activeTabId) return;
     state.selectedGuide = { point, ...selection, selectionToken: selection.selectionToken };
@@ -454,7 +478,8 @@ function render(): void {
   const priorAddress = root.querySelector<HTMLInputElement>('[data-agent-browser-address]');
   const addressDraft = priorAddress?.value;
   const addressDraftTabId = priorAddress?.dataset.agentBrowserAddressTab;
-  const guideDraft = root.querySelector<HTMLInputElement>('[data-agent-browser-guide-message]')?.value;
+  const guideField = root.querySelector<HTMLInputElement>('[data-agent-browser-guide-message]');
+  const guideDraft = guideField?.dataset.tabId === state.activeTabId ? guideField?.value : undefined;
   const targetDraft = root.querySelector<HTMLSelectElement>('[data-agent-browser-target]')?.value;
   const tab = activeTab();
   const point = state.selectedGuide?.point;
@@ -477,7 +502,7 @@ function render(): void {
     : state.tabs.length === 0
       ? `<section class="agent-browser-empty"><span class="agent-browser-empty__icon">${iconHtml('globe', { size: 32 })}</span><h2>No agent tabs</h2><p>Ask an agent to browse a page. Its tabs will appear here.</p></section>`
       : `<div class="agent-browser-canvas" data-agent-browser-canvas tabindex="0" aria-label="Live agent browser page">
-          ${state.frameUrl ? `<img data-agent-browser-frame draggable="false" src="${state.frameUrl}" alt="Live page for ${escapeHtml(tab?.title || tab?.url || 'agent tab')}" />` : '<p class="agent-browser-canvas__loading">Waiting for live page…</p>'}
+          ${tab?.native ? '' : state.frameUrl ? `<img data-agent-browser-frame draggable="false" src="${state.frameUrl}" alt="Live page for ${escapeHtml(tab?.title || tab?.url || 'agent tab')}" />` : '<p class="agent-browser-canvas__loading">Waiting for live page…</p>'}
           ${point ? `<span class="agent-browser-target" style="${pointStyle}" aria-hidden="true"></span>` : ''}
         </div>`;
   root.innerHTML = `<main class="agent-browser-viewer${state.tabs.length ? '' : ' is-empty'}">
@@ -508,6 +533,7 @@ function render(): void {
         <p class="agent-browser-details__label">Activity</p><p data-agent-browser-activity>${escapeHtml(tab?.activity || tab?.status || 'Waiting')}</p>
         <p class="agent-browser-details__label">Viewport</p><p data-agent-browser-viewport>${state.viewport.width} × ${state.viewport.height}</p>
         <div class="agent-browser-details__actions">
+          ${tab?.native && tab.blockedOrigin ? `<p>Navigation stopped at ${escapeHtml(tab.blockedOrigin)}. Take control to continue.</p><button type="button" data-agent-browser-nav="retry" ${state.mode === 'control' ? '' : 'disabled'}>Retry navigation</button>` : ''}
           <select data-agent-browser-target ${tab ? '' : 'disabled'} aria-label="Assign tab to agent"><option value="">Unassigned</option>${state.targets.map((target) => `<option value="${escapeAttribute(target.targetId)}">${escapeHtml(target.label || target.targetId)}${target.status ? ` · ${escapeHtml(target.status)}` : ''}</option>`).join('')}</select>
           <button type="button" data-agent-browser-reassign ${tab ? '' : 'disabled'}>Assign</button>
           <button type="button" data-agent-browser-close-tab ${tab ? '' : 'disabled'}>Close tab</button>
@@ -522,7 +548,14 @@ function render(): void {
   const address = root.querySelector<HTMLInputElement>('[data-agent-browser-address]');
   if (addressDraft != null && address && addressDraftTabId === tabId(tab)) address.value = addressDraft;
   const guide = root.querySelector<HTMLInputElement>('[data-agent-browser-guide-message]');
+  if (guide) guide.dataset.tabId = state.activeTabId ?? '';
   if (guideDraft != null && guide) guide.value = guideDraft;
+  const submitGuide = root.querySelector<HTMLButtonElement>('[data-agent-browser-send-guide]');
+  if (guide && submitGuide) {
+    const validate = () => { submitGuide.disabled = !state.selectedGuide || !guide.value.trim(); };
+    validate();
+    guide.addEventListener('input', validate);
+  }
   const target = root.querySelector<HTMLSelectElement>('[data-agent-browser-target]');
   if (targetDraft != null && target) target.value = targetDraft;
   bindControls(root);
@@ -594,6 +627,7 @@ function updateModeSurface(): void {
 
 /** Swap only the live image. Frame polling must never rebuild operator controls. */
 function updateFrameSurface(): void {
+  if (activeTab()?.native) return;
   const canvas = document.querySelector<HTMLElement>('[data-agent-browser-canvas]');
   if (!canvas) return;
   let image = canvas.querySelector<HTMLImageElement>('[data-agent-browser-frame]');
@@ -637,6 +671,10 @@ function fitFrameSurface(canvas: HTMLElement): void {
   if (!size) return;
   canvas.style.width = `${size.width}px`;
   canvas.style.height = `${size.height}px`;
+  if (activeTab()?.native) {
+    const { x, y, width, height } = canvas.getBoundingClientRect();
+    window.minnow?.window?.presentAgentBrowser?.(state.activeTabId, { x, y, width, height });
+  }
 }
 
 function observeFrameStage(root: HTMLElement): void {
@@ -644,6 +682,7 @@ function observeFrameStage(root: HTMLElement): void {
   stageResizeObserver = null;
   const stage = root.querySelector<HTMLElement>('.agent-browser-stage');
   const canvas = root.querySelector<HTMLElement>('[data-agent-browser-canvas]');
+  if (!canvas || !activeTab()?.native) window.minnow?.window?.presentAgentBrowser?.(null, null);
   if (!stage || !canvas) return;
   fitFrameSurface(canvas);
   if (typeof ResizeObserver !== 'function') return;
@@ -808,7 +847,11 @@ export async function initAgentBrowserViewer(): Promise<void> {
   const fromDocument = () => updateVisibility(document.visibilityState !== 'hidden');
   document.addEventListener('visibilitychange', fromDocument);
   window.minnow?.window?.onVisibilityChanged?.(updateVisibility);
+  const stopPicks = window.minnow?.window?.onAgentBrowserPick?.((id, point) => {
+    if (id === state.activeTabId && activeTab()?.native && state.mode === 'guide') void selectGuidePoint(point);
+  });
   window.addEventListener('beforeunload', () => {
+    stopPicks?.();
     stopFramePolling();
     if (tabsTimer) clearTimeout(tabsTimer);
     eventSource?.close();

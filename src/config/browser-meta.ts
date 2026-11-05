@@ -8,6 +8,7 @@ export interface BrowserMeta {
   allowedOriginPatterns: string[];
   /** When true, reopen persisted preview tabs on boot (default on). */
   restoreBrowserTabs: boolean;
+  nativeAgentTabs?: boolean;
 }
 
 export const DEFAULT_BROWSER_META: BrowserMeta = {
@@ -19,6 +20,7 @@ export const DEFAULT_BROWSER_META: BrowserMeta = {
     'https://localhost:*',
   ],
   restoreBrowserTabs: true,
+  nativeAgentTabs: false,
 };
 
 let cached: BrowserMeta | null = null;
@@ -41,6 +43,7 @@ export function normalizeBrowserMeta(raw: unknown): BrowserMeta {
   if (typeof row.enabled === 'boolean') base.enabled = row.enabled;
   if (typeof row.allowNavigate === 'boolean') base.allowNavigate = row.allowNavigate;
   if (typeof row.restoreBrowserTabs === 'boolean') base.restoreBrowserTabs = row.restoreBrowserTabs;
+  if (typeof row.nativeAgentTabs === 'boolean') base.nativeAgentTabs = row.nativeAgentTabs;
   if (Array.isArray(row.allowedOriginPatterns)) {
     base.allowedOriginPatterns = row.allowedOriginPatterns.filter(
       (p): p is string => typeof p === 'string' && p.trim().length > 0,
@@ -85,13 +88,15 @@ export async function saveBrowserMeta(patch: Partial<BrowserMeta>): Promise<void
     allowedOriginPatterns:
       patch.allowedOriginPatterns ?? [...current.allowedOriginPatterns],
     restoreBrowserTabs: patch.restoreBrowserTabs ?? current.restoreBrowserTabs,
+    nativeAgentTabs: patch.nativeAgentTabs ?? current.nativeAgentTabs ?? false,
   };
-  cached = next;
-  await fetch('/api/config/meta', {
+  const response = await fetch('/api/config/meta', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ browser: next }),
   });
+  if (!response.ok) throw new Error('Could not save browser settings');
+  cached = next;
 }
 
 /** Cached value for settings UI (call loadBrowserMeta during init). */

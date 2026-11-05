@@ -162,6 +162,8 @@ test('capacity is bounded and owner-scoped inspection never leaks other tabs', a
   t.after(() => service.close());
   const reservation = await service.reserveTab(ownerA);
   assert.deepEqual(service.listOwnedTabs(ownerB), []);
+  await assert.rejects(() => service.reserveTab(ownerA), error => error.code === 'busy' && error.message.includes(reservation.tab.tabId));
+  await assert.rejects(() => service.reserveTab(ownerB), error => error.code === 'busy' && !error.message.includes(reservation.tab.tabId));
   assert.equal(service.listOwnedTabs(ownerA)[0].tabId, reservation.tab.tabId);
   service.updateTabPolicy(reservation.tab.tabId, ['https://example.test']);
   assert.deepEqual(fake.sessions[0].allowedOriginPatterns, ['https://example.test']);
@@ -171,6 +173,22 @@ test('capacity is bounded and owner-scoped inspection never leaks other tabs', a
   );
   await service.releaseOwnedTab({ owner: ownerA, tabId: reservation.tab.tabId, lease: reservation.lease });
   assert.equal(service.listTabs()[0].owner, null);
+  await assert.rejects(() => service.reserveTab(ownerA), error => error.code === 'busy' && error.message.includes('retained inspection tab') && !error.message.includes(reservation.tab.tabId));
+});
+
+test('eight mixed reservations expose only usable owned IDs and closing frees exactly one slot', async t => {
+  const fake = fakeLauncher(), service = createAgentBrowserService({ launcher: fake.launcher, connector: fake.connector, maxTabs: 8 });
+  t.after(() => service.close());
+  const own = await service.reserveTab(ownerA);
+  const others = await Promise.all(Array.from({ length: 7 }, () => service.reserveTab(ownerB)));
+  const call = r => ({ owner: ownerB, tabId: r.tab.tabId, lease: r.lease });
+  await service.releaseOwnedTab(call(others[0]));
+  await assert.rejects(service.reserveTab(ownerA), error => error.message.includes(own.tab.tabId) && error.message.includes('1 retained') &&
+    others.every(r => !error.message.includes(r.tab.tabId)));
+  await service.closeOwnedTab(call(others[1]));
+  const attempts = await Promise.allSettled([service.reserveTab(ownerA), service.reserveTab(ownerB)]);
+  assert.equal(attempts.filter(a => a.status === 'fulfilled').length, 1);
+  assert.equal(service.listTabs().length, 8);
 });
 
 test('page commands are allowlist-gated, but Chrome error pages and navigating away are not', async (t) => {

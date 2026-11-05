@@ -260,7 +260,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "10b69406eaad05386bc221bd76c8c2ec03917b48c77c5ed6dfca789ad0ba0946"
+      "hash": "5f3b310e33dff88e406395c83be1a42a1747416d9225b232c1c0bcc0c5936f41"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -406,7 +406,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "b961c02349600089b1be877cefac64067c8d9981a6b6bd0bcf4cf51a78d88cf0"
+      "hash": "0008a3b2377fe60a2e9574c95173494394d30aeb6905f0f826a7a868c27f5801"
     },
     {
       "path": "documentation/manual/extend/voice.md",
@@ -477,7 +477,7 @@
         "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "46b5dcb4e5397701386314e49e0d2aa68f085ee45788c79417523cbc94dc6c96"
+      "hash": "d5041ac6b9c72f0b2fe7fddbbd1dda7524e56fe690e3e2bde3721f61a3f018c4"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",

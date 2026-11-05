@@ -364,6 +364,8 @@ export interface MinnowWindowApi {
   /** Whether that app already has a dedicated window. */
   hasAppWindow?: (appId: string) => Promise<{ open: boolean }>;
   /** Open or focus the standalone Agent Browser viewer. */
+  presentAgentBrowser?: (id: string | null, bounds: { x: number; y: number; width: number; height: number } | null) => void;
+  onAgentBrowserPick?: (callback: (id: string, point: { x: number; y: number }) => void) => () => void;
   openAgentBrowserViewer?: () => Promise<
     { ok: true; focused: boolean } | { ok: false; error: string }
   >;

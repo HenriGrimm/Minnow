@@ -511,6 +511,13 @@ const minnowBridge = {
     /** Open or focus the read-only/operator window for headless agent tabs. */
     openAgentBrowserViewer: (): Promise<{ ok: true; focused: boolean } | { ok: false; error: string }> =>
       ipcRenderer.invoke(channels.WINDOW_OPEN_AGENT_BROWSER_VIEWER),
+    presentAgentBrowser: (id: string | null, bounds: Electron.Rectangle | null): void =>
+      ipcRenderer.send(channels.AGENT_BROWSER_PRESENT, id, bounds),
+    onAgentBrowserPick: (callback: (id: string, point: { x: number; y: number }) => void) => {
+      const handle = (_event: IpcRendererEvent, id: string, point: { x: number; y: number }) => callback(id, point);
+      ipcRenderer.on(channels.AGENT_BROWSER_PICK, handle);
+      return () => ipcRenderer.removeListener(channels.AGENT_BROWSER_PICK, handle);
+    },
     onMaximizedChanged: (callback: (maximized: boolean) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, maximized: boolean) => callback(maximized);
       ipcRenderer.on(channels.WINDOW_MAXIMIZED_CHANGED, handler);

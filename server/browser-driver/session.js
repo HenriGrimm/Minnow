@@ -56,69 +56,7 @@ function delay(ms) {
   });
 }
 
-export class BrowserSession {
-  /**
- * @param {object} input
- * @param {import('./process.js').BrowserProcessHandle} input.handle
- * @param {import('./cdp-client.js').CdpClient} input.client
- * @param {string} input.targetId
- * @param {import('./launch-options.js').NormalizedLaunchOptions} input.options
- * @param {string[]} input.allowedOriginPatterns
- * @param {string} input.browserVersion
- * @param {boolean} input.ownsProfileDir
- */
-  constructor(input) {
-    this.handle = input.handle;
-    this.client = input.client;
-    this.targetId = input.targetId;
-    this.options = input.options;
-    this.allowedOriginPatterns = input.allowedOriginPatterns;
-    this.browserVersion = input.browserVersion;
-    this.ownsProfileDir = input.ownsProfileDir;
-
-    this.alive = true;
-    /** @type {SessionEndReason | null} */
-    this.endedReason = null;
-    /** @type {string | null} */
-    this.endedDetail = null;
-    /** @type {string | null} */
-    this.currentUrl = null;
-    /** @type {import('./snapshot.js').Snapshot | null} */
-    this.lastSnapshot = null;
-    /** @type {Array<{ level: string, text: string, at: number }>} */
-    this.console = [];
-    /** @type {Promise<void> | null} */
-    this.closing = null;
-
-    this.handle.child.on('exit', () => {
-      if (this.alive) this.#markDead('external', 'the browser process exited unexpectedly');
-    });
-    this.hardTimer = setTimeout(() => {
-      void this.kill('hard-timeout', `session exceeded hardTimeoutMs=${this.options.hardTimeoutMs}`);
-    }, this.options.hardTimeoutMs);
-    if (typeof this.hardTimer.unref === 'function') this.hardTimer.unref();
-
-    if (this.handle.child.exitCode !== null || this.handle.child.signalCode !== null) {
-      this.#markDead('external', 'the browser process exited unexpectedly');
-    }
-  }
-
-  /**
- * @param {SessionEndReason} reason
- * @param {string} detail
- */
-  #markDead(reason, detail) {
-    if (!this.alive) return;
-    this.alive = false;
-    this.endedReason = reason;
-    this.endedDetail = detail;
-    clearTimeout(this.hardTimer);
-    try {
-      this.client.close(`browser session ended: ${reason}`);
-    } catch {
-    }
-  }
-
+export class BrowserPage {
   #assertAlive() {
     if (!this.alive) {
       throw new BrowserDriverError(
@@ -127,43 +65,6 @@ export class BrowserSession {
         'gone',
       );
     }
-  }
-
-  /** @returns {SessionStatus} */
-  status() {
-    return {
-      alive: this.alive,
-      pid: this.handle.pid,
-      port: this.handle.port,
-      profileDir: this.handle.profileDir,
-      executablePath: this.handle.executablePath,
-      browserVersion: this.browserVersion,
-      endedReason: this.endedReason,
-      endedDetail: this.endedDetail,
-      currentUrl: this.currentUrl,
-    };
-  }
-
-  /**
- * @returns {Promise<boolean>}
- */
-  async isResponsive() {
-    if (!this.alive) return false;
-    const health = await checkBrowserHealth(this.handle.port, LIVENESS_PROBE_TIMEOUT_MS);
-    return health.ok;
-  }
-
-  /**
- * @param {string} level
- * @param {string} text
- */
-  recordConsoleEntry(level, text) {
-    this.console.push({ level, text: capText(text, 2_000), at: Date.now() });
-    if (this.console.length > MAX_CONSOLE_ENTRIES) this.console.shift();
-  }
-
-  consoleMessages() {
-    return this.console.map((entry) => ({ ...entry }));
   }
 
   /**
@@ -340,6 +241,109 @@ export class BrowserSession {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+}
+
+export class BrowserSession extends BrowserPage {
+  /**
+ * @param {object} input
+ * @param {import('./process.js').BrowserProcessHandle} input.handle
+ * @param {import('./cdp-client.js').CdpClient} input.client
+ * @param {string} input.targetId
+ * @param {import('./launch-options.js').NormalizedLaunchOptions} input.options
+ * @param {string[]} input.allowedOriginPatterns
+ * @param {string} input.browserVersion
+ * @param {boolean} input.ownsProfileDir
+ */
+  constructor(input) {
+    super();
+    this.handle = input.handle;
+    this.client = input.client;
+    this.targetId = input.targetId;
+    this.options = input.options;
+    this.allowedOriginPatterns = input.allowedOriginPatterns;
+    this.browserVersion = input.browserVersion;
+    this.ownsProfileDir = input.ownsProfileDir;
+
+    this.alive = true;
+    /** @type {SessionEndReason | null} */
+    this.endedReason = null;
+    /** @type {string | null} */
+    this.endedDetail = null;
+    /** @type {string | null} */
+    this.currentUrl = null;
+    /** @type {import('./snapshot.js').Snapshot | null} */
+    this.lastSnapshot = null;
+    /** @type {Array<{ level: string, text: string, at: number }>} */
+    this.console = [];
+    /** @type {Promise<void> | null} */
+    this.closing = null;
+
+    this.handle.child.on('exit', () => {
+      if (this.alive) this.#markDead('external', 'the browser process exited unexpectedly');
+    });
+    this.hardTimer = setTimeout(() => {
+      void this.kill('hard-timeout', `session exceeded hardTimeoutMs=${this.options.hardTimeoutMs}`);
+    }, this.options.hardTimeoutMs);
+    if (typeof this.hardTimer.unref === 'function') this.hardTimer.unref();
+
+    if (this.handle.child.exitCode !== null || this.handle.child.signalCode !== null) {
+      this.#markDead('external', 'the browser process exited unexpectedly');
+    }
+  }
+
+  /**
+ * @param {SessionEndReason} reason
+ * @param {string} detail
+ */
+  #markDead(reason, detail) {
+    if (!this.alive) return;
+    this.alive = false;
+    this.endedReason = reason;
+    this.endedDetail = detail;
+    clearTimeout(this.hardTimer);
+    try {
+      this.client.close(`browser session ended: ${reason}`);
+    } catch {
+    }
+  }
+
+  /** @returns {SessionStatus} */
+  status() {
+    return {
+      alive: this.alive,
+      pid: this.handle.pid,
+      port: this.handle.port,
+      profileDir: this.handle.profileDir,
+      executablePath: this.handle.executablePath,
+      browserVersion: this.browserVersion,
+      endedReason: this.endedReason,
+      endedDetail: this.endedDetail,
+      currentUrl: this.currentUrl,
+    };
+  }
+
+  /**
+ * @returns {Promise<boolean>}
+ */
+  async isResponsive() {
+    if (!this.alive) return false;
+    const health = await checkBrowserHealth(this.handle.port, LIVENESS_PROBE_TIMEOUT_MS);
+    return health.ok;
+  }
+
+  /**
+ * @param {string} level
+ * @param {string} text
+ */
+  recordConsoleEntry(level, text) {
+    this.console.push({ level, text: capText(text, 2_000), at: Date.now() });
+    if (this.console.length > MAX_CONSOLE_ENTRIES) this.console.shift();
+  }
+
+  consoleMessages() {
+    return this.console.map((entry) => ({ ...entry }));
   }
 
   /**

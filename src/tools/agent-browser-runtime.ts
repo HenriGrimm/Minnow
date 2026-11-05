@@ -9,6 +9,7 @@ interface GuideEvent {
   tabId: string;
   message: string;
   elementSummary?: string;
+  tabClosed?: boolean;
   url?: string;
 }
 
@@ -27,6 +28,7 @@ function guideText(guide: GuideEvent): string {
   ];
   if (guide.elementSummary) lines.push(`Selected element: ${guide.elementSummary}`);
   if (guide.url) lines.push(`Page: ${guide.url}`);
+  if (guide.tabClosed) lines.push('The original browser tab has closed. Use the note as context.');
   return lines.join('\n');
 }
 

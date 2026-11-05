@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 Use **`browser_*` tools** for authenticated pages, dynamic JS, visual verification, or UI testing. There are two surfaces:
 
-- `surface: "agent"` is the default isolated Agent Browser. It runs a headless installed Chrome, Edge, Brave, or Chromium session through the local server.
+- `surface: "agent"` is the default isolated Agent Browser. The local server owns the reservation. Desktop native tabs use isolated Electron guests. Headless tabs use an installed Chrome, Edge, Brave, or Chromium.
 - `surface: "user"` targets a visible Chromium preview tab in the Minnow desktop shell.
 
 Keep these surfaces separate. Agent Browser ownership is enforced by the run identity; never guess or reuse another owner's tab id. Use `surface: "user"` only when the user asks you to work in their visible preview. If `browser_reserve_tab` fails, stop and tell the user; do not retry on `surface: "user"`.
@@ -33,7 +33,7 @@ Keep these surfaces separate. Agent Browser ownership is enforced by the run ide
 5. `browser_snapshot` — get `[uid]` markers for elements. Refresh after navigation or interaction before using a uid.
 6. `browser_click` / `browser_fill` — act on uids from the latest snapshot.
 7. `browser_screenshot` — PNG appears inline in chat; it does not require the Agent Browser viewer to be open.
-8. Finish with `browser_release_tab` to leave a private tab for user inspection or reassignment, or `browser_close_tab` to close it and release resources. Popup/page targets in Agent Browser are closed, so work in the reserved page.
+8. Finish with `browser_release_tab` to leave a private tab for user inspection or reassignment, or `browser_close_tab` to close it and release resources. For a sign-in redirect that needs user approval, retain the reserved tab and ask the user to choose Take control and Retry navigation. Native sign-in popups belong to the user during takeover. Resume work on the approved app after handback.
 
 The Agent Browser viewer is opened with the browser sidebar button. It offers **Watch**, **Guide**, and **Take control** for a selected tab, plus assign/unassign, close-tab, and clear-tabs controls. Closing the viewer leaves the browser service running; quitting Minnow shuts it down. Agent sessions are disposable, are not restored on the next session, and allow up to 8 tabs per service. Minnow does not download a browser; install one or set `MINNOW_BROWSER_PATH`.
 

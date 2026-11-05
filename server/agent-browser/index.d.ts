@@ -7,6 +7,8 @@ export interface AgentBrowserOwner {
 }
 
 export interface AgentBrowserTab {
+  native?: boolean;
+  blockedOrigin?: string | null;
   tabId: string;
   status: 'launching' | 'ready' | 'transferring' | 'closing' | 'unsafe';
   title: string;
@@ -127,13 +129,14 @@ export class AgentBrowserService {
   historyOperator(tabId:string, action:'back'|'forward'|'reload', opts?:{timeoutMs?:number}): Promise<{moved:boolean;url:string}>;
   dispatchControlInput(tabId:string, event:Record<string,unknown>, opts?:{timeoutMs?:number}): Promise<{ok:true}>;
   operatorNavigate(tabId:string, url:string, opts?:{timeoutMs?:number}): ReturnType<AgentBrowserService['navigateOperator']>;
+  operatorRetryUrl(tabId: string): string;
   operatorBack(tabId:string, opts?:{timeoutMs?:number}): ReturnType<AgentBrowserService['historyOperator']>;
   operatorForward(tabId:string, opts?:{timeoutMs?:number}): ReturnType<AgentBrowserService['historyOperator']>;
   operatorReload(tabId:string, opts?:{timeoutMs?:number}): ReturnType<AgentBrowserService['historyOperator']>;
   operatorInput(tabId:string, event:Record<string,unknown>, opts?:{timeoutMs?:number}): Promise<{ok:true}>;
   releaseTab(tabId: string): Promise<AgentBrowserReservation>;
   unassignTab(tabId: string): Promise<AgentBrowserReservation>;
-  reassignTab(tabId: string, owner: AgentBrowserOwner): Promise<AgentBrowserReservation>;
+  reassignTab(tabId: string, owner: AgentBrowserOwner, options?: { continuingChat?: boolean }): Promise<AgentBrowserReservation>;
   closeTab(tabId: string): Promise<void>;
   clearTabs(): Promise<void>;
   close(): Promise<void>;

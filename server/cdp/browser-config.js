@@ -12,12 +12,14 @@ import { normalizeAllowlistPatternLine } from './allowlist.js';
 /** @typedef {object} BrowserConfig
  * @property {boolean} enabled
  * @property {boolean} allowNavigate
+ * @property {boolean} nativeAgentTabs
  * @property {string[]} allowedOriginPatterns
  */
 
 export const DEFAULT_BROWSER_CONFIG = {
   enabled: true,
   allowNavigate: true,
+  nativeAgentTabs: false,
   allowedOriginPatterns: [
     'http://localhost:*',
     'http://127.0.0.1:*',
@@ -41,6 +43,7 @@ function mergeBrowserConfig(raw) {
   const row = /** @type {Record<string, unknown>} */ (raw);
   if (typeof row.enabled === 'boolean') base.enabled = row.enabled;
   if (typeof row.allowNavigate === 'boolean') base.allowNavigate = row.allowNavigate;
+  if (typeof row.nativeAgentTabs === 'boolean') base.nativeAgentTabs = row.nativeAgentTabs;
   if (Array.isArray(row.allowedOriginPatterns)) {
     base.allowedOriginPatterns = row.allowedOriginPatterns.filter((p) => typeof p === 'string');
   }

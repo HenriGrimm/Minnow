@@ -237,6 +237,7 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
     refreshAreas: ['tools'],
   }),
   'integrations.browser': meta('browser.enabled', 'boolean', { refreshAreas: ['browser'] }),
+  'integrations.browser.nativeAgentTabs': meta('browser.nativeAgentTabs', 'boolean', { refreshAreas: ['browser'] }),
 
   'advanced.diagnostics.fileErrorsToIssues': browser('fileErrorsToIssues', 'boolean', {
     refreshAreas: ['diagnostics'],
