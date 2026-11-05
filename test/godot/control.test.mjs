@@ -4,8 +4,9 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import { handleGodotRequest } from '../../server/godot/middleware.js';
-import { getGodotStatus, stopGodot } from '../../server/godot/controller.js';
+import { getGodotStatus, resetGodotSessionsForTest, runGodotScene, setGodotControllerHooksForTest, stopGodot } from '../../server/godot/controller.js';
 import { runWithViewWorkspace } from '../../server/runtime/path-access.js';
 
 describe('Godot control API', () => {
@@ -36,6 +37,32 @@ describe('Godot control API', () => {
   test('stop is idempotent when no managed process exists', async () => {
     const stopped = await stopGodot(root, { target: 'all' });
     assert.deepEqual(stopped.stopped, []);
+  });
+
+  test('a delayed exit from a replaced game cannot clear or stop its successor', async t => {
+    const children = [];
+    t.after(resetGodotSessionsForTest);
+    setGodotControllerHooksForTest({
+      findExecutable: async () => ({ path: 'fake-godot' }),
+      probeExecutable: async () => ({ ok: true }),
+      spawn() {
+        const child = new EventEmitter();
+        child.pid = 100 + children.length;
+        child.kill = () => { child.killed = true; return true; };
+        children.push(child);
+        return child;
+      },
+    });
+    await runGodotScene(root);
+    await assert.rejects(runGodotScene(root), /already running/);
+    const restarted = await runGodotScene(root, { restart: true });
+    assert.equal(restarted.session.game.pid, 101);
+    children[0].emit('error', new Error('late error'));
+    children[0].emit('exit', 0);
+    children[0].emit('close', 0);
+    assert.equal((await getGodotStatus(root)).session.game.pid, 101);
+    assert.deepEqual((await stopGodot(root)).stopped, ['game']);
+    assert.equal(children[1].killed, true);
   });
 
   test('control route returns a useful conflict when Godot is unavailable', async () => {

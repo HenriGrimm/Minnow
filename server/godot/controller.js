@@ -131,6 +131,15 @@ function getOrCreateSession(projectRoot) {
   return session;
 }
 
+function trackChild(session, slot, child) {
+  session[slot] = child;
+  const clear = () => {
+    if (session[slot] === child) session[slot] = null;
+  };
+  child.once('exit', clear);
+  child.once('close', clear); // A failed spawn may close without emitting exit.
+}
+
 export async function startGodotEditor(workspaceRoot, options = {}) {
   const { selected, engine } = await resolveReadyProject(workspaceRoot, options.project);
   const session = getOrCreateSession(selected.project.root);
@@ -146,9 +155,8 @@ export async function startGodotEditor(workspaceRoot, options = {}) {
     '--editor', '--path', selected.project.root,
     '--lsp-port', String(session.lspPort), '--dap-port', String(session.dapPort),
   ];
-  session.editor = spawnGodot(engine.path, args, selected.project.root, session, 'editor');
+  trackChild(session, 'editor', spawnGodot(engine.path, args, selected.project.root, session, 'editor'));
   session.startedAt = new Date().toISOString();
-  session.editor.once('exit', () => { session.editor = null; });
   if (options.waitForLsp !== false) await waitForPort(session.lspPort, session.editor);
   return { project: selected.project, engine, session: publicSession(session), reused: false };
 }
@@ -183,10 +191,6 @@ function resolveProjectFile(projectRoot, requested, extensions) {
 export async function runGodotScene(workspaceRoot, options = {}) {
   const { selected, engine } = await resolveReadyProject(workspaceRoot, options.project);
   const session = getOrCreateSession(selected.project.root);
-  if (session.game && session.game.exitCode == null && !session.game.killed) {
-    if (options.restart) await stopGodot(workspaceRoot, { project: options.project, target: 'game' });
-    else throw Object.assign(new Error('A Godot game is already running for this project'), { statusCode: 409 });
-  }
   const scene = resolveProjectFile(selected.project.root, options.scene, ['.tscn', '.scn']);
   if (scene) await fs.access(scene.absolute);
   const args = ['--path', selected.project.root];
@@ -195,8 +199,11 @@ export async function runGodotScene(workspaceRoot, options = {}) {
   if (Array.isArray(options.args) && options.args.length > 0) {
     args.push('--', ...options.args.map(String));
   }
-  session.game = spawnGodot(engine.path, args, selected.project.root, session, 'game');
-  session.game.once('exit', () => { session.game = null; });
+  if (session.game && session.game.exitCode == null && !session.game.killed) {
+    if (!options.restart) throw Object.assign(new Error('A Godot game is already running for this project'), { statusCode: 409 });
+    if (session.game.kill() === false) throw new Error('Could not stop the previous Godot game');
+  }
+  trackChild(session, 'game', spawnGodot(engine.path, args, selected.project.root, session, 'game'));
   return { project: selected.project, scene: scene?.relative ?? null, session: publicSession(session) };
 }
 
