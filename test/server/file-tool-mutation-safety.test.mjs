@@ -16,6 +16,20 @@ after(async () => { await rmTestHome(home); });
 
 const call = (name, args) => executeServerTool(name, args, { workspaceRoot: workspace, filesystemAccessCeiling: 'workspace' });
 
+test('exclusive file creation keeps the winning bytes across a collision', async () => {
+  const name = 'new-file.txt';
+  const create = content => call('save_file', { path: name, content, create_only: true });
+  const values = ['first', 'second'];
+  const results = await Promise.all(values.map(create));
+  const winner = results.findIndex(r => !r.result.startsWith('Error:'));
+  assert.notEqual(winner, -1);
+  assert.match(results[1 - winner].result, /already exists/);
+  assert.equal(await fs.readFile(path.join(workspace, name), 'utf8'), values[winner]);
+  assert.match((await create('')).result, /already exists/);
+  assert.doesNotMatch((await call('save_file', { path: name, content: 'updated' })).result, /^Error:/);
+  assert.equal(await fs.readFile(path.join(workspace, name), 'utf8'), 'updated');
+});
+
 test('delete refuses the active root and its aliases while allowing a child directory', async () => {
   const marker = path.join(workspace, 'keep.txt');
   await fs.writeFile(marker, 'keep');

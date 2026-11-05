@@ -179,14 +179,22 @@ export async function startInlineCreate(
     if (finished) return;
     finished = true;
     const parent = activeCreateParent;
-    removeCreateRow();
-
     if (cancelled) {
+      removeCreateRow();
       setStatus('idle', 'Create cancelled');
       return;
     }
     if (!parent) return;
-    void commitCreate(parent, kind, inp.value);
+    void commitCreate(parent, kind, inp.value).then((created) => {
+      if (activeCreateRow !== row) return;
+      if (created) {
+        removeCreateRow();
+      } else {
+        finished = false;
+        inp.focus();
+        inp.select();
+      }
+    });
   };
 
   inp.addEventListener('keydown', (e) => {

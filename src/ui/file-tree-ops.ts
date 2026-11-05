@@ -458,7 +458,7 @@ export async function commitCreate(
   setStatus('spin', kind === 'dir' ? 'Creating folder…' : 'Creating file…');
   const result = await runFileTreeTool(
     kind === 'dir' ? 'make_directory' : 'save_file',
-    kind === 'dir' ? { path } : { path, content: '' },
+    kind === 'dir' ? { path } : { path, content: '', create_only: true },
   );
   if (!result.ok) return false;
   await finishMutation(null, null, 'create');

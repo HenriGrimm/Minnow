@@ -542,7 +542,8 @@ async function saveFileUnlocked(args, filePath) {
   }
   const rel = toRelativePath(filePath);
   const nextContent = String(args.content);
-  const before = await readUtf8OrEmpty(filePath);
+  const createOnly = args?.create_only === true;
+  const before = createOnly ? '' : await readUtf8OrEmpty(filePath);
   if (args?.expected_revision !== undefined) {
     const expected = String(args.expected_revision);
     const current = createHash('sha256')
@@ -556,7 +557,12 @@ async function saveFileUnlocked(args, filePath) {
     before,
   );
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, normalizedContent, 'utf8');
+  try {
+    await fs.writeFile(filePath, normalizedContent, { encoding: 'utf8', flag: createOnly ? 'wx' : 'w' });
+  } catch (err) {
+    if (createOnly && err?.code === 'EEXIST') return `Error: "${rel}" already exists. Choose a different name.`;
+    throw err;
+  }
   const eolNote =
     converted && eol ? `, preserved ${eol === '\r\n' ? 'CRLF' : 'LF'} line endings` : '';
   const overwriteNote = before
