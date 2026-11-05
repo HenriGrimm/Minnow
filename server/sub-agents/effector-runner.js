@@ -168,13 +168,9 @@ export function degradeNoReportIfProse(result, messages, schemaId) {
   if (!prose) return result;
   try {
     const parsed = JSON.parse(prose);
-    const structured = validateStructuredOutcomeForPreset(
-      parsed,
-      resolveSummarySchemaPreset(schemaId),
-    );
-    if (structured) {
-      return { ...result, outcome: 'pass', summary: structured.summary };
-    }
+    const report = parseReportForSchema(schemaId)(parsed);
+    if (report.ok) return { ...result, ...report.result };
+    if (parsed && typeof parsed === 'object' && 'outcome' in parsed) return result;
   } catch {
   }
   return { ...result, outcome: 'pass', summary: prose };
@@ -344,7 +340,7 @@ export function parseReportForSchema(schemaId) {
     }
     const rec = /** @type {Record<string, unknown>} */ (obj);
     const structured = validateStructuredOutcomeForPreset(rec, preset);
-    if (structured) {
+    if (structured && rec.outcome === undefined) {
       return {
         ok: true,
         result: {
@@ -368,7 +364,9 @@ export function parseReportForSchema(schemaId) {
       };
     }
     if (outcome === 'pass') {
-      const evidence = Array.isArray(rec.evidence) ? rec.evidence.filter((x) => typeof x === 'string') : [];
+      const evidence = Array.isArray(rec.evidence)
+        ? rec.evidence.filter((x) => typeof x === 'string')
+        : structured?.artifacts.map((a) => a.ref) ?? [];
       return { ok: true, result: { outcome: 'pass', summary: rec.summary, evidence } };
     }
     if (outcome === 'fail') {

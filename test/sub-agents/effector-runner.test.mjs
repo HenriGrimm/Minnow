@@ -38,6 +38,7 @@ import {
   cancelOrphanedSubAgentGenerations,
   createSubAgentEffector,
   degradeNoReportIfProse,
+  parseReportForSchema,
   resolveSubAgentToolIds,
 } from '../../server/sub-agents/effector-runner.js';
 
@@ -1063,6 +1064,19 @@ describe('degradeNoReportIfProse (effector-only)', () => {
     );
     assert.equal(out.outcome, 'pass');
     assert.equal(out.summary, 'Here is what I found in src/.');
+  });
+
+  test('report calls and final JSON preserve a declared verdict and its details', () => {
+    for (const [outcome, field] of [['blocked', 'needs'], ['fail', 'blockers'], ['pass', 'evidence']]) {
+      for (const optional of [{}, { findings: [], artifacts: [] }]) {
+        const expected = { outcome, summary: 'worker report', [field]: ['step'] };
+        const payload = { ...expected, ...optional };
+        assert.deepEqual(parseReportForSchema(SCHEMA)(payload), { ok: true, result: expected });
+        assert.deepEqual(degradeNoReportIfProse({ outcome: 'no_report' }, [
+          { role: 'assistant', content: JSON.stringify(payload) },
+        ], SCHEMA), expected);
+      }
+    }
   });
 
   test('empty no_report stays no_report', () => {
