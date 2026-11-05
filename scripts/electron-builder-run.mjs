@@ -5,10 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PACKED_APP_MARKER, electronBuilderSigningArgs } from './macos-signing-env.mjs';
+import { prepareReleaseOutput } from './clean-release.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const defaultOut = path.join(repoRoot, 'release', 'pkg');
-const winUnpacked = path.join(defaultOut, 'win-unpacked');
+const outputDir = 'release/pkg';
 
 // Fail before asar packing if server imports a src/ file not listed in build.files.
 
@@ -34,15 +34,11 @@ const tailnetSidecar = spawnSync('node', ['scripts/build-tailnet-sidecar.mjs', '
 });
 if (tailnetSidecar.status !== 0) process.exit(tailnetSidecar.status ?? 1);
 
-spawnSync('node', ['scripts/clean-release.mjs'], { cwd: repoRoot, stdio: 'inherit' });
-
-let outputDir = 'release/pkg';
-if (fs.existsSync(winUnpacked)) {
-  const alt = `release/pkg-${Date.now()}`;
-  console.warn(
-    `[package] ${path.relative(repoRoot, winUnpacked)} is still present; writing to ${alt}/ instead.`,
-  );
-  outputDir = alt;
+try {
+  prepareReleaseOutput(repoRoot);
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
 }
 
 const builderArgs = [

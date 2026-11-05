@@ -22,7 +22,7 @@ For UI key bindings (composer, editor, file tree, terminal), see [Keyboard short
 | `npm run package:win` / `package:mac` / `package:linux` | Package a single platform. On Windows/macOS, **AppImage** needs Docker — use `npm run package:linux:docker`. `package:win` / `package:linux` run `sandbox:ensure-helper` first (Linux ELF for Landlock; WSL build on Windows). |
 | `npm run package:dir` | Same, unpacked directory (`--dir`). |
 | `node scripts/verify-packaged-agent-conversations.mjs --app-dir <unpacked-app-directory>` | Check the supplied app's ASAR runtime, native SQLite, canonical transcript, archive, composer bundle, prompt assets, manual assets and shutdown using a temporary home. Makes no inference calls. A missing app or incomplete receipt fails the check. |
-| `npm run package:clean` | Clean the `release/` output. |
+| `npm run package:clean` | Remove previous unpacked applications from `release/pkg/` and the legacy `release/win-unpacked/` directory. Packaging and cleanup check for apps running from these output folders and ask you to close the affected copy. |
 | `npx tsc --noEmit` | Typecheck only. |
 
 ## Generated artifacts
