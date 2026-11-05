@@ -3,6 +3,8 @@
  */
 
 import assert from 'node:assert/strict';
+import { promisify } from 'node:util';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
@@ -201,6 +203,18 @@ describe('key generation', () => {
 
   afterEach(async () => {
     if (home) await rmTestHome(home);
+  });
+
+  test('concurrent processes and callers use the same durable key', async () => {
+    const moduleUrl = new URL('../../server/security/secret-box.js', import.meta.url).href;
+    const script = `import { encryptSecretPayload } from ${JSON.stringify(moduleUrl)};
+      console.log(JSON.stringify(await Promise.all(Array.from({length: 8}, () => encryptSecretPayload('first')))));`;
+    const groups = await Promise.all(Array.from({length: 4}, async () => {
+      const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script]);
+      return JSON.parse(stdout);
+    }));
+    for (const box of groups.flat()) assert.equal(await decryptSecretPayload(box), 'first');
+    assert.deepEqual(await fs.readdir(home), ['.key']);
   });
 
   test('creates random 32-byte key', async () => {

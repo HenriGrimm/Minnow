@@ -16,6 +16,7 @@ const KEY_BYTES = 32;
 
 /** Cached raw key bytes for this process. */
 let cachedKeyBytes = null;
+let keyAcquisition = null;
 
 /** Whether the key file was created during this process. */
 let keyCreatedThisProcess = false;
@@ -49,29 +50,50 @@ async function loadFileKeyBytes() {
     return cachedKeyBytes;
   }
 
-  const keyPath = secretKeyPath();
+  if (!keyAcquisition) {
+    keyAcquisition = acquireKey(secretKeyPath())
+      .then((key) => { cachedKeyBytes = key; return key; })
+      .finally(() => { keyAcquisition = null; });
+  }
+  return keyAcquisition;
+}
+
+async function readKey(keyPath) {
+  const key = Buffer.from((await fs.readFile(keyPath, 'utf8')).trim(), 'base64');
+  if (key.length !== KEY_BYTES) throw new Error('Secret encryption key has invalid length');
+  return key;
+}
+
+async function acquireKey(keyPath) {
   try {
-    const raw = (await fs.readFile(keyPath, 'utf8')).trim();
-    const decoded = Buffer.from(raw, 'base64');
-    if (decoded.length !== KEY_BYTES) {
-      throw new Error('Secret encryption key has invalid length');
-    }
-    cachedKeyBytes = decoded;
-    return cachedKeyBytes;
-  } catch (err) {
-    if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'ENOENT') {
-      throw err;
-    }
+    return await readKey(keyPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
 
-  await fs.mkdir(getMinnowHome(), { recursive: true });
+  await fs.mkdir(path.dirname(keyPath), { recursive: true });
   const key = crypto.randomBytes(KEY_BYTES);
-  const encoded = key.toString('base64');
-  await fs.writeFile(keyPath, `${encoded}\n`, 'utf8');
-  await chmodSafe(keyPath, 0o600);
-  keyCreatedThisProcess = true;
-  cachedKeyBytes = key;
-  return cachedKeyBytes;
+  const candidate = keyPath + '.tmp-' + crypto.randomUUID();
+  // link publishes the complete key exclusively, even across independent processes.
+  const file = await fs.open(candidate, 'wx', 0o600);
+  try {
+    try {
+      await file.writeFile(key.toString('base64') + '\n');
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    try {
+      await fs.link(candidate, keyPath);
+      keyCreatedThisProcess = true;
+      return key;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      return await readKey(keyPath);
+    }
+  } finally {
+    await fs.unlink(candidate);
+  }
 }
 
 /**
