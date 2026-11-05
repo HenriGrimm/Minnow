@@ -70,6 +70,18 @@ describe('segmentTurns', () => {
   });
 });
 
+describe('parallel screenshot pairing', () => {
+  it('retains both pictures of a surviving batch and drops pictures of missing results', () => {
+    const calls = ['one', 'two', 'missing'].map(id => ({ id, type: 'function', function: { name: 'screenshot', arguments: '{}' } }));
+    const tool = id => ({ role: 'tool', tool_call_id: id, content: 'saved' });
+    const image = id => ({ role: 'user', content: 'image', toolImageFollowUp: true, toolImageCallId: id });
+    const batch = [{ role: 'assistant', content: '', tool_calls: calls }, tool('one'), tool('two'),
+      image('one'), image('two'), image('missing'), { role: 'user', content: 'next' }, image('one')];
+    const clean = sanitizeToolPairing(batch);
+    assert.deepEqual(clean.filter(row => row.toolImageFollowUp).map(row => row.toolImageCallId), ['one', 'two']);
+  });
+});
+
 describe('golden summaries', () => {
   it('refactor session', () => {
     assertGolden('compaction-refactor', manualSummary(refactorSession()).checkpoint.summary);

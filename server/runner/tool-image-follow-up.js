@@ -3,7 +3,7 @@ const TOOL_IMAGE_NO_VISION_HINT = "\n\n(The screenshot file was saved, but the c
 function isToolImageFollowUpMessage(msg) {
   return msg.role === "user" && msg.toolImageFollowUp === true;
 }
-function toolImageFollowUpFromAttachments(attachments) {
+function toolImageFollowUpFromAttachments(attachments, callId) {
   if (!attachments?.length) return null;
   const parts = [{ type: "text", text: TOOL_IMAGE_FOLLOW_UP_TEXT }];
   for (const att of attachments) {
@@ -15,11 +15,11 @@ function toolImageFollowUpFromAttachments(attachments) {
     });
   }
   if (parts.length < 2) return null;
-  return { role: "user", content: parts, toolImageFollowUp: true };
+  return { role: "user", content: parts, toolImageFollowUp: true, ...(callId ? { toolImageCallId: callId } : {}) };
 }
 function toolImageFollowUpUserMessage(message) {
   if (message.role !== "tool") return null;
-  return toolImageFollowUpFromAttachments(message.attachments);
+  return toolImageFollowUpFromAttachments(message.attachments, message.tool_call_id);
 }
 function toolMessageHasImageAttachment(message) {
   if (message.role !== "tool" || !message.attachments?.length) return false;

@@ -310,7 +310,9 @@ function sanitizeToolPairing(messages) {
   }
   const requestedIds = /* @__PURE__ */ new Set();
   const out = [];
+  const batchResults = new Set();
   for (const msg of messages) {
+    if (msg.role !== "tool" && !isToolImageFollowUpMessage(msg)) batchResults.clear();
     if (msg.role === "assistant" && msg.tool_calls?.length) {
       const kept = msg.tool_calls.filter((tc) => answeredIds.has(tc.id));
       if (kept.length === 0) {
@@ -326,12 +328,14 @@ function sanitizeToolPairing(messages) {
     }
     if (msg.role === "tool") {
       if (!requestedIds.has(msg.tool_call_id)) continue;
+      batchResults.add(msg.tool_call_id);
       out.push(msg);
       continue;
     }
     if (isToolImageFollowUpMessage(msg)) {
       const prev = out[out.length - 1];
-      if (prev?.role !== "tool") continue;
+      // Older image rows have no call id and used immediate tool adjacency.
+      if (msg.toolImageCallId ? !batchResults.has(msg.toolImageCallId) : prev?.role !== "tool") continue;
       out.push(msg);
       continue;
     }

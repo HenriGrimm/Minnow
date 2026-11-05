@@ -1776,7 +1776,7 @@ function createTurnRunner(deps) {
                   content: (unchanged ?? toolOut.content + (!sendImages && toolOut.attachments?.some((att) => att.type === "image") ? TOOL_IMAGE_NO_VISION_HINT : "")) + (repeat.warning ? `\n\n${repeat.warning}` : "")
                 });
                 if (sendImages) {
-                  const followUp = toolImageFollowUpFromAttachments(toolOut.attachments);
+                  const followUp = toolImageFollowUpFromAttachments(toolOut.attachments, tc.id);
                   if (followUp) imageFollowUps.push(followUp);
                 }
               }

@@ -103,6 +103,7 @@ function stripInternalApiMessageFields(
       if (!raw || typeof raw !== 'object') return raw;
       const msg = { ...projectChatAttribution(raw as Record<string, unknown>) };
       delete msg.toolImageFollowUp;
+      delete msg.toolImageCallId;
       delete msg.provenance;
       delete msg.messageId;
       delete msg.commandId;

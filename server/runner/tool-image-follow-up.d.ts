@@ -13,7 +13,7 @@ export declare const TOOL_IMAGE_NO_VISION_HINT = "\n\n(The screenshot file was s
 /** True when this API user row is an ephemeral screenshot follow-up (not chat history). */
 export declare function isToolImageFollowUpMessage(msg: ApiMessage): boolean;
 /** Build a multimodal user follow-up from tool screenshot attachments (data URLs only). */
-export declare function toolImageFollowUpFromAttachments(attachments: ToolImageAttachment[] | undefined): ApiUserMessage | null;
+export declare function toolImageFollowUpFromAttachments(attachments: ToolImageAttachment[] | undefined, callId?: string): ApiUserMessage | null;
 /** Follow-up for a persisted tool history row, or null when there are no pixels. */
 export declare function toolImageFollowUpUserMessage(message: Message): ApiUserMessage | null;
 /** True when a tool row stored at least one screenshot attachment. */

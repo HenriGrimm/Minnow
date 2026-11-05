@@ -432,6 +432,7 @@ export interface ApiUserMessage {
    * Stripped before the provider POST.
    */
   toolImageFollowUp?: true;
+  toolImageCallId?: string;
 }
 
 export interface ApiAssistantMessage {
