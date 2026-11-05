@@ -6,15 +6,19 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import net from 'node:net';
+import http from 'node:http';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
   applyRemoteConfigAtBoot,
   configureRemoteIngress,
   getLanStatus,
+  startLanIngress,
+  stopLanIngress,
   setLanEnabled,
   shutdownRemoteIngress,
 } from '../../server/remote/ingress-manager.js';
+import { startIsolatedPreviewHost, stopIsolatedPreviewHost } from '../../server/preview/isolated-host.js';
 import { readRemoteConfig } from '../../server/remote/config.js';
 import { createTestApp, freePort, useScratchHome } from './helpers.mjs';
 
@@ -60,6 +64,29 @@ describe('home-network listener', () => {
       assert.deepEqual(status.lan.urls, []);
     } finally {
       await new Promise((resolve) => blocker.close(resolve));
+    }
+  });
+
+  test('a queued Off wins over an in-flight bind and previews return to the same local port', async t => {
+    const binds = [];
+    const listen = http.Server.prototype.listen;
+    t.mock.method(http.Server.prototype, 'listen', function (...args) {
+      if (typeof args[0] === 'number') binds.push([args[0], args[1]]);
+      return listen.apply(this, args);
+    });
+    await startIsolatedPreviewHost();
+    try {
+      const first = startLanIngress({ port });
+      const last = stopLanIngress();
+      await Promise.all([first, last]);
+      assert.equal(getLanStatus().state, 'off');
+      const wide = binds.find(([boundPort, host]) => host === '0.0.0.0' && boundPort !== port);
+      assert.ok(wide, 'preview listener followed LAN enablement');
+      assert.deepEqual(binds.at(-1), [wide[0], '127.0.0.1']);
+      assert.equal((await fetch('http://127.0.0.1:' + wide[0] + '/unknown')).status, 404);
+      await assert.rejects(fetch('http://127.0.0.1:' + port));
+    } finally {
+      await stopIsolatedPreviewHost();
     }
   });
 

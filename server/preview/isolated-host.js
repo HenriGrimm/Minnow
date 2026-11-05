@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
-import { getConfigNetworkAccess } from '../network/access.js';
 import { getEffectiveWorkspaceRoot, resolveSafePath } from '../runtime/path-access.js';
 import { runWithToolContext } from '../runtime/path-access.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
@@ -70,29 +69,60 @@ async function servePreview(req, res) {
   );
 }
 
-/** Start a route-limited origin before the main application starts serving HTML. */
-export async function startIsolatedPreviewHost() {
-  if (previewServer) return;
+async function bindPreviewHost(host, port) {
   const server = http.createServer((req, res) => {
     void servePreview(req, res).catch(() => reject(res, 500));
   });
-  // Tablets on the home network open previews too; this is decided at boot
-  // from the saved setting, before the home-network listener itself starts.
-  const host = getConfigNetworkAccess() === 'lan' ? '0.0.0.0' : '127.0.0.1';
   await new Promise((resolve, rejectStart) => {
     server.once('error', rejectStart);
-    server.listen(0, host, resolve);
+    server.listen(port, host, resolve);
   });
   previewPort = server.address().port;
   previewServer = server;
 }
 
-export async function stopIsolatedPreviewHost() {
+async function closePreviewListener() {
   const server = previewServer;
   previewServer = null;
-  previewPort = 0;
-  capabilities.clear();
-  if (server) await new Promise((resolve) => server.close(resolve));
+  if (server) await new Promise(resolve => {
+    server.close(resolve);
+    server.closeAllConnections();
+  });
+}
+
+let pending = Promise.resolve();
+function changePreviewListener(operation) {
+  const result = pending.then(operation);
+  pending = result.catch(() => {});
+  return result;
+}
+
+/** Start privately; remote ingress widens the listener only after a successful bind. */
+export function startIsolatedPreviewHost() {
+  return changePreviewListener(() => previewServer || bindPreviewHost('127.0.0.1', 0));
+}
+
+export function setPreviewLanAccess(enabled) {
+  return changePreviewListener(async () => {
+    const host = enabled ? '0.0.0.0' : '127.0.0.1';
+    if (!previewPort || previewServer?.address()?.address === host) return;
+    // Existing desktop pages and grants keep their origin through an address change.
+    await closePreviewListener();
+    try {
+      await bindPreviewHost(host, previewPort);
+    } catch (error) {
+      if (enabled) await bindPreviewHost('127.0.0.1', previewPort);
+      throw error;
+    }
+  });
+}
+
+export function stopIsolatedPreviewHost() {
+  return changePreviewListener(async () => {
+    await closePreviewListener();
+    previewPort = 0;
+    capabilities.clear();
+  });
 }
 
 /** Authenticated main-origin endpoint. The returned token only works on the preview origin. */

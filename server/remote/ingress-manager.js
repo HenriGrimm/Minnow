@@ -9,6 +9,7 @@ import { getBonjourHostname, setActiveNetworkAccess } from '../network/access.js
 import { createIngressServer } from '../network/ingress.js';
 import { listLanAddresses } from '../system/network.js';
 import { attachMinnowWebSockets } from '../runtime/ws-attach.js';
+import { setPreviewLanAccess } from '../preview/isolated-host.js';
 import {
   envForcesLan,
   readRemoteConfig,
@@ -24,6 +25,13 @@ import {
 
 /** @type {import('node:http').RequestListener | null} */
 let requestHandler = null;
+let pendingLanChange = Promise.resolve();
+
+function changeLan(operation) {
+  const result = pendingLanChange.then(operation);
+  pendingLanChange = result.catch(() => {});
+  return result;
+}
 
 /**
  * @type {{
@@ -67,9 +75,13 @@ function listen(server, port, host) {
  * port never changes: a phone's sign-in belongs to its exact address.
  * @param {{ port: number }} opts
  */
-export async function startLanIngress({ port }) {
+export function startLanIngress(options) {
+  return changeLan(() => startLan(options));
+}
+
+async function startLan({ port }) {
   if (lan.server && lan.port === port && lan.state === 'on') return getLanStatus();
-  await stopLanIngress();
+  await stopLan();
   if (!requestHandler) {
     lan.state = 'error';
     lan.error = { code: 'not-configured', message: 'Remote access is not available in this process.' };
@@ -87,6 +99,7 @@ export async function startLanIngress({ port }) {
     attachMinnowWebSockets(server);
     try {
       await listen(server, port, host);
+      await setPreviewLanAccess(true);
       lan.server = server;
       lan.state = 'on';
       setActiveNetworkAccess('lan');
@@ -108,19 +121,23 @@ export async function startLanIngress({ port }) {
   return getLanStatus();
 }
 
-export async function stopLanIngress() {
+export function stopLanIngress() {
+  return changeLan(stopLan);
+}
+
+async function stopLan() {
   setActiveNetworkAccess('local');
   const server = lan.server;
   lan.server = null;
   lan.state = 'off';
   lan.error = null;
-  if (!server) return;
-  await new Promise((resolve) => {
+  const stopped = !server ? Promise.resolve() : new Promise((resolve) => {
     server.close(() => resolve(undefined));
     server.closeAllConnections?.();
     for (const socket of lan.sockets) socket.destroy();
     lan.sockets.clear();
   });
+  await Promise.all([stopped, setPreviewLanAccess(false)]);
 }
 
 /** Addresses a phone can use, best first: the Bonjour name on macOS, then IPs. */
@@ -159,11 +176,13 @@ export function getConnectTargets() {
 }
 
 /** @param {boolean} enabled */
-export async function setLanEnabled(enabled) {
-  const config = await writeRemoteConfig({ lan: { enabled } });
-  if (enabled) await startLanIngress({ port: resolveLanPort(config) });
-  else await stopLanIngress();
-  return getRemoteStatus();
+export function setLanEnabled(enabled) {
+  return changeLan(async () => {
+    const config = await writeRemoteConfig({ lan: { enabled } });
+    if (enabled) await startLan({ port: resolveLanPort(config) });
+    else await stopLan();
+    return getRemoteStatus();
+  });
 }
 
 /**
