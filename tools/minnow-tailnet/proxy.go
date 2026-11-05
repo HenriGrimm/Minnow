@@ -44,6 +44,10 @@ func NewProxy(target *url.URL, secret string, whoIs WhoIsFunc) http.Handler {
 			pr.Out.Host = pr.In.Host
 			for name := range pr.Out.Header {
 				lower := strings.ToLower(name)
+				switch lower {
+				case "x-minnow-request-secret", "x-minnow-workspace", "x-minnow-chat-protocol":
+					continue // Application inputs; the upstream validates each one.
+				}
 				if strings.HasPrefix(lower, "x-minnow-") || strings.HasPrefix(lower, "x-forwarded-") || lower == "forwarded" {
 					pr.Out.Header.Del(name)
 				}

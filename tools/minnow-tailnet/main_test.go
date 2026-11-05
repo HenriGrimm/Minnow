@@ -40,6 +40,10 @@ func TestProxyReplacesClientSuppliedSecretAndMarksFunnel(t *testing.T) {
 	req.Host = "minnow-studio.tail1.ts.net"
 	req.Header.Set("X-Minnow-Ingress-Secret", "attacker")
 	req.Header.Set("X-Minnow-Ingress", "loopback")
+	req.Header.Set("X-Minnow-Request-Secret", "poll-proof")
+	req.Header.Set("X-Minnow-Workspace", "workspace-B")
+	req.Header.Set("X-Minnow-Chat-Protocol", "current")
+	req.Header.Set("X-Minnow-Tailnet-User", "forged")
 	req.Header.Set("X-Forwarded-For", "10.0.0.1")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -58,6 +62,12 @@ func TestProxyReplacesClientSuppliedSecretAndMarksFunnel(t *testing.T) {
 	}
 	if host != "minnow-studio.tail1.ts.net" {
 		t.Fatalf("host = %q", host)
+	}
+	if got.Get("X-Minnow-Request-Secret") != "poll-proof" || got.Get("X-Minnow-Workspace") != "workspace-B" || got.Get("X-Minnow-Chat-Protocol") != "current" {
+		t.Fatal("application headers did not survive forwarding")
+	}
+	if got.Get("X-Minnow-Tailnet-User") != "" {
+		t.Fatal("unexpected client-supplied tailnet identity")
 	}
 }
 
