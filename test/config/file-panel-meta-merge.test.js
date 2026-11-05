@@ -12,6 +12,7 @@ test('mergeConfigMeta persists preview browser fields', () => {
     {
       filePanel: {
         viewerOpen: true,
+        splitRatio: 0.08,
         rightPaneMode: 'preview',
         previewSource: { kind: 'url', url: 'https://example.com' },
         previewAutoReload: false,
@@ -22,6 +23,7 @@ test('mergeConfigMeta persists preview browser fields', () => {
   );
   const panel = /** @type {Record<string, unknown>} */ (merged.filePanel);
   assert.equal(panel.viewerOpen, true);
+  assert.equal(panel.splitRatio, 0.08);
   assert.equal(panel.rightPaneMode, 'preview');
   assert.deepEqual(panel.previewSource, { kind: 'url', url: 'https://example.com' });
   assert.equal(panel.previewAutoReload, false);

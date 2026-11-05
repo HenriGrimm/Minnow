@@ -36,15 +36,23 @@
   position: relative;
 }
 
+.workspace-split.viewer-open {
+  --chat-split-width: max(min(35%, 360px), calc(var(--split-ratio, 0.55) * 100%));
+}
+
+.workspace-split.viewer-open:has(.split-resizer.dragging) {
+  --chat-split-width: calc(var(--split-ratio, 0.55) * 100%);
+}
+
 .workspace-split.viewer-open .main-column {
-  flex: var(--split-ratio, 0.55) 1 0;
+  flex: 0 1 var(--chat-split-width);
   min-width: 0;
   /* Keep stats strip inside the chat column; #chatArea remains the scroll container */
   overflow: hidden;
 }
 
 .workspace-split.viewer-open .right-pane-column {
-  flex: calc(1 - var(--split-ratio, 0.55)) 1 0;
+  flex: 1 1 0;
   min-width: var(--viewer-min-w);
 }
 
@@ -83,7 +91,7 @@
 }
 
 .workspace-split.viewer-open .split-resizer:not(.hidden) {
-  left: calc(var(--split-ratio, 0.55) * 100% - 3px);
+  left: calc(min(var(--chat-split-width), 100% - var(--viewer-min-w)) - 3px);
 }
 
 .workspace-split.viewer-open.chat-column-collapsed .split-resizer:not(.hidden) {

@@ -14,7 +14,7 @@ import {
 import { createPointerFrame } from './pointer-frame';
 
 /** Live drag range (wider than persisted split ratio). */
-export const SPLIT_DRAG_RATIO_MIN = 0.05;
+export const SPLIT_DRAG_RATIO_MIN = 0;
 export const SPLIT_DRAG_RATIO_MAX = 0.95;
 
 let resizerBound = false;
@@ -23,8 +23,10 @@ function clampDragRatio(ratio: number): number {
   return Math.min(SPLIT_DRAG_RATIO_MAX, Math.max(SPLIT_DRAG_RATIO_MIN, ratio));
 }
 
-function clampPersistedRatio(ratio: number): number {
-  return Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, ratio));
+function clampPersistedRatio(ratio: number, width: number): number {
+  // Match the resting CSS minimum, including after a display resize.
+  const minRatio = Math.max(SPLIT_RATIO_MIN, Math.min(0.35, 360 / width));
+  return Math.min(SPLIT_RATIO_MAX, Math.max(minRatio, ratio));
 }
 
 function syncResizerAria(resizer: HTMLElement, ratio: number): void {
@@ -67,13 +69,14 @@ export function bindWorkspaceSplitResizer(): void {
     window.removeEventListener('blur', stopDrag);
 
     const rawStyle = split.style.getPropertyValue('--split-ratio');
+    const collapseThreshold = Math.min(SPLIT_DRAG_CHAT_COLLAPSE_THRESHOLD, 120 / dragRect.width);
     const liveRatio = rawStyle ? Number.parseFloat(rawStyle) : ratioAtDragStart;
     const ratio = Number.isFinite(liveRatio) ? liveRatio : ratioAtDragStart;
 
     if (isChatColumnDragCollapsed()) {
-      if (ratio > SPLIT_DRAG_CHAT_COLLAPSE_THRESHOLD) {
+      if (ratio > collapseThreshold) {
         restoreChatColumnFromDrag();
-        patchFilePanelState({ splitRatio: clampPersistedRatio(ratio) });
+        patchFilePanelState({ splitRatio: clampPersistedRatio(ratio, dragRect.width) });
       }
       applyFileSidebarVisuals();
       syncResizerAria(resizer, getFilePanelState().splitRatio);
@@ -81,7 +84,7 @@ export function bindWorkspaceSplitResizer(): void {
     }
 
     if (
-      ratio <= SPLIT_DRAG_CHAT_COLLAPSE_THRESHOLD &&
+      ratio <= collapseThreshold &&
       getFilePanelState().rightPaneMode !== null
     ) {
       collapseChatColumnFromDrag();
@@ -90,7 +93,7 @@ export function bindWorkspaceSplitResizer(): void {
       return;
     }
 
-    const persisted = clampPersistedRatio(ratio);
+    const persisted = clampPersistedRatio(ratio, dragRect.width);
     patchFilePanelState({ splitRatio: persisted });
     applyFileSidebarVisuals();
     syncResizerAria(resizer, persisted);

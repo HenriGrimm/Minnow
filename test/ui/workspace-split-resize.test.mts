@@ -15,7 +15,7 @@ import {
   showViewerSplit,
   hideViewerSplit,
 } from '../../src/ui/file-layout.ts';
-import { restoreChatColumnOnChatSelect } from '../../src/ui/workspace-split-resize.ts';
+import { bindWorkspaceSplitResizer, resetWorkspaceSplitResizerForTests, restoreChatColumnOnChatSelect } from '../../src/ui/workspace-split-resize.ts';
 
 function setupSplitDom(): void {
   document.body.innerHTML = `
@@ -67,6 +67,22 @@ describe('workspace split drag collapse', () => {
   afterEach(() => {
     resetFilePanelStateForTests();
     resetChatColumnDragCollapsedForTests();
+  });
+
+  test('releasing at 400px on a 5000px workspace keeps chat open at that width', () => {
+    patchFilePanelState({ rightPaneMode: 'preview', viewerOpen: true });
+    applyFileSidebarVisuals();
+    const split = document.getElementById('workspaceSplit')!;
+    const handle = document.getElementById('splitResizer')!;
+    split.getBoundingClientRect = () => new window.DOMRect(350, 0, 5000, 1000);
+    handle.setPointerCapture = () => {};
+    resetWorkspaceSplitResizerForTests();
+    bindWorkspaceSplitResizer();
+    handle.dispatchEvent(new window.PointerEvent('pointerdown'));
+    window.dispatchEvent(new window.PointerEvent('pointermove', { clientX: 750 }));
+    window.dispatchEvent(new window.PointerEvent('pointerup'));
+    assert.equal(isChatColumnDragCollapsed(), false);
+    assert.equal(split.style.getPropertyValue('--split-ratio'), '0.08');
   });
 
   test('collapseChatColumnFromDrag keeps preview open at full width', () => {

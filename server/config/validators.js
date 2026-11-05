@@ -2014,7 +2014,7 @@ export function mergeConfigMeta(existing, patch) {
       existingPanel.viewerOpen = fp.viewerOpen;
     }
     if (typeof fp.splitRatio === 'number' && Number.isFinite(fp.splitRatio)) {
-      existingPanel.splitRatio = Math.min(0.75, Math.max(0.35, fp.splitRatio));
+      existingPanel.splitRatio = Math.min(0.75, Math.max(0.01, fp.splitRatio));
     }
     if (typeof fp.fileSidebarWidth === 'number' && Number.isFinite(fp.fileSidebarWidth)) {
       existingPanel.fileSidebarWidth = Math.min(560, Math.max(220, Math.round(fp.fileSidebarWidth)));

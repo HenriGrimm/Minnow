@@ -159,7 +159,7 @@ export const DEFAULT_FILE_PANEL_STATE: FilePanelState = {
 };
 
 /** Persisted split ratio bounds (main column share when the right pane is open). */
-export const SPLIT_RATIO_MIN = 0.35;
+export const SPLIT_RATIO_MIN = 0.01;
 export const SPLIT_RATIO_MAX = 0.75;
 /** Dragging the split left past this main-column ratio collapses chat for a full-width preview. */
 export const SPLIT_DRAG_CHAT_COLLAPSE_THRESHOLD = 0.12;
