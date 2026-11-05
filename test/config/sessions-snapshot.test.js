@@ -235,6 +235,33 @@ describe('sessions.db snapshots', () => {
     assert.deepEqual(listSessionsSnapshots(), [result.file]);
   });
 
+  test('a damaged header restores the verified snapshot and retains the original', async () => {
+    seed();
+    const snapshot = await snapshotSessionsDb(getSessionsDb(), { force: true });
+    closeSessionsDb();
+    const fd = fs.openSync(sessionsDbPath(), 'r+');
+    try { fs.writeSync(fd, Buffer.alloc(16, 0xee), 0, 16, 0); } finally { fs.closeSync(fd); }
+    const db = getSessionsDb();
+    assert.equal(readSessionMeta(db, 'dbRestoredFromSnapshotFile'), path.basename(snapshot.file));
+    assert.equal(countRows(db, 'messages'), 3);
+    const parked = sessionsDbPath() + '.corrupt-' + readSessionMeta(db, 'dbCorruptQuarantineTs');
+    assert.deepEqual(fs.readFileSync(parked).subarray(0, 16), Buffer.alloc(16, 0xee));
+  });
+
+  test('an exclusively locked healthy database stays in place', () => {
+    seed();
+    closeSessionsDb();
+    const owner = new Database(sessionsDbPath());
+    try {
+      owner.pragma('journal_mode = DELETE');
+      owner.exec('BEGIN EXCLUSIVE');
+      assert.throws(() => getSessionsDb(), { code: 'SQLITE_BUSY' });
+    } finally { owner.close(); }
+    const opened = getSessionsDb();
+    assert.equal(countRows(opened, 'messages'), 3);
+    assert.equal(readSessionMeta(opened, 'dbCorruptRecoveredAt'), null);
+  });
+
   test('corrupt sessions.db is quarantined and restored from the newest snapshot', async () => {
     seed();
     const snapshot = await snapshotSessionsDb(getSessionsDb(), { force: true });

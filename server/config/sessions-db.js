@@ -33,11 +33,16 @@ function sessionsDbCacheKey() {
 function openSessionsDatabase() {
   fs.mkdirSync(sessionsRootDir(), { recursive: true });
   const db = new Database(sessionsDbPath());
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 5000');
-  initSessionsSchema(db);
-  return db;
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
+    initSessionsSchema(db);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }
 
 /**
@@ -46,17 +51,17 @@ function openSessionsDatabase() {
 function quarantineCorruptSessionsDb() {
   const ts = Date.now();
   const base = sessionsDbPath();
-  for (const suffix of ['', '-wal', '-shm']) {
-    const filePath = `${base}${suffix}`;
-    if (!fs.existsSync(filePath)) continue;
-    try {
-      fs.renameSync(filePath, `${filePath}.corrupt-${ts}`);
-    } catch {
-      try {
-        fs.rmSync(filePath, { force: true });
-      } catch {
-      }
+  const moved = [];
+  try {
+    for (const suffix of ['-shm', '-wal', '']) {
+      const filePath = base + suffix;
+      if (!fs.existsSync(filePath)) continue;
+      fs.renameSync(filePath, filePath + '.corrupt-' + ts);
+      moved.push(filePath);
     }
+  } catch (error) {
+    for (const filePath of moved.reverse()) fs.renameSync(filePath + '.corrupt-' + ts, filePath);
+    throw error;
   }
   return String(ts);
 }
@@ -71,11 +76,19 @@ export function getSessionsDb() {
     return existing;
   }
 
-  let db = openSessionsDatabase();
-
-  const quickCheck = db.pragma('quick_check', { simple: true });
+  let db;
+  let quickCheck;
+  try {
+    db = openSessionsDatabase();
+    quickCheck = db.pragma('quick_check', { simple: true });
+  } catch (error) {
+    db?.close();
+    db = null;
+    if (error.code !== 'SQLITE_NOTADB' && !/^SQLITE_CORRUPT(?:_|$)/.test(error.code)) throw error;
+    quickCheck = error.code;
+  }
   if (quickCheck !== 'ok') {
-    db.close();
+    db?.close();
     const ts = quarantineCorruptSessionsDb();
     // A verified snapshot is a whole DB (FTS index, runs, meta, revision), so it
     // beats the legacy JSON blob; fall back to that only when none is usable.
