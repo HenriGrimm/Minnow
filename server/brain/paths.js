@@ -4,6 +4,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { realpathForBoundaryCheck } from '../workspace/safe-path.js';
 import { getMinnowHome } from '../config/home.js';
 
 const UUID_RE =
@@ -134,30 +135,19 @@ export async function resolvePagePath(relPath) {
   const normalized = assertSafeRelativePagePath(relPath);
   const pagesDir = getBrainPagesDir();
 
-  let realPagesRoot;
-  try {
-    await fs.mkdir(pagesDir, { recursive: true });
-    realPagesRoot = await fs.realpath(pagesDir);
-  } catch {
-    realPagesRoot = path.resolve(pagesDir);
+  await fs.mkdir(pagesDir, { recursive: true });
+  const realPagesRoot = realpathForBoundaryCheck(pagesDir);
+  const candidate = path.resolve(realPagesRoot, ...normalized.split('/'));
+  const target = realpathForBoundaryCheck(candidate);
+  const relative = path.relative(realPagesRoot, target);
+  if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    throw new BrainPathError('Page path escapes the pages directory via symlink');
   }
-
-  const segments = normalized.split('/').filter((segment) => segment.length > 0);
-  const candidate = path.resolve(realPagesRoot, ...segments);
-
-  try {
-    const realCandidate = await fs.realpath(candidate);
-    const relative = path.relative(realPagesRoot, realCandidate);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) {
-      throw new BrainPathError('Page path escapes the pages directory via symlink');
-    }
-    return realCandidate;
-  } catch (err) {
-    if (err instanceof BrainPathError) throw err;
-    const code = err && typeof err === 'object' && 'code' in err ? err.code : null;
-    if (code === 'ENOENT') {
-      return candidate;
-    }
-    throw err;
-  }
+  // A dangling final symlink also looks missing to realpath, but writeFile follows it.
+  const stat = await fs.lstat(candidate).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (stat?.isSymbolicLink()) await fs.realpath(candidate);
+  return target;
 }

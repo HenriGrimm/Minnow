@@ -86,6 +86,15 @@ describe('brain path sandbox', () => {
     await expectPathError(() => resolvePagePath('facts/note'));
   });
 
+  test('refuses a missing page under a directory junction before creating anything', async () => {
+    const outside = path.join(homeDir, 'outside-dir');
+    await fs.mkdir(outside);
+    await fs.symlink(outside, path.join(getBrainPagesDir(), 'linked'), 'junction');
+    const { createPage } = await import('../../server/brain/store.js');
+    await expectPathError(() => createPage({ relPath: 'linked/new.md', title: 'Escape', body: 'outside' }));
+    assert.deepEqual(await fs.readdir(outside), []);
+  });
+
   test('rejects symlink that escapes the pages root', async () => {
     const pagesDir = getBrainPagesDir();
     const outside = path.join(homeDir, 'outside-secret.md');
