@@ -133,9 +133,11 @@ import {
 import { runFindFilesSearch, runGrepSearch } from '../tools/grep.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import { getAppRoot } from '../workspace/root.js';
+import { isResolvedPathUnderRoot } from '../workspace/safe-path.js';
 import { wrapServerToolResult, wrapUntrusted } from '../security/untrusted.js';
 import {
   getEffectiveWorkspaceRoot,
+  getRequestWorkspaceRoot,
   resolveSafePath,
   runWithToolContext,
 } from './path-access.js';
@@ -854,6 +856,9 @@ async function toolDeletePath(args) {
   const rel = toRelativePath(target);
   const stat = await fs.stat(target);
   if (stat.isDirectory()) {
+    if ([getEffectiveWorkspaceRoot(), getRequestWorkspaceRoot()].some(root => isResolvedPathUnderRoot(root, target))) {
+      return 'Error: Cannot delete the workspace root or a directory containing it.';
+    }
     await fs.rm(target, { recursive: true, force: true });
     purgeBrainCodeIndexAfterDelete(rel, true);
     return `Deleted ${rel}`;
