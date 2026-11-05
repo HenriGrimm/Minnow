@@ -41,6 +41,7 @@ export const SOURCE_DETECT_DIRS = ['src', 'app', 'components', 'pages', 'public'
  * @returns {string}
  */
 export function resolveBundledImpeccableCliPath(appRoot) {
+  if (path.basename(appRoot) === 'app.asar') return path.join(appRoot, 'dist-headless', 'impeccable-detect.mjs');
   return path.join(appRoot, 'node_modules', 'impeccable', 'cli', 'bin', 'cli.js');
 }
 
@@ -287,7 +288,7 @@ function runBundledImpeccableCli(command, targets, appRoot, projectRoot) {
   const cliPath = resolveBundledImpeccableCliPath(appRoot);
   if (!fs.existsSync(cliPath)) {
     return Promise.resolve({
-      result: `Error: missing Impeccable CLI at ${cliPath}. Re-run npm install in the Minnow app directory.`,
+      result: `Error: missing Impeccable CLI at ${cliPath}. Repair the Minnow installation, or run npm install in a source checkout.`,
     });
   }
 

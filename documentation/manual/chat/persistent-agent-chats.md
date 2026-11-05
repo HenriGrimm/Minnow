@@ -81,6 +81,12 @@ Agents can discover, read and contact conversations in the same project when the
 
 Incoming messages identify the source chat; they are not presented as something you typed. Waiting observes one execution, not every future message in that chat. A wait timeout leaves accepted work running. Self-waits, circular waits and unbounded message exchanges are refused with a visible tool result.
 
+## Review interrupted work
+
+When an interrupted tool needs recovery, open **Review interrupted work** in the chat on the local host. Check the listed files in Source Control or inspect the command log in Terminal. If Minnow still holds the execution lease, restart it and reopen the review. Wait for any remaining command to finish or stop it yourself.
+
+Once you have checked the effects, describe what you observed and choose **Record findings and retire attempt**. Your note appears in the conversation. Minnow saves any matching host result and records uncertainty for effects without a receipt. Queued work stays held. Send a fresh instruction when you are ready to continue.
+
 ## Saved history and older tasks
 
 Agent conversations keep their saved history. Editing past messages, regenerating, undoing a turn, clearing failed output, truncating, forking and switching historical branches are unavailable in this version. Send a new message to continue. Transcript copy/export and file review remain available, and editing a message that is still queued is supported.

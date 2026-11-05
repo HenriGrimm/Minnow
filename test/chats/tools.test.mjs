@@ -8,6 +8,7 @@ import { createChatRepository } from '../../server/chats/repository.js';
 import { createChatCommandService } from '../../server/chats/service.js';
 import { createChatPolicy, intersectChatPolicies } from '../../server/chats/policy.js';
 import { createChatCaller, createChatProjectRegistry, resolveProjectScope } from '../../server/chats/caller.js';
+import { createChatTaskRepository } from '../../server/chats/task-repository.js';
 import { createChatTools, installChatTools } from '../../server/chats/tools.js';
 import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
 import { CHAT_READ_MAX_BYTES, createChatToolReads } from '../../server/chats/tool-reads.js';
@@ -40,7 +41,7 @@ async function fixture(run, extra = {}) {
       providerId: pair.providerId, modelId: pair.modelId, modeId: initial.modeId });
     policies.set(id, id === 'foreign-chat' ? createChatPolicy({ ...initial, workspaceIds: ['other'] }) : initial);
   }
-  const fence = repository.claimExecution({ chatId: 'source', executionId: 'source-execution', ownerId: 'source-host',
+  const fence = repository.claimExecution({ chatId: 'source', executionId: 'source-execution', ownerId: 'source-host', runId: extra.runId,
     captured: { policy: initial, modelSelection: pair } });
   const caller = createChatCaller({ actor: 'agent', ingress: 'tool', chatId: 'source', executionId: fence.executionId,
     executionActive: true, scope, policy: initial });
@@ -129,6 +130,26 @@ test('send refuses broader target and foreign project, while read/list stay scop
     const list = await f.execute('chat_list');
     assert.deepEqual(list.chats.map(row => row.chat_id), ['source', 'target', 'other']);
   }, { mode: 'plan' });
+});
+
+test('broader-target guidance follows a live callback only to the original delegator', async () => {
+  await fixture(async f => {
+    f.db.prepare('INSERT INTO chat_relations(chat_id,parent_chat_id,root_chat_id,journal_owner_id,project_id,payload_json) VALUES(?,?,?,?,?,?)')
+      .run('source', 'target', 'target', 'target', 'project', JSON.stringify({ parentChatId: 'target' }));
+    const tasks = createChatTaskRepository({ repository: f.repository });
+    tasks.ensureSubscription({ runId: 'child-run', policy: { version: 1, kind: 'wake_delegator', recipientChatId: 'target',
+      subscriptionId: 'callback', cancellationEpoch: f.repository.getCancellationEpoch('target') } });
+    const broader = createChatPolicy({ ...f.initial, fileWriteScope: 'workspace', modeId: 'build',
+      toolPermissions: { ...f.initial.toolPermissions, git_commit: 'full' }, toolEffects: { ...effects, git_commit: 'git-write' } });
+    for (const id of ['target', 'other']) f.policies.set(id, broader);
+    const refused = (id, hint) => assert.rejects(f.execute('chat_send', { chat_id: id, message: 'Publish findings' }),
+      error => error.reason === 'broader_target_denied' && error.message.includes('Completion delivers') === hint);
+    await refused('target', true);
+    await refused('other', false);
+    tasks.setSubscription('child-run', { state: 'disposed' });
+    await refused('target', false);
+    assert.equal(f.repository.listCommands().length, 0);
+  }, { mode: 'plan', runId: 'child-run' });
 });
 
 test('list cursor binds query and project, and reads never hydrate whole transcripts or attachment bytes', async () => {

@@ -1,3 +1,5 @@
+import { MISSING_TOOL_RESULT_CONTENT } from '../runner/provider-message-normalize.js';
+
 /**
  * Map a lossy attempt transcript (TurnEvent JSONL) onto the API-message shape `renderTranscriptView` already understands.
  */
@@ -229,6 +231,60 @@ export function turnEventsToMessages(events) {
     messages = applyTurnEventToMessages(messages, event);
   }
   return messages;
+}
+
+/** Rebuild provider rounds from interleaved execution events. The drawer keeps
+ * chronological rows, whereas providers require one adjacent result per call. */
+export function turnEventsToProviderMessages(events) {
+  const rows = [];
+  const pending = new Map();
+  let batch = [];
+  let reasoning = '';
+  let sequence = 0;
+  let partialText = '';
+  function finish(text = partialText) {
+    if (batch.length || text || reasoning) {
+      rows.push({ role: 'assistant', content: text || null, ...(reasoning ? { reasoning } : {}),
+        ...(batch.length ? { tool_calls: batch.map(entry => entry.call) } : {}) });
+      rows.push(...batch.map(entry => entry.result));
+    }
+    batch = [];
+    partialText = '';
+    reasoning = '';
+  }
+  for (const event of events) {
+    if (!event) continue;
+    if (event.type === 'round_start') finish();
+    if (event.type === 'delta' && typeof event.text === 'string') partialText = event.text;
+    if (event.type === 'thinking') reasoning = event.text || reasoning;
+    if (event.type === 'tool_call') {
+      const id = event.id || `call_replay_${sequence++}`;
+      if (batch.some(entry => entry.call.id === id)) continue;
+      const call = { id, type: 'function', function: { name: event.name, arguments: argsString(event.arguments) } };
+      const result = { role: 'tool', tool_call_id: id, content: MISSING_TOOL_RESULT_CONTENT };
+      pending.set(id, result);
+      batch.push({ call, result });
+    }
+    if (event.type === 'tool_result') {
+      const candidates = event.id ? [] : batch.filter(entry => pending.has(entry.call.id) && entry.call.function.name === event.name);
+      const id = event.id || (candidates.length === 1 && candidates[0].call.id);
+      const result = pending.get(id);
+      if (result) {
+        result.content = typeof event.content === 'string' ? event.content : '';
+        pending.delete(id);
+      }
+    }
+    if (event.type === 'round_end') {
+      reasoning = event.reasoning || reasoning;
+      finish(event.text || partialText);
+    }
+    if (event.type === 'attempt_end') {
+      finish();
+      if (event.summary && !hasAssistantProse(rows)) rows.push({ role: 'assistant', content: event.summary });
+    }
+  }
+  finish();
+  return rows;
 }
 
 /**

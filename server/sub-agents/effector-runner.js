@@ -26,7 +26,6 @@ import {
   applyServerContextPolicy,
   withCompactionDefaults,
 } from '../runner/context-budget.js';
-import { isUiOnlyTranscriptMessage } from '../runner/injection-notice.js';
 import { cancel as cancelGeneration, listGenerationStates } from '../generations/store.js';
 import { resolveLibraryAttemptBinding } from '../models/library-binding.js';
 import { resolveServerModelContextLimit } from '../models/context-window.js';
@@ -47,7 +46,7 @@ import {
   recordTranscriptEnd,
   recordTranscriptEvent,
 } from '../orchestrator/transcripts.js';
-import { turnEventsToMessages } from '../orchestrator/transcript-messages.js';
+import { turnEventsToProviderMessages } from '../orchestrator/transcript-messages.js';
 import { SUB_AGENT_ROLE } from './events.js';
 import { AGENTS_NAMESPACE, lastEndedAttempt } from './derive.js';
 import { agentsDir } from './journal.js';
@@ -192,9 +191,7 @@ async function loadContinuePriorFromDisk(parentChatId, run) {
     await flushTranscripts(parentChatId, last.attemptId, { entryDir });
     const { events } = await readTranscript(parentChatId, last.attemptId, { entryDir, forReplay: true });
     // Compaction dividers are UI-only rows; a continue seed must never send them.
-    const mapped = turnEventsToMessages(events).filter(
-      (row) => !(row && typeof row === 'object' && isUiOnlyTranscriptMessage(/** @type {any} */ (row))),
-    );
+    const mapped = turnEventsToProviderMessages(events);
     if (mapped.length === 0) return undefined;
     const hasUser = mapped.some(
       (row) => row && typeof row === 'object' && /** @type {{ role?: string }} */ (row).role === 'user',

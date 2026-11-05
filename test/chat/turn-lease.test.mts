@@ -5,13 +5,13 @@ import { ChatLeaseRequestError, ChatOwnershipError, createTurnLease } from '../.
 function harness(t: TestContext, request?: (signal: AbortSignal) => Promise<{ leaseMs: number; startedAt: number } | null>) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let clock = 0, calls = 0, releases = 0;
-  const events: string[] = [];
+  const events: string[] = [], diagnostics: { latencyMs: number; cause: string }[] = [];
   const lease = createTurnLease({ chatId: 'chat', now: () => clock,
     grant: { leaseMs: 30_000, startedAt: clock },
     request: async signal => { calls++; return request ? request(signal) : { leaseMs: 30_000, startedAt: clock }; },
-    release: async () => { releases++; }, diagnose: event => events.push(event),
+    release: async () => { releases++; }, diagnose: (event, detail) => { events.push(event); diagnostics.push(detail); },
   });
-  return { lease, events, calls: () => calls, releases: () => releases, now: () => clock,
+  return { lease, events, diagnostics, calls: () => calls, releases: () => releases, now: () => clock,
     async tick(ms: number) { clock += ms; t.mock.timers.tick(ms); await new Promise(resolve => setImmediate(resolve)); },
   };
 }
@@ -29,6 +29,7 @@ test('one temporary renewal failure recovers without aborting or dispatch-trigge
   await h.tick(1_000);
   assert.equal(h.calls(), 2);
   assert.deepEqual(h.events, ['renewal-failed', 'recovered']);
+  assert.deepEqual(h.diagnostics, [{ latencyMs: 0, cause: 'transport' }, { latencyMs: 0, cause: 'renewed' }]);
   await h.lease.release();
 });
 

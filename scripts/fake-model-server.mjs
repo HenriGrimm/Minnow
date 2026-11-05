@@ -397,7 +397,7 @@ export function createFakeModelServer(opts = {}) {
                 if (call.function?.name !== 'report_outcome') continue;
                 const report = JSON.parse(call.function.arguments);
                 if (report.outcome === 'pass' && report.checks === undefined) {
-                  report.checks = contract.map(check => ({ id: check.id, outcome: 'pass', evidence: ['Fake verification scenario passed'] }));
+                  report.checks = contract.map(check => ({ id: check.id, outcome: 'pass', evidence: ['Simulated observation for ' + check.specification] }));
                   call.function.arguments = JSON.stringify(report);
                 }
               }

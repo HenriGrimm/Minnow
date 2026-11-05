@@ -5,6 +5,7 @@ import { listAgentCapabilities } from './capabilities.js';
 import { createChatPreparationAdapters } from './preparation.js';
 import { getAgentConversationsFeature } from './feature.js';
 import { AGENT_CHAT_TOOL_IDS } from './tool-catalog.js';
+import { createChatTaskRepository } from './task-repository.js';
 import { createChatToolReads } from './tool-reads.js';
 import { CHAT_WAIT_TIMEOUT_MS } from '../tools/chat-catalog.js';
 
@@ -134,7 +135,18 @@ export function createChatTools({ repository, context, service, validateCaller, 
         const chatId = id(args.chat_id), message = text(args.message, 120000), mode = args.mode ?? 'auto';
         if (!['auto', 'queue', 'steer'].includes(mode)) fail('Choose auto, queue or steer');
         const key = text(args.client_request_id ?? toolCallId, 256); active(caller, signal);
-        return service.send(caller, { chatId, message, mode, clientRequestId: key });
+        try { return await service.send(caller, { chatId, message, mode, clientRequestId: key }); }
+        catch (error) {
+          if (error.reason === 'broader_target_denied' && repository.getRelation(caller.chatId)?.parentChatId === chatId) {
+            const run = repository.getExecution(caller.executionId);
+            const sub = run?.runId && createChatTaskRepository({ repository }).getSubscription(run.runId);
+            if (sub?.recipientChatId === chatId && ['active', 'inline_hold'].includes(sub.state) &&
+                sub.cancellationEpoch === repository.getCancellationEpoch(chatId) && !repository.getChat(chatId).subAgentAutoResumeBlocked) {
+              error.message += '. Finish with your findings in this task. Completion delivers the result to your delegator.';
+            }
+          }
+          throw error;
+        }
       }
       if (name === 'chat_stop') {
         fields(args, ['chat_id', 'execution_id', 'scope', 'client_request_id']);

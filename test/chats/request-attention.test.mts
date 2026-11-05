@@ -53,6 +53,26 @@ function panel(id: string): HTMLElement { return [...document.querySelectorAll<H
 function clickText(root: HTMLElement, text: string): void { const target = [...root.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === text); assert.ok(target, text); target.click(); }
 afterEach(() => { dispose?.(); dispose = undefined; globalThis.fetch = originalFetch; records.clear(); posts = []; setDirtyTrackingVerifierForcedForTests(false); resetSessionPersistenceForTests(); setSessionStateForTests(null); setStorageModeForTests(null); document.body.replaceChildren(); });
 
+test('interrupted work requires an inspection and a nonempty observation before retirement', async () => {
+  const owner = chat('recovery-ui'), area = setup([owner]);
+  const normalFetch = globalThis.fetch;
+  const review = { executionId: 'stopped-turn', revision: 'review', checkout: 'C:/fixture', ownerReleased: true,
+    operations: [{ invocationId: 'write', toolName: 'apply_patch', targets: ['effect.txt'], receiptId: null }] };
+  globalThis.fetch = async (url, options) => {
+    if (!String(url).endsWith('/recovery')) return normalFetch(url, options);
+    if (!options?.body) return Response.json(review);
+    posts.push({ chatId: owner.id, body: JSON.parse(String(options.body)) }); return Response.json({ receipt: {} });
+  };
+  syncManagedChatRequests(owner, area);
+  owner.agentExecution = { executionId: review.executionId, status: 'recovery_required' }; syncManagedChatRequests(owner, area);
+  clickText(area, 'Review interrupted work'); await until(() => area.textContent!.includes('effect.txt'));
+  const note = area.querySelector('textarea')!, retire = [...area.querySelectorAll('button')].find(b => b.textContent === 'Record findings and retire attempt')!;
+  assert.equal(retire.disabled, true);
+  note.value = 'Checked the file and stopped process.'; note.dispatchEvent(new window.Event('input'));
+  syncManagedChatRequests(owner, area); retire.click(); await until(() => posts.length === 1);
+  assert.deepEqual([posts[0]!.body.executionId, posts[0]!.body.revision, posts[0]!.body.note], ['stopped-turn', 'review', note.value]);
+});
+
 test('two child questions keep independent selections and answers across chat switching', async () => {
   const parent = chat('parent'), one = chat('child-one', parent.id), two = chat('child-two', parent.id);
   const first = request(one.id, 'question-one'), second = request(two.id, 'question-two'); records.set(one.id, [first]); records.set(two.id, [second]);

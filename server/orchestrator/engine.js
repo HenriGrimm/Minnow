@@ -205,6 +205,7 @@ function reportWriterState(live) {
  * Create the engine for one journaled run.
  * @param {{
  *   boardId: string,
+ *   namespace?: string,
  *   effector: Effector,
  *   graph?: Graph,
  *   clock?: typeof systemClock,
@@ -775,7 +776,8 @@ export function createEngine(options) {
         catch (error) { console.warn('[orchestrator] Completion cleanup deferred:', error.message); }
       }
       if (state.status === 'running') {
-        if (!state.recoveryVersion && shouldHoldBoardResume(boardId)) heldAtLoad = true;
+        if ((options.namespace ?? DEFAULT_ENGINE_NAMESPACE) === DEFAULT_ENGINE_NAMESPACE &&
+            !state.recoveryVersion && shouldHoldBoardResume(boardId)) heldAtLoad = true;
         else startTimer();
       }
     },
@@ -1369,6 +1371,7 @@ export function getEngine(boardId, makeEffector, options = {}) {
 
   const engine = createEngine({
     boardId,
+    namespace,
     effector: makeEffector(),
     clock: options.clock,
     tickMs: options.tickMs,

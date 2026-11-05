@@ -99,6 +99,18 @@ describe('buildApiMessages tool screenshots', () => {
     );
   });
 
+  test('parallel tool replies stay adjacent before a screenshot with its originating call ID', () => {
+    const chat = chatWithScreenshot();
+    const assistant = chat.history[1];
+    if (assistant.role !== 'assistant' || !('tool_calls' in assistant)) assert.fail('expected screenshot call');
+    assistant.tool_calls.push({ id: 'read', type: 'function', function: { name: 'read_file', arguments: '{}' } });
+    chat.history.push({ role: 'tool', tool_call_id: 'read', content: 'actual file' });
+    const rows = buildApiMessages(chat, 'sys', { composedSystemPrompt: 'sys', vision: true });
+    const after = rows.slice(rows.findIndex(row => row.role === 'assistant') + 1);
+    assert.deepEqual(after.map(row => row.role === 'tool' ? [row.tool_call_id, row.content] : [row.role === 'user' && row.toolImageCallId]),
+      [['call_shot', chat.history[2].content], ['read', 'actual file'], ['call_shot']]);
+  });
+
   test('persisted screenshot follow-ups are not sent twice', () => {
     const chat = chatWithScreenshot();
     chat.history.push({

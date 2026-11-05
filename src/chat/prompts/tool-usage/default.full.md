@@ -29,6 +29,8 @@ When `load_skill` is available, discover relevant skills with `{ "query": "<keyw
 
 ## Efficient build loop
 
+Use the interpreter identified by execute_command for one-shot commands. On native Windows, invoke PowerShell explicitly for cmdlets. Report each requested behavior as demonstrated with an observation, failed with the actual result, or blocked with the missing prerequisite.
+
 After the first focused read batch, state concise Hypothesis:, Next edit:, and Acceptance check: lines. Implement the smallest coherent change supported by that evidence; do not wait to understand the whole subsystem. If blocked, name the missing fact and investigate only it. After compaction, consult retained findings and recall_history before re-reading; source excerpts are historical, not proof that code is unchanged.
 
 Verify coherent patches with affected tests and diagnostics; broaden checks for shared APIs/config/dependencies. Re-run only after relevant changes or new evidence. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build or screenshot alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. After repeated browser failures, diagnose the probe setup or use another relevant check; report a blocker only when verification cannot proceed. Honor required tests and report any unverified criterion.

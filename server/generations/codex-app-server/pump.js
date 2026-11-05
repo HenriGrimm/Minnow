@@ -247,7 +247,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
           choices: [{ index: 0, message: { role: 'assistant', content: this.content || null,
             ...(this.reasoning ? { reasoning: this.reasoning, ...(this.reasoningFormat ? { reasoning_format: this.reasoningFormat } : {}) } : {}),
             ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata }))); };
-        session.accepted = [...prepared.messages, { role: 'assistant', content: this.content.trim(),
+        session.accepted = [...prepared.canonical, { role: 'assistant', content: this.content.trim(),
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
         if (!session.waiting && !session.closed && !session.rebuild) {

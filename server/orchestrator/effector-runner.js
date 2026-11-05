@@ -24,7 +24,7 @@ import { prerequisitesReady, prerequisiteError } from './prerequisites.js';
 import { detectAgentCli } from '../models/agent-cli-detect.js';
 import { deriveBrowserAssertions } from './browser-rung.js';
 import { loadPlanMarkdown, resolveLadderRungs } from './final-test.js';
-import { taskVerificationContract, validateVerificationChecks, prepareVerificationInputs } from './verification-contract.js';
+import { attachVerificationReceipts, taskVerificationContract, validateVerificationChecks, prepareVerificationInputs } from './verification-contract.js';
 import { peekEngine } from './engine.js';
 import * as diskJournal from './journal.js';
 import {
@@ -869,10 +869,11 @@ export function createRunnerEffector(options = {}) {
         ...(resumeTask ? { resume: await loadResumeDigest(boardId, resumeTask) } : {}),
       });
       const contract = state.recoveryVersion && desired.role === 'tester' ? taskVerificationContract(state.tasks.get(desired.taskId)) : [];
+      const successfulToolResults = new Map();
       const omittedFields = state.recoveryVersion ? new Set(state.recoveryHistory
         .filter(hold => hold.taskId === desired.taskId && hold.role === desired.role && hold.revision === state.recoveryRevision)
         .map(hold => hold.failure.omitField).filter(field => ['thinking', 'enable_thinking', 'reasoning_effort', 'reasoning', 'chat_template_kwargs'].includes(field))) : new Set();
-      if (contract.length) seed += `\n\n## Required verification contract\n${JSON.stringify(contract)}\nReport checks:[{id,outcome:"pass",evidence:["command and observed output"]}] for every required ID. A blocked or unexecuted required check cannot pass. The server binds accepted evidence to the tested commit.`;
+      if (contract.length) seed += `\n\n## Required verification contract\n${JSON.stringify(contract)}\nReport checks:[{id,outcome:"pass",evidence:["command and observed output"]}] for every required ID. Include toolCallIds when citing a recorded command or interaction. Describe the observed behavior separately for each criterion. A blocked or unexecuted required check cannot pass. The server binds accepted evidence to the tested commit.`;
       const model = await resolveLibraryAttemptBinding(
         await resolveAttemptModel(options.model ?? state.model, state.workspacePath),
       );
@@ -983,8 +984,8 @@ export function createRunnerEffector(options = {}) {
 
       void (async () => {
         let liveRoundIndex = 0;
-        /** @type {import('../runner/run-turn').TurnResult} */
         let browserRuntime;
+        /** @type {import('../runner/run-turn').TurnResult} */
         let result;
         try {
           recordTranscriptEvent({
@@ -993,10 +994,10 @@ export function createRunnerEffector(options = {}) {
               ...(turnModel.providerId !== 'minnow-router' ? { reasoning: reasoning || (thinkingMode === 'off' ? 'off' : 'on') } : {}),
             },
           });
-          result = await runTurnFn({
           if (tools.some(tool => tool.function?.name === 'browser_reserve_tab')) {
             browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'board' });
           }
+          result = await runTurnFn({
             chatId: attemptId,
             seed,
             tools,
@@ -1035,14 +1036,14 @@ export function createRunnerEffector(options = {}) {
               },
             },
             execute: dispatch.execute,
-            reportToolName: REPORT_TOOL_NAME,
             onRoundBoundary: () => browserRuntime?.drainGuides().map(guide => ({
               role: 'user', content: formatAgentBrowserGuideForTranscript(guide),
             })) ?? null,
+            reportToolName: REPORT_TOOL_NAME,
             parseReport: (raw) => {
               const parsed = parseReportFor(desired.role)(raw);
               if (parsed.ok && parsed.result.outcome === 'pass' && contract.length) {
-                const error = validateVerificationChecks(parsed.result.checks, contract);
+                const error = validateVerificationChecks(parsed.result.checks, contract, successfulToolResults);
                 if (error) return { ok: false, error: `Error: ${error}` };
               }
               return parsed;
@@ -1052,6 +1053,13 @@ export function createRunnerEffector(options = {}) {
             finalizeStructuredOutcome: false,
             ask: null,
             onEvent: (event) => {
+              if (contract.length && event.type === 'tool_result' && event.id && event.name !== REPORT_TOOL_NAME &&
+                  !event.isError && typeof event.content === 'string' && !/^(Error:|Not implemented:)/i.test(event.content)) {
+                if (event.name === 'execute_command') {
+                  const command = /^([^\r\n]+) \(exit 0\)\r?(?:\n|$)/.exec(event.content)?.[1];
+                  if (command) successfulToolResults.set(event.id, command.length <= 512 ? command : null);
+                } else successfulToolResults.set(event.id, null);
+              }
               if (!boardId) return;
               if (event.type === 'round_start') liveRoundIndex = event.index;
               if (event?.type === 'round_end') {
@@ -1095,6 +1103,8 @@ export function createRunnerEffector(options = {}) {
           });
         } catch (err) {
           result = { outcome: 'crashed', error: errorMessage(err) };
+        } finally {
+          browserRuntime?.close();
         }
         if (pauseGate.paused) await pauseGate.wait(controller.signal).catch(() => {});
         if (entry.stopped) return;
@@ -1103,11 +1113,10 @@ export function createRunnerEffector(options = {}) {
           deps.transcriptStore?.load?.(attemptId)?.messages,
           desired.role,
         );
-        } finally {
-          browserRuntime?.close();
         if (result.outcome === 'pass' && contract.length) {
-          const error = validateVerificationChecks(result.checks, contract);
+          const error = validateVerificationChecks(result.checks, contract, successfulToolResults);
           if (error) result = { outcome: 'crashed', error: `Verification reporting interrupted: ${error}`, failure: { category: 'interrupted' } };
+          else result = { ...result, checks: attachVerificationReceipts(result.checks, successfulToolResults) };
         }
         await finishAgent(entry, desired, result);
       })().catch((err) => backgroundFailure(entry, err));

@@ -310,7 +310,7 @@ export function testerReportTool() {
             type: 'string',
             description: 'The test command output the builder needs if this is a fail.',
           },
-          checks: { type: 'array', description: 'Required for recovery-enabled task pass: one row per required verification ID from the seed. Optional extra checks may be marked not-run with a reason.', items: { type: 'object', properties: { id: { type: 'string' }, outcome: { type: 'string', enum: ['pass', 'fail', 'blocked', 'not-run'] }, evidence: { type: 'array', items: { type: 'string' } } }, required: ['id', 'outcome', 'evidence'] } },
+          checks: { type: 'array', description: 'Required for recovery-enabled task pass: one row per required verification ID from the seed. Optional extra checks may be marked not-run with a reason.', items: { type: 'object', properties: { id: { type: 'string' }, toolCallIds: { type: 'array', maxItems: 8, items: { type: 'string' }, description: 'Recorded successful tool calls supporting this observation.' }, outcome: { type: 'string', enum: ['pass', 'fail', 'blocked', 'not-run'] }, evidence: { type: 'array', items: { type: 'string' } } }, required: ['id', 'outcome', 'evidence'] } },
           prerequisites: { type: 'array', description: 'For blocked, optional read-only checks: workspace-relative file {kind:"file",path}, executable {kind:"executable",name}, loopback service {kind:"service",port}, browser {kind:"browser"}.', items: { type: 'object' } },
         },
         required: ['outcome', 'summary', 'evidence', 'testOutput'],

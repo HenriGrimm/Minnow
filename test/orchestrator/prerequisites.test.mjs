@@ -88,7 +88,15 @@ test('required verification identities change on spec edits and cannot be waived
   const task = { id: 'A', testSpec: 'Run npm test and browser smoke', accept: 'Form submits successfully' };
   const contract = taskVerificationContract(task);
   assert.equal(contract[0].required, true);
-  assert.notEqual(taskVerificationContract({ ...task, accept: 'New requirement' })[0].id, contract[0].id);
+  assert.equal(contract.length, 2);
+  assert.notEqual(taskVerificationContract({ ...task, accept: 'New requirement' })[1].id, contract[1].id);
   for (const checks of [undefined, [], [{ id: contract[0].id, outcome: 'not-run', evidence: ['Unsupported'] }], [{ id: contract[0].id, outcome: 'pass', evidence: [] }]]) assert.ok(validateVerificationChecks(checks, contract));
-  assert.equal(validateVerificationChecks([{ id: contract[0].id, outcome: 'pass', evidence: ['npm test: 8 passed; browser: successful submission'] }], contract), null);
+  const unit = { id: contract[0].id, outcome: 'pass', evidence: ['npm test: eight passed'], toolCallIds: ['unit'] };
+  const browser = { id: contract[1].id, outcome: 'pass', evidence: ['Submit opened the confirmation page'], toolCallIds: ['navigate'] };
+  const recorded = new Set(['unit', 'navigate']);
+  assert.ok(validateVerificationChecks([unit], contract, recorded));
+  assert.ok(validateVerificationChecks([unit, { ...browser, outcome: 'fail' }], contract, recorded));
+  assert.ok(validateVerificationChecks([unit, { ...browser, evidence: unit.evidence }], contract, recorded));
+  assert.ok(validateVerificationChecks([unit, browser], contract, new Set(['unit'])));
+  assert.equal(validateVerificationChecks([unit, browser], contract, recorded), null);
 });

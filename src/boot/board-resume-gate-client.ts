@@ -35,7 +35,7 @@ export async function fetchPendingBoardResumes(): Promise<PendingBoardResume[]> 
 }
 
 /**
- * Relay the user's answer for every held board.
+ * Relay the user's answer for the boards shown in the prompt.
  *
  * `decline` makes the server persist a user stop, so the board reads as Stopped,
  * Start re-arms it, and the next boot does not ask about it again.
@@ -44,12 +44,13 @@ export async function fetchPendingBoardResumes(): Promise<PendingBoardResume[]> 
  */
 export async function resolveBoardResumes(
   decision: 'resume' | 'decline',
+  boards: readonly PendingBoardResume[],
 ): Promise<boolean> {
   try {
     const res = await fetch('/api/boards/resume/resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision }),
+      body: JSON.stringify({ decision, boardIds: boards.map((board) => board.boardId) }),
     });
     return res.ok;
   } catch {

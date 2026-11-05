@@ -111,7 +111,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
   // its replacement creates files at the same durable path.
   await Promise.all([...closingProcesses].filter(row => row.key === key).map(row => row.closing));
   const session = { key, chatId: state.chatId, providerId: candidate.providerId, workspace: identity.workspace,
-    signature: prepared.signature, accepted: prepared.messages, prepared, closed: false,
+    signature: prepared.signature, accepted: prepared.canonical, prepared, closed: false,
     active: true, waiting: false, pending: new Map(), handed: [], seen: new Map(), buffered: [], usage: {}, allocated: {},
     turnId: null, threadId: null, clean: false, method: 'new', tools: new Map(prepared.tools.map(tool => [tool.name, tool])) };
   // Reserve before spawning; concurrent accounts cannot race eviction and exceed the cap.
@@ -125,7 +125,7 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
     const persistent = Boolean(state.chatId) && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
     session.cacheDir = persistent ? cliCacheDir(candidate.providerId, state.chatId) : null;
     const saved = persistent ? await readCliCheckpoint(candidate.providerId, state.chatId) : null;
-    session.saved = checkpointMatches(saved, prepared.signature, prepared.messages) && saved.adapter === 'codex-app-server-v1' ? saved : null;
+    session.saved = checkpointMatches(saved, prepared.signature, prepared.canonical) && saved.adapter === 'codex-app-server-v1' ? saved : null;
     if (saved && !session.saved) { await removeCliCache(session.cacheDir); session.method = 'rebuilt'; session.reason = 'Saved history or configuration changed.'; }
     const root = session.cacheDir || path.join(getMinnowHome(), 'tmp', 'codex-app-server');
     await fs.mkdir(root, { recursive: true, mode: 0o700 });
@@ -200,8 +200,8 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
       const resumed = await session.rpc.request('thread/resume', { ...startParams, threadId: session.saved.nativeId }, { signal });
       session.threadId = resumed.thread.id;
       if (session.threadId !== session.saved.nativeId) throw new Error('Codex resumed an unexpected thread.');
-      session.accepted = prepared.messages.slice(0, session.saved.acceptedCount);
-      session.restoredInput = prepared.messages.slice(session.saved.acceptedCount).flatMap(codexUserInput);
+      session.accepted = prepared.canonical.slice(0, session.saved.acceptedCount);
+      session.restoredInput = prepared.canonical.slice(session.saved.acceptedCount).flatMap(codexUserInput);
       session.allocated = session.saved.usageBaseline ?? {}; session.usage = { ...session.allocated }; session.method = 'resumed';
     } catch (error) { error.cliResumeRejected = true; throw error; }
     } else {

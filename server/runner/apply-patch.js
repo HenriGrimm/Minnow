@@ -85,6 +85,7 @@ export function patchText(text, hunks, label) {
   const trailing = text.endsWith('\n');
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   if (trailing || text === '') lines.pop();
+  const originalLength = lines.length;
   let cursor = 0;
   hunks.forEach((hunk, index) => {
     const where = () => `${label ? `${label}, ` : ''}hunk ${index + 1} of ${hunks.length}`;
@@ -102,7 +103,8 @@ export function patchText(text, hunks, label) {
       if (matches.length) break;
     }
     if (matches.length > 1) {
-      throw new Error(`Ambiguous patch context; include more surrounding lines (${where()}, ${matches.length} matches)`);
+      const candidates = matches.slice(0, 5).map(at => at + 1 - (lines.length - originalLength)).join(', ');
+      throw new Error(`Ambiguous patch context; include more surrounding lines (${where()}, ${matches.length} matches). Candidate lines: ${candidates}${matches.length > 5 ? ', …' : ''}.`);
     }
     if (!matches.length) throw new Error(contextNotFound(lines, hunk, cursor, where()));
     const at = matches[0];

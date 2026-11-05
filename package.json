@@ -287,6 +287,10 @@
     ],
     "extraResources": [
       {
+        "from": "node_modules/impeccable/LICENSE",
+        "to": "licenses/impeccable-LICENSE"
+      },
+      {
         "from": "src/skills/impeccable",
         "to": "skills/impeccable",
         "filter": [

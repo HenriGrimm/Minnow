@@ -73,10 +73,19 @@ export function buildChatPreparation(options = {}) {
   return buildEntry('src/headless/chat-preparation.ts', CHAT_PREPARATION_BUNDLE, options);
 }
 
+// Installed builds use only the local-file detector. The optional browser scanner is never invoked.
+async function buildImpeccableDetector() {
+  const { build } = await import('esbuild');
+  const outfile = path.join(repoRoot, 'dist-headless', 'impeccable-detect.mjs');
+  await build({ stdin: { contents: "import { detectCli } from 'impeccable'; process.argv.splice(2, 1); await detectCli();", resolveDir: repoRoot },
+    bundle: true, platform: 'node', format: 'esm', target: 'node22', outfile, external: ['puppeteer'], banner: { js: REQUIRE_SHIM } });
+  return { outfile, bytes: fs.statSync(outfile).size };
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   try {
-    for (const build of [buildHeadlessRunner, buildChatPreparation]) {
+    for (const build of [buildHeadlessRunner, buildChatPreparation, buildImpeccableDetector]) {
       const { outfile, bytes } = await build();
       console.log(`[build-headless-runner] ${path.relative(repoRoot, outfile).replace(/\\/g, '/')} (${Math.round(bytes / 1024)} KB)`);
     }

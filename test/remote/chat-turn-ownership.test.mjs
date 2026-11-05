@@ -37,6 +37,21 @@ test('chat ownership covers tool gaps and stale owners cannot release a replacem
   assert.equal(registry.renew('chat', 'pc'), false);
 });
 
+test('concurrent chats expire independently and each has a single replacement owner', () => {
+  let clock = 0;
+  const registry = createChatTurnRegistry({ now: () => clock, generations: () => [] });
+  const chats = Array.from({ length: 24 }, (_, i) => 'chat-' + i);
+  for (const chat of chats) assert.equal(registry.claim(chat, 'first'), true);
+  clock = 25000;
+  for (const chat of chats.slice(0, 12)) assert.equal(registry.renew(chat, 'first'), true);
+  clock = 35000;
+  for (const [i, chat] of chats.entries()) {
+    assert.equal(registry.claim(chat, 'second'), i >= 12);
+    assert.equal(registry.claim(chat, 'third'), false);
+  }
+  assert.equal(registry.list().length, chats.length);
+});
+
 test('an expired owner cannot be replaced while its CLI generation is still live', () => {
   let clock = 0;
   const generation = { chatId: 'chat', status: 'streaming', subscribers: new Set() };

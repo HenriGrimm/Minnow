@@ -9,10 +9,25 @@ import {
   applyTurnEventToMessages,
   countToolCalls,
   turnEventsToMessages,
+  turnEventsToProviderMessages,
   mergeTranscriptMessages,
 } from '../../server/orchestrator/transcript-messages.js';
 
 describe('turnEventsToMessages', () => {
+  test('restart preserves parallel results, partial batches and prose in their original rounds', () => {
+    const call = id => ({ type: 'tool_call', id, name: 'execute_command', arguments: { command: id } });
+    const result = (id, content) => ({ type: 'tool_result', id, content });
+    const rows = turnEventsToProviderMessages([
+      call('a'), call('b'), result('b', 'B'), result('a', 'A'), result('a', 'duplicate'),
+      { type: 'round_end', text: 'Ran commands' }, call('c'), call('d'), result('d', 'D'),
+      { type: 'round_end', text: '' }, { type: 'round_end', text: 'Finished' },
+    ]);
+    assert.deepEqual(rows.map(row => [row.role, row.tool_calls?.map(c => c.id) ?? row.tool_call_id, row.content]), [
+      ['assistant', ['a', 'b'], 'Ran commands'], ['tool', 'a', 'A'], ['tool', 'b', 'B'],
+      ['assistant', ['c', 'd'], null], ['tool', 'c', 'Tool call did not complete; no result was recorded.'],
+      ['tool', 'd', 'D'], ['assistant', undefined, 'Finished'],
+    ]);
+  });
   test('retains settled reasoning even when no live thinking event arrived', () => {
     const reasoning = 'Full reasoning from the provider. '.repeat(40);
     const messages = turnEventsToMessages([{ type: 'round_end', text: 'The actual answer.', reasoning }]);

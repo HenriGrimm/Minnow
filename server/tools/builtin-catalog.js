@@ -1613,7 +1613,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'browser_reserve_tab',
-      'Reserve an isolated agent browser tab. The returned tab_id is stable and must be passed to every later browser call. Agent tabs never appear in the user preview pane.',
+      'Reserve a private agent tab. Pass its tab_id on later calls.',
       {
         surface: { type: 'string', enum: ['agent'], description: 'Use the isolated agent browser.' },
         url: { type: 'string', description: 'Optional absolute http(s) URL to open after reserving' },
@@ -1630,7 +1630,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: true,
     definition: toolSchema(
       'browser_release_tab',
-      'Release an agent browser tab without closing it. The user can keep inspecting or reassigning the released tab.',
+      'Hand an owned tab to the user. Release keeps its slot. Close disposable QA tabs to free capacity.',
       {
         surface: { type: 'string', enum: ['agent'], description: 'Use the isolated agent browser.' },
         tab_id: { type: 'string', description: 'Owned agent tab id from browser_reserve_tab' },
@@ -1661,7 +1661,7 @@ export const BUILT_IN_TOOLS = [
     serverRequired: false,
     definition: toolSchema(
       'browser_navigate',
-      'Navigate a browser tab. surface="agent" (default) uses the isolated headless browser; surface="user" targets a visible preview tab. Always pass tab_id.',
+      'Navigate the specified tab_id on the chosen surface.',
       {
         surface: { type: 'string', enum: ['agent', 'user'], description: 'Browser surface. Defaults to agent. "user" is the user\'s own visible preview tab: only when they ask for it, never as a fallback.' },
         tab_id: { type: 'string', description: 'Explicit tab id from browser_reserve_tab or browser_list' },

@@ -8,6 +8,14 @@ import { buildGitBashOneShotSpawn } from './git-bash.js';
 import { describeShellProfileRuntime } from './shell-profiles.js';
 import { buildWslOneShotSpawn } from './wsl.js';
 
+/** Name the interpreter used by the same one-shot command resolver as the terminal. */
+export function describeOneShotInterpreter(options) {
+  const resolved = resolveOneShotSpawn(options);
+  if (resolved.shell) return (options.platform ?? process.platform) === 'win32' ? (process.env.ComSpec?.split(/[\\/]/).pop() || 'cmd.exe') : 'system shell';
+  if (resolved.command === 'wsl.exe') return 'WSL bash';
+  return resolved.command.split(/[\\/]/).pop();
+}
+
 /**
  * Pick a login shell for Unix one-shot invocations (macOS zsh, Linux bash).
  * @param {string} platform - Node `process.platform`

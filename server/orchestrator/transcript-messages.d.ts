@@ -6,6 +6,7 @@ export function applyTurnEventToMessages(
 
 /** Fold a transcript's events into API messages for the drawer. */
 export function turnEventsToMessages(events: unknown[]): unknown[];
+export function turnEventsToProviderMessages(events: unknown[]): unknown[];
 
 /** Count nested tool invocations from API-shaped messages. */
 export function countToolCalls(messages: unknown[]): number;

@@ -63,7 +63,7 @@ async function fixture(t, options = {}) {
   });
   const capabilities = createChatHostCapabilities({ repository, resolveProject: () => ({ projectId: project.projectId, workspaceRoot: workspace }), retryMs: 10_000 });
   const runtime = { repository, context, presentation, service, requests, capabilities, resolveModelSelection, resolvePolicyInput,
-    hasExternalExecution: options.hasExternalExecution ?? (() => false) };
+    hasRunningRecoveryCommand: options.hasRunningRecoveryCommand, hasExternalExecution: options.hasExternalExecution ?? (() => false) };
   runtime.recovery = createChatRecovery({ repository, service, requests, taskDelivery: { recover: async () => {} },
     verifyQuiescence: () => ({ verified: true, source: 'isolated-http', checkedAt: Date.now() }) });
   if (options.legacyImports) runtime.legacyImports = createLegacyChatImporter({ repository, context, feature,
@@ -99,6 +99,30 @@ async function fixture(t, options = {}) {
   return { repository, context, project, workspace, db, service, presentation, requests, capabilities, request, host, append, base,
     modelCalls: () => modelCalls };
 }
+
+test('only the host can retire a verified interruption and its command is never replayed', async t => {
+  let busy = false, runningCommand = true;
+  const f = await fixture(t, { hasExternalExecution: () => busy, hasRunningRecoveryCommand: async () => runningCommand });
+  const executionId = 'opaque-shell', chatId = 'chat', host = { 'x-test-host': '1' };
+  f.repository.createExecution({ chatId, executionId, captured: { scope: { canonicalKey: f.workspace } } });
+  const fence = f.repository.claimExecution({ chatId, executionId, ownerId: 'original' });
+  f.repository.recordToolIntent({ chatId, executionId, invocationId: 'shell-call', toolCallId: 's', toolName: 'execute_command', input: { command: 'PRIVATE_ARGUMENT' } }, { fence });
+  f.repository.recoverExecution(executionId, { fence, quiescence: { verified: true, source: 'fixtures', checkedAt: 1 } });
+  const route = '/api/chats/chat/recovery';
+  assert.equal((await f.request(route, { headers: { 'x-test-device': '1' } })).status, 403);
+  const review = (await f.request(route, { headers: host })).body;
+  assert.equal(review.operations[0].toolName, 'execute_command');
+  assert.ok(!JSON.stringify(review).includes('PRIVATE_ARGUMENT'));
+  const body = { executionId, revision: review.revision, note: 'Inspected the stopped command and working tree.', clientRequestId: 'note1' };
+  assert.match((await f.request(route, { method: 'POST', headers: host, body })).body.error.message, /terminal command.*still running/);
+  runningCommand = false; busy = true;
+  assert.equal((await f.request(route, { method: 'POST', headers: host, body })).status, 409);
+  busy = false;
+  const first = await f.request(route, { method: 'POST', headers: host, body });
+  assert.equal(first.status, 200);
+  assert.deepEqual((await f.request(route, { method: 'POST', headers: host, body })).body, first.body);
+  assert.equal(f.repository.getToolInvocation('shell-call').result.indeterminate, true);
+});
 
 async function savedChild(f, id = 'child') {
   const target = await f.context.resolveTarget('chat');
@@ -514,7 +538,9 @@ test('authenticated host SSE dispatches an exact scoped invocation and immutable
     signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) });
   assert.equal(response.status, 200); assert.equal(f.capabilities.connectedHosts, 1);
   const reader = response.body.getReader(), decoder = new TextDecoder();
+  f.repository.createExecution({ chatId: 'chat', executionId: 'browser-execution', captured: { projectId: f.project.projectId } });
   const fence = f.repository.claimExecution({ chatId: 'chat', executionId: 'browser-execution', ownerId: 'server' });
+  f.repository.recordToolIntent({ invocationId: 'browser-intent', chatId: 'chat', executionId: fence.executionId, toolCallId: 'browser-call', toolName: 'browser_click', input: { selector: '#save' } }, { fence });
   const target = await f.context.resolveTarget('chat');
   const resultPromise = f.capabilities.executeHostTool({ name: 'browser_click', args: { selector: '#save' }, ctx: { toolCallId: 'browser-call' },
     chatId: 'chat', executionId: fence.executionId, fence, signal: new AbortController().signal,
@@ -540,6 +566,11 @@ test('authenticated host SSE dispatches an exact scoped invocation and immutable
   const conflict = await f.request('/api/chats/host/results', { method: 'POST', headers: { 'x-test-host': '1' },
     body: { ...body, result: { content: 'Changed result' } } });
   assert.equal(conflict.status, 409);
+  f.repository.recoverExecution(fence.executionId, { fence, quiescence: { checkedAt: Date.now(), source: 'test-host-stopped', verified: true } });
+  const review = f.repository.inspectRecovery('chat');
+  assert.equal(review.operations[0].receiptId, 'result-' + envelope.invocationId);
+  f.repository.retireInterruptedExecution('chat', { ...review, clientRequestId: 'observed', note: 'Checked the result.' }, () => true);
+  assert.deepEqual(f.repository.getToolInvocation('browser-intent').result, { content: 'Clicked' });
   controller.abort(); await reader.cancel().catch(() => {});
-  f.repository.updateExecution(fence.executionId, { status: 'completed' }, { fence }); f.repository.releaseLease('chat', fence);
+  assert.equal(f.repository.getLease('chat').state, 'released');
 });

@@ -157,7 +157,7 @@ function describeBoardCandidate(candidate: PendingBoardResume): ResumePromptItem
 
 /** Drop stale generation / interrupt markers ("Don't resume"). */
 function declineResume(candidates: ResumeCandidates): void {
-  if (candidates.boards.length) void resolveBoardResumes('decline');
+  if (candidates.boards.length) void resolveBoardResumes('decline', candidates.boards);
 
   clearResumeInterruptedForChats(
     candidates.chats.map((c) => c.chat),
@@ -200,7 +200,7 @@ export async function runBootResumeGate(state: SessionState): Promise<void> {
 
   setResumeGateState('resumed');
 
-  if (candidates.boards.length) await resolveBoardResumes('resume');
+  if (candidates.boards.length) await resolveBoardResumes('resume', candidates.boards);
 
   await resumeScopedChats();
 

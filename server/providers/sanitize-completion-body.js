@@ -122,7 +122,7 @@ function sanitizedToolCallArguments(raw) {
   return '{}';
 }
 
-function stripInternalApiMessageFields(body) {
+function stripInternalApiMessageFields(body, nativeHandoff = false) {
   if (!Array.isArray(body.messages)) return body;
   return {
     ...body,
@@ -134,6 +134,10 @@ function stripInternalApiMessageFields(body) {
       const msg = {};
       for (const key of allowed) {
         if (key in raw) msg[key] = raw[key];
+      }
+      if (nativeHandoff && raw.role === 'user' && raw.toolImageFollowUp === true) {
+        msg.toolImageFollowUp = true;
+        if (typeof raw.toolImageCallId === 'string') msg.toolImageCallId = raw.toolImageCallId;
       }
       if (Array.isArray(msg.tool_calls)) {
         msg.tool_calls = msg.tool_calls.map((tc) => {
@@ -193,7 +197,7 @@ function providerKeepsExtendedSamplers(provider) {
 export function sanitizeCompletionBodyForProvider(body, provider, modelCapabilities) {
   const providerId = typeof provider.id === 'string' ? provider.id : '';
   if (provider.apiKind !== 'openai-v1') {
-    return stripInternalApiMessageFields(body);
+    return stripInternalApiMessageFields(body, provider.apiKind === 'agent-cli-v1');
   }
 
   const next = stripInternalApiMessageFields({ ...body });

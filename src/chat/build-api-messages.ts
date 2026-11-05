@@ -351,11 +351,13 @@ export function buildApiMessages(
     messages.push(message);
   };
 
+  const toolImages: ApiMessage[] = [];
   for (let i = 0; i < outboundHistory.length; i += 1) {
     const m = outboundHistory[i];
     if (isUiOnlyTranscriptMessage(m)) continue;
     // Screenshot follow-ups are rebuilt from tool attachments below — skip leaked persist.
     if (m.role === 'user' && isToolImageFollowUpMessage(m as ApiMessage)) continue;
+    if (m.role !== 'tool' && toolImages.length) messages.push(...toolImages.splice(0));
     if (m.role === 'user') {
       const isMultimodalUser = i === multimodalUserIdx;
       if (isMultimodalUser && pending.length > 0) {
@@ -385,7 +387,7 @@ export function buildApiMessages(
       );
       if (vlm) {
         const followUp = toolImageFollowUpUserMessage(m);
-        if (followUp) messages.push(followUp);
+        if (followUp) toolImages.push(followUp);
       }
       continue;
     }
@@ -428,6 +430,7 @@ export function buildApiMessages(
     }
   }
 
+  messages.push(...toolImages);
   const continueLine = options?.ephemeralContinueInstruction?.trim();
   if (continueLine) {
     messages.push({ role: 'user', content: continueLine });

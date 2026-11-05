@@ -124,6 +124,40 @@ describe('read_file office documents', () => {
     assert.equal(await fs.readFile(path.join(tempRoot, 'edit.txt'), 'utf8'), 'alpha\nBETA\ngamma\n');
   });
 
+  it('suggests the workspace parent for a missing file', async () => {
+    const { result } = await executeServerTool('read_file', { path: 'missing/note.txt' }, { workspaceRoot: tempRoot });
+    assert.match(result, /ENOENT.*list_directory in "\."/);
+    await fs.mkdir(path.join(tempRoot, 'nested'));
+    const nested = await executeServerTool('read_file', { path: 'nested/note.txt' }, { workspaceRoot: tempRoot });
+    assert.match(nested.result, /list_directory in "nested"/);
+  });
+
+  it('redirects an inaccessible skill to scoped discovery without revealing an external directory', async () => {
+    const external = await fs.mkdtemp(path.join(os.tmpdir(), 'private-skill-'));
+    try {
+      await fs.writeFile(path.join(external, 'SKILL.md'), 'private content');
+      await fs.symlink(external, path.join(tempRoot, 'linked-skill'), process.platform === 'win32' ? 'junction' : 'dir');
+      const { result } = await executeServerTool('read_file', { path: 'linked-skill/SKILL.md' }, { workspaceRoot: tempRoot });
+      assert.match(result, /outside the workspace.*load_skill/);
+      for (const forbidden of [external, 'private content', 'full disk access', 'list_directory']) assert.ok(!result.includes(forbidden));
+    } finally { await fs.rm(external, { recursive: true, force: true }); }
+  });
+
+  it('preserves literal replacement strings and the legacy omitted deletion', async () => {
+    const file = path.join(tempRoot, 'replace.txt');
+    const edit = args => executeServerTool('replace_text_in_file', { path: 'replace.txt', search: 'x', ...args }, { workspaceRoot: tempRoot });
+    for (const [args, expected] of [[{ replace: '' }, ''], [{ replace: ' ' }, ' '], [{}, '']]) {
+      await fs.writeFile(file, 'x');
+      assert.match((await edit(args)).result, /Replaced 1/);
+      assert.equal(await fs.readFile(file, 'utf8'), expected);
+    }
+    await fs.writeFile(file, 'x');
+    for (const args of [{ replace: null }, { replace: 3 }, { replace: 'y', search: '' }]) {
+      assert.match((await edit(args)).result, /^Error:/);
+      assert.equal(await fs.readFile(file, 'utf8'), 'x');
+    }
+  });
+
   it('rejects generic binary files instead of dumping them', async () => {
     const binary = Buffer.from([0x00, 0x01, 0x02, 0xff, 0x00, 0x10]);
     await fs.writeFile(path.join(tempRoot, 'blob.bin'), binary);

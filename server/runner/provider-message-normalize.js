@@ -6,13 +6,9 @@ function assistantToolCalls(message) {
 }
 function repairUnpairedToolCalls(messages) {
   const out = [];
-  const requestedIds = /* @__PURE__ */ new Set();
   for (let i = 0; i < messages.length; i += 1) {
     const message = messages[i];
     if (message.role === "tool") {
-      if (requestedIds.has(message.tool_call_id)) {
-        out.push(message);
-      }
       continue;
     }
     const toolCalls = assistantToolCalls(message);
@@ -21,14 +17,12 @@ function repairUnpairedToolCalls(messages) {
       continue;
     }
     out.push(message);
-    for (const call of toolCalls) {
-      requestedIds.add(call.id);
-    }
+    const requestedIds = new Set(toolCalls.map(call => call.id));
     const answered = /* @__PURE__ */ new Set();
     let j = i + 1;
     while (j < messages.length && messages[j].role === "tool") {
       const row = messages[j];
-      if (requestedIds.has(row.tool_call_id)) {
+      if (requestedIds.has(row.tool_call_id) && !answered.has(row.tool_call_id)) {
         out.push(row);
         answered.add(row.tool_call_id);
       }
@@ -71,7 +65,7 @@ function foldLeadingAssistantPreamble(messages) {
     index += 1;
   }
   const preamble = [];
-  while (index < messages.length && messages[index].role === "assistant") {
+  while (index < messages.length && messages[index].role === "assistant" && !assistantToolCalls(messages[index])) {
     const text = assistantPlainText(messages[index]).trim();
     if (text) preamble.push(text);
     index += 1;

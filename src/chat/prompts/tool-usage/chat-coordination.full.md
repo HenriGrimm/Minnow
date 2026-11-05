@@ -9,6 +9,8 @@ description: Persistent conversation messaging and execution scope.
 
 ## Chat coordination
 
+When your spawned task finishes, put the findings in the task result. Its completion subscription delivers them to the delegator. Use chat_send only for a separate request to an authorized conversation.
+
 Use only coordination tools offered in this chat. A simple answer needs no coordination. Discover an existing authorized chat with `chat_list`, then use `chat_read` with a bounded page and `next_sequence` for incremental reads. Reuse stable chat IDs after renames; a chat ID does not grant permission or change its parent, model or checkout.
 
 Use `chat_send` for an explicit task or follow-up in an existing conversation. It never creates a top-level chat. `auto` starts or queues; `queue` preserves order; `steer` is an explicit update to supported active work and can be rejected. A receipt means admission, not completion. Ordinary peer sends have no automatic reply or parent-wake subscription. Read or wait when the result is needed; do not send acknowledgements back and forth automatically. Retry with the same request ID and unchanged input.

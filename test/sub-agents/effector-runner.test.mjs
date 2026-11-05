@@ -720,6 +720,42 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
     }
   });
 
+  test('a fresh effector replays one provider batch from the interrupted attempt on disk', async () => {
+    fake.reset();
+    const parentChatId = 'restart-disk-batch', attemptId = 'sa-before-restart';
+    const journal = createMemoryAgentsJournal();
+    await journal.appendEvent(parentChatId, runRequested(parentChatId, homeDir));
+    await journal.appendEvent(parentChatId, makeEvent('attempt.started', { runId: 'run-1', attemptId, seed: { kind: 'initial' } }));
+    await journal.appendEvent(parentChatId, makeEvent('attempt.ended', { runId: 'run-1', attemptId, outcome: 'crashed', summary: 'Process interrupted' }));
+    const events = [
+      { type: 'round_end', text: 'Inspecting the change.' },
+      ...['a', 'b', 'missing'].map(id => ({ type: 'tool_call', id, name: 'save_file', arguments: { path: id, content: 'do not repeat' } })),
+      { type: 'tool_result', id: 'b', content: 'saved B' }, { type: 'tool_result', id: 'a', content: 'saved A' },
+      { type: 'tool_result', id: 'a', content: 'duplicate' }, { type: 'round_end', text: '' },
+    ];
+    for (const event of events) recordTranscriptEvent({ entryDir: agentsDir(parentChatId), attemptId, event });
+    await flushTranscripts(parentChatId, attemptId, { entryDir: agentsDir(parentChatId) });
+    const deps = stubDeps();
+    const post = deps.postChatCompletions;
+    let checked = false;
+    deps.postChatCompletions = (provider, body, ...rest) => {
+      const start = body.messages.findIndex(row => row.tool_calls?.some(call => call.id === 'a'));
+      assert.deepEqual(body.messages[start].tool_calls.map(call => call.id), ['a', 'b', 'missing']);
+      assert.deepEqual(body.messages.slice(start + 1, start + 4).map(row => [row.role, row.tool_call_id, row.content]),
+        [['tool', 'a', 'saved A'], ['tool', 'b', 'saved B'], ['tool', 'missing', 'Tool call did not complete; no result was recorded.']]);
+      assert.equal(body.messages.filter(row => row.role === 'tool').length, 3);
+      checked = true;
+      return post(provider, body, ...rest);
+    };
+    const effector = makeEffector({ parentChatId, getState: () => journal.loadState(), deps });
+    const ended = new Promise(resolve => effector.onEnd(resolve));
+    await effector.start({ taskId: 'run-1', role: SUB_AGENT_ROLE, seedKind: 'continue' });
+    const end = await ended;
+    assert.equal(end.outcome, 'pass', end.summary);
+    assert.equal(checked, true);
+    for (const id of ['a', 'b', 'missing']) assert.equal(fs.existsSync(path.join(homeDir, id)), false);
+  });
+
   test('inspect stays populated until onEnd resolves', { timeout: 20_000 }, async () => {
     fake.reset();
     const parentChatId = 'chat-p8d-inspect';

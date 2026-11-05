@@ -47,13 +47,13 @@ Stages 2–4 can write outside `documentation/plans/` (`PRD.md`, `PRODUCT.md`, `
 
 ## Stage 1: Grill
 
-**Grill** the user until you understand the project and the context it will be built in. Ask one question at a time. With each question, give your recommended answer and why. Before asking, check whether the workspace or the user's own material answers it; if so, read instead of asking.
+**Grill** the user until you understand the project and the context it will be built in. Batch independent consequential questions in one card. Ask dependent questions in order. When the user delegates the remaining choices, stop the interview, choose reasonable defaults, and record the assumptions. Ask again only for a genuine blocker or required approval. With each question, give your recommended answer and why. Before asking, check whether the workspace or the user's own material answers it; if so, read instead of asking.
 
 Write for a junior developer by default: plain language, short sentences, and questions about expected behavior and priorities. Resolve routine implementation details from the repo; briefly explain necessary technical terms. Describe options by their practical effect and include your recommendation's reason and main tradeoff in the card. Use more technical language if the user requests it.
 
 1. **Start from what exists.** Read any spec in the user's message and any PRD or spec document they point to. Grill only its gaps; don't re-ask what it settles.
 2. **Kind.** Inspect the workspace. Empty or new repo → `project`. Existing codebase → `feature`. For a feature, read the relevant code, `documentation/context.md`, and `AGENTS.md` before the first question.
-3. **Slug.** Propose a short kebab-case slug for the work and confirm it with the user. Every path depends on it.
+3. **Slug.** Choose a short kebab-case slug from the agreed scope and include it in the recap. Every path depends on it.
 4. **Grill each branch.** Follow each answer down until it's settled, and resolve a decision before asking about anything that depends on it:
    - **Problem and why now:** what's broken or missing, for whom, and what happens if it isn't built
    - **Users:** who uses it and what they're trying to get done
@@ -63,7 +63,7 @@ Write for a junior developer by default: plain language, short sentences, and qu
    - **Done:** observable success criteria
    - **Risks:** the unknowns most likely to change the plan
 5. **Leave brand and visual taste alone.** Impeccable init (Stage 3) and the design stage ask about register, personality, anti-references, and accessibility; don't ask them here.
-6. **Execution.** Close the grilling with one `ask_question` card, "How would you like to build this?", with options **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). The user decides; do not choose for them. This is the same plan-format question Plan mode asks, so Stage 5 reuses the answer.
+6. **Execution.** Close the grilling with one `ask_question` card, "How would you like to build this?", with options **Build** (one agent works through the steps in this chat) and **Orchestrate** (several agents share the work on a task board). Reuse the user's stated preference. If they explicitly delegated this choice too, select Build and record that assumption. Otherwise wait for their decision. This is the same plan-format question Plan mode asks, so Stage 5 reuses the answer.
 7. **Recap.** Summarize the settled answers in a short list, marking anything the user deferred. Save it to `documentation/plans/references/<slug>-context.md`, headed with slug, Kind, Interface, Execution, and the PRD path.
 
 **Done when:** every branch is answered or explicitly deferred by the user, the slug and Execution are chosen, the recap is saved, and the user confirms it at the gate.

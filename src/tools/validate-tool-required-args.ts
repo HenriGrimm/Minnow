@@ -42,6 +42,10 @@ export function validateToolRequiredArgs(
 
   const missing: string[] = [];
   for (const key of required) {
+    if (toolName === 'replace_text_in_file' && key === 'replace') {
+      if (typeof args.replace !== 'string') missing.push(key);
+      continue;
+    }
     if (toolName === 'todo_write' && key === 'todos' && Array.isArray(args.todos)) {
       continue;
     }

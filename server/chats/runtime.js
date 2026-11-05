@@ -245,6 +245,10 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     isExternalExecutionActive(caller) {
       try { assertExecutionCaller(caller); return isExternalExecutionActive(caller); } catch { return false; }
     },
+    async hasRunningRecoveryCommand(chatId) {
+      const { listKnownActiveRuns } = await import('../terminal-runner.js');
+      return (await listKnownActiveRuns({ chatId, source: 'agent' })).length > 0;
+    },
     hasExternalExecution: chatId => Boolean(getExternalOwner(chatId))
       || generations().some(row => row.chatId === chatId && ['pending', 'streaming'].includes(row.status)),
     isExecutionCallerActive(caller) {

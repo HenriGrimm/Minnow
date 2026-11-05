@@ -1,3 +1,4 @@
+import type { InterruptedExecutionReview } from '../../server/chats/repository';
 import { buildHistoryUserContent, persistableUserImages } from './build-api-messages';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { randomUUID } from '../lib/random-id';
@@ -26,6 +27,19 @@ export async function readManagedChatRequestPage(chatId: string, options: { curs
     return parsed.value;
   });
   return { requests, pendingCount: body.pendingCount, nextCursor: body.nextCursor, truncated: body.truncated };
+}
+
+export async function readInterruptedExecution(chatId: string): Promise<InterruptedExecutionReview> {
+  const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/recovery`, { cache: 'no-store' });
+  const body = await response.json();
+  if (!response.ok) throw new Error(errorMessage(body));
+  return body;
+}
+
+export async function retireInterruptedExecution(chatId: string, review: InterruptedExecutionReview, clientRequestId: string, note: string): Promise<void> {
+  const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/recovery`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
+    body: JSON.stringify({ executionId: review.executionId, revision: review.revision, clientRequestId, note }) });
+  if (!response.ok) throw new Error(errorMessage(await response.json()));
 }
 
 /** Retry the same human answer identity after a lost acknowledgement. */

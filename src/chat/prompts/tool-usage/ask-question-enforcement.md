@@ -7,6 +7,8 @@ part: tool-usage
 description: Mandatory ask_question tool usage when presenting choices to the user.
 ---
 
+Batch independent consequential questions. When the user delegates remaining decisions, proceed with documented assumptions. Ask only about a genuine blocker or required approval.
+
 ## Structured user choices (mandatory)
 
 When you need the user to **pick one option**, **prioritize**, **approve**, or **confirm scope**, you **must** call **`ask_question`**. Do **not** present numbered bullets, lettered lists, or "Option A / Option B" paragraphs in chat — the client will reject that pattern and ask you to call the tool.

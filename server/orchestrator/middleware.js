@@ -11,7 +11,7 @@ import { stateToJSON } from './core/snapshot.js';
 import { createScriptedEffector } from './effector-scripted.js';
 import { disposeEngines, getEngine, peekEngine } from './engine.js';
 import { completeModelPair } from './model-binding.js';
-import { listPendingBoardResumes, resolveAllBoardResumes } from './resume-gate.js';
+import { listPendingBoardResumes, resolveBoardResume } from './resume-gate.js';
 import {
   appendEvent,
   boardExists,
@@ -290,6 +290,16 @@ export async function handleBoardsRequest(req, res, pathname) {
   return true;
 }
 
+async function pendingBoardsInWorkspace() {
+  const rows = [];
+  const workspaceRoot = getEffectiveWorkspaceRoot();
+  for (const row of listPendingBoardResumes()) {
+    const state = peekEngine(row.boardId)?.getState();
+    if (await boardBelongsToWorkspace(state, workspaceRoot)) rows.push(row);
+  }
+  return rows;
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 /**
@@ -361,13 +371,7 @@ async function dispatch(route, req, res) {
     }
 
     case 'resumePending': {
-      const rows = [];
-      for (const row of listPendingBoardResumes()) {
-        const state = peekEngine(row.boardId)?.getState();
-        if (state && !(await boardBelongsToWorkspace(state))) continue;
-        rows.push(row);
-      }
-      return json(res, 200, { ok: true, boards: rows });
+      return json(res, 200, { ok: true, boards: await pendingBoardsInWorkspace() });
     }
 
     case 'resumeResolve': {
@@ -379,7 +383,15 @@ async function dispatch(route, req, res) {
           error: "decision must be 'resume' or 'decline'",
         });
       }
-      const boardIds = await resolveAllBoardResumes(decision);
+      if (body.boardIds !== undefined && !Array.isArray(body.boardIds)) {
+        return json(res, 400, { ok: false, error: 'boardIds must be an array' });
+      }
+      const requested = body.boardIds && new Set(body.boardIds);
+      const boardIds = [];
+      for (const { boardId } of await pendingBoardsInWorkspace()) {
+        if (requested && !requested.has(boardId)) continue;
+        if (await resolveBoardResume(boardId, decision)) boardIds.push(boardId);
+      }
       return json(res, 200, { ok: true, decision, boardIds });
     }
 

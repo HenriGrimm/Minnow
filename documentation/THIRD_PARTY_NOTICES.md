@@ -16,6 +16,7 @@ Minnow is distributed under the **GNU Affero General Public License v3** (AGPL-3
 | **ws** | WebSocket transport | MIT | https://github.com/websockets/ws |
 | **electron-updater** | In-app update downloads | MIT | https://github.com/electron-userland/electron-builder |
 | **ai** (Vercel AI SDK) | Provider / streaming helpers | Apache-2.0 | https://github.com/vercel/ai |
+| **Impeccable** | Local design detector | Apache-2.0 (packaged under `licenses/impeccable-LICENSE`) | https://github.com/pbakaus/impeccable |
 | **CodeMirror** (`@codemirror/*`) | Code editor | MIT | https://github.com/codemirror |
 | **@xterm/xterm** | Terminal emulator | MIT | https://github.com/xtermjs/xterm.js |
 | **@xenova/transformers** | On-device embeddings (Brain) | Apache-2.0 | https://github.com/xenova/transformers.js |

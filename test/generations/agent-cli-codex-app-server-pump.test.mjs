@@ -598,6 +598,25 @@ test('shared runner executes duplicated native calls once and retains real denie
   assert.ok(events.some(event => event.type === 'tool_result' && event.content.includes('permission denied')));
 });
 
+test('shared runner delivers parallel screenshots to the originating native call', async () => {
+  const log = path.join(root, 'runner-images.jsonl');
+  setup([{ calls: [{ id: 'picture', name: 'mn_tool_0', args: { path: 'picture' } },
+    { id: 'text', name: 'mn_tool_0', args: { path: 'text' } }] }, { text: 'Finished.' }], { MINNOW_CODEX_REQUEST_LOG: log });
+  const result = await runTurn({ chatId: 'runner-images', seed: 'Read both files.', tools, lazyTools: false,
+    model: { providerId: 'codex-cli', id: 'fixture', vision: true },
+    deps: runnerDeps({ resolveProvider: async () => ({ id: 'codex-cli', apiKind: 'agent-cli-v1' }) }),
+    injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+    execute: async (_name, args) => args.path === 'picture'
+      ? { content: 'picture', attachments: [{ type: 'image', dataUrl: imageUrl }] } : { content: 'text' },
+  });
+  assert.equal(result.outcome, 'no_report');
+  assert.equal(processes, 1);
+  const receipts = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.result?.contentItems);
+  assert.deepEqual(receipts.map(row => row.result.contentItems.map(item => item.type)),
+    [['inputText', 'inputText', 'inputImage'], ['inputText']]);
+  assert.equal(receipts[0].result.contentItems.at(-1).imageUrl, imageUrl);
+});
+
 test('transport batches still use ordinary runner execution and permission results', async () => {
   setup([{ calls: [{ id: 'batch', name: 'mn_read_batch', duplicate: true, args: { calls: [
     { name: 'read_file', arguments: { path: 'safe' } }, { name: 'read_file', arguments: { path: 'blocked' } },

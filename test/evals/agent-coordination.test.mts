@@ -34,7 +34,9 @@ test('script executor returns only fixtures and has no live fallback after exhau
     const definitions = resolveEvalTaskTools(task);
     assert.ok(definitions.some(tool => tool.function.name === 'chat_send'));
     for (const step of task.toolFixtures!.steps) {
-      const result = await execute(step.name, structuredClone(step.matchArgs));
+      const args = structuredClone(step.matchArgs);
+      if (step.name === 'spawn_sub_agent') args.title = String(args.task).slice(0, 80);
+      const result = await execute(step.name, args);
       assert.equal(result.content, typeof step.result === 'string' ? step.result : JSON.stringify(step.result));
     }
     assert.equal(execute.fixtureReport!().pass, true);

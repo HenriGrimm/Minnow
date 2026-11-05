@@ -49,15 +49,49 @@ export async function prepareVerificationInputs({ workspace, cwd, markdown, boar
   return copied;
 }
 export function taskVerificationContract(task) {
-  const specification = `${task.testSpec || task.test || ''}\n${task.accept || ''}`.trim();
-  if (!specification) return [];
-  return [{ id: `${task.id}:${createHash('sha256').update(specification).digest('hex').slice(0, 12)}`, owner: 'tester', required: true, specification }];
+  const sections = [['test', task.testSpec || task.test], ['accept', task.accept]];
+  const seen = new Set();
+  return sections.flatMap(([section, text]) => {
+    const criteria = String(text ?? '').trim().split(/(?:^|\n)[ \t]*(?:[-*+] |\d+[.)] )/).map(s => s.trim()).filter(Boolean);
+    return criteria.filter(specification => {
+      if (seen.has(specification)) return false;
+      seen.add(specification); return true;
+    }).map((specification, index) => {
+      const digest = createHash('sha256').update(JSON.stringify([section, index, specification])).digest('hex').slice(0, 12);
+      return { id: `${task.id}:${digest}`, owner: 'tester', required: true, specification };
+    });
+  });
 }
-export function validateVerificationChecks(raw, contract) {
-  if (!Array.isArray(raw) || raw.length > 64) return 'Include checks for every required verification ID, with outcome and concrete evidence.';
+// Link a quoted command or a leading command/output label to its actual successful receipt.
+// Free-text observations can stand on their own, including manual and visual checks.
+export function attachVerificationReceipts(checks, receipts) {
+  return checks.map(check => {
+    const ids = new Set(check.toolCallIds ?? []);
+    for (const [id, command] of receipts) {
+      if (ids.size >= 8) break;
+      if (command && check.evidence.some(value => {
+        const text = value.trim();
+        return text === command || text.startsWith(command + ':') || text.includes('`' + command + '`');
+      })) ids.add(id);
+    }
+    return ids.size ? { ...check, toolCallIds: [...ids] } : check;
+  });
+}
+
+export function validateVerificationChecks(raw, contract, recorded = new Set()) {
+  const observations = new Set();
+  if (!Array.isArray(raw) || raw.length > Math.max(64, contract.length)) return 'Include checks for every required verification ID, with outcome and concrete evidence.';
+  if (raw.length !== contract.length) return 'Report one check for each required verification ID.';
   for (const requirement of contract) {
     const matching = raw.filter((check) => check?.id === requirement.id);
     if (matching.length !== 1 || matching[0].outcome !== 'pass' || !Array.isArray(matching[0].evidence) || !matching[0].evidence.length || !matching[0].evidence.every((value) => typeof value === 'string' && value.trim())) return `Required check ${requirement.id} must pass with command/observation evidence. Report blocked if it cannot run; do not waive acceptance.`;
+    const check = matching[0];
+    if (check.evidence.length > 16 || check.evidence.some(value => value.length > 4096)) return 'Keep each observation bounded and cite its recorded tool call.';
+    const key = JSON.stringify(check.evidence.map(s => s.trim().toLowerCase()).sort());
+    if (observations.has(key)) return `Describe what demonstrated ${requirement.specification}. Each requirement needs its own observation.`;
+    observations.add(key);
+    if (check.toolCallIds !== undefined && (!Array.isArray(check.toolCallIds) || check.toolCallIds.length > 8 ||
+      check.toolCallIds.some(id => !recorded.has(id)))) return `Check ${requirement.id} references a missing or failed result from this attempt.`;
   }
   return null;
 }

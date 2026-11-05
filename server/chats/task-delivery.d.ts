@@ -32,6 +32,7 @@ export interface ChatTaskDelivery {
   onSettled(input: PersistentTaskSettlement): Promise<void>;
   /** Reconcile terminal journals and durable executions before scheduling work. */
   recover(): Promise<void>;
+  reconcileRemovedTask(execution: { chatId: string; commandId: string; runId: string }): Promise<void>;
   start(): Promise<void>;
   drain(): Promise<void>;
   reconcileHolds(): void;

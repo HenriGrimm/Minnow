@@ -41,6 +41,11 @@ export interface OutboxRecord {
   state: 'pending' | 'applying' | 'applied' | 'failed'; attempts: number;
   ownerId: string | null; expiresAt: number | null; error: unknown; createdAt: number; updatedAt: number;
 }
+export interface InterruptedExecutionReview {
+  executionId: string; ownerReleased: boolean; revision: string; checkout: string | null;
+  operations: { invocationId: string; toolName: string; targets: string[]; logPath?: string; receiptId: string | null }[];
+}
+export interface RecoveryDecision { clientRequestId: string; revision: string; note: string }
 export interface ToolIntentInput {
   invocationId: string; chatId: string; executionId: string; toolCallId: string; toolName: string; input: unknown;
 }
@@ -105,6 +110,9 @@ export interface ChatRepository {
   renewLease(chatId: string, fence: ExecutionFence, leaseMs?: number): ExecutionLease;
   releaseLease(chatId: string, fence: ExecutionFence): void;
   updateExecution(executionId: string, update: { status?: ChatExecutionState; result?: unknown }, options: { fence: ExecutionFence }): ExecutionRecord;
+  inspectRecovery(chatId: string): InterruptedExecutionReview;
+  retireInterruptedExecution(chatId: string, input: RecoveryDecision & { executionId: string }, verifyIdle: (execution: ExecutionRecord) => boolean):
+    { decision: RecoveryDecision; operations: InterruptedExecutionReview['operations']; retiredAt: number };
   recoverExecution(executionId: string, options: {
     fence: ExecutionFence;
     quiescence: { verified: true; source: string; checkedAt: number; [key: string]: unknown };

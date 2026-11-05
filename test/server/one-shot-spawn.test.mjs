@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  describeOneShotInterpreter,
   resolveOneShotSpawn,
   resolveUnixLoginShell,
   tryRewriteInlineInterpreterCommand,
@@ -20,6 +21,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 
 describe('resolveOneShotSpawn', () => {
+  it('identifies the actual interpreter even when the interactive Windows profile is PowerShell', () => {
+    assert.match(describeOneShotInterpreter({ platform: 'win32', command: 'echo ok', shellProfile: { shell: 'pwsh.exe' } }), /cmd.exe/i);
+    assert.equal(describeOneShotInterpreter({ platform: 'win32', command: 'node -e "42"' }), 'node');
+    assert.match(describeOneShotInterpreter({ platform: 'linux', command: 'echo ok' }), /bash|zsh/);
+  });
+
   it('wraps Unix one-shot strings in a login shell', () => {
     const prevShell = process.env.SHELL;
     delete process.env.SHELL;

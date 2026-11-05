@@ -701,7 +701,9 @@ export async function runTurn(options) {
           (inspected.name === SEARCH_TOOLS_NAME || !callableNames.has(inspected.name))) {
         const content = inspected.name === SEARCH_TOOLS_NAME && callableNames.has(SEARCH_TOOLS_NAME)
           ? lazyTools.search(inspected.arguments)
-          : 'Error: tool is not loaded or available. Use search_tools to find permitted tools before calling them.';
+          : catalog.some(tool => tool.function.name === inspected.name) && callableNames.has(SEARCH_TOOLS_NAME)
+            ? `Error: permitted tool is not loaded. Call search_tools with query "${inspected.name}" and use its schema on the next request.`
+            : 'Error: tool is unavailable in this execution. Choose an offered capability.';
         publish({ type: 'tool_result', name: inspected.name, id: inspected.id,
           content, ...(content.startsWith('Error:') ? { isError: true } : {}) });
         outcomes.push({ toolCall, result: { content } });
@@ -789,7 +791,7 @@ export async function runTurn(options) {
         try {
           const result = await options.execute(name, execArgs, { toolCallId: ctx.toolCallId, chatId, cwd });
           const warnings = [
-            progress.note(name, result),
+            progress.note(name, result, execArgs),
             roundNoteId && ctx.toolCallId === roundNoteId ? roundNote : null,
           ].filter(Boolean);
           return warnings.length ? { ...result, content: `${result.content}\n\n${warnings.join('\n\n')}` } : result;

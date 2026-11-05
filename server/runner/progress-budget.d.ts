@@ -9,7 +9,7 @@ export interface ProgressBudgetResult {
 
 export interface ProgressBudget {
   reset(): void;
-  note(name: string, result?: ProgressBudgetResult): string | null;
+  note(name: string, result?: ProgressBudgetResult, args?: { command?: string }): string | null;
 }
 
 export function createProgressBudget(enabled: boolean, maxCalls?: number): ProgressBudget;

@@ -577,7 +577,7 @@
         "Provider logos"
       ],
       "section": "Legal",
-      "hash": "d037aa93540a60e639ab00f677d9ce851fe1f978e0221abfdb27bdec999ce7d3"
+      "hash": "bd8fee840fac9dcd0e0b7a40beb294c4658facad99335e1dc763d217094ed753"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -610,13 +610,14 @@
         "Questions and approvals",
         "Stop controls",
         "Messages between chats",
+        "Review interrupted work",
         "Saved history and older tasks",
         "Checkouts, deletion and backups",
         "Continue from the CLI",
         "Related"
       ],
       "section": "Chat",
-      "hash": "1858c38b19318065251d98af5f54016d2e0a6b6b8075881e4cb9ed84533901ee"
+      "hash": "c3b3df628a32f0c44008586537a741133f8d8d7d5844e858d97e60ab87ea2324"
     },
     {
       "path": "documentation/manual/apps/home.md",

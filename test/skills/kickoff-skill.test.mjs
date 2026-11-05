@@ -13,6 +13,13 @@ test('kickoff frontmatter parses as a model-invocable built-in', () => {
   assert.ok(meta.description.trim().length > 0);
 });
 
+test('delegating remaining decisions ends the interview while preserving required approvals', () => {
+  for (const material of [kickoff, ...['modes/plan.full', 'modes/plan.lite', 'work-agents/planner/agent.full', 'work-agents/planner/agent.lite', 'tool-usage/ask-question-enforcement', 'tool-usage/ask-question-enforcement.lite'].map(name => read('src/chat/prompts/' + name + '.md'))]) {
+    assert.match(material, /delegates (?:the )?remaining (?:choices|decisions)/i);
+    assert.match(material, /assumptions/i); assert.match(material, /genuine blocker or required approval/i);
+  }
+});
+
 // Kickoff loads these through load_skill; a rename elsewhere would break it silently.
 const LINKED = [
   { skill: 'impeccable', reference: 'reference/init.md', headings: ['## Step 5: Decide on DESIGN.md', '## Step 6: Configure live mode', '## Step 7: Recommend starting points'] },

@@ -765,6 +765,71 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         touch(execution.chatId); return getExecution(executionId);
       });
     },
+    inspectRecovery(chatId) {
+      const execution = repository.getLatestExecution(chatId), lease = repository.getLease(chatId);
+      if (execution?.status !== 'recovery_required' || lease?.executionId !== execution.executionId) {
+        fail('stale_revision', 'Refresh this conversation. The interrupted execution has changed.');
+      }
+      const operations = repository.listUnsettledToolInvocations(execution.executionId).map(op => {
+        const hostId = 'host-' + createHash('sha256').update(JSON.stringify([execution.executionId, op.toolCallId])).digest('hex').slice(0, 48);
+        const dispatch = getOutbox(hostId), receipt = getOutbox('result-' + hostId);
+        const envelope = dispatch?.payload.envelope, original = dispatch?.payload.fence;
+        const known = receipt?.kind === 'host.tool.result' && receipt.chatId === chatId && dispatch?.kind === 'host.tool'
+          && dispatch.chatId === chatId && envelope?.projectId === execution.captured?.projectId && dispatch.payload.projectId === envelope?.projectId
+          && original?.executionId === execution.executionId && original.ownerId === lease.ownerId && original.epoch === lease.epoch
+          && envelope?.chatId === chatId && envelope.executionId === execution.executionId && envelope.toolCallId === op.toolCallId
+          && envelope.name === op.toolName && hashChatPayload(envelope.args) === hashChatPayload(op.input)
+          && receipt.payload.hostId === dispatch.payload.hostId && receipt.payload.invocationId === hostId
+          && receipt.payload.inputHash === envelope.inputHash && typeof receipt.payload.result?.content === 'string';
+        const targets = typeof op.input?.path === 'string' ? [op.input.path] : typeof op.input?.patch === 'string'
+          ? Array.from(op.input.patch.matchAll(/^\*\*\* (?:Add File|Delete File|Update File|Move to): (.+)$/gm), m => m[1]).slice(0, 8) : [];
+        const log = db.prepare('SELECT log_path FROM chat_terminal_history WHERE chat_id=? AND tool_call_id=? AND started_at>=? ORDER BY seq DESC LIMIT 1')
+          .get(chatId, op.toolCallId, execution.createdAt);
+        return { invocationId: op.invocationId, toolName: op.toolName, targets: targets.map(s => s.trim().slice(0, 500)),
+          ...(log?.log_path ? { logPath: log.log_path.slice(0, 500) } : {}), receiptId: known ? receipt.outboxId : null };
+      });
+      return { executionId: execution.executionId, ownerReleased: lease.state === 'released', checkout: execution.captured?.scope?.canonicalKey ?? null,
+        revision: hashChatPayload([execution.executionId, lease.ownerId, lease.epoch, lease.state, operations]), operations };
+    },
+    retireInterruptedExecution(chatId, { executionId, revision: expected, note, clientRequestId }, verifyIdle) {
+      identity(executionId); identity(clientRequestId);
+      if (typeof note !== 'string' || !note.trim() || note.length > 2000) fail('invalid_request', 'Record what you verified before retiring this attempt (up to 2000 characters).');
+      return transaction(() => {
+        const execution = getExecution(executionId);
+        if (execution?.chatId !== chatId) fail('stale_revision', 'The interrupted execution has changed');
+        const decision = { clientRequestId, revision: expected, note: note.trim() };
+        const prior = execution.result?.humanRecovery;
+        if (prior && hashChatPayload(prior.decision) === hashChatPayload(decision)) return prior;
+        const review = repository.inspectRecovery(chatId);
+        if (executionId !== review.executionId || expected !== review.revision) fail('stale_revision', 'Refresh the recovery evidence before deciding.');
+        if (!review.ownerReleased) fail('ownership_conflict', 'Restart Minnow to verify the original execution has stopped, then review the operation again.');
+        if (verifyIdle(execution) !== true) fail('ownership_conflict', 'Wait for the execution and its tools to stop before retiring it.');
+        for (const op of review.operations) {
+          const result = op.receiptId ? getOutbox(op.receiptId).payload.result : { content: 'Interrupted tool retired by the user. Its outcome is unknown.', indeterminate: true };
+          const encoded = json(result);
+          db.prepare("UPDATE chat_tool_invocations SET state='settled',result_hash=?,result_json=?,settled_at=? WHERE execution_id=? AND invocation_id=? AND state!='settled'")
+            .run(hashPayload(encoded), encoded, time(), executionId, op.invocationId);
+        }
+        const humanRecovery = { decision, operations: review.operations, retiredAt: time() };
+        const messageId = 'recovery-' + hashChatPayload(executionId);
+        const message = { role: 'user', messageId, createdAt: humanRecovery.retiredAt,
+          provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' },
+          content: 'I retired the interrupted attempt after checking its effects. My findings:\n' + decision.note };
+        const seq = db.prepare('SELECT COALESCE(MAX(seq),-1)+1 AS next FROM messages WHERE chat_id=?').get(chatId).next;
+        upsertMessageRow(db, chatId, seq, message);
+        db.prepare('INSERT INTO chat_message_identities(chat_id,message_id,seq,input_hash) VALUES(?,?,?,?)').run(chatId, messageId, seq, hashChatPayload(message));
+        updateMessageDerived(chatId);
+        db.prepare("UPDATE chat_executions SET status='stopped',result_json=?,settled_at=?,updated_at=? WHERE execution_id=?")
+          .run(json({ ...execution.result, outcome: 'crashed', humanRecovery }), time(), time(), executionId);
+        db.prepare("UPDATE chat_execution_leases SET state='released',expires_at=? WHERE chat_id=? AND execution_id=?").run(time(), chatId, executionId);
+        repository.holdQueuedCommands(chatId);
+        const command = execution.commandId && getCommand(execution.commandId);
+        if (command && !TERMINAL_COMMANDS.has(command.state)) repository.updateCommand(command.commandId, {
+          state: 'cancelled', result: { disposition: 'removed', removedByCommandId: clientRequestId }, error: null });
+        touch(chatId);
+        return humanRecovery;
+      });
+    },
     assertFence, appendMessage, patchMessage, readMessage, readTranscript, setTranscriptMeta,
     /** Trusted admission only: retain a legacy result while no execution owns the transcript. */
     appendAdmittedResult(commandId) {

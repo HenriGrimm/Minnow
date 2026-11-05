@@ -70,7 +70,9 @@ export function createChatTaskDelivery({ repository, context, service, journal =
     if (!run?.childChatId || !run.commandId || !isTerminal(run)) return null;
     const command = repository.getCommand(run.commandId);
     if (!command) return null;
+    if ((run.journalOwnerId ?? owner) !== owner) throw new ChatContractError('ownership_conflict', 'Task publication journal owner mismatch', { path: 'task.publication' });
     const previous = tasks.getResult(runId);
+    if (previous && (previous.journalOwnerId !== owner || previous.childChatId !== run.childChatId)) throw new ChatContractError('ownership_conflict', 'Task publication saved child or journal owner mismatch', { path: 'task.publication' });
     const last = lastEndedAttempt(run);
     const candidateExecution = last?.executionId ?? run.executionId ?? command.executionId;
     const executionId = candidateExecution && repository.getExecution(candidateExecution)?.runId === runId ? candidateExecution : null;
@@ -204,6 +206,14 @@ export function createChatTaskDelivery({ repository, context, service, journal =
       }
       await publishRun(owner, input.run.runId); await drain(); schedule();
     },
+    async reconcileRemovedTask({ chatId, commandId, runId }) {
+      const relation = repository.getRelation(chatId), command = repository.getCommand(commandId);
+      if (!relation || command?.chatId !== chatId || command.runId !== runId || command.result?.disposition !== 'removed') return;
+      const owner = relation.journalOwnerId, run = (await journal.loadState(owner)).runs.get(runId);
+      if (!run || run.childChatId !== chatId || run.commandId !== commandId) return;
+      if (!isTerminal(run)) await append(owner, makeEvent('run.cancelled', { runId, reason: 'user' }), stable('queue-task-cancel', [commandId, runId]));
+      await publishRun(owner, runId); schedule();
+    },
     async recover() {
       recovering = true;
       try {
@@ -234,7 +244,14 @@ export function createChatTaskDelivery({ repository, context, service, journal =
             }
           }
           state = await journal.loadState(owner);
-          for (const run of state.runs.values()) if (run.childChatId && isTerminal(run)) await publishRun(owner, run.runId);
+          for (const run of state.runs.values()) {
+            if (!run.childChatId || !isTerminal(run)) continue;
+            try { await publishRun(owner, run.runId); }
+            catch (error) {
+              if (error.code !== 'ownership_conflict' || error.path !== 'task.publication') throw error;
+              report(new Error(`Task ${run.runId} in ${owner}: ${error.message}`));
+            }
+          }
         }
         reconcileHolds(); await disposeInvalidSubscriptions(); await outbox.drain({ limit: 1000 });
       } finally { recovering = false; }

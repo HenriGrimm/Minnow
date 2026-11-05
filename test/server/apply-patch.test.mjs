@@ -19,6 +19,14 @@ async function workspace(t, fn) {
   return pathAccessStore.run({ workspaceRootOverride: root, allowOutsideWorkspace: false }, () => fn(root));
 }
 
+test('ambiguous candidates refer to the on-disk lines after an earlier insertion', () => {
+  const sections = [
+    { before: ['start'], after: ['start', 'added'], anchor: '' },
+    { before: ['same'], after: ['changed'], anchor: '' },
+  ];
+  assert.throws(() => patchText('start\n' + 'same\n'.repeat(7), sections, 'doc'), /doc, hunk 2 of 2, 7 matches.*Candidate lines: 2, 3, 4, 5, 6, …/);
+});
+
 test('one patch adds, edits with CRLF, moves, deletes, and reports all changed paths', t => workspace(t, async root => {
   await fs.writeFile(path.join(root, 'edit.txt'), 'one\r\ntwo\r\nthree\r\n');
   await fs.writeFile(path.join(root, 'old.txt'), 'before\n');

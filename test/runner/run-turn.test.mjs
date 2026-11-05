@@ -503,7 +503,8 @@ test('lazy mode rejects undiscovered and unauthorized calls before execution', a
     const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
     const results = last.body.messages.filter(row => row.role === 'tool');
     assert.equal(results.length, 2);
-    assert.ok(results.every(row => row.content.startsWith('Error:')));
+    assert.match(results[0].content, /permitted tool is not loaded.*search_tools.*git_log/);
+    assert.match(results[1].content, /unavailable in this execution/);
   });
 });
 

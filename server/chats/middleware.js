@@ -120,7 +120,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { receipt: await service.readCommand(caller, record.commandId) }); return;
       }
       const legacy = /^\/api\/chats\/([A-Za-z0-9_-]{1,160})\/legacy\/([A-Za-z0-9_-]{1,160})\/continue$/.exec(url.pathname);
-      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|requests|ack)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
+      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|requests|ack|recovery)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
       if (!match) { send(404, { error: { code: 'chat_not_found', message: 'Conversation operation does not exist', retryable: false } }); return; }
       const [, chatId, operation, requestId] = match;
       if (!operation && req.method === 'DELETE') {
@@ -171,6 +171,26 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
       }
       const { caller, target } = await human(chatId);
       assertCallerCanTarget(caller, target, { operation: 'read', currentPolicy: target.currentPolicy, registry: target.registry });
+      if (operation === 'recovery' && !requestId) {
+        if (req.minnowAuth?.kind !== 'host' || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Recovery requires the authenticated local user.');
+        assertCallerCanTarget(caller, target, { operation: 'stop', currentPolicy: target.currentPolicy, registry: target.registry });
+        if (req.method === 'GET') { send(200, repository.inspectRecovery(chatId)); return; }
+        if (req.method === 'POST') {
+          const body = await readBody(req, 8192); fields(body, ['executionId', 'revision', 'note', 'clientRequestId']);
+          if (!ID.test(body.executionId ?? '') || !ID.test(body.clientRequestId ?? '') || typeof body.revision !== 'string') fail('A recovery execution, review revision and request identity are required.');
+          const interrupted = repository.getExecution(body.executionId);
+          if (interrupted?.chatId === chatId && interrupted.status === 'recovery_required' &&
+              repository.listUnsettledToolInvocations(interrupted.executionId).some(op => op.toolName === 'execute_command') &&
+              await runtime.hasRunningRecoveryCommand?.(chatId)) {
+            throw new ChatContractError('ownership_conflict', 'A terminal command for this chat is still running. Check its log and wait for it to finish or stop it.');
+          }
+          const receipt = repository.retireInterruptedExecution(chatId, body, execution =>
+            !service.ownsExecution(execution.executionId) && !runtime.hasExternalExecution(chatId));
+          const retired = repository.getExecution(body.executionId);
+          if (retired.runId) await runtime.taskDelivery.reconcileRemovedTask(retired);
+          presentation.changed(chatId); send(200, { receipt }); return;
+        }
+      }
       if (operation === 'legacy-continue' && req.method === 'POST') {
         if (!['host', 'device'].includes(req.minnowAuth?.kind) || caller.actor !== 'human') throw new ChatContractError('caller_denied', 'Only an authenticated human may continue a historical task');
         const body = await readBody(req); fields(body, ['clientRequestId', 'title']);

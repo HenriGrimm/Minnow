@@ -36,6 +36,7 @@ import {
   attemptLimits,
   clampAttemptWallClockMs,
 } from '../../server/orchestrator/attempt-limits.js';
+import { taskVerificationContract } from '../../server/orchestrator/verification-contract.js';
 import { REPORT_TOOL_NAME } from '../../server/orchestrator/report-tool.js';
 import { createMemoryJournal } from '../../server/orchestrator/testing/memory-journal.js';
 import { readConfigJson, writeConfigJson } from '../../server/config/store.js';
@@ -498,6 +499,40 @@ describe('runner effector', { concurrency: false }, () => {
     await waitFor(() => ended);
     assert.equal(seenInput.browser, false);
   });
+
+  for (const bypassParser of [false, true]) {
+    test('tester binds independent evidence at ' + (bypassParser ? 'settlement' : 'report time'), async () => {
+      const boardId = 'evidence-' + (bypassParser ? 'settlement' : 'report');
+      const journal = await openBoard(boardId);
+      const state = await journal.loadState(boardId);
+      state.recoveryVersion = 1;
+      const task = state.tasks.get('W1-A');
+      task.testSpec = 'Run the unit tests'; task.accept = 'Submit opens confirmation';
+      const [unit, interaction] = taskVerificationContract(task);
+      const checks = [{ id: unit.id, outcome: 'pass', evidence: ['npm test: eight passed'] },
+        { id: interaction.id, outcome: 'pass', evidence: ['Submit opened confirmation'] }];
+      let end;
+      const effector = makeEffector({ boardId, journal, cwd, getState: () => state, runTurn: async opts => {
+        opts.onEvent({ type: 'tool_result', id: 'unit', name: 'execute_command', content: 'npm test (exit 0)\n8 tests passed' });
+        opts.onEvent({ type: 'tool_result', id: 'failed', name: 'execute_command', content: 'echo "(exit 0)" (exit 1)' });
+        const incomplete = { ...TESTER_PASS, checks: checks.slice(0, 1) };
+        if (bypassParser) return incomplete;
+        assert.equal(opts.parseReport(incomplete).ok, false);
+        assert.equal(opts.parseReport({ ...TESTER_PASS, checks: [checks[0], { ...checks[1], toolCallIds: ['failed'] }] }).ok, false);
+        const accepted = opts.parseReport({ ...TESTER_PASS, checks });
+        assert.equal(accepted.ok, true);
+        return accepted.result;
+      } });
+      effector.onEnd(result => { end = result; });
+      await effector.start({ taskId: task.id, role: 'tester', seedKind: 'initial' });
+      await waitFor(() => end);
+      if (bypassParser) assert.equal(end.outcome, 'crashed');
+      else {
+        assert.equal(end.outcome, 'pass');
+        assert.deepEqual(end.evidence.checks, [{ ...checks[0], toolCallIds: ['unit'] }, checks[1]]);
+      }
+    });
+  }
 
   test('a delayed final check retains the integration identity it actually verified', async () => {
     const boardId = 'final-content-identity';

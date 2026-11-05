@@ -36,11 +36,13 @@ test('failed or no-op edits do not reset; read-only runs are unrestricted', () =
 test('browser probes receive advice without being denied', () => {
   const budget = createProgressBudget(true);
   for (let i = 0; i < 15; i++) budget.note('browser_eval', { content: `probe ${i}` });
-  assert.match(budget.note('browser_eval', { content: 'probe 16' }), /16 browser calls/);
+  assert.equal(budget.note('browser_eval', { content: 'probe 16' }), null);
+  for (let i = 0; i < 48; i++) assert.equal(budget.note('execute_command', { content: 'npm test (exit 0)' }, { command: 'npm test' }), null);
   budget.note('apply_patch', { content: 'ok', codeChange: { additions: 2 } });
   assert.equal(budget.note('browser_eval', { content: 'new probe' }), null);
   for (let i = 0; i < 2; i++) budget.note('browser_eval', { content: 'Error: invalid expression' });
   assert.match(budget.note('browser_eval', { content: 'Error: invalid expression' }), /3 consecutive failures/);
+  for (let i = 0; i < 12; i++) assert.equal(budget.note('browser_eval', { content: 'Error: invalid expression' }), null);
   const review = createProgressBudget(false);
   for (let i = 0; i < 30; i++) assert.equal(review.note('browser_eval', { content: 'probe' }), null);
 });

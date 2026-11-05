@@ -449,7 +449,9 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     const name = definition.function.name;
     if (!native.has(name) && !await live.adapters.isServerToolAvailable(name)) hostToolNames.push(name);
   }
-  const prepared = { systemPrompt: composed.systemPrompt, ...(cli ? { cliTurnContext: composed.cliTurnContext } : {}),
+  const taskGuidance = execution?.captured?.completionPolicy?.kind === 'wake_delegator'
+    ? '\n\nFinish this assignment with findings in your final response or report_outcome if offered. Completion delivers the result to the delegator. Use chat_send only to request separate work.' : '';
+  const prepared = { systemPrompt: composed.systemPrompt + taskGuidance, ...(cli ? { cliTurnContext: composed.cliTurnContext } : {}),
     tools, model, cwd, policy, contextBodies,
     selectedModelSelection: resolved.selection,
     sendCapabilities: resolved.sendCapabilities ?? inspection?.support?.sendCapabilities,

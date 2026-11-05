@@ -70,8 +70,8 @@ export function modelOptionSupport(model, providerCapabilities = {}, provider = 
 export function assertSupportedModelOptions(options, support) {
   const value = parsed(validateModelOptions(options ?? {}));
   if (value.thinkingBudgetTokens === 0 && value.thinkingMode === undefined) value.thinkingMode = 'off';
-  if (value.reasoningEffort !== undefined && !support.reasoningEffort.includes(value.reasoningEffort)) unsupported(`Reasoning effort ${value.reasoningEffort} is not advertised by the selected model`);
-  if (value.thinkingMode !== undefined && !support.thinkingMode.includes(value.thinkingMode)) unsupported(`Thinking ${value.thinkingMode} is not supported or verified for the selected model`);
+  if (value.reasoningEffort !== undefined && !support.reasoningEffort.includes(value.reasoningEffort)) unsupported(`Reasoning effort ${value.reasoningEffort} is not advertised by the selected model. ${support.reasoningEffort.length ? 'Supported values: ' + support.reasoningEffort.join(', ') : 'Omit reasoningEffort to inherit'}.`);
+  if (value.thinkingMode !== undefined && !support.thinkingMode.includes(value.thinkingMode)) unsupported(`Thinking ${value.thinkingMode} is not supported or verified for the selected model. Supported values: ${support.thinkingMode.join(', ')}.`);
   if (value.thinkingBudgetTokens > 0 && !support.thinkingBudgetTokens.supported) unsupported('A thinking budget is not supported or verified for the selected model');
   if (value.thinkingMode === 'off' && value.reasoningEffort !== undefined && value.reasoningEffort !== 'off') unsupported('Thinking off conflicts with the selected reasoning effort');
   if (value.thinkingMode === 'on' && value.reasoningEffort === 'off') unsupported('Thinking on conflicts with reasoning off');

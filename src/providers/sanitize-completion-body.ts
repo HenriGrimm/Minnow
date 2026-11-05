@@ -95,6 +95,7 @@ function modelRejectsTemperature(modelId: string): boolean {
 /** Drop Minnow-only message fields that providers reject as unknown. */
 function stripInternalApiMessageFields(
   body: Record<string, unknown>,
+  nativeHandoff = false,
 ): Record<string, unknown> {
   if (!Array.isArray(body.messages)) return body;
   return {
@@ -102,8 +103,10 @@ function stripInternalApiMessageFields(
     messages: body.messages.map((raw) => {
       if (!raw || typeof raw !== 'object') return raw;
       const msg = { ...projectChatAttribution(raw as Record<string, unknown>) };
-      delete msg.toolImageFollowUp;
-      delete msg.toolImageCallId;
+      if (!nativeHandoff || msg.role !== 'user' || msg.toolImageFollowUp !== true) {
+        delete msg.toolImageFollowUp;
+        delete msg.toolImageCallId;
+      } else if (typeof msg.toolImageCallId !== 'string') delete msg.toolImageCallId;
       delete msg.provenance;
       delete msg.messageId;
       delete msg.commandId;
@@ -170,7 +173,7 @@ export function sanitizeCompletionBodyForProvider(
   }
 
   if (apiKind !== 'openai-v1') {
-    return stripInternalApiMessageFields(body);
+    return stripInternalApiMessageFields(body, apiKind === 'agent-cli-v1');
   }
 
   const next = stripInternalApiMessageFields({ ...body });

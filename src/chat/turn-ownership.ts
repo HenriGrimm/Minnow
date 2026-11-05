@@ -85,7 +85,7 @@ export async function acquireChatTurn(chatId: string): Promise<ChatTurnLease | n
   return createTurnLease({
     chatId, grant,
     request: signal => request('renew', chatId, ownerId, signal),
-    diagnose: event => reportBackgroundError('chat-ownership', `Chat ${chatId}: ${event}`),
+    diagnose: (event, detail) => reportBackgroundError('chat-ownership', `Chat ${chatId}: ${event} (${detail.cause}, ${detail.latencyMs} ms)`),
     async release() {
       if (owners.get(chatId) === ownerId) owners.delete(chatId);
       if (rememberedOwner(chatId) === ownerId) rememberOwner(chatId, null);

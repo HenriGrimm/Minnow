@@ -20,7 +20,7 @@ export function createTurnLease(options: {
   request: (signal: AbortSignal) => Promise<LeaseGrant | null>;
   release: () => Promise<void>;
   now?: () => number;
-  diagnose?: (event: string) => void;
+  diagnose?: (event: string, detail: { latencyMs: number; cause: string }) => void;
 }) {
   const now = options.now ?? (() => performance.now());
   const controller = new AbortController();
@@ -32,12 +32,16 @@ export function createTurnLease(options: {
   let requestController: AbortController | null = null;
   let timer: ReturnType<typeof setTimeout>;
   let expiryTimer: ReturnType<typeof setTimeout>;
-  const fail = (kind: 'lost' | 'unavailable') => {
+  let attemptStartedAt: number | null = null;
+  const diagnose = (event: string, cause: string) => options.diagnose?.(event, {
+    latencyMs: attemptStartedAt === null ? 0 : Math.min(300_000, Math.max(0, Math.round(now() - attemptStartedAt))), cause,
+  });
+  const fail = (kind: 'lost' | 'unavailable', cause = 'deadline') => {
     if (released || controller.signal.aborted) return;
     clearTimeout(timer); clearTimeout(expiryTimer);
     controller.abort(new ChatOwnershipError(kind, options.chatId));
     requestController?.abort();
-    options.diagnose?.(kind);
+    diagnose(kind, cause);
   };
   const expired = () => {
     if (now() >= deadline) fail('unavailable');
@@ -57,26 +61,27 @@ export function createTurnLease(options: {
   const renew = (): Promise<void> => {
     if (renewing) return renewing;
     if (released || expired()) return Promise.resolve();
+    attemptStartedAt = now();
     requestController = new AbortController();
     renewing = (async () => {
       try {
         const grant = await options.request(requestController!.signal);
         if (released || expired()) return;
-        if (!grant) { fail('lost'); return; }
+        if (!grant) { fail('lost', 'owner-conflict'); return; }
         // The server grant begins no later than request dispatch, not response receipt.
         deadline = grant.startedAt + grant.leaseMs;
         if (expired()) return;
-        if (failures) options.diagnose?.('recovered');
+        if (failures) diagnose('recovered', 'renewed');
         failures = 0;
         armExpiry();
       } catch (error) {
         if (released || controller.signal.aborted) return;
-        if (error instanceof ChatLeaseRequestError && !error.retryable) { fail('unavailable'); return; }
+        if (error instanceof ChatLeaseRequestError && !error.retryable) { fail('unavailable', 'request-rejected'); return; }
         failures++;
-        if (failures === 1) options.diagnose?.('renewal-failed');
+        if (failures === 1) diagnose('renewal-failed', error instanceof ChatLeaseRequestError ? 'retryable-response' : error instanceof Error && error.name === 'TimeoutError' ? 'request-timeout' : 'transport');
         expired();
       } finally {
-        renewing = null; requestController = null;
+        renewing = null; requestController = null; attemptStartedAt = null;
         schedule();
       }
     })();

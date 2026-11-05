@@ -43,6 +43,7 @@ import { assessHostKillCommand } from '../tools/host-kill-guard.js';
 import { assessHostPortBindCommand } from '../tools/host-port-bind-guard.js';
 import { assessUnixPipeOnWindows } from '../tools/windows-pipe-guard.js';
 import { resolveExecuteShellProfile } from '../terminal/shell-config.js';
+import { describeOneShotInterpreter } from '../terminal/one-shot-spawn.js';
 import { describeShellProfileRuntime } from '../terminal/shell-profiles.js';
 import {
   coerceContentToFileEol,
@@ -361,7 +362,16 @@ async function indexedFileOutline(relPath, text) {
 
 async function toolReadFile(args) {
   const filePath = resolveSafePath(args?.path);
-  const stat = await fs.stat(filePath);
+  let stat;
+  try { stat = await fs.stat(filePath); }
+  catch (error) {
+    const root = getEffectiveWorkspaceRoot();
+    if (error.code !== 'ENOENT' || !isResolvedPathUnderRoot(filePath, root)) throw error;
+    const parent = path.dirname(filePath);
+    const relative = path.relative(root, parent);
+    const hint = relative && relative.length <= 500 && (await fs.stat(parent).catch(() => null))?.isDirectory() ? relative : '.';
+    return `Error: ENOENT: file not found. Check the path with list_directory in ${JSON.stringify(hint)}.`;
+  }
   if (!stat.isFile()) {
     return `Error: "${args.path}" is not a file`;
   }
@@ -680,10 +690,10 @@ function stripReadLineNumbers(text) {
 
 async function toolReplaceTextInFile(args, filePath) {
   const search = args?.search;
-  const replace = args?.replace ?? '';
-  if (search === undefined) {
-    return 'Error: search is required';
-  }
+  // Direct tool clients historically omitted replace to delete a match.
+  const replace = args?.replace === undefined ? '' : args.replace;
+  if (typeof replace !== 'string') return 'Error: replace must be a string';
+  if (typeof search !== 'string' || search.length === 0) return 'Error: search must be a non-empty string';
   const rel = toRelativePath(filePath);
   const content = await fs.readFile(filePath, 'utf8');
   let result = flexibleReplaceAll(content, String(search), String(replace));
@@ -1113,7 +1123,7 @@ async function toolExecuteCommand(args) {
     if (portBind) return portBind;
     if (!skipUnixPipeGuard) {
       const unixPipe = assessUnixPipeOnWindows(args.command);
-      if (unixPipe) return unixPipe;
+      if (unixPipe) return unixPipe + '\nOne-shot interpreter: ' + describeOneShotInterpreter({ command: args.command, shellProfile });
     }
     await unlinkSharedDepsBeforeInstall(args.command, getEffectiveWorkspaceRoot());
   }
@@ -1185,6 +1195,7 @@ async function toolExecuteCommand(args) {
         {
           ok: true,
           background: true,
+          interpreter: describeOneShotInterpreter({ command, shellProfile }),
           runId: started.runId,
           pid: started.pid,
           logPath: started.logPath,
@@ -1280,8 +1291,9 @@ async function toolExecuteCommand(args) {
         });
       }
     }
+    const interpreter = describeOneShotInterpreter({ command, shellProfile });
     if (String(output).trimStart().startsWith('Error')) {
-      return output;
+      return `${output}\nOne-shot interpreter: ${interpreter}`;
     }
     const codeChange = await resolveExecuteCommandCodeChange({
       cwd: workspaceRoot,
@@ -1289,7 +1301,7 @@ async function toolExecuteCommand(args) {
       beforeSnapshot,
       beforeFileContents,
     });
-    return withCodeChange(String(output), codeChange);
+    return withCodeChange(`${output}\nOne-shot interpreter: ${interpreter}`, codeChange);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Error: ${message}`;

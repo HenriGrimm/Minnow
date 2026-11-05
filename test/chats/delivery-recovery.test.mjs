@@ -108,7 +108,7 @@ async function fixture(t) {
     }
     if (effect) {
       repository.recordToolIntent({ invocationId: 'lost-effect-' + task.runId, chatId: task.childChatId, executionId,
-        toolCallId: 'write', toolName: 'save_file', input: { path: 'effect.txt' } }, { fence });
+        toolCallId: 'write', toolName: 'apply_patch', input: { patch: '*** Begin Patch\n*** Add File: effect.txt\n+One effect\n*** End Patch' } }, { fence });
       await fs.writeFile(path.join(home, 'effect.txt'), 'One effect');
     }
     return { executionId, attemptId, fence };
@@ -315,8 +315,33 @@ test('restart preserves an ambiguous real effect as a held recovery barrier and 
   assert.equal(f.repository.getCommand(task.commandId).state, 'queued');
   assert.equal(f.delivery.tasks.getResult(task.runId), null);
   assert.equal((await f.service.startAdmittedChildTask({ commandId: task.commandId, runId: task.runId, attemptId: 'unsafe-repeat' })).deferred, true);
+  const review = f.repository.inspectRecovery(task.childChatId);
+  assert.deepEqual(review.operations[0].targets, ['effect.txt']);
+  const decision = { executionId: review.executionId, revision: review.revision, clientRequestId: 'observed', note: 'Verified the file on disk and the process has stopped.' };
+  const retire = (values, idle = true) => f.repository.retireInterruptedExecution(task.childChatId, values, () => idle);
+  assert.throws(() => retire(decision, false), /wait for the execution/i);
+  assert.throws(() => retire({ ...decision, revision: 'old' }), /refresh/i);
+  const receipt = retire(decision);
+  await f.reopen();
+  assert.deepEqual(retire(decision), receipt);
+  assert.equal(f.repository.readTranscript(task.childChatId).messages.filter(m => m.content?.includes(decision.note)).length, 1);
+  assert.throws(() => retire({ ...decision, clientRequestId: 'other' }), /changed/i);
+  await f.delivery.recover(); await f.delivery.recover();
+  assert.equal(f.delivery.tasks.getResult(task.runId).status, 'cancelled');
+  assert.equal(f.repository.getToolInvocation(review.operations[0].invocationId).result.indeterminate, true);
   assert.equal(await fs.readFile(path.join(f.home, 'effect.txt'), 'utf8'), 'One effect');
   assert.equal((await f.journal.readEvents('family')).filter(event => event.type === 'attempt.ended').length, 1);
+});
+
+test('one mismatched journal binding cannot block publication of an independent child', async t => {
+  const f = await fixture(t);
+  const invalid = await f.spawn('invalid'), valid = await f.spawn('valid');
+  await f.complete(invalid, { publish: false }); await f.complete(valid, { publish: false });
+  f.db.prepare('UPDATE chat_commands SET run_id=? WHERE command_id=?').run('unrelated', invalid.commandId);
+  await f.delivery.recover();
+  assert.equal(f.delivery.tasks.getResult(invalid.runId), null);
+  assert.equal(f.delivery.tasks.getResult(valid.runId).status, 'completed');
+  assert.ok(f.errors.some(error => error.message.includes('commandRun')));
 });
 
 test('chat Stop cancels running and queued descendants, retains partials and holds queued parent input', async t => {

@@ -217,7 +217,7 @@ export function createChatCommandService({
       if (!legacyCompletion && input.delivery?.cancellationEpoch !== undefined && input.delivery.cancellationEpoch !== epoch) failure('ownership_conflict', 'The automatic completion subscription was stopped');
       const live = active.get(input.chatId);
       if (mode === 'steer' && (!live || !live.host.supportsSteer || live.controller.signal.aborted)) {
-        failure('steer_unsupported', 'This conversation has no active turn that supports steering');
+        failure('steer_unsupported', 'This conversation has no active turn that supports steering. To request a separate follow-up, send a new message with mode queue if authorized.');
       }
       if (queued(input.chatId).length >= maxPendingCommands) failure('queue_full', 'This conversation has too many pending inputs');
       const modelSelection = mode === 'steer' ? live.command.modelSelection : await selectionFor(target, caller, input);
@@ -293,7 +293,7 @@ export function createChatCommandService({
       if (original.runId && original.executionId) failure('stale_revision', 'Task input was already consumed by an attempt');
       const live = active.get(input.chatId);
       if (kind === 'push_queued' && live) {
-        if (!live.host.supportsSteer || live.controller.signal.aborted) failure('steer_unsupported', 'The active turn does not support steering');
+        if (!live.host.supportsSteer || live.controller.signal.aborted) failure('steer_unsupported', 'The active turn does not support steering. To request a separate follow-up, send a new message with mode queue if authorized.');
         if (!same(original.effectiveCommand.modelSelection, live.command.modelSelection)) {
           failure('options_unsupported', 'This queued input uses a different captured model; keep it queued or stop and switch');
         }
@@ -632,8 +632,10 @@ export function createChatCommandService({
         && record.state === state
         && same(record.result, terminal) && same(record.error, issue)) { unchanged = true; return record; }
       const relation = repository.getRelation(record.chatId);
-      if (!relation || record.runId !== runId || terminal.runId !== runId || terminal.childChatId !== record.chatId
-        || terminal.journalOwnerId !== relation.journalOwnerId) failure('ownership_conflict', 'Task publication does not match the admitted child command');
+      const mismatches = Object.entries({ relation: !!relation, commandRun: record.runId === runId, resultRun: terminal.runId === runId,
+        child: terminal.childChatId === record.chatId, journalOwner: terminal.journalOwnerId === relation?.journalOwnerId })
+        .filter(([, matches]) => !matches).map(([field]) => field);
+      if (mismatches.length) throw new ChatContractError('ownership_conflict', 'Task publication does not match the admitted child command (' + mismatches.join(', ') + ')', { path: 'task.publication' });
       if (['settled', 'cancelled'].includes(record.state) && ['steered', 'removed'].includes(record.result?.disposition)) { unchanged = true; return record; }
       if (!['settled', 'failed', 'cancelled'].includes(record.state) && (active.has(record.chatId)
         || repository.getLease(record.chatId)?.state === 'active')) failure('ownership_conflict', 'Task execution must settle before terminal publication');

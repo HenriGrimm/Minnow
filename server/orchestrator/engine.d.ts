@@ -106,6 +106,7 @@ export interface Graph {
 }
 
 export interface CreateEngineOptions {
+  namespace?: string;
   boardId: string;
   effector: Effector;
   graph?: Graph;

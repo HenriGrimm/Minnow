@@ -11,8 +11,9 @@ import { DEFAULT_BOARD_CONCURRENCY } from '../../server/orchestrator/core/derive
 import { makeEvent } from '../../server/orchestrator/core/events.js';
 import { stateFromJSON } from '../../server/orchestrator/core/snapshot.js';
 import { createScriptedEffector } from '../../server/orchestrator/effector-scripted.js';
-import { disposeEngines } from '../../server/orchestrator/engine.js';
-import { appendEvent, boardExists, journalPath, resetJournalCache } from '../../server/orchestrator/journal.js';
+import { disposeEngines, getEngine } from '../../server/orchestrator/engine.js';
+import { armBoardResumeGate, resetBoardResumeGateForTests } from '../../server/orchestrator/resume-gate.js';
+import { appendEvent, boardExists, createBoard as createJournal, journalPath, resetJournalCache } from '../../server/orchestrator/journal.js';
 import { createBoardsMiddleware, matchRoute, ROUTES, setEffectorFactory } from '../../server/orchestrator/middleware.js';
 import { getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { runProcess } from '../../server/process-runner.js';
@@ -855,6 +856,41 @@ describe('the surface itself', () => {
 // ── Workspace scope ──────────────────────────────────────────────────────────
 
 describe('GET /api/boards — workspace scope (MIN-752)', () => {
+  it('offers and resolves only interrupted boards shown for this workspace', async () => {
+    const originalRoot = getDefaultWorkspaceRoot();
+    const emptyRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-empty-workspace-'));
+    armBoardResumeGate();
+    try {
+      for (const [id, namespace] of [['shown', 'boards'], ['later', 'boards'], ['chat', 'agents']]) {
+        await createJournal(id);
+        await appendEvent(id, makeEvent('board.created', {
+          boardId: id, workspacePath: originalRoot, planPath: 'p.md', tasks: [], waves: [],
+        }));
+        await appendEvent(id, makeEvent('board.started', { concurrency: 1 }));
+        const engine = await getEngine(id, () => createScriptedEffector({}), { namespace });
+        assert.equal(engine.wasHeldAtLoad(), namespace === 'boards');
+      }
+      await setWorkspaceRoot(emptyRoot);
+      assert.deepEqual((await call('GET', '/api/boards/resume/pending')).body.boards, []);
+      const foreign = await call('POST', '/api/boards/resume/resolve', { decision: 'resume' });
+      assert.deepEqual(foreign.body.boardIds, []);
+
+      await setWorkspaceRoot(originalRoot);
+      const pending = () => call('GET', '/api/boards/resume/pending')
+        .then(({ body }) => body.boards.map((row) => row.boardId));
+      assert.deepEqual(await pending(), ['shown', 'later']);
+      const answer = await call('POST', '/api/boards/resume/resolve', {
+        decision: 'decline', boardIds: ['shown'],
+      });
+      assert.deepEqual(answer.body.boardIds, ['shown']);
+      assert.deepEqual(await pending(), ['later']);
+    } finally {
+      resetBoardResumeGateForTests();
+      await setWorkspaceRoot(originalRoot);
+      await fs.rm(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
   it('lists only boards stamped for the live workspace and 409s start from another', async () => {
     const originalRoot = getDefaultWorkspaceRoot();
     const wsA = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-board-ws-a-'));

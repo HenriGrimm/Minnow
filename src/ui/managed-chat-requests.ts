@@ -1,6 +1,7 @@
 import type { Chat } from '../types';
+import { randomUUID } from '../lib/random-id';
 import type { ChatRequest } from '../../server/chats/contracts';
-import { readManagedChatRequestPage, respondManagedChatRequest, sendManagedChatAction } from '../chat/managed-chat-client';
+import { readInterruptedExecution, retireInterruptedExecution, readManagedChatRequestPage, respondManagedChatRequest, sendManagedChatAction } from '../chat/managed-chat-client';
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
 import { getManagedChatView, subscribeManagedChatMetadata, subscribeManagedChatView } from '../chat/managed-chat-view';
 import { applySharedChatAttention, findChatById, getActiveChat, sessionState } from '../state/sessions';
@@ -182,13 +183,53 @@ function descendants(chat: Chat): Chat[] {
   for (let index = 0; index < queue.length; index++) { const child = queue[index]!; result.push(child); queue.push(...(graph.children.get(child.id) ?? [])); }
   return result;
 }
+function recoveryControls(chatId: string, executionId: string): HTMLElement {
+  const panel = document.createElement('div'), info = document.createElement('p');
+  info.setAttribute('role', 'status');
+  info.textContent = 'A tool may have run before the interruption. Check its effects before starting more work.';
+  const inspect = button('Review interrupted work', async () => {
+    inspect.disabled = true;
+    try {
+      const review = await readInterruptedExecution(chatId);
+      if (!panel.isConnected || review.executionId !== executionId) { inspect.disabled = false; return; }
+      const items = document.createElement('ul');
+      for (const op of review.operations) {
+        const item = document.createElement('li');
+        item.textContent = [op.toolName, op.targets.join(', '), op.logPath, op.receiptId ? 'Host result recorded' : 'Outcome unknown', op.invocationId].filter(Boolean).join(' · ');
+        items.append(item);
+      }
+      if (!review.ownerReleased) {
+        info.textContent = 'Restart Minnow to verify the execution has stopped, then review the interrupted work again.';
+        panel.replaceChildren(info, items); return;
+      }
+      const label = document.createElement('label'), note = document.createElement('textarea');
+      label.textContent = 'Verify that the operation has stopped. Check its diff in Source Control or its log in Terminal, then record what you found.';
+      note.maxLength = 2000; label.append(note);
+      const requestId = randomUUID();
+      const retire = button('Record findings and retire attempt', async () => {
+        retire.disabled = true; note.disabled = true;
+        try {
+          await retireInterruptedExecution(chatId, review, requestId, note.value);
+          panel.replaceChildren(info); info.textContent = 'Attempt retired. Start new work from the state you verified.';
+        } catch (error) {
+          note.disabled = false; retire.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery failed.';
+          inspect.disabled = false; inspect.textContent = 'Refresh recovery details'; panel.append(inspect);
+        }
+      });
+      retire.disabled = true; note.addEventListener('input', () => { retire.disabled = !note.value.trim(); });
+      info.textContent = review.checkout ? `Inspect the checkout at ${review.checkout}.` : 'Inspect the original checkout.';
+      panel.replaceChildren(info, items, label, retire); note.focus();
+    } catch (error) { inspect.disabled = false; info.textContent = error instanceof Error ? error.message : 'Recovery details unavailable.'; }
+  });
+  panel.append(info, inspect); return panel;
+}
 function syncControls(chat: Chat, view: ChatRequestsView): void {
   const children = descendants(chat), attention = children.filter(child => child.agentRequestSummary?.length);
   const agents = children.filter(child => hasUnsettledAgentWork(child));
   const turn = chat.chatCommandVersion === 1 && chat.agentExecution && activeStates.has(chat.agentExecution.status) ? chat.agentExecution : null;
   const canStop = chat.agentConversation?.origin !== 'native' && chat.agentConversation?.capabilities?.canStop !== false;
   let controls = view.host.querySelector<HTMLElement>(':scope > .managed-chat-scopes');
-  const key = JSON.stringify([turn?.executionId, turn?.status, agents.map(item => item.id), attention.map(item => [item.id, item.agentRequestSummary]), canStop]);
+  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, agents.map(item => item.id), attention.map(item => [item.id, item.agentRequestSummary]), canStop]);
   if (controls?.dataset.key === key) return;
   const focusedAction = controls?.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.scope : undefined;
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
@@ -207,7 +248,7 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
     const first = attention[0]!, requestId = first.agentRequestSummary![0]!.requestId;
     controls.append(button(`${attention.length} agent${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} your attention`, () => void import('../os/chat-launch').then(async module => { await module.launchCodeWithChat(first.id); await focusManagedChatRequest(first.id, requestId); })));
   }
-  if (chat.agentExecution?.status === 'recovery_required') { const warning = document.createElement('p'); warning.textContent = 'Needs recovery. A tool may have started before execution was interrupted. It will not run again automatically.'; controls.append(warning); }
+  if (chat.agentExecution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, chat.agentExecution.executionId));
   controls.append(status);
   controls.hidden = controls.children.length === 1;
   if (focusedAction) (controls.querySelector<HTMLElement>(`[data-scope="${focusedAction}"]`) ?? status).focus({ preventScroll: true });

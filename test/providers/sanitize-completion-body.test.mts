@@ -239,7 +239,7 @@ describe('sanitizeCompletionBodyForProvider', () => {
     assert.equal(stripped.thinking_budget_tokens, undefined);
   });
 
-  test('strips toolImageFollowUp from messages for every api kind', () => {
+  test('keeps screenshot routing only for native tool handoffs', () => {
     const body = {
       model: 'qwen',
       messages: [
@@ -247,13 +247,16 @@ describe('sanitizeCompletionBodyForProvider', () => {
         {
           role: 'user',
           content: [{ type: 'text', text: '[tool screenshot]' }],
-          toolImageFollowUp: true,
+          toolImageFollowUp: true, toolImageCallId: 'shot',
         },
       ],
     };
     const openaiOut = sanitizeCompletionBodyForProvider(body, OPENAI);
     const followUp = (openaiOut.messages as Record<string, unknown>[])[1];
     assert.equal(followUp.toolImageFollowUp, undefined);
+    assert.equal(followUp.toolImageCallId, undefined);
+    const native = sanitizeCompletionBodyForProvider(body, { ...OPENAI, apiKind: 'agent-cli-v1' });
+    assert.equal((native.messages as Record<string, unknown>[])[1].toolImageCallId, 'shot');
     assert.equal(followUp.role, 'user');
 
     const lmOut = sanitizeCompletionBodyForProvider(body, LM_STUDIO);
