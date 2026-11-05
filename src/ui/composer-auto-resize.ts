@@ -75,7 +75,7 @@ function syncFieldSizingClamp(el: HTMLTextAreaElement, maxPx: number): void {
     return;
   }
   const scrollTop = el.scrollTop;
-  const wasPinned = el.style.height !== '';
+  const wasPinned = el.style.height !== '' || el.style.getPropertyValue('field-sizing') === 'fixed';
   if (wasPinned) {
     el.style.height = '';
     el.style.removeProperty('field-sizing');

@@ -68,6 +68,28 @@ describe('autoResize', () => {
     assert.equal(el.style.height, '');
   });
 
+  test('clearing inline height also releases the fixed field-sizing clamp', () => {
+    setComposerFieldSizingSupportedForTests(true);
+    const el = setupTextarea();
+    el.rows = 1;
+    el.value = 'Long prompt\n'.repeat(40);
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 320 });
+    autoResize(el);
+    assert.equal(el.style.getPropertyValue('field-sizing'), 'fixed');
+
+    // clearComposerInput resets the height before the next auto-resize pass.
+    el.value = '';
+    el.style.height = '';
+    el.style.overflowY = 'hidden';
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 44 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 44 });
+    autoResize(el);
+    assert.equal(el.style.getPropertyValue('field-sizing'), '', 'the next draft must grow with content');
+    assert.equal(el.style.height, '');
+    assert.equal(el.style.overflowY, 'hidden');
+  });
+
   test('keyboard opening reclamps a long draft, but pinch zoom does not', () => {
     setComposerFieldSizingSupportedForTests(false);
     const el = setupTextarea();
