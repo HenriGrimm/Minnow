@@ -1,6 +1,6 @@
 import { subscribeModelSelection } from '../models/selection';
 import { captureEditorFocusRequest } from './editor-focus-request';
-import { appAlert, appConfirm, appPrompt } from './app-dialog';
+import { appAlert, appChoice, appConfirm, appPrompt } from './app-dialog';
 /**
  * Editable file viewer (CodeMirror 6) with multi-tab strip and per-tab in-memory state.
  */
@@ -1136,6 +1136,28 @@ export function renderActiveViewerTab(): void {
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
+
+/** Keep drafts in their tabs until the shell has actually replaced this renderer. */
+export async function confirmWorkspaceDrafts(): Promise<boolean> {
+  const discarded = new Map<ViewerTabState, number>();
+  for (;;) {
+    snapshotOutgoingEditorTab();
+    const tab = listViewerTabs().find((item) => item.isDirty && discarded.get(item) !== item.revision);
+    if (!tab) return true;
+    const revision = tab.revision;
+    const { id } = await appChoice({
+      title: 'Switch workspace?',
+      message: `Save changes to "${tab.path}" before switching?`,
+      buttons: [
+        { id: 'cancel', label: 'Cancel' },
+        { id: 'discard', label: 'Discard' },
+        { id: 'save', label: 'Save', primary: true },
+      ],
+    });
+    if (id === 'discard') discarded.set(tab, revision);
+    else if (id !== 'save' || !(await saveViewerTabByPath(tab.path)) || tab.isDirty) return false;
+  }
+}
 
 /** Confirm when leaving a dirty active editor tab (Save / Discard / Cancel). */
 export async function confirmLeaveDirtyActiveTab(): Promise<boolean> {

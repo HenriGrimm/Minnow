@@ -1,4 +1,5 @@
 import { appConfirm } from './app-dialog';
+import { getOpenViewerTabPaths } from './file-viewer-tab-store';
 import { setWorkspacePath } from '../config/workspace-api';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import {
@@ -25,6 +26,7 @@ export const V2_BOARD_STOP_TIMEOUT_MS = 2_500;
 let listV2Boards: () => Promise<BoardSummary[]> = listBoards;
 let stopV2Board: (boardId: string) => Promise<void> = stopBoard;
 let v2StopTimeoutMs = V2_BOARD_STOP_TIMEOUT_MS;
+let retargetInProgress = false;
 
 /** Test seam for V2 switch-guard list/stop. Pass null to restore defaults. */
 export function setV2WorkspaceSwitchDepsForTests(
@@ -221,19 +223,29 @@ export async function executeWorkspaceSwitch(
   // the view to the folder, not repoint a global.
   const retarget = window.minnow?.window?.switchWorkspace;
   if (retarget) {
-    if (!(await confirmRetargetWithRunningBoards(absPath))) {
-      return null;
+    if (retargetInProgress) return null;
+    retargetInProgress = true;
+    const wasInert = document.body.inert;
+    try {
+      if (!(await confirmRetargetWithRunningBoards(absPath))) return null;
+      if (getOpenViewerTabPaths().length) {
+        const { confirmWorkspaceDrafts } = await import('./file-viewer');
+        if (!(await confirmWorkspaceDrafts())) return null;
+      }
+      // Prevent another keystroke from creating a draft while the requests are in flight.
+      document.body.inert = true;
+      const info = await setWorkspacePath(absPath);
+      const result = await retarget(absPath);
+      if (!result.ok) {
+        const { setStatus } = await import('./status');
+        setStatus('err', result.error);
+        return null;
+      }
+      return info;
+    } finally {
+      document.body.inert = wasInert;
+      retargetInProgress = false;
     }
-    // Keep writing the cold-boot default and the MRU; this is no longer a global
-    // repoint of live work.
-    const info = await setWorkspacePath(absPath);
-    const result = await retarget(absPath);
-    if (!result.ok) {
-      const { setStatus } = await import('./status');
-      setStatus('err', result.error);
-      return null;
-    }
-    return info;
   }
 
   const allowed = await confirmAndStopBoardsForWorkspaceSwitch(absPath);
