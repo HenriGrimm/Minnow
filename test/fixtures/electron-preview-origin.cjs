@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { app, BrowserWindow, session, webContents } = require('electron');
 
 const home = process.argv[2];
+app.commandLine.appendSwitch('host-resolver-rules', 'MAP preview-host-alias.invalid 127.0.0.1');
 app.setPath('userData', home);
 app.setPath('sessionData', home);
 
@@ -20,14 +21,14 @@ async function run() {
   const { configurePreviewSession, PREVIEW_SESSION_PARTITION } = await import('../../electron/dist/preview-session.js');
   let privilegedRequests = 0;
   const host = await serve((req, res) => {
-    if (req.url === '/privileged') privilegedRequests++;
+    if (req.url?.startsWith('/privileged')) privilegedRequests++;
     res.setHeader('Content-Type', 'text/html');
     res.end('<!doctype html><title>Shell</title>');
   });
   let seenOrigin;
   const project = await serve((req, res) => {
     if (req.url === '/redirect') {
-      res.writeHead(302, { Location: host + '/privileged' }).end();
+      res.writeHead(302, { Location: host.replace('localhost', 'preview-host-alias.invalid') + '/privileged?raw' }).end();
     } else if (req.method === 'POST') {
       seenOrigin = req.headers.origin;
       res.writeHead(seenOrigin === project ? 204 : 403).end();
@@ -55,7 +56,8 @@ async function run() {
   const status = await guest.executeJavaScript("fetch('/turn', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:'{}'}).then(r=>r.status)");
   assert.equal(status, 204);
   assert.equal(seenOrigin, project);
-  for (const dest of [host + '/privileged', project + '/redirect']) {
+  const aliases = ['localhost', 'localhost.', 'project.localhost', '[::ffff:127.0.0.1]', 'preview-host-alias.invalid'];
+  for (const dest of [...aliases.map(alias => host.replace('localhost', alias) + '/privileged?raw'), project + '/redirect']) {
     assert.equal(await guest.executeJavaScript('fetch(' + JSON.stringify(dest) + ').then(()=>true,()=>false)'), false);
     await assert.rejects(guest.loadURL(dest));
   }

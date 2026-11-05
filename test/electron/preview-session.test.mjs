@@ -24,15 +24,24 @@ test('native preview preserves the origin of app POSTs and refuses the shell lis
 });
 
 describe('preview session headers', () => {
-  test('blocks the resolved shell listener including loopback aliases but permits project servers', () => {
+  test('blocks the resolved shell listener including loopback aliases but permits project servers', async () => {
     let inspect;
-    configurePreviewSession({ webRequest: { onBeforeRequest(fn) { inspect = fn; } } }, 'http://127.0.0.1:9473/');
+    configurePreviewSession({
+      webRequest: { onBeforeRequest(fn) { inspect = fn; } },
+      async resolveHost(host) {
+        return { endpoints: (host === 'example.org' ? ['192.0.2.1'] : ['192.0.2.1', '127.0.0.1']).map(address => ({ address })) };
+      },
+    }, 'http://127.0.0.1:9473/');
     for (const [url, expected] of [
       ['http://localhost:9473/', true], ['http://[::1]:9473/', true], ['ws://127.0.0.1:9473/socket', true],
+      ['ws://mapped.example:9473/hmr?token=x', true], ['http://localhost.:9473/?raw', true],
+      ['http://project.localhost.:9473/?raw', true], ['http://[::ffff:7f00:1]:9473/?raw', true],
+      ['http://0.0.0.0:9473/', true], ['http://127.42.0.1:9473/', true],
       ['http://localhost:3000/', false], ['http://example.org:9473/', false],
       ['http://127.0.0.1:43210/p/test', false], ['devtools://devtools/bundled/', false],
     ]) {
-      inspect({ url }, result => assert.equal(result.cancel, expected, url));
+      const result = await new Promise(resolve => inspect({ url }, resolve));
+      assert.equal(result.cancel, expected, url);
     }
   });
 });

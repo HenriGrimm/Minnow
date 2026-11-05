@@ -62,6 +62,11 @@ export function createAuthMiddleware() {
   return function minnowAuthMiddleware(req, res, next) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     if (!url.pathname.startsWith('/api/')) {
+      // A rebinding hostname must not reach private Vite sources or transformed ?raw assets.
+      if (getRequestIngress(req) === 'loopback' && !checkIngressAccess(req).allowed) {
+        sendJson(res, 403, { error: 'Forbidden host' });
+        return;
+      }
       next();
       return;
     }

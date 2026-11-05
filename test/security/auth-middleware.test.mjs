@@ -119,6 +119,15 @@ describe('createAuthMiddleware', () => {
     assert.equal(res.statusCode, 403);
   });
 
+  test('rejects a rebound desktop Host before serving non-API files or SPA routes', () => {
+    for (const url of ['/@fs/project/private.txt?raw', '/src/notes.txt?raw', '/']) {
+      const res = mockRes();
+      assert.equal(runMiddleware(createAuthMiddleware(), mockReq({ url, host: 'custom.example:9473' }), res), false);
+      assert.equal(res.statusCode, 403);
+      assert.equal(runMiddleware(createAuthMiddleware(), mockReq({ url }), mockRes()), true);
+    }
+  });
+
   test('allows loopback Host variants', () => {
     const token = getSessionToken();
     for (const host of ['localhost:9473', '127.0.0.1:9473', '[::1]:9473']) {
