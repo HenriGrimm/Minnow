@@ -82,21 +82,34 @@ function readJsonBody(req) {
  *
  * @param {string} issueId
  * @param {string} name
+ * @param {Buffer} bytes
  * @returns {Promise<{ absolute: string, fileName: string }>}
  */
-async function reserveName(issueId, name) {
+async function saveAttachment(issueId, name, bytes) {
   const safe = sanitizeAttachmentSegment(name, 'file');
   const ext = path.extname(safe);
   const stem = ext ? safe.slice(0, -ext.length) : safe;
 
+  await fs.mkdir(path.dirname(issuesAttachmentPath(issueId, safe)), { recursive: true });
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const candidate = attempt === 0 ? safe : `${stem}-${attempt + 1}${ext}`;
+    const suffix = attempt === 0 ? '' : '-' + (attempt + 1);
+    const extension = ext.slice(0, 96 - suffix.length - 1);
+    const candidate = stem.slice(0, 96 - extension.length - suffix.length) + suffix + extension;
     const absolute = issuesAttachmentPath(issueId, candidate);
+    let file;
     try {
-      await fs.access(absolute);
-    } catch {
-      return { absolute, fileName: path.basename(absolute) };
+      file = await fs.open(absolute, 'wx');
+    } catch (error) {
+      if (error.code === 'EEXIST') continue;
+      throw error;
     }
+    try {
+      try { await file.writeFile(bytes); } finally { await file.close(); }
+    } catch (error) {
+      await fs.unlink(absolute);
+      throw error;
+    }
+    return { absolute, fileName: path.basename(absolute) };
   }
   throw new Error('Too many attachments with that name');
 }
@@ -133,9 +146,7 @@ async function handlePost(req, res) {
     return;
   }
 
-  const { absolute, fileName } = await reserveName(issueId, name);
-  await fs.mkdir(path.dirname(absolute), { recursive: true });
-  await fs.writeFile(absolute, buffer);
+  const { absolute, fileName } = await saveAttachment(issueId, name, buffer);
 
   const issueSegment = sanitizeAttachmentSegment(issueId, 'issue');
   sendJson(res, 200, {
