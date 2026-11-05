@@ -109,6 +109,9 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: Verify compiled Electron host against the built SPA
+        run: npm run test:packaged-boundary
+
       - name: Bundle size budgets
         run: npm run check:performance-budgets
 

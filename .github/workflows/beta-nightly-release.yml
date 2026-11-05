@@ -144,6 +144,16 @@ jobs:
       - name: Build package
         run: ${{ matrix.command }}
 
+      - name: Verify packaged agent conversations
+        shell: bash
+        run: |
+          shopt -s nullglob
+          apps=(release/pkg/*-unpacked release/pkg/mac*/Minnow.app)
+          if (( ${#apps[@]} == 0 )); then echo "No unpacked app found in release/pkg"; exit 1; fi
+          for app in "${apps[@]}"; do
+            node scripts/verify-packaged-agent-conversations.mjs --app-dir "$app"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

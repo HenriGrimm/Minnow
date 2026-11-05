@@ -9,6 +9,16 @@ import { PACKAGED_AGENT_CHECKS, PACKAGED_AGENT_RECEIPT, parsePackagedVerificatio
   resolvePackagedApp, verifyPackagedAgentConversations } from '../../scripts/verify-packaged-agent-conversations.mjs';
 
 const exec = promisify(execFile);
+
+test('release jobs verify the newly packaged runtime before artifacts can be uploaded', async () => {
+  for (const workflow of ['version-release', 'beta-nightly-release']) {
+    const yml = await fs.readFile(new URL(`../../.github/workflows/${workflow}.yml`, import.meta.url), 'utf8');
+    const build = yml.indexOf('- name: Build package');
+    const check = yml.indexOf('node scripts/verify-packaged-agent-conversations.mjs --app-dir', build);
+    const upload = yml.indexOf('uses: actions/upload-artifact', build);
+    assert.ok(build >= 0 && check > build && upload > check, workflow);
+  }
+});
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-packaged-check-test-'));
   t.after(async () => {
