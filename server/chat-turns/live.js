@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 
 const ID = /^[a-zA-Z0-9_-]{1,160}$/;
 const COMMANDS = new Set(['send', 'steer', 'stop', 'push', 'remove', 'edit', 'cancel-steer', 'configure']);
+const DISCONNECT_GRACE_MS = 60_000;
+const MAX_PENDING_COMMANDS = 512;
 const MAX_FRAME = 4 * 1024 * 1024;
 
 function fault(status, message) { return Object.assign(new Error(message), { status }); }
@@ -16,14 +18,28 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
   const viewers = new Set();
   const snapshots = new Map();
   const commands = new Map();
+  const disconnectTimers = new Map();
   let commandBytes = 0;
   let snapshotBytes = 0;
   let sequence = 0;
   const key = value => normalizeWorkspacePath(value || '');
+  function finish(id, row, result) {
+    row.result = result;
+    row.finishedAt = now();
+    commandBytes -= row.bytes;
+    row.bytes = 0;
+    row.input = null;
+    for (const waiter of row.waiters ?? []) waiter(result);
+    row.waiters?.clear();
+    for (const viewer of viewers) if (viewer.deviceId === row.deviceId) viewer.send({ kind: 'command-result', id, ...result });
+  }
   const prune = () => {
-    for (const [id, row] of commands) if (row.finishedAt && now() - row.finishedAt > 10 * 60_000) commands.delete(id);
-    if (commands.size >= 512) {
-      for (const [id, row] of commands) if (row.result && commands.size >= 512) commands.delete(id);
+    for (const [id, row] of commands) {
+      if (!row.result && row.expiresAt && now() >= row.expiresAt) {
+        finish(id, row, { ok: false, delivery: 'unknown', error: 'The original computer view disconnected before confirming delivery.' });
+      } else if (row.result && now() - row.finishedAt > 10 * 60_000) {
+        commands.delete(id);
+      }
     }
     for (const [id, row] of snapshots) if (!row.running && now() - row.at > 10 * 60_000) { snapshots.delete(id); snapshotBytes -= row.bytes; }
   };
@@ -35,12 +51,33 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
   return {
     register(hostId, workspace, send) {
       if (hosts.has(hostId)) throw fault(409, 'This computer view is already connected.');
+      prune();
+      clearTimeout(disconnectTimers.get(hostId));
+      disconnectTimers.delete(hostId);
       const host = { hostId, workspace, send };
       hosts.set(hostId, host);
       for (const [deliveryId, command] of commands) {
-        if (!command.result && command.hostId === hostId) send({ kind: 'command', command: { ...command.input, deliveryId } });
+        if (!command.result && command.hostId === hostId) {
+          command.expiresAt = null;
+          send({ kind: 'command', command: { ...command.input, deliveryId } });
+        }
       }
-      return () => { if (hosts.get(hostId) === host) hosts.delete(hostId); };
+      return () => {
+        if (hosts.get(hostId) !== host) return;
+        hosts.delete(hostId);
+        let pending = false;
+        for (const row of commands.values()) {
+          if (row.hostId === hostId && !row.result) {
+            row.expiresAt = now() + DISCONNECT_GRACE_MS;
+            pending = true;
+          }
+        }
+        if (pending) {
+          const timer = setTimeout(() => { disconnectTimers.delete(hostId); prune(); }, DISCONNECT_GRACE_MS);
+          timer.unref?.();
+          disconnectTimers.set(hostId, timer);
+        }
+      };
     },
     subscribe(workspace, send, deviceId) {
       prune();
@@ -67,7 +104,6 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
         if (previous.signature !== signature) throw fault(409, 'Command id was reused.');
         return { id: commandKey, ...previous.result, pending: !previous.result };
       }
-      if (commands.size >= 512) throw fault(429, 'Too many chat commands.');
       if (['send', 'steer', 'edit'].includes(input.action) &&
           (typeof input.text !== 'string' || input.text.length > 100_000 || (!input.text.trim() && !input.attachments?.length))) {
         throw fault(400, 'Add a message or attachment.');
@@ -83,6 +119,15 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
         if (raced.signature !== signature) throw fault(409, 'Command id was reused.');
         return { id: commandKey, ...raced.result, pending: !raced.result };
       }
+      if (commands.size >= MAX_PENDING_COMMANDS) {
+        let pending = 0;
+        for (const [id, row] of commands) {
+          if (!row.result) pending++;
+          else if (row.result.delivery !== 'unknown' && commands.size >= MAX_PENDING_COMMANDS) commands.delete(id);
+        }
+        // Keep unknown-delivery receipts through their usual lookup window, including under load.
+        if (pending >= MAX_PENDING_COMMANDS || commands.size >= 2 * MAX_PENDING_COMMANDS) throw fault(429, 'Too many chat commands.');
+      }
       const host = hostFor(input.chatId, workspace);
       if (!host) throw fault(503, 'Open this workspace in Minnow on the computer to send messages.');
       if (input.expectedOwnerId && turns.list().find(row => row.chatId === input.chatId)?.ownerId !== input.expectedOwnerId) throw fault(409, 'The captured chat owner has changed.');
@@ -95,11 +140,13 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       return { id: commandKey, pending: true };
     },
     result(id, deviceId) {
+      prune();
       const row = commands.get(id);
       if (!row || row.deviceId !== deviceId) throw fault(404, 'Command not found.');
       return { id, ...row.result, pending: !row.result };
     },
     waitResult(id, deviceId, timeoutMs = 20_000) {
+      prune();
       const row = commands.get(id);
       if (!row || row.deviceId !== deviceId) return Promise.reject(fault(404, 'Command not found.'));
       if (row.result) return Promise.resolve({ id, ...row.result, pending: false });
@@ -116,16 +163,11 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       return frame;
     },
     acknowledge(id, hostId, result) {
+      prune();
       const row = commands.get(id);
       if (!row || row.hostId !== hostId) throw fault(409, 'This view does not own the command.');
       if (!row.result) {
-        row.result = { ok: result.ok === true, error: String(result.error || '').slice(0, 1000) };
-        row.finishedAt = now();
-        for (const waiter of row.waiters ?? []) waiter(row.result);
-        row.waiters?.clear();
-        commandBytes -= row.bytes;
-        row.bytes = 0; row.input = null;
-        for (const viewer of viewers) if (viewer.deviceId === row.deviceId) viewer.send({ kind: 'command-result', id, ...row.result });
+        finish(id, row, { ok: result.ok === true, error: String(result.error || '').slice(0, 1000) });
       }
       return row.result;
     },

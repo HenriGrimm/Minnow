@@ -15,6 +15,24 @@ function fixture() {
   return { turns, broker, host, phone, disconnect };
 }
 
+test('orphaned commands expire without moving an unknown action to a replacement host', async () => {
+  let time = 1000;
+  const broker = createChatLiveBroker({ now: () => time, turns: { list: () => [] }, workspaceForChat: () => '/project' });
+  const disconnect = broker.register('old', '/project', () => {});
+  const command = { chatId: 'chat', id: 'action', action: 'send', text: 'message' };
+  const { id } = await broker.submit(command, 'phone');
+  const waiting = broker.waitResult(id, 'phone');
+  disconnect();
+  const delivered = [];
+  broker.register('replacement', '/project', event => delivered.push(event));
+  time += 61_000;
+  assert.equal(broker.result(id, 'phone').delivery, 'unknown');
+  assert.equal((await waiting).pending, false);
+  assert.equal((await broker.submit(command, 'phone')).delivery, 'unknown');
+  broker.register('old', '/project', event => delivered.push(event));
+  assert.deepEqual(delivered, []);
+});
+
 test('queued edit commands reach the host with bounded text and item validation', async () => {
   const { broker, host } = fixture();
   await broker.submit({ id: 'edit', chatId: 'chat', action: 'edit', itemId: 'queued', text: 'revised' }, 'phone');
