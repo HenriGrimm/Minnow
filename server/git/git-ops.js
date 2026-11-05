@@ -1430,11 +1430,14 @@ export async function snapshotCreate({ cwd, message } = {}) {
       return { ok: false, error: 'Could not resolve HEAD' };
     }
 
-    if (hasHead) {
-      const readTree = await git(['read-tree', 'HEAD'], repo.cwd, env);
-      if (readTree.code !== 0) {
-        return { ok: false, error: processError(readTree) };
-      }
+    // write-tree fails on an unmerged index. Refuse before restoring files if
+    // the user's staged state cannot be represented by a safety snapshot.
+    const indexTree = await git(['write-tree'], repo.cwd);
+    if (indexTree.code !== 0) return { ok: false, error: processError(indexTree) };
+    const stagedTree = indexTree.stdout.trim();
+    const readTree = await git(['read-tree', stagedTree], repo.cwd, env);
+    if (readTree.code !== 0) {
+      return { ok: false, error: processError(readTree) };
     }
 
     const add = await git(['add', '-A'], repo.cwd, env);
@@ -1457,7 +1460,12 @@ export async function snapshotCreate({ cwd, message } = {}) {
     if (hasHead && headSha) {
       commitArgs.push('-p', headSha);
     }
-    commitArgs.push('-m', msg);
+    // Preserve the working tree as the snapshot commit's tree for existing diff
+    // and UI callers. A tagged parent keeps the independent index tree reachable.
+    const indexCommit = await git(['commit-tree', stagedTree, '-m', 'Minnow staged files'], repo.cwd);
+    if (indexCommit.code !== 0) return { ok: false, error: processError(indexCommit) };
+    const indexSha = indexCommit.stdout.trim();
+    commitArgs.push('-p', indexSha, '-m', msg, '-m', `Minnow-Index-V1: ${indexSha}`);
     const commitTree = await git(commitArgs, repo.cwd);
     if (commitTree.code !== 0) {
       return { ok: false, error: processError(commitTree) };
@@ -1496,11 +1504,15 @@ export async function snapshotRestore({ cwd, sha } = {}) {
   }
   const resolved = (commitParse.stdout ?? '').trim();
 
-  const treeParse = await git(['rev-parse', '--verify', `${resolved}^{tree}`], repo.cwd);
+  const treeParse = await git(['show', '-s', '--format=%T%n%P%n%(trailers:key=Minnow-Index-V1,valueonly)', resolved], repo.cwd);
   if (treeParse.code !== 0) {
     return { ok: false, error: processError(treeParse) };
   }
-  const treeSha = (treeParse.stdout ?? '').trim();
+  const [treeSha, parents, ...indexMarkers] = treeParse.stdout.trimEnd().split(/\r?\n/);
+  const indexSha = indexMarkers.at(-1);
+  if (indexSha && (!/^[0-9a-f]{40}$/.test(indexSha) || !parents?.split(' ').includes(indexSha))) {
+    return { ok: false, error: 'Invalid snapshot index parent' };
+  }
 
   const safety = await snapshotCreate({
     cwd: repo.cwd,
@@ -1522,6 +1534,14 @@ export async function snapshotRestore({ cwd, sha } = {}) {
   const clean = await git(['clean', '-fd'], repo.cwd);
   if (clean.code !== 0) {
     return { ok: false, error: processError(clean), safetySha: safety.sha };
+  }
+
+  // Clean while the restored untracked files are still represented in the
+  // temporary staging layout. Then restore staging without touching disk again.
+  // Older single-tree snapshots keep their original restore behavior.
+  if (indexSha) {
+    const indexRestore = await git(['read-tree', indexSha], repo.cwd);
+    if (indexRestore.code !== 0) return { ok: false, error: processError(indexRestore), safetySha: safety.sha };
   }
 
   const headAfter = await git(['rev-parse', 'HEAD'], repo.cwd);

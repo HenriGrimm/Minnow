@@ -772,4 +772,53 @@ describe('git API', () => {
     assert.equal(viaApi.json?.ok, true);
     assert.match(viaApi.json?.sha ?? '', /^[0-9a-f]{40}$/i);
   });
+
+  test('snapshot restore and safety undo preserve staged, unstaged and untracked work independently', async () => {
+    const git = async (...args) => (await execFileAsync('git', args, { cwd: repoDir, windowsHide: true })).stdout;
+    const name = 'index-snapshot.txt';
+    const file = path.join(repoDir, name);
+    const extra = path.join(repoDir, 'untracked-snapshot.txt');
+    await fs.writeFile(file, 'base');
+    await git('add', '--', name);
+    await git('commit', '-m', 'index snapshot base', '--', name);
+    const head = (await git('rev-parse', 'HEAD')).trim();
+    await fs.writeFile(file, 'staged');
+    await git('add', '--', name);
+    await fs.writeFile(file, 'unstaged');
+    await fs.writeFile(extra, 'untracked');
+    const snapshot = await snapshotCreate({ cwd: repoDir });
+    assert.equal(snapshot.ok, true);
+    await fs.writeFile(file, 'later index');
+    await git('add', '--', name);
+    await fs.writeFile(file, 'later disk');
+    await fs.writeFile(extra, 'later untracked');
+    const restored = await snapshotRestore({ cwd: repoDir, sha: snapshot.sha });
+    assert.equal(restored.ok, true, restored.error);
+    async function contents() {
+      return [await git('show', ':' + name), await fs.readFile(file, 'utf8'), await fs.readFile(extra, 'utf8'),
+        await git('ls-files', '--', 'untracked-snapshot.txt'), (await git('rev-parse', 'HEAD')).trim()];
+    }
+    assert.deepEqual(await contents(), ['staged', 'unstaged', 'untracked', '', head]);
+    const undone = await snapshotRestore({ cwd: repoDir, sha: restored.safetySha });
+    assert.equal(undone.ok, true, undone.error);
+    assert.deepEqual(await contents(), ['later index', 'later disk', 'later untracked', '', head]);
+    const legacy = await snapshotRestore({ cwd: repoDir, sha: head });
+    assert.equal(legacy.ok, true, legacy.error);
+    assert.equal(await git('show', ':' + name), 'base');
+    assert.equal(await fs.readFile(file, 'utf8'), 'base');
+    const baseTree = (await git('write-tree')).trim();
+    const variants = [];
+    for (const content of ['ours', 'theirs']) {
+      await fs.writeFile(file, content);
+      await git('add', '--', name);
+      variants.push((await git('write-tree')).trim());
+    }
+    await git('read-tree', variants[0]);
+    await git('read-tree', '-i', '-m', baseTree, ...variants);
+    assert.ok((await git('ls-files', '-u', '--', name)).length > 0);
+    const refused = await snapshotRestore({ cwd: repoDir, sha: snapshot.sha });
+    assert.equal(refused.ok, false);
+    assert.equal(await fs.readFile(file, 'utf8'), 'theirs');
+    assert.ok((await git('ls-files', '-u', '--', name)).length > 0);
+  });
 });
