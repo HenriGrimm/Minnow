@@ -2,7 +2,6 @@
  * Fetch token-budgeted repo map text for system prompt injection.
  */
 
-import { brainWorkspaceKeyFromPath } from '../lib/brain-workspace-key';
 import { wrapUntrusted } from '../lib/untrusted.mjs';
 import { fetchBrainCodeConfig, fetchBrainCodeRepoMap } from './client';
 
@@ -27,7 +26,6 @@ export async function retrieveCodeMapBlock(
   const repoPath = options.repoPath.trim();
   if (!repoPath) return '';
 
-  const repo = brainWorkspaceKeyFromPath(repoPath);
   const profile = options.profile ?? 'injection';
   const defaultBudget =
     profile === 'injection'
@@ -35,7 +33,7 @@ export async function retrieveCodeMapBlock(
       : config.repoMapTokenBudget;
 
   const map = await fetchBrainCodeRepoMap({
-    repo,
+    workspaceRoot: repoPath,
     focus: options.focus,
     tokenBudget: options.tokenBudget ?? defaultBudget,
     ensureIndexed: options.ensureIndexed === true,

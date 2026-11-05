@@ -30,6 +30,8 @@ describe('retrieveCodeMapBlock', () => {
       if (url.includes('/api/brain/code/repo-map') && init?.method === 'POST') {
         const body = JSON.parse(String(init.body ?? '{}'));
         assert.equal(body.profile, 'injection');
+        assert.equal(body.workspaceRoot, 'C:/Users/dev/my-app');
+        assert.equal(body.repo, undefined);
         return {
           ok: true,
           json: async () => ({

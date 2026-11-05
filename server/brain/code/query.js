@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getLspWorkspaceSymbols } from '../../lsp/manager.js';
 import { getEffectiveWorkspaceRoot } from '../../runtime/path-access.js';
-import { brainWorkspaceKeyFromPath } from '../paths.js';
+import { brainWorkspaceKeyFromPath, legacyBrainWorkspaceSlug } from '../paths.js';
 import { loadBrainConfig } from '../store.js';
 import { clampRepoMapInjectionTokenBudget, clampRepoMapTokenBudget, normalizeBrainCodeConfig } from './config.js';
 import { getCodeDb, getIndexStats } from './schema.js';
@@ -40,7 +40,10 @@ export function resolveRepoKey(repoParam) {
     err.statusCode = 400;
     throw err;
   }
-  return requested.toLowerCase();
+  const key = requested.toLowerCase();
+  const root = getEffectiveWorkspaceRoot();
+  // Older renderer builds supplied the active folder basename explicitly.
+  return key === legacyBrainWorkspaceSlug(root) ? brainWorkspaceKeyFromPath(root) : key;
 }
 
 /**

@@ -5,7 +5,8 @@
 import { bindRetrieveVectorStore, retrieveMemoryBlockHybrid } from '../engine/retrieve.js';
 import { createVectorStore } from '../engine/vector-store.js';
 import { getEnginePaths } from './engine-paths.js';
-import { isValidPageId } from './paths.js';
+import { isValidPageId, scopedBrainPagePath } from './paths.js';
+import { resolveLegacyOwners } from './workspace-ownership.js';
 import { archiveFolderPrefix } from './archive.js';
 import { rerankArchiveHits, llmRerankArchiveHits } from './archive-rerank.js';
 import { listPages, readPage, loadBrainConfig, loadCatalog, computeBacklinks } from './store.js';
@@ -25,7 +26,7 @@ export function scopePagesToWorkspace(pages, workspaceKey) {
   const workspacePrefix = key ? `workspaces/${key}/` : null;
 
   return pages.filter((page) => {
-    const rel = String(page.path ?? '').replace(/\\/g, '/');
+    const rel = scopedBrainPagePath(page);
     if (!rel.startsWith('workspaces/')) {
       return true;
     }
@@ -46,7 +47,7 @@ export function scopePagesToExpert(pages, expertId) {
   if (!id) return [];
   const prefix = `experts/${id}/facts/`;
   return pages.filter((page) => {
-    const rel = String(page.path ?? '').replace(/\\/g, '/');
+    const rel = scopedBrainPagePath(page);
     return rel.startsWith(prefix);
   });
 }
@@ -61,7 +62,7 @@ export function scopePagesToExpert(pages, expertId) {
 export function scopePagesToChatArchive(pages, workspaceKey, chatId, includeGlobal = false) {
   const prefix = `${archiveFolderPrefix(workspaceKey, chatId)}/`;
   return pages.filter((page) => {
-    const rel = String(page.path ?? '').replace(/\\/g, '/');
+    const rel = scopedBrainPagePath(page);
     if (rel.startsWith(prefix)) return true;
     if (includeGlobal && !rel.startsWith('workspaces/')) return true;
     return false;
@@ -79,7 +80,7 @@ export function scopePagesToWorkspaceArchive(pages, workspaceKey, includeGlobal 
   const archivePrefix = key ? `workspaces/${key}/archive/` : '';
   const conceptsPrefix = key ? `workspaces/${key}/concepts/` : '';
   return pages.filter((page) => {
-    const rel = String(page.path ?? '').replace(/\\/g, '/');
+    const rel = scopedBrainPagePath(page);
     if (archivePrefix && rel.startsWith(archivePrefix)) return true;
     if (conceptsPrefix && rel.startsWith(conceptsPrefix)) return true;
     if (includeGlobal && !rel.startsWith('workspaces/')) return true;
@@ -153,7 +154,7 @@ export async function retrieveBrainBlockHybrid(opts = {}, brainConfig) {
     };
   }
   let scopedMetas = scopePagesToWorkspace(
-    await listPages(),
+    await resolveLegacyOwners(await listPages()),
     opts.workspaceKey,
   );
   const chatId = opts.scope?.chatId ? String(opts.scope.chatId).trim() : '';

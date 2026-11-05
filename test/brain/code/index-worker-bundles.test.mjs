@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { it } from 'node:test';
 import { resetMinnowHomeCache } from '../../../server/config/home.js';
+import { brainWorkspaceKeyFromPath } from '../../../server/brain/paths.js';
 import { runBrainCodeReindexChild } from '../../../server/brain/code/index-host.js';
 import { runWithToolContext } from '../../../server/runtime/path-access.js';
 import { readConfigJson, writeConfigJson } from '../../../server/config/store.js';
@@ -44,7 +45,7 @@ it('indexing a board worktree preserves the workspace restored on cold boot', as
       codeConfig: { autoScaffoldIndexConfig: false },
     }, { timeoutMs: 30_000, silenceMs: 20_000 }), { workspaceRoot: worktree });
 
-    assert.equal(result.repo, 'integration', 'index should use the board worktree');
+    assert.equal(result.repo, brainWorkspaceKeyFromPath(worktree), 'index should use the board worktree');
     assert.equal(await fs.readFile(configPath, 'utf8'), savedConfig,
       'background indexing must not rewrite workspace, recents, or profiles');
     assert.equal(await initWorkspaceRoot(), project, 'cold boot should restore the project');

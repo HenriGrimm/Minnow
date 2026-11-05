@@ -287,6 +287,9 @@ export function serializePage(meta, body) {
   if (Array.isArray(meta.similarTo) && meta.similarTo.length > 0) {
     archiveLines.push(`similarTo: ${serializeArrayField(meta.similarTo)}`);
   }
+  if (meta.assignedWorkspace) {
+    archiveLines.push(`assignedWorkspace: ${quoteYamlString(meta.assignedWorkspace)}`);
+  }
   const archiveBlock = archiveLines.length ? `${archiveLines.join('\n')}\n` : '';
   return `---
 id: ${quoteYamlString(meta.id)}
@@ -352,6 +355,7 @@ export function buildCatalogEntry(front, relPath, body) {
     status: VALID_STATUS.has(front.status) ? front.status : 'current',
     input_hash: String(front.input_hash ?? ''),
     links,
+    ...(/^[a-z0-9._-]+--[a-f0-9]{32}$/.test(front.assignedWorkspace ?? '') ? { assignedWorkspace: front.assignedWorkspace } : {}),
     ...(front.chatId ? { chatId: String(front.chatId) } : {}),
     ...(Array.isArray(front.sourceTurnIndices)
       ? { sourceTurnIndices: front.sourceTurnIndices }
@@ -751,6 +755,34 @@ async function createPageNow(input) {
   return readPage(relPath);
 }
 
+/** Bind one reviewed page without relocating it or reserializing hand-edited Markdown. */
+export function assignBrainPage(relPath, workspaceKey, expectedRevision) {
+  return mutatePage(async () => {
+    if (!/^workspaces\/[^/]+\/.+\.md$/.test(relPath) || !/^[a-z0-9._-]+--[a-f0-9]{32}$/.test(workspaceKey)) {
+      throw new BrainPathError('A workspace page and a workspace identity are required');
+    }
+    const file = await resolvePagePath(relPath);
+    const raw = await fs.readFile(file, 'utf8');
+    if (expectedRevision !== pageRevision(raw)) {
+      throw Object.assign(new Error('Page changed since it was loaded'), { statusCode: 409 });
+    }
+    const opener = /^---[ \t]*(\r?\n)/.exec(raw);
+    const front = opener && /^---[ \t]*(?:\r?\n|$)/m.exec(raw.slice(opener[0].length));
+    let body = raw;
+    const newline = opener?.[1] ?? '\n';
+    let fields = '';
+    if (front) {
+      fields = raw.slice(opener[0].length, opener[0].length + front.index)
+        .replace(/^assignedWorkspace:[^\n]*(?:\n|$)/gm, '');
+      body = raw.slice(opener[0].length + front.index + front[0].length);
+    }
+    const assignment = 'assignedWorkspace: ' + quoteYamlString(workspaceKey) + newline;
+    await atomicWritePage(file, '---' + newline + fields + assignment + '---' + newline + body, { backupExisting: true });
+    await rebuildCatalog();
+    return readPage(relPath);
+  });
+}
+
 /** Update an existing page. */
 export function updatePage(relPath, input) {
   return mutatePage(() => updatePageNow(relPath, input));
@@ -800,14 +832,18 @@ async function updatePageNow(relPath, input) {
 }
 
 /** Delete a page by relative path. */
-export function deletePage(relPath) {
-  return mutatePage(() => deletePageNow(relPath));
+export function deletePage(relPath, options = {}) {
+  return mutatePage(() => deletePageNow(relPath, options));
 }
 
-async function deletePageNow(relPath) {
+async function deletePageNow(relPath, options) {
   const existing = await readPage(relPath);
+  if (options.expectedRevision !== undefined && options.expectedRevision !== existing.revision) {
+    throw Object.assign(new Error('Page changed since it was loaded'), { statusCode: 409 });
+  }
   const abs = await resolvePagePath(relPath);
   await fs.unlink(abs);
+  if (options.removeBackup) await fs.rm(abs + '.bak', { force: true });
   deleteAnchorsForPage(existing.meta.id);
   await appendLog(`deleted ${relPath} (${existing.meta.id})`);
   await rebuildCatalog();

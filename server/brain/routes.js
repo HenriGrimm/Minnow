@@ -37,9 +37,12 @@ import { clearReindexNeeded } from './vector-sync.js';
 import { executeBrainCleanup } from './cleanup/execute.js';
 import { createVectorStore } from '../engine/vector-store.js';
 import { getEnginePaths } from './engine-paths.js';
-import { isValidPageId } from './paths.js';
+import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
+import { inspectBrainWorkspace } from './workspace-ownership.js';
+import { brainWorkspaceKeyFromPath, isValidPageId } from './paths.js';
 import {
   createPage as createWikiPage,
+  assignBrainPage,
   deletePage,
   ensureBrainStore,
   getPageTree,
@@ -80,6 +83,12 @@ function readJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+async function requestWorkspaceKey(body) {
+  return body.workspaceRoot
+    ? brainWorkspaceKeyFromPath(await validateAllowedWorkspaceRoot(body.workspaceRoot))
+    : body.workspaceKey;
 }
 
 function pageMetaToEntry(meta) {
@@ -142,6 +151,18 @@ export async function handleBrainRequest(req, res, pathname) {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       const relPath = url.searchParams.get('path') ?? '';
       const page = await readPage(relPath);
+      const root = url.searchParams.get('workspaceRoot');
+      if (root && page.path.startsWith('workspaces/')) {
+        page.workspace = await inspectBrainWorkspace(page.meta, await validateAllowedWorkspaceRoot(root));
+      }
+      sendJson(res, 200, page);
+      return true;
+    }
+
+    if (pathname === '/api/brain/workspace-assignment' && req.method === 'PUT') {
+      const body = await readJsonBody(req);
+      const root = await validateAllowedWorkspaceRoot(body.workspaceRoot);
+      const page = await assignBrainPage(body.path, brainWorkspaceKeyFromPath(root), body.expectedRevision);
       sendJson(res, 200, page);
       return true;
     }
@@ -221,7 +242,7 @@ export async function handleBrainRequest(req, res, pathname) {
           limit: body.limit ?? 12,
           tags: body.tags,
           maxChars,
-          workspaceKey: body.workspaceKey,
+          workspaceKey: await requestWorkspaceKey(body),
           scope: body.scope,
           includeHits: body.includeHits === true,
           embeddingModelId: body.embeddingModelId,
@@ -235,14 +256,14 @@ export async function handleBrainRequest(req, res, pathname) {
 
     if (pathname === '/api/brain/archive' && req.method === 'POST') {
       const body = await readJsonBody(req);
-      const result = await bundleArchiveRange(body);
+      const result = await bundleArchiveRange({ ...body, workspaceKey: await requestWorkspaceKey(body) });
       sendJson(res, 200, result);
       return true;
     }
 
     if (pathname === '/api/brain/capture/chat' && req.method === 'POST') {
       const body = await readJsonBody(req);
-      const result = await captureChatToBrain(body);
+      const result = await captureChatToBrain({ ...body, workspaceKey: await requestWorkspaceKey(body) });
       sendJson(res, 200, result);
       return true;
     }

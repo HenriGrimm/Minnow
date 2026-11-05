@@ -10,20 +10,22 @@ import { parseExtractionJson } from './synthesis.js';
 import {
   appendLog,
   createPage,
+  deletePage,
   listPages,
   loadBrainConfig,
   readPage,
   rebuildCatalog,
   updatePage,
 } from './store.js';
-import { getBrainPagesDir } from './paths.js';
+import { getBrainPagesDir, resolvePagePath, scopedBrainPagePath } from './paths.js';
+import { resolveLegacyOwners } from './workspace-ownership.js';
 import { createVectorStore, cosineSimilarity } from '../engine/vector-store.js';
 import { getEnginePaths } from './engine-paths.js';
 import { isValidPageId } from './paths.js';
 import { syncEntryVector } from './vector-sync.js';
 
 const vectorStore = createVectorStore(getEnginePaths, { isValidEntryId: isValidPageId });
-const { syncDeleteEntryVector, getEntryVector, loadVectorStore } = vectorStore;
+const { getEntryVector, loadVectorStore } = vectorStore;
 
 const ARCHIVE_BUNDLE_PROMPT = `You compress a span of chat turns into structured wiki knowledge for later retrieval.
 
@@ -285,11 +287,11 @@ async function attachSimilarArchiveLinks(workspaceKey, chatId, page, body) {
     if (!newVector?.length) return;
 
     const prefix = archiveFolderPrefix(workspaceKey, chatId);
-    const pages = await listPages();
+    const pages = await resolveLegacyOwners(await listPages());
     const neighbors = [];
     for (const other of pages) {
       if (other.path === page.meta.path) continue;
-      if (!other.path.startsWith(`${prefix}/`) || !other.path.includes('turns-')) continue;
+      if (!scopedBrainPagePath(other).startsWith(`${prefix}/`) || !other.path.includes('turns-')) continue;
       const vec = store.vectors[other.id] ?? (await getEntryVector(other.id));
       if (!vec?.length) continue;
       const score = cosineSimilarity(newVector, vec);
@@ -317,11 +319,11 @@ export async function maybePromoteEntity(workspaceKey, slug, chatId, ent) {
   const entitySlug = String(slug ?? '').trim();
   if (!entitySlug) return;
 
-  const pages = await listPages();
+  const pages = await resolveLegacyOwners(await listPages());
   const archivePrefix = `workspaces/${key}/archive/`;
   const matches = pages.filter(
     (p) =>
-      p.path.startsWith(archivePrefix) &&
+      scopedBrainPagePath(p).startsWith(archivePrefix) &&
       p.path.endsWith(`/entities/${entitySlug}.md`),
   );
   const chatIds = new Set(matches.map((p) => {
@@ -362,9 +364,9 @@ export async function maybePromoteEntity(workspaceKey, slug, chatId, ent) {
 /** Create rollup index when a chat has 3+ turn bundles and no rollup yet. */
 export async function maybeCreateArchiveRollup(workspaceKey, chatId) {
   const prefix = archiveFolderPrefix(workspaceKey, chatId);
-  const pages = await listPages();
+  const pages = await resolveLegacyOwners(await listPages());
   const turnPages = pages
-    .filter((p) => p.path.startsWith(`${prefix}/`) && p.path.includes('turns-'))
+    .filter((p) => scopedBrainPagePath(p).startsWith(`${prefix}/`) && p.path.includes('turns-'))
     .sort((a, b) => a.path.localeCompare(b.path));
   if (turnPages.length < 3) return;
 
@@ -488,9 +490,9 @@ export async function bundleArchiveRange(input) {
  */
 export async function getArchiveStatus(chatId, workspaceKey, pending = []) {
   const prefix = archiveFolderPrefix(workspaceKey, chatId);
-  const pages = await listPages();
+  const pages = await resolveLegacyOwners(await listPages());
   const archivePages = pages.filter(
-    (p) => p.path.startsWith(`${prefix}/`) && p.path.includes('turns-'),
+    (p) => scopedBrainPagePath(p).startsWith(`${prefix}/`) && p.path.includes('turns-'),
   );
 
   const ranges = [];
@@ -525,23 +527,28 @@ export async function getArchiveStatus(chatId, workspaceKey, pending = []) {
  */
 export async function deleteChatArchive(chatId, workspaceKey) {
   const prefix = archiveFolderPrefix(workspaceKey, chatId);
-  const pagesDir = getBrainPagesDir();
-  const absDir = path.join(pagesDir, ...prefix.split('/'));
-  const pages = await listPages();
-  const victims = pages.filter((p) => p.path.startsWith(`${prefix}/`));
-
+  const pages = await resolveLegacyOwners(await listPages());
+  const victims = pages.filter(page => scopedBrainPagePath(page).startsWith(prefix + '/'));
+  const dirs = new Set();
+  let removed = 0;
   for (const page of victims) {
-    try {
-      await syncDeleteEntryVector(page.id);
-    } catch {
-      /* ignore vector cleanup errors */
-    }
+    // Only remove cataloged pages owned by this workspace. Assigned pages can
+    // occupy a shared legacy directory and still have working original links.
+    const abs = await resolvePagePath(page.path);
+    const latest = await readPage(page.path);
+    const [owner] = await resolveLegacyOwners([latest.meta]);
+    if (!scopedBrainPagePath(owner).startsWith(prefix + '/')) continue;
+    await deletePage(page.path, { expectedRevision: latest.revision, removeBackup: true });
+    removed += 1;
+    const physicalPrefix = page.path.split('/').slice(0, 4).join('/');
+    const archiveDir = path.dirname(await resolvePagePath(physicalPrefix + '/placeholder.md'));
+    for (let dir = path.dirname(abs); dir === archiveDir || dir.startsWith(archiveDir + path.sep); dir = path.dirname(dir)) dirs.add(dir);
   }
-
-  await fs.rm(absDir, { recursive: true, force: true });
-  await rebuildCatalog();
+  for (const dir of [...dirs].sort((a, b) => b.length - a.length)) {
+    await fs.rmdir(dir).catch(err => { if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(err.code)) throw err; });
+  }
   await appendLog(`deleted archive folder for chat ${chatId}`);
-  return { ok: true, removed: victims.length };
+  return { ok: true, removed };
 }
 
 /**
@@ -561,8 +568,12 @@ export async function reconcileOrphanArchives(liveChatIds) {
     return { swept: 0 };
   }
 
+  const assignedArchives = new Set((await listPages()).filter(page => page.assignedWorkspace)
+    .map(page => page.path.split('/').slice(0, 4).join('/')));
   for (const ws of workspaceDirs) {
-    if (!ws.isDirectory()) continue;
+    // Older basename folders may contain multiple checkouts' notes, including
+    // archives whose conversation has already been removed. Keep them for review.
+    if (!ws.isDirectory() || !/--[a-f0-9]{32}$/.test(ws.name)) continue;
     const archiveDir = path.join(archiveRoot, ws.name, 'archive');
     let chatDirs = [];
     try {
@@ -572,7 +583,7 @@ export async function reconcileOrphanArchives(liveChatIds) {
     }
     for (const chat of chatDirs) {
       if (!chat.isDirectory()) continue;
-      if (liveChatIds.has(chat.name)) continue;
+      if (liveChatIds.has(chat.name) || assignedArchives.has('workspaces/' + ws.name + '/archive/' + chat.name)) continue;
       await fs.rm(path.join(archiveDir, chat.name), { recursive: true, force: true });
       swept += 1;
     }

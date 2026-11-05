@@ -104,9 +104,17 @@ export async function fetchBrainTree(): Promise<BrainTreeNode | null> {
 }
 
 /** Read one wiki page by relative path (e.g. facts/slug.md). */
-export async function fetchBrainPage(relPath: string): Promise<BrainPage | null> {
+export async function fetchBrainPage(relPath: string, workspaceRoot?: string): Promise<BrainPage | null> {
   const qs = new URLSearchParams({ path: relPath });
+  if (workspaceRoot) qs.set('workspaceRoot', workspaceRoot);
   return brainFetch<BrainPage>(`/api/brain/page?${qs}`);
+}
+
+export function assignBrainPageToWorkspace(page: BrainPage, workspaceRoot: string): Promise<BrainPage | null> {
+  return brainFetch<BrainPage>('/api/brain/workspace-assignment', {
+    method: 'PUT',
+    body: JSON.stringify({ path: page.path, expectedRevision: page.revision, workspaceRoot }),
+  });
 }
 
 /** Create or update a wiki page. */

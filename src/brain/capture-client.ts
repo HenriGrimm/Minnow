@@ -2,7 +2,6 @@
  * Client for manual Brain capture (chat + research summary pages).
  */
 
-import { brainWorkspaceKeyFromPath } from '../lib/brain-workspace-key';
 import { getWorkspacePath } from '../state/workspace';
 import { stripThinkingForExcerpt } from '../synthesis/post-turn';
 import { isLocalServerAvailable } from '../tools/config';
@@ -79,8 +78,7 @@ export async function captureChatToBrain(
   chat: Chat,
 ): Promise<BrainCaptureResult | null> {
   const messages = serializeChatForCapture(chat);
-  const workspaceKey =
-    brainWorkspaceKeyFromPath(chat.workspacePath || getWorkspacePath()) || 'workspace';
+  const workspaceRoot = chat.workspacePath || getWorkspacePath();
 
   const result = await capturePost<{
     relPath: string;
@@ -90,7 +88,7 @@ export async function captureChatToBrain(
   }>('/api/brain/capture/chat', {
     chatId: chat.id,
     title: chat.name,
-    workspaceKey,
+    workspaceRoot,
     messages,
   });
 

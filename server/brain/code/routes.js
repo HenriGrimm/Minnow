@@ -234,12 +234,12 @@ export async function handleCodeIndexRequest(req, res, pathname) {
         url.searchParams.get('tokenBudget') ?? body.tokenBudget ?? body.token_budget ?? 0,
       );
       const repoParam = body.repo ?? url.searchParams.get('repo') ?? undefined;
-      const repo = resolveRepoKey(repoParam);
       const ensureIndexed =
         body.ensureIndexed === true ||
         url.searchParams.get('ensureIndexed') === 'true' ||
         url.searchParams.get('ensureIndexed') === '1';
       const map = await withCodeWorkspace(req, body, async () => {
+        const repo = resolveRepoKey(repoParam);
         if (ensureIndexed) {
           await ensureWarmCodeIndex(repo);
         }

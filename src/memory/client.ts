@@ -3,7 +3,6 @@
  */
 
 import { isLocalServerAvailable } from '../tools/config';
-import { brainWorkspaceKeyFromPath } from '../lib/brain-workspace-key';
 import { getWorkspacePath } from '../state/workspace';
 import type {
   MemoryEntryMeta,
@@ -195,7 +194,7 @@ export async function retrieveMemoryBlock(options: {
   const enabled = await fetchMemoryEnabled();
   if (!enabled) return '';
 
-  const workspaceKey = brainWorkspaceKeyFromPath(getWorkspacePath());
+  const workspaceRoot = getWorkspacePath();
 
   const data = await memoryFetch<MemoryRetrieveResult>('/api/brain/retrieve', {
     method: 'POST',
@@ -203,7 +202,7 @@ export async function retrieveMemoryBlock(options: {
       query: options.query ?? '',
       profile: options.profile ?? 'full',
       limit: options.limit ?? 12,
-      workspaceKey,
+      workspaceRoot,
       ...(options.autoInject ? { autoInject: true } : {}),
       ...(options.expertId?.trim()
         ? { scope: { expertId: options.expertId.trim() } }

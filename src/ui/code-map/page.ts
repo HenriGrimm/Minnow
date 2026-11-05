@@ -30,7 +30,6 @@ import type {
   CodeMapArchitecture,
   CodeMapFolder,
 } from '../../brain/types';
-import { brainWorkspaceKeyFromPath } from '../../lib/brain-workspace-key';
 import { getWorkspacePath } from '../../state/workspace';
 import { openCodeRefInViewer } from '../code-ref-link';
 import { sceneToPng } from './export';
@@ -91,6 +90,7 @@ interface CurrentScene {
 const state = {
   view: 'architecture' as View,
   repoKey: '',
+  workspacePath: '',
   arch: null as CodeMapArchitecture | null,
   archModel: null as ArchModel | null,
   folderPath: null as string | null,
@@ -124,10 +124,10 @@ let statusPoll: ReturnType<typeof setTimeout> | null = null;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 
 /** Workspace scope for code index calls (matches the tool workspace). */
-function ctx(): { workspaceRoot?: string; repo?: string } {
+function ctx(): { workspaceRoot?: string } {
   const workspaceRoot = getWorkspacePath().trim();
   if (!workspaceRoot) return {};
-  return { workspaceRoot, repo: brainWorkspaceKeyFromPath(workspaceRoot) || undefined };
+  return { workspaceRoot };
 }
 
 /** Commit review belongs to the Code workspace overlay, never the standalone Brain map. */
@@ -1474,9 +1474,10 @@ function bind(): void {
 export async function renderCodeMapPage(): Promise<void> {
   bind();
   ensureViewport();
-  const repoKey = ctx().repo ?? '';
-  if (repoKey !== state.repoKey) {
-    state.repoKey = repoKey;
+  const workspacePath = ctx().workspaceRoot ?? '';
+  if (workspacePath !== state.workspacePath) {
+    state.workspacePath = workspacePath;
+    state.repoKey = '';
     state.arch = null;
     state.folder = null;
     state.folderPath = null;

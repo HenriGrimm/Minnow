@@ -3,7 +3,8 @@ import { appAlert, appConfirm, appPrompt } from '../app-dialog';
  * Brain graph inspector: title, tags, summary, backlinks, body preview, actions.
  */
 
-import { fetchBrainPage, deleteBrainPage, deleteBrainArchive } from '../../brain/client';
+import { getWorkspacePath } from '../../state/workspace';
+import { assignBrainPageToWorkspace, fetchBrainPage, deleteBrainPage, deleteBrainArchive } from '../../brain/client';
 import type { BrainPageMeta } from '../../brain/types';
 import { computeBrainBacklinks } from './tree-utils';
 import { renderBrainEmptyState, renderBrainLoading } from './empty-state';
@@ -146,7 +147,8 @@ export async function renderBrainInspector(
   inner.append(loadingMount);
   renderBrainLoading(loadingMount, 'Loading page…');
 
-  const page = await fetchBrainPage(relPath);
+  const workspaceRoot = getWorkspacePath().trim();
+  const page = await fetchBrainPage(relPath, relPath.startsWith('workspaces/') ? workspaceRoot : undefined);
   inner.replaceChildren();
 
   if (!page) {
@@ -285,6 +287,26 @@ export async function renderBrainInspector(
   editBtn.addEventListener('click', () => onEdit(page.path));
   actions.append(editBtn);
 
+  if (page.workspace && page.workspace.currentKey !== page.workspace.ownerKey) {
+    const assign = document.createElement('button');
+    assign.type = 'button';
+    assign.className = 'brain-action-btn';
+    assign.textContent = 'Assign to this workspace';
+    assign.addEventListener('click', async () => {
+      const ambiguity = page.workspace?.ambiguous ? 'Several recent workspaces share this folder name. ' : '';
+      if (!await appConfirm(ambiguity + 'Use this page as knowledge for ' + workspaceRoot + '?')) return;
+      assign.disabled = true;
+      const saved = await assignBrainPageToWorkspace(page, workspaceRoot);
+      if (saved) {
+        assign.textContent = 'Assigned to this workspace';
+      } else {
+        assign.disabled = false;
+        await appAlert('Could not assign the page. Reopen it and try again.');
+      }
+    });
+    actions.append(assign);
+  }
+
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'brain-action-btn brain-action-btn--danger';
@@ -320,7 +342,7 @@ export async function renderBrainInspector(
         if (!ok) return;
         const result = await deleteBrainArchive(
           archiveInfo.chatId,
-          archiveInfo.workspaceKey,
+          page.workspace?.ownerKey ?? archiveInfo.workspaceKey,
         );
         if (!result.ok) {
           await appAlert(result.error ?? 'Archive delete failed.');

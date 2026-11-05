@@ -28,6 +28,7 @@ export interface BrainPage {
   path: string;
   /** Hash of the complete saved Markdown source for conditional updates. */
   revision?: string;
+  workspace?: { currentKey: string; ownerKey: string | null; ambiguous: boolean };
 }
 
 /** Leaf node in GET /api/brain/tree. */

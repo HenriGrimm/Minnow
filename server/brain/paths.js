@@ -4,6 +4,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { realpathForBoundaryCheck } from '../workspace/safe-path.js';
 import { getMinnowHome } from '../config/home.js';
 
@@ -73,21 +74,27 @@ export function isValidPageId(id) {
   return typeof id === 'string' && UUID_RE.test(id);
 }
 
-/**
- * Derive a stable wiki workspace key from an absolute workspace root.
- * Matches pages/workspaces/<key>/ folder names (basename slug).
- * @param {string} workspacePath
- * @returns {string}
- */
+/** Basename used by older homes. A matching slug alone does not establish ownership. */
+export function legacyBrainWorkspaceSlug(workspacePath) {
+  return path.basename(workspacePath).toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace';
+}
+
+/** Checkouts have independent notes and derived indexes, including linked worktrees. */
 export function brainWorkspaceKeyFromPath(workspacePath) {
-  const trimmed = String(workspacePath ?? '').trim();
-  if (!trimmed) return '';
-  const base = path.basename(path.resolve(trimmed));
-  const slug = base
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'workspace';
+  if (!workspacePath?.trim()) return '';
+  const canonical = realpathForBoundaryCheck(path.resolve(workspacePath));
+  const identity = process.platform === 'win32' ? canonical.toLowerCase() : canonical;
+  const digest = createHash('sha256').update(identity).digest('hex').slice(0, 32);
+  return legacyBrainWorkspaceSlug(identity).slice(0, 60) + '--' + digest;
+}
+
+/** A user assignment preserves the physical path, wikilinks and archived bytes. */
+export function scopedBrainPagePath(page) {
+  const rel = String(page.path ?? '').replace(/\\/g, '/');
+  return page.assignedWorkspace && rel.startsWith('workspaces/')
+    ? rel.replace(/^workspaces\/[^/]+\//, 'workspaces/' + page.assignedWorkspace + '/')
+    : rel;
 }
 
 /**
