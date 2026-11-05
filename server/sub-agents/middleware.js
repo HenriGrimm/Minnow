@@ -185,8 +185,8 @@ async function journalSnapshot(parentChatId) {
  * @param {string} runId
  * @returns {Promise<{ parentChatId: string, run: import('./types').RunState, seq: number } | null>}
  */
-async function findRun(runId) {
-  const ids = await listEntries();
+async function findRun(runId, parentScope = null) {
+  const ids = parentScope === null ? await listEntries() : [parentScope];
   for (const parentChatId of ids) {
     const { state, seq } = await journalSnapshot(parentChatId);
     const run = state.runs.get(runId);
@@ -400,7 +400,13 @@ async function dispatch(route, req, res) {
       return readRunTranscript(req, res, runId);
 
     case 'cancel': {
-      const found = await findRun(runId);
+      const query = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+      const parentScope = query.get('parentChatId');
+      if (parentScope !== null) {
+        try { safeSegment(parentScope, 'parentChat'); }
+        catch { return json(res, 400, { ok: false, error: 'Invalid parent chat' }); }
+      }
+      const found = await findRun(runId, parentScope);
       if (!found) return json(res, 404, { ok: false, error: 'no such run' });
       if (isTerminal(found.run)) {
         return json(res, 200, {

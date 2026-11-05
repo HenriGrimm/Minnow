@@ -1,7 +1,7 @@
 import {
   assertSubAgentRunReadableByParent,
   buildSubAgentStatusPayload,
-  cancelSubAgent,
+  cancelSubAgentAndWait,
   formatAggregateResult,
   formatSubAgentListToolResultForChat,
   spawnSubAgent,
@@ -85,15 +85,15 @@ export async function executeSubAgentTool(
         : typeof args.runId === 'string'
           ? args.runId.trim()
           : '';
-    const reason =
-      typeof args.reason === 'string' && args.reason.trim()
-        ? args.reason.trim()
-        : 'cancelled';
-
     if (!runId) return 'Error: cancel_sub_agent requires "run_id"';
 
-    const result = cancelSubAgent(runId, reason);
-    return JSON.stringify(result, null, 2);
+    const parentChatId = context.chatId ?? getSubAgentExecutorContext()?.parentChatId;
+    if (!parentChatId?.trim()) return 'Error: cancel_sub_agent requires an active parent chat';
+    try {
+      return JSON.stringify(await cancelSubAgentAndWait(runId, parentChatId), null, 2);
+    } catch (error) {
+      return `Error: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 
   if (name === 'list_sub_agents') {

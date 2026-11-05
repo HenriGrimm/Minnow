@@ -303,6 +303,17 @@ describe('GET /api/agents list', () => {
 // ── POST /api/agents/:runId/cancel ───────────────────────────────────────────
 
 describe('POST /api/agents/:runId/cancel', () => {
+  it('limits parent-scoped cancellation to its family, preserving the real terminal status', async () => {
+    const first = await spawnOk();
+    const other = await spawnOk({ parentChatId: 'other-family' });
+    const scoped = (run, parent) => call('POST', `/api/agents/${run}/cancel?parentChatId=${parent}`);
+    assert.equal((await scoped(other.runId, PARENT)).status, 404);
+    assert.equal((await call('GET', `/api/agents/${other.runId}`)).body.status, 'running');
+    assert.equal((await scoped('unknown', PARENT)).status, 404);
+    assert.equal((await scoped(first.runId, PARENT)).body.status, 'cancelled');
+    assert.equal((await scoped(first.runId, PARENT)).body.status, 'cancelled');
+  });
+
   it('cancels an in-flight run', async () => {
     const spawned = await spawnOk();
     const cancelled = await call('POST', `/api/agents/${spawned.runId}/cancel`);

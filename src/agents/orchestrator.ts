@@ -737,11 +737,12 @@ export function cancelSubAgent(runId: string, _reason = 'cancelled'): CancelSubA
 }
 
 /** Recovery controls must await the server even when the child shell is missing. */
-export async function cancelSubAgentAndWait(runId: string): Promise<CancelSubAgentResult> {
+export async function cancelSubAgentAndWait(runId: string, parentChatId?: string): Promise<CancelSubAgentResult> {
   const prev = runs.get(runId);
-  optimisticallyCancelSubAgent(runId);
+  if (!parentChatId) optimisticallyCancelSubAgent(runId);
+  const scope = parentChatId ? `?parentChatId=${encodeURIComponent(parentChatId)}` : '';
   try {
-    const body = await request(`/${encodeURIComponent(runId)}/cancel`, { method: 'POST', signal: AbortSignal.timeout(10_000) });
+    const body = await request(`/${encodeURIComponent(runId)}/cancel${scope}`, { method: 'POST', signal: AbortSignal.timeout(10_000) });
     if (body?.state?.runs) {
       for (const raw of body.state.runs) {
         if (raw && typeof raw === 'object') adoptRaw(raw, Number(body?.seq) || 0);
@@ -752,7 +753,7 @@ export async function cancelSubAgentAndWait(runId: string): Promise<CancelSubAge
     return { ok: true, runId, status: body?.status ?? runs.get(runId)?.status ?? 'running' };
   } catch (err) {
     console.error('[agents] cancel failed', err);
-    if (prev && !isSubAgentRunTerminal(prev.status)) {
+    if (!parentChatId && prev && !isSubAgentRunTerminal(prev.status)) {
       publish({
         ...prev,
         startError: { message: 'Could not stop this sub-agent.', consecutive: 1 },

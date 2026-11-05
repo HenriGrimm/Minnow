@@ -76,6 +76,15 @@ describe('sub-agent status tools', () => {
     assert.notEqual(payload.summary, 'Sub-agent completed with no text output.');
   });
 
+  test('cancel takes ownership from the caller and awaits the server result', async () => {
+    setSubAgentApiFetchForTests(async input => {
+      assert.match(String(input), /\/cancel\?parentChatId=caller$/);
+      return Response.json({ error: 'no such run' }, { status: 404 });
+    });
+    assert.equal(await executeSubAgentTool('cancel_sub_agent',
+      { run_id: FIXED_RUN_ID, parentChatId: 'foreign' }, { chatId: 'caller' }), 'Error: no such run');
+  });
+
   beforeEach(() => {
     resetSubAgentOrchestrator();
     resetSubAgentConfigCache();
