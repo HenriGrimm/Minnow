@@ -9,7 +9,7 @@ import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import { writeConfigJson } from '../../server/config/store.js';
 import { handleBrainRequest } from '../../server/brain/routes.js';
 import { brainWorkspaceKeyFromPath, resolvePagePath } from '../../server/brain/paths.js';
-import { ensureBrainLayout, createPage, readPage } from '../../server/brain/store.js';
+import { ensureBrainLayout, createPage, readPage, saveBrainConfig } from '../../server/brain/store.js';
 import { runWithToolContext } from '../../server/runtime/path-access.js';
 import { resolveRepoKey } from '../../server/brain/code/query.js';
 import { codeDbPath, closeCodeDbForTests, getCodeDb } from '../../server/brain/code/schema.js';
@@ -124,4 +124,16 @@ test('trusted chat evidence and reviewed archive assignments preserve physical p
   assert.equal((await readPage(legacy.path)).meta.id, legacy.meta.id);
   assert.equal((await deleteChatArchive(chat, brainWorkspaceKeyFromPath(moved))).removed, 1);
   assert.equal((await readPage(summary.path)).meta.id, summary.meta.id);
+});
+
+test('caller-supplied code index keys cannot open or delete an adjacent database', async () => {
+  await saveBrainConfig({ code: { enabled: true } });
+  const outside = path.resolve(path.dirname(codeDbPath('api')), '../adjacent.db');
+  await fs.writeFile(outside, 'preserve this database');
+  for (const key of ['../adjacent', '..\\adjacent', outside.replace(/\.db$/, '')]) {
+    assert.throws(() => getCodeDb(key), /Invalid code index workspace key/);
+    const result = await api('POST', 'code/clear', { workspaceKey: key, confirmed: true });
+    assert.equal(result.status, 400, JSON.stringify(result.data));
+    assert.equal(await fs.readFile(outside, 'utf8'), 'preserve this database');
+  }
 });

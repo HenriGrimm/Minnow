@@ -22,9 +22,13 @@ export const MAX_OPEN_CODE_DBS = 8;
 /** Bump when schema migrations require FTS rebuild or similar (stored in PRAGMA user_version). */
 export const CODE_SCHEMA_VERSION = 2;
 
+// Persisted legacy slugs and path-hashed identities consist only of these characters.
+const codeDbKey = /^[a-z0-9._-]+$/i;
+
 /** Absolute path for a workspace code-index database file. */
 export function codeDbPath(workspaceKey) {
   const slug = String(workspaceKey ?? '').trim() || 'workspace';
+  if (!codeDbKey.test(slug)) throw Object.assign(new Error('Invalid code index workspace key'), { statusCode: 400 });
   return path.join(getBrainCodeDir(), `${slug}.db`);
 }
 
@@ -294,7 +298,7 @@ export function clearCodeIndex(opts = {}) {
       for (const name of fs.readdirSync(dir)) {
         if (!name.endsWith('.db')) continue;
         const key = name.slice(0, -3);
-        if (removeCodeDbFiles(key)) keys.push(key);
+        if (codeDbKey.test(key) && removeCodeDbFiles(key)) keys.push(key);
       }
     }
     return { removed: keys.length, workspaceKeys: keys };
