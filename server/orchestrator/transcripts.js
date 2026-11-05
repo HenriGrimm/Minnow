@@ -13,6 +13,9 @@ export const MAX_LINES = 5_000;
 
 /** Bytes kept per line. Tool results can be enormous; the shape is the point. */
 const MAX_LINE_BYTES = 8_000;
+const MAX_REPLAY_CALL_BYTES = 512 * 1024;
+const MAX_REPLAY_EXTRA_BYTES = 2 * 1024 * 1024;
+const CLIPPED = '… [clipped]';
 
 /**
  * Bytes kept for the fields a person actually reads: a thought, a round's
@@ -93,20 +96,20 @@ const COALESCING_TYPES = new Set(['thinking', 'delta']);
 
 /**
  * One append queue per file, a line count, and the pending coalesced line.
- * @type {Map<string, { chain: Promise<unknown>, lines: number, capped: boolean,
+ * @type {Map<string, { chain: Promise<unknown>, lines: number, capped: boolean, replayBytes: number,
  *                      pending: { entryDir: string, line: Record<string, unknown> } | null }>}
  */
 const writers = new Map();
 
 /**
  * @param {string} key
- * @returns {{ chain: Promise<unknown>, lines: number, capped: boolean,
+ * @returns {{ chain: Promise<unknown>, lines: number, capped: boolean, replayBytes: number,
  *             pending: { entryDir: string, line: Record<string, unknown> } | null }}
  */
 function writerFor(key) {
   let entry = writers.get(key);
   if (!entry) {
-    entry = { chain: Promise.resolve(), lines: 0, capped: false, pending: null };
+    entry = { chain: Promise.resolve(), lines: 0, capped: false, replayBytes: 0, pending: null };
     writers.set(key, entry);
   }
   return entry;
@@ -126,7 +129,7 @@ function writerFor(key) {
  */
 function clip(value, limit = MAX_LINE_BYTES) {
   if (typeof value !== 'string') return value;
-  return value.length > limit ? `${value.slice(0, limit)}… [clipped]` : value;
+  return value.length > limit ? `${value.slice(0, limit)}${CLIPPED}` : value;
 }
 
 /**
@@ -245,7 +248,19 @@ export function recordTranscriptEvent(entry) {
       line[key] = clip(event[key], PROSE_KEYS.has(key) ? MAX_PROSE_BYTES : MAX_LINE_BYTES);
     }
   }
-  if (event.arguments !== undefined) line.arguments = clip(event.arguments);
+  if (event.arguments !== undefined) {
+    const raw = event.arguments;
+    const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+    line.arguments = text?.length > MAX_LINE_BYTES ? clip(text) : raw;
+    // The drawer gets the excerpt; only recovery reads the larger historical payload.
+    if (type === 'tool_call' && text?.length > MAX_LINE_BYTES) {
+      const bytes = Buffer.byteLength(text);
+      if (bytes <= MAX_REPLAY_CALL_BYTES && writer.replayBytes + bytes <= MAX_REPLAY_EXTRA_BYTES) {
+        line.replayArguments = text;
+        writer.replayBytes += bytes;
+      }
+    }
+  }
   if (event.result !== undefined) line.result = clip(event.result);
   if (entry.role) line.role = entry.role;
 
@@ -312,7 +327,7 @@ export async function flushTranscripts(id, attemptId, options = {}) {
  * Read one attempt's transcript.
  * @param {string} [id] board id, or unused when `options.entryDir` is set
  * @param {string} attemptId
- * @param {{ limit?: number, entryDir?: string }} [options]
+ * @param {{ limit?: number, entryDir?: string, forReplay?: boolean }} [options]
  * @returns {Promise<{ events: Record<string, unknown>[], truncated: boolean, capped: boolean, modelSelection?: Record<string, unknown> }>}
  */
 export async function readTranscript(id, attemptId, options = {}) {
@@ -342,7 +357,15 @@ export async function readTranscript(id, attemptId, options = {}) {
     if (!line.trim()) continue;
     try {
       const parsed = JSON.parse(line);
-      if (parsed && typeof parsed === 'object') events.push(parsed);
+      if (!parsed || typeof parsed !== 'object') continue;
+      if (options.forReplay && parsed.type === 'tool_call' &&
+          typeof parsed.arguments === 'string' && parsed.arguments.endsWith(CLIPPED)) {
+        parsed.arguments = typeof parsed.replayArguments === 'string'
+          ? parsed.replayArguments
+          : JSON.stringify({ _minnow_replay: 'Historical arguments were truncated and are unavailable.' });
+      }
+      delete parsed.replayArguments;
+      events.push(parsed);
     } catch {
     }
   }

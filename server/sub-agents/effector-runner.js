@@ -190,7 +190,7 @@ async function loadContinuePriorFromDisk(parentChatId, run) {
   const entryDir = agentsDir(parentChatId);
   try {
     await flushTranscripts(parentChatId, last.attemptId, { entryDir });
-    const { events } = await readTranscript(parentChatId, last.attemptId, { entryDir });
+    const { events } = await readTranscript(parentChatId, last.attemptId, { entryDir, forReplay: true });
     // Compaction dividers are UI-only rows; a continue seed must never send them.
     const mapped = turnEventsToMessages(events).filter(
       (row) => !(row && typeof row === 'object' && isUiOnlyTranscriptMessage(/** @type {any} */ (row))),
