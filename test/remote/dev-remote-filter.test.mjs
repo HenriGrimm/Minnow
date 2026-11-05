@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
+import http from 'node:http';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
+import { createServer as createVite } from 'vite';
 import { createDevRemoteHandler, createDevRemotePathPolicy } from '../../server/remote/dev-remote-filter.js';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-'));
@@ -12,6 +14,8 @@ for (const dir of ['src', 'node_modules', 'public/icons', 'server', 'documentati
 for (const file of ['server.js', 'package.json', 'AGENTS.md', 'index.html', '.DS_Store', '.env', 'public/manifest.json', 'public/sw.js']) {
   fs.writeFileSync(path.join(root, file), '');
 }
+fs.writeFileSync(path.join(root, 'public/icons/icon-192.png'), '');
+const viteFsRoot = '/@fs/' + root.replaceAll('\\', '/');
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('dev remote path policy', () => {
@@ -20,16 +24,15 @@ describe('dev remote path policy', () => {
   test('lets through what the SPA loads', () => {
     for (const p of [
       '/',
-      '/connect',
       '/index.html',
       '/api/auth/me',
       '/src/main.ts',
       '/node_modules/.vite/deps/qrcode.js',
-      `/@fs${root}/node_modules/.vite/deps/chunk.js`,
+      `${viteFsRoot}/node_modules/.vite/deps/chunk.js`,
       '/@vite/client',
       '/@id/__x00__virtual',
-      `/@fs${root}/src/main.ts`,
-      `/@fs${root}/node_modules/pkg/index.js`,
+      `${viteFsRoot}/src/main.ts`,
+      `${viteFsRoot}/node_modules/pkg/index.js`,
       '/manifest.json',
       '/sw.js',
       '/icons/icon-192.png',
@@ -39,6 +42,7 @@ describe('dev remote path policy', () => {
   });
 
   test('keeps the rest of the checkout and dotfiles private', () => {
+    fs.writeFileSync(path.join(root, 'after-start.txt'), 'private');
     for (const p of [
       '/.DS_Store',
       '/.env',
@@ -47,6 +51,8 @@ describe('dev remote path policy', () => {
       '/node_modules/.bin/vite',
       '/src/.vite/x.js',
       '/server.js',
+      '/SeRvEr.Js',
+      '/after-start.txt',
       '/server/auth/pairing.js',
       '/package.json',
       '/AGENTS.md',
@@ -77,5 +83,34 @@ describe('dev remote path policy', () => {
     assert.equal(res.statusCode, 404);
     handler(/** @type {any} */ ({ url: '/src/main.ts?t=1' }), /** @type {any} */ ({}));
     assert.deepEqual(seen, ['/src/main.ts?t=1']);
+  });
+
+  test('deep links go to the shell without handing a private filename to Vite', () => {
+    const seen = [];
+    const handler = createDevRemoteHandler(() => assert.fail('private path reached Vite'), {
+      root, serveShell: req => seen.push(req.url),
+    });
+    for (const url of ['/connect', '/settings/network']) {
+      handler({ url, method: 'GET', headers: { accept: 'text/html' } }, {});
+    }
+    assert.deepEqual(seen, ['/connect', '/settings/network']);
+  });
+
+  test('Vite fallback cannot serve a late-created file or a case alias', async () => {
+    const vite = await createVite({ root, configFile: false, logLevel: 'silent', appType: 'custom',
+      server: { middlewareMode: true, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true } });
+    const server = http.createServer(createDevRemoteHandler(vite.middlewares, { root }));
+    try {
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const base = 'http://127.0.0.1:' + server.address().port;
+      fs.writeFileSync(path.join(root, 'new-secret.txt'), 'private');
+      for (const file of ['/new-secret.txt', '/SeRvEr.Js']) {
+        assert.equal((await fetch(base + file)).status, 404);
+      }
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+      await vite.close();
+    }
   });
 });

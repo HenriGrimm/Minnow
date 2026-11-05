@@ -205,6 +205,10 @@ async function main() {
     requestHandler: createDevRemoteHandler(vite.middlewares, {
       root: vite.config.root,
       publicDir: vite.config.publicDir || undefined,
+      serveShell: createSpaAuthHtmlMiddleware({
+        indexPath: path.join(appRoot, 'index.html'),
+        transformHtml: (url, html) => vite.transformIndexHtml(url, html),
+      }),
       isImportedModule: (pathname) => vite.environments.client.moduleGraph.urlToModuleMap.has(pathname),
       bundle: remoteBundle,
     }),
