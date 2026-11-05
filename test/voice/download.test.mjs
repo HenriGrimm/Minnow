@@ -13,6 +13,9 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import {
   resetVoiceDownloadsForTests,
   startVoiceDownload,
+  listVoiceDownloads,
+  listInstalledVoiceModels,
+  cancelVoiceDownload,
 } from '../../server/voice/download.js';
 import { getVoiceInstalledPath } from '../../server/voice/paths.js';
 import { handleVoiceRequest } from '../../server/voice/routes.js';
@@ -105,12 +108,12 @@ describe('voice download API', () => {
   });
 
   after(async () => {
+    await resetVoiceDownloadsForTests();
     globalThis.fetch = ORIGINAL_FETCH;
     await new Promise((resolve) => server?.close(resolve));
     await fs.rm(homeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
-    await resetVoiceDownloadsForTests();
   });
 
   test('POST /api/voice/download rejects standalone tokenizer download', async () => {
@@ -197,6 +200,37 @@ describe('voice download API', () => {
     assert.equal(res.status, 200);
     assert.ok(Array.isArray(res.json.stt));
     assert.ok(res.json.stt.some((row) => row.modelId === 'openai/whisper-tiny'));
+  });
+
+  test('in-progress files stay hidden and a cancelled transfer can be retried', async () => {
+    const modelId = 'openai/whisper-medium';
+    const normalFetch = globalThis.fetch;
+    let atWeights;
+    const waiting = new Promise(resolve => { atWeights = resolve; });
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/resolve/main/model.safetensors')) {
+        atWeights();
+        return new Promise((resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new Error('Download cancelled')), { once: true });
+        });
+      }
+      return normalFetch(url, init);
+    };
+    try {
+      const job = await startVoiceDownload({ modelId, kind: 'stt' });
+      await waiting;
+      assert.equal((await startVoiceDownload({ modelId, kind: 'stt' })).id, job.id);
+      assert.ok(!(await listInstalledVoiceModels()).stt.some(row => row.modelId === modelId));
+      await assert.rejects(fs.stat(job.destDir), { code: 'ENOENT' });
+      await cancelVoiceDownload(job.id);
+      await resetVoiceDownloadsForTests();
+      assert.equal((await listVoiceDownloads()).find(row => row.id === job.id).status, 'cancelled');
+    } finally {
+      globalThis.fetch = normalFetch;
+    }
+    await startVoiceDownload({ modelId, kind: 'stt' });
+    await resetVoiceDownloadsForTests();
+    assert.ok((await listInstalledVoiceModels()).stt.some(row => row.modelId === modelId));
   });
 
   test('cancel endpoint accepts job id', async () => {

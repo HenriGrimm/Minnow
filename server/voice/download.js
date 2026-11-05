@@ -30,6 +30,7 @@ const MIN_FREE_BYTES = 500 * 1024 * 1024;
  * @property {VoiceDownloadStatus} status
  * @property {number} bytesReceived
  * @property {number | null} totalBytes
+ * @property {boolean} [staged]
  * @property {string} destDir
  * @property {string} [error]
  * @property {number} createdAt
@@ -45,7 +46,32 @@ const listenersByJob = new Map();
 /** @type {VoiceDownloadJob[]} */
 let jobsCache = [];
 
-let loaded = false;
+let loading;
+let jobsWrites = Promise.resolve();
+let manifestWrites = Promise.resolve();
+const running = new Set();
+const completeMarker = '.minnow-snapshot-complete';
+
+function stagingDir(jobId) {
+  return path.join(path.dirname(getVoiceModelsRoot()), '.voice-downloads', validateJobId(jobId));
+}
+
+function withManifest(operation) {
+  const next = manifestWrites.then(operation);
+  manifestWrites = next.catch(() => {});
+  return next;
+}
+
+async function writeJson(file, value) {
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  const tmp = file + '.' + crypto.randomUUID() + '.tmp';
+  try {
+    await fsp.writeFile(tmp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx', flush: true });
+    await fsp.rename(tmp, file);
+  } finally {
+    await fsp.rm(tmp, { force: true });
+  }
+}
 
 function emit(jobId, event) {
   const set = listenersByJob.get(jobId);
@@ -60,24 +86,65 @@ function emit(jobId, event) {
 }
 
 async function loadJobs() {
-  if (loaded) return;
-  loaded = true;
+  loading ??= recoverJobs().catch((err) => {
+    loading = undefined;
+    throw err;
+  });
+  return loading;
+}
+
+async function recoverJobs() {
   try {
     const raw = await fsp.readFile(getVoiceDownloadsIndexPath(), 'utf8');
     const parsed = JSON.parse(raw);
     jobsCache = Array.isArray(parsed.jobs) ? parsed.jobs : [];
-  } catch {
-    jobsCache = [];
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    return;
   }
+  const interrupted = jobsCache.filter(job => ['queued', 'running'].includes(job.status));
+  for (const job of interrupted) {
+    const stage = stagingDir(job.id);
+    validateKind(job.kind);
+    const dest = voiceModelDir(validateRepoId(job.modelId));
+    const candidates = [[job.kind, job.modelId, dest]];
+    if (job.kind === 'tts' && resolveTtsCatalogMeta(job.modelId).requiresTokenizer) {
+      candidates.unshift(['tts', QWEN_TOKENIZER_MODEL_ID, voiceModelDir(QWEN_TOKENIZER_MODEL_ID)]);
+    }
+    for (const [kind, modelId, dir] of candidates) {
+      const manifest = await readInstalledManifestFile();
+      const recorded = manifest[kind].find(row => row.modelId === modelId);
+      if (recorded) {
+        if (recorded.path !== dir || await snapshotAvailable(dir, modelId)) continue;
+        manifest[kind] = manifest[kind].filter(row => row.modelId !== modelId);
+        await writeInstalledManifest(manifest);
+      }
+      const marker = await fsp.readFile(path.join(dir, completeMarker), 'utf8').catch(err => {
+        if (err.code !== 'ENOENT') throw err;
+        return '';
+      });
+      if (marker === modelId) {
+        await registerInstalledModel(kind, modelId, dir, { mode: kind === 'tts' ? resolveTtsCatalogMeta(modelId).mode : undefined });
+      } else if (!job.staged) {
+        // Older builds streamed into the public directory. Retain ambiguous files for recovery.
+        const parked = path.join(path.dirname(stage), 'interrupted-' + job.id, path.basename(dir));
+        await fsp.mkdir(path.dirname(parked), { recursive: true });
+        await fsp.rename(dir, parked).catch(err => { if (err.code !== 'ENOENT') throw err; });
+      }
+    }
+    const installed = await readInstalledManifestFile();
+    job.status = installed[job.kind].some(row => row.modelId === job.modelId) ? 'completed' : 'failed';
+    if (job.status === 'failed') job.error = 'Download interrupted. Start the download again.';
+    job.finishedAt = Date.now();
+    await fsp.rm(stage, { recursive: true, force: true });
+  }
+  if (interrupted.length) await saveJobs();
 }
 
-async function saveJobs() {
-  await fsp.mkdir(path.dirname(getVoiceDownloadsIndexPath()), { recursive: true });
-  await fsp.writeFile(
-    getVoiceDownloadsIndexPath(),
-    `${JSON.stringify({ version: 1, jobs: jobsCache }, null, 2)}\n`,
-    'utf8',
-  );
+function saveJobs() {
+  const next = jobsWrites.then(() => writeJson(getVoiceDownloadsIndexPath(), { version: 1, jobs: jobsCache }));
+  jobsWrites = next.catch(() => {});
+  return next;
 }
 
 /**
@@ -176,6 +243,36 @@ async function computeDirSizeBytes(destDir) {
   return sizeBytes;
 }
 
+// Legacy downloads lack a completion marker. Recognize supported weight layouts,
+// including all the shards referenced by a transformers index.
+async function snapshotAvailable(dir, modelId) {
+  let entries;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+  const files = new Set(entries.filter(entry => entry.isFile()).map(entry => entry.name));
+  if (files.has(completeMarker) && await fsp.readFile(path.join(dir, completeMarker), 'utf8') === modelId) return true;
+  if (!files.has('config.json') || [...files].some(file => file.endsWith('.partial'))) return false;
+  const weightsPresent = async (name) => files.has(name) && (await fsp.stat(path.join(dir, name))).size > 0;
+  for (const name of ['model.safetensors', 'model.bin', 'pytorch_model.bin']) {
+    if (await weightsPresent(name)) return true;
+  }
+  for (const name of ['model.safetensors.index.json', 'pytorch_model.bin.index.json']) {
+    if (!files.has(name)) continue;
+    try {
+      const index = JSON.parse(await fsp.readFile(path.join(dir, name), 'utf8'));
+      const shards = [...new Set(Object.values(index.weight_map ?? {}))];
+      if (shards.length && (await Promise.all(shards.map(weightsPresent))).every(Boolean)) return true;
+    } catch (err) {
+      if (!(err instanceof SyntaxError)) throw err;
+    }
+  }
+  return false;
+}
+
 /**
  * Scan ~/.minnow/models/voice for HF snapshot folders and rebuild the manifest.
  * @returns {Promise<{ version: number, stt: InstalledVoiceModel[], tts: InstalledVoiceModel[] }>}
@@ -197,6 +294,7 @@ async function rebuildInstalledManifestFromDisk() {
     if (!kind) continue;
 
     const destDir = path.join(modelsRoot, entry.name);
+    if (!await snapshotAvailable(destDir, modelId)) continue;
     let installedAt = Date.now();
     try {
       const stat = await fsp.stat(destDir);
@@ -267,7 +365,18 @@ async function shouldRebuildManifest(manifest) {
  */
 async function readInstalledManifest({ rebuildFromDisk = false } = {}) {
   const manifest = await readInstalledManifestFile();
-  if (rebuildFromDisk && (await shouldRebuildManifest(manifest))) {
+  if (!rebuildFromDisk) return manifest;
+  for (const kind of ['stt', 'tts']) {
+    const usable = [];
+    for (const row of manifest[kind]) {
+      if (row.path !== voiceModelDir(row.modelId) || await snapshotAvailable(row.path, row.modelId)) usable.push(row);
+    }
+    if (usable.length !== manifest[kind].length) {
+      manifest[kind] = usable;
+      await writeInstalledManifest(manifest);
+    }
+  }
+  if (await shouldRebuildManifest(manifest)) {
     return rebuildInstalledManifestFromDisk();
   }
   return manifest;
@@ -277,8 +386,7 @@ async function readInstalledManifest({ rebuildFromDisk = false } = {}) {
  * @param {{ version: number, stt: InstalledVoiceModel[], tts: InstalledVoiceModel[] }} manifest
  */
 async function writeInstalledManifest(manifest) {
-  await fsp.mkdir(path.dirname(getVoiceInstalledPath()), { recursive: true });
-  await fsp.writeFile(getVoiceInstalledPath(), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await writeJson(getVoiceInstalledPath(), manifest);
 }
 
 /**
@@ -306,6 +414,28 @@ async function registerInstalledModel(kind, modelId, destDir, options = {}) {
   await writeInstalledManifest(manifest);
 }
 
+async function publishSnapshot(kind, modelId, incoming, mode) {
+  await fsp.writeFile(path.join(incoming, completeMarker), modelId);
+  await withManifest(async () => {
+    const existing = await readInstalledManifestFile();
+    if (existing[kind].some(row => row.modelId === modelId)) return;
+    const dest = voiceModelDir(modelId);
+    try {
+      // Old builds can leave unregistered, incomplete directories in the public tree.
+      if (!await snapshotAvailable(dest, modelId)) {
+        const parked = path.join(path.dirname(getVoiceModelsRoot()), '.voice-downloads', 'interrupted-' + crypto.randomUUID());
+        await fsp.rename(dest, parked).catch(err => { if (err.code !== 'ENOENT') throw err; });
+      }
+      await fsp.rename(incoming, dest);
+    } catch (err) {
+      // Another completed transfer may have published just before a manifest write failed.
+      const marker = await fsp.readFile(path.join(dest, completeMarker), 'utf8').catch(() => '');
+      if (marker !== modelId) throw err;
+    }
+    await registerInstalledModel(kind, modelId, dest, { mode });
+  });
+}
+
 /**
  * Download the Qwen tokenizer dependency when a TTS model requires it.
  * @param {string} parentJobId
@@ -317,14 +447,14 @@ async function ensureTokenizerDownloaded(parentJobId, signal, onProgress) {
   const hasTokenizer = manifest.tts.some((row) => row.modelId === QWEN_TOKENIZER_MODEL_ID);
   if (hasTokenizer) return;
 
-  const destDir = voiceModelDir(QWEN_TOKENIZER_MODEL_ID);
+  const destDir = path.join(stagingDir(parentJobId), 'tokenizer');
   const result = await downloadHfSnapshot({
     repoId: QWEN_TOKENIZER_MODEL_ID,
     destDir,
     signal,
     onProgress: (bytes, total) => onProgress(bytes, total),
   });
-  await registerInstalledModel('tts', QWEN_TOKENIZER_MODEL_ID, destDir, { mode: 'tokenizer' });
+  await publishSnapshot('tts', QWEN_TOKENIZER_MODEL_ID, destDir, 'tokenizer');
   emit(parentJobId, {
     jobId: parentJobId,
     status: 'running',
@@ -341,21 +471,20 @@ async function runDownloadJob(job) {
   const controller = new AbortController();
   abortByJob.set(job.id, controller);
 
-  job.status = 'running';
-  await saveJobs();
-  emit(job.id, {
-    jobId: job.id,
-    status: job.status,
-    bytesReceived: job.bytesReceived,
-    totalBytes: job.totalBytes,
-  });
-
   try {
+    job.status = 'running';
+    await saveJobs();
+    emit(job.id, {
+      jobId: job.id,
+      status: job.status,
+      bytesReceived: job.bytesReceived,
+      totalBytes: job.totalBytes,
+    });
     const repoId =
       job.kind === 'stt' ? resolveSttDownloadRepoId(job.modelId) : job.modelId;
     const result = await downloadHfSnapshot({
       repoId,
-      destDir: job.destDir,
+      destDir: path.join(stagingDir(job.id), 'model'),
       signal: controller.signal,
       onProgress: (bytes, total) => {
         job.bytesReceived = bytes;
@@ -373,10 +502,12 @@ async function runDownloadJob(job) {
     if (job.kind === 'tts') {
       const meta = resolveTtsCatalogMeta(job.modelId);
       if (meta.requiresTokenizer) {
+        const parentBytes = result.bytesReceived;
+        const parentTotal = result.totalBytes;
         await ensureTokenizerDownloaded(job.id, controller.signal, (bytes, total) => {
-          job.bytesReceived += bytes;
+          job.bytesReceived = parentBytes + bytes;
           if (total != null) {
-            job.totalBytes = (job.totalBytes ?? 0) + total;
+            job.totalBytes = (parentTotal ?? 0) + total;
           }
           emit(job.id, {
             jobId: job.id,
@@ -388,10 +519,11 @@ async function runDownloadJob(job) {
       }
     }
 
+    controller.signal.throwIfAborted();
+    const ttsMode = job.kind === 'tts' ? resolveTtsCatalogMeta(job.modelId).mode : undefined;
+    await publishSnapshot(job.kind, job.modelId, path.join(stagingDir(job.id), 'model'), ttsMode);
     job.status = 'completed';
     job.finishedAt = Date.now();
-    const ttsMode = job.kind === 'tts' ? resolveTtsCatalogMeta(job.modelId).mode : undefined;
-    await registerInstalledModel(job.kind, job.modelId, job.destDir, { mode: ttsMode });
     emit(job.id, {
       jobId: job.id,
       status: job.status,
@@ -403,7 +535,6 @@ async function runDownloadJob(job) {
     job.status = cancelled ? 'cancelled' : 'failed';
     job.error = err instanceof Error ? err.message : String(err);
     job.finishedAt = Date.now();
-    await fsp.rm(job.destDir, { recursive: true, force: true }).catch(() => {});
     emit(job.id, {
       jobId: job.id,
       status: job.status,
@@ -413,6 +544,7 @@ async function runDownloadJob(job) {
     });
   } finally {
     abortByJob.delete(job.id);
+    await fsp.rm(stagingDir(job.id), { recursive: true, force: true });
     await saveJobs();
   }
 }
@@ -444,7 +576,7 @@ export async function startVoiceDownload(body) {
   const modelId = validateRepoId(String(body.modelId || '').trim());
 
   const destDir = voiceModelDir(modelId);
-  const existing = await readInstalledManifest({ rebuildFromDisk: true });
+  const existing = await withManifest(() => readInstalledManifest({ rebuildFromDisk: true }));
   const list = kind === 'stt' ? existing.stt : existing.tts;
   const already = list.some((row) => row.modelId === modelId);
   if (already) {
@@ -472,7 +604,10 @@ export async function startVoiceDownload(body) {
     await assertDiskSpace(MIN_FREE_BYTES);
   }
 
+  const active = jobsCache.find(job => job.modelId === modelId && ['queued', 'running'].includes(job.status));
+  if (active) return publicJob(active);
   const job = /** @type {VoiceDownloadJob} */ ({
+    staged: true,
     id: crypto.randomUUID(),
     kind,
     modelId,
@@ -484,10 +619,19 @@ export async function startVoiceDownload(body) {
   });
 
   jobsCache.unshift(job);
-  if (jobsCache.length > 100) jobsCache.length = 100;
-  await saveJobs();
+  jobsCache = jobsCache.filter((entry, index) => index < 100 || ['running', 'queued'].includes(entry.status));
+  try {
+    await saveJobs();
+  } catch (err) {
+    jobsCache = jobsCache.filter(row => row !== job);
+    throw err;
+  }
+  if (job.status === 'cancelled') return publicJob(job);
 
-  void runDownloadJob(job);
+  const task = runDownloadJob(job).catch(error => {
+    console.warn('[voice] Could not persist download job:', error.message);
+  }).finally(() => running.delete(task));
+  running.add(task);
   return publicJob(job);
 }
 
@@ -511,6 +655,11 @@ export async function cancelVoiceDownload(jobId) {
   }
   const controller = abortByJob.get(jobId);
   if (controller) controller.abort();
+  else if (job.status === 'queued') {
+    job.status = 'cancelled';
+    job.finishedAt = Date.now();
+    await saveJobs();
+  }
   return publicJob(job);
 }
 
@@ -538,7 +687,8 @@ export function subscribeVoiceDownload(jobId, listener) {
 }
 
 export async function listInstalledVoiceModels() {
-  return readInstalledManifest({ rebuildFromDisk: true });
+  await loadJobs();
+  return withManifest(() => readInstalledManifest({ rebuildFromDisk: true }));
 }
 
 /**
@@ -546,6 +696,11 @@ export async function listInstalledVoiceModels() {
  * @param {string} modelId
  */
 export async function deleteVoiceModel(kind, modelId) {
+  await loadJobs();
+  return withManifest(() => deleteInstalledModel(kind, modelId));
+}
+
+async function deleteInstalledModel(kind, modelId) {
   const normalizedKind = validateKind(kind);
   const normalizedId = validateRepoId(String(modelId || '').trim());
   const manifest = await readInstalledManifest({ rebuildFromDisk: true });
@@ -554,7 +709,7 @@ export async function deleteVoiceModel(kind, modelId) {
   if (!entry) {
     throw new Error('Installed model not found');
   }
-  await fsp.rm(entry.path, { recursive: true, force: true }).catch(() => {});
+  await fsp.rm(entry.path, { recursive: true, force: true });
   const next = list.filter((row) => row.modelId !== normalizedId);
   if (normalizedKind === 'stt') manifest.stt = next;
   else manifest.tts = next;
@@ -564,18 +719,9 @@ export async function deleteVoiceModel(kind, modelId) {
 
 /** Test helper — reset module state. */
 export async function resetVoiceDownloadsForTests() {
+  await Promise.all(running);
   jobsCache = [];
-  loaded = false;
+  loading = undefined;
   abortByJob.clear();
   listenersByJob.clear();
-  try {
-    await fsp.rm(getVoiceDownloadsIndexPath(), { force: true });
-  } catch {
-    /* ignore */
-  }
-  try {
-    await fsp.rm(getVoiceInstalledPath(), { force: true });
-  } catch {
-    /* ignore */
-  }
 }
