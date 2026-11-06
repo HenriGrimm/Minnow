@@ -5,12 +5,13 @@ import type { TranscriptMessage } from '../../server/runner/transcript-store';
 import type { RunnerDeps } from '../../server/runner/adapters';
 import { runHeadlessSharedTurn } from '../../src/headless/shared-turn.ts';
 import { estimateApiMessagesTokens, applyServerContextPolicy } from '../../server/runner/context-budget.js';
+import { recordContextEstimateBias } from '../../server/runner/estimate-calibration.js';
 import type { ApiMessage } from '../../src/types';
 
 const tool = { type: 'function' as const, function: { name: 'read_file', description: 'Read a file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } };
 const call = { index: 0, id: 'read-1', type: 'function', function: { name: 'read_file', arguments: '{"path":"README.md"}' } };
-function response(delta: unknown, finish_reason = 'stop') {
-  return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\n\ndata: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+function response(delta: unknown, finish_reason = 'stop', metadata = {}) {
+  return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason }], ...metadata })}\n\ndata: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 function deps(post: RunnerDeps['postChatCompletions']): RunnerDeps {
   return {
@@ -275,6 +276,44 @@ test('supervised builds compact against chat watermarks and recall original tool
   assert.equal(requests, 2);
   assert.ok(compacted.length >= 1);
   assert.ok(compacted[0] < modelWindow * 0.4);
+});
+
+test('Codex compacts on measured occupancy plus pending tool results, despite a misleading transcript estimate', async () => {
+  const messages: TranscriptMessage[] = [{ role: 'user', content: 'Review the source files.' }];
+  for (let i = 0; i < 12; i++) {
+    messages.push(
+      { role: 'assistant', content: '', tool_calls: [{ ...call, id: `prior-${i}` }] },
+      { role: 'tool', tool_call_id: `prior-${i}`, content: 'export const value = 123456789;\n'.repeat(2100) },
+    );
+  }
+  const window = 828_400;
+  const reply = 'source line\n'.repeat(1000);
+  const replyTokens = estimateApiMessagesTokens([{ role: 'tool', tool_call_id: 'read', content: reply }]);
+  const checkpoints: number[] = [];
+  let requests = 0;
+  const adapters = deps(async () => {
+    requests++;
+    if (requests === 4) return response({ content: 'Finished.' });
+    if (requests === 1) {
+      // A concurrent chat on this model underestimated its native prompt.
+      recordContextEstimateBias('codex-compaction-regression', 400_000, 100_000);
+    }
+    // One native reading spans two handoffs. Only their combined replies cross 80%.
+    const used = requests === 1 ? 151_252 : window * 0.8 - 1.5 * replyTokens;
+    return response({ tool_calls: [{ ...call, id: `read-${requests}` }] }, 'tool_calls', {
+      minnow_cli: { transport: 'app-server', context: { used, input: used - 100, limit: window } },
+    });
+  });
+  adapters.resolveModelContextLimit = () => 1_000_000;
+  const result = await runHeadlessSharedTurn({
+    ...options(adapters),
+    model: { providerId: 'codex-cli', id: 'codex-compaction-regression' },
+    messages,
+    execute: async () => ({ content: `File ${requests}\n${reply}` }),
+    onEvent: event => { if (event.type === 'context_compaction') checkpoints.push(requests); },
+  });
+  assert.equal(result.assistantFinal, 'Finished.');
+  assert.deepEqual(checkpoints, [3]);
 });
 
 test('wall clock timeout aborts the active generation transport', async () => {

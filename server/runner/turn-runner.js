@@ -123,7 +123,7 @@ import {
   MAX_TRANSIENT_FETCH_ATTEMPTS,
   retryOnceOnTransientFetch
 } from "./transient-fetch-retry.js";
-import { LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from "./provider-ids.js";
+import { CODEX_CLI_PROVIDER_ID, LLAMA_CPP_LOCAL_PROVIDER_ID, MLX_LM_LOCAL_PROVIDER_ID } from "./provider-ids.js";
 import { applySamplerToBody, DEFAULT_AGENT_MAX_TOKENS } from "./sampler-types.js";
 import { buildOpeningMessages } from "./opening-messages.js";
 import {
@@ -1050,16 +1050,36 @@ function createTurnRunner(deps) {
         });
         emitTurnEvent({ type: "round_start", index: currentRoundIndex });
       };
+      const isCodexCli = input.providerId === CODEX_CLI_PROVIDER_ID;
+      const usesCodexCompaction = isCodexCli &&
+        (normalizeContextEnforcementPolicy(contextBudget.enforcementPolicy) ?? DEFAULT_CONTEXT_ENFORCEMENT_POLICY) === "compact";
+      let codexMeasurement = null;
+      const recordCodexMeasurement = (turnResult) => {
+        if (!usesCodexCompaction) return;
+        const native = turnResult.streamMeta?.minnow_cli?.context;
+        if (!(Number.isFinite(native?.used) && native.used > 0 && Number.isFinite(native.limit) && native.limit > 0)) {
+          codexMeasurement = null;
+          return;
+        }
+        // Several tool handoffs can replay the same native tokenUsage notification.
+        // Keep its original baseline so intervening tool results still count.
+        if (codexMeasurement?.used === native.used && codexMeasurement.input === native.input &&
+            codexMeasurement.limit === native.limit) return;
+        codexMeasurement = {
+          ...native,
+          estimated: estimateApiMessagesTokens(messages) + estimateToolsTokens(input.tools)
+        };
+      };
       const emitRoundEnd = (turnResult) => {
         const usage = turnResult?.streamMeta?.usage;
         const requestUsage = usage?.last_request_usage === undefined ? usage : usage.last_request_usage;
         const nativeContext = turnResult?.streamMeta?.minnow_cli?.context;
         if (Number.isFinite(nativeContext?.used) && nativeContext.used >= 0) {
           if (Number.isFinite(nativeContext.limit) && nativeContext.limit > 0) {
-            modelContextLimit = narrowContextLimit(modelContextLimit, nativeContext.limit);
+            modelContextLimit = isCodexCli ? nativeContext.limit : narrowContextLimit(modelContextLimit, nativeContext.limit);
             recordObservedContextWindow(input.providerId, input.modelId, nativeContext.limit);
           }
-          if (Number.isFinite(nativeContext.input) && nativeContext.input > 0) {
+          if (!usesCodexCompaction && Number.isFinite(nativeContext.input) && nativeContext.input > 0) {
             recordContextEstimateBias(input.modelId, nativeContext.input, estimateApiMessagesTokens(messages), reservedTokens);
           }
           emitTurnEvent({ type: "context_usage", used: nativeContext.used, limit: modelContextLimit ?? null, isEstimate: false });
@@ -1152,6 +1172,7 @@ function createTurnRunner(deps) {
           originalOf: (id) => originalRows.get(id)
         });
         if (out.changed) {
+          codexMeasurement = null;
           adoptProjection(out);
           if (out.checkpoint && !sameCheckpoint(out.checkpoint, compaction)) {
             compaction = out.checkpoint;
@@ -1200,7 +1221,20 @@ function createTurnRunner(deps) {
           );
         }
         ({ reservedTokens, requestMaxTokens } = refreshLocalWindowReserves());
-        const calibrated = contextCalibratedMessageLimit(
+        // Native occupancy includes the tool schemas and the assistant output.
+        // Add only locally estimated growth since that reading. The compactor
+        // sizes its projection in estimated message tokens, so convert the
+        // measured window to those units only after testing the watermark.
+        if (codexMeasurement && effectiveLimitOverride == null) {
+          const { effectiveLimit: window } = resolveContextBudget({ agentConfig: contextBudget, modelLimit: codexMeasurement.limit });
+          const estimated = estimateApiMessagesTokens(messages);
+          const used = codexMeasurement.used + Math.max(0, estimated + reservedTokens - codexMeasurement.estimated);
+          const config = resolveCompactionConfig(contextBudget, window);
+          if (used <= Math.floor(window * config.highWater)) return true;
+          const limit = Math.max(1, Math.floor(estimated * window / used));
+          return compactContext(turnIndex, limit, false);
+        }
+        const calibrated = usesCodexCompaction ? null : contextCalibratedMessageLimit(
           input.modelId,
           modelContextLimit,
           SAFETY_MARGIN,
@@ -1722,6 +1756,7 @@ function createTurnRunner(deps) {
           messages.push(
             buildSubAgentToolAssistantMessage(input.modelId, turnResult)
           );
+          recordCodexMeasurement(turnResult);
           const firstTool = turnResult.toolCalls[0]?.function?.name?.trim();
           emitLiveActivity(
             {
@@ -1794,6 +1829,7 @@ function createTurnRunner(deps) {
           }
           continue;
         }
+        recordCodexMeasurement(turnResult);
         emitRoundEnd(turnResult);
         let prose = await completionTextForTurn(
           turnResult,
