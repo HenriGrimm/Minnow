@@ -677,20 +677,6 @@
   display: contents;
 }
 
-.brain-graph-dense {
-  position: absolute;
-  top: calc(var(--brain-graph-below-toolbar) + 12px);
-  left: calc(var(--brain-graph-sidebar-w) + 16px);
-  z-index: 3;
-  flex-shrink: 0;
-  align-self: center;
-  max-width: min(380px, calc(100% - var(--brain-graph-sidebar-w) - 24px));
-  font-size: 12px;
-  margin: 0;
-  padding: 8px 12px;
-  text-align: center;
-}
-
 /*
  * Left rail: the page tree takes whatever height is left over and scrolls, the
  * structure readout sits under it at its natural height. Flexbox owns this —
@@ -1296,10 +1282,6 @@
 
   .brain-graph-overlays {
     padding: 0;
-  }
-
-  .brain-graph-dense {
-    display: none;
   }
 
   /* Narrow screens keep a short page list above the reading sheet. */

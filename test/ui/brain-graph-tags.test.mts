@@ -25,31 +25,18 @@ describe('buildPageGraph tags (MIN-129)', () => {
     const graph = buildPageGraph([page(0), page(1)]);
     assert.equal(graph.nodes.filter((node) => node.kind === 'tag').length, 3);
     assert.equal(graph.edges.filter((edge) => edge.target === 'tag:shared').length, 2);
-    assert.equal(graph.truncated, false);
-    assert.equal(graph.hiddenCount, 0);
   });
 
-  test('retains tags when tags alone push a small catalog over the limit', () => {
-    const graph = buildPageGraph([page(0), page(1)], { maxNodes: 4 });
-    assert.deepEqual(new Set(graph.nodes.map((node) => node.id)), new Set([
-      'page:facts/page-0.md', 'tag:shared', 'tag:topic-0', 'page:facts/page-1.md',
-    ]));
-    assert.equal(graph.truncated, true);
-    assert.equal(graph.hiddenCount, 1);
-    assert.equal(graph.edges.filter((edge) => edge.target === 'tag:shared').length, 2);
-  });
-
-  test('retains tags and valid edges in a catalog exceeding the default limit', () => {
+  test('includes every page, tag, link target and edge in a large catalog', () => {
     const pages = Array.from({ length: 300 }, (_, index) => page(index));
     pages[0].links = ['facts/page-1', 'missing'];
     pages[0].similarTo = ['facts/page-1'];
     const graph = buildPageGraph(pages);
     const ids = new Set(graph.nodes.map((node) => node.id));
-    assert.equal(graph.nodes.length, 250);
-    assert.equal(graph.truncated, true);
-    assert.equal(graph.hiddenCount, 352);
+    assert.equal(graph.nodes.length, 602);
+    assert.equal(graph.edges.length, 603);
     assert.ok(ids.has('tag:shared'));
-    assert.ok(ids.has('tag:topic-0'));
+    assert.ok(ids.has('tag:topic-299'));
     assert.ok(graph.edges.some((edge) => edge.kind === 'tag'));
     assert.ok(graph.edges.some((edge) => edge.kind === 'wikilink'));
     assert.ok(graph.edges.some((edge) => edge.kind === 'similar'));
@@ -59,20 +46,12 @@ describe('buildPageGraph tags (MIN-129)', () => {
     }
   });
 
-  test('hiding tags keeps the page budget and removes tag edges', () => {
+  test('hiding tags keeps every page and removes tag edges', () => {
     const graph = buildPageGraph(Array.from({ length: 300 }, (_, index) => page(index)), {
       includeTags: false,
     });
-    assert.equal(graph.nodes.length, 250);
-    assert.equal(graph.hiddenCount, 50);
+    assert.equal(graph.nodes.length, 300);
     assert.ok(graph.nodes.every((node) => node.kind === 'page'));
     assert.ok(graph.edges.every((edge) => edge.kind !== 'tag'));
-  });
-
-  test('does not truncate at the exact limit', () => {
-    const graph = buildPageGraph([page(0)], { maxNodes: 3 });
-    assert.equal(graph.nodes.length, 3);
-    assert.equal(graph.truncated, false);
-    assert.equal(graph.hiddenCount, 0);
   });
 });

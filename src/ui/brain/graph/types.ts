@@ -72,14 +72,10 @@ export interface ForceGraphCallbacks {
 /** Options passed when creating a force graph instance. */
 export interface ForceGraphOptions extends ForceGraphCallbacks {
   reducedMotion?: boolean;
-  /** Soft cap before clustering message (default 250). */
-  maxNodes?: number;
 }
 
 /** Result of pure graph builders. */
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  truncated?: boolean;
-  hiddenCount?: number;
 }

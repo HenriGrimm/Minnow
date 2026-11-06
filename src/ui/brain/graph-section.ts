@@ -296,7 +296,6 @@ function syncLayoutVisibility(): void {
 async function refreshGraphCanvas(): Promise<void> {
   const canvas = document.getElementById('brainGraphCanvas') as HTMLCanvasElement | null;
   const statsEl = document.getElementById('brainGraphStats');
-  const denseEl = document.getElementById('brainGraphDenseNote');
   if (!canvas) return;
 
   if (!graphApi) {
@@ -337,7 +336,6 @@ async function refreshGraphCanvas(): Promise<void> {
     statsEl.classList.toggle('hidden', !narrowed);
   }
   syncGraphReadout(graphApi.getStats());
-  denseEl?.classList.toggle('hidden', !data.truncated);
   syncGraphOverlayOffsets();
 
   if (selectedPath) {

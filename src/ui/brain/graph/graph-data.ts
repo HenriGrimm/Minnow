@@ -1,8 +1,6 @@
 import type { BrainPageMeta } from '../../../brain/types';
 import type { GraphData, GraphEdge, GraphNode } from './types';
 
-const DEFAULT_MAX_NODES = 250;
-
 /** Normalize wiki paths for stable comparison. */
 function normPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\.md$/i, '');
@@ -14,11 +12,9 @@ export function buildPageGraph(
   options?: {
     includeTags?: boolean;
     orphanPaths?: Set<string>;
-    maxNodes?: number;
   },
 ): GraphData {
   const includeTags = options?.includeTags !== false;
-  const maxNodes = options?.maxNodes ?? DEFAULT_MAX_NODES;
   const pathSet = new Set(pages.map((p) => p.path));
   const nodes = new Map<string, GraphNode>();
   const edges: GraphEdge[] = [];
@@ -106,30 +102,7 @@ export function buildPageGraph(
     }
   }
 
-  let nodeList = [...nodes.values()];
-  let truncated = false;
-  let hiddenCount = 0;
-  if (nodeList.length > maxNodes) {
-    truncated = true;
-    // Keep each catalog page beside its tags in the budget order. Page-only
-    // pruning erased every tag as soon as the graph crossed the node limit.
-    const orderedIds = new Set<string>();
-    for (const page of pages) {
-      orderedIds.add(`page:${page.path}`);
-      if (includeTags) {
-        for (const tag of page.tags ?? []) orderedIds.add(`tag:${tag}`);
-      }
-    }
-    for (const node of nodeList) orderedIds.add(node.id);
-    const keepIds = new Set([...orderedIds].slice(0, maxNodes));
-    nodeList = nodeList.filter((n) => keepIds.has(n.id));
-    hiddenCount = nodes.size - nodeList.length;
-    const prunedEdges = edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
-    edges.length = 0;
-    edges.push(...prunedEdges);
-  }
-
-  return { nodes: nodeList, edges, truncated, hiddenCount };
+  return { nodes: [...nodes.values()], edges };
 }
 
 /** Filter page graph nodes by search query (label/path/tag). */
