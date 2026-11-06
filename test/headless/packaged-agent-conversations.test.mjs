@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { PACKAGED_AGENT_CHECKS, PACKAGED_AGENT_RECEIPT, parsePackagedVerificationArgs,
   resolvePackagedApp, verifyPackagedAgentConversations } from '../../scripts/verify-packaged-agent-conversations.mjs';
@@ -38,6 +39,44 @@ async function layout(root, platform) {
   for (const file of [executable, archive]) { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, 'fixture artifact'); }
   return { bundle, executable, archive };
 }
+
+test('packaged worker accepts a symlink home alias but rejects a different cwd', async t => {
+  const root = await fixture(t);
+  const home = path.join(root, 'home'), alias = path.join(root, 'alias');
+  const other = path.join(root, 'other'), app = path.join(root, 'app.asar');
+  await fs.mkdir(home); await fs.mkdir(other);
+  await fs.symlink(home, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const modules = {
+    'config/home.js': 'export function ensureMinnowLayout() {}',
+    'chats/repository.js': 'export function createChatRepository() { throw new Error("fixture stops at sqlite"); }',
+    'chats/runtime.js': 'export function createProductionChatRuntime() {}',
+    'chats/preparation.js': 'export function loadChatPreparationComposer() {} export function captureChatProfile() {}',
+    'chats/archive.js': 'export function exportChatArchive() {}',
+    'config/sessions-db.js': 'export function closeSessionsDb() {}',
+  };
+  await fs.mkdir(app, { recursive: true });
+  await fs.writeFile(path.join(app, 'package.json'), '{"type":"module"}');
+  for (const [name, source] of Object.entries(modules)) {
+    const file = path.join(app, 'server', name);
+    await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, source);
+  }
+  const bootstrap = path.join(root, 'bootstrap.mjs');
+  await fs.writeFile(bootstrap, 'Object.defineProperty(process.versions, "electron", { value: "fixture" });');
+  const worker = path.resolve('scripts/verify-packaged-agent-conversations-worker.mjs');
+  for (const [cwd, expected] of [[home, ['asar-esm-runtime']], [other, []]]) {
+    await assert.rejects(exec(process.execPath, ['--import', pathToFileURL(bootstrap).href, worker, app, 'fixture'], {
+      cwd, env: { ...process.env, MINNOW_HOME: alias },
+    }), error => {
+      assert.equal(error.code, 1);
+      const line = error.stdout.split(/\r?\n/).find(line => line.startsWith(PACKAGED_AGENT_RECEIPT));
+      assert.ok(line, error.stderr);
+      const result = JSON.parse(line.slice(PACKAGED_AGENT_RECEIPT.length));
+      assert.deepEqual(result.checks, expected);
+      assert.equal(result.failedCheck, expected.length ? 'native-sqlite' : 'asar-esm-runtime');
+      return true;
+    });
+  }
+});
 
 test('packaged verifier requires an explicit bounded target and resolves known Windows/Linux/macOS layouts', async t => {
   assert.deepEqual(parsePackagedVerificationArgs(['--app-dir', 'unpacked']), { appDir: 'unpacked', timeoutMs: 30_000 });

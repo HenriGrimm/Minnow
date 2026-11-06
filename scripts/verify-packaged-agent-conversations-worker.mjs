@@ -18,7 +18,8 @@ try {
   await check('asar-esm-runtime', async () => {
     assert.ok(process.versions.electron, 'Use the supplied packaged Electron executable');
     assert.equal(path.basename(app), 'app.asar');
-    assert.equal(path.resolve(process.cwd()), home);
+    // macOS temporary paths can use /var while cwd resolves through /private/var.
+    assert.equal(await fs.realpath(process.cwd()), await fs.realpath(home));
     const { ensureMinnowLayout } = await packed('server/config/home.js');
     await ensureMinnowLayout();
     ({ createChatRepository } = await packed('server/chats/repository.js'));
