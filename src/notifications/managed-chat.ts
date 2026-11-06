@@ -39,7 +39,8 @@ export function createManagedChatNotificationProducer(options: {
       const key = `execution:${next.executionId}`;
       const transitioned = previous?.executionId !== next.executionId || !terminal.has(previous?.status ?? '');
       const awaitingAgents = next.status === 'completed' && (chat.agentTaskAttention?.pendingCount ?? 0) > 0;
-      if (!baseline && transitioned && !awaitingAgents && !observed.has(key)) {
+      const delegatedCompletion = next.status === 'completed' && Boolean(chat.agentConversation?.parentChatId);
+      if (!baseline && transitioned && !awaitingAgents && !delegatedCompletion && !observed.has(key)) {
         const failed = next.status === 'failed' || next.status === 'recovery_required';
         options.pushOutcome({ ...common, activityId: key, dedupeKey: key,
           kind: failed ? 'chat_turn_error' : 'chat_turn_complete', activityStatus: next.status === 'stopped' ? 'stopped' : failed ? 'failed' : 'completed',

@@ -81,6 +81,11 @@ describe('leftover board rows do not produce notifications (MIN-714)', () => {
     assert.equal(kinds.includes('task_quarantined'), false);
   });
 
+  test('legacy sub-agent completions do not create notifications', () => {
+    producers.__testHooks.handleSubAgentRun({ runId: 'done', status: 'completed', summary: 'Done' });
+    assert.equal(store.getNotifications().length, 0);
+  });
+
   test('producers no longer expose a leftover-board change hook', () => {
     assert.equal(
       typeof producers.__testHooks.handleBoardChange,

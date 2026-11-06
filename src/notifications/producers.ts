@@ -30,6 +30,7 @@ function chatTitle(chat: { name?: string }): string {
 
 function handleSubAgentRun(run: SubAgentRun): void {
   if (run.childChatId) return;
+  if (run.status === 'completed') return;
   if (!isSubAgentRunTerminal(run.status)) return;
   if (notifiedSubAgentRuns.has(run.runId)) return;
   notifiedSubAgentRuns.add(run.runId);
@@ -45,20 +46,6 @@ function handleSubAgentRun(run: SubAgentRun): void {
     workspacePath: chat?.workspacePath,
     silent: parent?.status === 'running' || (!run.parentTurnId && chat?.runs?.some((candidate) => candidate.status === 'running')),
   };
-
-  if (run.status === 'completed') {
-    const preview = truncatePreview(run.summary || 'Sub-agent completed');
-    pushNotification({
-      ...source,
-      kind: 'sub_agent_complete',
-      title,
-      preview,
-      chatId: parentChatId ?? undefined,
-      appId: 'code',
-      dedupeKey,
-    });
-    return;
-  }
 
   const preview = truncatePreview(run.error || run.summary || `Sub-agent ${run.status}`);
   pushNotification({

@@ -86,6 +86,24 @@ describe('createWaitCapability', () => {
     assert.match(content, /Continue now\./);
   });
 
+  test('timer completion with an owning chat does not create an alert', async () => {
+    const { Window } = await import('happy-dom');
+    installHappyDomGlobals(new Window());
+    const sessions = await import('../../src/state/sessions.ts');
+    const store = await import('../../src/notifications/store.ts');
+    const chat = sessions.createEmptyChatObject('model');
+    sessions.setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat], groups: [] });
+    store.resetNotificationStoreForTests();
+    try {
+      const result = await createWaitCapability().wait({ durationMs: 1, reason: 'coordination', chatId: chat.id });
+      assert.match(result, /Continue now/);
+      assert.equal(store.getNotifications().length, 0);
+    } finally {
+      sessions.setSessionStateForTests(null);
+      store.resetNotificationStoreForTests();
+    }
+  });
+
   test('falls back to a default reason when none is given', async () => {
     const content = await createWaitCapability().wait({ durationMs: 20, reason: '  ' });
     assert.match(content, new RegExp(DEFAULT_WAIT_REASON));

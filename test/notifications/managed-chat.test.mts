@@ -58,3 +58,15 @@ test('a parent awaiting delegated work never announces overall completion for it
   f.chat.agentExecution.status = 'completed'; f.change();
   assert.equal(f.notices.length, 1); assert.equal(f.notices[0].activityId, 'execution:wake-execution'); f.dispose();
 });
+
+test('delegated completion stays silent while failures and questions still notify', () => {
+  const f = fixture();
+  f.chat.agentConversation = { version: 1, childChatId: 'child', parentChatId: 'parent', rootChatId: 'parent', journalOwnerId: 'parent' };
+  f.chat.agentExecution!.status = 'completed'; f.change(); f.change();
+  assert.equal(f.notices.length, 0);
+  f.chat.agentExecution = { executionId: 'failed-child', status: 'failed' }; f.change();
+  assert.equal(f.notices[0]?.kind, 'chat_turn_error');
+  f.chat.agentRequestSummary = [{ requestId: 'question', kind: 'question' }]; f.change();
+  assert.equal(f.notices[1]?.kind, 'chat_question');
+  f.dispose();
+});
