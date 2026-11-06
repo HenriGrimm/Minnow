@@ -6,6 +6,20 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parse } from 'yaml';
+
+test('stable and nightly releases use the supported pinned ARM64 macOS runner', () => {
+  for (const workflow of ['version-release', 'beta-nightly-release']) {
+    const source = fs.readFileSync(new URL(`../../.github/workflows/${workflow}.yml`, import.meta.url), 'utf8');
+    const config = parse(source);
+    const job = config.jobs.package;
+    const mac = job.strategy.matrix.include.filter(entry => entry.name === 'macOS');
+    assert.equal(mac.length, 1, workflow);
+    assert.equal(mac[0].os, 'macos-15', workflow);
+    assert.equal(mac[0].command, 'npm run package:mac', workflow);
+    assert.equal(job['runs-on'], '${{ matrix.os }}', workflow);
+  }
+});
 
 test('stable release accepts an optional v prefix and ignores nightly tags', () => {
   assert.deepEqual(validateReleaseVersion('v0.1.7', ['v0.1.6', 'v0.1.7-beta.20261001.1.1']), {

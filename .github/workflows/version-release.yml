@@ -99,7 +99,7 @@ jobs:
               release/pkg/*.yml
               release/pkg/*.blockmap
           - name: macOS
-            os: macos-14
+            os: macos-15
             command: npm run package:mac
             artifact: release-package-macos
             files: |
