@@ -57,6 +57,7 @@ test('interrupted work requires an inspection and a nonempty observation before 
   const owner = chat('recovery-ui'), area = setup([owner]);
   const normalFetch = globalThis.fetch;
   const review = { executionId: 'stopped-turn', revision: 'review', checkout: 'C:/fixture', ownerReleased: true,
+    checkpoints: [{ checkpointId: 'write', cwd: 'C:/fixture', pre: { sha: 'saved-baseline' } }],
     operations: [{ invocationId: 'write', toolName: 'apply_patch', targets: ['effect.txt'], receiptId: null }] };
   globalThis.fetch = async (url, options) => {
     if (!String(url).endsWith('/recovery')) return normalFetch(url, options);
@@ -66,6 +67,7 @@ test('interrupted work requires an inspection and a nonempty observation before 
   syncManagedChatRequests(owner, area);
   owner.agentExecution = { executionId: review.executionId, status: 'recovery_required' }; syncManagedChatRequests(owner, area);
   clickText(area, 'Review interrupted work'); await until(() => area.textContent!.includes('effect.txt'));
+  assert.match(area.textContent!, /Unsettled filesystem checkpoint.*saved-baseline/);
   const note = area.querySelector('textarea')!, retire = [...area.querySelectorAll('button')].find(b => b.textContent === 'Record findings and retire attempt')!;
   assert.equal(retire.disabled, true);
   note.value = 'Checked the file and stopped process.'; note.dispatchEvent(new window.Event('input'));

@@ -9,6 +9,7 @@ import { toPluginNamespacedName } from '../tools/bridge.js';
 import { pluginId } from './manifest.js';
 import { readPluginSource } from './source.js';
 import { runPlugin, stopPlugin } from './runtime.js';
+import { invalidatePluginCatalog } from './catalog.js';
 
 let mutations = Promise.resolve();
 const root = () => path.join(getMinnowHome(), 'plugins');
@@ -39,6 +40,7 @@ async function writeIndex(index) {
   try {
     await fs.writeFile(temp, JSON.stringify(index, null, 2), { mode: 0o600 });
     await fs.rename(temp, indexPath());
+    invalidatePluginCatalog();
   } finally { await fs.rm(temp, { force: true }); }
 }
 
@@ -162,6 +164,7 @@ export async function executePackageTool(name, args, options = {}) {
           connections[connection.id][field.id] = value;
         }
       }
+      if ((await readConfigJson('tools.json'))?.permissions?.default?.[name] === 'off') throw new Error('Plugin tool is disabled in Settings');
       const result = runPlugin(id, path.join(releasePath(record), tool.handler), args, {
         pluginId: id, workspaceRoot: getEffectiveWorkspaceRoot(), dataDir, connections,
       }, tool.timeoutMs, getToolAbortSignal(), tool.parameters);
@@ -191,6 +194,7 @@ export async function connectionSettings(id, values) {
       }
       await writeEncryptedJsonFile(secretPath(id), saved);
       await stopPlugin(id);
+      invalidatePluginCatalog();
     }
     return Object.fromEntries(record.manifest.connections.map(c => [c.id, Object.fromEntries(c.fields.map(f => [f.id, {
       configured: Boolean(saved[c.id]?.[f.id]), ...(f.secret ? {} : { value: saved[c.id]?.[f.id] ?? '' }),

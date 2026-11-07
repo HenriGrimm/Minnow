@@ -1,5 +1,6 @@
 export const CHAT_CONTRACT_VERSION: 1;
 export const AGENT_CONVERSATIONS_CAPABILITY: 'agentConversationsV1';
+export const ORDINARY_CHAT_EXECUTION_CAPABILITY: 'ordinaryChatExecutionV1';
 
 export type ChatActor = 'human' | 'agent' | 'system';
 export type ChatMessageSource = 'composer' | 'agent_tool' | 'task_delivery'
@@ -136,6 +137,22 @@ export interface ChatTaskResult {
   completionPolicy: TaskCompletionPolicy;
 }
 
+export interface ChatSendIntent {
+  version: 1;
+  skill?: { id: string; source: 'slash' | 'pinned'; input?: string; intensity?: 'lite' | 'full' | 'ultra' | 'wenyan-lite' | 'wenyan-full' | 'wenyan-ultra' } | null;
+  /** Untrusted per-turn surface data, not client-authored system instructions. */
+  context?: string;
+  issue?: { workspacePath?: string; id: string; type: string; title: string; description?: string; status: string; priority: string; labels: string[] };
+  codeMap?: { question: string; title: string; kind: string; path?: string; line?: number; detail?: string; summary?: string };
+  attachments?: Array<{ id: string; name: string; kind: string; size: number; mimeType?: string; workspacePath?: string; chatId?: string; lineStart?: number; lineEnd?: number }>;
+  goalDriven?: boolean;
+  suppressUserEcho?: boolean;
+  titleSeed?: string;
+  deferTitleUntilTurnEnd?: boolean;
+  attachIssueMentions?: boolean;
+}
+export function validateChatSendIntent(value: unknown): ValidationResult<ChatSendIntent>;
+
 interface ChatCommandBase {
   version: 1;
   commandId: string;
@@ -146,6 +163,7 @@ interface ChatCommandBase {
 }
 interface ChatMessageCommandFields {
   message: string;
+  intent?: ChatSendIntent;
   modelSelection?: ModelSelection;
   profileReference?: AgentProfileReference;
 }
@@ -191,6 +209,15 @@ export interface AgentConversationsFeature {
   creationEnabled: boolean;
   recoveryEnabled: boolean;
   reason: 'not_released' | 'development_opt_in' | 'released' | 'disabled';
+}
+export interface OrdinaryChatExecutionFeature {
+  version: 1;
+  capability: 'ordinaryChatExecutionV1';
+  admissionEnabled: boolean;
+  promotionEnabled: boolean;
+  recoveryEnabled: boolean;
+  reason: 'released' | 'disabled' | 'parity_required' | 'storage_unsupported';
+  blockers: readonly string[];
 }
 
 export function validateChatId(value: unknown): ValidationResult<string>;

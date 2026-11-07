@@ -21,7 +21,7 @@ export type AttemptResult = TurnResult;
 export type TurnPhase = 'generating' | 'thinking' | 'tools';
 
   export type TurnEvent =
-    | { type: 'runner_timing'; startedAt: number; at: number; stage: string; durationMs: number; name?: string; id?: string; index?: number; count?: number }
+    | { type: 'runner_timing'; startedAt: number; at: number; stage: string; durationMs: number; clockId?: string; startOffsetMs?: number; endOffsetMs?: number; correlationId?: string; category?: string; name?: string; id?: string; index?: number; count?: number }
     | { type: 'context_usage'; used: number; limit: number | null; isEstimate: boolean }
   | { type: 'response_restart'; warning: string }
   | { type: 'loading_model' }

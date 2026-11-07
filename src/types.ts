@@ -1324,6 +1324,8 @@ export interface Chat {
   worktreeEnabled?: boolean;
   /** Automatic isolation was attempted but has not finished. Never fall back to Local. */
   worktreeSetupRequired?: boolean;
+  /** Server projection only; admission never trusts renderer copies. */
+  workspacePreparation?: import('../server/chats/workspace-preparation').ChatWorkspaceState;
   /** @deprecated Migrated to ~/.minnow/bugs/state.json — stripped on load. */
   bugBoard?: BugBoardState;
   /**

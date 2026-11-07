@@ -20,7 +20,7 @@ export function acknowledgeObservedManagedActivity(chatId: string, cursor: ChatA
   const chat = sessionState?.chats.find(row => row.id === chatId);
   const execution = chat?.agentExecution;
   const stamp = JSON.stringify([cursor, execution?.executionId, execution?.status, execution?.updatedAt]);
-  if (chat && acknowledgedActivity.get(chat) === stamp) return Promise.resolve();
+  if (chat && !chat.unread && !chat.turnError && acknowledgedActivity.get(chat) === stamp) return Promise.resolve();
   const key = chatId + ':' + stamp;
   const existing = pendingAcknowledgements.get(key);
   if (existing) return existing;

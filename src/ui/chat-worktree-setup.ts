@@ -5,7 +5,8 @@ import {
   isChatWorktreeSetupPending,
   subscribeChatWorktreeSetup,
 } from '../state/chat-worktree';
-import { getActiveChat, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
+import { findChatById, getActiveChat, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { getActiveChatMountElement } from './chat-mount';
 import { createGitWorktreeIcon } from './git-worktree-icons';
 import { scrollChatIfPinned } from './chat-scroll';
@@ -20,8 +21,9 @@ export function syncChatWorktreeSetup(chat: Chat, mount: HTMLElement | null): vo
     return;
   }
   if (mount.querySelector('#vibeHub')) teardownHub();
-  const pending = isChatWorktreeSetupPending(chat.id);
-  const error = pending ? '' : getChatWorktreeSetupError(chat.id) || 'Setup did not finish. Retry setup or return to Local before sending.';
+  const serverSetup = chat.chatCommandVersion === 1 ? chat.workspacePreparation : undefined;
+  const pending = isChatWorktreeSetupPending(chat.id) || serverSetup?.status === 'pending' || serverSetup?.status === 'preparing';
+  const error = pending ? '' : serverSetup?.error || getChatWorktreeSetupError(chat.id) || 'Setup did not finish. Retry setup or return to Local before sending.';
   const key = `${chat.id}:${pending}:${error}`;
   if (previous?.dataset.state === key) return;
 
@@ -82,4 +84,9 @@ subscribeChatWorktreeSetup(chat => {
   if (typeof document === 'undefined' || sessionState?.activeId !== chat.id) return;
   syncChatWorktreeSetup(chat, getActiveChatMountElement());
   if (getActiveChat().id === chat.id) scrollChatIfPinned();
+});
+subscribeManagedChatMetadata(chatId => {
+  if (typeof document === 'undefined' || sessionState?.activeId !== chatId) return;
+  const chat = findChatById(chatId);
+  if (chat) syncChatWorktreeSetup(chat, getActiveChatMountElement());
 });

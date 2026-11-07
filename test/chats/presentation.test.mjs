@@ -33,6 +33,18 @@ function notification(presentation, input, predicate = () => true) {
   return { promise, dispose: () => { clearTimeout(timer); unsubscribe?.(); } };
 }
 
+test('diagnostic timings do not schedule presentation frames or read transcript/activity', async t => {
+  const f = fixture(t), frames = [];
+  f.presentation.subscribe({ projectId: 'project', chatId: 'chat', send: value => frames.push(value) });
+  frames.length = 0;
+  f.repository.getActivity = () => { throw new Error('Timing read activity'); };
+  f.repository.readTranscript = () => { throw new Error('Timing read transcript'); };
+  for (let i = 0; i < 100; i++) f.presentation.onEvent({ chatId: 'chat', executionId: 'diagnostic',
+    event: { type: 'runner_timing', stage: 'tool', durationMs: i } });
+  await new Promise(resolve => setTimeout(resolve, 15));
+  assert.deepEqual(frames, []);
+});
+
 test('raw renderer approvals publish scoped request attention and reconnect without claiming or replacing its history', t => {
   const f = fixture(t);
   f.db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('chat');

@@ -146,7 +146,7 @@ async function scaffoldPluginFromPrompt(listId: string): Promise<void> {
     }
     await fetch('/api/plugins/reload', { method: 'POST' });
     const { refreshPluginToolCache } = await import('../tools/client');
-    await refreshPluginToolCache();
+    await refreshPluginToolCache(true);
     await appendPluginToolsToList(listId);
     const { loadToolConfigIntoDrawer } = await import('../tools/config');
     loadToolConfigIntoDrawer();

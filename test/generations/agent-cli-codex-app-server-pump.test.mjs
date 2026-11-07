@@ -31,6 +31,20 @@ const tools = [{ type: 'function', function: { name: 'read_file', parameters: { 
 const imageUrl = 'data:image/png;base64,aW1hZ2U=';
 const imagePart = { type: 'image_url', image_url: { url: imageUrl } };
 
+test('unsupported native opt-in fails before spawning, including a retained conversation', async () => {
+  setup([{ text: 'Done.' }]);
+  const denied = await generate([{ role: 'user', content: 'Start.' }], {}, { agentCli: { nativeCodingTools: true } });
+  assert.equal(denied.state.status, 'error');
+  assert.match(denied.state.errorMessage, /native coding tools are unavailable/);
+  assert.equal(processes, 0);
+  const first = await generate([{ role: 'user', content: 'Start.' }]);
+  assert.equal(first.state.status, 'complete');
+  const warm = await generate([{ role: 'user', content: 'Start.' }, { role: 'assistant', content: 'Done.' },
+    { role: 'user', content: 'Continue.' }], {}, { agentCli: { nativeCodingTools: true } });
+  assert.equal(warm.state.status, 'error');
+  assert.equal(processes, 1);
+});
+
 test('native turns receive the selected reasoning level without conflating extra high and max', async () => {
   const log = path.join(root, 'reasoning-levels.jsonl');
   setup([{ text: 'Done.' }], { MINNOW_CODEX_REQUEST_LOG: log });
@@ -112,7 +126,7 @@ async function generate(messages, overrides = {}, settings = {}) {
     body: { model: 'fixture', stream: true, messages, tools, ...overrides } }); states.push(state);
   const pump = settings.providerEntry ? pumpAgentCliUpstream : pumpCodexAppServer;
   const run = pump({ state, runtime: { profile: { agentCli: { kind: 'codex', sessionMode: 'replay', maxConcurrent: 1, ...settings.agentCli } }, secrets: {} },
-    candidate: { providerId: 'codex-cli', modelId: 'fixture' }, index: 0, idleMs: 1000, maxMs: 5000, canFailover: false });
+    candidate: { providerId: 'codex-cli', modelId: 'fixture' }, index: 0, idleMs: 1000, maxMs: 5000, canFailover: settings.canFailover === true });
   if (settings.abort) setTimeout(() => cancel(state), settings.abortAfterMs ?? 100);
   await run;
   const wire = Buffer.concat(state.chunks).toString();
@@ -126,6 +140,9 @@ test('ten matching follow-ups reuse one process and stream snapshots without dup
     assert.equal(result.state.status, 'complete');
     assert.equal(result.rows.map(row => row.choices?.[0]?.delta?.content ?? '').join(''), 'Hello.');
     assert.equal(result.rows.at(-1).usage.total_tokens, 25);
+    assert.ok(result.rows.at(-1).minnow_cli.timings.checkpoint_ms >= 0);
+    assert.ok(result.rows.at(-1).minnow_cli.timings.checkpoint_thread_read_ms >= 0);
+    assert.ok(result.rows.at(-1).minnow_cli.timings.checkpoint_history_hash_ms >= 0);
     messages.push({ role: 'assistant', content: 'Hello.' }, { role: 'user', content: `Next ${i}.` });
   }
   assert.equal(processes, 1); assert.equal(codexSessionStats().idle, 1);
@@ -306,6 +323,45 @@ test('tampered Codex native history reconstructs before starting a replacement t
   const next = await generate(messages, {}, { chatId });
   assert.equal(next.state.status, 'complete', next.state.errorMessage); assert.equal(next.rows.at(-1).minnow_cli.continuation, 'rebuilt');
   assert.equal((await readCliCheckpoint('codex-cli', chatId)).clean, true);
+});
+
+test('native action observations are never tools, discard credentials, and quarantine instead of replaying', async () => {
+  const chatId = 'codex-native-observed';
+  setup([{ nativeItem: { type: 'commandExecution', id: 'native-effect' } }]);
+  const first = await generate([{ role: 'user', content: 'Start.' }], {}, { chatId });
+  assert.equal(first.state.status, 'error');
+  assert.match(first.state.errorMessage, /Recovery required/);
+  assert.equal(first.rows.some(row => row.choices?.[0]?.delta?.tool_calls?.length), false);
+  await shutdownCodexSessions();
+  const saved = await readCliCheckpoint('codex-cli', chatId);
+  assert.equal(saved.nativeRecoveryRequired, true);
+  await fs.access(path.join(saved.dir, 'native', 'fixture-thread.json'));
+  await assert.rejects(fs.access(path.join(saved.dir, 'native', 'auth.json')));
+  const next = await generate([{ role: 'user', content: 'Try again.' }], {}, { chatId, providerEntry: true, canFailover: true });
+  assert.equal(next.state.status, 'error');
+  assert.match(next.state.errorMessage, /Recovery required/);
+  assert.equal(processes, 1, 'a quarantined conversation cannot spawn, rebuild or silently change providers');
+});
+
+test('unsupported native history found before resume is preserved and blocks further inference', async () => {
+  const chatId = 'codex-native-restore', log = path.join(root, 'native-restore-log.jsonl');
+  setup([{ text: 'One.' }, { text: 'Must not run.' }], { MINNOW_CODEX_REQUEST_LOG: log, MINNOW_CODEX_ROLLOUT_PATH: '1' });
+  const messages = [{ role: 'user', content: 'Start.' }];
+  await generate(messages, {}, { chatId }); await shutdownCodexSessions();
+  const file = path.join(cliCacheDir('codex-cli', chatId), 'native', 'fixture-thread.json');
+  const record = JSON.parse(await fs.readFile(file, 'utf8'));
+  record.turns[0].items.push({ type: 'fileChange', id: 'native-write', changes: [] });
+  await fs.writeFile(file, JSON.stringify(record));
+  messages.push({ role: 'assistant', content: 'One.' }, { role: 'user', content: 'Next.' });
+  const next = await generate(messages, {}, { chatId });
+  assert.equal(next.state.status, 'error');
+  assert.match(next.state.errorMessage, /Recovery required/);
+  assert.equal(processes, 2, 'only inspection, never automatic reconstruction');
+  assert.equal((await readCliCheckpoint('codex-cli', chatId)).nativeRecoveryRequired, true);
+  assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')).turns, record.turns);
+  const requests = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(requests.filter(row => row.method === 'turn/start').length, 1);
+  assert.equal(requests.some(row => row.method === 'thread/resume'), false);
 });
 
 test('context window reaches native config and changes rebuild retained conversations', async () => {

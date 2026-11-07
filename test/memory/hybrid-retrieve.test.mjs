@@ -146,3 +146,38 @@ describe('hybrid memory retrieve', () => {
     assert.deepEqual(result, { block: '', ids: [] });
   });
 });
+
+
+test('cold initialization and vector query use one end-to-end deadline', async () => {
+  const all = [{ meta: META_A, body: 'Use npm start.' }];
+  let release;
+  let queries = 0;
+  const init = new Promise(resolve => { release = resolve; });
+  const result = await retrieveMemoryBlockHybrid(all, { query: 'npm' }, { embeddings: { queryTimeoutMs: 20 } }, {
+    getEmbedder: () => init,
+    embedTexts: async () => { queries++; return [[1, 0, 0]]; },
+  });
+  assert.match(result.block, /npm workflow/);
+  assert.equal(result.enrichmentOmitted, 'deadline');
+  release(FIXTURE_EMBEDDER);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(queries, 0, 'late cold setup must not launch an embedding query');
+});
+
+test('one cancelled caller cannot poison shared cold initialization for another caller', async () => {
+  const all = [{ meta: META_A, body: 'Use npm start.' }];
+  const controller = new AbortController();
+  let release, entered;
+  const init = new Promise(resolve => { release = resolve; });
+  const ready = new Promise(resolve => { entered = resolve; });
+  const deps = { getEmbedder: () => { entered(); return init; }, embedTexts: async () => [[1, 0, 0]] };
+  const cancelled = retrieveMemoryBlockHybrid(all, { query: 'npm', signal: controller.signal }, { embeddings: { queryTimeoutMs: 1000 } }, deps);
+  const other = retrieveMemoryBlockHybrid(all, { query: 'npm' }, { embeddings: { queryTimeoutMs: 1000 } }, deps);
+  await ready;
+  controller.abort(new Error('Stopped caller'));
+  await assert.rejects(cancelled, /Stopped caller/);
+  release(FIXTURE_EMBEDDER);
+  const result = await other;
+  assert.match(result.block, /npm workflow/);
+  assert.equal(result.enrichmentOmitted, undefined);
+});

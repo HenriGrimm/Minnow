@@ -2,11 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
 import { getRequestWorkspaceRoot } from '../runtime/path-access.js';
 import { patchSessionState, useJsonSessionsStore } from '../config/sessions-repo.js';
-import { getAgentConversationsFeature } from './feature.js';
-import { ChatContractError, CHAT_MIN_CLIENT_VERSION, validateModelSelection } from './contracts.js';
-import { hashChatPayload } from './repository.js';
+import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
+import { ChatContractError, CHAT_MIN_CLIENT_VERSION } from './contracts.js';
 import { assertCallerCanTarget } from './caller.js';
-import { createChatPolicy, assertChatPolicyWithinCeiling } from './policy.js';
 import { exportChatArchive, importChatArchive } from './archive.js';
 
 const ID = /^[A-Za-z0-9_-]{1,160}$/;
@@ -51,6 +49,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         const state = feature();
         const json = useJsonSessionsStore();
         send(200, { ...state, ...(json ? { creationEnabled: false, reason: 'disabled' } : {}), conversationStorage: json ? 'json' : 'sqlite',
+          ordinaryExecution: { ...getOrdinaryChatExecutionFeature(), ...(json ? { reason: 'storage_unsupported', admissionEnabled: false, promotionEnabled: false, recoveryEnabled: false } : {}) },
           clientProtocol: { version: 1, minReaderVersion: CHAT_MIN_CLIENT_VERSION, minWriterVersion: CHAT_MIN_CLIENT_VERSION } }); return;
       }
       if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || url.pathname === '/api/chats/host') {
@@ -120,7 +119,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { receipt: await service.readCommand(caller, record.commandId) }); return;
       }
       const legacy = /^\/api\/chats\/([A-Za-z0-9_-]{1,160})\/legacy\/([A-Za-z0-9_-]{1,160})\/continue$/.exec(url.pathname);
-      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|requests|ack|recovery)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
+      const match = legacy ? [legacy[0], legacy[1], 'legacy-continue', legacy[2]] : /^\/api\/chats\/([A-Za-z0-9_-]{1,160})(?:\/(commands|configuration|fork|requests|ack|recovery|workspace|ordinary-routing)(?:\/([A-Za-z0-9_-]{1,160})\/respond)?)?$/.exec(url.pathname);
       if (!match) { send(404, { error: { code: 'chat_not_found', message: 'Conversation operation does not exist', retryable: false } }); return; }
       const [, chatId, operation, requestId] = match;
       if (!operation && req.method === 'DELETE') {
@@ -205,6 +204,25 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         send(200, { chatId, fields: repository.getActivity(chatId) }); return;
       }
       const snapshot = receipt => ({ ...(receipt ? { receipt } : {}), frame: presentation.frame(chatId) });
+      if (operation === 'ordinary-routing' && !requestId) {
+        if (useJsonSessionsStore()) throw new ChatContractError('capability_unavailable', 'Ordinary server promotion requires the SQLite session store');
+        if (req.method === 'GET') { send(200, await service.ordinaryEligibility(caller, chatId)); return; }
+        if (req.method === 'POST') {
+          const body = await readBody(req, 8192); fields(body, ['expectedRevision', 'clientRequestId']);
+          const receipt = await service.promote(caller, { ...body, chatId });
+          presentation.changed(chatId); send(200, snapshot(receipt)); return;
+        }
+      }
+      if (operation === 'workspace' && req.method === 'POST' && !requestId) {
+        const body = await readBody(req, 8192); fields(body, ['action', 'expectedIntentId', 'clientRequestId']);
+        const result = await service.chooseWorkspace(caller, { ...body, chatId });
+        presentation.changed(chatId); send(200, result); return;
+      }
+      if (operation === 'fork' && req.method === 'POST' && !requestId) {
+        const body = await readBody(req); fields(body, ['messageId', 'expectedRevision', 'message', 'selection', 'clientRequestId']);
+        const receipt = await service.fork(caller, { ...body, chatId });
+        presentation.changed(receipt.chatId); send(202, { receipt }); return;
+      }
       if (operation === 'ack' && req.method === 'POST' && !requestId) {
         const body = await readBody(req); fields(body, ['messageSeq', 'executionId']);
         const activity = repository.acknowledgeActivity(chatId, body);
@@ -231,64 +249,13 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
       }
       if (operation === 'configuration' && req.method === 'PATCH') {
         const body = await readBody(req); fields(body, ['action', 'selection', 'modeId', 'name', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
-        if (body.action !== undefined && body.action !== 'configure') fail('Unsupported configuration action');
-        if (body.expectedProfileVersion !== undefined && (!Number.isSafeInteger(body.expectedProfileVersion) || body.expectedProfileVersion < 0)) fail('Invalid profile revision');
-        if (!ID.test(body.clientRequestId ?? '')) fail('A configuration receipt identity is required');
-        if (target.chat.chatCommandVersion !== 1) throw new ChatContractError('capability_unavailable', 'This conversation uses the existing settings controls');
-        if (target.chat.agentConversation?.capabilities?.canChooseModel === false && body.selection) throw new ChatContractError('policy_denied', 'This conversation does not permit model changes');
-        const receiptId = `config-${createHash('sha256').update([caller.scope.projectId, chatId, caller.ingress, body.clientRequestId].join(':')).digest('hex').slice(0, 40)}`;
-        const intentHash = hashChatPayload(body);
-        const previous = repository.getOutbox(receiptId);
-        if (previous) {
-          if (previous.payload.intentHash !== intentHash) throw new ChatContractError('idempotency_conflict', 'Configuration receipt was reused');
-          send(200, snapshot({ ...previous.payload.result, replayed: true })); return;
-        }
-        assertCallerCanTarget(caller, target, { operation: 'send', currentPolicy: target.currentPolicy, registry: target.registry });
-        const patch = {};
-        let selection;
-        if (Object.hasOwn(body, 'selection')) {
-          const parsed = validateModelSelection(body.selection);
-          if (!parsed.ok) throw new ChatContractError(parsed.error.code, parsed.error.message);
-          const resolved = await runtime.resolveModelSelection({ target: { ...parsed.value, options: parsed.value.options ?? {} } });
-          selection = resolved.selection;
-          Object.assign(patch, { providerId: selection.providerId, modelId: selection.modelId });
-        }
-        if (body.modeId !== undefined) {
-          if (!['general', 'build', 'plan', 'debug'].includes(body.modeId)) fail('Invalid conversation mode');
-          patch.modeId = body.modeId;
-        }
-        if (body.name !== undefined) {
-          if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 256) fail('Invalid conversation name');
-          patch.name = body.name.trim();
-        }
-        if (body.pinned !== undefined) { if (typeof body.pinned !== 'boolean') fail('Invalid pin setting'); patch.pinned = body.pinned; }
-        if (body.archived !== undefined) { if (typeof body.archived !== 'boolean') fail('Invalid archive setting'); patch.archived = body.archived; }
-        const nextPolicy = patch.modeId ? createChatPolicy(await runtime.resolvePolicyInput({ ...target.chat, modeId: patch.modeId }, target.scope, target.registry)) : target.policy;
-        assertChatPolicyWithinCeiling(nextPolicy, target.policy);
-        const next = body.selection || patch.modeId ? {
-          profileId: target.profile?.profileId ?? `profile-${chatId}`,
-          profileVersion: (target.profile?.profileVersion ?? 0) + 1,
-          snapshot: { ...(target.profile?.snapshot ?? {}), policy: nextPolicy, ...(selection ? { modelSelection: selection, exactModel: selection.providerId !== 'minnow-router' } : {}) },
-        } : undefined;
-        const result = repository.atomic(() => {
-          const accepted = repository.getOutbox(receiptId);
-          if (accepted) {
-            if (accepted.payload.intentHash !== intentHash) throw new ChatContractError('idempotency_conflict', 'Configuration receipt was reused');
-            return { ...accepted.payload.result, replayed: true };
-          }
-          const chat = repository.configureChat(chatId, patch, { expectedProfileVersion: body.expectedProfileVersion, ...(next ? { profile: next } : {}) });
-          const result = { chatId, profileReference: chat.profileReference, disposition: 'settled' };
-          repository.putOutbox({ outboxId: receiptId, chatId, kind: 'configuration.receipt', payload: { intentHash, result } });
-          const claim = repository.claimOutbox(receiptId, 'configuration-receipt');
-          repository.finishOutbox(receiptId, claim);
-          return result;
-        });
+        const result = await service.configure(caller, { ...body, chatId });
         presentation.changed(chatId); send(200, snapshot(result)); return;
       }
       if (operation === 'commands' && req.method === 'POST') {
         const body = await readBody(req);
         const inputFields = {
-          send: ['action', 'text', 'images', 'mode', 'clientRequestId'],
+          send: ['action', 'text', 'images', 'intent', 'mode', 'clientRequestId'],
           steer: ['action', 'text', 'clientRequestId'],
           stop: ['action', 'scope', 'executionId', 'runId', 'clientRequestId', 'expectedLegacyOwnerId'],
           edit: ['action', 'text', 'itemId', 'expectedRevision', 'clientRequestId'],
@@ -301,7 +268,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         let receipt;
         if (body.action === 'send' || body.action === 'steer') {
           if (target.chat.agentConversation?.capabilities?.canSend === false) throw new ChatContractError('policy_denied', 'This conversation is inspect-only');
-          receipt = await service.send(caller, { ...base, message: body.text, mode: body.action === 'steer' ? 'steer' : body.mode ?? 'auto', ...(body.images ? { images: body.images } : {}) });
+          receipt = await service.send(caller, { ...base, message: body.text, mode: body.action === 'steer' ? 'steer' : body.mode ?? 'auto', ...(body.images ? { images: body.images } : {}), ...(body.intent !== undefined ? { intent: body.intent } : {}) });
         } else if (body.action === 'stop') receipt = await service.stop(caller, { ...base, scope: body.scope ?? 'turn', ...(body.executionId ? { executionId: body.executionId } : {}), ...(body.runId ? { runId: body.runId } : {}),
           ...(body.expectedLegacyOwnerId !== undefined ? { expectedLegacyOwnerId: body.expectedLegacyOwnerId } : {}) });
         else {

@@ -6,6 +6,11 @@ import { sendRemoteChatCommand, shouldRelayChat } from '../../src/chat/remote-ch
 import { setPairedDevice } from '../../src/api/session-token.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { sendProgrammaticChatText } from '../../src/chat/messaging.ts';
+import { forkManagedChat, sendManagedChatAction } from '../../src/chat/managed-chat-client.ts';
+import { registerPluginSlashCommand } from '../../src/chat/slash-commands/registry.ts';
+import { sendMessageWithTools } from '../../src/chat/messaging.ts';
+import { attachMessageActions, closeMessageActionsMenu } from '../../src/ui/message-actions.ts';
+import { readAgentConversationsCapability } from '../../src/config/agent-conversations-enabled.ts';
 
 const fetchBefore = globalThis.fetch;
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
@@ -19,11 +24,13 @@ function setup() {
   setPairedDevice(false);
   return chat;
 }
-afterEach(() => {
+afterEach(async () => {
+  await import('../../src/state/issues-store.ts');
   globalThis.fetch = fetchBefore;
   resetSessionPersistenceForTests();
   setSessionStateForTests(null);
   sessionStorage.clear();
+  closeMessageActionsMenu();
 });
 
 test('an idle managed child admits text/files/images once through server ownership', async () => {
@@ -34,7 +41,7 @@ test('an idle managed child admits text/files/images once through server ownersh
     assert.equal(String(url), `/api/chats/${chatId}/commands`);
     bodies.push(JSON.parse(options!.body as string));
     if (bodies.length === 1) throw new TypeError('lost admission receipt');
-    return Response.json({ receipt: { commandId: 'admitted', disposition: 'started' } });
+    return Response.json({ receipt: { commandId: 'admitted', chatId, state: 'running', revision: 1, disposition: 'started' } });
   };
   await sendRemoteChatCommand(chatId, 'send', { text: 'Inspect', attachments: [
     { id: 'text', name: 'file.txt', kind: 'text', size: 4, mimeType: 'text/plain', text: 'body' },
@@ -142,4 +149,146 @@ test('managed archive and restore use authoritative configuration without changi
   assert.deepEqual(calls.map(call => call.archived), [true, false]);
   assert.ok(calls.every(call => call.expectedProfileVersion === 3));
   assert.equal(chat.archivedAt, undefined);
+});
+
+
+test('managed programmatic options reach canonical admission as bounded intent rather than trusted prompts', async () => {
+  const chat = setup(); let accepted = 0; const calls: any[] = [];
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(String(options?.body)));
+    return Response.json({ receipt: { commandId: 'context', chatId, revision: 1, state: 'queued' } });
+  };
+  await sendProgrammaticChatText(chat, 'Work', { ephemeralContext: 'Surface data', goalDriven: true, suppressUserEcho: true,
+    titleSeed: 'Issue title', deferTitleUntilTurnEnd: true, codeMap: { question: 'Why?', title: 'Definition', kind: 'function' },
+    onUserMessageAccepted: async () => { accepted++; } });
+  assert.equal(calls.length, 1); assert.equal(accepted, 1);
+  assert.equal(calls[0].intent.context, 'Surface data'); assert.equal(calls[0].intent.goalDriven, true);
+  assert.equal(calls[0].intent.suppressUserEcho, true); assert.equal(calls[0].intent.titleSeed, 'Issue title');
+  assert.equal(calls[0].intent.codeMap.title, 'Definition'); assert.equal(calls[0].systemPrompt, undefined);
+  await assert.rejects(sendProgrammaticChatText(chat, 'Work', { signal: AbortSignal.abort(new Error('Already stopped')) }), /Already stopped/);
+  assert.equal(calls.length, 1);
+});
+
+test('an incomplete successful admission keeps its request identity and cannot report acceptance or fall back', async () => {
+  setup(); const requests: any[] = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), `/api/chats/${chatId}/commands`);
+    requests.push(JSON.parse(String(options?.body)));
+    if (requests.length === 1) return Response.json({});
+    return Response.json({ receipt: { commandId: 'recovered', chatId, state: 'queued', revision: 1 } });
+  };
+  await assert.rejects(sendManagedChatAction(chatId, 'send', { text: 'Keep identity', mode: 'queue' }), /acknowledgement is incomplete/);
+  await sendManagedChatAction(chatId, 'send', { text: 'Keep identity', mode: 'queue' });
+  assert.deepEqual(requests[0], requests[1]); assert.equal(requests[0].mode, 'queue');
+});
+
+test('fork retries retain the original source revision and identity after an uncertain acknowledgement', async () => {
+  setup(); const requests: any[] = []; let reads = 0;
+  globalThis.fetch = async (url, options) => {
+    if (!options?.method) { reads++; return Response.json({ chat: { id: chatId, revision: 17 } }); }
+    assert.equal(String(url), `/api/chats/${chatId}/fork`);
+    requests.push(JSON.parse(String(options.body)));
+    if (requests.length <= 2) throw new TypeError('lost fork acknowledgement');
+    return Response.json({ receipt: { sourceChatId: chatId, sourceMessageId: 'fork-anchor', chatId: 'forked', commandId: 'fork-command' } });
+  };
+  await assert.rejects(forkManagedChat(chatId, 'fork-anchor'), /lost fork/);
+  const result = await forkManagedChat(chatId, 'fork-anchor');
+  assert.equal(result.chatId, 'forked'); assert.equal(reads, 1);
+  assert.equal(requests.length, 3); assert.deepEqual(requests[0], requests[1]); assert.deepEqual(requests[0], requests[2]);
+  assert.equal(requests[0].expectedRevision, 17);
+});
+
+test('managed plugin slash commands stay local and preserve attached files without a model admission', async () => {
+  const chat = setup(); let invoked = '', calls = 0;
+  const remove = registerPluginSlashCommand('fixture', { id: 'check', label: 'Check', description: 'Local check', run: async input => { invoked = input.args; } });
+  const input = document.createElement('textarea'); input.value = '/plugin-fixture--check argument'; document.body.append(input);
+  globalThis.fetch = async () => { calls++; return Response.json({}); };
+  try { await sendMessageWithTools({ inputEl: input }); assert.equal(invoked, 'argument'); assert.equal(calls, 0); assert.deepEqual(chat.history, []); }
+  finally { remove(); input.remove(); }
+});
+
+test('canonical root menu exposes replay into a new chat but no local rewrite actions', () => {
+  const chat = setup(); chat.history = [{ role: 'user', content: 'Original', messageId: 'saved-user', commandId: 'saved-command' }];
+  const wrap = document.createElement('div'); wrap.innerHTML = '<div class="msg-bubble">Original</div>'; document.body.append(wrap);
+  attachMessageActions(wrap, { chatId, historyIndex: 0, turnKind: 'user' });
+  wrap.querySelector<HTMLButtonElement>('.message-actions__trigger')!.click();
+  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent), ['Copy', 'Replay in new chat']);
+  closeMessageActionsMenu(); wrap.remove();
+});
+
+test('promoted historical messages without a captured command do not advertise unusable replay', () => {
+  const chat = setup(); chat.history = [{ role: 'user', content: 'Historical text', messageId: 'legacy-row' }];
+  const wrap = document.createElement('div'); document.body.append(wrap);
+  attachMessageActions(wrap, { chatId, historyIndex: 0, turnKind: 'user' });
+  wrap.querySelector<HTMLButtonElement>('.message-actions__trigger')!.click();
+  assert.deepEqual([...document.querySelectorAll('.message-actions__menu button')].map(button => button.textContent), ['Copy']);
+  closeMessageActionsMenu(); wrap.remove();
+});
+
+
+test('ordinary rollout metadata cannot disable the independent released agent capability reader', () => {
+  const agent = { version: 1, capability: 'agentConversationsV1', creationEnabled: true, recoveryEnabled: true, reason: 'released' };
+  const envelope = { ...agent, conversationStorage: 'sqlite', clientProtocol: { version: 1, minReaderVersion: 1, minWriterVersion: 1 },
+    ordinaryExecution: { version: 1, capability: 'ordinaryChatExecutionV1', admissionEnabled: false, promotionEnabled: false } };
+  assert.deepEqual(readAgentConversationsCapability(envelope), agent);
+  assert.equal(readAgentConversationsCapability({ ...envelope, unrelatedFutureField: true }), null);
+});
+
+test('ordinary slash and pinned sends use skill references and keep identical intent after lost receipts', async () => {
+  const chat = setup(); const calls: any[] = []; let accepted = 0;
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(String(options?.body)));
+    if (calls.length <= 2) throw new TypeError('lost context acknowledgement');
+    return Response.json({ receipt: { commandId: 'skill', chatId, revision: 1, state: 'queued' } });
+  };
+  const options = { ephemeralContext: 'same snapshot', onUserMessageAccepted: async () => { accepted++; } };
+  await assert.rejects(sendProgrammaticChatText(chat, '/caveman ultra Inspect', options), /lost context/);
+  assert.equal(chat.pinnedSkill, undefined); assert.equal(accepted, 0);
+  await sendProgrammaticChatText(chat, '/caveman ultra Inspect', options);
+  assert.deepEqual(calls[0], calls[1]); assert.deepEqual(calls[0], calls[2]);
+  assert.deepEqual(calls[0].intent.skill, { id: 'caveman', source: 'slash', intensity: 'ultra', input: 'Inspect' });
+  assert.equal(calls[0].text, 'Inspect\n\n[skill: caveman]');
+  await sendProgrammaticChatText(chat, 'Continue');
+  assert.equal(calls[3].intent.skill.source, 'pinned'); assert.equal(calls[3].intent.skill.intensity, 'ultra');
+  await sendProgrammaticChatText(chat, 'normal mode');
+  assert.equal(calls[4].intent.skill, null); assert.equal(chat.pinnedSkill, null);
+});
+
+test('ordinary composer slash context is queued rather than discarded or sent as an unscoped steer', async () => {
+  setup(); const calls: any[] = [];
+  const input = document.createElement('textarea'); input.value = '/git-commit Fix bug'; document.body.append(input);
+  globalThis.fetch = async (_url, options) => {
+    calls.push(JSON.parse(String(options?.body)));
+    return Response.json({ receipt: { commandId: 'composer-context', chatId, revision: 1, state: 'queued' } });
+  };
+  try {
+    await sendMessageWithTools({ inputEl: input, ephemeralContext: 'App snapshot', followupDelivery: 'queue' });
+    assert.equal(calls.length, 1); assert.equal(calls[0].action, 'send'); assert.equal(calls[0].mode, 'queue');
+    assert.equal(calls[0].intent.skill.id, 'git-commit'); assert.equal(calls[0].intent.context, 'App snapshot');
+    assert.equal(input.value, '');
+  } finally { input.remove(); }
+});
+
+test('direct remote ordinary entry point captures pinned skills and attachment reference metadata', async () => {
+  const chat = setup(); chat.pinnedSkill = { id: 'git-commit' }; let body: any;
+  globalThis.fetch = async (_url, options) => {
+    body = JSON.parse(String(options?.body)); return Response.json({ receipt: { chatId, commandId: 'direct-context', revision: 1, state: 'queued' } });
+  };
+  await sendRemoteChatCommand(chatId, 'send', { text: 'Inspect', attachments: [
+    { id: 'ref', name: 'src/main.ts', kind: 'codeRef', size: 8, mimeType: 'text/plain', text: 'let x=1;', workspacePath: 'src/main.ts', lineStart: 4, lineEnd: 8 },
+  ] });
+  assert.equal(body.intent.skill.id, 'git-commit'); assert.equal(body.intent.skill.source, 'pinned');
+  assert.equal(body.intent.attachments[0].workspacePath, 'src/main.ts'); assert.equal(body.intent.attachments[0].lineStart, 4);
+  assert.match(body.text, /let x=1/); assert.equal(body.intent.skillBody, undefined);
+});
+
+test('programmatic managed sends clear only an acknowledged unchanged draft and respect clearComposerOnSend', async () => {
+  const chat = setup(); chat.composerDraft = 'Original draft';
+  globalThis.fetch = async () => Response.json({ receipt: { chatId, commandId: 'draft', revision: 1, state: 'queued' } });
+  await sendProgrammaticChatText(chat, 'Work', { clearComposerOnSend: false });
+  assert.equal(chat.composerDraft, 'Original draft');
+  await sendProgrammaticChatText(chat, 'Work'); assert.equal(chat.composerDraft, undefined);
+  chat.composerDraft = 'Draft before admission';
+  globalThis.fetch = async () => { chat.composerDraft = 'New text while sending'; return Response.json({ receipt: { chatId, commandId: 'draft-next', revision: 1, state: 'queued' } }); };
+  await sendProgrammaticChatText(chat, 'Work'); assert.equal(chat.composerDraft, 'New text while sending');
 });

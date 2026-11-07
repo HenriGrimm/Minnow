@@ -24,6 +24,7 @@ import {
   removeChatWorktree,
 } from './worktree-service.ts';
 import type { Chat, ChatGroup } from '../types.ts';
+import { randomUUID } from '../lib/random-id';
 
 /**
  * Sanitize an id fragment into a safe git ref / path segment.
@@ -134,6 +135,11 @@ export function isManagedChatWorktreePath(
 
 /** Detach without deleting work. Cleanup is an explicit Source Control action. */
 export async function detachChatWorktree(chat: Chat): Promise<void> {
+  if (chat.chatCommandVersion === 1) {
+    const result = await applyManagedRunTarget(chat, 'local');
+    if (!result.ok) throw new Error(result.error);
+    return;
+  }
   delete chat.worktreeSetupRequired;
   delete chat.worktreeEnabled;
   delete chat.worktreeRoot;
@@ -146,6 +152,7 @@ export function attachChatToWorktree(
   worktreePath: string,
   branch?: string,
 ): void {
+  if (chat.chatCommandVersion === 1) throw new Error('Canonical worktree targets must be changed by the server.');
   const path = normalizeWorkspacePath(worktreePath);
   chat.worktreeRoot = path;
   if (branch?.trim()) chat.gitBranch = branch.trim();
@@ -161,6 +168,7 @@ export async function createManagedChatWorktree(
   baseRef?: string,
   checkoutExisting?: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (chat.chatCommandVersion === 1) return { ok: false, error: 'Choose automatic worktree setup for this server-owned conversation.' };
   // Checkout-existing keeps origin/foo as-is; new branches still get a git-safe slug.
   const branchName = checkoutExisting
     ? branch.trim()
@@ -186,6 +194,7 @@ export async function createManagedChatWorktree(
 /** Switch chat back to its bound workspace (Local target). */
 export async function setChatRunTargetLocal(chat: Chat): Promise<void> {
   await detachChatWorktree(chat);
+  if (chat.chatCommandVersion === 1) return;
   const res = await gitBranches(chat.workspacePath?.trim() || composerGitRepoRoot());
   if (res.ok && res.current?.trim()) {
     chat.gitBranch = res.current.trim();
@@ -196,6 +205,7 @@ export async function setChatRunTargetLocal(chat: Chat): Promise<void> {
 
 /** Best-effort cleanup when a chat is deleted. */
 export async function cleanupChatWorktreeOnDelete(chat: Chat): Promise<void> {
+  if (chat.chatCommandVersion === 1) return;
   if (!chat.chatWorktreeManaged) return;
   await removeChatWorktree({ chatId: chat.id });
 }
@@ -265,6 +275,48 @@ export function enableChatWorktreeOnSend(chat: Chat): void {
   chat.worktreeEnabled = true;
 }
 
+/** The send client includes this intent before clearing a managed draft. */
+export function deferredChatWorktreeChoice(chat: Chat): { kind: 'automatic' } | undefined {
+  return !resolveChatWorktreeRoot(chat) && (chat.worktreeEnabled || chat.worktreeSetupRequired)
+    ? { kind: 'automatic' } : undefined;
+}
+
+/** Retry/Local are canonical commands, never /api/worktree mutations or local
+ * session metadata edits. A missing server capability fails closed. */
+async function applyManagedRunTarget(chat: Chat, kind: 'automatic' | 'local'): Promise<{ ok: boolean; error?: string }> {
+  const endpoint = `/api/chats/${encodeURIComponent(chat.id)}`;
+  const currentResponse = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+  const current = await currentResponse.json();
+  if (!currentResponse.ok || current.chat?.id !== chat.id) {
+    return { ok: false, error: current.error?.message || 'The server could not read this conversation. No run target was changed.' };
+  }
+  const intentId = current.chat.workspacePreparation?.intent?.id;
+  if (typeof intentId !== 'string' || !intentId) {
+    return { ok: false, error: 'This server has no saved worktree setup intent. Send your message to start setup, or update Minnow.' };
+  }
+  const response = await fetch(`${endpoint}/workspace`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' },
+    body: JSON.stringify({ action: kind === 'automatic' ? 'retry' : 'local', expectedIntentId: intentId, clientRequestId: randomUUID() }),
+    signal: AbortSignal.timeout(610_000),
+  });
+  const body = await response.json();
+  if (!response.ok || body.chat?.id !== chat.id) {
+    return { ok: false, error: body.error?.message || 'The server did not confirm the run target. Retry to recover its saved setup.' };
+  }
+  const saved = body.chat;
+  chat.workspacePreparation = saved.workspacePreparation;
+  for (const field of ['worktreeRoot', 'gitBranch'] as const) {
+    if (typeof saved[field] === 'string' && saved[field].trim()) chat[field] = saved[field].trim();
+    else delete chat[field];
+  }
+  for (const field of ['worktreeEnabled', 'worktreeSetupRequired', 'chatWorktreeManaged'] as const) {
+    if (saved[field] === true) chat[field] = true;
+    else delete chat[field];
+  }
+  if (typeof window !== 'undefined') window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId: chat.id } }));
+  return { ok: true };
+}
+
 export function getChatWorktreeSetupError(chatId: string): string | undefined {
   return setupErrors.get(chatId);
 }
@@ -309,6 +361,12 @@ async function applyRunTarget(
   chat: Chat,
   choice: ChatRunTargetChoice,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (chat.chatCommandVersion === 1) {
+    if (choice.kind !== 'automatic' && choice.kind !== 'local') {
+      return { ok: false, error: 'Server-owned conversations use automatic setup or explicit Local. No checkout was changed.' };
+    }
+    return applyManagedRunTarget(chat, choice.kind);
+  }
   if (choice.kind === 'automatic') {
     if (isChatWorktreeMode(chat)) return { ok: true };
     chat.worktreeSetupRequired = true;

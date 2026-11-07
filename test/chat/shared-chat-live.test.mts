@@ -83,6 +83,26 @@ test('observer-only metadata invalidates a mounted view without marking the tran
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
 });
 
+test('managed observer emits one payload-free received-to-DOM timing and disposes queued frames', async () => {
+  const chat = setup(); let clock = 0;
+  const events: unknown[] = [];
+  const observer = createSharedChatObserver(() => {}, { clock: () => clock, onTiming: event => events.push(event) });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'server', sequence: 1, epoch: 'execution', running: true,
+    live: { lastDelta: 'Visible prose', lastThinking: '', toolCallCount: 0 } };
+  const pending = observer.receive(frame); clock = 45;
+  await pending;
+  assert.equal(events.length, 1);
+  assert.equal((events[0] as any).stage, 'first_prose_dom');
+  assert.equal((events[0] as any).durationMs, 45);
+  assert.equal(JSON.stringify(events).includes('Visible prose'), false);
+  await observer.receive({ ...frame, sequence: 2, live: { ...frame.live!, lastDelta: 'Visible prose continued' } });
+  assert.equal(events.length, 1);
+  const queued = observer.receive({ ...frame, sequence: 3, live: { ...frame.live!, lastDelta: 'Do not repaint disposed viewer' } });
+  observer.dispose(); await queued;
+  assert.doesNotMatch(document.body.textContent!, /Do not repaint disposed/);
+  assert.equal(chat.history.length, 1, 'diagnostics and streaming never write canonical content');
+});
+
 test('phone paints live reasoning/prose, reconnects without duplicates, then displays the PC final result', async () => {
   const chat = setup();
   const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });

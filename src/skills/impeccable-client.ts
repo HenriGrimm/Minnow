@@ -191,7 +191,7 @@ interface SkillPickerOption {
   group?: string;
 }
 /** Grouped command menu for bare `/impeccable` sends. */
-function formatImpeccableCommandMenu(): string {
+export function formatImpeccableCommandMenu(): string {
   const meta = commandMetadata as Record<
     string,
     { description?: string; argumentHint?: string }

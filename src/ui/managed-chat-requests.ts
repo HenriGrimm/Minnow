@@ -198,6 +198,12 @@ function recoveryControls(chatId: string, executionId: string): HTMLElement {
         item.textContent = [op.toolName, op.targets.join(', '), op.logPath, op.receiptId ? 'Host result recorded' : 'Outcome unknown', op.invocationId].filter(Boolean).join(' · ');
         items.append(item);
       }
+      for (const checkpoint of review.checkpoints ?? []) {
+        const item = document.createElement('li');
+        item.textContent = ['Unsettled filesystem checkpoint', checkpoint.checkpointId,
+          checkpoint.cwd, checkpoint.pre?.sha ? `Before: ${checkpoint.pre.sha}` : 'Baseline unavailable'].filter(Boolean).join(' · ');
+        items.append(item);
+      }
       if (!review.ownerReleased) {
         info.textContent = 'Restart Minnow to verify the execution has stopped, then review the interrupted work again.';
         panel.replaceChildren(info, items); return;

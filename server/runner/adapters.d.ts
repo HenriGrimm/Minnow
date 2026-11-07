@@ -22,6 +22,7 @@ export interface SendModelCapabilities {
 }
 
 export interface PostChatCompletionsOptions {
+  minnowOnly?: boolean;
   stream?: boolean;
   fallbackRole?: string;
   persist?: boolean;
@@ -32,6 +33,8 @@ export interface PostChatCompletionsOptions {
   agentModelOptions?: import('../chats/contracts').ModelOptions;
   /** Explicit single-model work cannot use the role's fallback chain. */
   exactModel?: boolean;
+  /** Process-local server authority; never serialized into a provider body. */
+  nativeExecution?: import('../generations/native-execution-context').NativeExecutionContext;
   /**
    * Capabilities the body was sanitized with. The generations store re-sanitizes
    * before the wire and, without these, strips reasoning controls as unsupported.

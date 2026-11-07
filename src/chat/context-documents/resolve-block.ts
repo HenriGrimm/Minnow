@@ -35,14 +35,21 @@ export async function resolveContextDocumentsBlock(documents: ContextDocumentsCo
   }
   for (const raw of documents.customPaths) {
     const path = raw.trim().replace(/\\/g, '/');
-    if (path) await add(path);
+    if (path && !await add(path)) throw new Error(`Required context document is missing, unreadable or empty: ${path}. Update Context documents or restore the file before retrying.`);
   }
   const parts: string[] = [];
+  const requiredPaths = new Set(documents.customPaths.map(value => value.trim().replace(/\\/g, '/').toLowerCase()));
   let used = 0;
-  for (const { path, body } of sections) {
+  for (const [index, { path, body }] of sections.entries()) {
     const chunk = `### ${path}\n\n${body}`;
     const remaining = documents.maxTotalChars - used;
-    if (remaining <= 0) break;
+    if (chunk.length > remaining && sections.slice(index).some(row => requiredPaths.has(row.path.toLowerCase()))) {
+      throw new Error('Required context documents exceed the configured character budget. Increase the Context documents budget or remove a custom path before retrying.');
+    }
+    if (remaining <= 0) {
+      parts.push('[… truncated — context document budget exceeded]');
+      break;
+    }
     if (chunk.length <= remaining) {
       parts.push(chunk); used += chunk.length;
     } else {

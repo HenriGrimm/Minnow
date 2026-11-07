@@ -206,7 +206,15 @@ export function attachMessageActions(
       buildMenuButton('Copy', () => copyMessageRow(wrap)),
     );
 
-    const canRewrite = supportsLocalHistoryMutation(findChatById(target.chatId) ?? getActiveChat());
+    const actionChat = findChatById(target.chatId) ?? getActiveChat();
+    const canRewrite = supportsLocalHistoryMutation(actionChat);
+    const savedUser = actionChat.history[target.historyIndex];
+    if (actionChat.chatCommandVersion === 1 && !actionChat.agentConversation && target.turnKind === 'user' &&
+        savedUser?.role === 'user' && savedUser.messageId && savedUser.commandId) {
+      items.push(buildMenuButton('Replay in new chat', () => {
+        void forkFromUserIndex(target.chatId, target.historyIndex);
+      }, { title: 'Start a new saved branch; keep this conversation and its completed tool results unchanged' }));
+    }
     if (canRewrite && target.turnKind === 'user') {
       items.push(
         buildMenuButton('Edit', () => {

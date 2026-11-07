@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createChatRepository, hashChatPayload } from './repository.js';
 import { assertCaller, assertCallerCanTarget } from './caller.js';
-import { createChatPolicy, intersectChatPolicies } from './policy.js';
-import { ChatContractError, validateChatCommand, validateChatId, validateModelSelection, validateChatTaskResult, validateChatError } from './contracts.js';
-import { getAgentConversationsFeature } from './feature.js';
+import { createChatPolicy, intersectChatPolicies, assertChatPolicyWithinCeiling } from './policy.js';
+import { ChatContractError, validateChatCommand, validateChatId, validateModelSelection, validateChatTaskResult, validateChatError, validateChatSendIntent } from './contracts.js';
+import { captureChatTurnIntent } from './preparation.js';
+import { getAgentConversationsFeature, getOrdinaryChatExecutionFeature } from './feature.js';
 import { resolveAgentModelSelection } from './model-selection.js';
+import { ordinaryChatScopeBlocker, ordinaryChatHistoryBlocker } from './ordinary-routing.js';
 
 const ACTIVE = new Set(['running', 'waiting', 'waiting_for_model', 'loading_model', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_approval']);
 const PENDING = ['accepted', 'queued', 'waiting_for_host'];
@@ -50,8 +52,10 @@ function receipt(record, replayed = false) {
  * Transport adapters must create branded callers from authenticated context.
  */
 export function createChatCommandService({
-  repository = createChatRepository(), context, resolveModelSelection, captureProfile,
-  feature = getAgentConversationsFeature, now = Date.now, id = randomUUID,
+  repository = createChatRepository(), context, resolveModelSelection, captureProfile, captureTurnIntent = captureChatTurnIntent,
+  captureWorkspacePreparation, admitWorkspacePreparation, applyWorkspaceChoice,
+  captureNativeSelection,
+  feature = getAgentConversationsFeature, ordinaryFeature = getOrdinaryChatExecutionFeature, now = Date.now, id = randomUUID,
   hasExternalOwner = () => false, getExternalOwner, stopExternalOwner, isExternalExecutionActive, cancelTree, admitChildTask, admitCausality,
   onEvent, onCommand, canResumeQuestionExecution = () => false, onError = (error) => console.error('[chats] command execution failed:', error),
   leaseMs = 30000, maxPendingCommands = 100,
@@ -191,7 +195,12 @@ export function createChatCommandService({
     };
     assertLegacyAdmission();
     if (legacyCompletion && (caller.actor !== 'system' || !input?.delivery)) failure('policy_denied', 'Legacy completions require the trusted task delivery ingress');
-    fields(input, ['chatId', 'message', 'mode', 'clientRequestId', 'images', 'replyToCommandId', 'delivery']);
+    fields(input, ['chatId', 'message', 'mode', 'clientRequestId', 'images', 'intent', 'replyToCommandId', 'delivery']);
+    if (input.intent !== undefined) {
+      if (caller.actor !== 'human' || input.mode === 'steer') failure('policy_denied', 'Only human sends can select per-turn context');
+      input = { ...input, intent: checked(validateChatSendIntent(input.intent)) };
+    }
+    if (typeof input.message !== 'string' || !input.message.trim() || input.message.length > 120000) failure('invalid_request', 'Expected a nonempty message of at most 120000 characters');
     if (input.delivery && caller.actor !== 'system') failure('policy_denied', 'Only task delivery can provide result provenance');
     if (input.delivery) {
       fields(input.delivery, ['runId', 'deliveryId', 'causalRootId', 'causalDepth', 'cancellationEpoch']);
@@ -210,8 +219,16 @@ export function createChatCommandService({
       if (previous) return previous;
       enabled(caller, input);
       let target = await authorize(caller, input.chatId, 'send');
-      if (target.chat.agentConversation?.capabilities?.canSend === false) failure('policy_denied', 'This conversation is inspect-only');
       const epoch = repository.getCancellationEpoch(input.chatId);
+      if (caller.actor === 'human' && target.chat.chatCommandVersion !== 1) {
+        failure('capability_unavailable', 'Ordinary server execution requires an idle, durably reconciled parity-ready promotion before command admission. Continue using this conversation\'s existing execution host until routing is available.');
+      }
+      const workspacePreparation = mode !== 'steer' && typeof captureWorkspacePreparation === 'function'
+        ? await captureWorkspacePreparation(target) : null;
+      if (!workspacePreparation && (target.chat.worktreeSetupRequired === true || target.chat.worktreeEnabled === true && !target.chat.worktreeRoot)) {
+        failure('capability_unavailable', 'Finish worktree setup or explicitly choose Local before sending. Server admission cannot run in the unprepared checkout.');
+      }
+      if (target.chat.agentConversation?.capabilities?.canSend === false) failure('policy_denied', 'This conversation is inspect-only');
       if (legacyCompletion && (target.chat.chatCommandVersion !== 1 || mode !== 'queue')) failure('policy_denied', 'Legacy completions require an existing managed conversation and ordered delivery');
       if (legacyCompletion && (active.has(input.chatId) || externallyOwned(input.chatId) || repository.getLease(input.chatId)?.state === 'active' || firstRunnable(input.chatId))) failure('ownership_conflict', 'Legacy completion is deferred until the conversation is idle');
       if (!legacyCompletion && input.delivery?.cancellationEpoch !== undefined && input.delivery.cancellationEpoch !== epoch) failure('ownership_conflict', 'The automatic completion subscription was stopped');
@@ -221,18 +238,33 @@ export function createChatCommandService({
       }
       if (queued(input.chatId).length >= maxPendingCommands) failure('queue_full', 'This conversation has too many pending inputs');
       const modelSelection = mode === 'steer' ? live.command.modelSelection : await selectionFor(target, caller, input);
-      const capturedProfile = !target.profile && typeof captureProfile === 'function'
-        ? await captureProfile({ target, selection: modelSelection, caller, input }) : null;
+      const nativeExecution = mode !== 'steer' && typeof captureNativeSelection === 'function'
+        ? await captureNativeSelection(modelSelection) : undefined;
+      const turnIntent = input.intent !== undefined ? await captureTurnIntent(input.intent, target.chat, input.message) : null;
+      const captureTarget = turnIntent?.uiDesigner?.active
+        ? { ...target, chat: { ...target.chat, workAgentAuto: false, workAgentId: turnIntent.uiDesigner.agentId } } : target;
+      const capturedSettings = (caller.actor === 'human' && mode !== 'steer' || !target.profile) && typeof captureProfile === 'function'
+        ? await captureProfile({ target: captureTarget, selection: modelSelection, caller, input }) : null;
+      const capturedProfile = !target.profile ? capturedSettings : null;
       if (capturedProfile) target = { ...target, profile: { ...capturedProfile, chatId: input.chatId } };
+      const currentTarget = await authorize(caller, input.chatId, 'send');
+      if (currentTarget.scope.projectId !== target.scope.projectId || currentTarget.scope.canonicalKey !== target.scope.canonicalKey ||
+          target.checkoutIdentity && currentTarget.checkoutIdentity !== target.checkoutIdentity) {
+        failure('workspace_denied', 'The conversation checkout changed before admission');
+      }
+      target = { ...target, policy: intersectChatPolicies(target.policy, currentTarget.policy) };
       requireCaller(caller);
       assertLegacyAdmission();
       if (!legacyCompletion && epoch !== repository.getCancellationEpoch(input.chatId)) failure('ownership_conflict', 'Input setup was stopped before admission');
       const commandId = hashId('command', producer(caller) + ':' + key);
+      const firstTitleSeed = !target.chat.agentConversation && target.chat.messageCount === 0
+        ? input.intent?.titleSeed?.trim() || (String(target.chat.name ?? '').trim().toLowerCase() === 'new chat'
+          ? String(input.message ?? '').trim().replace(/\s+/g, ' ').slice(0, 40) : '') : '';
       const command = checked(validateChatCommand({
         version: 1, commandId, chatId: input.chatId, kind: mode === 'steer' ? 'steer' : 'send',
         requestedAt: now(), provenance: provenance(caller, commandId, input), message: input.message,
         ...(mode === 'steer' ? {} : { mode }), clientRequestId: key,
-        ...(input.images ? { images: input.images } : {}), modelSelection,
+        ...(input.images ? { images: input.images } : {}), ...(input.intent ? { intent: input.intent } : {}), modelSelection,
         ...(target.profile ? { profileReference: { profileId: target.profile.profileId, profileVersion: target.profile.profileVersion } } : {}),
       }));
       const record = repository.atomic(() => {
@@ -245,16 +277,27 @@ export function createChatCommandService({
         }
         if (caller.actor === 'human') repository.setAutoResumeBlocked(input.chatId, false);
         if (capturedProfile) repository.saveProfile(input.chatId, capturedProfile);
+        if (workspacePreparation) admitWorkspacePreparation(input.chatId, workspacePreparation);
         const causal = caller.actor === 'system' ? { causalRootId: command.provenance.causalRootId, causalDepth: input.delivery?.causalDepth ?? 0 }
           : admitCausality?.({ caller, command }) ?? { causalRootId: command.provenance.causalRootId, causalDepth: 0 };
         const acceptedCommand = checked(validateChatCommand({ ...command, provenance: { ...command.provenance, causalRootId: causal.causalRootId } }));
         const admitted = repository.admitCommand(acceptedCommand, { producerId: producer(caller), requestKey: key, captured: {
           requestIntentHash: intent, policy: target.policy, scope: target.scope, projectId: target.scope.projectId,
+          ...(target.checkoutIdentity ? { checkoutIdentity: target.checkoutIdentity } : {}),
           cancellationEpoch: epoch, ...causal,
+          ...(workspacePreparation ? { workspacePreparation } : {}),
+          ...(nativeExecution ? { nativeExecution } : {}),
           ...(legacyCompletion ? { legacyCompletion: true } : {}),
           ...(input.delivery ? { delivery: input.delivery } : {}),
           ...(target.profile ? { profile: target.profile } : {}),
+          ...(capturedSettings ? { turnSettings: capturedSettings.snapshot } : {}),
+          ...(turnIntent ? { turnIntent } : {}),
+          ...(firstTitleSeed ? { titleUpdate: { name: firstTitleSeed.slice(0, 256), expectedName: target.chat.name } } : {}),
         } });
+        if (admitted.captured.titleUpdate && input.intent?.deferTitleUntilTurnEnd !== true &&
+            repository.getChat(input.chatId).name === admitted.captured.titleUpdate.expectedName) {
+          repository.configureChat(input.chatId, { name: admitted.captured.titleUpdate.name });
+        }
         if (legacyCompletion) {
           const message = repository.appendAdmittedResult(admitted.commandId);
           const retainOnly = legacyCompletion.retainOnly || repository.getChat(input.chatId).subAgentAutoResumeBlocked === true
@@ -273,6 +316,248 @@ export function createChatCommandService({
     });
   }
   const send = (caller, input) => sendCommand(caller, input);
+  function routingState(chatId) {
+    const chat = repository.getChat(chatId);
+    if (chat.chatCommandVersion === 1) return { chatId, route: 'server', eligible: true, reason: 'already_canonical', revision: chat.revision };
+    const state = ordinaryFeature(), existing = chat.messageCount > 0;
+    const db = repository.getDatabase();
+    const storedController = db.prepare('SELECT 1 FROM chat_loops WHERE chat_id=? LIMIT 1').get(chatId)
+      || db.prepare('SELECT 1 FROM chat_sub_agent_runs WHERE chat_id=? LIMIT 1').get(chatId);
+    const busy = externallyOwned(chatId) || active.has(chatId) || repository.getLease(chatId)?.state === 'active' || queued(chatId).length;
+    const reason = busy ? 'legacy_owner_active' : storedController ? 'legacy_controller_active' : ordinaryChatScopeBlocker(chat)
+      ?? ordinaryChatHistoryBlocker(repository.readTranscript(chatId)?.messages ?? [])
+      ?? (!state?.admissionEnabled || existing && !state?.promotionEnabled ? state?.reason ?? 'capability_unavailable' : null);
+    return { chatId, route: 'legacy', eligible: !reason, reason: reason ?? (existing ? 'idle_root' : 'new_root'), revision: chat.revision };
+  }
+  async function ordinaryEligibility(caller, chatId) {
+    await authorize(caller, chatId, 'read');
+    return routingState(chatId);
+  }
+  /** Promotion changes ownership only, never starts a turn or releases a legacy lease. */
+  async function promote(caller, input) {
+    requireCaller(caller);
+    if (caller.actor !== 'human' || caller.ingress !== 'renderer') failure('caller_denied', 'Only the local conversation client may promote an idle root');
+    fields(input, ['chatId', 'expectedRevision', 'clientRequestId']);
+    checked(validateChatId(input.chatId)); checked(validateChatId(input.clientRequestId));
+    if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) failure('invalid_request', 'Promotion requires the durably saved revision');
+    const receiptId = hashId('promotion', [caller.scope.projectId, input.chatId, caller.ingress, input.clientRequestId].join(':'));
+    const intentHash = hashChatPayload(input);
+    const replay = () => {
+      const prior = repository.getOutbox(receiptId);
+      if (!prior) return null;
+      if (prior.kind !== 'conversation.promoted' || prior.payload.intentHash !== intentHash) failure('idempotency_conflict', 'Promotion identity was reused');
+      return { ...prior.payload.receipt, replayed: true };
+    };
+    return serialized(input.chatId, async () => {
+      const target = await authorize(caller, input.chatId, 'send');
+      const previous = replay(); if (previous) return previous;
+      if (target.chat.chatCommandVersion === 1) return { chatId: input.chatId, disposition: 'already_canonical', revision: target.chat.revision, replayed: false };
+      const epoch = repository.getCancellationEpoch(input.chatId);
+      if (disposed || !feature()?.recoveryEnabled) failure('capability_unavailable', 'The conversation service is unavailable');
+      const assertEligible = () => {
+        if (repository.getCancellationEpoch(input.chatId) !== epoch) failure('ownership_conflict', 'Conversation stopped during promotion');
+        const state = routingState(input.chatId);
+        if (state.revision !== input.expectedRevision) failure('stale_revision', 'The saved conversation changed before promotion');
+        if (!state.eligible) failure(state.reason === 'legacy_owner_active' ? 'ownership_conflict' : 'capability_unavailable', 'Ordinary execution cannot promote this conversation: ' + state.reason);
+      };
+      assertEligible();
+      const selection = await selectionFor(target, caller, { chatId: input.chatId });
+      if (typeof captureProfile !== 'function') failure('capability_unavailable', 'The server cannot capture an ordinary execution profile');
+      const profile = await captureProfile({ target, selection, caller, input: { chatId: input.chatId, message: '' } });
+      if (!profile?.snapshot?.policy) failure('capability_unavailable', 'The ordinary execution profile is incomplete');
+      const current = await authorize(caller, input.chatId, 'send');
+      if (current.scope.projectId !== target.scope.projectId || current.scope.canonicalKey !== target.scope.canonicalKey ||
+          target.checkoutIdentity && current.checkoutIdentity !== target.checkoutIdentity) failure('workspace_denied', 'The checkout changed during promotion');
+      const result = repository.atomic(() => {
+        const previous = replay(); if (previous) return previous;
+        if (disposed || !feature()?.recoveryEnabled) failure('capability_unavailable', 'The conversation service is unavailable');
+        assertEligible();
+        // Recheck the live gate and owner after every asynchronous preparation.
+        const chat = repository.ensureManagedChat(input.chatId, { projectId: target.scope.projectId, profile });
+        const receipt = { chatId: chat.id, disposition: 'promoted', revision: chat.revision, replayed: false };
+        repository.putOutbox({ outboxId: receiptId, chatId: chat.id, kind: 'conversation.promoted', payload: { intentHash, receipt } });
+        const claim = repository.claimOutbox(receiptId, 'promotion-receipt'); repository.finishOutbox(receiptId, claim);
+        return receipt;
+      });
+      emit({ type: 'configuration', chatId: input.chatId });
+      return result;
+    });
+  }
+  const chooseWorkspace = (caller, input) => serialized(input.chatId, async () => {
+    requireCaller(caller);
+    if (typeof applyWorkspaceChoice !== 'function') failure('capability_unavailable', 'Workspace recovery is unavailable on this host');
+    return applyWorkspaceChoice(caller, input);
+  });
+  /** Replay into a new canonical branch; the source transcript is immutable. */
+  async function fork(caller, input) {
+    requireCaller(caller);
+    if (caller.actor !== 'human' || !['renderer', 'device', 'cli'].includes(caller.ingress)) failure('caller_denied', 'Fork requires an authenticated human');
+    fields(input, ['chatId', 'messageId', 'expectedRevision', 'message', 'selection', 'clientRequestId']);
+    checked(validateChatId(input.chatId)); checked(validateChatId(input.messageId)); checked(validateChatId(input.clientRequestId));
+    if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0) failure('invalid_request', 'Fork requires the observed conversation revision');
+    const receiptId = hashId('fork', [caller.scope.projectId, input.chatId, caller.ingress, input.clientRequestId].join(':'));
+    const intentHash = hashChatPayload(input);
+    const previous = () => {
+      const prior = repository.getOutbox(receiptId);
+      if (!prior) return null;
+      if (prior.kind !== 'conversation.forked' || prior.payload.intentHash !== intentHash) failure('idempotency_conflict', 'Fork receipt was reused');
+      return { ...prior.payload.receipt, replayed: true };
+    };
+    return serialized(input.chatId, async () => {
+      let target = await authorize(caller, input.chatId, 'read');
+      const replayed = previous(); if (replayed) return replayed;
+      target = await authorize(caller, input.chatId, 'send');
+      if (disposed || !feature()?.recoveryEnabled) failure('capability_unavailable', 'Canonical forks are unavailable on this host');
+      if (target.chat.chatCommandVersion !== 1 || target.chat.agentConversation) failure('capability_unavailable', 'Canonical forks currently require an ordinary server-owned root');
+      if (target.chat.revision !== input.expectedRevision) failure('stale_revision', 'The source conversation changed');
+      if (externallyOwned(input.chatId) || active.has(input.chatId)) failure('ownership_conflict', 'Finish or stop source work before forking');
+      const anchor = repository.readMessageByIdentity(input.chatId, input.messageId);
+      const source = anchor?.message.commandId ? repository.getCommand(anchor.message.commandId) : null;
+      if (!anchor || anchor.message.role !== 'user' || anchor.message.provenance?.actor !== 'human') failure('invalid_request', 'Fork from a saved human message');
+      if (!source || source.chatId !== input.chatId || source.command.kind !== 'send') failure('capability_unavailable', 'This historical message has no canonical replay snapshot');
+      if (!['settled', 'failed', 'cancelled'].includes(source.state)) failure('ownership_conflict', 'The source message is not settled');
+      const originalProfile = source.captured.profile ?? (source.command.profileReference ? repository.getProfile(source.command.profileReference.profileId, source.command.profileReference.profileVersion) : null);
+      const profile = originalProfile && { ...originalProfile, snapshot: source.captured.turnSettings ?? originalProfile.snapshot };
+      if (!profile?.snapshot?.policy || !source.command.modelSelection) failure('capability_unavailable', 'The original prompt and model snapshot are required for replay');
+      const policy = intersectChatPolicies(createChatPolicy(profile.snapshot.policy), target.currentPolicy, caller.policy);
+      if (policy.modeId !== profile.snapshot.policy.modeId) failure('policy_denied', 'The original mode is no longer available for this replay');
+      let selection = source.command.modelSelection;
+      if (Object.hasOwn(input, 'selection')) {
+        selection = checked(validateModelSelection(input.selection));
+        const resolved = typeof resolveModelSelection === 'function'
+          ? await resolveModelSelection({ target, caller, input, selection: { ...selection, options: selection.options ?? {} } })
+          : await resolveAgentModelSelection({ target: selection }, { workspacePath: target.scope.canonicalKey });
+        selection = checked(validateModelSelection(resolved?.selection ?? resolved));
+      }
+      const current = await authorize(caller, input.chatId, 'send');
+      if (current.scope.projectId !== target.scope.projectId || current.scope.canonicalKey !== target.scope.canonicalKey ||
+          target.checkoutIdentity && current.checkoutIdentity !== target.checkoutIdentity) failure('workspace_denied', 'Source checkout changed during fork');
+      const currentPolicy = intersectChatPolicies(policy, current.currentPolicy);
+      if (currentPolicy.modeId !== policy.modeId) failure('policy_denied', 'The original mode was revoked during fork');
+      const chatId = hashId('branch', receiptId), commandId = hashId('command', receiptId);
+      const nextProfile = { profileId: hashId('profile', receiptId), profileVersion: 1,
+        snapshot: { ...profile.snapshot, policy: currentPolicy, modelSelection: selection, exactModel: selection.providerId !== 'minnow-router' } };
+      const command = checked(validateChatCommand({ version: 1, commandId, chatId, requestedAt: now(), kind: 'send', mode: 'auto',
+        clientRequestId: input.clientRequestId, provenance: provenance(caller, commandId, input),
+        message: input.message === undefined ? source.effectiveCommand.message : input.message,
+        ...(source.effectiveCommand.images ? { images: source.effectiveCommand.images } : {}),
+        ...(source.effectiveCommand.intent ? { intent: source.effectiveCommand.intent } : {}),
+        modelSelection: selection, profileReference: { profileId: nextProfile.profileId, profileVersion: 1 } }));
+      const receipt = repository.atomic(() => {
+        const replayed = previous(); if (replayed) return replayed;
+        if (disposed || externallyOwned(input.chatId) || active.has(input.chatId)) failure('ownership_conflict', 'The source became active during fork');
+        const created = repository.forkChat({ sourceChatId: input.chatId, messageId: input.messageId, expectedRevision: input.expectedRevision,
+          projectId: current.scope.projectId, profile: nextProfile, chat: {
+            id: chatId, name: `Fork: ${current.chat.name || 'Chat'}`.slice(0, 256), workspacePath: current.chat.workspacePath,
+            worktreeRoot: current.chat.worktreeRoot, gitBranch: current.chat.gitBranch, modeId: currentPolicy.modeId,
+            providerId: selection.providerId, modelId: selection.modelId,
+            workAgentId: current.chat.workAgentId, workAgentAuto: current.chat.workAgentAuto,
+            brainNotesInjection: current.chat.brainNotesInjection, codeMapInjection: current.chat.codeMapInjection,
+            contextDocumentsInjection: current.chat.contextDocumentsInjection, memoryEnabled: current.chat.memoryEnabled,
+          } });
+        const record = repository.admitCommand(command, { producerId: hashId('producer', receiptId), requestKey: input.clientRequestId, captured: {
+          requestIntentHash: intentHash, policy: currentPolicy, scope: current.scope, projectId: current.scope.projectId,
+          ...(current.checkoutIdentity ? { checkoutIdentity: current.checkoutIdentity } : {}),
+          cancellationEpoch: 0, profile: { ...nextProfile, chatId }, forkOrigin: created.origin,
+          ...(source.captured.turnIntent ? { turnIntent: source.captured.turnIntent } : {}),
+        } });
+        const admitted = repository.updateCommand(record.commandId, { state: 'queued' });
+        const result = { chatId, sourceChatId: input.chatId, sourceMessageId: input.messageId, commandId: admitted.commandId,
+          revision: created.chat.revision, disposition: 'queued', link: '#/app/code/chat?chatId=' + encodeURIComponent(chatId), replayed: false };
+        repository.putOutbox({ outboxId: receiptId, chatId, kind: 'conversation.forked', payload: { intentHash, receipt: result } });
+        const claim = repository.claimOutbox(receiptId, 'fork-receipt'); repository.finishOutbox(receiptId, claim);
+        return result;
+      });
+      if (!receipt.replayed) { announce(repository.getCommand(receipt.commandId)); schedule(receipt.chatId); }
+      return receipt;
+    });
+  }
+  /** Human changes bind future admissions only, never an already captured turn. */
+  async function configure(caller, input) {
+    requireCaller(caller);
+    if (disposed) failure('capability_unavailable', 'The conversation service is stopping');
+    if (caller.actor !== 'human' || !['renderer', 'device', 'cli'].includes(caller.ingress)) failure('caller_denied', 'Conversation configuration requires an authenticated human');
+    fields(input, ['chatId', 'action', 'selection', 'modeId', 'name', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
+    if (input.action !== undefined && input.action !== 'configure') failure('invalid_request', 'Unsupported configuration action');
+    checked(validateChatId(input.chatId));
+    checked(validateChatId(input.clientRequestId));
+    const executionChange = Object.hasOwn(input, 'selection') || input.modeId !== undefined;
+    if (input.expectedProfileVersion !== undefined && (!Number.isSafeInteger(input.expectedProfileVersion) || input.expectedProfileVersion < 0)) failure('invalid_request', 'Invalid profile revision');
+    const receiptId = hashId('config', [caller.scope.projectId, input.chatId, caller.ingress, input.clientRequestId].join(':'));
+    const { chatId: _chatId, ...intent } = input;
+    const intentHash = hashChatPayload(intent);
+    const replay = () => {
+      const prior = repository.getOutbox(receiptId);
+      if (!prior) return null;
+      if (prior.kind !== 'configuration.receipt' || prior.payload.intentHash !== intentHash) failure('idempotency_conflict', 'Configuration receipt was reused');
+      return { ...prior.payload.result, replayed: true };
+    };
+    return serialized(input.chatId, async () => {
+      let target = await authorize(caller, input.chatId, 'read');
+      if (target.chat.chatCommandVersion !== 1) failure('capability_unavailable', 'This conversation uses the existing settings controls');
+      const previous = replay(); if (previous) return previous;
+      target = await authorize(caller, input.chatId, 'send');
+      if (executionChange && input.expectedProfileVersion === undefined) failure('invalid_request', 'Execution configuration requires the observed profile revision');
+      const profileVersion = target.profile?.profileVersion ?? 0;
+      if (input.expectedProfileVersion !== undefined && input.expectedProfileVersion !== profileVersion) failure('stale_revision', 'Conversation profile changed');
+      if (Object.hasOwn(input, 'selection') && target.chat.agentConversation?.capabilities?.canChooseModel === false) failure('policy_denied', 'This conversation does not permit model changes');
+      const patch = {};
+      if (input.modeId !== undefined) {
+        if (!['general', 'build', 'plan', 'debug'].includes(input.modeId)) failure('invalid_request', 'Invalid conversation mode');
+        if (target.chat.agentConversation?.capabilities?.canSend === false) failure('policy_denied', 'This conversation is inspect-only');
+        patch.modeId = input.modeId;
+      }
+      if (input.name !== undefined) {
+        if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 256) failure('invalid_request', 'Invalid conversation name');
+        patch.name = input.name.trim();
+      }
+      for (const key of ['pinned', 'archived']) if (input[key] !== undefined) {
+        if (typeof input[key] !== 'boolean') failure('invalid_request', 'Invalid conversation presentation setting');
+        patch[key] = input[key];
+      }
+      let selection = target.profile?.snapshot?.modelSelection ?? { providerId: target.chat.providerId, modelId: target.chat.modelId };
+      if (Object.hasOwn(input, 'selection')) {
+        const requested = checked(validateModelSelection(input.selection));
+        const resolved = typeof resolveModelSelection === 'function'
+          ? await resolveModelSelection({ target, caller, input, selection: { ...requested, options: requested.options ?? {} } })
+          : await resolveAgentModelSelection({ target: { ...requested, options: requested.options ?? {} } }, { workspacePath: target.scope.canonicalKey });
+        selection = checked(validateModelSelection(resolved?.selection ?? resolved));
+        Object.assign(patch, { providerId: selection.providerId, modelId: selection.modelId });
+      }
+      // Mode prompts and grants must both be recaptured from server settings.
+      // Editing only the mode label would retain the old immutable prompt.
+      let snapshot = target.profile?.snapshot;
+      if (input.modeId !== undefined || executionChange && !snapshot) {
+        if (typeof captureProfile !== 'function') failure('capability_unavailable', 'This server cannot capture updated conversation configuration');
+        const captured = await captureProfile({ target: { ...target, chat: { ...target.chat, ...patch } }, selection, caller, input });
+        snapshot = captured?.snapshot;
+        if (!snapshot?.policy) failure('capability_unavailable', 'Updated conversation configuration is incomplete');
+      }
+      const current = await authorize(caller, input.chatId, 'send');
+      if (current.scope.projectId !== target.scope.projectId || current.scope.canonicalKey !== target.scope.canonicalKey ||
+          target.checkoutIdentity && current.checkoutIdentity !== target.checkoutIdentity) failure('workspace_denied', 'Conversation checkout changed during configuration');
+      if ((current.profile?.profileVersion ?? 0) !== profileVersion) failure('stale_revision', 'Conversation profile changed');
+      let next;
+      if (executionChange) {
+        const policy = createChatPolicy(snapshot?.policy ?? current.policy);
+        // A human may change an ordinary root's mode. Delegated profiles remain
+        // bounded by their captured role; a mode label cannot promote a child.
+        if (current.chat.agentConversation) assertChatPolicyWithinCeiling(policy, current.policy);
+        next = { profileId: current.profile?.profileId ?? `profile-${input.chatId}`, profileVersion: profileVersion + 1,
+          snapshot: { ...snapshot, policy, modelSelection: selection, exactModel: selection.providerId !== 'minnow-router' } };
+      }
+      const result = repository.atomic(() => {
+        const prior = replay(); if (prior) return prior;
+        const chat = repository.configureChat(input.chatId, patch, { expectedProfileVersion: profileVersion, ...(next ? { profile: next } : {}) });
+        const result = { chatId: input.chatId, profileReference: chat.profileReference, disposition: 'settled' };
+        repository.putOutbox({ outboxId: receiptId, chatId: input.chatId, kind: 'configuration.receipt', payload: { intentHash, result } });
+        const claim = repository.claimOutbox(receiptId, 'configuration-receipt'); repository.finishOutbox(receiptId, claim);
+        return result;
+      });
+      emit({ type: 'configuration', chatId: input.chatId });
+      return result;
+    });
+  }
   function admitLegacyCompletion(caller, input, options = {}) {
     fields(input, ['chatId', 'message', 'clientRequestId', 'delivery', 'retainOnly']);
     if (options.canAdmit !== undefined && typeof options.canAdmit !== 'function') failure('invalid_request', 'Invalid legacy admission guard');
@@ -498,6 +783,10 @@ export function createChatCommandService({
           held: entry.taskOwned && (controller.signal.aborted || recovery),
           result: entry.taskOwned ? { ...result, disposition: 'task_pending', executionId } : result,
           error: recovery ? { code: 'recovery_required', message: 'A tool effect needs explicit recovery', retryable: false } : null });
+        const title = updated.captured.titleUpdate;
+        if (status === 'completed' && command.intent?.deferTitleUntilTurnEnd && title && repository.getChat(chatId).name === title.expectedName) {
+          repository.configureChat(chatId, { name: title.name });
+        }
         if (!recovery) repository.releaseLease(chatId, fence);
         return updated;
       });
@@ -514,7 +803,8 @@ export function createChatCommandService({
     const capturedScope = record.captured?.scope;
     const capturedProject = record.captured?.projectId ?? repository.getChatProjectId(record.chatId);
     if (capturedProject && capturedProject !== target.scope.projectId || capturedScope &&
-      (capturedScope.workspaceId !== target.scope.workspaceId || capturedScope.canonicalKey !== target.scope.canonicalKey)) {
+      (capturedScope.workspaceId !== target.scope.workspaceId || capturedScope.canonicalKey !== target.scope.canonicalKey) ||
+      record.captured?.checkoutIdentity && record.captured.checkoutIdentity !== target.checkoutIdentity) {
       const held = repository.atomic(() => {
         const fresh = repository.getCommand(record.commandId);
         return fresh && PENDING.includes(fresh.state) ? repository.updateCommand(record.commandId, { state: 'waiting_for_host', held: true,
@@ -706,7 +996,8 @@ export function createChatCommandService({
     return promise;
   }
   const service = {
-    send, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
+    ordinaryEligibility, promote,
+    send, configure, fork, chooseWorkspace, admitLegacyCompletion, stop, startAdmittedChildTask, settleChildTask,
     stopExecution(executionId) {
       checked(validateChatId(executionId));
       const entry = [...active.values()].find(value => value.execution.executionId === executionId);
@@ -736,6 +1027,9 @@ export function createChatCommandService({
       const execution = active.has(chatId) ? repository.getExecution(active.get(chatId).execution.executionId)
         : repository.getLatestExecution(chatId);
       return { chat: { id: source.id, name: source.name, workspacePath: source.workspacePath,
+        workspacePreparation: source.workspacePreparation ?? null, worktreeRoot: source.worktreeRoot,
+        worktreeEnabled: source.worktreeEnabled, worktreeSetupRequired: source.worktreeSetupRequired,
+        revision: source.revision,
         providerId: source.providerId, modelId: source.modelId, modeId: source.modeId,
         messageCount: source.messageCount, lastMessageAt: source.lastMessageAt,
         ...(source.agentConversation ? { agentConversation: source.agentConversation } : {}),

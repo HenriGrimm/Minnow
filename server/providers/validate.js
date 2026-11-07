@@ -68,11 +68,17 @@ export function validateAgentCliProfile(raw, options = {}) {
     'contextWindowTokens',
     'sessionMode',
     'interactive',
+    'nativeCodingTools',
   ]);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agentCli setting: ${key}`);
   }
   const out = {};
+  if (input.nativeCodingTools !== undefined) {
+    if (typeof input.nativeCodingTools !== 'boolean') throw new Error('Invalid agentCli nativeCodingTools');
+    if (input.kind !== undefined && input.kind !== 'codex') throw new Error('agentCli nativeCodingTools is Codex-only');
+    out.nativeCodingTools = input.nativeCodingTools;
+  }
   if (!options.partial || input.kind !== undefined) {
     out.kind = validateAgentCliKind(input.kind);
   }

@@ -21,6 +21,7 @@ import { agentCliIdentity, snapshotClaudeSession, verifyClaudeSnapshot, verifyCl
 import { openCursorAcp } from './cursor-acp.js';
 import { openClaudeInteractive } from './claude-interactive.js';
 import { isToolImageFollowUpMessage } from '../../runner/tool-image-follow-up.js';
+import { assertMinnowToolMode } from '../../models/agent-cli-native.js';
 
 const closing = new Set();
 const sessions = createCliSessionPool('stream-json', closing, closeSession);
@@ -454,6 +455,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
   if (maxMs > 0) maxTimer = setTimeout(() => { maxExpired = true; if (round) round.timeoutKind = 'max'; controller.abort(); }, maxMs);
   try {
     const body = JSON.parse(state.requestBody.toString('utf8'));
+    assertMinnowToolMode(settings);
     body.model = candidate.modelId;
     if (body.n != null && body.n !== 1) throw new Error('Agent CLI supports one response per request.');
     const key = sessionKey(state, candidate);
@@ -580,7 +582,9 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           if (session.persistent && session.kind === 'claude' && !this.deferredNativeHandoff) {
             session.pendingSnapshotCalls = this.calls;
             session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId ?? session.latestNativeMessageId;
+            const snapshotAt = performance.now();
             const nativeDigest = await snapshotClaudeSession(session).catch(() => null);
+            metadata.minnow_cli.timings = { claude_snapshot_ms: performance.now() - snapshotAt };
             session.pendingSnapshotCalls = null;
             if (nativeDigest && !session.closed && !controller.signal.aborted) {
               const accepted = [...session.messages, { role: 'assistant', content: this.content, tool_calls: this.calls }];
@@ -603,7 +607,9 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           try {
             session.completedText = session.transport === 'claude-interactive' ? session.processRun.completedText ?? this.content : this.content;
             session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId;
+            const snapshotAt = performance.now();
             const nativeDigest = session.kind === 'claude' ? await snapshotClaudeSession(session) : session.processRun.digest();
+            if (session.kind === 'claude') metadata.minnow_cli.timings = { claude_snapshot_ms: performance.now() - snapshotAt };
             if (session.closed || controller.signal.aborted) {
               if (!controller.signal.aborted && state.status !== 'cancelled') completeGeneration();
               resolveRound({ outcome: 'complete' }); return;
@@ -710,7 +716,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
       ? { outcome: 'fatal', message: state.errorMessage, hostSuspect: false } : { outcome: 'complete' };
     if (state.status === 'cancelled') return { outcome: 'complete' };
     const message = safeAgentCliDiagnostic(maxExpired ? generationTimeoutMessage({ idleMs, maxMs }, 'max') : error.message, session?.secretValues ?? Object.values(runtime.secrets ?? {}));
-    if (!round?.emitted && !session?.inferenceStarted && canFailover) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
+    if (!error.cliPolicyRejected && !round?.emitted && !session?.inferenceStarted && canFailover) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
     markError(state, message);
     return { outcome: 'fatal', message, hostSuspect: false };
   } finally {

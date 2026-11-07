@@ -7,6 +7,7 @@ import { applySharedChatAttention, applySharedChatFrame, createEmptyChatObject, 
 import { streamingChatIds } from '../../src/app-state.ts';
 import { acknowledgeManagedChatActivity } from '../../src/chat/managed-chat-client.ts';
 import { acknowledgeChatViewed, acknowledgeObservedManagedActivity } from '../../src/notifications/acknowledge.ts';
+import { maybeMarkChatUnreadAfterLeave, recordChatOpened, resolveAgentAncestorDotStates, getChatItemDotContext } from '../../src/ui/chat-item-dot.ts';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; streamingChatIds.clear(); resetSessionPersistenceForTests(); setSessionStateForTests(null); });
@@ -60,6 +61,39 @@ test('opening a managed chat deduplicates its observed acknowledgement and prese
   await acknowledgeObservedManagedActivity(chat.id, chat.agentActivityCursor);
   acknowledgeChatViewed(chat.id);
   assert.equal(calls, 1, 'the acknowledgement summary cannot cause a feedback loop');
+});
+
+test('viewed managed child stays read on leave despite a newer renderer timestamp', async () => {
+  const parent = createEmptyChatObject('model'); parent.id = 'viewed-parent';
+  const child = createEmptyChatObject('model'); child.id = 'viewed-child'; child.chatCommandVersion = 1;
+  child.agentConversation = { version: 1, childChatId: child.id, parentChatId: parent.id } as any;
+  child.agentActivityCursor = { messageSeq: 3, executionId: 'settled' };
+  child.agentExecution = { executionId: 'settled', status: 'completed' };
+  child.unread = true;
+  setSessionStateForTests({ version: 6, activeId: child.id, sidebarCollapsed: false, chats: [parent, child] });
+  globalThis.fetch = async () => Response.json({ chatId: child.id, activity: { agentActivityCursor: child.agentActivityCursor, unread: false, turnError: false } });
+  await acknowledgeObservedManagedActivity(child.id, child.agentActivityCursor);
+  recordChatOpened(child.id);
+  child.lastAssistantAt = Date.now() + 10000;
+  maybeMarkChatUnreadAfterLeave(child);
+  assert.equal(child.unread, false);
+  assert.equal(resolveAgentAncestorDotStates([parent, child], getChatItemDotContext(parent.id)).get(parent.id), 'idle');
+});
+
+test('reasserted unread activity can be acknowledged again with the same cursor', async () => {
+  const chat = createEmptyChatObject('model'); chat.id = 'reasserted'; chat.chatCommandVersion = 1;
+  chat.agentActivityCursor = { messageSeq: 3, executionId: 'settled' };
+  chat.agentExecution = { executionId: 'settled', status: 'completed' };
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return Response.json({ chatId: chat.id, activity: { agentActivityCursor: chat.agentActivityCursor, unread: false, turnError: false } }); };
+  await acknowledgeObservedManagedActivity(chat.id, chat.agentActivityCursor);
+  applySharedChatAttention(chat.id, { unread: true });
+  await acknowledgeObservedManagedActivity(chat.id, chat.agentActivityCursor);
+  assert.equal(calls, 2);
+  assert.equal(chat.unread, false);
+  await acknowledgeObservedManagedActivity(chat.id, chat.agentActivityCursor);
+  assert.equal(calls, 2, 'read activity remains deduplicated');
 });
 
 test('a late managed acknowledgement cannot clear newer errors or replace the current execution', async () => {

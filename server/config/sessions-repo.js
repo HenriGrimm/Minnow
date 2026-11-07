@@ -132,10 +132,15 @@ function recoverSessionPatchConflicts(db, body) {
     const conflict = usesPresentation ? expectedPresentation < presentation
       : expected < (revision?.revision ?? 0) && (isManagedConversation(db, id) || expected < (revision?.write_revision ?? 0));
     if (!conflict) continue;
-    const storedHistory = db.prepare('SELECT payload_json FROM messages WHERE chat_id=? ORDER BY seq').all(id)
-      .map(message => JSON.parse(message.payload_json));
     const meta = parseJson(row.meta_json, {});
-    const historyChanged = !isManagedConversation(db, id) && wireChatIncludesHistory(raw) && JSON.stringify(raw.history) !== JSON.stringify(storedHistory);
+    // Only a genuine legacy transcript conflict needs message bodies. Managed
+    // metadata and history-omitted writes must remain independent of transcript size.
+    let historyChanged = false;
+    if (!isManagedConversation(db, id) && wireChatIncludesHistory(raw)) {
+      const storedHistory = db.prepare('SELECT payload_json FROM messages WHERE chat_id=? ORDER BY seq').all(id)
+        .map(message => JSON.parse(message.payload_json));
+      historyChanged = JSON.stringify(raw.history) !== JSON.stringify(storedHistory);
+    }
     if (historyChanged || hasChatPresentationChanges({ ...meta, name: row.name, groupId: row.group_id }, raw)) {
       recovered.push(preserveConflictingChat(db, row));
     }

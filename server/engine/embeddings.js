@@ -6,6 +6,7 @@ import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
 import { getProviderRuntime } from '../providers/store.js';
 import { getDefaultPaths } from '../providers/paths.js';
+import { runWithDeadline } from '../../src/lib/async-deadline.mjs';
 
 /** Default local model (384-d MiniLM). */
 export const DEFAULT_EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2';
@@ -90,9 +91,9 @@ export function withTimeout(promise, timeoutMs, message = 'Embedding request tim
  * @param {string[]} texts
  * @param {number} timeoutMs
  */
-export async function embedTexts(embedder, texts, timeoutMs) {
+export async function embedTexts(embedder, texts, timeoutMs, { signal } = {}) {
   const list = Array.isArray(texts) ? texts.map((t) => String(t ?? '')) : [''];
-  return withTimeout(embedder.embed(list), timeoutMs);
+  return runWithDeadline(querySignal => embedder.embed(list, { signal: querySignal }), { timeoutMs, signal });
 }
 
 /**
@@ -110,6 +111,9 @@ export async function createLocalEmbedder(config = {}) {
       return pipeline('feature-extraction', modelId);
     })();
     localPipelineCache.set(modelId, pipelinePromise);
+    pipelinePromise.catch(() => {
+      if (localPipelineCache.get(modelId) === pipelinePromise) localPipelineCache.delete(modelId);
+    });
   }
 
   const extractor = await pipelinePromise;
@@ -118,10 +122,12 @@ export async function createLocalEmbedder(config = {}) {
     id: modelId,
     backend: 'local',
     dim: 384,
-    async embed(texts) {
+    async embed(texts, { signal } = {}) {
       const out = [];
       for (const text of texts) {
+        signal?.throwIfAborted();
         const result = await extractor(text, { pooling: 'mean', normalize: true });
+        signal?.throwIfAborted();
         out.push(Array.from(result.data));
       }
       return out;
@@ -155,9 +161,10 @@ export async function createProviderEmbedder(config = {}) {
     id: modelId,
     backend: 'provider',
     dim: 0,
-    async embed(texts) {
+    async embed(texts, { signal } = {}) {
       const res = await fetch(url, {
         method: 'POST',
+        signal,
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',

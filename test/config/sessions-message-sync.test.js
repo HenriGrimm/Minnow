@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import Database from 'better-sqlite3';
 import { initSessionsSchema } from '../../server/config/sessions-schema.js';
 import { patchSessionState } from '../../server/config/sessions-repo.js';
+import { createChatRepository } from '../../server/chats/repository.js';
+import { longChatHistory } from '../fixtures/long-chat-history.mjs';
 
 let db;
 afterEach(() => db?.close());
 
-function fixture(history) {
+function fixture(history, filename = ':memory:') {
   const statements = [];
-  db = new Database(':memory:', { verbose: sql => statements.push(sql) });
+  db = new Database(filename, { verbose: sql => statements.push(sql) });
   db.pragma('foreign_keys = ON');
   initSessionsSchema(db);
   const save = rows => patchSessionState({ chats: [{ id: 'chat', name: 'Chat', history: rows }] }, { db });
@@ -56,6 +61,48 @@ test('saving an unchanged transcript keeps its digest and performs no message or
   assert.deepEqual(index(), priorIndex);
   assert.deepEqual(db.prepare('SELECT message_count, history_digest, last_message_preview FROM chats').get(), before);
   assert.equal(statements.some(sql => /(?:INSERT INTO|DELETE FROM) messages_fts/i.test(sql)), false);
+});
+
+const managedMetadataStatementCounts = [];
+for (const count of [10, 100, 2500]) test(`managed metadata saves preserve ${count} canonical rows without reading message bodies`, t => {
+  const { statements, writes, index } = fixture(longChatHistory(count));
+  createChatRepository({ db }).ensureManagedChat('chat');
+  const before = db.prepare('SELECT rowid, * FROM messages ORDER BY seq').all();
+  const beforeIndex = index();
+  const derived = db.prepare('SELECT message_count, history_digest FROM chats').get();
+  statements.length = 0;
+  const start = performance.now();
+  for (let iteration = 0; iteration < 3; iteration++) {
+    // Stale legacy bases with unchanged presentation exercise recovery without
+    // fetching history; real displaced edits still get an atomic recovery copy.
+    patchSessionState({ chats: [{ id: 'chat', name: 'Chat', groupId: '', updatedAt: iteration + 1 }],
+      chatBaseRevisions: { chat: 0 }, recoverConflicts: true }, { db });
+  }
+  const durationMs = performance.now() - start;
+  managedMetadataStatementCounts.push(statements.length);
+  assert.equal(statements.length, managedMetadataStatementCounts[0], 'SQL work is independent of history length');
+  t.diagnostic(JSON.stringify({ messages: count, metadataSaves: 3, sqlStatements: statements.length, durationMs: +durationMs.toFixed(3) }));
+  assert.equal(statements.some(sql => /SELECT.*payload_json.*FROM messages/i.test(sql)), false);
+  assert.deepEqual(writes(), []);
+  assert.deepEqual(db.prepare('SELECT rowid, * FROM messages ORDER BY seq').all(), before);
+  assert.deepEqual(index(), beforeIndex);
+  assert.deepEqual(db.prepare('SELECT message_count, history_digest FROM chats').get(), derived);
+});
+
+test('managed metadata writes retain the full settled transcript and row identities across reopen', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-managed-save-'));
+  t.after(() => { if (db?.open) db.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  const filename = path.join(root, 'sessions.sqlite');
+  fixture(longChatHistory(2500), filename);
+  createChatRepository({ db }).ensureManagedChat('chat');
+  const before = db.prepare('SELECT rowid, seq, payload_json, row_hash FROM messages ORDER BY seq').all();
+  patchSessionState({ chats: [{ id: 'chat', name: 'Renamed', composerDraft: 'Saved draft' }],
+    chatBasePresentationRevisions: { chat: 0 } }, { db });
+  db.close(); db = new Database(filename); initSessionsSchema(db);
+  assert.deepEqual(db.prepare('SELECT rowid, seq, payload_json, row_hash FROM messages ORDER BY seq').all(), before);
+  const chat = db.prepare('SELECT name, meta_json FROM chats WHERE id=?').get('chat');
+  assert.equal(chat.name, 'Renamed');
+  assert.equal(JSON.parse(chat.meta_json).composerDraft, 'Saved draft');
 });
 
 test('editing text, changing roles, truncating and reappending keep search results in sync', () => {

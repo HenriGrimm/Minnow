@@ -128,12 +128,33 @@ test('adding the request-independent write fence preserves existing revision and
 test('archives saved before the write fence import with conservative revision bases', async t => {
   const f = fixture(t), source = f.database(); await seed(source.repository);
   const archive = exportChatArchive(source.db);
+  delete archive.tables.chat_workspace_checkpoints;
   for (const row of archive.tables.chat_revisions) delete row.write_revision;
   const { digest: _digest, ...payload } = archive; archive.digest = hashChatArchive(payload);
   f.useHome('old-archive-target'); const target = f.database();
   importChatArchive(target.db, archive);
   for (const row of target.db.prepare('SELECT * FROM chat_revisions').all()) assert.equal(row.write_revision, row.revision);
   assert.equal(target.repository.readTranscript('child').messages.length, 4);
+});
+
+test('checkpoint journals survive archive import and unfinished effects remain uncertain', async t => {
+  const f = fixture(t), source = f.database(); await seed(source.repository);
+  const insert = source.db.prepare('INSERT INTO chat_workspace_checkpoints VALUES(?,?,?,?,?,?)');
+  for (const state of ['executing', 'uncertain', 'settled', 'retired']) insert.run('execution', state, 'child', 'C:/fixture', state,
+    JSON.stringify({ version: 1, cwd: 'C:/fixture', pre: { sha: 'a'.repeat(40) } }));
+  const archive = exportChatArchive(source.db);
+  f.useHome('checkpoint-import'); const target = f.database();
+  importChatArchive(target.db, archive);
+  assert.deepEqual(target.db.prepare('SELECT checkpoint_id,state FROM chat_workspace_checkpoints ORDER BY checkpoint_id').all(), [
+    { checkpoint_id: 'executing', state: 'uncertain' }, { checkpoint_id: 'retired', state: 'retired' },
+    { checkpoint_id: 'settled', state: 'settled' }, { checkpoint_id: 'uncertain', state: 'uncertain' },
+  ]);
+  const forged = structuredClone(archive);
+  forged.tables.chat_workspace_checkpoints[0].execution_id = 'other-execution';
+  const { digest, ...payload } = forged; forged.digest = hashChatArchive(payload);
+  const empty = f.database();
+  assert.throws(() => importChatArchive(empty.db, forged), /checkpoint ownership/);
+  assert.equal(empty.db.prepare('SELECT count(*) n FROM chats').get().n, 0);
 });
 
 test('versioned archive round trip retains full canonical records, exact journals, revisions and child-only usage after reopen', async t => {

@@ -10,6 +10,11 @@ import { createAgentCatalogContext, resolveAgentModelSelection, inspectAgentMode
 import { clampShellSandboxModeForPlatform, normalizeShellSandboxMode } from '../terminal/sandbox/mode.js';
 import { agentContextBudgetFromWorkAgent, withCompactionDefaults, normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { projectUserContent } from '../runner/user-content.js';
+import { runWithDeadline } from '../../src/lib/async-deadline.mjs';
+import { readChatCheckoutIdentity } from './context.js';
+import { rebindChatWorkspacePolicy } from './workspace-preparation.js';
+import { validateChatSendIntent } from './contracts.js';
+import { wrapUntrusted } from '../../src/lib/untrusted.mjs';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;
@@ -44,6 +49,31 @@ async function rawPrompts(root, required = false) {
 export function createChatPreparationAdapters(overrides = {}) {
   return {
     loadComposer: loadChatPreparationComposer,
+    async loadSkill(id) {
+      const { readConfigJson } = await import('../config/store.js');
+      const { getSkillById } = await import('../skills/scan.js');
+      const config = await readConfigJson('skills.json');
+      if (config?.enabled?.[id] === false) throw new ChatContractError('capability_unavailable', `Skill "${id}" is disabled in Settings`);
+      const skill = await getSkillById(appRoot, id);
+      if (!skill?.body?.trim()) throw new ChatContractError('capability_unavailable', `Unknown or unavailable skill: ${id}`);
+      return skill;
+    },
+    async composeImpeccable(body, userText, composer) {
+      const { getInstalledImpeccableDir } = await import('../impeccable/skill-install.js');
+      const { readImpeccableUpstreamBody } = await import('../impeccable/upstream-handler.js');
+      const { readImpeccableReference } = await import('../impeccable/reference-handler.js');
+      const root = getInstalledImpeccableDir();
+      const upstream = readImpeccableUpstreamBody(root);
+      const parts = [body, upstream?.content ?? ''].filter(Boolean);
+      const { command } = composer.parseImpeccableSubcommand(userText);
+      if (command) for (const id of composer.commandsForImpeccableAugment(command)) {
+        const reference = readImpeccableReference(root, id);
+        if (!reference?.content) throw new ChatContractError('capability_unavailable', `Required Impeccable workflow is unavailable: ${id}`);
+        parts.push(`## ${id === command ? 'Active Impeccable command' : 'Prerequisite workflow'}: ${id}\nFollow this workflow in chat; do not run it with run_impeccable.\n${reference.content}`);
+      }
+      else if (!userText.trim()) parts.push(composer.formatImpeccableCommandMenu());
+      return parts.join('\n\n---\n\n');
+    },
     async readSettings() {
       const { readResource } = await import('../config/store.js');
       const { normalizeToolConfig, validateUserRulesSettings } = await import('../config/validators.js');
@@ -134,13 +164,13 @@ export function createChatPreparationAdapters(overrides = {}) {
       const { createChatRepository } = await import('./repository.js');
       return createChatRepository().getProfile(reference.profileId, reference.profileVersion);
     },
-    async retrieveMemory({ chat, cwd, query, profile }) {
+    async retrieveMemory({ chat, cwd, query, profile, signal }) {
       const { loadBrainConfig } = await import('../brain/store.js');
       const { retrieveBrainBlockHybrid } = await import('../brain/retrieve.js');
       const { brainWorkspaceKeyFromPath } = await import('../brain/paths.js');
       const brain = await loadBrainConfig();
       if (brain.enabled === false) return '';
-      const result = await retrieveBrainBlockHybrid({ query, profile, limit: 12,
+      const result = await retrieveBrainBlockHybrid({ query, profile, limit: 12, signal,
         autoInject: chat.kind !== 'expert', workspaceKey: brainWorkspaceKeyFromPath(cwd),
         maxChars: profile === 'lite' ? brain.maxInjectCharsLite ?? 800 : brain.maxInjectCharsFull ?? 8000,
         ...(chat.kind === 'expert' && chat.expertId ? { scope: { expertId: chat.expertId } } : {}),
@@ -166,6 +196,49 @@ export function createChatPreparationAdapters(overrides = {}) {
     },
     ...overrides,
   };
+}
+
+/** Resolve only installed skill identities. Client context never becomes trusted instructions. */
+export async function captureChatTurnIntent(intent, chat, message, options = {}) {
+  const parsed = validateChatSendIntent(intent);
+  if (!parsed.ok) throw new ChatContractError(parsed.error.code, parsed.error.message, parsed.error);
+  const adapters = createChatPreparationAdapters(options.adapters);
+  try { return await runWithDeadline(async signal => {
+    const value = parsed.value;
+    let skillBody = null, uiDesigner = null;
+    if (value.skill) {
+      const userText = value.skill.input ?? message;
+      const composer = await adapters.loadComposer();
+      const skill = await adapters.loadSkill(value.skill.id);
+      skillBody = skill.body;
+      if (composer.shouldComposeImpeccableBody(value.skill.id, userText)) skillBody = await adapters.composeImpeccable(skillBody, userText, composer);
+      if (value.skill.id === 'caveman') skillBody = composer.augmentCavemanSkillBody(skillBody, { userText, pinnedIntensity: value.skill.intensity });
+      if (value.skill.id === 'partymode') skillBody = composer.augmentPartyModeSkillBody(skillBody);
+      uiDesigner = composer.prepareUiDesignerTurn({ ...chat }, { skillId: value.skill.id, userText, workAgentId: chat.workAgentId });
+      if (uiDesigner.active) skillBody = composer.augmentSkillBodyForUiDesigner(skillBody, uiDesigner);
+    }
+    if (!uiDesigner && chat.workAgentId === 'ui-designer') {
+      const composer = await adapters.loadComposer();
+      uiDesigner = composer.prepareUiDesignerTurn({ ...chat }, { skillId: null, userText: message, workAgentId: chat.workAgentId });
+    }
+    signal.throwIfAborted();
+    if (skillBody && Buffer.byteLength(skillBody) > 256 * 1024) throw new ChatContractError('capability_unavailable', 'The selected skill exceeds 256 KiB');
+    return { intent: value, skillBody, uiDesigner };
+  }, { timeoutMs: options.timeoutMs ?? 10000 }); }
+  catch (error) {
+    if (error?.name === 'TimeoutError') throw new ChatContractError('capability_unavailable', 'Required skill preparation exceeded its deadline. Retry after checking the selected skill.');
+    throw error;
+  }
+}
+
+function standingChatLinks(links) {
+  if (!Array.isArray(links)) return null;
+  const values = links.slice(0, 40).flatMap(link => {
+    const value = link?.kind === 'file' ? link.path : link?.kind === 'url' ? link.url : null;
+    return typeof value === 'string' && value.trim() && value.length <= 2048 ? [{ kind: link.kind, value }] : [];
+  });
+  return values.length ? 'The user pinned these links as standing context. Read files or open URLs when relevant:\n' +
+    wrapUntrusted(JSON.stringify(values), { source: 'chat-links' }) : null;
 }
 
 async function policySnapshot(chat, scope, options = {}) {
@@ -280,14 +353,19 @@ export async function captureChatProfile(chat, scope, options = {}) {
   const overrideIds = new Set(['default', role.workAgent?.id, live.type?.workAgentId].filter(Boolean));
   const workAgentOverrides = Object.fromEntries([...overrideIds].filter(id => live.workAgentOverrides[id]).map(id =>
     [id, pick(live.workAgentOverrides[id], ['sampler', 'thinkingMode', 'thinkingBudgetTokens', 'maxInputTokens', 'contextEnforcementPolicy', 'minRecentTurns', 'summaryReserveTokens'])]));
+  const runSettings = live.composer.resolveChatRunSettings({ chat: live.effectiveChat, workAgents: live.agents,
+    workAgentOverrides: live.workAgentOverrides, meta,
+    ...(live.typeId ? { typeId: live.typeId, typeConfig: live.type } : {}) });
+  const chatSettings = pick(chat, ['thinkingMode', 'brainNotesInjection', 'codeMapInjection', 'contextDocumentsInjection', 'memoryEnabled']);
   const prompt = { sources, workAgent: role.workAgent, meta: capturedMeta, customConfig,
+    chatLinksBlock: standingChatLinks(chat.links),
     workAgentOverrides, rules: structuredClone(live.settings.rules),
     legacySystemPrompt: live.settings.legacySystemPrompt ?? '' };
   if (Buffer.byteLength(JSON.stringify(prompt)) > 512 * 1024) throw new ChatContractError('capability_unavailable', 'The captured chat prompt exceeds 512 KiB');
   return { policy, exactModel: options.exactModel === true, ...(selected.ok ? { modelSelection: selected.value } : {}),
     ...(live.typeId ? { typeId: live.typeId, typeConfig: pick(live.type, ['label', 'workAgentId', 'sampler', 'thinkingMode', 'thinkingBudgetTokens',
       'maxInputTokens', 'contextEnforcementPolicy', 'minRecentTurns', 'summaryReserveTokens', 'summarySchema']) } : {}),
-    prompt,
+    prompt, runSettings, chatSettings,
   };
 }
 
@@ -317,7 +395,7 @@ async function executionProfile(command, execution, adapters) {
   return profile;
 }
 
-async function contextDocuments(composer, meta, cwd, filesystemAccess) {
+async function contextDocuments(composer, meta, cwd, filesystemAccess, signal) {
   const raw = meta.contextDocuments ?? {};
   const documents = {
     enabledPresets: Array.isArray(raw.enabledPresets) ? raw.enabledPresets.filter(value => typeof value === 'string') : composer.defaultEnabledPresetIds(),
@@ -335,11 +413,14 @@ async function contextDocuments(composer, meta, cwd, filesystemAccess) {
   }
   return composer.resolveContextDocumentsBlock(documents, {
     async readText(relative) {
+      signal?.throwIfAborted();
       const full = await safePath(relative);
       if (!full) return null;
-      try { return await fs.readFile(full, 'utf8'); } catch { return null; }
+      try { return await fs.readFile(full, { encoding: 'utf8', signal }); }
+      catch (error) { signal?.throwIfAborted(); return null; }
     },
     async listFiles(relative) {
+      signal?.throwIfAborted();
       const full = await safePath(relative);
       if (!full) return [];
       try { return (await fs.readdir(full, { withFileTypes: true })).filter(row => row.isFile()).map(row => row.name); }
@@ -355,21 +436,34 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const target = await options.resolveTarget(execution.chatId);
   const { chat, scope } = target;
   const adapters = createChatPreparationAdapters(options.adapters);
-  const profileSnapshot = await executionProfile(command, execution, adapters);
-  const snapshot = profileSnapshot?.snapshot ?? {};
-  const live = await policySnapshot(chat, scope, { adapters: options.adapters,
-    workspaceIds: target.currentPolicy.workspaceIds });
+  const [profileSnapshot, live, transcript] = await Promise.all([
+    executionProfile(command, execution, adapters),
+    policySnapshot(chat, scope, { adapters: options.adapters, workspaceIds: target.currentPolicy.workspaceIds }),
+    adapters.readTranscript(chat.id),
+  ]);
+  const snapshot = execution.captured?.turnSettings ?? profileSnapshot?.snapshot ?? {};
+  const turn = execution.captured?.turnIntent;
+  if (command.intent?.skill && !turn?.skillBody?.trim()) throw new ChatContractError('capability_unavailable', 'The accepted skill snapshot is missing. This input cannot execute without its selected instructions.');
+  const checkoutIdentity = target.checkoutIdentity ?? await readChatCheckoutIdentity(scope.canonicalKey);
   let policy = intersectChatPolicies(target.policy, createChatPolicy(live.policyInput));
-  if (snapshot.policy) policy = intersectChatPolicies(policy, createChatPolicy(snapshot.policy));
+  const snapshotPolicy = snapshot.policy && (execution.captured?.workspacePolicyBinding
+    ? rebindChatWorkspacePolicy(snapshot.policy, execution.captured.workspacePolicyBinding) : createChatPolicy(snapshot.policy));
+  if (snapshotPolicy) policy = intersectChatPolicies(policy, snapshotPolicy);
   if (execution.captured?.policy) policy = intersectChatPolicies(policy, createChatPolicy(execution.captured.policy));
   if (!policy.capabilities.includes('execution.host')) throw new ChatContractError('capability_unavailable', 'This agent configuration is disabled or unavailable');
-  const tools = live.definitions.filter(definition => policy.toolPermissions[definition.function.name] && policy.toolPermissions[definition.function.name] !== 'off')
+  let tools = live.definitions.filter(definition => policy.toolPermissions[definition.function.name] && policy.toolPermissions[definition.function.name] !== 'off')
     .map(definition => structuredClone(definition));
+  if (turn?.uiDesigner?.active) {
+    tools = live.composer.applyUiDesignerToolFilter(tools, turn.uiDesigner)
+      .filter(tool => !live.composer.assertUiDesignerToolAllowed(tool.function.name, turn.uiDesigner.mode));
+    const allowed = new Set(tools.map(tool => tool.function.name));
+    policy = createChatPolicy({ ...policy, toolPermissions: Object.fromEntries(Object.entries(policy.toolPermissions)
+      .map(([name, permission]) => [name, allowed.has(name) ? permission : 'off'])) });
+  }
   const selected = execution.captured?.modelSelection ?? command.modelSelection ?? snapshot.modelSelection ??
     { providerId: chat.providerId, modelId: chat.modelId };
   const parsed = validateModelSelection(selected);
   if (!parsed.ok) throw new ChatContractError(parsed.error.code, parsed.error.message, parsed.error);
-  const transcript = await live.adapters.readTranscript(chat.id);
   const history = transcript?.messages ?? chat.history ?? [];
   const catalog = createAgentCatalogContext({ adapters: options.modelAdapters, signal, workspacePath: scope.canonicalKey,
     request: { tools, stream: true, ...(parsed.value.providerId === AGENT_POOL_PROVIDER_ID
@@ -387,13 +481,14 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     model.providerId = bound.providerId; model.id = bound.id; model.exactModel = true;
   }
   const cwd = scope.canonicalKey;
-  const contextChat = { ...chat, history, injectedContext: transcript?.meta?.injectedContext ?? chat.injectedContext ?? snapshot.contextBodies };
+  const acceptedChat = { ...chat, ...(snapshot.chatSettings ?? {}) };
+  const contextChat = { ...acceptedChat, history, injectedContext: transcript?.meta?.injectedContext ?? chat.injectedContext ?? snapshot.contextBodies };
   const replay = live.composer.replayChatContext(contextChat);
   const firstTurn = !history.some(row => row.role === 'user' && row.commandId !== command.commandId);
   const meta = { ...live.settings.meta, ...(snapshot.prompt?.meta ?? {}) };
   const profile = ['lite', 'custom'].includes(meta.activePromptProfile) ? meta.activePromptProfile : 'full';
   const effectiveChat = { ...live.effectiveChat, modeId: policy.modeId };
-  const runSettings = live.composer.resolveChatRunSettings({ chat: effectiveChat, workAgents: live.agents,
+  const runSettings = snapshot.runSettings ?? live.composer.resolveChatRunSettings({ chat: effectiveChat, workAgents: live.agents,
     workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides, meta,
     ...(live.typeId ? { typeId: live.typeId, typeConfig: snapshot.typeConfig ?? live.type } : {}) });
   model.sampler = runSettings.sampler;
@@ -403,17 +498,37 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   if (profile === 'custom' && !customConfig && meta.activePromptConfigId) customConfig = await live.adapters.loadCustomPrompt(meta.activePromptConfigId);
   if (profile === 'custom' && !customConfig) throw new ChatContractError('capability_unavailable', 'The selected custom prompt configuration is unavailable');
   const query = command.message ?? '';
-  const memoryEnabled = firstTurn ? enabled(chat.brainNotesInjection, meta.features?.memoryInjection !== false) &&
-    (chat.memoryEnabled ?? meta.memory?.enabled ?? true) && !(chat.kind === 'expert' && chat.expertRuntime?.memoryEnabled === false) : Boolean(replay.memoryBlock);
-  const codeMapEnabled = firstTurn ? enabled(chat.codeMapInjection, meta.features?.codeMapInjectionDefault === true) : Boolean(replay.codeMapBlock);
-  const documentsEnabled = firstTurn ? enabled(chat.contextDocumentsInjection, meta.features?.contextDocumentsInjectionDefault !== false) : Boolean(replay.contextDocumentsBlock);
+  const memoryEnabled = firstTurn ? enabled(acceptedChat.brainNotesInjection, meta.features?.memoryInjection !== false) &&
+    (acceptedChat.memoryEnabled ?? meta.memory?.enabled ?? true) && !(chat.kind === 'expert' && chat.expertRuntime?.memoryEnabled === false) : Boolean(replay.memoryBlock);
+  const codeMapEnabled = firstTurn ? enabled(acceptedChat.codeMapInjection, meta.features?.codeMapInjectionDefault === true) : Boolean(replay.codeMapBlock);
+  const documentsEnabled = firstTurn ? enabled(acceptedChat.contextDocumentsInjection, meta.features?.contextDocumentsInjectionDefault !== false) : Boolean(replay.contextDocumentsBlock);
+  const enrichmentOmissions = [];
+  const timeoutMs = options.enrichmentTimeoutMs ?? meta.memory?.embeddings?.queryTimeoutMs ?? 3000;
+  const optional = async (kind, work) => {
+    try { return await runWithDeadline(work, { timeoutMs, signal }); }
+    catch (error) {
+      signal?.throwIfAborted();
+      enrichmentOmissions.push({ kind, reason: error?.name === 'TimeoutError' ? 'deadline' : 'unavailable' });
+      return null;
+    }
+  };
+  const requiredDocuments = async () => {
+    try {
+      return await runWithDeadline(documentSignal => contextDocuments(live.composer, meta, cwd, policy.filesystemAccess, documentSignal), { timeoutMs, signal });
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (error?.name === 'TimeoutError') throw new ChatContractError('capability_unavailable', 'Context document preparation exceeded its deadline. Check Context documents settings and the project files before retrying.');
+      throw error;
+    }
+  };
   const [memoryBlock, codeMapBlock, contextDocumentsBlock, role] = await Promise.all([
-    memoryEnabled ? firstTurn ? live.adapters.retrieveMemory({ chat, cwd, query, profile, signal }) : replay.memoryBlock : null,
-    codeMapEnabled ? firstTurn ? live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal }) : replay.codeMapBlock : null,
-    documentsEnabled ? firstTurn ? contextDocuments(live.composer, meta, cwd, policy.filesystemAccess) : replay.contextDocumentsBlock : null,
+    memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, profile, signal: enrichmentSignal })) : replay.memoryBlock : null,
+    codeMapEnabled ? firstTurn ? optional('code-map', enrichmentSignal => live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal: enrichmentSignal })) : replay.codeMapBlock : null,
+    documentsEnabled ? firstTurn ? requiredDocuments() : replay.contextDocumentsBlock : null,
     snapshot.prompt?.sources ? { sources: snapshot.prompt.sources, workAgent: snapshot.prompt.workAgent ?? null }
       : rolePromptSnapshot(live, effectiveChat),
   ]);
+  enrichmentOmissions.sort((a, b) => a.kind.localeCompare(b.kind));
   signal?.throwIfAborted();
   const cli = inspection?.provider?.apiKind === 'agent-cli-v1';
   const promptChat = role.workAgent ? { ...effectiveChat, workAgentAuto: false, workAgentId: role.workAgent.id } : effectiveChat;
@@ -422,7 +537,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides, ...role.sources,
     context: { profile, customConfig, customConfigId: meta.activePromptConfigId ?? null, cwd, modeId: policy.modeId,
       expertId: snapshot.prompt?.expertId ?? null, expertLabel: snapshot.prompt?.expertLabel ?? null,
-      workAgentId: null, skillBody: snapshot.prompt?.skillBody ?? null,
+      workAgentId: null, skillBody: turn?.skillBody ?? snapshot.prompt?.skillBody ?? null,
       memoryBlock: nonempty(memoryBlock), memoryEnabled, codeMapBlock: nonempty(codeMapBlock), codeMapInjectionEnabled: codeMapEnabled,
       contextDocumentsBlock: nonempty(contextDocumentsBlock), contextDocumentsInjectionEnabled: documentsEnabled,
       chatLinksBlock: snapshot.prompt?.chatLinksBlock ?? null, enabledToolIds: tools.map(row => row.function.name),
@@ -444,15 +559,28 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const contextBudget = withCompactionDefaults(agentContextBudgetFromWorkAgent(selectedAgent, contextPolicy), live.subAgents.defaultContextCompaction);
   const native = new Set(['ask_question', 'recall_history', 'spawn_sub_agent', 'cancel_sub_agent',
     'list_sub_agents', 'get_sub_agent_status', 'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop']);
-  const hostToolNames = [];
-  for (const definition of tools) {
-    const name = definition.function.name;
-    if (!native.has(name) && !await live.adapters.isServerToolAvailable(name)) hostToolNames.push(name);
-  }
+  const hostAvailability = new Array(tools.length);
+  let nextTool = 0;
+  await Promise.all(Array.from({ length: Math.min(8, tools.length) }, async () => {
+    while (nextTool < tools.length) {
+      const index = nextTool++;
+      const name = tools[index].function.name;
+      hostAvailability[index] = native.has(name) || await live.adapters.isServerToolAvailable(name);
+    }
+  }));
+  const hostToolNames = tools.filter((_, index) => !hostAvailability[index]).map(row => row.function.name);
   const taskGuidance = execution?.captured?.completionPolicy?.kind === 'wake_delegator'
     ? '\n\nFinish this assignment with findings in your final response or report_outcome if offered. Completion delivers the result to the delegator. Use chat_send only to request separate work.' : '';
-  const prepared = { systemPrompt: composed.systemPrompt + taskGuidance, ...(cli ? { cliTurnContext: composed.cliTurnContext } : {}),
-    tools, model, cwd, policy, contextBodies,
+  const enrichmentNotice = enrichmentOmissions.length
+    ? `\n\nOptional enrichment unavailable: ${enrichmentOmissions.map(row => `${row.kind} (${row.reason})`).join(', ')}. Use tools if this context is needed.` : '';
+  const intent = turn?.intent ?? command.intent;
+  const surfaceData = intent && Object.fromEntries(['context', 'issue', 'codeMap'].filter(key => intent[key] !== undefined).map(key => [key, intent[key]]));
+  const surfaceContext = surfaceData && Object.keys(surfaceData).length
+    ? '\n\n' + wrapUntrusted(JSON.stringify(surfaceData), { source: 'send-context' }) : '';
+  const goalContext = intent?.goalDriven ? '\n\nThis is a continuation toward the user\'s active goal. Verify completion before reporting success.' : '';
+  const prepared = { systemPrompt: composed.systemPrompt + taskGuidance + (cli ? '' : goalContext + enrichmentNotice + surfaceContext),
+    ...(cli ? { cliTurnContext: (composed.cliTurnContext ?? '') + goalContext + enrichmentNotice + surfaceContext } : {}),
+    tools, model, cwd, policy, contextBodies, enrichmentOmissions, checkoutIdentity,
     selectedModelSelection: resolved.selection,
     sendCapabilities: resolved.sendCapabilities ?? inspection?.support?.sendCapabilities,
     providerCapabilities: inspection?.capabilities,

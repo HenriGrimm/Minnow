@@ -5,6 +5,7 @@ export interface ChatProject { registry: ChatProjectRegistry; projectId: string;
 export interface ChatTargetContext {
   chat: ChatShell; scope: ChatProjectScope; policy: ChatPolicySnapshot; currentPolicy: ChatPolicySnapshot;
   profile: ProfileRecord | null; registry: ChatProjectRegistry; project: ChatProject;
+  checkoutIdentity?: string;
 }
 export interface ChatContext {
   setWorkspaceEdgesLoader(loader: (project: ChatProject) => Promise<import('./caller.js').DerivedChatWorkspaceEdge[]>): void;
@@ -14,6 +15,7 @@ export interface ChatContext {
   executionCaller(executionId: string): Promise<{ caller: ChatCaller; target: ChatTargetContext; execution: ExecutionRecord; fence: ExecutionFence }>;
 }
 export function loadChatProjectRegistry(workspacePath: string, options?: { validateRoot?: (value: string) => Promise<unknown>; runGit?: (args: string[], cwd: string) => Promise<any> }): Promise<ChatProject>;
+export function readChatCheckoutIdentity(workspacePath: string): Promise<string>;
 export function createChatContext(options: {
   repository: ChatRepository;
   resolvePolicyInput: (chat: ChatShell, scope: ChatProjectScope, registry: ChatProjectRegistry) => Promise<ChatPolicyInput>;

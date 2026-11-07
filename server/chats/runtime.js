@@ -10,6 +10,12 @@ import { prepareChatExecution, resolveChatPolicyInput, captureChatProfile } from
 import { createChatTaskDelivery } from './task-delivery.js';
 import { createChatCausality } from './causality.js';
 import { createChatQuestionRecovery } from './question-recovery.js';
+import { createChatCheckpointCoordinator } from './checkpoints.js';
+import { createChatNativeExecution } from './native-execution.js';
+import { subscribeNativePolicyChanges } from './native-policy-monitor.js';
+import { getMinnowHome } from '../config/home.js';
+import { getAgentCliProviderConfig } from '../providers/store.js';
+import { createChatWorkspacePreparation } from './workspace-preparation.js';
 import { createChatRecovery } from './recovery.js';
 import { createLegacyResultDelivery } from './legacy-result-delivery.js';
 import { setProductionCanonicalDelivery } from '../sub-agents/runtime.js';
@@ -67,10 +73,12 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     workspaceIds: registry.entries.filter(row => row.projectId === scope.projectId && !row.revoked).map(row => row.workspaceId),
   });
   const context = createChatContext({ repository, resolvePolicyInput });
-  function assertExecutionScope(execution, target) {
+  function assertExecutionScope(execution, target, prepared) {
     const captured = execution.captured ?? {}, scope = captured.scope;
+    const checkoutIdentity = prepared?.checkoutIdentity ?? captured.checkoutIdentity;
     if (captured.projectId && captured.projectId !== target.scope.projectId || scope &&
-      (scope.workspaceId !== target.scope.workspaceId || scope.canonicalKey !== target.scope.canonicalKey)) {
+      (scope.workspaceId !== target.scope.workspaceId || scope.canonicalKey !== target.scope.canonicalKey) ||
+      checkoutIdentity && checkoutIdentity !== target.checkoutIdentity) {
       throw new ChatContractError('workspace_denied', 'The original execution checkout changed; this operation cannot use a replacement project');
     }
     return target;
@@ -101,12 +109,18 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     beforeDispatch: async input => {
       const { assertChatToolAllowed } = await import('./policy.js');
       const target = await context.resolveTarget(input.chatId);
-      assertExecutionScope(input.execution, target);
+      const execution = repository.getExecution(input.executionId);
+      if (!execution) throw new ChatContractError('ownership_conflict', 'The host tool execution is no longer available');
+      assertExecutionScope(execution, target, input.prepared);
       assertChatToolAllowed(input.prepared.policy, input.name, input.args, { currentPolicy: target.currentPolicy, approvalGranted: true });
     },
     onChange: input => presentation.changed(input.chatId),
   });
   const getExternalOwner = chatId => {
+    const setup = repository.getLease(chatId);
+    if (setup?.ownerId === 'workspace-setup' && setup.state === 'active') {
+      return { ownerId: setup.ownerId, executionId: setup.executionId };
+    }
     const current = turns?.listLegacy?.().find(row => row.chatId === chatId) ?? turns?.list?.().find(row => row.chatId === chatId && row.hostId !== 'minnow-server');
     return current ? { ownerId: current.ownerId } : null;
   };
@@ -120,16 +134,31 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       if (entry.chatId === chatId && entry.ownerId === ownerId) requests.expireExecution(entry.executionId, chatId, state);
     }
   }
+  const workspacePreparation = createChatWorkspacePreparation({ repository, context, onChange: chatId => presentation.changed(chatId) });
   const service = createChatCommandService({ repository, context,
+    captureNativeSelection: async selection => {
+      if (selection.providerId !== 'codex-cli') return { version: 1, requestedMode: 'minnow', effectiveMode: 'minnow' };
+      const provider = await getAgentCliProviderConfig('codex');
+      const requested = provider.profile?.agentCli?.nativeCodingTools === true;
+      return { version: 1, requestedMode: requested ? 'native' : 'minnow', effectiveMode: requested ? 'native' : 'minnow',
+        providerId: selection.providerId, modelId: selection.modelId, cliVersion: '0.166.0', networkAccess: 'off' };
+    },
+    captureWorkspacePreparation: target => workspacePreparation.capture(target),
+    admitWorkspacePreparation: (chatId, intent) => workspacePreparation.admit(chatId, intent),
+    applyWorkspaceChoice: (caller, input) => workspacePreparation.applyChoice(caller, input),
     canResumeQuestionExecution: executionId => questionRecovery?.canResume(repository.getExecution(executionId)) === true,
     admitCausality: input => causality.admit(input),
     hasExternalOwner: chatId => Boolean(getExternalOwner(chatId)) || generations().some(row => row.chatId === chatId &&
       ['pending', 'streaming'].includes(row.status) && repository.getLease(chatId)?.ownerId !== 'minnow-server'),
     getExternalOwner,
-    stopExternalOwner: typeof stopExternalOwner === 'function' ? async input => {
+    stopExternalOwner: async input => {
+      if (input.owner.ownerId === 'workspace-setup') {
+        return { stopRequested: workspacePreparation.stopRetry(input.chatId, input.owner.executionId) };
+      }
+      if (typeof stopExternalOwner !== 'function') throw new ChatContractError('capability_unavailable', 'The renderer Stop adapter is unavailable');
       expireLegacyOwner(input.chatId, input.owner.ownerId);
       return stopExternalOwner(input);
-    } : undefined,
+    },
     isExternalExecutionActive,
     captureProfile: async ({ target, selection }) => ({
       profileId: 'profile-' + digest(target.chat.id), profileVersion: 1,
@@ -148,7 +177,20 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     onCommand: record => taskAdapter?.onCommand?.(record),
     onEvent: event => { presentation.onServiceEvent(event); taskDelivery?.onServiceEvent(event); },
   });
+  const checkpoints = createChatCheckpointCoordinator({ repository });
   const host = createServerChatExecutionHost({ repository, requestService: requests,
+    prepareNativeExecution: async ({ execution, fence, prepared, checkpoint, signal, resolveCurrentPolicy, waitForApproval }) => {
+      const selection = execution.captured.nativeExecution;
+      if (selection.providerId !== prepared.model.providerId || selection.modelId !== prepared.model.id) throw new ChatContractError('capability_unavailable', 'The accepted native model cannot resolve to another provider/model.');
+      const target = assertExecutionScope(execution, await context.resolveTarget(execution.chatId), prepared);
+      return createChatNativeExecution({ repository, checkpoint, capturedPolicy: prepared.policy, resolveCurrentPolicy,
+        subscribePolicyChanges: onInvalidate => subscribeNativePolicyChanges({ home: getMinnowHome(), cwd: prepared.cwd, providerId: prepared.model.providerId, onInvalidate }),
+        chatId: execution.chatId, executionId: execution.executionId, fence, cwd: prepared.cwd, workspaceId: target.scope.workspaceId,
+        providerId: prepared.model.providerId, modelId: prepared.model.id, cliVersion: selection.cliVersion,
+        requestedNative: true, signal, waitForApproval });
+    },
+    prepareCheckpoint: input => checkpoints.prepare(input),
+    prepareWorkspace: input => workspacePreparation.prepare(input),
     hydrateRecoveredQuestions: input => questionRecovery?.hydrate(input), beforeInference: awaitReady,
     prepareExecution: async input => {
       const prepared = await prepare(input, { resolveTarget: async (chatId, options) =>
@@ -159,7 +201,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       prepared.hostToolNames = (prepared.hostToolNames ?? []).filter(name => !['set_chat_mode', 'create_chat_with_mode', 'propose_mode_switch', 'todo_write'].includes(name) && !toolHandlers.has(name));
       return prepared;
     },
-    resolveCurrentPolicy: async input => assertExecutionScope(input.execution, await context.resolveTarget(input.command.chatId)).policy,
+    resolveCurrentPolicy: async input => assertExecutionScope(input.execution, await context.resolveTarget(input.command.chatId), input.prepared).policy,
     executeHostTool: input => capabilities.executeHostTool(input),
     onEvent: event => { presentation.onEvent(event); observePersistentAgentTurn(event); taskDelivery?.onHostEvent(event); },
     onStatus: event => { service.notifyExecution(event); presentation.changed(event.chatId); },
@@ -170,7 +212,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
         filesystemAccessCeiling: prepared.policy.filesystemAccess, shellSandboxMode: prepared.policy.shellSandboxMode });
       return { ...base, execute: async (name, args, toolContext) => {
         if (toolHandlers.has(name)) return toolHandlers.get(name)({ name, args, toolContext, ...executionContext, prepared, context, service, repository });
-        const target = await context.resolveTarget(command.chatId);
+        const target = assertExecutionScope(execution, await context.resolveTarget(command.chatId), prepared);
         const policy = intersectChatPolicies(prepared.policy, target.policy);
         assertChatToolAllowed(prepared.policy, name, args ?? {}, { currentPolicy: target.policy, approvalGranted: toolContext?.approvalGranted === true });
         if (name === 'todo_write' || name === 'propose_mode_switch') return executeConversationTool(name, args, {
@@ -207,7 +249,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
   });
   const unregisterHost = service.registerHost({ id: 'minnow-server', kind: 'server', supportsSteer: true,
     canRun: ({ execution }) => ready || questionRecovery?.canResume(execution) === true, execute: input => host.execute(input) });
-  const runtime = { repository, context, service, requests, capabilities, presentation, host, resolvePolicyInput,
+  const runtime = { repository, context, service, requests, capabilities, presentation, host, resolvePolicyInput, workspacePreparation,
     async beginChatWait(input) {
       const release = await causality.beforeWait(input);
       const execution = repository.getExecution(input.caller.executionId);
@@ -302,6 +344,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       void service.kick(chatId).catch(error => console.error('[chats] deferred input failed:', error.message));
     },
     async start() {
+      checkpoints.recoverInterrupted();
       await runtime.recovery.run({ reason: 'startup' });
       ready = true;
       releaseReady();

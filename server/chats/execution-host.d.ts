@@ -43,6 +43,14 @@ export function createServerChatExecutionHost(options: {
   hydrateRecoveredQuestions?: (input: { execution: ExecutionRecord; fence: ExecutionFence; transcript: import('../runner/transcript-store').TranscriptStore;
     signal: AbortSignal; assertAllowed(): Promise<void>; status(value: import('./contracts').ChatExecutionState): void }) => Promise<void> | void;
   beforeInference?: (input: { execution: ExecutionRecord; signal: AbortSignal }) => Promise<void> | void;
+  prepareWorkspace?: (input: Omit<ChatExecutionInput, 'takeSteers' | 'onEvent'>) => Promise<{ execution: ExecutionRecord }>;
+  prepareCheckpoint?: (input: { chatId: string; executionId: string; cwd: string; fence: ExecutionFence; signal: AbortSignal;
+    onTiming(stage: string, duration: number): void }) => Promise<{ baseline: Promise<unknown>; effect<T>(id: string, operation: () => Promise<T>): Promise<T>; finalize(): Promise<void> }>;
+  prepareNativeExecution?: (input: ChatDispatchContext & { prepared: ChatHostPreparation;
+    checkpoint: { baseline: Promise<unknown>; effect<T>(id: string, operation: () => Promise<T>): Promise<T>; finalize(): Promise<void> };
+    resolveCurrentPolicy(): Promise<ChatPolicySnapshot>;
+    waitForApproval(request: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
+  }) => Promise<import('../generations/native-execution-context').NativeExecutionContext>;
   authorizeResponse?: Parameters<typeof import('./requests').createChatRequestService>[0]['authorizeResponse'];
   onEvent?: (event: ChatHostEvent) => void;
   onStatus?: (event: { chatId: string; executionId: string; status: import('./contracts').ChatExecutionState }) => void;

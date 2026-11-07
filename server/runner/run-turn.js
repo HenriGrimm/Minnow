@@ -421,8 +421,8 @@ function stripTranscriptRouting(body, vision) {
     if (projected !== message) changed = true;
     message = projected;
     if (!message || typeof message !== 'object' ||
-        !['messageId', 'commandId', 'provenance', 'createdAt'].some(key => Object.hasOwn(message, key))) return message;
-    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, ...wire } = message;
+        !['messageId', 'commandId', 'provenance', 'createdAt', 'nativeAction'].some(key => Object.hasOwn(message, key))) return message;
+    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, nativeAction: _native, ...wire } = message;
     changed = true;
     return wire;
   });
@@ -541,6 +541,9 @@ export async function runTurn(options) {
   const turnStarted = timing.start();
   let roundStarted = null;
   let roundEnded = null;
+  let requestStarted = null;
+  let firstProse = false;
+  let firstReasoning = false;
   let transcriptSyncMs = 0;
   const progress = createProgressBudget(limits.progressGuard === true, limits.investigationCalls);
   const roundShape = createRoundShapeGuard({ batching: limits.batchGuard === true, verdictRounds: limits.verdictRounds });
@@ -633,6 +636,9 @@ export async function runTurn(options) {
     }
     completionCount += 1;
     const started = timing.start();
+    requestStarted = started;
+    firstProse = false;
+    firstReasoning = false;
     const upstreamBody = stripTranscriptRouting(body, model.vision === true);
     try { return await deps.postChatCompletions(provider,
       provider.apiKind === 'agent-cli-v1' && options.cliTurnContext
@@ -979,6 +985,10 @@ export async function runTurn(options) {
           if (last?.role !== 'assistant') return;
           const text = typeof last.content === 'string' ? last.content : '';
           if (!text || text === lastDelta) return;
+          if (!firstProse && requestStarted !== null) {
+            firstProse = true;
+            timing.end('first_prose_delta', requestStarted, { index: completionCount - 1, category: 'provider_wait' });
+          }
           lastDelta = text;
           publish({ type: 'delta', text });
         } catch (error) {
@@ -996,6 +1006,7 @@ export async function runTurn(options) {
           roundStarted = timing.start();
         }
         if (event.type === 'round_end' && roundStarted !== null) {
+          if (event.text) timing.end('final_prose', roundStarted, { index: event.index, category: 'milestone' });
           timing.end('transcript_sync', timing.start() - transcriptSyncMs, { index: event.index });
           transcriptSyncMs = 0;
           timing.end('model_round', roundStarted, { index: event.index });
@@ -1039,6 +1050,10 @@ export async function runTurn(options) {
         }
         const thinking = activity?.partialReasoning;
         if (typeof thinking === 'string' && thinking && thinking !== lastThinking) {
+          if (!firstReasoning && requestStarted !== null) {
+            firstReasoning = true;
+            timing.end('first_reasoning_delta', requestStarted, { index: completionCount - 1, category: 'provider_wait' });
+          }
           lastThinking = thinking;
           publish({ type: 'thinking', text: thinking,
             ...(activity.reasoningFormat === 'summary' ? { reasoningFormat: 'summary' } : {}) });
@@ -1093,6 +1108,7 @@ export async function runTurn(options) {
     if (wallTimer) clearTimeout(wallTimer);
     if (roundStarted !== null) timing.end('model_round_incomplete', roundStarted);
     if (transcriptSyncMs > 0) timing.end('transcript_sync', timing.start() - transcriptSyncMs);
+    if (canonicalPersistence && !transcriptFailure) timing.end('transcript_durable', turnStarted, { category: 'milestone' });
     timing.end('turn', turnStarted);
     // A final settled append can fail after a report was captured. Durable
     // failure must win over every earlier success/timeout return.

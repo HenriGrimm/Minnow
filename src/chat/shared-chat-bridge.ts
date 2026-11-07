@@ -15,7 +15,8 @@ import { isChatTurnSetupPending } from './chat-turn-guard';
 import { readChatStreamText } from './streaming-state';
 import { getMainTurnActivity, subscribeMainTurnActivity } from './main-turn-activity';
 import { appendStreamingAssistantRow, revealAssistantProseBubble } from '../ui/messages';
-import { setAssistantBubbleContent } from '../markdown/renderer';
+import { scheduleAssistantBubbleRender, cancelAssistantBubbleRenderDebounce, flushAssistantBubbleRender } from '../markdown/renderer';
+import { createRunnerTiming } from '../../server/runner/timing.js';
 import { ThoughtBubbleController } from '../ui/thought-bubbles';
 import { registerStreamDomRemount, type StreamDomHandles } from '../tools/stream-chat-dom';
 import { isStreamDomVisible } from './streaming-state';
@@ -187,16 +188,28 @@ export function createSharedChatPublisher(send: (frame: Omit<SharedChatFrame, 'h
   };
 }
 
-interface Observation { frame: SharedChatFrame; row?: StreamDomHandles; thoughts?: ThoughtBubbleController; thinking: string }
+interface Observation { frame: SharedChatFrame; row?: StreamDomHandles; thoughts?: ThoughtBubbleController; thinking: string;
+  proseEpoch?: string; firstProseReceived?: number; prosePainted?: boolean }
 
 /** Render live output without executing tools or adding anything to persisted history. */
-export function createSharedChatObserver(onChange: (activeChanged: boolean) => void) {
+export function createSharedChatObserver(onChange: (activeChanged: boolean) => void, options: {
+  onTiming?: (event: Extract<TurnEvent, { type: 'runner_timing' }>, chatId: string) => void;
+  clock?: () => number;
+} = {}) {
   const observed = new Map<string, Observation>();
   const chains = new Map<string, Promise<void>>();
-  function paint(state: Observation): void {
+  let disposed = false;
+  const timing = createRunnerTiming(event => {
+    // Local-only paint evidence; never subtract it from a server wall clock.
+    const chatId = String(event.correlationId ?? '');
+    if (options.onTiming) options.onTiming(event, chatId);
+    else window.dispatchEvent(new window.CustomEvent('minnow:chat-presentation-timing', { detail: { chatId, event } }));
+  }, options.clock);
+  function paint(state: Observation, receivedAt?: number): void {
     const frame = state.frame;
     if (!isStreamDomVisible(frame.chatId)) return;
     if (!frame.running || !frame.live) {
+      if (state.row) { flushAssistantBubbleRender(state.row.bubble); cancelAssistantBubbleRenderDebounce(state.row.bubble); }
       state.thoughts?.abort(); state.thoughts = undefined; state.thinking = '';
       state.row?.streamStatus.dispose(); state.row?.wrap.remove(); state.row = undefined;
       return;
@@ -208,6 +221,9 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
       state.thinking = '';
     }
     const { lastDelta, lastThinking, phase, currentTool } = frame.live;
+    if (state.proseEpoch !== frame.epoch || !lastDelta && state.prosePainted) {
+      state.proseEpoch = frame.epoch; state.firstProseReceived = undefined; state.prosePainted = false;
+    }
     if (!lastThinking.startsWith(state.thinking)) {
       state.thoughts?.resetFailedResponse(); state.thinking = '';
     }
@@ -215,17 +231,31 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     state.thinking = lastThinking;
     if (lastDelta) {
       revealAssistantProseBubble(state.row.wrap, state.row.bubble, state.row.streamStatus);
-      setAssistantBubbleContent(state.row.bubble, lastDelta, { streaming: true });
+      state.firstProseReceived ??= receivedAt ?? timing.start();
+      const epoch = state.proseEpoch;
+      const row = state.row;
+      scheduleAssistantBubbleRender(row.bubble, lastDelta, row.cursor, { immediate: lastDelta.length <= 2048,
+        onPaint: () => {
+          if (disposed || state.row !== row || state.proseEpoch !== epoch || !isStreamDomVisible(frame.chatId)) return;
+          if (!state.prosePainted && state.firstProseReceived !== undefined) {
+            state.prosePainted = true;
+            timing.end('first_prose_dom', state.firstProseReceived, { correlationId: frame.chatId, category: 'presentation' });
+          }
+          scrollChatIfPinned();
+        },
+      });
     }
     if (!lastDelta) state.row.streamStatus.setPhase(phase === 'thinking' ? 'thinking' : phase === 'loading_model' ? 'loading_model' : 'generating');
     state.row.streamStatus.setRuntimeDetail(currentTool ? `Running ${currentTool}` : null);
     scrollChatIfPinned();
   }
-  async function apply(frame: SharedChatFrame): Promise<void> {
+  async function apply(frame: SharedChatFrame, receivedAt: number): Promise<void> {
+    if (disposed) return;
     if (frame.hostId === getChatHostId() && !isPairedDevice()) return;
     const existing = observed.get(frame.chatId);
     if (existing && existing.frame.sequence >= frame.sequence) return;
     if (!findChatById(frame.chatId)) await refreshSessionsFromServer();
+    if (disposed) return;
     let chat = findChatById(frame.chatId);
     if (!chat && frame.fields) {
       chat = applySharedChatFrame(frame.chatId, frame.fields);
@@ -233,8 +263,10 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     }
     if (!chat) throw new Error('Chat transcript has not arrived yet.');
     if (chat?.historyLoaded === false) await ensureChatHistoryLoaded(chat.id);
+    if (disposed) return;
     if (frame.history && frame.history.start > chat.history.length) {
       const { history } = await getChatTranscript(chat.id);
+      if (disposed) return;
       applySharedChatFrame(chat.id, undefined, { start: 0, messages: history, length: history.length });
     }
     const next = { ...existing?.frame, ...frame };
@@ -258,19 +290,22 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
       state.row = row; state.thoughts?.abort(); state.thoughts = new ThoughtBubbleController(row.wrap); state.thinking = ''; paint(state);
     } : null);
     if (frame.fields || frame.history) onChange(getActiveChat().id === frame.chatId);
-    paint(state);
+    paint(state, receivedAt);
     syncComposerFromStreamingState();
     if (!frame.running) { state.frame.history = undefined; state.frame.fields = undefined; }
   }
   return {
     receive(frame: SharedChatFrame): Promise<void> {
-      const pending = (chains.get(frame.chatId) ?? Promise.resolve()).catch(() => {}).then(() => apply(frame));
+      const receivedAt = timing.start();
+      const pending = (chains.get(frame.chatId) ?? Promise.resolve()).catch(() => {}).then(() => apply(frame, receivedAt));
       chains.set(frame.chatId, pending);
       return pending;
     },
     reconnect() { for (const state of observed.values()) state.frame.sequence = -1; },
     dispose() {
+      disposed = true;
       for (const [id, state] of observed) {
+        if (state.row) cancelAssistantBubbleRenderDebounce(state.row.bubble);
         state.thoughts?.abort(); state.row?.streamStatus.dispose(); state.row?.wrap.remove(); registerStreamDomRemount(id, null);
       }
       observed.clear();

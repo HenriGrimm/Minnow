@@ -693,6 +693,8 @@ describe('git API', () => {
 
     await fs.writeFile(path.join(repoDir, 'snap-a.txt'), 'after\n', 'utf8');
     await fs.writeFile(path.join(repoDir, 'snap-untracked.txt'), 'new\n', 'utf8');
+    const indexPath = path.join(repoDir, '.git', 'index');
+    const indexBefore = await fs.readFile(indexPath);
 
     const created = await snapshotCreate({
       cwd: repoDir,
@@ -701,6 +703,7 @@ describe('git API', () => {
     assert.equal(created.ok, true);
     assert.match(created.sha ?? '', /^[0-9a-f]{40}$/i);
     assert.equal(created.headSha, headBefore);
+    assert.deepEqual(await fs.readFile(indexPath), indexBefore, 'snapshot must not rewrite index cache extensions');
 
     const headAfter = (
       await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, windowsHide: true })

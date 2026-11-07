@@ -17,6 +17,7 @@ import {
 import { setTestHome, rmTestHome } from '../config/test-helpers.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
 import { createProvider } from '../../server/providers/store.js';
+import { createNativeExecutionContext, getNativeExecutionContext } from '../../server/generations/native-execution-context.js';
 import {
   createCompletionStream,
   createMemoryTranscriptStore,
@@ -276,6 +277,35 @@ describe('in-process generation binding', { concurrency: false }, () => {
     assert.equal(upstream.agentModelOptions, undefined);
     assert.equal(upstream.exactModel, undefined);
     for await (const _ of stream) { /* consume production completion */ }
+  });
+
+  test('native options cannot be forged, while JSON fields never grant authority', async () => {
+    await assert.rejects(createCompletionStream(PROVIDER_ID, { model: 'test-model' }, {
+      chatId: CHAT_UUID, fallbackRole: 'default', nativeExecution: { policy: { mode: 'workspace-write' } },
+    }), /authority/);
+    const stream = await createCompletionStream(PROVIDER_ID, {
+      model: 'test-model', messages: [{ role: 'user', content: 'hello' }], stream: true,
+      nativeExecution: { policy: { mode: 'workspace-write' } }, minnow_native_policy: { mode: 'workspace-write' },
+    }, { chatId: CHAT_UUID });
+    assert.equal(getNativeExecutionContext(getGenerationState(stream.generationId)), null);
+    for await (const _ of stream) { /* body fields do not affect native admission */ }
+  });
+
+  test('trusted native option stays private and refuses a non-Codex provider before HTTP inference', async () => {
+    const requestsBefore = fake.requests.length;
+    // Brand a fake HOST object in-process; this constructor is never an HTTP tool.
+    const authority = createNativeExecutionContext(Object.freeze({ signal: new AbortController().signal }), {
+      chatId: CHAT_UUID, providerId: PROVIDER_ID, modelId: 'test-model',
+    });
+    const stream = await createCompletionStream(PROVIDER_ID, {
+      model: 'test-model', messages: [{ role: 'user', content: 'native only' }], stream: true,
+    }, { chatId: CHAT_UUID, fallbackRole: 'default', nativeExecution: authority });
+    const state = getGenerationState(stream.generationId);
+    assert.equal(getNativeExecutionContext(state), authority);
+    assert.equal(state.failoverDisabled, true);
+    assert.equal(JSON.parse(state.requestBody.toString()).nativeExecution, undefined);
+    await assert.rejects(async () => { for await (const _ of stream) { /* must refuse */ } }, /Codex app-server provider/);
+    assert.equal(fake.requests.length, requestsBefore, 'native-only request must not make any HTTP inference call');
   });
 
   test('aborting mid-stream cancels upstream and leaves no streaming state', { timeout: 20_000 }, async () => {

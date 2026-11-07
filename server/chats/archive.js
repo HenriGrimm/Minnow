@@ -14,6 +14,7 @@ export const CHAT_ARCHIVE_TABLES = Object.freeze([
   'chat_conversation_state', 'chat_relations', 'chat_execution_profiles', 'chat_commands', 'chat_executions', 'chat_execution_leases',
   'chat_message_identities', 'chat_requests', 'chat_tool_invocations', 'chat_cancellation_epochs', 'chat_conversation_tombstones', 'chat_outbox',
   'chat_task_results', 'chat_task_subscriptions', 'chat_completion_cohorts', 'chat_activity_reads', 'chat_usage_receipts', 'chat_workspace_allocations',
+  'chat_workspace_checkpoints',
 ]);
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 const MAX_JOURNAL_CHUNK_BYTES = 4 * 1024 * 1024;
@@ -95,10 +96,12 @@ export function validateChatArchive(db, input) {
   if (Object.keys(input).some(key => !['version', 'kind', 'clientProtocol', 'sqliteVersion', 'sessionVersion', 'createdAt', 'tables', 'journals', 'digest'].includes(key)) || !plain(input.tables) || !Number.isSafeInteger(input.createdAt) || input.createdAt < 0) fail('invalid_request', 'Invalid conversation archive envelope');
   const { digest, ...payload } = input;
   if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest) || hashChatArchive(payload) !== digest) fail('invalid_request', 'The conversation archive checksum does not match');
-  if (Object.keys(input.tables).length !== CHAT_ARCHIVE_TABLES.length || Object.keys(input.tables).some(table => !CHAT_ARCHIVE_TABLES.includes(table))) fail('invalid_request', 'The conversation archive table set is incomplete or unsupported');
+  // The additive checkpoint table was absent from older v1 archives.
+  if (CHAT_ARCHIVE_TABLES.some(table => table !== 'chat_workspace_checkpoints' && !Object.hasOwn(input.tables, table)) ||
+      Object.keys(input.tables).some(table => !CHAT_ARCHIVE_TABLES.includes(table))) fail('invalid_request', 'The conversation archive table set is incomplete or unsupported');
   initChatWorkspaceSchema(db);
   for (const table of CHAT_ARCHIVE_TABLES) {
-    const rows = input.tables[table], allowed = columnsFor(db, table).map(column => column.name);
+    const rows = input.tables[table] ?? (table === 'chat_workspace_checkpoints' ? [] : undefined), allowed = columnsFor(db, table).map(column => column.name);
     if (!Array.isArray(rows)) fail('invalid_request', 'Invalid conversation archive table');
     for (const row of rows) {
       const legacyRevision = table === 'chat_revisions' && plain(row) && !Object.hasOwn(row, 'write_revision');
@@ -139,6 +142,13 @@ export function validateChatArchive(db, input) {
     if (reference && !input.tables.chat_execution_profiles.some(row => row.chat_id === relation.chat_id && row.profile_id === reference.profileId && row.profile_version === reference.profileVersion)) fail('invalid_request', 'An archived conversation is missing its captured profile');
   }
   for (const row of input.tables.chat_execution_profiles) if (stableId(row.payload_json) !== row.payload_hash) fail('invalid_request', 'An archived profile has an invalid hash');
+  for (const row of input.tables.chat_workspace_checkpoints ?? []) {
+    if (!input.tables.chat_executions.some(execution => execution.execution_id === row.execution_id && execution.chat_id === row.chat_id) ||
+        !['executing', 'uncertain', 'settled', 'retired'].includes(row.state) ||
+        typeof row.workspace_key !== 'string' || !row.workspace_key || typeof row.checkpoint_id !== 'string' || !row.checkpoint_id) {
+      fail('invalid_request', 'Invalid archived checkpoint ownership or state');
+    }
+  }
   return input;
 }
 
@@ -159,7 +169,7 @@ export function importChatArchive(db, input, { now = Date.now } = {}) {
       const names = columns.map(column => column.name);
       const lookup = db.prepare('SELECT 1 FROM ' + table + ' WHERE ' + keys.map(key => key + '=?').join(' AND '));
       const insert = db.prepare('INSERT INTO ' + table + '(' + names.join(',') + ') VALUES (' + names.map(() => '?').join(',') + ')');
-      for (const row of archive.tables[table]) {
+      for (const row of archive.tables[table] ?? []) {
         const restored = table === 'chat_revisions' ? { write_revision: row.revision, ...row }
           : table === 'chat_commands' ? { ...row, position: row.position + positionOffset }
           : table === 'board_log' ? { ...row, seq: row.seq + logOffset } : row;
@@ -186,6 +196,7 @@ export function importChatArchive(db, input, { now = Date.now } = {}) {
     }
     const ownerIds = new Set(archive.tables.chat_executions.map(row => row.execution_id));
     for (const executionId of ownerIds) {
+      db.prepare("UPDATE chat_workspace_checkpoints SET state='uncertain' WHERE execution_id=? AND state='executing'").run(executionId);
       // Explicit JSON imports are detached archival evidence. A same-home boot
       // or .mnbak restore uses recovery instead and can reattach live questions.
       db.prepare("UPDATE chat_requests SET state='expired',payload_json=json_set(payload_json,'$.state','expired','$.settledAt',?) WHERE execution_id=? AND state='pending'").run(now(), executionId);

@@ -1423,6 +1423,17 @@ export async function snapshotCreate({ cwd, message } = {}) {
   const env = { GIT_INDEX_FILE: indexPath };
 
   try {
+    const indexResult = await git(['rev-parse', '--git-path', 'index'], repo.cwd);
+    if (indexResult.code !== 0) return { ok: false, error: processError(indexResult) };
+    const sourceIndex = path.resolve(repo.cwd, indexResult.stdout.trim());
+    try { await fs.copyFile(sourceIndex, indexPath); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      // An unborn repository may not have an index yet. Initialize only the
+      // private one; creating the user's index is not part of taking a snapshot.
+      const empty = await git(['read-tree', '--empty'], repo.cwd, env);
+      if (empty.code !== 0) return { ok: false, error: processError(empty) };
+    }
     const headResult = await git(['rev-parse', 'HEAD'], repo.cwd);
     const hasHead = headResult.code === 0;
     const headSha = hasHead ? (headResult.stdout ?? '').trim() : undefined;
@@ -1432,13 +1443,11 @@ export async function snapshotCreate({ cwd, message } = {}) {
 
     // write-tree fails on an unmerged index. Refuse before restoring files if
     // the user's staged state cannot be represented by a safety snapshot.
-    const indexTree = await git(['write-tree'], repo.cwd);
+    // write-tree can update the cache-tree extension. Never run it against the
+    // real index. Copying also retains stat data for unchanged tracked files.
+    const indexTree = await git(['write-tree'], repo.cwd, env);
     if (indexTree.code !== 0) return { ok: false, error: processError(indexTree) };
     const stagedTree = indexTree.stdout.trim();
-    const readTree = await git(['read-tree', stagedTree], repo.cwd, env);
-    if (readTree.code !== 0) {
-      return { ok: false, error: processError(readTree) };
-    }
 
     const add = await git(['add', '-A'], repo.cwd, env);
     if (add.code !== 0) {
@@ -1475,6 +1484,14 @@ export async function snapshotCreate({ cwd, message } = {}) {
       return { ok: false, error: 'commit-tree did not return a commit sha' };
     }
 
+    // Managed branch operations share the checkout boundary, but an external
+    // Git client does not. Never advertise a capture as one stable HEAD when
+    // its ref changed while the trees were being collected.
+    const finalHead = await git(['rev-parse', 'HEAD'], repo.cwd);
+    if ((finalHead.code === 0) !== hasHead || hasHead && finalHead.stdout.trim() !== headSha) {
+      return { ok: false, error: 'HEAD changed during snapshot capture. Retry after the checkout is stable.' };
+    }
+
     return {
       ok: true,
       sha,
@@ -1489,7 +1506,11 @@ export async function snapshotCreate({ cwd, message } = {}) {
 /**
  * @param {{ cwd?: string, sha: string }} input
  */
-export async function snapshotRestore({ cwd, sha } = {}) {
+export async function snapshotRestore(input = {}) {
+  return withWorktreeMutation(resolveCwd(input.cwd), () => restoreSnapshot(input));
+}
+
+async function restoreSnapshot({ cwd, sha } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 

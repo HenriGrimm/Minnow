@@ -11,9 +11,9 @@ import { createGenerationState } from '../../server/generations/store.js';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { toolImageFollowUpFromAttachments } from '../../server/runner/tool-image-follow-up.js';
 
-test('real installed app-server drives Minnow streams, serial tool rounds and warm turns without replay', {
+test('real installed app-server drives Minnow streams, exactly-once tool rounds and warm turns without replay', {
   skip: process.env.MINNOW_CODEX_APP_SERVER_SMOKE !== '1', timeout: 60_000,
-}, async () => {
+}, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-codex-live-'));
   const endpoint = await createFakeCodexResponses();
   const oldHome = process.env.MINNOW_HOME, oldCodexHome = process.env.CODEX_HOME;
@@ -56,27 +56,42 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     endpoint.scripts.push({ reasoning: { summary: ['**Checking files**'], content: ['Read both files before comparing them.'] },
       calls: [{ id: 'first', name: 'mn_tool_0' }, { id: 'second', name: 'mn_tool_0' }] }, { text: 'Done.', deltas: ['Do', 'ne.'] });
     const first = await round();
-    assert.equal(first.calls.length, 1);
+    assert.ok(first.calls.length === 1 || first.calls.length === 2);
     assert.equal(first.rows.map(row => row.choices?.[0]?.delta?.reasoning ?? '').join(''),
       '**Checking files**\n\nRead both files before comparing them.');
-    assert.equal((await round()).calls.length, 1);
+    // Older installs serialize dynamic calls; 0.166.0 can deliver both together.
+    // The invariant is two distinct Minnow calls with no replay, not grouping.
+    const calls = [...first.calls];
+    if (calls.length === 1) calls.push(...(await round()).calls);
+    assert.equal(calls.length, 2);
+    assert.equal(new Set(calls.map(call => call.id)).size, 2);
     assert.equal((await round()).content, 'Done.');
     const hasImage = value => JSON.stringify(value).includes('"type":"input_image"');
     assert.ok(hasImage(endpoint.requests[0].input), 'attachment reaches the installed CLI model request');
     assert.ok(endpoint.requests[1].input.some(item => item.type === 'function_call_output'
       && hasImage(item.output)), 'tool screenshot reaches the pending native result');
     const forwarding = [];
+    const checkpoints = [];
     for (let i = 0; i < 10; i++) {
       messages.push({ role: 'user', content: i === 0 ? [imagePart] : `Follow-up ${i}` });
       const result = await round({ text: 'Warm.', deltas: ['Wa', 'rm.'] });
       assert.equal(result.content, 'Warm.');
       forwarding.push(result.rows.at(-1).minnow_cli.timings.forwarding_max_ms);
+      const timings = result.rows.at(-1).minnow_cli.timings;
+      checkpoints.push(Object.fromEntries(Object.entries(timings).filter(([key]) => key.startsWith('checkpoint_'))));
     }
     assert.equal(processes, 1);
     assert.equal(endpoint.requests.length, 12);
     assert.ok(endpoint.requests.every(row => row.tools.every(tool => ['mn_tool_0', 'mn_read_batch', 'exec', 'wait'].includes(tool.name))));
     assert.ok(Math.max(...forwarding) < 50, `Forwarding exceeded 50 ms: ${forwarding}`);
-    assert.equal(states.length, 13);
+    assert.ok(checkpoints.every(row => row.checkpoint_ms >= 0 && row.checkpoint_thread_read_ms >= 0
+      && row.checkpoint_history_hash_ms >= 0 && row.checkpoint_write_ms >= 0));
+    const checkpointRanges = Object.fromEntries(Object.keys(checkpoints[0]).map(key => {
+      const samples = checkpoints.map(row => row[key]);
+      return [key, { min: Math.min(...samples), max: Math.max(...samples) }];
+    }));
+    t.diagnostic(JSON.stringify({ warmTurns: checkpoints.length, forwardingMaxMs: Math.max(...forwarding), checkpointRanges }));
+    assert.equal(states.length, first.calls.length === 1 ? 13 : 12);
     const billed = () => states.reduce((sum, state) => sum + Buffer.concat(state.chunks).toString().split('\n\n')
       .filter(row => row.startsWith('data: {')).map(row => JSON.parse(row.slice(6)))
       .reduce((roundSum, row) => roundSum + (row.usage?.total_tokens ?? 0), 0), 0);
@@ -103,8 +118,8 @@ test('real installed app-server drives Minnow streams, serial tool rounds and wa
     // This abandoned handoff was killed before the native CLI reported its
     // usage. The replacement must never invent that missing count.
     assert.equal(billed(), (endpoint.requests.length - 1) * 25);
-    // Direct dynamic calls above are dispatched serially by the native CLI.
-    // A transport read batch fans out independently of native serialization.
+    // Transport read batches fan out independently of version-specific native
+    // grouping; both member results must still return exactly once.
     messages.push({ role: 'user', content: 'Read two files independently.' });
     const beforeBatch = endpoint.requests.length;
     const grouped = await round({ calls: [{ id: 'parallel-exec', name: 'exec', namespace: 'functions',

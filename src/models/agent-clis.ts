@@ -72,6 +72,8 @@ export interface AgentCliStatus {
   transport?: 'app-server' | 'stream-json' | 'claude-interactive' | 'acp' | 'replay';
   restartResumeSupported?: boolean;
   fallbackReason?: string;
+  nativeCodingTools?: boolean;
+  nativeCodingCapability?: { available: boolean; effective: 'minnow'; reason: string };
   installCommand: string;
   loginCommand: string;
   updateCommand: string;
@@ -80,6 +82,7 @@ export interface AgentCliStatus {
 }
 
 export interface AgentCliSettingsPatch {
+  nativeCodingTools?: boolean;
   interactive?: boolean;
   binPath?: string | null;
   allowUtilityRoles?: boolean;

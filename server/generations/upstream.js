@@ -33,6 +33,7 @@ import {
 } from './timeouts.js';
 import { pumpAnthropicUpstream } from './anthropic/pump.js';
 import { pumpAgentCliUpstream } from './agent-cli/pump.js';
+import { getNativeExecutionContext } from './native-execution-context.js';
 import { deriveMessagesPathFromChat } from '../../src/lib/derive-messages-path.mjs';
 import { resolveGenerationApi } from './resolve-model-api.js';
 import { formatUpstreamHttpErrorMessage } from './upstream-error-detail.js';
@@ -192,6 +193,7 @@ function shouldRetrySameCandidate(classified, canFailover) {
  * @param {{ state: import('./store.js').GenerationState }} params
  */
 export async function pumpUpstreamAsync({ state }) {
+  const nativeExecution = getNativeExecutionContext(state);
   const config = (await readConfigJson('config.json')) ?? {};
   const fallbackConfig = readFallbackChainsConfig(config);
   const { idleMs, maxMs } = await readGenerationUpstreamTimeouts();
@@ -232,10 +234,16 @@ export async function pumpUpstreamAsync({ state }) {
       return;
     }
 
+    // Never reinterpret an admitted native turn as an ordinary API/other CLI
+    // request. Authority comes only from the process-local server binding.
+    if (nativeExecution && (runtime.profile.apiKind !== 'agent-cli-v1' || runtime.profile.agentCli?.kind !== 'codex')) {
+      markError(state, 'Native execution requires the admitted Codex app-server provider; no fallback is allowed.');
+      return;
+    }
     if (runtime.profile.apiKind === 'agent-cli-v1') {
       const canFailover = !state.failoverDisabled && index < state.candidates.length - 1;
       const context = await allowanceContext(candidate.providerId, candidate.modelId, runtime);
-      const result = await withAllowance(context, () => pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover }), () => state.status === 'cancelled');
+      const result = await withAllowance(context, () => pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover, nativeExecution }), () => state.status === 'cancelled');
       if (result.allowanceBlocked && canFailover) result.outcome = 'retry';
       if (result.outcome === 'complete') return;
       if (result.outcome === 'fatal' || !canFailover) {

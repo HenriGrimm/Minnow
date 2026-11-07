@@ -335,6 +335,8 @@ export function bootstrapActiveChatOpenedTimestamp(): void {
 
 /** If the assistant produced output after the user last viewed this chat, mark unread (typically called when switching away from this chat). */
 export function maybeMarkChatUnreadAfterLeave(chat: Chat): void {
+  // Managed chats use the server's observed activity cursor, not renderer clocks.
+  if (chat.chatCommandVersion === 1) return;
   const openedAt = chatLastOpenedAt.get(chat.id) ?? 0;
   const lastAsst = chat.lastAssistantAt;
   if (lastAsst != null && Number.isFinite(lastAsst) && lastAsst > openedAt) {

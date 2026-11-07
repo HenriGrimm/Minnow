@@ -26,10 +26,12 @@ function hostStub(overrides: {
     bubble: HTMLElement,
     markdown: string,
     streamCursor: HTMLElement,
-    opts?: { immediate?: boolean },
+    opts?: { immediate?: boolean; onPaint?: () => void },
   ) => void;
   chatId?: string;
   isDomVisible?: () => boolean;
+  onTiming?: (event: import('../../server/runner/timing').RunnerTimingEvent) => void;
+  timingClock?: () => number;
 } = {}) {
   const mount = document.createElement('div');
   document.body.appendChild(mount);
@@ -76,6 +78,68 @@ function hostStub(overrides: {
 }
 
 describe('P6-A chat turn event painter (MIN-723)', () => {
+  test('first prose latency ends at the actual DOM callback, not the paint scheduling tick', () => {
+    let now = 0;
+    const timings: import('../../server/runner/timing').RunnerTimingEvent[] = [];
+    const ticks: Array<() => void> = [];
+    const paints: Array<() => void> = [];
+    const stub = hostStub({ timingClock: () => now, onTiming: event => timings.push(event),
+      schedulePaintTick: cb => ticks.push(cb),
+      scheduleMarkdown: (_bubble, _text, _cursor, opts) => { if (opts?.onPaint) paints.push(opts.onPaint); } });
+    const painter = createChatTurnEventPainter(stub.host);
+    now = 10;
+    painter.onEvent({ type: 'delta', text: 'Hello' });
+    now = 20;
+    ticks.shift()?.();
+    assert.equal(timings.length, 0);
+    now = 55;
+    paints.shift()?.();
+    assert.equal(timings.length, 1);
+    assert.equal(timings[0].stage, 'first_prose_dom');
+    assert.equal(timings[0].durationMs, 45);
+    painter.onEvent({ type: 'delta', text: 'Hello again' });
+    painter.flush();
+    assert.equal(timings.length, 1, 'one payload-free measurement per round');
+    assert.equal(JSON.stringify(timings).includes('Hello'), false);
+    painter.dispose(); stub.mount.remove();
+  });
+
+  test('hidden and disposed prose callbacks do not claim a visible DOM timing', () => {
+    let visible = false;
+    const timings: unknown[] = [], paints: Array<() => void> = [];
+    const stub = hostStub({ isDomVisible: () => visible, onTiming: event => timings.push(event),
+      scheduleMarkdown: (_bubble, _text, _cursor, opts) => { if (opts?.onPaint) paints.push(opts.onPaint); } });
+    const painter = createChatTurnEventPainter(stub.host);
+    painter.onEvent({ type: 'delta', text: 'Background' }); painter.flush();
+    assert.equal(paints.length, 0);
+    visible = true;
+    painter.onEvent({ type: 'delta', text: 'Visible' }); painter.flush();
+    assert.equal(paints.length, 1);
+    painter.dispose(); paints.shift()?.();
+    assert.equal(timings.length, 0);
+    stub.mount.remove();
+  });
+
+  test('a failed-response paint callback cannot claim latency for the replacement response', () => {
+    let now = 0;
+    const timings: unknown[] = [], paints: Array<() => void> = [];
+    const stub = hostStub({ timingClock: () => now, onTiming: event => timings.push(event),
+      scheduleMarkdown: (_bubble, _text, _cursor, opts) => { if (opts?.onPaint) paints.push(opts.onPaint); } });
+    const painter = createChatTurnEventPainter(stub.host);
+    now = 10;
+    painter.onEvent({ type: 'delta', text: 'Abandoned' }); painter.flush();
+    painter.onEvent({ type: 'response_restart', warning: 'Retrying' });
+    now = 20;
+    painter.onEvent({ type: 'delta', text: 'Replacement' }); painter.flush();
+    now = 40;
+    paints.shift()?.();
+    assert.equal(timings.length, 0);
+    paints.shift()?.();
+    assert.equal(timings.length, 1);
+    assert.equal((timings[0] as { durationMs: number }).durationMs, 20);
+    painter.dispose(); stub.mount.remove();
+  });
+
   test('thinkingDeltaFromSnapshot diffs a cumulative snapshot', () => {
     assert.equal(thinkingDeltaFromSnapshot('', 'abc'), 'abc');
     assert.equal(thinkingDeltaFromSnapshot('ab', 'abcd'), 'cd');

@@ -10,6 +10,8 @@ import type { RunTurnOptions, TurnModel, TurnToolDefinition } from '../runner/ru
 export type ChatContextBodies = Partial<Record<'brain-notes' | 'code-map' | 'context-documents', string>>;
 export interface ChatPreparationAdapters {
   loadComposer(): Promise<any>;
+  loadSkill(id: string): Promise<{ id: string; body: string }>;
+  composeImpeccable(body: string, userText: string, composer: any): Promise<string>;
   readSettings(): Promise<{ meta: any; tools: any; rules: any; legacySystemPrompt?: string }>;
   listTools(): Promise<TurnToolDefinition[]>;
   loadWorkAgents(): Promise<any>;
@@ -33,6 +35,8 @@ export interface PreparedChatExecution {
   cwd: string;
   policy: ChatPolicySnapshot;
   contextBodies: ChatContextBodies;
+  enrichmentOmissions: Array<{ kind: string; reason: 'deadline' | 'unavailable' }>;
+  checkoutIdentity: string;
   sendCapabilities?: import('./model-selection.js').ModelOptionSupport['sendCapabilities'];
   providerCapabilities?: any;
   selectedModelSelection: import('./contracts.js').ModelSelection;
@@ -52,15 +56,19 @@ export interface ChatPreparationInput {
 }
 export function loadChatPreparationComposer(): Promise<any>;
 export function createChatPreparationAdapters(overrides?: Partial<ChatPreparationAdapters>): ChatPreparationAdapters;
+export function captureChatTurnIntent(intent: import('./contracts.js').ChatSendIntent, chat: ChatShell, message: string, options?: {
+  adapters?: Partial<ChatPreparationAdapters>; timeoutMs?: number;
+}): Promise<{ intent: import('./contracts.js').ChatSendIntent; skillBody: string | null; uiDesigner: any }>;
 export function resolveChatPolicyInput(chat: ChatShell, scope: ChatProjectScope, options?: {
   workspaceIds?: readonly string[]; adapters?: Partial<ChatPreparationAdapters>;
 }): Promise<ChatPolicyInput>;
 export function captureChatProfile(chat: ChatShell, scope: ChatProjectScope, options?: {
   workspaceIds?: readonly string[]; adapters?: Partial<ChatPreparationAdapters>; modelSelection?: import('./contracts.js').ModelSelection; exactModel?: boolean;
-}): Promise<{ policy: ChatPolicySnapshot; exactModel: boolean; modelSelection?: import('./contracts.js').ModelSelection; typeId?: string; typeConfig?: any; prompt: Record<string, any> }>;
+}): Promise<{ policy: ChatPolicySnapshot; exactModel: boolean; modelSelection?: import('./contracts.js').ModelSelection; typeId?: string; typeConfig?: any; prompt: Record<string, any>; runSettings: any; chatSettings: Record<string, any> }>;
 export function prepareChatExecution(input: ChatPreparationInput, options: {
   resolveTarget(chatId: string): Promise<ChatTargetContext>;
   adapters?: Partial<ChatPreparationAdapters>;
   modelAdapters?: Partial<AgentModelAdapters>;
+  enrichmentTimeoutMs?: number;
   createRunnerDeps?(input: PreparedChatExecution & ChatPreparationInput): Promise<RunnerDeps> | RunnerDeps;
 }): Promise<PreparedChatExecution>;

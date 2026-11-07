@@ -201,6 +201,7 @@ for (const provider of ['claude', 'cursor']) test(`${provider} sends incremental
   if (provider === 'claude') {
     assert.equal(second.rows.at(-1).usage.prompt_tokens, 11); assert.equal(second.rows.at(-1).usage.completion_tokens, 3);
     assert.ok(Math.abs(second.rows.at(-1).minnow_cli.cost_usd - .01) < .000001);
+    assert.ok(second.rows.at(-1).minnow_cli.timings.claude_snapshot_ms >= 0);
   }
   assert.equal((await readCliCheckpoint(`fixture-${kind}-durable`, chat)).clean, true);
   await disposeCliSessions();

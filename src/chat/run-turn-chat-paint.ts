@@ -1,6 +1,7 @@
 import { findToolWrapInDom } from '../tools/tool-wrap-dom';
 import { getActiveChatMountElement } from '../ui/chat-mount';
 import type { TurnEvent } from '../../server/runner/run-turn';
+import { createRunnerTiming } from '../../server/runner/timing.js';
 import {
   cancelAssistantBubbleRenderDebounce,
   finishStreamingBubbleRender,
@@ -90,10 +91,13 @@ export interface ChatTurnPaintHost {
     bubble: HTMLElement,
     markdown: string,
     streamCursor: HTMLElement,
-    opts?: { immediate?: boolean },
+    opts?: { immediate?: boolean; onPaint?: () => void },
   ) => void;
   schedulePaintTick?: (cb: () => void) => void;
   onCoalescedPaint?: (snap: ChatTurnPaintSnapshot) => void;
+  /** Payload-free received-to-DOM timings; not a hardware compositor paint measurement. */
+  onTiming?: (event: Extract<TurnEvent, { type: 'runner_timing' }>) => void;
+  timingClock?: () => number;
   /** Chat mode for finalized markdown (tool-round close). */
   modeId?: string;
   /** Close the live thinking timer for this round; returns duration ms. */
@@ -242,6 +246,11 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   let paintScheduled = false;
   let toolCallCount = 0;
   let proseRevealed = false;
+  let firstProseReceived: number | null = null;
+  let prosePainted = false;
+  let paintEpoch = 0;
+  let roundIndex = 0;
+  const timing = createRunnerTiming(event => host.onTiming?.(event), host.timingClock);
   let reasoningPhaseEnded = false;
   const toolWraps = new Map<string, HTMLElement>();
   const argsById = new Map<string, unknown>();
@@ -256,11 +265,11 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       bubble: HTMLElement,
       markdown: string,
       streamCursor: HTMLElement,
-      opts?: { immediate?: boolean },
+      opts?: { immediate?: boolean; onPaint?: () => void },
     ) => {
       scheduleAssistantBubbleRender(bubble, markdown, streamCursor, {
         pinScroll: false,
-        onPaint: () => scrollTranscript(),
+        onPaint: () => { opts?.onPaint?.(); scrollTranscript(); },
         immediate: opts?.immediate,
       });
     });
@@ -322,11 +331,20 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
         }
       }
       if (visible) {
+        const epoch = paintEpoch;
+        const received = firstProseReceived;
         scheduleMarkdown(
           host.bubble,
           deltaSnap,
           host.cursor,
-          opts?.immediateMarkdown ? { immediate: true } : undefined,
+          {
+            ...(opts?.immediateMarkdown ? { immediate: true } : {}),
+            ...(host.onTiming && received !== null && !prosePainted ? { onPaint: () => {
+              if (disposed || epoch !== paintEpoch || prosePainted || !originStreamVisible()) return;
+              prosePainted = true;
+              timing.end('first_prose_dom', received, { index: roundIndex, category: 'presentation' });
+            } } : {}),
+          },
         );
       }
     }
@@ -352,6 +370,9 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     pendingDelta = null;
     pendingThinking = null;
     proseRevealed = false;
+    firstProseReceived = null;
+    prosePainted = false;
+    paintEpoch++;
     reasoningPhaseEnded = false;
   };
 
@@ -444,6 +465,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     if (disposed) return;
     host.onActivity?.();
     if (event.type === 'response_restart') {
+      firstProseReceived = null; prosePainted = false; paintEpoch++;
       pendingDelta = null; pendingThinking = null;
       lastDelta = ''; lastThinking = ''; lastPaintedThinking = '';
       reasoningPhaseEnded = false;
@@ -457,6 +479,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'delta') {
+      if (host.onTiming && firstProseReceived === null && event.text.trim() && originStreamVisible()) firstProseReceived = timing.start();
       lastDelta = event.text;
       pendingDelta = event.text;
       schedulePaint();
@@ -477,6 +500,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'round_start') {
+      roundIndex = event.index;
       if (event.index > 0) {
         lastPaintedThinking = '';
         lastThinking = '';

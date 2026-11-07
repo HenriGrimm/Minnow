@@ -36,6 +36,7 @@ import { resolveShellSandboxModeForChat } from '../../tools/shell-sandbox-client
 import type { ComposeContext, PromptProfile } from './types';
 import { getBoardGroupForChat } from '../../state/chat-groups';
 import { resolveEffectiveOrchestratePlanPath } from '../plans/plan-path';
+import { runWithDeadline } from '../../lib/async-deadline.mjs';
 
 // ── Cwd ──────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,8 @@ function getEnabledToolIdsForChat(chat: Chat): string[] {
 }
 
 export interface BuildComposeContextOptions {
+  signal?: AbortSignal;
+  enrichmentTimeoutMs?: number;
   separateCliContext?: boolean;
   userMessagePreview?: string;
   /** Workspace paths from composer attachments (bias injection PageRank). */
@@ -114,96 +117,77 @@ export async function buildComposeContext(
   const replayBodies = runFirstTurn
     ? {}
     : resolveInjectionReplay(chat.history, chat.injectedContext);
-  let injectionsReplayed = false;
-
-  let memoryBlock: string | null = null;
-  const replayBrainNotes =
-    replayBodies['brain-notes'] &&
-    shouldReplayStoredInjection(chat.brainNotesInjection)
-      ? replayBodies['brain-notes']
-      : null;
-  const injectMemory = runFirstTurn
-    ? await shouldInjectMemory(chat)
-    : Boolean(replayBrainNotes);
-  if (injectMemory && !runFirstTurn) {
-    memoryBlock = replayBrainNotes;
-    injectionsReplayed = true;
-  } else if (injectMemory) {
-    const query =
-      options?.routeUserText ??
-      options?.userMessagePreview ??
-      '';
-    memoryBlock =
-      (await retrieveMemoryBlock({
-        query,
-        profile,
-        autoInject: chat.kind !== 'expert',
-        ...(chat.kind === 'expert' &&
-        chat.expertId?.trim() &&
-        chat.expertRuntime?.memoryEnabled !== false
-          ? { expertId: chat.expertId.trim() }
-          : {}),
-      })) || null;
-  }
-
   const worktreeCwd = resolveChatToolWorkspaceRoot(chat, sessionState?.groups);
+  const timeoutMs = options?.enrichmentTimeoutMs ?? 3000;
+  const omissions: string[] = [];
+  const optional = async (kind: string, work: (signal: AbortSignal) => Promise<{ enabled: boolean; block: string | null }>) => {
+    try { return await runWithDeadline(work, { timeoutMs, signal: options?.signal }); }
+    catch (error) {
+      options?.signal?.throwIfAborted();
+      omissions.push(`${kind} (${error instanceof Error && error.name === 'TimeoutError' ? 'deadline' : 'unavailable'})`);
+      return { enabled: false, block: null };
+    }
+  };
 
-  let codeMapBlock: string | null = null;
-  const replayCodeMap =
-    replayBodies['code-map'] && shouldReplayStoredInjection(chat.codeMapInjection)
-      ? replayBodies['code-map']
-      : null;
-  const injectCodeMap = runFirstTurn
-    ? await shouldInjectCodeMap(chat)
-    : Boolean(replayCodeMap);
-  if (injectCodeMap && !runFirstTurn) {
-    codeMapBlock = replayCodeMap;
-    injectionsReplayed = true;
-  } else if (injectCodeMap) {
+  const memory = async (signal: AbortSignal) => {
+    const replay = replayBodies['brain-notes'] && shouldReplayStoredInjection(chat.brainNotesInjection)
+      ? replayBodies['brain-notes'] : null;
+    const enabled = runFirstTurn ? await shouldInjectMemory(chat) : Boolean(replay);
+    if (!enabled || !runFirstTurn) return { enabled, block: replay };
+    signal.throwIfAborted();
+    const block = await retrieveMemoryBlock({
+      query: options?.routeUserText ?? options?.userMessagePreview ?? '', profile,
+      autoInject: chat.kind !== 'expert',
+      ...(chat.kind === 'expert' && chat.expertId?.trim() && chat.expertRuntime?.memoryEnabled !== false
+        ? { expertId: chat.expertId.trim() } : {}),
+    });
+    return { enabled, block: block || null };
+  };
+  const codeMap = async (signal: AbortSignal) => {
+    const replay = replayBodies['code-map'] && shouldReplayStoredInjection(chat.codeMapInjection)
+      ? replayBodies['code-map'] : null;
+    const enabled = runFirstTurn ? await shouldInjectCodeMap(chat) : Boolean(replay);
+    if (!enabled || !runFirstTurn) return { enabled, block: replay };
     const codeConfig = await fetchBrainCodeConfig();
-    const preview =
-      options?.routeUserText ?? options?.userMessagePreview ?? '';
-    const focusHints = extractCodeMapFocusHints(
-      preview,
-      options?.attachmentWorkspacePaths,
-    );
-    codeMapBlock =
-      (await retrieveCodeMapBlock({
-        repoPath: worktreeCwd ?? resolveComposeCwd(),
-        tokenBudget: codeConfig?.repoMapInjectionTokenBudget ?? codeConfig?.repoMapTokenBudget,
-        focus: focusHints.focus.length ? focusHints.focus : undefined,
-        ensureIndexed: false,
-        profile: 'injection',
-      })) || null;
-    if (injectCodeMap && codeConfig?.enabled) {
+    const preview = options?.routeUserText ?? options?.userMessagePreview ?? '';
+    const focusHints = extractCodeMapFocusHints(preview, options?.attachmentWorkspacePaths);
+    signal.throwIfAborted();
+    const block = await retrieveCodeMapBlock({
+      repoPath: worktreeCwd ?? resolveComposeCwd(),
+      tokenBudget: codeConfig?.repoMapInjectionTokenBudget ?? codeConfig?.repoMapTokenBudget,
+      focus: focusHints.focus.length ? focusHints.focus : undefined,
+      ensureIndexed: false, profile: 'injection',
+    });
+    if (!signal.aborted && codeConfig?.enabled) {
       void fetch('/api/brain/code/cascade', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: false, trigger: 'lazy-query' }),
       }).catch(() => undefined);
     }
-  }
-
-  let contextDocumentsBlock: string | null = null;
-  const replayContextDocuments =
-    replayBodies['context-documents'] &&
-    shouldReplayStoredInjection(chat.contextDocumentsInjection)
-      ? replayBodies['context-documents']
-      : null;
-  const injectContextDocuments = runFirstTurn
-    ? await shouldInjectContextDocuments(chat)
-    : Boolean(replayContextDocuments);
-  if (injectContextDocuments && !runFirstTurn) {
-    contextDocumentsBlock = replayContextDocuments;
-    injectionsReplayed = true;
-  } else if (injectContextDocuments) {
+    return { enabled, block: block || null };
+  };
+  const documents = async (signal: AbortSignal) => {
+    const replay = replayBodies['context-documents'] && shouldReplayStoredInjection(chat.contextDocumentsInjection)
+      ? replayBodies['context-documents'] : null;
+    const enabled = runFirstTurn ? await shouldInjectContextDocuments(chat) : Boolean(replay);
+    if (!enabled || !runFirstTurn) return { enabled, block: replay };
     const { documents } = await loadContextDocumentsSettings();
-    contextDocumentsBlock =
-      (await retrieveContextDocumentsBlock({
-        repoPath: worktreeCwd ?? resolveComposeCwd(),
-        documents,
-      })) || null;
-  }
+    signal.throwIfAborted();
+    const block = await retrieveContextDocumentsBlock({ repoPath: worktreeCwd ?? resolveComposeCwd(), documents });
+    return { enabled, block: block || null };
+  };
+  // Three independent lanes with deterministic assembly; replay never fetches.
+  const [memoryResult, codeResult, documentsResult] = await Promise.all([
+    optional('memory', memory), optional('code-map', codeMap),
+    runWithDeadline(documents, { timeoutMs, signal: options?.signal }),
+  ]);
+  options?.signal?.throwIfAborted();
+  const { block: memoryBlock, enabled: injectMemory } = memoryResult;
+  const { block: codeMapBlock, enabled: injectCodeMap } = codeResult;
+  const { block: contextDocumentsBlock, enabled: injectContextDocuments } = documentsResult;
+  const injectionsReplayed = !runFirstTurn && (injectMemory || injectCodeMap || injectContextDocuments);
+  // Keep omission feedback in turn context, not the reusable CLI prefix.
+  const notice = omissions.length ? 'Optional enrichment unavailable: ' + omissions.sort().join(', ') + '. Use tools if this context is needed.' : '';
 
   const ctx: ComposeContext = {
     profile,
@@ -222,6 +206,7 @@ export async function buildComposeContext(
     contextDocumentsBlock,
     contextDocumentsInjectionEnabled: injectContextDocuments,
     chatLinksBlock: formatChatLinksPromptBlock(chat.links),
+    enrichmentNotice: notice || null,
     injectionsReplayed,
     enabledToolIds,
     infoPresetId,
@@ -380,8 +365,10 @@ export async function resolveOutboundSystemMessages(
         contextDocuments: contextDocuments || null,
       };
     }
-  } catch {
-    composedRaw = '';
+  } catch (error) {
+    // Optional lanes already return bounded omission notices. Propagate required
+    // context/configuration failures instead of silently choosing the textarea.
+    throw error;
   }
   const composed = composedRaw.trim() || legacySysPrompt.trim();
   const rulesSettings = await loadUserRules();

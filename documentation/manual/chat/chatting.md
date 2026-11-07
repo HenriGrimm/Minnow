@@ -22,6 +22,10 @@ Drafts survive switching chats.
 
 Chats save automatically across windows. If two windows save competing edits, Minnow keeps saving and preserves the displaced transcript and draft as an archived chat with **(recovered)** in its title. Recovery copies do not start agents or scheduled work.
 
+Supported ordinary General, Build, Plan and Debug chats run on Minnow's local server. On send, an idle saved chat switches ownership only after its history is durable; a live turn is never taken over. Reloading or closing its chat view does not cancel server-capable work while Minnow's server remains running. Browser, clipboard or other connected-host actions can wait for a capable host to reconnect. Quitting Minnow stops its server; interrupted writes require explicit recovery, not automatic replay. Older conversations with unfinished tool/native recovery, compacted legacy context or active controllers retain their compatibility workflow until resolved.
+
+Server-owned history cannot be rewritten locally. A saved human message with a captured turn offers **Replay in new chat**: it starts a new branch without repeating historical tool calls or restoring past filesystem state. Model/mode changes apply to later submitted turns; active and already queued work keeps its accepted configuration.
+
 After a completed reply, an empty composer can show a faint suggested follow-up. Press **Tab** to put it in the composer, edit it if needed, then press **Enter** to send. **Escape** dismisses the suggestion; typing your own message dismisses it too. You can also click the **Tab** hint to use it. Suggestions use **Models → Routing → Utility tasks** when assigned, otherwise the chat's model, and make a short additional model request. Suggestions stay out of saved drafts until accepted.
 
 Right-click a chat message for **Copy** and **Select All**, alongside **Create issue…** and **Add to issue**. Copy uses your selected text, or the whole message when nothing is selected. Select All stays inside the chat pane. Cut and Paste are disabled on saved messages. In the desktop app, right-click the composer or a message edit field for **Undo**, **Redo**, **Cut**, **Copy**, **Paste**, and **Select All**; unavailable actions are disabled.
@@ -32,7 +36,7 @@ The chat list shows one line per chat: the model's provider logo, the title, and
 
 The bottom of the chat list has **Working** and **Archive** views, each with a chat count. Hover a chat and click the archive button (or right-click and choose **Archive chat**) to move it out of Working; a section with merged or closed pull requests offers **Archive N finished**. Each archive shows an **Undo** toast. In Archive, chats are grouped by when they were archived and can be searched; hover a chat and click **Restore**, or tick several and choose **Restore** to return them to Working. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
 
-Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. Changing the model during an ordinary chat response stops that generation; the next turn uses the new selection. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
+Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. In a server-owned ordinary chat, model changes apply to newly submitted turns; active and already queued work keeps its captured model. A compatibility chat stops its current generation when you change the model. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
 
 Clicking the **branch icon** enables Worktree for this chat without creating a
 checkout. Send your message to create a named branch from the current commit and
@@ -40,11 +44,7 @@ prepare project dependencies. A **Setting up your worktree** panel appears in ch
 your message runs in that checkout when setup finishes. Uncommitted edits stay in
 the original checkout. The selection survives a reload.
 
-If setup fails, the checkout is kept and your draft and attachments stay in the
-composer. The setup panel shows the error with **Retry setup** and **Back to Local**
-actions. Send again to retry setup and run your message, or choose **Retry worktree
-setup** from the worktree menu to prepare it before sending. Minnow waits for setup
-to succeed before running the chat in the worktree.
+If setup fails, the checkout is kept. A server-owned chat retains its accepted message and attachment references; **Retry setup** prepares that same checkout but does not automatically repeat inference. Send a new message after setup succeeds. The setup panel also offers **Back to Local**, an explicit choice that keeps the worktree's files. Compatibility chats retain their draft and attachments for retry. Minnow never silently runs the message in Local when worktree setup fails.
 
 Click the **worktree name** to open its menu. Choose **Switch branch** for a different branch in that checkout, **Change worktree…** for an existing checkout, or **New worktree** for a custom name and start branch. **Back to Local** preserves the worktree and its files; enabling it again reuses that chat's managed checkout. Use Source Control or issue delivery controls for cleanup.
 

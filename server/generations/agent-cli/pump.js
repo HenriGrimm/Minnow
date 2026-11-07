@@ -13,6 +13,8 @@ import { prepareAgentCliInvocation as defaultPrepareInvocation } from './invocat
 import { spawnAgentCli as defaultSpawn } from './spawn.js';
 import { pumpAgentCliSession, agentCliSessionIsMocked } from './session.js';
 import { pumpCodexAppServer } from '../codex-app-server/pump.js';
+import { assertMinnowToolMode } from '../../models/agent-cli-native.js';
+import { getNativeExecutionContext, isMinnowOnlyExecution } from '../native-execution-context.js';
 
 let prepareInvocation = defaultPrepareInvocation;
 let spawn = defaultSpawn;
@@ -39,11 +41,23 @@ export function agentCliRoleAllowed(state, settings) {
 /** CLI response rounds end before Minnow executes a handed-off tool. */
 export async function pumpAgentCliUpstream({ state, runtime, candidate, index, idleMs, maxMs, canFailover }) {
   if (state.status === 'cancelled') return { outcome: 'complete' };
+  if (isMinnowOnlyExecution(state) || !getNativeExecutionContext(state) && UTILITY_ROLES.has(state.fallbackRole)) runtime = { ...runtime, profile: { ...runtime.profile,
+    agentCli: { ...runtime.profile.agentCli, nativeCodingTools: false } } };
   const settings = runtime.profile.agentCli ?? {};
+  const nativeExecution = getNativeExecutionContext(state);
+  try { if (!nativeExecution) assertMinnowToolMode(settings); }
+  catch (error) {
+    markError(state, error.message);
+    return { outcome: 'fatal', message: error.message, hostSuspect: false };
+  }
   if (!agentCliRoleAllowed(state, settings)) return { outcome: 'retry', retrySameCandidate: false, hostSuspect: false, message: 'Background use of this CLI is off. Enable it in Models → CLIs or select another model for this role.' };
   if (settings.kind === 'codex' && process.env.MINNOW_CODEX_LEGACY_EXEC !== '1'
     && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn && !agentCliSessionIsMocked()) {
     return pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover });
+  }
+  if (nativeExecution) {
+    const message = 'Trusted native execution is supported only by the Codex app-server adapter.';
+    markError(state, message); return { outcome: 'fatal', message, hostSuspect: false };
   }
   const interactiveClaude = settings.kind === 'claude' && settings.interactive !== false && process.env.MINNOW_CLAUDE_LEGACY_PRINT !== '1' && process.env.MINNOW_AGENT_CLI_REPLAY !== '1';
   if ((state.chatId || interactiveClaude) && prepareInvocation === defaultPrepareInvocation && spawn === defaultSpawn) {

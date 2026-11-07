@@ -5,9 +5,11 @@ import { parseSlashCommand } from '../skills/parse-slash';
 import { parseSkillTagFromHistory } from '../skills/history-content';
 import {
   ensureChatHistoryLoaded,
+  activateChatById,
   findChatById,
   getActiveChat,
   scheduleSaveSessions,
+  refreshSessionsFromServer,
   touchChat,
 } from '../state/sessions';
 import { getActiveRun } from '../state/runs-store';
@@ -59,7 +61,27 @@ export async function forkFromUserIndex(
     return;
   }
 
-  if (!supportsLocalHistoryMutation(chat)) { showToast(CANONICAL_HISTORY_HINT); return; }
+  if (!supportsLocalHistoryMutation(chat)) {
+    if (chat.chatCommandVersion !== 1 || chat.agentConversation) { showToast(CANONICAL_HISTORY_HINT); return; }
+    try {
+      if (overrides?.temperature !== undefined || overrides?.maxTokens !== undefined) throw new Error('Canonical replay preserves saved sampler settings. Sampler overrides are not supported yet.');
+      await ensureChatHistoryLoaded(chatId);
+      const row = chat.history[userHistoryIndex];
+      if (!Number.isSafeInteger(userHistoryIndex) || userHistoryIndex < 0 || row?.role !== 'user' || !row.messageId) throw new Error('Replay requires a saved canonical user message.');
+      const selection = overrides?.providerId !== undefined || overrides?.modelId !== undefined ? {
+        providerId: overrides?.providerId ?? '', modelId: overrides?.modelId ?? '', options: {},
+      } : undefined;
+      if (selection && (!selection.providerId || !selection.modelId)) throw new Error('Select a complete provider/model pair for replay.');
+      const { forkManagedChat } = await import('./managed-chat-client');
+      const receipt = await forkManagedChat(chatId, row.messageId, { ...(selection ? { selection } : {}) });
+      await refreshSessionsFromServer();
+      if (getActiveChat().id !== chatId) return;
+      await activateChatById(receipt.chatId);
+      const forked = findChatById(receipt.chatId);
+      if (forked) renderChatFromHistory(forked);
+    } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
+    return;
+  }
 
   try {
     await ensureChatHistoryLoaded(chatId);

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import type { Chat, Message } from '../../src/types.ts';
 import {
   createEmptyChatObject,
@@ -54,6 +54,19 @@ import { buildHistoryUserContent } from '../../src/chat/build-api-messages.ts';
 
 const CHAT_ID = '11111111-1111-1111-1111-111111111111';
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const originalFetch = globalThis.fetch;
+beforeEach(() => {
+  // A configuration read failure is now explicit, not an implicit empty prompt.
+  // Keep production composition while supplying the API that these fake turns need.
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.includes('/api/models/cached')) return Response.json({ models: [] });
+    if (url.includes('/api/models/serve')) return Response.json({ serves: [] });
+    if (url.includes('/api/memory/')) return Response.json({ enabled: false });
+    return Response.json({});
+  };
+});
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 function installChatDom(): void {
   document.body.replaceChildren();

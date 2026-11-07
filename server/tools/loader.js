@@ -15,6 +15,10 @@ import {
 } from './bridge.js';
 import { createPluginContext } from './plugin-context.js';
 import { listMergedPlugins } from './scan.js';
+import { getMinnowHome } from '../config/home.js';
+import { getPluginCatalogRevision, invalidatePluginCatalog, watchPluginCatalog } from '../plugins/catalog.js';
+
+export { getPluginCatalogRevision, subscribePluginCatalogChanges } from '../plugins/catalog.js';
 
 /** @type {Map<string, import('./scan.js').PluginListItem>} */
 let pluginByNamespaced = new Map();
@@ -23,6 +27,53 @@ let pluginByNamespaced = new Map();
 const handlerCache = new Map();
 
 let loadGeneration = 0;
+let catalog;
+let pendingCatalog;
+let catalogHome;
+
+/** Share discovery (including empty inventories and failures), never permissions. */
+async function pluginCatalog() {
+  const home = getMinnowHome();
+  if (catalogHome !== home) {
+    catalogHome = home;
+    invalidatePluginCatalog();
+  }
+  if (catalog?.revision === getPluginCatalogRevision()) {
+    if (catalog.error) throw catalog.error;
+    return catalog;
+  }
+  if (pendingCatalog) return pendingCatalog;
+  pendingCatalog = (async () => {
+    try {
+      await fs.mkdir(path.join(home, 'tools'), { recursive: true });
+      await fs.mkdir(path.join(home, 'plugins'), { recursive: true });
+      watchPluginCatalog(home);
+    } catch (error) {
+      catalog = { revision: getPluginCatalogRevision(), error };
+      throw error;
+    }
+    while (true) {
+      const revision = getPluginCatalogRevision();
+      if (catalog?.revision === revision) {
+        if (catalog.error) throw catalog.error;
+        return catalog;
+      }
+      let plugins, definitions, error;
+      try {
+        plugins = await listMergedPlugins();
+        definitions = [...plugins.map(manifestToOpenAIDefinition), ...await packageTools()];
+      } catch (failure) { error = failure; }
+      if (revision !== getPluginCatalogRevision()) continue;
+      catalog = { revision, plugins, definitions, error };
+      if (error) throw error;
+      loadGeneration++;
+      handlerCache.clear();
+      pluginByNamespaced = new Map(plugins.map(item => [item.namespacedName, item]));
+      return catalog;
+    }
+  })().finally(() => { pendingCatalog = undefined; });
+  return pendingCatalog;
+}
 
 /**
  * @param {import('./scan.js').PluginListItem} item
@@ -87,27 +138,29 @@ async function buildHandlerRunner(item) {
  * Refresh in-memory plugin catalog and clear handler cache.
  */
 export async function reloadPlugins() {
-  loadGeneration += 1;
-  handlerCache.clear();
-  const plugins = await listMergedPlugins();
-  const next = new Map();
-  for (const item of plugins) {
-    next.set(item.namespacedName, item);
-  }
-  pluginByNamespaced = next;
-  return plugins;
+  invalidatePluginCatalog();
+  return (await pluginCatalog()).plugins;
 }
 
 /**
  * @returns {Promise<object[]>}
  */
 export async function getPluginToolDefinitions(options = {}) {
-  if (pluginByNamespaced.size === 0) {
-    await reloadPlugins();
+  while (true) {
+    const { definitions, revision } = await pluginCatalog();
+    const permissions = (await readConfigJson('tools.json'))?.permissions?.default ?? {};
+    if (revision !== getPluginCatalogRevision()) continue;
+    return definitions.filter(t => options.requireFull ? permissions[t.function.name] === 'full' : permissions[t.function.name] !== 'off');
   }
-  const permissions = (await readConfigJson('tools.json'))?.permissions?.default ?? {};
-  const definitions = [...[...pluginByNamespaced.values()].map(manifestToOpenAIDefinition), ...await packageTools()];
-  return definitions.filter(t => options.requireFull ? permissions[t.function.name] === 'full' : permissions[t.function.name] !== 'off');
+}
+
+/** Pair the filtered inventory with the revision it actually describes. */
+export async function getPluginToolCatalog() {
+  while (true) {
+    const revision = getPluginCatalogRevision();
+    const tools = await getPluginToolDefinitions();
+    if (revision === getPluginCatalogRevision()) return { tools, revision };
+  }
 }
 
 /**
@@ -117,6 +170,7 @@ export async function getPluginToolDefinitions(options = {}) {
  */
 export async function callPluginTool(name, args, options = {}) {
   try {
+    if ((await readConfigJson('tools.json'))?.permissions?.default?.[name] === 'off') return 'Error: plugin tool is disabled in Settings';
     const result = await executePackageTool(name, args ?? {}, options);
     if (result !== undefined) return result;
   } catch (error) {
@@ -126,9 +180,7 @@ export async function callPluginTool(name, args, options = {}) {
     return `Error: invalid plugin tool name ${name}`;
   }
 
-  if (pluginByNamespaced.size === 0) {
-    await reloadPlugins();
-  }
+  await pluginCatalog();
 
   const item = pluginByNamespaced.get(name);
   if (!item) {
@@ -142,6 +194,11 @@ export async function callPluginTool(name, args, options = {}) {
   try {
     const ctx = createPluginContext();
     const run = await compileHandler(item);
+    // A cached inventory/compiled handler cannot preserve a revoked grant.
+    const config = await readConfigJson('tools.json');
+    if (config?.plugins?.[item.id]?.enabled === false || config?.permissions?.default?.[name] === 'off') {
+      return 'Error: plugin tool is disabled in Settings';
+    }
     return await run(args ?? {}, ctx);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

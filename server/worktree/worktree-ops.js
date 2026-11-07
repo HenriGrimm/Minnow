@@ -1292,7 +1292,8 @@ export async function listWorktrees() {
 const automaticChatSetups = new Map();
 
 /** One-click setup. Coalesce repeated clicks and retain failed slots for retry. */
-export function enableChatWorktree({ chatId, title }) {
+export function enableChatWorktree({ chatId, title, signal, onCheckout }) {
+  signal?.throwIfAborted();
   if (typeof chatId !== 'string' || !chatId.trim()) {
     return Promise.resolve({ ok: false, error: 'chatId is required' });
   }
@@ -1301,13 +1302,13 @@ export function enableChatWorktree({ chatId, title }) {
   const pending = (async () => {
     let branch;
     if (await pathExists(wtPath)) {
-      const registered = await git(['worktree', 'list', '--porcelain']);
+      const registered = await git(['worktree', 'list', '--porcelain'], undefined, { signal });
       const paths = (registered.stdout ?? '').split('\n').filter(line => line.startsWith('worktree '))
         .map(line => normalizeWorkspacePathKey(line.slice(9).trim()));
       if (!ok(registered) || !paths.includes(normalizeWorkspacePathKey(wtPath)) || !(await isWorktreeCheckout(wtPath))) {
         return { ok: false, error: 'The worktree folder exists but is not a registered checkout. Inspect it in Source Control before retrying.' };
       }
-      const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath);
+      const head = await git(['symbolic-ref', '--short', 'HEAD'], wtPath, { signal });
       if (!ok(head)) return { ok: false, error: 'The existing worktree has a detached HEAD. Select a branch in Source Control first.' };
       branch = head.stdout.trim();
     } else {
@@ -1319,10 +1320,15 @@ export function enableChatWorktree({ chatId, title }) {
       const stem = `minnow/${slug}-${suffix}`;
       branch = stem;
       for (let i = 2; await branchExists(branch); i++) branch = `${stem}-${i}`;
-      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD' });
+      const created = await createChatWorktree({ chatId, branch, baseRef: 'HEAD', signal, prepareDependencies: !onCheckout });
       if (!created.ok) return { ...created, error: created.error || created.output || 'Could not create worktree' };
     }
-    const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]));
+    signal?.throwIfAborted();
+    // Canonical chats durably bind the allocated checkout before installers run.
+    await onCheckout?.({ path: wtPath, branch });
+    signal?.throwIfAborted();
+    const preparation = await refreshDependencies(wtPath, ECOSYSTEM_ENTRIES.flatMap(e => [...e.manifests, ...(e.lockfiles ?? [])]), { signal });
+    signal?.throwIfAborted();
     if (preparation.failed.length) {
       return { ok: false, path: wtPath, branch, ...preparation, error: `Worktree kept. Setup failed: ${preparation.failed.join(', ')}. Retry Enable worktree after fixing the dependency error.` };
     }
@@ -1333,9 +1339,9 @@ export function enableChatWorktree({ chatId, title }) {
 }
 
 /**
- * @param {{ chatId: string, branch: string, baseRef?: string, checkoutExisting?: boolean, requireNewBranch?: boolean, signal?: AbortSignal }} input
+ * @param {{ chatId: string, branch: string, baseRef?: string, checkoutExisting?: boolean, requireNewBranch?: boolean, signal?: AbortSignal, prepareDependencies?: boolean }} input
  */
-export async function createChatWorktree({ chatId, branch, baseRef, checkoutExisting, requireNewBranch = false, signal }) {
+export async function createChatWorktree({ chatId, branch, baseRef, checkoutExisting, requireNewBranch = false, signal, prepareDependencies = true }) {
   signal?.throwIfAborted();
   if (!chatId || typeof chatId !== 'string' || !chatId.trim()) {
     return { ok: false, error: 'chatId is required' };
@@ -1384,7 +1390,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
         output: added.error,
       };
     }
-    const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
+    const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
     invalidateRegisteredWorktreeCache();
     return {
       ok: true,
@@ -1405,7 +1411,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   if (!requireNewBranch && await branchExists(branchName)) {
     const w = await git(['worktree', 'add', wtPath, branchName], depSource, { signal });
     if (!ok(w)) return { ok: false, path: wtPath, branch: branchName, output: out(w) };
-    const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
+    const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
     invalidateRegisteredWorktreeCache();
     return { ok: true, path: wtPath, branch: branchName, created: true, deps };
   }
@@ -1413,7 +1419,7 @@ export async function createChatWorktree({ chatId, branch, baseRef, checkoutExis
   const r = await git(['worktree', 'add', '-b', branchName, wtPath, baseSha], depSource, { signal });
   if (!ok(r)) return { ok: false, path: wtPath, branch: branchName, output: out(r) };
   signal?.throwIfAborted();
-  const deps = await ensureDependencyDirs(depSource, wtPath, { signal });
+  const deps = prepareDependencies ? await ensureDependencyDirs(depSource, wtPath, { signal }) : undefined;
   signal?.throwIfAborted();
   invalidateRegisteredWorktreeCache();
   return { ok: true, path: wtPath, branch: branchName, created: true, deps };

@@ -1,6 +1,6 @@
 import { ACTION_TOOL_HANDLERS } from '../git/action-tools.js';
 import { toolGetDatetime, toolCalculate, parseWaitDuration, formatWaitDuration, waitWithSignal } from '../tools/utility-core.js';
-import { withWorktreeMutation } from '../git/action-run-lock.js';
+import { withWorktreeMutation, withCoordinatedWorktreeMutation } from '../git/action-run-lock.js';
 import { execFile } from 'node:child_process';
 import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
@@ -1599,6 +1599,15 @@ const SERVER_TOOL_HANDLERS = {
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
+// Renderer compatibility and server-owned calls share the same short checkout
+// boundary. Do not include coordination/wait tools: they can wait for a child.
+const CHECKOUT_MUTATING_TOOLS = new Set([
+  'save_file', 'apply_patch', 'append_file', 'insert_at_line', 'replace_text_in_file',
+  'make_directory', 'move_file', 'copy_file', 'delete_path', 'create_pdf',
+  'create_spreadsheet', 'create_word_document', 'git_add', 'git_commit', 'git_checkout',
+  'execute_command', 'run_javascript', 'run_python',
+]);
+
 /** Exact handler availability for execution hosts; it does not grant permission. */
 export function isServerToolAvailable(name) {
   return Object.hasOwn(SERVER_TOOL_HANDLERS, name) || isPluginToolName(name) || isMcpToolName(name) || isAgentBrowserTool(name);
@@ -1646,7 +1655,9 @@ export async function executeServerTool(name, args, options = {}) {
         const unsupported = unsupportedSearchOptions(args ?? {}, name);
         if (unsupported) return { result: unsupported };
       }
-      const out = await handler(args ?? {}, options);
+      const out = CHECKOUT_MUTATING_TOOLS.has(name)
+        ? await withCoordinatedWorktreeMutation(getEffectiveWorkspaceRoot(), () => handler(args ?? {}, options), { signal: options.abortSignal })
+        : await handler(args ?? {}, options);
       if (out?.codeChange) {
         out.codeChange = await withCodeChangeCheckout(out.codeChange, getEffectiveWorkspaceRoot());
       }

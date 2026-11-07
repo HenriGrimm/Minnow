@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { getMinnowHome } from '../config/home.js';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
 import {
-  getPluginToolDefinitions,
+  getPluginToolCatalog,
+  getPluginCatalogRevision,
+  subscribePluginCatalogChanges,
   reloadPlugins,
 } from './loader.js';
 import { listMergedPlugins, PLUGIN_ID_RE } from './scan.js';
@@ -95,6 +97,22 @@ export async function handlePluginsRequest(req, res, pathname) {
 
   try {
     if (await handlePackageRequest(req, res, pathname)) return true;
+    if (pathname === '/api/plugins/events' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+      const send = revision => {
+        if (res.destroyed || res.writableEnded) return;
+        if (res.writableLength > 64 * 1024) { res.destroy(); return; }
+        res.write(`data: ${JSON.stringify({ revision })}\n\n`);
+      };
+      const unsubscribe = subscribePluginCatalogChanges(send);
+      send(getPluginCatalogRevision());
+      const heartbeat = setInterval(() => {
+        if (!res.destroyed) res.write(': ping\n\n');
+      }, 15_000);
+      heartbeat.unref?.();
+      res.once('close', () => { clearInterval(heartbeat); unsubscribe(); });
+      return true;
+    }
     if (pathname === '/api/plugins/ping' && req.method === 'GET') {
       sendJson(res, 200, {
         ok: true,
@@ -127,9 +145,8 @@ export async function handlePluginsRequest(req, res, pathname) {
     }
 
     if (pathname === '/api/plugins/tools' && req.method === 'GET') {
-      await reloadPlugins();
-      const tools = await getPluginToolDefinitions();
-      sendJson(res, 200, { tools });
+      res.setHeader('Cache-Control', 'no-store');
+      sendJson(res, 200, await getPluginToolCatalog());
       return true;
     }
 

@@ -28,6 +28,21 @@ import {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+/** Managed transcripts and run details belong to the server, never to a config save. */
+export function managedChatPresentationForWire(chat: Chat): Chat | null {
+  if (chat.chatCommandVersion !== 1 && !chat.agentConversation) return null;
+  const presentation: Record<string, unknown> = { id: chat.id };
+  for (const key of ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'updatedAt'] as const) {
+    if (chat[key] !== undefined) presentation[key] = chat[key];
+  }
+  // Like an unloaded legacy history, the omitted canonical fields mean preserve.
+  return presentation as unknown as Chat;
+}
+
+function sessionsWriteForWire<T extends { chats?: Chat[] }>(body: T): T {
+  return body.chats ? { ...body, chats: body.chats.map(chat => managedChatPresentationForWire(chat) ?? chat) } : body;
+}
+
 // ── Transport ────────────────────────────────────────────────────────────────
 
 /**
@@ -380,7 +395,12 @@ async function sendSessionsWrite(
   options: { rebaseOnConflict?: boolean; onPresentationRevisions?: (revisions: Record<string, number>) => void } = {},
 ): Promise<number | undefined> {
   const rebaseOnConflict = options.rebaseOnConflict !== false;
-  let payload = body;
+  // Snapshot once: conflict retries must not pick up nested edits made while awaiting
+  // the receipt, or serialize the same legacy transcript again just to rebase a scalar.
+  const { baseRevision: initialRevision, ...fields } = sessionsWriteForWire(body);
+  const serializedFields = JSON.stringify(fields);
+  const revisionPrefix = serializedFields.slice(0, -1) + (serializedFields.length > 2 ? ',' : '');
+  let baseRevision = initialRevision;
   const changedChatIds = [
     ...(Array.isArray(body.chats) ? body.chats.map((chat) => (chat as Chat).id) : []),
     ...(Array.isArray(body.deleteChatIds) ? body.deleteChatIds as string[] : []),
@@ -392,7 +412,8 @@ async function sendSessionsWrite(
     const res = await fetch('/api/config/sessions', {
       method,
       headers: JSON_HEADERS,
-      body: JSON.stringify(payload),
+      body: baseRevision === undefined ? serializedFields
+        : `${revisionPrefix}"baseRevision":${JSON.stringify(baseRevision)}}`,
     });
     try {
       return await parseSessionsWriteResponse(res, options.onPresentationRevisions);
@@ -404,9 +425,9 @@ async function sendSessionsWrite(
         err.conflictingChatIds.length === 0 &&
         attempt < SESSIONS_CONFLICT_RETRIES &&
         typeof err.revision === 'number' &&
-        typeof payload.baseRevision === 'number';
+        typeof baseRevision === 'number';
       if (!rebased) throw err;
-      payload = { ...payload, baseRevision: (err as SessionsRevisionConflictError).revision };
+      baseRevision = (err as SessionsRevisionConflictError).revision;
     }
   }
 }
@@ -459,7 +480,7 @@ export function putSessionsKeepalive(
 ): boolean {
   try {
     assertNoConversationArchive(state);
-    const body = JSON.stringify({ ...state, ...options });
+    const body = JSON.stringify(sessionsWriteForWire({ ...state, ...options }));
     if (utf8ByteLength(body) >= FETCH_KEEPALIVE_MAX_BYTES) {
       return false;
     }
@@ -493,7 +514,7 @@ export function sendSessionsPatchBeacon(delta: SessionsPatchDelta): boolean {
     if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
       return false;
     }
-    const body = JSON.stringify(delta);
+    const body = JSON.stringify(sessionsWriteForWire(delta));
     const blob = new Blob([body], { type: 'application/json' });
     return navigator.sendBeacon('/api/config/sessions', blob);
   } catch {
@@ -519,6 +540,7 @@ export function flushSessionsOnShutdown(
   fullStateOptions: PutSessionsOptions = {},
 ): { transport: SessionsShutdownTransport; clearedOk: boolean } {
   if (delta) {
+    delta = sessionsWriteForWire(delta);
     const byteLength = utf8ByteLength(JSON.stringify(delta));
     const transport = chooseSessionsShutdownTransport(byteLength);
     if (transport === 'beacon') {

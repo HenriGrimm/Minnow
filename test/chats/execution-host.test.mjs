@@ -17,6 +17,7 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { getSessionsDb, closeSessionsDb } from '../../server/config/sessions-db.js';
 import { resetAgentBrowserRuntimeForTests } from '../../server/browser-agent-api.js';
 import { createChatHostCapabilities } from '../../server/chats/host-capabilities.js';
+import { createChatCheckpointCoordinator } from '../../server/chats/checkpoints.js';
 
 const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
 const command = { version: 1, commandId: 'send', chatId: 'chat', requestedAt: 1000, kind: 'send', mode: 'auto', message: 'Work on this', provenance };
@@ -70,11 +71,25 @@ test('canonical input identity agrees with command receipts even at the maximum 
 test('host uses canonical continue history, preserves input images and emits observer frames without observer ownership', async () => {
   const s = setup();
   try {
-    let wire; let frames = 0;
+    let wire; let frames = 0; const timings = [];
     const host = createServerChatExecutionHost({ repository: s.repository, prepareExecution: s.prepare(async (_provider, body) => { wire = body; return response(); }),
-      resolveCurrentPolicy: s.policy, onEvent() { frames++; throw new Error('Viewer closed'); } });
+      resolveCurrentPolicy: s.policy, onEvent(payload) {
+        frames++;
+        if (payload.event.type === 'runner_timing') timings.push(payload.event);
+        throw new Error('Viewer closed');
+      } });
     const result = await host.execute({ command: { ...command, images: [{ name: 'x.png', dataUrl: 'data:image/png;base64,YQ==' }] }, execution: s.execution, fence: s.fence });
     assert.equal(result.outcome, 'no_report'); assert.ok(frames > 0); assert.equal(host.supportsSteer, true);
+    assert.equal(result.timings.intervalsOverlap, true);
+    assert.ok(result.timings.events.some(row => row.stage === 'host_execution'), 'final recorder settles before returning its durable result');
+    assert.ok(result.timings.events.some(row => row.stage === 'transcript_durable'));
+    for (const stage of ['preparation', 'request_headers', 'first_prose_delta', 'final_prose', 'transcript_durable', 'runner_settled', 'host_execution']) {
+      const event = timings.find(row => row.stage === stage);
+      assert.ok(event, `missing timing milestone: ${stage}`);
+      assert.equal(event.correlationId, s.execution.executionId);
+      assert.ok(event.durationMs >= 0);
+      assert.ok(event.endOffsetMs >= event.startOffsetMs);
+    }
     const rows = s.repository.readTranscript('chat').messages;
     assert.deepEqual(rows.map(row => row.role), ['user', 'assistant']);
     assert.equal(rows[0].messageId, chatInputMessageId(command.commandId));
@@ -86,6 +101,90 @@ test('host uses canonical continue history, preserves input images and emits obs
       { type: 'text', text: command.message },
       { type: 'image_url', image_url: { url: rows[0].images[0].dataUrl, detail: 'auto' } },
     ]);
+  } finally { s.cleanup(); }
+});
+
+test('provider dispatch overlaps the checkpoint baseline while writes and durable idle wait for capture', async () => {
+  const s = setup(); let captures = 0, posts = 0, effects = 0;
+  const capturing = Promise.withResolvers(), release = Promise.withResolvers(), requested = Promise.withResolvers();
+  try {
+    const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => {
+      if (++captures === 1) { capturing.resolve(); await release.promise; }
+      return { ok: true, sha: 'snapshot-' + captures };
+    } });
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareCheckpoint: input => checkpoints.prepare(input),
+      prepareExecution: s.prepare(async () => { posts++; requested.resolve(); return response(posts === 1 ? [tool('save_file')] : []); }),
+      createToolDispatch: () => dispatch(async () => { effects++; return { content: 'saved' }; }) });
+    const running = host.execute({ command, execution: s.execution, fence: s.fence });
+    await Promise.all([capturing.promise, requested.promise]);
+    assert.equal(posts, 1); assert.equal(effects, 0);
+    release.resolve(); assert.equal((await running).outcome, 'no_report');
+    assert.equal(effects, 1); assert.equal(posts, 2);
+    assert.equal(checkpoints.read('execution', 'call-1').state, 'settled');
+  } finally { release.resolve(); s.cleanup(); }
+});
+
+test('failed post-effect checkpoint prevents another model request and retains explicit recovery even with a tool receipt', async () => {
+  const s = setup(); let captures = 0, posts = 0, effects = 0;
+  try {
+    const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () =>
+      ++captures === 3 ? { ok: false, error: 'disk unavailable' } : { ok: true, sha: 'snapshot-' + captures } });
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareCheckpoint: input => checkpoints.prepare(input),
+      prepareExecution: s.prepare(async () => { posts++; return response(posts === 1 ? [tool('save_file')] : []); }),
+      createToolDispatch: () => dispatch(async () => { effects++; return { content: 'saved' }; }) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+    assert.equal(result.failure.code, 'recovery_required');
+    assert.equal(result.failure.recoveryRequired, true);
+    assert.equal(effects, 1); assert.equal(posts, 1);
+    assert.equal(checkpoints.read('execution', 'call-1').state, 'uncertain');
+    assert.equal(s.repository.getDatabase().prepare('SELECT state FROM chat_tool_invocations WHERE execution_id=?').get('execution').state, 'settled');
+  } finally { s.cleanup(); }
+});
+
+test('dedicated detached command/server/workflow tools cannot claim a settled filesystem checkpoint', async () => {
+  for (const [name, args] of [['start_background_command', { command: 'fixture server' }],
+    ['manage_dev_servers', { action: 'start' }], ['action_run', { location: 'local' }]]) {
+    const s = setup(); let captures = 0, posts = 0, effects = 0;
+    try {
+      s.changePolicy(createChatPolicy({ modeId: 'build', fileWriteScope: 'workspace', toolPermissions: { [name]: 'full' } }));
+      const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => ({ ok: true, sha: 's' + ++captures }) });
+      const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+        prepareCheckpoint: input => checkpoints.prepare(input),
+        prepareExecution: async () => ({ ...await s.prepare(async () => { posts++; return response(posts === 1 ? [tool(name, args)] : []); })(),
+          tools: [{ type: 'function', function: { name, parameters: { type: 'object' } } }] }),
+        createToolDispatch: () => dispatch(async () => { effects++; return { content: 'must not start' }; }) });
+      const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+      assert.equal(result.outcome, 'no_report'); assert.equal(effects, 0, name);
+      assert.equal(captures, 1, 'no effect snapshots are advertised for a refused spawn');
+      assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Background mutations/);
+    } finally { s.cleanup(); }
+  }
+});
+
+test('accepted native selection reaches only private completion options and disposes authority after settlement', async () => {
+  const s = setup(); let disposed = 0, admitted = 0;
+  const selected = { version: 1, requestedMode: 'native', effectiveMode: 'native', providerId: 'fixture', modelId: 'model' };
+  s.execution.captured = { ...s.execution.captured, nativeExecution: selected };
+  const authority = Object.freeze({ signal: new AbortController().signal, dispose() { disposed++; } });
+  try {
+    const coordinator = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => ({ ok: true, sha: 'fixture-sha' }) });
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareCheckpoint: input => coordinator.prepare(input),
+      prepareNativeExecution: async input => {
+        admitted++; assert.equal(input.execution.captured.nativeExecution, selected);
+        assert.equal(input.prepared.cwd, s.scratch); assert.ok(input.checkpoint.effect);
+        return authority;
+      },
+      prepareExecution: s.prepare(async (_provider, body, _signal, options) => {
+        assert.equal(options.nativeExecution, authority);
+        assert.equal(options.fallbackRole, 'default'); assert.equal(options.exactModel, true);
+        assert.equal(JSON.stringify(body).includes('nativeExecution'), false);
+        return response();
+      }), createToolDispatch: () => dispatch(async () => ({ content: 'unused' })) });
+    assert.equal((await host.execute({ command, execution: s.execution, fence: s.fence })).outcome, 'no_report');
+    assert.equal(admitted, 1); assert.equal(disposed, 1);
   } finally { s.cleanup(); }
 });
 
@@ -429,4 +528,21 @@ test('new Ask denial or Off before first host dispatch settles a known non-effec
       assert.equal(s.repository.getExecution('execution').status, 'running');
     } finally { broker.dispose(); s.cleanup(); }
   }
+});
+
+test('ordinary issue/code-map snapshots and suppressed echo persist on the canonical input, not the provider wire', async () => {
+  const s = setup();
+  try {
+    let wire;
+    const host = createServerChatExecutionHost({ repository: s.repository,
+      prepareExecution: s.prepare(async (_provider, body) => { wire = body; return response(); }), resolveCurrentPolicy: s.policy });
+    const intent = { version: 1, suppressUserEcho: true,
+      issue: { id: 'MIN-7', type: 'task', title: 'Issue title', description: 'Details', status: 'todo', priority: 'none', labels: [] },
+      codeMap: { title: 'Definition', question: 'Why?', kind: 'function', path: 'src/a.ts', line: 2 } };
+    const result = await host.execute({ command: { ...command, intent }, execution: s.execution, fence: s.fence });
+    assert.equal(result.outcome, 'no_report');
+    const row = s.repository.readTranscript('chat').messages[0];
+    assert.deepEqual(row.issue, intent.issue); assert.deepEqual(row.codeMap, intent.codeMap); assert.equal(row.hiddenFromTranscript, true);
+    assert.ok(wire.messages.every(row => !row.intent && !row.issue && !row.codeMap && !row.hiddenFromTranscript));
+  } finally { s.cleanup(); }
 });

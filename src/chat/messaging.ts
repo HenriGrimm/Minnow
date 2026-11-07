@@ -64,6 +64,7 @@ import {
 } from '../ui/default-model';
 import {
   clearComposerAfterSend,
+  clearComposerDraftOnChat,
 } from '../ui/composer-draft';
 import {
   resolveComposerSurface,
@@ -84,6 +85,9 @@ import { getWorkspacePath } from '../state/workspace';
 import { isPairedDevice } from '../api/session-token';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import { persistSessionsBeforeDeliveryAck } from '../state/sessions';
+import type { ChatSendIntent } from '../../server/chats/contracts';
+import { isCavemanIntensity } from '../skills/caveman-client';
+import { ensureOrdinaryChatRoute } from './ordinary-routing';
 
 export {
   buildApiMessages,
@@ -146,6 +150,28 @@ export interface SendProgrammaticChatTextOptions {
 
 // ── Programmatic ─────────────────────────────────────────────────────────────
 
+/** The renderer selects identities; only the server resolves their instruction bodies. */
+function managedSendContext(chat: Chat, text: string, options: SendProgrammaticChatTextOptions) {
+  const slash = options.parseSlash === false ? { skillId: null, userText: (options.slashInput ?? text).trim() }
+    : parseSlashCommand(options.slashInput ?? text);
+  if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
+  const turn = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
+  const userText = normalizeCavemanUserText(turn.skillId, slash.skillId, slash.userText);
+  const intent: ChatSendIntent = { version: 1,
+    skill: turn.skillId ? { id: turn.skillId, source: turn.fromPin ? 'pinned' : 'slash', input: userText,
+      ...(isCavemanIntensity(turn.nextPinned?.intensity) ? { intensity: turn.nextPinned!.intensity as import('../skills/caveman-client').CavemanIntensity } : {}) } : null,
+    ...(options.ephemeralContext !== undefined ? { context: options.ephemeralContext } : {}),
+    ...(options.issue ? { issue: options.issue } : {}), ...(options.codeMap ? { codeMap: options.codeMap } : {}),
+    ...(options.goalDriven !== undefined ? { goalDriven: options.goalDriven } : {}),
+    ...(options.suppressUserEcho !== undefined ? { suppressUserEcho: options.suppressUserEcho } : {}),
+    ...(options.titleSeed !== undefined ? { titleSeed: options.titleSeed } : {}),
+    ...(options.deferTitleUntilTurnEnd !== undefined ? { deferTitleUntilTurnEnd: options.deferTitleUntilTurnEnd } : {}),
+    ...(options.attachIssueMentions !== undefined ? { attachIssueMentions: options.attachIssueMentions } : {}),
+  };
+  const display = turn.skillId ? formatHistoryWithSkillTag(userText, turn.skillId) : userText;
+  return { text: options.attachIssueMentions ? attachMentionedIssues(display, userText, chat.workspacePath) : display, intent, nextPinned: turn.nextPinned };
+}
+
 export async function sendProgrammaticChatText(
   chat: Chat,
   text: string,
@@ -153,9 +179,24 @@ export async function sendProgrammaticChatText(
 ): Promise<void> {
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) throw new Error(readOnly);
+  if (text.trim() || options.validAttachments?.length || options.slashInput?.trim()) {
+    await ensureOrdinaryChatRoute(chat);
+  }
   if (chat.chatCommandVersion === 1) {
+    options.signal?.throwIfAborted();
+    const draftBeforeAdmission = chat.composerDraft;
+    const context = managedSendContext(chat, text, options);
     const { sendManagedChatAction, waitForManagedCommand } = await import('./managed-chat-client');
-    const receipt = await sendManagedChatAction(chat.id, 'send', { text, attachments: options.validAttachments });
+    const attachments = await resolveWorkspaceReferences(options.validAttachments ?? []);
+    if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
+    if (!context.text.trim() && !attachments.length) {
+      if (options.requireCompletedTurn) throw new Error('Follow-up message is empty');
+      return;
+    }
+    const receipt = await sendManagedChatAction(chat.id, 'send', { text: context.text, intent: context.intent, attachments });
+    chat.pinnedSkill = context.nextPinned;
+    if (options.clearComposerOnSend !== false && chat.composerDraft === draftBeforeAdmission) clearComposerDraftOnChat(chat);
+    touchChat(chat); scheduleSaveSessions();
     await options.onUserMessageAccepted?.();
     if (options.requireCompletedTurn) {
       if (!receipt?.commandId) throw new Error('The conversation did not return an admission receipt.');
@@ -345,15 +386,52 @@ export async function sendMessageWithTools(
   const chat = getActiveChat();
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) { showToast(readOnly); return; }
+  // Local slash controls do not create server conversations or migrate history.
+  if ((rawTextEarly || getPendingAttachments().length) && !isPluginSlashCommand(rawTextEarly) &&
+      !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
+    try { await ensureOrdinaryChatRoute(chat); }
+    catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
+  }
+  if (chat.chatCommandVersion === 1 && !isPairedDevice() && isPluginSlashCommand(rawTextEarly)) {
+    try {
+      await dispatchPluginSlashCommand(rawTextEarly, { chatId: chat.id, workspacePath: chat.workspacePath ?? getWorkspacePath() });
+      if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) clearComposerAfterSend(chat, input);
+      showToast('Plugin command complete');
+    } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
+    return;
+  }
+  let managedGoal = false;
+  let managedText = rawTextEarly;
+  if (chat.chatCommandVersion === 1) {
+    // Local controls must never accidentally become model slash skills.
+    const followup = handleFollowupCommand(chat, rawTextEarly, setStatus);
+    const loop = !followup ? handleLoopCommand(chat, rawTextEarly, setStatus) : null;
+    const goal = !followup && !loop ? handleGoalCommand(chat, rawTextEarly, setStatus) : null;
+    if (followup || loop || goal === 'handled') { clearComposerAfterSend(chat, input); return; }
+    if (parseCompactSlashInput(rawTextEarly)) {
+      setStatus('err', 'Canonical history compaction is not available from this control. Your draft is kept.');
+      return;
+    }
+    if (goal === 'set') { managedGoal = true; managedText = getActiveGoal(chat)?.conditionText ?? rawTextEarly; }
+  }
   if (shouldRelayChat(chat.id)) {
     const remoteAttachmentEpoch = getAttachmentEpoch();
     const attachments = await resolveWorkspaceReferences(getPendingAttachments());
     if (!rawTextEarly && !attachments.length) return;
     try {
+      if (attachments.some(attachment => attachment.kind === 'error')) throw new Error('Could not read attached workspace files. Fix or remove them before sending.');
       if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
-      const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
-      await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(rawTextEarly, attachments),
+      const context = chat.chatCommandVersion === 1 ? managedSendContext(chat, managedText, {
+        ephemeralContext: composer?.ephemeralContext, issue: composer?.issue, goalDriven: managedGoal,
+        parseSlash: !managedGoal, attachIssueMentions: !composer?.issue,
+      }) : null;
+      const hasTurnContext = context && (context.intent.skill || context.intent.context || context.intent.issue || context.intent.goalDriven);
+      const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !hasTurnContext && !attachments.length && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
+      await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(context?.text ?? rawTextEarly, attachments),
+        ...(context && action === 'send' ? { intent: context.intent } : {}),
+        ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
         attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
+      if (context && action === 'send') { chat.pinnedSkill = context.nextPinned; touchChat(chat); scheduleSaveSessions(); }
       // Clear only the draft that was actually accepted; keep text typed during delivery.
       if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
         clearComposerAfterSend(chat, input);

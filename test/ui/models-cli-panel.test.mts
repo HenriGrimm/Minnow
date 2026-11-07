@@ -83,6 +83,48 @@ describe('Models CLI panel', () => {
     assert.match(document.querySelector('.models-cli-row')?.textContent ?? '', /Signed in/);
   });
 
+  test('shows the Codex enforcement reason and disables opt-in on an unavailable CLI', async () => {
+    const reason = 'Native coding tools are unavailable: permission admission and recovery are not verified.';
+    setCliPanelDepsForTests({ list: async () => [cli('codex', {
+      nativeCodingTools: false, nativeCodingCapability: { available: false, effective: 'minnow', reason },
+    }), cli('claude')] });
+    await mountCliPanel();
+    const codex = document.querySelector('[data-kind="codex"]')!;
+    const info = codex.querySelector<HTMLElement>('[data-native-coding-capability]')!;
+    assert.equal(info.textContent, reason);
+    assert.equal(info.hidden, false);
+    assert.equal(codex.querySelector<HTMLInputElement>('input[name="nativeCodingTools"]')!.disabled, true);
+    assert.equal(document.querySelector<HTMLElement>('[data-kind="claude"] [data-native-coding-capability]')!.hidden, true);
+  });
+
+  test('native experiment is Codex-only, default-off, labelled and saved as a preference', async () => {
+    const changes: unknown[] = [];
+    const capable = { available: true, effective: 'minnow' as const, reason: 'Limited verified Windows experiment.' };
+    setCliPanelDepsForTests({ list: async () => [cli('codex', { nativeCodingCapability: capable }), cli('claude')],
+      updateSettings: async (kind, patch) => { changes.push(patch); return cli(kind, { ...patch, nativeCodingCapability: capable } as any); } });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="nativeCodingTools"]')!;
+    assert.equal(input.checked, false); assert.equal(input.disabled, false);
+    assert.equal(input.getAttribute('role'), 'switch');
+    assert.match(input.getAttribute('aria-label')!, /Use Codex native coding tools \(experimental\)/);
+    assert.match(document.getElementById(input.getAttribute('aria-describedby')!)!.textContent!, /newly submitted turns/);
+    assert.equal(document.querySelector('[data-kind="claude"] input[name="nativeCodingTools"]'), null);
+    input.checked = true; input.dispatchEvent(new window.Event('change', { bubbles: true })); await tick();
+    assert.equal((changes[0] as any).nativeCodingTools, true);
+    assert.match(document.querySelector('[data-kind="codex"] .models-cli-save-status')!.textContent!, /Saved/);
+  });
+
+  test('failed native preference saves roll back the visible switch and keep an explicit retry', async () => {
+    setCliPanelDepsForTests({ list: async () => [cli('codex', { nativeCodingCapability: { available: true, effective: 'minnow', reason: 'Limited experiment.' } })],
+      updateSettings: async () => { throw new Error('Profile disk full'); } });
+    await mountCliPanel();
+    const input = document.querySelector<HTMLInputElement>('input[name="nativeCodingTools"]')!;
+    input.checked = true; input.dispatchEvent(new window.Event('change', { bubbles: true })); await tick();
+    assert.equal(input.checked, false);
+    assert.match(document.body.textContent!, /Could not save: Profile disk full/);
+    assert.ok([...document.querySelectorAll<HTMLButtonElement>('button')].some(node => node.textContent === 'Retry' && !node.hidden));
+  });
+
   test('loads quota for every CLI in summaries and details', async () => {
     const reads: AgentCliKind[] = [];
     setCliPanelDepsForTests({

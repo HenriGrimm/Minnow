@@ -16,6 +16,7 @@ async function step(tid, turnId) {
   if (script.crash) { process.exit(1); return; }
   if (script.error) { event('turn/completed', { threadId: tid, turn: { id: turnId, status: 'failed', error: { message: script.error } } }); return; }
   if (script.compact) { event('item/started', { threadId: tid, turnId, item: { id: 'compact', type: 'contextCompaction' } }); return; }
+  if (script.nativeItem) { event('item/started', { threadId: tid, turnId, item: script.nativeItem }); return; }
   if (script.reasoning) {
     const itemId = `reasoning-${turnId}-${steps}`;
     event('item/reasoning/summaryTextDelta', { threadId: tid, turnId, itemId, delta: script.reasoning });

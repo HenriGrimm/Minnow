@@ -1,0 +1,112 @@
+{
+  "scope": "Synthetic Git snapshot component only; not end-to-end chat or renderer latency.",
+  "machine": {
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v24.19.0",
+    "cpus": 32
+  },
+  "baselineRef": "HEAD",
+  "baselineCommit": "db8394809e817b03cade5d6a8e0b4ce2c5e5f629",
+  "samples": 3,
+  "files": 200,
+  "warmups": 1,
+  "rows": [
+    {
+      "implementation": "baseline",
+      "dirty": false,
+      "concurrent": 1,
+      "captures": 3,
+      "failures": 0,
+      "indexUnchanged": true,
+      "captureP50Ms": 349.8,
+      "captureP95Ms": 410.1,
+      "batchP50Ms": 349.8,
+      "batchP95Ms": 410.1
+    },
+    {
+      "implementation": "current",
+      "dirty": false,
+      "concurrent": 1,
+      "captures": 3,
+      "failures": 0,
+      "indexUnchanged": true,
+      "captureP50Ms": 356.8,
+      "captureP95Ms": 416.8,
+      "batchP50Ms": 356.8,
+      "batchP95Ms": 416.8
+    },
+    {
+      "implementation": "baseline",
+      "dirty": false,
+      "concurrent": 4,
+      "captures": 10,
+      "failures": 2,
+      "indexUnchanged": true,
+      "captureP50Ms": 384.9,
+      "captureP95Ms": 421.5,
+      "batchP50Ms": 400.9,
+      "batchP95Ms": 430
+    },
+    {
+      "implementation": "current",
+      "dirty": false,
+      "concurrent": 4,
+      "captures": 12,
+      "failures": 0,
+      "indexUnchanged": true,
+      "captureP50Ms": 373.5,
+      "captureP95Ms": 411.7,
+      "batchP50Ms": 401.9,
+      "batchP95Ms": 416.3
+    },
+    {
+      "implementation": "baseline",
+      "dirty": true,
+      "concurrent": 1,
+      "captures": 3,
+      "failures": 0,
+      "indexUnchanged": false,
+      "captureP50Ms": 311.4,
+      "captureP95Ms": 395.6,
+      "batchP50Ms": 311.4,
+      "batchP95Ms": 395.6
+    },
+    {
+      "implementation": "current",
+      "dirty": true,
+      "concurrent": 1,
+      "captures": 3,
+      "failures": 0,
+      "indexUnchanged": true,
+      "captureP50Ms": 404.4,
+      "captureP95Ms": 477.9,
+      "batchP50Ms": 404.4,
+      "batchP95Ms": 477.9
+    },
+    {
+      "implementation": "baseline",
+      "dirty": true,
+      "concurrent": 4,
+      "captures": 11,
+      "failures": 2,
+      "indexUnchanged": false,
+      "captureP50Ms": 421.9,
+      "captureP95Ms": 459.7,
+      "batchP50Ms": 459.4,
+      "batchP95Ms": 462.3
+    },
+    {
+      "implementation": "current",
+      "dirty": true,
+      "concurrent": 4,
+      "captures": 12,
+      "failures": 0,
+      "indexUnchanged": true,
+      "captureP50Ms": 449.5,
+      "captureP95Ms": 523.5,
+      "batchP50Ms": 474.3,
+      "batchP95Ms": 541.2
+    }
+  ]
+}

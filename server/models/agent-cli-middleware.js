@@ -7,7 +7,8 @@ import { detectAgentCli, verifyAgentCliAuth } from './agent-cli-detect.js';
 import { getAgentCliAccountUsage } from './agent-cli-usage.js';
 import { createAgentCliLoginService } from './agent-cli-login.js';
 import { disposeCodexSessions } from '../generations/codex-app-server/lifecycle.js';
-import { getCliCapability } from '../generations/agent-cli/lifecycle.js';
+import { getCliCapability, cliSessionIsIdle } from '../generations/agent-cli/lifecycle.js';
+import { agentCliNativeCodingCapability } from './agent-cli-native.js';
 import {
   AGENT_CLI_DEFINITIONS,
   getAgentCliDefinition,
@@ -20,7 +21,7 @@ const login = createAgentCliLoginService({
   onSignedIn: async (kind) => {
     clearAgentCliModelCatalogCache(kind);
     await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId
-      && !session.active && !session.waiting);
+      && cliSessionIsIdle(session));
   },
 });
 
@@ -98,6 +99,8 @@ export async function getAgentCliStatus(kind, options = {}) {
     transport: kind === 'codex' ? 'app-server' : kind === 'claude' ? 'stream-json' : 'replay',
     restartResumeSupported: kind !== 'cursor',
     ...getCliCapability(definition.providerId),
+    nativeCodingTools: agentCli.nativeCodingTools === true,
+    nativeCodingCapability: agentCliNativeCodingCapability(kind, { version: detection.version, installed: detection.installed }),
     installCommand: getAgentCliInstallCommand(kind),
     loginCommand: definition.loginCommand,
     updateCommand: definition.updateCommand,
@@ -172,8 +175,8 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
     }
     if (action === 'enable' && req.method === 'POST') {
       const body = await readJsonBody(req);
-      if (body?.enabled !== true) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId);
       const provider = await setAgentCliProviderEnabled(kind, body?.enabled);
+      if (body?.enabled === false) await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId);
       sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
       return true;
     }
@@ -181,15 +184,19 @@ export async function handleAgentCliModelsRequest(req, res, pathname) {
       // Idle CLI children hold their binaries open, which blocks a self-update on
       // Windows. Running turns keep their process; conversations resume after.
       const { providerId } = getAgentCliDefinition(kind);
-      await disposeCodexSessions(session => session.providerId === providerId && !session.active && !session.waiting);
+      await disposeCodexSessions(session => session.providerId === providerId && cliSessionIsIdle(session));
       sendJson(res, 200, { agentCli: await getAgentCliStatus(kind) });
       return true;
     }
     if (action === 'settings' && req.method === 'PUT') {
-      clearAgentCliModelCatalogCache(kind);
       const body = await readJsonBody(req);
-      await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId, { forget: true });
       const provider = await updateAgentCliProviderSettings(kind, body);
+      clearAgentCliModelCatalogCache(kind);
+      // A setting is not a cancellation. Existing runs keep their captured
+      // profile; fingerprints verify compatibility before their next turn.
+      // Keep durable checkpoints: an active session can still be writing one.
+      await disposeCodexSessions(session => session.providerId === getAgentCliDefinition(kind).providerId
+        && cliSessionIsIdle(session));
       sendJson(res, 200, { provider, agentCli: await getAgentCliStatus(kind) });
       return true;
     }

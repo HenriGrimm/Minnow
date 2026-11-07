@@ -8,7 +8,7 @@
 import '../tools/install-dom-before-imports.mts';
 
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { GenerationNotFoundError, GENERATION_LOST_ON_RESTART_MESSAGE } from '../../src/api/generations.ts';
 import type { Chat, Message } from '../../src/types.ts';
@@ -241,7 +241,20 @@ describe('failed-turn recovery chrome', () => {
 // ── P10-E runChatTurn ────────────────────────────────────────────────────────
 
 describe('P10-E runChatTurn failed-turn persist (MIN-770)', () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    // Preparation failures no longer silently select an empty fallback prompt.
+    // Supply deterministic settings so these tests reach their fake provider.
+    globalThis.fetch = async input => {
+      const url = String(input);
+      if (url.includes('/api/models/cached')) return Response.json({ models: [] });
+      if (url.includes('/api/models/serve')) return Response.json({ serves: [] });
+      if (url.includes('/api/memory/')) return Response.json({ enabled: false });
+      return Response.json({});
+    };
+  });
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();
     setChatAbort(CHAT_ID, null);

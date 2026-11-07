@@ -28,6 +28,7 @@ export interface ChatExecutionHost {
 export interface ChatSendInput {
   chatId: string; message: string; mode?: 'auto' | 'queue' | 'steer'; clientRequestId?: string;
   images?: Array<{ name: string; dataUrl: string }>;
+  intent?: import('./contracts.js').ChatSendIntent;
   replyToCommandId?: string;
   /** Internal system ingress only; authenticated adapters cannot accept this from ordinary sends. */
   delivery?: { runId: string; deliveryId: string; causalRootId?: string; causalDepth?: number; cancellationEpoch?: number };
@@ -40,7 +41,7 @@ export interface ChatQueueControlInput {
   chatId: string; targetCommandId: string; expectedRevision: number; clientRequestId?: string;
 }
 export interface ChatServiceEvent {
-  type: 'command' | 'execution' | 'execution_error'; chatId: string;
+  type: 'command' | 'execution' | 'execution_error' | 'configuration'; chatId: string;
   commandId?: string; executionId?: string; status?: string;
 }
 export interface ReservedChatTask {
@@ -53,7 +54,18 @@ export interface ReservedChatTask {
 }
 export interface DeferredChatTask { deferred: true; reason: string }
 export interface ChatCommandService {
+  ordinaryEligibility(caller: ChatCaller, chatId: string): Promise<{ chatId: string; route: string; eligible: boolean; reason: string; revision: number }>;
+  promote(caller: ChatCaller, input: { chatId: string; expectedRevision: number; clientRequestId: string }): Promise<{ chatId: string; disposition: string; revision: number; replayed: boolean }>;
   send(caller: ChatCaller, input: ChatSendInput): Promise<ChatCommandReceipt>;
+  chooseWorkspace(caller: ChatCaller, input: { chatId: string; action: 'retry' | 'local'; expectedIntentId: string; clientRequestId?: string }): Promise<{ chat: import('./repository.js').ChatShell }>;
+  fork(caller: ChatCaller, input: {
+    chatId: string; messageId: string; expectedRevision: number; message?: string; selection?: ModelSelection; clientRequestId: string;
+  }): Promise<{ chatId: string; sourceChatId: string; sourceMessageId: string; commandId: string; revision: number;
+    disposition: string; link: string; replayed: boolean }>;
+  configure(caller: ChatCaller, input: {
+    chatId: string; action?: 'configure'; selection?: ModelSelection; modeId?: string;
+    name?: string; pinned?: boolean; archived?: boolean; expectedProfileVersion?: number; clientRequestId: string;
+  }): Promise<{ chatId: string; profileReference?: import('./contracts.js').AgentProfileReference; disposition: string; replayed?: boolean }>;
   /** Server-only bridge for verified terminal legacy journal runs. Never exposed as a transport action. */
   admitLegacyCompletion(caller: ChatCaller, input: Pick<ChatSendInput, 'chatId' | 'message' | 'clientRequestId'> & {
     delivery: NonNullable<ChatSendInput['delivery']>; retainOnly?: boolean;
@@ -90,11 +102,17 @@ export interface ChatCommandService {
 export function createChatCommandService(options: {
   repository?: ChatRepository;
   context: Pick<ChatContext, 'resolveTarget'>;
-  captureProfile?: (input: { target: ChatTargetContext; selection: ModelSelection; caller: ChatCaller; input: ChatSendInput }) => Promise<ProfileInput> | ProfileInput;
+  captureProfile?: (input: { target: ChatTargetContext; selection: ModelSelection; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] }) => Promise<ProfileInput> | ProfileInput;
+  captureTurnIntent?: typeof import('./preparation.js').captureChatTurnIntent;
+  captureNativeSelection?: (selection: ModelSelection) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  captureWorkspacePreparation?: (target: ChatTargetContext) => Promise<import('./workspace-preparation.js').ChatWorkspaceIntent | null>;
+  admitWorkspacePreparation?: (chatId: string, intent: import('./workspace-preparation.js').ChatWorkspaceIntent) => void;
+  applyWorkspaceChoice?: (caller: ChatCaller, input: Parameters<ChatCommandService['chooseWorkspace']>[1]) => Promise<{ chat: import('./repository.js').ChatShell }>;
   admitCausality?: (input: { caller: ChatCaller; command: ChatCommand }) => { causalRootId: string; causalDepth: number; agentCoordination?: boolean };
-  resolveModelSelection?: (input: { target: ChatTargetContext; caller: ChatCaller; input: ChatSendInput; selection: ModelSelection }) =>
+  resolveModelSelection?: (input: { target: ChatTargetContext; caller: ChatCaller; input: ChatSendInput | Parameters<ChatCommandService['configure']>[1] | Parameters<ChatCommandService['fork']>[1]; selection: ModelSelection }) =>
     Promise<ModelSelection | { selection: ModelSelection }> | ModelSelection | { selection: ModelSelection };
   feature?: () => AgentConversationsFeature;
+  ordinaryFeature?: () => import('./contracts.js').OrdinaryChatExecutionFeature;
   canResumeQuestionExecution?: (executionId: string) => boolean;
   now?: () => number; id?: () => string; leaseMs?: number; maxPendingCommands?: number;
   hasExternalOwner?: (chatId: string) => boolean;

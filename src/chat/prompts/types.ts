@@ -100,6 +100,8 @@ export interface ComposeContext {
   contextDocumentsInjectionEnabled?: boolean;
   /** Standing file/URL chips pinned on this chat (MIN-630). */
   chatLinksBlock?: string | null;
+  /** Per-turn feedback for unavailable optional preparation; never a stable CLI prefix. */
+  enrichmentNotice?: string | null;
   injectionsReplayed?: boolean;
   enabledToolIds: string[];
   infoPresetId: string | null;

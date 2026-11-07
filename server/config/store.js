@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import { mergeIssuesState } from '../../src/lib/merge-issues-state.mjs';
 import {
   issuesBackupDir,
@@ -51,6 +52,7 @@ import {
 } from './sessions-repo.js';
 import { mergeOmittedChatDetail } from './chat-detail.js';
 import { sessionsJsonPath } from './sessions-paths.js';
+import { invalidatePluginCatalog } from '../plugins/catalog.js';
 import {
   defaultAppearanceConfig,
   normalizeAppearanceConfig,
@@ -229,7 +231,9 @@ async function writeConfigJsonUnlocked(relativeKey, data) {
     } finally {
       await handle.close();
     }
+    invalidateNativePolicyBeforeWrite(relativeKey);
     await renameConfigAtomic(tmp, full);
+    if (relativeKey === 'tools.json') invalidatePluginCatalog();
   } finally {
     await fs.rm(tmp, { force: true }).catch(() => {});
   }

@@ -63,6 +63,16 @@ export function initChatConversationSchema(db) {
       settled_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_chat_executions_chat ON chat_executions(chat_id, created_at);
+    CREATE TABLE IF NOT EXISTS chat_workspace_checkpoints (
+      execution_id TEXT NOT NULL,
+      checkpoint_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      workspace_key TEXT NOT NULL,
+      state TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      PRIMARY KEY (execution_id, checkpoint_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_checkpoints_workspace ON chat_workspace_checkpoints(workspace_key,state);
     CREATE TABLE IF NOT EXISTS chat_activity_reads (
       chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
       message_seq INTEGER NOT NULL DEFAULT -1,

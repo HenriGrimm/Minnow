@@ -129,6 +129,42 @@ describe('P6-D stream-end order (MIN-726)', () => {
     assert.deepEqual(order, ['setStreaming(false)', 'notifyChatStreamEnded']);
   });
 
+  test('a required document failure without attachments cannot dispatch a generic fallback prompt', async t => {
+    const config = await import('../../src/config/config-file-cache.ts');
+    const tools = await import('../../src/tools/config.ts');
+    const workspace = await import('../../src/state/workspace.ts');
+    const originalFetch = globalThis.fetch;
+    const available = tools.isLocalServerAvailable();
+    t.after(() => {
+      globalThis.fetch = originalFetch; tools.setLocalServerAvailableForTests(available);
+      config.resetConfigFileCacheForTests(); workspace.resetWorkspaceStateForTests();
+    });
+    config.resetConfigFileCacheForTests(); tools.setLocalServerAvailableForTests(true);
+    workspace.setWorkspaceFromServer({ path: 'C:/synthetic-required-context', label: 'Fixture', isDefault: false });
+    globalThis.fetch = async input => {
+      const url = String(input);
+      if (url.includes('/api/config/file')) return Response.json({ features: {
+        memoryInjection: false, codeMapInjectionDefault: false, contextDocumentsInjectionDefault: true,
+      }, contextDocuments: { enabledPresets: [], customPaths: ['required.md'], maxTotalChars: 1000 } });
+      if (url.includes('/api/preview/file/')) return new Response('Missing', { status: 404 });
+      if (url.includes('/api/models/cached')) return Response.json({ models: [] });
+      if (url.includes('/api/models/serve')) return Response.json({ serves: [] });
+      if (url.includes('/api/memory/')) return Response.json({ enabled: false });
+      return Response.json({});
+    };
+    installChatDom(); setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
+    const chat = makeChat(); chat.workspacePath = 'C:/synthetic-required-context';
+    chat.contextDocumentsInjection = 'on'; chat.memoryEnabled = false; chat.codeMapInjection = 'off';
+    setSessionStateForTests({ version: 3, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+    let requests = 0;
+    setRunTurnForTests(async () => { requests++; return { outcome: 'no_report' }; });
+    await runChatTurn({ chat, pushUser: true, rawText: 'Required context', userText: 'Required context',
+      skillId: null, historyContent: 'Required context', validAttachments: [] });
+    assert.equal(requests, 0);
+    assert.match(document.body.textContent ?? '', /Required context document.*required\.md/);
+    assert.equal(isChatStreaming(chat.id), false);
+  });
+
   test('a completion resumes exactly once after asynchronous parent lease release', async () => {
     setTitlesConfigForTests({ ...DEFAULT_TITLES_CONFIG, enabled: false });
     installChatDom();

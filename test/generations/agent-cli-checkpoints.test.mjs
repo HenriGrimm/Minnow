@@ -8,7 +8,7 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { cliHash, cliCacheDir, queueCliCheckpoint, readCliCheckpoint, checkpointMatches, pruneCliCaches, removeCliCache } from '../../server/generations/agent-cli/checkpoints.js';
 import { createCliSessionPool, reserveCliProcess, retainCliSession } from '../../server/generations/agent-cli/lifecycle.js';
 import { cliAccountIdentity } from '../../server/generations/agent-cli/auth-identity.js';
-import { closeCodexSession, codexSessionStats } from '../../server/generations/codex-app-server/manager.js';
+import { closeCodexSession, codexSessionStats, checkpointCodexSession, dirtyCodexSession } from '../../server/generations/codex-app-server/manager.js';
 
 let root;
 const previous = process.env.MINNOW_HOME, closed = [], closingA = new Set(), closingB = new Set();
@@ -37,6 +37,72 @@ test('checkpoint writes are ordered, atomic and independent of transient credent
   assert.deepEqual(await fs.readdir(session.cacheDir), ['checkpoint.json']);
 });
 
+test('duplicate Codex checkpoints share verification, later checkpoints re-read, and dirty epochs cannot become clean', async () => {
+  const session = { providerId: 'fixture', chatId: 'codex-coalesce', threadId: 'thread', signature: 'same',
+    cacheDir: cliCacheDir('fixture', 'codex-coalesce'), accepted: [{ role: 'user', content: 'Hello' }] };
+  let reads = 0, finish;
+  session.rpc = { request: async (method, params, options) => {
+    reads++;
+    assert.equal(method, 'thread/read');
+    assert.equal(params.includeTurns, true);
+    assert.equal(options.timeoutMs, 2000);
+    return new Promise(resolve => { finish = resolve; });
+  } };
+  const first = checkpointCodexSession(session), duplicate = checkpointCodexSession(session);
+  assert.equal(first, duplicate);
+  await Promise.resolve();
+  finish({ thread: { turns: [{ id: 'one' }] } });
+  await Promise.all([first, duplicate]);
+  assert.equal(reads, 1);
+  assert.equal(session.clean, true);
+  const stale = checkpointCodexSession(session);
+  await Promise.resolve();
+  await dirtyCodexSession(session);
+  finish({ thread: { turns: [{ id: 'stale' }] } });
+  await assert.rejects(stale, /superseded/);
+  assert.equal(reads, 2);
+  assert.equal(session.clean, false);
+  assert.equal((await readCliCheckpoint('fixture', session.chatId)).clean, false);
+  const retry = checkpointCodexSession(session);
+  await Promise.resolve();
+  finish({ thread: { turns: [{ id: 'fresh' }] } });
+  await retry;
+  assert.equal(reads, 3);
+  assert.equal(session.clean, true);
+});
+
+test('Codex checkpoint failures/closed sessions never claim a verified clean state', async () => {
+  const session = { providerId: 'fixture', chatId: 'codex-failure', threadId: 'thread', signature: 'same',
+    cacheDir: cliCacheDir('fixture', 'codex-failure'), accepted: [], clean: true,
+    rpc: { request: async () => { throw new Error('Fixture RPC deadline'); } } };
+  await assert.rejects(checkpointCodexSession(session), /deadline/);
+  assert.equal(session.clean, false);
+  assert.equal(session.checkpointRead, null);
+  session.rpc.request = async () => { session.closed = true; return { thread: { turns: [] } }; };
+  await assert.rejects(checkpointCodexSession(session), /closed/);
+  assert.equal(session.clean, false);
+  assert.equal(await readCliCheckpoint('fixture', session.chatId), null);
+});
+
+test('large Codex histories retain full digest verification while four concurrent checkpoints read once', async t => {
+  const turns = Array.from({ length: 10_000 }, (_, index) => ({ id: `turn-${index}`, status: 'completed',
+    items: [{ type: 'agentMessage', text: `Synthetic response ${index}: ${'x'.repeat(200)}` }] }));
+  const session = { providerId: 'fixture', chatId: 'codex-large', threadId: 'thread', signature: 'same',
+    cacheDir: cliCacheDir('fixture', 'codex-large'), accepted: [{ role: 'user', content: 'Synthetic context' }] };
+  let reads = 0;
+  session.rpc = { request: async () => { reads++; await new Promise(resolve => setTimeout(resolve, 20)); return { thread: { turns } }; } };
+  await Promise.all(Array.from({ length: 4 }, () => checkpointCodexSession(session)));
+  assert.equal(reads, 1);
+  assert.equal((await readCliCheckpoint('fixture', session.chatId)).nativeDigest, cliHash(turns));
+  turns[5000].items[0].text = 'Changed native history';
+  await checkpointCodexSession(session);
+  assert.equal(reads, 2, 'later checkpoints must not reuse a stat-only history digest');
+  assert.equal((await readCliCheckpoint('fixture', session.chatId)).nativeDigest, cliHash(turns));
+  for (const value of Object.values(session.checkpointTimings)) assert.ok(Number.isFinite(value) && value >= 0);
+  t.diagnostic(JSON.stringify({ turns: turns.length, bytes: Buffer.byteLength(JSON.stringify(turns)),
+    concurrentRequests: 4, sharedReads: 1, laterReads: reads, timings: session.checkpointTimings }));
+});
+
 test('unused caches expire after thirty days and cleanup rejects paths outside the cache root', async () => {
   const dir = cliCacheDir('fixture', 'expired');
   await queueCliCheckpoint({ cacheDir: dir }, { providerId: 'fixture', chatId: 'expired', clean: false });
@@ -44,6 +110,39 @@ test('unused caches expire after thirty days and cleanup rejects paths outside t
   await pruneCliCaches(); await assert.rejects(fs.access(dir));
   const outside = path.join(root, 'retained'); await fs.mkdir(outside);
   await assert.rejects(removeCliCache(outside), /escaped its private root/); await fs.access(outside);
+});
+
+test('unsupported native histories cannot become clean and their recovery receipts do not expire', async () => {
+  const session = { providerId: 'fixture', chatId: 'native-uncertain', threadId: 'thread', signature: 'same',
+    cacheDir: cliCacheDir('fixture', 'native-uncertain'), accepted: [{ role: 'user', content: 'Start' }], clean: true,
+    rpc: { request: async () => ({ thread: { turns: [{ items: [{ type: 'commandExecution', command: 'not retained in receipt' }] }] } }) } };
+  await assert.rejects(checkpointCodexSession(session), error => error.cliNativeRecoveryRequired === true);
+  assert.equal(session.clean, false);
+  assert.equal(session.nativeRecoveryRequired, true);
+  await assert.rejects(checkpointCodexSession(session), /Recovery required/);
+  const saved = await readCliCheckpoint('fixture', session.chatId);
+  assert.equal(saved.clean, false);
+  assert.equal(saved.nativeRecoveryRequired, true);
+  assert.equal(JSON.stringify(saved).includes('not retained in receipt'), false);
+  const file = path.join(session.cacheDir, 'checkpoint.json');
+  const old = Date.now() - 31 * 86400000;
+  await fs.writeFile(file, JSON.stringify({ ...saved, updatedAt: old }));
+  await fs.utimes(file, new Date(old), new Date(old));
+  await pruneCliCaches();
+  assert.equal((await readCliCheckpoint('fixture', session.chatId)).nativeRecoveryRequired, true);
+});
+
+test('quarantined homes retain native evidence but cannot copy credentials back to the source', async () => {
+  const home = path.join(root, 'quarantined-native'); await fs.mkdir(home);
+  await fs.writeFile(path.join(home, 'auth.json'), 'fixture changed credential');
+  await fs.writeFile(path.join(home, 'rollout.json'), 'fixture evidence');
+  let synced = false;
+  const session = { key: 'quarantined-auth', home, homeRoot: root, nativeRecoveryRequired: true, clean: false,
+    syncAuth: async () => { synced = true; } };
+  await closeCodexSession(session);
+  assert.equal(synced, false);
+  await assert.rejects(fs.access(path.join(home, 'auth.json')));
+  assert.equal(await fs.readFile(path.join(home, 'rollout.json'), 'utf8'), 'fixture evidence');
 });
 
 test('handoff recovery requires all recorded results and an unchanged accepted prefix', () => {

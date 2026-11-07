@@ -8,12 +8,16 @@ import type { PostChatCompletions, SendModelCapabilities } from './adapters';
 export const RUNNER_FALLBACK_ROLE: 'sub-agent';
 
 export interface CompletionStreamOptions {
+  /** Server-captured dynamic-only mode, never read from request JSON. */
+  minnowOnly?: boolean;
   signal?: AbortSignal;
   fallbackRole?: string | null;
   chatId?: string | null;
   routerPreferAvailable?: boolean;
   agentModelOptions?: import('../chats/contracts').ModelOptions;
   exactModel?: boolean;
+  /** Process-local server authority; request JSON cannot grant native tools. */
+  nativeExecution?: import('../generations/native-execution-context').NativeExecutionContext;
   /** Capabilities the body was sanitized with; see `PostChatCompletionsOptions`. */
   modelCapabilities?: SendModelCapabilities | null;
 }

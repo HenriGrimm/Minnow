@@ -52,6 +52,11 @@ describe('prompt-composer', () => {
     const opaque = [];
     assert.ok(composeSystemPrompt(custom, { turnContext: opaque }).includes('Opaque policy /one'));
     assert.deepEqual(opaque, []);
+    const notice = 'Optional enrichment unavailable: memory (deadline).';
+    const feedback = [];
+    assert.equal(composeSystemPrompt({ ...context, enrichmentNotice: notice }, { turnContext: feedback }), a);
+    assert.ok(feedback.includes(notice), 'omissions are per-turn CLI feedback, not stable instructions');
+    assert.ok(composeSystemPrompt({ ...context, enrichmentNotice: notice }).includes(notice));
   });
 
   test('PART_ORDER matches spec', () => {

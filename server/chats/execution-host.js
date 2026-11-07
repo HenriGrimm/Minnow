@@ -7,6 +7,8 @@ import { createChatTranscriptStore } from './transcript-store.js';
 import { createChatRequestService } from './requests.js';
 import { isHostToolNotStartedError } from './host-capabilities.js';
 import { createChatUsage } from './usage.js';
+import { createRunnerTiming, createRunnerTimingJournal } from '../runner/timing.js';
+import { CHECKPOINT_COORDINATION_TOOLS } from './checkpoints.js';
 import { registerAgentBrowserRuntime, formatAgentBrowserGuideForTranscript } from '../browser-agent-api.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 48);
@@ -27,7 +29,7 @@ const approvedOnce = answer => answer === 'allow_once' || answer?.decision === '
  */
 export function createServerChatExecutionHost({
   repository, prepareExecution, resolveCurrentPolicy, createToolDispatch, executeHostTool,
-  requestService, authorizeResponse, onEvent, onStatus, hydrateRecoveredQuestions, beforeInference, now = Date.now,
+  requestService, authorizeResponse, onEvent, onStatus, hydrateRecoveredQuestions, beforeInference, prepareCheckpoint, prepareWorkspace, prepareNativeExecution, now = Date.now,
 } = {}) {
   if (!repository || typeof prepareExecution !== 'function' || typeof resolveCurrentPolicy !== 'function') {
     throw new TypeError('A chat host requires its repository, production preparation and live policy resolver');
@@ -47,11 +49,22 @@ export function createServerChatExecutionHost({
       }
       if (active.has(execution.executionId)) return crash('Chat execution is already active in this host', { code: 'ownership_conflict' });
       const chatId = command.chatId, executionId = execution.executionId;
+      const timings = createRunnerTimingJournal();
+      const observeTiming = event => {
+        timings.record({ ...event, correlationId: executionId });
+        const payload = { chatId, executionId, event: { ...event, correlationId: executionId } };
+        present(onEvent, payload);
+        present(observe, payload);
+      };
+      const timing = createRunnerTiming(observeTiming);
+      const hostStarted = timing.start();
       const abort = new AbortController();
       const combinedSignal = signal ? AbortSignal.any([signal, abort.signal]) : abort.signal;
       let recoveryError = null;
       let effectsStarted = 0;
       let browserRuntime;
+      let checkpoint;
+      let nativeExecution;
       const status = value => {
         repository.updateExecution(executionId, { status: value }, { fence });
         present(onStatus, { chatId, executionId, status: value });
@@ -65,8 +78,10 @@ export function createServerChatExecutionHost({
         repository.assertFence(chatId, fence);
         const request = requests.open({ ...input, chatId, executionId, fence });
         status(input.kind === 'approval' ? 'waiting_for_approval' : 'waiting_for_input');
+        const waiting = timing.start();
         try { return await requests.wait(request.requestId, { signal: waitSignal }); }
         finally {
+          timing.end('human_wait', waiting, { category: 'human_wait' });
           if (!combinedSignal.aborted && ['waiting_for_approval', 'waiting_for_input'].includes(repository.getExecution(executionId)?.status)) status('running');
         }
       };
@@ -84,15 +99,28 @@ export function createServerChatExecutionHost({
         if (repository.listUnsettledToolInvocations(executionId).length) {
           throw recovery(new ChatContractError('recovery_required', 'An earlier tool effect has no durable result; verify it before continuing'));
         }
+        if (prepareWorkspace) {
+          const workspaceStarted = timing.start();
+          try {
+            const binding = await prepareWorkspace({ command, execution, fence, signal: combinedSignal });
+            execution = binding.execution;
+          } finally { timing.end('workspace_preparation', workspaceStarted, { category: 'preparation' }); }
+        }
         const inputId = chatInputMessageId(command.commandId);
         const priorInput = repository.readMessageByIdentity(chatId, inputId)?.message;
         const createdAt = priorInput ? priorInput.createdAt : command.requestedAt;
         const input = { role: 'user', content: command.message, commandId: command.commandId, provenance: command.provenance,
           ...(typeof createdAt === 'number' ? { createdAt } : {}),
+          ...(command.intent?.issue ? { issue: command.intent.issue } : {}),
+          ...(command.intent?.codeMap ? { codeMap: command.intent.codeMap } : {}),
+          ...(command.intent?.suppressUserEcho ? { hiddenFromTranscript: true } : {}),
           ...(command.images?.length ? { images: command.images } : {}) };
         repository.appendMessage(chatId, input, { fence, commandId: command.commandId, messageId: inputId });
         if (combinedSignal.aborted) return crash(combinedSignal.reason ?? 'Stopped', { code: 'execution_stopped', stopped: true });
-        const prepared = await prepareExecution({ command, execution, fence, signal: combinedSignal });
+        const preparationStarted = timing.start();
+        let prepared;
+        try { prepared = await prepareExecution({ command, execution, fence, signal: combinedSignal }); }
+        finally { timing.end('preparation', preparationStarted, { category: 'preparation' }); }
         if (prepared?.waitingForHost === true || prepared?.missingCapabilities?.length) {
           return crash(prepared.reason ?? 'This execution needs a connected host with the required capabilities', {
             code: 'capability_unavailable', waitingForHost: true,
@@ -104,6 +132,8 @@ export function createServerChatExecutionHost({
           throw new ChatContractError('capability_unavailable', 'Production chat preparation is incomplete');
         }
         const policy = assertChatPolicy(prepared.policy);
+        if (prepareCheckpoint) checkpoint = await prepareCheckpoint({ chatId, executionId, cwd: prepared.cwd, fence,
+          signal: combinedSignal, onTiming: (stage, duration) => timing.end(`checkpoint_${stage}`, timing.start() - duration, { category: 'checkpoint' }) });
         if (prepared.contextBodies) repository.setTranscriptMeta(chatId, { injectedContext: prepared.contextBodies }, { fence });
         const transcript = createChatTranscriptStore({ repository, chatId, fence, now });
         const runtimeOwner = { chatId, runId: execution.runId ?? executionId, agentId: executionId };
@@ -129,7 +159,11 @@ export function createServerChatExecutionHost({
           });
         }
         const dispatchTool = async (name, args, ctx) => {
-          if (!hostTools.has(name)) return dispatch.execute(name, args, { ...ctx, signal: combinedSignal });
+          const started = timing.start();
+          if (!hostTools.has(name)) {
+            try { return await dispatch.execute(name, args, { ...ctx, signal: combinedSignal }); }
+            finally { timing.end('external_tool_execution', started, { name, id: ctx.toolCallId, category: 'execution' }); }
+          }
           if (typeof executeHostTool !== 'function') {
             throw new ChatContractError('capability_unavailable', `Tool ${name} requires a connected execution host`);
           }
@@ -137,10 +171,21 @@ export function createServerChatExecutionHost({
           try { return await executeHostTool({ name, args, ctx, chatId, executionId, fence, signal: combinedSignal, prepared,
             revalidate: () => checkTool(name, args, ctx.toolCallId) }); }
           finally {
+            timing.end('host_wait', started, { name, id: ctx.toolCallId, category: 'host_wait' });
             if (!combinedSignal.aborted && repository.getExecution(executionId)?.status === 'waiting_for_host') status('running');
           }
         };
         const livePolicy = async () => assertChatPolicy(await resolveCurrentPolicy({ ...dispatchContext, prepared }));
+        if (execution.captured?.nativeExecution?.requestedMode === 'native') {
+          if (typeof prepareNativeExecution !== 'function' || !checkpoint) throw new ChatContractError('capability_unavailable', 'This host cannot enforce the accepted native-tool selection. No fallback was started.');
+          nativeExecution = await prepareNativeExecution({ command, execution, fence, prepared, checkpoint, signal: combinedSignal,
+            resolveCurrentPolicy: livePolicy, waitForApproval: (request, signal) => waitForHuman(request, signal) });
+        }
+        const runnerDeps = { ...prepared.deps,
+          postChatCompletions: (provider, body, signal, options) => prepared.deps.postChatCompletions(provider, body,
+            nativeExecution ? AbortSignal.any([signal, nativeExecution.signal]) : signal,
+            { ...options, ...(nativeExecution ? { nativeExecution, fallbackRole: 'default', exactModel: true } : { minnowOnly: true }) }),
+        };
         const approvals = new Map();
         const checkTool = async (name, args, toolCallId) => {
           repository.assertFence(chatId, fence);
@@ -171,6 +216,15 @@ export function createServerChatExecutionHost({
           }
           const effect = allowed.policy.toolEffects[name] ?? 'unknown';
           if (effect === 'read') return dispatchTool(name, args, dispatchContext);
+          const detached = args.background === true || name === 'start_background_command' ||
+            name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
+            name === 'action_run' && args.location === 'local';
+          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
+            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
+          }
+          const invoke = async () => {
+          // Waiting for a checkout baseline must never preserve a stale grant.
+          await checkTool(name, args, ctx.toolCallId);
           const invocationId = `tool-${digest([executionId, ctx.toolCallId])}`;
           let intent;
           try {
@@ -197,6 +251,10 @@ export function createServerChatExecutionHost({
             }
             throw recovery(error);
           }
+          };
+          if (!checkpoint || CHECKPOINT_COORDINATION_TOOLS.has(name)) return invoke();
+          try { return await checkpoint.effect(ctx.toolCallId, invoke); }
+          catch (error) { throw error?.checkpointUncertain ? recovery(error) : error; }
         };
         const ask = policy.toolPermissions.ask_question && policy.toolPermissions.ask_question !== 'off' ? {
           async ask(question, ctx) {
@@ -217,13 +275,14 @@ export function createServerChatExecutionHost({
         if (prepared.tools.some(tool => tool.function?.name === 'browser_reserve_tab')) {
           browserRuntime = await registerAgentBrowserRuntime(runtimeOwner, { kind: 'chat' });
         }
+        const providerStarted = timing.start();
         const result = await runTurn({
           ...(prepared.runOptions ?? {}),
           // The accepted input is already canonical, including image policy
           // projection that may differ from command.message on the wire.
           chatId, seed: '', seedKind: 'continue', systemPrompt: prepared.systemPrompt,
           cliTurnContext: prepared.cliTurnContext, tools: prepared.tools, model: prepared.model, cwd: prepared.cwd,
-          transcript, deps: { ...prepared.deps, transcriptStore: transcript, runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
+          transcript, deps: { ...runnerDeps, transcriptStore: transcript, runHeadlessToolBatch: dispatch.runHeadlessToolBatch,
             recordTurnUsage: async (_input, turn) => {
               try { await usage.recordRound({ executionId, roundIndex: completionIndex++, fence, turn, modelSelection: actualModel }); }
               catch (error) { throw recovery(error); }
@@ -244,6 +303,7 @@ export function createServerChatExecutionHost({
             return messages.length ? { messages, rowIds } : null;
           },
           onEvent: event => {
+            if (event.type === 'runner_timing') { event = { ...event, correlationId: executionId }; timings.record(event); }
             try {
               if (event.type === 'model_selected') {
                 actualModel = { providerId: event.providerId, modelId: event.modelId };
@@ -256,25 +316,33 @@ export function createServerChatExecutionHost({
             present(observe, { chatId, executionId, event });
           },
         });
+        timing.end('runner_settled', providerStarted, { category: 'settlement' });
+        if (checkpoint) {
+          try { await checkpoint.finalize(); }
+          catch (error) { throw effectsStarted ? recovery(error) : error; }
+        }
         if (recoveryError || repository.listUnsettledToolInvocations(executionId).length ||
             (effectsStarted && result.outcome === 'crashed' && result.failure?.code === 'transcript_persistence_failed')) {
           throw recovery(recoveryError ?? new ChatContractError('recovery_required', 'A tool effect needs transcript or result reconciliation'));
         }
-        return combinedSignal.aborted && signal?.aborted
-          ? crash(signal.reason ?? 'Stopped', { code: 'execution_stopped', stopped: true }) : result;
+        return { ...(combinedSignal.aborted && signal?.aborted
+          ? crash(signal.reason ?? 'Stopped', { code: 'execution_stopped', stopped: true }) : result), timings: timings.report };
       } catch (error) {
-        const needsRecovery = recoveryError || repository.listUnsettledToolInvocations(executionId).length;
+        const needsRecovery = recoveryError || error?.code === 'recovery_required' || error?.checkpointUncertain ||
+          repository.listUnsettledToolInvocations(executionId).length;
         if (needsRecovery) {
           // Keep the barrier even if a report was captured, or the provider
           // returned a plausible success after the effect receipt failed.
           try { status('recovery_required'); } catch { /* A lost fence cannot be replaced here. */ }
-          return crash(recoveryError ?? error, { code: 'recovery_required', recoveryRequired: true });
+          return { ...crash(recoveryError ?? error, { code: 'recovery_required', recoveryRequired: true }), timings: timings.report };
         }
-        return crash(error, { code: error?.code ?? 'internal_error',
+        return { ...crash(error, { code: error?.code ?? 'internal_error',
           ...(error?.waitingForHost === true ? { waitingForHost: true, requiredCapabilities: error.requiredCapabilities ?? [] } : {}),
-          ...(signal?.aborted ? { stopped: true } : {}) });
+          ...(signal?.aborted ? { stopped: true } : {}) }), timings: timings.report };
       } finally {
+        timing.end('host_execution', hostStarted, { category: 'execution' });
         browserRuntime?.close();
+        nativeExecution?.dispose();
         active.delete(executionId);
         requests.expireExecution(executionId, chatId, combinedSignal.aborted ? 'cancelled' : 'expired');
       }

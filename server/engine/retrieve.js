@@ -6,6 +6,7 @@ import { wrapUntrusted } from '../security/untrusted.js';
 import { selectQueryRelevantExcerpt } from '../../src/lib/fetch-web-content.mjs';
 import { getEmbedder, embedTexts, DEFAULT_EMBEDDINGS_CONFIG } from './embeddings.js';
 import { cosineSimilarity } from './vector-store.js';
+import { runWithDeadline } from '../../src/lib/async-deadline.mjs';
 
 /** @type {ReturnType<import('./vector-store.js').createVectorStore> | null} */
 let boundVectorStore = null;
@@ -195,69 +196,75 @@ export async function retrieveMemoryBlockHybrid(allEntries, opts = {}, memoryCon
   const tokens = tokenize(opts.query);
   const queryText = String(opts.query ?? '').trim();
 
-  let queryVector = null;
-  let embedder = null;
   try {
-    embedder = await getEmbedderFn(memoryConfig);
-    const vectors = await embedTextsFn(embedder, [queryText || ' '], emb.queryTimeoutMs);
-    queryVector = vectors[0];
-  } catch {
-    return retrieveMemoryBlock(allEntries, opts);
+    return await runWithDeadline(async signal => {
+      // Pipeline initialization is shared, but one cancelled wait never cancels it
+      // for another chat. Do not launch a late query after this caller's deadline.
+      const embedder = await getEmbedderFn(memoryConfig);
+      signal.throwIfAborted();
+      const vectors = await embedTextsFn(embedder, [queryText || ' '], emb.queryTimeoutMs, { signal });
+      const queryVector = vectors[0];
+      signal.throwIfAborted();
+
+      const store = await loadVectorStore();
+      if (
+        !isVectorStoreCompatible(store, {
+          modelId: embedder.id,
+          backend: emb.backend,
+          dim: embedder.dim,
+        })
+      ) {
+        return retrieveMemoryBlock(allEntries, opts);
+      }
+
+      const keywordScores = allEntries.map(({ meta, body }) =>
+        tokens.length > 0 ? scoreEntry(meta, body, tokens, opts.tags) : meta.pinned ? 2 : 1,
+      );
+
+      const vectorScores = await Promise.all(
+        allEntries.map(async ({ meta }) => {
+          const stored = store.vectors[meta.id] ?? (await getEntryVector(meta.id));
+          if (!stored || !queryVector) return 0;
+          return cosineSimilarity(queryVector, stored);
+        }),
+      );
+
+      const keywordNorm = normalizeScores(keywordScores.map((s) => (s < 0 ? 0 : s)));
+      const vectorNorm = normalizeScores(vectorScores);
+
+      let ranked = allEntries.map((entry, index) => {
+        const kw = keywordNorm[index] ?? 0;
+        const vec = vectorNorm[index] ?? 0;
+        const tagRejected = keywordScores[index] < 0;
+        const score = tagRejected ? -1 : (1 - blendWeight) * kw + blendWeight * vec;
+        return { ...entry, score };
+      });
+
+      ranked = ranked.filter((r) => (tokens.length > 0 ? r.score > 0 : r.score >= 0));
+
+      if (ranked.length === 0 && allEntries.length > 0) {
+        ranked = allEntries.map(({ meta, body }) => ({
+          meta,
+          body,
+          score: meta.pinned ? 2 : 1,
+        }));
+      }
+
+      ranked.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return String(b.meta.updatedAt).localeCompare(String(a.meta.updatedAt));
+      });
+
+      const top = ranked.slice(0, limit).map(({ meta, body }) => ({ meta, body }));
+      const block = formatMemoryBlock(top, maxChars, queryText);
+      return {
+        block: block ? wrapUntrusted(block, { source: 'memory' }) : '',
+        ids: top.map((t) => t.meta.id),
+      };
+    }, { timeoutMs: emb.queryTimeoutMs, signal: opts.signal });
+  } catch (error) {
+    opts.signal?.throwIfAborted();
+    return { ...retrieveMemoryBlock(allEntries, opts),
+      enrichmentOmitted: error?.name === 'TimeoutError' ? 'deadline' : 'unavailable' };
   }
-
-  const store = await loadVectorStore();
-  if (
-    !isVectorStoreCompatible(store, {
-      modelId: embedder.id,
-      backend: emb.backend,
-      dim: embedder.dim,
-    })
-  ) {
-    return retrieveMemoryBlock(allEntries, opts);
-  }
-
-  const keywordScores = allEntries.map(({ meta, body }) =>
-    tokens.length > 0 ? scoreEntry(meta, body, tokens, opts.tags) : meta.pinned ? 2 : 1,
-  );
-
-  const vectorScores = await Promise.all(
-    allEntries.map(async ({ meta }) => {
-      const stored = store.vectors[meta.id] ?? (await getEntryVector(meta.id));
-      if (!stored || !queryVector) return 0;
-      return cosineSimilarity(queryVector, stored);
-    }),
-  );
-
-  const keywordNorm = normalizeScores(keywordScores.map((s) => (s < 0 ? 0 : s)));
-  const vectorNorm = normalizeScores(vectorScores);
-
-  let ranked = allEntries.map((entry, index) => {
-    const kw = keywordNorm[index] ?? 0;
-    const vec = vectorNorm[index] ?? 0;
-    const tagRejected = keywordScores[index] < 0;
-    const score = tagRejected ? -1 : (1 - blendWeight) * kw + blendWeight * vec;
-    return { ...entry, score };
-  });
-
-  ranked = ranked.filter((r) => (tokens.length > 0 ? r.score > 0 : r.score >= 0));
-
-  if (ranked.length === 0 && allEntries.length > 0) {
-    ranked = allEntries.map(({ meta, body }) => ({
-      meta,
-      body,
-      score: meta.pinned ? 2 : 1,
-    }));
-  }
-
-  ranked.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return String(b.meta.updatedAt).localeCompare(String(a.meta.updatedAt));
-  });
-
-  const top = ranked.slice(0, limit).map(({ meta, body }) => ({ meta, body }));
-  const block = formatMemoryBlock(top, maxChars, queryText);
-  return {
-    block: block ? wrapUntrusted(block, { source: 'memory' }) : '',
-    ids: top.map((t) => t.meta.id),
-  };
 }

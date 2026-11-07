@@ -107,7 +107,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       invalidateToolConfigCache();
       await loadToolConfigFromStorage();
     }
-    await Promise.all([refreshPluginToolCache(), refreshSkillCatalog(), refreshPluginUi()]);
+    await Promise.all([refreshPluginToolCache(true), refreshSkillCatalog(), refreshPluginUi()]);
     closePanel();
     await refresh(true);
   }
@@ -174,7 +174,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
     const catalog = await api<Catalog>('', undefined, 'GET', signal);
     if (signal?.aborted || !alive() || (!force && revision === catalog.revision)) return;
     revision = catalog.revision;
-    await Promise.all([refreshPluginToolCache(), refreshSkillCatalog()]);
+    await Promise.all([refreshPluginToolCache(force), refreshSkillCatalog()]);
     if (signal?.aborted || !alive()) return;
     installedIds = new Set(catalog.packages.map(p => p.id));
     closePanel();

@@ -2,15 +2,20 @@ import type { InterruptedExecutionReview } from '../../server/chats/repository';
 import { buildHistoryUserContent, persistableUserImages } from './build-api-messages';
 import { decodeModelSelectKey } from '../lib/model-select-key';
 import { randomUUID } from '../lib/random-id';
-import { findChatById } from '../state/sessions';
+import { findChatById, touchChat, scheduleSaveSessions } from '../state/sessions';
+import { parseSlashCommand, formatHistoryWithSkillTag } from '../skills/parse-slash';
+import { resolveTurnSkill, normalizeCavemanUserText } from '../skills/pinned-skill';
+import { isSkillEnabled } from '../skills/config';
+import { isCavemanIntensity } from '../skills/caveman-client';
 import type { RemoteChatAction, RemoteChatCommand } from './remote-chat-client';
 import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import { chatReadOnlyReason } from '../state/chat-relationships';
-import { validateChatRequest, type ChatRequest } from '../../server/chats/contracts';
+import { validateChatRequest, validateChatSendIntent, type ChatRequest } from '../../server/chats/contracts';
 
 const pending = new Map<string, { fingerprint: string; id: string }>();
 const pendingDeletes = new Map<string, string>();
 const pendingAnswers = new Map<string, { fingerprint: string; id: string }>();
+const pendingForks = new Map<string, { fingerprint: string; id: string; revision: number }>();
 const CHAT_WRITE_HEADERS = { 'Content-Type': 'application/json', 'X-Minnow-Chat-Protocol': '1' };
 
 export interface ManagedChatRequestPage { requests: ChatRequest[]; pendingCount: number; nextCursor: string | null; truncated: boolean; }
@@ -103,6 +108,44 @@ export interface ManagedChatReceipt {
   held?: boolean; assistantFinal?: string; error?: { message?: string } | null;
 }
 
+/** Revision and receipt identity survive lost acknowledgements, including reload. */
+export async function forkManagedChat(chatId: string, messageId: string, options: {
+  message?: string; selection?: import('../../server/chats/contracts').ModelSelection;
+} = {}): Promise<{ chatId: string; commandId: string }> {
+  const storageKey = `minnow.managedFork.${chatId}.${messageId}`;
+  const digest = await fingerprint({ messageId, ...options });
+  let retained = pendingForks.get(storageKey);
+  if (!retained) { try { retained = JSON.parse(sessionStorage.getItem(storageKey) || 'null') ?? undefined; } catch {} }
+  if (retained?.fingerprint !== digest || !/^[A-Za-z0-9_-]{1,160}$/.test(retained.id) || !Number.isSafeInteger(retained.revision) || retained.revision < 0) {
+    const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(errorMessage(body));
+    if (body.chat?.id !== chatId || !Number.isSafeInteger(body.chat.revision) || body.chat.revision < 0) throw new Error('This server cannot revision-check a canonical fork. Update Minnow before retrying.');
+    retained = { fingerprint: digest, id: randomUUID(), revision: body.chat.revision };
+  }
+  pendingForks.set(storageKey, retained);
+  if (pendingForks.size > 256) pendingForks.delete(pendingForks.keys().next().value!);
+  try { sessionStorage.setItem(storageKey, JSON.stringify(retained)); } catch {}
+  const payload = { ...options, messageId, expectedRevision: retained.revision, clientRequestId: retained.id };
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/fork`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(10_000) }); break; }
+    catch (error) { if (attempt) throw error; }
+  }
+  const clear = () => { pendingForks.delete(storageKey); try { sessionStorage.removeItem(storageKey); } catch {} };
+  const body = await response!.json();
+  if (!response!.ok) { if (response!.status < 500) clear(); throw new Error(errorMessage(body)); }
+  const receipt = body.receipt;
+  if (receipt?.sourceChatId !== chatId || receipt.sourceMessageId !== messageId ||
+    !/^[A-Za-z0-9_-]{1,160}$/.test(receipt.chatId ?? '') || !/^[A-Za-z0-9_-]{1,160}$/.test(receipt.commandId ?? '')) {
+    throw new Error('The fork acknowledgement is incomplete. Retry to recover its original receipt.');
+  }
+  clear();
+  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId: receipt.chatId } }));
+  return receipt;
+}
+
 /** Acknowledge the exact visible activity; a later reply retains its unread state. */
 export async function acknowledgeManagedChatActivity(chatId: string, cursor: import('../../server/chats/activity').ChatActivityCursor): Promise<import('../../server/chats/activity').ChatActivityProjection> {
   const response = await fetch(`/api/chats/${encodeURIComponent(chatId)}/ack`, { method: 'POST', headers: CHAT_WRITE_HEADERS,
@@ -137,11 +180,29 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   let endpoint = `/api/chats/${encodeURIComponent(chatId)}/commands`;
   let method = 'POST';
   const payload: Record<string, unknown> = { action };
+  let directSkill: ReturnType<typeof resolveTurnSkill> | undefined;
   if (action === 'send' || action === 'steer') {
     const attachments = data.attachments ?? [];
     if (action === 'steer' && attachments.length) throw new Error('Steering is text only. Queue attached files for the next reply.');
     payload.text = buildHistoryUserContent(data.text ?? '', attachments);
     if (action === 'send') {
+      let selectedIntent = data.intent;
+      if (!selectedIntent) {
+        const slash = parseSlashCommand(data.text ?? '');
+        if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
+        directSkill = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
+        const userText = normalizeCavemanUserText(directSkill.skillId, slash.skillId, slash.userText);
+        const intensity = directSkill.nextPinned?.intensity;
+        selectedIntent = { version: 1, skill: directSkill.skillId ? { id: directSkill.skillId, source: directSkill.fromPin ? 'pinned' : 'slash', input: userText,
+          ...(isCavemanIntensity(intensity) ? { intensity } : {}) } : null };
+        payload.text = buildHistoryUserContent(directSkill.skillId ? formatHistoryWithSkillTag(userText, directSkill.skillId) : userText, attachments);
+      }
+      const intent = validateChatSendIntent({ ...selectedIntent, version: 1,
+        ...(attachments.length ? { attachments: attachments.map(({ id, name, kind, size, mimeType, workspacePath, chatId, lineStart, lineEnd }) =>
+          ({ id, name, kind, size, mimeType, workspacePath, chatId, lineStart, lineEnd })) } : {}) });
+      if (!intent.ok) throw new Error(intent.error.message);
+      payload.intent = intent.value;
+      if (data.mode) payload.mode = data.mode;
       const images = persistableUserImages(attachments);
       if (images.length !== attachments.filter(attachment => Boolean(attachmentImageDataUrl(attachment))).length) {
         throw new Error('Attached images exceed this conversation\'s saved image limit. Remove an image and retry.');
@@ -210,7 +271,13 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
     }
     throw new Error(errorMessage(body));
   }
+  if ((action === 'send' || action === 'steer') && (body.receipt?.chatId !== chatId ||
+      !/^[A-Za-z0-9_-]{1,160}$/.test(body.receipt?.commandId ?? '') || !Number.isSafeInteger(body.receipt?.revision) ||
+      !['accepted', 'queued', 'waiting_for_host', 'running', 'settled', 'failed', 'cancelled'].includes(body.receipt?.state))) {
+    throw new Error('The admission acknowledgement is incomplete. Your draft is kept; retry to recover its original receipt.');
+  }
   clearReceipt();
+  if (directSkill) { chat.pinnedSkill = directSkill.nextPinned; touchChat(chat); scheduleSaveSessions(); }
   window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId, ...body } }));
   return body.receipt;
 }

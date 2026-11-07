@@ -29,7 +29,7 @@ export async function readCliCheckpoint(providerId, chatId) {
     const record = JSON.parse(await fs.readFile(path.join(dir, 'checkpoint.json'), 'utf8'));
     return record.version === 1 && record.providerId === providerId && record.chatId === chatId
       && Number.isSafeInteger(record.updatedAt) && record.updatedAt <= Date.now()
-      && (record.nativeEnded === true || Date.now() - record.updatedAt < CLI_CACHE_DAYS * 86_400_000) ? { ...record, dir } : null;
+      && (record.nativeEnded === true || record.nativeRecoveryRequired === true || Date.now() - record.updatedAt < CLI_CACHE_DAYS * 86_400_000) ? { ...record, dir } : null;
   } catch (error) { if (error.code === 'ENOENT' || error instanceof SyntaxError) return null; throw error; }
 }
 export async function writeCliCheckpoint(dir, record) {
@@ -56,7 +56,7 @@ export async function pruneCliCaches() {
     const stat = await fs.stat(path.join(dir, 'checkpoint.json')).catch(() => fs.stat(dir));
     if (Date.now() - stat.mtimeMs > CLI_CACHE_DAYS * 86_400_000) {
       const record = await fs.readFile(path.join(dir, 'checkpoint.json'), 'utf8').then(JSON.parse).catch(() => null);
-      if (record?.nativeEnded !== true) await removeCliCache(dir);
+      if (record?.nativeEnded !== true && record?.nativeRecoveryRequired !== true) await removeCliCache(dir);
     }
   }
 }

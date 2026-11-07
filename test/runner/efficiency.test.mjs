@@ -65,5 +65,6 @@ test('timings use monotonic durations and never need request or tool payloads', 
   const timing = createRunnerTiming(event => events.push(event), () => time, () => 1000);
   const start = timing.start(); time = 35;
   timing.end('tool', start, { name: 'read_file', id: 'call' });
-  assert.deepEqual(events, [{ type: 'runner_timing', startedAt: 1000, at: 1000, stage: 'tool', durationMs: 25, name: 'read_file', id: 'call' }]);
+  assert.equal(typeof events[0].clockId, 'string');
+  assert.deepEqual(events.map(({ clockId, ...event }) => event), [{ type: 'runner_timing', startedAt: 1000, at: 1000, stage: 'tool', durationMs: 25, startOffsetMs: 0, endOffsetMs: 25, name: 'read_file', id: 'call' }]);
 });

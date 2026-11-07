@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { defaultEnabledPresetIds } from '../../src/chat/context-documents/catalog.ts';
+import { resolveContextDocumentsBlock } from '../../src/chat/context-documents/resolve-block.ts';
 import {
   dedupeCustomPathsAgainstPresets,
   isValidContextDocumentPath,
@@ -40,5 +41,11 @@ describe('context documents config', () => {
   test('dedupeCustomPathsAgainstPresets removes preset collisions', () => {
     const out = dedupeCustomPathsAgainstPresets(['AGENTS.md', 'custom/foo.md']);
     assert.deepEqual(out, ['custom/foo.md']);
+  });
+
+  test('required custom files cannot disappear or be silently dropped by the budget', async () => {
+    const documents = { maxTotalChars: 10, enabledPresets: [], customPaths: ['required.md'] };
+    await assert.rejects(resolveContextDocumentsBlock(documents, { readText: async () => null, listFiles: async () => [] }), /Required context document.*required\.md/);
+    await assert.rejects(resolveContextDocumentsBlock(documents, { readText: async () => 'Required full instructions', listFiles: async () => [] }), /Required context documents exceed.*budget/);
   });
 });

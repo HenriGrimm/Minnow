@@ -16,6 +16,8 @@ import { syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { setIssuesStateForTests } from '../../src/state/issues-store.ts';
 import { isChatStreaming } from '../../src/chat/streaming-state.ts';
 import { getPendingAttachments, pushAttachment, clearAttachments } from '../../src/attachments/store.ts';
+import { syncChatWorktreeSetup } from '../../src/ui/chat-worktree-setup.ts';
+import { notifyManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
 
 let dom: Window;
 const originalFetch = globalThis.fetch;
@@ -69,6 +71,26 @@ afterEach(async () => {
   setSessionStateForTests(null);
   setIssuesStateForTests(null);
   globalThis.fetch = originalFetch;
+});
+
+test('canonical setup progress and recovery errors come from server projections after remount', () => {
+  const { chat } = setup();
+  chat.chatCommandVersion = 1; chat.worktreeSetupRequired = true;
+  chat.workspacePreparation = { status: 'preparing', binding: null } as any;
+  const area = document.getElementById('chatArea')!;
+  syncChatWorktreeSetup(chat, area);
+  assert.match(area.textContent!, /Setting up your worktree/);
+  assert.equal(area.querySelector('section')!.getAttribute('aria-busy'), 'true');
+  chat.workspacePreparation!.status = 'failed';
+  chat.workspacePreparation!.error = 'Dependency download failed. Checkout retained.';
+  notifyManagedChatMetadata(chat.id);
+  assert.match(area.textContent!, /Dependency download failed/);
+  assert.equal(area.querySelector('section')!.getAttribute('aria-busy'), 'false');
+  assert.deepEqual([...area.querySelectorAll('button')].map(node => node.textContent), ['Retry setup', 'Back to Local']);
+  chat.worktreeSetupRequired = false; chat.workspacePreparation!.status = 'ready';
+  notifyManagedChatMetadata(chat.id);
+  assert.equal(area.querySelector('.chat-worktree-setup'), null);
+  assert.equal(requests.some(body => body.op === 'enable_chat'), false);
 });
 
 test('Send prepares the worktree, restores progress on remount, then runs the message there once', async () => {

@@ -6,6 +6,7 @@
 export const CHAT_CONTRACT_VERSION = 1;
 export const CHAT_MIN_CLIENT_VERSION = 1;
 export const AGENT_CONVERSATIONS_CAPABILITY = 'agentConversationsV1';
+export const ORDINARY_CHAT_EXECUTION_CAPABILITY = 'ordinaryChatExecutionV1';
 
 export const CHAT_ACTORS = Object.freeze(['human', 'agent', 'system']);
 export const CHAT_MESSAGE_SOURCES = Object.freeze([
@@ -339,11 +340,71 @@ function userImages(value, path) {
   return output;
 }
 
+/** User-supplied context is data, never a trusted prompt or an authority grant. */
+function sendIntent(value, path) {
+  const row = object(value, path, ['version', 'skill', 'context', 'issue', 'codeMap', 'attachments',
+    'goalDriven', 'suppressUserEcho', 'titleSeed', 'deferTitleUntilTurnEnd', 'attachIssueMentions']);
+  const output = { version: version(row, path) };
+  optional(row, 'skill', path, (v, p) => {
+    if (v === null) return null;
+    const skill = object(v, p, ['id', 'source', 'intensity', 'input']);
+    const parsed = { id: label(skill.id, at(p, 'id'), 160), source: member(skill.source, at(p, 'source'), ['slash', 'pinned']) };
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(parsed.id)) invalid(p, 'Invalid skill identity');
+    optional(skill, 'intensity', p, (v, p) => member(v, p, ['lite', 'full', 'ultra', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']), parsed);
+    optional(skill, 'input', p, (v, p) => text(v, p, 24_000, true), parsed);
+    return parsed;
+  }, output);
+  optional(row, 'context', path, (v, p) => text(v, p, 48_000, true), output);
+  optional(row, 'titleSeed', path, (v, p) => text(v, p, 1024, true), output);
+  for (const key of ['goalDriven', 'suppressUserEcho', 'deferTitleUntilTurnEnd', 'attachIssueMentions']) optional(row, key, path, bool, output);
+  const snapshot = (keys, required, limits = {}) => (v, p) => {
+    const data = object(v, p, keys), parsed = {};
+    for (const key of keys) {
+      const parse = key === 'line' ? (v, p) => integer(v, p, 1)
+        : key === 'labels' ? (v, p) => list(v, p, 32, (v, p) => label(v, p, 256))
+          : (v, p) => text(v, p, limits[key] ?? 1024, !required.includes(key));
+      if (required.includes(key)) parsed[key] = parse(data[key], at(p, key));
+      else optional(data, key, p, parse, parsed);
+    }
+    return parsed;
+  };
+  optional(row, 'issue', path, snapshot(['workspacePath', 'id', 'type', 'title', 'description', 'status', 'priority', 'labels'],
+    ['id', 'type', 'title', 'status', 'priority', 'labels'], { description: 48_000 }), output);
+  optional(row, 'codeMap', path, snapshot(['question', 'title', 'kind', 'path', 'line', 'detail', 'summary'],
+    ['question', 'title', 'kind'], { question: 8000, detail: 24_000, summary: 24_000 }), output);
+  optional(row, 'attachments', path, (v, p) => list(v, p, 40, (v, p) => {
+    const data = object(v, p, ['id', 'name', 'kind', 'size', 'mimeType', 'workspacePath', 'chatId', 'lineStart', 'lineEnd']);
+    const parsed = { id: label(data.id, at(p, 'id'), 256), name: label(data.name, at(p, 'name'), 512),
+      kind: member(data.kind, at(p, 'kind'), ['image', 'text', 'pdf', 'workspace', 'codeRef', 'chatRef', 'elementRef', 'designRef']),
+      size: integer(data.size, at(p, 'size')) };
+    for (const key of ['mimeType', 'workspacePath', 'chatId']) optional(data, key, p, (v, p) => text(v, p, 2048, true), parsed);
+    for (const key of ['lineStart', 'lineEnd']) optional(data, key, p, (v, p) => integer(v, p, 1), parsed);
+    if (parsed.lineEnd !== undefined && parsed.lineStart !== undefined && parsed.lineEnd < parsed.lineStart) invalid(p, 'Invalid line range');
+    return parsed;
+  }), output);
+  if (JSON.stringify(output).length > 96_000) invalid(path, 'Send context exceeds 96000 characters');
+  return output;
+}
+
+function list(value, path, max, parse) {
+  if (!Array.isArray(value) || value.length > max) invalid(path, 'Expected at most ' + max + ' entries');
+  const output = [];
+  for (let i = 0; i < value.length; i++) {
+    const field = Object.getOwnPropertyDescriptor(value, String(i));
+    if (!field || !has(field, 'value')) invalid(at(path, i), 'Expected a data element');
+    output.push(parse(field.value, at(path, i)));
+  }
+  if (Object.getOwnPropertySymbols(value).length || Object.getOwnPropertyNames(value).some(key => key !== 'length' && !/^(?:0|[1-9]\d*)$/.test(key))) invalid(path, 'Unsupported array fields');
+  return output;
+}
+
+export function validateChatSendIntent(value) { return result(sendIntent, value); }
+
 function command(value, path) {
   const row = object(value, path, [
     'version', 'commandId', 'chatId', 'kind', 'requestedAt', 'provenance',
     'clientRequestId', 'message', 'mode', 'modelSelection', 'profileReference',
-    'scope', 'executionId', 'runId', 'targetCommandId', 'expectedRevision', 'images',
+    'scope', 'executionId', 'runId', 'targetCommandId', 'expectedRevision', 'images', 'intent',
   ]);
   const output = {
     version: version(row, path),
@@ -366,6 +427,8 @@ function command(value, path) {
     if (output.kind === 'send') {
       allowed.add('mode');
       allowed.add('images');
+      allowed.add('intent');
+      optional(row, 'intent', path, sendIntent, output);
       optional(row, 'images', path, userImages, output);
       output.mode = row.mode === undefined ? 'auto' : member(row.mode, at(path, 'mode'), ['auto', 'queue']);
     }

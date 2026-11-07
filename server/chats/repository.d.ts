@@ -44,6 +44,7 @@ export interface OutboxRecord {
 export interface InterruptedExecutionReview {
   executionId: string; ownerReleased: boolean; revision: string; checkout: string | null;
   operations: { invocationId: string; toolName: string; targets: string[]; logPath?: string; receiptId: string | null }[];
+  checkpoints: Array<{ checkpointId: string; version?: number; cwd?: string; pre?: { sha?: string; headSha?: string } }>;
 }
 export interface RecoveryDecision { clientRequestId: string; revision: string; note: string }
 export interface ToolIntentInput {
@@ -70,6 +71,10 @@ export interface ChatRepository {
   setAutoResumeBlocked(chatId: string, blocked: boolean): void;
   atomic<T>(work: (repository: ChatRepository) => T): T;
   createChat(input: { id: string; [key: string]: unknown }): ChatShell;
+  forkChat(input: { sourceChatId: string; messageId: string; expectedRevision: number;
+    chat: { id: string; [key: string]: unknown }; profile: ProfileInput; projectId: string }): {
+    chat: ChatShell; origin: { sourceChatId: string; sourceMessageId: string; sourceRevision: number; sourceCommandId?: string; createdAt: number };
+  };
   createChild(input: {
     chat: { id: string; [key: string]: unknown }; relation: AgentConversationMeta; profile: ProfileInput;
     projectId?: string; command?: ChatCommand; producerId?: string; requestKey?: string; outbox?: OutboxInput[];

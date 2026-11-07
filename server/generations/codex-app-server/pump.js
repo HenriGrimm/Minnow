@@ -8,24 +8,34 @@ import { generationTimeoutMessage } from '../timeouts.js';
 import { prepareConversation, continuation, seedConversation } from './conversation.js';
 import { createCodexTranslator, allocateCodexUsage } from './translate.js';
 import { codexIdentity, codexSessionKey, lockCodexChat, getCodexSession, createCodexSession,
-  closeCodexSession, syncCodexCredentials, retainCodexSession, dirtyCodexSession, checkpointCodexSession } from './manager.js';
+  closeCodexSession, syncCodexCredentials, retainCodexSession, dirtyCodexSession, checkpointCodexSession,
+  quarantineCodexSession, codexNativeRecoveryError } from './manager.js';
 import { updateAgentCliSessionOutput } from '../agent-cli/output.js';
 import { withCliTurnContext } from '../agent-cli/conversation.js';
 import { CODEX_READ_BATCH, expandCodexReadBatch } from './read-batch.js';
 import { isParallelSafeTool } from '../../runner/parallel-tool-policy.js';
 import { appendDiagnosticEntry } from '../../diagnostics/ring-log.js';
+import { assertMinnowToolMode, isMinnowCodexItem } from '../../models/agent-cli-native.js';
+import { assertCodexNativeExecution, isCodexCodingItem, nativeMeta, queueNativeRecord, nativeApproval, pauseNativeTurn } from './native.js';
+import { getNativeExecutionContext } from '../native-execution-context.js';
 
 const append = (state, row) => appendChunk(state, Buffer.from(`data: ${JSON.stringify(row)}\n\n`));
 const MAX_HANDOFF_CALLS = 8;
 const HANDOFF_QUIET_MS = 200;
 const HANDOFF_MAX_MS = 1000;
-function failure(session, error) { session.round?.finish('error', error); void closeCodexSession(session).catch(() => {}); }
+function failure(session, error) {
+  if (session.nativePolicy) void quarantineCodexSession(session).catch(() => {});
+  session.round?.finish('error', error); void closeCodexSession(session).catch(() => {});
+}
 function onEvent(session, event) {
   const p = event.params ?? {};
   if (p.threadId !== session.threadId || session.closed) return;
   if (event.method === 'turn/started' && session.starting) { session.turnId = p.turn.id; session.starting = false; }
   if (p.turnId && p.turnId !== session.turnId) return;
   if (event.method === 'turn/completed' && p.turn.id !== session.turnId) return;
+  if (event.method === 'turn/completed' && session.nativePause) {
+    session.nativePause.resolve(p.turn); return;
+  }
   if (event.method === 'thread/tokenUsage/updated') {
     session.usage = p.tokenUsage.total;
     session.lastRequestUsage = allocateCodexUsage(p.tokenUsage.last);
@@ -37,9 +47,29 @@ function onEvent(session, event) {
     failure(session, new Error('Context length exceeded: Codex requested native compaction. Minnow must compact its recorded context and retry.'));
     return;
   }
+  if (session.nativePolicy && ['item/started', 'item/completed'].includes(event.method) && isCodexCodingItem(p.item)) {
+    if (!session.round || session.round.finished && !session.nativePause) { void quarantineCodexSession(session).catch(() => {}); failure(session, codexNativeRecoveryError()); return; }
+    if (session.nativeSeen?.has(p.turnId + '\0' + p.item.id + '\0' + event.method)) {
+      try { void queueNativeRecord(session, event).catch(error => failure(session, error)); }
+      catch (error) { failure(session, error); }
+      return;
+    }
+    if (event.method === 'item/completed' && p.item.type === 'commandExecution' && p.item.exitCode == null && !session.nativePause) {
+      failure(session, new Error('Native background commands are not supported. Stop and reconcile this command.')); return;
+    }
+    session.nativeActive ??= new Set();
+    if (event.method === 'item/started') session.nativeActive.add(p.item.id);
+    else session.nativeActive.delete(p.item.id);
+    try { void queueNativeRecord(session, event).catch(error => failure(session, error)); }
+    catch (error) { failure(session, error); }
+    session.round.activity(); return;
+  }
+  if (session.nativePolicy && event.method === 'item/commandExecution/outputDelta') { session.round?.activity(); return; }
   if (['item/started', 'item/completed'].includes(event.method)
-    && !['userMessage', 'agentMessage', 'reasoning', 'dynamicToolCall', 'functionCallOutput'].includes(p.item?.type)) {
-    failure(session, new Error(`Codex attempted an unsupported native item (${p.item?.type}).`)); return;
+    && !isMinnowCodexItem(p.item)) {
+    // Notifications observe, not admit: the action may already have run.
+    void quarantineCodexSession(session).catch(() => {});
+    failure(session, codexNativeRecoveryError()); return;
   }
   const round = session.round;
   const itemId = p.itemId ?? p.item?.id;
@@ -84,6 +114,14 @@ function onEvent(session, event) {
 function onRequest(session, request) {
   const p = request.params ?? {};
   if (session.closed) return;
+  if (session.nativePolicy && request.method !== 'item/tool/call') {
+    if (!['item/fileChange/requestApproval', 'item/commandExecution/requestApproval'].includes(request.method)) {
+      void session.rpc.respond(request.id, null, { code: -32601, message: 'Unsupported native request.' }).catch(() => {});
+      failure(session, new Error('Codex requested an unsupported native capability.')); return;
+    }
+    return nativeApproval(session, request).then(decision => session.rpc.respond(request.id, { decision }))
+      .catch(error => { failure(session, error); });
+  }
   if (request.method !== 'item/tool/call' || p.threadId !== session.threadId || p.turnId !== session.turnId
     || !session.tools.has(p.tool) || p.namespace != null || typeof p.callId !== 'string'
     || !p.arguments || typeof p.arguments !== 'object' || Array.isArray(p.arguments)) {
@@ -103,7 +141,7 @@ function onRequest(session, request) {
   if (session.seen.size >= 1024 || Buffer.byteLength(JSON.stringify(p.arguments)) > 1024 * 1024) {
     failure(session, new Error('Codex tool queue exceeded its limit.')); return;
   }
-  const group = { tool: p.tool, arguments: JSON.stringify(p.arguments), requestIds: new Set([request.id]),
+  const group = { tool: p.tool, nativeCallId: p.callId, arguments: JSON.stringify(p.arguments), requestIds: new Set([request.id]),
     calls: [], results: new Map(), receivedAt: performance.now() };
   session.seen.set(nativeKey, group);
   let functions;
@@ -131,8 +169,23 @@ function onRequest(session, request) {
   }
 }
 
+/** Authority comes only from the server WeakMap, never arguments or request JSON. */
+export async function pumpCodexAppServer(input) {
+  const { state, candidate } = input;
+  const nativeExecution = getNativeExecutionContext(state);
+  if (!nativeExecution) return pumpCodexAppServerRound({ ...input, nativeExecution: undefined });
+  try {
+    const nativePolicy = assertCodexNativeExecution(nativeExecution, state, candidate);
+    return await pumpCodexAppServerRound({ ...input, nativeExecution, nativePolicy, canFailover: false });
+  } catch (error) {
+    const message = safeAgentCliDiagnostic(error.message, Object.values(input.runtime.secrets ?? {}));
+    if (state.status !== 'cancelled') markError(state, message);
+    return { outcome: 'fatal', message, hostSuspect: false };
+  }
+}
+
 /** One native turn can span multiple ordinary Minnow generation/tool rounds. */
-export async function pumpCodexAppServer({ state, runtime, candidate, index, idleMs, maxMs, canFailover }) {
+async function pumpCodexAppServerRound({ state, runtime, candidate, index, idleMs, maxMs, canFailover, nativeExecution, nativePolicy }) {
   const startedAt = performance.now();
   const controller = new AbortController();
   state.upstreamController = controller;
@@ -140,7 +193,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
   const key = codexSessionKey(state, candidate);
   const abort = () => {
     const current = session;
-    if (current) void dirtyCodexSession(current).catch(() => {});
+    if (current) void (current.nativePolicy ? quarantineCodexSession(current) : dirtyCodexSession(current)).catch(() => {});
     if (current?.turnId && current.rpc) {
       stopping = current.rpc.request('turn/interrupt', { threadId: current.threadId, turnId: current.turnId }, { timeoutMs: 1000 })
         .catch(() => {}).finally(() => closeCodexSession(current).catch(() => {}));
@@ -149,33 +202,48 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : 'Codex request cancelled.')));
   };
   controller.signal.addEventListener('abort', abort, { once: true });
+  const nativeAbort = () => controller.abort(nativeExecution.signal.reason);
+  nativeExecution?.signal.addEventListener('abort', nativeAbort, { once: true });
   if (maxMs > 0) maxTimer = setTimeout(() => { timeoutKind = 'max'; controller.abort(); }, maxMs);
   try {
+    if (!nativePolicy) assertMinnowToolMode(runtime.profile.agentCli);
     unlock = lockCodexChat(key);
     const body = JSON.parse(state.requestBody.toString('utf8')); body.model = candidate.modelId;
-    const workspace = getEffectiveWorkspaceRoot();
+    const workspace = nativePolicy?.workspace ?? getEffectiveWorkspaceRoot();
     session = getCodexSession(key);
     release = await admitAgentCli(candidate.providerId, runtime.profile.agentCli.maxConcurrent, controller.signal);
     // Login can change while queued; bind to the credentials actually admitted.
     const identity = await codexIdentity(runtime, workspace);
+    if (nativePolicy) identity.nativePolicy = nativePolicy;
     const prepared = prepareConversation(body, identity);
     const admittedAt = performance.now();
     let resume = session && !session.rebuild && continuation(session, prepared);
-    if (session && !resume) { await closeCodexSession(session); session = null; }
+    if (session && !resume) {
+      if (session.nativePolicy) { await quarantineCodexSession(session); throw codexNativeRecoveryError(); }
+      await closeCodexSession(session); session = null;
+    }
     if (!session) {
       try { session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
-        signal: controller.signal, onEvent, onRequest }); }
+        signal: controller.signal, onEvent, onRequest, nativeExecution, nativePolicy }); }
       catch (error) {
         if (!error.cliResumeRejected || controller.signal.aborted) throw error;
         // Resume preflight runs no inference. Rebuild once from canonical
         // history when the native store was missing or modified.
         session = await createCodexSession({ key, state, runtime, candidate, identity, prepared,
-          signal: controller.signal, onEvent, onRequest });
+          signal: controller.signal, onEvent, onRequest, nativeExecution, nativePolicy });
         session.method = 'rebuilt'; session.reason = 'Saved native history failed verification.';
       }
-    } else await syncCodexCredentials(session, runtime);
+    } else {
+      if (nativePolicy) {
+        session.nativeExecution.signal.removeEventListener('abort', session.nativeAbort);
+        session.nativeExecution = nativeExecution;
+        nativeExecution.signal.addEventListener('abort', session.nativeAbort, { once: true });
+      }
+      await syncCodexCredentials(session, runtime);
+    }
     if (session.restoredInput) { resume = { input: session.restoredInput }; session.restoredInput = null; }
-    else if (resume) session.method = 'reused';
+    else if (nativePolicy && session.waiting && !resume) resume = continuation(session, prepared);
+    else if (resume && !session.saved) session.method = 'reused';
     if (controller.signal.aborted) throw new Error('Codex request cancelled.');
     clearTimeout(session.timer); session.active = true;
     session.generationId = state.id;
@@ -183,7 +251,7 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
     const initializedAt = performance.now();
     const baseline = { ...session.allocated };
     const metrics = { queue_ms: admittedAt - startedAt, initialization_ms: initializedAt - admittedAt, warm: session.method === 'reused' };
-    let resolveRound;
+    let resolveRound, publishNativeCompletion;
     const done = new Promise(resolve => { resolveRound = resolve; });
     round = {
       generationId: state.id, calls: [], content: '', reasoning: '', emitted: false, finished: false, idleTimer: null, batchTimer: null, batchStartedAt: null, handoffReady: false, bytes: 0,
@@ -215,6 +283,19 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
       async finish(reason, error) {
         if (this.finished) return;
         this.finished = true; clearTimeout(this.idleTimer); clearTimeout(this.batchTimer);
+        if (nativePolicy) {
+          try {
+            if (!error && !controller.signal.aborted && reason === 'tool_calls') {
+              await pauseNativeTurn(session);
+              session.nativePaused = true;
+            }
+            if (session.nativeActive?.size) throw codexNativeRecoveryError();
+            await session.nativeRecords;
+            nativeExecution.signal.throwIfAborted();
+            await nativeExecution.assertCurrent(nativeMeta(session));
+          } catch (nativeError) { error = nativeError; }
+          if (error || controller.signal.aborted) await quarantineCodexSession(session).catch(() => {});
+        }
         if (this.calls.length) {
           metrics.tool_batch_count = this.calls.length;
           metrics.tool_batch_collect_ms = performance.now() - this.batchStartedAt;
@@ -237,6 +318,9 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         this.choose();
         const allocatedUsage = allocateCodexUsage(session.usage, baseline);
         const metadata = { usage: allocatedUsage ? { ...allocatedUsage, last_request_usage: session.lastRequestUsage ?? null } : undefined, minnow_cli: { timings: metrics, continuation: session.method, transport: 'app-server',
+          requested_tool_mode: nativePolicy ? 'native' : 'minnow', effective_tool_mode: nativePolicy ? 'native' : 'minnow',
+          ...(nativePolicy ? { native_policy_version: 1, native_cli_version: '0.166.0', native_mode: nativePolicy.mode,
+            capability_exclusions: ['network', 'native-ask', 'agents', 'browser', 'plugins', 'hooks', 'images', 'image-result-continuations', 'background-command-continuations'] } : {}),
           ...(session.context ? { context: session.context } : {}) } };
         updateAgentCliSessionOutput(session.capture, { usage: metadata.usage });
         session.allocated = { ...session.usage };
@@ -250,15 +334,45 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         session.accepted = [...prepared.canonical, { role: 'assistant', content: this.content.trim(),
           ...(this.calls.length ? { tool_calls: this.calls } : {}) }];
         session.waiting = reason === 'tool_calls'; session.handed = this.calls;
-        if (!session.waiting && !session.closed && !session.rebuild) {
+        if ((!session.waiting || nativePolicy) && !session.closed && !session.rebuild) {
+          const checkpointAt = performance.now();
           try { await checkpointCodexSession(session); }
-          catch { session.clean = false; updateAgentCliSessionOutput(session.capture, { reason: 'Native session snapshot unavailable; restart will rebuild.' }); }
+          catch (error) {
+            session.clean = false;
+            if (nativePolicy || error.cliNativeRecoveryRequired) {
+              if (nativePolicy) await quarantineCodexSession(session).catch(() => {});
+              markError(state, error.message);
+              await closeCodexSession(session).catch(() => {});
+              resolveRound({ outcome: 'fatal', message: error.message, hostSuspect: false });
+              return;
+            }
+            updateAgentCliSessionOutput(session.capture, { reason: 'Native session snapshot unavailable; restart will rebuild.' });
+          }
+          finally {
+            metrics.checkpoint_ms = performance.now() - checkpointAt;
+            Object.assign(metrics, session.checkpointTimings);
+          }
         }
         if (controller.signal.aborted || session.closed) {
+          if (nativePolicy) {
+            resolveRound({ outcome: 'fatal', message: 'Native session closed before verified settlement.', hostSuspect: false }); return;
+          }
           if (!controller.signal.aborted && state.status !== 'cancelled') { completeGeneration(); markComplete(state); }
           resolveRound({ outcome: 'complete' }); return;
         }
         // Anonymous requests cannot resume this handoff on their next generation.
+        if (nativePolicy) {
+          const verified = session.nativeVerifiedTurn;
+          session.onFailure = null;
+          await closeCodexSession(session);
+          if (!verified || session.rpc.child.exitCode == null && session.rpc.child.signalCode == null) {
+            resolveRound({ outcome: 'fatal', message: 'Native process quiescence could not be confirmed.', hostSuspect: false }); return;
+          }
+          publishNativeCompletion = () => { completeGeneration(); markComplete(state); };
+          resolveRound({ outcome: 'complete', nativeQuiescence: { verified: true,
+            source: session.waiting ? 'dynamic-tool-pause' : 'turn-completed', generationId: state.id,
+            threadId: verified.threadId, turnId: verified.turnId } }); return;
+        }
         if (!state.chatId) await closeCodexSession(session).catch(() => {});
         else if (session.waiting) retainCodexSession(session, agentCliToolWaitMs(this.calls));
         else retainCodexSession(session);
@@ -289,60 +403,106 @@ export async function pumpCodexAppServer({ state, runtime, candidate, index, idl
         message: `Codex ${details.channel} snapshot ${details.kind}`, extra: { chatId: state.chatId, generationId: state.id, ...details } });
     } });
     session.round = round; session.onFailure = error => round.finish('error', error);
-    await dirtyCodexSession(session);
-    markStreaming(state); round.activity();
-    if (resume?.results) {
-      session.waiting = false;
-      for (const call of session.handed) {
-        const entry = session.pending.get(call.id);
-        if (!entry) throw new Error('Codex tool handoff was lost; execution results are retained in Minnow.');
-        const group = entry.group;
-        group.results.set(call.id, resume.results.get(call.id));
-        session.pending.delete(call.id);
-        metrics.tool_wait_ms = Math.max(metrics.tool_wait_ms ?? 0, performance.now() - entry.receivedAt);
-        if (group.results.size !== group.calls.length) continue;
-        const contentItems = group.tool === CODEX_READ_BATCH
-          ? group.calls.flatMap((member, index) => [{ type: 'inputText', text: JSON.stringify({ index,
-            name: member.function.name, content: group.results.get(member.id).filter(item => item.type === 'inputText').map(item => item.text).join('\n') }) },
-            ...group.results.get(member.id).filter(item => item.type !== 'inputText')])
-          : group.results.get(call.id);
-        group.response = { contentItems, success: true };
-        const returnStartedAt = performance.now();
-        for (const id of group.requestIds) await session.rpc.respond(id, group.response);
-        metrics.tool_return_ms = Math.max(metrics.tool_return_ms ?? 0, performance.now() - returnStartedAt);
+    const runRegion = async () => {
+      await dirtyCodexSession(session);
+      markStreaming(state); round.activity();
+      if (resume?.results && nativePolicy && session.nativePaused) {
+        const groups = new Set(session.handed.map(call => session.pending.get(call.id).group));
+        const items = [];
+        for (const group of groups) {
+          if (group.calls.some(call => resume.results.get(call.id)?.some(item => item.type !== 'inputText'))) {
+            throw new Error('Image-bearing native/Minnow result continuations are not verified; use a Minnow-only conversation.');
+          }
+          const output = group.calls.map(call => ({ name: call.function.name,
+            contentItems: resume.results.get(call.id) }));
+          items.push({ type: 'function_call_output', call_id: group.nativeCallId, output: JSON.stringify(output) });
+        }
+        await nativeExecution.assertCurrent(nativeMeta(session));
+        await session.rpc.request('thread/inject_items', { threadId: session.threadId, items }, { signal: controller.signal });
+        session.pending.clear(); session.handed = []; session.waiting = false; session.nativePaused = false;
+        // Interrupted calls have a cancelled protocol result. Inject the REAL
+        // Minnow result once into preserved history; never reissue its action.
+        resume = { input: [{ type: 'text', text: 'Continue using the actual Minnow tool results injected above. Those tools have already executed; do not repeat their effects.' }] };
       }
-      session.handed = [];
-      for (const call of session.buffered.splice(0, MAX_HANDOFF_CALLS)) round.tool(call);
-    } else {
-      session.itemOrigins = new Map();
-      session.context = undefined;
-      session.lastRequestUsage = undefined;
-      const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
-      if (body.minnow_cli_turn_context) {
-        if (seed.input[0]?.type !== 'text') seed.input.unshift({ type: 'text', text: '' });
-        seed.input[0] = { ...seed.input[0], text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
+      if (resume?.results) {
+        session.waiting = false;
+        for (const call of session.handed) {
+          const entry = session.pending.get(call.id);
+          if (!entry) throw new Error('Codex tool handoff was lost; execution results are retained in Minnow.');
+          const group = entry.group;
+          group.results.set(call.id, resume.results.get(call.id));
+          session.pending.delete(call.id);
+          metrics.tool_wait_ms = Math.max(metrics.tool_wait_ms ?? 0, performance.now() - entry.receivedAt);
+          if (group.results.size !== group.calls.length) continue;
+          const contentItems = group.tool === CODEX_READ_BATCH
+            ? group.calls.flatMap((member, index) => [{ type: 'inputText', text: JSON.stringify({ index,
+              name: member.function.name, content: group.results.get(member.id).filter(item => item.type === 'inputText').map(item => item.text).join('\n') }) },
+              ...group.results.get(member.id).filter(item => item.type !== 'inputText')])
+            : group.results.get(call.id);
+          group.response = { contentItems, success: true };
+          const returnStartedAt = performance.now();
+          for (const id of group.requestIds) await session.rpc.respond(id, group.response);
+          metrics.tool_return_ms = Math.max(metrics.tool_return_ms ?? 0, performance.now() - returnStartedAt);
+        }
+        session.handed = [];
+        for (const call of session.buffered.splice(0, MAX_HANDOFF_CALLS)) round.tool(call);
+      } else {
+        session.itemOrigins = new Map();
+        session.context = undefined;
+        session.lastRequestUsage = undefined;
+        const seed = resume ? { items: [], input: resume.input } : seedConversation(prepared);
+        if (body.minnow_cli_turn_context) {
+          if (seed.input[0]?.type !== 'text') seed.input.unshift({ type: 'text', text: '' });
+          seed.input[0] = { ...seed.input[0], text: withCliTurnContext(seed.input[0].text, body.minnow_cli_turn_context) };
+        }
+        if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
+        session.starting = true;
+        const effort = body.reasoning_effort === 'off' ? 'none' : body.reasoning_effort;
+        const outputSchema = body.response_format?.json_schema?.schema ?? (body.response_format?.type === 'json_object' ? { type: 'object', additionalProperties: true } : undefined);
+        session.inferenceStarted = true;
+        if (nativePolicy) { state.failoverDisabled = true; await nativeExecution.assertCurrent(nativeMeta(session)); }
+        const started = await session.rpc.request('turn/start', { threadId: session.threadId, input: seed.input,
+          ...(effort ? { effort } : {}), ...(outputSchema ? { outputSchema } : {}) }, { signal: controller.signal });
+        session.turnId = started.turn.id; session.starting = false;
       }
-      if (seed.items.length) await session.rpc.request('thread/inject_items', { threadId: session.threadId, items: seed.items }, { signal: controller.signal });
-      session.starting = true;
-      const effort = body.reasoning_effort === 'off' ? 'none' : body.reasoning_effort;
-      const outputSchema = body.response_format?.json_schema?.schema ?? (body.response_format?.type === 'json_object' ? { type: 'object', additionalProperties: true } : undefined);
-      session.inferenceStarted = true;
-      const started = await session.rpc.request('turn/start', { threadId: session.threadId, input: seed.input,
-        ...(effort ? { effort } : {}), ...(outputSchema ? { outputSchema } : {}) }, { signal: controller.signal });
-      session.turnId = started.turn.id; session.starting = false;
-    }
-    return await done;
+      const result = await done;
+      if (nativePolicy && result.outcome === 'fatal') throw Object.assign(new Error(result.message), { cliNativeRecoveryRequired: true });
+      return result;
+    };
+    if (!nativePolicy) return await runRegion();
+    // Thread creation/resume performs no inference. The host baseline and
+    // shared mutation barrier start here, before injection or turn/start.
+    session.turnId = null;
+    let invoked = false;
+    const result = await nativeExecution.runTurn(nativeMeta(session), async () => {
+      if (invoked) throw new Error('Native running region cannot repeat.');
+      invoked = true;
+      await nativeExecution.assertCurrent(nativeMeta(session));
+      try { return await runRegion(); }
+      catch (error) {
+        // Do not release the host's mutation boundary while a failed native
+        // process can still act. Unconfirmed shutdown remains uncertainty.
+        await quarantineCodexSession(session).catch(() => {});
+        await closeCodexSession(session);
+        throw error;
+      }
+    });
+    if (!invoked || !result?.nativeQuiescence?.verified) throw codexNativeRecoveryError();
+    publishNativeCompletion?.();
+    return result;
   } catch (error) {
+    if (nativePolicy && session) await quarantineCodexSession(session).catch(() => {});
     await closeCodexSession(session).catch(() => {});
     if (state.status === 'cancelled') return { outcome: 'complete' };
     const message = safeAgentCliDiagnostic(timeoutKind ? generationTimeoutMessage({ idleMs, maxMs }, timeoutKind) : error.message,
       session?.redactionSecrets ?? Object.values(runtime.secrets ?? {}));
-    if (!round?.emitted && canFailover && !session?.inferenceStarted) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
+    if (!error.cliPolicyRejected && !round?.emitted && canFailover && !session?.inferenceStarted) return { outcome: 'retry', message, retrySameCandidate: false, hostSuspect: false };
     markError(state, message); return { outcome: 'fatal', message, hostSuspect: false };
   } finally {
     clearTimeout(maxTimer); controller.signal.removeEventListener('abort', abort);
+    nativeExecution?.signal.removeEventListener('abort', nativeAbort);
     await stopping;
-    if (session && !session.closed) await session.syncAuth?.().catch(() => {});
+    if (session && !session.closed && !session.nativeRecoveryRequired) await session.syncAuth?.().catch(() => {});
     release?.(); unlock?.();
     if (state.upstreamController === controller) state.upstreamController = null;
   }

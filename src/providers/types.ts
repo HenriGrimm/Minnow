@@ -18,6 +18,8 @@ export interface AgentCliSettings {
   sessionMode: 'auto' | 'replay';
   /** Claude only: false selects the persistent stream-json transport. */
   interactive?: boolean;
+  /** Preference only; server admission intersects current/captured ceilings. */
+  nativeCodingTools?: boolean;
 }
 export type AuthStyle = 'bearer' | 'api-key' | 'x-api-key';
 export type ProviderId = string;

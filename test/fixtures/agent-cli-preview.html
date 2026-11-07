@@ -17,12 +17,13 @@
   </main>
   <script type="module">
     import { mountCliPanel, setCliPanelDepsForTests } from '/src/ui/models/cli-panel.ts';
+    import { agentCliNativeCodingCapability } from '/server/models/agent-cli-native.js';
     const params = new URLSearchParams(location.search);
     document.documentElement.dataset.theme = params.get('theme') || 'swamp-dark';
     const shared = { hasCliToken: false, allowUtilityRoles: false, maxConcurrent: 1, sessionMode: 'replay' };
     let rows = [
       { ...shared, kind: 'claude', providerId: 'claude-code-cli', label: 'Claude Code', installed: true, enabled: true, authStatus: 'signed-in', version: '2.1.226', binPath: 'C:\\Users\\Developer\\.local\\bin\\claude.exe', installCommand: 'npm install -g @anthropic-ai/claude-code', loginCommand: 'claude auth login' },
-      { ...shared, kind: 'codex', providerId: 'codex-cli', label: 'Codex CLI', installed: true, enabled: false, authStatus: 'unknown', version: '0.153.4', binPath: 'C:\\Users\\Developer\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe', installCommand: 'npm install -g @openai/codex', loginCommand: 'codex login' },
+      { ...shared, kind: 'codex', providerId: 'codex-cli', label: 'Codex CLI', installed: true, enabled: false, authStatus: 'unknown', version: '0.166.0', nativeCodingTools: false, nativeCodingCapability: agentCliNativeCodingCapability('codex'), binPath: 'C:\\Users\\Developer\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe', installCommand: 'npm install -g @openai/codex', loginCommand: 'codex login' },
       { ...shared, kind: 'cursor', providerId: 'cursor-agent-cli', label: 'Cursor Agent', installed: false, enabled: false, authStatus: 'signed-out', installCommand: 'curl https://cursor.com/install -fsS | bash', loginCommand: 'cursor-agent login' },
     ];
     if (params.has('login')) {

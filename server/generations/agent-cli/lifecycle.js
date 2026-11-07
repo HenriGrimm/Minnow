@@ -15,6 +15,10 @@ export function lockCliChat(key) {
   lockedChats.add(key);
   return () => lockedChats.delete(key);
 }
+/** Retention can mark a session idle before its generation releases ownership. */
+export function cliSessionIsIdle(session) {
+  return !session.active && !session.waiting && !session.closed && !lockedChats.has(session.key);
+}
 export function noteCliCapability(providerId, value) {
   capabilities.set(providerId, value);
   while (capabilities.size > 64) capabilities.delete(capabilities.keys().next().value);

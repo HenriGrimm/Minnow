@@ -490,6 +490,60 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
     atomic: (work) => transaction(() => work(repository)),
     createChat: (input) => transaction(() => createChat(input)),
     createChild, getChat,
+    /** Copy observations only. No execution leases, tool intents or results are replayed. */
+    forkChat({ sourceChatId, messageId, expectedRevision, chat, profile, projectId }) {
+      return transaction(() => {
+        const source = getChat(sourceChatId);
+        if (source.revision !== integer(expectedRevision, 'source revision')) fail('stale_revision', 'The source conversation changed');
+        if (source.chatCommandVersion !== 1 || source.agentConversation) fail('capability_unavailable', 'Canonical forks currently require an ordinary server-owned root');
+        if (repository.getLease(sourceChatId)?.state === 'active' || repository.listCommands({ chatId: sourceChatId,
+          states: ['accepted', 'queued', 'waiting_for_host', 'running'], limit: 1 }).length || repository.listRequests(sourceChatId).length) {
+          fail('ownership_conflict', 'Finish or stop source work before forking');
+        }
+        const latest = repository.getLatestExecution(sourceChatId);
+        if (latest && !TERMINAL_EXECUTIONS.has(latest.status) || db.prepare("SELECT 1 FROM chat_tool_invocations WHERE chat_id=? AND state!='settled' LIMIT 1").get(sourceChatId)) {
+          fail('recovery_required', 'Resolve the source execution before forking');
+        }
+        const anchor = repository.readMessageByIdentity(sourceChatId, messageId);
+        if (!anchor || anchor.message.role !== 'user' || anchor.message.provenance?.actor !== 'human') fail('invalid_request', 'Fork from a saved human message');
+        const prefix = db.prepare('SELECT seq,payload_json FROM messages WHERE chat_id=? AND seq<? ORDER BY seq').all(sourceChatId, anchor.rowId);
+        const pending = new Set();
+        for (const row of prefix) {
+          const message = parse(row.payload_json);
+          if (message.role === 'tool') {
+            if (!pending.delete(message.tool_call_id)) fail('recovery_required', 'The fork prefix contains an unmatched tool result');
+          } else {
+            if (pending.size) fail('recovery_required', 'The fork prefix splits a tool call/result group');
+            if (message.role === 'assistant') for (const call of message.tool_calls ?? []) {
+              if (typeof call.id !== 'string' || !call.id || pending.has(call.id)) fail('recovery_required', 'The fork prefix contains invalid tool identities');
+              pending.add(call.id);
+            }
+          }
+        }
+        if (pending.size) fail('recovery_required', 'The fork prefix splits a tool call/result group');
+        const created = createChat(chat);
+        saveProfile(created.id, profile);
+        const origin = { sourceChatId, sourceMessageId: messageId, sourceRevision: expectedRevision,
+          sourceCommandId: anchor.message.commandId, createdAt: time() };
+        const sourceMeta = parse(db.prepare('SELECT meta_json FROM chat_conversation_state WHERE chat_id=?').get(sourceChatId)?.meta_json, {});
+        if (sourceMeta.compaction) fail('capability_unavailable', 'Forking compacted history requires a prefix-aware context snapshot');
+        // Never import a later compaction summary or mutable goals into a prefix.
+        const meta = { forkOrigin: origin, ...(sourceMeta.injectedContext ? { injectedContext: sourceMeta.injectedContext } : {}) };
+        db.prepare('UPDATE chat_conversation_state SET project_id=?,meta_json=? WHERE chat_id=?').run(label(projectId, 'project identity', 4096), json(meta), created.id);
+        for (const [index, row] of prefix.entries()) {
+          const message = parse(row.payload_json);
+          upsertMessageRow(db, created.id, index, message);
+          if (message.messageId) db.prepare('INSERT INTO chat_message_identities (chat_id,message_id,seq,input_hash) VALUES (?,?,?,?)')
+            .run(created.id, identity(message.messageId), index, hashChatPayload(message));
+        }
+        // Saved snapshots stay observational too; branch reconstruction must not
+        // dispatch historical calls just to reproduce the visible prefix.
+        db.prepare('INSERT INTO chat_runs (chat_id,run_id,branch_id,fork_history_index,status,payload_json) SELECT ?,run_id,branch_id,fork_history_index,status,payload_json FROM chat_runs WHERE chat_id=? AND fork_history_index<?')
+          .run(created.id, sourceChatId, anchor.rowId);
+        updateMessageDerived(created.id);
+        return { chat: getChat(created.id), origin };
+      });
+    },
     ensureManagedChat: (chatId, options = {}) => transaction(() => {
       markManaged(chatId);
       if (options.projectId !== undefined) {
@@ -727,7 +781,8 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (TERMINAL_EXECUTIONS.has(execution.status) && (status !== execution.status || json(update.result ?? execution.result) !== json(execution.result))) {
           fail('idempotency_conflict', 'Settled execution is immutable');
         }
-        if (TERMINAL_EXECUTIONS.has(status) && db.prepare("SELECT 1 FROM chat_tool_invocations WHERE execution_id=? AND state!='settled' LIMIT 1").get(executionId)) {
+        if (TERMINAL_EXECUTIONS.has(status) && (db.prepare("SELECT 1 FROM chat_tool_invocations WHERE execution_id=? AND state!='settled' LIMIT 1").get(executionId)
+          || db.prepare("SELECT 1 FROM chat_workspace_checkpoints WHERE execution_id=? AND state IN ('executing','uncertain') LIMIT 1").get(executionId))) {
           fail('recovery_required', 'Unsettled tool effects require recovery');
         }
         db.prepare('UPDATE chat_executions SET status=?,result_json=?,updated_at=?,settled_at=? WHERE execution_id=?')
@@ -752,10 +807,12 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
           || executionId !== lease.executionId) fail('ownership_conflict', 'Recovery fence is stale');
         if (!['failed', 'stopped'].includes(status)) fail('invalid_request', 'Invalid recovered execution status');
         if (TERMINAL_EXECUTIONS.has(execution.status)) return execution;
+        db.prepare("UPDATE chat_workspace_checkpoints SET state='uncertain' WHERE execution_id=? AND state='executing'").run(executionId);
         const unresolved = repository.listUnsettledToolInvocations(executionId);
-        const next = unresolved.length ? 'recovery_required' : status;
+        const checkpointUncertain = Boolean(db.prepare("SELECT 1 FROM chat_workspace_checkpoints WHERE execution_id=? AND state IN ('executing','uncertain') LIMIT 1").get(executionId));
+        const next = unresolved.length || checkpointUncertain ? 'recovery_required' : status;
         const result = { outcome: 'crashed', failure: {
-          recoveryRequired: unresolved.length > 0, quiescence: parse(json(quiescence)),
+          recoveryRequired: unresolved.length > 0 || checkpointUncertain, checkpointUncertain, quiescence: parse(json(quiescence)),
           unresolvedInvocationIds: unresolved.map((entry) => entry.invocationId),
           ...(execution.captured?.taskOwned && execution.activatedAt === null ? { unstartedReservation: true } : {}),
         } };
@@ -788,8 +845,10 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         return { invocationId: op.invocationId, toolName: op.toolName, targets: targets.map(s => s.trim().slice(0, 500)),
           ...(log?.log_path ? { logPath: log.log_path.slice(0, 500) } : {}), receiptId: known ? receipt.outboxId : null };
       });
+      const checkpoints = db.prepare("SELECT checkpoint_id,payload_json FROM chat_workspace_checkpoints WHERE execution_id=? AND state IN ('executing','uncertain') ORDER BY checkpoint_id").all(execution.executionId)
+        .map(row => ({ checkpointId: row.checkpoint_id, ...parse(row.payload_json) }));
       return { executionId: execution.executionId, ownerReleased: lease.state === 'released', checkout: execution.captured?.scope?.canonicalKey ?? null,
-        revision: hashChatPayload([execution.executionId, lease.ownerId, lease.epoch, lease.state, operations]), operations };
+        revision: hashChatPayload([execution.executionId, lease.ownerId, lease.epoch, lease.state, operations, checkpoints]), operations, checkpoints };
     },
     retireInterruptedExecution(chatId, { executionId, revision: expected, note, clientRequestId }, verifyIdle) {
       identity(executionId); identity(clientRequestId);
@@ -810,7 +869,8 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
           db.prepare("UPDATE chat_tool_invocations SET state='settled',result_hash=?,result_json=?,settled_at=? WHERE execution_id=? AND invocation_id=? AND state!='settled'")
             .run(hashPayload(encoded), encoded, time(), executionId, op.invocationId);
         }
-        const humanRecovery = { decision, operations: review.operations, retiredAt: time() };
+        db.prepare("UPDATE chat_workspace_checkpoints SET state='retired' WHERE execution_id=? AND state IN ('executing','uncertain')").run(executionId);
+        const humanRecovery = { decision, operations: review.operations, checkpoints: review.checkpoints, retiredAt: time() };
         const messageId = 'recovery-' + hashChatPayload(executionId);
         const message = { role: 'user', messageId, createdAt: humanRecovery.retiredAt,
           provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' },

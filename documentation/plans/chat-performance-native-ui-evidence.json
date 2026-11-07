@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-07",
+  "fixture": "test/fixtures/agent-cli-preview.html",
+  "server": "Vite-only loopback on 127.0.0.1:19549; no tool server",
+  "theme": "swamp-dark",
+  "capabilitySource": "server/models/agent-cli-native.js:agentCliNativeCodingCapability",
+  "nativeCodingEnabled": false,
+  "views": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "pageWidth": 1440,
+      "caption": {
+        "width": 465.75,
+        "height": 54,
+        "fontSize": 12,
+        "lineHeight": 18,
+        "lines": 3,
+        "left": 466,
+        "right": 931.75,
+        "scrollWidth": 466,
+        "clientWidth": 466
+      },
+      "nativeCodingSwitchCount": 0,
+      "apiRequestPaths": [],
+      "screenshot": "chat-performance-native-desktop.png",
+      "visualInspection": "Full reason visible; aligned with existing connection hints and fields; no caption overlap/clipping or page overflow."
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "pageWidth": 390,
+      "caption": {
+        "width": 318,
+        "height": 72,
+        "fontSize": 12,
+        "lineHeight": 18,
+        "lines": 4,
+        "left": 31,
+        "right": 349,
+        "scrollWidth": 318,
+        "clientWidth": 318
+      },
+      "nativeCodingSwitchCount": 0,
+      "apiRequestPaths": [],
+      "screenshot": "chat-performance-native-narrow.png",
+      "visualInspection": "Full reason wraps above the existing binary-path hint; fields stack; no caption overlap/clipping or page overflow. Existing section navigation scrolls horizontally within its own container."
+    }
+  ],
+  "accessibility": {
+    "disclosureElement": "SUMMARY",
+    "disclosureContainer": "DETAILS",
+    "tabIndex": 0,
+    "programmaticFocusSucceeded": true,
+    "expandedCaptionInAccessibilityTree": true,
+    "captionInteractive": false,
+    "realTabEnterVerification": "BLOCKED: agent-browser --session native-cli-caption-qa open <loopback-fixture> timed out after 30s with Invalid response: EOF while parsing a value at line 1 column 0 (after 5 retries - daemon may be busy or unresponsive). Supplied browser tools expose no keypress operation.",
+    "wcagCertification": "Not claimed"
+  },
+  "runtime": {
+    "apiRequestsObserved": 0,
+    "settingsEdits": 0,
+    "paidRequests": 0,
+    "consoleCertification": "Not claimed: no console-error subscription was active."
+  }
+}

@@ -26,6 +26,8 @@ import {
   setWorkspaceFromServer,
 } from '../../src/state/workspace.ts';
 import type { Chat } from '../../src/types.ts';
+import { resetConfigFileCacheForTests } from '../../src/config/config-file-cache.ts';
+import { isLocalServerAvailable, setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -90,6 +92,41 @@ describe('buildComposeContext cwd', () => {
     resetPromptMetaCache();
     resetWorkspaceStateForTests();
     setSessionStateForTests(null);
+    resetConfigFileCacheForTests();
+  });
+
+  it('parallel optional lanes have a cold-setup deadline and discard late renderer results', async t => {
+    const originalFetch = globalThis.fetch;
+    const wasAvailable = isLocalServerAvailable();
+    t.after(() => { globalThis.fetch = originalFetch; setLocalServerAvailableForTests(wasAvailable); });
+    setLocalServerAvailableForTests(true);
+    resetConfigFileCacheForTests();
+    let releaseMemory!: (value: Response) => void;
+    let releaseCode!: (value: Response) => void;
+    const memoryWait = new Promise<Response>(resolve => { releaseMemory = resolve; });
+    const codeWait = new Promise<Response>(resolve => { releaseCode = resolve; });
+    const seen = new Set<string>();
+    globalThis.fetch = async input => {
+      const url = String(input); seen.add(url);
+      if (url.includes('/api/config/file')) return Response.json({ features: { memoryInjection: true,
+        codeMapInjectionDefault: true, contextDocumentsInjectionDefault: false } });
+      if (url.includes('/api/memory/status')) return Response.json({ enabled: true });
+      if (url.includes('/api/brain/retrieve')) return memoryWait;
+      if (url.includes('/api/brain/code/config')) return codeWait;
+      return Response.json({});
+    };
+    const ctx = await buildComposeContext(baseChat({ memoryEnabled: true }), { firstUserSend: true, enrichmentTimeoutMs: 30 });
+    assert.ok([...seen].some(url => url.includes('/api/brain/retrieve')));
+    assert.ok([...seen].some(url => url.includes('/api/brain/code/config')));
+    assert.equal(ctx.memoryBlock, null);
+    assert.equal(ctx.codeMapBlock, null);
+    assert.match(ctx.enrichmentNotice!, /code-map \(deadline\).*memory \(deadline\)/);
+    assert.equal(ctx.chatLinksBlock, null);
+    releaseMemory(Response.json({ block: 'LATE OLD MEMORY' }));
+    releaseCode(Response.json({ code: { enabled: true } }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(ctx.memoryBlock, null);
+    assert.ok(![...seen].some(url => url.includes('/api/brain/code/repo-map') || url.includes('/api/brain/code/cascade')));
   });
 
   it('uses chat.worktreeRoot instead of the global workspace', async () => {

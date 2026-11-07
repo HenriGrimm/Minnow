@@ -1,10 +1,28 @@
 import {
   AGENT_CONVERSATIONS_CAPABILITY,
   CHAT_CONTRACT_VERSION,
+  ORDINARY_CHAT_EXECUTION_CAPABILITY,
 } from './contracts.js';
 
 /** Activation belongs to the release gate, never a persisted user preference. */
 export const AGENT_CONVERSATIONS_RELEASED = true;
+
+/**
+ * Separate from delegated-agent creation. Only supported ordinary roots promote;
+ * rollback stops new promotions without changing existing canonical ownership.
+ */
+export function getOrdinaryChatExecutionFeature(env = process.env) {
+  const enabled = env.MINNOW_ORDINARY_CHAT_EXECUTION !== '0';
+  return Object.freeze({
+    version: CHAT_CONTRACT_VERSION,
+    capability: ORDINARY_CHAT_EXECUTION_CAPABILITY,
+    admissionEnabled: enabled,
+    promotionEnabled: enabled,
+    recoveryEnabled: true,
+    reason: enabled ? 'released' : 'disabled',
+    blockers: Object.freeze([]),
+  });
+}
 
 /**
  * Only the server evaluates environment opt-in. Existing versioned records must

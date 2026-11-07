@@ -8,7 +8,7 @@ import { handleModelsRequest } from '../../server/models/routes.js';
 import { handleProviderRequest } from '../../server/providers/routes.js';
 import { getProviderRuntime } from '../../server/providers/store.js';
 import { resolveServerModelContextLimit } from '../../server/models/context-window.js';
-import { registerCliDisposal } from '../../server/generations/agent-cli/lifecycle.js';
+import { registerCliDisposal, lockCliChat } from '../../server/generations/agent-cli/lifecycle.js';
 import { setTestHome, rmTestHome, httpRequest } from '../providers/test-helpers.js';
 
 let homeDir;
@@ -67,6 +67,9 @@ describe('agent CLI model routes', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(response.json.agentClis.map((row) => row.kind), ['claude', 'codex', 'cursor']);
     assert.ok(response.json.agentClis.every((row) => row.enabled === false));
+    const codex = response.json.agentClis.find(row => row.kind === 'codex');
+    assert.equal(codex.nativeCodingTools, false);
+    assert.equal(codex.nativeCodingCapability.available, process.platform === 'win32' && String(codex.version ?? '').replace('codex-cli ', '').trim() === '0.166.0');
     const providerRoot = path.join(homeDir, 'providers');
     await assert.rejects(() => fs.access(providerRoot), { code: 'ENOENT' });
   });
@@ -253,6 +256,65 @@ describe('agent CLI model routes', () => {
     assert.equal(invalid.status, 400);
     const reset = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/claude/settings', { interactive: true });
     assert.equal(reset.status, 200);
+  });
+
+  test('settings validate and save before closing only idle sessions, without forgetting checkpoints', async () => {
+    const unlock = lockCliChat('settling');
+    const sessions = [
+      { key: 'idle', providerId: 'claude-code-cli' },
+      { key: 'settling', providerId: 'claude-code-cli' },
+      { key: 'running', providerId: 'claude-code-cli', active: true },
+      { key: 'awaiting-tools', providerId: 'claude-code-cli', waiting: true },
+      { key: 'other-cli', providerId: 'codex-cli' },
+    ];
+    const closed = [];
+    registerCliDisposal('settings-test', async (filter, options) => {
+      assert.notEqual(options?.forget, true);
+      assert.equal((await getProviderRuntime('claude-code-cli')).profile.agentCli.maxConcurrent, 2);
+      for (const session of sessions.filter(filter)) closed.push(session.key);
+    });
+    try {
+      const url = '/api/models/agent-clis/claude/settings';
+      assert.equal((await httpRequest(baseUrl, 'PUT', url, { maxConcurrent: 0 })).status, 400);
+      assert.deepEqual(closed, []);
+      // A failed atomic profile replacement must not touch active/native state.
+      const profile = path.join(homeDir, 'providers', 'claude-code-cli', 'profile.json');
+      const rename = fs.rename;
+      fs.rename = async (from, to) => {
+        if (to === profile) throw Object.assign(new Error('Fixture profile save failure'), { code: 'EACCES' });
+        return rename(from, to);
+      };
+      try { assert.equal((await httpRequest(baseUrl, 'PUT', url, { maxConcurrent: 2 })).status, 400); }
+      finally { fs.rename = rename; }
+      assert.deepEqual(closed, []);
+      assert.equal((await httpRequest(baseUrl, 'PUT', url, { maxConcurrent: 2 })).status, 200);
+      assert.deepEqual(closed, ['idle']);
+    } finally { unlock(); registerCliDisposal('settings-test', async () => {}); }
+  });
+
+  test('native preference defaults off, validates Codex booleans and survives unrelated settings without disposing active sessions', async () => {
+    let disposals = 0;
+    registerCliDisposal('native-settings-test', async () => { disposals++; });
+    try {
+      for (const [kind, value] of [['codex', 'true'], ['claude', true], ['cursor', true]]) {
+        const response = await httpRequest(baseUrl, 'PUT', `/api/models/agent-clis/${kind}/settings`, { nativeCodingTools: value });
+        assert.equal(response.status, 400);
+        assert.match(response.json.error, /nativeCodingTools|native coding tools/);
+      }
+      assert.equal(disposals, 0);
+      await assert.rejects(fs.access(path.join(homeDir, 'providers', 'codex-cli')), { code: 'ENOENT' });
+      const off = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/codex/settings', { nativeCodingTools: false });
+      assert.equal(off.status, 200);
+      assert.equal(off.json.agentCli.nativeCodingTools, false);
+      assert.equal(off.json.agentCli.nativeCodingCapability.effective, 'minnow');
+      assert.match(off.json.agentCli.nativeCodingCapability.reason, /Codex|experiment/);
+      const on = await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/codex/settings', { nativeCodingTools: true });
+      assert.equal(on.status, 200);
+      assert.equal(on.json.agentCli.nativeCodingTools, true);
+      await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/codex/settings', { maxConcurrent: 2 });
+      assert.equal((await getProviderRuntime('codex-cli')).profile.agentCli.nativeCodingTools, true);
+      await httpRequest(baseUrl, 'PUT', '/api/models/agent-clis/codex/settings', { nativeCodingTools: false });
+    } finally { registerCliDisposal('native-settings-test', async () => {}); }
   });
 
   test('context windows persist, propagate through catalog/probes, and reset to automatic', async () => {

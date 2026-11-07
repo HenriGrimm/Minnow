@@ -11,6 +11,7 @@ import {
   getSessions,
   getSessionSummaries,
   patchSessions,
+  managedChatPresentationForWire,
   putSessions,
   SessionsRevisionConflictError,
   type ChatDetail,
@@ -189,6 +190,7 @@ const patchHistoryOmittedChatIds = new Set<string>();
 /** Mark a chat id dirty for the next PATCH; any real edit cancels the history-omit shortcut. */
 function addDirtyChatId(chatId: string): void {
   dirtyChatIds.add(chatId);
+  chatDirtyVersions.set(chatId, ++entityDirtyVersion);
   patchHistoryOmittedChatIds.delete(chatId);
   // A real edit landed on a row the describe only meant to restate, so it is no
   // longer safe to drop on a conflict.
@@ -212,34 +214,32 @@ const describeOnlyGroupIds = new Set<string>();
 /** Session scalars (activeId, sidebar, maps, …) changed since last successful flush. */
 let sessionScalarsDirty = false;
 /**
- * Bumped on every dirty-set mutation. A flush only clears dirty sets when the epoch
- * is unchanged — otherwise an overlapping older PUT/PATCH could drop a delete that
- * landed mid-flight and resurrect the chat on disk.
+ * Bumped on every dirty-set mutation so asynchronous refreshes cannot overwrite
+ * intervening local edits. Save receipts use independent per-entity versions below.
  */
 let sessionDirtyEpoch = 0;
+/** Independent ACK versions: editing B cannot keep a saved A dirty. */
+let entityDirtyVersion = 0;
+const chatDirtyVersions = new Map<string, number>();
+const groupDirtyVersions = new Map<string, number>();
+let scalarsDirtyVersion = 0;
 /** When true, run another {@link saveSessionsNow} after the in-flight flush settles. */
 let sessionSaveQueued = false;
 /** Wall clock when the current save debounce window opened (max-wait throttle). */
 let saveFirstScheduledAt = 0;
 /**
- * Per-chat hash after the last baseline pass — used by the B.1/B.2 DEV verifier to catch
- * mutations that bypassed {@link touchChat}. A hash rather than a retained 60 MB JSON blob,
- * and only a rolling window of chats per save: the old whole-list form cost ~1.2 s per chat
- * switch at 556 chats and grew with history forever (MIN-794).
+ * DEV-only bounded metadata diagnostic for mutations bypassing touchChat.
+ * Never serializes history or run details, even in development.
  */
 const dirtyTrackingShadow = new Map<string, string>();
 /** Round-robin position in `state.chats` so successive saves sweep the whole list. */
 let dirtyTrackingCursor = 0;
 /**
- * Chats baselined (and therefore checked) per save. Production runs a small sample too: an
- * unmarked mutation there is silently never persisted, and the check repairs it (MIN-794).
+ * Maximum metadata rows sampled in development; production relies on explicit dirty marks.
  */
 const DIRTY_TRACKING_SAMPLE_DEV = 64;
-const DIRTY_TRACKING_SAMPLE_PROD = 8;
 /**
- * Wall-clock cap per baseline or verify pass. A hydrated long transcript serializes to
- * megabytes, so a 64-chat window could stall a save for 120 ms+; the cursor resumes
- * where a capped pass stopped, so the whole list is still swept, just over more saves.
+ * Wall-clock cap per development metadata pass; the cursor resumes on the next pass.
  */
 const DIRTY_TRACKING_BUDGET_MS = 6;
 /** When true, flush runs the unmarked-mutation verifier (tests / Vite DEV). */
@@ -277,11 +277,11 @@ function shouldInstallHistoryTrap(): boolean {
   return sessionsLazyHistoryEnabled && (historyTrapForcedForTests || isViteDevBuild());
 }
 
-/** Dev sweeps the list fast enough to be a diagnostic; production only needs the repair. */
+/** Production saves do no diagnostic serialization or hashing. */
 function dirtyTrackingSampleSize(): number {
   return dirtyTrackingVerifierForced || isViteDevBuild()
     ? DIRTY_TRACKING_SAMPLE_DEV
-    : DIRTY_TRACKING_SAMPLE_PROD;
+    : 0;
 }
 
 /** Copy chat fields for wire/shadow serialization without tripping lazy-history traps. */
@@ -296,12 +296,17 @@ function copyChatFieldsWithoutLazyHistory(chat: Chat, includeHistory: boolean): 
   return out;
 }
 
-/** Serialize chats for dirty-tracking without reading lazy-unloaded history bodies. */
+/** Targeted metadata diagnostic, bounded independently of transcript/run size. */
 function chatForDirtyTrackingShadow(chat: Chat): Record<string, unknown> {
-  return copyChatFieldsWithoutLazyHistory(chat, chat.historyLoaded !== false);
+  const text = (value: string | undefined) => value?.slice(0, 1024);
+  return {
+    id: text(chat.id), name: text(chat.name), groupId: text(chat.groupId), pinnedAt: chat.pinnedAt,
+    archivedAt: chat.archivedAt, updatedAt: chat.updatedAt, modelId: text(chat.modelId),
+    modeId: chat.modeId, composerDraft: text(chat.composerDraft),
+  };
 }
 
-/** FNV-1a over the serialized chat — comparable without keeping the string alive. */
+/** FNV-1a over bounded diagnostic metadata, never a transcript. */
 function hashChatForDirtyTracking(chat: Chat): string {
   const json = JSON.stringify(chatForDirtyTrackingShadow(chat));
   let h = 0x811c9dc5;
@@ -314,6 +319,10 @@ function hashChatForDirtyTracking(chat: Chat): string {
 
 /** Baseline the next window of chats so the following flush can check them. */
 function captureDirtyTrackingShadow(state: SessionState | null): void {
+  if (dirtyTrackingSampleSize() === 0) {
+    dirtyTrackingShadow.clear();
+    return;
+  }
   // Never every chat: that JSON.stringify'd every hydrated transcript on every flush (MIN-584).
   if (!state) {
     dirtyTrackingShadow.clear();
@@ -351,6 +360,8 @@ function clearSessionDirtySets(): void {
   describeOnlyChatIds.clear();
   describeOnlyGroupIds.clear();
   sessionScalarsDirty = false;
+  chatDirtyVersions.clear();
+  groupDirtyVersions.clear();
 }
 
 /** Record that dirty sets changed so in-flight flushes must not clear newer work. */
@@ -372,6 +383,7 @@ function hasSessionDirtyWork(): boolean {
 /** Mark session-level scalars dirty for the next PATCH. */
 export function markSessionScalarsDirty(): void {
   sessionScalarsDirty = true;
+  scalarsDirtyVersion = ++entityDirtyVersion;
   bumpSessionDirtyEpoch();
   notifyPluginContextChanged();
 }
@@ -382,6 +394,7 @@ export function markGroupDirty(groupId: string): void {
   if (!id) return;
   deletedGroupIds.delete(id);
   dirtyGroupIds.add(id);
+  groupDirtyVersions.set(id, ++entityDirtyVersion);
   describeOnlyGroupIds.delete(id);
   bumpSessionDirtyEpoch();
 }
@@ -392,12 +405,12 @@ export function markGroupDeleted(groupId: string): void {
   if (!id) return;
   dirtyGroupIds.delete(id);
   deletedGroupIds.add(id);
+  groupDirtyVersions.set(id, ++entityDirtyVersion);
   bumpSessionDirtyEpoch();
 }
 
 /**
- * Dev/test verifier: warn when a chat stringified differently without touchChat.
- * @returns true when an unmarked mutation was detected (dirty sets untrusted → full PUT).
+ * Dev/test verifier: warn and repair when sampled metadata changed without touchChat.
  */
 function verifyDirtyChatTracking(state: SessionState): boolean {
   if (dirtyTrackingShadow.size === 0) return false;
@@ -414,8 +427,7 @@ function verifyDirtyChatTracking(state: SessionState): boolean {
     if (performance.now() > deadline) continue;
     if (prev !== hashChatForDirtyTracking(chat)) {
       missed = true;
-      // Repair rather than only report: production trusts the dirty set, so an unmarked
-      // mutation is otherwise never sent to the server at all — a silent lost edit.
+      // Repair detected development metadata misses; production uses explicit markers.
       addDirtyChatId(chat.id);
       if (dirtyTrackingVerifierForced || isViteDevBuild()) {
         console.warn(
@@ -432,7 +444,8 @@ function verifyDirtyChatTracking(state: SessionState): boolean {
  * Omits `history` so the server preserves existing message rows instead of syncing [].
  */
 export function chatForSessionsWire(chat: Chat): Chat {
-  return copyChatFieldsWithoutLazyHistory(chat, chat.historyLoaded !== false) as unknown as Chat;
+  return managedChatPresentationForWire(chat)
+    ?? copyChatFieldsWithoutLazyHistory(chat, chat.historyLoaded !== false) as unknown as Chat;
 }
 
 /** Clone session state for wire I/O, stripping unloaded chat histories. */
@@ -457,7 +470,7 @@ export function buildSessionsPatchDelta(state: SessionState): SessionsPatchDelta
       const chat = byId.get(id);
       if (!chat) continue;
       chats.push(
-        patchHistoryOmittedChatIds.has(id)
+        patchHistoryOmittedChatIds.has(id) && chat.chatCommandVersion !== 1 && !chat.agentConversation
           ? (copyChatFieldsWithoutLazyHistory(chat, false) as unknown as Chat)
           : chatForSessionsWire(chat),
       );
@@ -625,6 +638,7 @@ export function setSessionStateForTests(state: SessionState | null): void {
 /** Reset persistence guards between unit tests. */
 export function resetSessionPersistenceForTests(): void {
   clearSessionRetry();
+  sessionRevision = null;
   sessionsHydratedFromServer = false;
   sessionPersistenceShutdownRegistered = false;
   clearSessionDirtySets();
@@ -1711,6 +1725,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
     if (!remoteIds.has(chat.id)) continue;
     const local = localById.get(chat.id);
     const sameRevision = chatRevisions.get(chat.id) === remote.chatRevisions[chat.id];
+    if (local?.chatCommandVersion === 1 && chat.chatCommandVersion !== 1) { deferred = true; continue; }
     if (deletedChatIds.has(chat.id) || (local && protectedChat(local))) {
       if (!sameRevision) deferred = true;
       continue;
@@ -1741,6 +1756,7 @@ export async function refreshSessionsFromServer(signal?: AbortSignal): Promise<{
   });
   for (const [id, chat] of replacements) {
     const local = state.chats.find((row) => row.id === id);
+    if (local?.chatCommandVersion === 1 && chat.chatCommandVersion !== 1) { deferred = true; continue; }
     if (local && protectedChat(local)) { deferred = true; continue; }
     if (local) {
       for (const key of Object.keys(local)) delete (local as unknown as Record<string, unknown>)[key];
@@ -1843,6 +1859,7 @@ export function applySharedChatFrame(
   const state = sessionState;
   if (!state || streamingChatIds.has(chatId)) return undefined;
   let chat = state.chats.find(row => row.id === chatId);
+  if (chat?.chatCommandVersion === 1 && Object.hasOwn(fields ?? {}, 'chatCommandVersion') && fields?.chatCommandVersion !== 1) return undefined;
   if (!chat) {
     chat = createEmptyChatObject(String(fields?.modelId || ''), String(fields?.workspacePath || ''));
     chat.id = chatId;
@@ -2157,13 +2174,16 @@ function markEveryChatDirty(state: SessionState): void {
       describeOnlyChatIds.add(chat.id);
     }
     dirtyChatIds.add(chat.id);
+    if (!chatDirtyVersions.has(chat.id)) chatDirtyVersions.set(chat.id, ++entityDirtyVersion);
     dirtyTrackingShadow.delete(chat.id);
   }
   for (const group of state.groups ?? []) {
     if (!dirtyGroupIds.has(group.id)) describeOnlyGroupIds.add(group.id);
     dirtyGroupIds.add(group.id);
+    if (!groupDirtyVersions.has(group.id)) groupDirtyVersions.set(group.id, ++entityDirtyVersion);
   }
   sessionScalarsDirty = true;
+  scalarsDirtyVersion = ++entityDirtyVersion;
   bumpSessionDirtyEpoch();
 }
 
@@ -2192,7 +2212,7 @@ function dropWholeStateDescribe(): void {
  * - MIN-408: no network write until hydrated from ~/.minnow
  * - PATCH when `sessionsClientPatchEnabled` (default ON) and dirty sets are trusted
  * - whole-state fallback for legacy schema hydration or when PATCH is disabled
- * - dirty sets clear only after a successful PATCH/PUT whose dirty epoch still matches
+ * - a successful receipt clears only the entity versions included in that write
  * - overlapping flushes are serialized; mid-flight deletes queue a follow-up save
  */
 export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResult {
@@ -2200,11 +2220,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
   // New edits remain dirty during backoff. Shutdown still gets its best-effort flush.
   if (sessionRetryTimer !== null && !options?.keepalive) return 'ok';
 
-  /*
-   * A miss now marks the offending chat dirty, so the next PATCH carries it. Untrusting the
-   * whole baseline on top of that only bought a full-session write — in dev that was a loop:
-   * miss → baseline untrusted → whole-state PATCH → miss again next switch (MIN-794).
-   */
+  // Development diagnostics repair only sampled metadata misses, never force a full write.
   verifyDirtyChatTracking(sessionState);
 
   if (isServerStorageMode()) {
@@ -2307,25 +2323,41 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       }
     };
 
-    const epochAtStart = sessionDirtyEpoch;
     const stateAtStart = sessionState;
-    const writtenChatIds = usePatch
-      ? [...new Set([...dirtyChatIds, ...deletedChatIds])]
+    const delta = usePatch ? buildSessionsPatchDelta(sessionState) : null;
+    const writtenChatIds = delta
+      ? [...new Set([...(delta.chats ?? []).map(chat => chat.id), ...(delta.deleteChatIds ?? [])])]
       : [...new Set([...sessionState.chats.map((chat) => chat.id), ...deletedChatIds])];
+    const writtenGroupIds = delta
+      ? [...new Set([...(delta.groups ?? []).map(group => group.id), ...(delta.deleteGroupIds ?? [])])]
+      : [...new Set([...(sessionState.groups ?? []).map(group => group.id), ...deletedGroupIds])];
+    const chatVersionsAtStart = new Map(writtenChatIds.map(id => [id, chatDirtyVersions.get(id)]));
+    const groupVersionsAtStart = new Map(writtenGroupIds.map(id => [id, groupDirtyVersions.get(id)]));
+    const scalarsVersionAtStart = sessionScalarsDirty ? scalarsDirtyVersion : null;
     const onPresentationRevisions = (revisions: Record<string, number>) => {
       if (sessionState === stateAtStart) captureChatPresentationRevisions(revisions, writtenChatIds);
     };
     const finishSave = (ok: boolean, revision?: number, conflict = false): void => {
       inFlightSessionSave = null;
+      if (sessionState !== stateAtStart) return;
       if (ok) {
         clearSessionRetry();
         if (typeof revision === 'number') sessionRevision = revision;
         if (typeof revision === 'number') {
           for (const id of writtenChatIds) chatRevisions.set(id, revision);
         }
-        if (sessionDirtyEpoch === epochAtStart) {
-          clearSessionDirtySets();
+        for (const [id, version] of chatVersionsAtStart) {
+          if (chatDirtyVersions.get(id) !== version) continue;
+          dirtyChatIds.delete(id); deletedChatIds.delete(id);
+          patchHistoryOmittedChatIds.delete(id); describeOnlyChatIds.delete(id);
+          chatDirtyVersions.delete(id);
         }
+        for (const [id, version] of groupVersionsAtStart) {
+          if (groupDirtyVersions.get(id) !== version) continue;
+          dirtyGroupIds.delete(id); deletedGroupIds.delete(id); describeOnlyGroupIds.delete(id);
+          groupDirtyVersions.delete(id);
+        }
+        if (scalarsVersionAtStart !== null && scalarsDirtyVersion === scalarsVersionAtStart) sessionScalarsDirty = false;
         if (!usePatch || patchCoversWholeState) sessionPatchDirtySetsReady = true;
         captureDirtyTrackingShadow(sessionState);
       }
@@ -2349,8 +2381,7 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
       }
     };
 
-    if (usePatch) {
-      const delta = buildSessionsPatchDelta(sessionState);
+    if (delta) {
       delta.recoverConflicts = sessionPatchDirtySetsReady && !patchCoversWholeState;
       delta.chatBasePresentationRevisions = chatBasePresentationRevisions((delta.chats ?? []).map(chat => chat.id));
       if (sessionRevision != null) delta.baseRevision = sessionRevision;
@@ -2409,6 +2440,12 @@ export function saveSessionsNow(options?: SaveSessionsOptions): SaveSessionsResu
     }
     return 'ok';
   }
+}
+
+/** A promotion may use only the acknowledged, currently clean legacy revision. */
+export function getDurablySavedChatRevision(chatId: string): number | null {
+  if (!isServerStorageMode() || !sessionsHydratedFromServer || dirtyChatIds.has(chatId) || deletedChatIds.has(chatId)) return null;
+  return chatRevisions.get(chatId) ?? null;
 }
 
 /** Flush a parent resume or delegation after its transcript is durably saved. */
@@ -2619,7 +2656,10 @@ export function removeChatById(chatId: string, fallbackModelId: string, deletion
   if (deletion) {
     dirtyChatIds.delete(chatId); chatRevisions.delete(chatId); chatPresentationRevisions.delete(chatId); dirtyTrackingShadow.delete(chatId);
     sessionRevision = Math.max(sessionRevision ?? 0, deletion.revision);
-  } else deletedChatIds.add(chatId);
+  } else {
+    deletedChatIds.add(chatId);
+    chatDirtyVersions.set(chatId, ++entityDirtyVersion);
+  }
   bumpSessionDirtyEpoch();
   if (boardGroup) {
     markGroupDirty(boardGroup.id);

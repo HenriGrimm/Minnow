@@ -628,6 +628,9 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
   if (ctx.chatLinksBlock?.trim()) {
     sections.push(ctx.chatLinksBlock.trim());
   }
+  if (ctx.enrichmentNotice?.trim()) {
+    (options?.turnContext ?? sections).push(ctx.enrichmentNotice.trim());
+  }
 
   return sections.join(PART_SEPARATOR);
 }

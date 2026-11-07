@@ -300,6 +300,20 @@ function renderSettingsForm(status: AgentCliStatus): {
     grid.append(field('Budget per turn (USD)', budget, 'Covers one message and its tool steps. Each new message starts a fresh budget.'));
   }
   form.append(grid);
+  let native: HTMLInputElement | undefined;
+  let savedNative = status.nativeCodingTools === true;
+  if (status.kind === 'codex') {
+    const nativeRow = el('div', 'models-cli-field');
+    const label = el('label', 'models-cli-field__label', 'Use Codex native coding tools (experimental)');
+    const control = createSettingsSwitch({ id: 'codex-native-coding-tools', name: 'nativeCodingTools', checked: savedNative,
+      ariaLabel: 'Use Codex native coding tools (experimental)' });
+    native = control.input; label.htmlFor = native.id;
+    const hint = el('p', 'models-cli-field__hint', 'Let Codex run supported coding tools directly. Minnow permissions still apply. Changes apply to newly submitted turns.');
+    hint.id = 'codex-native-coding-tools-hint'; native.setAttribute('aria-describedby', hint.id);
+    native.dataset.nativeCodingSwitch = '';
+    native.disabled = status.nativeCodingCapability?.available !== true && !savedNative;
+    nativeRow.append(label, control.root, hint); form.append(nativeRow);
+  }
 
   const advanced = el('details', 'models-cli-advanced');
   advanced.open = !status.installed;
@@ -340,6 +354,7 @@ function renderSettingsForm(status: AgentCliStatus): {
     allowUtilityRoles: utility.checked,
     contextWindowTokens: contextWindow.value.trim() ? Number(contextWindow.value) : null,
     ...(budget ? { maxBudgetUsd: budget.value.trim() ? Number(budget.value) : null } : {}),
+    ...(native ? { nativeCodingTools: native.checked } : {}),
   });
   let savedKey = JSON.stringify(readPatch());
   const isCurrent = (): boolean => mounted && views.get(status.kind)?.row.contains(form) === true;
@@ -363,12 +378,14 @@ function renderSettingsForm(status: AgentCliStatus): {
     try {
       const next = await updateSettings(status.kind, patch);
       savedKey = JSON.stringify(patch);
+      if (native) savedNative = patch.nativeCodingTools === true;
       if (isCurrent()) replaceStatus(next);
       if (revision === editRevision) saveStatus.textContent = 'Saved';
       void refreshNormalModelPicker().catch(() => {});
     } catch (error) {
       failed = patch;
       if (revision === editRevision) {
+        if (native) native.checked = savedNative;
         saveStatus.textContent = `Could not save: ${errorMessage(error)}`;
         saveStatus.dataset.tone = 'error';
         retry.hidden = false;
@@ -417,7 +434,10 @@ function renderSettingsForm(status: AgentCliStatus): {
     event.preventDefault();
     if (form.reportValidity()) queue(true);
   });
-  retry.addEventListener('click', () => queue(true));
+  retry.addEventListener('click', () => {
+    if (native && failed?.nativeCodingTools !== undefined) native.checked = failed.nativeCodingTools;
+    queue(true);
+  });
   return { form, flush, busy: () => saving || queued !== undefined || timer !== undefined };
 }
 
@@ -484,6 +504,8 @@ function renderCli(status: AgentCliStatus): CliView {
   actions.append(verify, updateCli, install, signIn, enableLabel);
   connection.append(badges, actions);
   const info = el('p', 'models-cli-field__hint');
+  const nativeInfo = el('p', 'models-cli-field__hint');
+  nativeInfo.dataset.nativeCodingCapability = '';
   const path = el('p', 'models-cli-path');
   const error = el('p', 'models-cli-row__error');
   error.setAttribute('role', 'alert');
@@ -491,7 +513,7 @@ function renderCli(status: AgentCliStatus): CliView {
   const signInView = createAgentCliSignIn(status.kind, status.label, {
     request: deps.login, retry: () => void launchSignIn(status.kind),
   });
-  body.append(connection, signInView.root, info, path, error, settings.form);
+  body.append(connection, signInView.root, info, nativeInfo, path, error, settings.form);
   signInView.root.after(usage.root);
   details.append(summary, body);
   row.append(details);
@@ -503,6 +525,9 @@ function renderCli(status: AgentCliStatus): CliView {
     connection.hidden = signingIn;
     settings.form.hidden = signingIn;
     info.hidden = signingIn;
+    nativeInfo.textContent = next.kind === 'codex' ? next.nativeCodingCapability?.reason
+      ?? 'Codex uses Minnow tools. Native coding tools are unavailable in this version of Minnow.' : '';
+    nativeInfo.hidden = signingIn || next.kind !== 'codex';
     if (next.installed && row.isConnected) usage.start();
     else usage.stop();
     const busy = pending.has(next.kind) || settings.busy() || Boolean(loadController);
@@ -531,7 +556,8 @@ function renderCli(status: AgentCliStatus): CliView {
       || !signInView.root.hidden;
     signIn.disabled = busy;
     for (const input of settings.form.querySelectorAll('input')) {
-      input.disabled = pending.has(next.kind) || Boolean(loadController);
+      input.disabled = pending.has(next.kind) || Boolean(loadController) ||
+        input.dataset.nativeCodingSwitch !== undefined && next.nativeCodingCapability?.available !== true && !input.checked;
     }
     path.textContent = next.binPath ?? '';
     path.hidden = !next.binPath || signingIn;

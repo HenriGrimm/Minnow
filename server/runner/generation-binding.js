@@ -5,6 +5,7 @@ import { resolveFallbackChain } from '../generations/fallback.js';
 import { pumpUpstream } from '../generations/upstream.js';
 import { pumpRouterGeneration } from '../model-routers/generation.js';
 import { validateModelOptions } from '../chats/contracts.js';
+import { assertNativeExecutionContext, bindNativeExecutionContext, bindMinnowOnlyExecution } from '../generations/native-execution-context.js';
 import {
   addLocalSubscriber,
   cancel as cancelGeneration,
@@ -142,6 +143,14 @@ async function startInProcessCompletion(providerId, body, options = {}) {
   const bodyObj = body && typeof body === 'object' ? /** @type {{ model?: string }} */ (body) : {};
   const primaryModelId = typeof bodyObj.model === 'string' ? bodyObj.model : '';
 
+  // An opaque server option, never a field recovered from the request body.
+  if (options.nativeExecution !== undefined) assertNativeExecutionContext(options.nativeExecution, {
+    chatId: options.chatId, providerId: id, modelId: primaryModelId, body: bodyObj, fallbackRole,
+  });
+  if (options.nativeExecution?.projectMessages && Array.isArray(bodyObj.messages)) {
+    body = { ...bodyObj, messages: options.nativeExecution.projectMessages(bodyObj.messages) };
+  }
+
   const fallbackCandidates = resolveFallbackChain({
     role: fallbackRole,
     primaryProviderId: id,
@@ -149,7 +158,7 @@ async function startInProcessCompletion(providerId, body, options = {}) {
     config,
     enabledProviderIds,
   });
-  const candidates = options.exactModel === true && id !== 'minnow-router'
+  const candidates = (options.exactModel === true || options.nativeExecution !== undefined) && id !== 'minnow-router'
     ? [{ providerId: id, modelId: primaryModelId }]
     : fallbackCandidates;
   let agentModelOptions;
@@ -171,6 +180,8 @@ async function startInProcessCompletion(providerId, body, options = {}) {
 
   const signal = options.signal;
   state.routerPreferAvailable = options.routerPreferAvailable === true;
+  if (options.nativeExecution !== undefined) bindNativeExecutionContext(state, options.nativeExecution);
+  else if (options.minnowOnly === true) bindMinnowOnlyExecution(state);
   if (agentModelOptions !== undefined) state.agentModelOptions = agentModelOptions;
   if (options.exactModel === true && id !== 'minnow-router') state.failoverDisabled = true;
   const onAbort = () => cancelGeneration(state);
@@ -216,6 +227,8 @@ export async function postChatCompletionsInProcess(provider, body, signal, optio
     modelCapabilities: options?.modelCapabilities,
     agentModelOptions: options?.agentModelOptions,
     exactModel: options?.exactModel,
+    minnowOnly: options?.minnowOnly,
+    nativeExecution: options?.nativeExecution,
   });
 
   const encoder = new TextEncoder();

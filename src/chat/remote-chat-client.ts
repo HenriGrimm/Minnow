@@ -11,8 +11,10 @@ export interface RemoteChatCommand {
   chatId: string;
   action: RemoteChatAction;
   text?: string;
+  mode?: 'auto' | 'queue';
   itemId?: string;
   attachments?: Attachment[];
+  intent?: import('../../server/chats/contracts').ChatSendIntent;
   patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean; archived?: boolean };
   /** Managed Stop pins the displayed execution before capturing its descendants. */
   executionId?: string;

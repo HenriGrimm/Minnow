@@ -2,6 +2,7 @@ import { STOPPED_TOOL_MSG } from './execute-tool-batch';
 import { AGENT_CHAT_TOOL_IDS, projectAgentConversationTools } from '../../server/chats/tool-catalog.js';
 import { getAgentConversationsCapabilitySync } from '../config/agent-conversations-enabled';
 import { createMcpToolCache } from '../mcp/tool-cache';
+import { createPluginToolCache } from './plugin-tool-cache';
 import { rpcFetch } from '../api/stream-fetch';
 import { resolveStreamingCommandOptions } from './streaming-command-options';
 import { executeTodoWrite } from './todo-tools';
@@ -107,7 +108,7 @@ const PING_TIMEOUT_MS = 2500;
 const mcpToolCache = createMcpToolCache();
 
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
-let cachedPluginToolDefinitions: OpenAIFunctionDefinition[] = [];
+const pluginToolCache = createPluginToolCache();
 
 /** Wait-capability factory; tests swap it so a `wait` call does not sleep. */
 let waitCapabilityFactory: typeof createWaitCapability | null = null;
@@ -145,7 +146,7 @@ export async function detectLocalServer(options?: { refreshTools?: boolean }): P
       await Promise.all([refreshMcpToolCache(false), refreshPluginToolCache()]);
     } else if (!available) {
       mcpToolCache.clear();
-      cachedPluginToolDefinitions = [];
+      pluginToolCache.clear();
     }
     return available;
   } catch {
@@ -216,19 +217,11 @@ export { getLocalServerAvailable as localServerAvailable };
 /** Settings refresh explicitly; turn boundaries reuse the event-driven cache. */
 export const refreshMcpToolCache = mcpToolCache.refresh;
 
-/** Refresh native plugin tool definitions when the local server is available. */
-export async function refreshPluginToolCache(): Promise<void> {
-  try {
-    const response = await fetch('/api/plugins/tools');
-    if (!response.ok) {
-      cachedPluginToolDefinitions = [];
-      return;
-    }
-    const body = (await response.json()) as { tools?: OpenAIFunctionDefinition[] };
-    cachedPluginToolDefinitions = Array.isArray(body.tools) ? body.tools : [];
-  } catch {
-    cachedPluginToolDefinitions = [];
-  }
+/** Turn boundaries reuse discovery; explicit Settings actions force server reload. */
+export async function refreshPluginToolCache(force = false): Promise<void> {
+  // Failures clear tools and log once, without declaring a healthy server
+  // offline or creating a new request on every model round.
+  await pluginToolCache.refresh(force).catch(() => {});
 }
 
 function isAbortError(err: unknown): boolean {
@@ -256,7 +249,7 @@ export async function executeTool(
         invalidateToolConfigCache();
         await loadToolConfigFromStorage();
       }
-      await refreshPluginToolCache();
+      await refreshPluginToolCache(true);
       const { refreshSkillCatalog } = await import('../skills/client');
       await refreshSkillCatalog();
     }
@@ -734,7 +727,7 @@ export function getEnabledToolCatalogEntries(): ToolDefinition[] {
 }
 
 function getEnabledDynamicToolDefinitions(): OpenAIFunctionDefinition[] {
-  return [...mcpToolCache.tools, ...cachedPluginToolDefinitions].filter(
+  return [...mcpToolCache.tools, ...pluginToolCache.tools].filter(
     (def) => isToolEnabled(def.function.name),
   );
 }

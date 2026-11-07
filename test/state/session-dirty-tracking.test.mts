@@ -265,6 +265,7 @@ describe('session dirty tracking (B.1/B.2)', () => {
 
   test('an unmarked mutation is repaired so it still reaches the server (MIN-794)', async () => {
     setStorageModeForTests('server');
+    setDirtyTrackingVerifierForcedForTests(true);
     const state = baseState();
     setSessionStateForTests(state);
     captureDirtyTrackingShadowForTests();
@@ -278,8 +279,8 @@ describe('session dirty tracking (B.1/B.2)', () => {
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     };
 
-    // Bypasses touchChat on purpose. Production trusts the dirty set, so without the
-    // repair this edit is simply never written.
+    // Bypasses touchChat on purpose. The development diagnostic repairs this miss;
+    // production deliberately does not serialize chats to find unmarked edits.
     (state.chats[0] as Chat).name = 'mutated without touch';
     saveSessionsNow();
     await waitForSessionSaveForTests();

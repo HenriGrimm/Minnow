@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   enableChatWorktreeOnSend,
+  deferredChatWorktreeChoice,
   formatComposerBranchLabel,
   formatComposerRunTargetLabel,
   isChatWorktreeMode,
@@ -22,6 +23,48 @@ import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 describe('chat-worktree helpers', () => {
+  test('managed Retry and Local use canonical endpoints and never the legacy worktree mutator', async () => {
+    const previousFetch = globalThis.fetch, calls: { url: string; body?: any }[] = [];
+    const chat = { id: 'managed', workspacePath: '/repo', chatCommandVersion: 1, worktreeSetupRequired: true } as any;
+    globalThis.fetch = (async (url, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({ url: String(url), body });
+      if (!body) return Response.json({ chat: { id: 'managed', workspacePreparation: { intent: { id: 'intent-id' } } } });
+      assert.equal(body.expectedIntentId, 'intent-id');
+      return Response.json({ chat: body.action === 'retry'
+        ? { id: 'managed', worktreeRoot: '/isolated', gitBranch: 'minnow/test', chatWorktreeManaged: true }
+        : { id: 'managed', worktreeSetupRequired: false, worktreeEnabled: false } });
+    }) as typeof fetch;
+    try {
+      assert.deepEqual(deferredChatWorktreeChoice(chat), { kind: 'automatic' });
+      assert.equal((await applyChatRunTargetChoice(chat, { kind: 'automatic' })).ok, true);
+      assert.equal(chat.worktreeRoot, '/isolated');
+      assert.equal(deferredChatWorktreeChoice(chat), undefined);
+      assert.equal((await applyChatRunTargetChoice(chat, { kind: 'local' })).ok, true);
+      assert.equal(chat.worktreeRoot, undefined);
+      assert.equal(chat.worktreeSetupRequired, undefined);
+      assert.deepEqual(calls.filter(call => call.body).map(call => call.body.action), ['retry', 'local']);
+      assert.ok(calls.every(call => call.url.startsWith('/api/chats/managed')));
+      assert.equal((await applyChatRunTargetChoice(chat, { kind: 'attach', path: '/unsafe' })).ok, false);
+      assert.equal(calls.length, 4, 'unsupported canonical attach has no filesystem request');
+    } finally { globalThis.fetch = previousFetch; }
+  });
+
+  test('managed recovery failure retains isolation flags without Local fallback', async () => {
+    const previousFetch = globalThis.fetch;
+    const chat = { id: 'failed-managed', workspacePath: '/repo', chatCommandVersion: 1, worktreeSetupRequired: true } as any;
+    globalThis.fetch = (async (_url, init) => init?.body
+      ? Response.json({ error: { message: 'Inspect the retained checkout before retrying' } }, { status: 409 })
+      : Response.json({ chat: { id: chat.id, workspacePreparation: { intent: { id: 'intent-id' } } } })) as typeof fetch;
+    try {
+      const result = await applyChatRunTargetChoice(chat, { kind: 'automatic' });
+      assert.equal(result.ok, false);
+      assert.match(result.error!, /Inspect the retained checkout/);
+      assert.equal(chat.worktreeSetupRequired, true);
+      assert.equal(chat.worktreeRoot, undefined);
+    } finally { globalThis.fetch = previousFetch; }
+  });
+
   test('deferred selection survives normalization without creating a checkout', () => {
     setWorkspaceFromServer({ path: '/repo', label: 'repo', isDefault: false });
     const chat = { id: 'deferred-chat', workspacePath: '' } as never;

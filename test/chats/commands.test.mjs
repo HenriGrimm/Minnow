@@ -63,6 +63,118 @@ async function fixture(t, options = {}) {
     modelCalls: () => modelCalls };
 }
 
+test('Stop during asynchronous workspace intent capture commits no late input or allocation', async t => {
+  const capturing = deferred(), resume = deferred(); let allocations = 0;
+  const f = await fixture(t, {
+    captureWorkspacePreparation: async () => { capturing.resolve(); await resume.promise; return { id: 'intent' }; },
+    admitWorkspacePreparation: () => { allocations++; },
+  });
+  const pending = f.service.send(f.caller, { chatId: 'target', message: 'Do not execute after Stop', clientRequestId: 'workspace-capture-stop' });
+  await capturing.promise;
+  await f.service.stop(f.caller, { chatId: 'target', clientRequestId: 'stop-while-capturing-workspace' });
+  resume.resolve();
+  await assert.rejects(pending, hasCode('ownership_conflict'));
+  assert.equal(allocations, 0);
+  assert.equal(f.repository.listCommands({ chatId: 'target' }).filter(row => row.command.kind === 'send').length, 0);
+});
+
+test('workspace intent admission is atomic with the command and lost receipts never recapture it', async t => {
+  let f, captures = 0, admissions = 0;
+  const intent = { version: 1, kind: 'automatic', id: 'workspace-intent', chatId: 'target', sourceWorkspaceId: 'main' };
+  f = await fixture(t, {
+    captureWorkspacePreparation: async target => {
+      captures++;
+      assert.equal(target.chat.id, 'target');
+      assert.equal(target.scope.workspaceId, 'main');
+      return intent;
+    },
+    admitWorkspacePreparation: (chatId, captured) => {
+      admissions++;
+      assert.equal(f.db.inTransaction, true, 'workspace state and command must share a transaction');
+      assert.deepEqual(captured, intent);
+      f.repository.configureChat(chatId, { name: 'Workspace intent admitted' });
+    },
+  });
+  const request = { chatId: 'target', message: 'Prepare before inference', clientRequestId: 'workspace-atomic' };
+  const admit = f.repository.admitCommand;
+  f.repository.admitCommand = () => { throw new Error('Injected command admission failure'); };
+  await assert.rejects(f.service.send(f.caller, request), /Injected command admission failure/);
+  assert.equal(f.repository.getChat('target').name, 'target', 'failed command rolls back workspace state');
+  assert.equal(f.repository.listCommands({ chatId: 'target' }).length, 0);
+  f.repository.admitCommand = admit;
+  const receipt = await f.service.send(f.caller, request);
+  const record = f.repository.getCommand(receipt.commandId);
+  assert.deepEqual(record.captured.workspacePreparation, intent);
+  assert.equal(record.captured.scope.workspaceId, 'main', 'allocation/rebinding belongs to execution preparation');
+  assert.equal(f.repository.getChat('target').name, 'Workspace intent admitted');
+  assert.equal((await f.service.send(f.caller, request)).replayed, true);
+  assert.equal(captures, 2, 'one failed attempt and one accepted attempt; receipt replay skips capture');
+  assert.equal(admissions, 2, 'receipt replay skips workspace admission');
+});
+
+test('canonical first input assigns a bounded fallback title without waiting for utility inference or overwriting a human name', async t => {
+  const f = await fixture(t);
+  f.repository.configureChat('target', { name: 'New chat' });
+  const message = '  Investigate    the renderer stalls and preserve every durable input.  ';
+  const accepted = await f.service.send(f.caller, { chatId: 'target', message, clientRequestId: 'first-title' });
+  assert.equal(f.repository.getChat('target').name, 'Investigate the renderer stalls and pres');
+  assert.equal(f.repository.getCommand(accepted.commandId).captured.titleUpdate.expectedName, 'New chat');
+  const again = await f.service.send(f.caller, { chatId: 'target', message, clientRequestId: 'first-title' });
+  assert.equal(again.replayed, true);
+  f.repository.configureChat('sender', { name: 'Human title' });
+  await f.service.send(f.caller, { chatId: 'sender', message: 'Another title candidate', clientRequestId: 'preserve-human-title' });
+  assert.equal(f.repository.getChat('sender').name, 'Human title');
+});
+
+test('native preferences are immutable command choices, not live queue grants', async t => {
+  let enabled = false;
+  const f = await fixture(t, { captureNativeSelection: selection => ({ version: 1,
+    requestedMode: enabled ? 'native' : 'minnow', effectiveMode: enabled ? 'native' : 'minnow',
+    providerId: selection.providerId, modelId: selection.modelId, cliVersion: '0.166.0', networkAccess: 'off' }) });
+  const first = await f.service.send(f.caller, { chatId: 'target', message: 'Use captured Minnow mode', clientRequestId: 'captured-minnow' });
+  enabled = true;
+  const second = await f.service.send(f.caller, { chatId: 'target', message: 'Use captured native mode', clientRequestId: 'captured-native' });
+  enabled = false;
+  assert.equal(f.repository.getCommand(first.commandId).captured.nativeExecution.requestedMode, 'minnow');
+  assert.equal(f.repository.getCommand(second.commandId).captured.nativeExecution.requestedMode, 'native');
+  const replay = await f.service.send(f.caller, { chatId: 'target', message: 'Use captured native mode', clientRequestId: 'captured-native' });
+  assert.equal(replay.replayed, true);
+  assert.equal(f.repository.getCommand(second.commandId).captured.nativeExecution.requestedMode, 'native');
+});
+
+test('a directory replacement during model selection cannot be admitted under the old checkout', async t => {
+  const selecting = deferred(), resume = deferred();
+  const f = await fixture(t, { resolveModelSelection: async ({ selection }) => {
+    selecting.resolve(); await resume.promise; return selection;
+  } });
+  let checkoutIdentity = 'original-directory';
+  const resolve = f.context.resolveTarget;
+  f.context.resolveTarget = async (...args) => ({ ...await resolve(...args), checkoutIdentity });
+  const pending = f.service.send(f.caller, { chatId: 'target', message: 'Original checkout only', clientRequestId: 'identity-race' });
+  await selecting.promise;
+  checkoutIdentity = 'replacement-directory'; resume.resolve();
+  await assert.rejects(pending, hasCode('workspace_denied'));
+  assert.equal(f.repository.listCommands({ chatId: 'target' }).length, 0);
+});
+
+test('admission preserves verified checkout identity while a command waits for its execution host', async t => {
+  const f = await fixture(t);
+  const resolve = f.context.resolveTarget;
+  let checkoutIdentity = 'original-directory';
+  f.context.resolveTarget = async (...args) => ({ ...await resolve(...args), checkoutIdentity });
+  const receipt = await f.service.send(f.caller, { chatId: 'target', message: 'Bound checkout', clientRequestId: 'identity-capture' });
+  await f.service.idle();
+  assert.equal(f.repository.getCommand(receipt.commandId).captured.checkoutIdentity, 'original-directory');
+  checkoutIdentity = 'replacement-directory';
+  let executions = 0;
+  f.host(async () => { executions++; return { outcome: 'no_report' }; });
+  await f.service.idle();
+  const held = f.repository.getCommand(receipt.commandId);
+  assert.equal(executions, 0);
+  assert.equal(held.held, true);
+  assert.equal(held.error.code, 'workspace_denied');
+});
+
 test('durable acceptance starts one host and repeated keys return the original captured model before catalog resolution', async t => {
   const f = await fixture(t);
   let turns = 0;
@@ -129,9 +241,10 @@ test('dispose drains observers and follow-on observer work before their reposito
   assert.equal(disposed, true); assert.equal(reads, 2); assert.deepEqual(f.errors, []);
 });
 
-test('first admission captures an immutable profile without taking unflushed legacy history ownership', async t => {
+test('explicit idle promotion captures an immutable profile and rejects direct legacy admission', async t => {
   let external = true, captures = 0;
   const f = await fixture(t, { hasExternalOwner: () => external,
+    ordinaryFeature: () => ({ admissionEnabled: true }),
     captureProfile: async ({ target, selection }) => {
       captures++;
       return { profileId: 'captured-root', profileVersion: 1,
@@ -140,21 +253,25 @@ test('first admission captures an immutable profile without taking unflushed leg
   });
   f.db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('target');
   const request = { chatId: 'target', message: 'Continue after the original owner', clientRequestId: 'capture-root' };
+  await assert.rejects(f.service.send(f.caller, request), hasCode('capability_unavailable'));
+  const promotion = { chatId: 'target', expectedRevision: f.repository.getChat('target').revision, clientRequestId: 'promote-root' };
+  await assert.rejects(f.service.promote(f.caller, promotion), hasCode('ownership_conflict'));
+  assert.equal(captures, 0);
+  external = false; await f.service.promote(f.caller, promotion);
   const accepted = await f.service.send(f.caller, request);
   await f.service.idle('target');
-  assert.equal(captures, 1);
-  assert.equal(f.repository.getChat('target').chatCommandVersion, undefined);
+  assert.equal(captures, 2, 'promotion captures the role profile; send captures its own accepted settings');
+  assert.equal(f.repository.getChat('target').chatCommandVersion, 1);
   const command = f.repository.getCommand(accepted.commandId);
   assert.deepEqual(command.command.profileReference, { profileId: 'captured-root', profileVersion: 1 });
   assert.equal(command.captured.profile.snapshot.prompt, 'Original admission prompt');
   f.repository.saveProfile('target', { profileId: 'captured-root', profileVersion: 2,
     snapshot: { policy: f.policy, modelSelection: { providerId: 'other', modelId: 'later' }, prompt: 'Later configuration' } });
   assert.equal((await f.service.send(f.caller, request)).replayed, true);
-  assert.equal(captures, 1);
+  assert.equal(captures, 2, 'promotion captures the role profile; send captures its own accepted settings');
   let executing;
   f.host(async input => { executing = input.execution; f.appendInitial(input); return { outcome: 'no_report' }; });
-  await f.service.idle('target'); assert.equal(executing, undefined);
-  external = false; await f.service.kick('target');
+  await f.service.idle('target');
   assert.equal(executing.captured.profile.snapshot.prompt, 'Original admission prompt');
   assert.equal(executing.captured.profile.profileVersion, 1);
   assert.equal(f.repository.getChat('target').chatCommandVersion, 1);
@@ -323,18 +440,23 @@ test('a restricted Plan sender cannot dispatch into a broader target or change a
   await assert.rejects(f.service.send(f.caller, { chatId: 'target', message: 'Model override', modelSelection: { providerId: 'evil', modelId: 'evil' } }), hasCode('invalid_request'));
 });
 
-test('legacy external ownership delays managed takeover until the old transcript flush completes', async t => {
+test('legacy external ownership requires explicit promotion after the old transcript flush completes', async t => {
   let external = true;
-  const f = await fixture(t, { hasExternalOwner: () => external });
+  const f = await fixture(t, { hasExternalOwner: () => external, ordinaryFeature: () => ({ admissionEnabled: true }),
+    captureProfile: ({ target, selection }) => ({ profileId: 'promoted', profileVersion: 1, snapshot: { policy: target.policy, modelSelection: selection } }) });
   f.db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('target');
   let executions = 0;
   f.host(async (input) => { executions += 1; f.appendInitial(input); return { outcome: 'no_report' }; });
-  const queued = await f.service.send(f.caller, { chatId: 'target', message: 'After legacy work' });
+  await assert.rejects(f.service.send(f.caller, { chatId: 'target', message: 'After legacy work' }), hasCode('capability_unavailable'));
   await f.service.idle('target');
   assert.equal(f.repository.getChat('target').chatCommandVersion, undefined);
   assert.equal(executions, 0);
   external = false;
   await f.service.kick('target');
+  assert.equal(f.repository.getChat('target').chatCommandVersion, undefined, 'no implicit idle takeover');
+  await f.service.promote(f.caller, { chatId: 'target', expectedRevision: f.repository.getChat('target').revision, clientRequestId: 'legacy-drained' });
+  const queued = await f.service.send(f.caller, { chatId: 'target', message: 'After legacy work' });
+  await f.service.idle('target');
   assert.equal(f.repository.getChat('target').chatCommandVersion, 1);
   assert.equal(f.repository.getCommand(queued.commandId).state, 'settled');
   assert.equal(executions, 1);
@@ -619,4 +741,58 @@ test('queued input cannot follow a replacement Git project occupying the same ch
     expectedRevision: blocked.revision, clientRequestId: 'resume-restored-checkout' });
   await f.service.idle('target');
   assert.equal(calls, 1); assert.equal(f.repository.getCommand(admitted.commandId).state, 'settled');
+});
+
+test('ordinary intent and accepted settings survive lost receipts and queued configuration changes', async t => {
+  let snapshots = 0, skills = 0;
+  const f = await fixture(t, {
+    captureProfile: ({ target, selection }) => ({ profileId: 'profile-' + target.chat.id, profileVersion: 1,
+      snapshot: { policy: target.policy, modelSelection: selection, samplerSentinel: ++snapshots } }),
+    captureTurnIntent: async intent => ({ intent, skillBody: 'captured skill ' + (++skills), uiDesigner: null }),
+  });
+  const input = { chatId: 'target', message: 'Inspect the issue', clientRequestId: 'context-receipt', mode: 'queue',
+    intent: { version: 1, skill: { id: 'git-commit', source: 'pinned' }, context: 'Surface snapshot',
+      attachments: [{ id: 'ref', name: 'a.ts', kind: 'codeRef', size: 10, workspacePath: 'src/a.ts' }] } };
+  const first = await f.service.send(f.caller, input);
+  const repeated = await f.service.send(f.caller, input);
+  assert.equal(first.commandId, repeated.commandId); assert.equal(repeated.replayed, true);
+  assert.equal(skills, 1); assert.equal(snapshots, 1);
+  const record = f.repository.getCommand(first.commandId);
+  assert.deepEqual(record.command.intent, input.intent);
+  assert.equal(record.captured.turnIntent.skillBody, 'captured skill 1');
+  assert.equal(record.captured.turnSettings.samplerSentinel, 1);
+  const next = await f.service.send(f.caller, { ...input, clientRequestId: 'next-context' });
+  assert.equal(f.repository.getCommand(next.commandId).captured.turnSettings.samplerSentinel, 2);
+  await assert.rejects(f.service.send(f.caller, { ...input, intent: { ...input.intent, context: 'different' } }), hasCode('idempotency_conflict'));
+  await assert.rejects(f.service.send(f.caller, { ...input, clientRequestId: 'injected', intent: { version: 1, systemPrompt: 'override' } }), hasCode('invalid_request'));
+});
+
+test('explicit first-turn title seeds apply at the requested durable boundary without replacing later human names', async t => {
+  const f = await fixture(t); const executing = deferred(), finish = deferred();
+  f.host(async input => { f.appendInitial(input); executing.resolve(); await finish.promise; return { outcome: 'no_report' }; });
+  await f.service.send(f.caller, { chatId: 'target', message: 'Issue details', clientRequestId: 'deferred-title',
+    intent: { version: 1, titleSeed: 'Ticket title', deferTitleUntilTurnEnd: true } });
+  await executing.promise;
+  assert.equal(f.repository.getChat('target').name, 'target');
+  finish.resolve(); await f.service.idle('target');
+  assert.equal(f.repository.getChat('target').name, 'Ticket title');
+});
+
+test('human sends without optional intent still capture current settings and designer skill selects its server role', async t => {
+  const roles = []; let version = 0;
+  const f = await fixture(t, {
+    captureProfile: ({ target, selection }) => {
+      roles.push(target.chat.workAgentId);
+      return { profileId: 'ordinary-settings', profileVersion: 1, snapshot: { policy: target.policy, modelSelection: selection, setting: ++version } };
+    },
+    captureTurnIntent: async intent => ({ intent, skillBody: 'designer instructions', uiDesigner: { active: true, agentId: 'ui-designer' } }),
+  });
+  await f.service.send(f.caller, { chatId: 'target', message: 'First', clientRequestId: 'settings-one' });
+  const second = await f.service.send(f.caller, { chatId: 'target', message: 'Second', clientRequestId: 'settings-two' });
+  assert.equal(f.repository.getCommand(second.commandId).captured.turnSettings.setting, 2);
+  const designer = await f.service.send(f.caller, { chatId: 'target', message: 'Layout', clientRequestId: 'designer-role',
+    intent: { version: 1, skill: { id: 'ui-designer', source: 'slash' } } });
+  assert.equal(roles[2], 'ui-designer');
+  assert.equal(f.repository.getCommand(designer.commandId).captured.turnSettings.setting, 3);
+  assert.notEqual(f.repository.getChat('target').workAgentId, 'ui-designer', 'temporary role cannot change future chat authority');
 });

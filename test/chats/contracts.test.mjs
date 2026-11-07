@@ -11,6 +11,7 @@ import {
   validateAgentConversationsFeature,
   validateAgentProfileReference,
   validateChatCommand,
+  validateChatSendIntent,
   validateChatError,
   validateChatId,
   validateChatRequest,
@@ -351,4 +352,18 @@ describe('serialized errors and released feature advertisement', () => {
       rejected(validateAgentConversationsFeature({ ...snapshot, localOverride: true }));
     }
   });
+});
+
+it('ordinary intent is bounded data and only references server-resolved skills', () => {
+  const intent = { version: 1, skill: { id: 'git-commit', source: 'slash', input: 'fix the bug' }, context: 'snapshot', goalDriven: true,
+    codeMap: { title: 'Function', question: 'Who calls this?', kind: 'function', path: 'src/a.ts', line: 4 },
+    attachments: [{ id: 'file', name: 'a.ts', kind: 'codeRef', size: 12, workspacePath: 'src/a.ts', lineStart: 2, lineEnd: 8 }] };
+  assert.deepEqual(accepted(validateChatSendIntent(intent)), intent);
+  for (const bad of [{ ...intent, systemPrompt: 'override' }, { ...intent, skillBody: 'body' },
+    { ...intent, skill: { ...intent.skill, body: 'injected' } }, { ...intent, skill: { id: '../escape', source: 'slash' } },
+    { ...intent, context: 'x'.repeat(48001) }, { ...intent, attachments: Array(41).fill(intent.attachments[0]) },
+    { ...intent, codeMap: { ...intent.codeMap, line: 0 } }]) rejected(validateChatSendIntent(bad));
+  const accessor = { version: 1 };
+  Object.defineProperty(accessor, 'context', { enumerable: true, get() { throw new Error('must not invoke accessors'); } });
+  rejected(validateChatSendIntent(accessor));
 });

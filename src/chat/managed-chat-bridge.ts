@@ -11,17 +11,29 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   options: { createSource?: (url: string) => Pick<StreamEventSource, 'onopen' | 'onmessage' | 'close'> } = {}): () => void {
   let source: Pick<StreamEventSource, 'onopen' | 'onmessage' | 'close'> | undefined, watched = '', disposed = false;
   let reconciliation: AbortController | undefined;
+  let connection = new AbortController();
+  let connectionVersion = 0;
   const awaitingBaseline = new Set<string>();
   const pending = new Map<string, Promise<void>>();
-  const observeFrame = (frame: SharedChatFrame, baseline = false) => observer.receive(frame).then(() => { if (!disposed && frame.fields) notifyManagedChatMetadata(frame.chatId, { baseline }); }).catch(async () => {
-    if (disposed) return;
+  function canonicalFields(chatId: string, fields?: Record<string, unknown>): Record<string, unknown> | null | undefined {
+    if (!fields || findChatById(chatId)?.chatCommandVersion !== 1 || !Object.hasOwn(fields, 'chatCommandVersion') || fields.chatCommandVersion === 1) return fields;
+    // An old raw notice/receipt can arrive after local promotion. Ownership is
+    // monotonic; rollback must never turn this view back into a transcript writer.
+    return null;
+  }
+  const observeFrame = (frame: SharedChatFrame, baseline: boolean | undefined, isCurrent: () => boolean) => observer.receive(frame).then(() => { if (isCurrent() && frame.fields) notifyManagedChatMetadata(frame.chatId, { baseline }); }).catch(async () => {
+    if (!isCurrent()) return;
+    const signal = connection.signal;
     try {
-      const response = await fetch(`/api/chats/${encodeURIComponent(frame.chatId)}`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+      const response = await fetch(`/api/chats/${encodeURIComponent(frame.chatId)}`, { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
       if (response.ok) {
-        if (disposed) return;
-        const restored = (await response.json()).frame;
+        const raw = (await response.json()).frame;
+        if (!isCurrent() || signal.aborted) return;
+        const fields = raw && canonicalFields(raw.chatId, raw.fields);
+        if (fields === null) return;
+        const restored = raw && { ...raw, fields };
         await observer.receive(restored);
-        if (!disposed && restored?.fields) notifyManagedChatMetadata(restored.chatId, { baseline: true });
+        if (isCurrent() && restored?.fields) notifyManagedChatMetadata(restored.chatId, { baseline: true });
       }
     } catch { /* Reconnection hydrates the authoritative prefix. */ }
   });
@@ -29,12 +41,14 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     if (!message.chatId) return;
     if (!findChatById(message.chatId) && message.fields?.chatCommandVersion !== 1) await refreshSessionsFromServer();
     if (!isCurrent()) return;
+    const fields = canonicalFields(message.chatId, message.fields);
+    if (fields === null) return;
     if (message.fields) {
       const attentionOnly = Object.keys(message.fields).every(key => key === 'agentRequestSummary');
       if (attentionOnly) applySharedChatAttention(message.chatId, message.fields);
       else {
         const isNewShell = !findChatById(message.chatId);
-        const chat = applySharedChatFrame(message.chatId, message.fields);
+        const chat = applySharedChatFrame(message.chatId, fields);
         if (chat && isNewShell) chat.historyLoaded = false;
       }
     }
@@ -52,7 +66,9 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     if (Object.hasOwn(frame?.fields ?? message.fields ?? {}, 'agentExecution')) awaitingBaseline.delete(chatId);
     const apply = async () => {
       if (!isCurrent()) return;
-      if (frame) await observeFrame(frame, baseline);
+      const fields = canonicalFields(chatId, frame?.fields ?? message.fields);
+      if (fields === null) return;
+      if (frame) await observeFrame({ ...frame, fields }, baseline, isCurrent);
       else await notice(message, baseline, isCurrent);
     };
     const previous = pending.get(chatId);
@@ -81,12 +97,13 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     // Ordinary roots also receive summaries; watching them permits the first
     // managed delivery to hydrate in place after a legacy turn has drained.
     if (!force && source && watched === candidate) return;
-    watched = candidate; source?.close(); reconciliation?.abort();
+    watched = candidate; source?.close(); reconciliation?.abort(); connection.abort(); connection = new AbortController();
     const url = `/api/chats/events${watched ? `?chatId=${encodeURIComponent(watched)}` : ''}`;
     source = options.createSource?.(url) ?? new StreamEventSource(url);
     const connected = source;
     source.onopen = () => {
       if (disposed || source !== connected) return;
+      connectionVersion++; connection.abort(); connection = new AbortController();
       reconciliation?.abort(); reconciliation = new AbortController();
       awaitingBaseline.clear();
       for (const chat of sessionState?.chats ?? []) {
@@ -100,7 +117,10 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
       try {
         const message = JSON.parse(event.data);
         if (message.kind === 'baseline-end' && reconciliation) void reconcileBackground(reconciliation.signal);
-        else if (message.kind === 'frame' || message.kind === 'chat-changed') receive(message, () => !disposed && source === connected);
+        else if (message.kind === 'frame' || message.kind === 'chat-changed') {
+          const version = connectionVersion;
+          receive(message, () => !disposed && source === connected && version === connectionVersion);
+        }
       } catch { /* A complete snapshot follows reconnect. */ }
     };
   }
@@ -117,5 +137,5 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   window.addEventListener('minnow:managed-chat-change', accepted);
   window.addEventListener('minnow:managed-chat-deleted', stopRemote);
   connect();
-  return () => { disposed = true; reconciliation?.abort(); source?.close(); unwatch(); unworkspace(); window.removeEventListener('minnow:managed-chat-change', accepted); window.removeEventListener('minnow:managed-chat-deleted', stopRemote); };
+  return () => { disposed = true; reconciliation?.abort(); connection.abort(); source?.close(); unwatch(); unworkspace(); window.removeEventListener('minnow:managed-chat-change', accepted); window.removeEventListener('minnow:managed-chat-deleted', stopRemote); };
 }

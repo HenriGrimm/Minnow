@@ -12,6 +12,7 @@ import { afterEach, describe, test } from 'node:test';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { patchSessions } from '../../src/config/api-client.ts';
 import {
+  applySharedChatFrame,
   createEmptyChatObject,
   getSessionDirtyTrackingForTests,
   ensureChatHistoryLoaded,
@@ -604,4 +605,31 @@ describe('multi-window session writes', () => {
     assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
     assert.deepEqual(store.recoveries, ['Theirs updated elsewhere']);
   });
+});
+
+
+test('a pre-promotion summary cannot downgrade a canonical root or replace its transcript', async () => {
+  const store = new FakeSessionsStore(); await bootWindow(store);
+  const active = sessionState!.chats.find(chat => chat.id === MINE)!;
+  applySharedChatFrame(MINE, { chatCommandVersion: 1 }, { start: 0, length: 1, messages: [{ role: 'assistant', content: 'Canonical reply' }] });
+  store.advanceChat(MINE);
+  assert.deepEqual(await refreshSessionsFromServer(), { changed: false, activeChanged: false });
+  assert.equal(active.chatCommandVersion, 1); assert.equal(active.history[0].content, 'Canonical reply');
+  assert.equal(applySharedChatFrame(MINE, { chatCommandVersion: null }, { start: 0, length: 0, messages: [] }), undefined);
+  assert.equal(active.history.length, 1);
+});
+
+test('promotion during a pending legacy history read fences its late summary replacement', async () => {
+  const store = new FakeSessionsStore(); await bootWindow(store);
+  const active = sessionState!.chats.find(chat => chat.id === MINE)!;
+  let resolve!: (response: Response) => void, started!: () => void;
+  const reading = new Promise<void>(done => { started = done; }), fetchStore = globalThis.fetch;
+  store.advanceChat(MINE);
+  globalThis.fetch = (input, init) => String(input).includes(`/history/${MINE}`)
+    ? new Promise<Response>(done => { resolve = done; started(); }) : fetchStore(input, init);
+  const pending = refreshSessionsFromServer(); await reading;
+  applySharedChatFrame(MINE, { chatCommandVersion: 1 }, { start: 0, length: 1, messages: [{ role: 'assistant', content: 'New server reply' }] });
+  resolve(Response.json({ history: [{ role: 'user', content: 'Old renderer transcript' }] }));
+  assert.deepEqual(await pending, { changed: false, activeChanged: false });
+  assert.equal(active.chatCommandVersion, 1); assert.equal(active.history[0].content, 'New server reply');
 });

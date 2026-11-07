@@ -9,7 +9,7 @@
 import '../tools/install-dom-before-imports.mts';
 
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import type {
   AssistantToolCallMessage,
@@ -133,7 +133,20 @@ describe('stopped assistant affordance', () => {
 });
 
 describe('P10-E runChatTurn stopped persist (MIN-770)', () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    // Keep configuration preparation real, but never require a live API merely
+    // to exercise the provider/Stop settlement boundary.
+    globalThis.fetch = async input => {
+      const url = String(input);
+      if (url.includes('/api/models/cached')) return Response.json({ models: [] });
+      if (url.includes('/api/models/serve')) return Response.json({ serves: [] });
+      if (url.includes('/api/memory/')) return Response.json({ enabled: false });
+      return Response.json({});
+    };
+  });
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     resetRunTurnForTests();
     getChatAbort(CHAT_ID)?.abort();
     setChatAbort(CHAT_ID, null);

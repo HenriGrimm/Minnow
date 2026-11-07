@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { invalidateNativePolicyBeforeWrite, invalidateNativeProviderBeforeWrite } from '../chats/native-policy-monitor.js';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
@@ -166,7 +167,9 @@ async function writeProfile(id, profile) {
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, 'profile.json');
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  const previous = await readProfile(id).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
   await fs.writeFile(tmp, `${JSON.stringify(profile, null, 2)}\n`, 'utf8');
+  invalidateNativeProviderBeforeWrite(previous, profile);
   await fs.rename(tmp, file);
 }
 
@@ -178,6 +181,7 @@ async function writeSecrets(id, secrets) {
   const dir = providerDir(id);
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, 'secrets.json');
+  invalidateNativePolicyBeforeWrite(`providers/${id}/secrets.json`);
   await writeEncryptedJsonFile(file, secrets);
   await chmodSecrets(file);
 }
@@ -755,6 +759,7 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     'clearCliToken',
     'contextWindowTokens',
     'interactive',
+    'nativeCodingTools',
   ]);
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) throw new Error(`Unsupported agent CLI setting: ${key}`);
@@ -769,15 +774,15 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     throw new Error('Invalid clearCliToken');
   }
 
-  const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, false);
   const patch = validateAgentCliProfile(
-    Object.fromEntries(
+    { kind: defaults.kind, ...Object.fromEntries(
       Object.entries(body).filter(([key]) =>
-        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens', 'interactive'].includes(key),
+        ['binPath', 'allowUtilityRoles', 'maxConcurrent', 'maxBudgetUsd', 'contextWindowTokens', 'interactive', 'nativeCodingTools'].includes(key),
       ),
-    ),
+    ) },
     { partial: true },
   );
+  const { profile, secrets } = await ensureAgentCliProvider(defaults.kind, false);
   profile.agentCli = validateAgentCliProfile({
     ...profile.agentCli,
     ...patch,
@@ -790,7 +795,9 @@ export async function updateAgentCliProviderSettings(kind, raw) {
     secrets.cliToken = body.cliToken.trim();
   }
   await writeProfile(defaults.id, profile);
-  await writeSecrets(defaults.id, secrets);
+  if (body.clearCliToken === true || typeof body.cliToken === 'string' && body.cliToken.trim()) {
+    await writeSecrets(defaults.id, secrets);
+  }
   // Load lazily: runner catalog resolution itself depends on the provider store.
   const { invalidateContextWindowCatalog } = await import('../models/context-window.js');
   invalidateContextWindowCatalog(defaults.id);

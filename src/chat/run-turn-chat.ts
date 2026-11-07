@@ -1331,6 +1331,18 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     };
 
+    const timingStartedAt = Date.now();
+    const recordTiming = (event: Extract<import('../../server/runner/run-turn').TurnEvent, { type: 'runner_timing' }>): void => {
+      if (chat.runnerTiming?.startedAt !== timingStartedAt || !Array.isArray(chat.runnerTiming.events) || !chat.runnerTiming.totals) {
+        chat.runnerTiming = { startedAt: timingStartedAt, events: [], totals: {}, dropped: 0 };
+      }
+      const timing = chat.runnerTiming;
+      timing.events.push(event);
+      if (timing.events.length > 256) { timing.events.shift(); timing.dropped++; }
+      const total = timing.totals[event.stage] ??= { count: 0, durationMs: 0 };
+      total.count++; total.durationMs += event.durationMs;
+      touchChat(chat); // Existing round/final saves; never a per-token write.
+    };
     painter = createChatTurnEventPainter({
       wrap: streamRow.wrap,
       bubble: streamRow.bubble,
@@ -1339,6 +1351,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       thoughtController: liveThoughts,
       mount: getActiveChatMountElement(),
       chatId: chat.id,
+      onTiming: recordTiming,
       revealProse,
       onActivity: () => notifyChatStreamActivity(chat.id),
       onCoalescedPaint: (snap) => {
@@ -1404,16 +1417,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       cliTurnContext = composed.cliTurnContext;
       injectionBlocks = composed.injectionBlocks;
     } catch (err) {
-      if (err instanceof Error && /setup exploded/i.test(err.message)) throw err;
-      if (validAttachments.some((a) => {
-        try {
-          return Boolean(a.workspacePath);
-        } catch (inner) {
-          throw inner;
-        }
-      })) {
-        throw err;
-      }
+      // Optional enrichment handles its own deadline/omission. A composition
+      // failure here includes required documents and must not become a send
+      // with a generic fallback prompt, even when there are no attachments.
+      throw err;
     }
 
     if (pushUser) {
@@ -1669,15 +1676,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       },
       onEvent: (event) => {
         if (event.type === 'runner_timing') {
-          if (chat.runnerTiming?.startedAt !== event.startedAt || !Array.isArray(chat.runnerTiming.events) || !chat.runnerTiming.totals) {
-            chat.runnerTiming = { startedAt: event.startedAt, events: [], totals: {}, dropped: 0 };
-          }
-          const timing = chat.runnerTiming;
-          timing.events.push(event);
-          if (timing.events.length > 256) { timing.events.shift(); timing.dropped++; }
-          const total = timing.totals[event.stage] ??= { count: 0, durationMs: 0 };
-          total.count++; total.durationMs += event.durationMs;
-          touchChat(chat); // Existing round/final saves persist this; no per-event save storm.
+          recordTiming(event);
           return;
         }
         chatStore.observe(event);

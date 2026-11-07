@@ -22,6 +22,12 @@ export { resolveContextDocumentsBlock } from '../chat/context-documents/resolve-
 export { defaultEnabledPresetIds } from '../chat/context-documents/catalog';
 export { extractCodeMapFocusHints } from '../brain/code-map-focus';
 export { validateAskQuestionArgs, stringifyAskQuestionResult } from '../tools/ask-question-types';
+export { resolveTurnSkill, normalizeCavemanUserText } from '../skills/pinned-skill';
+export { augmentCavemanSkillBody } from '../skills/caveman-client';
+export { augmentPartyModeSkillBody } from '../skills/partymode-client';
+export { prepareUiDesignerTurn, augmentSkillBodyForUiDesigner, applyUiDesignerToolFilter } from '../agents/ui-designer/runner';
+export { assertUiDesignerToolAllowed } from '../agents/ui-designer/tools';
+export { commandsForImpeccableAugment, parseImpeccableSubcommand, formatImpeccableCommandMenu, shouldComposeImpeccableBody } from '../skills/impeccable-client';
 
 interface RegistryInput {
   chat: Chat;
