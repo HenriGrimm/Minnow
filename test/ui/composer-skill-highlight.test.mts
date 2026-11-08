@@ -62,4 +62,22 @@ describe('composer skill highlight', () => {
     assert.equal(layer?.querySelector('.skill-chip')?.textContent, '/impeccable');
     assert.match(layer?.textContent ?? '', /polish the chips/);
   });
+
+  test('keeps the command source intact when displaying labels and editing a token', () => {
+    const input = setupComposer();
+    initComposerSkillHighlight(input);
+    input.value = '/plan /ask';
+    input.focus();
+    input.setSelectionRange(10, 10);
+    syncComposerSkillHighlight(input);
+    const layer = input.parentElement!.querySelector('.composer-skill-highlight')!;
+    assert.deepEqual([...layer.querySelectorAll('.skill-chip')].map(chip => chip.getAttribute('data-label')), ['Plan', 'Ask']);
+    assert.equal(layer.querySelector('[data-editing]'), null);
+
+    input.setSelectionRange(8, 8);
+    syncComposerSkillHighlight(input);
+    assert.equal(layer.querySelector('[data-editing]')?.textContent, '/ask');
+    assert.equal(input.value, '/plan /ask');
+    assert.equal(input.selectionStart, 8);
+  });
 });

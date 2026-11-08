@@ -31,7 +31,6 @@ let slashStart = -1;
 let pickerPhase: PickerPhase = 'list';
 let pendingSkill: { id: string; label: string } | null = null;
 let pendingCommand: SlashCommandListItem | null = null;
-let fishEl: HTMLSpanElement | null = null;
 let repositionHandler: (() => void) | null = null;
 
 /** Skills confirmed via picker selection (not manual typing), keyed by element. */
@@ -71,31 +70,16 @@ function ensurePicker(): void {
   listEl = document.createElement('ul');
   listEl.className = 'skill-picker__list';
 
-  // Minnow touch: a small fish marks the active row and swims to it.
-  fishEl = document.createElement('span');
-  fishEl.className = 'skill-picker__fish';
-  fishEl.setAttribute('aria-hidden', 'true');
-  fishEl.appendChild(createIcon('fish'));
-
   pickerEl.appendChild(headerEl);
   pickerEl.appendChild(listEl);
-  pickerEl.appendChild(fishEl);
   markPreviewOccluder(pickerEl, 'menu');
 }
 
-/** Move the fish beside the active row (CSS animates unless reduced motion). */
-function swimFishToActive(): void {
-  if (!fishEl || !pickerEl || !listEl) return;
+/** Keep keyboard selection visible as the menu scrolls. */
+function scrollActiveRowIntoView(): void {
+  if (!listEl) return;
   const active = listEl.querySelector<HTMLElement>('.skill-picker__item--active');
-  if (!active) {
-    fishEl.classList.remove('is-visible');
-    return;
-  }
-  // The fish scrolls with the picker's content, so no scrollTop correction.
-  const y = listEl.offsetTop + active.offsetTop + active.offsetHeight / 2;
-  fishEl.style.transform = `translateY(${Math.round(y)}px) translateY(-50%)`;
-  fishEl.classList.add('is-visible');
-  active.scrollIntoView?.({ block: 'nearest' });
+  active?.scrollIntoView?.({ block: 'nearest' });
 }
 
 /** Composer row used for viewport anchoring (input-wrap, chat-app-input, desktop wrap). */
@@ -231,6 +215,12 @@ const SECTION_LABELS: Record<SlashPickerSection, string> = {
   skills: 'Skills',
 };
 
+const WORKFLOW_SKILL_LABELS: Readonly<Record<string, string>> = {
+  ask: 'Ask',
+  plan: 'Plan',
+  debug: 'Debug',
+};
+
 function appendSectionLabel(list: HTMLUListElement, text: string): void {
   const li = document.createElement('li');
   li.className = 'skill-picker__group';
@@ -353,7 +343,7 @@ function renderSkillList(): void {
       domId: `skill-opt-${pickerRowId(row)}`,
       active: i === activeIndex,
       icon: isSkill ? row.icon ?? 'sparkles' : row.command.icon ?? 'tools',
-      label: isSkill ? `/${row.skill.id}` : row.command.label,
+      label: isSkill ? WORKFLOW_SKILL_LABELS[row.skill.id] ?? `/${row.skill.id}` : row.command.label,
       hint: isSkill || !row.command.insertion ? undefined : row.command.insertion.trim(),
       description: isSkill ? row.skill.description : row.command.description,
       value: isSkill ? (row.skill.source === 'user' ? 'Custom' : undefined) : commandValue(row.command),
@@ -371,7 +361,7 @@ function renderSkillList(): void {
     list.appendChild(li);
   });
 
-  swimFishToActive();
+  scrollActiveRowIntoView();
   if (open) positionPicker();
 }
 
@@ -435,7 +425,7 @@ function renderOptionRows(): void {
     list.appendChild(li);
   });
 
-  swimFishToActive();
+  scrollActiveRowIntoView();
   if (open) positionPicker();
 }
 
@@ -468,7 +458,7 @@ function renderSubmenuRows(): void {
     empty.textContent = 'Nothing to choose here';
     list.appendChild(empty);
     activeIndex = 0;
-    swimFishToActive();
+    scrollActiveRowIntoView();
     if (open) positionPicker();
     return;
   }
@@ -495,7 +485,7 @@ function renderSubmenuRows(): void {
     });
     list.appendChild(li);
   });
-  swimFishToActive();
+  scrollActiveRowIntoView();
   if (open) positionPicker();
 }
 
@@ -531,7 +521,6 @@ function closePicker(): void {
     pickerEl.style.removeProperty('width');
   }
   if (headerEl) headerEl.classList.add('hidden');
-  fishEl?.classList.remove('is-visible');
   if (inputEl) inputEl.setAttribute('aria-expanded', 'false');
 }
 
@@ -830,7 +819,6 @@ export function __resetSkillPickerForTests(): void {
   pickerEl = null;
   headerEl = null;
   listEl = null;
-  fishEl = null;
   inputEl = null;
 }
 

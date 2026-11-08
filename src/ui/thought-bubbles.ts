@@ -1,6 +1,7 @@
 import { resolveChatMount } from './chat-mount';
 import { splitThinkingSegments } from '../api/reasoning';
 import { formatThinkingDuration } from './thinking-duration';
+import { setActivityShimmerText } from './activity-shimmer';
 import {
   cancelAssistantBubbleRenderDebounce,
   flushAssistantBubbleRender,
@@ -338,15 +339,12 @@ export class ThoughtBubbleController {
         activity.setAttribute('role', 'status');
         activity.setAttribute('aria-live', 'polite');
         activity.title = 'Reasoning summaries arrive intermittently while the model works.';
-        const spinner = document.createElement('span');
-        spinner.className = 'tool-call-spinner';
-        spinner.setAttribute('aria-hidden', 'true');
         const label = document.createElement('span');
         label.textContent = 'Working…';
         const elapsed = document.createElement('span');
         elapsed.className = 'reasoning-summary-activity__elapsed';
         elapsed.setAttribute('aria-hidden', 'true');
-        activity.append(spinner, label, elapsed);
+        activity.append(label, elapsed);
         stage.appendChild(activity);
         this.summaryStartedAt ??= performance.now();
         const updateElapsed = () => {
@@ -407,11 +405,12 @@ export class ThoughtBubbleController {
     const labelEl = this.toggleBtn.querySelector('.thoughts-toggle__label');
     if (!labelEl) return;
 
-    let label = this.options.reasoningFormat === 'summary' ? 'Reasoning summary' : LIVE_THINKING_LABEL;
-    if (this.options.reasoningFormat !== 'summary' && this.elapsedMs != null && this.elapsedMs > 0) {
-      label = `${LIVE_THINKING_LABEL} ${formatThinkingDuration(this.elapsedMs)}`;
+    if (this.options.reasoningFormat === 'summary') {
+      setActivityShimmerText(labelEl, 'Reasoning summary');
+    } else {
+      const suffix = this.elapsedMs != null && this.elapsedMs > 0 ? ` ${formatThinkingDuration(this.elapsedMs)}` : '';
+      setActivityShimmerText(labelEl, LIVE_THINKING_LABEL, suffix);
     }
-    labelEl.textContent = label;
     this.toggleBtn.setAttribute('aria-label', this.expanded ? 'Hide reasoning' : 'Show reasoning');
   }
 
@@ -519,6 +518,9 @@ export function renderThoughtsToggle(
   } else {
     labelSpan.textContent = 'Thoughts';
     btn.setAttribute('aria-label', expanded ? 'Hide reasoning' : 'Show model reasoning thoughts');
+  }
+  if (resolved.pulse === true) {
+    setActivityShimmerText(labelSpan, labelSpan.textContent ?? LIVE_THINKING_LABEL);
   }
 
   const caret = document.createElement('span');

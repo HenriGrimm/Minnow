@@ -103,7 +103,7 @@ test('an idle accepted send appears in the transcript until its canonical input 
     const sending = row.nextElementSibling!;
     assert.ok(sending.matches('.msg.assistant.msg--sending-status'));
     assert.equal(sending.querySelector('.stream-status__label')?.textContent, 'Sending…');
-    assert.equal(sending.querySelectorAll('.stream-status__dot').length, 3);
+    assert.equal(sending.querySelectorAll('.activity-shimmer__dot').length, 3);
     assert.equal(row.hasAttribute('data-history-index'), false);
     assert.equal(row.querySelector('.message-actions'), null);
     assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), true);
@@ -309,6 +309,20 @@ test('managed observer emits one payload-free received-to-DOM timing and dispose
   observer.dispose(); await queued;
   assert.doesNotMatch(document.body.textContent!, /Do not repaint disposed/);
   assert.equal(chat.history.length, 1, 'diagnostics and streaming never write canonical content');
+});
+
+test('repeated shared thinking snapshots keep a single visible reasoning indicator', async () => {
+  setup();
+  const observer = createSharedChatObserver(() => {});
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'pc', sequence: 1, epoch: 'turn', running: true,
+    live: { lastDelta: '', lastThinking: 'Inspecting the renderer', phase: 'thinking', toolCallCount: 0 } };
+  try {
+    await observer.receive(frame);
+    await observer.receive({ ...frame, sequence: 2,
+      live: { ...frame.live!, lastThinking: 'Inspecting the renderer and status labels' } });
+    assert.equal(document.querySelectorAll('.thought-stage .thoughts-toggle').length, 1);
+    assert.equal(document.querySelectorAll('.stream-status:not(.hidden)').length, 0);
+  } finally { observer.dispose(); }
 });
 
 test('phone paints live reasoning/prose, reconnects without duplicates, then displays the PC final result', async () => {

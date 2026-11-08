@@ -41,3 +41,17 @@
 .mn-os {
   color: var(--os-text);
 }
+
+/* macOS traffic lights: right edge of the native buttons in screen points
+   (electron/shell-zoom.ts macTrafficLightPosition x 17 + cluster width; divide
+   by --mn-shell-zoom for CSS px), and the gap chrome keeps from them. :root
+   only — a `.mn-os` copy would mask the wide override below. macOS 26 spaces
+   the buttons wider. */
+:root {
+  --mn-mac-traffic-lights-end: 71px;
+  --mn-mac-traffic-lights-gap: 16px;
+}
+
+html[data-mac-titlebar='wide'] {
+  --mn-mac-traffic-lights-end: 77px;
+}

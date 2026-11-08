@@ -1,5 +1,6 @@
 import { formatThinkingDuration } from './thinking-duration';
 import { humanizeToolName } from './tool-messages';
+import { setActivityShimmerText } from './activity-shimmer';
 
 export type StreamPhase =
   | 'loading_model'
@@ -40,6 +41,12 @@ export interface StreamingStatusHandle {
   dispose(): void;
 }
 
+/** A live reasoning disclosure owns the pending label until it settles. */
+export function syncPendingStreamStatusVisibility(wrap: HTMLElement, status: Element): void {
+  const thinking = wrap.querySelector(':scope > .thought-stage, :scope > .thoughts-panel-wrap--live');
+  status.classList.toggle('hidden', Boolean(thinking));
+}
+
 /** Shared pending-state bubble for message delivery and response generation. */
 export function createStreamStatusElement(text = STREAM_LABEL_GENERATING): HTMLDivElement {
   const statusEl = document.createElement('div');
@@ -48,18 +55,9 @@ export function createStreamStatusElement(text = STREAM_LABEL_GENERATING): HTMLD
   statusEl.setAttribute('aria-live', 'polite');
   statusEl.setAttribute('aria-busy', 'true');
 
-  const dots = document.createElement('span');
-  dots.className = 'stream-status__dots';
-  dots.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 3; i += 1) {
-    const dot = document.createElement('span');
-    dot.className = 'stream-status__dot';
-    dots.appendChild(dot);
-  }
-
   const labelEl = document.createElement('span');
   labelEl.className = 'stream-status__label';
-  labelEl.textContent = text;
+  setActivityShimmerText(labelEl, text);
 
   const elapsedEl = document.createElement('span');
   elapsedEl.className = 'stream-status__elapsed';
@@ -71,7 +69,6 @@ export function createStreamStatusElement(text = STREAM_LABEL_GENERATING): HTMLD
   detailEl.hidden = true;
   detailEl.setAttribute('aria-hidden', 'true');
 
-  statusEl.appendChild(dots);
   statusEl.appendChild(labelEl);
   statusEl.appendChild(elapsedEl);
   statusEl.appendChild(detailEl);
@@ -146,7 +143,7 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
       return;
     }
 
-    statusEl.classList.remove('hidden');
+    syncPendingStreamStatusVisibility(wrap, statusEl);
     statusEl.setAttribute('aria-busy', 'true');
     statusEl.classList.remove(
       'stream-status--loading-model',
@@ -163,7 +160,7 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
     } else {
       statusEl.classList.add('stream-status--generating');
     }
-    labelEl.textContent = LABEL_BY_PHASE[phase];
+    setActivityShimmerText(labelEl, LABEL_BY_PHASE[phase]);
     wrap.dataset.streamPhase = phase;
     if (phase !== 'thinking') {
       elapsedEl.hidden = true;

@@ -610,6 +610,7 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       const batch = stub.mount.querySelector<HTMLDetailsElement>('.tool-call-batch')!;
       const row = batch.querySelector('.tool-call-msg');
       assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names');
+      assert.ok(batch.querySelector('.tool-call-batch__label.activity-shimmer'));
       assert.equal(stub.mount.querySelector('.thoughts-toggle'), null);
       assert.equal(stub.mount.querySelector('.reasoning-summary-activity'), null);
       batch.open = true;
@@ -622,6 +623,7 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       painter.onEvent({ type: 'tool_result', name: 'grep', id: 'search', content: 'Error: failed', isError: true });
       painter.onEvent({ ...roundEnd(0, '', '**Reading batch names**', 2), reasoningFormat: 'summary' });
       assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names, 1 failed');
+      assert.equal(batch.querySelector('.activity-shimmer'), null, 'settled summaries stop animating');
       assert.match(batch.querySelector('summary')?.getAttribute('aria-label') ?? '', /Reading batch names, 1 failed.*Read 1.*Search 1/);
       assert.equal(stub.mount.querySelector('.thoughts-toggle'), null, 'settlement must not recreate the separate summary');
       assert.equal(stub.wrap.isConnected, false, 'a summary-only assistant leaves no empty row');

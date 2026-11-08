@@ -35,7 +35,7 @@ interface WorkGroup {
 }
 
 /** Text that ticks on a timer during a stream; never worth a transcript walk. */
-const LIVE_TEXT_LEAVES = '.stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label, .reasoning-summary-activity__elapsed';
+const LIVE_TEXT_LEAVES = '.stream-status__label, .stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label, .reasoning-summary-activity__elapsed';
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();

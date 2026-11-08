@@ -5,6 +5,7 @@ import { MINNOW_GLYPH_HEADER_HTML } from '../ui/minnow-glyph';
 import { markAppReady, markChromeReady } from '../boot/app-ready';
 import { initRenderIdleTracking } from '../boot/render-idle';
 import { withSessionToken } from '../api/session-token';
+import { applyShellPlatform } from '../os/shell-platform';
 
 const API_ROOT = '/api/browser-agent';
 const FRAME_INTERVAL_MS = 500;
@@ -833,8 +834,7 @@ function updateVisibility(visible: boolean): void {
 /** Minimal, session-free renderer for the dedicated Agent Browser window. */
 export async function initAgentBrowserViewer(): Promise<void> {
   document.documentElement.dataset.agentBrowserViewer = 'true';
-  const platform = window.minnow?.app?.platform;
-  if (platform) document.documentElement.dataset.platform = platform;
+  applyShellPlatform();
   // The shared index contains the shell scaffold, not a generic app mount.
   // A viewer owns its document body and never initializes that shell.
   mountAgentBrowserViewerRoot();

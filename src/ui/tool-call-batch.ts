@@ -1,5 +1,6 @@
 import { createIcon } from './icon';
 import { getToolAction } from './tool-call-presentation';
+import { setActivityShimmerText } from './activity-shimmer';
 
 export interface ToolCallBatchItem {
   name: string;
@@ -105,9 +106,14 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
   if (label) {
     const explored = exploredLabel(rows);
     const failedText = failed ? `, ${failed} failed` : '';
-    label.textContent = summaryTitle ? `${summaryTitle}${failedText}` : running
+    const text = summaryTitle ? `${summaryTitle}${failedText}` : running
       ? explored ? 'Exploring' : `Running ${total} tools`
       : explored ? `${explored}${failedText}` : `${total} tool ${total === 1 ? 'call' : 'calls'}${failedText}`;
+    if (summaryTitle && running && !failed) setActivityShimmerText(label, text);
+    else {
+      label.classList.remove('activity-shimmer');
+      label.textContent = text;
+    }
   }
   batch.querySelector('.tool-call-batch__counts')?.replaceChildren(...countParts);
   paintChips(batch, rows);

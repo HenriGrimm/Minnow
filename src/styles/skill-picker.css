@@ -1,7 +1,7 @@
 /*
  * Slash menu above the composer — fixed portal so hub/workspace overflow cannot
  * clip it. Flat rows: icon · label · description · value · chevron, grouped
- * under small-caps section labels. A fish swims to the active row.
+ * under quiet section labels.
  */
 .skill-picker {
   position: fixed;
@@ -12,14 +12,8 @@
   border-radius: var(--mn-menu-radius);
   box-shadow: var(--mn-menu-shadow);
   z-index: 60;
-  /* Faint current lines behind the rows — Minnow's water texture. */
-  background-image: repeating-linear-gradient(
-    180deg,
-    transparent 0,
-    transparent 27px,
-    color-mix(in srgb, var(--mn-accent) 5%, transparent) 27px,
-    color-mix(in srgb, var(--mn-accent) 5%, transparent) 28px
-  );
+  font-size: var(--mn-type-md);
+  line-height: var(--mn-leading-snug);
 }
 
 .skill-picker.hidden {
@@ -31,22 +25,21 @@
   list-style: none;
   margin: 0;
   padding: var(--mn-menu-padding);
-  padding-left: calc(var(--mn-menu-padding) + 14px);
 }
 
 .skill-picker__item {
   display: grid;
-  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  grid-template-columns: var(--mn-icon-md) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.38rem 0.6rem;
+  gap: var(--mn-space-2);
+  padding: var(--mn-space-1-5) var(--mn-space-2);
   cursor: pointer;
   border-radius: var(--mn-menu-item-radius);
-  min-height: var(--mn-menu-item-height);
+  min-height: var(--mn-control-h-md);
 }
 
 .skill-picker__item--has-options {
-  grid-template-columns: 1.25rem minmax(0, 1fr) auto auto;
+  grid-template-columns: var(--mn-icon-md) minmax(0, 1fr) auto auto;
 }
 
 .skill-picker__item[aria-disabled='true'] {
@@ -63,38 +56,37 @@
   display: inline-flex;
   justify-content: center;
   color: var(--mn-fg-muted);
-  font-size: 0.95rem;
   line-height: 1;
 }
 
-.skill-picker__item--active .skill-picker__icon {
-  color: var(--mn-accent);
+.skill-picker .icon-svg {
+  --mn-icon-size: var(--mn-icon-sm);
 }
 
 .skill-picker__text {
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
+  gap: var(--mn-space-2);
   min-width: 0;
 }
 
 .skill-picker__label {
   flex: none;
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-weight: var(--mn-weight-regular);
+  font-size: var(--mn-type-md);
   color: var(--mn-fg);
 }
 
 .skill-picker__id {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--mn-type-sm);
   color: var(--mn-fg-muted);
 }
 
 .skill-picker__desc {
   min-width: 0;
-  font-size: 0.8125rem;
+  font-size: var(--mn-type-sm);
   color: var(--mn-fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -104,9 +96,9 @@
 .skill-picker__value {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--mn-space-1);
   max-width: 12rem;
-  font-size: 0.75rem;
+  font-size: var(--mn-type-sm);
   color: var(--mn-fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -120,27 +112,24 @@
 .skill-picker__chevron {
   display: inline-flex;
   color: var(--mn-fg-muted);
-  font-size: 0.75rem;
   line-height: 1;
 }
 
 .skill-picker__group {
-  padding: 0.55rem 0.6rem 0.2rem;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  font-variant-caps: all-small-caps;
-  letter-spacing: 0.08em;
+  padding: var(--mn-space-2) var(--mn-space-2) var(--mn-space-1);
+  font-size: var(--mn-type-xs);
+  font-weight: var(--mn-weight-medium);
   color: var(--mn-fg-muted);
 }
 
 .skill-picker__group:first-child {
-  padding-top: 0.2rem;
+  padding-top: var(--mn-space-1);
 }
 
 .skill-picker__empty {
   padding: 0.75rem;
   color: var(--mn-fg-muted);
-  font-size: 0.875rem;
+  font-size: var(--mn-type-md);
 }
 
 .skill-picker__header {
@@ -178,36 +167,14 @@
   color: var(--mn-fg);
 }
 
-/* The fish: one absolutely positioned glyph that swims between rows. */
-.skill-picker__fish {
-  position: absolute;
-  top: 0;
-  left: 6px;
-  display: inline-flex;
-  color: var(--mn-accent);
-  font-size: 0.7rem;
-  line-height: 1;
-  pointer-events: none;
-  opacity: 0;
-  transition: transform 120ms ease-out, opacity 120ms ease-out;
-}
-
-.skill-picker__header:not(.hidden) ~ .skill-picker__fish {
-  margin-top: 0;
-}
-
-.skill-picker__fish.is-visible {
-  opacity: 1;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .skill-picker__item:hover {
     background: var(--mn-menu-hover-bg);
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skill-picker__fish {
-    transition: none;
+@media (pointer: coarse) {
+  .skill-picker__item {
+    min-height: var(--touch-min);
   }
 }

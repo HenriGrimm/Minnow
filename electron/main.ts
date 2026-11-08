@@ -58,7 +58,14 @@ import {
   writeShellZoomPercent,
   writeWindowCloseAction,
 } from './desktop-shell-config.js';
-import { applyShellZoom, DEFAULT_SHELL_ZOOM_PERCENT, shellZoomFactorFromPercent, wireShellZoom } from './shell-zoom.js';
+import {
+  applyShellZoom,
+  DEFAULT_SHELL_ZOOM_PERCENT,
+  macTrafficLightPosition,
+  onShellZoomApplied,
+  shellZoomFactorFromPercent,
+  wireShellZoom,
+} from './shell-zoom.js';
 import { wireShellReload } from './shell-reload.js';
 import { buildShellEditMenu } from './shell-context-menu.js';
 import { readLoginItemSnapshot, writeLoginItemOpenAtLogin } from './login-item.js';
@@ -980,7 +987,7 @@ async function createShellWindow(
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset' as const,
-          trafficLightPosition: { x: 14, y: 14 },
+          trafficLightPosition: macTrafficLightPosition(shellZoomFactorFromPercent(shellZoomPercent)),
         }
       : { frame: false, thickFrame: true }),
     backgroundColor: '#0e0e10',
@@ -1334,7 +1341,7 @@ async function openOrFocusAgentBrowserViewer(workspacePath: string): Promise<
         ...(process.platform === 'darwin'
           ? {
               titleBarStyle: 'hiddenInset' as const,
-              trafficLightPosition: { x: 14, y: 14 },
+              trafficLightPosition: macTrafficLightPosition(1),
             }
           : { frame: false, thickFrame: true }),
         backgroundColor: '#0e0e10',
@@ -1594,6 +1601,13 @@ async function bootstrapInner(): Promise<void> {
   closeToTrayEnabled = await readCloseToTrayPreference();
   windowCloseAction = await readWindowCloseAction();
   shellZoomPercent = await readShellZoomPercent();
+  if (process.platform === 'darwin') {
+    // Traffic lights are native (screen points); keep them centered on the zoomed menubar.
+    onShellZoomApplied((contents, factor) => {
+      const win = BrowserWindow.fromWebContents(contents);
+      if (win && !win.isDestroyed()) win.setWindowButtonPosition(macTrafficLightPosition(factor));
+    });
+  }
   const tray = ensureTrayManager();
   tray.ensureTray();
   tray.updateStatus({ ...EMPTY_TRAY_STATUS });

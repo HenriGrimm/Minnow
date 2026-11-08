@@ -11,6 +11,7 @@ import { humanizeToolName } from './tool-messages';
 import { renderToolCall, renderToolInterruption, renderToolResult } from './tool-messages';
 import type { SubAgentTranscriptLive } from './sub-agent-live-status';
 import {
+  createStreamStatusElement,
   STREAM_LABEL_GENERATING,
   STREAM_LABEL_THINKING,
 } from './stream-status';
@@ -161,32 +162,14 @@ export interface TranscriptDisclosureState {
   onToolExpandedChange: (toolCallId: string, expanded: boolean) => void;
 }
 
-/** Build the animated dots + label row used during live sub-agent turns. */
+/** Use the shared pending text animation during live sub-agent turns. */
 export function createTranscriptStreamStatus(
   phase: 'thinking' | 'generating',
 ): HTMLElement {
-  const statusEl = document.createElement('div');
+  const statusEl = createStreamStatusElement(
+    phase === 'thinking' ? STREAM_LABEL_THINKING : STREAM_LABEL_GENERATING,
+  );
   statusEl.className = `stream-status stream-status--${phase} transcript-view__stream-status`;
-  statusEl.setAttribute('role', 'status');
-  statusEl.setAttribute('aria-live', 'polite');
-  statusEl.setAttribute('aria-busy', 'true');
-
-  const dots = document.createElement('span');
-  dots.className = 'stream-status__dots';
-  dots.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 3; i += 1) {
-    const dot = document.createElement('span');
-    dot.className = 'stream-status__dot';
-    dots.appendChild(dot);
-  }
-
-  const labelEl = document.createElement('span');
-  labelEl.className = 'stream-status__label';
-  labelEl.textContent =
-    phase === 'thinking' ? STREAM_LABEL_THINKING : STREAM_LABEL_GENERATING;
-
-  statusEl.appendChild(dots);
-  statusEl.appendChild(labelEl);
   return statusEl;
 }
 

@@ -8,6 +8,31 @@ export const MAX_SHELL_ZOOM_PERCENT = 300;
 export const SHELL_ZOOM_PRESET_PERCENTS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 200] as const;
 
 let applyingShellZoom = false;
+let afterShellZoomApplied: ((contents: WebContents, factor: number) => void) | null = null;
+
+/** Height of the renderer menubar (`--os-menubar-h`) in CSS px. */
+const MENUBAR_HEIGHT_CSS_PX = 46;
+/** The native button frame is 16pt tall; its center sits 8pt below `y`. */
+const TRAFFIC_LIGHT_HALF_HEIGHT_PT = 8;
+/** Close-button inset from the window edge, in screen points (centers it over the Code rail at 100%). */
+const TRAFFIC_LIGHT_X_PT = 17;
+
+/**
+ * macOS traffic-light position for a given shell zoom. Native buttons live in
+ * screen points while the menubar scales with zoom, so `y` follows the bar's
+ * zoomed center. The renderer clears them with `--mn-mac-traffic-lights-end`
+ * divided by the same zoom (minnowos-tokens.css).
+ */
+export function macTrafficLightPosition(zoomFactor: number): { x: number; y: number } {
+  const zoom = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+  const y = Math.round((MENUBAR_HEIGHT_CSS_PX * zoom) / 2 - TRAFFIC_LIGHT_HALF_HEIGHT_PT);
+  return { x: TRAFFIC_LIGHT_X_PT, y: Math.max(0, y) };
+}
+
+/** Run after every shell zoom change (e.g. to re-center the macOS traffic lights). */
+export function onShellZoomApplied(fn: ((contents: WebContents, factor: number) => void) | null): void {
+  afterShellZoomApplied = fn;
+}
 
 export function clampShellZoomPercent(raw: unknown): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
@@ -48,6 +73,7 @@ export function applyShellZoom(contents: WebContents, percent: number): void {
   } finally {
     applyingShellZoom = false;
   }
+  afterShellZoomApplied?.(contents, shellZoomFactorFromPercent(percent));
 }
 
 export type ShellZoomWireDeps = {

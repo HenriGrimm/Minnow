@@ -67,34 +67,9 @@
   border-radius: 2px;
 }
 
-/* Animated caret shown while reasoning is active (collapsed) */
+/* Live and saved reasoning disclosures open from the text alone. */
 .thoughts-caret {
-  display: inline-block;
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid currentColor;
-  transition: transform 0.15s var(--ease-out);
-  flex-shrink: 0;
-}
-
-.thoughts-caret--expanded {
-  transform: rotate(90deg);
-}
-
-.thoughts-caret--pulse {
-  animation: thoughts-caret-pulse 1.1s ease-in-out infinite;
-}
-
-@keyframes thoughts-caret-pulse {
-  0%, 100% { opacity: 0.4; transform: translateX(0); }
-  50% { opacity: 1; transform: translateX(2px); }
-}
-
-.thoughts-caret--expanded.thoughts-caret--pulse {
-  animation: none;
-  opacity: 1;
+  display: none;
 }
 
 .thoughts-flow {
@@ -116,15 +91,4 @@
   max-width: 100%;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thoughts-caret--pulse {
-    animation: none;
-    opacity: 0.7;
-  }
-
-  .thoughts-caret {
-    transition: none;
-  }
 }
