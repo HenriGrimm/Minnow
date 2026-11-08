@@ -22,6 +22,7 @@ import { openCursorAcp } from './cursor-acp.js';
 import { openClaudeInteractive } from './claude-interactive.js';
 import { isToolImageFollowUpMessage } from '../../runner/tool-image-follow-up.js';
 import { assertMinnowToolMode } from '../../models/agent-cli-native.js';
+import { CLI_TOOL_TRANSPORT_VERSION } from './read-batch.js';
 
 const closing = new Set();
 const sessions = createCliSessionPool('stream-json', closing, closeSession);
@@ -53,7 +54,7 @@ export async function __resetAgentCliSessionMocksForTests() {
 function sessionKey(state, candidate) { return `${candidate.providerId}\0${state.chatId || randomUUID()}`; }
 function append(state, payload) { appendChunk(state, Buffer.from(`data: ${JSON.stringify(payload)}\n\n`, 'utf8')); }
 function signature(body, identity) {
-  return cliHash({ identity, systems: canonicalCliMessages(body.messages).filter(row => ['system', 'developer'].includes(row.role)), model: body.model, tools: body.tools, tool_choice: body.tool_choice,
+  return cliHash({ transportVersion: CLI_TOOL_TRANSPORT_VERSION, identity, systems: canonicalCliMessages(body.messages).filter(row => ['system', 'developer'].includes(row.role)), model: body.model, tools: body.tools, tool_choice: body.tool_choice,
     reasoning_effort: body.reasoning_effort, response_format: body.response_format,
     max_budget_usd: body.max_budget_usd });
 }
@@ -145,7 +146,15 @@ async function receiveToolCall(session, call) {
   if (session.transport === 'claude-interactive') {
     round.pendingNativeHandoffs++;
     round.scheduleHandoff();
-    try { if (!await session.processRun.beforeHandoff(call)) round.deferredNativeHandoff = true; }
+    try {
+      const native = session.bridge.nativeCalls([call])[0];
+      let check = round.nativeHandoffChecks.get(native.id);
+      if (!check) {
+        check = session.processRun.beforeHandoff(native);
+        round.nativeHandoffChecks.set(native.id, check);
+      }
+      if (!await check) round.deferredNativeHandoff = true;
+    }
     catch (error) { round.failure = error; void closeSession(session); return; }
     finally { round.pendingNativeHandoffs--; }
     if (round.finished || round.controller.signal.aborted) return;
@@ -210,6 +219,7 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     session.persistent = persistent;
     session.bridge = await createAgentCliBridge({
       tools: buildAgentCliToolCatalog(body), tempDir: session.tempDir, interactive,
+      readBatch: kind === 'claude', toolChoice: body.tool_choice,
       onCall: call => receiveToolCall(session, call),
     });
     session.secretValues.push(session.bridge.config.env.MINNOW_CLI_BRIDGE_TOKEN);
@@ -490,7 +500,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
     let resolveRound;
     const complete = new Promise(resolve => { resolveRound = resolve; });
     round = {
-      state, body, controller, calls: [], nativeToolUses: new Set(), pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
+      state, body, controller, calls: [], nativeToolUses: new Set(), nativeHandoffChecks: new Map(), pendingNativeHandoffs: 0, finished: false, failure: null, idleTimer: null,
       maxTimer: null, handoffTimer: null, timeoutKind: null, emitted: false, content: '', reasoning: '', rawUsage: [],
       choose() {
         if (this.emitted) return;
@@ -580,7 +590,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
           session.calls = this.calls;
           session.handoffContent = this.content;
           if (session.persistent && session.kind === 'claude' && !this.deferredNativeHandoff) {
-            session.pendingSnapshotCalls = this.calls;
+            session.pendingSnapshotCalls = session.bridge.nativeCalls(this.calls);
             session.completedNativeMessageId = this.nativeMessageId ?? this.completedNativeMessageId ?? session.latestNativeMessageId;
             const snapshotAt = performance.now();
             const nativeDigest = await snapshotClaudeSession(session).catch(() => null);

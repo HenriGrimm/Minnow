@@ -71,6 +71,19 @@ export function getPendingMessageQueueCount(chat: Chat): number {
   return getPendingMessageQueue(chat).length;
 }
 
+/** The accepted human input starting an idle managed chat, presented outside its saved history. */
+export function getSendingManagedMessage(chat: Chat): QueuedComposerMessage | undefined {
+  if (chat.chatCommandVersion !== 1 || isChatTurnInProgress(chat.id)) return;
+  const pending = chat.agentPendingCommand;
+  const item = getPendingMessageQueue(chat)[0];
+  const execution = chat.agentExecution;
+  if (!pending || pending.held || pending.errorCode || !['accepted', 'queued'].includes(pending.state) ||
+      !item || pending.commandId !== item.id || item.provenance?.actor !== 'human' || item.hiddenFromTranscript ||
+      editing.has(`${chat.id}:${item.id}`) ||
+      execution && !['completed', 'settled', 'failed', 'stopped', 'cancelled'].includes(execution.status)) return;
+  return item;
+}
+
 function normalizeQueueItem(raw: unknown): QueuedComposerMessage | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Partial<QueuedComposerMessage>;

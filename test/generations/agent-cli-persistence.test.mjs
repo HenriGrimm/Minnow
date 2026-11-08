@@ -91,6 +91,40 @@ test('interactive handoffs retain concurrent tool calls while later native commi
   assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
 });
 
+test('interactive Claude verifies a native batch once while publishing every member', async () => {
+  kind = 'claude';
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
+  let finish, checks = 0;
+  const done = new Promise(resolve => { finish = resolve; });
+  __setAgentCliSessionMocksForTests({
+    prepareInvocation: async input => ({ transport: 'claude-interactive', keepStdinOpen: true,
+      stdin: JSON.stringify({ message: { content: input.prompt } }), env: input.bridgeConfig.env }),
+    openInteractive: async invocation => ({ child, done,
+      async send() {
+        void fetch(invocation.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
+          headers: { authorization: `Bearer ${invocation.env.MINNOW_CLI_BRIDGE_TOKEN}` },
+          body: JSON.stringify({ name: 'mn_read_batch', arguments: { calls: [
+            { name: 'read_file', arguments: { path: 'a' } }, { name: 'read_file', arguments: { path: 'b' } },
+          ] } }) }).catch(() => {});
+      },
+      async beforeHandoff(call) {
+        checks++;
+        assert.equal(call.function.name, 'mn_read_batch');
+        assert.equal(JSON.parse(call.function.arguments).calls.length, 2);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return null;
+      },
+      stop: async () => { child.exitCode = 0; finish({ code: 0, stderr: '' }); },
+    }),
+  });
+  const first = await generate('interactive-batch', [{ role: 'user', content: 'Read both.' }], {
+    settings: { interactive: true }, tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }],
+  });
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  assert.equal(checks, 1);
+  assert.equal(first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).length, 2);
+});
+
 test('Claude retains native tool calls arriving between Minnow generations', async () => {
   kind = 'claude';
   const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.exitCode = null;
@@ -428,6 +462,31 @@ test('Claude receives screenshot pixels through the pending tool result without 
   const third = await generate(chat, messages, options);
   assert.equal(third.state.status, 'complete', third.state.errorMessage);
   assert.equal(processes, 1, 'the caller-owned screenshot row remains part of the continuation prefix');
+});
+
+for (const restart of [false, true]) test(`Claude read batch preserves native checkpoints and ${restart ? 'recovers recorded results after restart' : 'continues in the same process'}`, async () => {
+  const log = path.join(root, `claude-batch-${restart}.log`);
+  setup('claude', { FAKE_CLAUDE_RESULT_LOG: log });
+  const chat = `claude-batch-${restart}`, messages = [{ role: 'user', content: 'BATCH_TOOL' }];
+  const options = { tools: [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }] };
+  const first = await generate(chat, messages, options);
+  assert.equal(first.state.status, 'complete', first.state.errorMessage);
+  const calls = first.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
+  assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).path), ['src/main.ts', 'src/other.ts']);
+  assert.equal((await readCliCheckpoint('fixture-claude-durable', chat)).clean, true, 'one native batch verifies both ordinary handoffs');
+  messages.push({ role: 'assistant', content: '', tool_calls: calls },
+    ...calls.map((call, i) => ({ role: 'tool', tool_call_id: call.id, content: i ? 'Error: denied' : 'Actual source' })));
+  if (restart) await disposeCliSessions();
+  const second = await generate(chat, messages, options);
+  assert.equal(second.state.status, 'complete', second.state.errorMessage);
+  if (restart) {
+    assert.equal(second.rows.at(-1).minnow_cli.continuation, 'resumed');
+    assert.ok(invocations.at(-1).prompt.includes('Error: denied'));
+  } else {
+    assert.equal(processes, 1);
+    const result = JSON.parse((await fs.readFile(log, 'utf8')).trim());
+    assert.deepEqual(result.content.map(item => JSON.parse(item.text).content), ['Actual source', 'Error: denied']);
+  }
 });
 
 for (const restart of [false, true]) test(`Claude tool handoff executes once${restart ? ' through interrupted native recovery' : ' and resumes after a completed turn'}`, async () => {

@@ -28,6 +28,6 @@ For new interfaces, make the first action clear, then inspect desktop and narrow
 - Don't yield mid-task unless genuinely blocked.
 - When committing: feature branch, conventional message (base security rules apply).
 - Report when done: list files changed (one line each) + test status.
-- Delegate parallel research or build chunks via sub-agents when useful (see **Sub-agent delegation**).
+- Use sub-agents only when the user explicitly requests delegation (see **Sub-agent delegation**).
 
 Shell/Windows/build-output rules → **tool-usage**. Diagnostics loop → work-agent when Builder is active.

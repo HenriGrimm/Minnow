@@ -35,6 +35,8 @@ Drag the divider beside the page list or details to resize it. You can also focu
 
 **You ask the assistant to.** "Remember that the staging database resets nightly." The `save_memory` tool defaults to Full permission, so it just happens.
 
+There is no cap on the number of saved memories. Each entry saved through `save_memory` or the Memories section can contain up to 32 KiB of UTF-8 body text.
+
 **Synthesis extracts them.** Minnow can watch conversations on a cadence you set. With the shipped defaults, facts below 0.6 confidence are skipped; facts from 0.6 up to 0.85 queue in **Proposals** for review; facts at or above 0.85 are saved directly and raise the post-save review card. Brain → Settings lets you adjust the auto-write confidence threshold.
 
 To require review for every eligible synthesis fact, set `requireConfirmation: true` through the local authenticated `PUT /api/memory/synthesis/config` API, with JSON body `{"requireConfirmation":true,"autoWriteConfidence":0.85}`. This setting has no checkbox in Brain Settings. Setting the auto-write threshold to 1 alone still allows a confidence-1 fact to be saved directly. The confidence floor still applies when confirmation is required.

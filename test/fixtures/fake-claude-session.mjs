@@ -20,13 +20,17 @@ createInterface({ input: process.stdin }).on('line', async line => {
   if (inputText.includes('CRASH')) { process.exit(1); return; }
   let toolResult;
   if (inputText.includes('TOOL') && !inputText.includes('"role":"tool"')) {
+    const batched = inputText.includes('BATCH_TOOL');
+    const name = batched ? 'mn_read_batch' : 'read_file';
+    const args = batched ? { calls: [{ name: 'read_file', arguments: { path: 'src/main.ts' } },
+      { name: 'read_file', arguments: { path: 'src/other.ts' } }] } : { path: 'src/main.ts' };
     const toolId = randomUUID(), messageId = randomUUID();
     send({ type: 'stream_event', event: { type: 'message_start', message: { id: messageId, usage: { input_tokens: 2, cache_read_input_tokens: 8, cache_creation_input_tokens: 1 } } } });
-    entries.push({ type: 'assistant', sessionId, message: { id: messageId, content: [{ type: 'tool_use', id: toolId, name: 'mcp__minnow__read_file', input: { path: 'src/main.ts' } }] } }); save(); cost += .01;
+    entries.push({ type: 'assistant', sessionId, message: { id: messageId, content: [{ type: 'tool_use', id: toolId, name: `mcp__minnow__${name}`, input: args }] } }); save(); cost += .01;
     if (process.env.FAKE_CLAUDE_TOOL_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_TOOL_LOG, 'read_file\n');
     const responsePending = fetch(process.env.MINNOW_CLI_BRIDGE_URL, { method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.MINNOW_CLI_BRIDGE_TOKEN}` },
-      body: JSON.stringify({ name: 'read_file', arguments: { path: 'src/main.ts' } }) });
+      body: JSON.stringify({ name, arguments: args }) });
     if (process.env.FAKE_CLAUDE_STREAM_AFTER_TOOL === '1') {
       send({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: .83, resetsAt: 1234 } });
       await new Promise(resolve => setTimeout(resolve, 650));

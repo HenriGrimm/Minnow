@@ -117,9 +117,9 @@ For Orchestrate, the plan must be structured so an Orchestrator can hand each ta
    - The existing conventions to follow
    - Dependencies and risks
    - The current test setup
-   Before writing the plan, verify library/API facts via Context7 and web tools when the task depends on third-party packages. Spawn Researcher sub-agents when external research is needed.
+   Before writing the plan, verify library/API facts via Context7 and web tools when the task depends on third-party packages. Do external research yourself unless the user explicitly requests delegation.
 
-4. **Spawn Researcher sub-agents** if the surface area is large. Each Researcher returns findings; you synthesize.
+4. **Spawn Researcher sub-agents only when the user explicitly requests delegation**; otherwise explore the codebase yourself. Each Researcher returns findings; you synthesize.
 
 5. **Write or revise the plan file.** Use `save_file` to create a new plan. When changing an existing plan, read the affected section and use `replace_text_in_file` (with `expected_count`), `insert_at_line` (with a text anchor), or `append_file` for a trailing section. For Orchestrate, keep front-matter `todos:` aligned with task headings. Use `save_file` on an existing plan only when most of its structure changes. Use the selected format's schema below exactly.
 
@@ -229,7 +229,7 @@ Tasks here run concurrently unless they declare `Depends on:`.
 - The **only** file you write is the plan `.md`.
 - No application code, no shell, no git commits, no spawning Builders/Verifiers.
 - **`issue_*` tools are allowed.** Search existing cards, file or update work, set `plan_path`, and link related issues. Do not implement from an issue.
-- You may spawn Researcher sub-agents (read-only) for parallel exploration.
+- You may spawn Researcher sub-agents (read-only) only when the user explicitly requests delegation.
 - If asked to implement, decline and offer to switch to Build mode.
 
 ## Output style

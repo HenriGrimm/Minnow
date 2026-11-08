@@ -1,7 +1,7 @@
 import { showToast } from './toast';
 import {
   getPendingMessageQueue,
-  getPendingMessageQueueCount,
+  getSendingManagedMessage,
   enqueueComposerMessage,
   pushQueuedMessageNow,
   removeQueuedMessage,
@@ -267,16 +267,9 @@ export function syncComposerMessageQueue(): void {
 
   const root = ensureQueueRoot();
   const busy = isChatTurnInProgress(chat.id);
-  const count = getPendingMessageQueueCount(chat);
-  const pending = chat.agentPendingCommand;
-  const execution = chat.agentExecution;
-  // Managed sends enter the durable inbox before the host starts. An idle
-  // conversation's first runnable input is sending, not a later follow-up.
-  const sending = !busy && pending && !pending.held && !pending.errorCode &&
-    ['accepted', 'queued'].includes(pending.state) &&
-    pending.commandId === getPendingMessageQueue(chat)[0]?.id &&
-    (!execution || ['completed', 'failed', 'stopped', 'cancelled'].includes(execution.status));
-  const queuedCount = count - (sending ? 1 : 0);
+  const sending = getSendingManagedMessage(chat);
+  const items = getPendingMessageQueue(chat).filter(item => item.id !== sending?.id);
+  const count = items.length;
   const pendingSteer = chat.pendingSteerMessage?.trim();
   const orphanEdits = [...edits.keys()].filter(key => key.startsWith(`${chat.id}:`) &&
     !getPendingMessageQueue(chat).some(item => key === `${chat.id}:${item.id}`));
@@ -284,8 +277,8 @@ export function syncComposerMessageQueue(): void {
 
   root.classList.toggle('hidden', !show);
   syncComposerFollowUpPlaceholder(busy);
-  const renderKey = JSON.stringify([chat.id, busy, Boolean(sending), queueCollapsed, pendingSteer, orphanEdits,
-    getPendingMessageQueue(chat).map(item => [item.id, item.text, item.modelSelection, edits.get(`${chat.id}:${item.id}`)])]);
+  const renderKey = JSON.stringify([chat.id, busy, queueCollapsed, pendingSteer, orphanEdits,
+    items.map(item => [item.id, item.text, item.modelSelection, edits.get(`${chat.id}:${item.id}`)])]);
   if (root.dataset.renderKey === renderKey) return;
   root.dataset.renderKey = renderKey;
   if (!show) {
@@ -309,7 +302,7 @@ export function syncComposerMessageQueue(): void {
 
   const label = document.createElement('span');
   label.className = 'composer-message-queue__count';
-  label.textContent = [sending ? 'Sending…' : '', pendingSteer ? 'Steering at next step' : '', queuedCount ? `${queuedCount} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
+  label.textContent = [pendingSteer ? 'Steering at next step' : '', count ? `${count} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
   label.setAttribute('role', 'status');
   header.setAttribute('aria-label', label.textContent);
   header.setAttribute('aria-controls', 'composerMessageQueueList');
@@ -343,7 +336,7 @@ export function syncComposerMessageQueue(): void {
     list.append(row);
   }
 
-  for (const item of getPendingMessageQueue(chat)) {
+  for (const item of items) {
     if (queueCollapsed) continue;
     list.appendChild(renderQueueItem(item));
   }

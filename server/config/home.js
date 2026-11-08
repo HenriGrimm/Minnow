@@ -212,7 +212,6 @@ const DEFAULT_META = {
   },
   memory: {
     enabled: true,
-    maxEntries: 500,
     maxInjectCharsFull: 8000,
     maxInjectCharsLite: 800,
     retrieveLimit: 20,

@@ -1,5 +1,6 @@
 import { ChatContractError } from './contracts.js';
 import { createHash } from 'node:crypto';
+import { completionReport } from './completion-report.js';
 
 export const CHAT_READ_MAX_BYTES = 48 * 1024;
 const parse = value => value ? JSON.parse(value) : null;
@@ -84,11 +85,13 @@ export function createChatToolReads(repository) {
     },
     finalText(executionId) {
       const prefix = 'm-' + createHash('sha256').update(executionId).digest('hex').slice(0, 32) + '-';
-      return db.prepare(`SELECT substr(json_extract(m.payload_json,'$.content'),1,12000) AS content FROM messages m
+      const final = db.prepare(`SELECT substr(json_extract(m.payload_json,'$.content'),1,12000) AS content FROM messages m
         JOIN chat_message_identities i ON i.chat_id=m.chat_id AND i.seq=m.seq JOIN chat_executions e ON e.chat_id=m.chat_id
         WHERE e.execution_id=? AND i.message_id LIKE ? AND m.role='assistant' AND m.has_tool_calls=0 AND m.hidden=0
         AND m.text_len>0 AND json_type(m.payload_json,'$.content')='text' ORDER BY m.seq DESC LIMIT 1`)
         .get(executionId, prefix + '%')?.content ?? '';
+      const result = db.prepare('SELECT result_json FROM chat_executions WHERE execution_id=?').get(executionId);
+      return completionReport(parse(result?.result_json) ?? {}, final);
     },
   };
 }

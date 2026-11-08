@@ -40,6 +40,7 @@ afterEach(() => {
   setPairedDevice(false);
   setStreaming(false);
   setRemoteChatTurns([]);
+  setRemoteChatTurns([], 'managed');
   setChatAbort(CHAT, null);
   notifyChatStreamEnded(CHAT);
   resetSessionPersistenceForTests();
@@ -81,6 +82,60 @@ test('observer-only metadata invalidates a mounted view without marking the tran
   applySharedChatFrame(CHAT, { turnError: true });
   assert.equal(hasCurrentChatSurface(area, chat), false);
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
+});
+
+test('an idle accepted send appears in the transcript until its canonical input arrives without duplicating saved history', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1; chat.history = [];
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const pending = { id: 'first-input', text: 'Review the chat', createdAt: 1,
+    provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } };
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'idle', running: false, live: null,
+    fields: { pendingMessageQueue: [pending], agentPendingCommand: { commandId: pending.id, state: 'queued', held: false } } };
+  try {
+    await observer.receive(frame);
+    const row = document.querySelector('.msg.user.msg--sending')!;
+    assert.ok(row);
+    assert.match(row.textContent!, /Review the chat/);
+    assert.equal(row.querySelector('[role="status"]')?.textContent, 'Sending…');
+    assert.equal(row.hasAttribute('data-history-index'), false);
+    assert.equal(row.querySelector('.message-actions'), null);
+    assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), true);
+    assert.equal(chat.history.length, 0);
+    assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(CHAT), false);
+    // A repeated snapshot or remount preserves one view of the same accepted input.
+    await observer.receive({ ...frame, sequence: 2 });
+    assert.equal(document.querySelectorAll('.msg.user').length, 1);
+    const canonical = { role: 'user' as const, content: pending.text, commandId: pending.id, provenance: pending.provenance };
+    await observer.receive({ ...frame, sequence: 3, running: true, epoch: 'new-turn',
+      fields: { pendingMessageQueue: null, agentPendingCommand: null, agentExecution: { executionId: 'new-turn', status: 'running' } },
+      history: { start: 0, length: 1, messages: [canonical as any] } });
+    assert.equal(chat.history.length, 1);
+    assert.equal(document.querySelectorAll('.msg.user').length, 1);
+    assert.equal(document.querySelector('.msg--sending'), null);
+    assert.equal(document.querySelector('.msg.user')?.getAttribute('data-history-index'), '0');
+  } finally { observer.dispose(); }
+});
+
+test('pending input keeps human attribution and exact command identity when rendered before execution', () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const item = { id: 'pending', text: 'Build it', createdAt: 1,
+    provenance: { version: 1 as const, actor: 'human' as const, source: 'composer' as const, kind: 'human_message' as const } };
+  chat.pendingMessageQueue = [item];
+  chat.agentPendingCommand = { commandId: item.id, runId: null, state: 'queued', held: false };
+  renderChatFromHistory(chat);
+  assert.equal(document.querySelectorAll('.msg.user').length, 2, 'equal text from another command is a separate message');
+  chat.history[0] = { role: 'user', content: item.text, commandId: item.id };
+  renderChatFromHistory(chat);
+  assert.equal(document.querySelectorAll('.msg.user').length, 1, 'the exact canonical input replaces its pending view');
+  chat.history = [];
+  for (const patch of [{ provenance: { ...item.provenance, actor: 'system' } }, { hiddenFromTranscript: true }]) {
+    chat.pendingMessageQueue = [{ ...item, ...patch } as any];
+    renderChatFromHistory(chat);
+    assert.equal(document.querySelector('.msg--sending'), null, 'hidden and non-human input cannot be attributed to the user');
+    assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), false);
+  }
 });
 
 test('managed observer emits one payload-free received-to-DOM timing and disposes queued frames', async () => {
@@ -128,6 +183,36 @@ test('phone paints live reasoning/prose, reconnects without duplicates, then dis
     assert.equal(getSessionDirtyTrackingForTests().dirtyChatIds.includes(CHAT), false);
     await observer.receive(frame);
     assert.equal(chat.history.length, 2, 'late frames cannot put a completed reply back into streaming');
+  } finally { observer.dispose(); }
+});
+
+test('legacy presence refreshes cannot settle a managed turn or clear its live output', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  chat.history.push({ role: 'assistant', content: null, tool_calls: [
+    { id: 'map', type: 'function', function: { name: 'code_map', arguments: '{}' } },
+  ] });
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'managed-turn', running: true,
+    fields: { agentExecution: { executionId: 'managed-turn', status: 'running' } },
+    live: { lastDelta: 'Reviewing the chat', lastThinking: '', toolCallCount: 0 } };
+  try {
+    await observer.receive(frame);
+    setRemoteChatTurns(['legacy-chat']);
+    setRemoteChatTurns([]);
+    assert.equal(isChatRunningRemotely(CHAT), true, 'legacy lease lists do not include server-owned executions');
+    renderChatFromHistory(chat);
+    assert.equal(document.querySelector('.chat-work')?.getAttribute('data-outcome'), 'live');
+    await observer.receive({ ...frame, sequence: 2, live: { ...frame.live!, lastDelta: 'The review is still running' } });
+    assert.match(document.getElementById('chatArea')!.textContent!, /review is still running/);
+    await observer.receive({ ...frame, sequence: 3, running: false, live: null,
+      fields: { agentExecution: { executionId: 'managed-turn', status: 'completed' } },
+      history: { start: 2, length: 4, messages: [
+        { role: 'tool', tool_call_id: 'map', content: 'Mapped the chat files' },
+        { role: 'assistant', content: 'Review finished' },
+      ] } });
+    assert.equal(isChatRunningRemotely(CHAT), false);
+    assert.equal(document.querySelector('.chat-work')?.getAttribute('data-outcome'), 'done');
   } finally { observer.dispose(); }
 });
 

@@ -101,6 +101,26 @@ function fixture(overrides = {}) {
   };
 }
 
+test('persistent completion delivers report evidence without transcript paging', async () => {
+  const report = { outcome: 'pass', summary: 'One actionable finding', evidence: [
+    'warn: src/cache.ts:42 — revoking access retains cached data. Reproduced with a merge probe. Fix: invalidate the cache.',
+  ] };
+  const s = fixture({ post: () => new Response('data: ' + JSON.stringify({ choices: [{ delta: { content: JSON.stringify(report) } }] }) +
+    '\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } }) });
+  try {
+    s.enableHost();
+    const receipt = await s.delegation.spawn(s.caller, { type: 'explore', task: 'Review cache', client_request_id: 'report-evidence' });
+    await until(() => s.repository.getCommand(receipt.commandId).state === 'settled');
+    const result = s.settlements.find(row => row.runId === receipt.runId);
+    assert.match(result.summary, /One actionable finding/);
+    assert.match(result.summary, /src\/cache.ts:42/);
+    assert.match(result.summary, /Reproduced with a merge probe/);
+    assert.match(result.summary, /Fix: invalidate/);
+    assert.equal(s.posts, 1);
+    assert.equal(s.errors.length, 0);
+  } finally { await s.cleanup(); }
+});
+
 test('shared delegation without an allocator persists the parent workspace and the execution checkout separately', async () => {
   const s = fixture();
   try {

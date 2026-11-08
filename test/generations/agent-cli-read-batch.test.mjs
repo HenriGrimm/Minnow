@@ -20,3 +20,16 @@ test('empty or mutating-only catalogs do not expose a batch tool', () => {
   assert.equal(codexReadBatchTool([]), null);
   assert.equal(codexReadBatchTool([{ originalName: 'apply_patch' }]), null);
 });
+
+test('batch members expose their argument schemas with local references rebased', () => {
+  const schema = { type: 'object', required: ['path'], properties: { path: { $ref: '#/$defs/path' } },
+    $defs: { path: { type: 'string' } } };
+  const batch = codexReadBatchTool([{ originalName: 'read_file', description: 'Read a source file.', inputSchema: schema }]);
+  const member = batch.inputSchema.properties.calls.items.anyOf[0];
+  assert.equal(member.properties.name.const, 'read_file');
+  assert.equal(member.properties.name.description, 'Read a source file.');
+  assert.deepEqual(member.properties.arguments.required, ['path']);
+  assert.equal(member.properties.arguments.properties.path.$ref,
+    '#/properties/calls/items/anyOf/0/properties/arguments/$defs/path');
+  assert.equal(schema.properties.path.$ref, '#/$defs/path', 'caller schema is unchanged');
+});

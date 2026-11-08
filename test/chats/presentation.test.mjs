@@ -117,6 +117,29 @@ test('active frames distinguish next-message model controls from captured work a
   assert.equal(JSON.stringify(frame).includes('PRIVATE_'), false);
 });
 
+test('pending input exposes attribution and the leading message attachments without persisting a transcript row', t => {
+  const f = fixture(t);
+  const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
+  const images = [{ name: 'example.png', dataUrl: 'data:image/png;base64,AAAA' }];
+  const issue = { id: 'MIN-1', title: 'Fix chat', type: 'bug', status: 'ready', priority: 'medium', labels: [] };
+  const codeMap = { question: 'Inspect chat', title: 'Chat', kind: 'question', path: 'src/chat' };
+  for (const commandId of ['first-input', 'follow-up']) {
+    f.repository.admitCommand({ version: 1, chatId: 'chat', commandId, kind: 'send', requestedAt: 1,
+      message: 'Inspect chat\n[image: example.png]', provenance, images, intent: { version: 1, issue, codeMap, suppressUserEcho: true } },
+    { producerId: 'human', requestKey: commandId });
+  }
+  const [first, followup] = f.presentation.frame('chat').fields.pendingMessageQueue;
+  assert.deepEqual(first.provenance, provenance);
+  assert.deepEqual(first.images, images);
+  assert.deepEqual(first.issue, issue);
+  assert.deepEqual(first.codeMap, codeMap);
+  assert.equal(first.hiddenFromTranscript, true);
+  assert.equal(followup.images, undefined, 'queued attachments are not retransmitted until that input leads the queue');
+  assert.equal(followup.issue, undefined);
+  assert.deepEqual(followup.provenance, provenance);
+  assert.equal(f.repository.readTranscript('chat').messages.length, 0);
+});
+
 test('live token bursts are coalesced for scoped observers and never become canonical transcript rows', async t => {
   const f = fixture(t), fence = f.claim(), focused = [], summaries = [], foreign = [];
   f.presentation.subscribe({ projectId: 'project', chatId: 'chat', send: value => focused.push(value) });

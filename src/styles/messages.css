@@ -263,6 +263,12 @@
 }
 .msg.assistant { align-self: flex-start; align-items: flex-start; }
 
+.msg-send-status {
+  color: var(--mn-fg-muted);
+  font-size: var(--mn-type-sm);
+  line-height: var(--mn-leading-normal);
+}
+
 .msg.assistant.msg--stopped .msg-stopped-chip {
   font-size: 11px;
   letter-spacing: 0.04em;

@@ -54,7 +54,7 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     }
     if (message.fields) notifyManagedChatMetadata(message.chatId, { baseline });
     if (message.fields && Object.hasOwn(message.fields, 'agentExecution')) {
-      setRemoteChatRunning(message.chatId, ['running', 'loading_model'].includes(message.fields.agentExecution?.status));
+      setRemoteChatRunning(message.chatId, ['running', 'loading_model'].includes(message.fields.agentExecution?.status), 'managed');
     }
     onChange(getActiveChat()?.id === message.chatId);
   }
@@ -70,6 +70,9 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
       if (fields === null) return;
       if (frame) await observeFrame({ ...frame, fields }, baseline, isCurrent);
       else await notice(message, baseline, isCurrent);
+      // Admission or a project notice can promote the already-mounted chat.
+      // Subscribe to its full output once the canonical shell has arrived.
+      if (isCurrent()) connect();
     };
     const previous = pending.get(chatId);
     const work = (previous ? previous.then(apply) : apply()).catch(() => {});
@@ -93,9 +96,11 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   }
   function connect(force = false): void {
     if (disposed) return;
-    const candidate = getManagedChatView() || getActiveChat()?.id || '';
-    // Ordinary roots also receive summaries; watching them permits the first
-    // managed delivery to hydrate in place after a legacy turn has drained.
+    const mounted = getManagedChatView() || getActiveChat()?.id || '';
+    // A new renderer chat may not exist on the server yet. Watching its id
+    // would permanently close EventSource on 404 before its first send.
+    // Project summaries and admission receipts upgrade this subscription.
+    const candidate = findChatById(mounted)?.chatCommandVersion === 1 ? mounted : '';
     if (!force && source && watched === candidate) return;
     watched = candidate; source?.close(); reconciliation?.abort(); connection.abort(); connection = new AbortController();
     const url = `/api/chats/events${watched ? `?chatId=${encodeURIComponent(watched)}` : ''}`;
@@ -130,7 +135,7 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   };
   const stopRemote = (event: Event) => {
     const detail = (event as CustomEvent).detail;
-    if (detail?.chatId) setRemoteChatRunning(detail.chatId, false);
+    if (detail?.chatId) setRemoteChatRunning(detail.chatId, false, 'managed');
   };
   const unwatch = subscribeManagedChatView(() => connect());
   const unworkspace = subscribeWorkspace(() => connect(true));

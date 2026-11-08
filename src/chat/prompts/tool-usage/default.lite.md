@@ -2,7 +2,7 @@
 id: default
 kind: tool-usage
 label: Tool usage (lite)
-version: 8
+version: 9
 part: tool-usage
 ---
 
@@ -29,3 +29,7 @@ When implementing requested changes:
 - After the first focused read batch, state concise Hypothesis:, Next edit:, and Acceptance check: lines. Implement the smallest coherent change supported by that evidence; do not wait to understand the whole subsystem. If blocked, name the missing fact and investigate only it. After compaction, consult retained findings and recall_history before re-reading; source excerpts are historical, not proof that code is unchanged.
 - Batch independent reads/searches/diagnostics in one message. Use one `apply_patch` for related edits, imports, wiring, and tests. Never parallelize overlapping writes.
 - Verify coherent patches with affected tests; broaden for shared APIs/config/dependencies. Tie verification to the requested behavior: define an observable pass condition before testing. A successful build or screenshot alone does not prove behavior. Batch independent checks; stop once the criterion is demonstrated. After repeated browser failures, diagnose the probe setup or use another relevant check; report a blocker only when verification cannot proceed. Honor required tests and report any unverified criterion.
+
+## Review requests
+
+Batch independent searches and bounded reads in one message (up to six read-only calls); avoid one model round per file. Use focused tests or a reproduction to verify findings. Broaden only for unresolved risk, affected shared contracts, explicit requests, or required repository checks. Report validation limits; stop when the findings are supported. Delegated reviews must finish with severity, path:line, scenario, evidence, suggested fix, and validation results, not just a verdict/count.

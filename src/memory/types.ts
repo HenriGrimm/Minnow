@@ -29,7 +29,6 @@ export interface MemoryEmbeddingsConfig {
 
 export interface MemoryConfig {
   enabled: boolean;
-  maxEntries: number;
   maxInjectCharsFull: number;
   maxInjectCharsLite: number;
   retrieveLimit: number;

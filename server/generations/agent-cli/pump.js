@@ -111,7 +111,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     const root = join(getMinnowHome(), 'tmp', 'agent-cli');
     await mkdir(root, { recursive: true, mode: 0o700 });
     tempDir = await mkdtemp(join(root, 'generation-'));
-    bridge = await createAgentCliBridge({ tools, tempDir, onCall: call => {
+    bridge = await createAgentCliBridge({ tools, tempDir, readBatch: settings.kind === 'claude', toolChoice: body.tool_choice, onCall: call => {
       if (controller.signal.aborted || handoffClosed || failure) return;
       const callIndex = handedOff.push(call) - 1;
       choose();

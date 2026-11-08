@@ -403,6 +403,8 @@ test('Codex enables isolated tool orchestration and disables native environment 
   assert.match(start.developerInstructions, /code-mode exec/);
   assert.match(start.developerInstructions, /tools\.mn_read_batch/);
   assert.match(start.developerInstructions, /up to six ordinary Minnow calls/);
+  assert.match(start.developerInstructions, /must group independent read-only lookups/);
+  assert.match(start.dynamicTools[0].description, /use mn_read_batch/);
   assert.match(start.developerInstructions, /interactive tools sequential/);
 });
 

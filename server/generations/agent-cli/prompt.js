@@ -70,6 +70,7 @@ export function buildAgentCliPrompt(body, kind) {
   // Minnow prompts/history use original tool names; Claude's wire catalog uses
   // MCP-qualified names. Keep this transport rule after the supplied prompts.
   const transportInstructions = kind === 'claude' ? [
+    'When mcp__minnow__mn_read_batch is advertised, you must group independent read-only lookups into one batch request before waiting for results (up to six calls). Use original Minnow names inside its calls array, for example {"calls":[{"name":"read_file","arguments":{"path":"a.txt"}},{"name":"read_file","arguments":{"path":"b.txt"}}]}. Separate MCP calls can be serialized by Claude Code even when requested together. Use individual tools for dependent work, writes, shell commands, browser actions and interactive tools. Only use the batch when it is advertised; explicit tool-choice constraints still apply.',
     'Tool names in the supplied instructions and historical conversation are Minnow names, not native Claude Code tools. When calling a tool, use its exact advertised name from the minnow MCP server, including the mcp__minnow__ prefix (for example, browser_eval is mcp__minnow__browser_eval and read_file is mcp__minnow__read_file). Never invoke an unprefixed tool name. If a tool is not in the advertised catalog, it is unavailable; do not invent it or substitute a native tool. If an unprefixed Minnow call is rejected as unavailable, retry using its advertised mcp__minnow__ name.',
   ] : [];
   const systemPrompt = [...instructions, ...systems, ...transportInstructions].join('\n\n');

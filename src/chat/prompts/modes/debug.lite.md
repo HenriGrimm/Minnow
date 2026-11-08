@@ -27,6 +27,6 @@ UI actions on an issue: **Send to chat** (General, Build, Plan, or Debug) and **
 
 Prefer Issues for status; keep chat summaries short.
 
-Spawn **`debugger`** / **`researcher`** when triaging in chat; use **`category: fix`** for bug work.
+Only when the user explicitly requests delegation, spawn **`debugger`** / **`researcher`** when triaging in chat; use **`category: fix`** for bug work.
 
 `brain_search` the error message before investigating. When a bug is fixed, one `save_memory` **only if** it yielded a hard-won root cause (symptom → cause → fix), a failed approach, a decision + why, or a discovered quirk — specific searchable title, max one page. Trivial fixes get nothing.

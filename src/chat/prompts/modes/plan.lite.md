@@ -62,7 +62,7 @@ The existing **waves, task ids, front-matter todos, Touches, dependency rules, a
 - **`issue_*` tools are allowed.** If planning for an issue, `issue_update` with `plan_path` after saving.
 - After saving or editing, run **`check_plan`** on the plan path. Fix every reported parse error and rerun it before marking planning done. Then tell the user the path (and, for a revision, what changed) and suggest Build for a Build plan or Orchestrate for an Orchestrate plan.
 - Once the plan is approved, one `save_memory` recording the decisions it settled (choice, why, rejected alternatives). Skip if nothing was contested.
-- Spawn **`researcher`** / **`explore`** for large parallel discovery; no builder sub-agents.
+- Only when the user explicitly requests delegation, spawn **`researcher`** / **`explore`** for large parallel discovery; no builder sub-agents.
 
 ## Build plan schema
 

@@ -76,7 +76,14 @@ export function prepareConversation(body, identity) {
   const tools = buildAgentCliToolCatalog(body).map((tool, index) => ({ ...tool, name: `mn_tool_${index}`,
     description: `Minnow tool: ${tool.originalName}\n${tool.description}` }));
   const batchTool = codexReadBatchTool(tools, body.tool_choice);
-  if (batchTool) tools.push(batchTool);
+  if (batchTool) {
+    for (const tool of tools) {
+      if (batchTool.inputSchema.properties.calls.items.properties.name.enum.includes(tool.originalName)) {
+        tool.description += '\nFor multiple independent lookups, use mn_read_batch with the original Minnow names and these arguments in one request.';
+      }
+    }
+    tools.push(batchTool);
+  }
   const systems = messages.filter(row => ['system', 'developer'].includes(row.role));
   const instructions = systems.map(row => row.content).join('\n\n');
   return { messages, canonical, tools, instructions, signature: hash({ identity, systems, model: body.model, tools,

@@ -3282,7 +3282,6 @@ export function normalizeVoiceConfig(raw, existing = {}, options = {}) {
 export function normalizeMemoryConfig(raw, existing = {}) {
   const base = {
     enabled: true,
-    maxEntries: 500,
     maxInjectCharsFull: 8000,
     maxInjectCharsLite: 800,
     retrieveLimit: 20,
@@ -3298,14 +3297,12 @@ export function normalizeMemoryConfig(raw, existing = {}) {
     },
     ...existing,
   };
+  delete base.maxEntries;
 
   if (!raw || typeof raw !== 'object') return base;
   const row = /** @type {Record<string, unknown>} */ (raw);
 
   if (typeof row.enabled === 'boolean') base.enabled = row.enabled;
-  if (typeof row.maxEntries === 'number' && Number.isFinite(row.maxEntries)) {
-    base.maxEntries = Math.min(5000, Math.max(1, Math.floor(row.maxEntries)));
-  }
   if (typeof row.maxInjectCharsFull === 'number' && Number.isFinite(row.maxInjectCharsFull)) {
     base.maxInjectCharsFull = Math.min(32_000, Math.max(200, Math.floor(row.maxInjectCharsFull)));
   }

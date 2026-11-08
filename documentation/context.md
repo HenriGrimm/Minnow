@@ -1,5 +1,9 @@
 # Minnow ? project context
 
+**Review completion handoffs:** Persistent child completion summaries include bounded final findings, source references and report evidence; `chat_wait` falls back to the exact execution's structured result when no final prose row exists. Excerpted reports point to the child. Full/lite tool guidance encourages batched independent reads and focused validation for review requests.
+
+**CLI read batching:** Codex and Claude Code advertise transport-only `mn_read_batch` for up to six independent safe reads when tool choice is automatic. Shared schema generation retains member argument schemas and rebases local references; guidance requires grouping independent reads before awaiting results. Every member remains an ordinary Minnow tool call governed by the shared execution policy and permissions. Claude's MCP catalog marks known safe reads with `readOnlyHint`; its bridge aggregates ordered text/image results and maps members back to one native batch for interactive commit checks and transcript checkpoints. A transport fingerprint revision refreshes retained Claude sessions. Explicit required/named tool choices retain their individual catalog. Model grouping remains an inference decision, not a transport guarantee. Coverage: CLI read-batch, bridge, persistence, protocol and Codex pump/live suites.
+
 **Sub-agent reasoning:** Delegated children inherit parent chat reasoning options across model routing. Parent options take precedence over type defaults; explicit spawn options remain overrides. Shipped types inherit thinking. Unsupported inherited levels fail preflight rather than silently lowering effort.
 
 **Windows publication and action cancellation:** Provider profiles/capabilities, encrypted secret replacement and scheduler atomic writes share bounded transient-sharing-lock rename retries without an unlink fallback. Legacy app metadata readers serialize with per-app writers so polling cannot starve publication. Local action workers acknowledge IPC readiness before receiving launch descriptors; Stop cooperatively prevents a pending launch or terminates the running command, with a bounded process-tree fallback. The checkout lock remains held until worker close and final run bookkeeping. Coverage: atomic-file, secret-box, native-policy-monitor, board-testing, Reef core/recovery and actions-local tests.
@@ -825,6 +829,10 @@ Content-channel `<tool_call>` envelopes also emit live `tool_streaming` progress
 
 ### Persistent agent conversations
 
+Managed live subscriptions watch project summaries while a new chat is still renderer-local, then switch to that mounted chat's full output after an admission receipt or project notice confirms canonical ownership. This avoids permanently closing the stream on an unsaved chat ID. Managed execution activity and legacy renderer lease snapshots retain separate viewer state, so a legacy presence refresh cannot settle a running server-owned turn.
+
+An idle chat's accepted human input appears as a read-only sending row in the shared transcript instead of the composer queue strip. The pending presentation carries attribution and the leading input's image/issue/Code Map display metadata; hidden and non-human inputs remain excluded from the human echo. The view never appends to saved history and yields to the exact canonical command ID. Held, blocked and later follow-ups retain their queue controls.
+
 The sidebar uses the managed execution and pending command to distinguish generating, queued, waiting and finished children. Background chat notices include lightweight identity and lineage so a newly delegated child can be nested before its transcript is loaded. After `/api/chats/events` sends `baseline-end`, the renderer checks previously unsettled chats omitted from the replay using the project-scoped `GET /api/chats/:id?view=activity`. On the agent journal stream, the initial `since` cursor bridges the gap after the run-list read. Subsequent reconnects use the last event ID.
 
 Delegation cards follow the spawn receipt, tool call or saved parent turn as history pages load. Dev Servers releases the transcript pager and inspector before reusing the Code column.
@@ -1092,6 +1100,8 @@ API: `GET /api/skills`, `GET/PUT /api/skills/:id`, `GET/PUT /api/config/skills`.
 ---
 
 ## Official Minnow wiki, Memory, and Brain
+
+**Memory capacity:** Brain facts have no entry-count cap, including saves through `save_memory` and `/api/memory/entries`. Legacy `memory.maxEntries` values are ignored and removed when memory settings are saved. The memory adapter still enforces a 32 KiB UTF-8 body limit per entry; retrieval and prompt-injection budgets are unchanged.
 
 Workspace notes and the derived code map use a key based on the canonical checkout path. Two checkouts with the same folder name get separate keys. Older pages keep their paths and links. When a captured page can be traced to a saved chat, Brain scopes it to that chat’s recorded checkout. Other legacy notes stay browsable in Brain and can be assigned individually with **Assign to this workspace**.
 

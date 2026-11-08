@@ -21,13 +21,11 @@ import { isValidEntryId } from './paths.js';
 import { backupBrain } from '../brain/backup.js';
 
 const MAX_BODY_BYTES = 32 * 1024;
-const MAX_ENTRIES = 500;
 const FACTS_PREFIX = 'facts/';
 
 /** Default memory section in config.json when missing. */
 export const DEFAULT_MEMORY_CONFIG = {
   enabled: true,
-  maxEntries: MAX_ENTRIES,
   maxInjectCharsFull: 8000,
   maxInjectCharsLite: 800,
   retrieveLimit: 20,
@@ -93,6 +91,8 @@ export async function loadMemoryConfig() {
     config.memory && typeof config.memory === 'object'
       ? config.memory
       : {};
+  // Older profiles may still contain the removed entry-count cap.
+  delete raw.maxEntries;
   const brainEmb = (await loadBrainConfig()).embeddings ?? {};
   const embeddings =
     raw.embeddings && typeof raw.embeddings === 'object'
@@ -140,6 +140,7 @@ export async function saveMemoryConfig(partial) {
     ...partial,
     embeddings: nextEmb,
   };
+  delete config.memory.maxEntries;
 
   const brain =
     config.brain && typeof config.brain === 'object' ? config.brain : {};
@@ -168,12 +169,6 @@ export async function getEntry(id) {
 /** Create a memory entry as a facts wiki page. */
 export async function createEntry(input) {
   const entries = await listEntries();
-  if (entries.length >= MAX_ENTRIES) {
-    const err = new Error('Memory entry limit reached');
-    err.statusCode = 507;
-    throw err;
-  }
-
   const body = String(input.body ?? '');
   if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
     const err = new Error('Entry body exceeds 32KB limit');

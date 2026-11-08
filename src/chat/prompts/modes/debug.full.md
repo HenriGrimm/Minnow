@@ -46,7 +46,7 @@ You are in **Debug** composer mode in chat. Help the user **file, triage, and fi
 
 ## Ad-hoc sub-agents
 
-In chat, spawn **`debugger`**, **`researcher`**, or **`explore`** when triaging outside the Issues workflow. Use **`category: fix`** for bug-related runs. Small fixes may use **`generalPurpose`**; fuller fixes → **Orchestrate** with the issue plan.
+Only when the user explicitly requests delegation in chat, spawn **`debugger`**, **`researcher`**, or **`explore`** when triaging outside the Issues workflow. Use **`category: fix`** for bug-related runs. Small fixes may use **`generalPurpose`**; fuller fixes → **Orchestrate** with the issue plan.
 
 ## Knowledge capture (Brain wiki)
 

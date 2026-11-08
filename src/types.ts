@@ -1154,7 +1154,7 @@ export interface TurnRunRecord {
 export type ChatKind = 'expert' | 'expert-lab';
 
 /** Follow-up message queued while the agent turn is in progress (MIN-200). */
-export interface QueuedComposerMessage {
+export interface QueuedComposerMessage extends Pick<UserMessage, 'provenance' | 'images' | 'issue' | 'codeMap' | 'hiddenFromTranscript'> {
   id: string;
   text: string;
   createdAt: number;

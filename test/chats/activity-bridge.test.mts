@@ -3,11 +3,57 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createEmptyChatObject, resetSessionPersistenceForTests, setSessionStateForTests, sessionState, applySharedChatFrame } from '../../src/state/sessions.ts';
 import { startManagedChatBridge } from '../../src/chat/managed-chat-bridge.ts';
-import { subscribeManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
+import { notifyManagedChatView, subscribeManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
 import { createManagedChatNotificationProducer } from '../../src/notifications/managed-chat.ts';
 import type { PushNotificationInput } from '../../src/notifications/types.ts';
+import { isChatRunningRemotely, setRemoteChatTurns } from '../../src/chat/remote-turn-state.ts';
 
-afterEach(() => { resetSessionPersistenceForTests(); setSessionStateForTests(null); });
+afterEach(() => { notifyManagedChatView(''); setRemoteChatTurns([], 'managed'); resetSessionPersistenceForTests(); setSessionStateForTests(null); });
+
+test('an unsaved open chat watches project activity and upgrades to live output when its first send is admitted', async t => {
+  const chat = createEmptyChatObject('model');
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  notifyManagedChatView(chat.id);
+  const sources: { url: string; onopen: any; onmessage: any; closed: boolean; close(): void }[] = [];
+  const received: any[] = [];
+  t.after(startManagedChatBridge({ receive: async frame => {
+    received.push(frame); applySharedChatFrame(frame.chatId, frame.fields);
+  }, reconnect() {} }, () => {}, { createSource: url => {
+    const source = { url, onopen: null as any, onmessage: null as any, closed: false, close() { this.closed = true; } };
+    sources.push(source); return source;
+  } }));
+  assert.equal(sources[0].url, '/api/chats/events', 'an unsaved id would close the stream with a 404');
+  sources[0].onopen();
+  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId: chat.id,
+    frame: { chatId: chat.id, fields: { chatCommandVersion: 1, agentPendingCommand: { commandId: 'first', state: 'accepted' } } } } }));
+  await new Promise(done => setImmediate(done));
+  assert.equal(sources.length, 2, 'admission subscribes the same mounted chat without navigation');
+  assert.equal(sources[0].closed, true);
+  assert.equal(sources[1].url, `/api/chats/events?chatId=${chat.id}`);
+  sources[1].onopen();
+  sources[1].onmessage({ data: JSON.stringify({ kind: 'frame', frame: { chatId: chat.id,
+    fields: { agentPendingCommand: null, agentExecution: { executionId: 'first-run', status: 'running' } },
+    live: { lastDelta: 'Working now', lastThinking: '', toolCallCount: 0 } } }) });
+  await new Promise(done => setImmediate(done));
+  assert.equal(chat.agentPendingCommand, undefined);
+  assert.equal(chat.agentExecution?.status, 'running');
+  assert.equal(received.at(-1).live.lastDelta, 'Working now');
+});
+
+test('project activity upgrades a mounted raw chat promoted by another client to full live output', async t => {
+  const chat = createEmptyChatObject('model');
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  notifyManagedChatView(chat.id);
+  const urls: string[] = [], source = { onopen: null as any, onmessage: null as any, close() {} };
+  t.after(startManagedChatBridge({ receive: async () => {}, reconnect() {} }, () => {}, { createSource: url => { urls.push(url); return source; } }));
+  source.onopen();
+  source.onmessage({ data: JSON.stringify({ kind: 'chat-changed', chatId: chat.id,
+    fields: { chatCommandVersion: 1, agentExecution: { executionId: 'external', status: 'running' } } }) });
+  await new Promise(done => setImmediate(done));
+  assert.deepEqual(urls, ['/api/chats/events', `/api/chats/events?chatId=${chat.id}`]);
+  setRemoteChatTurns([]);
+  assert.equal(isChatRunningRemotely(chat.id), true, 'project notices keep managed activity separate from legacy presence');
+});
 test('reconnect recovers an offline completion and an incoming live notice supersedes a pending activity read', async t => {
   const parent = createEmptyChatObject('model'), child = createEmptyChatObject('model');
   child.chatCommandVersion = 1; child.agentExecution = { executionId: 'first', status: 'running' };
@@ -70,7 +116,8 @@ test('actual bridge honors explicit replay baselines and a first genuinely new r
   await emit({ kind: 'frame', frame: { chatId: 'raw', fields: { agentExecution: { executionId: 'live', status: 'running' } } } });
   await emit({ kind: 'frame', frame: { chatId: 'raw', fields: { agentExecution: { executionId: 'live', status: 'failed' } } } });
   assert.deepEqual(notices.map(row => row.dedupeKey), ['request:new', 'execution:live']);
-  stopBridge(); stopProducer(); assert.equal(source.closeCount, 1);
+  const closedBeforeStop = source.closeCount;
+  stopBridge(); stopProducer(); assert.equal(source.closeCount, closedBeforeStop + 1);
   await emit({ kind: 'frame', frame: { chatId: 'raw', fields: { agentExecution: { executionId: 'late', status: 'failed' } } } });
   assert.equal(notices.length, 2);
 });

@@ -271,6 +271,19 @@ test('wait pins exact execution across replacement, returns only its final text 
   }, { options: { beforeWait: () => { entered++; return () => { released++; }; } } });
 });
 
+test('wait returns report evidence when an exact completed execution has no final prose', async () => {
+  await fixture(async f => {
+    const fence = f.repository.claimExecution({ chatId: 'target', executionId: 'report-only', ownerId: 'target-host' });
+    f.repository.updateExecution('report-only', { status: 'completed', result: {
+      outcome: 'pass', summary: 'One finding', evidence: ['src/cache.ts:42 — revocation probe retains stale data'],
+    } }, { fence });
+    const result = await f.execute('chat_wait', { chat_id: 'target', execution_id: 'report-only' });
+    assert.equal(result.state, 'terminal');
+    assert.match(result.assistant_final, /One finding/);
+    assert.match(result.assistant_final, /src\/cache.ts:42/);
+  });
+});
+
 test('wait abort/current revocations release hooks and never stop the target', async () => {
   let released = 0;
   await fixture(async f => {

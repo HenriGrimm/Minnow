@@ -49,9 +49,17 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
     } : null;
     const pending = repository.listCommands({ chatId, states: ['accepted', 'queued', 'waiting_for_host'], limit: 1000 })
       .filter(row => row.effectiveCommand.kind === 'send' || row.effectiveCommand.kind === 'steer');
-    output.pendingMessageQueue = pending.map(row => ({ id: row.commandId, text: row.effectiveCommand.message,
+    output.pendingMessageQueue = pending.map((row, index) => ({ id: row.commandId, text: row.effectiveCommand.message,
       createdAt: row.createdAt, commandRevision: row.revision, modelSelection: row.effectiveCommand.modelSelection,
-      kind: row.effectiveCommand.kind, held: row.held }));
+      kind: row.effectiveCommand.kind, held: row.held, provenance: row.effectiveCommand.provenance,
+      // Only the leading input can be presented as a sending transcript row.
+      ...(index === 0 ? {
+        ...(row.effectiveCommand.images?.length ? { images: row.effectiveCommand.images } : {}),
+        ...(row.effectiveCommand.intent?.issue ? { issue: row.effectiveCommand.intent.issue } : {}),
+        ...(row.effectiveCommand.intent?.codeMap ? { codeMap: row.effectiveCommand.intent.codeMap } : {}),
+        ...(row.effectiveCommand.intent?.suppressUserEcho ? { hiddenFromTranscript: true } : {}),
+      } : {}),
+    }));
     output.pendingSteerMessage = null;
     Object.assign(output, projection);
     output.agentRequests = repository.listRequestPresentation(chatId, { limit: 32, recentLimit: 0 }).requests;

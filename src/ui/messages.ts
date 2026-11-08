@@ -56,6 +56,7 @@ import { resolveModelInfo, showCachedModelInfo } from '../api/models';
 import { isActiveChatStreaming, isChatStreaming, isStreamDomVisible } from '../chat/streaming-state';
 import { STREAMING_CARET_CLASS, STREAMING_CARET_SELECTOR, setAssistantBubbleContent } from '../markdown/renderer';
 import { syncComposerMessageQueue } from './composer-message-queue';
+import { getSendingManagedMessage } from '../chat/message-queue';
 import {
   getActiveBoardGroup,
   getBoardGroupForChat,
@@ -360,6 +361,28 @@ function historyRenderContext(chat: Chat): HistoryRenderContext {
   return { chat, toolResultMap, fold: compactionFoldView(chat.history) };
 }
 
+/** Show accepted input while its server turn starts, without fabricating a history row or actions. */
+function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
+  const pending = getSendingManagedMessage(chat);
+  if (!pending || chat.history.some(message => message.role === 'user' && message.commandId === pending.id)) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg user msg--sending';
+  wrap.dataset.pendingCommandId = pending.id;
+  wrap.setAttribute('aria-busy', 'true');
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = pending.issue ? 'Issue' : 'You';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  renderUserMessageBubble(bubble, pending.text, { persistedImages: pending.images, issue: pending.issue, codeMap: pending.codeMap });
+  const status = document.createElement('span');
+  status.className = 'msg-send-status';
+  status.setAttribute('role', 'status');
+  status.textContent = 'Sending…';
+  wrap.append(label, bubble, status);
+  host.append(wrap);
+}
+
 /** Paint the shared transcript in a secondary surface without selecting or repainting Code. */
 export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>): { liveBubble: HTMLDivElement | null; dispose: () => void } {
   disposeChatWorkView(area);
@@ -377,6 +400,7 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
   }
   paint(host, () => {
     for (let i = tailStart; i < chat.history.length; i += 1) appendHistoryMessageAt(host, ctx, i);
+    appendSendingUserMessage(chat, host);
     if (isChatStreaming(chat.id)) {
       liveBubble = appendBubble('assistant', '', {
         historyIndex: chat.history.length, turnKind: 'assistant', chatId: chat.id, modeId: chat.modeId,
@@ -741,7 +765,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   clearSubAgentCardDomRegistry();
-  if (!chat.history.length) {
+  if (!chat.history.length && !getSendingManagedMessage(chat)) {
     if (chat.agentConversation) {
       if (codeMount) teardownHub();
       area.replaceChildren();
@@ -774,6 +798,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     for (let i = tailStart; i < total; i += 1) {
       appendHistoryMessageAt(transcriptHost, renderCtx, i);
     }
+    appendSendingUserMessage(chat, transcriptHost);
   });
   area.replaceChildren(...transcriptHost.childNodes);
   installChatWorkView(area, chat, () => isChatStreaming(chat.id));
@@ -790,7 +815,6 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   });
   renderPersistedSubAgentCardsForChat(chat);
   syncThoughtsCaretPulse(area);
-  syncComposerMessageQueue();
   restoreChatScrollAnchor(scrollAnchor);
   refreshMetricsStripForChat(chat);
   refreshContextUsageRing();
@@ -799,6 +823,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   } finally {
     suppressBubbleScroll = false;
+    syncComposerMessageQueue();
     syncAgentConversationHeader(chat, area);
     syncManagedChatRequests(chat, area);
     restoreAgentFocus();

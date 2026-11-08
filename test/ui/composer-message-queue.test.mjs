@@ -61,20 +61,22 @@ describe('composer message queue mount', () => {
     return { ...dom, chat };
   }
 
-  test('an idle managed send shows Sending until it starts, counting only later inputs as queued', () => {
+  test('an idle managed send stays out of the queue strip, counting only later inputs as queued', () => {
     const { chat } = seed();
     appState.setStreaming(false);
+    chat.chatCommandVersion = 1;
     chat.agentExecution = { executionId: 'previous-turn', status: 'completed', createdAt: 1, updatedAt: 2 };
-    chat.pendingMessageQueue = [{ id: 'new-message', text: 'Continue working', createdAt: 3 }];
+    chat.pendingMessageQueue = [{ id: 'new-message', text: 'Continue working', createdAt: 3,
+      provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } }];
     chat.agentPendingCommand = { commandId: 'new-message', runId: null, state: 'queued', held: false };
     const label = () => document.querySelector('.composer-message-queue__count').textContent;
     syncComposerMessageQueue();
-    assert.equal(label(), 'Sending…');
-    assert.match(document.querySelector('.composer-message-queue__text').textContent, /Continue working/);
+    assert.equal(document.getElementById('composerMessageQueue').classList.contains('hidden'), true);
 
     chat.pendingMessageQueue.push({ id: 'later-message', text: 'Then run the tests', createdAt: 4 });
     syncComposerMessageQueue();
-    assert.equal(label(), 'Sending… · 1 queued for later');
+    assert.equal(label(), '1 queued for later');
+    assert.equal(document.querySelector('.composer-message-queue__text').textContent, 'Then run the tests');
 
     chat.pendingMessageQueue.shift();
     chat.agentPendingCommand = { commandId: 'later-message', runId: null, state: 'queued', held: false };
@@ -91,13 +93,16 @@ describe('composer message queue mount', () => {
   test('held, blocked and unconfirmed managed input never claims to be sending', () => {
     const { chat } = seed();
     appState.setStreaming(false);
-    chat.pendingMessageQueue = [{ id: 'pending', text: 'Retained input', createdAt: 3 }];
+    chat.chatCommandVersion = 1;
+    chat.pendingMessageQueue = [{ id: 'pending', text: 'Retained input', createdAt: 3,
+      provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } }];
     chat.agentPendingCommand = { commandId: 'pending', runId: null, state: 'queued', held: false };
     const check = expected => {
       syncComposerMessageQueue();
       assert.equal(document.querySelector('.composer-message-queue__count').textContent, expected);
     };
-    check('Sending…');
+    syncComposerMessageQueue();
+    assert.equal(document.getElementById('composerMessageQueue').classList.contains('hidden'), true);
     chat.agentPendingCommand.held = true;
     check('1 queued for later');
     chat.agentPendingCommand.held = false;

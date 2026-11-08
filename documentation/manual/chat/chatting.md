@@ -18,6 +18,8 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 **Enter** sends, **Shift+Enter** adds a line. While a turn is running, **Enter** steers it and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a follow-up for later. Empty Enter does nothing. **↑** with the caret at the start of the composer walks back through your previous prompts, shell-style; **↓** walks forward.
 
+In an idle server-owned chat, your accepted message appears in the conversation with **Sending…** while its reply starts. Follow-ups waiting behind an active reply appear above the composer.
+
 Drafts survive switching chats.
 
 Chats save automatically across windows. If two windows save competing edits, Minnow keeps saving and preserves the displaced transcript and draft as an archived chat with **(recovered)** in its title. Recovery copies do not start agents or scheduled work.

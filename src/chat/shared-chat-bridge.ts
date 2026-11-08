@@ -281,7 +281,7 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     const state = existing ?? { frame: next, thinking: '' };
     const wasRunning = streamingChatIds.has(frame.chatId);
     if (wasRunning) return;
-    setRemoteChatRunning(frame.chatId, frame.running);
+    setRemoteChatRunning(frame.chatId, frame.running, frame.hostId === 'minnow-server' ? 'managed' : 'legacy');
     const applied = applySharedChatFrame(frame.chatId, frame.fields, frame.history);
     if (!applied) throw new Error('Transcript prefix has not arrived yet.');
     state.frame = next;

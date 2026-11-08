@@ -158,7 +158,7 @@ export async function buildSubAgentSystemPrompt(
 ---
 
 You are a sub-agent (type: ${typeId}). Complete the following task. You cannot spawn other sub-agents.
-When finished, you will submit a structured JSON outcome (summary, findings, artifacts) for the parent — not a long prose report.
+When finished, submit a structured JSON outcome (summary, findings, artifacts). Put actionable details in findings: severity, exact path and line, trigger/scenario, evidence, and suggested fix. Include validation results and limitations. The parent must be able to assess your result without reading your transcript.
 
 Task:
 ${task}`;
