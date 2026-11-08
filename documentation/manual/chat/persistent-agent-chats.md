@@ -57,12 +57,9 @@ Opening Activity or marking an item seen does not answer it. Requests remain att
 
 Some tools need a connected desktop host, browser or other capability. **Waiting for host** means the required executor is unavailable; it is not a generating spinner. Unknown tool effects show **Needs recovery** rather than being replayed automatically.
 
-## Stop controls
+## Stop work
 
-| Control | Scope |
-|---|---|
-| **Stop chat** | Stops this chat's current reply and all its sub-agents, including nested agents, and prevents old results from waking it. Unapplied corrections and queued work are held for review. |
-| **Stop agents** | Stops this conversation's child work and prevents old results from automatically waking it. The parent's own reply and queued human messages remain. |
+Use **Stop** in the composer to stop this chat's current reply and all its sub-agents, including nested agents, and prevent old results from waking it. Stop remains available while the chat is queued or waiting and while its agents are still working after its own reply finishes. Unapplied corrections and queued work are held for review.
 
 Stopping retains saved messages and partial output. A stale stop or answer from an older turn cannot act on a replacement turn. Restarting Minnow does not grant permission to repeat an uncertain file or native-tool effect.
 

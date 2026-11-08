@@ -3,15 +3,36 @@ import type { ChatStopReason } from '../types';
 import { preservePendingSteer } from './message-queue';
 import { cancelGeneration } from '../api/generations';
 import { flushStoppedChatPresentation } from './flush-stopped-chat-presentation';
-import { findChatById, getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
+import { findChatById, getActiveChat, scheduleSaveSessions, sessionState, touchChat } from '../state/sessions';
+import { projectChatRelationships } from '../state/chat-relationships';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
-import { cancelAllForParentChat } from '../agents/orchestrator';
+import { cancelAllForParentChat, listActiveSubAgentRuns } from '../agents/orchestrator';
+import { isChatTurnInProgress } from './chat-turn-guard';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import { setStatus } from '../ui/status';
 import { getAgentConversationsCapabilitySync } from '../config/agent-conversations-enabled';
 import { isServerStorageMode } from '../config/storage-mode';
 import { getChatTurnOwnerId } from './turn-ownership';
 import { reportBackgroundError } from '../boot/report-background-error';
+
+const stoppableStates = new Set(['accepted', 'queued', 'running', 'loading_model', 'waiting', 'waiting_for_host', 'waiting_for_model', 'waiting_for_capacity', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_question', 'waiting_for_approval', 'stopping']);
+
+/** Keep Stop available for waiting turns and delegated work after the parent settles. */
+export function hasChatWorkToStop(chatId: string): boolean {
+  const chat = findChatById(chatId);
+  if (!chat || chat.agentConversation?.origin === 'native' || chat.agentConversation?.capabilities?.canStop === false) return false;
+  if (isChatTurnInProgress(chat.id) || stoppableStates.has(chat.agentExecution?.status ?? '') || (chat.agentPendingCommand && !chat.agentPendingCommand.held)) return true;
+  const runningParents = new Set(listActiveSubAgentRuns().map(run => run.parentChatId));
+  if (runningParents.has(chat.id)) return true;
+  const graph = projectChatRelationships(sessionState?.chats ?? [chat]);
+  const family = [...(graph.children.get(chat.id) ?? [])];
+  for (let index = 0; index < family.length; index++) {
+    const member = family[index]!;
+    if (isChatTurnInProgress(member.id) || stoppableStates.has(member.agentExecution?.status ?? '') || (member.agentPendingCommand && !member.agentPendingCommand.held) || runningParents.has(member.id)) return true;
+    family.push(...(graph.children.get(member.id) ?? []));
+  }
+  return false;
+}
 
 /**
  * Stop a chat and its delegated work, retaining saved output and queued input.

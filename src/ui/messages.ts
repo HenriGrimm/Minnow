@@ -6,7 +6,8 @@ import { getSharedChatHost } from './shared-chat-host-state';
 import { showToast } from './toast';
 import { isHubMounted, renderHub, refreshHubLiveData, teardownHub } from './hub';
 import { mountHistoryPager } from './history-pager';
-import { forgetChatSurface, rememberChatSurface, retainedChatHistoryStart } from './chat-surface-state';
+import { chatHistoryAppendStart, forgetChatSurface, rememberChatSurface, retainedChatHistoryStart } from './chat-surface-state';
+import { getTranscriptScroller } from './transcript-scroll';
 import { isOrchestrateHubMounted, teardownOrchestrateHub } from './orchestrate-hub';
 import { teardownCodeBrainMapBeforeChatPaint } from './code-brain-map';
 import { queryCodeMapChatHost } from './code-map/chat-state';
@@ -688,12 +689,13 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   if (!area) return;
   const codeMount = boardChatHost != null || isCodeChatMount(mount);
   const retainedStart = retainedChatHistoryStart(area, chat);
-  forgetChatSurface(area);
+  const appendStart = chatHistoryAppendStart(area, chat);
+  if (appendStart === undefined) forgetChatSurface(area);
   const scrollAnchor = captureChatScrollAnchor();
   const restoreAgentFocus = captureAgentConversationFocus(area, chat.id);
-  disposeChatWorkView(area);
+  if (appendStart === undefined) disposeChatWorkView(area);
   // A newer paint owns the transcript; the previous chat's chunks must not land in it.
-  cancelChatHistoryBackfill();
+  if (appendStart === undefined) cancelChatHistoryBackfill();
 
   if (codeMount && isSuperPlanScreenMountedForOtherChat(chat.id)) {
     teardownSuperPlanScreen();
@@ -764,8 +766,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     }
   }
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
-  clearSubAgentCardDomRegistry();
-  if (!chat.history.length && !getSendingManagedMessage(chat)) {
+  if (appendStart === undefined) clearSubAgentCardDomRegistry();
+  if (!chat.history.length && !getSendingManagedMessage(chat) && !isChatStreaming(chat.id)) {
     if (chat.agentConversation) {
       if (codeMount) teardownHub();
       area.replaceChildren();
@@ -788,6 +790,34 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   if (codeMount) {
     teardownHub();
+  }
+  if (appendStart !== undefined) {
+    const update = () => {
+      const pending = getSendingManagedMessage(chat);
+      for (const row of area.querySelectorAll<HTMLElement>('.msg--sending')) {
+        if (row.dataset.pendingCommandId !== pending?.id) row.remove();
+      }
+      if (chat.history.length > appendStart) removeStaleLiveStreamingRows(area);
+      const renderCtx = historyRenderContext(chat);
+      for (let i = appendStart; i < chat.history.length; i++) {
+        const message = chat.history[i];
+        if (message.role === 'tool') {
+          const tool = Array.from(area.querySelectorAll<HTMLElement>('.tool-call-msg'))
+            .find(row => row.dataset.toolCallId === message.tool_call_id);
+          if (tool) renderToolResult(tool, message.content, message.attachments, undefined, message.codeChange);
+        } else appendHistoryMessageAt(area, renderCtx, i);
+      }
+      if (pending && !area.querySelector('.msg--sending')) appendSendingUserMessage(chat, area);
+      installChatWorkView(area, chat, () => isChatStreaming(chat.id));
+      renderPersistedSubAgentCardsForChat(chat);
+      syncThoughtsCaretPulse(area);
+    };
+    const root = getChatScrollRoot();
+    if (root && chat.history.length > appendStart) getTranscriptScroller(root).preserve(area, update);
+    else update();
+    refreshMetricsStripForChat(chat);
+    refreshContextUsageRing();
+    return;
   }
   // Paint off-DOM and swap so the previous transcript stays until the new one is ready (MIN-584).
   const transcriptHost = document.createElement('div');
@@ -812,6 +842,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     syncThoughtsCaretPulse(area);
     // Settle disclosures before the pager measures height and restores the reader's position.
     installChatWorkView(area, chat, () => isChatStreaming(chat.id));
+    rememberChatSurface(area, chat);
   });
   renderPersistedSubAgentCardsForChat(chat);
   syncThoughtsCaretPulse(area);

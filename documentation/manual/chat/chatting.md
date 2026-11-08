@@ -92,7 +92,7 @@ A connection that accumulates more than 4 MiB of pending stream data or stalls f
 - **Activity** — the menubar dropdown shows what needs your input, what is running, and recent outcomes across the current workspace. Expand a running item to inspect its sub-agents, model, and context usage.
 - **Agent cards and chats** — delegated assignments are grouped in the parent transcript. Open a saved child chat for its own conversation, composer, model controls and requests. The original assignment result remains on its card. Older tasks retain their inspector and can offer **Continue as chat** from partial saved context. See [Agent conversations](persistent-agent-chats.md).
 
-The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. **Stop chat** stops the current reply and all its sub-agents. **Stop agents** stops only delegated work while the parent continues.
+The initial assignment returns its result to the parent with a source-chat link. Follow-up messages sent directly to the child stay in that child and do not automatically wake the old parent. Use **Stop** in the composer to stop the current reply and all its sub-agents, including agents still working after the parent's reply finishes.
 
 ## Undoing a turn
 

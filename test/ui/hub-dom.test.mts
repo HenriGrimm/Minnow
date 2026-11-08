@@ -57,7 +57,17 @@ describe('hub teardown', () => {
     assert.equal(isHubMounted(), true);
     assert.ok(document.querySelector('.input-bar--hub'));
 
+    const root = document.getElementById(HUB_ROOT_ID);
+    const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+    input.value = 'Keep typing here';
+    input.focus();
+    input.setSelectionRange(4, 10);
+
     renderHub(chat);
+    assert.equal(document.getElementById(HUB_ROOT_ID), root, 'same-chat refresh keeps the landing DOM');
+    assert.equal(document.activeElement, input, 'refresh preserves composer focus');
+    assert.equal(input.selectionStart, 4);
+    assert.equal(input.selectionEnd, 10);
     assert.equal(isHubMounted(), true);
     assert.ok(document.getElementById('msgInput'), 'composer textarea survives remount');
     assert.ok(
@@ -103,10 +113,13 @@ describe('hub teardown', () => {
 
     renderHub(chat);
     assert.ok(document.querySelector('.hub-composer-slot .input-bar'));
+    const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+    input.focus();
 
     teardownHub();
     document.getElementById('chatArea')!.replaceChildren();
 
     assert.ok(document.getElementById('msgInput'), 'composer survives when hub is torn down first');
+    assert.equal(document.activeElement, input, 'starting the conversation keeps the composer focused');
   });
 });

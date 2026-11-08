@@ -178,7 +178,6 @@
 .managed-chat-requests__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--mn-fg-muted); margin: 8px 0; font-size: 11px; }
 .managed-chat-requests[hidden], .managed-chat-scopes[hidden], .managed-chat-requests__pager[hidden], .managed-chat-request__form[hidden], .managed-chat-request textarea[hidden] { display: none; }
 .managed-chat-scopes { margin-bottom: 8px; }
-.managed-chat-scopes__status { color: var(--mn-fg-muted); }
 .managed-chat-scopes p { flex-basis: 100%; color: var(--mn-warning); }
 .managed-chat-requests button { padding: 5px 9px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .managed-chat-requests button:disabled { opacity: 0.5; cursor: default; }

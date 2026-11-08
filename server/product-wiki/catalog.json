@@ -197,7 +197,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "d0bc3e03f4c329018e93f3316e9a6924980543508cca27963e3583b562d9cd1a"
+      "hash": "2589e0dc90a9dc10ca3d96dab3149df1353a20f06c7b2a9ab860d0c4d95e0e6a"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -608,7 +608,7 @@
         "Choose each agent's model",
         "Send, queue and steer",
         "Questions and approvals",
-        "Stop controls",
+        "Stop work",
         "Messages between chats",
         "Review interrupted work",
         "Saved history and older tasks",
@@ -617,7 +617,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "c3b3df628a32f0c44008586537a741133f8d8d7d5844e858d97e60ab87ea2324"
+      "hash": "7a4c8b4328ed68b3eaf9ae89daa167e5868dcb8db664e58ca8e5a7b7fbf96d5e"
     },
     {
       "path": "documentation/manual/apps/home.md",

@@ -10,7 +10,7 @@ import { enqueueComposerMessage } from '../chat/message-queue';
 import { parseCompactSlashInput } from '../chat/context/parse-compact-command';
 import { isPluginSlashCommand } from '../chat/slash-commands/registry';
 import { isActiveChatStreaming } from '../chat/streaming-state';
-import { stopGeneration } from '../chat/stop-generation';
+import { hasChatWorkToStop, stopGeneration } from '../chat/stop-generation';
 import { getActiveChat, sessionState } from '../state/sessions';
 import { chatLink, chatReadOnlyReason } from '../state/chat-relationships';
 import { clearComposerAfterSend } from './composer-draft';
@@ -122,7 +122,7 @@ export function syncComposerReadOnlyState(): boolean {
 
 /** True when Send/Enter should run (send, steer, or stop) on the active composer. */
 export function shouldAllowComposerPrimaryAction(inputText: string): boolean {
-  return Boolean(withComposerChatReferences(inputText).trim()) || isActiveChatStreaming();
+  return Boolean(withComposerChatReferences(inputText).trim()) || Boolean(sessionState && hasChatWorkToStop(getActiveChat().id));
 }
 
 /** Empty Enter is never Stop; attachment-only sends are available when idle. */
@@ -140,15 +140,16 @@ function composerInputHasText(): boolean {
 /** Update primary button label during streaming from composer text (steer vs stop). */
 export function refreshComposerStreamingAffordance(): void {
   const sendBtn = getActiveComposerSurface().sendBtnEl;
-  if (!sendBtn || (sendBtn.dataset.mode !== 'stop' && !(sessionState && isChatTurnInProgress(getActiveChat().id)))) return;
+  if (!sendBtn || (sendBtn.dataset.mode !== 'stop' && !(sessionState && hasChatWorkToStop(getActiveChat().id)))) return;
 
   const hasText = composerInputHasText();
+  const steering = hasText && Boolean(sessionState && isChatTurnInProgress(getActiveChat().id));
   sendBtn.setAttribute(
     'aria-label',
-    hasText ? 'Steer current run' : 'Stop generating',
+    hasText ? steering ? 'Steer current run' : 'Send message' : 'Stop generating',
   );
-  sendBtn.title = hasText ? 'Steer current run (Enter)' : 'Stop generating';
-  sendBtn.dataset.steerReady = hasText ? 'true' : 'false';
+  sendBtn.title = hasText ? steering ? 'Steer current run (Enter)' : 'Send message (Enter)' : 'Stop generating';
+  sendBtn.dataset.steerReady = steering ? 'true' : 'false';
   sendBtn.classList.toggle('send-btn--stop', !hasText);
   document.getElementById('sendIcon')?.classList.toggle('hidden', !hasText);
   document.getElementById('sendStopIcon')?.classList.toggle('hidden', hasText);
@@ -232,7 +233,8 @@ export function syncDesktopComposerFishSwim(): void {
 /** Align send/stop button and background-stream hint with active vs streaming chat. */
 export function syncComposerFromStreamingState(): void {
   const busy = Boolean(sessionState && isChatTurnInProgress(getActiveChat().id));
-  setComposerStreamingMode(busy ? 'streaming' : 'idle');
+  const stoppable = Boolean(sessionState && hasChatWorkToStop(getActiveChat().id));
+  setComposerStreamingMode(busy || stoppable ? 'streaming' : 'idle');
   refreshModeSelectorDisabled();
   syncDesktopComposerFishSwim();
   syncBackgroundStreamHint();
@@ -297,7 +299,7 @@ export function submitComposerFollowup(delivery: 'steer' | 'queue' = 'steer'): v
 export function handleComposerPrimaryAction(): void {
   if (sessionState && chatReadOnlyReason(getActiveChat())) { showToast(chatReadOnlyReason(getActiveChat())!); return; }
   if (sessionState && shouldRelayChat(getActiveChat().id)) {
-    if (composerInputHasText() || !isActiveChatStreaming()) void loadChatMessaging().then(m => m.sendMessage());
+    if (composerInputHasText() || !hasChatWorkToStop(getActiveChat().id)) void loadChatMessaging().then(m => m.sendMessage());
     else stopGeneration();
     return;
   }
@@ -316,6 +318,10 @@ export function handleComposerPrimaryAction(): void {
     stopGeneration();
     return;
   }
+  if (sessionState && !composerInputHasText() && hasChatWorkToStop(getActiveChat().id)) {
+    stopGeneration();
+    return;
+  }
   void loadChatMessaging().then((m) => m.sendMessage());
 }
 
@@ -327,7 +333,7 @@ export function initComposerSteerInputListener(inputEl?: HTMLTextAreaElement | n
   input.addEventListener('focus', preloadChatMessaging, { once: true });
   input.addEventListener('input', () => {
     preloadChatMessaging();
-    if (streaming || (sessionState && isChatTurnInProgress(getActiveChat().id))) refreshComposerStreamingAffordance();
+    if (streaming || (sessionState && hasChatWorkToStop(getActiveChat().id))) refreshComposerStreamingAffordance();
   });
 }
 

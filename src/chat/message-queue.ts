@@ -15,6 +15,7 @@ type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
 const dispatching = new Map<string, object>();
 const editing = new Set<string>();
+const sendingManagedMessages = new WeakMap<Chat, QueuedComposerMessage>();
 
 /** Hold a queued message in place while its inline editor is open. */
 export function setQueuedMessageEditing(chatId: string, id: string, active: boolean): void {
@@ -73,14 +74,23 @@ export function getPendingMessageQueueCount(chat: Chat): number {
 
 /** The accepted human input starting an idle managed chat, presented outside its saved history. */
 export function getSendingManagedMessage(chat: Chat): QueuedComposerMessage | undefined {
-  if (chat.chatCommandVersion !== 1 || isChatTurnInProgress(chat.id)) return;
+  if (chat.chatCommandVersion !== 1) return;
   const pending = chat.agentPendingCommand;
   const item = getPendingMessageQueue(chat)[0];
   const execution = chat.agentExecution;
+  const sending = sendingManagedMessages.get(chat);
+  if (sending) {
+    if (chat.history.some(message => message.role === 'user' && message.commandId === sending.id)) {
+      sendingManagedMessages.delete(chat);
+    } else if (!pending && execution?.commandId === sending.id && ['running', 'loading_model'].includes(execution.status)) return sending;
+    sendingManagedMessages.delete(chat);
+  }
+  if (isChatTurnInProgress(chat.id)) return;
   if (!pending || pending.held || pending.errorCode || !['accepted', 'queued'].includes(pending.state) ||
       !item || pending.commandId !== item.id || item.provenance?.actor !== 'human' || item.hiddenFromTranscript ||
       editing.has(`${chat.id}:${item.id}`) ||
       execution && !['completed', 'settled', 'failed', 'stopped', 'cancelled'].includes(execution.status)) return;
+  sendingManagedMessages.set(chat, item);
   return item;
 }
 

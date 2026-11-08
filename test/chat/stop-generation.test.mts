@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import { setChatAbort } from '../../src/app-state.ts';
-import { stopGeneration } from '../../src/chat/stop-generation.ts';
+import { hasChatWorkToStop, stopGeneration } from '../../src/chat/stop-generation.ts';
 import { setAgentConversationsCapabilityForTests } from '../../src/config/agent-conversations-enabled.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
@@ -216,9 +216,11 @@ describe('stopGeneration', () => {
       messages: [],
     });
 
+    assert.equal(hasChatWorkToStop(FIXED_CHAT_ID), true);
     stopGeneration(FIXED_CHAT_ID);
 
     assert.equal(listActiveSubAgentRuns().length, 0);
+    assert.equal(hasChatWorkToStop(FIXED_CHAT_ID), false);
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(requests.some((url) => url.includes('/cancel?parentChatId=')), true);
   });

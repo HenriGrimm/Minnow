@@ -8,6 +8,7 @@ import { defaultSessionState } from '../../src/config/defaults.ts';
 import { notifyManagedChatMetadata, notifyManagedChatView } from '../../src/chat/managed-chat-view.ts';
 import { focusManagedChatRequest, startManagedChatRequests, syncManagedChatRequests } from '../../src/ui/managed-chat-requests.ts';
 import { captureAgentConversationFocus } from '../../src/ui/agent-conversation.ts';
+import { handleComposerPrimaryAction, refreshComposerStreamingAffordance, shouldAllowComposerPrimaryAction, syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { resolveAgentAncestorDotStates, resolveChatItemDotState, syncChatItemDotsInDom, type ChatItemDotContext } from '../../src/ui/chat-item-dot.ts';
 import type { Chat } from '../../src/types.ts';
 import type { ChatRequest } from '../../server/chats/contracts.d.ts';
@@ -134,11 +135,49 @@ test('ordinary raw chat summaries display durable requests without taking owners
   assert.equal(owner.history, history); assert.equal(owner.composerDraft, 'Keep this draft'); assert.equal(owner.chatCommandVersion, undefined); assert.equal(owner.agentExecution, undefined);
 });
 
-test('Stop chat pins the paused parent and includes descendants; Stop agents preserves the parent', async () => {
+test('the composer stops a paused parent and its descendants without transcript stop controls', async () => {
   const parent = chat('stop-parent'), child = chat('stop-child', parent.id); parent.agentExecution = { executionId: 'paused-parent', status: 'waiting_for_input' }; child.agentExecution = { executionId: 'running-child', status: 'running' };
   const area = setup([parent, child]); dispose = startManagedChatRequests(); syncManagedChatRequests(parent, area); await idle();
-  clickText(area, 'Stop chat'); await idle(); clickText(area, 'Stop agents'); await idle();
-  assert.deepEqual(posts.map(item => [item.body.scope, item.body.executionId]), [['tree', 'paused-parent'], ['agents', undefined]]);
+  assert.equal(area.querySelector<HTMLElement>('.managed-chat-requests')!.hidden, true);
+  assert.doesNotMatch(area.textContent!, /Stop chat|Stop agents|Stop requested|Stopping/);
+  syncComposerFromStreamingState();
+  const stop = document.getElementById('sendBtn') as HTMLButtonElement;
+  assert.equal(stop.dataset.mode, 'stop'); assert.equal(stop.disabled, false);
+  assert.equal(shouldAllowComposerPrimaryAction(''), true);
+  stop.addEventListener('click', handleComposerPrimaryAction); stop.click();
+  await until(() => posts.length === 1);
+  assert.deepEqual(posts.map(item => [item.body.action, item.body.scope, item.body.executionId]), [['stop', 'tree', 'paused-parent']]);
+});
+
+test('the composer keeps Stop for nested agents after the parent finishes and restores Send when they settle', async () => {
+  const parent = chat('finished-parent'), child = chat('finished-child', parent.id), grandchild = chat('working-grandchild', child.id), unrelated = chat('unrelated-work');
+  parent.agentExecution = { executionId: 'finished-parent-turn', status: 'completed' };
+  child.agentExecution = { executionId: 'finished-child-turn', status: 'completed' };
+  grandchild.agentExecution = { executionId: 'waiting-grandchild', status: 'waiting_for_host' };
+  unrelated.agentExecution = { executionId: 'unrelated-turn', status: 'running' };
+  const area = setup([parent, child, grandchild, unrelated]); dispose = startManagedChatRequests(); syncManagedChatRequests(parent, area); await idle();
+  syncComposerFromStreamingState();
+  const stop = document.getElementById('sendBtn') as HTMLButtonElement;
+  assert.equal(stop.dataset.mode, 'stop'); assert.equal(stop.disabled, false);
+  assert.equal(shouldAllowComposerPrimaryAction(''), true);
+  const input = document.getElementById('msgInput') as HTMLTextAreaElement;
+  input.value = 'A new instruction'; refreshComposerStreamingAffordance(); assert.equal(stop.getAttribute('aria-label'), 'Send message');
+  input.value = ''; refreshComposerStreamingAffordance(); assert.equal(stop.getAttribute('aria-label'), 'Stop generating');
+  stop.addEventListener('click', handleComposerPrimaryAction); stop.click(); await until(() => posts.length === 1);
+  assert.deepEqual(posts.map(item => [item.body.action, item.body.scope, item.body.executionId]), [['stop', 'tree', undefined]]);
+  grandchild.agentExecution.status = 'stopped'; syncComposerFromStreamingState();
+  assert.equal(stop.dataset.mode, 'send'); assert.equal(shouldAllowComposerPrimaryAction(''), false);
+});
+
+test('waiting managed turns retain composer Stop without a generating stream', () => {
+  const owner = chat('waiting-stop'); setup([owner]);
+  const stop = document.getElementById('sendBtn') as HTMLButtonElement;
+  for (const status of ['queued', 'waiting_for_model', 'waiting_for_capacity', 'waiting_for_agents', 'waiting_for_question', 'waiting_for_approval'] as const) {
+    owner.agentExecution = { executionId: `turn-${status}`, status }; syncComposerFromStreamingState();
+    assert.equal(stop.dataset.mode, 'stop', status); assert.equal(shouldAllowComposerPrimaryAction(''), true, status);
+  }
+  owner.agentExecution = { executionId: 'interrupted-turn', status: 'recovery_required' }; syncComposerFromStreamingState();
+  assert.equal(stop.dataset.mode, 'send'); assert.equal(shouldAllowComposerPrimaryAction(''), false);
 });
 
 test('ancestor attention shows input and failures first, then live work, then unread replies', () => {
@@ -230,14 +269,14 @@ test('collapsed ancestor and manual group dots reflect a hidden child request wi
   assert.equal(list.querySelector<HTMLElement>('.chat-group-header')!.dataset.dotState, 'needs-input'); assert.equal(list.querySelector('.chat-item-dot__spinner'), null);
 });
 
-test('failed canonical turns retain an actionable status after remount without changing history', () => {
+test('failed canonical turns do not add status text above the transcript or change history', () => {
   const owner = chat('failed-root');
   owner.agentExecution = { executionId: 'failed-execution', status: 'failed', error: 'Tool calling is unsupported by the selected model' };
   const history = owner.history;
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area);
   const controls = area.querySelector<HTMLElement>('.managed-chat-scopes')!;
-  assert.equal(controls.hidden, false);
-  assert.match(controls.textContent!, /Tool calling is unsupported/);
+  assert.equal(controls.hidden, true);
+  assert.equal(controls.textContent, '');
   assert.equal(owner.history, history);
 });
 

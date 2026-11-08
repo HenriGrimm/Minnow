@@ -428,7 +428,10 @@ export function startSharedChatBridge(onChange: (activeChanged: boolean) => void
   });
   const publisher = createSharedChatPublisher(sendPublication);
   const observer = createSharedChatObserver(onChange);
-  const disposeManagedBridge = startManagedChatBridge(observer, onChange);
+  const disposeManagedBridge = startManagedChatBridge(observer, activeChanged => {
+    onChange(activeChanged);
+    if (!activeChanged) syncComposerFromStreamingState();
+  });
   const disposeManagedRequests = startManagedChatRequests();
   const disposeHostCapabilities = hasHostSessionToken() ? startChatHostCapabilities() : () => {};
   const handle = createHostChatCommandHandler((id, running) => publisher.update(id, undefined, running));

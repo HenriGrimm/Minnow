@@ -22,6 +22,7 @@ import { setChatArchived } from '../../src/state/chat-archive';
 import { onActiveChatModelChange } from '../../src/ui/chat-model-ui';
 import { setChatMode } from '../../src/ui/mode-selector';
 import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
+import { initChatScroll } from '../../src/ui/chat-scroll';
 
 const CHAT = '11111111-1111-1111-1111-111111111111';
 const originalFetch = globalThis.fetch;
@@ -136,6 +137,131 @@ test('pending input keeps human attribution and exact command identity when rend
     assert.equal(document.querySelector('.msg--sending'), null, 'hidden and non-human input cannot be attributed to the user');
     assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), false);
   }
+});
+
+test('execution metadata arriving before canonical history keeps the first input visible', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1; chat.history = [];
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const item = { id: 'starting-input', text: 'Keep this visible', createdAt: 1,
+    provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } };
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'idle', running: false, live: null,
+    fields: { pendingMessageQueue: [item], agentPendingCommand: { commandId: item.id, state: 'accepted', held: false } } };
+  try {
+    await observer.receive(frame);
+    const row = document.querySelector('.msg--sending');
+    assert.ok(row);
+    await observer.receive({ ...frame, sequence: 2, running: true, epoch: 'starting',
+      fields: { pendingMessageQueue: null, agentPendingCommand: null,
+        agentExecution: { commandId: item.id, executionId: 'starting', status: 'running' } } });
+    assert.equal(document.querySelector('.msg--sending'), row, 'the accepted row survives the metadata/history gap');
+    assert.equal(document.getElementById('vibeHub'), null, 'the new chat screen must not return during startup');
+    assert.equal(chat.history.length, 0, 'the pending echo never writes to saved history');
+    await observer.receive({ ...frame, sequence: 3, running: true, epoch: 'starting', fields: {},
+      history: { start: 0, length: 1, messages: [{ role: 'user', content: item.text, commandId: item.id }] } });
+    assert.equal(document.querySelectorAll('.msg.user').length, 1);
+    assert.equal(document.querySelector('.msg--sending'), null);
+  } finally { observer.dispose(); }
+});
+
+test('tool results, subsequent rounds and metadata retain existing rows and expanded details', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  chat.history.push({ role: 'assistant', content: 'I will inspect the files.', tool_calls: [
+    { id: 'read-one', type: 'function', function: { name: 'read_file', arguments: '{"path":"one.ts"}' } },
+    { id: 'read-two', type: 'function', function: { name: 'read_file', arguments: '{"path":"two.ts"}' } },
+  ] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'working', running: true, live: null,
+    fields: { agentExecution: { executionId: 'working', status: 'running' } } };
+  try {
+    await observer.receive(frame);
+    const user = document.querySelector('.msg.user');
+    const assistant = document.querySelector('.msg.assistant');
+    const batch = document.querySelector<HTMLDetailsElement>('.tool-call-batch')!;
+    const tool = document.querySelector<HTMLElement>('[data-tool-call-id="read-one"]')!;
+    const details = tool.querySelector<HTMLDetailsElement>('details')!;
+    batch.open = true; details.open = true;
+    const summary = details.querySelector('summary')!;
+    summary.focus();
+    await observer.receive({ ...frame, sequence: 2, history: { start: 2, length: 3,
+      messages: [{ role: 'tool', tool_call_id: 'read-one', content: 'First file contents' }] } });
+    assert.equal(document.querySelector('.msg.user'), user);
+    assert.equal(document.querySelector('.msg.assistant'), assistant);
+    assert.equal(document.querySelector('.tool-call-batch'), batch);
+    assert.equal(document.querySelector('[data-tool-call-id="read-one"]'), tool);
+    assert.equal(details.open, true);
+    assert.equal(batch.open, true);
+    assert.equal(document.activeElement, summary);
+    assert.match(tool.textContent!, /First file contents/);
+    assert.equal(tool.hasAttribute('aria-busy'), false);
+    await observer.receive({ ...frame, sequence: 3, history: { start: 3, length: 4,
+      messages: [{ role: 'assistant', content: 'Now checking the next part.' }] } });
+    await observer.receive({ ...frame, sequence: 4, fields: { name: 'Updated title' } });
+    assert.equal(document.querySelector('.msg.user'), user);
+    assert.equal(document.querySelector('.tool-call-batch'), batch);
+    assert.equal(details.open, true);
+    assert.equal(document.querySelectorAll('.msg.assistant').length, 2);
+    assert.equal(document.querySelectorAll('.tool-call-msg').length, 2);
+    await observer.receive({ ...frame, sequence: 5, running: false, fields: { agentExecution: { status: 'completed' } } });
+    assert.equal(document.querySelector('.tool-call-batch'), batch, 'settling a turn also preserves disclosures');
+  } finally { observer.dispose(); }
+});
+
+test('metadata refreshes retain the current streaming row but real history edits repaint', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'working', running: true,
+    fields: { name: 'Working' }, live: { lastDelta: 'A live answer', lastThinking: '', toolCallCount: 0 } };
+  try {
+    await observer.receive(frame);
+    const user = document.querySelector('.msg.user');
+    const live = document.querySelector('.msg.assistant');
+    await observer.receive({ ...frame, sequence: 2, fields: { name: 'Still working' } });
+    assert.equal(document.querySelector('.msg.user'), user);
+    assert.equal(document.querySelector('.msg.assistant'), live);
+    await observer.receive({ ...frame, sequence: 3, running: false, live: null,
+      history: { start: 0, length: 1, messages: [{ role: 'user', content: 'A corrected message' }] } });
+    assert.match(document.querySelector('.msg.user')!.textContent!, /A corrected message/);
+    assert.notEqual(document.querySelector('.msg.user'), user, 'edits cannot reuse stale rendered content');
+  } finally { observer.dispose(); }
+});
+
+test('appending managed output preserves an up-thread reader instead of their distance from the bottom', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  chat.history = Array.from({ length: 8 }, (_, i) => i % 2
+    ? { role: 'assistant' as const, content: `Answer ${i}` }
+    : { role: 'user' as const, content: `Question ${i}` });
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const area = document.getElementById('chatArea')!;
+  let top = 0;
+  Object.defineProperties(area, {
+    scrollHeight: { get: () => area.querySelectorAll('.msg[data-history-index]').length * 100 },
+    clientHeight: { value: 300 }, offsetHeight: { value: 300 },
+    scrollTop: { get: () => top, set: value => { top = value; } },
+  });
+  area.getBoundingClientRect = () => ({ x: 0, y: 0, top: 0, left: 0, right: 800, bottom: 300, width: 800, height: 300, toJSON() {} });
+  initChatScroll();
+  renderChatFromHistory(chat);
+  for (const row of area.querySelectorAll<HTMLElement>('.msg[data-history-index]')) {
+    const index = Number(row.dataset.historyIndex);
+    row.getBoundingClientRect = () => ({ x: 0, y: index * 100 - top, top: index * 100 - top,
+      left: 0, right: 800, bottom: (index + 1) * 100 - top, width: 800, height: 100, toJSON() {} });
+  }
+  area.dispatchEvent(new window.WheelEvent('wheel', { deltaY: -300 }));
+  top = 200; area.dispatchEvent(new window.Event('scroll'));
+  const visible = area.querySelector<HTMLElement>('[data-history-index="2"]')!;
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  try {
+    await observer.receive({ chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'next', running: true, live: null,
+      history: { start: 8, length: 10, messages: [
+        { role: 'user', content: 'Next question' }, { role: 'assistant', content: 'New output below the reader' },
+      ] } });
+    assert.equal(top, 200, 'new output below the viewport cannot move the reader');
+    assert.equal(area.querySelector('[data-history-index="2"]'), visible);
+    assert.equal(visible.getBoundingClientRect().top, 0);
+  } finally { observer.dispose(); }
 });
 
 test('managed observer emits one payload-free received-to-DOM timing and disposes queued frames', async () => {

@@ -58,7 +58,7 @@ function relocateComposerIntoHub(slot: HTMLElement): void {
     composerRestoreParent = bar.parentElement;
     composerRestoreNext = bar.nextSibling;
   }
-  slot.appendChild(bar);
+  moveComposer(bar, slot);
   bar.classList.add('input-bar--hub');
   document.getElementById('mainColumn')?.classList.add('main-column--hub');
   syncModeSelectorFromActiveChat();
@@ -68,14 +68,16 @@ function relocateComposerIntoHub(slot: HTMLElement): void {
   }
 }
 
+function moveComposer(bar: HTMLElement, parent: HTMLElement, before: ChildNode | null = null): void {
+  const focused = bar.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  parent.insertBefore(bar, before?.parentNode === parent ? before : null);
+  focused?.focus({ preventScroll: true });
+}
+
 function restoreComposer(): void {
   const bar = document.querySelector('.input-bar') as HTMLElement | null;
   if (!bar || !composerRestoreParent) return;
-  if (composerRestoreNext) {
-    composerRestoreParent.insertBefore(bar, composerRestoreNext);
-  } else {
-    composerRestoreParent.appendChild(bar);
-  }
+  moveComposer(bar, composerRestoreParent, composerRestoreNext);
   bar.classList.remove('input-bar--hub');
   document.getElementById('mainColumn')?.classList.remove('main-column--hub');
   syncModeSelectorFromActiveChat();
@@ -272,6 +274,10 @@ function buildHubDom(activeChat: Chat): HTMLElement {
 
 /** Paint the hub into #chatArea for an empty chat. */
 export function renderHub(chat: Chat): void {
+  if (hubChatId === chat.id && isHubMounted()) {
+    updateHubDom(chat);
+    return;
+  }
   try {
     teardownOrchestrateHub();
     if (!shouldPreservePlanScreenSession(chat)) {

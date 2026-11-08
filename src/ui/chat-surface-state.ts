@@ -11,6 +11,7 @@ interface MountedChat {
   last: Message | undefined;
   content: unknown;
   anchor: Element;
+  transcript?: { start: number; messages: { message: Message; json: string }[] };
 }
 
 const mounted = new WeakMap<HTMLElement, MountedChat>();
@@ -20,9 +21,32 @@ const contentOf = (row: Message | undefined): unknown => row && 'content' in row
 export function rememberChatSurface(area: HTMLElement, chat: Chat): void {
   const anchor = area.querySelector('.msg[data-history-index]') ?? area.firstElementChild;
   if (!anchor) { mounted.delete(area); return; }
+  const start = Number(area.dataset.historyStart);
+  const previous = mounted.get(area);
+  const transcript = chat.chatCommandVersion === 1 && Number.isSafeInteger(start) && start >= 0 &&
+    !area.classList.contains('chat-area--hub') && (chat.history.length > 0 || area.querySelector('.msg--sending'))
+    ? { start, messages: chat.history.slice(start).map((message, offset) => {
+      const prior = previous?.chat === chat ? previous.transcript?.messages[start + offset - previous.transcript.start] : undefined;
+      return prior?.message === message ? prior : { message, json: JSON.stringify(message) };
+    }) } : undefined;
   mounted.set(area, { chat, history: chat.history, length: chat.history.length,
     updatedAt: chat.updatedAt, revision: chatMutationVersion(chat), mode: chat.modeId, last: chat.history.at(-1),
-    content: contentOf(chat.history.at(-1)), anchor });
+    content: contentOf(chat.history.at(-1)), anchor, transcript });
+}
+
+/** Append-only server frames keep mounted messages, disclosures and the history pager alive. */
+export function chatHistoryAppendStart(area: HTMLElement, chat: Chat): number | undefined {
+  const state = mounted.get(area);
+  if (!state?.transcript || state.chat !== chat || state.mode !== chat.modeId ||
+      state.length > chat.history.length || !area.contains(state.anchor)) return;
+  const { start, messages } = state.transcript;
+  if (Number(area.dataset.historyStart) !== start) return;
+  for (let i = start; i < state.length; i++) {
+    const prior = messages[i - start];
+    if (prior.message !== chat.history[i] && prior.json !== JSON.stringify(chat.history[i])) return;
+  }
+  if (chat.history.slice(state.length).some(message => message.role === 'context' || message.role === 'injection')) return;
+  return state.length;
 }
 
 export function forgetChatSurface(area: HTMLElement): void {

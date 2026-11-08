@@ -1,7 +1,7 @@
 import type { Chat } from '../types';
 import { randomUUID } from '../lib/random-id';
 import type { ChatRequest } from '../../server/chats/contracts';
-import { readInterruptedExecution, retireInterruptedExecution, readManagedChatRequestPage, respondManagedChatRequest, sendManagedChatAction } from '../chat/managed-chat-client';
+import { readInterruptedExecution, retireInterruptedExecution, readManagedChatRequestPage, respondManagedChatRequest } from '../chat/managed-chat-client';
 import { acknowledgeChatViewed } from '../notifications/acknowledge';
 import { getManagedChatView, subscribeManagedChatMetadata, subscribeManagedChatView } from '../chat/managed-chat-view';
 import { applySharedChatAttention, findChatById, getActiveChat, sessionState } from '../state/sessions';
@@ -16,7 +16,6 @@ import { syncChatItemDotsInDom } from './chat-item-dot';
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
 interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; }
 const views = new Map<string, ChatRequestsView>();
-const activeStates = new Set(['accepted', 'queued', 'running', 'loading_model', 'waiting', 'waiting_for_host', 'waiting_for_model', 'waiting_for_capacity', 'waiting_for_agents', 'waiting_for_input', 'waiting_for_question', 'waiting_for_approval', 'stopping']);
 let subscriptions: (() => void)[] | undefined;
 
 function button(text: string, action: () => void): HTMLButtonElement {
@@ -230,35 +229,18 @@ function recoveryControls(chatId: string, executionId: string): HTMLElement {
   panel.append(info, inspect); return panel;
 }
 function syncControls(chat: Chat, view: ChatRequestsView): void {
-  const children = descendants(chat), attention = children.filter(child => child.agentRequestSummary?.length);
-  const agents = children.filter(child => hasUnsettledAgentWork(child));
-  const turn = chat.chatCommandVersion === 1 && chat.agentExecution && activeStates.has(chat.agentExecution.status) ? chat.agentExecution : null;
-  const canStop = chat.agentConversation?.origin !== 'native' && chat.agentConversation?.capabilities?.canStop !== false;
+  const attention = descendants(chat).filter(child => child.agentRequestSummary?.length);
   let controls = view.host.querySelector<HTMLElement>(':scope > .managed-chat-scopes');
-  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, chat.agentExecution?.error, agents.map(item => item.id), attention.map(item => [item.id, item.agentRequestSummary]), canStop]);
+  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, attention.map(item => [item.id, item.agentRequestSummary])]);
   if (controls?.dataset.key === key) return;
-  const focusedAction = controls?.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.scope : undefined;
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
   controls.dataset.key = key; controls.replaceChildren();
-  const status = document.createElement('span'); status.className = 'managed-chat-scopes__status'; status.setAttribute('role', 'status'); status.tabIndex = -1;
-  if (chat.agentExecution?.status === 'failed') status.textContent = chat.agentExecution.error || 'This turn failed. Review Activity for details before trying again.';
-  const stop = (label: string, scope: 'agents' | 'tree') => {
-    const executionId = scope === 'tree' ? turn?.executionId : undefined;
-    const action = button(label, () => {
-      if (action.disabled) return; action.disabled = true; status.textContent = 'Stopping…';
-      void sendManagedChatAction(chat.id, 'stop', { scope, ...(executionId ? { executionId } : {}) }).then(() => { status.textContent = scope === 'agents' ? 'Agent stop requested' : 'Stop requested'; }, error => { status.textContent = error instanceof Error ? error.message : 'Stop failed'; }).finally(() => { if (action.isConnected) action.disabled = false; });
-    }); action.dataset.scope = scope; controls!.append(action);
-  };
-  if (canStop && (turn && turn.status !== 'stopping' || agents.length)) stop('Stop chat', 'tree');
-  if (canStop && agents.length) stop('Stop agents', 'agents');
   if (attention.length) {
     const first = attention[0]!, requestId = first.agentRequestSummary![0]!.requestId;
     controls.append(button(`${attention.length} agent${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} your attention`, () => void import('../os/chat-launch').then(async module => { await module.launchCodeWithChat(first.id); await focusManagedChatRequest(first.id, requestId); })));
   }
   if (chat.agentExecution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, chat.agentExecution.executionId));
-  controls.append(status);
-  controls.hidden = controls.children.length === 1 && !status.textContent;
-  if (focusedAction) (controls.querySelector<HTMLElement>(`[data-scope="${focusedAction}"]`) ?? status).focus({ preventScroll: true });
+  controls.hidden = !controls.children.length;
 }
 
 function syncHostVisibility(view: ChatRequestsView): void {
