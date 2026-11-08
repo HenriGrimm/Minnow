@@ -1,3 +1,5 @@
+import { initWorkspaceRoot, getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import { reloadPlugins } from '../../server/tools/loader.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -354,6 +356,52 @@ describe('runner effector', { concurrency: false }, () => {
     await fake.close();
     await rmTestHome(homeDir);
     resetMinnowHomeCache();
+  });
+
+  test('global permission modes govern plugin discovery and real worker dispatch', { timeout: 15000 }, async () => {
+    const originalMeta = await readConfigJson('config.json');
+    const originalTools = await readConfigJson('tools.json');
+    await initWorkspaceRoot();
+    const originalRoot = getDefaultWorkspaceRoot();
+    const pluginDir = path.join(homeDir, 'tools', 'echo');
+    await fs.promises.cp(path.join(PROJECT_ROOT, 'test/fixtures/plugin-tools/echo'), pluginDir, { recursive: true });
+    await writeConfigJson('tools.json', { ...originalTools, permissions: { default: { plugin__echo__ping: 'off' } } });
+    await reloadPlugins();
+    try {
+      for (const permissionLevel of ['manual', 'auto', 'full']) {
+        await writeConfigJson('config.json', { ...originalMeta, toolSecurity: { permissionLevel } });
+        const observed = Promise.withResolvers();
+        const inspectTurn = async options => {
+          try {
+            const initial = await options.execute('plugin__echo__ping', {});
+            const refreshed = await options.refreshRoundConfig();
+            await writeConfigJson('config.json', { ...originalMeta, toolSecurity: { permissionLevel: 'manual' } });
+            const revoked = await options.execute('plugin__echo__ping', {});
+            observed.resolve({ tools: options.tools, refreshed, initial, revoked });
+          } catch (error) { observed.reject(error); }
+          return BUILDER_PASS;
+        };
+        await setWorkspaceRoot(cwd);
+        const boardId = `global-modes-${permissionLevel}`;
+        const journal = await openBoard(boardId);
+        const state = await journal.loadState(boardId);
+        const effector = makeEffector({ boardId, journal, cwd, getState: () => state, runTurn: inspectTurn });
+        await effector.start({ taskId: 'W1-A', role: 'builder', seedKind: 'initial' });
+        const result = await observed.promise;
+        await waitFor(() => effector.inspect().length === 0);
+        assert.ok(result.tools.some(tool => tool.function.name === 'plugin__echo__ping'));
+        assert.ok(result.refreshed.tools.some(tool => tool.function.name === 'plugin__echo__ping'));
+        if (permissionLevel === 'full') assert.equal(result.initial.content, 'pong');
+        else assert.match(result.initial.content, /needs approval/);
+        assert.match(result.revoked.content, /needs approval/);
+      }
+    } finally {
+      await setWorkspaceRoot(originalRoot);
+      await writeConfigJson('config.json', originalMeta);
+      await writeConfigJson('tools.json', originalTools);
+      await fs.promises.rm(pluginDir, { recursive: true, force: true });
+      await reloadPlugins();
+    }
   });
 
   test('pause/resume keeps attempt identity; Stop still replaces it on Start', { timeout: 10000 }, async () => {

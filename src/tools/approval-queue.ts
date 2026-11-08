@@ -20,7 +20,7 @@ export interface ToolApprovalContext {
   workspaceRoot?: string;
   /** Additional allowed roots (board worktrees under ~/.minnow/worktrees). */
   extraPathRoots?: string[];
-  /** Benchmark runs proceed without approval prompts. */
+  /** @deprecated Compatibility marker; never bypasses the global permission mode. */
   benchmarkAutonomous?: boolean;
   /** Cancels this approval (and dismisses the card if it is showing). */
   signal?: AbortSignal;

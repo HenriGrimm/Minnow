@@ -1,3 +1,5 @@
+import { initWorkspaceRoot, getDefaultWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
+import { reloadPlugins } from '../../server/tools/loader.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -443,6 +445,52 @@ describe('sub-agent runner effector', { concurrency: false }, () => {
     } finally {
       unsubLive();
       engine.dispose();
+    }
+  });
+
+  test('global permission modes govern plugin discovery and real worker dispatch', { timeout: 15000 }, async () => {
+    const originalMeta = await readConfigJson('config.json');
+    const originalTools = await readConfigJson('tools.json');
+    await initWorkspaceRoot();
+    const originalRoot = getDefaultWorkspaceRoot();
+    const pluginDir = path.join(homeDir, 'tools', 'echo');
+    await fs.promises.cp(path.join(PROJECT_ROOT, 'test/fixtures/plugin-tools/echo'), pluginDir, { recursive: true });
+    await writeConfigJson('tools.json', { ...originalTools, permissions: { default: { plugin__echo__ping: 'off' } } });
+    await reloadPlugins();
+    try {
+      for (const permissionLevel of ['manual', 'auto', 'full']) {
+        await writeConfigJson('config.json', { ...originalMeta, toolSecurity: { permissionLevel } });
+        const observed = Promise.withResolvers();
+        const inspectTurn = async options => {
+          try {
+            const initial = await options.execute('plugin__echo__ping', {});
+            const refreshed = await options.refreshRoundConfig();
+            await writeConfigJson('config.json', { ...originalMeta, toolSecurity: { permissionLevel: 'manual' } });
+            const revoked = await options.execute('plugin__echo__ping', {});
+            observed.resolve({ tools: options.tools, refreshed, initial, revoked });
+          } catch (error) { observed.reject(error); }
+          return VERDICT_PASS;
+        };
+        const cwd = await fs.promises.mkdtemp(path.join(homeDir, 'global-modes-'));
+        await setWorkspaceRoot(cwd);
+        const parentChatId = `global-modes-${permissionLevel}`;
+        const state = { runs: new Map([['run-1', { type: 'explore', cwd, parentChatId, task: 'Check plugin authority', attempts: [] }]]) };
+        const effector = makeEffector({ parentChatId, getState: () => state, runTurn: inspectTurn });
+        await effector.start({ taskId: 'run-1', role: SUB_AGENT_ROLE, seedKind: 'initial' });
+        const result = await observed.promise;
+        await waitFor(() => effector.inspect().length === 0);
+        assert.ok(result.tools.some(tool => tool.function.name === 'plugin__echo__ping'));
+        assert.ok(result.refreshed.tools.some(tool => tool.function.name === 'plugin__echo__ping'));
+        if (permissionLevel === 'full') assert.equal(result.initial.content, 'pong');
+        else assert.match(result.initial.content, /needs approval/);
+        assert.match(result.revoked.content, /needs approval/);
+      }
+    } finally {
+      await setWorkspaceRoot(originalRoot);
+      await writeConfigJson('config.json', originalMeta);
+      await writeConfigJson('tools.json', originalTools);
+      await fs.promises.rm(pluginDir, { recursive: true, force: true });
+      await reloadPlugins();
     }
   });
 

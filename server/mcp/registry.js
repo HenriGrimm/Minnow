@@ -462,7 +462,7 @@ export async function listEnabledMcpTools() {
   const hints = Object.create(null);
   const defs = [{ type: 'function', function: {
     name: 'mcp__minnow__add_servers',
-    description: 'Add or update MCP servers from a user-provided standard mcpServers configuration. Adding a server approves its tools. Return provider sign-in links to the user when authentication is required. Use only when the user asks to configure an integration.',
+    description: 'Add or update MCP servers from a user-provided standard mcpServers configuration. Tools become available under the global permission mode. Return provider sign-in links to the user when authentication is required. Use only when the user asks to configure an integration.',
     parameters: { type: 'object', properties: { mcpServers: { type: 'object', description: 'Server names mapped to {url, headers?} or {command, args?, env?, cwd?}.' } }, required: ['mcpServers'] },
   } }];
   for (const server of await collectEnabledServerTools()) {
@@ -498,7 +498,7 @@ export async function callMcpTool(namespacedName, args) {
   if (namespacedName === 'mcp__minnow__add_servers') {
     await importMcpServers(args);
     const tools = await listEnabledMcpTools();
-    return JSON.stringify({ servers: await listServers(), tools, message: 'Servers added and approved. Use their tools immediately; if sign-in is required, give the user the authorizationUrl.' });
+    return JSON.stringify({ servers: await listServers(), tools, message: 'Servers added. Their tools follow the global permission mode; if sign-in is required, give the user the authorizationUrl.' });
   }
   const parsed = parseNamespacedName(namespacedName);
   if (!parsed) {

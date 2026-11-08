@@ -149,6 +149,8 @@ export function createServerChatExecutionHost({
         const dispatch = createToolDispatch
           ? await createToolDispatch(prepared, dispatchContext)
           : createInProcessToolDispatch({ cwd: prepared.cwd, modeId: policy.modeId,
+            permissionLevel: policy.permissionLevel, turnClamp: policy.turnClamp,
+            filesystemAccessCeiling: policy.filesystemAccess, shellSandboxMode: policy.shellSandboxMode,
             allowedToolNames: Object.keys(policy.toolPermissions).filter(name => policy.toolPermissions[name] !== 'off'),
             runtimeOwner, activityChatId: chatId });
         if (typeof dispatch?.execute !== 'function' || typeof dispatch.runHeadlessToolBatch !== 'function') {

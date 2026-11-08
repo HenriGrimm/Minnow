@@ -66,22 +66,26 @@ export function normalizeToolSecurityMeta(raw: unknown): ToolSecurityMeta {
 }
 
 /** Load tool security prefs from config API (defaults when missing). */
-export async function loadToolSecurityMeta(): Promise<ToolSecurityMeta> {
-  if (cached) return cached;
+export async function loadToolSecurityMeta(options: { refresh?: boolean } = {}): Promise<ToolSecurityMeta> {
+  if (cached && !options.refresh) return cached;
   if (loadPromise) return loadPromise;
 
   loadPromise = (async (): Promise<ToolSecurityMeta> => {
     try {
       const res = await fetch('/api/config/meta', { cache: 'no-store' });
       if (!res.ok) {
-        cached = { ...DEFAULT_TOOL_SECURITY };
+        cached = options.refresh
+          ? { ...(cached ?? DEFAULT_TOOL_SECURITY), permissionLevel: 'manual' }
+          : { ...DEFAULT_TOOL_SECURITY };
         return cached;
       }
       const meta = (await res.json()) as { toolSecurity?: unknown };
       cached = normalizeToolSecurityMeta(meta.toolSecurity);
       return cached;
     } catch {
-      cached = { ...DEFAULT_TOOL_SECURITY };
+      cached = options.refresh
+        ? { ...(cached ?? DEFAULT_TOOL_SECURITY), permissionLevel: 'manual' }
+        : { ...DEFAULT_TOOL_SECURITY };
       return cached;
     } finally {
       metaLoaded = true;

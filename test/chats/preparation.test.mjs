@@ -564,3 +564,14 @@ test('legacy per-tool settings never narrow the global permission mode in new ch
     }
   }
 });
+
+
+test('old Full disk flags never elevate a chat policy above the global mode', async () => {
+  const f = fixture();
+  for (const permissionLevel of [undefined, 'manual', 'auto', 'full']) {
+    f.settings.meta.toolSecurity = { filesystemAccess: 'full', ...(permissionLevel ? { permissionLevel } : {}) };
+    const policy = await resolveChatPolicyInput(f.chat, f.scope, { adapters: f.adapters });
+    assert.equal(policy.permissionLevel, permissionLevel ?? 'auto');
+    assert.equal(policy.filesystemAccess, permissionLevel === 'full' ? 'full' : 'workspace');
+  }
+});

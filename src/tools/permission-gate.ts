@@ -126,7 +126,7 @@ function deniedResult(action: ClassifiedAction, feedback?: string): ToolExecutio
 
 /**
  * Pre-execution gate. Returns null to proceed, or the tool result to return
- * instead (disabled tool, denial, clamp).
+ * instead (denial or clamp).
  */
 export async function maybeBlockToolForUserApproval(
   permissionToolId: string,
@@ -137,7 +137,7 @@ export async function maybeBlockToolForUserApproval(
   const execName = displayToolName ?? permissionToolId;
 
   await loadToolSecurityMeta().catch(() => undefined);
-  const level: PermissionLevel = context.benchmarkAutonomous ? 'full' : getToolSecurityMetaCached().permissionLevel;
+  const level: PermissionLevel = getToolSecurityMetaCached().permissionLevel;
   const action = classifyForGate(execName, args, context);
   const grants = getChatPermissionGrants(context.chatId);
   const verdict = decidePermission(level, action, { grants, clamp: context.turnClamp ?? null });

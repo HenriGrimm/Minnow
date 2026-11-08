@@ -5,6 +5,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { ensureMinnowLayout, resetMinnowHomeCache } from '../../server/config/home.js';
 import { readConfigJson, updateConfigJson, writeConfigJson } from '../../server/config/store.js';
+import { getPermissionLevelFromConfig, getFilesystemAccessFromConfig } from '../../server/config/tool-security.js';
 import { initWorkspaceRoot, setWorkspaceRoot } from '../../server/workspace/root.js';
 import { createInProcessToolDispatch, executeInProcessTool } from '../../server/runner/tool-dispatch.js';
 import { getPluginToolDefinitions, reloadPlugins } from '../../server/tools/loader.js';
@@ -88,4 +89,27 @@ test('Full access and approval cannot bypass turn clamps, the secret floor, or r
   assert.match((await executeInProcessTool('save_file', { path: 'blocked.txt', content: 'no' }, { cwd, allowedToolNames: ['read_file'] })).content, /not in the allowed set/);
   await assert.rejects(fs.access(path.join(cwd, 'blocked.txt')));
   assert.equal((await readConfigJson('config.json')).toolSecurity.permissionLevel, 'full');
+});
+
+
+test('legacy Full disk flags cannot widen the default global Auto mode', async () => {
+  await updateConfigJson('config.json', config => ({ ...config, toolSecurity: { filesystemAccess: 'full' } }));
+  assert.equal(await getPermissionLevelFromConfig(), 'auto');
+  assert.equal(await getFilesystemAccessFromConfig(), 'workspace');
+});
+
+test('Auto and exact Manual approval authorize outside reads without weakening an explicit workspace ceiling', async () => {
+  const outside = path.join(home, 'outside.txt');
+  await fs.writeFile(outside, 'outside read');
+  await setLevel('auto');
+  assert.match((await executeInProcessTool('read_file', { path: outside }, { cwd })).content, /outside read/);
+  const edit = await executeInProcessTool('save_file', { path: outside, content: 'unauthorized' }, { cwd });
+  assert.match(edit.content, /needs approval/);
+  await setLevel('manual');
+  assert.match((await executeInProcessTool('read_file', { path: outside }, { cwd })).content, /needs approval/);
+  assert.match((await executeInProcessTool('read_file', { path: outside }, { cwd, interactiveApproval: true })).content, /outside read/);
+  assert.match((await executeInProcessTool('read_file', { path: outside }, {
+    cwd, interactiveApproval: true, filesystemAccessCeiling: 'workspace',
+  })).content, /outside the workspace/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'outside read');
 });

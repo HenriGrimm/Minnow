@@ -163,7 +163,7 @@ export async function runManagedChatIfPresent(options: RunHeadlessOptions, adapt
       }
     }
     knownManaged = true;
-    if (cli.noApproval) throw new ManagedChatError('Managed conversations use their saved tool approvals. --no-approval applies to fresh CLI runs.');
+    if (cli.noApproval) throw new ManagedChatError('Managed conversations use the global permission mode. The legacy --no-approval flag is unsupported.');
     if ((cli.providerId && cli.providerId !== snapshot.chat.providerId) || (cli.modelId && cli.modelId !== snapshot.chat.modelId) ||
       cli.agentId || (cli.managedModeExplicit && cli.modeId !== snapshot.chat.modeId) || cli.managedProfileExplicit) {
       throw new ManagedChatError('This conversation uses its saved agent, model, mode and prompt profile. Configure it in Minnow before sending this message.');

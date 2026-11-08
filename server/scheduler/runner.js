@@ -144,7 +144,6 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }
     storedJob.modeId ?? 'build',
     '--base-url',
     baseUrl,
-    '--no-approval',
     '--auto-reject-questions',
   ];
 
@@ -167,12 +166,12 @@ async function executeJobRun({ storedJob, runId, baseUrl, timeoutMs, spawnImpl }
 
   const env = {
     ...process.env,
-    MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION: '1',
     BROWSER: 'none',
     // Hand the child this host's credential directly. The session-token file is
     // shared by every host on the same Minnow home and holds only the newest one.
     MINNOW_TOKEN: getSessionToken(),
   };
+  delete env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION;
 
   let stdout = '';
   let stderr = '';

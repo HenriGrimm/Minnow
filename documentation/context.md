@@ -1536,6 +1536,7 @@ One **permission level** governs every agent action — built-in tools, shell, U
 - The composed system prompt states the level and any clamp (`permissionPromptBlock`).
 - `tools.json` stores only operational settings (search, lazy schemas, cache/output limits, and whole legacy-plugin availability). Client/server normalization drops retired `permissions` and `enabled` maps. Settings fields, profiles, plugin details, and composer controls cannot set per-tool permissions.
 - `server/runner/tool-dispatch.js` uses the same classifier for built-ins, MCP and plugins. Boards and server sub-agents capture the attempt's global level and intersect it with the current level at every dispatch; they return an approval-required error when no interactive host can approve. Exact chat approvals and parent chat grants remain supported.
+- Legacy Full disk, benchmark-autonomy and CLI `--no-approval` flags cannot widen the global mode. Scheduler does not inject an approval override. Fresh headless CLI dispatch refreshes global authority per call and intersects it with its captured caller ceiling; unavailable metadata cannot preserve cached Full authority. Approved outside reads carry a per-call admission while explicit workspace ceilings remain enforced.
 - Internal `toolPermissions` snapshots fence catalog capabilities and delegation scope only; legacy Ask/Full values normalize to the same available capability. Native coding uses a read-only workspace under Manual/Auto and requires global Full access for native writes.
 
 ---

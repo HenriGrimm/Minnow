@@ -96,7 +96,7 @@ See [Integrations](../extend/integrations.md).
 
 **Reviewing every change: Manual.** Reads still run freely; every edit and command waits for you. Use **Allow for this chat** on commands you trust, such as `npm test`.
 
-**Unattended runs** (Scheduler, AFK boards). An action that needs approval returns an explicit approval-required error when no interactive host is available. Pick the global level for those jobs deliberately. Prefer worktree isolation so parallel tasks do not collide on one checkout, and use the agent shell sandbox for host filesystem containment (see [Privacy and security](../reference/privacy-and-security.md)). Commit before long agent runs: Minnow's undo can restore a working tree from a snapshot, but a commit is cheaper and more certain.
+**Unattended runs** (Scheduler, AFK boards). An action that needs approval returns an explicit approval-required error when no interactive host is available. Pick the global level for those jobs deliberately. Scheduler and CLI runs follow the same saved mode; legacy automation flags cannot raise it. Prefer worktree isolation so parallel tasks do not collide on one checkout, and use the agent shell sandbox for host filesystem containment (see [Privacy and security](../reference/privacy-and-security.md)). Commit before long agent runs: Minnow's undo can restore a working tree from a snapshot, but a commit is cheaper and more certain.
 
 ## Related
 

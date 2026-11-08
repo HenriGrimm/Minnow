@@ -178,7 +178,10 @@ export async function executeInProcessTool(name, args = {}, options) {
     // Lets a tool that spawns a child process kill it on stop, instead of the batch
     // abandoning the call and leaving the process running.
     abortSignal: options.signal,
-    filesystemAccessCeiling: level === 'full' ? options.filesystemAccessCeiling : 'workspace',
+    // An approved outside call may widen this call only. Explicit caller
+    // workspace ceilings still win, including isolated delegated checkouts.
+    filesystemAccessCeiling: level === 'full' || action.external ? options.filesystemAccessCeiling : 'workspace',
+    approvedOutsideWorkspace: action.external,
     shellSandboxMode: options.shellSandboxMode,
   });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */

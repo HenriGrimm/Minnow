@@ -155,14 +155,14 @@ describe('maybeBlockToolForUserApproval', () => {
     assert.equal(await maybeBlockToolForUserApproval('execute_command', args, { workspaceRoot: WS, chatId }), null);
   });
 
-  test('benchmark runs proceed as Full access', async () => {
+  test('legacy benchmark flags cannot override the global permission mode', async () => {
     setLevel('manual');
     const result = await maybeBlockToolForUserApproval(
       'save_file',
       { path: 'src/a.ts', content: 'x' },
       { workspaceRoot: WS, benchmarkAutonomous: true },
     );
-    assert.equal(result, null);
+    assert.match(result?.content ?? '', /needs approval/);
   });
 });
 

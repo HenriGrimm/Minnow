@@ -278,8 +278,7 @@ async function policySnapshot(chat, scope, options = {}) {
   }
   const toolSecurity = settings.meta?.toolSecurity ?? {};
   const permissionLevel = normalizePermissionLevel(toolSecurity.permissionLevel);
-  const filesystemAccess = permissionLevel === 'full' ||
-    (toolSecurity.permissionLevel === undefined && toolSecurity.filesystemAccess === 'full') ? 'full' : 'workspace';
+  const filesystemAccess = permissionLevel === 'full' ? 'full' : 'workspace';
   const policyInput = {
     modeId: mode.modeId, permissionLevel, toolPermissions: permissions, toolEffects: effects,
     shellSandboxMode: clampShellSandboxModeForPlatform(normalizeShellSandboxMode(settings.meta?.toolSecurity?.shellSandbox)),

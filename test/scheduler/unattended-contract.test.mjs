@@ -8,7 +8,7 @@ import { closeSessionsDb } from '../../server/config/sessions-db.js';
 import { createJob, getStoredJobById } from '../../server/scheduler/store.js';
 import { runStoredJob } from '../../server/scheduler/runner.js';
 
-test('scheduled CLI supplies unattended approval opt-in and auto-rejects questions', async () => {
+test('scheduled CLI uses the global permission mode and auto-rejects questions', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-scheduler-permissions-'));
   const previousHome = process.env.MINNOW_HOME;
   process.env.MINNOW_HOME = home;
@@ -31,9 +31,9 @@ test('scheduled CLI supplies unattended approval opt-in and auto-rejects questio
         },
       };
     } });
-    assert.ok(captured.args.includes('--no-approval'));
+    assert.ok(!captured.args.includes('--no-approval'));
     assert.ok(captured.args.includes('--auto-reject-questions'));
-    assert.equal(captured.options.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION, '1');
+    assert.equal(captured.options.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION, undefined);
     assert.equal(captured.options.env.BROWSER, 'none');
   } finally {
     closeSessionsDb();

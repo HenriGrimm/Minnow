@@ -2,7 +2,7 @@
  * Headless agent run loop — generations + server tools, no DOM.
  */
 
-import { loadToolSecurityMeta } from '../config/tool-security-meta';
+import { getPermissionLevelCached, loadToolSecurityMeta } from '../config/tool-security-meta';
 import {
   extractStreamDelta,
   finalizeToolCalls,
@@ -357,6 +357,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
 
     const approvalOpts = {
       noApproval: options.cli.noApproval,
+      permissionLevel: getPermissionLevelCached(),
       modeId,
       autoRejectQuestions: options.cli.autoRejectQuestions,
     };
@@ -400,8 +401,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
         const result = await executeHeadlessTool(name, args as Record<string, unknown>, {
           modeId, workAgentId: workAgentId ?? undefined, chatId: chat.id,
         }, approvalOpts, signal);
-        if ((result.content.startsWith('Error: tool ') && result.content.includes('requires user approval')) ||
-            result.content.startsWith('Error: --no-approval requires')) {
+        if (result.content.startsWith('Error:') && result.content.includes('this non-interactive run cannot ask')) {
           throw new Error(result.content);
         }
         return result;

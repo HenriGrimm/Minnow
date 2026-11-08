@@ -11,6 +11,7 @@ import { executeHeadlessTool, getHeadlessToolDefinitions } from '../../src/headl
 
 let calls: Array<{ name: string; args: Record<string, unknown> }>;
 let search: typeof DEFAULT_SEARCH_CONFIG;
+let permissionLevel: 'full' | 'manual';
 
 beforeEach(() => {
   resetToolSecurityMetaCache();
@@ -18,12 +19,14 @@ beforeEach(() => {
   resetSearchConfigCache();
   clearAllCaches();
   calls = [];
+  permissionLevel = 'full';
   search = { ...DEFAULT_SEARCH_CONFIG, provider: 'tavily', keys: { braveApiKey: '', tavilyApiKey: 'test-key' } };
   const config = defaultToolConfig();
   setToolConfigForTests(config);
   setLocalServerAvailable(true);
   mock.method(globalThis, 'fetch', async (input, options) => {
     const url = String(input);
+    if (url.endsWith('/api/config/meta')) return Response.json({ toolSecurity: { permissionLevel } });
     if (url.endsWith('/api/config/search')) {
       if (options?.method === 'PUT') {
         search = JSON.parse(options.body as string);
@@ -79,7 +82,8 @@ test('Changing provider invalidates cached searches and unsupported controls are
 test('global permission changes are checked before returning cached Map results', async () => {
   const args = { url: 'https://example.com' };
   await executeTool('web_map', args, {});
-  applyRemoteToolSecurityMeta({ permissionLevel: 'manual' });
+  permissionLevel = 'manual';
+  applyRemoteToolSecurityMeta({ permissionLevel });
   assert.match((await executeHeadlessTool('web_map', args, {}, { modeId: 'plan', noApproval: false })).content, /approval/i);
   assert.equal(calls.length, 1);
 });

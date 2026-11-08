@@ -167,7 +167,7 @@ test('explicit configuration overrides fail before admission while unchanged pro
   assert.match((await runManagedChatIfPresent(changed.options, changed.adapters))?.error ?? '', /saved agent, model/);
   assert.equal(changed.calls.length, 1);
   const approval = fixture(['--no-approval']);
-  assert.match((await runManagedChatIfPresent(approval.options, approval.adapters))?.error ?? '', /saved tool approvals/);
+  assert.match((await runManagedChatIfPresent(approval.options, approval.adapters))?.error ?? '', /global permission mode/);
   assert.equal(approval.calls.length, 1);
   const same = fixture(['--provider', 'saved', '--model', 'model', '--mode', 'plan']);
   assert.equal((await runManagedChatIfPresent(same.options, same.adapters))?.ok, true);

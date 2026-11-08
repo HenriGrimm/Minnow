@@ -1,112 +1,60 @@
-/**
- * Headless approval policy — ask permission blocks without env opt-in.
- */
-
-import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  UNSAFE_AUTOMATION_ENV,
-  maybeBlockHeadlessToolApproval,
-  resolveHeadlessPermissionLevel,
-} from '../../src/headless/approval.ts';
-import { setToolConfigForTests } from '../../src/tools/config.ts';
+import { afterEach, test } from 'node:test';
+import { applyRemoteToolSecurityMeta, resetToolSecurityMetaCache } from '../../src/config/tool-security-meta.ts';
+import { maybeBlockHeadlessToolApproval, resolveHeadlessPermissionLevel, isHeadlessExternalCallApproved } from '../../src/headless/approval.ts';
 import { executeHeadlessTool } from '../../src/headless/execute-tool.ts';
+import { defaultToolConfig, setToolConfigForTests } from '../../src/tools/config.ts';
 
-describe('headless approval policy', () => {
-  it('Scheduler automation ignores legacy Off and returns question/browser errors without waiting', async () => {
-    const previous = process.env[UNSAFE_AUTOMATION_ENV];
-    process.env[UNSAFE_AUTOMATION_ENV] = '1';
-    try {
-      setToolConfigForTests({
-        enabled: { read_file: true }, permissions: { default: { read_file: 'off' } },
-        keys: { braveApiKey: '', tavilyApiKey: '' }, webSearchProvider: 'duckduckgo',
-      });
-      const denied = maybeBlockHeadlessToolApproval('read_file', {}, {}, { noApproval: true }, 'read_file');
-      assert.equal(denied, null);
-      const options = { modeId: 'build' as const, noApproval: true, autoRejectQuestions: true };
-      assert.match((await executeHeadlessTool('ask_question', {}, {}, options)).content, /non-interactive/);
-      assert.match((await executeHeadlessTool('browser_navigate', {}, {}, options)).content, /cannot run in headless/);
-    } finally {
-      if (previous === undefined) delete process.env[UNSAFE_AUTOMATION_ENV];
-      else process.env[UNSAFE_AUTOMATION_ENV] = previous;
+afterEach(() => { resetToolSecurityMetaCache(); setToolConfigForTests(defaultToolConfig()); });
+
+test('legacy CLI flags and environment opt-ins never widen the saved global mode', () => {
+  const previous = process.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION;
+  process.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION = '1';
+  try {
+    for (const permissionLevel of ['manual', 'auto', 'full'] as const) {
+      applyRemoteToolSecurityMeta({ permissionLevel });
+      assert.equal(resolveHeadlessPermissionLevel({ noApproval: true }), permissionLevel);
+      assert.equal(resolveHeadlessPermissionLevel({ noApproval: false, permissionLevel: 'full' }), permissionLevel);
+      assert.equal(resolveHeadlessPermissionLevel({ noApproval: true, permissionLevel: 'manual' }), 'manual');
     }
-  });
-  it('--no-approval with the env opt-in runs as Full access', () => {
-    const prev = process.env[UNSAFE_AUTOMATION_ENV];
-    process.env[UNSAFE_AUTOMATION_ENV] = '1';
-    try {
-      assert.equal(resolveHeadlessPermissionLevel({ noApproval: true, permissionLevel: 'manual' }), 'full');
-      assert.equal(resolveHeadlessPermissionLevel({ noApproval: false, permissionLevel: 'manual' }), 'manual');
-    } finally {
-      if (prev === undefined) delete process.env[UNSAFE_AUTOMATION_ENV];
-      else process.env[UNSAFE_AUTOMATION_ENV] = prev;
-    }
-  });
+  } finally {
+    if (previous === undefined) delete process.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION;
+    else process.env.MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION = previous;
+  }
+});
 
-  it('reads inside the project run at any level', () => {
-    setToolConfigForTests({
-      enabled: { read_file: true },
-      permissions: { default: { read_file: 'ask' } },
-      keys: { braveApiKey: '', tavilyApiKey: '' },
-      webSearchProvider: 'duckduckgo',
-    });
-    const result = maybeBlockHeadlessToolApproval(
-      'read_file', { path: 'README.md' }, { workspaceRoot: '/tmp/ws' },
-      { noApproval: false, permissionLevel: 'manual' }, 'read_file',
-    );
-    assert.equal(result, null);
-  });
+test('all levels permit project reads; Manual blocks unattended writes and Full permits plugin calls', () => {
+  for (const permissionLevel of ['manual', 'auto', 'full'] as const) {
+    applyRemoteToolSecurityMeta({ permissionLevel });
+    const options = { noApproval: true };
+    const context = { workspaceRoot: '/tmp/project' };
+    assert.equal(maybeBlockHeadlessToolApproval('read_file', { path: 'README.md' }, context, options), null);
+    const edit = maybeBlockHeadlessToolApproval('save_file', { path: 'code.ts', content: 'x' }, context, options);
+    if (permissionLevel === 'manual') assert.match(edit?.content ?? '', /needs approval/);
+    else assert.equal(edit, null);
+    const plugin = maybeBlockHeadlessToolApproval('plugin__example__run', {}, context, options);
+    if (permissionLevel === 'full') assert.equal(plugin, null);
+    else assert.match(plugin?.content ?? '', /needs approval/);
+  }
+});
 
-  it('an action that needs approval fails without --no-approval', () => {
-    setToolConfigForTests({
-      enabled: { save_file: true },
-      permissions: { default: { save_file: 'ask' } },
-      keys: { braveApiKey: '', tavilyApiKey: '' },
-      webSearchProvider: 'duckduckgo',
-    });
-    const blocked = maybeBlockHeadlessToolApproval(
-      'save_file', { path: 'src/a.ts', content: 'x' }, { workspaceRoot: '/tmp/ws' },
-      { noApproval: false, permissionLevel: 'manual' }, 'save_file',
-    );
-    assert.ok(blocked);
-    assert.match(blocked!.content, /non-interactive/i);
-  });
+test('global Auto authorizes outside reads for this call, but clamps and the secret floor always apply', () => {
+  applyRemoteToolSecurityMeta({ permissionLevel: 'auto' });
+  const outside = { path: '/tmp/outside/readme.txt' };
+  const context = { workspaceRoot: '/tmp/project' };
+  assert.equal(maybeBlockHeadlessToolApproval('read_file', outside, context, { noApproval: false }), null);
+  assert.equal(isHeadlessExternalCallApproved(outside), true);
+  assert.equal(isHeadlessExternalCallApproved({ ...outside }), false);
+  applyRemoteToolSecurityMeta({ permissionLevel: 'full' });
+  assert.match(maybeBlockHeadlessToolApproval('save_file', { path: 'code.ts', content: 'x' },
+    { ...context, turnClamp: 'read-only' }, { noApproval: true })?.content ?? '', /Error:/);
+  assert.match(maybeBlockHeadlessToolApproval('read_file', { path: '/tmp/project/.minnow/.key' }, context,
+    { noApproval: true })?.content ?? '', /Error:/);
+});
 
-  it('--no-approval without env opt-in keeps the saved global restrictions', () => {
-    const previous = process.env[UNSAFE_AUTOMATION_ENV];
-    delete process.env[UNSAFE_AUTOMATION_ENV];
-    try {
-      const blocked = maybeBlockHeadlessToolApproval('save_file', { path: 'file.ts', content: 'x' },
-        { workspaceRoot: '/tmp/ws' }, { noApproval: true, permissionLevel: 'manual' });
-      assert.match(blocked?.content ?? '', /needs approval/);
-    } finally {
-      if (previous !== undefined) process.env[UNSAFE_AUTOMATION_ENV] = previous;
-    }
-  });
-
-  it('--no-approval with env allows ask tools', () => {
-    const prev = process.env[UNSAFE_AUTOMATION_ENV];
-    process.env[UNSAFE_AUTOMATION_ENV] = '1';
-    setToolConfigForTests({
-      enabled: { read_file: true },
-      permissions: {
-        default: { read_file: 'ask' },
-      },
-      keys: { braveApiKey: '', tavilyApiKey: '' },
-      webSearchProvider: 'duckduckgo',
-    });
-    const blocked = maybeBlockHeadlessToolApproval(
-      'read_file',
-      { path: 'README.md' },
-      {},
-      { noApproval: true },
-      'read_file',
-    );
-    assert.equal(blocked, null);
-    if (prev !== undefined) {
-      process.env[UNSAFE_AUTOMATION_ENV] = prev;
-    } else {
-      delete process.env[UNSAFE_AUTOMATION_ENV];
-    }
-  });
+test('unattended questions and browser-only calls return errors without waiting', async () => {
+  setToolConfigForTests(defaultToolConfig());
+  const options = { modeId: 'build' as const, noApproval: false, autoRejectQuestions: true };
+  assert.match((await executeHeadlessTool('ask_question', {}, {}, options)).content, /non-interactive/);
+  assert.match((await executeHeadlessTool('browser_navigate', {}, {}, options)).content, /cannot run in headless/);
 });

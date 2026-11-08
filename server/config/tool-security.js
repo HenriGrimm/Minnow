@@ -23,25 +23,11 @@ export async function getPermissionLevelFromConfig() {
 
 /**
  * Filesystem reach follows the permission level: Full access reaches the whole
- * disk; Manual and Auto stay in the workspace unless one call was approved.
+ * disk; other levels need a per-call admission to leave the workspace.
  * @returns {Promise<'workspace'|'full'>}
  */
 export async function getFilesystemAccessFromConfig() {
-  if ((await getPermissionLevelFromConfig()) === 'full') return 'full';
-  // Migration: an install that opted into the old "Full disk" switch and has
-  // not picked a permission level yet keeps whole-disk reach. Saving a level
-  // drops the legacy flag (validators.js).
-  try {
-    const meta = await readConfigJson('config.json');
-    const ts = meta && typeof meta === 'object' ? /** @type {Record<string, unknown>} */ (meta).toolSecurity : null;
-    if (ts && typeof ts === 'object') {
-      const row = /** @type {Record<string, unknown>} */ (ts);
-      if (row.permissionLevel === undefined && row.filesystemAccess === 'full') return 'full';
-    }
-  } catch {
-    /* ignore */
-  }
-  return 'workspace';
+  return (await getPermissionLevelFromConfig()) === 'full' ? 'full' : 'workspace';
 }
 
 /**

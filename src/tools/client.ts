@@ -180,7 +180,7 @@ export interface ExecuteToolContext {
   workspaceRoot?: string;
   /** Additional allowed path roots (board worktrees under ~/.minnow/worktrees). */
   extraPathRoots?: string[];
-  /** Benchmark runs bypass Ask permission modals and path-ack prompts. */
+  /** @deprecated Compatibility marker; the global permission mode still applies. */
   benchmarkAutonomous?: boolean;
   /** Turn clamp from the turn's skill (`/ask` read-only, `/plan` plans). */
   turnClamp?: 'read-only' | 'plans' | null;

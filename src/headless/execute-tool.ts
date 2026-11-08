@@ -2,6 +2,7 @@
  * Headless tool execution — server POST only; block browser/UI tools with clear errors.
  */
 
+import { loadToolSecurityMeta } from '../config/tool-security-meta';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
 import { isToolAllowedForMode, filterToolsByMode } from '../chat/modes/tool-policy';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
@@ -18,6 +19,7 @@ import type { ExecuteToolContext } from '../tools/client';
 import type { ToolExecutionResult } from '../types';
 import {
   maybeBlockHeadlessToolApproval,
+  isHeadlessExternalCallApproved,
   type HeadlessApprovalOptions,
 } from './approval';
 import { headlessApiUrl } from './server-context';
@@ -99,11 +101,12 @@ async function postServerTool(
   modeId: ModeId,
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
-  const payload: { name: string; args: Record<string, unknown>; modeId?: string } = {
+  const payload: { name: string; args: Record<string, unknown>; modeId?: string; approvedOutsideWorkspace?: boolean } = {
     name,
     args,
   };
   payload.modeId = modeId;
+  if (isHeadlessExternalCallApproved(args)) payload.approvedOutsideWorkspace = true;
   let response: Response;
   try {
     response = await fetch(headlessApiUrl('/api/tools'), {
@@ -146,6 +149,7 @@ export async function executeHeadlessTool(
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
+  await loadToolSecurityMeta({ refresh: true });
   if (AGENT_CHAT_TOOL_IDS.includes(name)) return { content: 'Error: conversation tools require a managed --chat-id execution; this local CLI session has no canonical sender.' };
   if (process.env.MINNOW_REEF_PHASE) {
     const workspace = getHeadlessWorkspace();
