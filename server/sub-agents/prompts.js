@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { getMinnowHome } from '../config/home.js';
 import { readPromptFile } from '../prompts/file-overrides.js';
+import { SUB_AGENT_COMPLETION_GUIDANCE } from './reporting.js';
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
@@ -22,6 +23,7 @@ export async function loadSubAgentSystemPrompt(typeId, typeRow, task, profile = 
 
 You are a sub-agent (type: ${typeId}). Complete the following task. You cannot spawn other sub-agents.
 When finished, call the report tool with a verdict. Do not put the outcome only in assistant text.
+${SUB_AGENT_COMPLETION_GUIDANCE}
 
 Task:
 ${task}`;

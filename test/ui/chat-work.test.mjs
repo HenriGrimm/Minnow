@@ -118,6 +118,138 @@ test('canonical metadata changes refresh the status glyph without replacing tran
   assert.equal(mount.querySelector('.chat-turn-final'), reply);
 });
 
+test('delegated work stays open through partial completions, delivery, and the final parent response', async () => {
+  chat.runs = [];
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'review-command';
+  chat.agentExecution = { executionId: 'review-execution', commandId: 'review-command', status: 'completed' };
+  chat.agentTaskAttention = { status: 'waiting_for_agents', pendingCount: 3 };
+  renderChatFromHistory(chat);
+  const work = mount.querySelector('.chat-work');
+  const cards = ['running', 'running', 'queued'].map(status => {
+    const card = document.createElement('article');
+    card.className = 'sub-agent-card sub-agent-card--persistent';
+    card.dataset.status = status;
+    mount.append(card);
+    return card;
+  });
+  const refresh = async () => {
+    notifyManagedChatMetadata(chat.id);
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+  };
+  const assertWaiting = () => {
+    assert.equal(work.dataset.outcome, 'live');
+    assert.equal(work.querySelector('.chat-work__label').textContent, 'Waiting for agents');
+    assert.equal(work.getAttribute('aria-expanded'), 'true');
+    assert.equal(work.querySelector('.chat-work__status').childElementCount, 0);
+    assert.equal(mount.querySelector('.chat-turn-changes'), null);
+    assert.equal(mount.querySelector('.chat-reply-foot'), null);
+    assert.equal(mount.querySelector('.chat-turn-final'), null);
+    assert.ok(!mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
+  };
+  await refresh();
+  assertWaiting();
+  setChatView('full');
+  assert.equal(work.dataset.outcome, 'live');
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+  setChatView('compact');
+  cards[0].dataset.status = 'completed';
+  chat.agentTaskAttention.pendingCount = 2;
+  await refresh();
+  assertWaiting();
+  cards[1].dataset.status = 'failed';
+  chat.agentTaskAttention.pendingCount = 1;
+  await refresh();
+  assertWaiting();
+  cards[2].dataset.status = 'completed';
+  // All cards have settled, but the durable completion is still being delivered.
+  await refresh();
+  assertWaiting();
+  delete chat.agentTaskAttention;
+  chat.agentPendingCommand = { commandId: 'resume-command' };
+  await refresh();
+  assert.equal(work.dataset.outcome, 'live');
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+  delete chat.agentPendingCommand;
+  chat.agentExecution.status = 'running';
+  await refresh();
+  assert.equal(work.dataset.outcome, 'live');
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+  assert.equal(mount.querySelector('.chat-reply-foot'), null);
+  chat.agentExecution.status = 'completed';
+  await refresh();
+  assert.equal(work.dataset.outcome, 'done');
+  assert.equal(work.getAttribute('aria-expanded'), 'false');
+  assert.equal(mount.querySelectorAll('.chat-turn-changes').length, 1);
+  assert.equal(mount.querySelectorAll('.chat-reply-foot').length, 1);
+});
+
+test('a parent question takes priority over background agent activity', () => {
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'review-command';
+  chat.agentExecution = { executionId: 'review-execution', commandId: 'review-command', status: 'waiting_for_input' };
+  chat.agentTaskAttention = { status: 'waiting_for_agents', pendingCount: 1 };
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work__label').textContent, 'Waiting for your answer');
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+});
+
+test('queued legacy agents keep work open and their status mutations refresh completion', async () => {
+  renderChatFromHistory(chat);
+  const card = document.createElement('article');
+  card.className = 'sub-agent-card';
+  card.dataset.status = 'queued';
+  mount.append(card);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
+  const work = mount.querySelector('.chat-work');
+  assert.equal(work.dataset.outcome, 'live');
+  assert.equal(work.getAttribute('aria-expanded'), 'true');
+  assert.equal(mount.querySelector('.chat-turn-changes'), null);
+  card.dataset.status = 'running';
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
+  assert.equal(work.dataset.outcome, 'live');
+  card.dataset.status = 'completed';
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
+  assert.equal(work.dataset.outcome, 'done');
+  assert.ok(mount.querySelector('.chat-turn-changes'));
+});
+
+test('stopped work settles even when child cards or task attention have not caught up', () => {
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'review-command';
+  chat.agentExecution = { executionId: 'review-execution', commandId: 'review-command', status: 'stopped' };
+  chat.agentTaskAttention = { status: 'waiting_for_agents', pendingCount: 1 };
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work').dataset.outcome, 'stopped');
+  assert.ok(mount.querySelector('.chat-turn-changes'));
+});
+
+test('automatic agent handoffs share the original work group and only its last reply is final', () => {
+  chat.history.push(
+    { role: 'user', content: 'First result.', commandId: 'resume-one',
+      provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result' } },
+    { role: 'assistant', content: 'One review is done. Waiting for the others.' },
+    { role: 'user', content: '[Sub-agent finished] Last result.', hiddenFromTranscript: true },
+    { role: 'assistant', content: 'All reviews are done. Here are the consolidated findings.' },
+  );
+  chat.chatCommandVersion = 1;
+  chat.agentExecution = { executionId: 'resume-execution', commandId: 'resume-one', status: 'completed' };
+  const turns = collectTranscriptTurns(chat);
+  assert.equal(turns.length, 1);
+  assert.deepEqual(turns[0].finalIndices, [chat.history.length - 1]);
+  assert.equal(turns[0].executionStatus, 'completed');
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelectorAll('.chat-work').length, 1);
+  assert.equal(mount.querySelectorAll('.chat-turn-changes').length, 1);
+  assert.match(mount.querySelector('.chat-turn-final').textContent, /All reviews are done/);
+  assert.equal(mount.querySelector('.agent-message--result'), null);
+  assert.ok(!mount.textContent.includes('First result.'));
+  assert.ok([...mount.querySelectorAll('.msg.assistant')].find(row => row.textContent.includes('One review is done')).classList.contains('chat-work-hidden'));
+});
+
 test('historical work outcomes survive subsequent turns and do not inherit another command status', () => {
   chat.runs = [];
   chat.chatCommandVersion = 1;

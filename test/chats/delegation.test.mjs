@@ -70,7 +70,7 @@ function fixture(overrides = {}) {
         posts++; requests.push(body);
         const events = await agentsJournal.readEvents('parent'); assert.ok(events.some(event => event.type === 'attempt.started'));
         return overrides.post ? overrides.post({ body, posts }) : response();
-      }), runOptions: { injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false } }) });
+      }), runOptions: { injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false, ...overrides.runOptions } }) });
   service.registerHost({ id: 'fixture-host', kind: 'server', supportsSteer: true, canRun: () => canRun, execute: input => host.execute(input) });
   async function getEngine(owner) {
     if (engines.has(owner)) return engines.get(owner);
@@ -99,6 +99,36 @@ function fixture(overrides = {}) {
       if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome; resetMinnowHomeCache();
       assert.ok(path.resolve(home).startsWith(path.resolve(os.tmpdir()) + path.sep)); fs.rmSync(home, { recursive: true, force: true }); }
   };
+}
+
+for (const outcome of ['fail', 'blocked']) for (const transport of ['tool', 'prose']) {
+  test(`a ${outcome} ${transport} assessment completes and delivers one agent run without retries`, async () => {
+    const detail = 'Runtime reproduction was unavailable; static review found src/auth.ts:42 retains revoked access.';
+    const report = { outcome, summary: 'Read-only authorization review finished with a P1 finding.',
+      ...(outcome === 'fail' ? { blockers: [detail] } : { needs: [detail] }) };
+    const delta = transport === 'tool' ? { tool_calls: [{ index: 0, id: 'report-review', type: 'function',
+      function: { name: 'report_outcome', arguments: JSON.stringify(report) } }] } : { content: JSON.stringify(report) };
+    const s = fixture({ runOptions: { injectReportTool: transport === 'tool' }, post: () => new Response(
+      'data: ' + JSON.stringify({ choices: [{ delta }] }) + '\n\ndata: ' + JSON.stringify({ choices: [{ delta: {},
+        finish_reason: transport === 'tool' ? 'tool_calls' : 'stop' }] }) + '\n\ndata: [DONE]\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } }) });
+    try {
+      s.enableHost();
+      const receipt = await s.delegation.spawn(s.caller, { type: 'explore', task: 'Review authorization', client_request_id: 'negative-review' });
+      await until(() => s.repository.getCommand(receipt.commandId).state === 'settled');
+      const run = (await agentsJournal.loadState('parent')).runs.get(receipt.runId);
+      assert.equal(run.phase, 'passed');
+      assert.equal(run.attempts.length, 1, 'a completed review must never be retried for its assessment');
+      assert.equal(run.attempts[0].evidence.reportedOutcome, outcome);
+      const result = s.repository.getCommand(receipt.commandId).result;
+      assert.equal(result.status, 'completed');
+      assert.match(result.summary, /P1 finding/);
+      assert.ok(result.summary.includes(detail));
+      assert.match(result.summary, new RegExp(`Reported assessment: ${outcome}`));
+      assert.equal(s.posts, 1);
+      assert.deepEqual(s.errors, []);
+    } finally { await s.cleanup(); }
+  });
 }
 
 test('persistent completion delivers report evidence without transcript paging', async () => {

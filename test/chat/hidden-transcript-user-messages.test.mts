@@ -56,6 +56,15 @@ describe('hidden transcript user messages', () => {
     assert.equal(isHiddenTranscriptUserMessage(row), true);
   });
 
+  test('system delegation results hide by provenance without depending on their content', () => {
+    for (const content of ['A completed review.', '[Sub-agent finished] Saved results.']) {
+      assert.equal(isHiddenTranscriptUserMessage({ role: 'user', content,
+        provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result' } }), true);
+      assert.equal(isHiddenTranscriptUserMessage({ role: 'user', content,
+        provenance: { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message' } }), false);
+    }
+  });
+
   test('legacy sub-agent rows without hiddenFromTranscript still hide via prefix', () => {
     assert.equal(
       isHiddenTranscriptUserMessage({

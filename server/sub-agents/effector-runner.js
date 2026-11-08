@@ -52,6 +52,7 @@ import { AGENTS_NAMESPACE, lastEndedAttempt } from './derive.js';
 import { agentsDir } from './journal.js';
 import { getSubAgentTypeRow, loadSubAgentFile } from './config.js';
 import { loadSubAgentSystemPrompt } from './prompts.js';
+import { subAgentCompletionResult, withSubAgentReportTool } from './reporting.js';
 import {
   formatAgentBrowserGuideForTranscript,
   registerAgentBrowserRuntime,
@@ -384,6 +385,7 @@ export function parseReportForSchema(schemaId) {
 function toAttemptEnd(attemptId, runId, result) {
   /** @type {Record<string, unknown>} */
   const evidence = {};
+  if (result.reportedOutcome) evidence.reportedOutcome = result.reportedOutcome;
   if (result.outcome === 'pass' && Array.isArray(result.evidence)) {
     evidence.evidence = result.evidence;
   }
@@ -627,7 +629,7 @@ export function createSubAgentEffector(options = {}) {
         toolIdsByType.set(run.type, toolIds);
       }
       const builtinTools = headlessToolDefinitions(toolIds);
-      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
+      const tools = withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })]);
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
@@ -754,7 +756,7 @@ export function createSubAgentEffector(options = {}) {
             reportToolName: DEFAULT_REPORT_TOOL_NAME,
             parseReport: parseReportForSchema(schemaId),
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })]) }),
             summarySchema: schemaId,
             ask,
             onRoundBoundary: () => {
@@ -813,6 +815,7 @@ export function createSubAgentEffector(options = {}) {
 
         const incomingOutcome = result?.outcome;
         result = degradeNoReportIfProse(result, rec?.messages, schemaId);
+        result = subAgentCompletionResult(result);
         if (parentChatId) recordPendingResponse(parentChatId, runId, attemptId);
         clearLiveDelta(attemptId);
         if (parentChatId) {

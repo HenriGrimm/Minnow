@@ -32,7 +32,10 @@ export function isHiddenTranscriptUserMessage(msg: UserMessage): boolean {
   if (msg.hiddenFromTranscript) return true;
   // Runner persist can write screenshot follow-ups into chat.history (array content).
   if (isLeakedToolImageFollowUp(msg)) return true;
-  if (msg.provenance?.version === 1 && (msg.provenance.kind === 'peer_message' || msg.provenance.kind === 'delegation_result')) return false;
+  if (msg.provenance?.version === 1) {
+    if (msg.provenance.actor === 'system' && msg.provenance.kind === 'delegation_result') return true;
+    if (msg.provenance.kind === 'peer_message' || msg.provenance.kind === 'delegation_result') return false;
+  }
   if (isSuperPlanPipelineUserMessage(msg)) return true;
   if (isSubAgentResumeUserMessage(msg)) return true;
   return false;

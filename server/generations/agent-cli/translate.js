@@ -200,7 +200,8 @@ export function createAgentCliTranslator(kind, emit, { tools = [] } = {}) {
         if (item.id) completed.add(item.id);
         if (item.type === 'agent_message') snapshotDelta(`message:${item.id ?? 'active'}`, item.text, text);
         if (item.type === 'reasoning') snapshotDelta(`reasoning:${item.id ?? 'active'}`, codexReasoningText(item), reasoning);
-        if (item.type === 'mcp_tool_call' && item.status === 'failed') finish(false, item.error ?? 'Minnow tool handoff failed.');
+        // A failed tool is recoverable inside the turn. Only the turn's
+        // terminal event decides whether the invocation succeeded.
         if (['command_execution', 'file_change', 'web_search'].includes(item.type)) emit({ forbiddenTool: item.type });
       }
       if (event.type === 'turn.completed') { usage = mapAgentCliUsage(event.usage, kind); finish(true); }

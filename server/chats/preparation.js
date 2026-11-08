@@ -15,6 +15,7 @@ import { readChatCheckoutIdentity } from './context.js';
 import { rebindChatWorkspacePolicy } from './workspace-preparation.js';
 import { validateChatSendIntent } from './contracts.js';
 import { wrapUntrusted } from '../../src/lib/untrusted.mjs';
+import { SUB_AGENT_COMPLETION_GUIDANCE, withSubAgentReportTool } from '../sub-agents/reporting.js';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;
@@ -569,8 +570,10 @@ export async function prepareChatExecution({ command, execution, fence, signal }
     }
   }));
   const hostToolNames = tools.filter((_, index) => !hostAvailability[index]).map(row => row.function.name);
-  const taskGuidance = execution?.captured?.completionPolicy?.kind === 'wake_delegator'
-    ? '\n\nFinish this assignment with findings in your final response or report_outcome if offered. Completion delivers the result to the delegator. Use chat_send only to request separate work.' : '';
+  const delegated = execution?.captured?.completionPolicy?.kind === 'wake_delegator';
+  const taskGuidance = delegated
+    ? '\n\nFinish this assignment with findings in your final response or report_outcome if offered. Completion delivers the result to the delegator. Use chat_send only to request separate work.\n' + SUB_AGENT_COMPLETION_GUIDANCE : '';
+  if (delegated) tools = withSubAgentReportTool(tools);
   const enrichmentNotice = enrichmentOmissions.length
     ? `\n\nOptional enrichment unavailable: ${enrichmentOmissions.map(row => `${row.kind} (${row.reason})`).join(', ')}. Use tools if this context is needed.` : '';
   const intent = turn?.intent ?? command.intent;

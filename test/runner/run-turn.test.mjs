@@ -31,6 +31,7 @@ import {
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
   WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
 } from '../../server/runner/turn-continuation.js';
+import { withSubAgentReportTool } from '../../server/sub-agents/reporting.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUN_TURN_JS = path.join(PROJECT_ROOT, 'server', 'runner', 'run-turn.js');
@@ -588,6 +589,25 @@ describe('runTurn source contract', () => {
 // ── Report tool ──────────────────────────────────────────────────────────────
 
 describe('runTurn report tool → verbatim outcome', () => {
+  test('a recovered tool failure and negative review findings preserve completed assignment status', { timeout: 20_000 }, async () => {
+    const payload = { outcome: 'pass', summary: 'Review complete: found a P2 bug. Runtime validation was unavailable.', evidence: ['src/review.ts:12'] };
+    await withFake([
+      { match: { nth: 0 }, emit: functionCallChunks('read_file', { path: 'missing.ts' }, 'failed-read') },
+      { match: { nth: 1 }, emit: functionCallChunks(DEFAULT_REPORT_TOOL_NAME, payload) },
+    ], async baseUrl => {
+      const events = [];
+      const result = await runTurn({
+        chatId: CHAT_UUID, seed: 'Review the source.',
+        tools: withSubAgentReportTool([{ type: 'function', function: { name: 'read_file', parameters: { type: 'object', properties: { path: { type: 'string' } } } } }]),
+        model: { providerId: 'local-fake', id: 'fake-model' },
+        execute: async () => ({ content: 'Error: File not found', isError: true }),
+        onEvent: event => events.push(event), deps: stubDeps(baseUrl, { runHeadlessToolBatch: passthroughBatch }),
+      });
+      assert.deepEqual(result, payload);
+      assert.ok(events.some(event => event.type === 'tool_result' && event.id === 'failed-read' && event.isError));
+    });
+  });
+
   test('pass payload is returned as-is', { timeout: 20_000 }, async () => {
     const payload = {
       outcome: 'pass',

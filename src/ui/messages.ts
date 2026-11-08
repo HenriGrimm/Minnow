@@ -370,6 +370,7 @@ function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
     if (chat.history.some(message => message.role === 'user' && message.commandId === pending.id) ||
         [...host.querySelectorAll<HTMLElement>('.msg--sending')].some(row => row.dataset.pendingCommandId === pending.id)) continue;
     const message: UserMessage = { role: 'user', content: pending.text, provenance: pending.provenance, commandId: pending.id };
+    if (isHiddenTranscriptUserMessage(message)) continue;
     if (isAttributedAgentMessage(message)) {
       const row = createAttributedAgentMessage(chat, message, -1);
       row.removeAttribute('data-history-index');

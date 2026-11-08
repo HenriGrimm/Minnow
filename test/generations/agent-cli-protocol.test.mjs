@@ -187,11 +187,25 @@ test('buffered events after terminal success cannot append output or rewrite usa
   }
 });
 
-test('Codex surfaces an MCP handoff failure instead of silently retrying inside the CLI', () => {
-  const translator = createAgentCliTranslator('codex', () => {});
+test('Codex waits for the turn outcome after a recoverable MCP tool failure', () => {
+  const deltas = [];
+  const translator = createAgentCliTranslator('codex', delta => deltas.push(delta));
   translator.consume({ type: 'item.completed', item: { id: 'failed', type: 'mcp_tool_call', status: 'failed', error: { message: 'MCP tool call requires approval, but approval policy is never' } } });
+  assert.equal(translator.snapshot().terminal, null);
+  translator.consume({ type: 'item.completed', item: { id: 'answer', type: 'agent_message', text: 'Finished using another available tool.' } });
+  translator.consume({ type: 'turn.completed', usage: { input_tokens: 100, output_tokens: 20 } });
+  assert.equal(translator.snapshot().terminal.ok, true);
+  assert.equal(translator.snapshot().usage.total_tokens, 120);
+  assert.equal(deltas.map(delta => delta.content ?? '').join(''), 'Finished using another available tool.');
+});
+
+test('Codex preserves an actual turn failure after a tool error and partial answer', () => {
+  const translator = createAgentCliTranslator('codex', () => {});
+  translator.consume({ type: 'item.completed', item: { id: 'failed', type: 'mcp_tool_call', status: 'failed', error: { message: 'Read failed' } } });
+  translator.consume({ type: 'item.completed', item: { id: 'partial', type: 'agent_message', text: 'Partial findings.' } });
+  translator.consume({ type: 'turn.failed', error: { message: 'Provider disconnected' } });
   assert.equal(translator.snapshot().terminal.ok, false);
-  assert.match(translator.snapshot().terminal.error, /requires approval/);
+  assert.match(translator.snapshot().terminal.error, /Provider disconnected/);
 });
 
 test('Codex nested unsupported-model errors explain how to refresh the CLI catalog', () => {

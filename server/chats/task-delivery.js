@@ -6,6 +6,8 @@ import { createChatTaskRepository } from './task-repository.js';
 import { createChatOutbox } from './outbox.js';
 import { createChatCaller, assertCaller, assertCallerCanTarget } from './caller.js';
 import { ChatContractError } from './contracts.js';
+import { subAgentCompletionResult } from '../sub-agents/reporting.js';
+import { completionReport } from './completion-report.js';
 
 const stable = (prefix, value) => prefix + '-' + createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 48);
 const ended = new Set(['completed', 'failed', 'stopped', 'recovery_required']);
@@ -231,15 +233,18 @@ export function createChatTaskDelivery({ repository, context, service, journal =
             for (const attempt of run.attempts.filter(value => !value.ended)) {
               const execution = repository.getExecution(attempt.executionId ?? run.executionId);
               if (!execution || !ended.has(execution.status)) continue;
-              const raw = execution.result ?? { outcome: 'crashed', error: 'Execution was interrupted' };
+              const saved = execution.result ?? { outcome: 'crashed', error: 'Execution was interrupted' };
+              const raw = execution.status === 'completed' ? subAgentCompletionResult(saved) : saved;
               let outcome = raw.outcome ?? 'crashed', summary = raw.summary ?? raw.error;
+              if (outcome === 'pass') summary = completionReport(raw, repository.readExecutionFinalAssistant(execution.executionId));
               if (outcome === 'no_report') {
                 const prose = repository.readExecutionFinalAssistant(execution.executionId);
                 if (prose.trim()) { outcome = 'pass'; summary = prose; }
               }
               await append(owner, makeEvent('attempt.ended', { runId: run.runId, attemptId: attempt.attemptId,
                 executionId: execution.executionId, outcome, ...(summary ? { summary } : {}),
-                evidence: { recovered: true, ...(execution.status === 'recovery_required' ? { recoveryRequired: true } : {}),
+                evidence: { recovered: true, ...(raw.reportedOutcome ? { reportedOutcome: raw.reportedOutcome, evidence: raw.evidence } : {}),
+                  ...(execution.status === 'recovery_required' ? { recoveryRequired: true } : {}),
                   ...(execution.status === 'stopped' ? { stopped: true } : {}) } }), stable('recovered-attempt', [run.runId, attempt.attemptId]));
             }
           }

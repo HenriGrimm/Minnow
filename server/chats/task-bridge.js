@@ -6,6 +6,7 @@ import { recordTranscriptEvent, recordTranscriptEnd, flushTranscripts } from '..
 import { emitLive } from '../orchestrator/live-events.js';
 import { shouldEmitSubAgentLiveTurnEvent } from '../runner/turn-event.js';
 import { completionReport } from './completion-report.js';
+import { subAgentCompletionResult } from '../sub-agents/reporting.js';
 
 const attemptIdentity = (run, ordinal) => 'sa-' + createHash('sha256').update(JSON.stringify([run.runId, ordinal])).digest('hex').slice(0, 48);
 const liveExecutions = new Map();
@@ -96,8 +97,10 @@ export function createPersistentSubAgentEffector({ legacyEffector, service, repo
     let result = rawResult;
     const final = repository.readExecutionFinalAssistant?.(entry.reservation.executionId) ?? '';
     if (result.outcome === 'no_report') result = degradeNoReportIfProse(result, final ? [{ role: 'assistant', content: final }] : [], entry.run.summarySchema ?? 'minnow.sub-agent.v1');
+    result = subAgentCompletionResult(result);
     if (result.outcome === 'pass') result = { ...result, summary: completionReport(result, final) };
     const evidence = { childChatId: entry.run.childChatId, commandId: entry.run.commandId,
+      ...(result.reportedOutcome ? { reportedOutcome: result.reportedOutcome } : {}),
       ...(result.outcome === 'crashed' ? { error: result.error, ...(result.failure ? { failure: result.failure } : {}) } : {}),
       ...(result.outcome === 'pass' && result.evidence ? { evidence: result.evidence } : {}),
       ...(result.outcome === 'fail' ? { blockers: result.blockers } : {}),

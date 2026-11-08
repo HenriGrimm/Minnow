@@ -7,6 +7,7 @@ import { after, before, test } from 'node:test';
 import { buildChatPreparation } from '../../scripts/build-headless-runner.mjs';
 import { createChatPolicy, assertChatToolAllowed } from '../../server/chats/policy.js';
 import { captureChatProfile, captureChatTurnIntent, prepareChatExecution, resolveChatPolicyInput } from '../../server/chats/preparation.js';
+import { SUB_AGENT_COMPLETION_GUIDANCE } from '../../server/sub-agents/reporting.js';
 
 let directory;
 let composer;
@@ -84,6 +85,20 @@ function fixture(overrides = {}) {
     setTranscript: value => { transcript = value; },
   };
 }
+
+test('delegated completion guidance reaches the system prompt and report schema for API and CLI models', async () => {
+  for (const cli of [false, true]) {
+    const f = fixture({ cli });
+    f.execution.captured.completionPolicy = { version: 1, kind: 'wake_delegator', recipientChatId: 'parent', subscriptionId: 'subscription', cancellationEpoch: 0 };
+    const prepared = await f.prepare();
+    assert.ok(prepared.systemPrompt.includes(SUB_AGENT_COMPLETION_GUIDANCE));
+    const report = prepared.tools.find(tool => tool.function.name === 'report_outcome').function;
+    assert.ok(report.description.includes(SUB_AGENT_COMPLETION_GUIDANCE));
+    assert.equal(report.parameters.properties.outcome.description, SUB_AGENT_COMPLETION_GUIDANCE);
+    assert.ok(!prepared.hostToolNames.includes('report_outcome'), 'the runner owns reporting, not a connected host');
+  }
+  assert.ok(!(await fixture().prepare()).tools.some(tool => tool.function.name === 'report_outcome'));
+});
 
 test('prepared worktree rebinds immutable profile policy without widening its accepted restrictions', async () => {
   const f = fixture({ chat: { modeId: 'plan' } });

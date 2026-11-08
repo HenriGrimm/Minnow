@@ -144,17 +144,30 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     activeKey: string,
     latest: boolean,
   ): void {
-    const executionStatus = turn.executionStatus;
+    const interrupted = turn.executionStatus ? ['failed', 'stopped', 'recovery_required'].includes(turn.executionStatus)
+      : turn.run?.status === 'failed' || turn.run?.status === 'stopped';
+    // A parent's prose round can settle before its children and their delivery.
+    // Queued/waiting cards count too, even when they have no generating spinner.
+    const waitingForAgents = !interrupted && !chat.subAgentAutoResumeBlocked && (
+      latest && Boolean(chat.agentTaskAttention?.pendingCount)
+      || rows.some(row => row.matches('.sub-agent-card--active, .sub-agent-card[data-status="running"], .sub-agent-card[data-status="queued"], .sub-agent-group[data-live="true"]')
+        || Boolean(row.querySelector('.sub-agent-card--active, .sub-agent-card[data-status="running"], .sub-agent-card[data-status="queued"]'))));
+    const parentSettled = turn.executionStatus == null || turn.executionStatus === 'completed';
+    const executionStatus = parentSettled && !interrupted
+      ? latest && chat.agentPendingCommand ? 'queued' : waitingForAgents ? 'waiting_for_agents' : turn.executionStatus
+      : turn.executionStatus;
     const recovery = executionStatus === 'recovery_required';
     const terminal = executionStatus != null && ['completed', 'failed', 'stopped', 'recovery_required'].includes(executionStatus);
     live = live && !terminal;
-    if (!live) rows = groupWorkedToolRows(rows);
+    const pending = executionStatus != null && !terminal;
+    const ongoing = live || pending;
+    if (!ongoing) rows = groupWorkedToolRows(rows);
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
-    const final = live ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
+    const final = ongoing ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
       ?? assistants.filter((row) => !row.hasAttribute('data-history-index')
         && !row.matches('[data-turn-kind="assistant-tools"], .msg--awaiting-prose')).at(-1);
-    const finalIndices = new Set(live ? [] : turn.finalIndices);
+    const finalIndices = new Set(ongoing ? [] : turn.finalIndices);
     const replies = assistants.filter((row) => row === final || finalIndices.has(Number(row.dataset.historyIndex)));
     const replyRows = new Set(replies);
     const thoughts = replies.flatMap((row) => Array.from(row.querySelectorAll<HTMLElement>(':scope > .thoughts-panel-wrap, :scope > .thought-stage')));
@@ -170,7 +183,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const elapsedMs = run && (live || run.endedAt != null)
       ? (live ? Date.now() : run.endedAt!) - run.createdAt : live ? undefined : turn.workDurationMs;
     const duration = elapsedMs != null && Number.isFinite(elapsedMs) && elapsedMs >= 0 ? formatWorkDuration(elapsedMs) : '';
-    if (!live && !hasActivity && !duration && !executionStatus) {
+    if (!ongoing && !hasActivity && !duration && !executionStatus) {
       group?.button.remove();
       return;
     }
@@ -187,16 +200,15 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     // A live turn draws its steps in place; the composer status line carries elapsed time.
-    const show = full || group.expanded || live && !options.isolated;
+    const show = full || group.expanded || ongoing && !options.isolated;
     group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
     if (hasActivity) group.button.setAttribute('aria-expanded', String(show));
     else group.button.removeAttribute('aria-expanded');
     // Full view stays open; a duration alone has no activity to expand.
     group.button.disabled = full || !hasActivity;
-    group.button.classList.toggle('chat-work--live', live);
+    group.button.classList.toggle('chat-work--live', ongoing);
     const stopped = executionStatus ? executionStatus === 'stopped' : run?.status === 'stopped' || rows.some((row) => row.matches('.msg--stopped'));
     const failed = executionStatus ? executionStatus === 'failed' : run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
-    const pending = executionStatus != null && !terminal;
     setText(group.label, recovery ? `Needs recovery${duration ? ` after ${duration}` : ''}`
       : pending ? pendingLabel(executionStatus, duration) : live ? workingLabel(duration) : endLabel(run, failed, stopped, duration));
     const outcome: WorkOutcome = recovery ? 'recovery' : failed ? 'failed' : stopped ? 'stopped' : live || pending ? 'live' : 'done';
@@ -266,7 +278,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     const lastRow = rows.at(-1)!;
     if (group.presentedFiles && lastRow.nextElementSibling !== group.presentedFiles) lastRow.after(group.presentedFiles);
-    if (!live) {
+    if (!ongoing) {
       const key = `${turn.end}:${run?.endedAt ?? ''}:${turn.fork === primaryFork ? 'primary' : ''}`;
       if (group.cardKey !== key) {
         group.card?.remove();
@@ -281,6 +293,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       syncReplyFoot(group, replies, latest && !full, group.card ?? last, chat);
     } else {
       group.card?.remove();
+      group.card = null;
       group.cardKey = undefined;
       syncReplyFoot(group, [], false, null, chat);
     }
@@ -335,7 +348,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       groups.delete(fork);
     }
     observer.observe(mount, { childList: true, subtree: true, attributes: true,
-      attributeFilter: ['class', 'data-history-index', 'data-stream-phase', 'data-turn-kind'] });
+      attributeFilter: ['class', 'data-history-index', 'data-stream-phase', 'data-turn-kind', 'data-status', 'data-live'] });
     if (streaming) scheduleTick();
   }
 

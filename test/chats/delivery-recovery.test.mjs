@@ -278,6 +278,30 @@ test('cancelled epoch and a missing recipient resolve subscriptions without losi
   assert.equal(f.calls.filter(call => call.chatId === 'parent').length, 0);
 });
 
+for (const outcome of ['fail', 'blocked']) test(`restart completes a delivered ${outcome} assessment without rerunning the agent`, async t => {
+  const f = await fixture(t), task = await f.spawn('negative-review-' + outcome, { local: true });
+  const detail = 'Static source review only; runtime reproduction unavailable.';
+  f.setExecute(async () => ({ outcome, summary: 'Authorization review finished with a P1 finding.',
+    ...(outcome === 'fail' ? { blockers: [detail] } : { needs: [detail] }) }));
+  const handle = await f.service.startAdmittedChildTask({ commandId: task.commandId, runId: task.runId, attemptId: 'review-attempt' });
+  await f.journal.appendEvent('family', makeEvent('attempt.started', { runId: task.runId, attemptId: handle.attemptId,
+    executionId: handle.executionId, seed: { kind: 'initial' } }));
+  await handle.activate();
+  assert.equal(f.repository.getExecution(handle.executionId).status, 'completed');
+  await f.reopen();
+  await f.delivery.recover(); await f.delivery.recover();
+  const run = (await f.journal.loadState('family')).runs.get(task.runId);
+  assert.equal(run.phase, 'passed');
+  assert.equal(run.attempts.length, 1);
+  assert.equal(run.attempts[0].evidence.reportedOutcome, outcome);
+  const result = f.delivery.tasks.getResult(task.runId);
+  assert.equal(result.status, 'completed');
+  assert.match(result.summary, /P1 finding/);
+  assert.ok(result.summary.includes(detail));
+  assert.equal(f.calls.filter(call => call.chatId === task.childChatId).length, 1);
+  assert.deepEqual(f.errors, []);
+});
+
 test('benign interrupted child ownership recovers into a retryable command before journal replay', async t => {
   const f = await fixture(t), task = await f.spawn('interrupted');
   const prior = await f.interrupted(task);

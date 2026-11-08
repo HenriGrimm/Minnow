@@ -1,5 +1,5 @@
 import type { Chat, TurnRunRecord } from '../types';
-import { isHiddenTranscriptUserMessage } from './hidden-transcript-user-messages';
+import { isHiddenTranscriptUserMessage, isSubAgentResumeUserMessage } from './hidden-transcript-user-messages';
 import { apiMessageContentToText } from '../api/message-content';
 
 export interface TranscriptTurn {
@@ -25,8 +25,10 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   let turn: TranscriptTurn | undefined;
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
-    // Steering extends the current work; an orphaned correction still gets a turn.
-    if (msg.role === 'user' && !isHiddenTranscriptUserMessage(msg) && (!turn || !msg.steer)) {
+    const agentResume = msg.role === 'user' && (isSubAgentResumeUserMessage(msg)
+      || msg.provenance?.kind === 'delegation_result');
+    // Steering and automatic agent handoffs extend the original work group.
+    if (msg.role === 'user' && (!isHiddenTranscriptUserMessage(msg) || msg.provenance?.kind === 'delegation_result') && (!turn || !msg.steer && !agentResume)) {
       turn = { fork: i, end: i, finalIndex: null, finalIndices: [], toolCount: 0 };
       turns.push(turn);
     }
@@ -39,7 +41,7 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     if (msg.role === 'user' && typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {
       turn.workDurationMs = (turn.workDurationMs ?? 0) + msg.workDurationMs;
     }
-    if (msg.role === 'user' && msg.steer) {
+    if (msg.role === 'user' && (msg.steer || agentResume)) {
       turn.finalIndices = [];
       turn.finalIndex = null;
     }

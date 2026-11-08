@@ -296,16 +296,36 @@ test('typed peer text matching old hidden prefixes stays visible with current se
   assert.equal(restored.classList.contains('user'), false); assert.equal(restored.querySelector('.msg-label')?.textContent, undefined);
 });
 
-test('published results use their own attributed event and normal assistant turn boundaries instead of human bubbles', () => {
+test('automatic published results stay hidden while final replies retain their work group and saved history', () => {
   const parent = shell('parent'), child = shell('result-child', parent.id); const area = setup([parent, child]);
   const result: UserMessage = { role: 'user', content: '[Sub-agent finished]\nThe original result.', messageId: 'result-row',
     provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result', runId: 'result-task', commandId: 'result-command' } };
   parent.history = [result, { role: 'assistant', content: 'The final answer.' }];
   assert.equal(collectTranscriptTurns(parent)[0]!.fork, 0);
+  for (let paint = 0; paint < 2; paint++) {
+    renderChatFromHistory(parent);
+    assert.equal(area.querySelector('.agent-message--result'), null);
+    assert.equal(area.querySelectorAll('.msg.user').length, 0);
+    assert.ok(area.textContent!.includes('The final answer.'));
+    assert.ok(!area.textContent!.includes('The original result.'));
+    assert.equal(parent.history[0], result, 'the parent runner keeps the complete delivery');
+  }
+});
+
+test('pending automatic results never flash in the transcript while peer messages remain visible', () => {
+  const parent = shell('parent'), source = shell('source'); const area = setup([parent, source]);
+  parent.history = [{ role: 'user', content: 'Review this repository.' }, { role: 'assistant', content: 'Reviewing.' }];
+  parent.pendingMessageQueue = [
+    { id: 'pending-result', text: 'Internal completion payload.', createdAt: 1, kind: 'steer',
+      provenance: { version: 1, actor: 'system', source: 'task_delivery', kind: 'delegation_result' } },
+    { id: 'pending-peer', text: 'Useful peer message.', createdAt: 2, kind: 'steer',
+      provenance: { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message', sourceChatId: source.id } },
+  ];
   renderChatFromHistory(parent);
-  const row = area.querySelector('.agent-message--result')!;
-  assert.ok(row); assert.match(row.textContent!, /Agent results/); assert.match(row.textContent!, /Published result/);
-  assert.equal(area.querySelectorAll('.msg.user').length, 0); assert.ok(area.textContent!.includes('The final answer.'));
+  assert.equal(area.querySelector('.agent-message--result'), null);
+  assert.ok(!area.textContent!.includes('Internal completion payload.'));
+  assert.match(area.querySelector('.agent-message')!.textContent!, /Useful peer message/);
+  assert.equal(parent.pendingMessageQueue.length, 2);
 });
 
 test('a saved spawn result anchors a completed child even when its parent tool call ID is missing', () => {
