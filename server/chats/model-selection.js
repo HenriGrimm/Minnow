@@ -247,8 +247,8 @@ export async function resolveAgentModelSelection(input = {}, context = {}) {
   const source = explicit ? 'explicit' : type ? 'type' : routing ? 'routing' : 'parent';
   const clears = explicit?.options && Object.keys(explicit.options).length === 0;
   let defaults = clears ? {} : overlayOptions(
-    overlayOptions(samePair(selected, parent) ? parent.options : {}, samePair(selected, routing) ? routing.options : {}),
-    typeOptions(input.typeConfig),
+    overlayOptions(samePair(selected, routing) ? routing.options : {}, typeOptions(input.typeConfig)),
+    parent?.options ?? {},
   );
   if (explicit?.options) defaults = overlayOptions(defaults, explicit.options);
   const selection = parsed(resolveModelSelection({

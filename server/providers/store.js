@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { renameFileWithRetry } from '../runtime/atomic-file.js';
 import { invalidateNativePolicyBeforeWrite, invalidateNativeProviderBeforeWrite } from '../chats/native-policy-monitor.js';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
@@ -170,7 +171,7 @@ async function writeProfile(id, profile) {
   const previous = await readProfile(id).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
   await fs.writeFile(tmp, `${JSON.stringify(profile, null, 2)}\n`, 'utf8');
   invalidateNativeProviderBeforeWrite(previous, profile);
-  await fs.rename(tmp, file);
+  await renameFileWithRetry(tmp, file);
 }
 
 /**

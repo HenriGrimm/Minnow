@@ -19,10 +19,10 @@ async function fixture(t, capture) {
   const repository = createChatRepository({ db });
   t.after(async () => { db.close(); await fs.rm(cwd, { recursive: true, force: true, maxRetries: 5 }); });
   const coordinator = createChatCheckpointCoordinator({ repository, capture });
-  async function prepare(id, signal) {
+  async function prepare(id, signal, options = {}) {
     repository.createChat({ id, name: id, workspacePath: cwd });
     const fence = repository.claimExecution({ chatId: id, executionId: id, ownerId: 'host' });
-    return coordinator.prepare({ chatId: id, executionId: id, cwd, fence, signal });
+    return coordinator.prepare({ chatId: id, executionId: id, cwd, fence, signal, ...options });
   }
   return { cwd, db, repository, coordinator, prepare };
 }
@@ -40,6 +40,44 @@ test('slow baseline overlaps model work but no mutation starts before it is dura
   await turn.finalize();
   assert.equal(f.coordinator.read('first', 'write-1').state, 'settled');
   assert.equal(captures, 3);
+});
+
+test('external read-only turns finalize without capturing a Git snapshot', async t => {
+  let captures = 0;
+  const f = await fixture(t, async () => { captures++; throw Error('No capture should run'); });
+  const turn = await f.prepare('reader', undefined, { deferBaseline: true });
+  await turn.finalize();
+  assert.equal(captures, 0);
+  assert.deepEqual(await turn.baseline, { skipped: 'no_effects' });
+});
+
+test('deferred baseline shares the first fresh pre-effect capture but recaptures subsequent external edits', async t => {
+  let disk = 0, captures = 0;
+  const f = await fixture(t, async () => ({ ok: true, sha: 'tree-' + disk + '-' + ++captures }));
+  const turn = await f.prepare('writer', undefined, { deferBaseline: true });
+  disk = 1; // Another chat/user edited after model dispatch.
+  await turn.effect('first', async () => { disk = 2; });
+  const baseline = await turn.baseline;
+  assert.equal(baseline.sha, f.coordinator.read('writer', 'first').pre.sha);
+  assert.match(baseline.sha, /^tree-1-/);
+  disk = 3; // Never reuse the previous post-effect tree as a later pre-effect.
+  await turn.effect('next', async () => { disk = 4; });
+  assert.match(f.coordinator.read('writer', 'next').pre.sha, /^tree-3-/);
+  await turn.finalize();
+  assert.equal(captures, 4);
+});
+
+test('a failed deferred baseline or Stop cannot admit an effect', async t => {
+  const f = await fixture(t, async () => ({ ok: false, error: 'capture failed' }));
+  const turn = await f.prepare('writer', undefined, { deferBaseline: true });
+  let effects = 0;
+  await assert.rejects(turn.effect('never', async () => { effects++; }), /safety checkpoint/);
+  await turn.finalize();
+  const stop = new AbortController();
+  const stopped = await f.prepare('stopped', stop.signal, { deferBaseline: true });
+  stop.abort();
+  await assert.rejects(stopped.effect('never', async () => { effects++; }), { name: 'AbortError' });
+  assert.equal(effects, 0);
 });
 
 test('Stop releases a baseline waiter without admitting a write or cancelling another capture', async t => {

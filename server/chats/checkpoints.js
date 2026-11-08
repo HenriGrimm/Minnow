@@ -36,7 +36,7 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
   };
   return {
     read,
-    async prepare({ chatId, executionId, cwd, fence, signal, onTiming }) {
+    async prepare({ chatId, executionId, cwd, fence, signal, onTiming, deferBaseline = false }) {
       const canonical = await fs.realpath(cwd);
       const workspaceKey = canonicalWorktreeMutationKey(cwd);
       const identity = await readChatCheckoutIdentity(cwd);
@@ -64,7 +64,8 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
         } finally { try { onTiming?.(stage, performance.now() - started); } catch { /* diagnostics */ } }
       };
       let baselineSettled = false;
-      const baseline = withCoordinatedWorktreeMutation(cwd, async () => {
+      const deferred = deferBaseline ? Promise.withResolvers() : null;
+      const baseline = deferred?.promise ?? withCoordinatedWorktreeMutation(cwd, async () => {
         await assertCurrent();
         const prior = read(executionId, '$baseline');
         if (prior) return prior;
@@ -79,7 +80,7 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
       return {
         baseline,
         async effect(toolCallId, operation) {
-          await waitForCapture(baseline, signal);
+          if (!deferred) await waitForCapture(baseline, signal);
           return withCoordinatedWorktreeMutation(cwd, async () => {
             signal?.throwIfAborted();
             await assertCurrent();
@@ -87,6 +88,14 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
             const pre = await snapshot('pre_effect');
             signal?.throwIfAborted();
             await assertCurrent();
+            // External model requests cannot mutate on their own. Their first
+            // fresh pre-effect capture is also a valid baseline, in this SAME
+            // uninterrupted lock. No reuse across effects or external edits.
+            if (deferred && !baselineSettled) {
+              write('$baseline', 'settled', pre);
+              baselineSettled = true;
+              deferred.resolve(pre);
+            }
             write(toolCallId, 'executing', { pre });
             try {
               const result = await operation();
@@ -105,6 +114,10 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
         },
         // Finalization is a required durable barrier, not fire-and-forget.
         async finalize() {
+          if (deferred && !baselineSettled) {
+            baselineSettled = true;
+            deferred.resolve({ skipped: 'no_effects' });
+          }
           // Stop after a durably settled effect is not uncertainty. Only a still
           // pending capture needs the caller-cancellable wait.
           if (!baselineSettled) await waitForCapture(baseline, signal);

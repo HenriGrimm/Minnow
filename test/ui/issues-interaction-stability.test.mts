@@ -121,7 +121,9 @@ test('Issues preserves copy shortcuts and open menus during background refreshes
     closeIssuesLabelsSuggestionsMenu();
     await Promise.resolve();
     teardownIssuesEmbedBeforeChatPaint();
+    (await import('../../src/ui/hub')).teardownHub();
+    await new Promise(resolve => setImmediate(resolve));
     setSessionStateForTests(null);
-    win.close();
+    await win.close();
   }
 });

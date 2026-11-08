@@ -119,7 +119,9 @@ Each expanded row shows connection controls, concurrent runs, and the context wi
 
 Settings edits are validated and saved before Minnow closes idle connections. Running conversations and connections awaiting tool results are not stopped by these edits. Saved conversations still have to pass history and configuration verification before reuse.
 
-Codex uses Minnow tools and approvals. Its expanded row explains why native coding tools are unavailable: equivalent permission admission, workspace/network enforcement and native-action recovery have not been verified. There is no native coding switch; a newer installed Codex version does not enable native execution.
+Codex uses Minnow tools and approvals by default. **Use Codex native coding tools (experimental)** is available with the verified Windows Codex CLI 0.166.0 and gpt-5.5 in a Git checkout. It requires Full permission for equivalent coding tools; unsupported policies fail explicitly. Native network access and permission escalation stay off, and Plan native actions remain read-only. Minnow integrations continue through Minnow tools.
+
+The switch selects newly submitted turns. Provider or permission edits can stop an active native turn for explicit recovery. Interrupted actions are never automatically repeated. Other CLI versions, platforms and models do not enable this experiment; the connection card explains unavailable configurations.
 
 Concurrency defaults to one; further requests wait in order, and Stop also cancels a queued request. Background use is off by default so title generation, editor completions, and similar utility jobs do not silently use your subscription. Assign those jobs another provider or explicitly enable helper tasks. Claude Code's interactive connection does not support the CLI dollar-budget flag. If a budget is configured, Minnow asks you to clear it before starting interactive chat; it never silently ignores the cap.
 

@@ -4,6 +4,7 @@
 
 import fs from 'node:fs/promises';
 import { getMinnowHome } from '../config/home.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import { getAgentPacksRoot } from './paths.js';
 import { scanAgentPacks, loadAgentPacksState, isPackEnabled } from './scan.js';
 import { getDiskTemplateFileMap, writeTemplateFiles } from './template.js';
@@ -81,6 +82,7 @@ export async function setPackEnabled(packId, enabled) {
   state[packId] = { ...(state[packId] ?? {}), enabled: !!enabled };
   const filePath = getAgentPacksStatePath();
   await fs.mkdir(getMinnowHome(), { recursive: true });
+  invalidateNativePolicyBeforeWrite('agent-packs');
   await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   return state[packId];
 }

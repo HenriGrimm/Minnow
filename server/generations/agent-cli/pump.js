@@ -225,7 +225,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     await stop().catch(() => {});
     await bridge?.close().catch(() => {});
     if (invocation?.cleanup) await invocation.cleanup().catch(() => {});
-    if (tempDir) await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    if (tempDir) await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
     release?.();
     if (state.upstreamController === controller) state.upstreamController = null;
   }

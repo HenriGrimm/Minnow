@@ -60,12 +60,16 @@ export function serialize(id, fn) {
 }
 
 /** @returns {Promise<ReefApp>} */
-export async function readApp(id) {
+async function readAppFile(id) {
   return JSON.parse(await fs.readFile(await safePath(appRoot(id), 'app.json'), 'utf8'));
+}
+/** Readers share the writer queue so polling cannot starve atomic replacement on Windows. */
+export async function readApp(id) {
+  return serialize(id, () => readAppFile(id));
 }
 export async function updateApp(id, fn) {
   return serialize(id, async () => {
-    const app = await readApp(id);
+    const app = await readAppFile(id);
     await fn(app);
     app.updatedAt = Date.now();
     await atomicJson(await safePath(appRoot(id), 'app.json'), app);
@@ -99,7 +103,7 @@ export async function createApp(input) {
     release: null, runs: [], exports: [], chatIds: [], messages: [],
   };
   if (input.look) app.look = boundedText(input.look, 'Look', 4000);
-  await atomicJson(await safePath(appRoot(id), 'app.json'), app);
+  await serialize(id, async () => atomicJson(await safePath(appRoot(id), 'app.json'), app));
   return app;
 }
 /** The first build carries every setup answer: the idea, the chosen name and the look. */

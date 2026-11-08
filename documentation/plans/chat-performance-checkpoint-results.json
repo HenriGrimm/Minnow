@@ -1,0 +1,73 @@
+{
+  "scope": "Real coordinator + Git, scripted effects, no model/renderer. External turns defer baseline into first pre-effect capture; native turns retain eager baseline.",
+  "machine": {
+    "platform": "win32",
+    "node": "v24.19.0",
+    "cpus": 32
+  },
+  "files": 200,
+  "warmups": 1,
+  "baselineSourceSha256": "04d7466117da4f5c103b156a3512a83fa2d11f1f31d6a2b3d5f7422e038b3602",
+  "rows": [
+    {
+      "implementation": "before",
+      "writes": 0,
+      "captures": 1,
+      "samples": 5,
+      "totalP50Ms": 648.3910999999989,
+      "totalP95Ms": 674.8113999999987,
+      "captureP50Ms": 644.8489000000009,
+      "dispatchP95Ms": 1.7723000000005413
+    },
+    {
+      "implementation": "after",
+      "writes": 0,
+      "captures": 0,
+      "samples": 5,
+      "totalP50Ms": 1.6766999999999825,
+      "totalP95Ms": 1.9866999999994732,
+      "captureP50Ms": 0,
+      "dispatchP95Ms": 1.3599999999996726
+    },
+    {
+      "implementation": "before",
+      "writes": 1,
+      "captures": 3,
+      "samples": 5,
+      "totalP50Ms": 1676.5391000000018,
+      "totalP95Ms": 1764.5452000000005,
+      "captureP50Ms": 1669.0216999999975,
+      "dispatchP95Ms": 1.4141000000017812
+    },
+    {
+      "implementation": "after",
+      "writes": 1,
+      "captures": 2,
+      "samples": 5,
+      "totalP50Ms": 801.3916000000027,
+      "totalP95Ms": 1223.9384000000027,
+      "captureP50Ms": 795.9564000000028,
+      "dispatchP95Ms": 1.2114999999976135
+    },
+    {
+      "implementation": "before",
+      "writes": 5,
+      "captures": 11,
+      "samples": 5,
+      "totalP50Ms": 5737.9571,
+      "totalP95Ms": 5965.480899999995,
+      "captureP50Ms": 5716.387500000041,
+      "dispatchP95Ms": 1.626799999998184
+    },
+    {
+      "implementation": "after",
+      "writes": 5,
+      "captures": 10,
+      "samples": 5,
+      "totalP50Ms": 3886.672200000001,
+      "totalP95Ms": 4387.849100000007,
+      "captureP50Ms": 3863.363000000012,
+      "dispatchP95Ms": 1.1872000000003027
+    }
+  ]
+}

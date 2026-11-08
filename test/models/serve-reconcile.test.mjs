@@ -14,6 +14,8 @@ import {
   listServes,
   resetServesForTests,
   setServeReachabilityProbeOverrideForTests,
+  setServePidAliveOverrideForTests,
+  resetServePidAliveOverrideForTests,
 } from '../../server/models/serve.js';
 import {
   resetServeActivityFetchForTests,
@@ -31,12 +33,14 @@ describe('model serve reconciliation', () => {
     process.env.MINNOW_HOME = homeDir;
     resetMinnowHomeCache();
     setServeReachabilityProbeOverrideForTests(async () => false);
+    setServePidAliveOverrideForTests(pid => pid === process.pid);
   });
 
   after(async () => {
     delete process.env.MINNOW_HOME;
     resetMinnowHomeCache();
     await resetServesForTests();
+    resetServePidAliveOverrideForTests();
     await fs.rm(homeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
@@ -63,6 +67,7 @@ describe('model serve reconciliation', () => {
     );
 
     await resetServesForTests();
+    setServeReachabilityProbeOverrideForTests(async () => false);
     const serves = await listServes();
     assert.equal(serves.length, 1);
     assert.equal(serves[0].status, 'stopped');

@@ -59,14 +59,23 @@ describe('orchestrate board-testing API', () => {
     assert.equal(res.json?.seededBoard?.count, 0);
   });
 
-  test('fake model start and stop', async () => {
+  test('fake model start retries a provider sharing lock and stops cleanly', async t => {
+    const rename = fs.rename;
+    let profileAttempts = 0;
+    t.mock.method(fs, 'rename', async (source, target) => {
+      if (String(target).replace(/\\/g, '/').endsWith('/providers/fake-board/profile.json') && ++profileAttempts < 3) {
+        throw Object.assign(new Error('Provider scanner lock'), { code: 'EPERM' });
+      }
+      return rename(source, target);
+    });
     const start = await httpRequest(
       baseUrl,
       'POST',
       '/api/orchestrate/board-testing/fake-model/start',
       { port: 0 },
     );
-    assert.equal(start.status, 200);
+    assert.equal(start.status, 200, JSON.stringify(start.json));
+    assert.equal(profileAttempts, 3);
     assert.equal(start.json?.fakeModel?.running, true);
     assert.ok(start.json?.fakeModel?.baseUrl);
 
@@ -81,6 +90,28 @@ describe('orchestrate board-testing API', () => {
     );
     assert.equal(stop.status, 200);
     assert.equal(stop.json?.fakeModel?.running, false);
+  });
+
+  test('failed provider registration closes the newly listening fake host', async t => {
+    const createServer = http.createServer, rename = fs.rename;
+    let port;
+    t.mock.method(http, 'createServer', (...args) => {
+      const listener = createServer(...args);
+      listener.once('listening', () => { port = listener.address().port; });
+      return listener;
+    });
+    t.mock.method(fs, 'rename', async (source, target) => {
+      if (String(target).replace(/\\/g, '/').endsWith('/providers/fake-board/profile.json')) {
+        throw Object.assign(new Error('Fixture provider write failed'), { code: 'EIO' });
+      }
+      return rename(source, target);
+    });
+    const start = await httpRequest(baseUrl, 'POST', '/api/orchestrate/board-testing/fake-model/start', { port: 0 });
+    assert.equal(start.status, 500);
+    assert.ok(port > 0);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/v1/models`, { signal: AbortSignal.timeout(1000) }));
+    const status = await httpRequest(baseUrl, 'GET', '/api/orchestrate/board-testing/status');
+    assert.equal(status.json?.fakeModel?.running, false);
   });
 
   test('configures a running fake-model scenario and exposes only sanitized request tails', async () => {
@@ -118,6 +149,7 @@ describe('orchestrate board-testing API', () => {
       { port: 0 },
     );
     const fakeBaseUrl = start.json?.fakeModel?.baseUrl;
+    assert.equal(start.status, 200, JSON.stringify(start.json));
     const completion = await fetch(`${fakeBaseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -209,7 +241,13 @@ describe('orchestrate board-testing API', () => {
 
     const outside = path.join(homeDir, 'outside.jsonl');
     await fs.writeFile(outside, '{"secret":"outside"}\n', 'utf8');
-    await fs.symlink(outside, path.join(logDir, 'linked.jsonl'));
+    // Directory junctions exercise the same canonical-path escape on Windows
+    // without requiring the Developer Mode privilege for file symlinks.
+    if (process.platform === 'win32') {
+      const outsideDir = path.join(homeDir, 'outside-logs');
+      await fs.mkdir(outsideDir);
+      await fs.symlink(outsideDir, path.join(logDir, 'linked.jsonl'), 'junction');
+    } else await fs.symlink(outside, path.join(logDir, 'linked.jsonl'));
     const symlink = await httpRequest(
       baseUrl,
       'GET',

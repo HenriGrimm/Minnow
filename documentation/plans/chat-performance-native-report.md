@@ -1,5 +1,7 @@
 # Native CLI capability and checkpoint report
 
+Historical capability report. The trusted host and default-off experiment are now integrated for the explicitly supported Windows candidate; see [production validation](chat-performance-production-validation.md). The blocked statements below describe the earlier stage, not the current integrated build.
+
 Date: 2026-11-07. Scope: enforceable portions of steps 10–13 in `chat-performance-server-execution.md`.
 
 **Installed-effect follow-up:** [Windows native enforcement evidence](chat-performance-native-enforcement-evidence.md) supersedes this initial report's **not exercised** statements for the tested Windows/MXC cases. Real native read/edit/test, Plan/path/junction/network denies, private-home read exposure and approval escalation/cancellation were exercised against CLI 0.166.0 with loopback fake inference. Unsupported native histories now quarantine rather than resume/rebuild. This establishes candidate OS primitives, not production native admission: steps 10–12 still need the trusted host contract described in the follow-up.

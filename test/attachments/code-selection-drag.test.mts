@@ -16,6 +16,7 @@ function setupComposerDom(): void {
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
+  globalThis.HTMLTextAreaElement = window.HTMLTextAreaElement;
   globalThis.window = window as unknown as Window & typeof globalThis.window;
   globalThis.DragEvent = window.DragEvent;
 

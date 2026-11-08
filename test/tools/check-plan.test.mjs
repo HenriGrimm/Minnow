@@ -59,7 +59,7 @@ test('check_plan uses the board parser for saved plans and reports repairable er
 test('check_plan requires a path inside the workspace', async () => {
   const missing = await executeServerTool('check_plan', {}, { workspaceRoot: workspace });
   assert.match(missing.result, /Error: path is required/);
-  const outside = await executeServerTool('check_plan', { path: '../outside.md' }, { workspaceRoot: workspace });
+  const outside = await executeServerTool('check_plan', { path: '../outside.md' }, { workspaceRoot: workspace, filesystemAccessCeiling: 'workspace' });
   assert.match(outside.result, /outside the workspace directory/);
 });
 

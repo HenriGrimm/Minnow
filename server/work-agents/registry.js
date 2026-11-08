@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parsePromptMarkdown } from '../prompts/parse.js';
 import { getMinnowHome } from '../config/home.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import {
   assertValidWorkAgentId,
@@ -241,6 +242,7 @@ async function loadUserOverrides() {
 async function saveUserOverrides(overrides) {
   const filePath = workAgentsOverridesPath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
+  invalidateNativePolicyBeforeWrite('work-agents');
   await fs.writeFile(filePath, `${JSON.stringify(overrides, null, 2)}\n`, 'utf8');
 }
 
@@ -372,5 +374,6 @@ export async function writeWorkAgentPromptOverride(agentId, profile, content) {
     typeof content === 'string' && content.trim()
       ? `${content.trim()}\n`
       : '';
+  invalidateNativePolicyBeforeWrite('work-agents');
   await fs.writeFile(filePath, body, 'utf8');
 }

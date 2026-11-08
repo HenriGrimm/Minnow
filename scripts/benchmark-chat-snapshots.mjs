@@ -14,12 +14,12 @@ const git = async (cwd, ...args) => (await exec('git', args, { cwd, windowsHide:
 const percentile = (values, fraction) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * fraction) - 1];
 const round = value => Math.round(value * 10) / 10;
 
-export async function benchmarkChatSnapshots({ samples = 5, files = 200, baselineRef = 'HEAD' } = {}) {
+export async function benchmarkChatSnapshots({ samples = 5, files = 200, baselineRef = 'HEAD', baselineFile } = {}) {
   if (!Number.isInteger(samples) || samples < 2 || samples > 20) throw Error('samples must be 2–20');
   if (!Number.isInteger(files) || files < 1 || files > 5000) throw Error('files must be 1–5000');
   // Load the actual baseline module, resolving only its relative static imports.
   // This is a local Git ref, not downloaded code. Dependencies use this checkout.
-  const source = await git(repoRoot, 'show', `${baselineRef}:server/git/git-ops.js`);
+  const source = baselineFile ? await fs.readFile(baselineFile, 'utf8') : await git(repoRoot, 'show', `${baselineRef}:server/git/git-ops.js`);
   const moduleUrl = new URL('../server/git/git-ops.js', import.meta.url);
   const resolved = source.replace(/from (['"])(\.[^'"]+)\1/g,
     (_match, _quote, specifier) => `from ${JSON.stringify(new URL(specifier, moduleUrl).href)}`);
@@ -27,7 +27,9 @@ export async function benchmarkChatSnapshots({ samples = 5, files = 200, baselin
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-snapshot-benchmark-'));
   const results = { scope: 'Synthetic Git snapshot component only; not end-to-end chat or renderer latency.',
     machine: { platform: process.platform, arch: process.arch, node: process.version, cpus: os.cpus().length },
-    baselineRef, baselineCommit: await git(repoRoot, 'rev-parse', baselineRef), samples, files, warmups: 1, rows: [] };
+    baselineRef, baselineCommit: await git(repoRoot, 'rev-parse', baselineRef),
+    ...(baselineFile ? { baselineSourceSha256: (await import('node:crypto')).createHash('sha256').update(source).digest('hex') } : {}),
+    samples, files, warmups: 1, rows: [] };
   try {
     for (const dirty of [false, true]) for (const concurrent of [1, 4]) {
       for (const [implementation, create] of [['baseline', baseline], ['current', snapshotCreate]]) {
@@ -86,6 +88,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     samples: args.includes('--samples') ? Number(value('--samples')) : 5,
     files: args.includes('--files') ? Number(value('--files')) : 200,
     baselineRef: args.includes('--baseline-ref') ? value('--baseline-ref') : 'HEAD',
+    baselineFile: args.includes('--baseline-file') ? path.resolve(value('--baseline-file')) : undefined,
   });
   const output = JSON.stringify(results, null, 2) + '\n';
   if (args.includes('--output')) await fs.writeFile(path.resolve(value('--output')), output);

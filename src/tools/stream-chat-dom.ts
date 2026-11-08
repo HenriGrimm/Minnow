@@ -33,7 +33,8 @@ export function registerStreamDomRemount(
 export function remountStreamDomForChat(chatId: string): void {
   if (!isChatStreaming(chatId) || !isStreamDomVisible(chatId)) return;
 
-  if (getMainTurnActivity(chatId)?.phase === 'tools') return;
+  const activity = getMainTurnActivity(chatId);
+  if (activity?.phase === 'tools' && !activity.receivingToolArguments) return;
 
   const listener = remountListeners.get(chatId);
   if (!listener) {

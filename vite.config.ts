@@ -152,7 +152,7 @@ export default defineConfig({
     // files) plus packaged release output pushed the dev server to ~11k watchers and
     // ~1.1 GB resident outside the V8 heap. Neither tree is a dev-server input.
     watch: {
-      ignored: ['**/.claude/**', '**/release/**'],
+      ignored: ['**/.claude/**', '**/.minnow/**', '**/release/**'],
     },
     warmup: {
       clientFiles: [...EDITOR_WARMUP_FILES],

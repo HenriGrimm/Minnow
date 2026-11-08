@@ -28,7 +28,7 @@ openWorkspace(root);
 after(async () => {
   for (const run of (await localRunList({ cwd: root })).runs)
     if (run.status === 'running') await localRunCancel({ cwd: root, id: run.id });
-  await fs.rm(scratch, { recursive: true, force: true });
+  await fs.rm(scratch, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
 });
 
 test('command config is versioned, package manager aware, and rejects escaping paths', async () => {
@@ -105,7 +105,8 @@ test('local run captures logs, masks selected secrets, holds checkout lock and r
   await assert.rejects(localRunView({ cwd: other, id: run.id }), /another worktree/);
 });
 test('cancel terminates the run and permits a later run', async () => {
-  await fs.writeFile(path.join(root, 'wait.cjs'), 'setInterval(() => {}, 1000);');
+  const marker = path.join(root, 'wait.pid');
+  await fs.writeFile(path.join(root, 'wait.cjs'), 'require("node:fs").writeFileSync("wait.pid", String(process.pid)); setInterval(() => {}, 1000);');
   await commandSave({
     cwd: root,
     command: { id: 'wait', label: 'Wait', command: 'node wait.cjs' },
@@ -114,6 +115,34 @@ test('cancel terminates the run and permits a later run', async () => {
   await localRunCancel({ cwd: root, id: run.id });
   assert.equal((await localRunView({ cwd: root, id: run.id })).run.status, 'cancelled');
   assert.doesNotThrow(() => assertActionWorktreeIdle(root));
+  const pid = await fs.readFile(marker, 'utf8').then(Number).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+  if (pid) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+});
+
+test('cancelling a started action waits for its command before releasing the checkout', async () => {
+  const marker = path.join(root, 'started.pid');
+  await fs.writeFile(path.join(root, 'started.cjs'), 'require("node:fs").writeFileSync("started.pid", String(process.pid)); setInterval(() => {}, 1000);');
+  await commandSave({ cwd: root, command: { id: 'started', label: 'Started', command: 'node started.cjs' } });
+  const { run } = await localRunStart({ cwd: root, kind: 'command', commandId: 'started' });
+  let pid;
+  for (let i = 0; i < 200 && !pid; i++) {
+    pid = await fs.readFile(marker, 'utf8').then(Number).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (!pid) await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.ok(pid > 0, 'the command must actually start before this cancellation test');
+  assert.doesNotThrow(() => process.kill(pid, 0));
+  assert.throws(() => assertActionWorktreeIdle(root), /local action/);
+  await localRunCancel({ cwd: root, id: run.id });
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  assert.doesNotThrow(() => assertActionWorktreeIdle(root));
+  const next = await localRunStart({ cwd: root, kind: 'command', commandId: 'hello' });
+  let result;
+  for (let i = 0; i < 200; i++) {
+    result = await localRunView({ cwd: root, id: next.run.id });
+    if (result.run.status !== 'running') break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(result.run.status, 'success', result.run.error);
 });
 
 test('concurrent secret updates retain both values and require a name', async () => {
@@ -154,7 +183,11 @@ test(
       await closed;
       assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
     } finally {
-      if (worker.exitCode === null) worker.kill();
+      if (worker.exitCode === null && worker.signalCode === null) {
+        const closed = once(worker, 'close');
+        if (worker.connected) worker.disconnect(); else worker.kill();
+        await closed;
+      }
       if (pid) {
         try {
           process.kill(pid);

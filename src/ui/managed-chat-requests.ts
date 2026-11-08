@@ -235,12 +235,13 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
   const turn = chat.chatCommandVersion === 1 && chat.agentExecution && activeStates.has(chat.agentExecution.status) ? chat.agentExecution : null;
   const canStop = chat.agentConversation?.origin !== 'native' && chat.agentConversation?.capabilities?.canStop !== false;
   let controls = view.host.querySelector<HTMLElement>(':scope > .managed-chat-scopes');
-  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, agents.map(item => item.id), attention.map(item => [item.id, item.agentRequestSummary]), canStop]);
+  const key = JSON.stringify([chat.agentExecution?.executionId, chat.agentExecution?.status, chat.agentExecution?.error, agents.map(item => item.id), attention.map(item => [item.id, item.agentRequestSummary]), canStop]);
   if (controls?.dataset.key === key) return;
   const focusedAction = controls?.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.scope : undefined;
   if (!controls) { controls = document.createElement('div'); controls.className = 'managed-chat-scopes'; view.host.prepend(controls); }
   controls.dataset.key = key; controls.replaceChildren();
   const status = document.createElement('span'); status.className = 'managed-chat-scopes__status'; status.setAttribute('role', 'status'); status.tabIndex = -1;
+  if (chat.agentExecution?.status === 'failed') status.textContent = chat.agentExecution.error || 'This turn failed. Review Activity for details before trying again.';
   const stop = (label: string, scope: 'agents' | 'tree') => {
     const executionId = scope === 'tree' ? turn?.executionId : undefined;
     const action = button(label, () => {
@@ -256,7 +257,7 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
   }
   if (chat.agentExecution?.status === 'recovery_required') controls.append(recoveryControls(chat.id, chat.agentExecution.executionId));
   controls.append(status);
-  controls.hidden = controls.children.length === 1;
+  controls.hidden = controls.children.length === 1 && !status.textContent;
   if (focusedAction) (controls.querySelector<HTMLElement>(`[data-scope="${focusedAction}"]`) ?? status).focus({ preventScroll: true });
 }
 

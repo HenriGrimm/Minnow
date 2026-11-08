@@ -89,7 +89,10 @@ test('a CLI judge has time to start and returns its actual judgment', async () =
 
 test('a hanging CLI judge is cancelled at its deadline and the process is stopped', async () => {
   mockCli(60_000);
-  await assert.rejects(evaluateTask(cli, body, { timeoutMs: 100 }), /Evaluator took longer than 0\.1s/);
+  // Include real provider/profile admission under concurrent Windows fs load;
+  // the 60-second fixture still cannot finish before this deadline.
+  await assert.rejects(evaluateTask(cli, body, { timeoutMs: 2000 }), /Evaluator took longer than 2s/);
+  assert.ok(cliRun, 'the hanging CLI must actually start before testing its cancellation');
   assert.equal(cliRun.stopped, true);
 });
 

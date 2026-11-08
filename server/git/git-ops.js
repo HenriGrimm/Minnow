@@ -1415,16 +1415,21 @@ export function parseNameStatus(text) {
  * @param {{ cwd?: string, message?: string }} [input]
  */
 export async function snapshotCreate({ cwd, message } = {}) {
-  const repo = await requireGitRepo(cwd);
-  if (!repo.ok) return repo;
+  const repo = { cwd: resolveCwd(cwd) };
+  // rev-parse also validates repository membership. Avoid a separate Git
+  // process for that check on every pre/post checkpoint, and overlap the two
+  // independent metadata reads. Neither operation writes the user's index.
+  const [indexResult, headResult] = await Promise.all([
+    git(['rev-parse', '--git-path', 'index'], repo.cwd),
+    git(['rev-parse', 'HEAD'], repo.cwd),
+  ]);
+  if (indexResult.code !== 0) return { ok: false, error: 'Not a git repository' };
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-git-snap-'));
   const indexPath = path.join(tmpDir, 'index');
   const env = { GIT_INDEX_FILE: indexPath };
 
   try {
-    const indexResult = await git(['rev-parse', '--git-path', 'index'], repo.cwd);
-    if (indexResult.code !== 0) return { ok: false, error: processError(indexResult) };
     const sourceIndex = path.resolve(repo.cwd, indexResult.stdout.trim());
     try { await fs.copyFile(sourceIndex, indexPath); }
     catch (error) {
@@ -1434,7 +1439,6 @@ export async function snapshotCreate({ cwd, message } = {}) {
       const empty = await git(['read-tree', '--empty'], repo.cwd, env);
       if (empty.code !== 0) return { ok: false, error: processError(empty) };
     }
-    const headResult = await git(['rev-parse', 'HEAD'], repo.cwd);
     const hasHead = headResult.code === 0;
     const headSha = hasHead ? (headResult.stdout ?? '').trim() : undefined;
     if (hasHead && !/^[0-9a-f]{40}$/i.test(headSha ?? '')) {
@@ -1449,7 +1453,13 @@ export async function snapshotCreate({ cwd, message } = {}) {
     if (indexTree.code !== 0) return { ok: false, error: processError(indexTree) };
     const stagedTree = indexTree.stdout.trim();
 
-    const add = await git(['add', '-A'], repo.cwd, env);
+    // The staged tree is immutable now. Creating its anchor object need not
+    // delay collection of the working tree into the separate private index.
+    const [indexCommit, add] = await Promise.all([
+      git(['commit-tree', stagedTree, '-m', 'Minnow staged files'], repo.cwd),
+      git(['add', '-A'], repo.cwd, env),
+    ]);
+    if (indexCommit.code !== 0) return { ok: false, error: processError(indexCommit) };
     if (add.code !== 0) {
       return { ok: false, error: processError(add) };
     }
@@ -1471,8 +1481,6 @@ export async function snapshotCreate({ cwd, message } = {}) {
     }
     // Preserve the working tree as the snapshot commit's tree for existing diff
     // and UI callers. A tagged parent keeps the independent index tree reachable.
-    const indexCommit = await git(['commit-tree', stagedTree, '-m', 'Minnow staged files'], repo.cwd);
-    if (indexCommit.code !== 0) return { ok: false, error: processError(indexCommit) };
     const indexSha = indexCommit.stdout.trim();
     commitArgs.push('-p', indexSha, '-m', msg, '-m', `Minnow-Index-V1: ${indexSha}`);
     const commitTree = await git(commitArgs, repo.cwd);

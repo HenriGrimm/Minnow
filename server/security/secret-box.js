@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
+import { renameFileWithRetry } from '../runtime/atomic-file.js';
 
 const ENVELOPE_VERSION = 1;
 const ALGORITHM = 'aes-256-gcm';
@@ -298,7 +299,7 @@ export async function writeEncryptedJsonFile(filePath, value) {
   }
   await decryptSecretPayload(verify);
 
-  await fs.rename(tmp, filePath);
+  await renameFileWithRetry(tmp, filePath);
   await chmodSafe(filePath, 0o600);
 }
 

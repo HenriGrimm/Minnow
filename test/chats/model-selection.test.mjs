@@ -80,11 +80,11 @@ describe('agent model selection preflight', () => {
     assert.ok(calls.every((value) => value === 'providers' || value.startsWith('catalog:')));
   });
 
-  it('inherits same-pair options, resets different pairs, and honors an explicit empty clear', async () => {
+  it('inherits chat reasoning across model pairs and honors an explicit empty clear', async () => {
     const { context } = fixture();
     const parentSelection = { providerId: 'api', modelId: 'small', options: { reasoningEffort: 'high' } };
     assert.equal((await resolveAgentModelSelection({ parentSelection }, context)).selection.options.reasoningEffort, 'high');
-    assert.equal((await resolveAgentModelSelection({ parentSelection, target: { providerId: 'api', modelId: 'large' } }, context)).selection.options, undefined);
+    assert.deepEqual((await resolveAgentModelSelection({ parentSelection, target: { providerId: 'api', modelId: 'large' } }, context)).selection.options, { reasoningEffort: 'high' });
     const cleared = await resolveAgentModelSelection({ parentSelection, typeConfig: { thinkingMode: 'off' }, target: { providerId: 'api', modelId: 'small', options: {} } }, context);
     assert.deepEqual(cleared.selection.options, {});
   });
@@ -94,7 +94,7 @@ describe('agent model selection preflight', () => {
     const resolved = await resolveAgentModelSelection({ typeConfig: { thinkingMode: 'off' }, target: { providerId: 'api', modelId: 'small', options: { reasoningEffort: 'high' } } }, context);
     assert.deepEqual(resolved.selection.options, { reasoningEffort: 'high' });
     const inherited = await resolveAgentModelSelection({ parentSelection: { providerId: 'api', modelId: 'small', options: { reasoningEffort: 'high' } }, typeConfig: { thinkingMode: 'off' } }, context);
-    assert.deepEqual(inherited.selection.options, { thinkingMode: 'off' });
+    assert.deepEqual(inherited.selection.options, { reasoningEffort: 'high' });
   });
 
   it('rejects partial selected pairs and unavailable/unsupported targets without fallback', async () => {

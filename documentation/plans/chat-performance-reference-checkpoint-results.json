@@ -1,0 +1,27 @@
+{
+  "scope": "Original Minnow checkout, Git snapshot component only, no file effects/model/renderer. Full regression load active.",
+  "platform": "win32",
+  "node": "v24.19.0",
+  "head": "ca398a8b7cba5171a1d4154d20fed061549dadd4",
+  "trackedFiles": 6259,
+  "warmups": 1,
+  "samples": 3,
+  "baselineSourceSha256": "04d7466117da4f5c103b156a3512a83fa2d11f1f31d6a2b3d5f7422e038b3602",
+  "indexByteIdentical": true,
+  "observationsMs": {
+    "before": [
+      764.7221,
+      778.0841,
+      704.0715999999993
+    ],
+    "after": [
+      587.1587000000002,
+      627.3041999999996,
+      710.8915000000006
+    ]
+  },
+  "p50Ms": {
+    "before": 764.7221,
+    "after": 627.3041999999996
+  }
+}

@@ -1,5 +1,7 @@
 # Chat performance implementation evidence
 
+Historical implementation log. The later [production validation](chat-performance-production-validation.md) records the integrated build, checkpoint optimization, installed native tests and final verification. Status statements below describe their original observation date.
+
 Status: partial implementation; not a completed rollout. The original plan's unchecked gates remain authoritative. This report records observations, not inferred end-to-end improvements.
 
 ## Reference and benchmark

@@ -1,0 +1,147 @@
+{
+  "scope": "Windows unpacked Electron, isolated home and Git checkout, loopback scripted model, no paid inference",
+  "artifact": ".minnow/readiness-package-final/win-unpacked",
+  "asarSha256": "8b111caa5ff7e654544989e96391213551e6c4a4b798b6a544cb6399ea1bf102",
+  "changedServerSourceFilesVerified": 24,
+  "runtime": {
+    "version": 1,
+    "status": "PASS",
+    "inference": false,
+    "checks": [
+      "asar-esm-runtime",
+      "native-sqlite",
+      "canonical-transcript",
+      "archive",
+      "composer-bundle",
+      "packaged-prompt-capture",
+      "manual-assets",
+      "runtime-dispose"
+    ],
+    "code": "packaged_runtime_verified",
+    "durationMs": 1778
+  },
+  "ui": {
+    "firstSendDefaultProviderBinding": true,
+    "wholeAppRestartPreservedReply": true,
+    "reopenedConversationAfterRestart": true,
+    "secondTurnCompleted": true,
+    "commands": [
+      {
+        "state": "settled",
+        "count": 2
+      }
+    ],
+    "visibleMessages": [
+      {
+        "role": "assistant",
+        "count": 2
+      },
+      {
+        "role": "user",
+        "count": 2
+      }
+    ],
+    "checkpointRows": 0,
+    "serverTimingObservations": [
+      {
+        "intervalsOverlap": true,
+        "recorderClocksIndependent": true,
+        "stages": {
+          "final_prose": {
+            "count": 1,
+            "durationMs": 55.804400000000896
+          },
+          "first_prose_delta": {
+            "count": 1,
+            "durationMs": 56.55769999999757
+          },
+          "host_execution": {
+            "count": 1,
+            "durationMs": 392.21630000000005
+          },
+          "preparation": {
+            "count": 1,
+            "durationMs": 164.58959999999934
+          },
+          "request_headers": {
+            "count": 1,
+            "durationMs": 24.79239999999845
+          },
+          "runner_settled": {
+            "count": 1,
+            "durationMs": 75.44490000000224
+          },
+          "setup": {
+            "count": 1,
+            "durationMs": 16.218800000002375
+          },
+          "transcript_durable": {
+            "count": 1,
+            "durationMs": 73.56720000000496
+          },
+          "workspace_preparation": {
+            "count": 1,
+            "durationMs": 146.89809999999852
+          }
+        }
+      },
+      {
+        "intervalsOverlap": true,
+        "recorderClocksIndependent": true,
+        "stages": {
+          "final_prose": {
+            "count": 1,
+            "durationMs": 583.1982999999891
+          },
+          "first_prose_delta": {
+            "count": 1,
+            "durationMs": 579.5903000000108
+          },
+          "host_execution": {
+            "count": 1,
+            "durationMs": 1543.1273000000074
+          },
+          "preparation": {
+            "count": 1,
+            "durationMs": 517.8075000000099
+          },
+          "request_headers": {
+            "count": 1,
+            "durationMs": 175.79180000000633
+          },
+          "runner_settled": {
+            "count": 1,
+            "durationMs": 632.3061000000016
+          },
+          "setup": {
+            "count": 1,
+            "durationMs": 43.09070000000065
+          },
+          "transcript_durable": {
+            "count": 1,
+            "durationMs": 628.1399999999994
+          },
+          "workspace_preparation": {
+            "count": 1,
+            "durationMs": 383.372199999998
+          }
+        }
+      }
+    ]
+  },
+  "actions": {
+    "immediateCancel": "cancelled",
+    "immediateWorkerGone": true,
+    "startedCancel": "cancelled",
+    "commandPayloadActuallyStarted": true,
+    "commandGoneBeforeCheckoutReuse": true,
+    "followingCommand": "success"
+  },
+  "pty": {
+    "assertionsPassed": 7,
+    "failed": 0,
+    "authenticated": true,
+    "webSocket": true,
+    "naturalNodeExit": true
+  }
+}

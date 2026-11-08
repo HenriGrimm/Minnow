@@ -164,7 +164,7 @@ function main() {
   }
 
   const groups = groupByRunner(files);
-  const runnerOrder = ['node', 'tsx-mocks', 'tsx-mocks-loader', 'node-tsx'];
+  const runnerOrder = ['node-clean-exit', 'tsx-clean-exit', 'node', 'tsx-mocks', 'tsx-mocks-loader', 'node-tsx'];
 
   let exitCode = 0;
   for (const runnerId of runnerOrder) {

@@ -1,5 +1,6 @@
 import { validateModelSelection } from './contracts.js';
 import { readChatPresentationRevision } from './presentation-revision.js';
+import { safeAgentCliDiagnostic } from '../generations/agent-cli/errors.js';
 
 function parse(value, fallback = null) { try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; } }
 function selection(value) {
@@ -23,6 +24,8 @@ export function readChatActivity(db, chatId) {
   const modelSelection = selection(execution?.model_selection);
   const resolvedModel = selection(JSON.stringify(activity.resolvedModel ?? null));
   const contextUsage = activity.contextUsage;
+  const failed = execution && ['failed', 'recovery_required'].includes(execution.status);
+  const error = failed ? db.prepare("SELECT substr(json_extract(result_json,'$.error'),1,2048) AS message FROM chat_executions WHERE execution_id=?").get(execution.execution_id)?.message : null;
   return {
     ...(managed ? { agentPresentationRevision: presentationRevision } : {}),
     agentExecution: execution ? {
@@ -30,6 +33,7 @@ export function readChatActivity(db, chatId) {
       createdAt: execution.created_at, updatedAt: execution.updated_at, settledAt: execution.settled_at,
       ...(modelSelection ? { modelSelection } : {}), ...(resolvedModel ? { resolvedModel } : {}),
       ...(contextUsage ? { contextUsage } : {}),
+      ...(typeof error === 'string' && error ? { error: safeAgentCliDiagnostic(error).slice(0, 1024) } : {}),
     } : null,
     agentPendingCommand: pending ? { commandId: pending.command_id, runId: pending.run_id, state: pending.state,
       held: pending.held === 1, ...(typeof pending.error_code === 'string' ? { errorCode: pending.error_code } : {}) } : null,

@@ -3,8 +3,10 @@
  */
 
 import fs from 'node:fs/promises';
+import { renameFileWithRetry } from '../runtime/atomic-file.js';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import { normalizeCapabilitiesFile, SCHEMA_VERSION } from './capabilities-schema.js';
 import { validateProviderId } from './validate.js';
 
@@ -59,7 +61,8 @@ export async function writeCapabilities(id, file) {
     models: normalized.models || {},
   };
   await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  await fs.rename(tmp, target);
+  invalidateNativePolicyBeforeWrite(`providers/${id}/capabilities.json`);
+  await renameFileWithRetry(tmp, target);
   return payload;
 }
 

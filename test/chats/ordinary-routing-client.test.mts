@@ -7,6 +7,8 @@ import { readOrdinaryChatExecutionCapability, setAgentConversationsCapabilityFor
 import { setPairedDevice } from '../../src/api/session-token.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { sendProgrammaticChatText } from '../../src/chat/messaging.ts';
+import { persistDefaultModelValue, setModelCatalogValues } from '../../src/models/selection.ts';
+import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
 const realFetch = globalThis.fetch;
@@ -23,6 +25,7 @@ function chat() {
 afterEach(() => {
   globalThis.fetch = realFetch; resetOrdinaryChatRoutingForTests(); resetSessionPersistenceForTests(); setSessionStateForTests(null);
   setStorageModeForTests(null); setPairedDevice(false); setAgentConversationsCapabilityForTests(); sessionStorage.clear();
+  setModelCatalogValues([]);
 });
 
 test('only a complete modern SQLite ordinary capability enables new admission; malformed, contradictory and old hosts fail closed', () => {
@@ -114,7 +117,7 @@ test('incomplete successful promotion cannot send a model message, clear the dra
 });
 
 
-test('real send flushes its legacy shell, promotes at the saved revision, then admits through the server without a renderer generation', async t => {
+for (const bindingSource of ['catalog', 'remembered'] as const) test(`real send resolves its ${bindingSource} provider, saves, promotes and admits without a renderer generation`, async t => {
   const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path'), http = await import('node:http');
   const { getSessionsDb, closeSessionsDb } = await import('../../server/config/sessions-db.js');
   const { resetMinnowHomeCache } = await import('../../server/config/home.js');
@@ -135,7 +138,7 @@ test('real send flushes its legacy shell, promotes at the saved revision, then a
   const caller = createChatCaller({ actor: 'human', ingress: 'renderer', chatId: 'human', scope, policy });
   const context: any = { resolveTarget: async (chatId: string) => ({ chat: repository.getChat(chatId), scope, policy, currentPolicy: policy, registry, profile: repository.getLatestProfile(chatId) }),
     humanCaller: async (chatId: string) => ({ caller, target: await context.resolveTarget(chatId) }) };
-  repository.createChat({ id: 'ordinary', name: 'New root', workspacePath: root, providerId: 'provider', modelId: 'model', modeId: 'build' });
+  repository.createChat({ id: 'ordinary', name: 'New root', workspacePath: root, providerId: '', modelId: 'model', modeId: 'build' });
   db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('ordinary');
   const presentation = createChatPresentation({ repository });
   const service = createChatCommandService({ repository, context,
@@ -164,7 +167,11 @@ test('real send flushes its legacy shell, promotes at the saved revision, then a
   setAgentConversationsCapabilityForTests(advertised);
   await loadSessionsFromStorage({ force: true });
   const value = findChatById('ordinary')!; value.composerDraft = 'Hello server';
+  assert.equal(Boolean(value.providerId), false, 'fresh roots may retain only the inherited model id');
+  if (bindingSource === 'catalog') setModelCatalogValues([encodeModelSelectKey('provider', 'model')]);
+  else await persistDefaultModelValue(encodeModelSelectKey('provider', 'model'));
   await sendProgrammaticChatText(value, 'Hello server'); await service.idle('ordinary');
+  assert.equal(repository.getChat('ordinary')?.providerId, 'provider', 'resolved binding is durably saved before promotion');
   assert.equal(value.chatCommandVersion, 1); assert.equal(value.composerDraft, undefined);
   assert.equal(executions, 1); assert.equal(repository.readTranscript('ordinary')?.messages.at(-1)?.content, 'Hello server');
   const promote = calls.findIndex(call => call.method === 'POST' && call.url.endsWith('/ordinary-routing'));

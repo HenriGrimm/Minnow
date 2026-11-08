@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" data-theme="swamp-dark">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat presentation performance fixture</title>
+<link rel="stylesheet" href="/src/styles/tokens.css">
+<style>
+  body { margin:24px; background:var(--mn-bg); color:var(--mn-fg); font:14px system-ui; }
+  #streams { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+  .stream { height:240px; overflow:auto; border:1px solid var(--mn-border); }
+  textarea { width:100%; box-sizing:border-box; margin:16px 0; font:16px system-ui; }
+</style>
+<h1>Four simultaneous chat streams</h1>
+<label for="input">Type while the real shared conversation painter streams</label>
+<textarea id="input" rows="2"></textarea>
+<button id="start">Start fixture</button>
+<output id="status">Ready</output>
+<div id="streams"></div>
+<script type="module">
+  const apiCalls = [];
+  window.fetch = async (url, options) => { apiCalls.push({ url:String(url), method:options?.method ?? 'GET' }); throw Error('This fixture has no API'); };
+  const { createConversationView } = await import('/src/chat/conversation-view.ts');
+  const results = window.__presentationResults = { inputs:[], longTasks:[], frames:[], firstDom:[], apiCalls, started:false, done:false };
+  const firstReceived=[];
+  const observer = new PerformanceObserver(list => results.longTasks.push(...list.getEntries().map(x => ({ duration:x.duration }))));
+  observer.observe({ type:'longtask', buffered:false });
+  document.getElementById('input').addEventListener('input', () => {
+    if(!results.started || results.done) return;
+    const start = performance.now(); requestAnimationFrame(() => results.inputs.push(performance.now()-start));
+  });
+  const views = Array.from({ length:4 }, (_,index) => {
+    const mount=document.createElement('div'); mount.className='stream'; document.getElementById('streams').append(mount);
+    const view=createConversationView(mount, { id:'fixture-'+index, modeId:'build' }, {
+      isThoughtExpanded:()=>true, onThoughtExpandedChange:()=>{}, isToolExpanded:()=>false, onToolExpandedChange:()=>{},
+    });
+    view.sync({ history:[], openEvents:[], completedRound:-1, isLive:true }); return { view,mount };
+  });
+  const firstObservers = views.map(({mount},index) => {
+    const observer=new MutationObserver(() => {
+      if(firstReceived[index] !== undefined && results.firstDom[index] === undefined && mount.textContent.includes('Fixture stream')) {
+        results.firstDom[index]=performance.now()-firstReceived[index]; observer.disconnect();
+      }
+    });
+    observer.observe(mount,{subtree:true,childList:true,characterData:true}); return observer;
+  });
+  document.getElementById('start').onclick = () => {
+    results.started=true;
+    document.getElementById('start').disabled=true;
+    let tick=0;
+    const timer=setInterval(() => {
+      tick++;
+      const text=('# Fixture stream\n\nA paragraph of **streaming prose**, `code`, and reasoning.\n\n```ts\nconst value = 42;\n```\n\n').repeat(tick);
+      for (const [index,{view,mount}] of views.entries()) {
+        const received=performance.now();
+        firstReceived[index] ??= received;
+        view.onEvent({type:'delta',text});
+        requestAnimationFrame(() => { if(mount.textContent.includes('Fixture stream')) results.frames.push(performance.now()-received); });
+      }
+      document.getElementById('status').textContent='Streaming '+tick+'/100';
+      if(tick===100) {
+        clearInterval(timer); for(const {view} of views) view.flush();
+        setTimeout(() => { results.done=true; observer.disconnect(); document.getElementById('status').textContent='Complete'; },100);
+      }
+    },50);
+  };
+</script>
+</html>

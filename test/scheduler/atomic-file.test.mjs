@@ -23,7 +23,17 @@ test('scheduler atomic replacement reports persistent locks after bounded retrie
     rename: async () => { calls++; throw Object.assign(new Error('locked'), { code: 'EBUSY' }); },
     wait: async () => {},
   }), /locked/);
-  assert.equal(calls, 6);
+  assert.equal(calls, 10);
+});
+
+test('a longer scanner lock still replaces atomically within a bounded wait budget', async () => {
+  let calls = 0, waited = 0;
+  await renameSchedulerFile('temporary', 'jobs.json', {
+    rename: async () => { if (++calls < 8) throw Object.assign(new Error('scanner busy'), { code: 'EPERM' }); },
+    wait: async ms => { waited += ms; },
+  });
+  assert.equal(calls, 8);
+  assert.ok(waited > 375 && waited < 2000);
 });
 
 test('scheduler atomic replacement does not retry unrelated filesystem failures', async () => {

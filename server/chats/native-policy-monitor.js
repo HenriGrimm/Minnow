@@ -1,11 +1,11 @@
-import { watch, readFileSync, lstatSync } from 'node:fs';
+import { watch, lstatSync } from 'node:fs';
 import path from 'node:path';
 
 const listeners = new Set();
 const normalize = value => String(value ?? '').replaceAll('\\', '/').toLowerCase();
 const relevant = value => /^(?:config\.json|tools\.json|sub-agents\.json|rules\.json|skills\.json|system-prompt\.json)(?:$|\.tmp-)/.test(value)
   || /^(?:work-agents|agents|mcp|plugins|prompts|tools|agent-packs|prompt-configs|profiles)(?:[/.]|$)/.test(value)
-  || /^providers\/.*(?:secrets|credentials)/.test(value);
+  || /^providers\/.*(?:secrets|credentials|capabilities)/.test(value);
 const policyDirectories = ['work-agents', 'agents', 'mcp', 'plugins', 'prompts', 'tools', 'agent-packs', 'prompt-configs', 'profiles', 'providers'];
 const providerAuthority = profile => {
   if (!profile) return null;
@@ -44,16 +44,14 @@ export function subscribeNativePolicyChanges({ home, cwd, providerId, onInvalida
   listeners.add(invalidate);
   try {
     const profileKey = providerId && /^[A-Za-z0-9_-]+$/.test(providerId) ? `providers/${providerId}/profile.json` : null;
-    const profileFile = profileKey && path.join(home, profileKey);
-    const profileFingerprint = profileFile ? providerAuthority(JSON.parse(readFileSync(profileFile, 'utf8'))) : null;
     const changedPolicy = (event, filename) => {
       const changed = normalize(filename);
       if (filename == null || relevant(changed)) invalidate();
       else if (profileKey && event === 'rename' && (changed === 'providers' || changed === normalize(path.dirname(profileKey)))) invalidate();
-      else if (profileKey && changed.startsWith(normalize(profileKey))) {
-        try { if (providerAuthority(JSON.parse(readFileSync(profileFile, 'utf8'))) !== profileFingerprint) invalidate(); }
-        catch { invalidate(); }
-      }
+      // Watch notifications may coalesce a revoke followed by a regrant. Final
+      // contents cannot prove that authority held throughout that interval.
+      // Conservatively retire even preference-only external profile edits.
+      else if (profileKey && changed.startsWith(normalize(profileKey))) invalidate();
     };
     const observe = (root, options, change) => {
       const watcher = watchPath(root, { ...options, persistent: false }, change);

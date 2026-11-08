@@ -182,6 +182,8 @@ export async function handlePluginsRequest(req, res, pathname) {
         }
       }
 
+      const { invalidateNativePolicyBeforeWrite } = await import('../chats/native-policy-monitor.js');
+      invalidateNativePolicyBeforeWrite('tools');
       await copyDirRecursive(TEMPLATE_ROOT, destDir);
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
       manifest.id = id;

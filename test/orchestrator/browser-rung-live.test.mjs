@@ -205,7 +205,9 @@ async function runRung(opts = {}) {
     planMarkdown: opts.plan ?? planFor('Weekly totals'),
     settleMs: 100,
     assertTimeoutMs: 5_000,
-    readyTimeoutMs: 30_000,
+    // Cold Windows shell startup competes with the full multi-process suite.
+    // Keep the browser assertions unchanged and the readiness wait bounded.
+    readyTimeoutMs: 60_000,
   });
 }
 

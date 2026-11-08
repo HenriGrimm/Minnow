@@ -14,6 +14,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { getMcpOAuthProvider, closeMcpOAuth } from './oauth.js';
 import { getMinnowHome } from '../config/home.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import {
   BUILTIN_MCP_INDEX,
   CONTEXT7_SERVER,
@@ -313,6 +314,7 @@ export async function ensureMcpSeed() {
   try {
     await fs.access(indexPath);
   } catch {
+    invalidateNativePolicyBeforeWrite('mcp.json');
     await fs.writeFile(
       indexPath,
       `${JSON.stringify(BUILTIN_MCP_INDEX, null, 2)}\n`,
@@ -331,6 +333,7 @@ export async function ensureMcpSeed() {
     try {
       await fs.access(dest);
     } catch {
+      invalidateNativePolicyBeforeWrite('mcp');
       if (seed.text) {
         await fs.writeFile(dest, seed.text, 'utf8');
       } else {
@@ -558,6 +561,7 @@ export async function reloadMcp() {
 async function writeIndex(index) {
   for (const id of Object.keys(index.mcpServers ?? {})) delete index.servers[id];
   const indexPath = path.join(getMinnowHome(), 'mcp.json');
+  invalidateNativePolicyBeforeWrite('mcp.json');
   await fs.writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
 }
 
@@ -587,6 +591,7 @@ export async function setMcpServerEnabled(id, enabled) {
     index.servers[id].enabled = enabled;
     const config = await loadServerConfig(id);
     config.enabled = enabled;
+    invalidateNativePolicyBeforeWrite('mcp');
     await fs.writeFile(path.join(mcpHome(), 'servers', `${id}.json`), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   }
   await writeIndex(index);
@@ -615,6 +620,7 @@ export async function createMcpServer(body) {
   };
 
   const filePath = path.join(mcpHome(), 'servers', `${payload.id}.json`);
+  invalidateNativePolicyBeforeWrite('mcp');
   await fs.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
 
   index.servers = index.servers ?? {};

@@ -1607,6 +1607,10 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
             throw new Error('Session summaries did not survive parsing');
           }
           sessionState = parsed;
+          // An empty store is parsed into a local starter chat. It has no
+          // server row yet, so the first scalar/draft save must include it.
+          const savedIds = new Set(remote.chats.map(chat => chat.id));
+          for (const chat of parsed.chats) if (!savedIds.has(chat.id)) markChatDirty(chat);
           // A current-schema GET is already the baseline. Describing every row on
           // the first save advances revisions for chats this window never edited.
           sessionPatchDirtySetsReady = remote.version === SESSION_SCHEMA_VERSION &&
@@ -1640,6 +1644,8 @@ export async function loadSessionsFromStorage(options?: LoadSessionsOptions): Pr
         } else {
           const remote = await getSessions();
           sessionState = parseSessionStateFromJson(remote);
+          const savedIds = new Set(remote.chats.map(chat => chat.id));
+          for (const chat of sessionState.chats) if (!savedIds.has(chat.id)) markChatDirty(chat);
           sessionPatchDirtySetsReady = remote.version === SESSION_SCHEMA_VERSION &&
             !remote.chats.some((chat) => chat.orchestrateBoard);
           sessionRevision = typeof remote.revision === 'number' ? remote.revision : null;

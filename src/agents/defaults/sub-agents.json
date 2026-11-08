@@ -32,7 +32,7 @@
     },
     "explore": {
       "label": "Explore",
-      "thinkingMode": "off",
+      "thinkingMode": "inherit",
       "enabled": true,
       "providerId": "",
       "modelId": "",
@@ -171,7 +171,7 @@
     },
     "shell": {
       "label": "Shell",
-      "thinkingMode": "off",
+      "thinkingMode": "inherit",
       "enabled": true,
       "providerId": "",
       "modelId": "",
@@ -324,7 +324,7 @@
     },
     "issue-writer": {
       "label": "Issue writer",
-      "thinkingMode": "off",
+      "thinkingMode": "inherit",
       "enabled": true,
       "providerId": "",
       "modelId": "",
@@ -376,7 +376,7 @@
     },
     "plan-reviewer": {
       "label": "Plan reviewer",
-      "thinkingMode": "on",
+      "thinkingMode": "inherit",
       "enabled": true,
       "providerId": "",
       "modelId": "",
@@ -428,7 +428,7 @@
     },
     "pr-reviewer": {
       "label": "PR reviewer",
-      "thinkingMode": "on",
+      "thinkingMode": "inherit",
       "enabled": true,
       "providerId": "",
       "modelId": "",

@@ -6,7 +6,7 @@ overview: Reduce chat latency, migrate ordinary conversations to Minnow's existi
 
 # Chat performance, server execution, and Codex native coding tools
 
-Implementation status (2026-11-07): **partial, rollout gates not passed**. See [implementation evidence](chat-performance-implementation-evidence.md), [ordinary-chat parity and recovery](../contributor/chat-server-execution-rollout.md), and [native capability evidence](chat-performance-native-report.md). Ordinary automatic promotion and native coding remain disabled. Unchecked acceptance items below are not claims of delivery.
+Implementation status (2026-11-07): supported ordinary roots now execute on the server by default. The default-off native experiment is integrated for Windows Codex 0.166.0 / gpt-5.5 with explicit policy, checkpoint and recovery gates. See [production validation](chat-performance-production-validation.md), [implementation history](chat-performance-implementation-evidence.md), and [ordinary-chat parity and recovery](../contributor/chat-server-execution-rollout.md). Packaged cross-platform certification and unsupported historical workflows remain separate acceptance limits; unchecked items below are not delivery claims.
 
 ## Goal and scope
 

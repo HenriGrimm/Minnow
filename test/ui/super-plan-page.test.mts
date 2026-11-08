@@ -168,7 +168,7 @@ describe('super plan page', () => {
     files.clear();
     handlerCalls.length = 0;
     await new Promise((resolve) => setTimeout(resolve, 0));
-    activeWindow?.close();
+    await activeWindow?.close();
     activeWindow = undefined;
     globalThis.fetch = originalFetch;
   });

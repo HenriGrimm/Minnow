@@ -230,6 +230,17 @@ test('collapsed ancestor and manual group dots reflect a hidden child request wi
   assert.equal(list.querySelector<HTMLElement>('.chat-group-header')!.dataset.dotState, 'needs-input'); assert.equal(list.querySelector('.chat-item-dot__spinner'), null);
 });
 
+test('failed canonical turns retain an actionable status after remount without changing history', () => {
+  const owner = chat('failed-root');
+  owner.agentExecution = { executionId: 'failed-execution', status: 'failed', error: 'Tool calling is unsupported by the selected model' };
+  const history = owner.history;
+  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area);
+  const controls = area.querySelector<HTMLElement>('.managed-chat-scopes')!;
+  assert.equal(controls.hidden, false);
+  assert.match(controls.textContent!, /Tool calling is unsupported/);
+  assert.equal(owner.history, history);
+});
+
 test('native saved requests remain inspect-only and never create a live response control', () => {
   const owner = chat('native-request', 'parent'); owner.agentConversation!.origin = 'native'; owner.agentRequests = [request(owner.id, 'native-question')]; owner.agentRequestSummary = [{ requestId: 'native-question', kind: 'question' }];
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area);

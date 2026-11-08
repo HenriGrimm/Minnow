@@ -1222,7 +1222,7 @@ export interface Chat {
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
     createdAt?: number; updatedAt?: number; settledAt?: number | null; modelSelection?: import('../server/chats/contracts').ModelSelection;
-    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean } };
+    resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };
   agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
   agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
   /** Server-projected next-message selection; queued inputs retain their own captured value. */

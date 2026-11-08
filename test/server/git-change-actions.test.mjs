@@ -17,6 +17,7 @@ const absent = (name) => assert.rejects(fs.access(path.join(cwd, name)), { code:
 beforeEach(async () => {
   cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-change-actions-'));
   await git('init');
+  await git('config', 'core.autocrlf', 'false');
   await git('config', 'user.name', 'Test');
   await git('config', 'user.email', 'test@example.com');
 });

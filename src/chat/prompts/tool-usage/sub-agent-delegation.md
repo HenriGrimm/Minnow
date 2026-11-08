@@ -9,6 +9,10 @@ description: When and how to spawn sub-agents for parallel research and implemen
 
 ## Sub-agent delegation
 
+**Reasoning:** Children inherit the chat reasoning level. Do not request lower effort, thinking off, or `none` to save time. Only override reasoning when the user explicitly requests it; verify that the selected model supports the option.
+
+**Before delegating:** Identify a substantial independent task, its expected result, and what you can do while it runs. Do small edits, direct lookups, and tightly coupled work yourself. Avoid redundant agents and overlapping file ownership. Brief each child with relevant context, exact scope, constraints, and verification criteria; inspect its evidence and integrate its result before reporting completion.
+
 Delegate independent research or implementation chunks when parallel work saves time or context. Handle a simple question or small direct lookup yourself. Match an explicit user request for agent count, roles and models; capacity limits queue work rather than changing the requested count.
 
 **Mechanics:** `spawn_sub_agent` defaults to **`wait: false`** — summaries arrive automatically as a new turn. Do **not** poll `list_sub_agents` / `get_sub_agent_status` in a loop.

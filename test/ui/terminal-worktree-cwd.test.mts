@@ -3,7 +3,11 @@
  */
 
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, describe, mock, test } from 'node:test';
+
+// Cwd resolution does not mount the explorer; its asynchronous UI refresh
+// requires a browser DOM and is covered by the explorer suites.
+mock.module('../../src/ui/file-tree.ts', { namedExports: { syncFileTreeToPanelWorktree: async () => undefined } });
 
 import {
   formatTerminalCwdHeader,

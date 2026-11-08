@@ -14,6 +14,8 @@ describe('onModelSelectChange', () => {
   test('updates ephemeral empty active chat to new default', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
+    win.HTMLElement.prototype.showPopover = function () {};
+    win.HTMLElement.prototype.hidePopover = function () {};
     const doc = win.document;
     const grokKey = encodeModelSelectKey('opencode', 'grok-4.5');
     const deepseekKey = encodeModelSelectKey('opencode', 'deepseek-v4-flash');
@@ -65,6 +67,9 @@ describe('onModelSelectChange', () => {
       assert.equal(label?.textContent, 'Deepseek v4 flash');
       assert.equal((label as HTMLElement | null)?.title, 'Deepseek v4 flash — OpenCode Go');
     } finally {
+      (await import('../../src/ui/composer-model-trigger.ts')).teardownComposerModelTriggers();
+      await new Promise(resolve => setImmediate(resolve));
+      await win.close();
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;
@@ -74,6 +79,8 @@ describe('onModelSelectChange', () => {
   test('does not change active chat that already has messages', async () => {
     const { Window } = await import('happy-dom');
     const win = new Window();
+    win.HTMLElement.prototype.showPopover = function () {};
+    win.HTMLElement.prototype.hidePopover = function () {};
     const doc = win.document;
     const grokKey = encodeModelSelectKey('opencode', 'grok-4.5');
     const deepseekKey = encodeModelSelectKey('opencode', 'deepseek-v4-flash');
@@ -107,6 +114,9 @@ describe('onModelSelectChange', () => {
       assert.equal(chat.modelId, 'grok-4.5');
       assert.equal(chat.providerId, 'opencode');
     } finally {
+      (await import('../../src/ui/composer-model-trigger.ts')).teardownComposerModelTriggers();
+      await new Promise(resolve => setImmediate(resolve));
+      await win.close();
       setSessionStateForTests(null);
       (globalThis as { document: Document }).document = prevDocument;
       (globalThis as { window: Window }).window = prevWindow;

@@ -775,7 +775,9 @@ function createTurnRunner(deps) {
       const resolvedThinking = resolveThinkingMode({
         kind: "sub-agent",
         agentKey: input.type,
-        chatThinkingMode: parentChat?.thinkingMode,
+        chatThinkingMode: parentChat?.reasoningEffort
+          ? (parentChat.reasoningEffort === "off" ? "off" : "on")
+          : parentChat?.thinkingMode,
         subAgentType: typeConfig
       });
       const resolvedThinkingBudget = resolveThinkingBudgetTokens({

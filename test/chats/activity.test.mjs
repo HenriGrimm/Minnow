@@ -51,6 +51,18 @@ test('canonical lightweight activity distinguishes old executions from the exact
   assert.deepEqual(shell.agentActivityCursor, before.agentActivityCursor);
 });
 
+test('terminal failure diagnostics survive acknowledgement and are bounded and redacted', t => {
+  const f = fixture(t); const fence = f.claim('failure');
+  f.repository.updateExecution('failure', { status: 'failed', result: { error: 'API key sk-abcdefghijklmnopqrstuv rejected. ' + 'x'.repeat(4000) } }, { fence });
+  f.repository.releaseLease('child', fence);
+  const activity = f.repository.getActivity('child');
+  assert.ok(activity.agentExecution.error.length <= 1024);
+  assert.doesNotMatch(activity.agentExecution.error, /sk-abcdefghijklmnopqrstuv/);
+  const acknowledged = f.repository.acknowledgeActivity('child', activity.agentActivityCursor);
+  assert.equal(acknowledged.turnError, false);
+  assert.equal(acknowledged.agentExecution.error, activity.agentExecution.error);
+});
+
 test('questions and approvals remain separate bounded summaries without exposing answer or tool argument bodies', t => {
   const f = fixture(t); const fence = f.claim('current');
   for (const kind of ['question', 'approval']) f.repository.saveRequest({ version: 1, requestId: kind, chatId: 'child', executionId: 'current',

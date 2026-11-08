@@ -110,7 +110,15 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.ok(modelTrigger.querySelector('.composer-model-trigger__chevron'));
     assert.ok(modelTrigger.querySelector('.composer-model-trigger__logo')!.classList.contains('hidden'));
     assert.equal(modelTrigger.disabled, false);
-    modelTrigger.click();
+    // Search spans provider groups; an unfiltered menu now opens the provider browser.
+    const openSearchedMenu = async () => {
+      modelTrigger.click();
+      const searchModels = document.querySelector<HTMLInputElement>('.composer-model-menu:not(.hidden) .model-host-filter-search')!;
+      searchModels.value = 'Local model';
+      searchModels.dispatchEvent(new dom.Event('input', { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 150));
+    };
+    await openSearchedMenu();
     assert.equal(modelTrigger.getAttribute('aria-expanded'), 'true');
     const openMenu = () => document.querySelector<HTMLElement>('.composer-model-menu:not(.hidden)')!;
     assert.deepEqual([...openMenu().querySelectorAll('[role="option"][data-value]')].map(row => row.getAttribute('data-value')),
@@ -126,13 +134,13 @@ test('Reef separates store and creation, preserves drafts, and presents build re
     assert.equal(code.providerId, 'local'); assert.equal(code.modelId, 'local-model');
     assert.equal(app.runs[0].state, 'building');
     rejectModel = true;
-    modelTrigger.click();
+    await openSearchedMenu();
     document.querySelector(`[data-value="${encodeModelSelectKey('local', 'local-model')}"]`)!.dispatchEvent(new dom.MouseEvent('mousedown', { bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.match(document.querySelector('.reef-error')!.textContent!, /provider is unreachable/);
     assert.equal(modelTrigger.disabled, false);
     assert.equal(modelTrigger.querySelector<HTMLElement>('.composer-model-trigger__label')!.title, 'Local model — cloud');
-    modelTrigger.click();
+    await openSearchedMenu();
     document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     assert.equal(openMenu().querySelector('.model-select-option--active')!.getAttribute('data-value'), encodeModelSelectKey('local', 'local-model'));
     document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

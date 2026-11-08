@@ -10,6 +10,7 @@ import { pluginId } from './manifest.js';
 import { readPluginSource } from './source.js';
 import { runPlugin, stopPlugin } from './runtime.js';
 import { invalidatePluginCatalog } from './catalog.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 
 let mutations = Promise.resolve();
 const root = () => path.join(getMinnowHome(), 'plugins');
@@ -39,6 +40,7 @@ async function writeIndex(index) {
   const temp = `${indexPath()}.${randomUUID()}.tmp`;
   try {
     await fs.writeFile(temp, JSON.stringify(index, null, 2), { mode: 0o600 });
+    invalidateNativePolicyBeforeWrite('plugins/registry.json');
     await fs.rename(temp, indexPath());
     invalidatePluginCatalog();
   } finally { await fs.rm(temp, { force: true }); }
@@ -192,6 +194,7 @@ export async function connectionSettings(id, values) {
           saved[connectionId][fieldId] = value;
         }
       }
+      invalidateNativePolicyBeforeWrite('plugins/connections');
       await writeEncryptedJsonFile(secretPath(id), saved);
       await stopPlugin(id);
       invalidatePluginCatalog();

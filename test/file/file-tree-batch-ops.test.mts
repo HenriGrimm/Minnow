@@ -16,6 +16,20 @@ let refreshCount = 0;
 let confirmAnswer = true;
 let failToolsMatching: ((call: ToolCall) => boolean) | null = null;
 
+// Viewer remounts are outside these batch-operation assertions. Keep their
+// lazy imports isolated from the real chat client and this fixture's stub.
+mock.module('../../src/ui/file-viewer.ts', { namedExports: {
+  closeFileViewerForce: () => undefined,
+  invalidatePrimaryViewerRender: () => undefined,
+  renderViewerSlots: () => undefined,
+} });
+mock.module('../../src/state/recent-viewer-files.ts', { namedExports: {
+  pruneRecentViewerFilesUnderAncestor: () => undefined,
+  remapRecentViewerFilesUnderAncestor: () => undefined,
+} });
+mock.module('../../src/ui/right-pane-split.ts', { namedExports: { collapseEmptySlots: () => undefined } });
+mock.module('../../src/ui/right-pane-slot-tabs.ts', { namedExports: { remapSlotViewerPathsUnderAncestor: () => undefined } });
+
 mock.module('../../src/ui/app-dialog.ts', {
   namedExports: {
     appAlert: async () => undefined,
@@ -76,7 +90,7 @@ mock.module('../../src/state/sessions.ts', {
 });
 
 mock.module('../../src/ui/file-tree-listing-root.ts', {
-  namedExports: { buildFileTreeToolContext: () => ({}) },
+  namedExports: { buildFileTreeToolContext: () => ({}), getFileTreeListingWorkspaceRoot: () => '' },
 });
 
 const ops = await import('../../src/ui/file-tree-ops.ts');
@@ -197,7 +211,7 @@ describe('movePaths', () => {
 
     assert.equal(moved, 0);
     assert.deepEqual(toolCalls, []);
-    assert.equal(statusCalls.at(-1)?.[0], 'idle');
+    assert.deepEqual(statusCalls, []);
   });
 });
 

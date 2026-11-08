@@ -61,8 +61,12 @@ function setupDom(): Window {
   return win;
 }
 
-function teardownDom(): void {
+async function teardownDom(): Promise<void> {
   teardownComposerModelTriggers();
+  // Picker updates import the model actions asynchronously; drain them before
+  // removing the session they read.
+  await import('../../src/api/models.ts');
+  await new Promise(resolve => setImmediate(resolve));
   flushScheduledSessionSaveForTests();
   modelCache.clear();
   setSessionStateForTests(null);
@@ -117,16 +121,16 @@ test('OpenCode catalog efforts reach the composer and request without losing Mus
           resolveSendCapabilities('opencode-go', id, 'openai-v1'), undefined, id);
         assert.equal(patch.body.reasoning_effort, value);
       }
-      teardownDom();
+      await teardownDom();
     }
   } finally {
     globalThis.fetch = originalFetch;
     resetModelsDevContextCacheForTests();
-    teardownDom();
+    await teardownDom();
   }
 });
 
-test('CLI catalogs show native reasoning labels and submit extra high separately from max', () => {
+test('CLI catalogs show native reasoning labels and submit extra high separately from max', async () => {
   const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
   const catalogs = [
     { providerId: 'codex-cli', row: codexCatalogRows([{ slug: 'cli-efforts', visibility: 'list',
@@ -153,9 +157,9 @@ test('CLI catalogs show native reasoning labels and submit extra high separately
           resolveSendCapabilities(providerId, row.id, 'agent-cli-v1'), undefined, row.id);
         assert.equal(patch.body.reasoning_effort, level);
       }
-      teardownDom();
+      await teardownDom();
     }
-  } finally { teardownDom(); }
+  } finally { await teardownDom(); }
 });
 
 describe('composer reasoning effort HTML', () => {
@@ -168,8 +172,8 @@ describe('composer reasoning effort HTML', () => {
 });
 
 describe('syncComposerReasoningEffortFromActiveChat', () => {
-  afterEach(() => {
-    teardownDom();
+  afterEach(async () => {
+    await teardownDom();
   });
 
   test('Cursor uses the composer reasoning control and a per-chat Fast toggle', () => {

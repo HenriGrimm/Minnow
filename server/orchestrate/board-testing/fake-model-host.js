@@ -154,7 +154,8 @@ export async function startFakeModel(options = {}) {
   const port = options.port ?? DEFAULT_PORT;
   const resolvedPort = await fake.listen(port);
   const baseUrl = `http://127.0.0.1:${resolvedPort}`;
-  await registerFakeProvider(baseUrl);
+  try { await registerFakeProvider(baseUrl); }
+  catch (error) { await fake.close(); throw error; }
   active = { fake, port: resolvedPort, baseUrl };
   return getFakeModelStatus();
 }

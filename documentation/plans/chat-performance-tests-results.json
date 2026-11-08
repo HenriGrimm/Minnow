@@ -1,0 +1,162 @@
+{
+  "verification": "Every runner profile passed, with the corrected plain-Node profile rechecked in full.",
+  "monolithicRun": {
+    "command": "MINNOW_TEST_CONCURRENCY=8 npm test",
+    "exitCode": 1,
+    "supersededProfile": "node",
+    "correctedFixture": "split read-batch test assumed OS pipe coalescing",
+    "rawLog": ".minnow/production-readiness-full-8.log",
+    "rawLogSha256": "d74ba1ab307b97875685b11c2c0226c00cea25a42f0f92f16bf3fe842bca96f5"
+  },
+  "profileRecheck": {
+    "runner": "node",
+    "files": 191,
+    "concurrency": 8,
+    "exitCode": 0,
+    "rawLog": ".minnow/production-readiness-node-profile-verified.log",
+    "rawLogSha256": "3c91b24aaa3e45497fab64681663afe45a452dc6b11ea25bdee1f4e627325097"
+  },
+  "platform": "win32",
+  "arch": "x64",
+  "node": "v24.19.0",
+  "logicalCpus": 32,
+  "testConcurrency": 8,
+  "discoveredFilesIncluded": 1933,
+  "totals": {
+    "tests": 14589,
+    "pass": 14521,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 68,
+    "todo": 0
+  },
+  "verifiedBatches": [
+    {
+      "runner": "node-clean-exit",
+      "tests": 36,
+      "suites": 4,
+      "pass": 36,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 3633.7554
+    },
+    {
+      "runner": "tsx-clean-exit",
+      "tests": 23,
+      "suites": 1,
+      "pass": 21,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2,
+      "todo": 0,
+      "duration_ms": 3813.4653
+    },
+    {
+      "runner": "tsx-mocks",
+      "tests": 1071,
+      "suites": 193,
+      "pass": 1065,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 6,
+      "todo": 0,
+      "duration_ms": 62592.4913
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 2007,
+      "suites": 461,
+      "pass": 2006,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "todo": 0,
+      "duration_ms": 87560.1729
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 1947,
+      "suites": 408,
+      "pass": 1937,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 10,
+      "todo": 0,
+      "duration_ms": 101162.2789
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 2073,
+      "suites": 332,
+      "pass": 2072,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1,
+      "todo": 0,
+      "duration_ms": 101961.6118
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 2224,
+      "suites": 420,
+      "pass": 2218,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 6,
+      "todo": 0,
+      "duration_ms": 86154.7191
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 2059,
+      "suites": 345,
+      "pass": 2044,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 15,
+      "todo": 0,
+      "duration_ms": 134757.787
+    },
+    {
+      "runner": "tsx-mocks-loader",
+      "tests": 483,
+      "suites": 97,
+      "pass": 483,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 16861.0719
+    },
+    {
+      "runner": "node-tsx",
+      "tests": 30,
+      "suites": 8,
+      "pass": 30,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 3845.5609
+    },
+    {
+      "runner": "node",
+      "tests": 2636,
+      "suites": 308,
+      "pass": 2609,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 27,
+      "todo": 0,
+      "duration_ms": 160915.3511
+    }
+  ],
+  "installedNative": {
+    "separatelyEnabled": true,
+    "passed": 14,
+    "skipped": 0,
+    "inference": "loopback scripted fixtures, no paid account inference"
+  }
+}

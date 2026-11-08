@@ -2156,7 +2156,7 @@ describe('P10-I onRoundBoundary (MIN-774)', () => {
     });
   });
 
-  test('sub-agent effectors inject Agent Browser Guide at round boundaries; boards have no browser', () => {
+  test('sub-agent and board effectors inject Agent Browser Guide at round boundaries', () => {
     const board = fs.readFileSync(
       path.join(PROJECT_ROOT, 'server', 'orchestrator', 'effector-runner.js'),
       'utf8',
@@ -2167,7 +2167,8 @@ describe('P10-I onRoundBoundary (MIN-774)', () => {
     );
     assert.equal(agents.includes('onRoundBoundary'), true);
     assert.equal(agents.includes('formatAgentBrowserGuideForTranscript(guide)'), true);
-    assert.equal(board.includes('formatAgentBrowserGuideForTranscript'), false);
+    assert.equal(board.includes('onRoundBoundary'), true);
+    assert.equal(board.includes('formatAgentBrowserGuideForTranscript(guide)'), true);
   });
 
   test('runner has no isChat / isBoard branch', () => {

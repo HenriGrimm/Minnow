@@ -165,6 +165,8 @@ export async function handleWorkAgentsRequest(req, res, pathname, search) {
         const { unlink } = await import('node:fs/promises');
         const overridePath = workAgentPromptOverridePath(agentId, profile);
         try {
+          const { invalidateNativePolicyBeforeWrite } = await import('../chats/native-policy-monitor.js');
+          invalidateNativePolicyBeforeWrite('work-agents');
           await unlink(overridePath);
         } catch {
           sendJson(res, 404, { error: 'No override to remove' });

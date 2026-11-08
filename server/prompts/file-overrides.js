@@ -5,6 +5,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import { parsePromptMarkdown } from './parse.js';
 
 const ENTITY_ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
@@ -147,6 +148,7 @@ export async function deleteExpertEntityDir(entityId) {
   const home = path.resolve(getMinnowHome());
   const dirPath = resolveUnderRoot(home, path.join('prompts', 'experts', entityId));
   try {
+    invalidateNativePolicyBeforeWrite('prompts');
     await fs.rm(dirPath, { recursive: true, force: true });
     return true;
   } catch {
@@ -171,6 +173,7 @@ export async function writePromptFileOverride(family, entityId, profile, content
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const body =
     typeof content === 'string' && content.trim() ? `${content.trim()}\n` : '';
+  invalidateNativePolicyBeforeWrite('prompts');
   await fs.writeFile(filePath, body, 'utf8');
   return filePath;
 }
@@ -183,6 +186,7 @@ export async function deletePromptFileOverride(family, entityId, profile) {
   const home = path.resolve(getMinnowHome());
   const filePath = resolveUnderRoot(home, userRelativePath(family, entityId, profile));
   try {
+    invalidateNativePolicyBeforeWrite('prompts');
     await fs.unlink(filePath);
     return true;
   } catch {

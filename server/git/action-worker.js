@@ -24,12 +24,15 @@ async function stop() {
       /* The next inspection reports an interrupted run. */
     }
   }
-  process.exit(1);
+  process.exitCode = 1;
+  if (process.connected) process.disconnect();
 }
 process.on('disconnect', () => void stop());
 process.on('SIGTERM', () => void stop());
 process.on('SIGINT', () => void stop());
-process.once('message', (message) => {
+process.on('message', (message) => {
+  if (message?.kind === 'cancel') { void stop(); return; }
+  if (descriptor || stopping || !process.connected) return;
   descriptor = message;
   const target = message.target;
   child = spawn(target.command, target.args, {
@@ -53,3 +56,4 @@ process.once('message', (message) => {
     if (process.connected) process.disconnect();
   });
 });
+if (process.connected) process.send({ kind: 'ready' });

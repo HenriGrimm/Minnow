@@ -10,6 +10,8 @@ export interface MainTurnActivity {
   chatId: string;
   phase: MainTurnPhase;
   currentTool: string | null;
+  /** A model is still sending arguments; no executable tool row exists yet. */
+  receivingToolArguments?: boolean;
   workAgentLabel: string;
   modelId: string;
   providerId: string;
@@ -58,6 +60,7 @@ export function emitMainTurnActivity(partial: MainTurnActivity): void {
     chatId: partial.chatId,
     phase: partial.phase,
     currentTool: partial.currentTool ?? null,
+    receivingToolArguments: partial.receivingToolArguments ?? false,
     workAgentLabel: partial.workAgentLabel,
     modelId: partial.modelId,
     providerId: partial.providerId,
@@ -139,7 +142,7 @@ export function resumeMainTurnActivityFromQuestion(chatId: string, nowMs = Date.
 /** Patch phase/tool without resetting startedAtMs. */
 export function patchMainTurnActivity(
   chatId: string,
-  patch: Partial<Pick<MainTurnActivity, 'phase' | 'currentTool' | 'workAgentLabel' | 'modelId' | 'providerId'>>,
+  patch: Partial<Pick<MainTurnActivity, 'phase' | 'currentTool' | 'receivingToolArguments' | 'workAgentLabel' | 'modelId' | 'providerId'>>,
 ): void {
   const row = byChatId.get(chatId);
   if (!row) return;

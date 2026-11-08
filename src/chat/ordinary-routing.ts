@@ -8,6 +8,8 @@ import { applySharedChatFrame, findChatById, getDurablySavedChatRevision, persis
 import { isChatTurnInProgress } from './chat-turn-guard';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
 import { randomUUID } from '../lib/random-id';
+import { readDefaultModelBinding, resolveEffectiveChatModelBinding } from '../models/selection';
+import { applyModelSelectValueToChat, encodeModelSelectKey } from '../lib/model-select-key';
 
 export function ordinaryChatEligibility(chat: Chat, capability: OrdinaryChatExecutionFeature | null, options: {
   serverStorage: boolean; pairedDevice: boolean; busy: boolean;
@@ -50,6 +52,13 @@ async function route(chat: Chat): Promise<'server' | 'legacy'> {
       busy: isChatTurnInProgress(chat.id) || isChatWorktreeSetupPending(chat.id) });
     if (eligible.route === 'server' || !eligible.eligible) return eligible.route;
     if (findChatById(chat.id) !== chat) throw new Error('The conversation changed while checking server routing. Open its current view before sending.');
+    // New roots can inherit a bare model id. Resolve its existing catalog/default
+    // binding before the server captures an immutable provider/model selection.
+    const binding = resolveEffectiveChatModelBinding(chat);
+    const remembered = !binding.providerId && !chat.history.length ? readDefaultModelBinding() : null;
+    const value = remembered?.providerId && remembered.modelId === binding.modelId
+      ? encodeModelSelectKey(remembered.providerId, remembered.modelId) : binding.selectValue;
+    if (value) applyModelSelectValueToChat(chat, value);
     // Save the complete legacy tail before pinning its revision; no renderer lease is stolen.
     touchChat(chat);
     if (!await persistSessionsBeforeDeliveryAck(chat.id)) throw new Error('Could not save the conversation before server routing. Your draft is kept.');

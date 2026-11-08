@@ -1222,7 +1222,7 @@ describe('renderTaskDetail', () => {
     assert.equal(overlay.querySelector<HTMLDetailsElement>('.tool-call-details')!.open, false);
   });
 
-  test('live thoughts after a tool stay visible before transcript polling catches up', () => {
+  test('live thoughts after a tool stay visible before transcript polling catches up', async () => {
     setupDom();
     const state = board();
     const task = state.tasks.get('W1-B')!;
@@ -1245,6 +1245,7 @@ describe('renderTaskDetail', () => {
           attemptId: 'b1', role: 'builder', kind: 'thinking' as const, text, settled: false,
         }]]),
       }, { syncWork: false, thread: 'tail' });
+      await new Promise(resolve => setTimeout(resolve, 20));
       assert.equal(overlay.querySelectorAll('.thoughts-toggle').length, 2);
       assert.equal(earlier?.textContent?.trim(), 'Inspect the source.');
       assert.equal(overlay.querySelector('.msg--awaiting-prose .thoughts-content')?.textContent?.trim(), text);

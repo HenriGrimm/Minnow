@@ -308,7 +308,7 @@ function renderSettingsForm(status: AgentCliStatus): {
     const control = createSettingsSwitch({ id: 'codex-native-coding-tools', name: 'nativeCodingTools', checked: savedNative,
       ariaLabel: 'Use Codex native coding tools (experimental)' });
     native = control.input; label.htmlFor = native.id;
-    const hint = el('p', 'models-cli-field__hint', 'Let Codex run supported coding tools directly. Minnow permissions still apply. Changes apply to newly submitted turns.');
+    const hint = el('p', 'models-cli-field__hint', 'Let Codex run supported coding tools directly. Minnow permissions still apply. Changes apply to newly submitted turns. Editing provider settings or permissions can stop an active native turn for recovery.');
     hint.id = 'codex-native-coding-tools-hint'; native.setAttribute('aria-describedby', hint.id);
     native.dataset.nativeCodingSwitch = '';
     native.disabled = status.nativeCodingCapability?.available !== true && !savedNative;

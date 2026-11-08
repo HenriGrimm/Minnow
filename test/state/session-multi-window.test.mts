@@ -135,6 +135,16 @@ async function bootWindow(store: FakeSessionsStore, untrustedBaseline = false): 
 }
 
 describe('multi-window session writes', () => {
+  test('an empty saved store includes its synthesized starter chat in the first save', async () => {
+    const store = new FakeSessionsStore();
+    store.chatNames.clear(); store.chatRevisions.clear();
+    await bootWindow(store);
+    const starter = sessionState!.chats[0];
+    assert.ok(starter);
+    saveSessionsNow(); await waitForSessionSaveForTests();
+    assert.equal(store.writes[0].chats?.[0]?.id, starter.id);
+    assert.equal(store.chatNames.has(starter.id), true);
+  });
   test('live refresh imports remote chats, edits and deletes without moving the active chat', async () => {
     const store = new FakeSessionsStore();
     await bootWindow(store);

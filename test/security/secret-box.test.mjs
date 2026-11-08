@@ -158,6 +158,28 @@ describe('readEncryptedJsonFile / writeEncryptedJsonFile', () => {
     const readBack = await readEncryptedJsonFile(file, {});
     assert.deepEqual(readBack, payload);
   });
+
+  test('a sharing lock retains the previous secret until encrypted replacement succeeds', async t => {
+    const file = path.join(home, 'secrets.json');
+    await writeEncryptedJsonFile(file, { apiKey: 'previous-fixture-secret' });
+    const previous = await fs.readFile(file, 'utf8');
+    const rename = fs.rename;
+    let attempts = 0;
+    const mocked = t.mock.method(fs, 'rename', async (source, destination) => {
+      if (destination !== file) return rename(source, destination);
+      attempts++;
+      assert.equal(await fs.readFile(file, 'utf8'), previous);
+      const pending = await fs.readFile(source, 'utf8');
+      assert.equal(isEncryptedSecretPayload(JSON.parse(pending)), true);
+      assert.equal(pending.includes('replacement-fixture-secret'), false);
+      if (attempts < 3) throw Object.assign(new Error('Scanner lock'), { code: 'EPERM' });
+      return rename(source, destination);
+    });
+    try { await writeEncryptedJsonFile(file, { apiKey: 'replacement-fixture-secret' }); }
+    finally { mocked.mock.restore(); }
+    assert.equal(attempts, 3);
+    assert.deepEqual(await readEncryptedJsonFile(file, {}), { apiKey: 'replacement-fixture-secret' });
+  });
 });
 
 describe('loadSecretKeyMetadata', () => {

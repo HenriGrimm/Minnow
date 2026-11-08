@@ -4,6 +4,7 @@
 
 import fs from 'node:fs/promises';
 import { renameSync, existsSync, rmSync } from 'node:fs';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import path from 'node:path';
 import { packDirectoryPath, PACK_ID_RE, resolvePackPromptPath } from './paths.js';
 import { shouldExposePackDir, validatePackManifest } from './validate.js';
@@ -79,6 +80,7 @@ export async function installAgentPackFromZip(zipBuffer, builtinIds = new Set())
     // Short synchronous promotion keeps scan and concurrent installs in this host
     // from observing an intermediate directory. Scan recovers a hard interruption.
     const previous = path.join(parent, '_previous-' + packId);
+    invalidateNativePolicyBeforeWrite('agent-packs');
     if (existsSync(previous)) {
       if (existsSync(packRoot)) rmSync(previous, {recursive:true});
       else renameSync(previous, packRoot);

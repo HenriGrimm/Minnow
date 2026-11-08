@@ -137,7 +137,7 @@ describe('read_file office documents', () => {
     try {
       await fs.writeFile(path.join(external, 'SKILL.md'), 'private content');
       await fs.symlink(external, path.join(tempRoot, 'linked-skill'), process.platform === 'win32' ? 'junction' : 'dir');
-      const { result } = await executeServerTool('read_file', { path: 'linked-skill/SKILL.md' }, { workspaceRoot: tempRoot });
+      const { result } = await executeServerTool('read_file', { path: 'linked-skill/SKILL.md' }, { workspaceRoot: tempRoot, filesystemAccessCeiling: 'workspace' });
       assert.match(result, /outside the workspace.*load_skill/);
       for (const forbidden of [external, 'private content', 'full disk access', 'list_directory']) assert.ok(!result.includes(forbidden));
     } finally { await fs.rm(external, { recursive: true, force: true }); }

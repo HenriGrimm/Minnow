@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { MINNOW_DEFAULT_PORT } from '../../server/constants/minnow-port.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
@@ -65,7 +66,7 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
   let baseUrl = '';
 
   before(async () => {
-    homeDir = setTestHome(process.env, 'minnow-test-p2d-dispatch');
+    homeDir = setTestHome(process.env, `minnow-test-p2d-dispatch-${randomUUID()}`);
     await ensureMinnowLayout();
     codeWorkspace = path.join(homeDir, 'code-project');
     await fs.mkdir(codeWorkspace, { recursive: true });

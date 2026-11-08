@@ -174,6 +174,55 @@ test('provider directory replacement invalidates instead of relying on a stale p
   assert.equal(f.invalidations, 1);
 });
 
+test('a coalesced external provider revoke/regrant retires authority even when the final profile is unchanged', async t => {
+  const f = await targetedFixture(t);
+  f.dispose();
+  const dir = path.join(f.home, 'providers', 'codex-cli');
+  await fs.mkdir(dir);
+  const file = path.join(dir, 'profile.json');
+  const original = JSON.stringify({ enabled: true, agentCli: { kind: 'codex' } });
+  await fs.writeFile(file, original);
+  const dispose = f.subscribe({ providerId: 'codex-cli' }); t.after(dispose);
+  await fs.writeFile(file, JSON.stringify({ enabled: false }));
+  await fs.writeFile(file, original);
+  const providers = f.watches.find(row => row.root === path.join(f.home, 'providers') && !row.emitter.closed);
+  providers.change('change', 'codex-cli/profile.json');
+  assert.equal(f.invalidations, 1);
+});
+
+test('raw MCP and plugin writers invalidate before committing a revocation', async t => {
+  const { readFileSync } = await import('node:fs');
+  const { setMcpServerEnabled, reloadMcp } = await import('../../server/mcp/registry.js');
+  const { managePackage } = await import('../../server/plugins/manager.js');
+  const { resetMinnowHomeCache } = await import('../../server/config/home.js');
+  const f = await targetedFixture(t); f.dispose();
+  const previousHome = process.env.MINNOW_HOME;
+  process.env.MINNOW_HOME = f.home; resetMinnowHomeCache();
+  t.after(async () => {
+    await reloadMcp();
+    if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome;
+    resetMinnowHomeCache();
+  });
+  await fs.mkdir(path.join(f.home, 'mcp', 'servers'));
+  const mcpFile = path.join(f.home, 'mcp', 'servers', 'fixture.json');
+  await fs.writeFile(mcpFile, JSON.stringify({ id: 'fixture', enabled: true, transport: { type: 'stdio', command: 'unused' } }));
+  await fs.writeFile(path.join(f.home, 'mcp.json'), JSON.stringify({ servers: { fixture: { enabled: true, configFile: 'servers/fixture.json' } } }));
+  const pluginFile = path.join(f.home, 'plugins', 'registry.json');
+  await fs.writeFile(pluginFile, JSON.stringify({ version: 1, revision: 1, plugins: { fixture: { manifest: { id: 'fixture' }, enabled: true } } }));
+  for (const [file, mutate] of [[mcpFile, () => setMcpServerEnabled('fixture', false)],
+    [pluginFile, () => managePackage({ id: 'fixture', action: 'disable' })]]) {
+    const observed = [];
+    const dispose = f.subscribe({ onInvalidate() { observed.push(JSON.parse(readFileSync(file, 'utf8'))); } });
+    try {
+      await mutate();
+      assert.equal(observed.length, 1);
+      assert.equal(file === mcpFile ? observed[0].enabled : observed[0].plugins.fixture.enabled, true);
+      const current = JSON.parse(await fs.readFile(file, 'utf8'));
+      assert.equal(file === mcpFile ? current.enabled : current.plugins.fixture.enabled, false);
+    } finally { dispose(); }
+  }
+});
+
 test('policy directory junctions and watcher loss during setup cannot admit new native authority', async t => {
   const f = await targetedFixture(t, { directories: [] });
   f.dispose();

@@ -18,8 +18,20 @@ const { reefToolAllowed, reefProtectedPath } = await import('../../server/reef/t
 const { EXPORT_EXCLUDES, zipDirectory, githubWorkflow, runGithubExport } = await import('../../server/reef/exports.js');
 const { planBackup } = await import('../../server/backup/plan.js');
 
-after(async () => { await fs.rm(home, { recursive: true, force: true }); });
-async function until(fn) { for (let i = 0; i < 200; i++) { if (await fn()) return; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Timed out waiting for state'); }
+const supervisors = new Set();
+function makeSupervisor(options) {
+  const supervisor = new ReefSupervisor(options); supervisors.add(supervisor); return supervisor;
+}
+after(async () => {
+  for (const supervisor of supervisors) supervisor.stop();
+  await until(() => [...supervisors].every(supervisor => !supervisor.active && !supervisor.pumping));
+  await fs.rm(home, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+});
+async function until(fn) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) { if (await fn()) return; await new Promise(resolve => setTimeout(resolve, 50)); }
+  throw new Error('Timed out waiting for state');
+}
 
 test('app identities, concurrent metadata updates, and path containment', async () => {
   const app = await createApp({ prompt: 'A bill splitter', modelId: 'test' });
@@ -94,7 +106,7 @@ test('runtime requires its own capability and rejects foreign origins and privat
 
 test('FIFO queue, monotonic progress, successful publication and failed revision preservation', async () => {
   const calls = [];
-  const supervisor = new ReefSupervisor({ build: async ({ app, run, stage }) => {
+  const supervisor = makeSupervisor({ build: async ({ app, run, stage }) => {
     calls.push(app.id); await stage('checking', 70); await stage('repairing', 20);
     assert.equal((await readApp(app.id)).runs.at(-1).progress, 70);
     if (run.prompt === 'break') throw new Error('Tests failed');
@@ -115,7 +127,7 @@ test('FIFO queue, monotonic progress, successful publication and failed revision
 
 test('cancel, duplicate admission, deadline and restart recovery', async () => {
   const app = await createApp({ prompt: 'slow' });
-  const supervisor = new ReefSupervisor({ timeout: 150, build: ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })) });
+  const supervisor = makeSupervisor({ timeout: 150, build: ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })) });
   await supervisor.start('http://127.0.0.1:1');
   const run = await supervisor.enqueue(app.id, 'slow');
   await assert.rejects(supervisor.enqueue(app.id, 'duplicate'), /already/);
@@ -127,7 +139,7 @@ test('cancel, duplicate admission, deadline and restart recovery', async () => {
   assert.match((await readApp(app.id)).runs.at(-1).error, /deadline/);
   supervisor.stop();
   await updateApp(app.id, row => { row.runs.push({ id: randomUUID(), state: 'checking', progress: 80 }); });
-  const recovered = new ReefSupervisor(); await recovered.start('http://127.0.0.1:1'); recovered.stop();
+  const recovered = makeSupervisor(); await recovered.start('http://127.0.0.1:1'); recovered.stop();
   const resumed = (await readApp(app.id)).runs.at(-1);
   assert.equal(resumed.state, 'queued', 'a restart resumes the build on its own');
   assert.equal(resumed.recovery, 'resume'); assert.equal(resumed.failedStage, 'checking');
@@ -154,10 +166,30 @@ test('Reef status writes retry transient Windows reader locks without losing upd
   assert.equal((await readApp(app.id)).description, 'Preserved through a reader lock');
 });
 
+test('status polling waits for a pending atomic replacement and sees its committed metadata', async t => {
+  const app = await createApp({ prompt: 'reader coordination' });
+  const destination = path.join(appRoot(app.id), 'app.json'), rename = fs.rename;
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  t.mock.method(fs, 'rename', async (source, target) => {
+    if (target === destination) { entered.resolve(); await release.promise; }
+    return rename(source, target);
+  });
+  const writing = updateApp(app.id, row => { row.description = 'Committed replacement'; });
+  await entered.promise;
+  let readSettled = false;
+  const reading = readApp(app.id).then(value => { readSettled = true; return value; });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(readSettled, false, 'a reader must not hold the destination during replacement');
+  } finally { release.resolve(); }
+  await writing;
+  assert.equal((await reading).description, 'Committed replacement');
+});
+
 test('agent tokens are visible and persisted before a build finishes, with final chunks retained', async () => {
   const app = await createApp({ prompt: 'live stream' });
   let finish;
-  const supervisor = new ReefSupervisor({ build: async ({ run, stage, log, stream }) => {
+  const supervisor = makeSupervisor({ build: async ({ run, stage, log, stream }) => {
     await stage('planning', 10);
     log('Setting up\n');
     for (const text of ['I ', 'will ', 'build ', 'a ', 'timer.']) stream(text);
@@ -168,6 +200,8 @@ test('agent tokens are visible and persisted before a build finishes, with final
   try {
     await supervisor.enqueue(app.id, 'live stream'); await supervisor.start('http://unused');
     await until(async () => (await readApp(app.id)).runs.at(-1).agentLog === 'I will build a timer.');
+    // Activity commits metadata before publishing its separate event journal.
+    await until(async () => (await readEvents(app.id)).filter(event => event.type === 'activity').length === 1);
     const running = (await readApp(app.id)).runs.at(-1);
     assert.equal(running.state, 'planning'); assert.equal(running.log, 'Setting up\n');
     assert.ok(running.startedAt > 0); assert.ok(running.lastActivityAt >= running.startedAt);

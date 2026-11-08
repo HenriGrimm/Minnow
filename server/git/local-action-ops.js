@@ -330,11 +330,15 @@ export async function localRunStart(args) {
         }
       }),
     );
-    child.send({ target, cwd: working, env, id, kind: args.kind }, (error) => {
-      if (error) {
-        record.error = error.message;
-        void killProcessTreeAndWait(child);
-      }
+    child.once('message', (message) => {
+      if (message?.kind !== 'ready') return;
+      if (entry.stopping) { void stopActionWorker(entry); return; }
+      child.send({ target, cwd: working, env, id, kind: args.kind }, (error) => {
+        if (error) {
+          record.error = error.message;
+          void killProcessTreeAndWait(child);
+        }
+      });
     });
     return { ok: true, run: record };
   } catch (error) {
@@ -403,13 +407,33 @@ export async function localRunView(args) {
     nextOffset: offset + bytesRead,
   };
 }
+async function stopActionWorker(entry) {
+  if (entry.stopPromise) return entry.stopPromise;
+  entry.stopPromise = (async () => {
+    let timer;
+    try {
+      if (entry.child.connected) {
+        // Do not let IPC backpressure delay the cancellation deadline.
+        try { entry.child.send({ kind: 'cancel' }, () => {}); } catch {}
+        const finished = await Promise.race([
+          entry.finished.then(() => true),
+          new Promise(resolve => { timer = setTimeout(() => resolve(false), 10000); }),
+        ]);
+        if (finished) return;
+      }
+      await killProcessTreeAndWait(entry.child);
+      await entry.finished;
+    } finally { clearTimeout(timer); }
+  })();
+  return entry.stopPromise;
+}
+
 export async function localRunCancel(args) {
   const { run } = await localRunView(args);
   const entry = active.get(run.id);
   if (!entry) return { ok: true, run };
   entry.stopping = true;
-  await killProcessTreeAndWait(entry.child);
-  await entry.finished;
+  await stopActionWorker(entry);
   return { ok: true, run: entry.record };
 }
 export async function localRunRerun(args) {
@@ -426,8 +450,7 @@ export async function shutdownLocalActions() {
   await Promise.all(
     [...active.values()].map(async (entry) => {
       entry.stopping = true;
-      await killProcessTreeAndWait(entry.child);
-      await entry.finished;
+      await stopActionWorker(entry);
     }),
   );
 }

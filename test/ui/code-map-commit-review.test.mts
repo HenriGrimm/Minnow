@@ -90,9 +90,11 @@ before(() => {
       </div>
     </div><div id="fileViewerPane"><div id="fileViewerHost"></div></div>`;
 });
-after(() => {
+after(async () => {
   closeGitCommitDiffPanel();
-  win.happyDOM.abort();
+  // Closing review schedules a map render; keep its DOM alive until it settles.
+  await settle();
+  await win.close();
   for (const [key, descriptor] of Object.entries(originals)) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);

@@ -1,5 +1,7 @@
 # Native execution host seam — implementation handoff (2026-11-07)
 
+Historical seam handoff. The host is now integrated for the explicitly supported Windows candidate; see [production validation](chat-performance-production-validation.md) for current evidence and remaining certification limits. Statements below describe the original isolated handoff.
+
 This is an implemented, tested **private server seam**, not product availability or completion of plan steps 10–12. No settings, preference enablement, live inference or commits were performed. Existing shared-branch edits were preserved.
 
 ## Owned implementation

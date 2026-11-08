@@ -5,7 +5,7 @@
 
 import { availableParallelism } from 'node:os';
 
-/** @typedef {'node' | 'tsx-mocks' | 'tsx-mocks-loader' | 'node-tsx'} RunnerId */
+/** @typedef {'node' | 'node-clean-exit' | 'tsx-clean-exit' | 'tsx-mocks' | 'tsx-mocks-loader' | 'node-tsx'} RunnerId */
 
 /** Full parallelism (~31 workers on a 32-core box) exhausted system RAM; cap it. */
 export const MAX_TEST_CONCURRENCY = 26;
@@ -25,10 +25,25 @@ export function resolveTestConcurrency() {
  * happy-dom node on a failed assertion — that path allocates unbounded typed
  * arrays synchronously and takes the whole machine down. See the module header.
  */
-export const ASSERT_GUARD_IMPORT = ['--import', './test/assert-dom-safe.mjs'];
+export const ASSERT_GUARD_IMPORT = [
+  '--import', './test/assert-dom-safe.mjs',
+  '--import', './test/drain-before-force-exit.mjs',
+];
 
 /** How each runner invokes node:test. */
 export const RUNNERS = {
+  // Node 24 on Windows can abort libuv when force-exiting these HTTP/fs suites
+  // while an already-closing async handle drains. Natural exit exercises their
+  // real teardown; individual tests retain their normal deadline.
+  'node-clean-exit': {
+    command: 'node',
+    prefixArgs: [...ASSERT_GUARD_IMPORT, '--test', '--test-timeout=120000'],
+  },
+  'tsx-clean-exit': {
+    command: 'node',
+    prefixArgs: ['--experimental-test-module-mocks', '--import', 'tsx', '--import', './test/test-loader.mjs',
+      ...ASSERT_GUARD_IMPORT, '--test', '--test-timeout=120000'],
+  },
   node: {
     command: 'node',
     prefixArgs: [
@@ -96,6 +111,13 @@ export const DEFAULT_RUNNER_BY_EXT = {
  * Patterns use forward slashes and support `*` / `**` globs via fs.globSync.
  */
 export const PATH_RUNNER_RULES = [
+  { pattern: 'test/headless/api-auth.test.mts', runner: 'tsx-clean-exit' },
+  { pattern: 'test/ui/super-plan-page.test.mts', runner: 'tsx-clean-exit' },
+  { pattern: 'test/chats/legacy-result-delivery.test.mjs', runner: 'node-clean-exit' },
+  { pattern: 'test/godot/scene-outline.test.mjs', runner: 'node-clean-exit' },
+  { pattern: 'test/remote/dev-remote-filter.test.mjs', runner: 'node-clean-exit' },
+  { pattern: 'test/remote/ingress.test.mjs', runner: 'node-clean-exit' },
+  { pattern: 'test/models/library-bind-route.test.mjs', runner: 'node-clean-exit' },
   { pattern: 'test/generations/agent-cli-*.test.mjs', runner: 'node' },
   // Orchestrator V2. The core is plain .js + .d.ts because the server ships
   // untranspiled; running these on bare `node` is part of the assertion.

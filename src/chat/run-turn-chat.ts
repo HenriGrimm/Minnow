@@ -1768,7 +1768,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
         if (event.type === 'tool_streaming') {
           if (parallelSafeStreak <= 1) {
-            patchMainTurnActivity(chat.id, { phase: 'tools', currentTool: event.name });
+            patchMainTurnActivity(chat.id, { phase: 'tools', currentTool: event.name, receivingToolArguments: true });
           }
         }
         if (event.type === 'tool_call') {
@@ -1784,6 +1784,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           patchMainTurnActivity(chat.id, {
             phase: 'tools',
             currentTool: aggregate || event.name,
+            receivingToolArguments: false,
           });
           if (event.name === 'wait') {
             pauseMainTurnActivityForWait(chat.id, resolveWaitReasonFromArgs(event.arguments));

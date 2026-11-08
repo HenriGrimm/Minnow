@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
+import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import type { Chat } from '../../src/types.ts';
 import { setSessionStateForTests } from '../../src/state/sessions.ts';
 import { endChatTurnSetup } from '../../src/chat/chat-turn-guard.ts';
@@ -56,6 +57,7 @@ function makeChat(ids: TurnIds): Chat {
 
 /** Mirror loop-resume.test.mts DOM so runChatTurn reaches the tool loop. */
 function installDom(): void {
+  setStorageModeForTests('localStorage');
   const window = new Window();
   globalThis.document = window.document;
   globalThis.HTMLElement = window.HTMLElement;
@@ -176,6 +178,7 @@ async function startTurnWithPendingToolCall(
     if (url.includes('/api/memory/')) return Response.json({ enabled: false });
     if (url.includes('/api/config/ping')) return Response.json({ ok: true });
     if (url.includes('/api/config/meta')) return Response.json({ titles: { enabled: false } });
+    if (url.includes('/api/config/')) return Response.json({});
     // config/ping puts storage in server mode, where the turn needs the provider registry.
     if (url.endsWith('/api/providers')) {
       return Response.json({

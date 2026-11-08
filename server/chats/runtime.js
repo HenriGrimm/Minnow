@@ -189,7 +189,8 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
         providerId: prepared.model.providerId, modelId: prepared.model.id, cliVersion: selection.cliVersion,
         requestedNative: true, signal, waitForApproval });
     },
-    prepareCheckpoint: input => checkpoints.prepare(input),
+    prepareCheckpoint: input => checkpoints.prepare({ ...input,
+      deferBaseline: repository.getExecution(input.executionId)?.captured?.nativeExecution?.requestedMode !== 'native' }),
     prepareWorkspace: input => workspacePreparation.prepare(input),
     hydrateRecoveredQuestions: input => questionRecovery?.hydrate(input), beforeInference: awaitReady,
     prepareExecution: async input => {

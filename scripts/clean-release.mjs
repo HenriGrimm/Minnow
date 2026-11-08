@@ -33,9 +33,11 @@ function runningExecutables() {
     });
   }
   const output = process.platform === 'win32'
+    // Process.Path can hang while inspecting protected/native processes. CIM
+    // supplies executable paths without opening each process's modules.
     ? execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); (Get-Process).Path'],
-      { encoding: 'utf8', windowsHide: true })
+        '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object -ExpandProperty ExecutablePath'],
+      { encoding: 'utf8', windowsHide: true, timeout: 15000 })
     : execFileSync('ps', ['-ww', '-axo', 'comm='], { encoding: 'utf8' });
   return output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 }

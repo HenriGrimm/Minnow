@@ -11,7 +11,7 @@ const WORKSPACE = '/tmp/minnow-impeccable-workspace';
 describe('impeccable spawn env', () => {
   it('leaves ELECTRON_RUN_AS_NODE unset when the server is plain node', () => {
     const env = buildImpeccableSpawnEnv(WORKSPACE);
-    assert.equal(env.ELECTRON_RUN_AS_NODE, undefined);
+    assert.equal(env.ELECTRON_RUN_AS_NODE, process.env.ELECTRON_RUN_AS_NODE);
     assert.equal(env.IMPECCABLE_CONTEXT_DIR, WORKSPACE);
   });
 

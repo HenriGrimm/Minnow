@@ -9,12 +9,20 @@ process.env.MINNOW_HOME = home;
 const { createApp, readApp, updateApp, appRoot } = await import('../../server/reef/store.js');
 const { ReefSupervisor } = await import('../../server/reef/supervisor.js');
 const { buildApp } = await import('../../server/reef/pipeline.js');
-after(async () => { await fs.rm(home, { recursive: true, force: true }); });
+const supervisors = new Set();
+after(async () => {
+  for (const supervisor of supervisors) supervisor.stop();
+  await until(() => [...supervisors].every(supervisor => !supervisor.active && !supervisor.pumping));
+  await fs.rm(home, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+});
 
 async function until(check) {
-  for (let i = 0; i < 600; i++) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
     if (await check()) return;
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Avoid a continuous Windows reader/scanner lock while the fixture replaces
+    // app.json. Real UI polling is slower; the assertion deadline is unchanged.
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
   throw new Error('Timed out waiting for recovery');
 }
@@ -66,9 +74,12 @@ async function fixture(stopPhase) {
       return args.includes('--test') ? '# tests 1' : '';
     },
   }) });
+  supervisors.add(supervisor);
   await supervisor.start('http://unused');
   const run = await supervisor.enqueue(app.id, app.description);
   await until(async () => ['failed', 'cancelled'].includes((await readApp(app.id)).status) && !supervisor.active);
+  const stopped = (await readApp(app.id)).runs[0];
+  assert.equal(stopped.state, 'cancelled', JSON.stringify(stopped));
   return { app, run, supervisor, phases, agents, expectReset: () => { expectPartial = false; }, workspace: path.join(appRoot(app.id), 'worktrees', run.id) };
 }
 
@@ -81,7 +92,7 @@ test('retry continues partial implementation in the same worktree without repeat
     const resumed = await supervisor.recover(app.id, run.id);
     assert.equal(resumed.id, run.id);
     await assert.rejects(supervisor.recover(app.id, run.id), /stopped build/);
-    await until(async () => { const current = await readApp(app.id); if (current.status === 'failed') throw new Error(current.runs[0].error); return current.status === 'ready'; });
+    await until(async () => { const current = await readApp(app.id); if (current.status === 'failed') throw new Error(current.runs[0].error); return current.status === 'ready' && !supervisor.active; });
     assert.deepEqual(agents, ['plan', 'build', 'build']);
     assert.equal(phases.filter(phase => phase === 'scaffolding').length, 1);
     assert.equal((await readApp(app.id)).runs.length, 1);
@@ -95,7 +106,11 @@ test('reset building discards only partial implementation and retains the comple
   try {
     expectReset();
     await supervisor.recover(app.id, run.id, 'reset-phase');
-    await until(async () => (await readApp(app.id)).status === 'ready');
+    await until(async () => {
+      const current = await readApp(app.id);
+      if (current.status === 'failed') throw new Error(current.runs[0].error);
+      return current.status === 'ready' && !supervisor.active;
+    });
     assert.deepEqual(agents, ['plan', 'build', 'build']);
     await assert.rejects(fs.access(path.join(workspace, 'partial.txt')), { code: 'ENOENT' });
     assert.equal(await fs.readFile(path.join(appRoot(app.id), 'runs', run.id, 'plan.txt'), 'utf8'), 'Plan saved once.');
@@ -108,7 +123,7 @@ test('legacy cancelled builds resume from retained source and plan without a che
     await fs.rm(path.join(appRoot(app.id), 'runs', run.id, 'checkpoint.json'));
     await updateApp(app.id, current => { current.runs[0].state = 'cancelled'; delete current.runs[0].failedStage; });
     await supervisor.recover(app.id, run.id);
-    await until(async () => (await readApp(app.id)).status === 'ready');
+    await until(async () => (await readApp(app.id)).status === 'ready' && !supervisor.active);
     assert.deepEqual(agents, ['plan', 'build', 'build']);
   } finally { supervisor.stop(); }
 });
@@ -132,7 +147,11 @@ for (const phase of ['installing', 'checking', 'promoting']) {
         assert.equal((await readApp(app.id)).runs[0].failedStage, phase);
         const priorCount = phases.length;
         await supervisor.recover(app.id, run.id, action);
-        await until(async () => (await readApp(app.id)).status === 'ready');
+        await until(async () => {
+          const current = await readApp(app.id), saved = current.runs[0];
+          if (current.status === 'failed') throw new Error(JSON.stringify(saved));
+          return current.status === 'ready' && !supervisor.active;
+        });
         assert.equal(phases[priorCount], phase);
         assert.deepEqual(agents, ['plan', 'build']);
         if (phase !== 'promoting') {
@@ -171,6 +190,7 @@ test('host restart resumes the stopped phase on its own, then waits for Resume a
     if (built.id === app.id) builds.push({ recovery: run.recovery, state: (await readApp(app.id)).runs[0].state });
     await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
   } });
+  supervisors.add(supervisor);
   await supervisor.start('http://unused');
   await until(() => builds.length === 1);
   assert.deepEqual(builds[0], { recovery: 'resume', state: 'repairing' });
@@ -181,6 +201,7 @@ test('host restart resumes the stopped phase on its own, then waits for Resume a
   const abortable = ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
   for (let restart = 2; restart <= 4; restart++) {
     const next = new ReefSupervisor({ build: abortable });
+    supervisors.add(next);
     await next.start('http://unused');
     if (restart < 4) await until(() => next.active);
     next.stop();
@@ -198,6 +219,7 @@ test('host restart leaves a build alone while another live Minnow owns it', asyn
   const app = await createApp({ prompt: 'Owned elsewhere' });
   await updateApp(app.id, current => { current.runs.push({ id: app.id, prompt: 'Owned elsewhere', state: 'building', progress: 20, log: '', attempt: 0, chatIds: [], ownerPid: process.ppid }); });
   const supervisor = new ReefSupervisor({ build: () => { throw new Error('must not run'); } });
+  supervisors.add(supervisor);
   await supervisor.start('http://unused'); supervisor.stop();
   assert.equal((await readApp(app.id)).runs[0].state, 'building');
 });

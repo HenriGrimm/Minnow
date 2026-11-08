@@ -9,6 +9,10 @@ description: Lite sub-agent spawn rules.
 
 ## Sub-agent delegation
 
+**Reasoning:** Children inherit the chat reasoning level. Do not request lower effort, thinking off, or `none` to save time. Only override reasoning when the user explicitly requests it; verify that the selected model supports the option.
+
+**Before delegating:** Identify a substantial independent task, its expected result, and what you can do while it runs. Do small edits, direct lookups, and tightly coupled work yourself. Avoid redundant agents and overlapping file ownership. Brief each child with relevant context, exact scope, constraints, and verification criteria; inspect its evidence and integrate its result before reporting completion.
+
 Delegate useful independent chunks; handle simple tasks yourself. Preserve requested agent counts, roles and models; capacity queues work. `spawn_sub_agent` defaults to `wait: false`; completion is pushed, so do not poll status tools. Types: `researcher` (cited sources), `explore` (read-only map), `generalPurpose`, `shell`. Give self-contained briefs and synthesize results.
 
 Give every child a distinctive `title` (3–8 words) for its card and refer to it by that title. Keep full instructions in `task`.

@@ -1,0 +1,22 @@
+{
+  "apiCalls": [],
+  "done": true,
+  "firstDomMs": [
+    16.899999998509884,
+    17.599999997764826,
+    18,
+    18.600000001490116
+  ],
+  "frameP95Ms": 15.400000002235174,
+  "frames": 400,
+  "inputToFrameMs": [
+    4.800000000745058,
+    0.30000000074505806,
+    0.1999999992549419,
+    10.800000000745058,
+    2.300000000745058,
+    1.199999999254942
+  ],
+  "longTasks": [],
+  "scope": "Electron packaged window, Vite source painter, four simultaneous streams, synthetic input events"
+}

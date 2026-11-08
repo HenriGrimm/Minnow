@@ -81,7 +81,7 @@ test('production server commands capture native preference, enforce real policy,
       });
       deps.resolveSamplerPreset = () => ({ preset: {}, maxTokens: 1000 });
       deps.resolveThinkingMode = () => ({ mode: 'off' }); deps.resolveThinkingBudgetTokens = () => ({ budgetTokens: null });
-      deps.resolveModelContextLimit = async () => 32000;
+      deps.resolveModelContextLimit = () => 32000;
       deps.applyContextPolicy = async value => ({ applied: false, messages: value.messages });
       return { systemPrompt: 'Isolated production native runtime fixture.', cwd: target.scope.canonicalKey,
         checkoutIdentity: target.checkoutIdentity, policy: target.policy, tools: [tools.find(row => row.function.name === 'read_file')],

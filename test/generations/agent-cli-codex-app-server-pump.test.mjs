@@ -35,7 +35,7 @@ test('unsupported native opt-in fails before spawning, including a retained conv
   setup([{ text: 'Done.' }]);
   const denied = await generate([{ role: 'user', content: 'Start.' }], {}, { agentCli: { nativeCodingTools: true } });
   assert.equal(denied.state.status, 'error');
-  assert.match(denied.state.errorMessage, /native coding tools are unavailable/);
+  assert.match(denied.state.errorMessage, /require private server execution admission/);
   assert.equal(processes, 0);
   const first = await generate([{ role: 'user', content: 'Start.' }]);
   assert.equal(first.state.status, 'complete');
@@ -499,9 +499,15 @@ test('read batch expands into ordinary calls once and returns ordered real resul
 });
 
 test('split transport batches retain partial results until every member is recorded', async () => {
+  const log = path.join(root, 'split-batch-results.jsonl');
   const batch = id => ({ id, name: 'mn_read_batch', args: { calls: Array.from({ length: 5 }, (_, i) =>
     ({ name: 'read_file', arguments: { path: `${id}-${i}` } })) } });
-  setup([{ calls: [batch('first'), batch('second')] }, { text: 'Both batches received.' }]);
+  // Ordinary calls collect briefly; an explicit batch flushes immediately.
+  // Two explicit batches may legitimately arrive as 5+5 on separate pipe reads.
+  // Queue five ordinary calls first so the next batch crosses the eight-call
+  // handoff boundary instead of relying on OS packet coalescing.
+  const plain = Array.from({ length: 5 }, (_, i) => ({ id: `plain-${i}`, name: 'mn_tool_0', args: { path: `plain-${i}` } }));
+  setup([{ calls: [...plain, batch('second')] }, { text: 'Both batches received.' }], { MINNOW_CODEX_REQUEST_LOG: log });
   const messages = [{ role: 'user', content: 'Read files.' }];
   const collect = result => result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []).map(({ index, ...call }) => call);
   const first = collect(await generate(messages));
@@ -514,6 +520,12 @@ test('split transport batches retain partial results until every member is recor
     ...remaining.map(call => ({ role: 'tool', tool_call_id: call.id, content: `Result ${call.id}` })));
   assert.ok((await generate(messages)).wire.includes('Both batches received.'));
   assert.equal(new Set([...first, ...remaining].map(call => call.id)).size, 10);
+  const results = new Map([...first, ...remaining].map(call => [JSON.parse(call.function.arguments).path, `Result ${call.id}`]));
+  const responses = (await fs.readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+  const response = responses.filter(row => row.result?.contentItems?.length === 5);
+  assert.equal(response.length, 1, 'the split batch returns exactly once after its final members');
+  assert.deepEqual(response[0].result.contentItems.map(item => JSON.parse(item.text).content),
+    Array.from({ length: 5 }, (_, i) => results.get(`second-${i}`)));
   assert.equal(processes, 1);
 });
 

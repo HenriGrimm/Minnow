@@ -4,6 +4,7 @@
 
 import fs from 'node:fs/promises';
 import { existsSync, renameSync } from 'node:fs';
+import { invalidateNativePolicyBeforeWrite } from '../chats/native-policy-monitor.js';
 import path from 'node:path';
 import { getAgentPacksRoot } from './paths.js';
 import { shouldExposePackDir, validatePackManifest } from './validate.js';
@@ -63,6 +64,7 @@ export async function scanAgentPacks(projectRoot, builtinAgentIds) {
   for (const entry of entries) {
     const id = /^_previous-([a-z][a-z0-9-]{0,63})$/.exec(entry.name)?.[1];
     if (entry.isDirectory() && id && !existsSync(path.join(root, id))) {
+      invalidateNativePolicyBeforeWrite('agent-packs');
       renameSync(path.join(root, entry.name), path.join(root, id));
       entries = await fs.readdir(root, {withFileTypes:true});
     }
