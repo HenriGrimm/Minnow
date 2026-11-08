@@ -21,7 +21,7 @@ async function fixture(t, capture) {
   const coordinator = createChatCheckpointCoordinator({ repository, capture });
   async function prepare(id, signal, options = {}) {
     repository.createChat({ id, name: id, workspacePath: cwd });
-    const fence = repository.claimExecution({ chatId: id, executionId: id, ownerId: 'host' });
+    const fence = repository.claimExecution({ chatId: id, executionId: id, ownerId: 'host', commandId: options.commandId });
     return coordinator.prepare({ chatId: id, executionId: id, cwd, fence, signal, ...options });
   }
   return { cwd, db, repository, coordinator, prepare };
@@ -116,12 +116,32 @@ test('two chats serialize complete pre/effect/post segments, while parent waits 
   await Promise.all([parent.finalize(), child.finalize()]);
 });
 
+test('a completed turn finalizes while another chat owns an executing checkpoint in the same checkout', async t => {
+  const f = await fixture(t, async () => ({ ok: true, sha: 'saved' }));
+  const completed = await f.prepare('completed', undefined, { deferBaseline: true });
+  const reader = await f.prepare('reader', undefined, { deferBaseline: true });
+  const other = await f.prepare('other', undefined, { deferBaseline: true });
+  await completed.effect('saved-write', async () => 'saved');
+  const started = gate(), release = gate();
+  const running = other.effect('still-running', async () => { started.resolve(); await release.promise; });
+  await started.promise;
+  try {
+    assert.equal(f.coordinator.read('other', 'still-running').state, 'executing');
+    await completed.finalize();
+    await reader.finalize();
+    assert.equal(f.coordinator.read('other', 'still-running').state, 'executing', 'completion neither waits for nor settles the other chat');
+  } finally { release.resolve(); await running; }
+});
+
 test('failed post capture retains uncertainty and blocks another chat from mutating or replaying it', async t => {
   let captures = 0, effects = 0;
   const f = await fixture(t, async () => ++captures === 3 ? { ok: false, error: 'disk unavailable' } : { ok: true, sha: 's' + captures });
+  const reader = await f.prepare('reader', undefined, { deferBaseline: true });
   const first = await f.prepare('first');
   await assert.rejects(first.effect('uncertain-write', async () => { effects++; }), error => error.checkpointUncertain === true);
   assert.equal(f.coordinator.read('first', 'uncertain-write').state, 'uncertain');
+  await assert.rejects(first.finalize(), /explicit recovery/);
+  await reader.finalize();
   const next = await f.prepare('next');
   await assert.rejects(next.effect('another-write', async () => { effects++; }), /explicit recovery/);
   assert.equal(effects, 1);
@@ -139,7 +159,9 @@ test('restart converts an executing journal to uncertainty without replaying eff
 test('explicit human retirement includes checkpoint evidence and releases the reviewed uncertain boundary', async t => {
   let captures = 0;
   const f = await fixture(t, async () => ++captures === 3 ? { ok: false, error: 'disk unavailable' } : { ok: true, sha: 's' + captures });
-  const turn = await f.prepare('first');
+  const turn = await f.prepare('first', undefined, { commandId: 'review' });
+  f.repository.appendMessage('first', { role: 'user', content: 'Review', commandId: 'review', workStatus: 'recovery_required' },
+    { fence: f.repository.getLease('first'), messageId: 'input-review' });
   await assert.rejects(turn.effect('effect', async () => 'finished'), /reconciliation/);
   const fence = f.repository.getLease('first');
   f.repository.updateExecution('first', { status: 'recovery_required' }, { fence });
@@ -149,6 +171,7 @@ test('explicit human retirement includes checkpoint evidence and releases the re
   assert.equal(review.checkpoints[0].pre.sha, 's2');
   f.repository.retireInterruptedExecution('first', { executionId: 'first', revision: review.revision,
     clientRequestId: 'human-review', note: 'Verified the saved file and stopped its process.' }, () => true);
+  assert.equal(f.repository.readTranscript('first').messages[0].workStatus, 'stopped');
   assert.equal(f.coordinator.read('first', 'effect').state, 'retired');
   const next = await f.prepare('next'); await next.baseline;
   assert.equal(await next.effect('new', async () => 'new work'), 'new work');

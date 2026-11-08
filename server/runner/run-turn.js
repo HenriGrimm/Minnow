@@ -403,6 +403,7 @@ function normalizeRoundBoundaryRows(raw) {
     if ('content' in row) next.content = row.content;
     if (typeof row.tool_call_id === 'string') next.tool_call_id = row.tool_call_id;
     if (Array.isArray(row.tool_calls)) next.tool_calls = row.tool_calls;
+    if (Array.isArray(row.images)) next.images = row.images;
     if (typeof row.messageId === 'string') next.messageId = row.messageId;
     if (typeof row.commandId === 'string') next.commandId = row.commandId;
     if (row.provenance && typeof row.provenance === 'object') next.provenance = row.provenance;
@@ -421,8 +422,8 @@ function stripTranscriptRouting(body, vision) {
     if (projected !== message) changed = true;
     message = projected;
     if (!message || typeof message !== 'object' ||
-        !['messageId', 'commandId', 'provenance', 'createdAt', 'workDurationMs', 'nativeAction'].some(key => Object.hasOwn(message, key))) return message;
-    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, workDurationMs: _duration, nativeAction: _native, ...wire } = message;
+        !['messageId', 'commandId', 'provenance', 'createdAt', 'workDurationMs', 'workStatus', 'nativeAction'].some(key => Object.hasOwn(message, key))) return message;
+    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, workDurationMs: _duration, workStatus: _status, nativeAction: _native, ...wire } = message;
     changed = true;
     return wire;
   });
@@ -1021,7 +1022,8 @@ export async function runTurn(options) {
           ? () => {
               try {
                 const boundary = options.onRoundBoundary();
-                const spliced = normalizeRoundBoundaryRows(Array.isArray(boundary) ? boundary : boundary?.messages);
+                const spliced = normalizeRoundBoundaryRows(Array.isArray(boundary) ? boundary : boundary?.messages)
+                  .map(message => projectUserContent(message, { vision: model.vision !== false }));
                 if (spliced.length === 0) return null;
                 if (!Array.isArray(boundary) && Array.isArray(boundary?.rowIds)) {
                   spliced.forEach((_, index) => noteAppended(persistCursor + index, boundary.rowIds[index] ?? -1));

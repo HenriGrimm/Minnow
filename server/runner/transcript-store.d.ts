@@ -5,6 +5,7 @@ export interface TranscriptMessage {
   messageId?: string;
   commandId?: string;
   provenance?: import('../chats/contracts').MessageProvenance;
+  images?: import('../chats/contracts').ChatUserImage[];
 }
 
 /** Parent-chat fields the runner reads (thinking / reasoning). */

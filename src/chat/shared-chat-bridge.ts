@@ -3,7 +3,7 @@ import { hasHostSessionToken, isPairedDevice } from '../api/session-token';
 import { isServerStorageMode } from '../config/storage-mode';
 import { getChatHostId, receiveRemoteCommandResult, type RemoteChatCommand } from './remote-chat-client';
 import { setSharedChatPublisher } from './shared-chat-events';
-import { setRemoteChatRunning, setRemoteChatTurns } from './remote-turn-state';
+import { setRemoteChatRunning, setRemoteChatPresence } from './remote-turn-state';
 import { subscribeWorkspace } from '../state/workspace';
 import {
   applySharedChatFrame, ensureChatHistoryLoaded, findChatById, getActiveChat,
@@ -378,8 +378,7 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
       await remember(); return;
     }
     if (busy) {
-      if (command.attachments?.length) throw new Error('Follow-ups are text only while this reply is running.');
-      const accepted = command.action === 'steer' ? enqueueSteerMessage(chat, command.text ?? '') : enqueueComposerMessage(chat, command.text ?? '');
+      const accepted = (command.action === 'steer' ? enqueueSteerMessage : enqueueComposerMessage)(chat, command.text ?? '', command.attachments ?? []);
       if (!accepted) throw new Error('Add a message.');
       await remember(); return;
     }
@@ -454,9 +453,8 @@ export function startSharedChatBridge(onChange: (activeChanged: boolean) => void
           } catch {}
         });
         if (message.kind === 'command-result') receiveRemoteCommandResult(message.id, message);
-        if (message.kind === 'presence' && setRemoteChatTurns(message.turns
-          .filter((turn: { hostId?: string }) => isPairedDevice() || turn.hostId !== hostId)
-          .map((turn: { chatId: string }) => turn.chatId))) onChange(true);
+        if (message.kind === 'presence' && setRemoteChatPresence(message.turns
+          .filter((turn: { hostId?: string }) => isPairedDevice() || turn.hostId !== hostId))) onChange(true);
       } catch { /* Reconnect will provide a complete current-turn snapshot. */ }
     };
     if (hasHostSessionToken()) {

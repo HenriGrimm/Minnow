@@ -143,6 +143,33 @@ test('failed post-effect checkpoint prevents another model request and retains e
   } finally { s.cleanup(); }
 });
 
+test('a review with final prose and settled effects does not inherit another chat\'s running command checkpoint', async () => {
+  const s = setup(), started = Promise.withResolvers(), release = Promise.withResolvers();
+  let posts = 0, running;
+  try {
+    s.repository.createChat({ id: 'other', name: 'Other chat', workspacePath: s.scratch });
+    const otherFence = s.repository.claimExecution({ chatId: 'other', executionId: 'other-execution', ownerId: 'server' });
+    const checkpoints = createChatCheckpointCoordinator({ repository: s.repository, capture: async () => ({ ok: true, sha: 'saved' }) });
+    const other = await checkpoints.prepare({ chatId: 'other', executionId: 'other-execution', cwd: s.scratch, fence: otherFence, deferBaseline: true });
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareCheckpoint: input => checkpoints.prepare({ ...input, deferBaseline: true }),
+      prepareExecution: s.prepare(async () => {
+        if (++posts === 1) return response([tool('save_file')]);
+        running = other.effect('vite-command', async () => { started.resolve(); await release.promise; });
+        await started.promise;
+        return response();
+      }), createToolDispatch: () => dispatch(async () => ({ content: 'saved' })) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+    assert.equal(result.outcome, 'no_report');
+    assert.equal(result.failure?.recoveryRequired, undefined);
+    assert.equal(checkpoints.read('other-execution', 'vite-command').state, 'executing');
+    assert.equal(checkpoints.read('execution', 'call-1').state, 'settled');
+    assert.equal(s.repository.readTranscript('chat').messages.at(-1).content, 'Completed.');
+    s.repository.updateExecution('execution', { status: 'completed', result }, { fence: s.fence });
+    assert.equal(s.repository.getExecution('execution').status, 'completed');
+  } finally { release.resolve(); await running; s.cleanup(); }
+});
+
 test('dedicated detached command/server/workflow tools cannot claim a settled filesystem checkpoint', async () => {
   for (const [name, args] of [['start_background_command', { command: 'fixture server' }],
     ['manage_dev_servers', { action: 'start' }], ['action_run', { location: 'local' }]]) {
@@ -432,6 +459,30 @@ test('ordered durable steers enter the current runner once with stable provenanc
       assert.match(text, /Agent message from chat peer/);
       assert.ok(text.endsWith(['First correction', 'Second correction'][index]));
     }
+  } finally { s.cleanup(); }
+});
+
+test('a correction received during final prose continues the canonical execution with its image once', async () => {
+  const s = setup(); let rounds = 0, taken = false; const bodies = [];
+  const images = [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  try {
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      prepareExecution: s.prepare(async (_provider, body) => { bodies.push(body); rounds++; return response(); },
+        { model: { providerId: 'fixture', id: 'model', vision: true } }) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence, takeSteers() {
+      if (taken || !rounds) return null;
+      taken = true;
+      const message = { role: 'user', content: 'Use this screenshot', images, messageId: 'image-steer', commandId: 'image-command', provenance };
+      const row = s.repository.appendMessage('chat', message, { fence: s.fence, messageId: message.messageId });
+      return { messages: [message], rowIds: [row.rowId] };
+    } });
+    assert.equal(result.outcome, 'no_report', JSON.stringify(result)); assert.equal(rounds, 2);
+    const rows = s.repository.readTranscript('chat').messages;
+    assert.deepEqual(rows.map(row => row.role), ['user', 'assistant', 'user', 'assistant']);
+    assert.deepEqual(rows[2].images, images);
+    const correction = bodies[1].messages.find(row => Array.isArray(row.content) && row.content.some(part => part.type === 'image_url'));
+    assert.equal(correction.content.find(part => part.type === 'image_url').image_url.url, images[0].dataUrl);
+    assert.equal(bodies[1].messages.some(row => row.images || row.provenance || row.commandId || row.messageId), false);
   } finally { s.cleanup(); }
 });
 

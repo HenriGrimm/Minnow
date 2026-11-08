@@ -107,7 +107,8 @@ for (const delivery of ['steer', 'queue'] as const) {
     pasteChatReferences(input, url);
     assert.equal(shouldSubmitComposerOnEnter(input.value), true);
     submitComposerFollowup(delivery);
-    assert.equal(delivery === 'steer' ? chat.pendingSteerMessage : chat.pendingMessageQueue?.[0]?.text, url);
+    assert.equal(chat.pendingMessageQueue?.[0]?.text, url);
+    assert.equal(chat.pendingMessageQueue?.[0]?.kind, delivery === 'steer' ? 'steer' : undefined);
     assert.equal(getPendingAttachments().length, 0);
   });
 }

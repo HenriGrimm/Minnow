@@ -18,6 +18,44 @@ function setup() {
   return chat;
 }
 
+test('background completion timing updates only its matching input without becoming a local transcript edit', () => {
+  const chat = setup();
+  const input = chat.history[0];
+  assert.equal(input.role, 'user');
+  if (input.role !== 'user') throw new Error('Expected user input');
+  input.commandId = 'first-command';
+  const completed = { executionId: 'first-execution', commandId: 'first-command', status: 'completed', settledAt: 340_000, workDurationMs: 279_000 };
+  applySharedChatFrame(chat.id, { agentExecution: { ...completed, commandId: 'different-command' } });
+  assert.equal(input.workDurationMs, undefined);
+  applySharedChatFrame(chat.id, { agentExecution: { ...completed, status: 'running' } });
+  assert.equal(input.workDurationMs, undefined);
+  for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    applySharedChatFrame(chat.id, { agentExecution: { ...completed, workDurationMs: invalid } });
+    assert.equal(input.workDurationMs, undefined);
+  }
+  applySharedChatFrame(chat.id, { agentExecution: completed });
+  assert.equal(input.workDurationMs, 279_000);
+  assert.ok(!getSessionDirtyTrackingForTests().dirtyChatIds.includes(chat.id));
+  applySharedChatFrame(chat.id, { agentExecution: { executionId: 'next-execution', commandId: 'next-command', status: 'running' } });
+  assert.equal(input.workDurationMs, 279_000);
+});
+
+test('settlement status updates an input outside the frame tail and survives a later execution', () => {
+  const chat = setup(), input = chat.history[0];
+  if (input.role !== 'user') throw new Error('Expected user input');
+  input.commandId = 'review-command';
+  applySharedChatFrame(chat.id, { agentExecution: { executionId: 'review', commandId: 'unrelated', status: 'failed' } });
+  assert.equal(input.workStatus, undefined);
+  for (const status of ['completed', 'failed', 'stopped', 'recovery_required'] as const) {
+    applySharedChatFrame(chat.id, { agentExecution: { executionId: 'review', commandId: 'review-command', status } },
+      { start: 1, length: 2, messages: [{ role: 'assistant', content: 'Review finished.' }] });
+    assert.equal(input.workStatus, status);
+  }
+  applySharedChatFrame(chat.id, { agentExecution: { executionId: 'next', commandId: 'next-command', status: 'running' } });
+  assert.equal(input.workStatus, 'recovery_required');
+  assert.ok(!getSessionDirtyTrackingForTests().dirtyChatIds.includes(chat.id));
+});
+
 test('canonical frames and attention revisions preserve a dirty draft and use its independent metadata receipt', async () => {
   const chat = setup(), writes: any[] = [];
   chat.composerDraft = 'Unsent text'; touchChat(chat);

@@ -1,19 +1,21 @@
 import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { setupMinimalComposerDom } from '../os/dom-helpers.mts';
+import { installHappyDomGlobals, setupMinimalComposerDom } from '../os/dom-helpers.mts';
 import { captureDirtyTrackingShadowForTests, createEmptyChatObject, resetSessionPersistenceForTests, saveSessionsNow, setDirtyTrackingVerifierForcedForTests, setSessionStateForTests, getSessionDirtyTrackingForTests, waitForSessionSaveForTests } from '../../src/state/sessions.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { defaultSessionState } from '../../src/config/defaults.ts';
 import { notifyManagedChatMetadata, notifyManagedChatView } from '../../src/chat/managed-chat-view.ts';
 import { focusManagedChatRequest, startManagedChatRequests, syncManagedChatRequests } from '../../src/ui/managed-chat-requests.ts';
 import { captureAgentConversationFocus } from '../../src/ui/agent-conversation.ts';
+import { resetQuestionCardsModalForTests } from '../../src/ui/question-cards-modal.ts';
 import { handleComposerPrimaryAction, refreshComposerStreamingAffordance, shouldAllowComposerPrimaryAction, syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { resolveAgentAncestorDotStates, resolveChatItemDotState, syncChatItemDotsInDom, type ChatItemDotContext } from '../../src/ui/chat-item-dot.ts';
 import type { Chat } from '../../src/types.ts';
 import type { ChatRequest } from '../../server/chats/contracts.d.ts';
 
 const originalFetch = globalThis.fetch;
+installHappyDomGlobals(window as unknown as import('happy-dom').Window);
 Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: window.sessionStorage });
 let dispose: (() => void) | undefined;
 const records = new Map<string, ChatRequest[]>();
@@ -29,6 +31,9 @@ function request(chatId: string, requestId: string, kind: 'approval' | 'question
 }
 function setup(chats: Chat[], activeId = chats[0]!.id): HTMLElement {
   document.body.replaceChildren(); setupMinimalComposerDom(document); sessionStorage.clear();
+  const shell = document.getElementById('mainColumn')!; shell.className = 'main-column';
+  const host = document.createElement('div'); host.id = 'questionHost'; host.className = 'question-host'; host.hidden = true;
+  shell.append(host, document.getElementById('msgInput')!, document.getElementById('sendBtn')!);
   setSessionStateForTests({ ...defaultSessionState(), chats, activeId }); notifyManagedChatView(activeId);
   globalThis.fetch = (async (url, options) => {
     const path = String(url).split('?')[0]!, match = /^\/api\/chats\/([^/]+)\/requests(?:\/([^/]+)\/respond)?$/.exec(path);
@@ -51,8 +56,9 @@ function setup(chats: Chat[], activeId = chats[0]!.id): HTMLElement {
 async function idle(): Promise<void> { await new Promise(resolve => setTimeout(resolve, 10)); }
 async function until(check: () => boolean): Promise<void> { for (let i = 0; i < 100 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 5)); assert.ok(check(), 'Expected UI operation to settle'); }
 function panel(id: string): HTMLElement { return [...document.querySelectorAll<HTMLElement>('.managed-chat-request')].find(node => node.dataset.requestId === id)!; }
+function questionPopup(): HTMLElement { return document.querySelector<HTMLElement>('#questionHost .question-cards-panel')!; }
 function clickText(root: HTMLElement, text: string): void { const target = [...root.querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent === text); assert.ok(target, text); target.click(); }
-afterEach(() => { dispose?.(); dispose = undefined; globalThis.fetch = originalFetch; records.clear(); posts = []; setDirtyTrackingVerifierForcedForTests(false); resetSessionPersistenceForTests(); setSessionStateForTests(null); setStorageModeForTests(null); document.body.replaceChildren(); });
+afterEach(() => { dispose?.(); dispose = undefined; resetQuestionCardsModalForTests(); globalThis.fetch = originalFetch; records.clear(); posts = []; setDirtyTrackingVerifierForcedForTests(false); resetSessionPersistenceForTests(); setSessionStateForTests(null); setStorageModeForTests(null); document.body.replaceChildren(); });
 
 test('interrupted work requires an inspection and a nonempty observation before retirement', async () => {
   const owner = chat('recovery-ui'), area = setup([owner]);
@@ -79,15 +85,18 @@ test('interrupted work requires an inspection and a nonempty observation before 
 test('two child questions keep independent selections and answers across chat switching', async () => {
   const parent = chat('parent'), one = chat('child-one', parent.id), two = chat('child-two', parent.id);
   const first = request(one.id, 'question-one'), second = request(two.id, 'question-two'); records.set(one.id, [first]); records.set(two.id, [second]);
+  for (const item of [first, second]) (item.presentation.question as any).questions[0].allow_multiple = true;
   one.agentRequestSummary = [{ requestId: first.requestId, kind: 'question' }]; two.agentRequestSummary = [{ requestId: second.requestId, kind: 'question' }];
   const area = setup([parent, one, two], one.id); dispose = startManagedChatRequests(); syncManagedChatRequests(one, area); await idle();
-  panel(first.requestId).querySelector<HTMLInputElement>('input[value="a"]')!.click();
-  const saved = panel(first.requestId); area.replaceChildren(); setSessionStateForTests({ ...defaultSessionState(), chats: [parent, one, two], activeId: two.id }); notifyManagedChatView(two.id); syncManagedChatRequests(two, area); await idle();
-  panel(second.requestId).querySelector<HTMLInputElement>('input[value="b"]')!.click(); clickText(panel(second.requestId), 'Send answer'); await until(() => records.get(two.id)![0]!.state === 'answered'); await idle();
+  assert.equal(area.querySelector('input'), null); assert.equal(panel(first.requestId).hidden, true);
+  assert.equal(document.getElementById('mainColumn')!.classList.contains('main-column--question-pending'), true);
+  questionPopup().querySelector<HTMLInputElement>('input[value="a"]')!.click();
+  const saved = questionPopup(); area.replaceChildren(); setSessionStateForTests({ ...defaultSessionState(), chats: [parent, one, two], activeId: two.id }); notifyManagedChatView(two.id); syncManagedChatRequests(two, area); await idle();
+  questionPopup().querySelector<HTMLInputElement>('input[value="b"]')!.click(); clickText(questionPopup(), 'Continue'); await until(() => records.get(two.id)![0]!.state === 'answered'); await idle();
   assert.equal(records.get(two.id)![0]!.state, 'answered'); assert.equal(records.get(one.id)![0]!.state, 'pending');
   area.replaceChildren(); setSessionStateForTests({ ...defaultSessionState(), chats: [parent, one, two], activeId: one.id }); notifyManagedChatView(one.id); syncManagedChatRequests(one, area); await idle();
-  assert.equal(panel(first.requestId), saved); assert.equal(saved.querySelector<HTMLInputElement>('input[value="a"]')!.checked, true);
-  clickText(saved, 'Send answer'); await until(() => records.get(one.id)![0]!.state === 'answered'); await idle();
+  assert.equal(questionPopup(), saved); assert.equal(saved.querySelector<HTMLInputElement>('input[value="a"]')!.checked, true);
+  clickText(saved, 'Continue'); await until(() => records.get(one.id)![0]!.state === 'answered'); await idle();
   assert.deepEqual(posts.map(item => [item.chatId, item.requestId, item.body.answer.answers[0].selectedIds]), [[two.id, second.requestId, ['b']], [one.id, first.requestId, ['a']]]);
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
 });
@@ -109,10 +118,10 @@ test('answered-before-open and expired callbacks render history without live con
   owner.agentRequestSummary = [{ requestId: first.requestId, kind: 'question' }, { requestId: expired.requestId, kind: 'question' }];
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
   assert.match(panel(first.requestId).textContent!, /Answer saved/); assert.match(panel(expired.requestId).textContent!, /Expired/);
-  assert.equal(panel(expired.requestId).querySelector('form')!.hidden, true); assert.deepEqual(owner.agentRequestSummary, []);
+  assert.equal(panel(expired.requestId).querySelector('form'), null); assert.deepEqual(owner.agentRequestSummary, []);
   const next = request(owner.id, 'new-after-reconnect'); records.set(owner.id, [next]); window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-reconnected')); await idle();
   assert.ok(panel(next.requestId)); await focusManagedChatRequest(owner.id, next.requestId);
-  assert.equal(document.activeElement, panel(next.requestId).querySelector('input'));
+  assert.equal(document.activeElement, questionPopup().querySelector('input'));
 });
 
 test('lost answer receipt retries the same identity; a subsequent delayed pending snapshot cannot resurrect it', async () => {
@@ -196,8 +205,8 @@ test('ancestor attention shows input and failures first, then live work, then un
   assert.equal(states.get(parent.id), 'unread');
 });
 
-test('paged old requests remain reachable and preserve form focus and selections on a same-chat repaint', async () => {
-  const owner = chat('paged-child'), pending = Array.from({ length: 40 }, (_, index) => request(owner.id, `paged-${String(index).padStart(3, '0')}`));
+test('paged old approvals remain reachable and preserve form focus on a same-chat repaint', async () => {
+  const owner = chat('paged-child'), pending = Array.from({ length: 40 }, (_, index) => request(owner.id, `paged-${String(index).padStart(3, '0')}`, 'approval'));
   records.set(owner.id, pending); owner.agentRequestSummary = pending.map(item => ({ requestId: item.requestId, kind: item.kind }));
   const area = setup([owner]), normal = globalThis.fetch;
   globalThis.fetch = (async (url, options) => {
@@ -208,25 +217,26 @@ test('paged old requests remain reachable and preserve form focus and selections
   }) as typeof fetch;
   dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
   assert.equal(area.querySelectorAll('.managed-chat-request').length, 32); assert.match(area.textContent!, /40 pending/);
-  const first = panel(pending[0]!.requestId), choice = first.querySelector<HTMLInputElement>('input[value="a"]')!; choice.click(); choice.focus();
+  const first = panel(pending[0]!.requestId), choice = first.querySelector<HTMLButtonElement>('button')!; choice.focus(); first.querySelector('details')!.open = true;
   const restore = captureAgentConversationFocus(area, owner.id); area.replaceChildren(); syncManagedChatRequests(owner, area); restore();
-  assert.equal(document.activeElement, choice); assert.equal(choice.checked, true);
+  assert.equal(document.activeElement, choice); assert.equal(first.querySelector('details')!.open, true);
   await focusManagedChatRequest(owner.id, pending.at(-1)!.requestId);
-  assert.equal(area.querySelectorAll('.managed-chat-request').length, 8); assert.equal(document.activeElement, panel(pending.at(-1)!.requestId).querySelector('input'));
-  clickText(area, 'Previous requests'); await idle(); assert.equal(panel(pending[0]!.requestId), first); assert.equal(choice.checked, true);
+  assert.equal(area.querySelectorAll('.managed-chat-request').length, 8); assert.equal(document.activeElement, panel(pending.at(-1)!.requestId).querySelector('button'));
+  clickText(area, 'Previous requests'); await idle(); assert.equal(panel(pending[0]!.requestId), first); assert.equal(first.querySelector('details')!.open, true);
 });
 
-test('multi-select and Other answers use the shared question contract without touching the composer', async () => {
+test('multi-select and Other answers use the regular question popup in place of the composer', async () => {
   const owner = chat('multi-child'), pending = request(owner.id, 'multi-request');
   pending.presentation = { question: { questions: [{ id: 'multi', prompt: 'Choose all that apply', allow_multiple: true, options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }] } };
   records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
-  const row = panel(pending.requestId), send = [...row.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === 'Send answer')!;
-  assert.equal(send.disabled, true); row.querySelector<HTMLInputElement>('input[value="a"]')!.click(); row.querySelector<HTMLInputElement>('input[value="b"]')!.click();
-  assert.equal(row.querySelectorAll('input:checked').length, 2); row.querySelector<HTMLInputElement>('input[value="__other__"]')!.click();
-  assert.equal(row.querySelectorAll('input:checked').length, 1); assert.equal(send.disabled, true);
-  const text = row.querySelector('textarea')!; text.value = 'A separate answer'; text.dispatchEvent(new window.Event('input', { bubbles: true }));
-  assert.equal(send.disabled, false); send.click(); await until(() => posts.length === 1); await idle();
+  const row = questionPopup(), send = row.querySelector<HTMLButtonElement>('.question-cards-submit')!;
+  send.click(); assert.equal(posts.length, 0);
+  assert.equal(area.querySelector('.managed-chat-requests')!.getAttribute('hidden'), '');
+  row.querySelector<HTMLInputElement>('input[value="a"]')!.click(); row.querySelector<HTMLInputElement>('input[value="b"]')!.click();
+  assert.equal(row.querySelectorAll('input:checked').length, 2);
+  const text = row.querySelector<HTMLInputElement>('.question-cards-other-input')!; text.value = 'A separate answer'; text.dispatchEvent(new window.Event('input', { bubbles: true }));
+  assert.equal(row.querySelectorAll('input:checked').length, 0); send.click(); await until(() => posts.length === 1); await idle();
   assert.deepEqual(posts[0]!.body.answer.answers, [{ questionId: 'multi', selectedIds: ['__other__'], otherText: 'A separate answer' }]);
   assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, '');
 });
@@ -239,6 +249,88 @@ test('answer failures retain the selection and a retry reuses its receipt identi
   await until(() => attempted.length === 1); await idle(); assert.match(panel(pending.requestId).textContent!, /Answer could not be saved/); assert.equal(panel(pending.requestId).querySelector('form')!.hidden, false);
   reject = false; clickText(panel(pending.requestId), 'Allow once'); await until(() => posts.length === 1); await idle();
   assert.equal(attempted[0], attempted[1]); assert.match(panel(pending.requestId).textContent!, /Answer saved/);
+});
+
+test('ordinary root question batches use the composer popup and preserve the conversation draft', async () => {
+  const owner = chat('ordinary-questions'); delete owner.chatCommandVersion;
+  owner.composerDraft = 'An unfinished message'; owner.history = [{ role: 'user', content: 'Review the project' }];
+  const pending = request(owner.id, 'batch-request');
+  const first = (pending.presentation.question as any).questions[0];
+  pending.presentation = { question: { title: 'Next steps', questions: [first, { ...first, id: 'next', prompt: 'Choose another step' }] } };
+  records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
+  const area = setup([owner]); const history = owner.history;
+  (document.getElementById('msgInput') as HTMLTextAreaElement).value = owner.composerDraft;
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  const popup = questionPopup(); assert.equal(popup.getAttribute('role'), 'dialog');
+  assert.equal(area.querySelector('form'), null); assert.equal(popup.querySelectorAll('.question-cards-tab').length, 2);
+  popup.querySelector<HTMLInputElement>('input[value="a"]')!.click();
+  popup.querySelector<HTMLButtonElement>('.question-cards-next')!.click();
+  popup.querySelector<HTMLInputElement>('.question-cards-card--current input[value="b"]')!.click();
+  clickText(popup, 'Send answers'); await until(() => posts.length === 1); await idle();
+  assert.deepEqual(posts[0]!.body.answer.answers.map((answer: any) => [answer.questionId, answer.selectedIds]), [['choice', ['a']], ['next', ['b']]]);
+  assert.equal(questionPopup(), null); assert.equal(document.getElementById('mainColumn')!.classList.contains('main-column--question-pending'), false);
+  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).value, 'An unfinished message');
+  assert.equal(owner.composerDraft, 'An unfinished message'); assert.equal(owner.history, history);
+});
+
+test('question save failures retain the same popup and draft for an idempotent retry', async () => {
+  const owner = chat('question-retry'), pending = request(owner.id, 'question-retry-request');
+  records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
+  const area = setup([owner]), normal = globalThis.fetch; let reject = true; const attempted: string[] = [];
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith('/respond')) {
+      attempted.push(JSON.parse(String(options?.body)).clientRequestId);
+      if (reject) return Response.json({ error: { message: 'Answer could not be saved' } }, { status: 503 });
+    }
+    return normal(url, options);
+  };
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  const popup = questionPopup(), choice = popup.querySelector<HTMLInputElement>('input[value="b"]')!;
+  choice.click(); assert.equal(popup.getAttribute('aria-busy'), 'true'); assert.equal(choice.disabled, true);
+  await until(() => popup.getAttribute('aria-busy') === 'false');
+  assert.equal(questionPopup(), popup); assert.equal(choice.checked, true); assert.equal(choice.disabled, false);
+  assert.match(popup.querySelector('.question-cards-validation')!.textContent!, /Answer could not be saved/);
+  reject = false; popup.querySelector<HTMLButtonElement>('.question-cards-submit')!.click(); await until(() => posts.length === 1); await idle();
+  assert.equal(attempted[0], attempted[1]); assert.equal(questionPopup(), null); assert.deepEqual(posts[0]!.body.answer.answers[0].selectedIds, ['b']);
+});
+
+test('queued questions share one normal popup and cancellation advances only its owning request', async () => {
+  const owner = chat('question-queue'), first = request(owner.id, 'queue-one'), second = request(owner.id, 'queue-two');
+  records.set(owner.id, [first, second]); owner.agentRequestSummary = [first, second].map(item => ({ requestId: item.requestId, kind: item.kind }));
+  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  const popup = questionPopup(); assert.equal(document.querySelectorAll('.question-cards-panel').length, 1);
+  popup.querySelector<HTMLButtonElement>('.question-cards-icon-btn')!.click(); await until(() => questionPopup() !== popup); await idle();
+  assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.status]), [[first.requestId, 'cancelled']]);
+  assert.equal(records.get(owner.id)![1]!.state, 'pending'); assert.equal(document.querySelectorAll('.question-cards-panel').length, 1);
+  questionPopup().querySelector<HTMLInputElement>('input[value="a"]')!.click(); await until(() => posts.length === 2); await idle();
+  assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.status]), [[first.requestId, 'cancelled'], [second.requestId, 'answered']]);
+  assert.equal(questionPopup(), null);
+});
+
+for (const state of ['answered', 'expired'] as const) test(`a question ${state} on another surface dismisses its popup without another response`, async () => {
+  const owner = chat(`question-${state}`), pending = request(owner.id, `external-${state}`);
+  records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
+  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  assert.ok(questionPopup());
+  const settled: ChatRequest = state === 'answered' ? { ...pending, state, settledAt: 2, answerCommandId: 'sidebar-answer' } : { ...pending, state, settledAt: 2 };
+  records.set(owner.id, [settled]); owner.agentRequests = [settled]; owner.agentRequestSummary = [];
+  notifyManagedChatMetadata(owner.id); await idle();
+  assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
+  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).disabled, false);
+  records.set(owner.id, [pending]); window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-reconnected')); await idle();
+  assert.equal(questionPopup(), null);
+});
+
+test('request deletion and controller teardown dismiss questions without posting a cancellation', async () => {
+  const owner = chat('question-cleanup'), pending = request(owner.id, 'cleanup-question');
+  records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
+  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  assert.ok(questionPopup()); dispose(); dispose = undefined; await idle();
+  assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); assert.ok(questionPopup());
+  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-deleted', { detail: { chatId: owner.id } })); await idle();
+  assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
+  assert.equal((document.getElementById('msgInput') as HTMLTextAreaElement).disabled, false);
 });
 
 test('unmount and deletion abort detail hydration and release controller subscriptions', async () => {
@@ -283,7 +375,7 @@ test('failed canonical turns do not add status text above the transcript or chan
 test('native saved requests remain inspect-only and never create a live response control', () => {
   const owner = chat('native-request', 'parent'); owner.agentConversation!.origin = 'native'; owner.agentRequests = [request(owner.id, 'native-question')]; owner.agentRequestSummary = [{ requestId: 'native-question', kind: 'question' }];
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area);
-  const row = panel('native-question'); assert.equal(row.querySelector('form')!.hidden, true); assert.match(row.textContent!, /original host/); assert.equal(posts.length, 0);
+  const row = panel('native-question'); assert.equal(row.querySelector('form'), null); assert.match(row.textContent!, /original host/); assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
 });
 
 test('request hydration and saved answers remain server projections during a later forced dirty-verifier flush', async () => {

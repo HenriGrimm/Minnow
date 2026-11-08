@@ -198,7 +198,7 @@ export function initComposerFollowupSuggestion(input: HTMLTextAreaElement): void
       const chat = getActiveChat();
       if (!isStreamDomVisible(chat.id) || isChatTurnInProgress(chat.id) || hasUnsettledAgentWork(chat) ||
         chatReadOnlyReason(chat) || (chat.activeGoal && !chat.activeGoal.achieved) ||
-        chat.resumeInterrupted || chat.pendingSteerMessage || getPendingAttachments().length) return null;
+        chat.resumeInterrupted || chat.pendingSteerMessage || chat.pendingMessageQueue?.some(item => item.kind === 'steer') || getPendingAttachments().length) return null;
       const reply = followupSuggestionReply(chat);
       return reply ? { chat, reply } : null;
     },

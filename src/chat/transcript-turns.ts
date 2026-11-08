@@ -11,6 +11,7 @@ export interface TranscriptTurn {
   toolCount: number;
   run?: TurnRunRecord;
   workDurationMs?: number;
+  executionStatus?: NonNullable<Chat['agentExecution']>['status'];
 }
 
 /** These calls record completed work without starting another work step. */
@@ -20,6 +21,7 @@ const REPLY_BOOKKEEPING_TOOLS = new Set(['save_memory', 'todo_write']);
 export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
   if (chat.historyLoaded === false) return [];
   const turns: TranscriptTurn[] = [];
+  const byCommand = new Map<string, TranscriptTurn>();
   let turn: TranscriptTurn | undefined;
   for (let i = 0; i < chat.history.length; i++) {
     const msg = chat.history[i];
@@ -30,6 +32,10 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     }
     if (!turn) continue;
     turn.end = i;
+    if (msg.role === 'user') {
+      if (msg.commandId) byCommand.set(msg.commandId, turn);
+      if (msg.workStatus) turn.executionStatus = msg.workStatus;
+    }
     if (msg.role === 'user' && typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {
       turn.workDurationMs = (turn.workDurationMs ?? 0) + msg.workDurationMs;
     }
@@ -59,6 +65,11 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     const branch = chat.activeBranchByFork?.[String(item.fork)];
     if (branch && run.branchId !== branch) continue;
     if (!item.run || run.createdAt >= item.run.createdAt) item.run = run;
+  }
+  const execution = chat.agentExecution;
+  if (execution?.commandId) {
+    const current = byCommand.get(execution.commandId);
+    if (current) current.executionStatus = execution.status;
   }
   return turns;
 }

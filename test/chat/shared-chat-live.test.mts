@@ -6,7 +6,7 @@ import { applySharedChatFrame, createEmptyChatObject, getSessionDirtyTrackingFor
 import { registerChatStreamText, notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
 import { setChatAbort, setStreaming, streamingChatIds } from '../../src/app-state.ts';
 import { setPairedDevice } from '../../src/api/session-token.ts';
-import { setRemoteChatTurns, isChatRunningRemotely } from '../../src/chat/remote-turn-state.ts';
+import { setRemoteChatTurns, setRemoteChatPresence, isChatRunningRemotely } from '../../src/chat/remote-turn-state.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { persistComposerDraftOnChat, applyComposerDraftForChat } from '../../src/ui/composer-draft.ts';
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
@@ -23,6 +23,7 @@ import { onActiveChatModelChange } from '../../src/ui/chat-model-ui';
 import { setChatMode } from '../../src/ui/mode-selector';
 import { hasCurrentChatSurface } from '../../src/ui/chat-surface-state';
 import { initChatScroll } from '../../src/ui/chat-scroll';
+import { refreshRemoteChatTurns } from '../../src/chat/turn-ownership';
 
 const CHAT = '11111111-1111-1111-1111-111111111111';
 const originalFetch = globalThis.fetch;
@@ -137,6 +138,27 @@ test('pending input keeps human attribution and exact command identity when rend
     assert.equal(document.querySelector('.msg--sending'), null, 'hidden and non-human input cannot be attributed to the user');
     assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), false);
   }
+});
+
+test('running managed steering shows separate image bubbles immediately and replaces them once', () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  const provenance = { version: 1 as const, actor: 'human' as const, source: 'composer' as const, kind: 'human_message' as const };
+  const images = [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  chat.agentExecution = { executionId: 'active-steering', commandId: 'original', status: 'running', createdAt: 1, updatedAt: 1 };
+  chat.pendingMessageQueue = [{ id: 'first-steer', text: 'Use this screenshot\n\n[image: screen.png]', kind: 'steer', createdAt: 2, provenance, images },
+    { id: 'second-steer', text: 'Keep the existing controls', kind: 'steer', createdAt: 3, provenance }];
+  renderChatFromHistory(chat);
+  const pending = [...document.querySelectorAll('.msg--sending')];
+  assert.equal(pending.length, 2);
+  assert.equal(pending[0].querySelector('img')?.getAttribute('src'), images[0].dataUrl);
+  assert.equal(document.querySelector('.msg-send-status, .msg-steer-chip'), null);
+  assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), true);
+  const items = chat.pendingMessageQueue;
+  chat.history.push(...items.map(item => ({ role: 'user' as const, content: item.text, commandId: item.id, provenance, images: item.images, steer: true })));
+  renderChatFromHistory(chat);
+  assert.equal(document.querySelectorAll('.msg--sending').length, 0, 'canonical rows win even before pending metadata catches up');
+  assert.equal(document.querySelectorAll('.msg.user').length, 3);
 });
 
 test('execution metadata arriving before canonical history keeps the first input visible', async () => {
@@ -342,6 +364,45 @@ test('legacy presence refreshes cannot settle a managed turn or clear its live o
   } finally { observer.dispose(); }
 });
 
+test('a mixed ownership refresh cannot keep a completed managed chat working', async () => {
+  const chat = setup(); chat.chatCommandVersion = 1;
+  setStorageModeForTests('server');
+  document.body.insertAdjacentHTML('beforeend', '<div id="composerRunStatus" hidden><span class="composer-run-status__time"></span><span class="composer-run-status__count"></span></div>');
+  globalThis.fetch = async input => String(input) === '/api/chat-turns'
+    ? Response.json({ turns: [
+      { chatId: CHAT, ownerId: 'minnow-server', hostId: 'minnow-server', executionId: 'managed-turn' },
+      { chatId: 'legacy-chat', ownerId: 'other-owner', hostId: 'other-window' },
+    ] }) : Response.json({ runs: [] });
+  const observer = createSharedChatObserver(active => { if (active) renderChatFromHistory(chat); });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'managed-turn', running: true,
+    fields: { agentExecution: { executionId: 'managed-turn', status: 'running' } },
+    live: { lastDelta: 'Reviewing the project', lastThinking: '', toolCallCount: 0 } };
+  try {
+    await observer.receive(frame);
+    await refreshRemoteChatTurns();
+    assert.equal(isChatRunningRemotely(CHAT), true, 'a legacy refresh preserves managed live activity');
+    assert.equal(isChatRunningRemotely('legacy-chat'), true);
+    assert.equal(document.getElementById('sendBtn')!.dataset.mode, 'stop');
+    assert.equal((document.getElementById('composerRunStatus') as HTMLElement).hidden, false);
+    await observer.receive({ ...frame, sequence: 2, running: false, live: null,
+      fields: { agentExecution: { executionId: 'managed-turn', status: 'completed' } },
+      history: { start: 1, length: 2, messages: [{ role: 'assistant', content: 'Review finished' }] } });
+    assert.equal(isChatRunningRemotely(CHAT), false);
+    assert.equal(isChatRunningRemotely('legacy-chat'), true, 'unrelated legacy work stays active');
+    assert.equal(document.getElementById('sendBtn')!.dataset.mode, 'send');
+    assert.equal(document.getElementById('sendBtn')!.getAttribute('aria-busy'), 'false');
+    assert.equal((document.getElementById('composerRunStatus') as HTMLElement).hidden, true);
+    assert.equal(document.querySelector('.chat-work--live'), null);
+    assert.match(document.getElementById('chatArea')!.textContent!, /Review finished/);
+    setRemoteChatPresence([
+      { chatId: CHAT, ownerId: 'minnow-server', hostId: 'minnow-server' },
+      { chatId: 'legacy-chat', ownerId: 'other-owner', hostId: 'other-window' },
+    ]);
+    assert.equal(isChatRunningRemotely(CHAT), false, 'a delayed legacy presence from an older server cannot revive managed work');
+    assert.equal(isChatRunningRemotely('legacy-chat'), true);
+  } finally { observer.dispose(); }
+});
+
 test('PC admits phone send once, queues and steers on its engine, and Stop aborts that same run', async () => {
   const chat = setup();
   let calls = 0;
@@ -364,8 +425,9 @@ test('PC admits phone send once, queues and steers on its engine, and Stop abort
   await handler({ id: 'second', chatId: CHAT, action: 'send', text: 'Follow-up' });
   assert.equal(chat.pendingMessageQueue?.[0].text, 'Follow-up');
   await handler({ id: 'third', chatId: CHAT, action: 'push', itemId: chat.pendingMessageQueue![0].id });
-  assert.equal(chat.pendingSteerMessage, 'Follow-up');
-  assert.equal(chat.pendingMessageQueue, undefined);
+  assert.equal(chat.pendingMessageQueue?.[0]?.kind, 'steer');
+  assert.equal(chat.pendingMessageQueue?.[0]?.text, 'Follow-up');
+  assert.equal(chat.pendingMessageQueue?.length, 1);
   await handler({ id: 'stop', chatId: CHAT, action: 'stop' });
   assert.equal(runningSignal!.aborted, true);
   assert.equal(calls, 1);

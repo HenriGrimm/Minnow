@@ -18,6 +18,13 @@ export function setRemoteChatRunning(chatId: string, running: boolean, source: R
   revision += 1;
 }
 
+/** Combined ownership reads also include managed executions, whose lifecycle comes from /api/chats/events. */
+export function setRemoteChatPresence(turns: Iterable<{ chatId: string; ownerId?: string; hostId?: string }>): boolean {
+  return setRemoteChatTurns([...turns]
+    .filter(turn => turn.hostId !== 'minnow-server' && turn.ownerId !== 'minnow-server')
+    .map(turn => turn.chatId));
+}
+
 /** A legacy lease snapshot has no authority over server-owned executions. */
 export function setRemoteChatTurns(ids: Iterable<string>, source: RemoteChatSource = 'legacy'): boolean {
   const current = source === 'managed' ? managedChatIds : remoteChatIds;

@@ -1,4 +1,8 @@
-import { assertActionWorktreeIdle, withWorktreeMutation } from './action-run-lock.js';
+import {
+  assertActionWorktreeIdle,
+  withWorktreeMutation,
+  withCoordinatedWorktreeMutation,
+} from './action-run-lock.js';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,6 +50,11 @@ async function requireGitRepo(cwd) {
     return { ok: false, error: 'Not a git repository' };
   }
   return { ok: true, cwd: root };
+}
+
+async function withIndexMutation(cwd, operation) {
+  try { return await withCoordinatedWorktreeMutation(resolveCwd(cwd), operation); }
+  catch (error) { return { ok: false, error: error.message }; }
 }
 
 /**
@@ -423,9 +432,60 @@ export async function fileDiff({ cwd, cached, path: filePath } = {}) {
   }
 }
 
-export async function diff({ cwd, cached, path: filePath, workingTree } = {}) {
+async function stagedCommitSnapshot(cwd) {
+  const [head, branch, tree] = await Promise.all([
+    git(['rev-parse', '--verify', '--quiet', 'HEAD'], cwd),
+    git(['symbolic-ref', '--quiet', 'HEAD'], cwd),
+    git(['write-tree'], cwd),
+  ]);
+  if (head.code > 1) throw new Error(processError(head));
+  if (branch.code > 1) throw new Error(processError(branch));
+  if (tree.code !== 0) throw new Error(processError(tree));
+  return {
+    headSha: head.code === 0 ? head.stdout.trim() : null,
+    branch: branch.code === 0 ? branch.stdout.trim() : null,
+    treeSha: tree.stdout.trim(),
+  };
+}
+
+async function stagedCommitDiff(cwd) {
+  return withCoordinatedWorktreeMutation(cwd, async () => {
+    const commitSnapshot = await stagedCommitSnapshot(cwd);
+    let base = commitSnapshot.headSha;
+    if (!base) {
+      const empty = await runProcess('git', ['hash-object', '-w', '-t', 'tree', '--stdin'], {
+        cwd,
+        timeout: GIT_TIMEOUT_MS,
+        onSpawn: (child) => child.stdin.end(),
+      });
+      if (empty.code !== 0) throw new Error(processError(empty));
+      base = empty.stdout.trim();
+    }
+    const args = ['diff', '--no-ext-diff', '--no-textconv', '--no-renames'];
+    const [patch, names] = await Promise.all([
+      git([...args, base, commitSnapshot.treeSha, '--'], cwd),
+      git([...args, '--name-status', '-z', base, commitSnapshot.treeSha, '--'], cwd),
+    ]);
+    if (patch.code !== 0) throw new Error(processError(patch));
+    if (names.code !== 0 || names.accumulationTruncated) throw new Error('Could not read all staged file paths');
+    const fields = names.stdout.split('\0');
+    const files = [];
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+      files.push({ status: fields[i], path: fields[i + 1] });
+    }
+    return { ok: true, patch: patch.stdout, files, commitSnapshot };
+  });
+}
+
+export async function diff({ cwd, cached, path: filePath, workingTree, forCommit } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
+
+  if (forCommit) {
+    if (!cached || filePath || workingTree) return { ok: false, error: 'Commit diffs require the complete staged index' };
+    try { return await stagedCommitDiff(repo.cwd); }
+    catch (error) { return { ok: false, error: error.message }; }
+  }
 
   if (workingTree) {
     return diffWorkingTree(repo.cwd);
@@ -481,7 +541,11 @@ async function partitionStageablePaths(paths, cwd) {
   return { stageable, skipped };
 }
 
-export async function stage({ cwd, paths } = {}) {
+export function stage(input = {}) {
+  return withIndexMutation(input.cwd, () => stagePaths(input));
+}
+
+async function stagePaths({ cwd, paths } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
@@ -505,7 +569,11 @@ export async function stage({ cwd, paths } = {}) {
   return { ok: true, stagedPaths: stageable, skippedPaths: skipped };
 }
 
-export async function stageAll({ cwd } = {}) {
+export function stageAll(input = {}) {
+  return withIndexMutation(input.cwd, () => stageAllPaths(input));
+}
+
+async function stageAllPaths({ cwd } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
@@ -547,7 +615,11 @@ async function expandStagedRenamePaths(paths, cwd) {
   return [...expanded];
 }
 
-export async function unstage({ cwd, paths } = {}) {
+export function unstage(input = {}) {
+  return withIndexMutation(input.cwd, () => unstagePaths(input));
+}
+
+async function unstagePaths({ cwd, paths } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
   try {
@@ -634,12 +706,28 @@ export async function ignore({ cwd, paths, extensions } = {}) {
   }
 }
 
-export async function commit({ cwd, message } = {}) {
+export function commit(input = {}) {
+  return withIndexMutation(input.cwd, () => commitIndex(input));
+}
+
+async function commitIndex({ cwd, message, stagedOnly = false, expectedSnapshot } = {}) {
   const repo = await requireGitRepo(cwd);
   if (!repo.ok) return repo;
 
   if (!message || typeof message !== 'string' || !message.trim()) {
     return { ok: false, error: 'message is required' };
+  }
+
+  if (stagedOnly || expectedSnapshot !== undefined) {
+    const current = await stagedCommitSnapshot(repo.cwd);
+    if (expectedSnapshot !== undefined && (!expectedSnapshot || current.headSha !== expectedSnapshot.headSha
+      || current.branch !== expectedSnapshot.branch || current.treeSha !== expectedSnapshot.treeSha)) {
+      return { ok: false, error: 'The checkout or staged content changed. Retry Commit to generate a new message' };
+    }
+    const staged = await git(['diff', '--cached', '--quiet'], repo.cwd);
+    if (staged.code === 0) return { ok: false, error: 'No staged changes to commit' };
+    if (staged.code !== 1) return { ok: false, error: processError(staged) };
+    return writeCommit(repo.cwd, message);
   }
 
   const cachedQuiet = await git(['diff', '--cached', '--quiet'], repo.cwd);
@@ -654,14 +742,18 @@ export async function commit({ cwd, message } = {}) {
     }
   }
 
+  return writeCommit(repo.cwd, message);
+}
+
+async function writeCommit(cwd, message) {
   const normalized = expandGitmojiShortcodes(message);
 
-  const result = await git(['commit', '-m', normalized], repo.cwd);
+  const result = await git(['commit', '-m', normalized], cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result) };
   }
 
-  const shaResult = await git(['rev-parse', 'HEAD'], repo.cwd);
+  const shaResult = await git(['rev-parse', 'HEAD'], cwd);
   if (shaResult.code !== 0) {
     return { ok: false, error: processError(shaResult) };
   }

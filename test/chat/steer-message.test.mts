@@ -71,9 +71,11 @@ describe('steer-message helpers', () => {
     const chat = seedChat();
     assert.equal(enqueueSteerMessage(chat, 'first'), true);
     assert.equal(enqueueSteerMessage(chat, STEER_TEXT), true);
-    assert.equal(chat.pendingSteerMessage, `first\n\n${STEER_TEXT}`);
+    assert.deepEqual(chat.pendingMessageQueue?.map(item => item.text), ['first', STEER_TEXT]);
     const result = consumePendingSteer(chat, { renderDom: false });
     assert.equal(result.content, `first\n\n${STEER_TEXT}`);
+    assert.deepEqual(chat.history.map(message => message.content), ['first', STEER_TEXT]);
+    assert.equal(chat.pendingMessageQueue, undefined);
     assert.equal(chat.pendingSteerMessage, undefined);
   });
 
@@ -84,7 +86,27 @@ describe('steer-message helpers', () => {
     assert.equal(chat.pendingSteerMessage, undefined);
   });
 
-  test('steer flag survives a history rebuild (reload chip)', () => {
+  test('image steering appears before the boundary and becomes one saved message with its pixels', () => {
+    const chat = seedChat();
+    const area = document.createElement('div'); area.id = 'chatArea'; document.body.append(area);
+    const dataUrl = 'data:image/png;base64,YWJjZA==';
+    assert.equal(enqueueSteerMessage(chat, '', [{ id: 'image', name: 'screen.png', kind: 'image',
+      mimeType: 'image/png', size: 4, dataUrl }]), true);
+    assert.equal(chat.history.length, 0, 'pending input must not change the active model history');
+    assert.equal(area.querySelectorAll('.msg.user').length, 1);
+    assert.equal(area.querySelector('img')?.getAttribute('src'), dataUrl);
+    renderChatFromHistory(chat);
+    assert.equal(area.querySelectorAll('.msg.user').length, 1, 'reload keeps the accepted message visible');
+    const result = createChatRoundBoundary(chat)();
+    assert.deepEqual(result?.[0]?.images, [{ name: 'screen.png', dataUrl }]);
+    assert.equal(chat.history.length, 1);
+    assert.deepEqual((chat.history[0] as { images?: unknown }).images, [{ name: 'screen.png', dataUrl }]);
+    assert.equal(area.querySelectorAll('.msg.user').length, 1, 'consumption replaces the projected bubble');
+    assert.equal(consumePendingSteer(chat).consumed, false);
+    assert.equal(area.querySelector('.msg-send-status, .msg-steer-chip'), null);
+  });
+
+  test('steered messages rebuild as ordinary user bubbles', () => {
     const chat = seedChat();
     chat.pendingSteerMessage = STEER_TEXT;
     consumePendingSteer(chat, { renderDom: false });
@@ -96,10 +118,9 @@ describe('steer-message helpers', () => {
     renderChatFromHistory(chat);
     const wrap = area.querySelector('.msg.user, .msg');
     assert.ok(wrap, 'user row must render');
-    assert.ok(
-      wrap?.classList.contains('msg--steered') || wrap?.querySelector('.msg-steer-chip'),
-      'steer chip must survive renderChatFromHistory',
-    );
+    assert.equal(wrap?.classList.contains('msg--steered'), false);
+    assert.equal(wrap?.querySelector('.msg-steer-chip'), null);
+    assert.match(wrap!.textContent!, /Use pnpm not npm/);
   });
 
   test('createChatRoundBoundary returns splice rows and syncs the queue', () => {

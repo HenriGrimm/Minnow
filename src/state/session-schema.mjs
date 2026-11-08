@@ -1296,7 +1296,7 @@ export function normalizeChatRow(raw) {
     const raw = row.agentExecution;
     const execution = { executionId: raw.executionId, status: raw.status };
     for (const key of ['commandId', 'runId']) if (validateChatId(raw[key]).ok) execution[key] = raw[key];
-    for (const key of ['createdAt', 'updatedAt', 'settledAt']) if (Number.isFinite(raw[key]) && raw[key] >= 0) execution[key] = raw[key];
+    for (const key of ['createdAt', 'updatedAt', 'settledAt', 'workDurationMs']) if (Number.isFinite(raw[key]) && raw[key] >= 0) execution[key] = raw[key];
     for (const key of ['modelSelection', 'resolvedModel']) {
       const parsed = validateModelSelection(raw[key]); if (parsed.ok) execution[key] = parsed.value;
     }

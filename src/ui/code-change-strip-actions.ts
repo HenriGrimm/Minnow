@@ -1,10 +1,12 @@
 import { showToast } from './toast';
+import { reportBackgroundError } from '../boot/report-background-error';
 import { isChatStreaming } from '../chat/streaming-state';
 import { formatHistoryWithSkillTag } from '../skills/parse-slash';
-import { gitLog, gitStage } from '../state/git-api';
+import { gitCommit, gitDiff, gitStage } from '../state/git-api';
 import { isWorkspaceGitRepo } from '../state/git-workspace';
 import { getActiveChat, saveSessionsNow, touchChat } from '../state/sessions';
 import { getWorkspacePath } from '../state/workspace';
+import { resolveEffectiveChatModelBinding } from '../models/selection';
 import type { Chat, ToolResultMessage, AssistantToolCallMessage } from '../types';
 import {
   getPerFileChangeSummary,
@@ -15,8 +17,8 @@ import { runChatTurn } from '../chat/run-turn-chat';
 import { setStatus } from './status';
 import { runSettingsAction } from './settings-controls';
 import { findPrimaryTurnChangesCard } from './chat-turn-changes';
+import { fetchGitCommitMessage } from './git-commit-message-client';
 
-const GIT_COMMIT_SKILL_ID = 'git-commit';
 const CREATE_PR_SKILL_ID = 'create-pr';
 const ACTIONS_HOST_ID = 'codeChangeStripActions';
 const BTN_COMMIT_ID = 'btnCodeChangeCommit';
@@ -103,11 +105,10 @@ function markShipHandled(chat: Chat): void {
   chat.codeChangeShipHandled = true;
   touchChat(chat);
   saveSessionsNow();
-  syncCodeChangeStripActionsVisibility(chat);
+  syncCodeChangeStripActionsVisibility();
 }
 
 const GITHUB_PR_URL_RE = /github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/i;
-const GIT_COMMIT_OK_RE = /^\[[^\]]+\s+[0-9a-f]{7,40}\]/i;
 
 function toolResultLooksFailed(content: string): boolean {
   const trimmed = content.trimStart();
@@ -160,20 +161,6 @@ function turnTextHasPrUrl(chat: Chat, fromIndex: number): boolean {
   return found;
 }
 
-/** Scan tool rows after a skill turn for a successful git_commit. */
-function historyHasSuccessfulGitCommit(chat: Chat, fromIndex: number): boolean {
-  let found = false;
-  forEachTurnMessage(chat, fromIndex, (msg) => {
-    if (found || msg.role !== 'tool') return;
-    const toolMsg = msg as ToolResultMessage;
-    if (toolNameForResult(chat, toolMsg) !== 'git_commit') return;
-    const text = toolMsg.content ?? '';
-    if (toolResultLooksFailed(text)) return;
-    if (GIT_COMMIT_OK_RE.test(text.trim()) || text.trim().length > 0) found = true;
-  });
-  return found;
-}
-
 /** Scan the turn for gh output or a pull request URL. */
 function historyHasSuccessfulPr(chat: Chat, fromIndex: number): boolean {
   if (turnTextHasPrUrl(chat, fromIndex)) return true;
@@ -188,12 +175,6 @@ function historyHasSuccessfulPr(chat: Chat, fromIndex: number): boolean {
     if (/gh\s+pr\s+/i.test(text) || GITHUB_PR_URL_RE.test(text)) found = true;
   });
   return found;
-}
-
-async function headSha(cwd: string | undefined): Promise<string | null> {
-  const log = await gitLog({ cwd, count: 1 });
-  if (!log.ok || !log.commits?.length) return null;
-  return log.commits[0].hash ?? null;
 }
 
 async function runSkillTurn(
@@ -221,7 +202,7 @@ async function runSkillTurn(
   return { ok: true, historyStart };
 }
 
-async function onCommitClick(): Promise<void> {
+async function onCommitClick(control: HTMLButtonElement): Promise<void> {
   const chat = getActiveChat();
   if (busy || isChatStreaming(chat.id)) {
     showToast('Wait for the current turn to finish');
@@ -232,55 +213,83 @@ async function onCommitClick(): Promise<void> {
     setStatus('err', 'Commit is not available in Plan mode');
     return;
   }
-  if (!(await workspaceHasGitRepo())) {
-    setStatus('err', 'This workspace is not a git repository');
-    syncCodeChangeStripActionsVisibility(chat);
-    return;
-  }
-
   const paths = getPerFileChangeSummary(chat).map((row) => row.path);
   if (paths.length === 0) {
     setStatus('err', 'No file paths recorded for this chat');
     return;
   }
 
-  setButtonsBusy(true);
-  setStatus('spin', 'Staging chat changes…');
-
   const cwd = gitCwdForChat(chat);
-  const stageRes = await gitStage({ paths, cwd });
-  if (!stageRes.ok) {
-    setStatus('err', stageRes.error ?? 'Could not stage files');
-    setButtonsBusy(false);
-    return;
-  }
-  if (stageRes.stagedPaths && stageRes.stagedPaths.length === 0) {
-    setStatus('err', 'No files from this chat still exist to commit');
-    setButtonsBusy(false);
-    return;
-  }
-
-  setStatus('spin', 'Committing with git-commit skill…');
-  const userText =
-    'The files touched in this chat are already staged. Inspect the staged diff, then commit with a conventional commit message (use gitmoji when this repo uses them).';
-  const headBefore = await headSha(cwd);
+  const workspace = getWorkspacePath();
+  const historyLength = chat.history.length;
+  const chatBinding = resolveEffectiveChatModelBinding(chat);
+  const controller = new AbortController();
+  setButtonsBusy(true);
   try {
-    const { historyStart } = await runSkillTurn(chat, GIT_COMMIT_SKILL_ID, userText);
-    const headAfter = await headSha(cwd);
-    const committed =
-      historyHasSuccessfulGitCommit(chat, historyStart) ||
-      (headBefore && headAfter && headBefore !== headAfter);
-    if (committed) {
-      markShipHandled(chat);
+    if (!(await isWorkspaceGitRepo(cwd))) {
+      setStatus('err', 'This workspace is not a git repository');
+      return;
+    }
+    if (control.lastChild) control.lastChild.textContent = 'Staging…';
+    const stageRes = await gitStage({ paths, cwd });
+    if (!stageRes.ok) {
+      setStatus('err', stageRes.error ?? 'Could not stage files');
+      return;
+    }
+    if (stageRes.stagedPaths?.length === 0) {
+      setStatus('err', 'No files from this chat still exist to commit');
+      return;
+    }
+
+    const staged = await gitDiff({ cached: true, forCommit: true, cwd });
+    if (!staged.ok || !staged.commitSnapshot) {
+      setStatus('err', staged.error ?? 'Could not read staged changes. Restart Minnow and retry');
+      return;
+    }
+    if (!staged.files?.length || !staged.patch?.trim()) {
+      setStatus('err', 'No staged changes to commit');
+      return;
+    }
+
+    if (control.lastChild) control.lastChild.textContent = 'Generating commit message…';
+    const message = await fetchGitCommitMessage({
+      changedPaths: staged.files.map((file) => file.path),
+      patch: staged.patch,
+      scope: 'staged',
+      chatBinding,
+      signal: controller.signal,
+    });
+    if (message.error || !message.text?.trim()) {
+      setStatus('err', message.error ?? 'No commit message generated');
+      return;
+    }
+    if (!gitWritesAllowed(chat)) {
+      setStatus('err', 'Commit is not available in Plan mode');
+      return;
+    }
+
+    if (control.lastChild) control.lastChild.textContent = 'Committing…';
+    const committed = await gitCommit({
+      cwd,
+      message: message.text.trim(),
+      stagedOnly: true,
+      expectedSnapshot: staged.commitSnapshot,
+    });
+    if (committed.ok) {
+      if (chat.history.length === historyLength && !isChatStreaming(chat.id)) markShipHandled(chat);
       showToast('Committed chat changes');
+      void Promise.all([
+        import('./git-panel').then((panel) => panel.refreshGitPanel()),
+        import('./sidebar-git-state').then((sidebar) => sidebar.refreshSidebarGitFacts(workspace, true)),
+      ]).catch((error) => reportBackgroundError('chat-commit-refresh', error));
     } else {
-      setStatus('err', 'Commit did not complete — check the assistant reply');
+      setStatus('err', committed.error ?? 'Commit failed');
     }
   } catch (err) {
     setStatus('err', err instanceof Error ? err.message : 'Commit failed');
   } finally {
     setButtonsBusy(false);
-    syncCodeChangeStripActionsVisibility(chat);
+    syncCodeChangeStripActionsVisibility();
   }
 }
 
@@ -327,7 +336,7 @@ function wireActionButtons(): void {
   if (commit.dataset.stripActionBound === '1') return;
   commit.dataset.stripActionBound = '1';
   pr.dataset.stripActionBound = '1';
-  commit.addEventListener('click', () => void runSettingsAction(commit, 'Committing…', onCommitClick));
+  commit.addEventListener('click', () => void runSettingsAction(commit, 'Committing…', () => onCommitClick(commit)));
   pr.addEventListener('click', () => void runSettingsAction(pr, 'Creating PR…', onCreatePrClick));
 }
 
@@ -352,7 +361,7 @@ export function syncCodeChangeStripActionsVisibility(chat?: Chat | null): void {
 
     const allowed = active ? gitWritesAllowed(active) : false;
     const handled = Boolean(active?.codeChangeShipHandled);
-    const visible = Boolean(showStats && hasGit && allowed && !handled && !busy);
+    const visible = Boolean(showStats && hasGit && allowed && !handled);
 
     host.hidden = !visible;
     commit.hidden = !visible;

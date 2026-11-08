@@ -24,6 +24,8 @@ import {
 } from '../models/library-request-binding';
 import { LIBRARY_MODEL_PROVIDER_ID } from '../models/model-select-library';
 import { expandGitmojiShortcodes } from '../lib/gitmoji-shortcodes.mjs';
+import { resolveEffectiveChatModelBinding } from '../models/selection';
+import { getActiveChat } from '../state/sessions';
 import { catalogCapabilitiesFromRow } from '../providers/model-capabilities';
 import { resolveProvider } from '../providers/store';
 import type { ApiMessage, ChatCompletionChunk } from '../types';
@@ -80,6 +82,8 @@ export interface GitCommitMessagePromptInput {
 export interface GitCommitMessageRequest extends GitCommitMessagePromptInput {
   signal: AbortSignal;
   onPartial?: (text: string) => void;
+  /** Preserve the originating chat fallback while utility configuration loads. */
+  chatBinding?: { modelId: string; providerId?: string };
 }
 
 export interface GitCommitMessageResult {
@@ -513,17 +517,23 @@ function createGenerationErrorMessage(err: unknown): string {
 /** Git commit messages use the active chat model when editor AI is disabled or configured to follow chat; otherwise the pinned editor model. */
 export async function resolveGitCommitMessageBinding(
   config: EditorAiCompletionConfig,
+  chatBinding?: { modelId: string; providerId?: string },
 ): Promise<EditorAiBinding> {
   if (!config.enabled || config.useChatModel) {
+    if (chatBinding) {
+      const providerId = chatBinding.providerId || (await resolveProvider()).id;
+      return resolveEditorAiBinding({ ...config, useChatModel: false, modelId: chatBinding.modelId, providerId });
+    }
     return resolveEditorAiBinding({ ...config, useChatModel: true });
   }
   return resolveEditorAiBinding(config);
 }
 
-/** Stream a commit message from the active editor/chat model binding. */
+/** Stream a commit message from the utility override or the editor/chat fallback. */
 export async function fetchGitCommitMessage(
   input: GitCommitMessageRequest,
 ): Promise<GitCommitMessageResult> {
+  const chatBinding = input.chatBinding ?? resolveEffectiveChatModelBinding(getActiveChat());
   const [config, commitConfig, utilityConfig] = await Promise.all([
     loadEditorAiCompletionConfig(),
     loadGitCommitMessageConfig(),
@@ -558,7 +568,7 @@ export async function fetchGitCommitMessage(
       ? { ...utility, error: LIBRARY_MODEL_NOT_LOADED_MESSAGE }
       : { providerId: resolved.providerId, modelId: resolved.modelId };
   } else {
-    binding = await resolveGitCommitMessageBinding(config);
+    binding = await resolveGitCommitMessageBinding(config, chatBinding);
   }
   const validation = validateEditorAiBinding(binding);
   if (validation.ok === false) {
@@ -610,6 +620,7 @@ export async function fetchGitCommitMessage(
 
   const contentAcc = new StreamingContentAccumulator();
   const reasoningAcc = new BenchmarkStreamReasoningAccumulator();
+  let finishReason: string | null | undefined;
 
   const emit = (reasoningFallback = false): string =>
     resolveCommitMessageDisplayText(
@@ -629,6 +640,7 @@ export async function fetchGitCommitMessage(
     const unsubscribe = subscribeToGeneration(generationId, {
       signal: input.signal,
       onChunk: (chunk) => {
+        finishReason = chunk.choices?.[0]?.finish_reason ?? finishReason;
         ingestChunk(contentAcc, reasoningAcc, chunk);
         const cleaned = emit(false);
         if (cleaned) input.onPartial?.(cleaned);
@@ -641,6 +653,10 @@ export async function fetchGitCommitMessage(
         }
         if (event?.status === 'cancelled') {
           finish(null);
+          return;
+        }
+        if (finishReason === 'length' || finishReason === 'content_filter') {
+          finish(null, 'Commit message generation was incomplete. Retry to generate a full message');
           return;
         }
         const cleaned = emit(true);

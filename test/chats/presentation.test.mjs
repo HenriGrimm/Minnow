@@ -140,6 +140,19 @@ test('pending input exposes attribution and the leading message attachments with
   assert.equal(f.repository.readTranscript('chat').messages.length, 0);
 });
 
+test('all pending steering images are available to normal transcript bubbles, even behind queued work', t => {
+  const f = fixture(t);
+  const provenance = { version: 1, actor: 'human', source: 'composer', kind: 'human_message' };
+  const images = [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  for (const [commandId, kind] of [['later-work', 'send'], ['correction-one', 'steer'], ['correction-two', 'steer']]) {
+    f.repository.admitCommand({ version: 1, chatId: 'chat', commandId, kind, requestedAt: 1,
+      message: commandId, provenance, images }, { producerId: 'human', requestKey: commandId });
+  }
+  const pending = f.presentation.frame('chat').fields.pendingMessageQueue;
+  assert.deepEqual(pending.filter(item => item.kind === 'steer').map(item => item.images), [images, images]);
+  assert.equal(f.repository.readTranscript('chat').messages.length, 0);
+});
+
 test('live token bursts are coalesced for scoped observers and never become canonical transcript rows', async t => {
   const f = fixture(t), fence = f.claim(), focused = [], summaries = [], foreign = [];
   f.presentation.subscribe({ projectId: 'project', chatId: 'chat', send: value => focused.push(value) });

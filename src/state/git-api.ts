@@ -73,6 +73,12 @@ export interface GitCommitEntry {
   refs: string[];
 }
 
+export interface GitCommitSnapshot {
+  headSha: string | null;
+  branch: string | null;
+  treeSha: string;
+}
+
 export interface GitOpResult {
   needsChoice?: boolean;
   fileCount?: number;
@@ -99,6 +105,7 @@ export interface GitOpResult {
   /** HEAD tip when a snapshot was created/restored (MIN-409). */
   headSha?: string;
   treeSha?: string;
+  commitSnapshot?: GitCommitSnapshot;
   /** Pre-restore safety snapshot sha from snapshotRestore. */
   safetySha?: string;
   /** Name-status paths from snapshotDiff. */
@@ -206,6 +213,8 @@ export function gitDiff(input?: {
   path?: string;
   /** Unstaged + untracked diffs for commit message generation */
   workingTree?: boolean;
+  /** Read an immutable staged diff and its identity for a guarded commit. */
+  forCommit?: boolean;
 }): Promise<GitOpResult> {
   return postGit('diff', input ?? {});
 }
@@ -247,6 +256,8 @@ export function gitIgnore(input: {
 export function gitCommit(input: {
   message: string;
   cwd?: string;
+  stagedOnly?: boolean;
+  expectedSnapshot?: GitCommitSnapshot;
 }): Promise<GitOpResult> {
   return postGit('commit', input);
 }

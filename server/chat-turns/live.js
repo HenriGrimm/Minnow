@@ -83,7 +83,7 @@ export function createChatLiveBroker({ turns, workspaceForChat = id =>
       prune();
       const viewer = { workspace, send, deviceId };
       viewers.add(viewer);
-      send({ kind: 'presence', turns: turns.list() });
+      send({ kind: 'presence', turns: turns.listLegacy() });
       for (const snapshot of snapshots.values()) {
         if (key(snapshot.workspace) === key(workspace)) send({ kind: 'frame', frame: snapshot });
       }

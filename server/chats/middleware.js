@@ -256,7 +256,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         const body = await readBody(req);
         const inputFields = {
           send: ['action', 'text', 'images', 'intent', 'mode', 'clientRequestId'],
-          steer: ['action', 'text', 'clientRequestId'],
+          steer: ['action', 'text', 'images', 'clientRequestId'],
           stop: ['action', 'scope', 'executionId', 'runId', 'clientRequestId', 'expectedLegacyOwnerId'],
           edit: ['action', 'text', 'itemId', 'expectedRevision', 'clientRequestId'],
           remove: ['action', 'itemId', 'expectedRevision', 'clientRequestId'],

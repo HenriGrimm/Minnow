@@ -74,6 +74,19 @@ test('questions and approvals remain separate bounded summaries without exposing
   assert.deepEqual(f.repository.getActivity('child').agentRequestSummary, [{ requestId: 'approval', kind: 'approval' }]);
 });
 
+test('execution activity publishes settled work time without reservation wait and preserves it through normalization', t => {
+  const f = fixture(t), fence = f.claim('timed');
+  assert.equal(f.repository.getActivity('child').agentExecution.workDurationMs, undefined);
+  f.repository.updateExecution('timed', { status: 'completed' }, { fence });
+  f.db.prepare('UPDATE chat_executions SET created_at=1000,activated_at=61000,settled_at=340000 WHERE execution_id=?').run('timed');
+  const execution = f.repository.getActivity('child').agentExecution;
+  assert.equal(execution.workDurationMs, 279_000);
+  assert.equal(normalizeChatRow({ id: 'child', history: [], agentExecution: execution }).agentExecution.workDurationMs, 279_000);
+  for (const invalid of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(normalizeChatRow({ id: 'child', history: [], agentExecution: { ...execution, workDurationMs: invalid } }).agentExecution.workDurationMs, undefined);
+  }
+});
+
 test('opening a running turn cannot acknowledge its later failure and stale cursors cannot hide a newer completion', t => {
   const f = fixture(t, true); const first = f.claim('first');
   const runningCursor = f.repository.getActivity('child').agentActivityCursor;

@@ -183,8 +183,12 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   let directSkill: ReturnType<typeof resolveTurnSkill> | undefined;
   if (action === 'send' || action === 'steer') {
     const attachments = data.attachments ?? [];
-    if (action === 'steer' && attachments.length) throw new Error('Steering is text only. Queue attached files for the next reply.');
     payload.text = buildHistoryUserContent(data.text ?? '', attachments);
+    const images = persistableUserImages(attachments);
+    if (images.length !== attachments.filter(attachment => Boolean(attachmentImageDataUrl(attachment))).length) {
+      throw new Error('Attached images exceed this conversation\'s saved image limit. Remove an image and retry.');
+    }
+    if (images.length) payload.images = images;
     if (action === 'send') {
       let selectedIntent = data.intent;
       if (!selectedIntent) {
@@ -203,11 +207,6 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
       if (!intent.ok) throw new Error(intent.error.message);
       payload.intent = intent.value;
       if (data.mode) payload.mode = data.mode;
-      const images = persistableUserImages(attachments);
-      if (images.length !== attachments.filter(attachment => Boolean(attachmentImageDataUrl(attachment))).length) {
-        throw new Error('Attached images exceed this conversation\'s saved image limit. Remove an image and retry.');
-      }
-      if (images.length) payload.images = images;
     }
   } else if (action === 'configure') {
     endpoint = `/api/chats/${encodeURIComponent(chatId)}/configuration`;

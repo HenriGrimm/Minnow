@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { gitStatus, issueWorkOperation } from '../../src/state/git-api.ts';
+import { gitCommit, gitDiff, gitStatus, issueWorkOperation } from '../../src/state/git-api.ts';
 import { isLocalServerAvailable, setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 
 const originalFetch = globalThis.fetch;
@@ -42,4 +42,20 @@ test('issue work requests explain how to recover from an older running server', 
   }
   globalThis.fetch = async () => Response.json({ ok: false, error: 'The worktree is no longer registered' });
   assert.deepEqual(await issueWorkOperation('Inspect', { cwd: '/project' }), { ok: false, error: 'The worktree is no longer registered' });
+});
+
+test('staged commit guards and preview identity travel through the existing Git API', async () => {
+  setLocalServerAvailableForTests(true);
+  const requests: unknown[] = [];
+  const commitSnapshot = { headSha: null, branch: 'refs/heads/main', treeSha: 'a'.repeat(40) };
+  globalThis.fetch = async (_url, options) => {
+    requests.push(JSON.parse(String(options?.body)));
+    return Response.json({ ok: true, commitSnapshot });
+  };
+  const preview = await gitDiff({ cwd: '/worktree', cached: true, forCommit: true });
+  await gitCommit({ cwd: '/worktree', message: 'feat: staged change', stagedOnly: true, expectedSnapshot: preview.commitSnapshot });
+  assert.deepEqual(requests, [
+    { op: 'diff', cwd: '/worktree', cached: true, forCommit: true },
+    { op: 'commit', cwd: '/worktree', message: 'feat: staged change', stagedOnly: true, expectedSnapshot: commitSnapshot },
+  ]);
 });

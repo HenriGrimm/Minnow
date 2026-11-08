@@ -10,7 +10,8 @@ import {
   setQueuedMessageEditing,
   flushPendingMessageQueue,
 } from '../chat/message-queue';
-import { clearPendingSteer, setSteerEnqueuedListener } from '../chat/steer-message';
+import { setSteerEnqueuedListener } from '../chat/steer-message';
+import { syncPendingTranscriptMessages } from './messages';
 import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { getActiveChat } from '../state/sessions';
@@ -266,18 +267,18 @@ export function syncComposerMessageQueue(): void {
   }
 
   const root = ensureQueueRoot();
+  syncPendingTranscriptMessages(chat);
   const busy = isChatTurnInProgress(chat.id);
   const sending = getSendingManagedMessage(chat);
-  const items = getPendingMessageQueue(chat).filter(item => item.id !== sending?.id);
+  const items = getPendingMessageQueue(chat).filter(item => item.kind !== 'steer' && item.id !== sending?.id);
   const count = items.length;
-  const pendingSteer = chat.pendingSteerMessage?.trim();
   const orphanEdits = [...edits.keys()].filter(key => key.startsWith(`${chat.id}:`) &&
     !getPendingMessageQueue(chat).some(item => key === `${chat.id}:${item.id}`));
-  const show = count > 0 || Boolean(pendingSteer) || orphanEdits.length > 0;
+  const show = count > 0 || orphanEdits.length > 0;
 
   root.classList.toggle('hidden', !show);
   syncComposerFollowUpPlaceholder(busy);
-  const renderKey = JSON.stringify([chat.id, busy, queueCollapsed, pendingSteer, orphanEdits,
+  const renderKey = JSON.stringify([chat.id, busy, queueCollapsed, orphanEdits,
     items.map(item => [item.id, item.text, item.modelSelection, edits.get(`${chat.id}:${item.id}`)])]);
   if (root.dataset.renderKey === renderKey) return;
   root.dataset.renderKey = renderKey;
@@ -302,7 +303,7 @@ export function syncComposerMessageQueue(): void {
 
   const label = document.createElement('span');
   label.className = 'composer-message-queue__count';
-  label.textContent = [pendingSteer ? 'Steering at next step' : '', count ? `${count} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
+  label.textContent = [count ? `${count} queued for later` : '', orphanEdits.length ? 'Unsent edit' : ''].filter(Boolean).join(' · ');
   label.setAttribute('role', 'status');
   header.setAttribute('aria-label', label.textContent);
   header.setAttribute('aria-controls', 'composerMessageQueueList');
@@ -316,25 +317,8 @@ export function syncComposerMessageQueue(): void {
   const list = document.createElement('div');
   list.className = 'composer-message-queue__list';
   list.id = 'composerMessageQueueList';
-  list.hidden = queueCollapsed && !pendingSteer && orphanEdits.length === 0;
+  list.hidden = queueCollapsed && orphanEdits.length === 0;
   list.setAttribute('role', 'list');
-
-  if (pendingSteer) {
-    const row = document.createElement('div');
-    row.className = 'composer-message-queue__item composer-message-queue__item--steer';
-    row.setAttribute('role', 'listitem');
-    const text = document.createElement('span');
-    text.className = 'composer-message-queue__text';
-    text.textContent = pendingSteer;
-    text.title = pendingSteer;
-    row.append(text, iconButton('composer-message-queue__action', 'Cancel pending steering', 'close', () => {
-      if (shouldRelayChat(chat.id)) {
-        void sendRemoteChatCommand(chat.id, 'cancel-steer').catch(error => showToast(String(error?.message || error), 'error'));
-      } else clearPendingSteer(chat);
-      syncComposerMessageQueue();
-    }));
-    list.append(row);
-  }
 
   for (const item of items) {
     if (queueCollapsed) continue;

@@ -70,7 +70,7 @@ it('preserves bounded resolved composer images and rejects remote or executable 
   assert.notEqual(parsed.images[0], images[0]);
   rejected(validateChatCommand({ ...send, images: [{ name: 'remote', dataUrl: 'https://example.com/a.png' }] }));
   rejected(validateChatCommand({ ...send, images: [{ name: 'svg', dataUrl: 'data:image/svg+xml;base64,YWJj' }] }));
-  rejected(validateChatCommand({ ...send, kind: 'steer', images }));
+  assert.deepEqual(accepted(validateChatCommand({ ...send, kind: 'steer', images })).images, images);
   rejected(validateChatCommand({ ...send, images: Array(2) }));
   rejected(validateChatCommand({ ...send, images: Array(21).fill(images[0]) }));
 });

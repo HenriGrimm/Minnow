@@ -51,6 +51,12 @@ export interface QuestionCardsModalOptions {
   embedded?: boolean;
   /** Plan-screen / tool-loop chat id (resolves embedded host when host omitted). */
   chatId?: string;
+  /** Dismiss a host-owned request without submitting a cancellation. */
+  signal?: AbortSignal;
+  /** Save a durable answer before closing; failures retain the current draft. */
+  onSubmit?: (result: AskQuestionToolResult) => Promise<void>;
+  /** Server-owned requests already produce their own durable notifications. */
+  notify?: boolean;
 }
 
 type ActiveQuestionModalState = {
@@ -120,6 +126,13 @@ function isEmbeddedQuestionsHost(host: HTMLElement): boolean {
 
 export function isAskQuestionModalOpenForChat(chatId: string): boolean {
   return modalsByChatId.has(chatId.trim());
+}
+
+export function focusAskQuestionModalForChat(chatId: string): void {
+  const state = modalsByChatId.get(chatId.trim());
+  if (!state || !isModalForeground(state)) return;
+  const card = state.panel.querySelector('.question-cards-card--current');
+  (card?.querySelector<HTMLElement>('input:checked') ?? card?.querySelector<HTMLElement>('input') ?? state.panel).focus({ preventScroll: true });
 }
 
 /** True when the open strip is embedded in the Super Plan / plan screen host. */
@@ -428,6 +441,11 @@ export function showQuestionCardsModal(
 ): Promise<AskQuestionToolResult> {
   return new Promise((resolve) => {
     const chatIdForAbort = options.chatId?.trim() || getActiveChat().id;
+    const abortSignal = options.signal ?? getChatAbort(chatIdForAbort)?.signal;
+    if (abortSignal?.aborted) {
+      resolve({ status: 'cancelled', answers: [] });
+      return;
+    }
 
     let embedded = options.embedded === true;
     let host = options.host;
@@ -602,15 +620,16 @@ export function showQuestionCardsModal(
     notifyAskQuestionDisplayContextChanged();
 
     let settled = false;
+    let submitting = false;
     let autoAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
-    const finish = (result: AskQuestionToolResult): void => {
+    const close = (result: AskQuestionToolResult): void => {
       if (settled) return;
       settled = true;
-      notifyAskQuestionFinished(chatIdForAbort, args);
+      if (options.notify !== false) notifyAskQuestionFinished(chatIdForAbort, args);
       cancelAutoAdvance();
       document.removeEventListener('keydown', onDocKeyDown, true);
       if (abortListener) {
-        getChatAbort(chatIdForAbort)?.signal.removeEventListener('abort', abortListener);
+        abortSignal?.removeEventListener('abort', abortListener);
       }
       const modal = modalsByChatId.get(chatIdForAbort);
       const ownedFocus = panel.contains(document.activeElement);
@@ -633,12 +652,28 @@ export function showQuestionCardsModal(
       resolve(result);
     };
 
+    const finish = (result: AskQuestionToolResult): void => {
+      if (settled || submitting) return;
+      if (!options.onSubmit) { close(result); return; }
+      submitting = true;
+      cancelAutoAdvance();
+      panel.setAttribute('aria-busy', 'true');
+      for (const control of panel.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button')) control.disabled = true;
+      showValidation('Saving your answer…');
+      void options.onSubmit(result).then(() => close(result), error => {
+        if (settled) return;
+        submitting = false;
+        panel.setAttribute('aria-busy', 'false');
+        for (const control of panel.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input,button')) control.disabled = false;
+        showValidation(error instanceof Error ? error.message : 'The answer could not be saved. Try again.');
+      });
+    };
+
     modalState.cancel = () => finish({ status: 'cancelled', answers: [] });
 
     const abortListener = (): void => {
-      finish({ status: 'cancelled', answers: [] });
+      close({ status: 'cancelled', answers: [] });
     };
-    const abortSignal = getChatAbort(chatIdForAbort)?.signal;
     if (abortSignal && !abortSignal.aborted) {
       abortSignal.addEventListener('abort', abortListener, { once: true });
     }
@@ -904,6 +939,7 @@ export function showQuestionCardsModal(
     btnClose.addEventListener('click', () => finish({ status: 'cancelled', answers: [] }));
 
     const onDocKeyDown = (ev: KeyboardEvent): void => {
+      if (submitting) return;
       const modal = modalsByChatId.get(chatIdForAbort);
       if (!modal || !isModalForeground(modal) || !panel.contains(document.activeElement)) return;
       if (ev.key === 'Escape') {
@@ -956,7 +992,7 @@ export function showQuestionCardsModal(
     document.addEventListener('keydown', onDocKeyDown, true);
     showCard();
 
-    notifyAskQuestionShown(chatIdForAbort, args);
+    if (options.notify !== false) notifyAskQuestionShown(chatIdForAbort, args);
 
     requestAnimationFrame(() => {
       const modal = modalsByChatId.get(chatIdForAbort);

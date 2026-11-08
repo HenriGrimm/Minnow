@@ -15,6 +15,19 @@ function fixture() {
   return { turns, broker, host, phone, disconnect };
 }
 
+test('legacy presence excludes managed executions from the combined ownership registry', () => {
+  const managed = { chatId: 'managed', ownerId: 'minnow-server', hostId: 'minnow-server', executionId: 'execution' };
+  const turns = createChatTurnRegistry({ generations: () => [], extraTurns: () => [managed] });
+  turns.claim('legacy', 'owner', 'pc');
+  const broker = createChatLiveBroker({ turns });
+  const events = [];
+  const unsubscribe = broker.subscribe('/project', event => events.push(event), 'phone');
+  try {
+    assert.deepEqual(turns.list(), [{ chatId: 'legacy', ownerId: 'owner', hostId: 'pc' }, managed], 'ownership queries still include managed executions');
+    assert.deepEqual(events[0], { kind: 'presence', turns: [{ chatId: 'legacy', ownerId: 'owner', hostId: 'pc' }] });
+  } finally { unsubscribe(); }
+});
+
 test('orphaned commands expire without moving an unknown action to a replacement host', async () => {
   let time = 1000;
   const broker = createChatLiveBroker({ now: () => time, turns: { list: () => [] }, workspaceForChat: () => '/project' });

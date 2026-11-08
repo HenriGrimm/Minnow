@@ -70,9 +70,9 @@ Claude and Codex reasoning summaries appear under **Reasoning summary**. A separ
 
 You do not have to sit still and wait.
 
-**Type a correction or more context and press Enter.** Minnow applies it at the next step between tool rounds, keeping the current turn intact. Until then, the strip above the composer shows **Steering at next step** and your text, with a cancel button. Successive corrections are kept in send order. Once applied, the correction appears in the transcript as **You steered**. If the reply finishes without another tool round, the correction starts a follow-up turn.
+**Type a correction or more context and press Enter.** Your message appears in the conversation immediately, like any other message. You can include images or send an image on its own. Minnow applies the feedback at the next model step, keeping the current run intact. Messages stay separate and keep their send order. Feedback received during a text-only response is picked up before the run finishes.
 
-Press **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. Attachments stay in the composer until the running reply finishes; mid-turn messages are text only. `/compact` also waits for the reply to finish.
+Press **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) for a separate task that should wait until the current reply finishes. Queued messages stay in the composer strip until sent, with controls to edit, steer the current run, or delete. Editing happens in place and keeps your current draft. `/compact` also waits for the reply to finish.
 
 On a local llama.cpp or MLX model the status line beside the assistant row shows a load percent while weights come up, a prefill percent while the prompt is ingested, then a live token count while it generates (including while it is calling a tool).
 

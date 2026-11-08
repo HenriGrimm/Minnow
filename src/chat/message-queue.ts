@@ -1,4 +1,7 @@
 import type { Chat, QueuedComposerMessage } from '../types';
+import type { Attachment } from '../attachments/types';
+import { attachmentImageDataUrl } from '../attachments/attachment-image';
+import { buildHistoryUserContent, persistableUserImages } from './build-api-messages';
 import { randomUUID } from '../lib/random-id';
 import {
   scheduleSaveSessions,
@@ -6,10 +9,11 @@ import {
 } from '../state/sessions';
 import { forceCloseAskQuestionModalForChat } from '../ui/question-cards-modal';
 import { isChatTurnInProgress } from './chat-turn-guard';
-import { clearPendingSteer, enqueueSteerMessage } from './steer-message';
+import { syncPendingTranscriptMessages } from '../ui/messages';
 import { parseCompactSlashInput } from './context/parse-compact-command';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import { setStatus } from '../ui/status';
+import { showToast } from '../ui/toast';
 
 type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
@@ -51,6 +55,7 @@ async function dispatchQueuedMessage(chat: Chat, item: QueuedComposerMessage): P
   try {
     const { resumeParentChatWithMessage } = await import('./run-turn-chat');
     const completed = await resumeParentChatWithMessage(chat, item.text, {
+      images: item.images,
       onUserMessageAccepted: async () => { admitted = true; release(); },
     });
     if (!completed && !admitted) restoreDequeuedMessage(chat, item);
@@ -69,7 +74,16 @@ export function getPendingMessageQueue(chat: Chat): QueuedComposerMessage[] {
 
 /** Count of queued follow-ups for UI badges. */
 export function getPendingMessageQueueCount(chat: Chat): number {
-  return getPendingMessageQueue(chat).length;
+  return getPendingMessageQueue(chat).filter(item => item.kind !== 'steer').length;
+}
+
+/** Accepted steering belongs in the conversation while the runner catches up. */
+export function getPendingTranscriptMessages(chat: Chat): QueuedComposerMessage[] {
+  const items = getPendingMessageQueue(chat).filter(item => item.kind === 'steer' && !item.hiddenFromTranscript &&
+    !chat.history.some(message => message.role === 'user' && message.commandId === item.id));
+  if (chat.pendingSteerMessage?.trim()) items.unshift({ id: 'legacy-steer', text: chat.pendingSteerMessage.trim(), createdAt: 0, kind: 'steer' });
+  const sending = getSendingManagedMessage(chat);
+  return sending && !items.includes(sending) ? [sending, ...items] : items;
 }
 
 /** The accepted human input starting an idle managed chat, presented outside its saved history. */
@@ -104,7 +118,9 @@ function normalizeQueueItem(raw: unknown): QueuedComposerMessage | null {
     typeof row.createdAt === 'number' && Number.isFinite(row.createdAt)
       ? row.createdAt
       : Date.now();
-  return { id, text, createdAt };
+  return { id, text, createdAt, ...(row.kind === 'steer' ? { kind: 'steer' as const } : {}),
+    ...(Array.isArray(row.images) ? { images: row.images.filter(image => typeof image?.name === 'string' &&
+      typeof image.dataUrl === 'string' && image.dataUrl.startsWith('data:image/')) } : {}) };
 }
 
 /** Validate persisted queue rows on session load. */
@@ -117,9 +133,14 @@ export function ensurePendingMessageQueue(
 }
 
 /** Append a follow-up to the queue while the chat is streaming. */
-export function enqueueComposerMessage(chat: Chat, text: string): boolean {
-  const trimmed = text.trim();
+export function enqueueComposerMessage(chat: Chat, text: string, attachments: Attachment[] = []): boolean {
+  const trimmed = buildHistoryUserContent(text, attachments).trim();
   if (!trimmed) return false;
+  const images = persistableUserImages(attachments);
+  if (images.length !== attachments.filter(attachment => Boolean(attachmentImageDataUrl(attachment))).length) {
+    showToast('Attached images exceed this conversation\'s saved image limit. Remove an image and retry.');
+    return false;
+  }
   forceCloseAskQuestionModalForChat(chat.id);
   const queue = getPendingMessageQueue(chat);
   if (!Array.isArray(chat.pendingMessageQueue)) {
@@ -129,6 +150,7 @@ export function enqueueComposerMessage(chat: Chat, text: string): boolean {
     id: randomUUID(),
     text: trimmed,
     createdAt: Date.now(),
+    ...(images.length ? { images } : {}),
   });
   touchChat(chat);
   scheduleSaveSessions();
@@ -177,8 +199,10 @@ export function updateQueuedMessage(chat: Chat, id: string, text: string): boole
 export function preservePendingSteer(chat: Chat): void {
   const text = chat.pendingSteerMessage?.trim();
   if (!text) return;
-  chat.pendingMessageQueue = [{ id: randomUUID(), text, createdAt: Date.now() }, ...getPendingMessageQueue(chat)];
-  clearPendingSteer(chat);
+  chat.pendingSteerMessage = undefined;
+  chat.pendingMessageQueue = [{ id: randomUUID(), text, createdAt: Date.now(), kind: 'steer' }, ...getPendingMessageQueue(chat)];
+  touchChat(chat);
+  scheduleSaveSessions();
   notifyPendingMessageQueueChanged();
 }
 
@@ -208,7 +232,13 @@ export function pushQueuedMessageNow(chat: Chat, id: string): PushQueuedMessageN
   if (!item) return false;
 
   if (isChatTurnInProgress(chat.id)) {
-    return enqueueSteerMessage(chat, item.text) ? 'sent' : false;
+    forceCloseAskQuestionModalForChat(chat.id);
+    item.kind = 'steer';
+    chat.pendingMessageQueue = [...(chat.pendingMessageQueue ?? []), item];
+    // Notify through the steering path without rebuilding saved image placeholders.
+    syncPendingTranscriptMessages(chat);
+    notifyPendingMessageQueueChanged();
+    return 'sent';
   }
 
   void dispatchQueuedMessage(chat, item).catch(error => setStatus('err', String(error?.message || error)));

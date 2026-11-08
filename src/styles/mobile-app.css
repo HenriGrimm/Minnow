@@ -38,7 +38,8 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
   --m-row-pad: 12px;
   --m-keyboard: 0px;
   position: fixed;
-  inset: 0;
+  /* iOS pans the visual viewport to reveal the caret after the keyboard opens. */
+  inset: var(--mn-viewport-offset-top, 0px) 0 auto;
   z-index: 40;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;

@@ -10,6 +10,7 @@ import { createTurnTodoPanel, getTurnTodos } from './todo-panel';
 import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
 import { supportsLocalHistoryMutation } from '../state/chat-relationships';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -142,6 +143,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     activeKey: string,
     latest: boolean,
   ): void {
+    const executionStatus = turn.executionStatus;
+    const recovery = executionStatus === 'recovery_required';
+    const terminal = executionStatus != null && ['completed', 'failed', 'stopped', 'recovery_required'].includes(executionStatus);
+    live = live && !terminal;
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
     const final = live ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
@@ -163,7 +168,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const elapsedMs = run && (live || run.endedAt != null)
       ? (live ? Date.now() : run.endedAt!) - run.createdAt : live ? undefined : turn.workDurationMs;
     const duration = elapsedMs != null && Number.isFinite(elapsedMs) && elapsedMs >= 0 ? formatWorkDuration(elapsedMs) : '';
-    if (!live && !hasActivity && !duration) {
+    if (!live && !hasActivity && !duration && !executionStatus) {
       group?.button.remove();
       return;
     }
@@ -187,10 +192,12 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     // Full view stays open; a duration alone has no activity to expand.
     group.button.disabled = full || !hasActivity;
     group.button.classList.toggle('chat-work--live', live);
-    const stopped = run?.status === 'stopped' || rows.some((row) => row.matches('.msg--stopped'));
-    const failed = run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
-    setText(group.label, live ? workingLabel(duration) : endLabel(run, failed, stopped, duration));
-    const outcome: WorkOutcome = live ? 'live' : failed ? 'failed' : stopped ? 'stopped' : 'done';
+    const stopped = executionStatus ? executionStatus === 'stopped' : run?.status === 'stopped' || rows.some((row) => row.matches('.msg--stopped'));
+    const failed = executionStatus ? executionStatus === 'failed' : run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
+    const pending = executionStatus != null && !terminal;
+    setText(group.label, recovery ? `Needs recovery${duration ? ` after ${duration}` : ''}`
+      : pending ? pendingLabel(executionStatus, duration) : live ? workingLabel(duration) : endLabel(run, failed, stopped, duration));
+    const outcome: WorkOutcome = recovery ? 'recovery' : failed ? 'failed' : stopped ? 'stopped' : live || pending ? 'live' : 'done';
     paintStatus(group, outcome);
     group.button.dataset.outcome = outcome;
 
@@ -212,7 +219,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const controlled: string[] = [];
     for (const row of activity) {
       // Corrections, recovery controls, the active checkpoint and open questions stay visible while collapsed.
-      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated, .msg--steered')
+      const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
         || row.matches('.sub-agent-card--persistent:not([data-status="completed"]):not([data-status="cancelled"]), .sub-agent-group[data-live="true"]')
         || Boolean(row.querySelector('.sub-agent-card--persistent[data-status="failed"]'))
         || row.matches('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')
@@ -296,8 +303,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       const index = node.dataset.historyIndex;
       if (index != null && Number(index) < (turns[0]?.fork ?? 0)) continue;
       current = (index != null ? byIndex.get(Number(index)) : undefined) ?? current ?? turns.at(-1);
-      if (!current || node.matches('.msg.user:not(.msg--steered)')) continue;
-      if (!node.matches('.msg.assistant, .msg--steered, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .sub-agent-group, .msg-stopped-row, .compaction-divider')) continue;
+      if (!current || node.matches('.msg.user')) continue;
+      if (!node.matches('.msg.assistant, .tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card, .sub-agent-group, .msg-stopped-row, .compaction-divider')) continue;
       const bucket = buckets.get(current) ?? [];
       bucket.push(node);
       buckets.set(current, bucket);
@@ -378,10 +385,12 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     if (timer) clearTimeout(timer);
     view!.removeEventListener(CHAT_VIEW_CHANGED, onPreference);
     view!.removeEventListener('minnow:todos-changed', schedule);
+    unsubscribeMetadata();
     controllers.delete(mount);
   }
   view.addEventListener(CHAT_VIEW_CHANGED, onPreference);
   view.addEventListener('minnow:todos-changed', schedule);
+  const unsubscribeMetadata = subscribeManagedChatMetadata(chatId => { if (chatId === chat.id) schedule(); });
   controllers.set(mount, { chat, sync, dispose });
   sync();
 }
@@ -409,6 +418,21 @@ function setAttr(el: HTMLElement, name: string, value: string): void {
 
 function workingLabel(duration: string): string {
   return `Working${duration ? ` · ${duration}` : '…'}`;
+}
+
+function pendingLabel(status: NonNullable<TranscriptTurn['executionStatus']>, duration: string): string {
+  switch (status) {
+    case 'queued': return 'Queued';
+    case 'waiting_for_host': return 'Waiting for host';
+    case 'waiting_for_model': return 'Waiting for model';
+    case 'loading_model': return 'Loading model…';
+    case 'waiting_for_agents': return 'Waiting for agents';
+    case 'waiting_for_input': return 'Waiting for your answer';
+    case 'waiting_for_approval': return 'Needs approval';
+    case 'stopping': return 'Stopping…';
+    case 'waiting': return 'Waiting';
+    default: return workingLabel(duration);
+  }
 }
 
 function workAriaLabel(group: WorkGroup, tail: string[]): string {
@@ -450,7 +474,7 @@ function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean,
   return `Worked${duration ? ` for ${duration}` : ''}`;
 }
 
-type WorkOutcome = 'live' | 'done' | 'failed' | 'stopped';
+type WorkOutcome = 'live' | 'done' | 'failed' | 'stopped' | 'recovery';
 
 /** "101 tok/s · 103k tok" from the reply's metric chips (hidden in compact view). */
 function replyStatsText(final: HTMLElement): string {
@@ -513,12 +537,12 @@ function syncReplyFoot(
   if (after.nextElementSibling !== foot) after.after(foot);
 }
 
-/** Leading glyph: check when settled, a square when stopped, a cross when failed. */
+/** Pending work has no completion glyph; settled glyphs follow the run outcome. */
 function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
   if (group.statusKey === outcome) return;
   group.statusKey = outcome;
   if (outcome === 'live') { group.status.replaceChildren(); return; }
-  const name = outcome === 'failed' ? 'statusFail' : outcome === 'stopped' ? 'stop' : 'check';
+  const name = outcome === 'failed' || outcome === 'recovery' ? 'statusFail' : outcome === 'stopped' ? 'stop' : 'check';
   group.status.replaceChildren(createIcon(name, { className: 'chat-work__status-icon', size: 12 }));
 }
 
@@ -557,7 +581,7 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
   if (!full) {
     const visible = activity.filter((row) => !row.matches(OFF_RAIL));
     visible.forEach((row) => {
-      if (row.matches(TOOL_ROW) || row.matches('.msg--steered')) { steps.add(row); return; }
+      if (row.matches(TOOL_ROW)) { steps.add(row); return; }
       if (!row.matches('.msg.assistant') || row.matches('.msg--failed, .msg--stopped, .msg--truncated')) return;
       // A thinking-only round (live, or one that settled without prose) is its own step.
       if (!hasProse(row) && (hasSettledThoughts(row)

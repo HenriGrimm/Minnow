@@ -51,13 +51,14 @@ import type {
   ContextNoticeMessage,
   InjectionNoticeMessage,
   PromptInjectionKind,
+  UserMessage,
 } from '../types';
 import { createIcon, type IconName } from './icon';
 import { resolveModelInfo, showCachedModelInfo } from '../api/models';
 import { isActiveChatStreaming, isChatStreaming, isStreamDomVisible } from '../chat/streaming-state';
 import { STREAMING_CARET_CLASS, STREAMING_CARET_SELECTOR, setAssistantBubbleContent } from '../markdown/renderer';
 import { syncComposerMessageQueue } from './composer-message-queue';
-import { getSendingManagedMessage } from '../chat/message-queue';
+import { getPendingTranscriptMessages } from '../chat/message-queue';
 import {
   getActiveBoardGroup,
   getBoardGroupForChat,
@@ -131,7 +132,6 @@ import { markMessageTruncated } from './truncated-affordance';
 import { appendFailedTurnRecoveryActions } from './failed-turn-recovery-actions';
 import { indexOfLastFailedAssistantAtTail } from '../chat/history';
 import { indexOfUserBeforeBlock } from '../chat/history-truncate-core';
-import { markMessageSteered } from './steer-affordance';
 import { restoreGoalAchievedAffordance } from './goal-affordance';
 import {
   clearSubAgentCardDomRegistry,
@@ -362,26 +362,49 @@ function historyRenderContext(chat: Chat): HistoryRenderContext {
   return { chat, toolResultMap, fold: compactionFoldView(chat.history) };
 }
 
-/** Show accepted input while its server turn starts, without fabricating a history row or actions. */
+/** Show accepted input immediately without changing the runner's saved history. */
 function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
-  const pending = getSendingManagedMessage(chat);
-  if (!pending || chat.history.some(message => message.role === 'user' && message.commandId === pending.id)) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'msg user msg--sending';
-  wrap.dataset.pendingCommandId = pending.id;
-  wrap.setAttribute('aria-busy', 'true');
-  const label = document.createElement('div');
-  label.className = 'msg-label';
-  label.textContent = pending.issue ? 'Issue' : 'You';
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  renderUserMessageBubble(bubble, pending.text, { persistedImages: pending.images, issue: pending.issue, codeMap: pending.codeMap });
-  const status = document.createElement('span');
-  status.className = 'msg-send-status';
-  status.setAttribute('role', 'status');
-  status.textContent = 'Sending…';
-  wrap.append(label, bubble, status);
-  host.append(wrap);
+  for (const pending of getPendingTranscriptMessages(chat)) {
+    if (chat.history.some(message => message.role === 'user' && message.commandId === pending.id) ||
+        [...host.querySelectorAll<HTMLElement>('.msg--sending')].some(row => row.dataset.pendingCommandId === pending.id)) continue;
+    const message: UserMessage = { role: 'user', content: pending.text, provenance: pending.provenance, commandId: pending.id };
+    if (isAttributedAgentMessage(message)) {
+      const row = createAttributedAgentMessage(chat, message, -1);
+      row.removeAttribute('data-history-index');
+      row.classList.add('msg--sending'); row.dataset.pendingCommandId = pending.id;
+      host.append(row);
+      continue;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'msg user msg--sending';
+    wrap.dataset.pendingCommandId = pending.id;
+    if (pending.kind !== 'steer') wrap.setAttribute('aria-busy', 'true');
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = pending.issue ? 'Issue' : 'You';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    renderUserMessageBubble(bubble, pending.text, { persistedImages: pending.images, issue: pending.issue, codeMap: pending.codeMap });
+    wrap.append(label, bubble);
+    if (pending.kind !== 'steer') {
+      const status = document.createElement('span');
+      status.className = 'msg-send-status';
+      status.setAttribute('role', 'status');
+      status.textContent = 'Sending…';
+      wrap.append(status);
+    }
+    host.append(wrap);
+  }
+}
+
+/** Update accepted messages without rebuilding the assistant's streaming DOM. */
+export function syncPendingTranscriptMessages(chat: Chat, host = getActiveChatMountElement()): void {
+  if (!host || getActiveChat().id !== chat.id) return;
+  const ids = new Set(getPendingTranscriptMessages(chat).map(item => item.id));
+  for (const row of host.querySelectorAll<HTMLElement>('.msg--sending')) {
+    if (!ids.has(row.dataset.pendingCommandId ?? '')) row.remove();
+  }
+  appendSendingUserMessage(chat, host);
 }
 
 /** Paint the shared transcript in a secondary surface without selecting or repainting Code. */
@@ -767,7 +790,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   if (appendStart === undefined) clearSubAgentCardDomRegistry();
-  if (!chat.history.length && !getSendingManagedMessage(chat) && !isChatStreaming(chat.id)) {
+  if (!chat.history.length && !getPendingTranscriptMessages(chat).length && !isChatStreaming(chat.id)) {
     if (chat.agentConversation) {
       if (codeMount) teardownHub();
       area.replaceChildren();
@@ -793,9 +816,9 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   if (appendStart !== undefined) {
     const update = () => {
-      const pending = getSendingManagedMessage(chat);
+      const pending = getPendingTranscriptMessages(chat);
       for (const row of area.querySelectorAll<HTMLElement>('.msg--sending')) {
-        if (row.dataset.pendingCommandId !== pending?.id) row.remove();
+        if (!pending.some(item => item.id === row.dataset.pendingCommandId)) row.remove();
       }
       if (chat.history.length > appendStart) removeStaleLiveStreamingRows(area);
       const renderCtx = historyRenderContext(chat);
@@ -807,7 +830,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
           if (tool) renderToolResult(tool, message.content, message.attachments, undefined, message.codeChange);
         } else appendHistoryMessageAt(area, renderCtx, i);
       }
-      if (pending && !area.querySelector('.msg--sending')) appendSendingUserMessage(chat, area);
+      appendSendingUserMessage(chat, area);
       installChatWorkView(area, chat, () => isChatStreaming(chat.id));
       renderPersistedSubAgentCardsForChat(chat);
       syncThoughtsCaretPulse(area);
@@ -1183,7 +1206,6 @@ export function appendBubble(
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
-  if (role === 'user' && userOptions?.steer) markMessageSteered(wrap);
   appendChatTranscriptNode(wrap, mount);
   if (!suppressBubbleScroll) {
     if (role === 'user' && !userOptions?.steer) {

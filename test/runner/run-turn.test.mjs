@@ -2018,6 +2018,36 @@ describe('P10-C settled incremental persist (MIN-768)', () => {
 // ── Round boundary ───────────────────────────────────────────────────────────
 
 describe('P10-I onRoundBoundary (MIN-774)', () => {
+  test('feedback arriving during final prose continues the same run with image pixels', { timeout: 20_000 }, async () => {
+    await withFake([
+      { match: { nth: 0 }, emit: proseSseChunks('Original answer.') },
+      { emit: proseSseChunks('Updated from the screenshot.') },
+    ], async (baseUrl, fake) => {
+      let pending = false, consumed = false;
+      const dataUrl = 'data:image/png;base64,YWJjZA==';
+      const deps = stubDeps(baseUrl);
+      const result = await runTurn({
+        chatId: CHAT_UUID, seed: 'Inspect this.', tools: [],
+        model: { providerId: 'local-fake', id: 'fake-model', vision: true },
+        deps, injectReportTool: false, nudgeToolUse: false, finalizeStructuredOutcome: false,
+        onEvent: event => { if (event.type === 'round_end') pending = true; },
+        onRoundBoundary: () => {
+          if (!pending || consumed) return null;
+          consumed = true;
+          return [{ role: 'user', content: 'Use this screenshot', images: [{ name: 'screen.png', dataUrl }] }];
+        },
+      });
+      assert.equal(result.outcome, 'no_report', JSON.stringify(result));
+      const requests = fake.requests.filter(row => row.pathname === '/v1/chat/completions');
+      assert.equal(requests.length, 2);
+      assert.equal(deps.transcriptStore.load(CHAT_UUID).messages.at(-1).content, 'Updated from the screenshot.');
+      const messages = requests[1].body.messages;
+      assert.equal(messages.filter(row => row.role === 'assistant' && row.content === 'Original answer.').length, 1);
+      const correction = messages.find(row => Array.isArray(row.content) && row.content.some(part => part.type === 'image_url'));
+      assert.ok(correction, 'the active runner must receive actual pixels');
+      assert.equal(correction.content.find(part => part.type === 'image_url').image_url.url, dataUrl);
+    });
+  });
   test('mode handoff refreshes instructions and tools within the same turn', { timeout: 20_000 }, async () => {
     const tool = (name) => ({ type: 'function', function: {
       name, description: name, parameters: { type: 'object', properties: {} },
@@ -2088,7 +2118,7 @@ describe('P10-I onRoundBoundary (MIN-774)', () => {
           onRoundBoundary: () => {
             boundaryCalls += 1;
             // First consult is the opening iteration — nothing pending yet.
-            if (boundaryCalls < 2) return null;
+            if (boundaryCalls !== 2) return null;
             return [{ role: 'user', content: STEER }];
           },
         });

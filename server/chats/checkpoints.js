@@ -40,9 +40,12 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
       const canonical = await fs.realpath(cwd);
       const workspaceKey = canonicalWorktreeMutationKey(cwd);
       const identity = await readChatCheckoutIdentity(cwd);
-      const assertCurrent = async (activeId = '') => {
+      const assertIdentity = async () => {
         repository.assertFence(chatId, fence);
         if (await readChatCheckoutIdentity(cwd) !== identity) throw new ChatContractError('workspace_denied', 'The checkpoint checkout changed identity');
+      };
+      const assertCurrent = async (activeId = '') => {
+        await assertIdentity();
         const uncertain = db.prepare("SELECT execution_id FROM chat_workspace_checkpoints WHERE workspace_key=? AND state IN ('executing','uncertain') AND NOT (execution_id=? AND checkpoint_id=? AND state='executing') LIMIT 1")
           .get(workspaceKey, executionId, activeId);
         if (uncertain) throw new ChatContractError('recovery_required', 'An interrupted checkout mutation needs explicit recovery before another write');
@@ -122,7 +125,13 @@ export function createChatCheckpointCoordinator({ repository, capture = snapshot
           // pending capture needs the caller-cancellable wait.
           if (!baselineSettled) await waitForCapture(baseline, signal);
           else await baseline;
-          await assertCurrent();
+          // The workspace-wide barrier belongs to write admission under the
+          // checkout lock. Another chat can be executing safely while this
+          // turn settles; only this execution's unresolved effects block it.
+          await assertIdentity();
+          if (db.prepare("SELECT 1 FROM chat_workspace_checkpoints WHERE execution_id=? AND state IN ('executing','uncertain') LIMIT 1").get(executionId)) {
+            throw new ChatContractError('recovery_required', 'This execution has an unsettled filesystem checkpoint requiring explicit recovery');
+          }
         },
       };
     },

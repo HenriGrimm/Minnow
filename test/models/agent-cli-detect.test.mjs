@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, test } from 'node:test';
+import { EventEmitter } from 'node:events';
+import { runRequestWork } from '../../server/runtime/request-work.js';
 import {
   detectAgentCli,
   parseAgentCliAuthStatus,
@@ -17,12 +19,72 @@ async function tempDir() {
   return dir;
 }
 
+async function versionFixture() {
+  const homeDir = await tempDir();
+  const script = path.join(homeDir, 'fixture.mjs');
+  const trace = path.join(homeDir, 'versions.log');
+  await fs.writeFile(script, `import fs from 'node:fs';
+fs.appendFileSync(${JSON.stringify(trace)}, 'version\\n');
+await new Promise(resolve => setTimeout(resolve, Number(process.env.MINNOW_PROBE_DELAY_MS ?? 200)));
+process.stdout.write((process.env.MINNOW_PROBE_VERSION ?? 'fixture 1.0') + '\\n');
+`);
+  const binPath = path.join(homeDir, process.platform === 'win32' ? 'probe.cmd' : 'probe');
+  await fs.writeFile(binPath, process.platform === 'win32'
+    ? '@node "%~dp0\\fixture.mjs" %*\r\n'
+    : `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${script.replaceAll("'", "'\\''")}' "$@"\n`);
+  await fs.chmod(binPath, 0o700);
+  return { options: { homeDir, binPath, env: {} }, trace };
+}
+
 afterEach(async () => {
   resetAgentCliDetectionCacheForTests();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
 describe('agent CLI passive detection', () => {
+  test('concurrent chat preflights share one version subprocess and refresh remains explicit', async () => {
+    const { options, trace } = await versionFixture();
+    const statuses = await Promise.all(Array.from({ length: 5 }, () => detectAgentCli('codex', options)));
+    assert.ok(statuses.every(status => status.version === 'fixture 1.0'));
+    assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 1);
+    await detectAgentCli('codex', options);
+    assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 1);
+    await detectAgentCli('codex', { ...options, fresh: true });
+    assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 2);
+  });
+
+  test('one disconnected chat does not cancel shared CLI detection', async () => {
+    const { options, trace } = await versionFixture();
+    const req = new EventEmitter(), res = new EventEmitter();
+    const first = runRequestWork(req, res, () => detectAgentCli('codex', options));
+    const second = detectAgentCli('codex', options);
+    const deadline = Date.now() + 3000;
+    while (!await fs.access(trace).then(() => true, () => false)) {
+      assert.ok(Date.now() < deadline, 'version subprocess did not start');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    req.emit('aborted');
+    const statuses = await Promise.all([first, second]);
+    assert.ok(statuses.every(status => status.version === 'fixture 1.0'));
+    assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 1);
+  });
+
+  test('an older pending preflight cannot replace an explicit refresh', async () => {
+    const { options, trace } = await versionFixture();
+    const older = detectAgentCli('codex', { ...options, env: { MINNOW_PROBE_DELAY_MS: '500', MINNOW_PROBE_VERSION: 'old' } });
+    const deadline = Date.now() + 3000;
+    while (!await fs.access(trace).then(() => true, () => false)) {
+      assert.ok(Date.now() < deadline, 'older version subprocess did not start');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const refreshed = await detectAgentCli('codex', { ...options, fresh: true,
+      env: { MINNOW_PROBE_DELAY_MS: '10', MINNOW_PROBE_VERSION: 'new' } });
+    assert.equal(refreshed.version, 'new');
+    assert.equal((await older).version, 'old');
+    assert.strictEqual(await detectAgentCli('codex', options), refreshed);
+    assert.equal((await fs.readFile(trace, 'utf8')).trim().split('\n').length, 2);
+  });
+
   test('parses mixed status output only from explicit authentication signals', () => {
     assert.equal(
       parseAgentCliAuthStatus('update available\n{"loggedIn":true,"account":"hidden"}\nwarning'),

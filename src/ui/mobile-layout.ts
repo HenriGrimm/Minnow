@@ -87,12 +87,13 @@ function syncFlags(): void {
   syncVisualViewport();
 }
 
-/** Follow the software keyboard without shrinking the layout during pinch zoom. */
+/** Follow keyboard resizing and iOS viewport panning; preserve layout during pinch zoom. */
 function syncVisualViewport(): void {
   const viewport = window.visualViewport;
   const root = document.documentElement;
   if (!viewport || viewport.scale !== 1) return;
   root.style.setProperty('--mn-viewport-height', `${viewport.height}px`);
+  root.style.setProperty('--mn-viewport-offset-top', `${viewport.offsetTop}px`);
 }
 
 /** Stamp layout flags on `<html>` and keep them current. */
@@ -124,6 +125,7 @@ export function initMobileLayout(): void {
   window.addEventListener('resize', onChange, { passive: true });
   window.addEventListener('orientationchange', onChange, { passive: true });
   window.visualViewport?.addEventListener('resize', onChange, { passive: true });
+  window.visualViewport?.addEventListener('scroll', syncVisualViewport, { passive: true });
 }
 
 /** Test hook — reset listener installation between cases. */

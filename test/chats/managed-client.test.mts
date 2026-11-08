@@ -54,6 +54,45 @@ test('an idle managed child admits text/files/images once through server ownersh
   assert.equal(bodies[0].provenance, undefined, 'server stamps authorship');
 });
 
+test('managed steering sends image-only content with stable image bytes across a lost acknowledgement', async () => {
+  setup();
+  const bodies: any[] = [];
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(String(options?.body)));
+    if (bodies.length === 1) throw new TypeError('lost receipt');
+    return Response.json({ receipt: { commandId: 'steered-image', chatId, state: 'queued', revision: 1 } });
+  };
+  const dataUrl = 'data:image/png;base64,YWJjZA==';
+  await sendManagedChatAction(chatId, 'steer', { text: '', attachments: [
+    { id: 'image', name: 'screen.png', kind: 'image', size: 4, mimeType: 'image/png', dataUrl },
+  ] });
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(bodies[0].action, 'steer');
+  assert.equal(bodies[0].text, '[image: screen.png]');
+  assert.deepEqual(bodies[0].images, [{ name: 'screen.png', dataUrl }]);
+});
+
+test('the running managed composer steers image-only input instead of queueing it for another turn', async () => {
+  setup();
+  const { setStreaming } = await import('../../src/app-state.ts');
+  const { pushAttachment, clearAttachments, getPendingAttachments } = await import('../../src/attachments/store.ts');
+  const input = document.createElement('textarea'); document.body.append(input);
+  const dataUrl = 'data:image/png;base64,YWJjZA=='; let body: any;
+  setStreaming(true, chatId);
+  pushAttachment({ id: 'image', name: 'screen.png', kind: 'image', size: 4, mimeType: 'image/png', dataUrl });
+  globalThis.fetch = async (_url, options) => {
+    body = JSON.parse(String(options?.body));
+    return Response.json({ receipt: { chatId, commandId: 'composer-image-steer', revision: 1, state: 'queued' } });
+  };
+  try {
+    await sendMessageWithTools({ inputEl: input });
+    assert.equal(body.action, 'steer');
+    assert.deepEqual(body.images, [{ name: 'screen.png', dataUrl }]);
+    assert.equal(body.mode, undefined);
+    assert.equal(getPendingAttachments().length, 0);
+  } finally { setStreaming(false, chatId); clearAttachments(); input.remove(); }
+});
+
 test('managed queue edits include the observed revision and stale UI cannot manufacture one', async () => {
   const chat = setup();
   chat.pendingMessageQueue = [{ id: 'queued', text: 'Before', createdAt: 1, commandRevision: 4 }];

@@ -351,6 +351,7 @@ export interface RunChatTurnOptions {
 }
 
 export interface ResumeParentChatOptions {
+  images?: import('../types').UserImageAttachment[];
   suppressUserEcho?: boolean;
   goalDriven?: boolean;
   onUserMessageAccepted?: () => Promise<void>;
@@ -425,10 +426,10 @@ export function createChatRoundBoundary(
     const browserMessages = browserRuntime?.drainMessages() ?? [];
     const result = consumePendingSteer(chat);
     syncComposerMessageQueue();
-    if (!result.consumed || typeof result.content !== 'string' || !result.content) {
+    if (!result.consumed) {
       return browserMessages.length ? browserMessages : null;
     }
-    return [...browserMessages, { role: 'user', content: result.content }];
+    return [...browserMessages, ...(result.messages ?? []).map(({ content, images }) => ({ role: 'user', content, ...(images?.length ? { images } : {}) }))];
   };
 }
 
@@ -2138,6 +2139,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         Boolean(
           leftoverBrowserGuide ||
             chat.pendingSteerMessage?.trim() ||
+            chat.pendingMessageQueue?.some(item => item.kind === 'steer') ||
             getPendingMessageQueueCount(chat) > 0,
         );
       if (!followUpQueued) {
@@ -2184,7 +2186,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (leftoverSteer) chat.pendingSteerMessage = leftoverSteer;
     preservePendingSteer(chat);
     if (completedNormally) {
-      if (leftoverSteer) {
+      if (leftoverSteer || chat.pendingMessageQueue?.some(item => item.kind === 'steer')) {
         void flushPendingMessageQueue(chat);
       } else {
         void flushPendingMessageQueue(chat);
@@ -2236,7 +2238,8 @@ export async function resumeParentChatWithMessage(
     skillId: null,
     displayText: message,
     historyContent: message,
-    validAttachments: [],
+    validAttachments: (options.images ?? []).map((image, index) => ({ id: `saved-${index}`, name: image.name,
+      kind: 'image', dataUrl: image.dataUrl, mimeType: 'image/png', size: image.dataUrl.length })),
     goalDriven: options.goalDriven ?? false,
     onUserMessageAccepted: options.onUserMessageAccepted,
   });

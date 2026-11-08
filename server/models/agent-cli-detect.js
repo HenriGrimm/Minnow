@@ -13,6 +13,7 @@ import { getAgentCliDefinition, getAgentCliInstallCommand } from './agent-cli-ca
 export const AGENT_CLI_DETECTION_TTL_MS = 60_000;
 const DETECTION_TIMEOUT_MS = 5_000;
 const STATUS_CACHE = new Map();
+const STATUS_INFLIGHT = new Map();
 
 const TOKEN_ENV_KEYS = Object.freeze({
   claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'],
@@ -113,7 +114,19 @@ export async function detectAgentCli(kind, options = {}) {
   const now = Date.now();
   const cached = STATUS_CACHE.get(cacheKey);
   if (!options.fresh && cached && now - cached.at < AGENT_CLI_DETECTION_TTL_MS) return cached.value;
+  if (!options.fresh && STATUS_INFLIGHT.has(cacheKey)) return STATUS_INFLIGHT.get(cacheKey);
 
+  const work = readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now }).then(value => {
+    // A forced refresh or cache reset supersedes older in-flight observations.
+    if (STATUS_INFLIGHT.get(cacheKey) === work) STATUS_CACHE.set(cacheKey, { at: Date.now(), value });
+    return value;
+  });
+  STATUS_INFLIGHT.set(cacheKey, work);
+  try { return await work; }
+  finally { if (STATUS_INFLIGHT.get(cacheKey) === work) STATUS_INFLIGHT.delete(cacheKey); }
+}
+
+async function readAgentCliStatus(kind, options, { definition, env, homeDir, hasToken, files, now }) {
   const configuredPath = typeof options.binPath === 'string' && options.binPath.trim()
     ? options.binPath.trim()
     : '';
@@ -142,6 +155,8 @@ export async function detectAgentCli(kind, options = {}) {
       const result = await runProcess(resolved.command, [...resolved.argsPrefix, ...definition.versionArgs], {
         timeout: DETECTION_TIMEOUT_MS,
         env: applyAgentCliCaptureEnv(env, resolved.command),
+        // This bounded probe is shared across requests, so no one viewer owns it.
+        signal: null,
       });
       if (result.code === 0) version = firstSafeLine(result.stdout);
     } catch {
@@ -167,7 +182,6 @@ export async function detectAgentCli(kind, options = {}) {
     updateCommand: definition.updateCommand,
     checkedAt: new Date(now).toISOString(),
   };
-  STATUS_CACHE.set(cacheKey, { at: now, value });
   return value;
 }
 
@@ -210,4 +224,5 @@ export async function verifyAgentCliAuth(kind, options = {}) {
 
 export function resetAgentCliDetectionCacheForTests() {
   STATUS_CACHE.clear();
+  STATUS_INFLIGHT.clear();
 }

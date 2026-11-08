@@ -175,9 +175,20 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
     workspace: identity.workspace, contextWindowTokens: settings.contextWindowTokens,
     nativeId: randomUUID(), lastCost: 0, method: method || 'new', clean: false, seenMessages: new Set(), seenResults: new Set(),
     secretValues: Object.values(runtime.secrets ?? {}).filter(value => typeof value === 'string') };
+  let finishPreparation;
   try {
     session.release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);
-    if (controller.signal.aborted) throw new Error('Agent CLI request cancelled.');
+    const allocation = await admitAgentCli(`cli-allocation:${candidate.providerId}`, 1, controller.signal);
+    try {
+      controller.signal.throwIfAborted();
+      await reserveCliProcess(sessions, closing, candidate.providerId, settings.maxConcurrent, closeSession);
+      controller.signal.throwIfAborted();
+      if ([...closing].some(row => row.key === key && row.terminationUnconfirmed)) throw new Error('Previous CLI process has not exited; retry after it closes.');
+      // Count preparation against the process ceiling before releasing the
+      // allocation lock. The per-chat lock keeps this reservation out of eviction.
+      sessions.set(key, session);
+    } finally { allocation(); }
+    session.preparation = new Promise(resolve => { finishPreparation = resolve; });
     const replay = buildAgentCliPrompt(body, kind);
     session.cacheDir = cliCacheDir(candidate.providerId, state.chatId);
     const acpKey = `${candidate.providerId}\0${candidate.modelId}`;
@@ -351,9 +362,11 @@ async function createSession({ key, state, runtime, candidate, body, settings, c
       round.translator.consume(kind === 'claude' && event.type === 'result' ? { ...event, usage: undefined } : event);
       if (event.type === 'result' && session.invocation.keepStdinOpen) void round.finish('result');
     } });
-    sessions.set(key, session);
+    finishPreparation();
+    if (session.closed || controller.signal.aborted) throw new Error('Agent CLI request cancelled.');
     return session;
   } catch (error) {
+    finishPreparation?.();
     await closeSession(session);
     throw error;
   }
@@ -368,6 +381,9 @@ async function closeSession(session, { forget = false } = {}) {
   clearTimeout(session.timer);
   if (sessions.get(session.key) === session) sessions.delete(session.key);
   session.closePromise = (async () => {
+    // Disposal can arrive while a reserved session is still creating its
+    // bridge or native process. Let preparation publish those resources first.
+    await session.preparation;
     await session.processRun?.stop().catch(() => {});
     const child = session.processRun?.child;
     if (child?.pid && child.exitCode == null && child.signalCode == null) {
@@ -487,13 +503,8 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
       await closeSession(session); session = null;
     }
     if (!session) {
-      const allocation = await admitAgentCli(`cli-allocation:${candidate.providerId}`, 1, controller.signal);
-      try {
-        await reserveCliProcess(sessions, closing, candidate.providerId, settings.maxConcurrent, closeSession);
-        if ([...closing].some(row => row.key === key && row.terminationUnconfirmed)) throw new Error('Previous CLI process has not exited; retry after it closes.');
-        session = await createSession({ key, state, runtime, candidate, body, settings, controller, identity, fingerprint });
-        if (rebuildReason) { session.method = 'rebuilt'; session.reason = rebuildReason; }
-      } finally { allocation(); }
+      session = await createSession({ key, state, runtime, candidate, body, settings, controller, identity, fingerprint });
+      if (rebuildReason) { session.method = 'rebuilt'; session.reason = rebuildReason; }
     } else { session.method = 'reused'; updateAgentCliSessionOutput(session.capture, { sessionState: 'active', continuation: 'reused' }); }
     clearTimeout(session.timer);
     if (!session.release) session.release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);

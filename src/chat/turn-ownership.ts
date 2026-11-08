@@ -1,6 +1,6 @@
 import { isServerStorageMode } from '../config/storage-mode';
 import { randomUUID } from '../lib/random-id';
-import { isChatRunningRemotely, setRemoteChatTurns } from './remote-turn-state';
+import { isChatRunningRemotely, setRemoteChatPresence } from './remote-turn-state';
 import { isPairedDevice } from '../api/session-token';
 import { getChatHostId } from './remote-chat-client';
 import { createTurnLease, ChatLeaseRequestError, type LeaseGrant } from './turn-lease';
@@ -56,10 +56,9 @@ export async function refreshRemoteChatTurns(signal?: AbortSignal): Promise<bool
   if (!isServerStorageMode()) return false;
   const response = await fetch('/api/chat-turns', { signal, cache: 'no-store' });
   if (!response.ok) throw new Error('Could not check running chats.');
-  const data = await response.json() as { turns: { chatId: string; ownerId: string }[] };
+  const data = await response.json() as { turns: { chatId: string; ownerId: string; hostId?: string }[] };
   if (!Array.isArray(data.turns)) throw new Error('Invalid running chats response.');
-  return setRemoteChatTurns(data.turns.filter(turn => (owners.get(turn.chatId) ?? rememberedOwner(turn.chatId)) !== turn.ownerId)
-    .map(turn => turn.chatId));
+  return setRemoteChatPresence(data.turns.filter(turn => (owners.get(turn.chatId) ?? rememberedOwner(turn.chatId)) !== turn.ownerId));
 }
 
 export async function isChatOwnedElsewhere(chatId: string): Promise<boolean> {

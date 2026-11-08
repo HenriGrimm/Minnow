@@ -725,7 +725,8 @@ export function createChatCommandService({
         const prior = repository.readMessageByIdentity(command.chatId, messageId)?.message;
         const createdAt = prior ? prior.createdAt : command.requestedAt;
         const message = { role: 'user', content: command.message, commandId: command.commandId,
-          messageId, provenance: command.provenance, steer: true, ...(typeof createdAt === 'number' ? { createdAt } : {}) };
+          messageId, provenance: command.provenance, steer: true, ...(typeof createdAt === 'number' ? { createdAt } : {}),
+          ...(command.images?.length ? { images: command.images } : {}) };
         const appended = repository.appendMessage(command.chatId, message, { fence, messageId, commandId: command.commandId });
         const updated = repository.updateCommand(command.commandId, { state: 'settled', messageId, result: { disposition: 'steered', executionId } });
         updates.push(updated); messages.push(message); rowIds.push(appended.rowId);
@@ -769,18 +770,19 @@ export function createChatCommandService({
       const unresolved = repository.listUnsettledToolInvocations(executionId);
       const recovery = unresolved.length > 0 || result?.failure?.recoveryRequired === true
         || repository.getExecution(executionId)?.status === 'recovery_required';
-      if (recovery) result = { ...result, outcome: 'crashed', error: 'A tool effect needs explicit recovery',
+      if (recovery) result = { ...result, outcome: 'crashed', error: typeof result.error === 'string' && result.error.trim() ? result.error : 'A tool effect needs explicit recovery',
         failure: { ...result.failure, recoveryRequired: true } };
       const waiting = !controller.signal.aborted && result?.failure?.waitingForHost === true;
       const status = recovery ? 'recovery_required' : waiting ? 'waiting_for_host'
         : controller.signal.aborted ? 'stopped' : ['crashed', 'timeout'].includes(result?.outcome) ? 'failed' : 'completed';
       const updated = repository.atomic(() => {
         const settled = repository.updateExecution(executionId, { status, result }, { fence });
-        if (settled.settledAt != null) {
+        if (settled.settledAt != null || status === 'recovery_required') {
           const input = repository.readMessageByIdentity(chatId, inputMessageId(command.commandId));
           if (input?.message.role === 'user') {
             repository.patchMessage(chatId, input.rowId, {
-              workDurationMs: Math.max(0, settled.settledAt - (settled.activatedAt ?? settled.createdAt)),
+              workStatus: status,
+              ...(settled.settledAt != null ? { workDurationMs: Math.max(0, settled.settledAt - (settled.activatedAt ?? settled.createdAt)) } : {}),
             }, { fence, expectedHash: input.rowHash });
           }
         }
@@ -790,7 +792,7 @@ export function createChatCommandService({
         const updated = repository.updateCommand(command.commandId, { state,
           held: entry.taskOwned && (controller.signal.aborted || recovery),
           result: entry.taskOwned ? { ...result, disposition: 'task_pending', executionId } : result,
-          error: recovery ? { code: 'recovery_required', message: 'A tool effect needs explicit recovery', retryable: false } : null });
+          error: recovery ? { code: 'recovery_required', message: result.error, retryable: false } : null });
         const title = updated.captured.titleUpdate;
         if (status === 'completed' && command.intent?.deferTitleUntilTurnEnd && title && repository.getChat(chatId).name === title.expectedName) {
           repository.configureChat(chatId, { name: title.name });

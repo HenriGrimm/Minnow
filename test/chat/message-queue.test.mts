@@ -65,6 +65,12 @@ describe('message-queue helpers', () => {
     assert.deepEqual(items, [{ id: FIXED_QUEUE_ID, text: QUEUE_TEXT, createdAt: 1 }]);
   });
 
+  test('saved steering retains its delivery kind and images through normalization', () => {
+    const images = [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+    const item = { id: FIXED_QUEUE_ID, text: '[image: screen.png]', createdAt: 1, kind: 'steer', images };
+    assert.deepEqual(ensurePendingMessageQueue([item]), [item]);
+  });
+
   test('enqueueComposerMessage appends follow-ups', () => {
     const chat = seedChat();
     let notified = 0;
@@ -113,7 +119,7 @@ describe('message-queue helpers', () => {
     const ok = pushQueuedMessageNow(chat, id);
     assert.equal(ok, 'sent');
     assert.equal(getPendingMessageQueueCount(chat), 0);
-    assert.equal(chat.pendingSteerMessage, QUEUE_TEXT);
+    assert.equal(chat.pendingMessageQueue?.find(item => item.kind === 'steer')?.text, QUEUE_TEXT);
   });
 
   test('pushQueuedMessageNow promotes to steer during turn setup before streaming flag', () => {
@@ -125,7 +131,7 @@ describe('message-queue helpers', () => {
     setChatAbort(chat.id, new AbortController());
     const ok = pushQueuedMessageNow(chat, id);
     assert.equal(ok, 'sent');
-    assert.equal(chat.pendingSteerMessage, QUEUE_TEXT);
+    assert.equal(chat.pendingMessageQueue?.find(item => item.kind === 'steer')?.text, QUEUE_TEXT);
   });
 
   test('queued /compact stays deferred instead of becoming model-visible steer text', () => {

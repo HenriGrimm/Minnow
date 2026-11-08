@@ -77,8 +77,8 @@ describe('composer queue vs stop', () => {
     handleComposerPrimaryAction();
 
     assert.equal(aborted, false);
-    assert.equal(chat.pendingSteerMessage, STEER_TEXT);
-    assert.equal(chat.pendingMessageQueue?.length ?? 0, 0);
+    assert.equal(chat.pendingMessageQueue?.[0]?.text, STEER_TEXT);
+    assert.equal(chat.pendingMessageQueue?.[0]?.kind, 'steer');
     assert.equal(input.value, '');
   });
 
@@ -214,7 +214,7 @@ describe('composer queue vs stop', () => {
     input.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     input.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     assert.equal(controller.signal.aborted, false);
-    assert.equal(chat.pendingSteerMessage, STEER_TEXT);
+    assert.equal(chat.pendingMessageQueue?.find(item => item.kind === 'steer')?.text, STEER_TEXT);
   });
 
   test('IME Enter keeps composing instead of sending', () => {
@@ -236,19 +236,35 @@ describe('composer queue vs stop', () => {
     input.addEventListener('keydown', handleKey);
     input.dispatchEvent(new document.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     assert.equal(controller.signal.aborted, false);
-    assert.equal(getPendingAttachments()[0]?.id, 'file');
+    assert.equal(getPendingAttachments().length, 0);
+    assert.match(chat.pendingMessageQueue?.[0]?.text, /<file name="notes.txt">/);
+  });
+
+  test('image-only steering uses Send and Enter without interrupting the current reply', async () => {
+    const chat = seedStreamingChat();
+    const { input } = setupDom();
+    const controller = new AbortController(); appState.setChatAbort(chat.id, controller);
+    const dataUrl = 'data:image/png;base64,YWJjZA==';
+    pushAttachment({ id: 'image', name: 'screen.png', kind: 'image', mimeType: 'image/png', size: 4, dataUrl });
+    await submitComposerFollowup();
+    assert.equal(controller.signal.aborted, false);
+    assert.equal(input.value, '');
+    assert.equal(getPendingAttachments().length, 0);
+    assert.equal(chat.pendingMessageQueue?.[0]?.kind, 'steer');
+    assert.deepEqual(chat.pendingMessageQueue?.[0]?.images, [{ name: 'screen.png', dataUrl }]);
   });
 
   for (const pendingRead of [false, true]) {
-    test(`mid-turn primary action preserves attachments and draft (reading=${pendingRead})`, () => {
+    test(`mid-turn primary action sends ready attachments and preserves unfinished reads (reading=${pendingRead})`, () => {
       const chat = seedStreamingChat();
       const { input } = setupDom();
       input.value = STEER_TEXT;
       pushAttachment({ id: 'file', name: 'notes.txt', kind: pendingRead ? 'error' : 'text', mimeType: 'text/plain', size: 5, text: 'notes', pendingRead });
       handleComposerPrimaryAction();
       assert.equal(chat.pendingSteerMessage, undefined);
-      assert.equal(input.value, STEER_TEXT);
-      assert.equal(getPendingAttachments()[0]?.id, 'file');
+      assert.equal(input.value, pendingRead ? STEER_TEXT : '');
+      assert.equal(getPendingAttachments().length, pendingRead ? 1 : 0);
+      assert.equal(chat.pendingMessageQueue?.[0]?.kind, pendingRead ? undefined : 'steer');
     });
   }
 });

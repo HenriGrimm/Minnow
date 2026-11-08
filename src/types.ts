@@ -164,6 +164,8 @@ export interface UserMessage {
   createdAt?: number;
   /** Elapsed execution time for this input, saved when a managed turn settles. */
   workDurationMs?: number;
+  /** Canonical outcome, retained when a later execution replaces the activity summary. */
+  workStatus?: 'completed' | 'failed' | 'stopped' | 'recovery_required';
   /** Attached image bytes (drag-drop, paste, Design Mode crop). Vision models only. */
   images?: UserImageAttachment[];
   /** Issue ticket shown in place of the generated workflow prompt. */
@@ -1160,6 +1162,8 @@ export interface QueuedComposerMessage extends Pick<UserMessage, 'provenance' | 
   id: string;
   text: string;
   createdAt: number;
+  /** Steering is shown in the transcript immediately and delivered within the run. */
+  kind?: 'send' | 'steer';
   /** Server command revision and captured selection for managed conversations. */
   commandRevision?: number;
   modelSelection?: import('../server/chats/contracts').ModelSelection;
@@ -1223,7 +1227,7 @@ export interface Chat {
   profileReference?: import('../server/chats/contracts').AgentProfileReference;
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;
-    createdAt?: number; updatedAt?: number; settledAt?: number | null; modelSelection?: import('../server/chats/contracts').ModelSelection;
+    createdAt?: number; updatedAt?: number; settledAt?: number | null; workDurationMs?: number; modelSelection?: import('../server/chats/contracts').ModelSelection;
     resolvedModel?: import('../server/chats/contracts').ModelSelection; contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };
   agentPendingCommand?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentPendingCommand']>;
   agentActivityCursor?: import('../server/chats/activity').ChatActivityCursor;
@@ -1342,9 +1346,9 @@ export interface Chat {
    * {@link currentGenerationId}) or a crash mid-tools.
    */
   resumeInterrupted?: boolean;
-  /** Corrections accumulated for the next round; unapplied text returns to the queue on Stop. */
+  /** Legacy saved correction text; new steering uses separate pendingMessageQueue entries. */
   pendingSteerMessage?: string;
-  /** Follow-up messages queued while this chat is streaming (MIN-200). */
+  /** Accepted follow-ups; kind=steer is displayed immediately and consumed within the run. */
   pendingMessageQueue?: QueuedComposerMessage[];
   /** Active /goal completion loop; persists across reload until cleared. */
   activeGoal?: ActiveGoalState;

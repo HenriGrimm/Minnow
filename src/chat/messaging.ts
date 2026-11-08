@@ -16,7 +16,7 @@ import { handleGoalCommand } from './goal/command';
 import { handleLoopCommand } from './loop/command';
 import { handleCompactCommand } from './context/compact-command';
 import { parseCompactSlashInput } from './context/parse-compact-command';
-import { enqueueComposerMessage } from './message-queue';
+import { enqueueComposerMessage, flushPendingMessageQueue } from './message-queue';
 import { enqueueSteerMessage } from './steer-message';
 import { isChatTurnInProgress, isChatTurnSetupPending } from './chat-turn-guard';
 import {
@@ -419,14 +419,14 @@ export async function sendMessageWithTools(
     const attachments = await resolveWorkspaceReferences(getPendingAttachments());
     if (!rawTextEarly && !attachments.length) return;
     try {
-      if (attachments.some(attachment => attachment.kind === 'error')) throw new Error('Could not read attached workspace files. Fix or remove them before sending.');
+      if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
       if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
       const context = chat.chatCommandVersion === 1 ? managedSendContext(chat, managedText, {
         ephemeralContext: composer?.ephemeralContext, issue: composer?.issue, goalDriven: managedGoal,
         parseSlash: !managedGoal, attachIssueMentions: !composer?.issue,
       }) : null;
       const hasTurnContext = context && (context.intent.skill || context.intent.context || context.intent.issue || context.intent.goalDriven);
-      const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !hasTurnContext && !attachments.length && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
+      const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !hasTurnContext && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
       await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(context?.text ?? rawTextEarly, attachments),
         ...(context && action === 'send' ? { intent: context.intent } : {}),
         ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
@@ -468,20 +468,28 @@ export async function sendMessageWithTools(
   }
   if (isChatTurnInProgress(chat.id)) {
     const followupText = withComposerChatReferences(rawTextEarly);
-    if (!followupText.trim()) return;
-    const pendingSteer = getPendingAttachments();
-    const pendingOk = pendingSteer.filter((a) => a.kind !== 'error' && a.kind !== 'chatRef');
-    if (pendingOk.length > 0) {
-      setStatus('err', 'Follow-ups are text only — wait for this turn to finish for attachments');
+    const epoch = getAttachmentEpoch();
+    const pending = getPendingAttachments();
+    if (!followupText.trim() && !pending.length) return;
+    if (pending.some(a => a.pendingRead)) {
+      setStatus('err', 'Still reading attached files. Wait for them to finish or remove them.');
+      return;
+    }
+    const attachments = await resolveWorkspaceReferences(pending);
+    if (getAttachmentEpoch() !== epoch || getActiveChat().id !== chat.id || input.value.trim() !== rawTextEarly) return;
+    if (attachments.some(a => a.kind === 'error')) {
+      setStatus('err', 'Could not read attached files. Fix or remove them before sending.');
       return;
     }
     const queue = composer?.followupDelivery === 'queue' || Boolean(parseCompactSlashInput(rawTextEarly));
-    if ((queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, followupText)) {
+    if ((queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, followupText, attachments.filter(a => a.kind !== 'chatRef'))) {
       clearComposerChatReferences();
       clearComposerAfterSend(chat, input);
+      clearAttachments();
       if (parseCompactSlashInput(rawTextEarly)) showToast('Compaction queued for after this reply');
       refreshComposerStreamingAffordance();
       syncComposerMessageQueue();
+      if (!isChatTurnInProgress(chat.id)) await flushPendingMessageQueue(chat);
     }
     return;
   }

@@ -420,16 +420,15 @@ function command(value, path) {
   }
   const allowed = new Set(['version', 'commandId', 'chatId', 'kind', 'requestedAt', 'provenance', 'clientRequestId']);
   if (output.kind === 'send' || output.kind === 'steer') {
-    allowed.add('message'); allowed.add('modelSelection'); allowed.add('profileReference');
+    allowed.add('message'); allowed.add('modelSelection'); allowed.add('profileReference'); allowed.add('images');
+    optional(row, 'images', path, userImages, output);
     output.message = text(row.message, at(path, 'message'), 120_000);
     optional(row, 'modelSelection', path, modelSelection, output);
     optional(row, 'profileReference', path, profileReference, output);
     if (output.kind === 'send') {
       allowed.add('mode');
-      allowed.add('images');
       allowed.add('intent');
       optional(row, 'intent', path, sendIntent, output);
-      optional(row, 'images', path, userImages, output);
       output.mode = row.mode === undefined ? 'auto' : member(row.mode, at(path, 'mode'), ['auto', 'queue']);
     }
     if (output.provenance.kind === 'peer_message' && output.provenance.sourceChatId === output.chatId) {

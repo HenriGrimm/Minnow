@@ -174,7 +174,7 @@ interface ChatQueueControlFields {
 }
 export type ChatCommand = ChatCommandBase & (
   | ({ kind: 'send'; mode: 'auto' | 'queue'; images?: ChatUserImage[] } & ChatMessageCommandFields)
-  | ({ kind: 'steer' } & ChatMessageCommandFields)
+  | ({ kind: 'steer'; images?: ChatUserImage[] } & ChatMessageCommandFields)
   | { kind: 'stop'; scope: 'turn' | 'tree' | 'agents'; executionId?: string; runId?: string }
   | ({ kind: 'edit_queued'; message: string } & ChatQueueControlFields)
   | ({ kind: 'remove_queued' | 'push_queued' } & ChatQueueControlFields)

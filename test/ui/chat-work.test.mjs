@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import DOMPurify from 'dompurify';
+import Database from 'better-sqlite3';
+import { initSessionsSchema } from '../../server/config/sessions-schema.js';
+import { createChatRepository } from '../../server/chats/repository.js';
+import { createChatPresentation } from '../../server/chats/presentation.js';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
-import { createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { applySharedChatFrame, createEmptyChatObject, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { renderChatFromHistory, cancelChatHistoryBackfill, appendStreamingAssistantRow } from '../../src/ui/messages.ts';
 import { setStreaming } from '../../src/app-state.ts';
 import { attachToolStartIndicator } from '../../src/ui/stream-status.ts';
@@ -14,6 +18,7 @@ import { collectTranscriptTurns } from '../../src/chat/transcript-turns.ts';
 import { getPerFileChangeSummary } from '../../src/usage/code-change-ledger.ts';
 import { ThoughtBubbleController } from '../../src/ui/thought-bubbles.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
+import { notifyManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
 
 let win, mount, chat;
 const originalFetch = globalThis.fetch;
@@ -75,6 +80,57 @@ test('compact history keeps the final answer visible and groups tools and though
   assert.ok(toolRow.classList.contains('chat-work-hidden'));
 });
 
+test('managed work reflects canonical outcomes even when final prose exists and a stale stream flag remains', () => {
+  chat.runs = [];
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'review-command';
+  for (const [status, outcome, label] of [
+    ['recovery_required', 'recovery', 'Needs recovery'], ['failed', 'failed', 'Failed'],
+    ['stopped', 'stopped', 'Stopped'], ['waiting_for_input', 'live', 'Waiting for your answer'],
+    ['waiting_for_approval', 'live', 'Needs approval'], ['waiting_for_host', 'live', 'Waiting for host'],
+    ['waiting_for_agents', 'live', 'Waiting for agents'], ['running', 'live', 'Working…'],
+    ['completed', 'done', 'Worked'],
+  ]) {
+    chat.agentExecution = { executionId: 'review-execution', commandId: 'review-command', status };
+    setStreaming(status === 'recovery_required', chat.id);
+    renderChatFromHistory(chat);
+    const work = mount.querySelector('.chat-work');
+    assert.equal(work.dataset.outcome, outcome, status);
+    assert.equal(work.querySelector('.chat-work__label').textContent, label, status);
+    assert.equal(Boolean(work.querySelector('.chat-work__status .icon-svg')), outcome !== 'live', status);
+    assert.equal(Boolean(work.querySelector('.chat-work__status .fi-rr-check')), outcome === 'done', status);
+    assert.equal(Boolean(work.querySelector('.chat-work__status .fi-rr-cross-circle')), outcome === 'failed' || outcome === 'recovery', status);
+  }
+});
+
+test('canonical metadata changes refresh the status glyph without replacing transcript nodes', async () => {
+  chat.runs = [];
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'review-command';
+  chat.agentExecution = { executionId: 'review-execution', commandId: 'review-command', status: 'completed' };
+  renderChatFromHistory(chat);
+  const work = mount.querySelector('.chat-work'), reply = mount.querySelector('.chat-turn-final');
+  chat.agentExecution.status = 'recovery_required';
+  notifyManagedChatMetadata(chat.id);
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
+  assert.equal(work.dataset.outcome, 'recovery');
+  assert.equal(work.querySelector('.chat-work__label').textContent, 'Needs recovery');
+  assert.equal(mount.querySelector('.chat-turn-final'), reply);
+});
+
+test('historical work outcomes survive subsequent turns and do not inherit another command status', () => {
+  chat.runs = [];
+  chat.chatCommandVersion = 1;
+  chat.history[0].commandId = 'old-command';
+  chat.history[0].workStatus = 'recovery_required';
+  chat.history.push({ role: 'user', content: 'Next request', commandId: 'new-command', workStatus: 'completed', workDurationMs: 7000 },
+    { role: 'assistant', content: 'Next request completed.' });
+  chat.agentExecution = { executionId: 'new-execution', commandId: 'new-command', status: 'completed' };
+  renderChatFromHistory(chat);
+  assert.deepEqual([...mount.querySelectorAll('.chat-work')].map(work => work.dataset.outcome), ['recovery', 'done']);
+  assert.match(mount.querySelector('.chat-work__label').textContent, /Needs recovery/);
+});
+
 const bookkeepingRound = (name, content = null) => [
   { role: 'assistant', content, tool_calls: [
     { id: name, type: 'function', function: { name, arguments: name === 'todo_write' ? '{"todos":[]}' : '{"content":"Configuration is ready"}' } },
@@ -99,6 +155,48 @@ test('managed work saves its elapsed label when a live turn settles and history 
   assert.ok(!mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-work__label').textContent, 'Worked for 4m 39s');
+});
+
+test('a settled tool-heavy turn receives its duration outside the bounded live transcript tail', () => {
+  let stamp = 1000;
+  const db = new Database(':memory:');
+  initSessionsSchema(db);
+  const repository = createChatRepository({ db, now: () => stamp });
+  const presentation = createChatPresentation({ repository });
+  try {
+    chat.runs = [];
+    chat.chatCommandVersion = 1;
+    chat.history = [
+      { role: 'user', content: 'Review the project', commandId: 'review-command' },
+      ...Array.from({ length: 14 }, (_, index) => tool(`call-${index}`, `src/file-${index}.ts`)).flat(),
+      { role: 'assistant', content: 'Review completed.' },
+    ];
+    repository.createChat({ id: chat.id, name: 'Review', workspacePath: '/fixture', providerId: 'agent-cli', modelId: 'codex', modeId: 'build' });
+    repository.ensureManagedChat(chat.id, { projectId: 'project' });
+    const fence = repository.claimExecution({ chatId: chat.id, executionId: 'review-execution', commandId: 'review-command', ownerId: 'server', leaseMs: 600_000 });
+    stamp = 61_000;
+    repository.markExecutionActivated(fence.executionId, { fence });
+    chat.history.forEach((message, index) => repository.appendMessage(chat.id, message, { fence, messageId: `row-${index}` }));
+    renderChatFromHistory(chat);
+    const work = mount.querySelector('.chat-work');
+    const toolRow = mount.querySelector('.tool-call-msg');
+    assert.equal(work.querySelector('.chat-work__label').textContent, 'Worked');
+    stamp += 279_000;
+    repository.updateExecution(fence.executionId, { status: 'completed' }, { fence });
+    repository.patchMessage(chat.id, 0, { workDurationMs: 279_000 }, { fence });
+    const frame = presentation.frame(chat.id);
+    assert.equal(frame.history.messages.length, 20);
+    assert.ok(frame.history.start > 0, 'the timed input is outside the transmitted tail');
+    assert.ok(frame.history.messages.every(message => message.role !== 'user'));
+    applySharedChatFrame(chat.id, frame.fields, frame.history);
+    installChatWorkView(mount, chat, () => false);
+    assert.equal(work.querySelector('.chat-work__label').textContent, 'Worked for 4m 39s');
+    assert.equal(mount.querySelector('.tool-call-msg'), toolRow, 'timing updates retain existing activity nodes');
+    assert.equal(chat.history[0].workDurationMs, 279_000);
+    applySharedChatFrame(chat.id, { agentExecution: { executionId: 'next-execution', commandId: 'next-command', status: 'running' } });
+    renderChatFromHistory(chat);
+    assert.equal(mount.querySelector('.chat-work__label').textContent, 'Worked for 4m 39s');
+  } finally { presentation.dispose(); db.close(); }
 });
 
 test('each plain reply keeps its own duration without an empty activity disclosure', () => {
@@ -127,7 +225,7 @@ test('older activity without timing keeps its label and rejects invalid duration
   }
 });
 
-test('steering stays in one live timeline and one settled change summary', () => {
+test('steering uses ordinary message bubbles and retains one settled change summary', () => {
   chat.history.splice(3, 0,
     { role: 'user', content: 'Keep the transition inline.\nAlso preserve message actions.', steer: true },
     ...tool('b', 'src/steer.ts'),
@@ -144,21 +242,19 @@ test('steering stays in one live timeline and one settled change summary', () =>
   setStreaming(true, chat.id);
   renderChatFromHistory(chat);
   const work = mount.querySelector('.chat-work');
-  const steers = [...mount.querySelectorAll('.msg--steered')];
+  const steers = [...mount.querySelectorAll('.msg.user')].slice(1);
   assert.equal(mount.querySelectorAll('.chat-work').length, 1);
   assert.equal(mount.querySelector('.chat-turn-changes'), null);
   assert.equal(steers.length, 2);
   for (const row of steers) {
-    assert.equal(row.querySelector('.msg-steer-chip').textContent, 'You steered');
+    assert.equal(row.querySelector('.msg-steer-chip'), null);
     assert.ok(row.querySelector('.message-actions__trigger'));
-    assert.ok(row.classList.contains('chat-step'));
+    assert.ok(!row.classList.contains('chat-step'));
     assert.ok(!row.classList.contains('chat-work-hidden'));
   }
   const tools = [...mount.querySelectorAll(':scope > .tool-call-msg')];
   assert.equal(tools[0].nextElementSibling, steers[0]);
-  assert.ok(tools[0].classList.contains('chat-step--joined'));
-  assert.ok(steers[0].classList.contains('chat-step--joined'));
-  assert.ok(tools[1].classList.contains('chat-step--joined'));
+  assert.ok(!steers[0].classList.contains('chat-step--joined'));
   assert.equal(steers[1].nextElementSibling.dataset.historyIndex, '7');
 
   setStreaming(false, chat.id);
@@ -170,7 +266,7 @@ test('steering stays in one live timeline and one settled change summary', () =>
   assert.ok(tools.every((row) => row.classList.contains('chat-work-hidden')));
   assert.ok(steers.every((row) => !row.classList.contains('chat-work-hidden')));
   work.click();
-  assert.ok(steers[0].classList.contains('chat-step--joined'));
+  assert.ok(!steers[0].classList.contains('chat-step--joined'));
   setChatView('full');
   assert.ok(steers.every((row) => !row.classList.contains('chat-step')));
   setChatView('compact');

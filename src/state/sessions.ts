@@ -1891,6 +1891,19 @@ export function applySharedChatFrame(
     chat.history.splice(history.start, chat.history.length - history.start, ...history.messages);
     chat.messageCount = chat.history.length;
   }
+  // Managed frames carry only the transcript tail. Settlement can update the
+  // opening input outside that tail; reconcile its outcome and timing by command identity.
+  const execution = chat.agentExecution;
+  if (managed && chat.historyLoaded !== false && execution?.commandId
+      && ['completed', 'failed', 'stopped', 'recovery_required'].includes(execution.status)) {
+    const input = chat.history.find(message => message.role === 'user' && message.commandId === execution.commandId);
+    if (input?.role === 'user') {
+      input.workStatus = execution.status as NonNullable<typeof input.workStatus>;
+      if (execution.settledAt != null && typeof execution.workDurationMs === 'number' && Number.isFinite(execution.workDurationMs) && execution.workDurationMs >= 0) {
+        input.workDurationMs = execution.workDurationMs;
+      }
+    }
+  }
   // Incoming state is a view of the owner's edits, never a local transcript edit.
   if (!localShellEdit) {
     dirtyChatIds.delete(chatId);

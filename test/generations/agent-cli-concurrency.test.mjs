@@ -10,6 +10,7 @@ import { pumpAgentCliUpstream } from '../../server/generations/agent-cli/pump.js
 import { __setAgentCliSessionMocksForTests, __resetAgentCliSessionMocksForTests } from '../../server/generations/agent-cli/session.js';
 import { __setCodexInvocationForTests, shutdownCodexSessions } from '../../server/generations/codex-app-server/manager.js';
 import { getAgentCliOutput } from '../../server/generations/agent-cli/output.js';
+import { CLI_IDLE_LIMIT, createCliSessionPool, disposeCliSessions } from '../../server/generations/agent-cli/lifecycle.js';
 
 const codexFixture = fileURLToPath(new URL('../fixtures/fake-codex-conversation.mjs', import.meta.url));
 const cliFixture = fileURLToPath(new URL('../fixtures/fake-agent-cli.mjs', import.meta.url));
@@ -40,10 +41,113 @@ after(async () => {
 async function until(predicate, message) {
   const deadline = Date.now() + 3000;
   while (!await predicate()) {
-    assert.ok(Date.now() < deadline, message);
+    assert.ok(Date.now() < deadline, typeof message === 'function' ? message() : message);
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
+
+for (const kind of ['codex', 'claude', 'cursor']) test(`${kind} starts another chat while the first session is still preparing`, async () => {
+  const prepared = [];
+  let releaseFirst;
+  const firstReady = new Promise(resolve => { releaseFirst = resolve; });
+  if (kind === 'codex') __setCodexInvocationForTests(async session => {
+    prepared.push(session.home);
+    if (prepared.length === 1) await firstReady;
+    return { command: process.execPath, argsPrefix: [codexFixture], cwd: session.home,
+      env: { ...process.env, MINNOW_CODEX_SCRIPTS: JSON.stringify([{ hang: true }]) } };
+  });
+  else __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    prepared.push(input.tempDir);
+    if (prepared.length === 1) await firstReady;
+    return { command: process.execPath, args: [cliFixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'hang',
+        FAKE_AGENT_CLI_STDIN_OUT: path.join(input.tempDir, 'inference-started') } };
+  } });
+  const start = label => {
+    const providerId = `cold-start-${kind}`;
+    const state = createGenerationState({ providerId, chatId: `${providerId}-${label}`, fallbackRole: 'default',
+      body: { model: 'fixture', stream: true, messages: [{ role: 'user', content: label }] } });
+    const done = pumpAgentCliUpstream({ state,
+      runtime: { profile: { agentCli: { kind, maxConcurrent: 2 } }, secrets: {} },
+      candidate: { providerId, modelId: 'fixture' }, index: 0, idleMs: 0, maxMs: 15000, canFailover: false });
+    const run = { state, done }; runs.push(run); return run;
+  };
+  try {
+    start('slow');
+    await until(() => prepared.length === 1, 'first chat did not enter preparation');
+    const second = start('fast');
+    await until(async () => kind === 'codex'
+      ? getAgentCliOutput(second.state.chatId)?.output.includes('turn/started')
+      : prepared[1] && await fs.access(path.join(prepared[1], 'inference-started')).then(() => true, () => false),
+    () => `second chat waited for unrelated session preparation despite a free slot: ${second.state.status} ${second.state.errorMessage ?? ''}`);
+    assert.equal(prepared.length, 2);
+    assert.equal(second.state.status, 'streaming');
+  } finally { releaseFirst(); }
+});
+
+test('preparing sessions count against the shared native process ceiling', async () => {
+  const providerId = 'preparing-process-ceiling';
+  const pending = createCliSessionPool('concurrency-pending', new Set(), async () => { throw new Error('Pending tool handoffs cannot be evicted.'); });
+  for (let i = 0; i < CLI_IDLE_LIMIT + 1; i++) pending.set(`pending-${i}`, { key: `pending-${i}`, providerId, waiting: true });
+  let releaseFirst, preparing = false;
+  const gate = new Promise(resolve => { releaseFirst = resolve; });
+  __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    preparing = true; await gate;
+    return { command: process.execPath, args: [cliFixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'hang' } };
+  } });
+  const start = label => {
+    const state = createGenerationState({ providerId, chatId: `${providerId}-${label}`, fallbackRole: 'default',
+      body: { model: 'fixture', stream: true, messages: [{ role: 'user', content: label }] } });
+    const done = pumpAgentCliUpstream({ state,
+      runtime: { profile: { agentCli: { kind: 'claude', maxConcurrent: 2 } }, secrets: {} },
+      candidate: { providerId, modelId: 'fixture' }, index: 0, idleMs: 0, maxMs: 15000, canFailover: false });
+    const run = { state, done }; runs.push(run); return run;
+  };
+  try {
+    start('reserved'); await until(() => preparing, 'first chat did not reserve its process');
+    const excess = start('excess');
+    await excess.done;
+    assert.equal(excess.state.status, 'error');
+    assert.match(excess.state.errorMessage, /process limit reached/);
+  } finally { pending.clear(); releaseFirst(); }
+});
+
+test('disposal during preparation cleans up before another chat reuses its slot', async () => {
+  const providerId = 'dispose-preparing';
+  const prepared = [];
+  let releaseFirst;
+  const gate = new Promise(resolve => { releaseFirst = resolve; });
+  __setAgentCliSessionMocksForTests({ prepareInvocation: async input => {
+    prepared.push(input.tempDir);
+    if (prepared.length === 1) await gate;
+    return { command: process.execPath, args: [cliFixture], cwd: input.tempDir, stdin: input.prompt,
+      env: { ...process.env, ...input.bridgeConfig.env, FAKE_AGENT_CLI_SCENARIO: 'hang',
+        FAKE_AGENT_CLI_STDIN_OUT: path.join(input.tempDir, 'inference-started') } };
+  } });
+  const start = label => {
+    const state = createGenerationState({ providerId, chatId: `${providerId}-${label}`, fallbackRole: 'default',
+      body: { model: 'fixture', stream: true, messages: [{ role: 'user', content: label }] } });
+    const done = pumpAgentCliUpstream({ state,
+      runtime: { profile: { agentCli: { kind: 'claude', maxConcurrent: 1 } }, secrets: {} },
+      candidate: { providerId, modelId: 'fixture' }, index: 0, idleMs: 0, maxMs: 15000, canFailover: false });
+    const run = { state, done }; runs.push(run); return run;
+  };
+  let disposal;
+  try {
+    const first = start('disposed');
+    await until(() => prepared.length === 1, 'first chat did not enter preparation');
+    disposal = disposeCliSessions(session => session.chatId === first.state.chatId);
+    const next = start('next');
+    assert.equal(prepared.length, 1);
+    releaseFirst(); await disposal; await first.done;
+    assert.equal(first.state.status, 'error');
+    await assert.rejects(fs.access(prepared[0]), { code: 'ENOENT' });
+    await until(async () => prepared[1] && await fs.access(path.join(prepared[1], 'inference-started')).then(() => true, () => false),
+      'disposing a preparing session did not release its slot');
+    assert.equal(next.state.status, 'streaming');
+  } finally { releaseFirst(); await disposal; }
+});
 
 for (const kind of ['codex', 'claude', 'cursor']) test(`${kind} runs two chats concurrently, respects the limit, and releases cancelled slots`, async () => {
   const prepared = [];

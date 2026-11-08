@@ -53,7 +53,7 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
       createdAt: row.createdAt, commandRevision: row.revision, modelSelection: row.effectiveCommand.modelSelection,
       kind: row.effectiveCommand.kind, held: row.held, provenance: row.effectiveCommand.provenance,
       // Only the leading input can be presented as a sending transcript row.
-      ...(index === 0 ? {
+      ...(index === 0 || row.effectiveCommand.kind === 'steer' ? {
         ...(row.effectiveCommand.images?.length ? { images: row.effectiveCommand.images } : {}),
         ...(row.effectiveCommand.intent?.issue ? { issue: row.effectiveCommand.intent.issue } : {}),
         ...(row.effectiveCommand.intent?.codeMap ? { codeMap: row.effectiveCommand.intent.codeMap } : {}),

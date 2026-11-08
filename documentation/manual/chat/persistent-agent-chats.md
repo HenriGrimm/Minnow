@@ -41,7 +41,7 @@ An unavailable explicit model or unsupported option produces an error instead of
 
 ## Send, queue and steer
 
-The child uses the familiar composer: **Enter** steers a running reply, and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a separate follow-up. A correction is applied at the next tool-round boundary. If the reply finishes before another boundary, the correction becomes the next turn.
+The child uses the familiar composer: **Enter** sends feedback into a running reply, and **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) queues a separate follow-up. Feedback appears immediately as a normal chat message and can include images, including an image on its own. The agent picks it up at its next model step, including before a text-only response finishes the run.
 
 Queued rows show their saved model. Use **Edit queued message**, **Delete queued message**, or the send arrow. The arrow steers the current run while one is active and sends the queued message while idle. Editing the queued text preserves your current composer draft and the item's saved model.
 

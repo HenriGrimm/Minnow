@@ -401,6 +401,15 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
       .get(identity(chatId), integer(rowId, 'message row'));
     return row ? { rowId, message: parse(row.payload_json), rowHash: row.row_hash } : null;
   }
+  function updateRecoveredWorkStatus(execution, status) {
+    const commandId = execution.commandId;
+    if (!commandId) return;
+    const inputId = commandId.length <= 154 ? 'input-' + commandId : 'input-' + createHash('sha256').update(commandId).digest('hex');
+    const input = repository.readMessageByIdentity(execution.chatId, inputId);
+    if (input?.message.role !== 'user' || input.message.workStatus === status) return;
+    upsertMessageRow(db, execution.chatId, input.rowId, { ...input.message, workStatus: status });
+    updateMessageDerived(execution.chatId);
+  }
   function patchMessage(chatId, rowId, updates, { fence, expectedHash } = {}) {
     const patch = parse(json(updates));
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) fail('invalid_request', 'Expected message updates');
@@ -818,6 +827,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         } };
         db.prepare('UPDATE chat_executions SET status=?,result_json=?,settled_at=?,updated_at=? WHERE execution_id=?')
           .run(next, json(result), TERMINAL_EXECUTIONS.has(next) ? time() : null, time(), executionId);
+        updateRecoveredWorkStatus(execution, next);
         db.prepare("UPDATE chat_execution_leases SET state='released',expires_at=? WHERE chat_id=?").run(time(), execution.chatId);
         touch(execution.chatId); return getExecution(executionId);
       });
@@ -881,6 +891,7 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         updateMessageDerived(chatId);
         db.prepare("UPDATE chat_executions SET status='stopped',result_json=?,settled_at=?,updated_at=? WHERE execution_id=?")
           .run(json({ ...execution.result, outcome: 'crashed', humanRecovery }), time(), time(), executionId);
+        updateRecoveredWorkStatus(execution, 'stopped');
         db.prepare("UPDATE chat_execution_leases SET state='released',expires_at=? WHERE chat_id=? AND execution_id=?").run(time(), chatId, executionId);
         repository.holdQueuedCommands(chatId);
         const command = execution.commandId && getCommand(execution.commandId);

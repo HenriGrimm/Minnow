@@ -987,14 +987,14 @@ function createTurnRunner(deps) {
       emitProgress(void 0, true);
       emitLiveActivity({ phase: "generating", partialReasoning: void 0, currentToolName: null }, true);
       const spliceRoundBoundaryRows = () => {
-        if (typeof input.onRoundBoundary !== "function") return;
+        if (typeof input.onRoundBoundary !== "function") return false;
         let extra = null;
         try {
           extra = input.onRoundBoundary();
         } catch {
-          return;
+          return false;
         }
-        if (!Array.isArray(extra) || extra.length === 0) return;
+        if (!Array.isArray(extra) || extra.length === 0) return false;
         let spliced = 0;
         for (const row of extra) {
           if (!row || typeof row !== "object" || typeof row.role !== "string") continue;
@@ -1002,6 +1002,7 @@ function createTurnRunner(deps) {
           if ("content" in row) next.content = row.content;
           if (typeof row.tool_call_id === "string") next.tool_call_id = row.tool_call_id;
           if (Array.isArray(row.tool_calls)) next.tool_calls = row.tool_calls;
+          if (Array.isArray(row.images)) next.images = row.images;
           if (typeof row.messageId === 'string') next.messageId = row.messageId;
           if (typeof row.commandId === 'string') next.commandId = row.commandId;
           if (row.provenance && typeof row.provenance === 'object') next.provenance = row.provenance;
@@ -1009,6 +1010,7 @@ function createTurnRunner(deps) {
           spliced += 1;
         }
         if (spliced > 0) emitProgress(void 0, true);
+        return spliced > 0;
       };
       const emitTurnEvent = (event) => {
         if (typeof input.onTurnEvent !== "function") return;
@@ -1904,8 +1906,22 @@ function createTurnRunner(deps) {
             stats: statsSegments.length ? averageStatsSegments(statsSegments) : void 0
           };
         }
-        const returnProseWithoutFinalization = () => {
+        let proseRecorded = false;
+        const recordProse = () => {
+          if (proseRecorded) return;
           messages.push({ role: "assistant", content: prose });
+          proseRecorded = true;
+        };
+        if (typeof input.onRoundBoundary === 'function') {
+          // A correction can arrive during a prose-only response too. Persist
+          // that response before consuming input, then continue the same run.
+          recordProse();
+          emitProgress(void 0, true);
+          flushForcedEmit();
+          if (spliceRoundBoundaryRows()) continue;
+        }
+        const returnProseWithoutFinalization = () => {
+          recordProse();
           emitProgress(void 0, true);
           return {
             summary: prose || "",
@@ -1921,7 +1937,7 @@ function createTurnRunner(deps) {
         }
         const proseOutcome = tryParseStructuredOutcomeFromAssistantProse(prose, summarySchema);
         if (proseOutcome) {
-          messages.push({ role: "assistant", content: prose });
+          recordProse();
           emitProgress(void 0, true);
           return {
             summary: proseOutcome.summary,
@@ -1934,7 +1950,7 @@ function createTurnRunner(deps) {
           };
         }
         const returnProseFallbackOutcome = () => {
-          messages.push({ role: "assistant", content: prose });
+          recordProse();
           emitProgress(void 0, true);
           const legacy = legacyOutcomeFromSummary(prose);
           logSubAgentDebug("prose_fallback_outcome", { proseLen: prose.length, toolTurns });

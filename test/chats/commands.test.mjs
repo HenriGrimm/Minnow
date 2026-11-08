@@ -310,6 +310,7 @@ test('settled turns persist their own work duration, excluding time waiting for 
   await f.service.idle('target');
   const first = f.repository.readTranscript('target').messages[0];
   assert.equal(first.workDurationMs, 279_000);
+  assert.equal(first.workStatus, 'completed');
   stamp += 10_000;
   assert.equal((await f.service.send(f.caller, request)).replayed, true);
   assert.equal(f.repository.readTranscript('target').messages[0].workDurationMs, 279_000);
@@ -317,7 +318,34 @@ test('settled turns persist their own work duration, excluding time waiting for 
   await f.service.idle('target');
   const reopened = createChatRepository({ db: f.db }).readTranscript('target').messages;
   assert.deepEqual(reopened.map(row => row.workDurationMs), [279_000, 7_000]);
+  assert.deepEqual(reopened.map(row => row.workStatus), ['completed', 'completed']);
   assert.deepEqual(f.errors, []);
+});
+
+test('settled failures and recovery retain their input outcome and original diagnostic', async t => {
+  for (const recoveryRequired of [false, true]) {
+    await t.test(recoveryRequired ? 'needs recovery' : 'failed', async t => {
+      const f = await fixture(t);
+      const error = recoveryRequired ? 'This execution has an unsettled filesystem checkpoint' : 'Provider failed';
+      f.host(async input => {
+        f.appendInitial(input);
+        return { outcome: 'crashed', error, failure: { recoveryRequired } };
+      });
+      const receipt = await f.service.send(f.caller, { chatId: 'target', message: 'Review', clientRequestId: 'review' });
+      await f.service.idle('target');
+      const execution = f.repository.getLatestExecution('target');
+      assert.equal(execution.status, recoveryRequired ? 'recovery_required' : 'failed');
+      assert.equal(execution.result.error, error);
+      assert.equal(f.repository.readTranscript('target').messages[0].workStatus, execution.status);
+      if (recoveryRequired) {
+        assert.equal(f.repository.getCommand(receipt.commandId).error.message, error);
+        f.repository.recoverExecution(execution.executionId, { fence: f.repository.getLease('target'),
+          quiescence: { verified: true, source: 'test-quiescent', checkedAt: Date.now() } });
+        assert.equal(f.repository.readTranscript('target').messages[0].workStatus, 'failed');
+      }
+      assert.deepEqual(f.errors, []);
+    });
+  }
 });
 
 test('accepted commands and explicit steers retain order, provenance and canonical row identities', async t => {
@@ -331,12 +359,15 @@ test('accepted commands and explicit steers retain order, provenance and canonic
   await f.service.send(f.caller, { chatId: 'target', message: 'Initial work', clientRequestId: 'initial' });
   await started.promise;
   const first = await f.service.send(f.caller, { chatId: 'target', message: 'First correction', mode: 'steer', clientRequestId: 'steer-1' });
-  const second = await f.service.send(f.caller, { chatId: 'target', message: 'Second correction', mode: 'steer', clientRequestId: 'steer-2' });
+  const images = [{ name: 'screen.png', dataUrl: 'data:image/png;base64,YWJjZA==' }];
+  const second = await f.service.send(f.caller, { chatId: 'target', message: 'Second correction', images, mode: 'steer', clientRequestId: 'steer-2' });
   const queued = await f.service.send(f.caller, { chatId: 'target', message: 'Separate next turn', mode: 'queue', clientRequestId: 'queued' });
   const consumed = activeInput.takeSteers();
   assert.deepEqual(consumed.messages.map((row) => row.content), ['First correction', 'Second correction']);
   assert.deepEqual(consumed.rowIds, [1, 2]);
   assert.equal(consumed.messages[0].provenance.actor, 'human');
+  assert.deepEqual(consumed.messages[1].images, images);
+  assert.deepEqual(f.repository.readTranscript('target').messages[2].images, images);
   assert.equal(activeInput.takeSteers(), null);
   assert.equal(f.repository.getCommand(first.commandId).state, 'settled');
   assert.equal(f.repository.getCommand(second.commandId).result.disposition, 'steered');

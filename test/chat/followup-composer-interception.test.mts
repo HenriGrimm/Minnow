@@ -121,8 +121,9 @@ describe('/followup composer interception', () => {
     await sendMessageWithTools();
 
     assert.equal(getFollowupChain(chat), null);
-    assert.equal(getPendingMessageQueue(chat).length, 0);
-    assert.equal(chat.pendingSteerMessage, 'keep going with the refactor');
+    assert.equal(getPendingMessageQueue(chat).length, 1);
+    assert.equal(chat.pendingMessageQueue?.[0]?.kind, 'steer');
+    assert.equal(chat.pendingMessageQueue?.[0]?.text, 'keep going with the refactor');
   });
 
   test('an explicit queue action waits for the current turn', async () => {

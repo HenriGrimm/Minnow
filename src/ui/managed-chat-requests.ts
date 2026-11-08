@@ -9,12 +9,12 @@ import { hasUnsettledAgentWork, projectChatRelationships } from '../state/chat-r
 import { subscribeWorkspace } from '../state/workspace';
 import { subscribeAskQuestionDisplayContext, isAskQuestionDomVisible } from '../chat/ask-question-display';
 import { getActiveChatMountElement } from './chat-mount';
-import { ASK_QUESTION_OTHER_ID, validateAskQuestionArgs } from '../tools/ask-question-types';
-import { areAllDraftsValid, buildAnswerEntries, type AskQuestionAnswerDraft } from './question-cards-state';
+import { validateAskQuestionArgs } from '../tools/ask-question-types';
+import { focusAskQuestionModalForChat, isAskQuestionModalOpenForChat, showQuestionCardsModal, syncAskQuestionModalOnDisplayContextChange } from './question-cards-modal';
 import { syncChatItemDotsInDom } from './chat-item-dot';
 
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
-interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; }
+interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
 const views = new Map<string, ChatRequestsView>();
 let subscriptions: (() => void)[] | undefined;
 
@@ -25,9 +25,10 @@ function statusText(request: ChatRequest): string {
   return request.state === 'answered' ? 'Answer saved' : request.state === 'expired' ? 'Expired — this request can no longer be answered. The agent must ask again.' : request.state === 'cancelled' ? 'Cancelled' : request.kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer';
 }
 function paintPanel(panel: RequestPanel): void {
-  const live = panel.request.state === 'pending' && !panel.stale && panel.form.dataset.inspectOnly !== 'true';
+  const live = panel.request.kind === 'approval' && panel.request.state === 'pending' && !panel.stale && panel.form.dataset.inspectOnly !== 'true';
   const hadFocus = panel.form.contains(document.activeElement);
   panel.element.dataset.state = panel.request.state;
+  panel.element.hidden = panel.request.kind === 'question' && panel.form.dataset.questionPopup === 'true' && panel.request.state === 'pending' && panel.form.dataset.inspectOnly !== 'true';
   panel.form.hidden = !live;
   for (const control of panel.form.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>('input,button,textarea')) {
     control.disabled = panel.busy || control.dataset.unavailable === 'true';
@@ -49,7 +50,7 @@ async function submit(view: ChatRequestsView, panel: RequestPanel, answer: unkno
       applySharedChatAttention(view.chatId, { agentRequests: [...(chat.agentRequests ?? []).filter(item => item.requestId !== saved.requestId), saved],
         agentRequestSummary: (chat.agentRequestSummary ?? []).filter(item => item.requestId !== saved.requestId) });
     }
-    panel.busy = false; paintPanel(panel); syncChatItemDotsInDom();
+    panel.busy = false; paintPanel(panel); syncChatItemDotsInDom(); syncQuestionPopup(view); syncHostVisibility(view);
   } catch (error) {
     panel.busy = false; paintPanel(panel);
     panel.error = error instanceof Error ? error.message : 'The answer could not be saved. Retry this request.'; paintPanel(panel);
@@ -64,8 +65,9 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
   const status = document.createElement('p'); status.className = 'managed-chat-request__status'; status.tabIndex = -1; status.setAttribute('role', 'status');
   const form = document.createElement('form'); form.className = 'managed-chat-request__form';
   const panel: RequestPanel = { request, element, form, status, busy: false, stale: false };
-  element.append(title, status, form);
+  element.append(title, status);
   if (request.kind === 'approval') {
+    element.append(form);
     const workspace = document.createElement('p'); workspace.className = 'managed-chat-request__scope';
     const toolName = request.presentation.toolName ?? request.presentation.name;
     workspace.textContent = `${typeof toolName === 'string' ? `Tool: ${toolName}. ` : ''}${typeof request.presentation.workspaceRoot === 'string' ? `Workspace: ${request.presentation.workspaceRoot}` : 'Applies to this tool call only.'}`;
@@ -77,38 +79,45 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
   } else {
     const parsed = validateAskQuestionArgs(request.presentation.question);
     if (!parsed.ok) {
-      const diagnostic = document.createElement('p'); diagnostic.textContent = 'This saved question has an unsupported format. Skip it so the agent can ask again.';
-      form.append(diagnostic, button('Skip question', () => void submit(view, panel, { status: 'cancelled', answers: [] })));
+      panel.error = 'This saved question has an unsupported format. The agent must ask again.';
     } else {
       if (parsed.args.title) title.textContent = parsed.args.title;
-      const drafts = new Map<string, AskQuestionAnswerDraft>();
-      const send = document.createElement('button'); send.type = 'submit'; send.textContent = 'Send answer';
-      const validate = () => { const ready = areAllDraftsValid(parsed.args.questions, drafts); send.dataset.unavailable = String(!ready); send.disabled = panel.busy || !ready; };
-      for (const question of parsed.args.questions) {
-        const field = document.createElement('fieldset'), legend = document.createElement('legend'); legend.textContent = question.prompt; field.append(legend);
-        const draft: AskQuestionAnswerDraft = { selectedIds: [], otherText: '' }; drafts.set(question.id, draft);
-        const otherText = document.createElement('textarea'); otherText.rows = 2; otherText.maxLength = 120_000; otherText.placeholder = 'Your answer'; otherText.setAttribute('aria-label', `Other answer: ${question.prompt}`); otherText.hidden = true;
-        const choices: HTMLInputElement[] = [];
-        for (const option of [...question.options, { id: ASK_QUESTION_OTHER_ID, label: 'Other' }]) {
-          const label = document.createElement('label'); label.className = 'managed-chat-request__option';
-          const input = document.createElement('input'); input.type = question.allow_multiple ? 'checkbox' : 'radio'; input.name = `${request.requestId}:${question.id}`; input.value = option.id;
-          const text = document.createElement('span'); text.textContent = option.label;
-          if ('description' in option && option.description) { const description = document.createElement('small'); description.textContent = option.description; text.append(description); }
-          choices.push(input); label.append(input, text); field.append(label);
-          input.addEventListener('change', () => {
-            if (!question.allow_multiple || option.id === ASK_QUESTION_OTHER_ID) draft.selectedIds = input.checked ? [option.id] : [];
-            else { draft.selectedIds = draft.selectedIds.filter(id => id !== ASK_QUESTION_OTHER_ID && id !== option.id); if (input.checked) draft.selectedIds.push(option.id); }
-            for (const choice of choices) choice.checked = draft.selectedIds.includes(choice.value);
-            otherText.hidden = !draft.selectedIds.includes(ASK_QUESTION_OTHER_ID); validate();
-          });
-        }
-        otherText.addEventListener('input', () => { draft.otherText = otherText.value; validate(); }); field.append(otherText); form.append(field);
-      }
-      const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions'; actions.append(send, button('Skip question', () => void submit(view, panel, { status: 'cancelled', answers: [] }))); form.append(actions);
-      form.addEventListener('submit', event => { event.preventDefault(); if (areAllDraftsValid(parsed.args.questions, drafts)) void submit(view, panel, { status: 'answered', answers: buildAnswerEntries(parsed.args.questions, drafts) }); }); validate();
+      form.dataset.questionPopup = 'true';
     }
   }
   form.addEventListener('submit', event => event.preventDefault()); paintPanel(panel); return panel;
+}
+
+/** Durable questions use the same per-chat composer strip as renderer questions. */
+function syncQuestionPopup(view: ChatRequestsView): void {
+  if (views.get(view.chatId) !== view) return;
+  const native = findChatById(view.chatId)?.agentConversation?.origin === 'native';
+  const eligible = (panel: RequestPanel) => !native && panel.request.kind === 'question' && panel.request.state === 'pending' && !panel.stale && panel.form.dataset.questionPopup === 'true';
+  if (view.question) {
+    if (!eligible(view.question.panel) || (view.focusedRequestId && view.focusedRequestId !== view.question.panel.request.requestId)) view.question.controller.abort();
+    return;
+  }
+  if (!isAskQuestionDomVisible(view.chatId) || isAskQuestionModalOpenForChat(view.chatId)) return;
+  const panel = view.focusedRequestId ? view.panels.get(view.focusedRequestId) : [...view.panels.values()].find(eligible);
+  if (!panel || !eligible(panel)) { view.focusedRequestId = undefined; return; }
+  const parsed = validateAskQuestionArgs(panel.request.presentation.question);
+  if (!parsed.ok) return;
+  const controller = new AbortController();
+  const question = { panel, controller }; view.question = question;
+  void showQuestionCardsModal(parsed.args, {}, {
+    chatId: view.chatId,
+    signal: controller.signal,
+    notify: false,
+    async onSubmit(answer) {
+      await submit(view, panel, answer);
+      if (panel.request.state === 'pending' && !controller.signal.aborted) throw new Error(panel.error ?? 'The answer could not be saved. Try again.');
+    },
+  }).finally(() => {
+    if (view.question !== question) return;
+    view.question = undefined;
+    if (view.focusedRequestId === panel.request.requestId) view.focusedRequestId = undefined;
+    syncQuestionPopup(view);
+  });
 }
 
 function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[]): void {
@@ -130,6 +139,7 @@ function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[])
   view.loaded = true; view.notice.replaceChildren(); view.notice.hidden = true;
   while (view.panels.size > 80) { const old = [...view.panels.entries()].find(([id, panel]) => !ids.has(id) && !panel.busy); if (!old) break; view.panels.delete(old[0]); }
   syncHostVisibility(view);
+  syncQuestionPopup(view);
   if (active?.isConnected && document.activeElement === document.body) active.focus({ preventScroll: true });
 }
 
@@ -162,9 +172,9 @@ function getView(chatId: string): ChatRequestsView {
   const host = document.createElement('section'); host.className = 'managed-chat-requests'; host.dataset.chatId = chatId; host.setAttribute('aria-label', 'Conversation requests and controls');
   const notice = document.createElement('p'); notice.className = 'managed-chat-requests__notice'; notice.hidden = true; notice.setAttribute('role', 'status');
   const list = document.createElement('div'); list.className = 'managed-chat-requests__list'; host.append(notice, list);
-  const pager = document.createElement('nav'); pager.className = 'managed-chat-requests__pager'; pager.setAttribute('aria-label', 'Pending request pages'); host.append(pager);
+  const pager = document.createElement('nav'); pager.className = 'managed-chat-requests__pager'; pager.hidden = true; pager.setAttribute('aria-label', 'Pending request pages'); host.append(pager);
   const view: ChatRequestsView = { chatId, host, list, notice, pager, panels: new Map(), loaded: false, summaryKey: '', previous: [], nextCursor: null, pendingCount: 0 }; views.set(chatId, view);
-  while (views.size > 16) { const old = [...views.values()].find(item => item.chatId !== getActiveChat().id && !item.host.isConnected); if (!old) break; old.loading?.abort(); views.delete(old.chatId); }
+  while (views.size > 16) { const old = [...views.values()].find(item => item.chatId !== getActiveChat().id && !item.host.isConnected && !item.question); if (!old) break; old.loading?.abort(); views.delete(old.chatId); }
   return view;
 }
 
@@ -175,6 +185,7 @@ function syncPager(view: ChatRequestsView): void {
   if (view.nextCursor) { const cursor = view.nextCursor; view.pager.append(button('More pending requests', () => { view.previous.push(view.cursor); turnPage(cursor); })); }
   if (view.previous.length || view.nextCursor) { const count = document.createElement('span'); count.textContent = `${view.pendingCount} pending in this conversation`; view.pager.append(count); }
   view.pager.hidden = !view.pager.children.length;
+  syncHostVisibility(view);
 }
 
 function descendants(chat: Chat): Chat[] {
@@ -244,7 +255,7 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
 }
 
 function syncHostVisibility(view: ChatRequestsView): void {
-  view.host.hidden = !view.panels.size && view.notice.hidden && Boolean(view.host.querySelector<HTMLElement>('.managed-chat-scopes')?.hidden);
+  view.host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && Boolean(view.host.querySelector<HTMLElement>('.managed-chat-scopes')?.hidden);
 }
 
 /** Mount alongside the common transcript; forms retain draft/focus across history refreshes. */
@@ -258,6 +269,10 @@ export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
   const summaryKey = JSON.stringify(chat.agentRequestSummary ?? []), changed = summaryKey !== view.summaryKey;
   const active = document.activeElement as HTMLElement | null;
   if (chat.agentRequests && !view.loaded) applyRequests(view, chat.agentRequests.slice(0, 40));
+  for (const request of chat.agentRequests ?? []) {
+    const panel = view.panels.get(request.requestId);
+    if (panel && request.state !== 'pending') { panel.request = request; panel.stale = false; paintPanel(panel); }
+  }
   if (changed && chat.agentRequestSummary !== undefined) {
     const pending = new Set(chat.agentRequestSummary.map(request => request.requestId));
     for (const panel of view.panels.values()) if (panel.request.state === 'pending' && !pending.has(panel.request.requestId)) { panel.stale = true; paintPanel(panel); }
@@ -266,6 +281,7 @@ export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
   if (changed) { view.cursor = undefined; view.previous = []; }
   if ((!view.loaded || changed) && chat.agentConversation?.origin !== 'native') void refreshView(view, changed);
   if (active && view.host.contains(active) && document.activeElement === document.body) active.focus({ preventScroll: true });
+  syncQuestionPopup(view);
   syncHostVisibility(view);
   if (chat.agentActivityCursor && getActiveChat().id === chat.id && isAskQuestionDomVisible(chat.id) && document.visibilityState !== 'hidden' && document.hasFocus()) acknowledgeChatViewed(chat.id);
 }
@@ -281,6 +297,12 @@ export async function focusManagedChatRequest(chatId: string, requestId: string)
   }
   if (getActiveChat().id !== chatId || !view.host.isConnected) return;
   const panel = view.panels.get(requestId); if (!panel || panel.element.parentElement !== view.list) { view.notice.hidden = false; view.notice.textContent = 'This request is no longer available.'; syncHostVisibility(view); return; }
+  if (panel.form.dataset.questionPopup === 'true' && panel.request.state === 'pending') {
+    view.focusedRequestId = requestId; syncQuestionPopup(view);
+    await Promise.resolve();
+    focusAskQuestionModalForChat(chatId);
+    return;
+  }
   panel.element.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
   (panel.form.hidden ? panel.status : panel.form.querySelector<HTMLElement>('input,button,textarea') ?? panel.status).focus({ preventScroll: true });
 }
@@ -289,18 +311,22 @@ export async function focusManagedChatRequest(chatId: string, requestId: string)
 export function startManagedChatRequests(): () => void {
   if (subscriptions) return () => {};
   let disposed = false;
+  let dismissing = false;
   const sync = () => {
-    if (disposed) return;
+    if (disposed || dismissing) return;
+    syncAskQuestionModalOnDisplayContextChange();
     const id = getManagedChatView() || getActiveChat().id, chat = findChatById(id);
     if (!chat || !isAskQuestionDomVisible(id)) return;
     const mount = getActiveChatMountElement(); if (mount?.isConnected) syncManagedChatRequests(chat, mount);
     syncChatItemDotsInDom();
   };
   const reconnect = () => { sync(); const view = views.get(getManagedChatView() || getActiveChat().id); if (view?.host.isConnected) void refreshView(view, true); };
-  const clear = () => { for (const view of views.values()) { view.loading?.abort(); view.host.remove(); } views.clear(); };
+  const clear = () => { dismissing = true; try { const previous = [...views.values()]; views.clear(); for (const view of previous) { view.loading?.abort(); view.question?.controller.abort(); view.host.remove(); } } finally { dismissing = false; } };
   const deleted = (event: Event) => {
     const id = (event as CustomEvent).detail?.chatId; if (!id) return;
-    const view = views.get(id); view?.loading?.abort(); view?.host.remove(); views.delete(id);
+    dismissing = true;
+    try { const view = views.get(id); views.delete(id); view?.loading?.abort(); view?.question?.controller.abort(); view?.host.remove(); }
+    finally { dismissing = false; }
   };
   subscriptions = [subscribeManagedChatView(() => { for (const view of views.values()) view.loading?.abort(); queueMicrotask(sync); }), subscribeManagedChatMetadata(sync), subscribeAskQuestionDisplayContext(sync), subscribeWorkspace(clear)];
   window.addEventListener('minnow:managed-chat-reconnected', reconnect);

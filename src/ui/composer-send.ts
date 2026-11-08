@@ -1,12 +1,13 @@
 import { showToast } from './toast';
 import { shouldRelayChat } from '../chat/remote-chat-client';
 import { streaming } from '../app-state';
-import { getPendingAttachments } from '../attachments/store';
+import { clearAttachments, getAttachmentEpoch, getPendingAttachments } from '../attachments/store';
+import { resolveWorkspaceReferences } from '../attachments/workspace-ref';
 import { clearComposerChatReferences, withComposerChatReferences } from '../attachments/chat-ref';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { enqueueSteerMessage } from '../chat/steer-message';
 import { isChatWorktreeSetupPending } from '../state/chat-worktree';
-import { enqueueComposerMessage } from '../chat/message-queue';
+import { enqueueComposerMessage, flushPendingMessageQueue } from '../chat/message-queue';
 import { parseCompactSlashInput } from '../chat/context/parse-compact-command';
 import { isPluginSlashCommand } from '../chat/slash-commands/registry';
 import { isActiveChatStreaming } from '../chat/streaming-state';
@@ -122,17 +123,17 @@ export function syncComposerReadOnlyState(): boolean {
 
 /** True when Send/Enter should run (send, steer, or stop) on the active composer. */
 export function shouldAllowComposerPrimaryAction(inputText: string): boolean {
-  return Boolean(withComposerChatReferences(inputText).trim()) || Boolean(sessionState && hasChatWorkToStop(getActiveChat().id));
+  return Boolean(withComposerChatReferences(inputText).trim()) || getPendingAttachments().length > 0 || Boolean(sessionState && hasChatWorkToStop(getActiveChat().id));
 }
 
-/** Empty Enter is never Stop; attachment-only sends are available when idle. */
+/** Empty Enter is never Stop; images can also be sent during a run. */
 export function shouldSubmitComposerOnEnter(inputText: string): boolean {
   if (withComposerChatReferences(inputText).trim()) return true;
-  return getPendingAttachments().length > 0 && !(sessionState && isChatTurnInProgress(getActiveChat().id));
+  return getPendingAttachments().length > 0;
 }
 
 function composerInputHasText(): boolean {
-  return Boolean(withComposerChatReferences(getActiveComposerSurface().inputEl?.value ?? '').trim());
+  return Boolean(withComposerChatReferences(getActiveComposerSurface().inputEl?.value ?? '').trim()) || getPendingAttachments().length > 0;
 }
 
 // ── Streaming ────────────────────────────────────────────────────────────────
@@ -146,9 +147,9 @@ export function refreshComposerStreamingAffordance(): void {
   const steering = hasText && Boolean(sessionState && isChatTurnInProgress(getActiveChat().id));
   sendBtn.setAttribute(
     'aria-label',
-    hasText ? steering ? 'Steer current run' : 'Send message' : 'Stop generating',
+    hasText ? 'Send message' : 'Stop generating',
   );
-  sendBtn.title = hasText ? steering ? 'Steer current run (Enter)' : 'Send message (Enter)' : 'Stop generating';
+  sendBtn.title = hasText ? 'Send message (Enter)' : 'Stop generating';
   sendBtn.dataset.steerReady = steering ? 'true' : 'false';
   sendBtn.classList.toggle('send-btn--stop', !hasText);
   document.getElementById('sendIcon')?.classList.toggle('hidden', !hasText);
@@ -267,32 +268,38 @@ export function syncComposerFromStreamingState(): void {
 
 // ── Send ─────────────────────────────────────────────────────────────────────
 
-export function submitComposerFollowup(delivery: 'steer' | 'queue' = 'steer'): void {
+export async function submitComposerFollowup(delivery: 'steer' | 'queue' = 'steer'): Promise<void> {
   if (sessionState && chatReadOnlyReason(getActiveChat())) { showToast(chatReadOnlyReason(getActiveChat())!); return; }
   const input = getActiveComposerSurface().inputEl;
+  const draft = input?.value ?? '';
   const text = withComposerChatReferences(input?.value ?? '').trim();
-  if (!text) return;
+  if (!text && !getPendingAttachments().length) return;
   const chat = getActiveChat();
   if (shouldRelayChat(chat.id) || !isChatTurnInProgress(chat.id) || isPluginSlashCommand(text) || /^\/followup(?:\s|$)/i.test(text)) {
     void loadChatMessaging().then(m => m.sendMessageWithTools({ followupDelivery: delivery }));
     return;
   }
-  const attachments = getPendingAttachments();
+  const epoch = getAttachmentEpoch();
+  let attachments = getPendingAttachments();
   if (attachments.some(a => a.pendingRead)) {
     showToast('Still reading attached files. Wait for them to finish or remove them.');
     return;
   }
-  if (attachments.some(a => a.kind !== 'error' && a.kind !== 'chatRef')) {
-    showToast('Wait for this reply to finish before sending attachments. Your draft is kept.');
+  if (attachments.some(a => a.kind === 'workspace')) attachments = await resolveWorkspaceReferences(attachments);
+  if (getAttachmentEpoch() !== epoch || getActiveChat().id !== chat.id || (input?.value ?? '') !== draft) return;
+  if (attachments.some(a => a.kind === 'error')) {
+    showToast('Could not read attached files. Fix or remove them before sending.');
     return;
   }
   const queue = delivery === 'queue' || Boolean(parseCompactSlashInput(text));
-  if (!(queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, text)) return;
+  if (!(queue ? enqueueComposerMessage : enqueueSteerMessage)(chat, text, attachments.filter(a => a.kind !== 'chatRef'))) return;
   clearComposerChatReferences();
   clearComposerAfterSend(chat, input);
+  clearAttachments();
   if (parseCompactSlashInput(text)) showToast('Compaction queued for after this reply');
   refreshComposerStreamingAffordance();
   syncComposerMessageQueue();
+  if (!isChatTurnInProgress(chat.id)) await flushPendingMessageQueue(chat);
 }
 
 /** Send when idle; steer with text during a turn; an empty primary button always stops. */
@@ -312,7 +319,7 @@ export function handleComposerPrimaryAction(): void {
   }
   if (sessionState && isChatTurnInProgress(getActiveChat().id)) {
     if (composerInputHasText()) {
-      submitComposerFollowup();
+      void submitComposerFollowup();
       return;
     }
     stopGeneration();

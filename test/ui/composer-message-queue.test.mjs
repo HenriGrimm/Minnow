@@ -159,19 +159,18 @@ describe('composer message queue mount', () => {
     const save = [...document.querySelectorAll('.composer-message-queue__text-action')].find(el => el.textContent === 'Save');
     save.click();
     await Promise.resolve();
-    assert.deepEqual(chat.pendingMessageQueue.map(item => item.text), ['revised first', 'second']);
+    assert.deepEqual(chat.pendingMessageQueue.filter(item => item.kind !== 'steer').map(item => item.text), ['revised first', 'second']);
     assert.equal(input.value, 'unsent draft');
   });
 
-  test('pending steering stays visible and can be cancelled without stopping the run', () => {
-    const { chat } = seed();
+  test('steering appears immediately as normal chat with no queue display', () => {
+    const { chat, chatArea } = seed();
     syncComposerMessageQueue();
     enqueueSteerMessage(chat, 'use the existing helper');
     const queue = document.getElementById('composerMessageQueue');
-    assert.match(queue.textContent, /Steering at next step/);
-    assert.match(queue.textContent, /use the existing helper/);
-    queue.querySelector('button[aria-label="Cancel pending steering"]').click();
-    assert.equal(chat.pendingSteerMessage, undefined);
+    assert.equal(queue.classList.contains('hidden'), true);
+    assert.match(chatArea.querySelector('.msg.user .msg-bubble').textContent, /use the existing helper/);
+    assert.equal(chatArea.querySelector('.msg-send-status, .msg-steer-chip'), null);
     assert.equal(appState.streamingChatIds.has(chat.id), true);
     assert.equal(document.getElementById('msgInput').placeholder, composerFollowUpPlaceholder());
   });
