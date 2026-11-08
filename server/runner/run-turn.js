@@ -421,8 +421,8 @@ function stripTranscriptRouting(body, vision) {
     if (projected !== message) changed = true;
     message = projected;
     if (!message || typeof message !== 'object' ||
-        !['messageId', 'commandId', 'provenance', 'createdAt', 'nativeAction'].some(key => Object.hasOwn(message, key))) return message;
-    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, nativeAction: _native, ...wire } = message;
+        !['messageId', 'commandId', 'provenance', 'createdAt', 'workDurationMs', 'nativeAction'].some(key => Object.hasOwn(message, key))) return message;
+    const { messageId: _id, commandId: _command, provenance: _provenance, createdAt: _createdAt, workDurationMs: _duration, nativeAction: _native, ...wire } = message;
     changed = true;
     return wire;
   });

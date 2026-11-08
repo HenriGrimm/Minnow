@@ -10,6 +10,7 @@ export interface TranscriptTurn {
   finalIndices: number[];
   toolCount: number;
   run?: TurnRunRecord;
+  workDurationMs?: number;
 }
 
 /** These calls record completed work without starting another work step. */
@@ -29,6 +30,9 @@ export function collectTranscriptTurns(chat: Chat): TranscriptTurn[] {
     }
     if (!turn) continue;
     turn.end = i;
+    if (msg.role === 'user' && typeof msg.workDurationMs === 'number' && Number.isFinite(msg.workDurationMs) && msg.workDurationMs >= 0) {
+      turn.workDurationMs = (turn.workDurationMs ?? 0) + msg.workDurationMs;
+    }
     if (msg.role === 'user' && msg.steer) {
       turn.finalIndices = [];
       turn.finalIndex = null;

@@ -59,7 +59,7 @@ test('compact history keeps the final answer visible and groups tools and though
   const work = mount.querySelector('.chat-work');
   const toolRow = mount.querySelector('.tool-call-msg');
   const final = mount.querySelector('.chat-turn-final');
-  assert.match(work.textContent, /Worked 3m 1s/);
+  assert.match(work.textContent, /Worked for 3m 1s/);
   assert.equal(work.dataset.outcome, 'done');
   assert.ok(work.querySelector('.chat-work__status .icon-svg'), 'settled turns lead with a check');
   assert.equal(work.getAttribute('aria-expanded'), 'false');
@@ -81,6 +81,51 @@ const bookkeepingRound = (name, content = null) => [
   ] },
   { role: 'tool', tool_call_id: name, content: 'Saved' },
 ];
+
+test('managed work saves its elapsed label when a live turn settles and history is repainted', () => {
+  chat.runs = [];
+  setStreaming(true, chat.id);
+  renderChatFromHistory(chat);
+  const work = mount.querySelector('.chat-work');
+  assert.ok(work.classList.contains('chat-work--live-hidden'));
+  chat.history[0].workDurationMs = 279_000;
+  setStreaming(false, chat.id);
+  installChatWorkView(mount, chat, () => false);
+  assert.equal(work.querySelector('.chat-work__label').textContent, 'Worked for 4m 39s');
+  assert.match(work.getAttribute('aria-label'), /Worked for 4m 39s/);
+  assert.ok(!work.classList.contains('chat-work--live-hidden'));
+  work.click();
+  assert.equal(work.getAttribute('aria-expanded'), 'true');
+  assert.ok(!mount.querySelector('.tool-call-msg').classList.contains('chat-work-hidden'));
+  renderChatFromHistory(chat);
+  assert.equal(mount.querySelector('.chat-work__label').textContent, 'Worked for 4m 39s');
+});
+
+test('each plain reply keeps its own duration without an empty activity disclosure', () => {
+  chat.runs = [];
+  chat.history = [
+    { role: 'user', content: 'First request', workDurationMs: 7_000 },
+    { role: 'assistant', content: 'First answer' },
+    { role: 'user', content: 'Next request', workDurationMs: 3_700_000 },
+    { role: 'assistant', content: 'Next answer' },
+  ];
+  renderChatFromHistory(chat);
+  const headers = [...mount.querySelectorAll('.chat-work')];
+  assert.deepEqual(headers.map(header => header.querySelector('.chat-work__label').textContent), ['Worked for 7s', 'Worked for 1h 1m']);
+  assert.ok(headers.every(header => header.disabled));
+  assert.ok(headers.every(header => !header.hasAttribute('aria-expanded') && !header.hasAttribute('aria-controls')));
+  assert.ok(headers.every(header => !header.getAttribute('aria-label').includes('Show working transcript')));
+  assert.equal(mount.querySelectorAll('.chat-turn-final').length, 2);
+});
+
+test('older activity without timing keeps its label and rejects invalid durations', () => {
+  chat.runs = [];
+  for (const duration of [undefined, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    chat.history[0].workDurationMs = duration;
+    renderChatFromHistory(chat);
+    assert.equal(mount.querySelector('.chat-work__label').textContent, 'Worked');
+  }
+});
 
 test('steering stays in one live timeline and one settled change summary', () => {
   chat.history.splice(3, 0,
@@ -305,7 +350,7 @@ test('live work settles automatically and exposes the final answer', async () =>
   assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
   live = false;
   await new Promise((resolve) => setTimeout(resolve, 1150));
-  assert.match(mount.querySelector('.chat-work').textContent, /Worked 3m 1s/);
+  assert.match(mount.querySelector('.chat-work').textContent, /Worked for 3m 1s/);
   assert.ok(!mount.querySelector('.chat-work').classList.contains('chat-work--live-hidden'));
   assert.ok(!mount.querySelector('[data-history-index="3"]').classList.contains('chat-work-hidden'));
 });

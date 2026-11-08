@@ -158,7 +158,12 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     // The active checkpoint divider is a boundary, not work: alone it earns no disclosure.
     const work = activity.filter((row) => !row.matches('.compaction-divider:not(.compaction-divider--superseded)'));
-    if (!live && !work.length && !thoughts.length && !turn.toolCount) {
+    const hasActivity = Boolean(work.length || thoughts.length || turn.toolCount);
+    const run = turn.run;
+    const elapsedMs = run && (live || run.endedAt != null)
+      ? (live ? Date.now() : run.endedAt!) - run.createdAt : live ? undefined : turn.workDurationMs;
+    const duration = elapsedMs != null && Number.isFinite(elapsedMs) && elapsedMs >= 0 ? formatWorkDuration(elapsedMs) : '';
+    if (!live && !hasActivity && !duration) {
       group?.button.remove();
       return;
     }
@@ -177,15 +182,13 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     // A live turn draws its steps in place; the composer status line carries elapsed time.
     const show = full || group.expanded || live && !options.isolated;
     group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
-    group.button.setAttribute('aria-expanded', String(show));
-    // Full view is deliberately always open; no misleading collapse affordance.
-    group.button.disabled = full;
+    if (hasActivity) group.button.setAttribute('aria-expanded', String(show));
+    else group.button.removeAttribute('aria-expanded');
+    // Full view stays open; a duration alone has no activity to expand.
+    group.button.disabled = full || !hasActivity;
     group.button.classList.toggle('chat-work--live', live);
-    const run = turn.run;
     const stopped = run?.status === 'stopped' || rows.some((row) => row.matches('.msg--stopped'));
     const failed = run?.status === 'failed' || rows.some((row) => row.matches('.msg--failed') || row.querySelector('.msg-bubble--error'));
-    const duration = run && (live || run.endedAt != null)
-      ? formatWorkDuration((live ? Date.now() : run.endedAt!) - run.createdAt) : '';
     setText(group.label, live ? workingLabel(duration) : endLabel(run, failed, stopped, duration));
     const outcome: WorkOutcome = live ? 'live' : failed ? 'failed' : stopped ? 'stopped' : 'done';
     paintStatus(group, outcome);
@@ -203,7 +206,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
 
     setText(group.activity, live ? liveActivityText(mount, rows, assistants) : '');
     const ariaTail = [tally ? formatTurnSummary(tally) : '',
-      full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript'];
+      hasActivity ? full ? 'Full transcript' : show ? 'Hide working transcript' : 'Show working transcript' : ''];
     setAttr(group.button, 'aria-label', workAriaLabel(group, ariaTail));
     if (live) liveView = { group, turn, rows, assistants, ariaTail, historyLength: chat.history.length };
     const controlled: string[] = [];
@@ -227,7 +230,8 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       controlled.push(thought.id);
     }
     // Thousands of ids on a long run; rewriting them each sync churns the accessibility tree.
-    setAttr(group.button, 'aria-controls', controlled.join(' '));
+    if (controlled.length) setAttr(group.button, 'aria-controls', controlled.join(' '));
+    else group.button.removeAttribute('aria-controls');
     paintSteps(activity, full, live);
     if (live) syncRunStatus(duration, turn.toolCount);
     for (const row of rows) {
@@ -443,7 +447,7 @@ function endLabel(run: TranscriptTurn['run'], failed: boolean, stopped: boolean,
     return `${reason === 'user' ? 'Stopped by you' : reason === 'timeout' ? 'Timed out' : reason === 'system' ? 'Interrupted' : 'Stopped'}${after}`;
   }
   if (run?.endReason === 'max_tool_turns') return `Hit tool limit${after}`;
-  return `Worked${duration ? ` ${duration}` : ''}`;
+  return `Worked${duration ? ` for ${duration}` : ''}`;
 }
 
 type WorkOutcome = 'live' | 'done' | 'failed' | 'stopped';

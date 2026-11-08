@@ -162,6 +162,8 @@ export interface UserMessage {
   commandId?: string;
   provenance?: import('../server/chats/contracts').MessageProvenance;
   createdAt?: number;
+  /** Elapsed execution time for this input, saved when a managed turn settles. */
+  workDurationMs?: number;
   /** Attached image bytes (drag-drop, paste, Design Mode crop). Vision models only. */
   images?: UserImageAttachment[];
   /** Issue ticket shown in place of the generated workflow prompt. */

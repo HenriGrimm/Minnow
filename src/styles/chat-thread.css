@@ -321,7 +321,7 @@
 
 .chat-work:disabled { cursor: default; opacity: 1; }
 .chat-work--live-hidden { display: none; }
-.chat-thread[data-chat-view='full'] .chat-work__chevron { display: none; }
+.chat-work:disabled .chat-work__chevron { display: none; }
 .chat-work__status { display: flex; flex-shrink: 0; color: var(--mn-success); }
 .chat-work__status:empty { display: none; }
 .chat-work[data-outcome='failed'] .chat-work__status,

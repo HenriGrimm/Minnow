@@ -152,7 +152,7 @@ test('production runner continues canonical SQLite history and stored compaction
 test('upstream requests omit application routing metadata while canonical history retains it', async () => {
   const memory = createMemoryTranscriptStore();
   const provenance = { version: 1, actor: 'agent', source: 'agent_tool', kind: 'peer_message', sourceChatId: 'source', sourceTurnId: 'turn' };
-  memory.append('chat', { role: 'user', content: 'Do the work', messageId: 'message', commandId: 'command', provenance });
+  memory.append('chat', { role: 'user', content: 'Do the work', messageId: 'message', commandId: 'command', provenance, workDurationMs: 279_000 });
   let request;
   const result = await runTurn({ ...options, deps: dependencies(memory, async (_provider, body) => { request = body; return response(); }) });
   assert.equal(result.outcome, 'no_report');
@@ -160,6 +160,8 @@ test('upstream requests omit application routing metadata while canonical histor
   assert.equal(sent.messageId, undefined);
   assert.equal(sent.commandId, undefined);
   assert.equal(sent.provenance, undefined);
+  assert.equal(sent.workDurationMs, undefined);
+  assert.equal(memory.load('chat').messages[0].workDurationMs, 279_000);
   assert.deepEqual(memory.load('chat').messages[0].provenance, provenance);
   assert.equal(memory.load('chat').messages[0].messageId, 'message');
 });

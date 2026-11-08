@@ -775,7 +775,15 @@ export function createChatCommandService({
       const status = recovery ? 'recovery_required' : waiting ? 'waiting_for_host'
         : controller.signal.aborted ? 'stopped' : ['crashed', 'timeout'].includes(result?.outcome) ? 'failed' : 'completed';
       const updated = repository.atomic(() => {
-        repository.updateExecution(executionId, { status, result }, { fence });
+        const settled = repository.updateExecution(executionId, { status, result }, { fence });
+        if (settled.settledAt != null) {
+          const input = repository.readMessageByIdentity(chatId, inputMessageId(command.commandId));
+          if (input?.message.role === 'user') {
+            repository.patchMessage(chatId, input.rowId, {
+              workDurationMs: Math.max(0, settled.settledAt - (settled.activatedAt ?? settled.createdAt)),
+            }, { fence, expectedHash: input.rowHash });
+          }
+        }
         repository.requeueUnconsumedSteers(chatId, executionId, { held: controller.signal.aborted || recovery });
         const state = entry.taskOwned ? waiting ? 'waiting_for_host' : 'queued'
           : waiting ? 'waiting_for_host' : status === 'completed' ? 'settled' : status === 'stopped' ? 'cancelled' : 'failed';

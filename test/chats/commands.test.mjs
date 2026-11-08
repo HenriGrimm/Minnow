@@ -17,7 +17,7 @@ function deferred() {
 function hasCode(expected) { return (error) => error?.code === expected; }
 async function fixture(t, options = {}) {
   const db = new Database(':memory:'); db.pragma('foreign_keys=ON'); initSessionsSchema(db);
-  const repository = createChatRepository({ db, now: () => 1000 });
+  const repository = createChatRepository({ db, now: options.now ?? (() => 1000) });
   const registry = createChatProjectRegistry([
     { projectId: 'project', workspaceId: 'main', canonicalKey: 'C:/fixture' },
     { projectId: 'project', workspaceId: 'worktree', canonicalKey: 'C:/worktree' },
@@ -292,6 +292,32 @@ test('Stop during initial profile capture commits neither a stale profile nor it
   await assert.rejects(pending, hasCode('ownership_conflict'));
   assert.equal(f.repository.getLatestProfile('target'), null);
   assert.equal(f.repository.listCommands({ chatId: 'target' }).filter(row => row.command.kind === 'send').length, 0);
+});
+
+test('settled turns persist their own work duration, excluding time waiting for a host', async t => {
+  let stamp = 1000;
+  const f = await fixture(t, { now: () => stamp, leaseMs: 600_000 });
+  const request = { chatId: 'target', message: 'Initial work', clientRequestId: 'timed-turn' };
+  await f.service.send(f.caller, request);
+  await f.service.idle('target');
+  stamp = 61_000;
+  const durations = [279_000, 7_000];
+  f.host(async input => {
+    f.appendInitial(input);
+    stamp += durations.shift();
+    return { outcome: 'no_report' };
+  });
+  await f.service.idle('target');
+  const first = f.repository.readTranscript('target').messages[0];
+  assert.equal(first.workDurationMs, 279_000);
+  stamp += 10_000;
+  assert.equal((await f.service.send(f.caller, request)).replayed, true);
+  assert.equal(f.repository.readTranscript('target').messages[0].workDurationMs, 279_000);
+  await f.service.send(f.caller, { chatId: 'target', message: 'Next work', clientRequestId: 'next-timed-turn' });
+  await f.service.idle('target');
+  const reopened = createChatRepository({ db: f.db }).readTranscript('target').messages;
+  assert.deepEqual(reopened.map(row => row.workDurationMs), [279_000, 7_000]);
+  assert.deepEqual(f.errors, []);
 });
 
 test('accepted commands and explicit steers retain order, provenance and canonical row identities', async t => {
