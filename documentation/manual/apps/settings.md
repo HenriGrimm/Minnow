@@ -14,7 +14,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 |-------|-------|
 | **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
 | **Code & workspace** | Editor, Terminal, Language servers, Browser, GitHub, Issues |
-| **AI & agents** | Models & connections, Agents, Chat context, Rules, Tool permissions, Autopilot, Timeouts & recovery |
+| **AI & agents** | Models & connections, Agents, Chat context, Rules, Tools, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
 | **Data & privacy** | Backups, Access |
 | **About & troubleshooting** | About, Health & diagnostics |
@@ -43,7 +43,7 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 **Models & connections** opens Models. **Agents** configures shared prompt profiles, composer modes, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
 
-**Tool permissions** provides Off, Ask, and Full permissions by tool. Advanced controls cover structured arguments, tool loading, caching, and result size.
+**Tools** configures structured arguments, tool loading, caching, and result size. The global permission mode governs all agent actions.
 
 **Autopilot** sets board defaults for task concurrency, git worktrees, retries, planner fallback, and recovery. Each board can override these defaults. **Timeouts & recovery** sets idle and maximum durations for model responses and describes sub-agent recovery.
 

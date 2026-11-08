@@ -37,6 +37,7 @@ import {
 import { createSettingsToggleRow } from './settings-switch';
 import { setStatus } from './status';
 import { appConfirm } from './app-dialog';
+import { mountPromptPreview } from './settings-prompt-preview';
 
 const CONTEXT_POLICY_OPTIONS: { value: ContextEnforcementPolicy; label: string }[] = [
   { value: 'compact', label: 'Compact (default)' },
@@ -313,6 +314,7 @@ export function mountPromptFileEditor(
       ta.value = '';
       ta.disabled = true;
       lastSavedContent = '';
+      preview.refresh();
       await reloadBaseline();
       return;
     }
@@ -320,6 +322,7 @@ export function mountPromptFileEditor(
     ta.value = data.content;
     lastSavedContent = data.content;
     ta.disabled = false;
+    preview.refresh();
     await reloadBaseline();
   };
 
@@ -334,6 +337,7 @@ export function mountPromptFileEditor(
   meta.appendChild(sourceLabel);
   container.appendChild(meta);
   container.appendChild(ta);
+  const preview = mountPromptPreview(container, ta);
 
   const diffControls = mountPromptDiffControls(container, {
     getBaseline: () => builtinBaseline,
@@ -383,6 +387,7 @@ export function mountPromptFileEditor(
       ta.value = restored.content;
       lastSavedContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
+      preview.refresh();
       await reloadBaseline();
     })();
   });
@@ -434,6 +439,7 @@ export function mountWorkAgentPromptEditor(
       sourceLabel.textContent = 'unavailable';
       ta.value = '';
       lastSavedPromptContent = '';
+      preview.refresh();
       await reloadBaseline();
       return;
     }
@@ -441,6 +447,7 @@ export function mountWorkAgentPromptEditor(
       data.source === 'override' ? 'Custom override' : 'Built-in default';
     ta.value = data.content;
     lastSavedPromptContent = data.content;
+    preview.refresh();
     await reloadBaseline();
   };
 
@@ -456,6 +463,7 @@ export function mountWorkAgentPromptEditor(
   meta.appendChild(sourceLabel);
   container.appendChild(meta);
   container.appendChild(ta);
+  const preview = mountPromptPreview(container, ta);
 
   const diffControls = mountPromptDiffControls(container, {
     getBaseline: () => builtinBaseline,
@@ -505,6 +513,7 @@ export function mountWorkAgentPromptEditor(
       ta.value = restored.content;
       lastSavedPromptContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
+      preview.refresh();
       await reloadBaseline();
     })();
   });

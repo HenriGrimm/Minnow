@@ -470,41 +470,18 @@
   <h2 class="sec"><span class="num">7</span>Tools &amp; permissions</h2>
   <p>Tools are what make Minnow useful <em>and</em> what make it risky. The permission system is how you keep the first without the second.</p>
 
-  <h3>Three permission levels</h3>
+  <h3>One global permission mode</h3>
   <table>
-    <thead><tr><th>Level</th><th>Behaviour</th></tr></thead>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
     <tbody>
-      <tr><td><strong>Off</strong></td><td>The model never sees the tool. It can't call it, and it costs no context.</td></tr>
-      <tr><td><strong>Ask</strong></td><td>The model may call it; you approve each call from the strip in chat.</td></tr>
-      <tr><td><strong>Full</strong></td><td>Runs immediately, no prompt.</td></tr>
+      <tr><td><strong>Manual</strong></td><td>Project reads run freely; changes and higher-risk actions ask for approval.</td></tr>
+      <tr><td><strong>Auto</strong></td><td>Routine work runs automatically; higher-risk actions ask for approval.</td></tr>
+      <tr><td><strong>Full access</strong></td><td>Actions run without prompts, within workflow clamps and the secret floor.</td></tr>
     </tbody>
   </table>
-
-  <p>Set them in two places that write to the same file:</p>
-  <ul>
-    <li><strong>Settings → Integrations → Tools</strong> — the full catalog grouped by category, with bulk actions.</li>
-    <li><strong>The tools button in any composer</strong> — the same Off/Ask/Full controls in a popover, right in your chat.</li>
-  </ul>
-
-  <h3>What's on by default</h3>
-  <p>Minnow ships conservative. A fresh install enables roughly thirty tools; the rest are Off. A few safe ones default to <strong>Full</strong> (read-only or clearly safe): Brain/memory tools, Minnow documentation, and settings <em>reads</em>. Everything else that's enabled starts on <strong>Ask</strong> — files, git, shell, and browser tools all need your say-so until you decide otherwise.</p>
-
-  <h3>Two gates, not one</h3>
-  <p>A tool must pass <strong>both</strong> of these, in order:</p>
-  <ol>
-    <li>The <a href="#modes">mode</a> must allow the tool at all.</li>
-    <li>Your <strong>permission</strong> for it must be Ask or Full (not Off).</li>
-  </ol>
-  <p>So turning a tool to Full does <em>not</em> make it available in Plan mode (Plan removed it), and a mode allowing a tool doesn't skip your approval. Modes are a ceiling, not a grant.</p>
-
-  <div class="callout note">
-    <span class="icon">🛡️</span>
-    <span class="label">The shell is special</span>
-    <p>File and git tools are confined to your workspace boundary. But <code>execute_command</code> on Full is different: once the model is inside a shell, the path check never sees the command string, so it has the same filesystem authority as you. If you're letting an agent run commands unattended, consider the <strong>agent shell sandbox</strong> (Settings → General).</p>
-  </div>
-
-  <h3>A sensible starting setup</h3>
-  <p><strong>Cautious (best default for most people):</strong> read-only tools on Full (<code>read_file</code>, <code>list_directory</code>, <code>grep</code>, <code>git_status</code>, <code>git_diff</code>), and everything that writes or executes on Ask. The model stops nagging about harmless lookups, and you still see every mutation.</p>
+  <p>The permission pill in the composer and the Permissions setting control the same global mode. It governs built-ins, plugins, MCP tools, sub-agents, and Boards. There are no per-tool switches in Settings or the composer.</p>
+  <p>Settings → Tools configures schema loading, result caching, and output limits. Server tools require Minnow's local server; browser tools require the desktop shell. Disconnect an integration by disabling or removing its server or plugin package.</p>
+  <p>Unattended agents return an approval-required error for actions that require a person. Use workspace isolation and the agent shell sandbox to contain shell execution.</p>
 </section>
 
 <!-- ========================================================= -->

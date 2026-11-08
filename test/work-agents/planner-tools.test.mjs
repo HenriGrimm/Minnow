@@ -81,8 +81,8 @@ describe('planner work agent allowedTools', () => {
       'web_search', 'fetch_web_content', 'rag_web_content',
       'save_file', 'append_file', 'insert_at_line', 'replace_text_in_file', 'make_directory',
     ]) {
-      assert.equal(config.enabled[toolId], true, `${toolId} should be enabled`);
-      assert.equal(config.permissions.default[toolId], 'ask', `${toolId} should require approval`);
+      assert.equal('enabled' in config, false);
+      assert.equal('permissions' in config, false);
     }
   });
 });

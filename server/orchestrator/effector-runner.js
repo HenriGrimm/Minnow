@@ -941,7 +941,7 @@ export function createRunnerEffector(options = {}) {
         { cwd: attemptCwd },
       );
       const builtinTools = [...headlessToolDefs(desired.role), reportToolFor(desired.role)];
-      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })];
+      const tools = [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions()];
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
       // Settings → Autopilot attempt wall clock, read per attempt so a change
       // applies to the next attempt without a restart. An explicit caller
@@ -1049,7 +1049,7 @@ export function createRunnerEffector(options = {}) {
               return parsed;
             },
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })] }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: [...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions()] }),
             finalizeStructuredOutcome: false,
             ask: null,
             onEvent: (event) => {

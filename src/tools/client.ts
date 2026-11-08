@@ -12,10 +12,8 @@ import { withIssueToolImages } from './issue-tool-images';
 import { executeIssueV2Tool, isIssueV2Tool } from './issue-tools-v2';
 import {
   ensureToolConfigReady,
-  getToolPermissionForId,
   invalidateToolConfigCache,
   isLocalServerAvailable,
-  isToolEnabled,
   loadToolConfig,
   loadToolConfigFromStorage,
   setLocalServerAvailable,
@@ -270,7 +268,6 @@ async function executeToolInner(
   await ensureToolConfigReady();
 
   if (AGENT_CHAT_TOOL_IDS.includes(name)) {
-    if (getToolPermissionForId(loadToolConfig(), name) === 'off') return { content: `Error: tool "${name}" is disabled.` };
     // The server owns Ask receipts; a renderer modal is not execution proof.
     const { executeChatTool } = await import('./chat-executor');
     return executeChatTool(name, args, context);
@@ -291,12 +288,6 @@ async function executeToolInner(
   }
 
   if (name === 'ask_question') {
-    if (!isToolEnabled('ask_question')) {
-      return {
-        content:
-          'Error: tool "ask_question" is disabled in Settings (set permission to Ask or Full to use it).',
-      };
-    }
     const parsed = validateAskQuestionArgs(args);
     if (parsed.ok === false) {
       return {
@@ -312,12 +303,6 @@ async function executeToolInner(
   }
 
   if (name === 'wait') {
-    if (!isToolEnabled('wait')) {
-      return {
-        content:
-          'Error: tool "wait" is disabled in Settings (enable it to let the agent pause on a timer).',
-      };
-    }
     const parsed = parseWaitDuration(args.duration);
     if (parsed.ok === false) {
       return { content: parsed.error };
@@ -428,9 +413,7 @@ async function executeToolInner(
     const unsupported = unsupportedSearchOptions(enrichedArgs, route.kind);
     if (unsupported) return { content: unsupported };
 
-    const deepRead =
-      enrichedArgs.deep_read === true &&
-      getToolPermissionForId(config, 'fetch_web_content') !== 'off';
+    const deepRead = enrichedArgs.deep_read === true;
 
     return executeWithResultCache('web_search', { ...enrichedArgs, _provider: route.kind, _searchRevision: getSearchConfigRevision() }, context, async () => {
       if (route.kind === 'brave') {
@@ -622,13 +605,10 @@ async function executeToolBodyAfterGates(
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
-/** User + server gating only (no mode filter). */
+/** Runtime and released-app availability only (no per-tool settings). */
 export function getEnabledToolCatalogEntries(): ToolDefinition[] {
   return BUILT_IN_TOOLS.filter((tool) => {
     if (tool.appId && !isAppEnabled(tool.appId)) {
-      return false;
-    }
-    if (!isToolEnabled(tool.id)) {
       return false;
     }
     if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
@@ -643,9 +623,7 @@ export function getEnabledToolCatalogEntries(): ToolDefinition[] {
 }
 
 function getEnabledDynamicToolDefinitions(): OpenAIFunctionDefinition[] {
-  return [...mcpToolCache.tools, ...pluginToolCache.tools].filter(
-    (def) => isToolEnabled(def.function.name),
-  );
+  return [...mcpToolCache.tools, ...pluginToolCache.tools];
 }
 
 export function getEnabledToolDefinitions(): OpenAIFunctionDefinition[] {
@@ -693,7 +671,7 @@ export function getEnabledToolDefinitionsForChat(
   return defs;
 }
 
-/** Alias for send path — built-in, MCP, and plugin tools after mode + permission filters. */
+/** Alias for send path — built-in, MCP, and plugin tools after runtime availability filters. */
 export const getEnabledToolDefinitionsForSend = getEnabledToolDefinitionsForChat;
 
 /** Pass chat/tool ids to the Node tool server for terminal registry and filters. */

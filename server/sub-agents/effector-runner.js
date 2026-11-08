@@ -629,7 +629,7 @@ export function createSubAgentEffector(options = {}) {
         toolIdsByType.set(run.type, toolIds);
       }
       const builtinTools = headlessToolDefinitions(toolIds);
-      const tools = withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })]);
+      const tools = withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions()]);
       const lazyTools = (await readConfigJson('tools.json'))?.lazyTools !== false;
 
       const schemaId =
@@ -756,7 +756,7 @@ export function createSubAgentEffector(options = {}) {
             reportToolName: DEFAULT_REPORT_TOOL_NAME,
             parseReport: parseReportForSchema(schemaId),
             systemPrompt: prompt,
-            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions({ requireFull: true })]) }),
+            refreshRoundConfig: async () => ({ systemPrompt: prompt, tools: withSubAgentReportTool([...builtinTools, ...await listEnabledMcpTools(), ...await getPluginToolDefinitions()]) }),
             summarySchema: schemaId,
             ask,
             onRoundBoundary: () => {

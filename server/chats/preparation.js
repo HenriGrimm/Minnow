@@ -267,17 +267,12 @@ async function policySnapshot(chat, scope, options = {}) {
   }
   const mode = composer.resolveChatModeTools({ chat: effectiveChat, workAgents: agents,
     workAgentOverrides: registry.overrides, toolNames: [...byName.keys()] });
-  // One agent: tools are no longer gated by mode or agent type. A tool is
-  // available unless it is turned off in Settings → Tools; the permission
-  // level decides per call whether the user is asked.
+  // Catalog membership is capability availability; authorization comes only from
+  // the global level and the active turn clamp, never legacy tools.json flags.
   const effects = composer.classifyChatBuiltinTools([...byName.keys()].filter(name => !/^(?:mcp__|plugin__)/.test(name)));
   const permissions = {};
   for (const name of byName.keys()) {
-    const configured = settings.tools?.permissions?.default?.[name];
-    const builtinOff = !/^(?:mcp__|plugin__)/.test(name) && configured !== 'ask' && configured !== 'full' &&
-      settings.tools?.enabled?.[name] !== true;
-    const off = !typeAvailable || configured === 'off' || settings.tools?.enabled?.[name] === false || builtinOff;
-    permissions[name] = off ? 'off' : 'ask';
+    permissions[name] = typeAvailable ? 'full' : 'off';
     effects[name] ??= 'unknown';
     if (mode.modeId === 'plan' && effects[name] === 'unknown' && /^(?:mcp__|plugin__)/.test(name)) permissions[name] = 'off';
   }

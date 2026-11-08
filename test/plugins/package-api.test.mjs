@@ -49,10 +49,7 @@ async function request(endpoint, body, method = 'POST') {
   return { status: response.status, body: await response.json() };
 }
 const packages = '/api/plugins/packages';
-const permission = mode => updateConfigJson('tools.json', config => {
-  config.permissions.default.plugin__api_demo__greet = mode;
-  return config;
-});
+const permission = permissionLevel => updateConfigJson('config.json', config => ({ ...config, toolSecurity: { permissionLevel } }));
 
 test('package HTTP lifecycle shares tool discovery, dispatch and permission guards', async () => {
   const scaffold = await request(packages + '/manage', { action: 'scaffold', id: 'api-demo', path: 'plugin' });
@@ -69,14 +66,15 @@ test('package HTTP lifecycle shares tool discovery, dispatch and permission guar
   const call = extra => request('/api/tools', { name, args: { name: 'Ada' }, workspaceRoot: workspace, ...extra });
   assert.match((await call()).body.result, /Hello, Ada!/);
   assert.match((await call({ pluginRelease: 'stale' })).body.result, /Reopen this panel/);
-  assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /requires? Full permission/);
-  await permission('off');
-  assert.equal((await definitions()).body.tools.some(t => t.function.name === name), false);
-  assert.match((await call()).body.result, /disabled in Settings/);
+  assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /needs approval/);
+  await updateConfigJson('tools.json', config => ({ ...config, permissions: { default: { [name]: 'off' } } }));
+  assert.equal((await definitions()).body.tools.some(t => t.function.name === name), true);
+  assert.match((await call()).body.result, /Hello, Ada!/);
   await permission('full');
   assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /Hello, Ada!/);
+  await permission('manual');
   const management = await executeInProcessTool('plugin_manage', { action: 'disable', id: 'api-demo' }, { cwd: workspace });
-  assert.match(management.content, /requires Full permission/);
+  assert.match(management.content, /needs approval/);
   const plan = await request('/api/tools', { name: 'plugin_manage', args: { action: 'disable', id: 'api-demo' }, modeId: 'plan' });
   assert.match(plan.body.result, /Plan mode/);
   assert.equal((await request(packages + '/manage', { action: 'disable', id: 'api-demo' })).status, 200);
@@ -86,11 +84,10 @@ test('package HTTP lifecycle shares tool discovery, dispatch and permission guar
   assert.match((await call()).body.result, /Hello, Ada!/);
   assert.equal((await request(packages + '/manage', { action: 'remove', id: 'api-demo' })).status, 200);
   assert.deepEqual((await request(packages)).body.packages, []);
-  assert.equal((await readConfigJson('tools.json')).permissions.default[name], undefined);
-  await permission('full'); // Simulate a permission left by removal in an older release.
+  await permission('auto');
   assert.equal((await request(packages + '/manage', { action: 'install', path: 'plugin' })).status, 200);
-  assert.equal((await readConfigJson('tools.json')).permissions.default[name], undefined);
-  assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /requires? Full permission/);
+  assert.equal((await readConfigJson('config.json')).toolSecurity.permissionLevel, 'auto');
+  assert.match((await executeInProcessTool(name, { name: 'Ada' }, { cwd: workspace })).content, /needs approval/);
 });
 
 test('package routes reject malformed input, unknown actions and traversal', async () => {

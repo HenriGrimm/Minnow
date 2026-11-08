@@ -145,12 +145,10 @@ export async function reloadPlugins() {
 /**
  * @returns {Promise<object[]>}
  */
-export async function getPluginToolDefinitions(options = {}) {
+export async function getPluginToolDefinitions() {
   while (true) {
     const { definitions, revision } = await pluginCatalog();
-    const permissions = (await readConfigJson('tools.json'))?.permissions?.default ?? {};
-    if (revision !== getPluginCatalogRevision()) continue;
-    return definitions.filter(t => options.requireFull ? permissions[t.function.name] === 'full' : permissions[t.function.name] !== 'off');
+    if (revision === getPluginCatalogRevision()) return [...definitions];
   }
 }
 
@@ -170,7 +168,6 @@ export async function getPluginToolCatalog() {
  */
 export async function callPluginTool(name, args, options = {}) {
   try {
-    if ((await readConfigJson('tools.json'))?.permissions?.default?.[name] === 'off') return 'Error: plugin tool is disabled in Settings';
     const result = await executePackageTool(name, args ?? {}, options);
     if (result !== undefined) return result;
   } catch (error) {
@@ -196,7 +193,7 @@ export async function callPluginTool(name, args, options = {}) {
     const run = await compileHandler(item);
     // A cached inventory/compiled handler cannot preserve a revoked grant.
     const config = await readConfigJson('tools.json');
-    if (config?.plugins?.[item.id]?.enabled === false || config?.permissions?.default?.[name] === 'off') {
+    if (config?.plugins?.[item.id]?.enabled === false) {
       return 'Error: plugin tool is disabled in Settings';
     }
     return await run(args ?? {}, ctx);

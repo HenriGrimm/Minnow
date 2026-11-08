@@ -9,7 +9,7 @@ import { safeAgentCliDiagnostic } from '../generations/agent-cli/errors.js';
 import { readCliCheckpoint } from '../generations/agent-cli/checkpoints.js';
 
 // Shell can implement every one of these operations. A native write profile
-// cannot preserve a narrower Ask/Off on any equivalent filesystem/Git tool.
+// requires the equivalent filesystem/Git capabilities in the execution catalog.
 export const NATIVE_READ_TOOLS = Object.freeze([
   'read_file', 'read_file_range', 'read_document', 'list_directory', 'find_files',
   'grep', 'search_in_file', 'get_file_metadata', 'execute_command', 'run_python', 'run_javascript',
@@ -62,7 +62,7 @@ export function deriveChatNativePolicy({ capturedPolicy, currentPolicy, workspac
   }
   if (!['general', 'build', 'debug', 'plan'].includes(effective.modeId)) throw denied('This mode has no verified native mapping.');
   for (const name of NATIVE_READ_TOOLS) {
-    if (effective.toolPermissions[name] !== 'full') throw denied('Native shell cannot preserve Ask/Off for ' + name + '.');
+    if (effective.toolPermissions[name] !== 'full') throw denied('Native shell requires the tool capability: ' + name + '.');
   }
   // Account for captured/current execution aliases even when the optional name
   // is not offered by today's built-in catalog. Metadata cannot label a shell
@@ -71,19 +71,19 @@ export function deriveChatNativePolicy({ capturedPolicy, currentPolicy, workspac
     ...Object.keys(capturedPolicy.toolEffects), ...Object.keys(currentPolicy.toolEffects)]);
   for (const name of toolNames) {
     if ((name === 'execute_code' || capturedPolicy.toolEffects[name] === 'shell' || currentPolicy.toolEffects[name] === 'shell')
-      && effective.toolPermissions[name] !== 'full') throw denied('Native shell cannot preserve Ask/Off for ' + name + '.');
+      && effective.toolPermissions[name] !== 'full') throw denied('Native shell requires the tool capability: ' + name + '.');
   }
   // Plan document writes remain guarded Minnow calls; approval must never turn
   // this read profile into a writable native workspace.
-  const mode = effective.modeId === 'plan' || ['none', 'plans'].includes(effective.fileWriteScope) ? 'read-only' : 'workspace-write';
+  const mode = effective.permissionLevel !== 'full' || effective.modeId === 'plan' || ['none', 'plans'].includes(effective.fileWriteScope) ? 'read-only' : 'workspace-write';
   if (mode === 'workspace-write') {
     for (const name of NATIVE_WRITE_TOOLS) {
-      if (effective.toolPermissions[name] !== 'full') throw denied('Native writes cannot preserve Ask/Off for ' + name + '.');
+      if (effective.toolPermissions[name] !== 'full') throw denied('Native writes require the tool capability: ' + name + '.');
     }
     for (const name of toolNames) {
       if (name.startsWith('git_') && !NATIVE_GIT_READ_TOOLS.has(name)
         || ['file-write', 'git-write'].includes(capturedPolicy.toolEffects[name]) || ['file-write', 'git-write'].includes(currentPolicy.toolEffects[name])) {
-        if (effective.toolPermissions[name] !== 'full') throw denied('Native writes cannot preserve Ask/Off for ' + name + '.');
+        if (effective.toolPermissions[name] !== 'full') throw denied('Native writes require the tool capability: ' + name + '.');
       }
     }
   }

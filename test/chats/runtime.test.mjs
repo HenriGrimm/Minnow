@@ -410,7 +410,7 @@ test('permission revoked after the host check is denied again by ordinary dispat
   const record = f.repository.recordToolIntent;
   f.repository.recordToolIntent = (...args) => {
     checked = true;
-    f.settings.tools.permissions.default.save_file = 'off';
+    f.settings.meta.toolSecurity = { permissionLevel: 'manual' };
     return record(...args);
   };
   const accepted = await f.request('/api/chats/chat/commands', { action: 'send', text: 'Try a revoked write', clientRequestId: 'revoked-write' });

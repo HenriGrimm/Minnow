@@ -13,7 +13,7 @@ import { setToolConfigForTests } from '../../src/tools/config.ts';
 import { executeHeadlessTool } from '../../src/headless/execute-tool.ts';
 
 describe('headless approval policy', () => {
-  it('Scheduler automation still denies Off and returns question/browser errors without waiting', async () => {
+  it('Scheduler automation ignores legacy Off and returns question/browser errors without waiting', async () => {
     const previous = process.env[UNSAFE_AUTOMATION_ENV];
     process.env[UNSAFE_AUTOMATION_ENV] = '1';
     try {
@@ -22,7 +22,7 @@ describe('headless approval policy', () => {
         keys: { braveApiKey: '', tavilyApiKey: '' }, webSearchProvider: 'duckduckgo',
       });
       const denied = maybeBlockHeadlessToolApproval('read_file', {}, {}, { noApproval: true }, 'read_file');
-      assert.match(denied?.content ?? '', /disabled|off/i);
+      assert.equal(denied, null);
       const options = { modeId: 'build' as const, noApproval: true, autoRejectQuestions: true };
       assert.match((await executeHeadlessTool('ask_question', {}, {}, options)).content, /non-interactive/);
       assert.match((await executeHeadlessTool('browser_navigate', {}, {}, options)).content, /cannot run in headless/);
@@ -72,27 +72,16 @@ describe('headless approval policy', () => {
     assert.match(blocked!.content, /non-interactive/i);
   });
 
-  it('--no-approval without env var still blocks', () => {
-    const prev = process.env[UNSAFE_AUTOMATION_ENV];
+  it('--no-approval without env opt-in keeps the saved global restrictions', () => {
+    const previous = process.env[UNSAFE_AUTOMATION_ENV];
     delete process.env[UNSAFE_AUTOMATION_ENV];
-    setToolConfigForTests({
-      enabled: { read_file: true },
-      permissions: {
-        default: { read_file: 'ask' },
-      },
-      keys: { braveApiKey: '', tavilyApiKey: '' },
-      webSearchProvider: 'duckduckgo',
-    });
-    const blocked = maybeBlockHeadlessToolApproval(
-      'read_file',
-      { path: 'README.md' },
-      {},
-      { noApproval: true },
-      'read_file',
-    );
-    assert.ok(blocked);
-    assert.match(blocked!.content, new RegExp(UNSAFE_AUTOMATION_ENV));
-    if (prev !== undefined) process.env[UNSAFE_AUTOMATION_ENV] = prev;
+    try {
+      const blocked = maybeBlockHeadlessToolApproval('save_file', { path: 'file.ts', content: 'x' },
+        { workspaceRoot: '/tmp/ws' }, { noApproval: true, permissionLevel: 'manual' });
+      assert.match(blocked?.content ?? '', /needs approval/);
+    } finally {
+      if (previous !== undefined) process.env[UNSAFE_AUTOMATION_ENV] = previous;
+    }
   });
 
   it('--no-approval with env allows ask tools', () => {

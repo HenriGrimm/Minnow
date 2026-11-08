@@ -119,7 +119,7 @@ Each expanded row shows connection controls, concurrent runs, and the context wi
 
 Settings edits are validated and saved before Minnow closes idle connections. Running conversations and connections awaiting tool results are not stopped by these edits. Saved conversations still have to pass history and configuration verification before reuse.
 
-Codex uses Minnow tools and approvals by default. **Use Codex native coding tools (experimental)** is available with the verified Windows Codex CLI 0.166.0 and gpt-5.5 in a Git checkout. It requires Full permission for equivalent coding tools; unsupported policies fail explicitly. Native network access and permission escalation stay off, and Plan native actions remain read-only. Minnow integrations continue through Minnow tools.
+Codex uses Minnow tools and approvals by default. **Use Codex native coding tools (experimental)** is available with the verified Windows Codex CLI 0.166.0 and gpt-5.5 in a Git checkout. Native writes require global Full access; Manual and Auto use a read-only native workspace. Unsupported policies fail explicitly. Native network access and permission escalation stay off, and Plan native actions remain read-only. Minnow integrations continue through Minnow tools.
 
 The switch selects newly submitted turns. Provider or permission edits can stop an active native turn for explicit recovery. Interrupted actions are never automatically repeated. Other CLI versions, platforms and models do not enable this experiment; the connection card explains unavailable configurations.
 
@@ -173,7 +173,7 @@ Sub-agents start on **Follow parent chat**. A fixed model or pool applies to new
 
 Utility tasks cover chat titles, prompt and issue expansion, and git commit messages. Leave the override empty to follow the originating task. Editor assistance and goal evaluation can follow their chat or use a dedicated model. Unavailable saved choices remain visible so you can repair them.
 
-Work agents and foreground skills use the chat's composer model. Their prompts, tool permissions, sampling and thinking settings remain configurable. Orchestrator boards retain their own model controls.
+Work agents and foreground skills use the chat's composer model. Their prompts, sampling and thinking settings remain configurable; tool calls follow the global permission mode. Orchestrator boards retain their own model controls.
 
 The full Routing screen also has a **Fallbacks** tab for shared backup models, enablement, cooldown, and backup order. Configuring a fallback is separate from selecting the chat model.
 

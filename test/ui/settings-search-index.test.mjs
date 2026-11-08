@@ -17,7 +17,7 @@ describe('settings-search-index', () => {
     const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
     for (const [query, area] of [
       ['how do I change model', 'providers'], ['stop sounds', 'notifications'],
-      ['let agents edit files', 'tools'], ['backup', 'backups'], ['filesystem', 'access'], ['shell sandbox', 'access'],
+      ['let agents edit files', 'access'], ['backup', 'backups'], ['filesystem', 'access'], ['shell sandbox', 'access'],
     ]) {
       const matches = rankSettingsSearch(query, buildSettingsSearchIndex());
       assert.equal(matches[0]?.sectionId, area, query);
@@ -64,12 +64,9 @@ describe('settings-search-index', () => {
     assert.ok(servers.keywords?.includes('managed server'));
   });
 
-  test('includes built-in tool entries', () => {
+  test('does not advertise removed per-tool controls', () => {
     const index = buildSettingsSearchIndex();
-    const webSearch = index.find((e) => e.id === 'tool:web_search');
-    assert.ok(webSearch);
-    assert.equal(webSearch.sectionId, 'search');
-    assert.equal(webSearch.searchKey, 'tools.item.web_search');
+    assert.equal(index.some(entry => entry.id.startsWith('tool:') || entry.searchKey?.startsWith('tools.item.')), false);
   });
 
   test('memory catalog fields route to Brain app', () => {

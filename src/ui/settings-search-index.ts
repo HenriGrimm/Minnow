@@ -5,10 +5,6 @@ import { listModes } from '../chat/modes/registry';
 import { isModeVisibleInSettingsSearch } from '../chat/modes/settings-visibility';
 import { isDeveloperReleased } from '../os/app-registry';
 import {
-  BUILT_IN_TOOLS,
-  type ToolCategory,
-} from '../tools/definitions';
-import {
   SETTINGS_CATEGORY_LABELS,
   SETTINGS_NAV_GROUPS,
   SETTINGS_SECTION_LABELS,
@@ -20,17 +16,6 @@ import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import type { SettingsSearchEntry } from './settings-search-types';
 import { resolveSettingsSectionNavigation } from './settings-section-navigation';
 
-const TOOL_CATEGORY_LABELS: Record<ToolCategory, string> = {
-  web: 'Web',
-  utility: 'Utility',
-  browser: 'Built-in browser',
-  agents: 'Sub-agents',
-  files: 'Files',
-  git: 'Git',
-  code: 'Code',
-  lsp: 'LSP',
-};
-
 /** Extra keywords and section overrides for common aliases. */
 const SECTION_SEARCH_ALIASES: Partial<
   Record<SettingsSectionId, string[]>
@@ -38,7 +23,7 @@ const SECTION_SEARCH_ALIASES: Partial<
   general: ['startup', 'setup', 'onboarding', 'tray', 'login'],
   terminal: ['shell', 'powershell', 'bash', 'command', 'console'],
   backups: ['backup', 'restore', 'export', 'import'],
-  access: ['privacy', 'filesystem', 'disk access', 'shell sandbox'],
+  access: ['privacy', 'filesystem', 'disk access', 'shell sandbox', 'permissions', 'let agents edit files', 'allow file editing', 'approval'],
   devices: ['phone', 'tablet', 'iphone', 'ipad', 'android', 'network', 'lan', 'wifi', 'remote', 'tailscale', 'anywhere', 'qr', 'pair'],
   updates: ['update', 'version', 'upgrade', 'restart'],
   notifications: ['notifications', 'bell', 'sound', 'alert', 'background chat', 'menubar'],
@@ -51,7 +36,7 @@ const SECTION_SEARCH_ALIASES: Partial<
   providers: ['api', 'lm studio', 'openai'],
   search: ['web search', 'brave', 'tavily', 'searxng', 'duckduckgo', 'ddg', 'tavily usage', 'credits', 'map', 'extract'],
   servers: ['searxng', 'managed server', 'local search', 'metasearch', 'install searxng'],
-  tools: ['permissions', 'tool cache', 'let agents edit files', 'allow file editing', 'approval'],
+  tools: ['tool cache', 'tool loading', 'tool result size', 'schemas'],
   mcp: ['model context protocol'],
   webhooks: ['outgoing webhook', 'hmac', 'automation', 'signed events'],
   lsp: ['language server', 'typescript server'],
@@ -183,41 +168,6 @@ function navGroupEntries(): SettingsSearchEntry[] {
   }));
 }
 
-// ── Tools ────────────────────────────────────────────────────────────────────
-
-function toolCategoryEntries(): SettingsSearchEntry[] {
-  const seen = new Set<ToolCategory>();
-  for (const tool of BUILT_IN_TOOLS) {
-    seen.add(tool.category);
-  }
-  return [...seen].map((category) => ({
-    id: `tool-category:${category}`,
-    label: TOOL_CATEGORY_LABELS[category],
-    sectionId: category === 'web' ? ('search' as const) : ('tools' as const),
-    kind: 'tool-category' as const,
-    searchKey: `tools.category.${category}`,
-    keywords: [category, 'tools', TOOL_CATEGORY_LABELS[category].toLowerCase()],
-    hint: 'Tools',
-  }));
-}
-
-function toolEntries(): SettingsSearchEntry[] {
-  return BUILT_IN_TOOLS.map((tool) => ({
-    id: `tool:${tool.id}`,
-    label: tool.label,
-    sectionId: tool.category === 'web' ? ('search' as const) : ('tools' as const),
-    kind: 'tool' as const,
-    searchKey: `tools.item.${tool.id}`,
-    keywords: [
-      tool.id,
-      tool.description.toLowerCase(),
-      tool.category,
-      TOOL_CATEGORY_LABELS[tool.category].toLowerCase(),
-    ],
-    hint: 'Tool',
-  }));
-}
-
 function modeEntries(): SettingsSearchEntry[] {
   return listModes()
     .filter((mode) => isModeVisibleInSettingsSearch(mode.id))
@@ -312,8 +262,6 @@ export function buildSettingsSearchIndex(): SettingsSearchEntry[] {
     ...BRAIN_MEMORY_SEARCH,
     ...navGroupEntries(),
     ...catalogFieldEntries(),
-    ...toolCategoryEntries(),
-    ...toolEntries(),
     ...modeEntries(),
     ...expertEntries(),
     ...workAgentEntries(),

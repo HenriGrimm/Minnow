@@ -10,7 +10,6 @@ import {
   decidePermission,
   type PermissionLevel,
 } from '../lib/permissions.mjs';
-import { getToolPermissionForId, loadToolConfig } from '../tools/config';
 import type { ToolApprovalContext } from '../tools/permission-gate';
 import type { ToolExecutionResult } from '../types';
 
@@ -41,13 +40,6 @@ export function maybeBlockHeadlessToolApproval(
   displayToolName?: string,
 ): ToolExecutionResult | null {
   const execName = displayToolName ?? permissionToolId;
-  if (getToolPermissionForId(loadToolConfig(), permissionToolId) === 'off') {
-    return { content: `Error: tool "${execName}" is turned off in Settings → Tools.` };
-  }
-  if (options.noApproval && process.env[UNSAFE_AUTOMATION_ENV] !== '1') {
-    return { content: `Error: --no-approval requires ${UNSAFE_AUTOMATION_ENV}=1 in the environment.` };
-  }
-
   const level = resolveHeadlessPermissionLevel(options);
   const roots = [context.workspaceRoot, ...(context.extraPathRoots ?? [])].filter((r): r is string => Boolean(r?.trim()));
   const action = classifyToolCall(execName, args, { workspaceRoots: roots });

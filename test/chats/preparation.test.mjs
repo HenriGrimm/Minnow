@@ -124,7 +124,7 @@ test('prepared worktree rebinds immutable profile policy without widening its ac
   assert.deepEqual(prepared.policy.workspaceIds, ['tree']);
   assert.equal(prepared.policy.modeId, 'plan');
   assert.equal(prepared.policy.fileWriteScope, 'plans');
-  assert.equal(prepared.policy.toolPermissions.read_file, 'ask');
+  assert.equal(prepared.policy.toolPermissions.read_file, 'full');
   assert.equal(prepared.policy.toolPermissions.git_commit ?? 'off', 'off');
   assert.ok(!prepared.tools.some(tool => tool.function.name === 'git_commit'));
   assert.match(prepared.systemPrompt, /VERIFIED WORKTREE INSTRUCTIONS/);
@@ -541,4 +541,26 @@ test('standing links are captured per turn, fenced and do not follow later chat 
   assert.match(prepared.systemPrompt, /src\/original.ts/);
   assert.match(prepared.systemPrompt, /UNTRUSTED_SOURCE_DATA source="chat-links"/);
   assert.ok(!prepared.systemPrompt.includes('src/changed.ts'));
+});
+
+
+test('legacy per-tool settings never narrow the global permission mode in new chat policies', async () => {
+  const f = fixture();
+  f.settings.tools = { enabled: { read_file: false, save_file: false }, permissions: { default: {
+    read_file: 'off', save_file: 'off', plugin__editor__write: 'off', mcp__docs__read: 'off',
+  } } };
+  for (const permissionLevel of ['manual', 'auto', 'full']) {
+    f.settings.meta.toolSecurity = { permissionLevel };
+    const policy = createChatPolicy(await resolveChatPolicyInput(f.chat, f.scope, { adapters: f.adapters }));
+    for (const name of ['read_file', 'save_file', 'plugin__editor__write', 'mcp__docs__read']) {
+      assert.equal(policy.toolPermissions[name], 'full', name);
+    }
+    const options = { currentPolicy: policy, workspaceRoot: directory };
+    assert.equal(assertChatToolAllowed(policy, 'read_file', { path: 'AGENTS.md' }, options).permission, 'full');
+    if (permissionLevel === 'manual') {
+      assert.throws(() => assertChatToolAllowed(policy, 'save_file', { path: 'code.ts', content: 'x' }, options), error => error.reason === 'approval_required');
+    } else {
+      assert.equal(assertChatToolAllowed(policy, 'save_file', { path: 'code.ts', content: 'x' }, options).permission, 'full');
+    }
+  }
 });

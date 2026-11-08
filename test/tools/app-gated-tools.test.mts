@@ -18,7 +18,6 @@ import {
   setLocalServerAvailable,
   TOOL_CONFIG_STORAGE_KEY,
 } from '../../src/tools/config.ts';
-import { fillToolsSection } from '../../src/ui/tools-list.ts';
 
 let testWindow: Window | null = null;
 
@@ -106,20 +105,4 @@ describe('app-gated tool catalog filtering', () => {
     assert.equal(ids.has('get_datetime'), true);
   });
 
-  test('Settings tools list keeps core utility tools', () => {
-    document.body.innerHTML = '<div id="settingsToolsList"></div>';
-    fillToolsSection('settingsToolsList', { variant: 'settings' });
-
-    const list = document.getElementById('settingsToolsList');
-    assert.ok(list, 'settings tools list container');
-    assert.equal(
-      list.querySelector('[data-tool-id="list_mail"]'),
-      null,
-      'removed mail tool should not appear',
-    );
-    assert.ok(
-      list.querySelector('[data-tool-id="calculate"]'),
-      'calculate row should remain visible',
-    );
-  });
 });

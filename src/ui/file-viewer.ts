@@ -896,17 +896,17 @@ export function setViewerError(message: string): void {
   if (host) {
     destroyEditor();
     host.innerHTML = `<p class="file-viewer-status file-viewer-error">${escapeHtml(message)}</p>`;
-    const blockedTool = message.match(/tool "(get_file_metadata|read_file|read_file_range)" is disabled in Settings/i)?.[1];
-    if (blockedTool) {
+    const permissionBlocked = /needs approval|permission.*denied/i.test(message);
+    if (permissionBlocked) {
       const actions = document.createElement('div');
       actions.className = 'file-tree-readiness-actions';
       const settings = document.createElement('button');
       settings.type = 'button';
       settings.className = 'file-tree-readiness-action';
-      settings.textContent = 'Open file permission';
+      settings.textContent = 'Open permissions';
       settings.addEventListener('click', () => {
         void import('./settings-page').then((m) =>
-          m.navigateToSettingsField(`tools.item.${blockedTool}`, 'tools'),
+          m.navigateToSettingsField('general.permissions', 'access'),
         );
       });
       const retry = document.createElement('button');

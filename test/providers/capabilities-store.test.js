@@ -77,6 +77,29 @@ describe('capabilities-store', () => {
     assert.deepEqual(data.models, {});
   });
 
+  it('reads legacy negative tool and chat probes as unknown without rewriting the file', async () => {
+    const file = path.join(homeDir, 'providers', 'cap-test-provider', 'capabilities.json');
+    const payload = JSON.stringify({ models: {
+      inconclusive: { tools: false, streaming: true, sources: { tools: 'probe', streaming: 'probe' } },
+      unavailable: { tools: false, streaming: false, sources: { tools: 'probe', streaming: 'probe' },
+        probeErrors: { tools: 'tool probe failed', streaming: 'chat probe failed' } },
+      explicit: { tools: false, streaming: false, sources: { tools: 'catalog', streaming: 'catalog' } },
+      positive: { tools: true, streaming: true, sources: { tools: 'probe', streaming: 'probe' } },
+    } });
+    await fs.writeFile(file, payload);
+    const { models } = await readCapabilities('cap-test-provider');
+    assert.equal(models.inconclusive.tools, null);
+    assert.equal(models.inconclusive.streaming, true);
+    assert.equal(models.unavailable.tools, null);
+    assert.equal(models.unavailable.streaming, null);
+    assert.equal(models.unavailable.probeErrors.tools, 'tool probe failed');
+    assert.equal(models.explicit.tools, false);
+    assert.equal(models.explicit.streaming, false);
+    assert.equal(models.positive.tools, true);
+    assert.equal(models.positive.streaming, true);
+    assert.equal(await fs.readFile(file, 'utf8'), payload);
+  });
+
   it('merge patches per model id', async () => {
     const merged = await mergeCapabilities(
       'cap-test-provider',

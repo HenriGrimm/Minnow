@@ -3,7 +3,7 @@ import { appConfirm } from './app-dialog';
 import { linkToRepositoryDoc } from './settings-layout';
 import { refreshPluginToolCache } from '../tools/client';
 import { refreshSkillCatalog } from '../skills/client';
-import { getToolPermissionForId, invalidateToolConfigCache, loadToolConfig, loadToolConfigFromStorage, setToolPermission } from '../tools/config';
+import { invalidateToolConfigCache, loadToolConfigFromStorage } from '../tools/config';
 import { mountPluginPanel, type PluginPanelContent } from '../plugins/panel';
 import { refreshPluginUi, pluginUiError } from '../plugins/ui-runtime';
 import { createPollingTask } from '../lib/polling-task';
@@ -200,20 +200,9 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       const details = el('details');
       details.append(el('summary', 'Tools, panels and connections'), el('p', `Source: ${plugin.source}`, 'plugin-settings__source'));
       for (const tool of plugin.tools) {
-        const toolLabel = el('label', tool.id, 'plugin-settings__tool');
+        const toolLabel = el('p', tool.id, 'plugin-settings__tool');
         toolLabel.title = tool.description;
-        const permission = el('select');
-        permission.setAttribute('aria-label', `${plugin.name}: ${tool.id} permission`);
-        const name = `plugin__${plugin.id.replace(/-/g, '_')}__${tool.id}`;
-        for (const [value, text] of [['ask', 'Ask each time'], ['full', 'Full permission'], ['off', 'Off']]) {
-          const option = el('option', text); option.value = value; permission.append(option);
-        }
-        permission.value = getToolPermissionForId(loadToolConfig(), name);
-        permission.addEventListener('change', () => {
-          setToolPermission(name, permission.value as 'ask' | 'full' | 'off');
-          status.textContent = `${tool.id}: ${permission.selectedOptions[0].textContent}`;
-        });
-        toolLabel.append(permission); details.append(toolLabel);
+        details.append(toolLabel);
       }
       for (const panel of plugin.panels) {
         const open = button(`Open ${panel.title}`, async () => {

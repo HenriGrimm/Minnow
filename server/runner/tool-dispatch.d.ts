@@ -18,6 +18,8 @@ export interface ExecuteInProcessToolOptions {
   shellSandboxMode?: 'off' | 'prefer' | 'require';
   /** Granted by the durable interactive host for this exact invocation only. */
   interactiveApproval?: boolean;
+  permissionLevel?: 'manual' | 'auto' | 'full';
+  turnClamp?: 'read-only' | 'plans' | null;
 }
 
 export interface InProcessToolResult {
@@ -46,6 +48,8 @@ export interface CreateInProcessToolDispatchOptions {
   filesystemAccessCeiling?: 'workspace' | 'full';
   shellSandboxMode?: 'off' | 'prefer' | 'require';
   interactiveApproval?: boolean;
+  permissionLevel?: 'manual' | 'auto' | 'full';
+  turnClamp?: 'read-only' | 'plans' | null;
 }
 
 export interface InProcessToolDispatch {

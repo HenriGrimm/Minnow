@@ -1632,12 +1632,10 @@ export async function executeServerTool(name, args, options = {}) {
     try {
       args = resolvePlanWriteArgs(options.modeId, name, args, getEffectiveWorkspaceRoot());
       if (isPluginToolName(name)) {
-        if (tools.permissions.default[name] === 'off') return { result: 'Error: plugin tool is disabled in Settings' };
         const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
       if (isMcpToolName(name)) {
-        if (tools.permissions.default[name] === 'off') return { result: 'Error: MCP tool is disabled in Settings' };
         const result = await callMcpTool(name, args ?? {});
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
@@ -1650,7 +1648,6 @@ export async function executeServerTool(name, args, options = {}) {
         });
       }
       const handler = SERVER_TOOL_HANDLERS[name];
-      if (Object.hasOwn(ACTION_TOOL_HANDLERS, name) && tools.permissions.default[name] === 'off') return { result: 'Error: action tool is disabled in Settings' };
       if (!handler) {
         return { result: `Not implemented: ${name}` };
       }

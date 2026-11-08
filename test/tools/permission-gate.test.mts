@@ -43,10 +43,6 @@ function seedChat(id = 'chat-gate'): string {
 beforeEach(() => {
   resetToolSecurityMetaCache();
   const config = defaultToolConfig();
-  for (const id of ['execute_command', 'save_file', 'read_file']) {
-    config.enabled[id] = true;
-    config.permissions.default[id] = 'ask';
-  }
   setToolConfigForTests(config);
 });
 
@@ -68,13 +64,13 @@ describe('classifyForGate', () => {
 });
 
 describe('maybeBlockToolForUserApproval', () => {
-  test('a tool turned off in Settings → Tools never runs', async () => {
+  test('legacy per-tool Off cannot override global Full access', async () => {
     const config = defaultToolConfig();
-    config.permissions.default = { ...config.permissions.default, save_file: 'off' };
+    Object.assign(config, { enabled: { save_file: false }, permissions: { default: { save_file: 'off' } } });
     setToolConfigForTests(config);
     setLevel('full');
     const result = await maybeBlockToolForUserApproval('save_file', { path: 'a.ts', content: '' }, { workspaceRoot: WS });
-    assert.match(result?.content ?? '', /turned off/);
+    assert.equal(result, null);
   });
 
   test('reads inside the project never ask, even in Manual', async () => {

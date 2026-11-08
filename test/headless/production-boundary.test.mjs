@@ -149,8 +149,8 @@ before(async () => {
   await startHost();
   const toolsResponse = await api('/api/config/tools');
   const tools = await toolsResponse.json();
-  tools.enabled.read_file = true;
-  tools.permissions.default.read_file = 'full';
+
+
   assert.equal((await api('/api/config/tools', { method: 'PUT', body: JSON.stringify(tools) })).status, 200);
   const sessions = await (await api('/api/config/sessions')).json();
   const seed = { id: 'boundary-binding', name: 'Boundary binding', workspacePath: workspace, providerId: 'boundary-fixture', modelId: 'fixture', modeId: 'general', history: [], lastStats: null, modelInfo: {}, updatedAt: Date.now() };

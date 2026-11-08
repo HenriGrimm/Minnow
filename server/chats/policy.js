@@ -75,7 +75,7 @@ function permissionRecord(value) {
   for (const [name, permission] of Object.entries(value)) {
     toolName(name);
     if (!PERMISSIONS.includes(permission)) invalid(`Unknown permission for ${name}`);
-    result[name] = permission;
+    result[name] = permission === 'off' ? 'off' : 'full';
   }
   return Object.freeze(result);
 }
@@ -175,9 +175,8 @@ export function intersectChatPolicies(...inputs) {
   const toolPermissions = Object.create(null);
   const toolEffects = Object.create(null);
   for (const name of Object.keys(first.toolPermissions)) {
-    const rank = Math.min(...snapshots.map((policy) => PERMISSIONS.indexOf(permission(policy, name))));
-    if (rank === 0) continue;
-    toolPermissions[name] = PERMISSIONS[rank];
+    if (snapshots.some(policy => permission(policy, name) === 'off')) continue;
+    toolPermissions[name] = 'full';
     toolEffects[name] = intersectionEffect(snapshots.map((policy) => effect(policy, name)));
   }
   return createChatPolicy({
@@ -200,7 +199,7 @@ export function compareChatPolicies(ceiling, target) {
   assertChatPolicy(target);
   const violations = [];
   for (const name of Object.keys(target.toolPermissions)) {
-    if (PERMISSIONS.indexOf(permission(target, name)) > PERMISSIONS.indexOf(permission(ceiling, name))) violations.push(`tool:${name}`);
+    if (permission(target, name) !== 'off' && permission(ceiling, name) === 'off') violations.push(`tool:${name}`);
     if (permission(target, name) !== 'off' && effect(target, name) !== effect(ceiling, name)) violations.push(`tool_effect:${name}`);
   }
   for (const id of target.workspaceIds) if (!ceiling.workspaceIds.includes(id)) violations.push(`workspace:${id}`);

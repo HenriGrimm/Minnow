@@ -24,8 +24,6 @@ export interface ProfileAgentsSection {
 }
 
 export interface ProfileToolsSection {
-  permissions?: Record<string, string>;
-  replaceAll?: boolean;
   keys?: Record<string, string>;
 }
 

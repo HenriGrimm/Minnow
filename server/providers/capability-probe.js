@@ -438,7 +438,7 @@ function applyStreamingProbe(cap, result) {
     cap.streaming = true;
     cap.sources = { ...cap.sources, streaming: 'probe' };
   } else {
-    cap.streaming = false;
+    cap.streaming = null;
     cap.sources = { ...cap.sources, streaming: 'probe' };
     cap.probeErrors = { ...cap.probeErrors, streaming: 'chat probe failed' };
   }
@@ -450,10 +450,12 @@ function applyStreamingProbe(cap, result) {
  */
 function applyToolsProbe(cap, result) {
   const hasTools = result.ok && responseHasToolCalls(result.json);
-  cap.tools = hasTools;
+  cap.tools = hasTools ? true : null;
   cap.sources = { ...cap.sources, tools: 'probe' };
   if (!result.ok) {
     cap.probeErrors = { ...cap.probeErrors, tools: 'tool probe failed' };
+  } else if (!hasTools) {
+    cap.probeErrors = { ...cap.probeErrors, tools: 'tool probe returned no tool calls' };
   }
 }
 
@@ -613,20 +615,20 @@ async function probeAnthropicModelCapabilities(modelRow, runtime, signal, probeO
   try {
     const result = await generateText({
       model: anthropic(modelId),
-      messages,
+      messages: openAiMessagesToCoreMessages([{ role: 'user', content: 'Call probe_noop now.' }]),
       tools,
-      toolChoice: mapOpenAiToolChoice('auto'),
-      maxOutputTokens: 64,
+      toolChoice: mapOpenAiToolChoice({ type: 'function', function: { name: 'probe_noop' } }),
+      maxOutputTokens: 256,
       abortSignal: toolProbe.signal,
     });
     const hasTools = Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
-    cap.tools = hasTools;
+    cap.tools = hasTools ? true : null;
     cap.sources = { ...cap.sources, tools: 'probe' };
     if (!hasTools) {
       cap.probeErrors = { ...cap.probeErrors, tools: 'tool probe returned no tool calls' };
     }
   } catch {
-    cap.tools = false;
+    cap.tools = null;
     cap.sources = { ...cap.sources, tools: 'probe' };
     cap.probeErrors = { ...cap.probeErrors, tools: 'tool probe failed' };
   } finally {
@@ -729,8 +731,8 @@ async function probeModelCapabilities(modelRow, runtime, signal, probeOptions = 
 
   const toolBody = probeRequestBody(runtime, modelId, {
     model: modelId,
-    messages: [{ role: 'user', content: 'ping' }],
-    max_tokens: 1,
+    messages: [{ role: 'user', content: 'Call probe_noop now.' }],
+    max_tokens: 256,
     stream: false,
     tools: [
       {
@@ -742,7 +744,7 @@ async function probeModelCapabilities(modelRow, runtime, signal, probeOptions = 
         },
       },
     ],
-    tool_choice: 'auto',
+    tool_choice: { type: 'function', function: { name: 'probe_noop' } },
   });
 
   const toolResult = unwrapProbeResult(

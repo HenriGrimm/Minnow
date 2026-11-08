@@ -153,7 +153,7 @@ describe('runChatTurn boot resume tool loop (MIN-187)', () => {
     installDom();
 
     const toolConfig = defaultToolConfig();
-    toolConfig.permissions.default.get_datetime = 'full';
+
     setToolConfigForTests(toolConfig);
 
     const subscribeUrls: string[] = [];

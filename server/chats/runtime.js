@@ -210,6 +210,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
     createToolDispatch: async (prepared, executionContext) => {
       const { command, execution, fence, signal, runtimeOwner } = executionContext;
       const base = createInProcessToolDispatch({ cwd: prepared.cwd, modeId: prepared.policy.modeId,
+        permissionLevel: prepared.policy.permissionLevel, turnClamp: prepared.policy.turnClamp,
         allowedToolNames: Object.keys(prepared.policy.toolPermissions), runtimeOwner, activityChatId: command.chatId,
         filesystemAccessCeiling: prepared.policy.filesystemAccess, shellSandboxMode: prepared.policy.shellSandboxMode });
       return { ...base, execute: async (name, args, toolContext) => {
@@ -223,6 +224,7 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
           currentPolicy: policy, onChange: chatId => presentation.changed(chatId), onStatus: event => service.notifyExecution(event),
         });
         const dispatch = createInProcessToolDispatch({ cwd: prepared.cwd, modeId: policy.modeId,
+          permissionLevel: policy.permissionLevel, turnClamp: policy.turnClamp,
           allowedToolNames: Object.keys(policy.toolPermissions), runtimeOwner, activityChatId: command.chatId,
           filesystemAccessCeiling: policy.filesystemAccess, shellSandboxMode: policy.shellSandboxMode,
           interactiveApproval: toolContext?.approvalGranted === true });

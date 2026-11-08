@@ -10,13 +10,9 @@ import type { SubAgentTypeConfig } from '../../src/agents/types.ts';
 import subAgents from '../../src/agents/defaults/sub-agents.json' with { type: 'json' };
 import { parseWorkAgentMetaFromMarkdown } from '../../src/agents/work-agent-meta-parse.ts';
 
-test('client defaults and backfill make Load skill callable without replacing saved permissions', () => {
-  assert.equal(defaultToolConfig().permissions.default.load_skill, 'full');
-  assert.equal(normalizeToolConfig({ enabled: { read_file: true } }).permissions.default.load_skill, 'full');
-  assert.equal(normalizeToolConfig({ enabled: { load_skill: false } }).permissions.default.load_skill, 'off');
-  for (const permission of ['off', 'ask', 'full']) {
-    assert.equal(normalizeToolConfig({ permissions: { default: { load_skill: permission } } }).permissions.default.load_skill, permission);
-  }
+test('skill loading has no per-tool permission override', () => {
+  assert.equal('permissions' in defaultToolConfig(), false);
+  assert.equal('permissions' in normalizeToolConfig({ enabled: { load_skill: false } }), false);
 });
 
 test('composer modes and every shipped sub-agent type allow skill reads through their existing policies', () => {

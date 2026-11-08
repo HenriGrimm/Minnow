@@ -4,12 +4,7 @@
 
 import { SYSTEM_PROMPT_PRESETS } from '../constants';
 import { randomUUID } from '../lib/random-id.ts';
-import { BUILT_IN_TOOLS } from '../tools/definitions';
-import {
-  createEmptyToolPermissionsConfig,
-  type ToolConfig,
-  type ToolPermissionMode,
-} from '../tools/tool-settings-types';
+import type { ToolConfig } from '../tools/tool-settings-types';
 import type { SessionState, SystemPromptSettings } from '../types';
 import { defaultSkillConfig as buildDefaultSkillConfig } from '../skills/config';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
@@ -21,121 +16,9 @@ export function defaultSkillConfig(): SkillConfig {
   return buildDefaultSkillConfig();
 }
 
-const DEFAULT_ENABLED_TOOL_IDS = new Set([
-  'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
-  'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
-  'load_skill',
-  'plugin_inspect',
-  'plugin_manage',
-  'get_datetime',
-  'calculate',
-  'wait',
-  'web_search',
-  'web_map',
-  'web_extract',
-  'fetch_web_content',
-  'rag_web_content',
-  'wikipedia_search',
-  'save_file',
-  'append_file',
-  'insert_at_line',
-  'replace_text_in_file',
-  'make_directory',
-  'save_memory',
-  'ask_question',
-  'launch_minnow_app',
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'minnow_docs_search',
-  'minnow_docs_read',
-  'minnow_docs_list',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'manage_brain',
-  'search_settings',
-  'get_settings',
-  'update_settings',
-  'get_appearance',
-  'update_appearance',
-  'upload_appearance_asset',
-  'repo_map',
-  'find_symbol',
-  'who_calls',
-  'read_symbol',
-  'read_file',
-  'present_files',
-  'godot_inspect',
-  'godot_control',
-  'todo_write',
-]);
-
-/** Brain tools default to permission `full` (no prompt). */
-const BRAIN_FULL_PERMISSION_TOOL_IDS = [
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'save_memory',
-  'repo_map',
-  'find_symbol',
-  'who_calls',
-  'read_symbol',
-] as const;
-
-const BRAIN_FULL_PERMISSION_TOOL_ID_SET = new Set<string>(BRAIN_FULL_PERMISSION_TOOL_IDS);
-
-/** Settings read tools default to permission `full`. */
-const SETTINGS_READ_TOOL_IDS = new Set(['plugin_inspect', 'search_settings', 'get_settings']);
-
-/** Official Minnow documentation is read-only and safe by default. */
-const MINNOW_DOCS_TOOL_IDS = new Set([
-  'minnow_docs_search',
-  'minnow_docs_read',
-  'minnow_docs_list',
-]);
-
-/** Appearance read tool defaults to permission `full`. */
-const APPEARANCE_READ_TOOL_IDS = new Set(['get_appearance']);
-
-/** Waiting only parks the turn; its sole side effect is a notification. */
-const WAIT_FULL_PERMISSION_TOOL_IDS = new Set(['wait']);
-
-function defaultPermissionForTool(id: string, enabled: boolean): ToolPermissionMode {
-  if (['agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(id)) return enabled ? 'full' : 'off';
-  if (id === 'action_inspect' || id === 'release_inspect') return enabled ? 'full' : 'off';
-  if (
-    SETTINGS_READ_TOOL_IDS.has(id)
-    || APPEARANCE_READ_TOOL_IDS.has(id)
-    || MINNOW_DOCS_TOOL_IDS.has(id)
-    || WAIT_FULL_PERMISSION_TOOL_IDS.has(id)
-    || id === 'godot_inspect'
-    || id === 'load_skill'
-    || id === 'present_files'
-  ) {
-    return enabled ? 'full' : 'off';
-  }
-  if (BRAIN_FULL_PERMISSION_TOOL_ID_SET.has(id)) {
-    return enabled ? 'full' : 'off';
-  }
-  return enabled ? 'ask' : 'off';
-}
-
-/** Default tool toggles for new `tools.json` (matches server seed). */
+/** Default operational settings for tools.json. */
 export function defaultToolConfig(): ToolConfig {
-  const enabled: Record<string, boolean> = {};
-  const permissions = createEmptyToolPermissionsConfig();
-  for (const tool of BUILT_IN_TOOLS) {
-    const on = DEFAULT_ENABLED_TOOL_IDS.has(tool.id);
-    enabled[tool.id] = on;
-    permissions.default[tool.id] = defaultPermissionForTool(tool.id, on);
-  }
   return {
-    enabled,
-    permissions,
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'tavily',
     toolCache: { enabled: true },

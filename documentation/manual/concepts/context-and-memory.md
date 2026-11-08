@@ -59,7 +59,7 @@ When memory is on, Minnow retrieves relevant pages on the first user turn of a c
 
 Three ways:
 
-- **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which defaults to Full permission.
+- **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which follows the global permission mode.
 - **Write a page yourself** in Brain → Edit.
 - **Let synthesis extract one.** By default, facts below 0.6 confidence are skipped, facts from 0.6 up to 0.85 queue in Brain → Proposals, and facts at or above 0.85 are saved directly. See [Brain](../apps/brain.md) for confidence settings and how to require review for all eligible facts.
 

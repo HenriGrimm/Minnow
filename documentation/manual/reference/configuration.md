@@ -39,7 +39,7 @@ Copying by hand has two traps. `sessions/sessions.db` is a live database: copy i
 | `providers/` | Provider profiles, encrypted secrets, reported capabilities |
 | `models/` | Downloaded model artifacts; voice models under `models/voice/` |
 | `voice/` | Python environment for local speech |
-| `tools.json` | Per-tool permissions |
+| `tools.json` | Tool loading, caching, result limits, and search settings |
 | `search.json` | Search provider, fallback chain, API keys |
 | `servers.json`, `servers/` | Managed local servers (SearXNG, `llama-cpp`) |
 | `skills.json`, `skills/` | Skill enable flags and installed skills |

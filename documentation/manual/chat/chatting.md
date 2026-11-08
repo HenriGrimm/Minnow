@@ -10,7 +10,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 |---------|--------------|
 | **Permissions** | The pill on the left: Manual / Auto / Full access, one level for every chat — see [Tools and permissions](../concepts/tools-and-permissions.md) |
 | **Worktree** | Click the branch icon to enable an isolated checkout on send; click its name to change branch, switch worktrees, or go back to Local |
-| **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. |
+| **Settings** (cog) | Context documents, code map, brain notes, and other turn settings. |
 | **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, prompt profile, and compaction |
 | **Model · reasoning** | Per-chat model and reasoning level. Open the menu to change either. **Ctrl+M** / **Cmd+M** opens it with search focused. |
 | **Microphone** | Dictation — see [Voice](../extend/voice.md) |

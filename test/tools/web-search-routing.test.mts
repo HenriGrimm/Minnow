@@ -8,13 +8,10 @@ import {
   resolveWebSearchExecution,
 } from '../../src/tools/web-search-routing.ts';
 import type { ToolConfig } from '../../src/tools/tool-settings-types.ts';
-import { createEmptyToolPermissionsConfig } from '../../src/tools/tool-settings-types.ts';
 
 /** Minimal ToolConfig for routing tests (avoids importing the full defaults graph). */
 function config(overrides: Partial<ToolConfig> = {}): ToolConfig {
   const base: ToolConfig = {
-    enabled: { web_search: true },
-    permissions: createEmptyToolPermissionsConfig(),
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'duckduckgo',
   };

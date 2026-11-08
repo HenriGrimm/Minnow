@@ -472,7 +472,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['searxng', 'local search'],
   }),
   field('integrations.tools', 'Tools', 'integrations', 'tools', {
-    keywords: ['allow', 'deny', 'security'],
+    keywords: ['schemas', 'cache', 'result size'],
   }),
   field('integrations.tools.cache', 'Tool result cache', 'integrations', 'tools'),
   field('integrations.tools.lazyLoading', 'Load tool schemas on demand', 'integrations', 'tools', {
@@ -485,9 +485,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.tools.outputCap.maxChars', 'Maximum characters per tool result', 'integrations', 'tools', {
     keywords: ['truncation', 'max chars', 'output cap'],
-  }),
-  field('integrations.tools.bulk', 'Turn tools on or off', 'integrations', 'tools', {
-    keywords: ['reset defaults', 'enable all', 'disable', 'availability'],
   }),
   field('integrations.mcp', 'MCP servers', 'integrations', 'mcp', {
     keywords: ['model context protocol', 'context7'],

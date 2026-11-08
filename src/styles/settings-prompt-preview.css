@@ -1,0 +1,28 @@
+.settings-prompt-preview-toolbar {
+  margin: 0 0 12px;
+}
+
+.settings-prompt-preview.msg-bubble.msg-bubble--md {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--radius-md);
+  background: var(--mn-surface-0);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.settings-prompt-preview[hidden],
+.settings-part-editor[hidden] {
+  display: none;
+}
+
+.settings-prompt-preview pre {
+  overflow-x: auto;
+}

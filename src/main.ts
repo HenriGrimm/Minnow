@@ -40,7 +40,6 @@ import './styles/preview-panel.css';
 import './styles/design-mode.css';
 import './styles/skill-picker.css';
 import './styles/skill-chip.css';
-import './styles/composer-tools-popover.css';
 import './styles/composer-overflow.css';
 import './styles/workspace-menu.css';
 import './styles/workspace-folder-picker.css';
@@ -151,9 +150,8 @@ import { initAppSidebarResizers } from './ui/sidebar-resize';
 import {
   fillSystemPromptPresetSelect,
   loadSystemPromptSettings,
-  registerToolHandlers,
 } from './ui/settings';
-import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig } from './tools/config';
+import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig, registerWebSearchSettingsHandlers } from './tools/config';
 import {
   initModelSelectPicker,
   syncModelSelectPicker,
@@ -201,13 +199,6 @@ import { initSubAgentUi } from './ui/sub-agent-cards';
 import { initGoalEvalUi } from './ui/goal-eval-status';
 import { initLoopStatusUi } from './ui/loop-active-hint';
 import { initAgentActivityPanel } from './ui/agent-activity-panel';
-import {
-  closeComposerToolsPopover,
-  closeAllToolsPopovers,
-  initChatAppToolsPopover,
-  initComposerToolsPopover,
-  initDesktopToolsPopover,
-} from './ui/composer-tools-popover';
 import { initComposerVoice } from './ui/composer-voice';
 import { initComposerExpand } from './ui/composer-expand';
 import { initComposerUndo } from './ui/composer-undo';
@@ -324,15 +315,13 @@ export async function initApp(): Promise<void> {
       scheduleSaveSessions();
     }
   }
-  registerToolHandlers();
+
   if (hasComposerSurface) {
     initSubAgentUi();
     initGoalEvalUi();
     initLoopStatusUi();
     initAgentActivityPanel();
-    initComposerToolsPopover();
-    initChatAppToolsPopover();
-    initDesktopToolsPopover();
+
     initComposerVoice();
     initComposerExpand();
     initComposerUndo();
@@ -431,6 +420,7 @@ export async function initApp(): Promise<void> {
   }
   initMinnowBrowserLinkRouting();
   initMarkdownLinkRouting();
+  registerWebSearchSettingsHandlers();
   loadToolConfigIntoDrawer();
   void syncWebSearchProviderFromSearchConfig();
 
@@ -565,7 +555,7 @@ export async function initApp(): Promise<void> {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeAllToolsPopovers();
+
       closeContextUsageBreakdown();
       dismissOpenLayers();
     }

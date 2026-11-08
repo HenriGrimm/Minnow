@@ -388,9 +388,7 @@
     <section class="tools-section" id="toolsSection" aria-labelledby="toolsSectionTitle">
       <h2 class="tools-section-title" id="toolsSectionTitle">Tools</h2>
       <p class="field-hint tools-section-hint">Enable function calling for the model. Server tools require <code>npm start</code> (local tool server).</p>
-      <p id="toolsServerBanner" class="tools-server-banner hidden" role="status">Server tools need npm start (not npm run dev).</p>
-      <p id="toolsPreviewBanner" class="tools-server-banner hidden" role="status">Browser tools need the Minnow desktop app window (from <code>npm start</code>), not a separate browser tab.</p>
-      <div id="toolsList" class="tools-list"></div>
+
       <div class="tool-key-row field">
         <label for="webSearchProvider">Web search provider</label>
         <select id="webSearchProvider" aria-label="Web search provider">
@@ -489,7 +487,7 @@
       <button type="button" class="settings-nav__item" data-area-jump="agent-center" data-settings-nav-area="agent-center"><span class="settings-nav__item-label">Agents</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="injection" data-settings-nav-area="injection"><span class="settings-nav__item-label">Chat context</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="rules" data-settings-nav-area="rules"><span class="settings-nav__item-label">Rules</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
-      <button type="button" class="settings-nav__item" data-area-jump="tools" data-settings-nav-area="tools"><span class="settings-nav__item-label">Tool permissions</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
+      <button type="button" class="settings-nav__item" data-area-jump="tools" data-settings-nav-area="tools"><span class="settings-nav__item-label">Tools</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="autopilot" data-settings-nav-area="autopilot"><span class="settings-nav__item-label">Autopilot</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
       <button type="button" class="settings-nav__item" data-area-jump="watchdog" data-settings-nav-area="watchdog"><span class="settings-nav__item-label">Timeouts &amp; recovery</span><span class="settings-nav__count" hidden aria-hidden="true"></span></button>
     </details>
@@ -1137,43 +1135,7 @@
               <button type="button" class="chat-app-comp-btn" id="btnChatAppAttach" aria-label="Attach files" title="Attach files">
                 <i class="fi fi-rr-clip icon-svg" aria-hidden="true"></i>
               </button>
-              <div class="composer-tools-anchor chat-app-tools-anchor">
-                <button type="button" class="chat-app-comp-btn composer-tools-btn" id="btnChatAppTools"
-                  aria-label="Tools" aria-expanded="false" aria-haspopup="dialog"
-                  aria-controls="chatAppToolsPopover" title="Tool permissions">
-                  <i class="fi fi-rr-settings-sliders icon-svg" aria-hidden="true"></i>
-                </button>
-                <div id="chatAppToolsPopover" class="composer-tools-popover hidden" role="dialog" aria-label="Tool permissions">
-                  <header class="composer-tools-popover__header">
-                    <h2 class="composer-tools-popover__title">Tools</h2>
-                  </header>
-                  <div id="chatAppToolsStatus" class="composer-tools-popover__status hidden" role="status" aria-live="polite">
-                    <p id="chatAppToolsServerBanner" class="composer-tools-popover__notice hidden">Server tools need <code>npm start</code> (not <code>npm run dev</code>).</p>
-                    <p id="chatAppToolsPreviewBanner" class="composer-tools-popover__notice hidden">Browser tools need the Minnow desktop app window.</p>
-                  </div>
-                  <div id="chatAppToolsList" class="tools-list tools-list--composer"></div>
-                  <footer class="composer-tools-popover__footer">
-                    <div class="composer-tools-popover__setting">
-                      <label for="chatAppToolsWebSearchProvider" class="composer-tools-popover__setting-label">Web search</label>
-                      <select id="chatAppToolsWebSearchProvider" class="composer-tools-popover__select" aria-label="Web search provider">
-                        <option value="searxng">SearXNG</option>
-                        <option value="duckduckgo">DuckDuckGo</option>
-                        <option value="brave">Brave API</option>
-                        <option value="tavily">Tavily API</option>
-                      </select>
-                    </div>
-                    <label class="composer-tools-popover__toggle">
-                      <input type="checkbox" id="chatAppToolsCacheEnabled" aria-describedby="chatAppToolsCacheHint">
-                      <span class="composer-tools-popover__setting-label">Cache read-only results</span>
-                    </label>
-                    <p id="chatAppToolsCacheHint" class="composer-tools-popover__hint">Per session until the workspace changes.</p>
-                    <button type="button" class="composer-tools-popover__settings-link" id="chatAppToolsOpenSettings">
-                      <span>All tool settings</span>
-                      <i class="fi fi-rr-angle-right icon-svg" aria-hidden="true"></i>
-                    </button>
-                  </footer>
-                </div>
-              </div>
+
               <label for="chatAppInput" class="visually-hidden">Message</label>
               <textarea id="chatAppInput" class="chat-app-field" rows="1" placeholder="Message Minnow…" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
               <button type="button" class="chat-app-comp-btn chat-app-stop hidden" id="btnChatAppStop" aria-label="Stop generation" hidden disabled>
@@ -2414,48 +2376,12 @@
             </label>
           </div>
           <div class="composer-controls__trail">
-            <!-- Stays in the trail when compact parks Tools into the cog sheet. -->
+            <!-- Model controls stay in the footer. -->
             <div id="codeComposerModelAnchor" class="composer-model-trigger-anchor"></div>
             <button class="icon-btn view-mode-toggle-btn view-mode-toggle-btn--to-board hidden" type="button" id="btnViewModeToggleBoard" aria-label="Board view" title="Board view (Orchestrate mode only)" disabled hidden>
               <i class="fi fi-rr-layout-fluid icon-svg view-mode-toggle-btn__icon" aria-hidden="true"></i>
             </button>
-            <div class="composer-tools-anchor" id="composerToolsAnchor">
-              <button type="button" class="composer-tools-btn composer-tools-btn--toolbar" id="btnComposerTools"
-                aria-label="Tools" aria-expanded="false" aria-haspopup="dialog"
-                aria-controls="composerToolsPopover">
-                <i class="fi fi-rr-settings-sliders icon-svg" aria-hidden="true"></i>
-              </button>
-              <div id="composerToolsPopover" class="composer-tools-popover hidden" role="dialog" aria-label="Tool permissions">
-                <header class="composer-tools-popover__header">
-                  <h2 class="composer-tools-popover__title">Tools</h2>
-                </header>
-                <div id="composerToolsStatus" class="composer-tools-popover__status hidden" role="status" aria-live="polite">
-                  <p id="composerToolsServerBanner" class="composer-tools-popover__notice hidden">Server tools need <code>npm start</code> (not <code>npm run dev</code>).</p>
-                  <p id="composerToolsPreviewBanner" class="composer-tools-popover__notice hidden">Browser tools need the Minnow desktop app window.</p>
-                </div>
-                <div id="composerToolsList" class="tools-list tools-list--composer"></div>
-                <footer class="composer-tools-popover__footer">
-                  <div class="composer-tools-popover__setting">
-                    <label for="composerToolsWebSearchProvider" class="composer-tools-popover__setting-label">Web search</label>
-                    <select id="composerToolsWebSearchProvider" class="composer-tools-popover__select" aria-label="Web search provider">
-                      <option value="searxng">SearXNG</option>
-                      <option value="duckduckgo">DuckDuckGo</option>
-                      <option value="brave">Brave API</option>
-                      <option value="tavily">Tavily API</option>
-                    </select>
-                  </div>
-                  <label class="composer-tools-popover__toggle">
-                    <input type="checkbox" id="composerToolsCacheEnabled" aria-describedby="composerToolsCacheHint">
-                    <span class="composer-tools-popover__setting-label">Cache read-only results</span>
-                  </label>
-                  <p id="composerToolsCacheHint" class="composer-tools-popover__hint">Per session until the workspace changes.</p>
-                  <button type="button" class="composer-tools-popover__settings-link" id="composerToolsOpenSettings">
-                    <span>All tool settings</span>
-                    <i class="fi fi-rr-angle-right icon-svg" aria-hidden="true"></i>
-                  </button>
-                </footer>
-              </div>
-            </div>
+
             <!-- Compact overflow: extra composer settings live in this cog sheet -->
             <div class="composer-overflow-anchor" id="composerOverflowAnchor">
               <button type="button" class="composer-overflow-btn" id="btnComposerOverflow"
@@ -2466,26 +2392,13 @@
               </button>
               <div id="composerOverflowPopover" class="composer-overflow-popover hidden" role="dialog" aria-label="Composer settings">
                 <div id="composerOverflowSlot" class="composer-overflow-slot">
-                  <!-- Page 1: this-turn controls. Tools is a nav row, not the catalog. -->
+                  <!-- This-turn controls -->
                   <div id="composerOverflowSettingsPage" class="composer-overflow-page composer-overflow-page--settings">
                     <p class="composer-overflow-settings-lead" id="composerOverflowSettingsLead">This turn</p>
-                    <button type="button" class="composer-overflow-tools-nav" id="composerOverflowToolsNav">
-                      <i class="fi fi-rr-tools icon-svg" aria-hidden="true"></i>
-                      <span>Tools</span>
-                      <i class="fi fi-rr-angle-small-right icon-svg composer-overflow-tools-nav__chevron" aria-hidden="true"></i>
-                    </button>
+
                   </div>
-                  <!-- Page 2: permissions. Filled only after the Tools row is opened. -->
-                  <div id="composerOverflowToolsPage" class="composer-overflow-page composer-overflow-page--tools hidden" hidden>
-                    <header class="composer-overflow-tools-head">
-                      <button type="button" class="composer-overflow-back" id="composerOverflowToolsBack" aria-label="Back">
-                        <i class="fi fi-rr-angle-small-left icon-svg" aria-hidden="true"></i>
-                      </button>
-                      <h2 class="composer-overflow-tools-title" id="composerOverflowToolsTitle">Tools</h2>
-                      <div id="composerOverflowEnableAllSlot" class="composer-overflow-enable-all"></div>
-                    </header>
-                    <div id="composerOverflowToolsBody" class="composer-overflow-tools-body"></div>
-                  </div>
+
+
                 </div>
               </div>
             </div>

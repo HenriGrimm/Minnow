@@ -33,7 +33,7 @@ Drag the divider beside the page list or details to resize it. You can also focu
 
 **You write them.** Brain → Edit. Frontmatter and markdown. Nothing clever.
 
-**You ask the assistant to.** "Remember that the staging database resets nightly." The `save_memory` tool defaults to Full permission, so it just happens.
+**You ask the assistant to.** "Remember that the staging database resets nightly." The `save_memory` tool follows the global permission mode.
 
 There is no cap on the number of saved memories. Each entry saved through `save_memory` or the Memories section can contain up to 32 KiB of UTF-8 body text.
 
@@ -63,7 +63,7 @@ The agent tools, if you want to know what the model is doing: `brain_search`, `b
 
 **Brain → Code** is a symbol index of your repositories, and it is what makes the model's code questions fast and grounded rather than grep-and-hope.
 
-Once a workspace is indexed, these tools work: `repo_map` for structure, `find_symbol` to locate a definition, `who_calls` for callers, `read_symbol` to pull one function without the file around it (naming any Brain page anchored to it). All default to Full permission.
+Once a workspace is indexed, these tools work: `repo_map` for structure, `find_symbol` to locate a definition, `who_calls` for callers, `read_symbol` to pull one function without the file around it (naming any Brain page anchored to it). All follow the global permission mode.
 
 The index is per workspace and lives in your Minnow home.
 

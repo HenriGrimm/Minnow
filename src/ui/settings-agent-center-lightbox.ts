@@ -52,6 +52,7 @@ function ensureShell(): void {
   overlayEl = document.createElement('div');
   overlayEl.id = OVERLAY_ID;
   overlayEl.className = 'agent-center-overlay hidden';
+  overlayEl.dataset.aboveShellOverlay = '';
   overlayEl.hidden = true;
 
   dialogEl = document.createElement('div');

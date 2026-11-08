@@ -379,9 +379,9 @@ export const ICON_CLASS: Record<IconName, string> = {
   metricTotal: 'fi-rr-layers',
   metricCtx: 'fi-rr-scale',
 
-  permManual: 'fi-rr-hand',
-  permAuto: 'fi-rr-shield-check',
-  permFull: 'fi-rr-shield-exclamation',
+  permManual: 'fi-rr-hand-paper',
+  permAuto: 'fi-rr-sparkles',
+  permFull: 'fi-rr-unlock',
   localModel: 'fi-rr-microchip',
   fish: 'fi-rr-fish',
   slashAsk: 'fi-rr-interrogation',

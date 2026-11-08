@@ -38,7 +38,7 @@ Press **?** anywhere outside a text field for the keyboard shortcut sheet.
 ### Core concepts
 
 - [How Minnow works](concepts/how-minnow-works.md) — the shell, the tool server, what is local, what is not
-- [Tools and permissions](concepts/tools-and-permissions.md) — the approval strip, Off/Ask/Full, the workspace boundary
+- [Tools and permissions](concepts/tools-and-permissions.md) — the approval card, Manual/Auto/Full access, the workspace boundary
 - [Context, memory, and rules](concepts/context-and-memory.md) — the context ring, Brain memory, standing rules
 
 ### Chat

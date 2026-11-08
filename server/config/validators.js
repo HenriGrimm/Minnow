@@ -1,5 +1,4 @@
-import { ALL_TOOL_IDS, BRAIN_DESTRUCTIVE_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET, MINNOW_DOCS_TOOL_IDS } from './tool-ids.js';
-import { backfillPatchPermission } from '../../src/tools/patch-permission.mjs';
+import { ALL_TOOL_IDS } from './tool-ids.js';
 import { reconcileDuplicateIssueIds } from '../../src/lib/issue-id-uniqueness.mjs';
 import { normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
 import { normalizeWorkspacePathKey } from '../workspace/root.js';
@@ -849,104 +848,6 @@ export function validateSessionState(raw) {
 }
 
 /**
- * @param {unknown} raw
- * @returns {object}
- */
-/** @param {unknown} value */
-function isToolPermissionMode(value) {
-  return value === 'full' || value === 'ask' || value === 'off';
-}
-
-/** @param {unknown} permissions */
-function isLegacyFlatPermissions(permissions) {
-  if (!permissions || typeof permissions !== 'object') return false;
-  const obj = /** @type {Record<string, unknown>} */ (permissions);
-  if (obj.default && typeof obj.default === 'object' && !Array.isArray(obj.default)) {
-    return false;
-  }
-  for (const value of Object.values(obj)) {
-    if (isToolPermissionMode(value)) return true;
-  }
-  return false;
-}
-
-/**
- * @param {unknown} stored
- * @param {Record<string, string>} seedDefault
- */
-function normalizePermissionsFromStored(stored, seedDefault) {
-  if (!stored || typeof stored !== 'object') {
-    return { default: { ...seedDefault } };
-  }
-
-  if (isLegacyFlatPermissions(stored)) {
-    const merged = { ...seedDefault };
-    for (const [id, value] of Object.entries(/** @type {Record<string, unknown>} */ (stored))) {
-      if (!id || !isToolPermissionMode(value)) continue;
-      merged[id] = value;
-    }
-    return { default: merged };
-  }
-
-  const obj = /** @type {Record<string, unknown>} */ (stored);
-  const merged = { ...seedDefault };
-  if (obj.default && typeof obj.default === 'object') {
-    for (const [id, value] of Object.entries(/** @type {Record<string, unknown>} */ (obj.default))) {
-      if (!id || !isToolPermissionMode(value)) continue;
-      merged[id] = value;
-    }
-  }
-
-  return { default: merged };
-}
-
-function toolIdWasStored(raw, id) {
-  if (!raw || typeof raw !== 'object') return false;
-  const stored = /** @type {Record<string, unknown>} */ (raw);
-  if (stored.enabled && typeof stored.enabled === 'object') {
-    if (Object.prototype.hasOwnProperty.call(stored.enabled, id)) return true;
-  }
-  if (stored.permissions && typeof stored.permissions === 'object') {
-    if (isLegacyFlatPermissions(stored.permissions)) {
-      if (Object.prototype.hasOwnProperty.call(stored.permissions, id)) return true;
-    } else {
-      const def = /** @type {Record<string, unknown>} */ (stored.permissions).default;
-      if (def && typeof def === 'object' && Object.prototype.hasOwnProperty.call(def, id)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function backfillDefaultToolPermissions(config, raw) {
-  for (const id of ['action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset']) {
-    if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id.endsWith('_inspect') ? 'full' : 'ask';
-      config.enabled[id] = true;
-    }
-  }
-  for (const id of ['plugin_inspect', 'plugin_manage', 'load_skill']) {
-    if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = id === 'plugin_manage' ? 'ask' : 'full';
-      config.enabled[id] = true;
-    }
-  }
-  for (const id of BRAIN_FULL_PERMISSION_TOOL_IDS) {
-    if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = 'full';
-      config.enabled[id] = true;
-    }
-  }
-  for (const id of BRAIN_DESTRUCTIVE_TOOL_IDS) {
-    if (!toolIdWasStored(raw, id)) {
-      config.permissions.default[id] = 'ask';
-      config.enabled[id] = true;
-    }
-  }
-}
-
-/**
  * Compaction knobs (context compaction v2). Shares of the message ceiling are
  * clamped the way the runner reads them; returns undefined when nothing valid
  * is set so callers can drop the key.
@@ -983,78 +884,9 @@ export function normalizeContextCompactionConfig(raw) {
   return Object.keys(out).length ? out : undefined;
 }
 
-function defaultPermissionForTool(id, enabled) {
-  if (['agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(id)) return enabled ? 'full' : 'off';
-  if (
-    id === 'action_inspect' || id === 'release_inspect' || id === 'plugin_inspect' || id === 'load_skill' || id === 'present_files' || id === 'search_settings'
-    || id === 'get_settings'
-    || id === 'get_appearance'
-    || id === 'godot_inspect'
-    || MINNOW_DOCS_TOOL_IDS.includes(id)
-  ) {
-    return enabled ? 'full' : 'off';
-  }
-  if (BRAIN_FULL_PERMISSION_TOOL_ID_SET.has(id)) {
-    return enabled ? 'full' : 'off';
-  }
-  return enabled ? 'ask' : 'off';
-}
-
+/** Normalize operational tool settings, dropping retired per-tool policy. */
 export function normalizeToolConfig(raw) {
-  const DEFAULT_ENABLED_TOOL_IDS = new Set([
-    'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
-    'action_inspect', 'release_inspect', 'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
-    'load_skill',
-    'present_files',
-    'plugin_inspect',
-    'plugin_manage',
-    'get_datetime',
-    'calculate',
-    'web_search',
-    'web_map',
-    'web_extract',
-    'fetch_web_content',
-    'rag_web_content',
-    'wikipedia_search',
-    'save_file',
-    'append_file',
-    'insert_at_line',
-    'replace_text_in_file',
-    'make_directory',
-    'save_memory',
-    'ask_question',
-    'brain_search',
-    'brain_read_page',
-    'brain_list',
-    ...MINNOW_DOCS_TOOL_IDS,
-    'brain_write_page',
-    'brain_append_log',
-    'brain_ingest_source',
-    'manage_brain',
-    'search_settings',
-    'get_settings',
-    'update_settings',
-    'get_appearance',
-    'update_appearance',
-    'upload_appearance_asset',
-    'repo_map',
-    'find_symbol',
-    'who_calls',
-    'read_symbol',
-    'godot_inspect',
-    'godot_control',
-  ]);
-  const enabled = {};
-  const permissionsDefault = {};
-  for (const id of ALL_TOOL_IDS) {
-    const on = DEFAULT_ENABLED_TOOL_IDS.has(id);
-    enabled[id] = on;
-    permissionsDefault[id] = defaultPermissionForTool(id, on);
-  }
-
   const config = {
-    enabled,
-    permissions: { default: permissionsDefault },
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'duckduckgo',
     toolCache: { enabled: true },
@@ -1062,52 +894,8 @@ export function normalizeToolConfig(raw) {
     toolOutput: normalizeToolOutputConfig(undefined),
     lazyTools: true,
   };
-
   if (!raw || typeof raw !== 'object') return config;
-
   const stored = /** @type {Record<string, unknown>} */ (raw);
-  if (stored.enabled && typeof stored.enabled === 'object') {
-    const enabledMap = /** @type {Record<string, unknown>} */ (stored.enabled);
-    for (const id of ALL_TOOL_IDS) {
-      if (typeof enabledMap[id] === 'boolean') {
-        config.enabled[id] = enabledMap[id];
-      }
-    }
-  }
-
-  let hadPermissionsInFile = false;
-  if (stored.permissions && typeof stored.permissions === 'object') {
-    hadPermissionsInFile =
-      isLegacyFlatPermissions(stored.permissions) ||
-      (typeof /** @type {Record<string, unknown>} */ (stored.permissions).default === 'object' &&
-        /** @type {Record<string, unknown>} */ (stored.permissions).default !== null);
-    config.permissions = normalizePermissionsFromStored(
-      stored.permissions,
-      config.permissions.default,
-    );
-  }
-
-  if (!hadPermissionsInFile) {
-    for (const id of ALL_TOOL_IDS) {
-      config.permissions.default[id] = defaultPermissionForTool(id, config.enabled[id] === true);
-    }
-  } else {
-    for (const id of ALL_TOOL_IDS) {
-      const v = config.permissions.default[id];
-      if (!isToolPermissionMode(v)) {
-        config.permissions.default[id] = defaultPermissionForTool(id, config.enabled[id] === true);
-      }
-    }
-  }
-
-  backfillDefaultToolPermissions(config, raw);
-  backfillPatchPermission(config, raw);
-
-  for (const id of ALL_TOOL_IDS) {
-    const mode = config.permissions.default[id];
-    config.enabled[id] = mode !== 'off';
-  }
-
   if (stored.keys && typeof stored.keys === 'object') {
     const keysMap = /** @type {Record<string, unknown>} */ (stored.keys);
     if (typeof keysMap.braveApiKey === 'string') {

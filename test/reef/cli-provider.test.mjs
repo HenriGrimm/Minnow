@@ -102,7 +102,7 @@ test('runs API resumes the same stopped run and resets only through explicit act
   assert.equal((await post(`apps/${app.id}/runs`, { action: 'unknown', runId: fresh.id })).status, 400);
 });
 
-test('CLI admission retains provider, catalog and source-tool availability checks', async () => {
+test('CLI admission checks provider and catalog availability while ignoring retired tool switches', async () => {
   const provider = await setAgentCliProviderEnabled('codex', false);
   const input = { prompt: 'A local counter', providerId: provider.id, modelId: 'fixture-model' };
   const beforeCount = (await listApps()).length;
@@ -122,9 +122,8 @@ test('CLI admission retains provider, catalog and source-tool availability check
     catalog = { data: [{ id: 'fixture-model' }] };
     await writeConfigJson('tools.json', { enabled: { save_file: false } });
     response = await post('apps', input);
-    assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /Enable save_file/);
-    assert.equal((await listApps()).length, beforeCount);
+    assert.equal(response.status, 201);
+    assert.equal((await listApps()).length, beforeCount + 1);
   } finally {
     await writeConfigJson('tools.json', {});
     catalog = { data: [{ id: 'fixture-model' }] };

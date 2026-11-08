@@ -11,7 +11,7 @@ test('patch paths feed approvals and directory refresh, including move destinati
   assert.deepEqual(affectedDirsFromTool('apply_patch', { patch }), ['src', 'lib', 'test']);
   assert.ok(blockPlanModeWrite('plan', 'apply_patch', { patch }));
 });
-test('chat permission migration agrees with the server and respects explicit choices', () => {
-  assert.equal(normalizeToolConfig({ permissions: { default: { save_file: 'full' } } }).permissions.default.apply_patch, 'ask');
-  assert.equal(normalizeToolConfig({ permissions: { default: { save_file: 'full', apply_patch: 'off' } } }).permissions.default.apply_patch, 'off');
+test('chat permission migration agrees with the server and drops retired per-tool choices', () => {
+  assert.equal('permissions' in normalizeToolConfig({ permissions: { default: { save_file: 'full' } } }), false);
+  assert.equal('permissions' in normalizeToolConfig({ permissions: { default: { save_file: 'full', apply_patch: 'off' } } }), false);
 });

@@ -72,7 +72,7 @@ describe('captured and current chat policy', () => {
     const type = policy({ toolPermissions: { read_file: 'full', mcp__docs__read: 'full', plugin__editor__write: 'full' }, workspaceIds: ['tree'], capabilities: ['chat.read'] });
     const current = policy({ toolPermissions: { read_file: 'ask', mcp__docs__read: 'off', plugin__editor__write: 'off' } });
     const effective = intersectChatPolicies(captured, type, current);
-    assert.deepEqual(Object.entries(effective.toolPermissions), [['read_file', 'ask']]);
+    assert.deepEqual(Object.entries(effective.toolPermissions), [['read_file', 'full']]);
     assert.deepEqual(effective.workspaceIds, ['tree']);
     assert.deepEqual(effective.capabilities, ['chat.read']);
     for (const name of ['mcp__docs__read', 'plugin__editor__write']) {
@@ -105,7 +105,7 @@ describe('captured and current chat policy', () => {
     const captured = policy({ toolPermissions: { read_file: 'ask' }, workspaceIds: ['main'], capabilities: ['chat.read'], fileWriteScope: 'none' });
     const target = policy({ toolPermissions: { read_file: 'full' }, filesystemAccess: 'full', fileWriteScope: 'full' });
     const result = compareChatPolicies(captured, target);
-    for (const violation of ['tool:read_file', 'filesystem_access', 'file_write_scope', 'workspace:tree', 'capability:chat.send']) assert.ok(result.violations.includes(violation), violation);
+    for (const violation of ['filesystem_access', 'file_write_scope', 'workspace:tree', 'capability:chat.send']) assert.ok(result.violations.includes(violation), violation);
   });
 
   it('reports policy failures through the common serialized error contract', () => {

@@ -1,5 +1,5 @@
 import { executeServerTool } from '../runtime/tools-middleware.js';
-import { readConfigJson } from '../config/store.js';
+import { captureAgentPermissionLevel, checkAgentToolPermission } from '../tools/permission-gate.js';
 import { validateAllowedWorkspaceRoot } from '../chats-workspace/paths.js';
 import {
   blockPlanModeWrite,
@@ -100,6 +100,8 @@ function applyCwdGuard(name, args, cwd) {
  *   signal?: AbortSignal,
  *   filesystemAccessCeiling?: 'workspace'|'full',
  *   shellSandboxMode?: 'off'|'prefer'|'require',
+ *   permissionLevel?: 'manual'|'auto'|'full',
+ *   turnClamp?: 'read-only'|'plans'|null,
  *   interactiveApproval?: boolean,
  * }} options
  * @returns {Promise<{ content: string, attachments?: unknown, codeChange?: unknown }>}
@@ -124,14 +126,6 @@ export async function executeInProcessTool(name, args = {}, options) {
     args && typeof args === 'object' && !Array.isArray(args) ? { ...args } : {};
 
   const allowed = normalizeAllowed(options.allowedToolNames);
-  if (toolName === 'plugin_manage' && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'full' &&
-      !(options.interactiveApproval === true && (await readConfigJson('tools.json'))?.permissions?.default?.plugin_manage !== 'off')) {
-    return { content: 'Error: unattended plugin management requires Full permission for Manage plugins in Settings → Tools' };
-  }
-  if (toolName.startsWith('plugin__') && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'full' &&
-      !(options.interactiveApproval === true && (await readConfigJson('tools.json'))?.permissions?.default?.[toolName] !== 'off')) {
-    return { content: 'Error: unattended plugin calls require Full permission in Settings → Plugins' };
-  }
   if (allowed && !allowed.has(toolName) && !toolName.startsWith('mcp__') && !toolName.startsWith('plugin__')) {
     return { content: `Error: tool "${toolName}" is not in the allowed set` };
   }
@@ -154,6 +148,17 @@ export async function executeInProcessTool(name, args = {}, options) {
     return { content: `Error: ${message}` };
   }
 
+  const { level, action, verdict } = await checkAgentToolPermission(toolName, toolArgs, {
+    workspaceRoot,
+    permissionLevel: options.permissionLevel,
+    chatId: options.activityChatId ?? options.runtimeOwner?.chatId,
+    clamp: options.turnClamp ?? (normalizeModeId(modeId) === 'plan' ? 'plans' : null),
+  });
+  if (verdict.decision === 'deny') return { content: `Error: ${verdict.reason}` };
+  if (verdict.decision === 'ask' && options.interactiveApproval !== true) {
+    return { content: `Error: "${action.title}" needs approval, and this non-interactive run cannot ask. Change the global permission mode in Settings → Permissions or approve this action in its chat.` };
+  }
+
   const guardedArgs = applyCwdGuard(toolName, toolArgs, workspaceRoot);
   if (
     toolName === 'execute_command' &&
@@ -173,7 +178,7 @@ export async function executeInProcessTool(name, args = {}, options) {
     // Lets a tool that spawns a child process kill it on stop, instead of the batch
     // abandoning the call and leaving the process running.
     abortSignal: options.signal,
-    filesystemAccessCeiling: options.filesystemAccessCeiling,
+    filesystemAccessCeiling: level === 'full' ? options.filesystemAccessCeiling : 'workspace',
     shellSandboxMode: options.shellSandboxMode,
   });
   /** @type {{ content: string, attachments?: unknown, codeChange?: unknown }} */
@@ -196,6 +201,8 @@ export async function executeInProcessTool(name, args = {}, options) {
  *   activityChatId?: string,
  *   filesystemAccessCeiling?: 'workspace'|'full',
  *   shellSandboxMode?: 'off'|'prefer'|'require',
+ *   permissionLevel?: 'manual'|'auto'|'full',
+ *   turnClamp?: 'read-only'|'plans'|null,
  *   interactiveApproval?: boolean,
  * }} options
  * @returns {{
@@ -210,6 +217,8 @@ export function createInProcessToolDispatch(options) {
   const allowedToolNames = options?.allowedToolNames ?? null;
   const runtimeOwner = options?.runtimeOwner;
   const activityChatId = options?.activityChatId;
+  // Capture the attempt ceiling once; live changes may only narrow authority.
+  const capturedLevel = captureAgentPermissionLevel(options.permissionLevel);
 
   async function execute(name, args, ctx) {
     return executeInProcessTool(
@@ -225,7 +234,9 @@ export function createInProcessToolDispatch(options) {
         signal: ctx?.signal,
         filesystemAccessCeiling: options.filesystemAccessCeiling,
         shellSandboxMode: options.shellSandboxMode,
-        interactiveApproval: options.interactiveApproval,
+        permissionLevel: await capturedLevel,
+        turnClamp: options.turnClamp,
+        interactiveApproval: options.interactiveApproval === true || ctx?.approvalGranted === true,
       },
     );
   }

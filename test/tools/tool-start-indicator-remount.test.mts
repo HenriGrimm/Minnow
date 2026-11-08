@@ -163,7 +163,7 @@ async function startTurnWithPendingToolCall(
   ids: TurnIds,
 ): Promise<PendingToolCallTurn> {
   const toolConfig = defaultToolConfig();
-  toolConfig.permissions.default.get_datetime = 'full';
+
   setToolConfigForTests(toolConfig);
 
   const toolRound = scriptedSseResponse();

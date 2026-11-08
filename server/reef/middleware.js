@@ -3,7 +3,6 @@ import { createReadStream } from 'node:fs';
 import { readJsonBody, jsonBodyErrorStatus } from '../runtime/json-body.js';
 import { resolveJobRunModel } from '../scheduler/resolve-job-model.js';
 import { getActiveProviderId, getProvider } from '../providers/store.js';
-import { readConfigJson } from '../config/store.js';
 import { getSessionToken } from '../runtime/session-token.js';
 import { listApps, readApp, createApp, updateApp, appRoot, safePath, validId, TERMINAL, boundedText, serialize, initialBuildRequest } from './store.js';
 import { reefSupervisor, chatAboutApp, appHasChat } from './supervisor.js';
@@ -40,10 +39,6 @@ async function resolveModelBinding(input) {
 async function preflight(input) {
   const binding = await resolveModelBinding(input);
   await command('git', ['--version'], { timeout: 10000 });
-  const tools = await readConfigJson('tools.json');
-  for (const name of ['read_file', 'save_file', 'list_directory', 'make_directory']) {
-    if (tools?.enabled?.[name] === false || tools?.permissions?.default?.[name] === 'off') throw new Error(`Enable ${name} in Settings before building`);
-  }
   await ensureToolchain({ signal: AbortSignal.timeout(180000) });
   return binding;
 }

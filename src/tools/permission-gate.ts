@@ -3,9 +3,7 @@
  * {@link maybeBlockToolForUserApproval} before it runs.
  *
  * One system-wide level (Manual / Auto / Full access) decides, through the
- * shared classifier in `src/lib/permissions.mjs`. There are no per-tool
- * permissions: a tool is either available (not disabled in Settings → Tools)
- * or not, and the level decides whether an available call asks first.
+ * shared classifier in `src/lib/permissions.mjs`. The level and turn clamp decide whether an available call may run.
  */
 
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
@@ -15,7 +13,6 @@ import {
   loadToolSecurityMeta,
   saveToolSecurityMeta,
 } from '../config/tool-security-meta';
-import { getToolPermissionForId, loadToolConfig } from './config';
 import { getCachedRegisteredWorktreePaths } from '../lib/worktree-allowlist-client.ts';
 import type { ToolExecutionResult } from '../types';
 import {
@@ -138,10 +135,6 @@ export async function maybeBlockToolForUserApproval(
   displayToolName?: string,
 ): Promise<ToolExecutionResult | null> {
   const execName = displayToolName ?? permissionToolId;
-
-  if (getToolPermissionForId(loadToolConfig(), permissionToolId) === 'off') {
-    return { content: `Error: tool "${execName}" is turned off in Settings → Tools.` };
-  }
 
   await loadToolSecurityMeta().catch(() => undefined);
   const level: PermissionLevel = context.benchmarkAutonomous ? 'full' : getToolSecurityMetaCached().permissionLevel;

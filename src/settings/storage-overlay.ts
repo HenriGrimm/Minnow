@@ -258,23 +258,3 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
 
 /** Default overlay for keys without explicit mapping. */
 export const DEFAULT_OVERLAY: OverlayEntry = section();
-
-/** Build a tool-permission registry entry for one built-in tool id. */
-export function toolPermissionFieldDef(toolId: string): SettingsFieldDef {
-  return {
-    key: `integrations.tools.permission.${toolId}`,
-    label: `Tool permission: ${toolId}`,
-    description: `Permission mode for the ${toolId} tool (off, ask, or full).`,
-    keywords: [toolId, 'permission', 'tools'],
-    category: 'integrations',
-    area: 'tools',
-    storage: 'resource',
-    resource: 'tools',
-    path: `permissions.default.${toolId}`,
-    type: 'enum',
-    allowedValues: ['off', 'ask', 'full'],
-    sensitivity: 'normal',
-    writable: true,
-    refreshAreas: ['tools'],
-  };
-}

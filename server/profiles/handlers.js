@@ -260,7 +260,7 @@ export async function migrateFromPromptConfigs() {
         parts: cfg.parts ?? {},
       },
       agents: { workAgents: {}, subAgents: {} },
-      tools: { permissions: {}, replaceAll: false },
+      tools: {},
     };
 
     await saveProfileFile(bundle);

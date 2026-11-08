@@ -194,8 +194,8 @@ test('browser Open reads from the original file scope after changing workspaces'
   setWorkspaceFromServer({ path: 'C:/current-project', label: 'Current project', isDefault: false });
   const config = defaultToolConfig();
   config.toolCache = { enabled: false };
-  config.enabled.get_file_metadata = true;
-  config.permissions.default.get_file_metadata = 'full';
+
+
   saveToolConfig(config);
   setLocalServerAvailableForTests(true);
   const calls: Array<{ name: string; workspaceRoot: string }> = [];

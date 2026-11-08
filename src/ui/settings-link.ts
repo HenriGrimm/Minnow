@@ -24,7 +24,7 @@ const SECTION_ALIASES: Array<[string, SettingsSectionId]> = [
   ['web search', 'search'],
   ['search', 'search'],
   ['deep research', 'deep-research'],
-  ['tool permissions', 'tools'],
+  ['tool permissions', 'access'],
   ['tools', 'tools'],
   ['browser', 'browser'],
   ['watchdog', 'watchdog'],
