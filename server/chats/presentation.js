@@ -7,7 +7,7 @@ const fields = ['name', 'groupId', 'pinnedAt', 'archivedAt', 'composerDraft', 'w
   'agentConversation', 'agentTypeId', 'chatCommandVersion', 'profileReference', 'todos', 'todosUpdatedAt', 'worktreeSetupRequired', 'workspacePreparation'];
 const summaryFields = ['name', 'workspacePath', 'worktreeRoot', 'modelId', 'providerId', 'modeId', 'messageCount',
   'lastMessageAt', 'updatedAt', 'agentConversation', 'agentTypeId', 'chatCommandVersion', 'agentExecution',
-  'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'unread', 'turnError'];
+  'agentPendingCommand', 'agentRequestSummary', 'agentActivityCursor', 'agentPresentationRevision', 'agentTitleCandidate', 'unread', 'turnError'];
 
 /** Bounded view state only. SQLite remains the transcript and command authority. */
 export function createChatPresentation({ repository, now = Date.now, flushMs = 40 } = {}) {

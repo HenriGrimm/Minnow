@@ -65,6 +65,30 @@ test('history uses main-chat rows, Markdown, thoughts, and tool batches without 
   assert.equal(mount.querySelector('[class*="transcript-view__"]'), null);
 });
 
+test('summary tool titles agree across live attempts, settled snapshots and reopen', () => {
+  const { view, mount } = setup();
+  view.sync(adaptAttemptConversation([], true));
+  const events: TurnEvent[] = [
+    { type: 'thinking', text: '**Searching primary sources**', reasoningFormat: 'summary' },
+    { type: 'tool_call', id: 'search', name: 'web_search', arguments: { query: 'tool calling' } },
+    { type: 'tool_result', id: 'search', name: 'web_search', content: 'Sources found.' },
+    { ...round(0, '', '**Searching primary sources**', 1), reasoningFormat: 'summary' },
+  ];
+  for (const event of events) view.onEvent(event, 0);
+  const check = (root: HTMLElement) => {
+    assert.equal(root.querySelector('.tool-call-batch__label')?.textContent, 'Searching primary sources');
+    assert.equal(root.querySelector('.thoughts-toggle'), null);
+    assert.equal(root.querySelectorAll('.tool-call-msg').length, 1);
+  };
+  check(mount);
+  const settled = adaptAttemptConversation(events, false);
+  view.sync(settled);
+  check(mount);
+  const reopened = setup('reopened');
+  reopened.view.sync(settled);
+  check(reopened.mount);
+});
+
 test('live reasoning, prose and tools survive stale polls and reconcile without duplicate messages', () => {
   const { view, mount } = setup();
   view.sync(adaptAttemptConversation([], true));

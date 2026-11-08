@@ -7,6 +7,12 @@ import { describe, test } from 'node:test';
 import { applyTitleThinkingOffPatch } from '../../src/chat/titles/provider-port.ts';
 
 describe('applyTitleThinkingOffPatch', () => {
+  test('CLI titles do not send unsupported reasoning off', () => {
+    const request = { model: 'gpt-6.1-sol', messages: [{ role: 'user', content: 'Hello' }], max_tokens: 24 };
+    const body = applyTitleThinkingOffPatch(request, 'agent-cli-v1');
+    assert.deepEqual(body, request);
+    assert.equal(body.reasoning_effort, undefined);
+  });
   test('disables thinking for lm-studio-v0 providers', () => {
     const body = applyTitleThinkingOffPatch(
       {

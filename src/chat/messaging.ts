@@ -26,7 +26,7 @@ import {
 } from './streaming-state';
 import { isFirstUserMessagePending } from './titles/schedule';
 import { normalizeModeId } from './modes/types';
-import { buildHistoryUserContent } from './build-api-messages';
+import { buildHistoryUserContent, persistableUserImages } from './build-api-messages';
 import { attachMentionedIssues } from './issue-mention-context';
 import { runChatTurn } from './run-turn-chat';
 import {
@@ -70,7 +70,7 @@ import {
   resolveComposerSurface,
   type ComposerSurface,
 } from '../ui/composer-surface';
-import { refreshComposerStreamingAffordance } from '../ui/composer-send';
+import { refreshComposerStreamingAffordance, syncComposerFromStreamingState } from '../ui/composer-send';
 import { syncComposerMessageQueue } from '../ui/composer-message-queue';
 import { syncGoalActiveHint } from '../ui/goal-active-hint';
 import { syncLoopActiveHint } from '../ui/loop-active-hint';
@@ -88,6 +88,9 @@ import { persistSessionsBeforeDeliveryAck } from '../state/sessions';
 import type { ChatSendIntent } from '../../server/chats/contracts';
 import { isCavemanIntensity } from '../skills/caveman-client';
 import { ensureOrdinaryChatRoute } from './ordinary-routing';
+import { beginFirstMessageSubmission, finishFirstMessageSubmission, getFirstMessageSubmission, isFirstMessageSubmissionPending } from './first-message-submission';
+import { renderChatFromHistory, syncPendingTranscriptMessages } from '../ui/messages';
+import { randomUUID } from '../lib/random-id';
 
 export {
   buildApiMessages,
@@ -372,6 +375,41 @@ export async function sendMessageWithTools(
   composer?: ComposerSendOptions,
 ): Promise<void> {
   const { inputEl: input } = resolveComposerSurface(composer);
+  if (!input) { setStatus('err', 'Composer is not available'); return; }
+  const chat = getActiveChat();
+  if (isFirstMessageSubmissionPending(chat)) return;
+  const text = input?.value.trim() ?? '';
+  const attachments = getPendingAttachments();
+  const firstSend = Boolean((text || attachments.length) && !chat.history.length && chat.historyLoaded !== false &&
+    !getFirstMessageSubmission(chat) && !chat.agentPendingCommand &&
+    !chatReadOnlyReason(chat) && !isChatTurnInProgress(chat.id) && !isChatWorktreeSetupPending(chat.id) &&
+    !attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error') && !isPluginSlashCommand(text) &&
+    !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(text));
+  const submissionId = firstSend ? randomUUID() : undefined;
+  if (firstSend) {
+    beginFirstMessageSubmission(chat, { id: submissionId!, text: buildHistoryUserContent(text, attachments),
+      createdAt: Date.now(), images: persistableUserImages(attachments), ...(composer?.issue ? { issue: composer.issue } : {}) });
+  }
+  try {
+    if (firstSend) {
+      renderChatFromHistory(chat);
+      syncComposerFromStreamingState();
+    }
+    await sendComposerMessage(composer);
+  } finally {
+    if (firstSend) {
+      finishFirstMessageSubmission(chat, submissionId);
+      if (sessionState?.activeId === chat.id) {
+        if (!chat.history.length && !getFirstMessageSubmission(chat)) renderChatFromHistory(chat);
+        else syncPendingTranscriptMessages(chat);
+        syncComposerFromStreamingState();
+      }
+    }
+  }
+}
+
+async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void> {
+  const { inputEl: input } = resolveComposerSurface(composer);
   if (!input) {
     setStatus('err', 'Composer is not available');
     return;
@@ -383,6 +421,8 @@ export async function sendMessageWithTools(
     return;
   }
   const rawTextEarly = input.value.trim();
+  const attachmentsAtSend = getPendingAttachments();
+  const attachmentEpochAtSend = getAttachmentEpoch();
   const chat = getActiveChat();
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) { showToast(readOnly); return; }
@@ -391,6 +431,7 @@ export async function sendMessageWithTools(
       !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(rawTextEarly)) {
     try { await ensureOrdinaryChatRoute(chat); }
     catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); return; }
+    if (sessionState?.activeId !== chat.id) return;
   }
   if (chat.chatCommandVersion === 1 && !isPairedDevice() && isPluginSlashCommand(rawTextEarly)) {
     try {
@@ -415,8 +456,8 @@ export async function sendMessageWithTools(
     if (goal === 'set') { managedGoal = true; managedText = getActiveGoal(chat)?.conditionText ?? rawTextEarly; }
   }
   if (shouldRelayChat(chat.id)) {
-    const remoteAttachmentEpoch = getAttachmentEpoch();
-    const attachments = await resolveWorkspaceReferences(getPendingAttachments());
+    const remoteAttachmentEpoch = attachmentEpochAtSend;
+    const attachments = await resolveWorkspaceReferences(attachmentsAtSend);
     if (!rawTextEarly && !attachments.length) return;
     try {
       if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
@@ -428,6 +469,7 @@ export async function sendMessageWithTools(
       const hasTurnContext = context && (context.intent.skill || context.intent.context || context.intent.issue || context.intent.goalDriven);
       const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !hasTurnContext && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
       await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(context?.text ?? rawTextEarly, attachments),
+        ...(action === 'send' && chat.chatCommandVersion === 1 ? { composerSubmissionId: getFirstMessageSubmission(chat)?.id } : {}),
         ...(context && action === 'send' ? { intent: context.intent } : {}),
         ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
         attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
@@ -439,6 +481,12 @@ export async function sendMessageWithTools(
       }
     } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
     return;
+  }
+  // Renderer-owned turns paint their own input and must allow steering as soon as they start.
+  if (isFirstMessageSubmissionPending(chat)) {
+    finishFirstMessageSubmission(chat);
+    syncPendingTranscriptMessages(chat);
+    syncComposerFromStreamingState();
   }
   if (isChatWorktreeSetupPending(chat.id)) {
     showToast('Setting up the worktree. Your message is kept here until setup finishes.');

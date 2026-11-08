@@ -25,6 +25,7 @@ import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
 import { syncFollowupActiveHint } from './followup-active-hint';
 import { syncTodoPanel } from './todo-panel';
+import { isFirstMessageSubmissionPending } from '../chat/first-message-submission';
 import {
   syncComposerFollowUpPlaceholder,
   syncComposerMessageQueue,
@@ -247,7 +248,14 @@ export function syncComposerFromStreamingState(): void {
   syncComposerFollowupSuggestion();
   syncTodoPanel();
   if (!sessionState) return;
-  if (isChatWorktreeSetupPending(getActiveChat().id)) {
+  if (isFirstMessageSubmissionPending(getActiveChat())) {
+    const { sendBtnEl } = getActiveComposerSurface();
+    if (sendBtnEl) {
+      sendBtnEl.disabled = true;
+      sendBtnEl.setAttribute('aria-busy', 'true');
+      sendBtnEl.setAttribute('aria-label', 'Sending message');
+    }
+  } else if (isChatWorktreeSetupPending(getActiveChat().id)) {
     const { inputEl, sendBtnEl } = getActiveComposerSurface();
     if (inputEl) inputEl.disabled = true;
     if (sendBtnEl) {
@@ -304,6 +312,7 @@ export async function submitComposerFollowup(delivery: 'steer' | 'queue' = 'stee
 
 /** Send when idle; steer with text during a turn; an empty primary button always stops. */
 export function handleComposerPrimaryAction(): void {
+  if (sessionState && isFirstMessageSubmissionPending(getActiveChat())) return;
   if (sessionState && chatReadOnlyReason(getActiveChat())) { showToast(chatReadOnlyReason(getActiveChat())!); return; }
   if (sessionState && shouldRelayChat(getActiveChat().id)) {
     if (composerInputHasText() || !hasChatWorkToStop(getActiveChat().id)) void loadChatMessaging().then(m => m.sendMessage());

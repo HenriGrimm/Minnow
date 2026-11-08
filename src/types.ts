@@ -1224,6 +1224,7 @@ export interface Chat {
   chatCommandVersion?: 1;
   /** Server-owned CAS counter for editable presentation fields, independent of turns. */
   agentPresentationRevision?: number;
+  agentTitleCandidate?: NonNullable<import('../server/chats/activity').ChatActivityProjection['agentTitleCandidate']>;
   profileReference?: import('../server/chats/contracts').AgentProfileReference;
   /** Lightweight server view; it carries no transcript, prompts or pending answer bodies. */
   agentExecution?: { executionId: string; commandId?: string | null; runId?: string | null; status: string;

@@ -10,7 +10,7 @@ export interface MergeThinkingResult<T> {
 }
 /**
  * Disable thinking/reasoning for short utility completions (git commit message, inline edit, etc.).
- * Ignores chat composer toggles; uses effort `off` for level-based reasoning catalogs.
+ * Ignores chat composer toggles; CLI models keep their default unless off is advertised.
  */
 export declare function applyUtilityThinkingOff(body: Record<string, unknown>, provider: Pick<ProviderPublic, 'id' | 'apiKind' | 'autoApi' | 'modelApiOverrides'>, modelCapabilities?: ModelCapabilities | null, modelApi?: ApiKind): void;
 /** Merge provider-specific thinking fields into an outbound completion body. */

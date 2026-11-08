@@ -416,6 +416,28 @@ test('one model-round tool batch shows per-type counts and expands to the origin
   assert.equal(batch.querySelectorAll('.tool-call-details').length, 3);
 });
 
+test('reopened summary rounds use separate tool titles and preserve prose and saved reasoning', () => {
+  chat.history = [
+    { role: 'user', content: 'Inspect and search.' },
+    { ...tool('read', 'a.ts')[0], content: 'I’ll inspect the source.', thinking: ['**Reading batch names**'], reasoningFormat: 'summary' },
+    { role: 'tool', tool_call_id: 'read', content: 'Updated file' },
+    { role: 'assistant', content: '', thinking: ['Searching primary sources'], reasoningFormat: 'summary',
+      tool_calls: [{ id: 'search', type: 'function', function: { name: 'web_search', arguments: '{"query":"tool calling"}' } }] },
+    { role: 'tool', tool_call_id: 'search', content: 'Found sources.' },
+    { role: 'assistant', content: 'Finished.', thinking: ['Final checks.'], reasoningFormat: 'summary' },
+  ];
+  const saved = JSON.stringify(chat.history);
+  for (let pass = 0; pass < 2; pass++) {
+    renderChatFromHistory(chat);
+    assert.deepEqual([...mount.querySelectorAll('.tool-call-batch__label')].map(el => el.textContent),
+      ['Reading batch names', 'Searching primary sources']);
+    assert.equal(mount.querySelectorAll('.thoughts-toggle').length, 1, 'the final reply keeps its standalone summary');
+    assert.match(mount.textContent, /I’ll inspect the source/);
+    assert.equal(mount.querySelectorAll('.tool-call-batch .tool-call-msg').length, 2);
+    assert.equal(JSON.stringify(chat.history), saved);
+  }
+});
+
 test('the expanded transcript survives a history repaint', () => {
   renderChatFromHistory(chat);
   mount.querySelector('.chat-work').click();
@@ -487,12 +509,12 @@ test('tool failures stay collapsed even when the turn fails', () => {
     { role: 'assistant', content: 'Tests pass.' }];
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-work__detail').textContent, 'Ran 1 command');
-  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
   chat.runs[0].status = 'failed';
   renderChatFromHistory(chat);
-  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
   mount.querySelector('.chat-work').click();
-  assert.ok(!mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'), null);
 });
 
 test('an unrecovered failure reads in danger ink inside the tally', () => {

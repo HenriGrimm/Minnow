@@ -10,6 +10,22 @@ import { isChatRunningRemotely, setRemoteChatTurns } from '../../src/chat/remote
 
 afterEach(() => { notifyManagedChatView(''); setRemoteChatTurns([], 'managed'); resetSessionPersistenceForTests(); setSessionStateForTests(null); });
 
+test('completion metadata listeners see settled remote activity before refreshing the composer', async t => {
+  const chat = createEmptyChatObject('model'); chat.chatCommandVersion = 1;
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  const source = { onopen: null as any, onmessage: null as any, close() {} };
+  t.after(startManagedChatBridge({ receive: async () => {}, reconnect() {} }, () => {}, { createSource: () => source }));
+  source.onopen();
+  const states: boolean[] = [];
+  t.after(subscribeManagedChatMetadata(() => states.push(isChatRunningRemotely(chat.id))));
+  for (const status of ['running', 'completed']) {
+    source.onmessage({ data: JSON.stringify({ kind: 'chat-changed', chatId: chat.id,
+      fields: { agentExecution: { executionId: 'execution', status } } }) });
+    await new Promise(done => setImmediate(done));
+  }
+  assert.deepEqual(states, [true, false]);
+});
+
 test('an unsaved open chat watches project activity and upgrades to live output when its first send is admitted', async t => {
   const chat = createEmptyChatObject('model');
   setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });

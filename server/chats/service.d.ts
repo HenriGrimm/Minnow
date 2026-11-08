@@ -64,7 +64,7 @@ export interface ChatCommandService {
     disposition: string; link: string; replayed: boolean }>;
   configure(caller: ChatCaller, input: {
     chatId: string; action?: 'configure'; selection?: ModelSelection; modeId?: string;
-    name?: string; pinned?: boolean; archived?: boolean; expectedProfileVersion?: number; clientRequestId: string;
+    name?: string; expectedName?: string; pinned?: boolean; archived?: boolean; expectedProfileVersion?: number; clientRequestId: string;
   }): Promise<{ chatId: string; profileReference?: import('./contracts.js').AgentProfileReference; disposition: string; replayed?: boolean }>;
   /** Server-only bridge for verified terminal legacy journal runs. Never exposed as a transport action. */
   admitLegacyCompletion(caller: ChatCaller, input: Pick<ChatSendInput, 'chatId' | 'message' | 'clientRequestId'> & {

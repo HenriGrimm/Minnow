@@ -63,6 +63,20 @@ async function fixture(t, options = {}) {
     modelCalls: () => modelCalls };
 }
 
+test('an automatic title update cannot overwrite a manual rename on another surface', async t => {
+  const f = await fixture(t);
+  f.repository.ensureManagedChat('target', { projectId: 'project' });
+  const initialName = f.repository.getChat('target').name;
+  await f.service.configure(f.caller, { chatId: 'target', name: 'My own title', clientRequestId: 'manual-title' });
+  await assert.rejects(f.service.configure(f.caller, { chatId: 'target', name: 'Generated title', expectedName: initialName,
+    clientRequestId: 'late-generated-title' }), hasCode('stale_revision'));
+  assert.equal(f.repository.getChat('target').name, 'My own title');
+  const request = { chatId: 'target', name: 'Generated title', expectedName: 'My own title', clientRequestId: 'generated-title' };
+  await f.service.configure(f.caller, request);
+  assert.equal(f.repository.getChat('target').name, 'Generated title');
+  assert.equal((await f.service.configure(f.caller, request)).replayed, true);
+});
+
 test('Stop during asynchronous workspace intent capture commits no late input or allocation', async t => {
   const capturing = deferred(), resume = deferred(); let allocations = 0;
   const f = await fixture(t, {

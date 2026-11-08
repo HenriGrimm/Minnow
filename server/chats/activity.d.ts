@@ -3,6 +3,7 @@ import type { ModelSelection, ChatExecutionState, ChatCommandState, ChatErrorCod
 export interface ChatActivityCursor { messageSeq: number; executionId: string | null }
 export interface ChatActivityProjection {
   agentPresentationRevision?: number;
+  agentTitleCandidate: null | { commandId: string; expectedName: string };
   agentExecution: null | { executionId: string; commandId: string | null; runId: string | null; status: ChatExecutionState;
     createdAt: number; updatedAt: number; settledAt: number | null; workDurationMs?: number; modelSelection?: ModelSelection; resolvedModel?: ModelSelection;
     contextUsage?: { used: number; limit: number | null; isEstimate: boolean }; error?: string };

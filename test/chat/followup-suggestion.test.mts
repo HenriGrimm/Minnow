@@ -25,6 +25,20 @@ test('only completed assistant prose seeds a suggestion', () => {
   assert.equal(followupSuggestionReply(chat), null);
 });
 
+test('canonical completion takes precedence over an older legacy run and rejects incomplete executions', () => {
+  const chat = createEmptyChatObject('model');
+  const reply = { role: 'assistant' as const, content: 'Finished the new managed turn.' };
+  chat.history = [{ role: 'user', content: 'Continue' }, reply];
+  chat.runs = [{ runId: 'old', branchId: 'old', forkHistoryIndex: 0, status: 'failed', createdAt: 1 }];
+  chat.chatCommandVersion = 1;
+  chat.agentExecution = { executionId: 'current', status: 'completed' };
+  assert.equal(followupSuggestionReply(chat), reply);
+  for (const status of ['running', 'waiting_for_input', 'failed', 'stopped', 'recovery_required']) {
+    chat.agentExecution.status = status;
+    assert.equal(followupSuggestionReply(chat), null, status);
+  }
+});
+
 test('prompt excludes tool results, hidden prompts, injections and reasoning, and bounds context', () => {
   const chat = createEmptyChatObject('model');
   chat.history = [

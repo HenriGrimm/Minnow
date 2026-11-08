@@ -248,7 +248,7 @@ export function createChatMiddleware({ getRuntime, feature = getAgentConversatio
         presentation.changed(chatId); send(200, { request: result.request, ...snapshot() }); return;
       }
       if (operation === 'configuration' && req.method === 'PATCH') {
-        const body = await readBody(req); fields(body, ['action', 'selection', 'modeId', 'name', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
+        const body = await readBody(req); fields(body, ['action', 'selection', 'modeId', 'name', 'expectedName', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
         const result = await service.configure(caller, { ...body, chatId });
         presentation.changed(chatId); send(200, snapshot(result)); return;
       }

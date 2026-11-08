@@ -15,13 +15,20 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   let connectionVersion = 0;
   const awaitingBaseline = new Set<string>();
   const pending = new Map<string, Promise<void>>();
+  function metadataChanged(chatId: string, baseline?: boolean): void {
+    notifyManagedChatMetadata(chatId, { baseline });
+    const chat = findChatById(chatId);
+    if (chat?.agentTitleCandidate && chat.agentExecution?.status === 'completed') {
+      void import('./titles/schedule').then(module => { if (!disposed) module.scheduleManagedChatTitleGeneration(chatId); }).catch(() => {});
+    }
+  }
   function canonicalFields(chatId: string, fields?: Record<string, unknown>): Record<string, unknown> | null | undefined {
     if (!fields || findChatById(chatId)?.chatCommandVersion !== 1 || !Object.hasOwn(fields, 'chatCommandVersion') || fields.chatCommandVersion === 1) return fields;
     // An old raw notice/receipt can arrive after local promotion. Ownership is
     // monotonic; rollback must never turn this view back into a transcript writer.
     return null;
   }
-  const observeFrame = (frame: SharedChatFrame, baseline: boolean | undefined, isCurrent: () => boolean) => observer.receive(frame).then(() => { if (isCurrent() && frame.fields) notifyManagedChatMetadata(frame.chatId, { baseline }); }).catch(async () => {
+  const observeFrame = (frame: SharedChatFrame, baseline: boolean | undefined, isCurrent: () => boolean) => observer.receive(frame).then(() => { if (isCurrent() && frame.fields) metadataChanged(frame.chatId, baseline); }).catch(async () => {
     if (!isCurrent()) return;
     const signal = connection.signal;
     try {
@@ -33,7 +40,7 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
         if (fields === null) return;
         const restored = raw && { ...raw, fields };
         await observer.receive(restored);
-        if (isCurrent() && restored?.fields) notifyManagedChatMetadata(restored.chatId, { baseline: true });
+        if (isCurrent() && restored?.fields) metadataChanged(restored.chatId, true);
       }
     } catch { /* Reconnection hydrates the authoritative prefix. */ }
   });
@@ -52,10 +59,10 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
         if (chat && isNewShell) chat.historyLoaded = false;
       }
     }
-    if (message.fields) notifyManagedChatMetadata(message.chatId, { baseline });
     if (message.fields && Object.hasOwn(message.fields, 'agentExecution')) {
       setRemoteChatRunning(message.chatId, ['running', 'loading_model'].includes(message.fields.agentExecution?.status), 'managed');
     }
+    if (message.fields) metadataChanged(message.chatId, baseline);
     onChange(getActiveChat()?.id === message.chatId);
   }
   // A full frame can be hydrating history when the chat becomes a background summary.

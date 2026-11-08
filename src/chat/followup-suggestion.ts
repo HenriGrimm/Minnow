@@ -8,7 +8,7 @@ export function followupSuggestionReply(chat: Chat): AssistantMessage | null {
   if (!last || last.role !== 'assistant' || 'tool_calls' in last || !last.content.trim()) return null;
   if (last.stopped || last.failed || last.truncated) return null;
   const run = chat.runs?.at(-1);
-  if (run && run.status !== 'completed') return null;
+  if (!chat.agentExecution && run && run.status !== 'completed') return null;
   if (chat.agentExecution && chat.agentExecution.status !== 'completed') return null;
   return last;
 }

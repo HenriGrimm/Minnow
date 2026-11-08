@@ -7,9 +7,10 @@ export interface ToolCallBatchItem {
 }
 
 /** Build one disclosure for the tool calls emitted by a single model round. */
-export function createToolCallBatch(items: readonly ToolCallBatchItem[]): HTMLDetailsElement {
+export function createToolCallBatch(items: readonly ToolCallBatchItem[], summaryTitle = ''): HTMLDetailsElement {
   const batch = document.createElement('details');
   batch.className = 'tool-call-batch';
+  if (summaryTitle) batch.dataset.reasoningSummaryTitle = summaryTitle;
 
   const summary = document.createElement('summary');
   summary.className = 'tool-call-batch__summary';
@@ -59,11 +60,12 @@ export function appendToolCallBatchItem(
 /** Insert a batch where its first mounted row was, then move every row inside it. */
 export function replaceToolCallRowsWithBatch(
   items: readonly ToolCallBatchItem[],
+  summaryTitle = '',
 ): HTMLDetailsElement {
   const first = items[0]?.wrap;
   const parent = first?.parentNode;
   const next = first?.nextSibling ?? null;
-  const batch = createToolCallBatch(items);
+  const batch = createToolCallBatch(items, summaryTitle);
   if (parent) parent.insertBefore(batch, next);
   return batch;
 }
@@ -98,10 +100,12 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
   });
 
   const label = batch.querySelector<HTMLElement>('.tool-call-batch__label');
+  const summaryTitle = batch.dataset.reasoningSummaryTitle;
+  batch.classList.toggle('tool-call-batch--reasoning-summary', Boolean(summaryTitle));
   if (label) {
     const explored = exploredLabel(rows);
     const failedText = failed ? `, ${failed} failed` : '';
-    label.textContent = running
+    label.textContent = summaryTitle ? `${summaryTitle}${failedText}` : running
       ? explored ? 'Exploring' : `Running ${total} tools`
       : explored ? `${explored}${failedText}` : `${total} tool ${total === 1 ? 'call' : 'calls'}${failedText}`;
   }
@@ -135,6 +139,15 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
       .filter(Boolean)
       .join('. '),
   );
+}
+
+/** Use the latest summary heading as the round title, without rendering Markdown in a control. */
+export function toolCallSummaryTitle(segments: readonly string[], format?: 'summary'): string {
+  if (format !== 'summary') return '';
+  const lines = segments.join('\n\n').split('\n').map(line => line.trim()).filter(Boolean);
+  const headings = lines.filter(line => /^(?:#{1,6}\s|\*\*.+\*\*$)/.test(line));
+  const title = headings.at(-1) ?? lines[0] ?? '';
+  return title.replace(/^#{1,6}\s+|\s+#+$/g, '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim();
 }
 
 const FILE_TOOLS = new Set([

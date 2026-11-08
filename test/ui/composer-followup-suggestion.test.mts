@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { installHappyDomGlobals } from '../os/dom-helpers.mts';
-import { createEmptyChatObject, setSessionStateForTests, flushScheduledSessionSaveForTests } from '../../src/state/sessions.ts';
-import { ComposerFollowupSuggestion } from '../../src/ui/composer-followup-suggestion.ts';
+import { applySharedChatFrame, createEmptyChatObject, setSessionStateForTests, flushScheduledSessionSaveForTests } from '../../src/state/sessions.ts';
+import { ComposerFollowupSuggestion, initComposerFollowupSuggestion, syncComposerFollowupSuggestion } from '../../src/ui/composer-followup-suggestion.ts';
+import { notifyManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
+import { setRemoteChatRunning } from '../../src/chat/remote-turn-state.ts';
 import { initComposerDraftListener, handleComposerDraftInput } from '../../src/ui/composer-draft.ts';
 import { syncInlineComposerReferences, inlineComposerForInput } from '../../src/ui/composer-inline-references.ts';
 import { handleKey } from '../../src/ui/input.ts';
@@ -47,6 +49,7 @@ afterEach(() => {
   for (const binding of bindings.splice(0)) binding.dismiss();
   flushScheduledSessionSaveForTests();
   setSessionStateForTests(null);
+  syncComposerFollowupSuggestion();
   for (const win of windows.splice(0)) win.close();
 });
 
@@ -68,6 +71,27 @@ test('ghost stays out of draft and Tab inserts through the ordinary draft path w
   assert.equal(chat.composerDraft, input.value);
   assert.equal(chat.history.length, 2);
   assert.equal(input.selectionStart, input.value.length);
+  assert.equal(document.querySelector('.composer-followup-suggestion'), null);
+});
+
+test('managed completion metadata triggers a suggestion without a legacy stream callback', async () => {
+  const { input, chat } = setup();
+  chat.chatCommandVersion = 1;
+  chat.agentExecution = { executionId: 'managed', status: 'running' };
+  setRemoteChatRunning(chat.id, true, 'managed');
+  let generated = 0;
+  initComposerFollowupSuggestion(input, { delayMs: 0, generate: async () => { generated++; return 'Can you show the diff?'; } });
+  await tick(); assert.equal(generated, 0);
+  applySharedChatFrame(chat.id, { agentExecution: { executionId: 'managed', status: 'completed' } });
+  setRemoteChatRunning(chat.id, false, 'managed');
+  notifyManagedChatMetadata(chat.id); await tick();
+  assert.equal(generated, 1);
+  assert.ok(document.querySelector('.composer-followup-suggestion'));
+  assert.equal(input.value, '');
+  notifyManagedChatMetadata(chat.id); await tick();
+  assert.equal(generated, 1);
+  applySharedChatFrame(chat.id, { agentExecution: { executionId: 'next', status: 'running' } });
+  notifyManagedChatMetadata(chat.id);
   assert.equal(document.querySelector('.composer-followup-suggestion'), null);
 });
 
@@ -115,6 +139,26 @@ test('chat switch cancels the pending response and prevents cross-chat acceptanc
   assert.equal(document.querySelector('.composer-followup-suggestion'), null);
   assert.equal(key('Tab').defaultPrevented, false);
   assert.equal(input.value, '');
+});
+
+test('returning to a reply retries a suggestion cancelled by a chat switch', async () => {
+  let requests = 0;
+  const { binding, chat, reply, setContext, calls } = setup(() => ++requests === 1
+    ? new Promise(() => {}) : Promise.resolve('Can you show the diff?'));
+  binding.sync(); await tick();
+  setContext(null); binding.sync();
+  setContext({ chat, reply }); binding.sync(); await tick();
+  assert.equal(calls(), 2);
+  assert.match(document.querySelector('.composer-followup-suggestion')?.textContent ?? '', /Can you show the diff/);
+});
+
+test('a temporarily disabled composer does not permanently suppress its pending suggestion', async () => {
+  const { binding, input, calls } = setup();
+  binding.sync();
+  input.disabled = true; binding.sync();
+  input.disabled = false; binding.sync(); await tick();
+  assert.equal(calls(), 1);
+  assert.ok(document.querySelector('.composer-followup-suggestion'));
 });
 
 test('acceptance rechecks context even if no stream or switch paint has happened yet', async () => {

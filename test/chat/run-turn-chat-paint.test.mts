@@ -599,6 +599,50 @@ describe('P10-F per-round transcript rows (MIN-771)', () => {
 });
 
 describe('P10-H tool-row chrome (MIN-773)', () => {
+  test('a reasoning summary titles even one live tool and survives completion and later calls', () => {
+    const stub = hostStub({ schedulePaintTick: cb => cb(), scrollTranscript: () => {} });
+    const thoughts = new ThoughtBubbleController(stub.wrap);
+    const painter = createChatTurnEventPainter({ ...stub.host, thoughtController: thoughts });
+    try {
+      painter.onEvent({ type: 'thinking', text: '**Reading batch names**', reasoningFormat: 'summary' });
+      painter.onEvent({ type: 'reasoning_end' });
+      painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read', arguments: '{"path":"a.ts"}' });
+      const batch = stub.mount.querySelector<HTMLDetailsElement>('.tool-call-batch')!;
+      const row = batch.querySelector('.tool-call-msg');
+      assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names');
+      assert.equal(stub.mount.querySelector('.thoughts-toggle'), null);
+      assert.equal(stub.mount.querySelector('.reasoning-summary-activity'), null);
+      batch.open = true;
+      painter.onEvent({ type: 'tool_call', name: 'grep', id: 'search', arguments: '{"pattern":"batch"}' });
+      assert.equal(stub.mount.querySelectorAll('.tool-call-batch').length, 1);
+      assert.equal(batch.querySelectorAll('.tool-call-msg').length, 2);
+      assert.equal(batch.querySelector('.tool-call-msg'), row);
+      assert.equal(batch.open, true);
+      painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read', content: 'source' });
+      painter.onEvent({ type: 'tool_result', name: 'grep', id: 'search', content: 'Error: failed', isError: true });
+      painter.onEvent({ ...roundEnd(0, '', '**Reading batch names**', 2), reasoningFormat: 'summary' });
+      assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names, 1 failed');
+      assert.match(batch.querySelector('summary')?.getAttribute('aria-label') ?? '', /Reading batch names, 1 failed.*Read 1.*Search 1/);
+      assert.equal(stub.mount.querySelector('.thoughts-toggle'), null, 'settlement must not recreate the separate summary');
+      assert.equal(stub.wrap.isConnected, false, 'a summary-only assistant leaves no empty row');
+    } finally { painter.dispose(); thoughts.abort(); stub.mount.remove(); }
+  });
+
+  test('a summary received only at round end promotes a single tool without hiding commentary', () => {
+    const stub = hostStub({ schedulePaintTick: cb => cb(), scrollTranscript: () => {},
+      scheduleMarkdown: (bubble, text) => { bubble.textContent = text; } });
+    const thoughts = new ThoughtBubbleController(stub.wrap);
+    const painter = createChatTurnEventPainter({ ...stub.host, thoughtController: thoughts });
+    try {
+      painter.onEvent({ type: 'delta', text: 'I’ll inspect the source.' });
+      painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read', arguments: '{"path":"a.ts"}' });
+      painter.onEvent({ ...roundEnd(0, 'I’ll inspect the source.', '**Checking files**', 1), reasoningFormat: 'summary' });
+      assert.equal(stub.mount.querySelector('.tool-call-batch__label')?.textContent, 'Checking files');
+      assert.equal(stub.bubble.textContent?.trim(), 'I’ll inspect the source.');
+      assert.equal(stub.wrap.querySelector('.thoughts-toggle'), null);
+    } finally { painter.dispose(); thoughts.abort(); stub.mount.remove(); }
+  });
+
   test('multiple calls in one round collapse into a live per-type batch', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);

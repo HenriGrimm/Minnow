@@ -11,6 +11,7 @@ import { createIcon } from './icon';
 import { observeChatScrollLayout } from './chat-scroll';
 import { supportsLocalHistoryMutation } from '../state/chat-relationships';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
+import { groupWorkedToolRows } from './chat-work-tool-groups';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -41,8 +42,8 @@ const expandedByChat = new WeakMap<Chat, Set<number>>();
 let nextId = 0;
 
 /**
- * Keep transcript rows at their original mount: stream owners, tool insertion,
- * history backfill, and message actions all retain the same nodes and indices.
+ * Keep assistant rows at their original mount. Tool groups reuse the original
+ * call nodes and indices so history backfill and message actions stay attached.
  * The disclosure controls those rows via aria-controls and a visibility class.
  */
 export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming: () => boolean, options: { view?: ChatView; expanded?: Set<number>; isolated?: boolean } = {}): void {
@@ -147,6 +148,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const recovery = executionStatus === 'recovery_required';
     const terminal = executionStatus != null && ['completed', 'failed', 'stopped', 'recovery_required'].includes(executionStatus);
     live = live && !terminal;
+    if (!live) rows = groupWorkedToolRows(rows);
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
     const final = live ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)

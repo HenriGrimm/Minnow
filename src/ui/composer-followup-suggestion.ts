@@ -2,7 +2,8 @@ import { getPendingAttachments } from '../attachments/store';
 import { isPairedDevice } from '../api/session-token';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { followupSuggestionReply, sanitizeFollowupSuggestion } from '../chat/followup-suggestion';
-import { isStreamDomVisible, subscribeChatStreamActivity } from '../chat/streaming-state';
+import { isStreamDomVisible, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
+import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { getActiveChat, sessionState } from '../state/sessions';
 import { chatReadOnlyReason, hasUnsettledAgentWork } from '../state/chat-relationships';
 import type { AssistantMessage, Chat } from '../types';
@@ -50,7 +51,7 @@ export class ComposerFollowupSuggestion {
       }
     });
     new input.ownerDocument.defaultView!.MutationObserver(() => {
-      if (input.disabled || input.readOnly) this.dismiss();
+      if (input.disabled || input.readOnly) this.suspend();
     }).observe(input, { attributes: true, attributeFilter: ['disabled', 'readonly'] });
   }
 
@@ -58,7 +59,8 @@ export class ComposerFollowupSuggestion {
     const next = this.deps.context();
     const key = responseKey(next);
     if (!this.input.isConnected || this.input.disabled || this.input.readOnly || this.input.value !== '') {
-      this.dismiss();
+      if (this.input.value !== '') this.dismiss();
+      else this.suspend();
       return;
     }
     if (key === this.key) return;
@@ -71,8 +73,6 @@ export class ComposerFollowupSuggestion {
       this.paint(this.results.get(key) ?? null);
       return;
     }
-    this.results.set(key, null);
-    if (this.results.size > 32) this.results.delete(this.results.keys().next().value!);
     const controller = new AbortController();
     this.controller = controller;
     this.timer = setTimeout(() => {
@@ -82,7 +82,7 @@ export class ComposerFollowupSuggestion {
       void this.deps.generate(next.chat, controller.signal).then(raw => {
         if (controller.signal.aborted || !this.isCurrent(next)) return;
         const text = raw ? sanitizeFollowupSuggestion(raw) : null;
-        this.results.set(key, text);
+        this.remember(key, text);
         this.paint(text);
       }).catch(() => {}).finally(() => {
         clearTimeout(timeout);
@@ -104,9 +104,22 @@ export class ComposerFollowupSuggestion {
   }
 
   dismiss(): void {
-    if (this.key) this.results.set(this.key, null);
+    if (this.key) this.remember(this.key, null);
     this.cancel();
     this.paint(null);
+  }
+
+  /** Visibility and temporary input locks cancel work without recording a user dismissal. */
+  suspend(): void {
+    this.cancel();
+    this.context = null;
+    this.key = null;
+    this.paint(null);
+  }
+
+  private remember(key: string, text: string | null): void {
+    this.results.set(key, text);
+    if (this.results.size > 32) this.results.delete(this.results.keys().next().value!);
   }
 
   accept(): boolean {
@@ -183,12 +196,12 @@ export function syncComposerFollowupSuggestion(): void {
   const surface = getActiveComposerSurface();
   const input = surface.inputEl;
   const binding = input ? bindings.get(input) : null;
-  if (active !== binding) active?.dismiss();
+  if (active !== binding) active?.suspend();
   active = binding ?? null;
   active?.sync();
 }
 
-export function initComposerFollowupSuggestion(input: HTMLTextAreaElement): void {
+export function initComposerFollowupSuggestion(input: HTMLTextAreaElement, options: Partial<Pick<SuggestionDependencies, 'generate' | 'delayMs' | 'timeoutMs'>> = {}): void {
   if (bindings.has(input)) return;
   const binding = new ComposerFollowupSuggestion(input, {
     context: () => {
@@ -202,15 +215,19 @@ export function initComposerFollowupSuggestion(input: HTMLTextAreaElement): void
       const reply = followupSuggestionReply(chat);
       return reply ? { chat, reply } : null;
     },
-    generate: async (chat, signal) => {
+    generate: options.generate ?? (async (chat, signal) => {
       const { generateFollowupSuggestion } = await import('../chat/followup-suggestion-client');
       return generateFollowupSuggestion(chat, signal);
-    },
+    }),
+    delayMs: options.delayMs,
+    timeoutMs: options.timeoutMs,
   });
   bindings.set(input, binding);
   if (!subscribed) {
     subscribed = true;
     subscribeChatStreamActivity(syncComposerFollowupSuggestion);
+    subscribeChatStreamEnd(syncComposerFollowupSuggestion);
+    subscribeManagedChatMetadata(syncComposerFollowupSuggestion);
   }
   syncComposerFollowupSuggestion();
 }

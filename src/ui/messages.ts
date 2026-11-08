@@ -121,7 +121,7 @@ import { renderSidebar } from './sidebar';
 import { syncTodoPanel } from './todo-panel';
 import { renderThoughtsToggle, syncThoughtsCaretPulse } from './thought-bubbles';
 import { renderToolCall, renderToolResult, renderToolInterruption } from './tool-messages';
-import { createToolCallBatch, type ToolCallBatchItem } from './tool-call-batch';
+import { createToolCallBatch, toolCallSummaryTitle, type ToolCallBatchItem } from './tool-call-batch';
 import { attachShellKillUi } from './shell-run-ui';
 import {
   createStoppedMarkerRow,
@@ -521,7 +521,8 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
     const toolThinking =
       msg.thinking != null && msg.thinking.length > 0 ? msg.thinking : undefined;
     const hasToolThinking = toolThinking != null && toolThinking.length > 0;
-    if (prose || hasToolThinking) {
+    const summaryTitle = toolCallSummaryTitle(toolThinking ?? [], msg.reasoningFormat);
+    if (prose || hasToolThinking && !summaryTitle) {
       const { wrap, bubble } = appendBubble('assistant', prose, {
         historyIndex: i,
         turnKind: 'assistant-tools',
@@ -531,7 +532,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
       if (!prose && hasToolThinking) {
         bubble.remove();
       }
-      if (hasToolThinking) {
+      if (hasToolThinking && !summaryTitle) {
         const durationMs = msg.thinkingDurationMs;
         renderThoughtsToggle(wrap, toolThinking!, {
           reasoningFormat: msg.reasoningFormat,
@@ -551,7 +552,7 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
         turnKind: 'assistant-tools',
       });
     }
-    const stoppedNeedsMarkerRow = Boolean(msg.stopped) && !prose && !hasToolThinking;
+    const stoppedNeedsMarkerRow = Boolean(msg.stopped) && !prose && (!hasToolThinking || Boolean(summaryTitle));
 
     let firstToolEl: HTMLElement | null = null;
     const toolItems: ToolCallBatchItem[] = [];
@@ -582,15 +583,15 @@ function appendHistoryMessageRowAt(host: HTMLElement, ctx: HistoryRenderContext,
         details.addEventListener('toggle', () => ctx.presentation?.onToolExpandedChange(tc.id, details.open));
       }
     }
-    if (toolItems.length > 1) {
-      const batch = createToolCallBatch(toolItems);
+    if (toolItems.length > 1 || summaryTitle) {
+      const batch = createToolCallBatch(toolItems, summaryTitle);
       batch.dataset.historyIndex = String(i);
       batch.dataset.turnKind = 'assistant-tools';
       host.appendChild(batch);
     } else if (firstToolEl) {
       host.appendChild(firstToolEl);
     }
-    if (!prose && !hasToolThinking && firstToolEl) {
+    if (!prose && (!hasToolThinking || summaryTitle) && firstToolEl) {
       attachActions(firstToolEl, {
         chatId: chat.id,
         historyIndex: i,

@@ -15,11 +15,13 @@ export interface RemoteChatCommand {
   itemId?: string;
   attachments?: Attachment[];
   intent?: import('../../server/chats/contracts').ChatSendIntent;
-  patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; pinned?: boolean; archived?: boolean };
+  patch?: { modelSelectValue?: string; modelSelection?: import('../../server/chats/contracts').ModelSelection; modeId?: string; name?: string; expectedName?: string; pinned?: boolean; archived?: boolean };
   /** Managed Stop pins the displayed execution before capturing its descendants. */
   executionId?: string;
   scope?: 'turn' | 'tree';
   deliveryId?: string;
+  /** Local presentation identity, never part of the server command payload. */
+  composerSubmissionId?: string;
   /** Legacy Stop is pinned to the renderer that owned the interrupted turn. */
   expectedOwnerId?: string;
 }

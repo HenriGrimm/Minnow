@@ -11,6 +11,10 @@ import {
 } from "./thinking-to-body.js";
 import { DEFAULT_LLAMA_THINKING_BUDGET_TOKENS } from "./thinking-types.js";
 function applyUtilityThinkingOff(body, provider, modelCapabilities, modelApi) {
+  const apiKind = modelApi ?? modelCapabilities?.api ?? provider.apiKind;
+  // CLI models may require reasoning. Without an advertised off option, leave
+  // their default alone instead of translating an optional helper to `none`.
+  if (apiKind === "agent-cli-v1" && !modelCapabilities?.reasoningAllowedOptions?.includes("off")) return;
   mergeThinkingIntoCompletionBody(
     body,
     "off",

@@ -10,7 +10,7 @@ function selection(value) {
 
 /** Lightweight canonical activity, shared by summaries, mounted frames and notices. */
 export function readChatActivity(db, chatId) {
-  const chat = db.prepare('SELECT unread,turn_error FROM chats WHERE id=?').get(chatId);
+  const chat = db.prepare("SELECT name,unread,turn_error,json_type(meta_json,'$.agentConversation')='object' AS delegated FROM chats WHERE id=?").get(chatId);
   if (!chat) return null;
   const presentationRevision = readChatPresentationRevision(db, chatId), managed = presentationRevision !== null;
   const execution = managed ? db.prepare("SELECT e.execution_id,e.command_id,e.run_id,e.status,e.created_at,e.updated_at,e.settled_at,e.activated_at,e.activity_json,COALESCE(json_extract(e.captured_json,'$.modelSelection'),json_extract(c.payload_json,'$.modelSelection'),json_extract(e.captured_json,'$.profile.snapshot.modelSelection')) AS model_selection FROM chat_executions e LEFT JOIN chat_commands c ON c.command_id=e.command_id WHERE e.chat_id=? ORDER BY e.rowid DESC LIMIT 1").get(chatId) : null;
@@ -26,8 +26,12 @@ export function readChatActivity(db, chatId) {
   const contextUsage = activity.contextUsage;
   const failed = execution && ['failed', 'recovery_required'].includes(execution.status);
   const error = failed ? db.prepare("SELECT substr(json_extract(result_json,'$.error'),1,2048) AS message FROM chat_executions WHERE execution_id=?").get(execution.execution_id)?.message : null;
+  const title = managed && !chat.delegated && execution?.status === 'completed' ? db.prepare("SELECT command_id,json_extract(captured_json,'$.titleUpdate.name') AS placeholder,json_extract(captured_json,'$.titleUpdate.expectedName') AS original_name FROM chat_commands WHERE chat_id=? AND json_extract(payload_json,'$.kind')='send' AND json_extract(payload_json,'$.provenance.actor')='human' ORDER BY position LIMIT 1").get(chatId) : null;
+  const autoTitle = title &&
+    (chat.name.trim().toLowerCase() === 'new chat' || title.original_name?.trim().toLowerCase() === 'new chat' && chat.name === title.placeholder);
   return {
     ...(managed ? { agentPresentationRevision: presentationRevision } : {}),
+    agentTitleCandidate: autoTitle ? { commandId: title.command_id, expectedName: chat.name } : null,
     agentExecution: execution ? {
       executionId: execution.execution_id, commandId: execution.command_id, runId: execution.run_id, status: execution.status,
       createdAt: execution.created_at, updatedAt: execution.updated_at, settledAt: execution.settled_at,

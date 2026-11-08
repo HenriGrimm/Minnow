@@ -367,6 +367,20 @@ test('a device can submit human input but cannot forge execution-host or agent a
   assert.throws(() => assertExecutionCaller(caller.caller), error => error.code === 'caller_not_active');
 });
 
+test('automatic title HTTP updates compare the current name and preserve manual renames', async t => {
+  const f = await fixture(t);
+  const generated = await f.request('/api/chats/chat/configuration', { method: 'PATCH', body: {
+    name: 'Generated title', expectedName: 'chat', clientRequestId: 'auto-title' } });
+  assert.equal(generated.status, 200);
+  assert.equal(generated.body.frame.fields.name, 'Generated title');
+  const manual = await f.request('/api/chats/chat/configuration', { method: 'PATCH', body: { name: 'My title', clientRequestId: 'my-title' } });
+  assert.equal(manual.status, 200);
+  const late = await f.request('/api/chats/chat/configuration', { method: 'PATCH', body: {
+    name: 'Late title', expectedName: 'Generated title', clientRequestId: 'late-title' } });
+  assert.equal(late.status, 409); assert.equal(late.body.error.code, 'stale_revision');
+  assert.equal(f.repository.getChat('chat').name, 'My title');
+});
+
 test('configuration captures exact pairs and immutable profiles with atomic lost-receipt retry and stale revision checks', async t => {
   const f = await fixture(t);
   const body = { action: 'configure', selection: { providerId: 'next-provider', modelId: 'next-model', options: { reasoningEffort: 'high' } },

@@ -1,24 +1,18 @@
-import { thinkingToCompletionBody } from '../../agents/thinking-to-body';
+import { applyUtilityThinkingOff } from '../../agents/merge-thinking-body';
 import { completeNonStreamingViaGenerations } from '../../providers/fetch-chat';
 import { getActiveProvider } from '../../providers/store';
 import type { ChatCompletionBody } from '../../api/chat';
 import type { ApiKind } from '../../providers/types';
 import type { TitleProviderPort } from './types';
 
-/** Title jobs need prose in `content` — disable thinking like editor inline completion. */
+/** Request prose while leaving required CLI reasoning at the model default. */
 export function applyTitleThinkingOffPatch(
   body: ChatCompletionBody,
   apiKind: ApiKind,
 ): ChatCompletionBody {
-  const modelId = typeof body.model === 'string' ? body.model : undefined;
-  const { body: thinkingPatch } = thinkingToCompletionBody(
-    'off',
-    apiKind,
-    undefined,
-    null,
-    modelId,
-  );
-  return { ...body, ...thinkingPatch };
+  const patched = { ...body };
+  applyUtilityThinkingOff(patched, { id: '', apiKind });
+  return patched;
 }
 
 /** Build a port that resolves auth/URL via the active provider layer. */

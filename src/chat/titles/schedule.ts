@@ -9,6 +9,7 @@ import { recordChatCompletionUsage } from '../../usage/record-chat-usage';
 import {
   applyGeneratedChatTitle,
   findChatById,
+  ensureChatHistoryLoaded,
   getChatMessageCount,
   scheduleSaveSessions,
   touchChat,
@@ -26,6 +27,8 @@ import { emitTitleJobEnded, emitTitleJobStarted } from './activity-events';
 import { isPlaceholderChatName } from './placeholder';
 import { createTitleProviderPort } from './provider-port';
 import type { TitleGenerationOptions } from './types';
+import { sendManagedChatAction } from '../managed-chat-client';
+import { apiMessageContentToText } from '../../api/message-content';
 
 /** Resolved send binding passed from the main message path (work-agent / UI designer). */
 export interface TitleScheduleContext {
@@ -36,6 +39,7 @@ export interface TitleScheduleContext {
 const scheduleContextByChatId = new Map<string, TitleScheduleContext>();
 /** Exact prompt snippets that a pending auto-title job may still replace. */
 const pendingPlaceholderByChatId = new Map<string, string>();
+const managedTitleAttempts = new Map<string, string>();
 
 let titleGenerateImpl = generateChatTitle;
 
@@ -59,6 +63,28 @@ export { resetTitleGenerationInflight } from './inflight';
 export function resetTitleScheduleContext(): void {
   scheduleContextByChatId.clear();
   pendingPlaceholderByChatId.clear();
+  managedTitleAttempts.clear();
+}
+
+/** Canonical completion replaces only the server-identified automatic placeholder. */
+export function scheduleManagedChatTitleGeneration(chatId: string): void {
+  const chat = findChatById(chatId), candidate = chat?.agentTitleCandidate;
+  if (!chat || chat.chatCommandVersion !== 1 || chat.agentConversation || chat.agentExecution?.status !== 'completed' || !candidate || chat.name !== candidate.expectedName) return;
+  const key = JSON.stringify([candidate, chat.agentExecution.executionId]);
+  if (managedTitleAttempts.get(chatId) === key) return;
+  managedTitleAttempts.set(chatId, key);
+  if (managedTitleAttempts.size > 512) managedTitleAttempts.delete(managedTitleAttempts.keys().next().value!);
+  void ensureChatHistoryLoaded(chatId).then(() => {
+    const current = findChatById(chatId);
+    if (current !== chat || current.name !== candidate.expectedName) return;
+    if (current.agentExecution?.status !== 'completed') { managedTitleAttempts.delete(chatId); return; }
+    const input = current.history.find(row => row.role === 'user' && row.commandId === candidate.commandId);
+    const seed = input?.role === 'user' ? apiMessageContentToText(input.content).slice(0, 4000) : '';
+    if (!seed.trim()) return;
+    pendingPlaceholderByChatId.set(chatId, candidate.expectedName);
+    const model = current.agentExecution.resolvedModel ?? current.agentExecution.modelSelection;
+    scheduleChatTitleGeneration(chatId, seed, model ? { modelId: model.modelId, providerId: model.providerId } : undefined);
+  }).catch(() => { managedTitleAttempts.delete(chatId); });
 }
 
 /**
@@ -206,6 +232,14 @@ async function runTitleJob(chatId: string, seed: string, signal: AbortSignal): P
     }
   }
   if (!title || signal.aborted) return;
+
+  const current = findChatById(chatId);
+  if (current?.chatCommandVersion === 1) {
+    const expectedName = pendingPlaceholderByChatId.get(chatId);
+    if (expectedName === undefined || current.name !== expectedName) return;
+    await sendManagedChatAction(chatId, 'configure', { patch: { name: title, expectedName } });
+    return;
+  }
 
   const applied = applyGeneratedChatTitle(
     chatId,

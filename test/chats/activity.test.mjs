@@ -31,6 +31,27 @@ function fixture(t, disk = false) {
     } };
 }
 
+test('automatic title candidates identify only completed root placeholders without exposing prompt bodies', t => {
+  const f = fixture(t);
+  f.repository.ensureManagedChat('child', { projectId: 'project' });
+  f.repository.configureChat('child', { name: 'New chat' });
+  f.repository.admitCommand({ version: 1, commandId: 'title-command', chatId: 'child', kind: 'send', mode: 'auto',
+    requestedAt: 1000, message: 'private title seed body', provenance: human },
+  { producerId: 'human', requestKey: 'title-command', captured: { titleUpdate: { name: 'Prompt snippet', expectedName: 'New chat' } } });
+  const fence = f.repository.claimExecution({ chatId: 'child', executionId: 'title-execution', commandId: 'title-command', ownerId: 'host' });
+  assert.equal(f.repository.getActivity('child').agentTitleCandidate, null);
+  f.repository.updateExecution('title-execution', { status: 'completed' }, { fence });
+  let candidate = f.repository.getActivity('child').agentTitleCandidate;
+  assert.deepEqual(candidate, { commandId: 'title-command', expectedName: 'New chat' });
+  assert.doesNotMatch(JSON.stringify(candidate), /private title seed body/);
+  f.repository.configureChat('child', { name: 'Prompt snippet' });
+  candidate = f.repository.getActivity('child').agentTitleCandidate;
+  assert.deepEqual(candidate, { commandId: 'title-command', expectedName: 'Prompt snippet' });
+  assert.deepEqual(normalizeChatRow({ id: 'child', history: [], agentTitleCandidate: candidate }).agentTitleCandidate, candidate);
+  f.repository.configureChat('child', { name: 'My manual title' });
+  assert.equal(f.repository.getActivity('child').agentTitleCandidate, null);
+});
+
 test('canonical lightweight activity distinguishes old executions from the exact pending assignment and survives reopen', t => {
   const f = fixture(t, true); const old = f.claim('old');
   f.repository.updateExecutionActivity('old', { resolvedModel: { providerId: 'actual', modelId: 'actual-model' },

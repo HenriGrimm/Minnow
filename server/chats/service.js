@@ -477,7 +477,8 @@ export function createChatCommandService({
     requireCaller(caller);
     if (disposed) failure('capability_unavailable', 'The conversation service is stopping');
     if (caller.actor !== 'human' || !['renderer', 'device', 'cli'].includes(caller.ingress)) failure('caller_denied', 'Conversation configuration requires an authenticated human');
-    fields(input, ['chatId', 'action', 'selection', 'modeId', 'name', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
+    fields(input, ['chatId', 'action', 'selection', 'modeId', 'name', 'expectedName', 'pinned', 'archived', 'expectedProfileVersion', 'clientRequestId']);
+    if (input.expectedName !== undefined && (typeof input.expectedName !== 'string' || input.expectedName.length > 256 || input.name === undefined)) failure('invalid_request', 'An expected name requires a bounded title update');
     if (input.action !== undefined && input.action !== 'configure') failure('invalid_request', 'Unsupported configuration action');
     checked(validateChatId(input.chatId));
     checked(validateChatId(input.clientRequestId));
@@ -548,6 +549,7 @@ export function createChatCommandService({
       }
       const result = repository.atomic(() => {
         const prior = replay(); if (prior) return prior;
+        if (input.expectedName !== undefined && repository.getChat(input.chatId).name !== input.expectedName) failure('stale_revision', 'Conversation title changed');
         const chat = repository.configureChat(input.chatId, patch, { expectedProfileVersion: profileVersion, ...(next ? { profile: next } : {}) });
         const result = { chatId: input.chatId, profileReference: chat.profileReference, disposition: 'settled' };
         repository.putOutbox({ outboxId: receiptId, chatId: input.chatId, kind: 'configuration.receipt', payload: { intentHash, result } });

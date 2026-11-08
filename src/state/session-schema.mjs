@@ -1306,6 +1306,11 @@ export function normalizeChatRow(raw) {
     }
     out.agentExecution = execution;
   }
+  const titleCandidate = row.agentTitleCandidate;
+  if (titleCandidate && validateChatId(titleCandidate.commandId).ok &&
+      typeof titleCandidate.expectedName === 'string' && titleCandidate.expectedName.length <= 256) {
+    out.agentTitleCandidate = { commandId: titleCandidate.commandId, expectedName: titleCandidate.expectedName };
+  }
   if (row.agentPendingCommand && typeof row.agentPendingCommand === 'object' && validateChatId(row.agentPendingCommand.commandId).ok && CHAT_COMMAND_STATES.includes(row.agentPendingCommand.state)) {
     const raw = row.agentPendingCommand;
     out.agentPendingCommand = { commandId: raw.commandId, state: raw.state, held: raw.held === true,

@@ -14,6 +14,7 @@ import { parseCompactSlashInput } from './context/parse-compact-command';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import { setStatus } from '../ui/status';
 import { showToast } from '../ui/toast';
+import { getFirstMessageSubmission } from './first-message-submission';
 
 type QueueChangedListener = () => void;
 var queueChangedListener: QueueChangedListener | null = null;
@@ -83,7 +84,10 @@ export function getPendingTranscriptMessages(chat: Chat): QueuedComposerMessage[
     !chat.history.some(message => message.role === 'user' && message.commandId === item.id));
   if (chat.pendingSteerMessage?.trim()) items.unshift({ id: 'legacy-steer', text: chat.pendingSteerMessage.trim(), createdAt: 0, kind: 'steer' });
   const sending = getSendingManagedMessage(chat);
-  return sending && !items.includes(sending) ? [sending, ...items] : items;
+  if (sending && !items.includes(sending)) items.unshift(sending);
+  const submitted = getFirstMessageSubmission(chat);
+  if (submitted && !items.some(item => item.id === submitted.id)) items.unshift(submitted);
+  return items;
 }
 
 /** The accepted human input starting an idle managed chat, presented outside its saved history. */
@@ -102,6 +106,7 @@ export function getSendingManagedMessage(chat: Chat): QueuedComposerMessage | un
   if (isChatTurnInProgress(chat.id)) return;
   if (!pending || pending.held || pending.errorCode || !['accepted', 'queued'].includes(pending.state) ||
       !item || pending.commandId !== item.id || item.provenance?.actor !== 'human' || item.hiddenFromTranscript ||
+      chat.history.some(message => message.role === 'user' && message.commandId === item.id) ||
       editing.has(`${chat.id}:${item.id}`) ||
       execution && !['completed', 'settled', 'failed', 'stopped', 'cancelled'].includes(execution.status)) return;
   sendingManagedMessages.set(chat, item);

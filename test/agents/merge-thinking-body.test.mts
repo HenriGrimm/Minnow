@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { mergeThinkingIntoCompletionBody } from '../../src/agents/merge-thinking-body.ts';
+import { applyUtilityThinkingOff, mergeThinkingIntoCompletionBody } from '../../src/agents/merge-thinking-body.ts';
 import {
   markLmStudioThinkingHintShown,
   resetLmStudioThinkingHint,
@@ -21,6 +21,26 @@ const levelCaps: ModelCapabilities = {
 };
 
 describe('mergeThinkingIntoCompletionBody', () => {
+  test('CLI utility calls keep model defaults when off is unknown or unsupported', () => {
+    const catalogs: Array<ModelCapabilities | undefined> = [undefined, { ...levelCaps, reasoningAllowedOptions: ['low', 'medium', 'high'] }];
+    for (const caps of catalogs) {
+      const body = { model: 'gpt-6.1-sol' };
+      applyUtilityThinkingOff(body, { id: 'codex-cli', apiKind: 'agent-cli-v1' }, caps);
+      assert.deepEqual(body, { model: 'gpt-6.1-sol' });
+    }
+  });
+
+  test('CLI utility calls can disable reasoning when the catalog advertises off', () => {
+    const body: Record<string, unknown> = { model: 'supports-off' };
+    applyUtilityThinkingOff(body, { id: 'codex-cli', apiKind: 'agent-cli-v1' }, levelCaps);
+    assert.equal(body.reasoning_effort, 'off');
+  });
+
+  test('explicit chat reasoning remains unchanged by the utility policy', () => {
+    const body: Record<string, unknown> = { model: 'gpt-6.1-sol' };
+    mergeThinkingIntoCompletionBody(body, 'on', { id: 'codex-cli', apiKind: 'agent-cli-v1' }, levelCaps, 'high');
+    assert.equal(body.reasoning_effort, 'high');
+  });
   test('dropdown models enable thinking when inherited on despite catalog default off', () => {
     const body: Record<string, unknown> = {};
     const { body: merged } = mergeThinkingIntoCompletionBody(

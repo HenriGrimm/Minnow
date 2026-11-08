@@ -18,6 +18,8 @@ import { renderToolCall, renderToolResult } from '../ui/tool-messages';
 import {
   appendToolCallBatchItem,
   replaceToolCallRowsWithBatch,
+  syncToolCallBatch,
+  toolCallSummaryTitle,
   type ToolCallBatchItem,
 } from '../ui/tool-call-batch';
 import { attachShellKillUi } from '../ui/shell-run-ui';
@@ -133,6 +135,8 @@ export interface FinalizeThinkingRoundOpts {
   domVisible?: boolean;
   isolated?: boolean;
   thoughts?: ThoughtsToggleOptions;
+  /** The reasoning summary already labels this round's tool disclosure. */
+  summaryInToolBatch?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -144,6 +148,11 @@ export function finalizeAndAnchorThinkingRound(
   const durationMs = opts.durationMs ?? 0;
   const reasoningFormat = opts.thoughtController?.getReasoningFormat?.();
   if (opts.domVisible === false) return { segments, durationMs };
+  if (opts.summaryInToolBatch) {
+    opts.wrap.querySelector('.thoughts-panel-wrap')?.remove();
+    if (!opts.hasProse) removeOrphanStreamingRow(opts.wrap, opts.streamStatus, opts.isolated);
+    return { segments, durationMs };
+  }
   if (segments.length > 0) {
     const durationOpt = { ...(durationMs > 0 ? { durationMs } : {}), reasoningFormat };
     if (opts.hasProse) {
@@ -256,6 +265,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   const argsById = new Map<string, unknown>();
   let roundToolItems: ToolCallBatchItem[] = [];
   let roundToolBatch: HTMLDetailsElement | null = null;
+  let reasoningFormat: 'summary' | undefined;
   let lastStreamingToolName: string | null = null;
   let toolStart: ToolStartIndicatorHandle | null = null;
 
@@ -374,6 +384,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     prosePainted = false;
     paintEpoch++;
     reasoningPhaseEnded = false;
+    reasoningFormat = undefined;
   };
 
   const applyHostPatch = (next: Partial<ChatTurnPaintHost>): void => {
@@ -408,6 +419,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
   };
 
   const closeToolBearingRound = (event: Extract<TurnEvent, { type: 'round_end' }>): void => {
+    reasoningFormat = event.reasoningFormat ?? reasoningFormat;
     host.thoughtController.setReasoningFormat?.(event.reasoningFormat);
     if (event.reasoning && event.reasoning !== lastThinking) {
       lastThinking = event.reasoning;
@@ -418,6 +430,12 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
     const bubble = host.bubble;
     const prose = event.text.trim() || lastDelta.trim();
     const hasProse = Boolean(prose);
+    const summaryTitle = toolCallSummaryTitle([lastThinking], reasoningFormat);
+    if (summaryTitle && roundToolItems.length && originStreamVisible()) {
+      roundToolBatch ??= replaceToolCallRowsWithBatch(roundToolItems, summaryTitle);
+      roundToolBatch.dataset.reasoningSummaryTitle = summaryTitle;
+      syncToolCallBatch(roundToolBatch);
+    }
 
     if (bubble) {
       cancelAssistantBubbleRenderDebounce(bubble);
@@ -442,6 +460,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       domVisible: originStreamVisible(),
       isolated: host.isolated,
       thoughts: host.thoughts,
+      summaryInToolBatch: Boolean(summaryTitle && roundToolBatch),
     });
     if (wrap.isConnected) host.streamStatus?.dispose();
 
@@ -468,6 +487,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       firstProseReceived = null; prosePainted = false; paintEpoch++;
       pendingDelta = null; pendingThinking = null;
       lastDelta = ''; lastThinking = ''; lastPaintedThinking = '';
+      reasoningFormat = undefined;
       reasoningPhaseEnded = false;
       clearToolStartIndicator();
       host.thoughtController.resetFailedResponse?.();
@@ -486,6 +506,7 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       return;
     }
     if (event.type === 'thinking') {
+      reasoningFormat = event.reasoningFormat;
       host.thoughtController.setReasoningFormat?.(event.reasoningFormat);
       reasoningPhaseEnded = false;
       lastThinking = event.text;
@@ -550,12 +571,20 @@ export function createChatTurnEventPainter(host: ChatTurnPaintHost): ChatTurnEve
       }
       const item = { name: event.name, wrap };
       roundToolItems.push(item);
-      if (roundToolItems.length === 1) {
+      const summaryTitle = toolCallSummaryTitle([lastThinking], reasoningFormat);
+      if (summaryTitle) {
+        host.thoughtController.endReasoningPhase?.();
+        host.wrap.querySelector('.thoughts-panel-wrap')?.remove();
+      }
+      if (roundToolBatch) {
+        appendToolCallBatchItem(roundToolBatch, item);
+      } else if (summaryTitle) {
+        host.mount.appendChild(wrap);
+        roundToolBatch = replaceToolCallRowsWithBatch(roundToolItems, summaryTitle);
+      } else if (roundToolItems.length === 1) {
         host.mount.appendChild(wrap);
       } else if (roundToolItems.length === 2) {
         roundToolBatch = replaceToolCallRowsWithBatch(roundToolItems);
-      } else if (roundToolBatch) {
-        appendToolCallBatchItem(roundToolBatch, item);
       }
       host.onToolRendered?.(wrap, key);
       return;

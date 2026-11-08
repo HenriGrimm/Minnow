@@ -11,6 +11,7 @@ import type { RemoteChatAction, RemoteChatCommand } from './remote-chat-client';
 import { attachmentImageDataUrl } from '../attachments/attachment-image';
 import { chatReadOnlyReason } from '../state/chat-relationships';
 import { validateChatRequest, validateChatSendIntent, type ChatRequest } from '../../server/chats/contracts';
+import { acceptFirstMessageSubmission } from './first-message-submission';
 
 const pending = new Map<string, { fingerprint: string; id: string }>();
 const pendingDeletes = new Map<string, string>();
@@ -219,7 +220,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
       if (!selected) throw new Error('Select a model with its provider.');
       payload.selection = { ...selected, options: {} };
     }
-    for (const field of ['modeId', 'name', 'pinned', 'archived'] as const) if (patch[field] !== undefined) payload[field] = patch[field];
+    for (const field of ['modeId', 'name', 'expectedName', 'pinned', 'archived'] as const) if (patch[field] !== undefined) payload[field] = patch[field];
     payload.expectedProfileVersion = chat.profileReference?.profileVersion ?? 0;
   } else if (action === 'cancel-steer') {
     throw new Error('Remove an individual pending correction from the queue.');
@@ -276,6 +277,7 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
     throw new Error('The admission acknowledgement is incomplete. Your draft is kept; retry to recover its original receipt.');
   }
   clearReceipt();
+  if (action === 'send') acceptFirstMessageSubmission(chat, data.composerSubmissionId, body.receipt.commandId, body.receipt.state);
   if (directSkill) { chat.pinnedSkill = directSkill.nextPinned; touchChat(chat); scheduleSaveSessions(); }
   window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId, ...body } }));
   return body.receipt;

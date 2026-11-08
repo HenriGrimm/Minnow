@@ -1035,6 +1035,14 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   text-overflow: ellipsis;
 }
 
+.tool-call-batch--reasoning-summary .tool-call-batch__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .tool-call-batch__count { flex-shrink: 0; }
 .tool-call-batch__count + .tool-call-batch__count::before { content: ' · '; }
 .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-danger-ink); }

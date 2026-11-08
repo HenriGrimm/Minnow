@@ -56,14 +56,26 @@ test('uses the chat model for a bounded tool-free utility request and records it
   assert.equal(chat.tokenLedger?.bySource['utility:followup-suggestion']?.totalTokens, 38);
 });
 
-test('uses the configured utility model instead of the conversation model', async () => {
+test('uses the conversation model even when a different utility model is configured', async () => {
   const chat = setup();
   setUtilityModelConfigForTests({ providerId: 'local', modelId: 'utility-model' });
   let called = false;
   await generateFollowupSuggestion(chat, new AbortController().signal, async (_provider, body) => {
     called = true;
-    assert.equal(body.model, 'utility-model');
+    assert.equal(body.model, 'chat-model');
     return { choices: [{ message: { content: 'NONE' } }] };
+  });
+  assert.equal(called, true);
+});
+
+test('a managed pool reply uses its resolved chat model for the suggestion', async () => {
+  const chat = setup();
+  chat.providerId = 'minnow-router'; chat.modelId = 'pool';
+  chat.agentExecution = { executionId: 'reply', status: 'completed', resolvedModel: { providerId: 'local', modelId: 'reply-model' } };
+  let called = false;
+  await generateFollowupSuggestion(chat, new AbortController().signal, async (provider, body) => {
+    called = true; assert.equal(provider.id, 'local'); assert.equal(body.model, 'reply-model');
+    return { choices: [{ message: { content: 'Can you show the diff?' } }] };
   });
   assert.equal(called, true);
 });
@@ -78,6 +90,17 @@ test('aborted requests and missing models do not start a completion', async () =
   chat.modelId = '';
   assert.equal(await generateFollowupSuggestion(chat, new AbortController().signal, complete), null);
   assert.equal(calls, 0);
+});
+
+test('changing the composer model after a reply uses the new chat selection', async () => {
+  const chat = setup();
+  chat.agentExecution = { executionId: 'reply', status: 'completed',
+    modelSelection: { providerId: 'local', modelId: 'old-model' }, resolvedModel: { providerId: 'local', modelId: 'old-model' } };
+  let selected;
+  await generateFollowupSuggestion(chat, new AbortController().signal, async (_provider, body) => {
+    selected = body.model; return { choices: [{ message: { content: 'NONE' } }] };
+  });
+  assert.equal(selected, 'chat-model');
 });
 
 test('provider failures and reasoning-only output silently yield no suggestion', async () => {
