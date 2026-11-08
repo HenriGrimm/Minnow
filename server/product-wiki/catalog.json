@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "42e4019e55fb67dd4019c5b3e8950f096ffa3d82ce6ab00a4ad89b32cdb71ac3"
+      "hash": "cc364bca6dd94bf4f6b8b34c45d69dd8fd0a5816e57581bc3c3182af51954f1e"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -94,8 +94,8 @@
       "headings": [
         "Code with chat open",
         "Send something",
-        "Approving a tool",
-        "Choosing a mode",
+        "Approving an action",
+        "Asking, planning and debugging",
         "The context ring",
         "Attachments",
         "Slash skills",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "eec468260faa1350d82ddabef40a6c28c8e33e00c8a0800f67779ea9b8391fbb"
+      "hash": "17925cfaec192ad3e3b532000ee6de5073bd53e9a3fa9526990a4de8e1bf2069"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -114,43 +114,26 @@
         "The loop",
         "Local by default",
         "The workspace boundary",
-        "Modes decide what exists",
+        "One agent, one permission level",
         "Apps are surfaces, not silos",
         "Agents all the way down",
         "When the server is not there",
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "d3a8914ff3ef44d043e6ddd704184a25a13c8b4286d8af6a81b39fb27a16059a"
-    },
-    {
-      "path": "documentation/manual/concepts/modes.md",
-      "title": "Modes",
-      "summary": "A mode changes two things at once: the instructions the model gets, and the tools that exist for that turn. It is the most consequential control in the composer, and it is one click. The product defines several mode ids for prompts and tool policy. Four are in the composer strip ",
-      "headings": [
-        "The four you choose",
-        "Choose how to execute a plan",
-        "What Plan mode actually blocks",
-        "Modes you enter (not on the strip)",
-        "Tool access at a glance",
-        "Modes are a ceiling, not a grant",
-        "Practical mode picking",
-        "Related"
-      ],
-      "section": "Core concepts",
-      "hash": "dbbb72f865550cc0ac406c38ace8240a48e627afb3911ee992f9b0a6f8b7d503"
+      "hash": "073e73470304cbb41a790cf5be217f4b8cd48174171808c6157e0d21db967b0a"
     },
     {
       "path": "documentation/manual/concepts/tools-and-permissions.md",
       "title": "Tools and permissions",
-      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships 104 of them. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. The three permi",
+      "summary": "A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second. One permission level Minnow has one permi",
       "headings": [
-        "The three permission levels",
-        "Where to set them",
-        "Loading tool schemas",
+        "One permission level",
+        "Approving an action",
+        "Turning tools on or off",
+        "Loading tools on demand",
         "The categories",
-        "What is on by default",
-        "The workspace boundary",
+        "The project boundary",
         "Content the model reads is data, not instructions",
         "Caching",
         "How much of a result the model sees",
@@ -159,7 +142,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "cd11215c021cbc5bd3990c3e9f7fb512f3d1718fa9775f9baac48e2b5e9279fc"
+      "hash": "8c10b486b2a5461fd33b6c43cdb2d9e1822e68579cd074ec2562777fab8fbfe3"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -177,7 +160,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "bed28c2d497fdec46765865d752a30764bd6208e15bcc96156684a61b5f2dad2"
+      "hash": "1d4efc81f2f4b529e13bcc2f8ff45641014d33284bb21a5b6d3ac38a7cb00d30"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -197,13 +180,14 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "c635221bf37f37a8ecc6fd4114051dba665a8ec47b88e1331bd2edc3d7ed57e4"
+      "hash": "cfd3bf81123a0788d173a1c0e2eaeb58deebcb9e7287088d805dcc772e18d33a"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
       "title": "Skills and slash commands",
-      "summary": "Type / at the start of an empty composer and a picker opens. It holds two different kinds of thing: Skills — packaged instructions that shape how the model does one job. Commands — /goal , /loop , /followup and /compact , which change how the chat behaves rather than what the mod",
+      "summary": "Type / at the start of an empty composer and the menu opens. Keep typing to filter it; the best match on a command's name comes first. Recent — the last few things you picked, when you have not typed anything yet. Commands — the workflow skills /ask , /plan and /debug , then app ",
       "headings": [
+        "Workflow skills: `/ask`, `/plan`, `/debug`",
         "Skills",
         "Installing more",
         "Writing your own",
@@ -214,7 +198,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "5a3be86b7c788d601ab6e7c811b6372cdfd46cdc792d85d3e2af99394cba647b"
+      "hash": "02abc4b3dfdb130b7d1a34b9114aa793d51eb995ca484b0fe254a5042d3b44c7"
     },
     {
       "path": "documentation/manual/apps/overview.md",
@@ -260,7 +244,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "5f3b310e33dff88e406395c83be1a42a1747416d9225b232c1c0bcc0c5936f41"
+      "hash": "8b8d2e60e6aa181139cbe88ed608e6c4921e1f24d142d9a9c998452bc6b92495"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -322,7 +306,7 @@
         "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "ad0302462a8175154e7453e2ad55eabb2277a76ef3d47d4863e39a78f3706e12"
+      "hash": "f9d6b979172e2ee75b99f84fb7fd1ef64f2fb6b776995f52c08412532ebd0143"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -495,7 +479,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "ec23d66831a9e00ef2af820706ff32d77082ad542611cb8c007b8a970766b6db"
+      "hash": "67aa06ac00eb5cbe57120e5881f27144661a9ee27ca1b349d0865c98ac0340d8"
     },
     {
       "path": "documentation/manual/reference/troubleshooting.md",
@@ -525,7 +509,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "212f0d8eae7447d962e65870f013119e055e570fe0dadb5e27f158e23ac41430"
+      "hash": "204de316808c1d5e5f8dadc462d05dcba63175105a5f4c451d8738e725e8ff80"
     },
     {
       "path": "documentation/manual/reference/wiki-and-brain.md",
@@ -541,7 +525,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "beec8d2fb378242d7356fc3e22fff1e86e243c16461a9e3179fd8793d076fd87"
+      "hash": "51a761c429d8d9d5df551b0465996a2ac317d7f84c45b5c1ef1fe2c9b80c0476"
     },
     {
       "path": "documentation/manual/reference/roadmap.md",

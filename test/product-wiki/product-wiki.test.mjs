@@ -212,8 +212,8 @@ describe('product wiki reads and search', () => {
 
 describe('product wiki chat tools', () => {
   test('search, read, and list return citation paths', async () => {
-    const searchResult = JSON.parse(await toolMinnowDocsSearch({ query: 'composer modes' }));
-    assert.ok(searchResult.hits.some((hit) => hit.path === 'documentation/manual/concepts/modes.md'));
+    const searchResult = JSON.parse(await toolMinnowDocsSearch({ query: 'permission level' }));
+    assert.ok(searchResult.hits.some((hit) => hit.path === 'documentation/manual/concepts/tools-and-permissions.md'));
 
     const readResult = await toolMinnowDocsRead({ path: 'documentation/manual/README.md' });
     assert.match(readResult, /Source: documentation\/manual\/README\.md/u);

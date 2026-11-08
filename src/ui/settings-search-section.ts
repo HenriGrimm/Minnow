@@ -345,6 +345,6 @@ export async function renderSearchSettingsSection(mount: HTMLElement): Promise<v
 
   appendSettingsCrosslinks(content, [
     { label: 'Managed servers (SearXNG)', sectionId: 'servers' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
   ]);
 }

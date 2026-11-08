@@ -115,6 +115,7 @@ const DEFAULT_META = {
   activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
   flaticonIconGuidanceEnabled: true,
+  localModelGuidance: 'auto',
   activeSetupProfileId: null,
   workspaceProfiles: {},
   workspaceProfileAutoApply: false,
@@ -163,7 +164,7 @@ const DEFAULT_META = {
     fallbackToChatModel: true,
   },
   toolSecurity: {
-    filesystemAccess: 'workspace',
+    permissionLevel: 'auto',
   },
   desktopShell: {
     closeToTray: true,

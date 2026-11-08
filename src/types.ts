@@ -1413,6 +1413,8 @@ export interface Chat {
   composerDraft?: string;
   /** Sticky slash skill for this chat (persists until cleared or replaced). */
   pinnedSkill?: PinnedSkillState | null;
+  /** "Allow for this chat" approval grants (keys from the shared permission classifier). */
+  permissionGrants?: string[];
   /** Cumulative token usage and optional USD cost (Feature #14). */
   tokenLedger?: ChatTokenLedger;
   /** Bounded, payload-free local runner timings; never part of the model prompt. */

@@ -251,13 +251,12 @@ function formatGroupMode(values: string[]): string {
   const unique = [...new Set(values)];
   if (unique.length === 0) return '';
   if (unique.length > 1) return 'Mix';
-  if (unique[0] === 'full') return 'Full';
-  if (unique[0] === 'ask') return 'Ask';
+  if (unique[0] === 'ask' || unique[0] === 'full') return 'On';
   if (unique[0] === 'off') return 'Off';
   return unique[0] ?? '';
 }
 
-/** Glanceable Full / Ask / Off / Mix on each Tools group row. */
+/** Glanceable On / Off / Mix on each Tools group row. */
 function syncOverflowToolGroupModes(): void {
   const list = document.getElementById('composerToolsList');
   if (!list) return;

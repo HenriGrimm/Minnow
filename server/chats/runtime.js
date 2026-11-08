@@ -24,7 +24,8 @@ import { createChatRunnerDeps } from './runner-deps.js';
 import { resolveAgentModelSelection } from './model-selection.js';
 import { executeConversationTool } from './conversation-tools.js';
 import { createInProcessToolDispatch } from '../runner/tool-dispatch.js';
-import { createChatPolicy, intersectChatPolicies, assertChatPolicyWithinCeiling, assertChatToolAllowed } from './policy.js';
+import { createChatPolicy, intersectChatPolicies, assertChatToolAllowed } from './policy.js';
+import { getChatPermissionGrants } from './permission-grants.js';
 import { assertCallerCanTarget, assertExecutionCaller, createChatCaller } from './caller.js';
 import { ChatContractError } from './contracts.js';
 import { listGenerationStates } from '../generations/store.js';
@@ -215,23 +216,12 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
         if (toolHandlers.has(name)) return toolHandlers.get(name)({ name, args, toolContext, ...executionContext, prepared, context, service, repository });
         const target = assertExecutionScope(execution, await context.resolveTarget(command.chatId), prepared);
         const policy = intersectChatPolicies(prepared.policy, target.policy);
-        assertChatToolAllowed(prepared.policy, name, args ?? {}, { currentPolicy: target.policy, approvalGranted: toolContext?.approvalGranted === true });
+        assertChatToolAllowed(prepared.policy, name, args ?? {}, { currentPolicy: target.policy, approvalGranted: toolContext?.approvalGranted === true,
+          workspaceRoot: prepared.cwd, grants: getChatPermissionGrants(command.chatId) });
         if (name === 'todo_write' || name === 'propose_mode_switch') return executeConversationTool(name, args, {
           repository, requests, execution, fence, prepared, signal, toolCallId: toolContext?.toolCallId,
           currentPolicy: policy, onChange: chatId => presentation.changed(chatId), onStatus: event => service.notifyExecution(event),
         });
-        if (name === 'set_chat_mode') {
-          const modeId = args?.mode_id;
-          if (!['general', 'build', 'plan', 'debug'].includes(modeId)) throw new ChatContractError('policy_denied', 'Choose an independent conversation for broader authority');
-          const narrowed = createChatPolicy(await resolvePolicyInput({ ...target.chat, modeId }, target.scope, target.registry));
-          assertChatPolicyWithinCeiling(narrowed, policy);
-          repository.configureChat(command.chatId, { modeId }, { expectedProfileVersion: target.profile?.profileVersion ?? 0,
-            profile: { profileId: target.profile?.profileId ?? `profile-${command.chatId}`, profileVersion: (target.profile?.profileVersion ?? 0) + 1,
-              snapshot: { ...(target.profile?.snapshot ?? {}), policy: narrowed } } });
-          presentation.changed(command.chatId);
-          return { content: `Mode set to ${modeId}. Existing authority restrictions continue to apply.` };
-        }
-        if (name === 'create_chat_with_mode') throw new ChatContractError('policy_denied', 'Use the existing conversation tools to contact another chat, or ask the user to create an independent chat');
         const dispatch = createInProcessToolDispatch({ cwd: prepared.cwd, modeId: policy.modeId,
           allowedToolNames: Object.keys(policy.toolPermissions), runtimeOwner, activityChatId: command.chatId,
           filesystemAccessCeiling: policy.filesystemAccess, shellSandboxMode: policy.shellSandboxMode,

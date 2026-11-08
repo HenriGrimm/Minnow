@@ -19,9 +19,9 @@ const LEGACY_SECTION_ALIASES: Partial<Record<SettingsSectionId, SettingsSectionI
 
 /** Default search anchors when landing on agent-center from a legacy slug. */
 const LEGACY_SECTION_SEARCH_KEYS: Partial<Record<SettingsSectionId, string>> = {
-  modes: 'modes.plan',
+  modes: 'agents.skills',
   'sub-agents': 'agents.subAgents',
-  'work-agents': 'agents.workAgents',
+  'work-agents': 'agents.center',
 };
 
 /** Map legacy or reparented section slugs to a visible panel + optional scroll target. */
@@ -34,7 +34,7 @@ export function resolveSettingsSectionNavigation(
   }
   if (sectionId === 'data') {
     return {
-      sectionId: searchKey && /^general\.(filesystem|shellSandbox)(\.|$)/.test(searchKey) ? 'access' : 'backups',
+      sectionId: searchKey && /^general\.(filesystem|permissions|shellSandbox)(\.|$)/.test(searchKey) ? 'access' : 'backups',
       searchKey,
     };
   }
@@ -45,7 +45,7 @@ export function resolveSettingsSectionNavigation(
     if (/^general\.backup(\.|$)/.test(searchKey)) {
       return { sectionId: 'backups', searchKey };
     }
-    if (/^general\.(filesystem|shellSandbox)(\.|$)/.test(searchKey)) {
+    if (/^general\.(filesystem|permissions|shellSandbox)(\.|$)/.test(searchKey)) {
       return { sectionId: 'access', searchKey };
     }
   }

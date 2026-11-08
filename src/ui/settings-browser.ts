@@ -3,12 +3,10 @@ import '../styles/settings-general.css';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import {
   getBrowserMetaCached,
-  invalidateBrowserMetaCache,
   loadBrowserMeta,
   saveBrowserMeta,
   type BrowserMeta,
 } from '../config/browser-meta';
-import { normalizeAllowlistPatterns } from '../tools/browser-allowlist-match';
 import {
   appendSettingsCrosslinks,
   appendSettingsGroup,
@@ -37,17 +35,6 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-function patternsToText(patterns: string[]): string {
-  return patterns.join('\n');
-}
-
-function parsePatternsText(raw: string): string[] {
-  return raw
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
 // ── Render ───────────────────────────────────────────────────────────────────
 
 /** Mount browser automation controls into #settingsBrowserBody. */
@@ -60,7 +47,7 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
   const lead = el('p', 'settings-section-lead');
   lead.append(
     'Control how agents use the built-in browser preview. Choose what they can do in ',
-    linkToSettingsSection('Tool permissions', 'tools'),
+    linkToSettingsSection('Tools', 'tools'),
     '.',
   );
   shell.appendChild(lead);
@@ -159,47 +146,6 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
     });
   }
 
-  const allowlistGroup = appendSettingsGroup(
-    content,
-    'Allowed origin patterns',
-    'One origin per line, such as http://localhost:* or https://*.example.com. Use * as a wildcard.',
-    'integrations.browser.patterns',
-    { emphasis: true },
-  );
-
-  const patternsArea = document.createElement('textarea');
-  patternsArea.id = 'settingsBrowserAllowlistPatterns';
-  patternsArea.rows = 6;
-  patternsArea.spellcheck = false;
-  let lastSavedPatterns = [...meta.allowedOriginPatterns];
-  patternsArea.value = patternsToText(lastSavedPatterns);
-  allowlistGroup.appendChild(
-    createSettingsTextareaRow('Origin patterns', {
-      textarea: patternsArea,
-      searchKey: 'integrations.browser.patterns',
-    }).row,
-  );
-
-  patternsArea.addEventListener('change', () => {
-    void (async () => {
-      const patterns = normalizeAllowlistPatterns(parsePatternsText(patternsArea.value));
-      if (patterns.length === 0) {
-        setStatus('err', 'Add at least one origin pattern');
-        patternsArea.value = patternsToText(lastSavedPatterns);
-        return;
-      }
-      patternsArea.value = patternsToText(patterns);
-      try {
-        await saveBrowserMeta({ allowedOriginPatterns: patterns });
-        lastSavedPatterns = patterns;
-        invalidateBrowserMetaCache();
-        await loadBrowserMeta();
-      } catch {
-        setStatus('err', 'Could not save browser settings');
-      }
-    })();
-  });
-
   allowNavCb.addEventListener('change', () => {
     void (async () => {
       try {
@@ -223,12 +169,10 @@ export async function renderBrowserSettingsSection(mount: HTMLElement): Promise<
   });
 
   appendSettingsCrosslinks(content, [
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Permissions', sectionId: 'access' },
     { label: 'Skills catalog', sectionId: 'skills' },
   ]);
 }
-
-// ── Allowlist ────────────────────────────────────────────────────────────────
 
 /** Cached meta for settings consumers (after loadBrowserMeta). */
 export function getBrowserSettingsMeta(): BrowserMeta {

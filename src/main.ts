@@ -47,6 +47,7 @@ import './styles/workspace-folder-picker.css';
 import './styles/research-panel.css';
 import './styles/git-help-lightbox.css';
 import './styles/tool-approval.css';
+import './styles/permissions.css';
 import './styles/question-cards.css';
 import './styles/transcript-view.css';
 import './styles/sub-agent-drawer.css';
@@ -183,6 +184,8 @@ import {
   syncViewModeToggleFromActiveChat,
 } from './ui/view-mode-toggle';
 import { initModeSelector, syncModeSelectorFromActiveChat } from './ui/mode-selector';
+import { initComposerPermissionPill } from './ui/permission-level';
+import { registerSlashMenuCommands } from './ui/slash-menu-commands';
 import { initComposerCompact } from './ui/composer-compact';
 import { initThinkingControl } from './ui/composer-thinking';
 import { initCodeMapInjectionControl } from './ui/composer-code-map';
@@ -339,6 +342,8 @@ export async function initApp(): Promise<void> {
     initAttachments();
     initContextUsageRing();
     initModeSelector();
+    initComposerPermissionPill();
+    registerSlashMenuCommands();
     initThinkingControl();
     initCodeMapInjectionControl();
     initBrainNotesInjectionControl();

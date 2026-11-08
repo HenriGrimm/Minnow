@@ -26,11 +26,11 @@ export async function executeSubAgentTool(
   context: ExecuteToolContext = {},
 ): Promise<string> {
   if (name === 'spawn_sub_agent') {
-    const type = typeof args.type === 'string' ? args.type.trim() : '';
+    // One agent: `type` is optional (boards and old transcripts may still pass one).
+    const type = (typeof args.type === 'string' ? args.type.trim() : '') || 'generalPurpose';
     const task = typeof args.task === 'string' ? args.task.trim() : '';
     const wait = args.wait === true;
 
-    if (!type) return 'Error: spawn_sub_agent requires "type"';
     if (!task) return 'Error: spawn_sub_agent requires "task"';
 
     const categoryRaw = typeof args.category === 'string' ? args.category.trim() : '';

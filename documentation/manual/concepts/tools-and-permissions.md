@@ -1,82 +1,63 @@
 # Tools and permissions
 
-A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Minnow ships **104** of them.
+A tool is a function the model may call: read a file, run a command, search the web, write a Brain page, open a browser tab. Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second.
 
-Tools are what make Minnow useful and what make it risky. This page is how you keep the first without the second.
+## One permission level
 
-## The three permission levels
+Minnow has **one permission level** for everything an agent does: built-in tools, shell commands, websites and the built-in browser, MCP servers and plugins. It applies to every chat, sub-agent and board run.
 
-Every tool is **Off**, **Ask**, or **Full**.
+| Level | What it means |
+|-------|---------------|
+| **Manual** | Ask before edits, commands, and anything outside this project. Reads and searches inside the project still run without asking. |
+| **Auto** (default) | Minnow approves routine work — edits and ordinary commands inside the project, web searches, opening sites — and asks before anything risky, destructive, remote, or outside the project. |
+| **Full access** | No prompts. Unrestricted files, commands and internet. Minnow asks you to confirm the first time you switch to it. |
 
-| Level | Behaviour |
-|-------|-----------|
-| **Off** | The model never sees the tool. It cannot call it, and it does not cost context. |
-| **Ask** | The model may call it; you approve each call from the strip in chat. |
-| **Full** | Runs immediately, no prompt. |
+Change it from the **permission pill** in the composer, with **Shift+Tab** while the composer is focused, from the **/permissions** command, or in **Settings → General → Permissions**. They are all the same setting: changing it in the composer changes it everywhere. Phones and tablets connected under **Settings → Devices** follow the same level, Full access included.
 
-Approval keys while the strip is open: **1** allow once, **2** always allow, **3** cancel.
+Some things are never allowed, whatever the level: file tools cannot read or change Minnow's encryption key or its stored secrets. Shell commands that name secret files ask under Manual and Auto.
 
-**2** is a real settings write. It moves that tool to Full everywhere, permanently, not just for this conversation. That is usually what you want for `read_file` on day two and almost never what you want for `execute_command`.
+## Approving an action
 
-## Where to set them
+When an action needs you, a card appears above the composer. It says what the agent wants to do in plain words (Run a command, Edit a file, Open a site, Use an MCP tool), shows the command, path or address, and the reason it asked.
 
-- **Settings → Integrations → Tools** — the full catalog, grouped by category, with bulk actions per group.
-- **The composer's settings cog → Tools** — the same Off/Ask/Full controls, without leaving your chat.
+| Key | Action |
+|-----|--------|
+| **1** or **Enter** | Allow once |
+| **2** | Allow this kind of action for the rest of this chat (the command prefix, folder, site, MCP server or plugin) |
+| **3** or **Escape** | Deny (**2** when the card has no chat option) |
 
-Both write to the same file, so changing one changes the other.
+Type in the card's field and press **Enter** to deny and tell the agent what to do instead. **Allow for this chat** lasts only for that chat and never covers high-risk actions; nothing is remembered permanently.
 
-## Loading tool schemas
+## Turning tools on or off
 
-**Settings → Integrations → Tools → Load tool schemas on demand** is on by default.
-Each turn starts with a small core of file, search, shell, and question tools.
-The model uses `search_tools` to find additional permitted tools by name or capability;
-their schemas become available on the next request and stay loaded for that turn.
-The model can call `search_tools({ list_only: true })` to view all permitted tool names
-without loading any additional schemas, then search for the tools it needs.
-This also applies to board and sub-agent attempts. Permissions and mode restrictions still apply.
+**Settings → Integrations → Tools** lists every built-in tool, grouped by category, with an **On / Off** switch per tool and per group. The composer's settings cog → **Tools** shows the same switches. A tool that is Off is never offered to the model and costs no context. Whether an available tool asks first is decided by the permission level, not per tool.
 
-Turn the setting off to send every permitted tool schema on each request. Changes apply
-to new chat turns and agent attempts. Discovery can add a model round trip before an
-additional tool runs, in exchange for using less context up front.
+## Loading tools on demand
+
+**Settings → Integrations → Tools → Load tool schemas on demand** is on by default. Each turn starts with a small core: reading, searching and editing files, the shell, the task list, questions, sub-agents, web search and page fetch, and skills. Everything else — git, the Issues tracker, the browser, code intelligence, Brain, settings, Minnow docs, plugins and MCP — is listed by name in the `search_tools` tool, so the model knows it exists. The model loads what it needs with `search_tools` (by exact name or by capability), and the tool is callable from the next request.
+
+Turn the setting off to send every available tool on each request. That costs more context up front and saves a round trip when a tool is first used.
 
 ## The categories
 
 | Category | What it covers | Needs the tool server |
 |----------|----------------|:---------------------:|
-| **Utility** | Date and time, arithmetic, timers, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, mode and app control | mostly |
+| **Utility** | Date and time, arithmetic, timers, clipboard, system info, settings, appearance, Brain, memory, Minnow docs, app control | mostly |
 | **Web** | Web search, page fetch, Wikipedia, retrieval-augmented page reading | yes |
 | **Files** | Read, write, move, copy, delete, search, plus PDF/Word/Excel reading and creation | yes |
 | **Git** | Status, diff, log, branch, add, commit, checkout | yes |
 | **Code** | Shell execution, background commands, dev servers, JavaScript and Python runners, repo map, symbol search, call graphs | yes |
 | **LSP** | Diagnostics and language server status | yes |
-| **Sub-agents** | Spawning, cancelling and monitoring nested agents; board control | no (runs in the app) |
+| **Sub-agents** | Spawning, cancelling and monitoring nested agents | no (runs in the app) |
 | **Built-in browser** | Navigate, click, fill, snapshot, screenshot, evaluate — in Minnow's own browser view | Electron only |
 
-## What is on by default
+## The project boundary
 
-Minnow ships conservative. A fresh install enables roughly thirty tools; the rest are Off until you want them.
+File, git and search tools work **inside the folder for that surface**: the project open in Code, **Sandbox** (`~/.minnow/workspace`), or a board task's own git worktree. Under **Manual**, anything outside that folder asks first. Under **Auto**, reads outside it run but edits outside it ask. Under **Full access** nothing asks. A symlink that points outside counts as outside.
 
-Of those, a few default to **Full** because they are read-only or clearly safe:
+The shell is different. Minnow classifies each command before it runs: read-only commands such as `ls`, `rg` or `git status` count as reads, and destructive ones such as `rm -r` outside the project, `git reset --hard` or `git push --force` always ask under Manual and Auto. Once a command runs, though, it has the same filesystem reach as Minnow unless the **agent shell sandbox** is on (**Settings → Data & privacy → Access → Agent shell sandbox**: `off` / `prefer` / `require`; default off). Boards default to **require** under Autopilot.
 
-- **Brain and memory** — search, read, list, write pages, append logs, ingest, plus the code-intelligence tools. Memory is useless if every save needs a click.
-- **Minnow documentation** — searching and reading this manual.
-- **Settings reads** — `search_settings` and `get_settings`. `update_settings` stays on Ask.
-- **Appearance read** — `get_appearance`.
-- **Timers** — `wait`. It parks the turn and rings the menubar bell; it does not touch your files.
-
-Everything else that is enabled starts on **Ask**. Files, git, shell and browser tools are all Ask or Off out of the box. Nothing writes to your disk or runs a command without you saying so, until you decide otherwise.
-
-## The workspace boundary
-
-This is the important one for file and git tools.
-
-File, git and search tools resolve **under the working folder for that surface**: the project open in Code, **Sandbox** (`~/.minnow/workspace`), or a board task's own git worktree. A path outside it is rejected before anything runs. Symlinks that point outside are rejected too.
-
-You can turn this off: **Settings → Data & privacy → Access → Filesystem access → Full disk**. Then file tools can read and write anywhere your user account can. There are legitimate reasons to do it and you should understand that it removes the main *file-tool* containment in the product.
-
-**`execute_command` on Full is different.** The workspace path check never sees the shell string — once the model is inside `cmd` / `$SHELL -c`, it has the same filesystem authority as Minnow unless the **agent shell sandbox** is on. Other Full tools still resolve paths in JS first; shell does not. Enable containment in **Settings → Data & privacy → Access → Agent shell sandbox** (`off` / `prefer` / `require`; default off). Dev canaries can still set **`MINNOW_SHELL_SANDBOX=1`** (treated as prefer). Boards default to **require** under Autopilot.
-
-Shell commands also have specific guards even without the sandbox: an agent cannot kill Minnow or bind its port out from under itself. Interactive PTY tabs are never sandboxed.
+Shell commands also have specific guards at every level: an agent cannot kill Minnow or bind its port out from under itself. Interactive PTY tabs are never sandboxed.
 
 ## Content the model reads is data, not instructions
 
@@ -102,24 +83,24 @@ Chat history compression is **Settings → Agents → Context policy**. See [Con
 
 ## Tools that are not built in
 
-- **MCP servers** register tools as `mcp__<server>__<tool>`. Adding a server approves all its tools across modes and agents. Disable or remove the server in MCP settings to stop access.
-- **Native plugins** register as `plugin__<tool>`.
+- **MCP servers** register tools as `mcp__<server>__<tool>`. Remove or disable a server in MCP settings to stop access.
+- **Native plugins** register as `plugin__<tool>`, with an On / Off switch in Settings → Tools.
 
-Both **bypass the mode allowlist**. Native plugins retain per-tool permission settings. MCP access is controlled by adding, disabling, or removing the server.
+Both follow the permission level like everything else. MCP tools that declare themselves read-only are treated as reads; destructive ones always ask under Manual and Auto.
 
 See [Integrations](../extend/integrations.md).
 
 ## Practical setups
 
-**Cautious.** Reads on Full (`read_file`, `list_directory`, `grep`, `git_status`, `git_diff`). Everything that writes or executes on Ask. This is the best default for most people: the model stops nagging about harmless lookups, and you still see every mutation.
+**Most people: Auto.** Routine work runs, and you see everything risky or outside the project.
 
-**Working on one project all day.** Add file writes and git writes on Full, keep `execute_command` and `delete_path` on Ask. Commit before long agent runs — Minnow's undo can restore a working tree from a snapshot, but a commit is cheaper and more certain.
+**Reviewing every change: Manual.** Reads still run freely; every edit and command waits for you. Use **Allow for this chat** on commands you trust, such as `npm test`.
 
-**Unattended runs** (Scheduler, AFK boards). Anything on Ask will simply stall with nobody to approve it. Decide deliberately what gets Full for those jobs. Prefer worktree isolation so parallel tasks do not collide on one checkout — that isolates *git* work, not the rest of the host. For host filesystem containment on agent shells, use the agent shell sandbox (see [Privacy and security](../reference/privacy-and-security.md)).
+**Unattended runs** (Scheduler, AFK boards). An action that needs approval will stall with nobody to approve it, so pick the level for those jobs deliberately. Prefer worktree isolation so parallel tasks do not collide on one checkout, and use the agent shell sandbox for host filesystem containment (see [Privacy and security](../reference/privacy-and-security.md)). Commit before long agent runs: Minnow's undo can restore a working tree from a snapshot, but a commit is cheaper and more certain.
 
 ## Related
 
-- [Modes](modes.md) — the other gate every tool must pass
+- [Skills and slash commands](../chat/skills-and-commands.md) — `/ask` and `/plan` narrow a single turn
 - [Privacy and security](../reference/privacy-and-security.md)
 - [Settings app](../apps/settings.md)
 - [Integrations](../extend/integrations.md)

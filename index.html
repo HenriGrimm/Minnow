@@ -610,8 +610,8 @@
         <h2>Agents</h2>
         <div id="settingsAgentCenterBody" class="settings-section-body settings-agent-center-body"></div>
         <details class="settings-agent-base-prompt" id="settingsBasePromptPanel" data-settings-search-key="agents.prompting">
-          <summary class="settings-agent-base-prompt__summary">System prompt</summary>
-          <p class="settings-field-hint settings-agent-base-prompt__hint">Shared Full, Lite, and Custom instructions applied before mode and agent prompts.</p>
+          <summary class="settings-agent-base-prompt__summary">Composed prompt &amp; profiles</summary>
+          <p class="settings-field-hint settings-agent-base-prompt__hint">Preview everything the agent is sent, estimate its size, or build a Custom layout that replaces individual parts.</p>
           <div id="settingsFlaticonIconGuidanceMount" data-settings-search-key="agents.prompting.interfaceIcons"></div>
           <p
             id="settingsPromptTokenBreakdown"
@@ -673,7 +673,7 @@
       </div>
       <div class="settings-hub" id="settingsHub-tools" data-hub="tools">
       <section id="settingsSection-tools" class="settings-section settings-section--wide settings-area settings-area--title-suppressed" data-area="tools">
-        <h2>Tool permissions</h2>
+        <h2>Tools</h2>
         <div id="settingsToolsBody" class="settings-section-body"></div>
       </section>
       </div>
@@ -2355,6 +2355,7 @@
         <div id="attachPreview" class="attach-preview hidden" aria-live="polite" aria-label="Attached files"></div>
         <div class="composer-controls" id="composerControls" role="toolbar" aria-label="Composer options">
           <div id="modeSelector" class="mode-segmented" role="radiogroup" aria-label="Operating mode"></div>
+          <div id="composerPermissionAnchor" class="composer-control permission-pill-anchor"></div>
           <div id="composerThinkingWrap" class="composer-control thinking-control-wrap" hidden>
             <div id="composerThinkingControl" class="thinking-toggle-host"></div>
             <div id="composerReasoningEffortWrap" class="composer-reasoning-effort-wrap hidden">

@@ -2,6 +2,7 @@
  * Headless agent run loop — generations + server tools, no DOM.
  */
 
+import { loadToolSecurityMeta } from '../config/tool-security-meta';
 import {
   extractStreamDelta,
   finalizeToolCalls,
@@ -277,6 +278,7 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
   await loadSamplerMeta();
   await loadPromptMetaWithProfile(options.cli.profile);
   await ensureToolConfigReady();
+  await loadToolSecurityMeta().catch(() => undefined);
   if (isServerStorageMode() && !isToolConfigReadyForSettingsUi()) {
     throw new Error(
       'Could not load tool settings from ~/.minnow. Ensure npm start is running and /api/config/tools is reachable.',

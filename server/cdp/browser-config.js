@@ -5,9 +5,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getMinnowHome } from '../config/home.js';
-import { readConfigJson, writeConfigJson } from '../config/store.js';
-import { mergeConfigMeta } from '../config/validators.js';
-import { normalizeAllowlistPatternLine } from './allowlist.js';
 
 /** @typedef {object} BrowserConfig
  * @property {boolean} enabled
@@ -16,15 +13,18 @@ import { normalizeAllowlistPatternLine } from './allowlist.js';
  * @property {string[]} allowedOriginPatterns
  */
 
+/**
+ * Browser origins have no separate allowlist: the system permission level
+ * (Manual / Auto / Full access) decides each navigation before it reaches the
+ * browser, so the browser itself admits every web origin.
+ */
+export const ALL_WEB_ORIGIN_PATTERNS = Object.freeze(['http://*', 'https://*']);
+
 export const DEFAULT_BROWSER_CONFIG = {
   enabled: true,
   allowNavigate: true,
   nativeAgentTabs: false,
-  allowedOriginPatterns: [
-    'http://localhost:*',
-    'http://127.0.0.1:*',
-    'https://localhost:*',
-  ],
+  allowedOriginPatterns: [...ALL_WEB_ORIGIN_PATTERNS],
 };
 
 let cachedConfig = null;
@@ -44,9 +44,7 @@ function mergeBrowserConfig(raw) {
   if (typeof row.enabled === 'boolean') base.enabled = row.enabled;
   if (typeof row.allowNavigate === 'boolean') base.allowNavigate = row.allowNavigate;
   if (typeof row.nativeAgentTabs === 'boolean') base.nativeAgentTabs = row.nativeAgentTabs;
-  if (Array.isArray(row.allowedOriginPatterns)) {
-    base.allowedOriginPatterns = row.allowedOriginPatterns.filter((p) => typeof p === 'string');
-  }
+  // Stored legacy allowlists are ignored; see ALL_WEB_ORIGIN_PATTERNS.
   return base;
 }
 
@@ -79,31 +77,13 @@ export function resetBrowserConfigCache() {
 }
 
 /**
- * Append an origin pattern to config.json when missing (persists allowlist).
- * @param {string} pattern
- * @returns {Promise<boolean>} true when a new pattern was written
+ * Legacy: origins are no longer allowlisted (the permission level gates them).
+ * Kept so older callers resolve; never writes.
+ * @param {string} _pattern
+ * @returns {Promise<boolean>}
  */
-export async function appendBrowserAllowlistPattern(pattern) {
-  const trimmed = normalizeAllowlistPatternLine(pattern);
-  if (!trimmed) return false;
-
-  const meta = (await readConfigJson('config.json')) ?? {};
-  const cfg = mergeBrowserConfig(meta?.browser);
-  if (
-    cfg.allowedOriginPatterns.some(
-      (p) => normalizeAllowlistPatternLine(p).toLowerCase() === trimmed.toLowerCase(),
-    )
-  ) {
-    return false;
-  }
-
-  const nextPatterns = [...cfg.allowedOriginPatterns, trimmed];
-  const merged = mergeConfigMeta(meta, {
-    browser: { allowedOriginPatterns: nextPatterns },
-  });
-  await writeConfigJson('config.json', merged);
-  resetBrowserConfigCache();
-  return true;
+export async function appendBrowserAllowlistPattern(_pattern) {
+  return false;
 }
 
 /**

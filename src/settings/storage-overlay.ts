@@ -154,9 +154,12 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'models.usage': section(['usage']),
 
   'agents.center': section(['agent-center']),
-  'agents.modes': section(['agent-center']),
-  'agents.experts': section(['agent-center']),
-  'agents.workAgents': section(['agent-center']),
+  'agents.localModelGuidance': meta('localModelGuidance', 'enum', {
+    allowedValues: ['auto', 'on', 'off'],
+    refreshAreas: ['agent-center'],
+  }),
+  'agents.skills': section(['agent-center']),
+  'agents.boards': section(['agent-center']),
   'agents.agentPacks': section(['agent-packs']),
   'agents.subAgents': section(['agent-center']),
   'agents.autopilot': section(['autopilot']),
@@ -209,8 +212,8 @@ export const SETTINGS_STORAGE_OVERLAY: Record<string, OverlayEntry> = {
   'integrations.deepResearch': section(['deep-research']),
   'integrations.servers': section(['servers']),
   'integrations.tools': section(['tools']),
-  'general.filesystem': meta('toolSecurity.filesystemAccess', 'enum', {
-    allowedValues: ['workspace', 'full'],
+  'general.permissions': meta('toolSecurity.permissionLevel', 'enum', {
+    allowedValues: ['manual', 'auto', 'full'],
     sensitivity: 'dangerous',
     refreshAreas: ['general'],
   }),

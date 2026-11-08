@@ -1,4 +1,5 @@
 import { ChatContractError } from './contracts.js';
+import type { ClassifiedAction, PermissionLevel, TurnClamp } from '../../src/lib/permissions.mjs';
 
 export const CHAT_POLICY_VERSION: 1;
 export type ChatPolicyMode = 'general' | 'build' | 'plan' | 'debug' | 'orchestrate' | 'onboarding';
@@ -20,6 +21,11 @@ export class ChatPolicyError extends ChatContractError {
 export interface ChatPolicyInput {
   version?: 1;
   modeId: ChatPolicyMode | 'super-plan' | 'desktop' | 'email';
+  /** System-wide level (Manual / Auto / Full access); defaults to Auto. */
+  permissionLevel?: PermissionLevel;
+  /** Turn narrowing from /ask (read-only) or /plan (plans). Legacy plan mode implies 'plans'. */
+  turnClamp?: TurnClamp | null;
+  /** Availability only: 'off' = unavailable; 'ask' and 'full' both mean available. */
   toolPermissions?: Readonly<Record<string, ChatToolPermission>>;
   /** Trusted catalog annotations; unknown external effects fail closed in restricted profiles. */
   toolEffects?: Readonly<Record<string, ChatToolEffect>>;
@@ -33,6 +39,8 @@ export interface ChatPolicyInput {
 export interface ChatPolicySnapshot {
   readonly version: 1;
   readonly modeId: ChatPolicyMode;
+  readonly permissionLevel: PermissionLevel;
+  readonly turnClamp: TurnClamp | null;
   readonly toolPermissions: Readonly<Record<string, ChatToolPermission>>;
   readonly toolEffects: Readonly<Record<string, ChatToolEffect>>;
   readonly workspaceIds: readonly string[];
@@ -55,5 +63,19 @@ export function assertChatToolAllowed(
   capturedPolicy: ChatPolicySnapshot,
   name: string,
   args: Record<string, unknown>,
-  options: { currentPolicy: ChatPolicySnapshot; approvalGranted?: boolean },
-): { readonly toolName: string; readonly permission: ChatToolPermission; readonly policy: ChatPolicySnapshot };
+  options: {
+    currentPolicy: ChatPolicySnapshot;
+    approvalGranted?: boolean;
+    /** The chat's "Allow for this chat" grant keys. */
+    grants?: readonly string[];
+    workspaceRoot?: string;
+    extraRoots?: readonly string[];
+    homeDir?: string;
+  },
+): { readonly toolName: string; readonly permission: ChatToolPermission; readonly action: ClassifiedAction; readonly policy: ChatPolicySnapshot };
+export function classifyChatToolCall(
+  policy: ChatPolicySnapshot,
+  name: string,
+  args?: Record<string, unknown>,
+  options?: { workspaceRoot?: string; extraRoots?: readonly string[]; homeDir?: string },
+): ClassifiedAction;

@@ -6,9 +6,12 @@
  */
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, mock, test } from 'node:test';
-import type { ToolApprovalRequest } from '../../src/tools/tool-approval-types.ts';
+import type { ToolApprovalDecision, ToolApprovalRequest } from '../../src/tools/tool-approval-types.ts';
 
-type Decision = 'allow-once' | 'always-allow' | 'cancel';
+type Decision = ToolApprovalDecision;
+const ALLOW: Decision = { kind: 'allow-once' };
+const CHAT: Decision = { kind: 'allow-chat' };
+const DENY: Decision = { kind: 'deny' };
 
 const showCalls: ToolApprovalRequest[] = [];
 const pendingResolvers: Array<(decision: Decision) => void> = [];
@@ -17,12 +20,12 @@ mock.module('../../src/ui/tool-approval-modal.ts', {
   namedExports: {
     showToolApprovalModal: (request: ToolApprovalRequest) => {
       showCalls.push(request);
-      if (request.signal?.aborted) return Promise.resolve('cancel' as const);
+      if (request.signal?.aborted) return Promise.resolve(DENY);
       return new Promise<Decision>((resolve) => {
         pendingResolvers.push(resolve);
         request.signal?.addEventListener(
           'abort',
-          () => resolve('cancel'),
+          () => resolve(DENY),
           { once: true },
         );
       });
@@ -55,7 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const resolve of pendingResolvers) resolve('cancel');
+  for (const resolve of pendingResolvers) resolve(DENY);
   pendingResolvers.length = 0;
   queue.resetApprovalQueueForTests();
 });
@@ -67,7 +70,7 @@ describe('enqueueToolApproval AbortSignal', () => {
     const decision = await queue.enqueueToolApproval(
       sampleRequest({ signal: abort.signal }),
     );
-    assert.equal(decision, 'cancel');
+    assert.deepEqual(decision, DENY);
     assert.equal(showCalls.length, 0);
     assert.equal(queue.hasPendingToolApproval(), false);
   });
@@ -86,10 +89,10 @@ describe('enqueueToolApproval AbortSignal', () => {
     assert.equal(showCalls.length, 1, 'second entry waits behind the open strip');
 
     queuedAbort.abort();
-    assert.equal(await waiting, 'cancel');
+    assert.deepEqual(await waiting, DENY);
 
-    pendingResolvers[0]?.('allow-once');
-    assert.equal(await shown, 'allow-once');
+    pendingResolvers[0]?.(ALLOW);
+    assert.deepEqual(await shown, ALLOW);
     await flush();
     assert.equal(showCalls.length, 1, 'aborted waiter must never reach the modal');
     assert.equal(queue.hasPendingToolApproval(), false);
@@ -105,19 +108,48 @@ describe('enqueueToolApproval AbortSignal', () => {
     assert.equal(showCalls[0]?.toolName, 'open');
 
     firstAbort.abort();
-    assert.equal(await first, 'cancel');
+    assert.deepEqual(await first, DENY);
     await flush();
     assert.equal(showCalls[1]?.toolName, 'next', 'queue must drain after abort');
 
-    pendingResolvers.at(-1)?.('always-allow');
-    assert.equal(await second, 'always-allow');
+    pendingResolvers.at(-1)?.(CHAT);
+    assert.deepEqual(await second, CHAT);
     assert.equal(queue.hasPendingToolApproval(), false);
   });
 
   test('happy path still forwards allow-once', async () => {
     const pending = queue.enqueueToolApproval(sampleRequest());
     await flush();
-    pendingResolvers[0]?.('allow-once');
-    assert.equal(await pending, 'allow-once');
+    pendingResolvers[0]?.(ALLOW);
+    assert.deepEqual(await pending, ALLOW);
+  });
+});
+
+describe('settleQueuedApprovalsForGrant', () => {
+  const grantAction = (key: string, risk: 'low' | 'elevated' | 'high' = 'elevated') => ({
+    tool: 'execute_command', kind: 'shell' as const, mutates: true, external: false, risk,
+    reasons: [], resources: [], floor: false, title: 'Run', detail: 'npm test',
+    grant: { key, label: '`npm test` commands' },
+  });
+
+  test('allows queued requests with the same grant and leaves others waiting', async () => {
+    const open = queue.enqueueToolApproval(sampleRequest({ toolName: 'open' }));
+    await flush();
+    const same = queue.enqueueToolApproval(sampleRequest({ toolName: 'same', chatId: 'c1', action: grantAction('shell:npm test') }));
+    const high = queue.enqueueToolApproval(sampleRequest({ toolName: 'high', chatId: 'c1', action: grantAction('shell:npm test', 'high') }));
+    const other = queue.enqueueToolApproval(sampleRequest({ toolName: 'other', chatId: 'c2', action: grantAction('shell:npm test') }));
+
+    queue.settleQueuedApprovalsForGrant('shell:npm test', 'c1');
+    assert.deepEqual(await same, ALLOW);
+    assert.equal(queue.pendingToolApprovalCount(), 3, 'open card + high-risk + other chat remain');
+
+    pendingResolvers[0]?.(ALLOW);
+    assert.deepEqual(await open, ALLOW);
+    await flush();
+    pendingResolvers.at(-1)?.(DENY);
+    assert.deepEqual(await high, DENY);
+    await flush();
+    pendingResolvers.at(-1)?.(DENY);
+    assert.deepEqual(await other, DENY);
   });
 });

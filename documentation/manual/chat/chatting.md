@@ -8,7 +8,7 @@ The composer is a card at the bottom of the chat column: the message field on to
 
 | Control | What it does |
 |---------|--------------|
-| **Mode** | The tinted pill on the left: General / Build / Plan / Debug — see [Modes](../concepts/modes.md) |
+| **Permissions** | The pill on the left: Manual / Auto / Full access, one level for every chat — see [Tools and permissions](../concepts/tools-and-permissions.md) |
 | **Worktree** | Click the branch icon to enable an isolated checkout on send; click its name to change branch, switch worktrees, or go back to Local |
 | **Settings** (cog) | Context documents, code map, brain notes, and Off/Ask/Full for every tool. |
 | **Context ring** | Window usage; click for capacity, context breakdown, request/session totals, prompt profile, and compaction |
@@ -151,6 +151,6 @@ The model can ask *you* something mid-run with a question card rather than guess
 
 - [Agent conversations](persistent-agent-chats.md)
 - [Skills and slash commands](skills-and-commands.md)
-- [Modes](../concepts/modes.md)
+- [Tools and permissions](../concepts/tools-and-permissions.md)
 - [Context, memory, and rules](../concepts/context-and-memory.md)
 - [Keyboard shortcuts](../reference/keyboard-shortcuts.md)

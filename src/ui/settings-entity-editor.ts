@@ -273,6 +273,10 @@ function buildProfileTabs(
 interface PromptEditorOptions {
   family: PromptFileFamily;
   entityId: string;
+  /** One prompt for every profile (agent parts, D7): hide the Full/Lite tabs. */
+  singleProfile?: boolean;
+  /** Textarea height in rows (default 12). */
+  rows?: number;
 }
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
@@ -289,8 +293,8 @@ export function mountPromptFileEditor(
   let sourceLabel = el('span', 'settings-badge', '…');
   const ta = document.createElement('textarea');
   ta.className = 'settings-part-editor';
-  ta.rows = 12;
-  ta.placeholder = 'System prompt body for this profile';
+  ta.rows = options.rows ?? 12;
+  ta.placeholder = options.singleProfile ? 'Prompt body' : 'System prompt body for this profile';
 
   const reloadBaseline = async () => {
     builtinBaseline = await resolveFilePromptBuiltinBaseline(
@@ -324,7 +328,7 @@ export function mountPromptFileEditor(
     void reload();
   });
 
-  container.appendChild(tabs.root);
+  if (!options.singleProfile) container.appendChild(tabs.root);
   const meta = el('p', 'settings-field-hint');
   meta.appendChild(document.createTextNode('Source: '));
   meta.appendChild(sourceLabel);

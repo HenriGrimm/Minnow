@@ -1616,11 +1616,14 @@ export function isServerToolAvailable(name) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ modeId?: string, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
+ * @param {{ modeId?: string, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require', approvedOutsideWorkspace?: boolean }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
-  const allowOutsideWorkspace = options.filesystemAccessCeiling === 'workspace' ? false : fsAccess === 'full';
+  // Full access reaches the whole disk; otherwise only a call the permission
+  // gate approved (or auto-allowed) may resolve paths outside the workspace.
+  const allowOutsideWorkspace = options.filesystemAccessCeiling === 'workspace' ? false
+    : fsAccess === 'full' || options.approvedOutsideWorkspace === true;
   const toolsRaw = await readConfigJson('tools.json');
   const tools = normalizeToolConfig(toolsRaw);
   const outputPolicy = resolveOutputCapPolicy(tools.toolOutput, args ?? {});
@@ -1830,6 +1833,7 @@ export function createToolsMiddleware() {
             modeId, workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
+            approvedOutsideWorkspace: body?.approvedOutsideWorkspace === true,
             abortSignal: toolController?.signal,
           });
         } finally { res.removeListener('close', onDisconnected); }

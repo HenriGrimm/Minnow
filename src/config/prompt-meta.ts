@@ -9,12 +9,20 @@ export type PromptProfileName = 'full' | 'lite' | 'custom';
 
 export type PlanGranularity = 'large' | 'medium' | 'small';
 
+/** Local-model appendix: `auto` adds it for local providers only. */
+export type LocalModelGuidance = 'auto' | 'on' | 'off';
+
+export function parseLocalModelGuidance(value: unknown): LocalModelGuidance {
+  return value === 'on' || value === 'off' ? value : 'auto';
+}
+
 export interface PromptMetaSettings {
   activePromptProfile: PromptProfileName;
   activePromptConfigId: string | null;
   activeInfoPresetId: string;
   planGranularity: PlanGranularity;
   flaticonIconGuidanceEnabled: boolean;
+  localModelGuidance: LocalModelGuidance;
 }
 
 const PROMPT_META_STORAGE_KEY = 'minnow.promptMeta';
@@ -25,6 +33,7 @@ const DEFAULT_PROMPT_META: PromptMetaSettings = {
   activeInfoPresetId: 'general-assistant',
   planGranularity: 'medium',
   flaticonIconGuidanceEnabled: true,
+  localModelGuidance: 'auto',
 };
 
 let cachedMeta: PromptMetaSettings | null = null;
@@ -59,6 +68,7 @@ function readLocalPromptMeta(): PromptMetaSettings {
         typeof parsed.flaticonIconGuidanceEnabled === 'boolean'
           ? parsed.flaticonIconGuidanceEnabled
           : DEFAULT_PROMPT_META.flaticonIconGuidanceEnabled,
+      localModelGuidance: parseLocalModelGuidance(parsed.localModelGuidance),
     };
   } catch {
     return { ...DEFAULT_PROMPT_META };
@@ -95,6 +105,7 @@ async function fetchPromptMetaFromServer(): Promise<PromptMetaSettings> {
       typeof meta.flaticonIconGuidanceEnabled === 'boolean'
         ? meta.flaticonIconGuidanceEnabled
         : DEFAULT_PROMPT_META.flaticonIconGuidanceEnabled,
+    localModelGuidance: parseLocalModelGuidance(meta.localModelGuidance),
   };
 }
 

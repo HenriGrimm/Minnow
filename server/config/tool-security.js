@@ -4,19 +4,39 @@
 
 import { readConfigJson } from './store.js';
 import { normalizeShellSandboxMode, clampShellSandboxModeForPlatform } from '../terminal/sandbox/mode.js';
+import { normalizePermissionLevel } from '../../src/lib/permissions.mjs';
 
 /**
+ * The one system-wide agent permission level (Manual / Auto / Full access).
+ * @returns {Promise<'manual'|'auto'|'full'>}
+ */
+export async function getPermissionLevelFromConfig() {
+  try {
+    const meta = await readConfigJson('config.json');
+    const ts = meta && typeof meta === 'object' ? /** @type {Record<string, unknown>} */ (meta).toolSecurity : null;
+    if (ts && typeof ts === 'object') return normalizePermissionLevel(/** @type {Record<string, unknown>} */ (ts).permissionLevel);
+  } catch {
+    /* ignore */
+  }
+  return normalizePermissionLevel(undefined);
+}
+
+/**
+ * Filesystem reach follows the permission level: Full access reaches the whole
+ * disk; Manual and Auto stay in the workspace unless one call was approved.
  * @returns {Promise<'workspace'|'full'>}
  */
 export async function getFilesystemAccessFromConfig() {
+  if ((await getPermissionLevelFromConfig()) === 'full') return 'full';
+  // Migration: an install that opted into the old "Full disk" switch and has
+  // not picked a permission level yet keeps whole-disk reach. Saving a level
+  // drops the legacy flag (validators.js).
   try {
     const meta = await readConfigJson('config.json');
-    if (meta && typeof meta === 'object') {
-      const ts = /** @type {Record<string, unknown>} */ (meta).toolSecurity;
-      if (ts && typeof ts === 'object') {
-        const fa = /** @type {Record<string, unknown>} */ (ts).filesystemAccess;
-        if (fa === 'full') return 'full';
-      }
+    const ts = meta && typeof meta === 'object' ? /** @type {Record<string, unknown>} */ (meta).toolSecurity : null;
+    if (ts && typeof ts === 'object') {
+      const row = /** @type {Record<string, unknown>} */ (ts);
+      if (row.permissionLevel === undefined && row.filesystemAccess === 'full') return 'full';
     }
   } catch {
     /* ignore */

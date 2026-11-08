@@ -20,11 +20,17 @@ export function assertValidPromptEntityId(id) {
 }
 
 /**
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  */
+/** Agent prompt parts editable in Settings → Agents (one agent; see prompt-composer). */
+export const AGENT_PROMPT_FAMILIES = Object.freeze(['base', 'tool-usage', 'info']);
+
 function builtinRelativePath(family, entityId, profile) {
+  if (AGENT_PROMPT_FAMILIES.includes(family)) {
+    return path.join('src', 'chat', 'prompts', family, `${entityId}.${profile}.md`);
+  }
   if (family === 'modes') {
     return path.join('src', 'chat', 'prompts', 'modes', `${entityId}.${profile}.md`);
   }
@@ -42,11 +48,14 @@ function builtinRelativePath(family, entityId, profile) {
 }
 
 /**
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  */
 function userRelativePath(family, entityId, profile) {
+  if (AGENT_PROMPT_FAMILIES.includes(family)) {
+    return path.join('prompts', family, `${entityId}.${profile}.md`);
+  }
   if (family === 'modes') {
     return path.join('prompts', 'modes', `${entityId}.${profile}.md`);
   }
@@ -76,14 +85,14 @@ function extractBody(raw, filePath) {
 
 /**
  * @param {string} projectRoot
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  */
 /**
  * Shipped repo prompt only (ignores ~/.minnow overrides).
  * @param {string} projectRoot
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  */
@@ -93,17 +102,22 @@ export async function readBuiltinPromptFile(projectRoot, family, entityId, profi
     throw new Error('Invalid profile');
   }
 
-  const builtinPath = resolveUnderRoot(
+  let builtinPath = resolveUnderRoot(
     path.resolve(projectRoot),
     builtinRelativePath(family, entityId, profile),
   );
+  // One prompt serves every profile (D7): a missing lite file falls back to full.
+  if (profile === 'lite' && AGENT_PROMPT_FAMILIES.includes(family)) {
+    try { await fs.access(builtinPath); }
+    catch { builtinPath = resolveUnderRoot(path.resolve(projectRoot), builtinRelativePath(family, entityId, 'full')); }
+  }
   const raw = await fs.readFile(builtinPath, 'utf8');
   return { content: extractBody(raw, builtinPath), source: 'builtin' };
 }
 
 /**
  * @param {string} projectRoot
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  * @param {{ raw?: boolean }} [options]
@@ -157,7 +171,7 @@ export async function deleteExpertEntityDir(entityId) {
 }
 
 /**
- * @param {'modes'|'experts'|'sub-agents'} family
+ * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
  * @param {'full'|'lite'} profile
  * @param {string} content
@@ -171,8 +185,12 @@ export async function writePromptFileOverride(family, entityId, profile, content
   const home = path.resolve(getMinnowHome());
   const filePath = resolveUnderRoot(home, userRelativePath(family, entityId, profile));
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const body =
+  let body =
     typeof content === 'string' && content.trim() ? `${content.trim()}\n` : '';
+  // Agent parts merge through the prompt registry, which needs an id and kind.
+  if (body && AGENT_PROMPT_FAMILIES.includes(family) && !body.startsWith('---')) {
+    body = `---\nid: ${entityId}\nkind: ${family}\nlabel: ${JSON.stringify(entityId)}\nversion: 1\npart: ${family === 'info' ? 'info' : family}\n---\n\n${body}`;
+  }
   invalidateNativePolicyBeforeWrite('prompts');
   await fs.writeFile(filePath, body, 'utf8');
   return filePath;

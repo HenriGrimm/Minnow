@@ -129,7 +129,8 @@ describe('tools list sync runtime', { concurrency: false }, () => {
     await flushToolListUiRefresh();
 
     for (const listId of LIST_IDS) {
-      assert.equal(permissionValue(listId, SYNC_TOOL_ID), 'full', listId);
+      // Ask and Full both display as On: the permission level decides prompts.
+      assert.equal(permissionValue(listId, SYNC_TOOL_ID), 'ask', listId);
     }
   });
 

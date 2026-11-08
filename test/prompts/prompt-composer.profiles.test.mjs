@@ -45,7 +45,7 @@ describe('prompt-composer profiles', () => {
     registerPromptFilesFromRaw(await loadShippedPromptsRaw());
   });
 
-  test('lite length <= 40% of full for golden fixture context', () => {
+  test('lite never exceeds full, and the one base prompt keeps the whole thing small', () => {
     const full = composeSystemPrompt({
       ...golden,
       profile: 'full',
@@ -58,10 +58,8 @@ describe('prompt-composer profiles', () => {
     });
     assert.ok(full.length > 0);
     assert.ok(lite.length > 0);
-    // Character-length proxy for token ratio (see step-04 plan).
-    assert.ok(
-      lite.length <= full.length * 0.4,
-      `lite ${lite.length} vs full ${full.length}`,
-    );
+    // D7: one base prompt for every profile; lite only trims optional fragments.
+    assert.ok(lite.length <= full.length, `lite ${lite.length} vs full ${full.length}`);
+    assert.ok(full.length < 8000, `full prompt is ${full.length} chars`);
   });
 });

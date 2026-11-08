@@ -52,7 +52,7 @@ function createSwitch(
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-function mountSkillEditor(
+export function mountSkillEditor(
   body: HTMLElement,
   skill: SkillListItem,
   onSaved: () => void,

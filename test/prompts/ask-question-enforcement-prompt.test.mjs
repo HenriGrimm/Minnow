@@ -1,86 +1,37 @@
 /**
- * ask-question-enforcement prompt fragment and composer integration.
+ * ask_question guidance: short, tool-gated, no mode or browser-origin rows.
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { beforeEach, describe, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { composeSystemPrompt } from '../../src/chat/prompts/prompt-composer.ts';
 import {
   loadPromptById,
   registerPromptFilesFromRaw,
   resetPromptRegistry,
 } from '../../src/chat/prompts/prompt-loader.ts';
-import { loadBuiltinModePromptMap } from '../modes/test-helpers.mts';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, '../..');
-
-async function loadPromptMapWithEnforcement() {
-  const toolDir = path.join(REPO_ROOT, 'src/chat/prompts/tool-usage');
-  const map = await loadBuiltinModePromptMap();
-  map['./tool-usage/ask-question-enforcement.full.md'] = await fs.readFile(
-    path.join(toolDir, 'ask-question-enforcement.md'),
-    'utf8',
-  );
-  map['./tool-usage/ask-question-enforcement.lite.md'] = await fs.readFile(
-    path.join(toolDir, 'ask-question-enforcement.lite.md'),
-    'utf8',
-  );
-  map['./tool-usage/default.full.md'] = await fs.readFile(
-    path.join(toolDir, 'default.full.md'),
-    'utf8',
-  );
-  map['./base/default.full.md'] = await fs.readFile(
-    path.join(REPO_ROOT, 'src/chat/prompts/base/default.full.md'),
-    'utf8',
-  );
-  return map;
-}
+import { baseComposeContext, loadAllBuiltinPrompts } from './test-helpers.mjs';
 
 describe('ask-question-enforcement prompts', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetPromptRegistry();
+    registerPromptFilesFromRaw(await loadAllBuiltinPrompts());
   });
 
-  test('enforcement fragment loads with mandatory ask_question language', async () => {
-    registerPromptFilesFromRaw(await loadPromptMapWithEnforcement());
-    const loaded = loadPromptById('tool-usage', 'ask-question-enforcement', 'full');
-    assert.ok(loaded?.body);
-    assert.match(loaded.body, /must.*ask_question/i);
-    assert.match(loaded.body, /numbered bullets/i);
+  test('fragment requires ask_question for choices and drops legacy rows', () => {
+    const body = loadPromptById('tool-usage', 'ask-question-enforcement', 'full')?.body ?? '';
+    assert.match(body, /`ask_question`/);
+    assert.match(body, /numbered list/);
+    assert.doesNotMatch(body, /propose_mode_switch|request_browser_origin_access/);
   });
 
-  test('composeSystemPrompt appends enforcement when ask_question is enabled', async () => {
-    registerPromptFilesFromRaw(await loadPromptMapWithEnforcement());
-    const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
-      modeId: 'build',
-      expertId: null,
-      workAgentId: null,
-      skillBody: null,
-      memoryBlock: null,
-      enabledToolIds: ['ask_question', 'read_file'],
-    });
-    assert.match(out, /Structured user choices \(mandatory\)/);
-    assert.match(out, /ask_question/);
+  test('appended when ask_question is enabled', () => {
+    const prompt = composeSystemPrompt(baseComposeContext({ enabledToolIds: ['read_file', 'ask_question'] }));
+    assert.match(prompt, /## Asking the user/);
   });
 
-  test('composeSystemPrompt omits enforcement when ask_question is disabled', async () => {
-    registerPromptFilesFromRaw(await loadPromptMapWithEnforcement());
-    const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
-      modeId: 'build',
-      expertId: null,
-      workAgentId: null,
-      skillBody: null,
-      memoryBlock: null,
-      enabledToolIds: ['read_file'],
-    });
-    assert.doesNotMatch(out, /Structured user choices \(mandatory\)/);
+  test('omitted when ask_question is disabled', () => {
+    const prompt = composeSystemPrompt(baseComposeContext());
+    assert.doesNotMatch(prompt, /## Asking the user/);
   });
 });

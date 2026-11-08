@@ -1,23 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLazyToolSession, ISSUE_TOOL_NAMES } from '../../server/runner/lazy-tools.js';
+import { buildCapabilityIndex, createLazyToolSession, CORE_TOOL_NAMES, ISSUE_TOOL_NAMES } from '../../server/runner/lazy-tools.js';
 import { normalizeToolConfig } from '../../server/config/validators.js';
 
 const tool = (name, description = name) => ({ type: 'function', function: {
   name, description, parameters: { type: 'object', properties: {} },
 } });
 
-test('coding essentials are immediately callable only when authorized', () => {
+test('the lean core is immediately callable only when authorized', () => {
   const names = [
-    'load_skill',
-    'apply_patch', 'git_diff', 'git_status', 'get_lsp_diagnostics',
-    'repo_map', 'find_symbol', 'read_symbol', 'who_calls',
-    'stop_command', 'save_memory', 'browser_new_tab', 'browser_navigate',
-    'browser_screenshot', 'browser_eval', 'browser_close_tab',
+    'load_skill', 'read_file', 'list_directory', 'grep', 'find_files',
+    'apply_patch', 'save_file', 'replace_text_in_file', 'execute_command',
+    'read_command_log', 'stop_command', 'todo_write', 'ask_question',
+    'spawn_sub_agent', 'web_search', 'fetch_web_content',
   ];
   const session = createLazyToolSession(names.map(name => tool(name)));
   for (const name of names) assert.equal(session.isLoaded(name), true);
-  assert.equal(createLazyToolSession([tool('git_diff')]).isLoaded('apply_patch'), false);
+  assert.equal(createLazyToolSession([tool('read_file')]).isLoaded('apply_patch'), false);
+  for (const name of CORE_TOOL_NAMES) assert.equal(name.startsWith('git_') || name.startsWith('browser_'), false);
 });
 const catalog = [tool('read_file'), tool('git_log', 'Inspect repository changes'),
   tool('browser_screenshot', 'Capture browser image'), tool('report_custom')];
@@ -25,23 +25,41 @@ const catalog = [tool('read_file'), tool('git_log', 'Inspect repository changes'
 test('core and injected tools stay present; discovery adds schemas once and resets per turn', () => {
   const session = createLazyToolSession(catalog, ['report_custom']);
   assert.deepEqual(session.tools.map(t => t.function.name),
-    ['read_file', 'browser_screenshot', 'report_custom', 'search_tools']);
+    ['read_file', 'report_custom', 'search_tools']);
   const initial = session.tools;
   assert.deepEqual(JSON.parse(session.search({ query: 'git_log', limit: 1 })).loaded, ['git_log']);
   assert.equal(session.tools, initial);
   assert.equal(session.tools.at(-1), catalog[1]);
   session.search({ query: 'git_log' });
-  assert.equal(session.tools.length, 5);
+  assert.equal(session.tools.length, 4);
   assert.equal(createLazyToolSession(catalog).isLoaded('git_log'), false);
 });
 
-test('permitted issue tools are loaded without a search, and stay absent when not permitted', () => {
+test('issue tools are deferred but named in the capability index', () => {
   const issues = ISSUE_TOOL_NAMES.map(name => tool(name));
   const session = createLazyToolSession([...catalog, ...issues]);
-  for (const name of ISSUE_TOOL_NAMES) assert.equal(session.isLoaded(name), true);
-  // Core is an intersection, never an addition: a mode without the issues group
-  // must not gain them.
-  assert.equal(createLazyToolSession(catalog).isLoaded('issue_add'), false);
+  for (const name of ISSUE_TOOL_NAMES) assert.equal(session.isLoaded(name), false);
+  const description = session.tools.find(t => t.function.name === 'search_tools').function.description;
+  assert.match(description, /issues \(project tracker\): issue_add/);
+  assert.match(description, /git: git_log/);
+});
+
+test('select: loads exact names and returns their schemas in the result', () => {
+  const session = createLazyToolSession([...catalog, tool('issue_add'), tool('issue_search')]);
+  const result = JSON.parse(session.search({ query: 'select:issue_add, git_log ,nope' }));
+  assert.deepEqual(result.loaded, ['issue_add', 'git_log']);
+  assert.deepEqual(result.tools.map(fn => fn.name), ['issue_add', 'git_log']);
+  assert.ok(result.tools[0].parameters);
+  assert.deepEqual(result.not_found, ['nope']);
+  assert.equal(session.isLoaded('issue_add'), true);
+  assert.equal(session.isLoaded('issue_search'), false);
+});
+
+test('capability index groups MCP tools per server without listing schemas', () => {
+  const index = buildCapabilityIndex(['mcp__linear__create_issue', 'mcp__linear__list', 'mcp__my_srv__go', 'git_status']);
+  assert.match(index, /- git: git_status/);
+  assert.match(index, /- mcp · linear: 2 tools — mcp__linear__\*/);
+  assert.match(index, /- mcp · my_srv: 1 tool — mcp__my_srv__\*/);
 });
 
 test('search uses capability descriptions and never returns tools outside the permitted catalog', () => {

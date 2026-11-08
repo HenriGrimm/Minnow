@@ -1,6 +1,15 @@
 import { initComposerSkillHighlight } from './composer-skill-highlight';
 import { isUserPromptLocked } from './user-prompt-lock';
-import { listSlashPickerRows, type SlashPickerRow } from '../chat/slash-commands/picker-catalog';
+import {
+  listSlashPickerRows,
+  recordSlashRecent,
+  slashPickerRowId,
+  type SlashPickerRow,
+  type SlashPickerSection,
+} from '../chat/slash-commands/picker-catalog';
+import type { SlashCommandListItem, SlashSubmenuItem } from '../chat/slash-commands/registry';
+import { createIcon } from './icon';
+import { markPreviewOccluder } from './preview-occlusion';
 import { getSkillCatalog } from '../skills/client';
 import {
   buildSkillPickerInsertion,
@@ -9,7 +18,7 @@ import {
   type SkillPickerOption,
 } from '../skills/picker-insertion';
 
-type PickerPhase = 'list' | 'options';
+type PickerPhase = 'list' | 'options' | 'submenu';
 
 let pickerEl: HTMLDivElement | null = null;
 let headerEl: HTMLDivElement | null = null;
@@ -21,6 +30,8 @@ let open = false;
 let slashStart = -1;
 let pickerPhase: PickerPhase = 'list';
 let pendingSkill: { id: string; label: string } | null = null;
+let pendingCommand: SlashCommandListItem | null = null;
+let fishEl: HTMLSpanElement | null = null;
 let repositionHandler: (() => void) | null = null;
 
 /** Skills confirmed via picker selection (not manual typing), keyed by element. */
@@ -44,7 +55,8 @@ function ensurePicker(): void {
   backBtn.type = 'button';
   backBtn.className = 'skill-picker__back';
   backBtn.textContent = 'Back';
-  backBtn.setAttribute('aria-label', 'Back to skills');
+  backBtn.setAttribute('aria-label', 'Back');
+  backBtn.prepend(createIcon('chevronLeft'));
   backBtn.addEventListener('mousedown', (e) => {
     e.preventDefault();
     backToSkillList();
@@ -58,8 +70,32 @@ function ensurePicker(): void {
 
   listEl = document.createElement('ul');
   listEl.className = 'skill-picker__list';
+
+  // Minnow touch: a small fish marks the active row and swims to it.
+  fishEl = document.createElement('span');
+  fishEl.className = 'skill-picker__fish';
+  fishEl.setAttribute('aria-hidden', 'true');
+  fishEl.appendChild(createIcon('fish'));
+
   pickerEl.appendChild(headerEl);
   pickerEl.appendChild(listEl);
+  pickerEl.appendChild(fishEl);
+  markPreviewOccluder(pickerEl, 'menu');
+}
+
+/** Move the fish beside the active row (CSS animates unless reduced motion). */
+function swimFishToActive(): void {
+  if (!fishEl || !pickerEl || !listEl) return;
+  const active = listEl.querySelector<HTMLElement>('.skill-picker__item--active');
+  if (!active) {
+    fishEl.classList.remove('is-visible');
+    return;
+  }
+  // The fish scrolls with the picker's content, so no scrollTop correction.
+  const y = listEl.offsetTop + active.offsetTop + active.offsetHeight / 2;
+  fishEl.style.transform = `translateY(${Math.round(y)}px) translateY(-50%)`;
+  fishEl.classList.add('is-visible');
+  active.scrollIntoView?.({ block: 'nearest' });
 }
 
 /** Composer row used for viewport anchoring (input-wrap, chat-app-input, desktop wrap). */
@@ -186,7 +222,95 @@ function enterSkillOptionsPhase(skillId: string, label: string, start: number, q
 }
 
 function pickerRowId(row: SlashPickerRow): string {
-  return row.kind === 'skill' ? row.skill.id : row.command.id;
+  return slashPickerRowId(row).replace(':', '-');
+}
+
+const SECTION_LABELS: Record<SlashPickerSection, string> = {
+  recent: 'Recent',
+  commands: 'Commands',
+  skills: 'Skills',
+};
+
+function appendSectionLabel(list: HTMLUListElement, text: string): void {
+  const li = document.createElement('li');
+  li.className = 'skill-picker__group';
+  li.setAttribute('role', 'presentation');
+  li.textContent = text;
+  list.appendChild(li);
+}
+
+/** Icon · label · description · value · chevron — one row of the menu. */
+function buildRow(parts: {
+  domId: string;
+  active: boolean;
+  icon?: Parameters<typeof createIcon>[0];
+  label: string;
+  hint?: string;
+  description: string;
+  value?: string;
+  selected?: boolean;
+  chevron?: boolean;
+  disabled?: boolean;
+}): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'skill-picker__item';
+  li.setAttribute('role', 'option');
+  li.id = parts.domId;
+  li.setAttribute('aria-selected', parts.active ? 'true' : 'false');
+  if (parts.disabled) li.setAttribute('aria-disabled', 'true');
+  if (parts.active) {
+    li.classList.add('skill-picker__item--active');
+    pickerEl?.setAttribute('aria-activedescendant', li.id);
+  }
+
+  const icon = document.createElement('span');
+  icon.className = 'skill-picker__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.appendChild(createIcon(parts.icon ?? 'sparkles'));
+
+  const text = document.createElement('span');
+  text.className = 'skill-picker__text';
+  const label = document.createElement('span');
+  label.className = 'skill-picker__label';
+  label.textContent = parts.label;
+  text.appendChild(label);
+  if (parts.hint) {
+    const id = document.createElement('code');
+    id.className = 'skill-picker__id';
+    id.textContent = parts.hint;
+    text.appendChild(id);
+  }
+  const desc = document.createElement('span');
+  desc.className = 'skill-picker__desc';
+  desc.textContent = parts.description;
+  text.appendChild(desc);
+
+  li.append(icon, text);
+
+  if (parts.value || parts.selected) {
+    const value = document.createElement('span');
+    value.className = 'skill-picker__value';
+    if (parts.selected) value.appendChild(createIcon('check'));
+    if (parts.value) value.appendChild(document.createTextNode(parts.value));
+    li.appendChild(value);
+  }
+  if (parts.chevron) {
+    const chevron = document.createElement('span');
+    chevron.className = 'skill-picker__chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.appendChild(createIcon('chevronRight'));
+    li.appendChild(chevron);
+    li.classList.add('skill-picker__item--has-options');
+  }
+  return li;
+}
+
+function commandValue(command: SlashCommandListItem): string {
+  try {
+    return command.value?.() ?? '';
+  } catch {
+    return '';
+  }
 }
 
 function setHeaderTitle(text: string): void {
@@ -218,62 +342,36 @@ function renderSkillList(): void {
   if (activeIndex >= items.length) activeIndex = items.length - 1;
   if (activeIndex < 0) activeIndex = 0;
 
+  let lastSection: SlashPickerSection | null = null;
   items.forEach((row, i) => {
-    const li = document.createElement('li');
-    li.className = 'skill-picker__item';
-    li.setAttribute('role', 'option');
-    const rowId = pickerRowId(row);
-    li.id = `skill-opt-${rowId}`;
-    li.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
-    if (i === activeIndex) {
-      li.classList.add('skill-picker__item--active');
-      picker.setAttribute('aria-activedescendant', li.id);
+    if (row.section !== lastSection) {
+      lastSection = row.section;
+      appendSectionLabel(list, SECTION_LABELS[row.section]);
     }
-
-    const badge = document.createElement('span');
-    if (row.kind === 'command') {
-      badge.className = 'skill-picker__badge skill-picker__badge--command';
-      badge.textContent = 'Command';
-    } else {
-      badge.className = `skill-picker__badge skill-picker__badge--${row.skill.source}`;
-      badge.textContent = row.skill.source === 'user' ? 'Custom' : 'Built-In';
-    }
-
-    const label = document.createElement('span');
-    label.className = 'skill-picker__label';
-    label.textContent = row.kind === 'skill' ? row.skill.label : row.command.label;
-
-    const id = document.createElement('code');
-    id.className = 'skill-picker__id';
-    id.textContent =
-      row.kind === 'skill' ? `/${row.skill.id}` : row.command.insertion.trim();
-
-    const desc = document.createElement('span');
-    desc.className = 'skill-picker__desc';
-    desc.textContent = row.kind === 'skill' ? row.skill.description : row.command.description;
-
-    li.appendChild(badge);
-    li.appendChild(label);
-    li.appendChild(id);
-    li.appendChild(desc);
-
-    if (row.kind === 'skill' && hasSkillPickerOptions(row.skill.id)) {
-      const chevron = document.createElement('span');
-      chevron.className = 'skill-picker__chevron';
-      chevron.setAttribute('aria-hidden', 'true');
-      chevron.textContent = '›';
-      li.appendChild(chevron);
-      li.classList.add('skill-picker__item--has-options');
-    }
-
+    const isSkill = row.kind === 'skill';
+    const li = buildRow({
+      domId: `skill-opt-${pickerRowId(row)}`,
+      active: i === activeIndex,
+      icon: isSkill ? row.icon ?? 'sparkles' : row.command.icon ?? 'tools',
+      label: isSkill ? `/${row.skill.id}` : row.command.label,
+      hint: isSkill || !row.command.insertion ? undefined : row.command.insertion.trim(),
+      description: isSkill ? row.skill.description : row.command.description,
+      value: isSkill ? (row.skill.source === 'user' ? 'Custom' : undefined) : commandValue(row.command),
+      chevron: isSkill ? hasSkillPickerOptions(row.skill.id) : Boolean(row.command.submenu),
+    });
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
       applyPickerRow(row);
     });
-
+    li.addEventListener('mousemove', () => {
+      if (activeIndex === i) return;
+      activeIndex = i;
+      renderList();
+    });
     list.appendChild(li);
   });
 
+  swimFishToActive();
   if (open) positionPicker();
 }
 
@@ -319,36 +417,15 @@ function renderOptionRows(): void {
       list.appendChild(group);
     }
 
-    const li = document.createElement('li');
-    li.className = 'skill-picker__item skill-picker__item--option';
-    li.setAttribute('role', 'option');
-    li.id = `skill-opt-${skill.id}-${option.id}`;
-    li.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
-    if (i === activeIndex) {
-      li.classList.add('skill-picker__item--active');
-      picker.setAttribute('aria-activedescendant', li.id);
-    }
-
-    const badge = document.createElement('span');
-    badge.className = 'skill-picker__badge skill-picker__badge--option';
-    badge.textContent = 'Option';
-
-    const label = document.createElement('span');
-    label.className = 'skill-picker__label';
-    label.textContent = option.label;
-
-    const id = document.createElement('code');
-    id.className = 'skill-picker__id';
-    id.textContent = option.id;
-
-    const desc = document.createElement('span');
-    desc.className = 'skill-picker__desc';
-    desc.textContent = option.description ?? '';
-
-    li.appendChild(badge);
-    li.appendChild(label);
-    li.appendChild(id);
-    li.appendChild(desc);
+    const li = buildRow({
+      domId: `skill-opt-${skill.id}-${option.id}`,
+      active: i === activeIndex,
+      icon: 'sparkles',
+      label: option.label,
+      hint: option.id,
+      description: option.description ?? '',
+    });
+    li.classList.add('skill-picker__item--option');
 
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -358,10 +435,75 @@ function renderOptionRows(): void {
     list.appendChild(li);
   });
 
+  swimFishToActive();
+  if (open) positionPicker();
+}
+
+function filteredSubmenuItems(): SlashSubmenuItem[] {
+  if (!pendingCommand?.submenu) return [];
+  let items: SlashSubmenuItem[] = [];
+  try {
+    items = pendingCommand.submenu();
+  } catch {
+    items = [];
+  }
+  const q = filterQuery.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((item) => `${item.id} ${item.label} ${item.description ?? ''}`.toLowerCase().includes(q));
+}
+
+function renderSubmenuRows(): void {
+  const list = listEl;
+  const header = headerEl;
+  const command = pendingCommand;
+  if (!list || !header || !command) return;
+
+  header.classList.remove('hidden');
+  setHeaderTitle(command.label);
+  const items = filteredSubmenuItems();
+  list.innerHTML = '';
+  if (!items.length) {
+    const empty = document.createElement('li');
+    empty.className = 'skill-picker__empty';
+    empty.textContent = 'Nothing to choose here';
+    list.appendChild(empty);
+    activeIndex = 0;
+    swimFishToActive();
+    if (open) positionPicker();
+    return;
+  }
+  if (activeIndex >= items.length) activeIndex = items.length - 1;
+  if (activeIndex < 0) activeIndex = 0;
+  items.forEach((item, i) => {
+    const li = buildRow({
+      domId: `skill-opt-${command.id}-${item.id}`,
+      active: i === activeIndex,
+      icon: item.icon ?? command.icon,
+      label: item.label,
+      description: item.description ?? '',
+      selected: item.selected,
+      disabled: item.disabled,
+    });
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      applySubmenuItem(item);
+    });
+    li.addEventListener('mousemove', () => {
+      if (activeIndex === i) return;
+      activeIndex = i;
+      renderList();
+    });
+    list.appendChild(li);
+  });
+  swimFishToActive();
   if (open) positionPicker();
 }
 
 function renderList(): void {
+  if (pickerPhase === 'submenu') {
+    renderSubmenuRows();
+    return;
+  }
   if (pickerPhase === 'options') {
     renderOptionRows();
     return;
@@ -372,6 +514,7 @@ function renderList(): void {
 function resetPickerState(): void {
   pickerPhase = 'list';
   pendingSkill = null;
+  pendingCommand = null;
 }
 
 function closePicker(): void {
@@ -388,6 +531,7 @@ function closePicker(): void {
     pickerEl.style.removeProperty('width');
   }
   if (headerEl) headerEl.classList.add('hidden');
+  fishEl?.classList.remove('is-visible');
   if (inputEl) inputEl.setAttribute('aria-expanded', 'false');
 }
 
@@ -435,7 +579,7 @@ function backToSkillList(): void {
 
   const before = inputEl.value.slice(0, slashStart);
   const after = inputEl.value.slice(inputEl.selectionEnd);
-  const token = filterQuery ? `/${filterQuery}` : '/';
+  const token = pickerPhase === 'submenu' ? '/' : filterQuery ? `/${filterQuery}` : '/';
   inputEl.value = `${before}${token}${after}`;
   const caret = before.length + token.length;
   inputEl.setSelectionRange(caret, caret);
@@ -453,8 +597,30 @@ function applyPickerRow(row: SlashPickerRow): void {
     return;
   }
 
+  recordSlashRecent(row);
+
   if (row.kind === 'command') {
-    insertAtSlashStart(row.command.insertion);
+    const command = row.command;
+    if (command.submenu) {
+      // Drop the typed `/token`; the submenu replaces it in place.
+      insertAtSlashStart('');
+      pendingCommand = command;
+      pickerPhase = 'submenu';
+      filterQuery = '';
+      activeIndex = Math.max(0, (command.submenu?.() ?? []).findIndex((item) => item.selected));
+      showPickerSurface();
+      renderList();
+      inputEl.focus();
+      return;
+    }
+    if (command.run) {
+      insertAtSlashStart('');
+      closePicker();
+      inputEl.focus();
+      void Promise.resolve(command.run()).catch(() => undefined);
+      return;
+    }
+    insertAtSlashStart(command.insertion);
     closePicker();
     inputEl.focus();
     return;
@@ -470,6 +636,17 @@ function applyPickerRow(row: SlashPickerRow): void {
   pickerApplied.set(inputEl, skillId);
   closePicker();
   inputEl.focus();
+}
+
+function applySubmenuItem(item: SlashSubmenuItem): void {
+  if (item.disabled) return;
+  const el = inputEl;
+  if (item.insertion && el && slashStart >= 0) {
+    insertAtSlashStart(item.insertion);
+  }
+  closePicker();
+  el?.focus();
+  if (item.run) void Promise.resolve(item.run()).catch(() => undefined);
 }
 
 function applySkillOption(optionId: string): void {
@@ -510,6 +687,14 @@ function detectSlashContext(): void {
     return;
   }
 
+  if (pickerPhase === 'submenu' && pendingCommand && slashStart >= 0) {
+    // Typing inside a submenu filters its items (the token was removed).
+    filterQuery = value.slice(slashStart, pos).trim();
+    activeIndex = 0;
+    renderList();
+    return;
+  }
+
   if (pickerPhase === 'options') {
     resetPickerState();
   }
@@ -545,6 +730,32 @@ export function getPickerAppliedSkillId(el: HTMLTextAreaElement): string | null 
 /** Handle keyboard while picker is open. Returns true if consumed. */
 export function handleSkillPickerKeydown(e: KeyboardEvent): boolean {
   if (!open) return false;
+
+  if (pickerPhase === 'submenu') {
+    const items = filteredSubmenuItems();
+    const atStart = !filterQuery;
+    if (e.key === 'Escape' || e.key === 'ArrowLeft' || (e.key === 'Backspace' && atStart)) {
+      e.preventDefault();
+      backToSkillList();
+      return true;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const delta = e.key === 'ArrowDown' ? 1 : -1;
+      activeIndex = Math.min(Math.max(activeIndex + delta, 0), Math.max(0, items.length - 1));
+      renderList();
+      return true;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowRight') {
+      const selected = items[activeIndex];
+      if (selected) {
+        e.preventDefault();
+        applySubmenuItem(selected);
+        return true;
+      }
+    }
+    return false;
+  }
 
   if (pickerPhase === 'options') {
     const options = filteredSkillOptions();
@@ -601,6 +812,15 @@ export function handleSkillPickerKeydown(e: KeyboardEvent): boolean {
       return true;
     }
   }
+  if (e.key === 'ArrowRight') {
+    const row = items[activeIndex];
+    const opens = row && (row.kind === 'command' ? Boolean(row.command.submenu) : hasSkillPickerOptions(row.skill.id));
+    if (opens) {
+      e.preventDefault();
+      applyPickerRow(row);
+      return true;
+    }
+  }
   return false;
 }
 
@@ -610,6 +830,7 @@ export function __resetSkillPickerForTests(): void {
   pickerEl = null;
   headerEl = null;
   listEl = null;
+  fishEl = null;
   inputEl = null;
 }
 

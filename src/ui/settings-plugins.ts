@@ -4,7 +4,6 @@ import { appAlert, appConfirm, appPrompt } from './app-dialog';
  */
 
 import {
-  isToolPermissionMode,
   loadToolConfig,
   setToolPermission,
 } from '../tools/config';
@@ -87,11 +86,10 @@ export async function appendPluginToolsToList(
 
     const select = document.createElement('select');
     select.className = 'tool-permission-select';
-    select.setAttribute('aria-label', `${plugin.label} permission`);
+    select.setAttribute('aria-label', `${plugin.label} availability`);
     for (const optDef of [
-      { value: 'off', label: 'Disabled' },
-      { value: 'ask', label: 'Requires permission' },
-      { value: 'full', label: 'Full permission' },
+      { value: 'ask', label: 'On' },
+      { value: 'off', label: 'Off' },
     ] as const) {
       const opt = document.createElement('option');
       opt.value = optDef.value;
@@ -99,8 +97,8 @@ export async function appendPluginToolsToList(
       select.appendChild(opt);
     }
     const mode = config.permissions.default[plugin.namespacedName];
-    select.value =
-      typeof mode === 'string' && isToolPermissionMode(mode) ? mode : 'ask';
+    // The permission level decides prompts; a row only turns the tool on or off.
+    select.value = mode === 'off' ? 'off' : 'ask';
 
     controlWrap.append(nameSpan, select);
     row.appendChild(controlWrap);

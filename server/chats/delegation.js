@@ -12,12 +12,15 @@ import { createChatOutbox } from './outbox.js';
 
 const stableId = (prefix, value) => `${prefix}-${createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 48)}`;
 const fail = (code, message) => { throw new ChatContractError(code, message); };
+/** The one sub-agent profile ("Agent"); legacy rows keep their own ids. */
+export const DEFAULT_AGENT_TYPE = 'generalPurpose';
 const keys = new Set(['type', 'task', 'title', 'target', 'workspace_strategy', 'workspace_id', 'client_request_id', 'wait', 'providerId', 'modelId', 'category', 'board_task_id']);
 const disabledChildTools = new Set(['spawn_sub_agent', 'cancel_sub_agent', 'list_sub_agents', 'get_sub_agent_status']);
 
 function normalize(input, toolCallId) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !keys.has(key))) fail('invalid_request', 'Unsupported delegation input');
-  if (typeof input.type !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(input.type)) fail('invalid_request', 'A known agent type is required');
+  // One agent: `type` is optional; boards and old transcripts may still name one.
+  if (input.type !== undefined && (typeof input.type !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(input.type))) fail('invalid_request', 'Unknown agent type');
   if (typeof input.task !== 'string' || !input.task.trim() || input.task.length > 120000) fail('invalid_request', 'A bounded task is required');
   if (input.title !== undefined && (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 240)) fail('invalid_request', 'A delegation title must be at most 240 characters');
   if (input.wait !== undefined && typeof input.wait !== 'boolean') fail('invalid_request', 'wait must be a boolean');
@@ -43,7 +46,7 @@ function normalize(input, toolCallId) {
     if (!parsed.ok) fail(parsed.error.code, parsed.error.message);
     target = parsed.value;
   }
-  return { type: input.type, task: input.task.trim(), title: input.title?.trim() ?? input.task.trim().slice(0, 120),
+  return { type: input.type ?? DEFAULT_AGENT_TYPE, task: input.task.trim(), title: input.title?.trim() ?? input.task.trim().slice(0, 120),
     ...(target ? { target } : {}), strategy: { kind: strategy, ...(workspaceId ? { workspaceId } : {}) }, requestKey, wait: input.wait === true,
     ...(typeof input.category === 'string' ? { category: input.category.slice(0, 160) } : {}),
     ...(typeof input.board_task_id === 'string' ? { boardTaskId: input.board_task_id.slice(0, 160) } : {}) };

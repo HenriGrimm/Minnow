@@ -166,7 +166,8 @@ export function getToolPermissionForId(
   config: ToolConfig,
   id: string,
 ): ToolPermissionMode {
-  if (id.startsWith('mcp__')) return 'full';
+  // Only 'off' still means something: the tool is unavailable. Ask vs Full is
+  // decided per call by the system permission level, not per tool.
   const raw = config.permissions.default[id];
   if (isToolPermissionMode(raw)) return raw;
   if (id.startsWith('mcp__') || id.startsWith('plugin__')) return 'ask';
@@ -430,8 +431,9 @@ export function isToolEnabled(id: string): boolean {
   return getToolPermissionForId(loadToolConfig(), id) !== 'off';
 }
 
-/** Sync one tool row's permission select and segmented control to `mode`. */
-function syncToolRowPermissionUi(row: HTMLElement, mode: ToolPermissionMode): void {
+/** Sync one tool row's On/Off select and segmented control to `mode` (ask and full both show On). */
+function syncToolRowPermissionUi(row: HTMLElement, stored: ToolPermissionMode): void {
+  const mode: ToolPermissionMode = stored === 'off' ? 'off' : 'ask';
   const select = row.querySelector<HTMLSelectElement>('select.tool-permission-select');
   if (select) {
     select.value = mode;

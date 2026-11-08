@@ -8,15 +8,15 @@ Minnow is three things stacked together:
 2. **A local tool server** on port 9473. It does everything the browser cannot: reading and writing files, running git, spawning terminals, indexing your code, storing your chats, downloading models.
 3. **A model you supply.** Minnow never ships weights and has no built-in model. It streams to whatever OpenAI-compatible endpoint you point it at, and is serenely indifferent to whether that endpoint is in your living room or a datacentre.
 
-Everything else — modes, tools, boards, memory — is arrangement on top of those three.
+Everything else — tools, permissions, boards, memory — is arrangement on top of those three.
 
 ## The loop
 
 When you press Enter, this happens:
 
-1. Minnow builds a **system prompt** from the active mode, your standing rules, the work agent's role, memory retrieved from Brain, and the tool-use guidance for that mode.
-2. It sends your history plus the **tool definitions your mode allows** to the model.
-3. The model streams a reply. If it asks to call tools, Minnow checks each one against your permissions and either runs it, asks you, or refuses.
+1. Minnow builds a **system prompt** from the shared agent prompt, your permission level, your standing rules, memory retrieved from Brain, and the tool-use guidance for that mode.
+2. It sends your history plus the **tool definitions** you have turned on (a small core up front; the rest load on demand) to the model.
+3. The model streams a reply. If it asks to call tools, Minnow checks each one against your permission level and either runs it, asks you, or refuses.
 4. Tool results go back to the model, which continues. Repeat until it stops calling tools.
 5. The finished turn is written to disk.
 
@@ -54,23 +54,19 @@ An attempt to read outside the boundary fails. That is a feature, and it is the 
 
 Legacy hashes like `#/desktop` redirect to `#/workspaces`. Old `#/app/chat` links land on Code chat.
 
-## Modes decide what exists
+## One agent, one permission level
 
-A mode is not a personality setting. It swaps the system prompt *and* the tool list.
+Every chat runs the same agent with the same tools. What it may do without asking is set by one **permission level** — Manual, Auto or Full access — that applies to files, commands, websites, MCP servers and plugins alike. See [Tools and permissions](tools-and-permissions.md).
 
-Plan mode does not merely ask the model to avoid editing your files; the tools that could reach them are either absent from the payload or path-scoped to `documentation/plans/` at execution time. Debug mode is the only composer-strip mode that can read local diagnostics.
+To narrow a single turn, use a workflow command: **/ask** keeps the turn read-only, **/plan** lets it write only plan documents under `documentation/plans/`, and **/debug** walks through reproducing and fixing a failure. These limits are enforced when a tool runs, not just requested in the prompt.
 
-The shipped **manual** (`minnow_docs_search`, `minnow_docs_read`, `minnow_docs_list`) is available in composer **General** and in the first-run **onboarding** tour. **Build**, **Plan**, and **Debug** do not get `minnow_docs_*`; they rely on your repo and Brain instead.
-
-Choosing a mode is choosing what is possible for that turn.
-
-See [Modes](modes.md).
+The shipped **manual** (`minnow_docs_search`, `minnow_docs_read`, `minnow_docs_list`) is available to every chat: ask "how do I point Minnow at Ollama?" and the agent can look it up.
 
 ## Apps are surfaces, not silos
 
 Every surface shares one chat engine, one set of tools, one session store, and one workspace folder at a time. Chat is part of Code, not a separate dock icon. Opening Brain does not start a different assistant; it gives the same assistant a different layout and workflow, still backed by the same sessions.
 
-That is why one surface can hand off to another: an issue in the tracker can be sent to a chat in a chosen mode, a Brain page can be discussed in chat, and a plan document can become a board of tasks worked by agents. Work does not have to be exported anywhere to move between them.
+That is why one surface can hand off to another: an issue in the tracker can be sent to a chat, a Brain page can be discussed in chat, and a plan document can become a board of tasks worked by agents. Work does not have to be exported anywhere to move between them.
 
 ## Agents all the way down
 
@@ -83,11 +79,10 @@ Each has a role prompt, its own tool allowlist and its own context budget. See [
 
 ## When the server is not there
 
-Chat, modes and providers work in a plain browser tab without the tool server. Files, git, terminal, persistence and most other tools do not. If a tool reports "not implemented" or "server required", that is what happened. In the packaged app the server is always running.
+Chat and providers work in a plain browser tab without the tool server. Files, git, terminal, persistence and most other tools do not. If a tool reports "not implemented" or "server required", that is what happened. In the packaged app the server is always running.
 
 ## Related
 
-- [Modes](modes.md)
 - [Tools and permissions](tools-and-permissions.md)
 - [Context, memory, and rules](context-and-memory.md)
 - [Where your data lives](../reference/configuration.md)

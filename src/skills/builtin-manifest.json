@@ -1,6 +1,14 @@
 {
   "skills": [
     {
+      "id": "ask",
+      "label": "Ask",
+      "description": "Answer, explain, compare or brainstorm without changing anything. The turn is read-only: files, git and settings stay untouched, whatever the permission level.",
+      "source": "builtin",
+      "disableModelInvocation": true,
+      "access": "read-only"
+    },
+    {
       "id": "ask-user",
       "label": "Ask User",
       "description": "Gather structured answers from the user with the ask_question tool when requirements, scope, or priorities are ambiguous. Use for /ask-user before large plans or multi-feature work.",
@@ -39,6 +47,13 @@
       "id": "create-pr",
       "label": "Create PR",
       "description": "Push the current branch and open a GitHub pull request with gh. Use when the user asks to create or open a PR from the code-change strip or /create-pr.",
+      "source": "builtin",
+      "disableModelInvocation": true
+    },
+    {
+      "id": "debug",
+      "label": "Debug",
+      "description": "Reproduce, find the root cause, fix and verify a bug; file and update it in Issues. Use for errors, failing tests, crashes and wrong behavior.",
       "source": "builtin",
       "disableModelInvocation": true
     },
@@ -106,6 +121,13 @@
       "disableModelInvocation": false
     },
     {
+      "id": "onboarding",
+      "label": "Onboarding",
+      "description": "First-run tour: introduce Minnow, learn about the user, demo tools live and save a short profile to Brain.",
+      "source": "builtin",
+      "disableModelInvocation": true
+    },
+    {
       "id": "orchestrate-plan",
       "label": "Orchestrate Plan",
       "description": "Runs multi-phase plans by delegating each phase to sub-agents and gating progress on a dedicated verification pass after every phase. The lead agent does not implement product code. Use when the user asks to orchestrate a plan, execute a plan via sub-agents, delegate phases, or run plan-and-verify loops.",
@@ -118,6 +140,14 @@
       "description": "Party mode — Bird Man, your local party animal. Cool-dude persona with maximum vibes. Invoke with /partymode. Stays pinned until dismissed or the user says stop party.",
       "source": "builtin",
       "disableModelInvocation": true
+    },
+    {
+      "id": "plan",
+      "label": "Plan",
+      "description": "Write or revise an implementation plan under documentation/plans/. The turn can read, research and run checks, but only plan files can be written.",
+      "source": "builtin",
+      "disableModelInvocation": true,
+      "access": "plans"
     },
     {
       "id": "plan-work",

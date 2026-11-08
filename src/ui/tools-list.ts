@@ -194,19 +194,23 @@ function createToolSelectAllControl(
   return label;
 }
 
-/** Compact Off / Ask / Full control for the composer tools popover. */
+/**
+ * Compact On / Off control for the composer tools popover. Tools have no
+ * per-tool permission any more: the system permission level decides whether a
+ * call asks, so a row only says whether the agent can use the tool at all.
+ * "On" stores `ask` (the shipped default); a stored `full` displays as On too.
+ */
 function createToolPermissionSegments(
   toolLabel: string,
 ): HTMLDivElement {
   const group = document.createElement('div');
   group.className = 'tool-permission-segments';
   group.setAttribute('role', 'radiogroup');
-  group.setAttribute('aria-label', `${toolLabel} permission`);
+  group.setAttribute('aria-label', `${toolLabel} availability`);
 
   for (const optDef of [
+    { value: 'ask', label: 'On' },
     { value: 'off', label: 'Off' },
-    { value: 'ask', label: 'Ask' },
-    { value: 'full', label: 'Full' },
   ] as const) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -354,13 +358,12 @@ export function fillToolsSection(
 
       const select = document.createElement('select');
       select.className = 'tool-permission-select';
-      select.setAttribute('aria-label', `${tool.label} permission`);
+      select.setAttribute('aria-label', `${tool.label} availability`);
       if (variant !== 'composer') {
         select.setAttribute('aria-describedby', `tool-desc-${tool.id}`);
         for (const optDef of [
-          { value: 'off', label: 'Disabled' },
-          { value: 'ask', label: 'Requires permission' },
-          { value: 'full', label: 'Full permission' },
+          { value: 'ask', label: 'On' },
+          { value: 'off', label: 'Off' },
         ] as const) {
           const opt = document.createElement('option');
           opt.value = optDef.value;

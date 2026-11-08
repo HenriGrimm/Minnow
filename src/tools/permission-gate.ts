@@ -1,33 +1,61 @@
+/**
+ * Renderer permission gate: every tool call the agent makes passes through
+ * {@link maybeBlockToolForUserApproval} before it runs.
+ *
+ * One system-wide level (Manual / Auto / Full access) decides, through the
+ * shared classifier in `src/lib/permissions.mjs`. There are no per-tool
+ * permissions: a tool is either available (not disabled in Settings → Tools)
+ * or not, and the level decides whether an available call asks first.
+ */
+
 import { getWorkspaceLabel, getWorkspacePath } from '../state/workspace';
-import { findChatById, isGoalLoopActive } from '../state/sessions';
+import { findChatById, scheduleSaveSessions } from '../state/sessions';
 import {
   getToolSecurityMetaCached,
   loadToolSecurityMeta,
   saveToolSecurityMeta,
 } from '../config/tool-security-meta';
-import {
-  loadToolConfig,
-  saveToolConfigAsync,
-  type ToolPermissionMode,
-} from './config';
-import { describeToolInvocation } from './describe-invocation';
-import { extractPathLikeArgs } from './path-args';
-import { isPathUnderWorkspace } from './workspace-path-guard';
-import { isCachedRegisteredWorktreePath } from '../lib/worktree-allowlist-client.ts';
+import { getToolPermissionForId, loadToolConfig } from './config';
+import { getCachedRegisteredWorktreePaths } from '../lib/worktree-allowlist-client.ts';
 import type { ToolExecutionResult } from '../types';
-import { enqueueToolApproval, type ToolApprovalContext } from './approval-queue';
+import {
+  enqueueToolApproval,
+  settleQueuedApprovalsForGrant,
+  type ToolApprovalContext,
+} from './approval-queue';
 import type { ToolApprovalRequest } from './tool-approval-types';
-import { resolveEffectivePermission } from './permission-resolve';
 import { applyDestructiveConfirmationAfterUserApproval } from './destructive-tool-confirm';
 import { consumeServerToolAdmission } from './server-admission';
+import { resolveToolHint } from './tool-hint-resolver';
 import {
   ensureShellSandboxCaches,
   fetchSandboxStatus,
   resolveShellSandboxModeForChat,
   SHELL_SANDBOX_TOOL_IDS,
 } from './shell-sandbox-client';
+import {
+  classifyToolCall,
+  decidePermission,
+  type ClassifiedAction,
+  type PermissionLevel,
+} from '../lib/permissions.mjs';
 
 export type { ToolApprovalContext };
+
+// ── Hooks ────────────────────────────────────────────────────────────────────
+
+export { setToolHintResolver } from './tool-hint-resolver';
+
+/**
+ * Calls the gate allowed to leave the workspace (auto-allowed or approved).
+ * The server tool request carries this so the call can resolve outside paths
+ * once, without widening filesystem reach for anything else.
+ */
+const approvedExternalCalls = new WeakSet<object>();
+
+export function isExternalCallApproved(args: object): boolean {
+  return approvedExternalCalls.has(args);
+}
 
 // ── AFK ──────────────────────────────────────────────────────────────────────
 
@@ -39,188 +67,134 @@ export function blockAfkInteractionAttempt(
   return null;
 }
 
-const COMPANION_MUTATING_TOOLS = new Set([
-  'action_run', 'action_cancel', 'action_command', 'release_manage', 'release_asset',
-  'plugin_manage',
-  'write_clipboard',
-  'save_file',
-  'apply_patch',
-  'append_file',
-  'insert_at_line',
-  'replace_text_in_file',
-  'make_directory',
-  'move_file',
-  'copy_file',
-  'delete_path',
-  'create_pdf',
-  'create_spreadsheet',
-  'create_word_document',
-  'git_add',
-  'git_commit',
-  'git_checkout',
-  'git_branch',
-  'execute_command',
-  'stop_command',
-  'start_background_command',
-  'stop_background_command',
-  'manage_dev_servers',
-  'run_javascript',
-  'run_python',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'manage_brain',
-  'update_settings',
-  'update_appearance',
-  'upload_appearance_asset',
-  'save_memory',
-]);
+// ── Grants ───────────────────────────────────────────────────────────────────
 
-/** Whether a built-in mutation must always prompt from a companion device. */
-export function companionToolRequiresApproval(toolId: string): boolean {
-  return COMPANION_MUTATING_TOOLS.has(toolId);
+/** "Allow for this chat" grants live on the chat record and die with it. */
+export function getChatPermissionGrants(chatId: string | undefined): string[] {
+  if (!chatId) return [];
+  const chat = findChatById(chatId);
+  return Array.isArray(chat?.permissionGrants) ? chat!.permissionGrants : [];
 }
 
-function companionRequiresApproval(toolId: string): boolean {
-  return (
-    document.documentElement.classList.contains('minnow-companion') &&
-    companionToolRequiresApproval(toolId)
-  );
+export function addChatPermissionGrant(chatId: string | undefined, key: string): void {
+  if (!chatId || !key) return;
+  const chat = findChatById(chatId);
+  if (!chat) return;
+  const grants = new Set(chat.permissionGrants ?? []);
+  if (grants.has(key)) return;
+  grants.add(key);
+  chat.permissionGrants = [...grants];
+  scheduleSaveSessions();
 }
 
-// ── Path ─────────────────────────────────────────────────────────────────────
-
-/** Matches server `resolveSafePath` rejection copy (`server/runtime/path-access.js`). */
-export function outsideWorkspaceBlockMessage(userPath: string): string {
-  return `Error: Path "${userPath}" resolves outside the workspace directory. Enable full disk access in Settings → General → Filesystem access (dangerous) to allow paths outside the workspace.`;
+export function clearChatPermissionGrants(chatId: string): void {
+  const chat = findChatById(chatId);
+  if (!chat?.permissionGrants?.length) return;
+  chat.permissionGrants = [];
+  scheduleSaveSessions();
 }
 
-function isPathInAllowedRoots(
-  userPath: string,
-  workspaceRoot: string,
-  extraRoots: string[] | undefined,
-): boolean {
-  if (isPathUnderWorkspace(userPath, workspaceRoot)) return true;
-  if (isCachedRegisteredWorktreePath(userPath)) return true;
-  for (const root of extraRoots ?? []) {
-    const trimmed = root.trim();
-    if (trimmed && isPathUnderWorkspace(userPath, trimmed)) return true;
-  }
-  return false;
+// ── Classification ───────────────────────────────────────────────────────────
+
+function workspaceRootsFor(context: ToolApprovalContext): string[] {
+  const root = context.workspaceRoot?.trim() || getWorkspacePath();
+  return [root, ...(context.extraPathRoots ?? []), ...getCachedRegisteredWorktreePaths()]
+    .map((r) => r?.trim())
+    .filter((r): r is string => Boolean(r));
 }
 
-// ── Approval ─────────────────────────────────────────────────────────────────
+/** Classify one call with the renderer's workspace view (exported for UI previews and tests). */
+export function classifyForGate(
+  toolName: string,
+  args: Record<string, unknown>,
+  context: ToolApprovalContext,
+): ClassifiedAction {
+  return classifyToolCall(toolName, args, {
+    workspaceRoots: workspaceRootsFor(context),
+    toolHint: resolveToolHint(toolName),
+  });
+}
 
-/** Result of the pre-execution gate: proceed or return this tool message instead. */
+/** Message returned to the model when the user (or a clamp) says no. */
+function deniedResult(action: ClassifiedAction, feedback?: string): ToolExecutionResult {
+  const note = feedback?.trim();
+  return {
+    content: note
+      ? `Error: The user denied "${action.title}" and said: ${note}`
+      : `Error: The user denied "${action.title}". Do not retry or work around it; ask the user how they want to proceed.`,
+  };
+}
+
+// ── Gate ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Pre-execution gate. Returns null to proceed, or the tool result to return
+ * instead (disabled tool, denial, clamp).
+ */
 export async function maybeBlockToolForUserApproval(
   permissionToolId: string,
   args: Record<string, unknown>,
   context: ToolApprovalContext,
   displayToolName?: string,
 ): Promise<ToolExecutionResult | null> {
-  if (permissionToolId.startsWith('mcp__')) return null;
-  if (context.benchmarkAutonomous) {
-    return null;
-  }
+  const execName = displayToolName ?? permissionToolId;
 
-  const config = loadToolConfig();
-  const resolved = resolveEffectivePermission(config, permissionToolId, args, {
-    subAgentType: context.subAgentType,
-    workAgentId: context.workAgentId,
-    modeId: context.modeId,
-  });
-  const perm = resolved.mode;
-  if (perm === 'off') {
-    return {
-      content: `Error: tool "${displayToolName ?? permissionToolId}" is disabled in Settings (set permission to Ask or Full to use it).`,
-    };
+  if (getToolPermissionForId(loadToolConfig(), permissionToolId) === 'off') {
+    return { content: `Error: tool "${execName}" is turned off in Settings → Tools.` };
   }
 
   await loadToolSecurityMeta().catch(() => undefined);
-  const fsMeta = getToolSecurityMetaCached();
-  const workspaceRoot = context.workspaceRoot?.trim() || getWorkspacePath();
-  const execName = displayToolName ?? permissionToolId;
-  const pathStrings = extractPathLikeArgs(execName, args);
-  const pathsOutsideWorkspace =
-    fsMeta.filesystemAccess === 'workspace' && workspaceRoot.trim().length > 0
-      ? pathStrings.filter(
-          (p) => !isPathInAllowedRoots(p, workspaceRoot, context.extraPathRoots),
-        )
-      : [];
+  const level: PermissionLevel = context.benchmarkAutonomous ? 'full' : getToolSecurityMetaCached().permissionLevel;
+  const action = classifyForGate(execName, args, context);
+  const grants = getChatPermissionGrants(context.chatId);
+  const verdict = decidePermission(level, action, { grants, clamp: context.turnClamp ?? null });
 
-  const needsPathAck = pathsOutsideWorkspace.length > 0;
-  const needsCompanionAck = companionRequiresApproval(permissionToolId);
-  const serverAdmitted = consumeServerToolAdmission(context.serverAdmission, execName, args, context);
-  const needsPermissionAck = (perm === 'ask' && !serverAdmitted) || needsCompanionAck;
-  if (perm === 'ask' && serverAdmitted && !needsCompanionAck && !needsPathAck) {
+  if (verdict.decision === 'deny') {
+    return { content: `Error: ${verdict.reason}` };
+  }
+
+  let approved = verdict.decision === 'allow';
+  if (!approved && consumeServerToolAdmission(context.serverAdmission, execName, args, context)) {
+    // The server host channel already showed this exact call to the user.
+    approved = true;
+  }
+
+  if (!approved) {
+    if (typeof document === 'undefined') {
+      return { content: `Error: "${action.title}" needs approval, and no one is here to approve it.` };
+    }
+    const workspaceRoot = context.workspaceRoot?.trim() || getWorkspacePath();
+    const request: ToolApprovalRequest = {
+      toolName: execName,
+      title: action.title,
+      description: action.detail,
+      argsJson: JSON.stringify(args, null, 2),
+      workspace: workspaceRoot
+        ? { label: getWorkspaceLabel() || workspaceRoot, path: workspaceRoot }
+        : { hint: 'No project open' },
+      action,
+      level,
+      agentLabel: context.subAgentType,
+      chatId: context.chatId,
+      signal: context.signal,
+    };
+    const decision = await enqueueToolApproval(request);
+    if (decision.kind === 'deny') {
+      return deniedResult(action, decision.feedback);
+    }
+    if (decision.kind === 'allow-chat' && action.grant && action.risk !== 'high') {
+      addChatPermissionGrant(context.chatId, action.grant.key);
+      settleQueuedApprovalsForGrant(action.grant.key, context.chatId);
+    }
+    applyDestructiveConfirmationAfterUserApproval(permissionToolId, args);
+  } else if (level === 'full' || verdict.reason === 'Allowed for this chat') {
     applyDestructiveConfirmationAfterUserApproval(permissionToolId, args);
   }
 
-  if (needsPathAck || needsPermissionAck) {
-    const afkBlocked = blockAfkInteractionAttempt(
-      context,
-      needsPathAck ? 'confirmation' : 'approval',
-      needsPathAck
-        ? `${execName} requested a path outside the allowed workspace`
-        : `${execName} requires user approval`,
-    );
-    if (afkBlocked) return afkBlocked;
-
-    if (needsPathAck) {
-      return { content: outsideWorkspaceBlockMessage(pathsOutsideWorkspace[0]!) };
-    }
-
-    let goalAutoApproved = false;
-    if (needsPermissionAck && !needsCompanionAck && context.chatId) {
-      const chat = findChatById(context.chatId);
-      if (chat && isGoalLoopActive(chat)) {
-        applyDestructiveConfirmationAfterUserApproval(permissionToolId, args);
-        goalAutoApproved = true;
-      }
-    }
-
-    if (!goalAutoApproved) {
-      if (typeof document === 'undefined') {
-      } else {
-        const summary = describeToolInvocation(execName, args);
-        const workspace: ToolApprovalRequest['workspace'] = workspaceRoot
-          ? { label: getWorkspaceLabel() || workspaceRoot, path: workspaceRoot }
-          : {
-              hint: 'Not loaded — open Minnow and choose a workspace folder.',
-            };
-
-        const decision = await enqueueToolApproval({
-          toolName: execName,
-          title: summary.title,
-          description: summary.description,
-          argsJson: summary.argsJson,
-          workspace,
-          subAgentType: context.subAgentType,
-          workAgentId: context.workAgentId,
-          signal: context.signal,
-        });
-
-        if (decision === 'cancel') {
-          return { content: 'Error: User denied tool execution' };
-        }
-
-        if (decision === 'always-allow' && !needsCompanionAck) {
-          config.permissions.default[permissionToolId] = 'full';
-          await saveToolConfigAsync(config);
-        }
-
-        applyDestructiveConfirmationAfterUserApproval(permissionToolId, args);
-      }
-    }
-  }
+  if (action.external) approvedExternalCalls.add(args);
 
   if (SHELL_SANDBOX_TOOL_IDS.has(permissionToolId)) {
-    const sandboxGate = await maybeEscalateShellSandbox(
-      permissionToolId,
-      args,
-      context,
-      execName,
-    );
+    const sandboxGate = await maybeEscalateShellSandbox(permissionToolId, args, context, execName, level);
     if (sandboxGate) return sandboxGate;
   }
 
@@ -232,14 +206,14 @@ async function maybeEscalateShellSandbox(
   args: Record<string, unknown>,
   context: ToolApprovalContext,
   execName: string,
+  level: PermissionLevel,
 ): Promise<ToolExecutionResult | null> {
   await ensureShellSandboxCaches().catch(() => undefined);
   const mode = resolveShellSandboxModeForChat(context.chatId);
   if (mode === 'off') return null;
 
   const status = await fetchSandboxStatus();
-  const available = status?.available === true;
-  if (available) return null;
+  if (status?.available === true) return null;
 
   const detail =
     status?.detail?.trim() ||
@@ -250,21 +224,14 @@ async function maybeEscalateShellSandbox(
     return {
       content:
         `Error: Agent shell sandbox is required but unavailable. ${detail}. ` +
-        'Install/enable the platform sandbox, or change Agent shell sandbox / board sandbox mode.',
+        'Install/enable the platform sandbox, or change the shell sandbox setting.',
     };
   }
 
-  if (getToolSecurityMetaCached().allowUnsandboxedShell || args.allow_unsandboxed === true) {
+  if (level === 'full' || getToolSecurityMetaCached().allowUnsandboxedShell || args.allow_unsandboxed === true) {
     args.allow_unsandboxed = true;
     return null;
   }
-
-  const afkBlocked = blockAfkInteractionAttempt(
-    context,
-    'approval',
-    `${execName} needs approval to run unsandboxed (sandbox unavailable)`,
-  );
-  if (afkBlocked) return afkBlocked;
 
   if (typeof document === 'undefined') {
     return {
@@ -275,52 +242,28 @@ async function maybeEscalateShellSandbox(
   }
 
   const workspaceRoot = context.workspaceRoot?.trim() || getWorkspacePath();
-  const workspace: ToolApprovalRequest['workspace'] = workspaceRoot
-    ? { label: getWorkspaceLabel() || workspaceRoot, path: workspaceRoot }
-    : { hint: 'Not loaded — open Minnow and choose a workspace folder.' };
-
+  const action = classifyForGate(execName, args, context);
   const decision = await enqueueToolApproval({
     toolName: execName,
-    title: 'Run unsandboxed?',
-    description:
-      `The agent shell sandbox is unavailable (${detail}). ` +
-      'Allow this command to run without host filesystem containment?',
+    title: 'Run without the sandbox?',
+    description: `${action.detail}\n\nThe shell sandbox is unavailable (${detail}).`,
     argsJson: JSON.stringify(args, null, 2),
-    workspace,
-    subAgentType: context.subAgentType,
-    workAgentId: context.workAgentId,
+    workspace: workspaceRoot
+      ? { label: getWorkspaceLabel() || workspaceRoot, path: workspaceRoot }
+      : { hint: 'No project open' },
+    action: { ...action, grant: { key: 'shell:unsandboxed', label: 'unsandboxed commands' }, reasons: ['The shell sandbox is unavailable'] },
+    level,
+    agentLabel: context.subAgentType,
+    chatId: context.chatId,
     signal: context.signal,
   });
 
-  if (decision === 'cancel') {
+  if (decision.kind === 'deny') {
     return { content: 'Error: User denied unsandboxed shell execution' };
   }
-
-  if (decision === 'always-allow') {
+  if (decision.kind === 'allow-chat') {
     await saveToolSecurityMeta({ allowUnsandboxedShell: true }).catch(() => undefined);
   }
-
   args.allow_unsandboxed = true;
   return null;
-}
-
-/** Exposed for tests: whether this invocation would require a modal (ignores document). */
-export function toolInvocationWouldPrompt(
-  toolName: string,
-  args: Record<string, unknown>,
-  perm: ToolPermissionMode,
-  filesystemAccess: 'workspace' | 'full',
-  workspaceRoot: string,
-  extraPathRoots: string[] = [],
-): boolean {
-  if (perm === 'off') return false;
-  const pathStrings = extractPathLikeArgs(toolName, args);
-  const pathsOutsideWorkspace =
-    filesystemAccess === 'workspace' && workspaceRoot.trim().length > 0
-      ? pathStrings.filter(
-          (p) => !isPathInAllowedRoots(p, workspaceRoot, extraPathRoots),
-        )
-      : [];
-  const needsPermissionAck = perm === 'ask';
-  return needsPermissionAck && pathsOutsideWorkspace.length === 0;
 }

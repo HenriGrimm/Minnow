@@ -81,11 +81,12 @@ describe('captured and current chat policy', () => {
   });
 
   it('does not regain a captured denial when a live setting becomes more permissive', () => {
-    const captured = policy({ toolPermissions: { read_file: 'ask' } });
-    const current = policy();
+    const captured = policy({ permissionLevel: 'manual', toolPermissions: { execute_command: 'ask' } });
+    const current = policy({ permissionLevel: 'full' });
     assert.throws(() => assertChatToolAllowed(captured, 'save_file', { path: 'app.js' }, { currentPolicy: current }), reason('tool_denied'));
-    assert.throws(() => assertChatToolAllowed(captured, 'read_file', {}, { currentPolicy: current }), reason('approval_required'));
-    assert.equal(assertChatToolAllowed(captured, 'read_file', {}, { currentPolicy: current, approvalGranted: true }).permission, 'ask');
+    // The captured Manual level survives a live switch to Full access.
+    assert.throws(() => assertChatToolAllowed(captured, 'execute_command', { command: 'npm test' }, { currentPolicy: current }), reason('approval_required'));
+    assert.equal(assertChatToolAllowed(captured, 'execute_command', { command: 'npm test' }, { currentPolicy: current, approvalGranted: true }).permission, 'ask');
   });
 
   it('fails closed when the execution adapter forgets current permissions', () => {

@@ -2126,11 +2126,13 @@ export function mergeConfigMeta(existing, patch) {
     const existingTs =
       base.toolSecurity && typeof base.toolSecurity === 'object'
         ? { .../** @type {Record<string, unknown>} */ (base.toolSecurity) }
-        : { filesystemAccess: 'workspace', shellSandbox: 'off', allowUnsandboxedShell: false };
+        : { permissionLevel: 'auto', shellSandbox: 'off', allowUnsandboxedShell: false };
     const ts = /** @type {Record<string, unknown>} */ (p.toolSecurity);
-    if (ts.filesystemAccess === 'full' || ts.filesystemAccess === 'workspace') {
-      existingTs.filesystemAccess = ts.filesystemAccess;
+    if (ts.permissionLevel === 'manual' || ts.permissionLevel === 'auto' || ts.permissionLevel === 'full') {
+      existingTs.permissionLevel = ts.permissionLevel;
     }
+    // Filesystem reach is derived from the permission level now.
+    delete existingTs.filesystemAccess;
     if (ts.shellSandbox === 'off' || ts.shellSandbox === 'prefer' || ts.shellSandbox === 'require') {
       existingTs.shellSandbox = ts.shellSandbox;
     }
@@ -2375,6 +2377,9 @@ export function mergeConfigMeta(existing, patch) {
   }
   if (typeof p.flaticonIconGuidanceEnabled === 'boolean') {
     base.flaticonIconGuidanceEnabled = p.flaticonIconGuidanceEnabled;
+  }
+  if (p.localModelGuidance === 'auto' || p.localModelGuidance === 'on' || p.localModelGuidance === 'off') {
+    base.localModelGuidance = p.localModelGuidance;
   }
   if (p.activeSetupProfileId === null || typeof p.activeSetupProfileId === 'string') {
     base.activeSetupProfileId = p.activeSetupProfileId;

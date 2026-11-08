@@ -219,13 +219,13 @@ The normal shape of a Code session:
 3. Approve tools as they come up, or move the ones you trust to Full.
 4. Check the diff in the git panel before committing.
 
-Two habits that pay off: **commit before a long agent run**, and use **Plan** mode first when the change is big enough that you want to agree on the approach before any file is touched.
+Two habits that pay off: **commit before a long agent run**, and start with **/plan** when the change is big enough that you want to agree on the approach before any file is touched.
 
 If a turn goes wrong, the undo control beside the changes strip rewinds the turn and restores the working tree from a git snapshot. See [Working in chat](../chat/chatting.md).
 
 ## Related
 
-- [Modes](../concepts/modes.md)
+- [Tools and permissions](../concepts/tools-and-permissions.md)
 - [Orchestrate boards](../orchestrate/boards.md) — parallel delivery from a plan
 - [Keyboard shortcuts](../reference/keyboard-shortcuts.md)
 - [Troubleshooting](../reference/troubleshooting.md)

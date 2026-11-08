@@ -11,6 +11,7 @@ const SECTION_ALIASES: Array<[string, SettingsSectionId]> = [
   ['health & diagnostics', 'diagnostics'],
   ['diagnostics', 'diagnostics'],
   ['filesystem access', 'access'],
+  ['permissions', 'access'],
   ['backup and restore', 'backups'],
   ['backups', 'backups'],
   ['model routing', 'model-routing'],

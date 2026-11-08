@@ -1,24 +1,37 @@
 /**
- * Headless CLI tool approval — explicit deny on "ask" unless --no-approval + env opt-in.
+ * Headless CLI / Scheduler tool approval. Same level and classifier as the
+ * desktop gate; there is no one to ask, so an "ask" verdict is a denial the
+ * agent can read. `--no-approval` (with the env opt-in) runs as Full access.
  */
 
-import { loadToolConfig } from '../tools/config';
+import { getToolSecurityMetaCached } from '../config/tool-security-meta';
+import {
+  classifyToolCall,
+  decidePermission,
+  type PermissionLevel,
+} from '../lib/permissions.mjs';
+import { getToolPermissionForId, loadToolConfig } from '../tools/config';
 import type { ToolApprovalContext } from '../tools/permission-gate';
-import { resolveEffectivePermission } from '../tools/permission-resolve';
 import type { ToolExecutionResult } from '../types';
-import type { ToolPermissionMode } from '../tools/tool-settings-types';
 
 /** Env var required with --no-approval (documented in CLI --help). */
 export const UNSAFE_AUTOMATION_ENV = 'MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION';
 
 export interface HeadlessApprovalOptions {
-  /** When true, tools with permission "ask" may run if env is set. */
+  /** Run as Full access (requires {@link UNSAFE_AUTOMATION_ENV}=1). */
   noApproval: boolean;
+  /** Override the saved level (tests, Scheduler jobs with their own level). */
+  permissionLevel?: PermissionLevel;
+}
+
+/** Level a headless run uses: --no-approval → Full, else the saved system level. */
+export function resolveHeadlessPermissionLevel(options: HeadlessApprovalOptions): PermissionLevel {
+  if (options.noApproval && process.env[UNSAFE_AUTOMATION_ENV] === '1') return 'full';
+  return options.permissionLevel ?? getToolSecurityMetaCached().permissionLevel;
 }
 
 /**
  * Returns a tool result to short-circuit execution, or null to proceed.
- * Unlike browser permission-gate, never auto-allows "ask" when document is missing.
  */
 export function maybeBlockHeadlessToolApproval(
   permissionToolId: string,
@@ -27,44 +40,23 @@ export function maybeBlockHeadlessToolApproval(
   options: HeadlessApprovalOptions,
   displayToolName?: string,
 ): ToolExecutionResult | null {
-  const config = loadToolConfig();
-  const resolved = resolveEffectivePermission(config, permissionToolId, args, {
-    subAgentType: context.subAgentType,
-    workAgentId: context.workAgentId,
-    modeId: context.modeId,
-  });
-  const perm: ToolPermissionMode = resolved.mode;
   const execName = displayToolName ?? permissionToolId;
-
-  if (perm === 'off') {
-    return {
-      content: `Error: tool "${execName}" is disabled in Settings (set permission to Ask or Full to use it).`,
-    };
+  if (getToolPermissionForId(loadToolConfig(), permissionToolId) === 'off') {
+    return { content: `Error: tool "${execName}" is turned off in Settings → Tools.` };
+  }
+  if (options.noApproval && process.env[UNSAFE_AUTOMATION_ENV] !== '1') {
+    return { content: `Error: --no-approval requires ${UNSAFE_AUTOMATION_ENV}=1 in the environment.` };
   }
 
-  if (perm !== 'ask') {
-    return null;
-  }
-
-  if (!options.noApproval) {
-    return {
-      content:
-        `Error: tool "${execName}" requires user approval in non-interactive mode. ` +
-        'Pass --no-approval only with explicit risk acceptance, or set the tool to Full in Settings.',
-    };
-  }
-
-  if (process.env[UNSAFE_AUTOMATION_ENV] !== '1') {
-    return {
-      content:
-        `Error: --no-approval requires ${UNSAFE_AUTOMATION_ENV}=1 in the environment.`,
-    };
-  }
-
-  return null;
-}
-
-/** Whether this permission mode would block in default headless (no --no-approval). */
-export function headlessWouldBlockPermission(perm: ToolPermissionMode): boolean {
-  return perm === 'ask' || perm === 'off';
+  const level = resolveHeadlessPermissionLevel(options);
+  const roots = [context.workspaceRoot, ...(context.extraPathRoots ?? [])].filter((r): r is string => Boolean(r?.trim()));
+  const action = classifyToolCall(execName, args, { workspaceRoots: roots });
+  const verdict = decidePermission(level, action, { clamp: context.turnClamp ?? null });
+  if (verdict.decision === 'allow') return null;
+  if (verdict.decision === 'deny') return { content: `Error: ${verdict.reason}` };
+  return {
+    content:
+      `Error: "${action.title}" needs approval, and this non-interactive run cannot ask. ` +
+      'Raise the permission level in Settings → Permissions, or pass --no-approval with explicit risk acceptance.',
+  };
 }

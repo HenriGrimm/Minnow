@@ -20,7 +20,7 @@ import {
   CONTEXT7_SERVER,
   FIXTURE_SERVER,
 } from './defaults.js';
-import { toNamespacedName, toOpenAIDefinitions, parseNamespacedName } from './bridge.js';
+import { toNamespacedName, toOpenAIDefinitions, parseNamespacedName, mcpToolPermissionHint } from './bridge.js';
 import {
   RESERVED_MCP_SERVER_IDS,
   validateCreateMcpServerBody,
@@ -445,7 +445,21 @@ async function collectEnabledServerTools() {
   return out;
 }
 
+/** Last known permission hints by namespaced MCP tool name (from tool annotations). */
+let lastMcpToolHints = Object.create(null);
+
+/** Permission hint for one MCP tool: 'read' | 'write' | 'destructive' (unknown → 'write'). */
+export function getMcpToolHint(name) {
+  return lastMcpToolHints[name] ?? (name === 'mcp__minnow__add_servers' ? 'write' : null);
+}
+
+/** Snapshot of every known MCP tool hint (sent to the renderer with the catalog). */
+export function getMcpToolHints() {
+  return { ...lastMcpToolHints };
+}
+
 export async function listEnabledMcpTools() {
+  const hints = Object.create(null);
   const defs = [{ type: 'function', function: {
     name: 'mcp__minnow__add_servers',
     description: 'Add or update MCP servers from a user-provided standard mcpServers configuration. Adding a server approves its tools. Return provider sign-in links to the user when authentication is required. Use only when the user asks to configure an integration.',
@@ -456,7 +470,9 @@ export async function listEnabledMcpTools() {
       continue;
     }
     defs.push(...toOpenAIDefinitions(server.id, server.tools));
+    for (const tool of server.tools) hints[toNamespacedName(server.id, tool.name)] = mcpToolPermissionHint(tool);
   }
+  lastMcpToolHints = hints;
   return defs;
 }
 

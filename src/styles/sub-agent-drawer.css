@@ -190,6 +190,17 @@
 .managed-chat-request details { margin: 8px 0; }
 .managed-chat-request summary { cursor: pointer; }
 @media (pointer: coarse) { .managed-chat-requests button { min-height: 44px; } }
+/* Approval requests share the approval card's language: risk rail, detail block, chips. */
+.managed-chat-request--approval { position: relative; padding-left: 12px; }
+.managed-chat-request--approval::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--mn-accent); }
+.managed-chat-request--approval[data-risk='elevated']::before { background: var(--mn-warning); }
+.managed-chat-request--approval[data-risk='high']::before { background: var(--mn-danger); }
+.managed-chat-request__detail { margin: 8px 0 6px; padding: 6px 8px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: var(--mn-surface-1); font-family: var(--font-mono); }
+.managed-chat-request__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.managed-chat-request__chips span { padding: 1px 7px; border-radius: var(--mn-radius-pill); background: var(--mn-surface-2); color: var(--mn-fg-muted); font-size: 11px; }
+.managed-chat-requests button.managed-chat-request__primary { background: var(--mn-accent); border-color: var(--mn-accent); color: var(--mn-fg-on-accent); }
+.managed-chat-request__feedback { box-sizing: border-box; width: 100%; margin-top: 6px; padding: 5px 8px; border: 1px solid var(--mn-border); border-radius: var(--radius-sm); background: var(--mn-bg); color: var(--mn-fg); font: inherit; }
+
 .agent-message { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); font-size: 12px; }
 .agent-message > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 7px 0; cursor: pointer; color: var(--mn-fg-muted); }
 .agent-message > summary::before { content: '▸'; }

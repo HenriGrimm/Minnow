@@ -39,7 +39,7 @@ import { renderUsageSettingsSection } from './settings-usage';
 import { renderAudioSettingsSection } from './settings-audio';
 import { renderNotificationsSettingsSection } from './settings-notifications';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
-import { renderFilesystemAccessSettings } from './settings-filesystem';
+import { renderPermissionSettings } from './settings-filesystem';
 import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
@@ -521,15 +521,15 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   }
 
   if (area === 'access') {
-    const filesystem = appendSettingsGroup(
+    const permissions = appendSettingsGroup(
       shell,
-      'Filesystem access',
-      'Choose whether file and git tools stay inside your open project or can reach anywhere on this computer.',
-      'general.filesystem',
+      'Permissions',
+      'One level for every chat, agent, tool, MCP server, plugin and website. The composer pill and Shift+Tab change the same setting.',
+      'general.permissions',
       { emphasis: true },
     );
-    filesystem.id = 'settingsFilesystemAccess';
-    await renderFilesystemAccessSettings(filesystem);
+    permissions.id = 'settingsPermissions';
+    await renderPermissionSettings(permissions);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
     const shellSandbox = appendSettingsGroup(
@@ -1726,7 +1726,7 @@ function ensureMcpSettingsShell(mount: HTMLElement): {
   appendSettingsCrosslinks(content, [
     { label: 'Language servers', sectionId: 'lsp' },
     { label: 'Editor', sectionId: 'editor' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
   ]);
 
   mcpSettingsShellReady = true;
@@ -1935,7 +1935,7 @@ async function renderSkillsSection(): Promise<void> {
 
   appendSettingsCrosslinks(content, [
     { label: 'Skills Library', sectionId: 'skills-library' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
     { label: 'Browser automation', sectionId: 'browser' },
   ]);
 }
@@ -1969,7 +1969,7 @@ async function renderSkillsLibrarySection(): Promise<void> {
 
   appendSettingsCrosslinks(content, [
     { label: 'Skills catalog', sectionId: 'skills' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
   ]);
 }
 

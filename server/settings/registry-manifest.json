@@ -401,24 +401,33 @@
     ]
   },
   {
-    "key": "general.filesystem",
-    "label": "Filesystem access",
-    "description": "Limit file and git tools to the open project folder, or allow paths anywhere on this computer.",
+    "key": "general.permissions",
+    "label": "Permissions",
+    "description": "Manual, Auto or Full access — one level for every tool, command, website, MCP server and plugin.",
     "keywords": [
-      "workspace",
+      "permission",
+      "approval",
+      "approve",
+      "manual",
+      "auto",
+      "full access",
+      "bypass",
+      "yolo",
+      "filesystem",
       "full disk",
-      "path",
-      "sandbox",
-      "file tools",
-      "git"
+      "browser origin",
+      "allowlist",
+      "mcp",
+      "plugin"
     ],
     "category": "general",
     "area": "access",
     "storage": "meta",
-    "path": "toolSecurity.filesystemAccess",
+    "path": "toolSecurity.permissionLevel",
     "type": "enum",
     "allowedValues": [
-      "workspace",
+      "manual",
+      "auto",
       "full"
     ],
     "sensitivity": "dangerous",
@@ -1310,13 +1319,16 @@
   },
   {
     "key": "agents.center",
-    "label": "Agents center",
+    "label": "Agent",
     "keywords": [
-      "modes",
-      "work agents",
-      "sub-agents",
+      "agent",
       "prompts",
-      "routing"
+      "system prompt",
+      "sub-agents",
+      "skills",
+      "plan",
+      "ask",
+      "debug"
     ],
     "category": "agents",
     "area": "agent-center",
@@ -1329,26 +1341,40 @@
     ]
   },
   {
-    "key": "agents.modes",
-    "label": "Composer modes",
-    "category": "agents",
-    "area": "agent-center",
-    "storage": "section",
-    "type": "string",
-    "sensitivity": "normal",
-    "writable": false,
-    "refreshAreas": [
-      "agent-center"
-    ]
-  },
-  {
-    "key": "agents.modes.planGranularity",
-    "label": "Plan granularity",
+    "key": "agents.localModelGuidance",
+    "label": "Local model guidance",
+    "description": "Auto adds stricter tool rules for local providers; On or Off overrides it.",
     "keywords": [
-      "large",
-      "medium",
-      "small",
-      "planner tasks"
+      "local",
+      "lm studio",
+      "llama",
+      "small model",
+      "appendix"
+    ],
+    "category": "agents",
+    "area": "agent-center",
+    "storage": "meta",
+    "path": "localModelGuidance",
+    "type": "enum",
+    "allowedValues": [
+      "auto",
+      "on",
+      "off"
+    ],
+    "sensitivity": "normal",
+    "writable": true,
+    "refreshAreas": [
+      "agent-center"
+    ]
+  },
+  {
+    "key": "agents.skills",
+    "label": "Workflow skills",
+    "keywords": [
+      "/ask",
+      "/plan",
+      "/debug",
+      "modes"
     ],
     "category": "agents",
     "area": "agent-center",
@@ -1361,8 +1387,13 @@
     ]
   },
   {
-    "key": "agents.workAgents",
-    "label": "Work agents",
+    "key": "agents.boards",
+    "label": "Boards prompt",
+    "keywords": [
+      "orchestrate",
+      "board",
+      "plan granularity"
+    ],
     "category": "agents",
     "area": "agent-center",
     "storage": "section",
@@ -2111,7 +2142,7 @@
   },
   {
     "key": "integrations.tools",
-    "label": "Tool permissions",
+    "label": "Tools",
     "keywords": [
       "allow",
       "deny",
@@ -2208,10 +2239,12 @@
   },
   {
     "key": "integrations.tools.bulk",
-    "label": "Bulk tool permissions",
+    "label": "Turn tools on or off",
     "keywords": [
       "reset defaults",
-      "all full permissions"
+      "enable all",
+      "disable",
+      "availability"
     ],
     "category": "integrations",
     "area": "tools",
@@ -3286,58 +3319,6 @@
     ]
   },
   {
-    "key": "integrations.tools.permission.set_chat_mode",
-    "label": "Tool permission: set_chat_mode",
-    "description": "Permission mode for the set_chat_mode tool (off, ask, or full).",
-    "keywords": [
-      "set_chat_mode",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.set_chat_mode",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
-    "key": "integrations.tools.permission.create_chat_with_mode",
-    "label": "Tool permission: create_chat_with_mode",
-    "description": "Permission mode for the create_chat_with_mode tool (off, ask, or full).",
-    "keywords": [
-      "create_chat_with_mode",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.create_chat_with_mode",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
     "key": "integrations.tools.permission.launch_minnow_app",
     "label": "Tool permission: launch_minnow_app",
     "description": "Permission mode for the launch_minnow_app tool (off, ask, or full).",
@@ -3351,32 +3332,6 @@
     "storage": "resource",
     "resource": "tools",
     "path": "permissions.default.launch_minnow_app",
-    "type": "enum",
-    "allowedValues": [
-      "off",
-      "ask",
-      "full"
-    ],
-    "sensitivity": "normal",
-    "writable": true,
-    "refreshAreas": [
-      "tools"
-    ]
-  },
-  {
-    "key": "integrations.tools.permission.propose_mode_switch",
-    "label": "Tool permission: propose_mode_switch",
-    "description": "Permission mode for the propose_mode_switch tool (off, ask, or full).",
-    "keywords": [
-      "propose_mode_switch",
-      "permission",
-      "tools"
-    ],
-    "category": "integrations",
-    "area": "tools",
-    "storage": "resource",
-    "resource": "tools",
-    "path": "permissions.default.propose_mode_switch",
     "type": "enum",
     "allowedValues": [
       "off",

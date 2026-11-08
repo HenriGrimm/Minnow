@@ -363,7 +363,7 @@ export async function createChatNativeExecution({
       for (const change of request.changes) {
         if (!await containedPath(workspace, change.path) || change.kind?.movePath && !await containedPath(workspace, change.kind.movePath)) return 'decline';
       }
-      return answer === 'allow_once' || answer?.decision === 'allow_once' ? 'accept' : answer === 'cancel' ? 'cancel' : 'decline';
+      return ['allow_once', 'allow_chat'].includes(typeof answer === 'string' ? answer : answer?.decision) ? 'accept' : answer === 'cancel' ? 'cancel' : 'decline';
       } catch (error) { revoke(error); throw error; }
     },
     dispose() {

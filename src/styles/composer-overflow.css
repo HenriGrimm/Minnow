@@ -594,10 +594,6 @@
   color: var(--mn-fg-muted);
 }
 
-.composer-overflow-page--tools .tool-group-mode[data-mode='full'] {
-  color: var(--mn-accent);
-}
-
 .composer-overflow-page--tools .composer-tools-popover__footer {
   padding: 10px 12px 12px;
   border-top: 1px solid var(--mn-border);

@@ -33,16 +33,24 @@ describe('settings agent center', () => {
     document.body.replaceChildren();
   });
 
-  test('shows only composer modes', async () => {
+  test('lists the one agent\'s prompts, workflow skills and boards — no modes or agent types', async () => {
     const { loadAgentCenterCards } = await import('../../src/ui/settings-agent-center.ts');
-    const cards = await loadAgentCenterCards();
+    const cards = loadAgentCenterCards();
     assert.deepEqual(
-      cards.filter((card) => card.kind === 'modes').map((card) => card.title),
-      ['General', 'Build', 'Plan', 'Debug'],
+      cards.map((card) => [card.kind, card.title]),
+      [
+        ['prompts', 'System prompt'],
+        ['prompts', 'Tool usage'],
+        ['prompts', 'Local model guidance'],
+        ['skills', '/ask'],
+        ['skills', '/plan'],
+        ['skills', '/debug'],
+        ['boards', 'Boards'],
+      ],
     );
   });
 
-  test('places the shared system prompt before modes', async () => {
+  test('renders prompt cards, the local guidance control and sub-agent limits', async () => {
     document.body.innerHTML = `
       <div id="settingsAgentCenterBody"></div>
       <details id="settingsBasePromptPanel"></details>
@@ -53,14 +61,19 @@ describe('settings agent center', () => {
       document.getElementById('settingsAgentCenterBody'),
     );
     assert.ok(content);
+    assert.ok(content.querySelector('[data-agent-card="prompt:base"]'));
+    assert.ok(content.querySelector('[data-settings-search-key="agents.localModelGuidance"]'));
+    assert.ok(content.querySelector('[data-settings-search-key="agents.subAgents.limits"]'));
+    assert.equal(content.querySelector('[data-settings-search-key="agents.modes"]'), null);
+    assert.equal(content.querySelector('[data-settings-search-key="agents.workAgents"]'), null);
 
     const prompt = document.getElementById('settingsBasePromptPanel');
-    const modes = content.querySelector('[data-settings-search-key="agents.modes"]');
-    assert.ok(prompt);
-    assert.ok(modes);
+    const cards = content.querySelector('[data-agent-card="prompt:base"]');
+    assert.ok(prompt && cards);
     assert.equal(
-      prompt.compareDocumentPosition(modes) & window.Node.DOCUMENT_POSITION_FOLLOWING,
+      cards.compareDocumentPosition(prompt) & window.Node.DOCUMENT_POSITION_FOLLOWING,
       window.Node.DOCUMENT_POSITION_FOLLOWING,
+      'the composed-prompt disclosure comes after the cards',
     );
   });
 });

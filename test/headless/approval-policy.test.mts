@@ -6,8 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   UNSAFE_AUTOMATION_ENV,
-  headlessWouldBlockPermission,
   maybeBlockHeadlessToolApproval,
+  resolveHeadlessPermissionLevel,
 } from '../../src/headless/approval.ts';
 import { setToolConfigForTests } from '../../src/tools/config.ts';
 import { executeHeadlessTool } from '../../src/headless/execute-tool.ts';
@@ -31,27 +31,42 @@ describe('headless approval policy', () => {
       else process.env[UNSAFE_AUTOMATION_ENV] = previous;
     }
   });
-  it('headlessWouldBlockPermission treats ask and off as blocking by default', () => {
-    assert.equal(headlessWouldBlockPermission('ask'), true);
-    assert.equal(headlessWouldBlockPermission('off'), true);
-    assert.equal(headlessWouldBlockPermission('full'), false);
+  it('--no-approval with the env opt-in runs as Full access', () => {
+    const prev = process.env[UNSAFE_AUTOMATION_ENV];
+    process.env[UNSAFE_AUTOMATION_ENV] = '1';
+    try {
+      assert.equal(resolveHeadlessPermissionLevel({ noApproval: true, permissionLevel: 'manual' }), 'full');
+      assert.equal(resolveHeadlessPermissionLevel({ noApproval: false, permissionLevel: 'manual' }), 'manual');
+    } finally {
+      if (prev === undefined) delete process.env[UNSAFE_AUTOMATION_ENV];
+      else process.env[UNSAFE_AUTOMATION_ENV] = prev;
+    }
   });
 
-  it('blocks ask permission without --no-approval', () => {
+  it('reads inside the project run at any level', () => {
     setToolConfigForTests({
       enabled: { read_file: true },
-      permissions: {
-        default: { read_file: 'ask' },
-      },
+      permissions: { default: { read_file: 'ask' } },
+      keys: { braveApiKey: '', tavilyApiKey: '' },
+      webSearchProvider: 'duckduckgo',
+    });
+    const result = maybeBlockHeadlessToolApproval(
+      'read_file', { path: 'README.md' }, { workspaceRoot: '/tmp/ws' },
+      { noApproval: false, permissionLevel: 'manual' }, 'read_file',
+    );
+    assert.equal(result, null);
+  });
+
+  it('an action that needs approval fails without --no-approval', () => {
+    setToolConfigForTests({
+      enabled: { save_file: true },
+      permissions: { default: { save_file: 'ask' } },
       keys: { braveApiKey: '', tavilyApiKey: '' },
       webSearchProvider: 'duckduckgo',
     });
     const blocked = maybeBlockHeadlessToolApproval(
-      'read_file',
-      { path: 'README.md' },
-      {},
-      { noApproval: false },
-      'read_file',
+      'save_file', { path: 'src/a.ts', content: 'x' }, { workspaceRoot: '/tmp/ws' },
+      { noApproval: false, permissionLevel: 'manual' }, 'save_file',
     );
     assert.ok(blocked);
     assert.match(blocked!.content, /non-interactive/i);

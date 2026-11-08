@@ -1,6 +1,13 @@
 import { blockPlanModeWrite } from '../tools/plan-write-guard.js';
 import { isParallelSafeTool } from '../runner/parallel-tool-policy.js';
 import { ChatContractError } from './contracts.js';
+import {
+  classifyToolCall,
+  decidePermission,
+  minPermissionLevel,
+  normalizePermissionLevel,
+  normalizeTurnClamp,
+} from '../../src/lib/permissions.mjs';
 
 export const CHAT_POLICY_VERSION = 1;
 
@@ -11,7 +18,8 @@ const WRITE_SCOPES = ['none', 'plans', 'workspace', 'full'];
 const SHELL_SCOPES = ['off', 'prefer', 'require'];
 const EFFECTS = new Set(['read', 'file-write', 'git-write', 'shell', 'external-write', 'unknown']);
 const CAPABILITIES = new Set(['chat.read', 'chat.send', 'chat.stop', 'agent.spawn', 'request.respond', 'execution.host']);
-const POLICY_KEYS = new Set(['version', 'modeId', 'toolPermissions', 'toolEffects', 'workspaceIds', 'filesystemAccess', 'fileWriteScope', 'shellSandboxMode', 'capabilities']);
+const POLICY_KEYS = new Set(['version', 'modeId', 'permissionLevel', 'turnClamp', 'toolPermissions', 'toolEffects', 'workspaceIds', 'filesystemAccess', 'fileWriteScope', 'shellSandboxMode', 'capabilities']);
+const CLAMP_RANK = [null, 'plans', 'read-only'];
 const FILE_WRITES = new Set(['save_file', 'make_directory', 'append_file', 'insert_at_line', 'replace_text_in_file', 'apply_patch', 'delete_path', 'move_file', 'copy_file', 'create_pdf', 'create_spreadsheet', 'create_word_document']);
 const GIT_WRITES = new Set(['git_commit', 'git_add', 'git_checkout', 'git_switch', 'git_reset', 'git_restore', 'git_clean', 'git_merge', 'git_rebase', 'git_cherry_pick', 'git_stash', 'git_push', 'git_tag']);
 const SHELL_TOOLS = new Set(['execute_command', 'execute_code']);
@@ -90,7 +98,11 @@ function normalizeMode(value) {
   return value;
 }
 
-/** Server adapters construct this from resolved mode/type/catalog permissions, never tool arguments. */
+/**
+ * Server adapters construct this from settings and the tool catalog, never tool
+ * arguments. `toolPermissions` is availability only ('off' = unavailable); the
+ * system-wide `permissionLevel` decides per call whether the user is asked.
+ */
 export function createChatPolicy(input) {
   if (!isRecord(input)) invalid('A policy snapshot is required');
   for (const key of Object.keys(input)) if (!POLICY_KEYS.has(key)) invalid(`Unknown policy field: ${key}`);
@@ -104,9 +116,15 @@ export function createChatPolicy(input) {
   if (!WRITE_SCOPES.includes(fileWriteScope)) invalid('Unknown file write scope');
   if (modeId === 'plan' && WRITE_SCOPES.indexOf(fileWriteScope) > WRITE_SCOPES.indexOf('plans')) fileWriteScope = 'plans';
   if (fileWriteScope === 'full' && filesystemAccess !== 'full') invalid('Full file writes require full filesystem access');
+  if (input.permissionLevel !== undefined && !['manual', 'auto', 'full'].includes(input.permissionLevel)) invalid('Unknown permission level');
+  if (input.turnClamp != null && normalizeTurnClamp(input.turnClamp) === null) invalid('Unknown turn clamp');
+  const permissionLevel = normalizePermissionLevel(input.permissionLevel);
+  const turnClamp = normalizeTurnClamp(input.turnClamp) ?? (modeId === 'plan' ? 'plans' : null);
   const result = Object.freeze({
     version: CHAT_POLICY_VERSION,
     modeId,
+    permissionLevel,
+    turnClamp,
     toolPermissions: permissionRecord(input.toolPermissions ?? {}),
     toolEffects: effectRecord(input.toolEffects ?? {}),
     workspaceIds: stringSet(input.workspaceIds ?? [], 'workspaceIds', identifier),
@@ -164,6 +182,8 @@ export function intersectChatPolicies(...inputs) {
   }
   return createChatPolicy({
     modeId: snapshots.some((policy) => policy.modeId === 'plan') ? 'plan' : first.modeId,
+    permissionLevel: minPermissionLevel(...snapshots.map((policy) => policy.permissionLevel)),
+    turnClamp: CLAMP_RANK[Math.max(...snapshots.map((policy) => CLAMP_RANK.indexOf(policy.turnClamp ?? null)))],
     toolPermissions,
     toolEffects,
     workspaceIds: first.workspaceIds.filter((id) => snapshots.every((policy) => policy.workspaceIds.includes(id))),
@@ -186,6 +206,8 @@ export function compareChatPolicies(ceiling, target) {
   for (const id of target.workspaceIds) if (!ceiling.workspaceIds.includes(id)) violations.push(`workspace:${id}`);
   for (const name of target.capabilities) if (!ceiling.capabilities.includes(name)) violations.push(`capability:${name}`);
   if (target.filesystemAccess === 'full' && ceiling.filesystemAccess !== 'full') violations.push('filesystem_access');
+  if (minPermissionLevel(target.permissionLevel, ceiling.permissionLevel) !== target.permissionLevel) violations.push('permission_level');
+  if (CLAMP_RANK.indexOf(target.turnClamp ?? null) < CLAMP_RANK.indexOf(ceiling.turnClamp ?? null)) violations.push('turn_clamp');
   if (WRITE_SCOPES.indexOf(target.fileWriteScope) > WRITE_SCOPES.indexOf(ceiling.fileWriteScope)) violations.push('file_write_scope');
   if (SHELL_SCOPES.indexOf(target.shellSandboxMode) < SHELL_SCOPES.indexOf(ceiling.shellSandboxMode)) violations.push('shell_sandbox');
   return Object.freeze({ allowed: violations.length === 0, violations: Object.freeze(violations) });
@@ -197,17 +219,38 @@ export function assertChatPolicyWithinCeiling(target, ceiling) {
   return target;
 }
 
+/** MCP/plugin annotation hint derived from the catalog effect row. */
+function toolHint(policy, name) {
+  const value = policy.toolEffects[name];
+  if (value === 'read') return 'read';
+  if (value === 'external-write') return 'write';
+  return null;
+}
+
+/**
+ * Classify one call against the effective policy (exported for approval
+ * presentation, so the card shows the same headline the gate decided on).
+ */
+export function classifyChatToolCall(policy, name, args = {}, options = {}) {
+  assertChatPolicy(policy);
+  const roots = [options.workspaceRoot, ...(options.extraRoots ?? [])].filter((r) => typeof r === 'string' && r);
+  return classifyToolCall(name, args, { workspaceRoots: roots, homeDir: options.homeDir, toolHint: toolHint(policy, name) });
+}
+
 /**
  * Check immediately before dispatch. Filesystem canonicalization and ownership
  * fencing remain the execution host's responsibilities. An absent current
  * policy is an error, so a saved grant cannot silently bypass revocation.
+ *
+ * options.grants are the chat's "Allow for this chat" keys; options.workspaceRoot
+ * lets the classifier tell in-project from outside-project paths.
  */
 export function assertChatToolAllowed(capturedPolicy, name, args = {}, options = {}) {
   toolName(name);
   if (!isRecord(args)) invalid('Tool arguments must be a record');
   const policy = intersectChatPolicies(capturedPolicy, options.currentPolicy);
-  const allowed = permission(policy, name);
-  if (allowed === 'off') throw new ChatPolicyError('tool_denied', `Tool ${name} is not allowed by the effective chat policy`, { toolName: name });
+  const available = permission(policy, name);
+  if (available === 'off') throw new ChatPolicyError('tool_denied', `Tool ${name} is not allowed by the effective chat policy`, { toolName: name });
   const toolEffect = effect(policy, name);
   if (policy.fileWriteScope === 'none' && ['file-write', 'git-write', 'unknown'].includes(toolEffect)) {
     throw new ChatPolicyError('tool_denied', `Tool ${name} exceeds this chat's file write scope`, { toolName: name });
@@ -220,8 +263,13 @@ export function assertChatToolAllowed(capturedPolicy, name, args = {}, options =
     const blocked = blockPlanModeWrite('plan', name, args);
     if (blocked) throw new ChatPolicyError('plan_write_denied', blocked, { toolName: name });
   }
-  if (allowed === 'ask' && options.approvalGranted !== true) {
-    throw new ChatPolicyError('approval_required', `Tool ${name} requires approval`, { toolName: name });
+  const action = classifyChatToolCall(policy, name, args, options);
+  const verdict = decidePermission(policy.permissionLevel, action, { grants: options.grants ?? [], clamp: policy.turnClamp });
+  if (verdict.decision === 'deny') {
+    throw new ChatPolicyError('tool_denied', verdict.reason, { toolName: name });
   }
-  return Object.freeze({ toolName: name, permission: allowed, policy });
+  if (verdict.decision === 'ask' && options.approvalGranted !== true) {
+    throw new ChatPolicyError('approval_required', `${action.title} needs approval`, { toolName: name, title: action.title });
+  }
+  return Object.freeze({ toolName: name, permission: verdict.decision === 'ask' ? 'ask' : 'full', action, policy });
 }
