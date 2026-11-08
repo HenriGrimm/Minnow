@@ -139,6 +139,7 @@ import {
 } from './sub-agent-cards';
 import {
   attachStreamStatus,
+  createStreamStatusElement,
   type StreamingStatusHandle,
   type StreamPhase,
 } from './stream-status';
@@ -364,7 +365,8 @@ function historyRenderContext(chat: Chat): HistoryRenderContext {
 
 /** Show accepted input immediately without changing the runner's saved history. */
 function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
-  for (const pending of getPendingTranscriptMessages(chat)) {
+  const messages = getPendingTranscriptMessages(chat);
+  for (const pending of messages) {
     if (chat.history.some(message => message.role === 'user' && message.commandId === pending.id) ||
         [...host.querySelectorAll<HTMLElement>('.msg--sending')].some(row => row.dataset.pendingCommandId === pending.id)) continue;
     const message: UserMessage = { role: 'user', content: pending.text, provenance: pending.provenance, commandId: pending.id };
@@ -386,22 +388,31 @@ function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
     bubble.className = 'msg-bubble';
     renderUserMessageBubble(bubble, pending.text, { persistedImages: pending.images, issue: pending.issue, codeMap: pending.codeMap });
     wrap.append(label, bubble);
-    if (pending.kind !== 'steer') {
-      const status = document.createElement('span');
-      status.className = 'msg-send-status';
-      status.setAttribute('role', 'status');
-      status.textContent = 'Sending…';
-      wrap.append(status);
-    }
     host.append(wrap);
   }
+  const pending = messages.find(item => item.kind !== 'steer');
+  let statusRow = host.querySelector<HTMLElement>('.msg--sending-status');
+  if (!pending || host.querySelector('.msg.assistant[data-stream-phase]:not([data-stream-phase="done"]):not([data-stream-phase="prose"])')) {
+    statusRow?.remove();
+    return;
+  }
+  if (!statusRow) {
+    statusRow = document.createElement('div');
+    statusRow.className = 'msg assistant msg--sending-status';
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'Assistant';
+    statusRow.append(label, createStreamStatusElement('Sending…'));
+    host.append(statusRow);
+  }
+  statusRow.dataset.pendingCommandId = pending.id;
 }
 
 /** Update accepted messages without rebuilding the assistant's streaming DOM. */
 export function syncPendingTranscriptMessages(chat: Chat, host = getActiveChatMountElement()): void {
   if (!host || getActiveChat().id !== chat.id) return;
   const ids = new Set(getPendingTranscriptMessages(chat).map(item => item.id));
-  for (const row of host.querySelectorAll<HTMLElement>('.msg--sending')) {
+  for (const row of host.querySelectorAll<HTMLElement>('.msg--sending, .msg--sending-status')) {
     if (!ids.has(row.dataset.pendingCommandId ?? '')) row.remove();
   }
   appendSendingUserMessage(chat, host);
@@ -818,7 +829,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   if (appendStart !== undefined) {
     const update = () => {
       const pending = getPendingTranscriptMessages(chat);
-      for (const row of area.querySelectorAll<HTMLElement>('.msg--sending')) {
+      for (const row of area.querySelectorAll<HTMLElement>('.msg--sending, .msg--sending-status')) {
         if (!pending.some(item => item.id === row.dataset.pendingCommandId)) row.remove();
       }
       if (chat.history.length > appendStart) removeStaleLiveStreamingRows(area);
@@ -1345,6 +1356,7 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
 
 /** Shared streaming shell; the caller owns its mount and lifecycle. */
 export function createChatStreamingRow(mount: HTMLElement): StreamingAssistantRow {
+  mount.querySelector('.msg--sending-status')?.remove();
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant msg--awaiting-prose';
 

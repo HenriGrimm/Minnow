@@ -1,6 +1,8 @@
 import { getForegroundAppId } from '../os/instances';
 import type { AppId } from '../os/types';
 import { isChatAppForeground } from './chat-mount';
+import { autoResize } from './composer-auto-resize';
+import { syncComposerSkillHighlight } from './composer-skill-highlight';
 
 /** Composer DOM targets used by send / steer / streaming affordances. */
 export interface ComposerSurface {
@@ -65,6 +67,9 @@ export function clearComposerInput(input: HTMLTextAreaElement | null | undefined
   input.value = '';
   input.style.height = '';
   input.style.overflowY = 'hidden';
-  void import('./input').then((m) => m.autoResize(input));
+  // Programmatic value changes emit no input event. Clear the visible mirrors
+  // in this turn too, even while streaming delays the next animation frame.
+  autoResize(input);
+  if (input.dataset.skillHighlightBound === '1') syncComposerSkillHighlight(input);
   void import('./composer-prompt-history').then((m) => m.resetComposerPromptHistory());
 }

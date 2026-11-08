@@ -17,6 +17,8 @@ import { clearComposerChatReferences, withComposerChatReferences } from '../atta
 import { composerPromptHistoryDraft, resetComposerPromptHistory } from './composer-prompt-history';
 import { isPairedDevice } from '../api/session-token';
 import { syncComposerFollowupSuggestion } from './composer-followup-suggestion';
+import { refreshComposerStreamingAffordance } from './composer-send';
+import { syncComposerSkillHighlight } from './composer-skill-highlight';
 
 const deviceDrafts = new Map<string, string>();
 function deviceDraft(chatId: string): string {
@@ -33,6 +35,54 @@ function saveDeviceDraft(chatId: string, text: string): void {
 }
 
 let draftRestoreSuspended = false;
+
+export interface ComposerSubmissionDraft {
+  text: string;
+  accept(): void;
+  restore(): void;
+}
+
+const sendingDrafts = new WeakMap<Chat, { text: string; persistedText: string; edited: boolean }>();
+
+/** Move text into the pending transcript without deleting its recoverable draft. */
+export function beginComposerSubmissionDraft(chat: Chat, input: HTMLTextAreaElement): ComposerSubmissionDraft {
+  cancelScheduledDraftInput();
+  const pending = { text: input.value, persistedText: withComposerChatReferences(input.value), edited: false };
+  persistComposerDraftOnChat(chat, pending.persistedText);
+  sendingDrafts.set(chat, pending);
+  const edited = (): void => { if (sessionState?.activeId === chat.id) pending.edited = true; };
+  input.addEventListener('input', edited);
+  resetComposerPromptHistory();
+  clearComposerInput(input);
+  refreshComposerStreamingAffordance();
+  let finished = false;
+  const finish = (accepted: boolean): void => {
+    if (finished) return;
+    finished = true;
+    input.removeEventListener('input', edited);
+    if (sendingDrafts.get(chat) !== pending) return;
+    sendingDrafts.delete(chat);
+    const activeInput = sessionState?.activeId === chat.id ? getActiveComposerSurface().inputEl : null;
+    const newerText = activeInput && (pending.edited || activeInput.value !== '');
+    if (newerText) persistComposerDraftOnChat(chat, withComposerChatReferences(activeInput.value));
+    else if (accepted) {
+      if ((isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft) === pending.persistedText) clearComposerDraftOnChat(chat);
+    } else if (activeInput) {
+      activeInput.value = pending.text;
+      autoResize(activeInput);
+      if (activeInput.dataset.skillHighlightBound === '1') syncComposerSkillHighlight(activeInput);
+    }
+    if (!isPairedDevice()) scheduleSaveSessions({ chatId: chat.id });
+    refreshComposerStreamingAffordance();
+  };
+  return { text: pending.text, accept: () => finish(true), restore: () => finish(false) };
+}
+
+function draftTextForPersistence(chat: Chat, input: HTMLTextAreaElement, chatId?: string): string {
+  const pending = sendingDrafts.get(chat);
+  if (pending && !pending.edited && input.value === '') return pending.persistedText;
+  return withComposerChatReferences(composerPromptHistoryDraft(input, chatId));
+}
 
 /** Keep rail work out of typing/repeat-backspace frames, including empty/nonempty transitions. */
 let draftSidebarLabelTimer: ReturnType<typeof setTimeout> | null = null;
@@ -131,6 +181,7 @@ export function clearComposerAfterSend(
   const hadDraft = isPairedDevice() ? Boolean(deviceDraft(chat.id).trim()) : hasComposerDraft(chat);
   clearComposerDraftOnChat(chat);
   clearComposerInput(inputEl ?? getActiveComposerSurface().inputEl);
+  refreshComposerStreamingAffordance();
   if (draftSaveTimer) {
     clearTimeout(draftSaveTimer);
     draftSaveTimer = null;
@@ -150,7 +201,7 @@ export function persistComposerDraftForChatId(chatId: string): boolean {
   if (!chat) return false;
   cancelScheduledDraftInput();
   const input = getActiveComposerSurface().inputEl;
-  const text = input ? withComposerChatReferences(composerPromptHistoryDraft(input, chatId)) : '';
+  const text = input ? draftTextForPersistence(chat, input, chatId) : '';
   const changed = persistComposerDraftOnChat(chat, text);
   if (draftSaveChatId === chatId || changed || text.trim()) {
     flushComposerDraftSessionSave(chatId);
@@ -163,7 +214,9 @@ export function applyComposerDraftForChat(chat: Chat): void {
   const input = getActiveComposerSurface().inputEl;
   if (!input) return;
   draftRestoreSuspended = true;
-  input.value = isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft ?? '';
+  const saved = isPairedDevice() ? deviceDraft(chat.id) : chat.composerDraft ?? '';
+  const pending = sendingDrafts.get(chat);
+  input.value = pending && !pending.edited && saved === pending.persistedText ? '' : saved;
   clearComposerChatReferences();
   resetComposerPromptHistory(chat.id);
   autoResize(input);
@@ -181,7 +234,7 @@ export function handleComposerDraftInput(): void {
   if (!chat) return;
 
   const input = getActiveComposerSurface().inputEl;
-  const text = input ? withComposerChatReferences(composerPromptHistoryDraft(input)) : '';
+  const text = input ? draftTextForPersistence(chat, input) : '';
   const visibilityChanged = persistComposerDraftOnChat(chat, text);
   if (isPairedDevice()) return;
   if (!visibilityChanged && !hasComposerDraft(chat)) {

@@ -99,7 +99,11 @@ test('an idle accepted send appears in the transcript until its canonical input 
     const row = document.querySelector('.msg.user.msg--sending')!;
     assert.ok(row);
     assert.match(row.textContent!, /Review the chat/);
-    assert.equal(row.querySelector('[role="status"]')?.textContent, 'Sending…');
+    assert.equal(row.querySelector('[role="status"]'), null);
+    const sending = row.nextElementSibling!;
+    assert.ok(sending.matches('.msg.assistant.msg--sending-status'));
+    assert.equal(sending.querySelector('.stream-status__label')?.textContent, 'Sending…');
+    assert.equal(sending.querySelectorAll('.stream-status__dot').length, 3);
     assert.equal(row.hasAttribute('data-history-index'), false);
     assert.equal(row.querySelector('.message-actions'), null);
     assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), true);
@@ -115,6 +119,7 @@ test('an idle accepted send appears in the transcript until its canonical input 
     assert.equal(chat.history.length, 1);
     assert.equal(document.querySelectorAll('.msg.user').length, 1);
     assert.equal(document.querySelector('.msg--sending'), null);
+    assert.equal(document.querySelector('.msg--sending-status'), null);
     assert.equal(document.querySelector('.msg.user')?.getAttribute('data-history-index'), '0');
   } finally { observer.dispose(); }
 });

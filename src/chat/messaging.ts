@@ -65,6 +65,8 @@ import {
 import {
   clearComposerAfterSend,
   clearComposerDraftOnChat,
+  beginComposerSubmissionDraft,
+  type ComposerSubmissionDraft,
 } from '../ui/composer-draft';
 import {
   resolveComposerSurface,
@@ -182,12 +184,15 @@ export async function sendProgrammaticChatText(
 ): Promise<void> {
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) throw new Error(readOnly);
+  const draftBeforeAdmission = chat.composerDraft;
+  const composerInput = options.clearComposerOnSend !== false && sessionState?.activeId === chat.id
+    ? resolveComposerSurface(options.composerSurface).inputEl : null;
+  const inputBeforeAdmission = composerInput?.value;
   if (text.trim() || options.validAttachments?.length || options.slashInput?.trim()) {
     await ensureOrdinaryChatRoute(chat);
   }
   if (chat.chatCommandVersion === 1) {
     options.signal?.throwIfAborted();
-    const draftBeforeAdmission = chat.composerDraft;
     const context = managedSendContext(chat, text, options);
     const { sendManagedChatAction, waitForManagedCommand } = await import('./managed-chat-client');
     const attachments = await resolveWorkspaceReferences(options.validAttachments ?? []);
@@ -196,9 +201,21 @@ export async function sendProgrammaticChatText(
       if (options.requireCompletedTurn) throw new Error('Follow-up message is empty');
       return;
     }
-    const receipt = await sendManagedChatAction(chat.id, 'send', { text: context.text, intent: context.intent, attachments });
+    const pendingDraft = composerInput && sessionState?.activeId === chat.id && composerInput.value === inputBeforeAdmission &&
+      chat.composerDraft === draftBeforeAdmission ? beginComposerSubmissionDraft(chat, composerInput) : undefined;
+    let receipt;
+    try {
+      receipt = await sendManagedChatAction(chat.id, 'send', { text: context.text, intent: context.intent, attachments });
+      pendingDraft?.accept();
+    } finally { pendingDraft?.restore(); }
     chat.pinnedSkill = context.nextPinned;
-    if (options.clearComposerOnSend !== false && chat.composerDraft === draftBeforeAdmission) clearComposerDraftOnChat(chat);
+    if (!pendingDraft && options.clearComposerOnSend !== false && chat.composerDraft === draftBeforeAdmission) {
+      if (sessionState?.activeId === chat.id && composerInput && composerInput.value === inputBeforeAdmission) {
+        clearComposerAfterSend(chat, composerInput);
+      } else if (sessionState?.activeId !== chat.id || !composerInput) {
+        clearComposerDraftOnChat(chat);
+      }
+    }
     touchChat(chat); scheduleSaveSessions();
     await options.onUserMessageAccepted?.();
     if (options.requireCompletedTurn) {
@@ -386,6 +403,7 @@ export async function sendMessageWithTools(
     !attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error') && !isPluginSlashCommand(text) &&
     !/^\/(?:goal|loop|followup|compact|clear)(?:\s|$)/i.test(text));
   const submissionId = firstSend ? randomUUID() : undefined;
+  const draftSubmission = firstSend ? beginComposerSubmissionDraft(chat, input) : undefined;
   if (firstSend) {
     beginFirstMessageSubmission(chat, { id: submissionId!, text: buildHistoryUserContent(text, attachments),
       createdAt: Date.now(), images: persistableUserImages(attachments), ...(composer?.issue ? { issue: composer.issue } : {}) });
@@ -395,8 +413,9 @@ export async function sendMessageWithTools(
       renderChatFromHistory(chat);
       syncComposerFromStreamingState();
     }
-    await sendComposerMessage(composer);
+    await sendComposerMessage(composer, draftSubmission);
   } finally {
+    draftSubmission?.restore();
     if (firstSend) {
       finishFirstMessageSubmission(chat, submissionId);
       if (sessionState?.activeId === chat.id) {
@@ -408,7 +427,7 @@ export async function sendMessageWithTools(
   }
 }
 
-async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void> {
+async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmission?: ComposerSubmissionDraft): Promise<void> {
   const { inputEl: input } = resolveComposerSurface(composer);
   if (!input) {
     setStatus('err', 'Composer is not available');
@@ -420,7 +439,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void
     showToast('Still reading attached files. Wait for them to finish or remove them.');
     return;
   }
-  const rawTextEarly = input.value.trim();
+  const rawTextEarly = (draftSubmission?.text ?? input.value).trim();
   const attachmentsAtSend = getPendingAttachments();
   const attachmentEpochAtSend = getAttachmentEpoch();
   const chat = getActiveChat();
@@ -459,6 +478,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void
     const remoteAttachmentEpoch = attachmentEpochAtSend;
     const attachments = await resolveWorkspaceReferences(attachmentsAtSend);
     if (!rawTextEarly && !attachments.length) return;
+    let pendingDraft = draftSubmission;
     try {
       if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
       if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
@@ -468,18 +488,24 @@ async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void
       }) : null;
       const hasTurnContext = context && (context.intent.skill || context.intent.context || context.intent.issue || context.intent.goalDriven);
       const action = isChatTurnInProgress(chat.id) && composer?.followupDelivery !== 'queue' && !hasTurnContext && !parseCompactSlashInput(rawTextEarly) ? 'steer' : 'send';
+      if (!pendingDraft && getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) pendingDraft = beginComposerSubmissionDraft(chat, input);
       await sendRemoteChatCommand(chat.id, action, { text: withComposerChatReferences(context?.text ?? rawTextEarly, attachments),
         ...(action === 'send' && chat.chatCommandVersion === 1 ? { composerSubmissionId: getFirstMessageSubmission(chat)?.id } : {}),
         ...(context && action === 'send' ? { intent: context.intent } : {}),
         ...(action === 'send' && composer?.followupDelivery === 'queue' ? { mode: 'queue' } : {}),
         attachments: attachments.filter(attachment => attachment.kind !== 'error' && attachment.kind !== 'chatRef') });
       if (context && action === 'send') { chat.pinnedSkill = context.nextPinned; touchChat(chat); scheduleSaveSessions(); }
-      // Clear only the draft that was actually accepted; keep text typed during delivery.
-      if (getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
+      // Remove only the sent files; anything added during delivery is a new draft.
+      if (pendingDraft && getActiveChat().id === chat.id && getAttachmentEpoch() === remoteAttachmentEpoch) {
+        const sentIds = new Set(attachmentsAtSend.map(attachment => attachment.id));
+        replacePendingAttachments(getPendingAttachments().filter(attachment => !sentIds.has(attachment.id)));
+      } else if (!pendingDraft && getActiveChat().id === chat.id && input.value.trim() === rawTextEarly) {
         clearComposerAfterSend(chat, input);
         if (getAttachmentEpoch() === remoteAttachmentEpoch) clearAttachments();
       }
+      pendingDraft?.accept();
     } catch (error) { setStatus('err', error instanceof Error ? error.message : String(error)); }
+    finally { pendingDraft?.restore(); }
     return;
   }
   // Renderer-owned turns paint their own input and must allow steering as soon as they start.
@@ -546,7 +572,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void
     showToast('Stop or wait for the reply in the other chat first');
     return;
   }
-  const rawText = input.value.trim();
+  const rawText = (draftSubmission?.text ?? input.value).trim();
   const { consumePendingMessageEdit, completePendingMessageEdit } = await import(
     '../ui/message-actions'
   );
@@ -649,11 +675,18 @@ async function sendComposerMessage(composer?: ComposerSendOptions): Promise<void
     setStatus('err', 'This model cannot read images — sending the text only');
   }
 
-  if (!goalDispatch && !chat.worktreeEnabled) {
+  if (!draftSubmission && !goalDispatch && !chat.worktreeEnabled) {
     clearComposerAfterSend(chat, input);
   }
 
   await sendProgrammaticChatText(chat, effectiveRawText, {
+    ...(draftSubmission ? { clearComposerOnSend: false, onUserMessageAccepted: async () => {
+      if (sessionState?.activeId === chat.id && getAttachmentEpoch() === attachmentEpoch) {
+        const sentIds = new Set(validAttachments.map(attachment => attachment.id));
+        replacePendingAttachments(getPendingAttachments().filter(attachment => !sentIds.has(attachment.id)));
+      }
+      draftSubmission.accept();
+    } } : {}),
     goalDriven,
     validAttachments,
     composerSurface: composer,

@@ -40,10 +40,8 @@ export interface StreamingStatusHandle {
   dispose(): void;
 }
 
-/**
- * Inserts a status row after the assistant label; caller owns the parent `wrap`.
- */
-export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
+/** Shared pending-state bubble for message delivery and response generation. */
+export function createStreamStatusElement(text = STREAM_LABEL_GENERATING): HTMLDivElement {
   const statusEl = document.createElement('div');
   statusEl.className = 'stream-status stream-status--generating';
   statusEl.setAttribute('role', 'status');
@@ -61,7 +59,7 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
 
   const labelEl = document.createElement('span');
   labelEl.className = 'stream-status__label';
-  labelEl.textContent = STREAM_LABEL_GENERATING;
+  labelEl.textContent = text;
 
   const elapsedEl = document.createElement('span');
   elapsedEl.className = 'stream-status__elapsed';
@@ -77,6 +75,17 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
   statusEl.appendChild(labelEl);
   statusEl.appendChild(elapsedEl);
   statusEl.appendChild(detailEl);
+  return statusEl;
+}
+
+/**
+ * Inserts a status row after the assistant label; caller owns the parent `wrap`.
+ */
+export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
+  const statusEl = createStreamStatusElement();
+  const labelEl = statusEl.querySelector<HTMLElement>('.stream-status__label')!;
+  const elapsedEl = statusEl.querySelector<HTMLElement>('.stream-status__elapsed')!;
+  const detailEl = statusEl.querySelector<HTMLElement>('.stream-status__detail')!;
 
   const label = wrap.querySelector('.msg-label');
   const bubble = wrap.querySelector('.msg-bubble');
