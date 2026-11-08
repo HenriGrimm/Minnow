@@ -85,6 +85,13 @@ test('Home issue dock uses the main transcript and selects its composer context'
     await Promise.resolve(); dock.update();
     assert.equal(issue.status, 'todo', 'completed issues can be reopened in the dock');
     assert.equal(issue.agent?.chatId, linked.id, 'status edits preserve the linked agent');
+    linked.modeId = 'build';
+    linked.pinnedSkill = { id: 'plan' };
+    issue.agent!.home = { groupId: 'planned-issue', state: 'planned', mode: 'plan', modelId: 'test-model', baseBranch: 'main' };
+    dock.update();
+    const approval = document.querySelector<HTMLButtonElement>('[data-approve]')!;
+    assert.equal(approval.textContent, 'Load plan to continue');
+    assert.equal(approval.disabled, true, 'a planning workflow cannot merge without a saved plan');
   } finally {
     closeContextMenu(); dock.dispose(); await new Promise(resolve => setTimeout(resolve, 30)); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
   }
