@@ -483,25 +483,25 @@ export const CAPABILITY_CATALOG_ENTRIES: CapabilityCatalogEntry[] =
     "passCriteria": "Automated probe returns pass, partial, or fail; n-a when requirements (vision, LSP, workspace, mode prompt) are missing."
   },
   {
-    "id": "mode-set-chat-mode",
+    "id": "workflow-load-skill",
     "group": "mode-control",
-    "header": "set_chat_mode / propose_mode_switch",
+    "header": "Load a workflow skill",
     tier: 2,
     "scoreMode": "auto",
-    "howToTest": "'This is turning into a build job - switch modes.'",
+    "howToTest": "'Load the explain-code skill.'",
     "setup": "Benchmark scratch workspace with tool server running; capability-matrix fixtures seeded when required.",
-    "prompt": "This is turning into a build job - switch modes.",
+    "prompt": "Load the explain-code skill.",
     "passCriteria": "Automated probe returns pass, partial, or fail; n-a when requirements (vision, LSP, workspace, mode prompt) are missing."
   },
   {
-    "id": "mode-create-chat",
+    "id": "workflow-launch-code",
     "group": "mode-control",
-    "header": "create_chat_with_mode / launch app",
+    "header": "Open the Code app",
     tier: 3,
     "scoreMode": "auto",
-    "howToTest": "'Open a new Plan chat about the release.'",
+    "howToTest": "'Open the Code app.'",
     "setup": "Benchmark scratch workspace with tool server running; capability-matrix fixtures seeded when required.",
-    "prompt": "Open a new Plan chat about the release.",
+    "prompt": "Open the Code app.",
     "passCriteria": "Automated probe returns pass, partial, or fail; n-a when requirements (vision, LSP, workspace, mode prompt) are missing."
   },
   {

@@ -7,10 +7,10 @@
   "attemptDistribution": {
     "count": 10,
     "open": 0,
-    "p50Ms": 15,
-    "p90Ms": 17,
-    "p99Ms": 17,
-    "maxMs": 17
+    "p50Ms": 58,
+    "p90Ms": 113,
+    "p99Ms": 237,
+    "maxMs": 237
   },
   "tokenCost": {
     "prompt_tokens": 110,
@@ -31,70 +31,70 @@
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 55
+      "ms": 106
     },
     {
       "n": 2,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 57
+      "ms": 111
     },
     {
       "n": 3,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 49
+      "ms": 136
     },
     {
       "n": 4,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 48
+      "ms": 155
     },
     {
       "n": 5,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 50
+      "ms": 336
     },
     {
       "n": 6,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 49
+      "ms": 166
     },
     {
       "n": 7,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 49
+      "ms": 135
     },
     {
       "n": 8,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 51
+      "ms": 99
     },
     {
       "n": 9,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 49
+      "ms": 107
     },
     {
       "n": 10,
       "finished": true,
       "retries": 0,
       "abandoned": 0,
-      "ms": 49
+      "ms": 117
     }
   ],
   "realProvider": {

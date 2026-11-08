@@ -832,6 +832,7 @@ async function executeServerTool(
     name: string;
     args: Record<string, unknown>;
     modeId?: string;
+    turnClamp?: ExecuteToolContext['turnClamp'];
     workspaceRoot?: string;
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
     agentActivity?: boolean;
@@ -842,6 +843,7 @@ async function executeServerTool(
   // The permission gate already decided this call may leave the workspace.
   if (isExternalCallApproved(args)) payload.approvedOutsideWorkspace = true;
   if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
+  if (context?.turnClamp) payload.turnClamp = context.turnClamp;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }

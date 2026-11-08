@@ -149,7 +149,7 @@ test('broader-target guidance follows a live callback only to the original deleg
     tasks.setSubscription('child-run', { state: 'disposed' });
     await refused('target', false);
     assert.equal(f.repository.listCommands().length, 0);
-  }, { mode: 'plan', runId: 'child-run' });
+  }, { runId: 'child-run' });
 });
 
 test('list cursor binds query and project, and reads never hydrate whole transcripts or attachment bytes', async () => {

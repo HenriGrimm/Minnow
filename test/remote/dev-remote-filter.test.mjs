@@ -7,7 +7,7 @@ import { after, describe, test } from 'node:test';
 import { createServer as createVite } from 'vite';
 import { createDevRemoteHandler, createDevRemotePathPolicy, isDevClientImport } from '../../server/remote/dev-remote-filter.js';
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-'));
+const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-')));
 for (const dir of ['src', 'node_modules', 'public/icons', 'server', 'documentation']) {
   fs.mkdirSync(path.join(root, dir), { recursive: true });
 }

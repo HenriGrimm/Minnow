@@ -17,7 +17,8 @@ import { rebindChatWorkspacePolicy } from './workspace-preparation.js';
 import { validateChatSendIntent } from './contracts.js';
 import { wrapUntrusted } from '../../src/lib/untrusted.mjs';
 import { isLanProviderBaseUrl } from '../../src/lib/lan-provider-host.mjs';
-import { SUB_AGENT_COMPLETION_GUIDANCE, withSubAgentReportTool } from '../sub-agents/reporting.js';
+import { SUB_AGENT_COMPLETION_GUIDANCE } from '../sub-agents/reporting.js';
+import { withSubAgentReportTool } from './sub-agent-report-tool.js';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;

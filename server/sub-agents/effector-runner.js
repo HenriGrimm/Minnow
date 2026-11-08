@@ -52,7 +52,8 @@ import { AGENTS_NAMESPACE, lastEndedAttempt } from './derive.js';
 import { agentsDir } from './journal.js';
 import { getSubAgentTypeRow, loadSubAgentFile } from './config.js';
 import { loadSubAgentSystemPrompt } from './prompts.js';
-import { subAgentCompletionResult, withSubAgentReportTool } from './reporting.js';
+import { subAgentCompletionResult } from './reporting.js';
+import { withSubAgentReportTool } from '../chats/sub-agent-report-tool.js';
 import {
   formatAgentBrowserGuideForTranscript,
   registerAgentBrowserRuntime,

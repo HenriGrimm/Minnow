@@ -51,6 +51,7 @@ function fixture(overrides = {}) {
     loadSubAgentTypes: async () => subAgents,
     loadPromptSources: async () => sources, loadCustomPrompt: async () => null,
     loadTypePrompt: async () => 'ACTUAL TYPE ROLE',
+    loadSkill: async id => ({ body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null }),
     readTranscript: async () => transcript,
     readProfile: async reference => profiles.get(`${reference.profileId}:${reference.profileVersion}`) ?? null,
     retrieveMemory: async () => 'Retrieved notes.', retrieveCodeMap: async () => 'Retrieved map.',
@@ -102,7 +103,7 @@ test('delegated completion guidance reaches the system prompt and report schema 
 
 test('prepared worktree rebinds immutable profile policy without widening its accepted restrictions', async () => {
   const f = fixture({ chat: { modeId: 'plan' } });
-  f.settings.tools.permissions.default.read_file = 'ask';
+  f.settings.meta.toolSecurity = { permissionLevel: 'manual' };
   const snapshot = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters });
   const original = JSON.stringify(snapshot);
   f.setProfile(snapshot);
@@ -117,16 +118,17 @@ test('prepared worktree rebinds immutable profile policy without widening its ac
   await fs.writeFile(path.join(f.scope.canonicalKey, 'AGENTS.md'), 'VERIFIED WORKTREE INSTRUCTIONS');
   f.chat.worktreeRoot = f.scope.canonicalKey;
   f.chat.modeId = 'build';
-  f.settings.tools.permissions.default.read_file = 'full';
+  f.settings.meta.toolSecurity = { permissionLevel: 'full' };
   const prepared = await f.prepare();
   assert.equal(prepared.cwd, f.scope.canonicalKey);
   assert.equal(prepared.toolContext.workspaceRoot, f.scope.canonicalKey);
   assert.deepEqual(prepared.policy.workspaceIds, ['tree']);
-  assert.equal(prepared.policy.modeId, 'plan');
-  assert.equal(prepared.policy.fileWriteScope, 'plans');
+  assert.equal(prepared.policy.modeId, 'build');
+  assert.equal(prepared.policy.permissionLevel, 'manual');
+  assert.equal(prepared.policy.fileWriteScope, 'workspace');
   assert.equal(prepared.policy.toolPermissions.read_file, 'full');
-  assert.equal(prepared.policy.toolPermissions.git_commit ?? 'off', 'off');
-  assert.ok(!prepared.tools.some(tool => tool.function.name === 'git_commit'));
+  assert.throws(() => assertChatToolAllowed(prepared.policy, 'git_commit', { message: 'change' },
+    { currentPolicy: prepared.policy }), error => error.reason === 'approval_required');
   assert.match(prepared.systemPrompt, /VERIFIED WORKTREE INSTRUCTIONS/);
   assert.equal(JSON.stringify(snapshot), original, 'workspace rebinding cannot mutate captured settings');
   assert.deepEqual(f.execution.captured.profileReference, { profileId: 'profile', profileVersion: 1 });
@@ -139,29 +141,27 @@ test('a workspace policy binding cannot adopt a profile that authorized neither 
   await assert.rejects(f.prepare(), error => error.code === 'workspace_denied');
 });
 
-test('live policy uses actual mode, exact work-agent restrictions and dynamic off', async () => {
+test('the live catalog and global level determine policy for legacy Plan chats', async () => {
   const f = fixture({ chat: { modeId: 'plan' } });
-  f.agents[1].allowedTools = ['read_file', 'save_file', 'git_branch', 'issue_search', 'execute_command', 'mcp__docs__read'];
   f.settings.tools.permissions.default.mcp__docs__read = 'off';
+  f.settings.meta.toolSecurity = { permissionLevel: 'manual' };
+  f.names.splice(f.names.indexOf('git_commit'), 1);
   const input = await resolveChatPolicyInput(f.chat, f.scope, { adapters: f.adapters, workspaceIds: ['main', 'tree'] });
   assert.deepEqual(input.workspaceIds, ['main', 'tree']);
-  assert.equal(input.fileWriteScope, 'plans');
-  assert.equal(input.toolPermissions.read_file, 'full');
-  assert.equal(input.toolPermissions.save_file, 'full');
-  assert.equal(input.toolPermissions.git_commit, 'off');
-  assert.equal(input.toolPermissions.issue_search, 'full');
-  assert.equal(input.toolPermissions.execute_command, 'full');
-  assert.equal(input.toolPermissions.mcp__docs__read, 'off');
-  assert.equal(input.toolPermissions.plugin__editor__write, 'off');
+  assert.equal(input.fileWriteScope, 'workspace');
+  assert.equal(input.permissionLevel, 'manual');
+  assert.equal(input.toolPermissions.git_commit, undefined);
+  assert.equal(input.toolPermissions.mcp__docs__read, 'full');
   const policy = createChatPolicy(input);
-  assert.doesNotThrow(() => assertChatToolAllowed(policy, 'git_branch', {}, { currentPolicy: policy }));
+  assert.throws(() => assertChatToolAllowed(policy, 'git_commit', {}, { currentPolicy: policy }), error => error.reason === 'tool_denied');
+  assert.throws(() => assertChatToolAllowed(policy, 'save_file', { path: 'note.md' }, { currentPolicy: policy }), error => error.reason === 'approval_required');
 });
 
 test('production preparation composes shared prompts, current input first-turn docs, rules and real model options', async () => {
   const f = fixture();
   const prepared = await f.prepare();
   assert.match(prepared.systemPrompt, /SHARED BASE build/);
-  assert.match(prepared.systemPrompt, /BUILDER BODY/);
+  assert.doesNotMatch(prepared.systemPrompt, /BUILDER BODY/);
   assert.match(prepared.systemPrompt, /Workspace instructions only/);
   assert.match(prepared.systemPrompt, /Use the configured rule/);
   assert.match(prepared.contextBodies['context-documents'], /Workspace instructions only/);
@@ -175,17 +175,18 @@ test('production preparation composes shared prompts, current input first-turn d
   assert.deepEqual(prepared.sendCapabilities.reasoningAllowedOptions, ['off', 'high']);
 });
 
-test('captured Plan stays Plan in both composed instructions and tool policy after chat changes to Build', async () => {
+test('a captured /plan skill narrows the turn even after its chat is unpinned', async () => {
   const f = fixture();
-  f.execution.captured.policy = createChatPolicy(await resolveChatPolicyInput({ ...f.chat, modeId: 'plan' }, f.scope, { adapters: f.adapters }));
+  f.execution.captured.turnIntent = await captureChatTurnIntent({ version: 1, skill: { id: 'plan', source: 'slash' } },
+    f.chat, 'Plan the change', { adapters: f.adapters });
   const prepared = await f.prepare();
-  assert.equal(prepared.policy.modeId, 'plan');
-  assert.equal(prepared.toolContext.modeId, 'plan');
-  assert.match(prepared.systemPrompt, /SHARED BASE plan/);
-  assert.match(prepared.systemPrompt, /PLANNER BODY/);
-  assert.ok(!prepared.tools.some(row => row.function.name === 'git_commit'));
+  assert.equal(prepared.policy.modeId, 'build');
+  assert.equal(prepared.policy.turnClamp, 'plans');
+  assert.match(prepared.systemPrompt, /Workflow skill: plan/);
   assert.throws(() => assertChatToolAllowed(prepared.policy, 'save_file', { path: 'src/main.ts', content: 'x' },
     { currentPolicy: prepared.policy }), error => error.code === 'policy_denied');
+  assert.doesNotThrow(() => assertChatToolAllowed(prepared.policy, 'save_file', { path: 'documentation/plans/new.md', content: '# Plan' },
+    { currentPolicy: prepared.policy }));
 });
 
 test('follow-ups replay exact stored context, including CLI stable/current separation', async () => {
@@ -201,13 +202,13 @@ test('follow-ups replay exact stored context, including CLI stable/current separ
   assert.match(prepared.systemPrompt, /Use the configured rule/);
 });
 
-test('live type revocations narrow tools and disabling type preserves read/stop only', async () => {
+test('disabling a delegated type preserves read and stop but blocks new work', async () => {
   const f = fixture({ chat: { agentTypeId: 'explore' } });
   f.subAgents.types.explore = { enabled: true, allowedTools: ['read_file', 'execute_command'], deniedTools: ['execute_command'] };
   const input = await resolveChatPolicyInput(f.chat, f.scope, { adapters: f.adapters });
   assert.equal(input.toolPermissions.read_file, 'full');
-  assert.equal(input.toolPermissions.execute_command, 'off');
-  assert.equal(input.toolPermissions.save_file, 'off');
+  assert.equal(input.toolPermissions.execute_command, 'full');
+  assert.equal(input.toolPermissions.save_file, 'full');
   f.subAgents.types.explore.enabled = false;
   const revoked = await resolveChatPolicyInput(f.chat, f.scope, { adapters: f.adapters });
   assert.deepEqual(revoked.capabilities, ['chat.read', 'chat.stop']);
@@ -258,7 +259,7 @@ test('context document traversal does not escape the workspace', async () => {
 
 test('profile capture stores only composed sources/settings and preserves role/sampler after queued edits', async () => {
   const f = fixture({ chat: { agentTypeId: 'explore' } });
-  f.subAgents.types.explore = { enabled: true, label: 'Explorer', allowedTools: ['read_file', 'save_file'],
+  f.subAgents.types.explore = { enabled: true, label: 'Explorer', systemPromptPath: 'custom.md', allowedTools: ['read_file', 'save_file'],
     deniedTools: [], sampler: { temperature: 0.2 }, secret: 'UNRELATED TYPE SENTINEL' };
   f.settings.meta.integrations = { token: 'UNRELATED META SENTINEL' };
   f.settings.meta.sampler.unknown = 'UNRELATED SAMPLER SENTINEL';
@@ -273,7 +274,7 @@ test('profile capture stores only composed sources/settings and preserves role/s
   f.execution.captured.policy = captured.policy;
   f.settings.meta.sampler.maxTokens = 100;
   f.subAgents.types.explore.sampler.temperature = 1.9;
-  f.subAgents.types.explore.allowedTools = ['read_file'];
+  f.names.splice(f.names.indexOf('save_file'), 1);
   f.adapters.loadTypePrompt = async () => 'CHANGED ROLE';
   const prepared = await f.prepare();
   assert.match(prepared.systemPrompt, /ORIGINAL EXPLORER ROLE/);
@@ -281,7 +282,8 @@ test('profile capture stores only composed sources/settings and preserves role/s
   assert.equal(prepared.model.sampler.maxTokens, 9000);
   assert.equal(prepared.model.sampler.preset.temperature, 0.2);
   assert.equal(prepared.model.exactModel, true);
-  assert.deepEqual(prepared.tools.map(row => row.function.name), ['read_file']);
+  assert.ok(prepared.tools.some(row => row.function.name === 'read_file'));
+  assert.ok(!prepared.tools.some(row => row.function.name === 'save_file'));
 });
 
 test('captured source payload has an explicit size ceiling', async () => {
@@ -293,7 +295,7 @@ test('captured source payload has an explicit size ceiling', async () => {
 
 test('queued commands and retries resolve their immutable profile version despite newer configuration', async () => {
   const f = fixture({ chat: { agentTypeId: 'explore' } });
-  f.subAgents.types.explore = { enabled: true, allowedTools: ['read_file', 'save_file'], sampler: { temperature: 0.2 } };
+  f.subAgents.types.explore = { enabled: true, systemPromptPath: 'custom.md', allowedTools: ['read_file', 'save_file'], sampler: { temperature: 0.2 } };
   f.adapters.loadTypePrompt = async () => 'ACCEPTED ROLE';
   const original = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters, exactModel: true,
     modelSelection: { providerId: 'api', modelId: 'model', options: { reasoningEffort: 'high' } } });
@@ -305,7 +307,7 @@ test('queued commands and retries resolve their immutable profile version despit
   const latest = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters, exactModel: false,
     modelSelection: { providerId: 'api', modelId: 'new-unavailable-model', options: {} } });
   f.setProfile(latest, { version: 2, capture: false });
-  f.subAgents.types.explore.allowedTools = ['read_file'];
+  f.names.splice(f.names.indexOf('save_file'), 1);
   for (const executionId of ['execution', 'retry-execution']) {
     f.execution.executionId = executionId;
     const prepared = await f.prepare();
@@ -316,7 +318,8 @@ test('queued commands and retries resolve their immutable profile version despit
     assert.equal(prepared.model.exactModel, true);
     assert.equal(prepared.model.sampler.maxTokens, 9000);
     assert.equal(prepared.model.sampler.preset.temperature, 0.2);
-    assert.deepEqual(prepared.tools.map(row => row.function.name), ['read_file']);
+    assert.ok(prepared.tools.some(row => row.function.name === 'read_file'));
+  assert.ok(!prepared.tools.some(row => row.function.name === 'save_file'));
   }
   f.caps.models.model.reasoningAllowedOptions = ['off'];
   f.options.modelAdapters.listModels = async () => [{ id: 'model', reasoning: { allowed_options: ['off'] } }];
@@ -328,7 +331,7 @@ test('embedded accepted profile is authoritative and invalid references never fa
   const snapshot = await captureChatProfile(f.chat, f.scope, { adapters: f.adapters });
   f.execution.captured.profile = f.setProfile(snapshot);
   f.adapters.readProfile = async () => { throw new Error('Captured profile must not need a latest lookup'); };
-  assert.match((await f.prepare()).systemPrompt, /BUILDER BODY/);
+  assert.match((await f.prepare()).systemPrompt, /SHARED BASE build/);
   f.command.profileReference = { profileId: 'profile', profileVersion: 2 };
   await assert.rejects(f.prepare, error => error.code === 'idempotency_conflict');
   f.command.profileReference = f.execution.captured.profileReference;

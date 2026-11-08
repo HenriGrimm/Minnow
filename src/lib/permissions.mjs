@@ -97,7 +97,7 @@ const NO_EFFECT_TOOLS = new Set([
   'get_datetime', 'calculate', 'get_system_info', 'wait', 'ask_question', 'todo_write',
   'load_skill', 'plugin_inspect', 'check_plan', 'present_files', 'launch_minnow_app',
   'search_tools', 'search_mcp_tools',
-  'agent_capabilities', 'chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop',
+  'agent_capabilities', 'chat_list', 'chat_read', 'chat_wait',
   'spawn_sub_agent', 'cancel_sub_agent', 'list_sub_agents', 'get_sub_agent_status', 'agent',
   'issue_get_state', 'issue_search', 'bug_get_state',
   'brain_search', 'brain_read_page', 'brain_list',
@@ -125,6 +125,8 @@ const EDIT_PATH_TOOLS = new Set([
   'make_directory', 'move_file', 'copy_file', 'delete_path',
   'create_pdf', 'create_spreadsheet', 'create_word_document',
 ]);
+
+const PLAN_WRITE_TOOLS = new Set(['save_file', 'append_file', 'insert_at_line', 'replace_text_in_file', 'make_directory']);
 
 const PATH_ARG_KEYS = {
   move_file: ['source', 'destination'],
@@ -266,6 +268,28 @@ const READ_ONLY_GIT = new Set([
   'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-tree', 'blame', 'describe',
   'shortlog', 'grep', 'reflog', 'cat-file', 'merge-base', 'name-rev', 'whatchanged',
 ]);
+
+/** Reject shell forms that can change state even when the leading command
+ * looks like discovery to the general approval classifier. */
+function isClampedShellRead(command) {
+  const unquoted = command.replace(/'[^']*'/g, '');
+  if (/[<>\x60%\r$]|(^|[^&])&(?!&)/.test(unquoted)) return false;
+  return splitShellSegments(command).every(({ text }) => {
+    const [bin, sub, ...args] = tokenize(text);
+    if (!bin || !/^[\w-]+$/.test(bin)) return false;
+    if (bin === 'git') {
+      if (sub === 'reflog') return args.length === 0 || args[0] === 'show';
+      if (sub === 'branch' || sub === 'remote') return args.length === 0;
+      if (sub === 'config') return args[0] === '--get';
+      return READ_ONLY_GIT.has(sub) && !args.some(arg => /^--(?:output|ext-diff|textconv)(?:=|$)/.test(arg));
+    }
+    if (bin === 'env') return sub === undefined;
+    if (bin === 'find') return !/(?:^|\s)-(?:delete|exec|ok|fprint|fls)/.test(text);
+    if (bin === 'sort') return ![sub, ...args].some(arg => /^-(?:[A-Za-z]*o|-[Oo]utput)/.test(arg ?? ''));
+    if (bin === 'yq' || bin === 'less' || bin === 'more' || bin === 'date') return false;
+    return true;
+  });
+}
 
 /** Leading tokens that are version/help probes for any binary. */
 function isVersionProbe(tokens) {
@@ -505,6 +529,14 @@ export function classifyToolCall(name, args = {}, options = {}) {
     return action;
   }
 
+  if (name === 'chat_send' || name === 'chat_stop') {
+    action.kind = 'app';
+    action.mutates = true;
+    action.title = name === 'chat_send' ? 'Send work to another chat' : 'Stop another chat';
+    action.detail = shortArgs(a);
+    return action;
+  }
+
   if (READ_PATH_TOOLS.has(name) || EDIT_PATH_TOOLS.has(name)) {
     const edit = EDIT_PATH_TOOLS.has(name);
     const raw = toolPathArgs(name, a);
@@ -513,6 +545,11 @@ export function classifyToolCall(name, args = {}, options = {}) {
     action.kind = edit ? 'edit' : 'read';
     action.mutates = edit;
     action.resources = resolved;
+    if (edit && PLAN_WRITE_TOOLS.has(name) && raw.length) {
+      const planRoot = resolveActionPath('documentation/plans', workspaceRoot);
+      action.planScoped = resolved.every((p) => isUnder(p, planRoot) &&
+        (name === 'make_directory' || /\.md$/i.test(p)));
+    }
     const outside = resolved.filter((p) => !inWorkspace(p));
     if (outside.length) {
       action.external = true;
@@ -595,6 +632,7 @@ export function classifyToolCall(name, args = {}, options = {}) {
     action.title = shell.readOnly ? 'Run a read-only command' : 'Run a command';
     action.detail = command;
     action.resources = [command];
+    if (shell.readOnly) action.clampedShellRead = isClampedShellRead(command);
     action.grant = shell.prefix ? { key: `shell:${shell.prefix}`, label: `\`${shell.prefix}\` commands` } : null;
     return action;
   }
@@ -662,7 +700,7 @@ export function classifyToolCall(name, args = {}, options = {}) {
     action.external = true;
     const url = str(a.url);
     const origin = originOf(url);
-    if (name === 'browser_navigate' || name === 'browser_new_tab' || name === 'request_browser_origin_access') {
+    if (name === 'browser_navigate' || name === 'browser_drive_navigate' || name === 'browser_new_tab' || name === 'request_browser_origin_access') {
       action.title = origin ? `Open ${hostOf(origin)} in the browser` : 'Open a browser tab';
       action.detail = url;
       action.resources = origin ? [origin] : [];
@@ -738,33 +776,11 @@ function grantMatches(grants, action) {
   return grants.some((g) => (typeof g === 'string' ? g : g?.key) === action.grant.key);
 }
 
-/** Shell text that writes files or changes git — denied under the /plan clamp. */
-const PLAN_CLAMP_SHELL_WRITE = new RegExp(
-  String.raw`(^|[;&|(]\s*)(rm|rmdir|mv|cp|mkdir|touch|ln|chmod|chown|truncate|dd|tee|install|patch|unlink)\b` +
-  String.raw`|(^|[^>&0-9])>{1,2}(?![&>])` +
-  String.raw`|\bsed\s+(-[a-zA-Z]*i|--in-place)` +
-  String.raw`|\bgit\s+(add|commit|checkout|switch|reset|restore|clean|merge|rebase|cherry-pick|stash|push|tag|apply|rm|mv|am|revert|pull)\b` +
-  String.raw`|\b(npm|pnpm|yarn|bun)\s+(install|i|add|remove|uninstall|update|publish)\b`,
-);
-
 function clampDenial(clamp, action) {
-  if (!clamp || !action.mutates) return null;
-  if (clamp === 'plans' && action.kind === 'edit' && action.resources.length &&
-      action.resources.every((p) => /(^|\/)documentation\/plans\/[^]*\.md$/i.test(p))) {
-    return null;
-  }
-  if (clamp === 'plans' && action.tool === 'make_directory' && action.resources.length &&
-      action.resources.every((p) => /(^|\/)documentation\/plans(\/|$)/i.test(p))) {
-    return null;
-  }
+  if (!clamp || (!action.mutates && action.clampedShellRead !== false)) return null;
+  if (clamp === 'plans' && action.planScoped) return null;
   // Plans attach to Issues: filing and updating tracker cards stays allowed.
   if (clamp === 'plans' && /^issue_/.test(action.tool) && action.tool !== 'issue_delete') {
-    return null;
-  }
-  // Planning keeps running tests, builds and scripts (MIN-332), but not
-  // commands that write files, install packages or change git.
-  if (clamp === 'plans' && action.kind === 'shell' && action.risk === 'low' &&
-      !PLAN_CLAMP_SHELL_WRITE.test(action.detail ?? '')) {
     return null;
   }
   return clamp === 'plans'

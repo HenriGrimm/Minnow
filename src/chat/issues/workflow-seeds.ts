@@ -90,12 +90,12 @@ export function buildIssuePlanSeed(issue: IssueCard, planPath?: string): string 
 /** Shared interactive planning contract for one issue or a Dashboard batch. */
 export function buildIssuesPlanSeed(issues: IssueCard[], path: string): string {
   return [
-    'Plan work for these issues. Stay in Plan mode — do not implement.',
+    'Plan work for these issues using /plan. Do not implement.',
     '',
     ...issues.map(buildIssueContextBlock),
     '',
     `Save the executable plan to exactly \`${path}\` (create documentation/plans/issues/ if needed).`,
-    'Follow the regular Plan-mode execution-format choice: ask Build or Orchestrate before exploring or drafting a new plan. Wait for the answer and use the chosen format. For revisions, read the saved plan and preserve its type unless the user requests conversion.',
+    'Follow the /plan execution-format choice: ask Build or Orchestrate before exploring or drafting a new plan. Wait for the answer and use the chosen format. For revisions, read the saved plan and preserve its type unless the user requests conversion.',
     'When the plan is saved, stop and summarize the path.',
   ].join('\n');
 }

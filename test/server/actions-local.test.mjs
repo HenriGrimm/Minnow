@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, fork } from 'node:child_process';
 import { once } from 'node:events';
-const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-actions-test-'));
+const scratch = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-actions-test-')));
 process.env.MINNOW_HOME = path.join(scratch, 'home');
 const { openWorkspace } = await import('../../server/workspace/open-workspaces.js');
 const { commandSave, commandList, actionSecrets } = await import(

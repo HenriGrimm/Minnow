@@ -13,7 +13,6 @@ import { executeInProcessTool } from '../../server/runner/node.js';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
 import { BROWSER_TOOL_IDS } from '../../server/runner/tool-set.js';
 import {
-  BROWSER_BLOCKED_PREFIX,
   browserToolSessionKeys,
   closeAllBrowserToolSessions,
 } from '../../server/tools/browser-driver-tools.js';
@@ -113,9 +112,10 @@ after(async () => {
  * @param {Record<string, unknown>} [args]
  * @returns {Promise<string>}
  */
-async function callTool(name, args = {}) {
+async function callTool(name, args = {}, permissionLevel) {
   const result = await executeInProcessTool(name, args, {
     cwd,
+    permissionLevel,
     allowedToolNames: [...BROWSER_TOOL_IDS],
   });
   return result.content;
@@ -253,10 +253,9 @@ describe('browser tools — live, through the real dispatch', { skip: skipReason
     assert.match(content, /UNTRUSTED_SOURCE_DATA/, 'page text must be fenced as untrusted');
   });
 
-  test('the allowlist blocks a disallowed origin, with no browser exception', async () => {
-    const content = await callTool('browser_drive_navigate', { url: 'https://example.com/' });
-    assert.ok(content.startsWith(BROWSER_BLOCKED_PREFIX), content);
-    assert.match(content, /no interactive approval/);
+  test('Manual navigation cannot change the live page without approval', async () => {
+    const content = await callTool('browser_drive_navigate', { url: `${fixture.origin}/` }, 'manual');
+    assert.match(content, /needs approval/);
     const text = await callTool('browser_drive_read_page', { mode: 'text' });
     assert.match(text, /paragraph 0/, text);
   });

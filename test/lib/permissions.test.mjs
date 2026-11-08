@@ -149,18 +149,34 @@ describe('turn clamps', () => {
   const ws = { workspaceRoots: ['/w'] };
   const decideIn = (clamp, name, args) => decidePermission('full', classifyToolCall(name, args, ws), { clamp }).decision;
 
-  test('/plan writes plan markdown and its folder, files issues, and runs checks', () => {
+  test('/plan writes plan markdown and its folder, files issues, and runs discovery commands', () => {
     assert.equal(decideIn('plans', 'save_file', { path: 'documentation/plans/x.md', content: '' }), 'allow');
     assert.equal(decideIn('plans', 'make_directory', { path: 'documentation/plans/issues' }), 'allow');
     assert.equal(decideIn('plans', 'issue_add', { title: 'x' }), 'allow');
-    assert.equal(decideIn('plans', 'execute_command', { command: 'npm test' }), 'allow');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'git status --short' }), 'allow');
   });
 
   test('/plan refuses code edits, file-writing commands, git writes and issue deletes', () => {
     assert.equal(decideIn('plans', 'save_file', { path: 'src/a.ts', content: '' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'echo x > src/a.ts' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'git commit -m x' }), 'deny');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'npm test' }), 'deny');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'git branch new-branch' }), 'deny');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'echo "$(touch src/a.ts)"' }), 'deny');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'env node write-files.js' }), 'deny');
     assert.equal(decideIn('plans', 'issue_delete', { issue_id: 'x' }), 'deny');
+    assert.equal(decideIn('plans', 'delete_path', { path: 'documentation/plans/x.md' }), 'deny');
+    assert.equal(decideIn('plans', 'move_file', { source: 'documentation/plans/x.md', destination: 'documentation/plans/y.md' }), 'deny');
+    assert.equal(decideIn('plans', 'save_file', { path: 'other/documentation/plans/x.md', content: '' }), 'deny');
+    assert.equal(decideIn('plans', 'save_file', { path: '/outside/documentation/plans/x.md', content: '' }), 'deny');
+    assert.equal(decideIn('plans', 'godot_control', { action: 'run_scene' }), 'deny');
+  });
+
+  test('sending work to another chat is a mutation even when the tool stays local', () => {
+    const action = classifyToolCall('chat_send', { chat_id: 'peer', message: 'Run a check' }, ws);
+    assert.equal(decidePermission('manual', action).decision, 'ask');
+    assert.equal(decidePermission('auto', action).decision, 'allow');
+    assert.equal(decidePermission('full', action, { clamp: 'read-only' }).decision, 'deny');
   });
 
   test('/ask allows reads only', () => {

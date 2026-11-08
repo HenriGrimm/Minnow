@@ -79,6 +79,7 @@ export async function createProductionRuntimeTestEnvironment() {
           'info/general-assistant.full.md': raw('info', 'general-assistant', 'Current project context.'),
           ...Object.fromEntries(agents.map(agent => ['work-agents/' + agent.id + '/agent.full.md', raw('work-agent', agent.id, 'Complete this ' + agent.label + ' task.')])) },
         userRaw: {} }),
+        loadSkill: async id => ({ body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null }),
         resolveModelContextLimit: async () => 32000,
       };
       const modelAdapters = { listProviders: async () => [provider], listModels: async () => [{ id: 'model' }],

@@ -55,13 +55,12 @@ test('production delegation runs two independent durable child requests, coalesc
   const config = { enabled: true, types: { questioner: { enabled: true }, reviewer: { enabled: true } }, defaultContextEnforcementPolicy: 'compact' };
   let f;
   f = await environment.fixture(t, { subAgentTypes: config,
-    toolNames: ['spawn_sub_agent', 'ask_question', 'read_file', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'agent_capabilities'],
+    toolNames: ['spawn_sub_agent', 'ask_question', 'save_file', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop', 'agent_capabilities'],
     chats: { 'workflow-parent': {} }, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     install: async (runtime, adapters) => {
       adapters.modelAdapters.listModels = async () => [{ id: 'model' }, { id: 'question-model' }, { id: 'approval-model' }];
       adapters.modelAdapters.readCapabilities = async () => ({ models: Object.fromEntries(['model', 'question-model', 'approval-model']
         .map(model => [model, { tool_use: true, vision: false }])) });
-      await fs.writeFile(path.join(adapters.workspace, 'evidence.txt'), 'Canonical evidence from the actual file tool.');
       return installFamily(runtime, adapters, config);
     },
     respond: async body => {
@@ -73,8 +72,8 @@ test('production delegation runs two independent durable child requests, coalesc
         return [tool('report_outcome', { outcome: 'pass', summary: 'Question child inspected version two.', evidence: ['User answered version two.'] }, 'question-report')];
       }
       if (body.model === 'approval-model') {
-        if (!tools.length) return [tool('read_file', { path: 'evidence.txt' }, 'child-read')];
-        return [tool('report_outcome', { outcome: 'pass', summary: 'Approval child read canonical evidence.', evidence: ['Read the actual workspace file.'] }, 'approval-report')];
+        if (!tools.length) return [tool('save_file', { path: 'evidence.txt', content: 'Canonical evidence from the actual file tool.' }, 'child-write')];
+        return [tool('report_outcome', { outcome: 'pass', summary: 'Approval child saved canonical evidence.', evidence: ['Saved the actual workspace file.'] }, 'approval-report')];
       }
       if (input.includes('[Sub-agent finished]')) return 'Parent combined both durable child results.';
       if (!tools.length) return [
@@ -86,7 +85,7 @@ test('production delegation runs two independent durable child requests, coalesc
       parentWaiting.resolve(); await parentGate.promise; return 'Both assignments were delegated.';
     },
   });
-  f.settings.tools.permissions.default.read_file = 'ask';
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   const admitted = await f.request('/api/chats/workflow-parent/commands', { action: 'send', text: 'Delegate two independent assignments', clientRequestId: 'parent-start' });
   assert.equal(admitted.status, 202, JSON.stringify(admitted.body));
   await parentWaiting.promise;
@@ -115,7 +114,7 @@ test('production delegation runs two independent durable child requests, coalesc
   assert.equal(wait.requests[0].requestId, requests.q.requestId);
   assert.equal(f.repository.getActivity(question.chatId).agentExecution.status, 'waiting_for_input');
   assert.equal(f.repository.getActivity(approval.chatId).agentExecution.status, 'waiting_for_approval');
-  assert.equal(f.repository.readTranscript(approval.chatId).messages.some(row => row.role === 'tool' && row.tool_call_id === 'child-read'), false);
+  assert.equal(f.repository.readTranscript(approval.chatId).messages.some(row => row.role === 'tool' && row.tool_call_id === 'child-write'), false);
   const queuedRemove = await f.request(`/api/chats/${question.chatId}/commands`, { action: 'send', mode: 'queue',
     text: 'Remove this queued assignment', clientRequestId: 'remove-queued-input' });
   assert.equal(queuedRemove.status, 202);
@@ -137,7 +136,7 @@ test('production delegation runs two independent durable child requests, coalesc
   assert.equal(wrong.status, 404); assert.equal(f.repository.getRequest(requests.a.requestId).state, 'pending');
   const answeredQuestion = await f.request(`/api/chats/${question.chatId}/requests/${requests.q.requestId}/respond`, { clientRequestId: 'answer-question', answer: 'Version two' });
   assert.equal(answeredQuestion.status, 200, JSON.stringify(answeredQuestion.body));
-  const approvalInput = { clientRequestId: 'allow-read', answer: 'allow_once' };
+  const approvalInput = { clientRequestId: 'allow-write', answer: 'allow_once' };
   const answeredApproval = await f.request(`/api/chats/${approval.chatId}/requests/${requests.a.requestId}/respond`, approvalInput);
   assert.equal(answeredApproval.status, 200, JSON.stringify(answeredApproval.body));
   await until(() => assignments.every(row => f.runtime.taskDelivery.tasks.getResult(row.runId)), 'both immutable task results');
@@ -156,8 +155,8 @@ test('production delegation runs two independent durable child requests, coalesc
   assert.ok(assignments.every(row => wake.command.message.includes(row.runId)));
   const replayApproval = await f.request(`/api/chats/${approval.chatId}/requests/${requests.a.requestId}/respond`, approvalInput);
   assert.equal(replayApproval.status, 200);
-  assert.equal(f.repository.readTranscript(approval.chatId).messages.filter(row => row.role === 'tool' && row.tool_call_id === 'child-read').length, 1);
-  assert.match(f.repository.readTranscript(approval.chatId).messages.find(row => row.role === 'tool' && row.tool_call_id === 'child-read').content, /Canonical evidence/);
+  assert.equal(f.repository.readTranscript(approval.chatId).messages.filter(row => row.role === 'tool' && row.tool_call_id === 'child-write').length, 1);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'evidence.txt'), 'utf8'), 'Canonical evidence from the actual file tool.');
   const events = await modules.readEvents('workflow-parent');
   for (const obsolete of [removeRecord, pushRecord]) {
     assert.equal(events.filter(event => event.type === 'attempt.started' && event.runId === obsolete.runId).length, 0);

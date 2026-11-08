@@ -17,7 +17,7 @@ test('shared chat composer bundle imports outside checkout with no modules, TS, 
       `const m=await import(${JSON.stringify(pathToFileURL(result.outfile).href)}); console.log(m.resolveChatModeTools({chat:{modeId:'super-plan',workAgentAuto:false},workAgents:[],toolNames:['read_file','git_commit','execute_command']}).allowedToolNames.join(','))`],
     { cwd: dir, encoding: 'utf8', timeout: 30_000, env: { ...process.env, MINNOW_HOME: dir } });
     assert.equal(imported.status, 0, imported.stderr);
-    assert.equal(imported.stdout.trim(), 'read_file,execute_command');
+    assert.equal(imported.stdout.trim(), 'read_file,git_commit,execute_command');
     assert.equal(imported.stderr, '');
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

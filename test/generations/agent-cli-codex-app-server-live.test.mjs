@@ -26,7 +26,7 @@ test('real installed app-server drives Minnow streams, exactly-once tool rounds 
       processes++;
       const configPath = path.join(session.home, 'config.toml');
       const original = await fs.readFile(configPath, 'utf8');
-      await fs.writeFile(configPath, `model_provider = "fixture"\n${original}\nenable_request_compression = false\n[model_providers.fixture]\nname = "Fixture"\nbase_url = ${JSON.stringify(endpoint.baseUrl)}\nwire_api = "responses"\nrequires_openai_auth = false\n`);
+      await fs.writeFile(configPath, `model_provider = "fixture"\n${original.replace('[features]', '[features]\nenable_request_compression = false')}\n[model_providers.fixture]\nname = "Fixture"\nbase_url = ${JSON.stringify(endpoint.baseUrl)}\nwire_api = "responses"\nrequires_openai_auth = false\n`);
       const env = {};
       for (const key of ['PATH', 'Path', 'SystemRoot', 'TEMP', 'TMP', 'APPDATA', 'LOCALAPPDATA']) if (process.env[key]) env[key] = process.env[key];
       Object.assign(env, { CODEX_HOME: session.home, HOME: session.home, USERPROFILE: session.home });

@@ -14,7 +14,7 @@ test('kickoff frontmatter parses as a model-invocable built-in', () => {
 });
 
 test('delegating remaining decisions ends the interview while preserving required approvals', () => {
-  for (const material of [kickoff, ...['modes/plan.full', 'modes/plan.lite', 'work-agents/planner/agent.full', 'work-agents/planner/agent.lite', 'tool-usage/ask-question-enforcement', 'tool-usage/ask-question-enforcement.lite'].map(name => read('src/chat/prompts/' + name + '.md'))]) {
+  for (const material of [kickoff, read('src/skills/plan/SKILL.md')]) {
     assert.match(material, /delegates (?:the )?remaining (?:choices|decisions)/i);
     assert.match(material, /assumptions/i); assert.match(material, /genuine blocker or required approval/i);
   }

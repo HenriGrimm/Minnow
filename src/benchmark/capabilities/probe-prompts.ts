@@ -166,9 +166,9 @@ const STANDALONE_PROBE_PROMPTS: Record<string, string> = {
 
   'apps-settings-appearance': 'Switch me to the dark theme and raise the font size.',
 
-  'mode-set-chat-mode':
-    'This conversation is turning into a real build job rather than a chat. Switch me to the right mode for that.',
-  'mode-create-chat': 'Open a new Plan chat about the 0.1 release.',
+  'workflow-load-skill':
+    'Load the explain-code skill to explain this code.',
+  'workflow-launch-code': 'Open the Code app.',
   'mode-impeccable':
     'Make this settings page look better — the spacing and hierarchy feel off.',
 

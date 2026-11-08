@@ -40,6 +40,7 @@ import {
   resolvePlanWriteArgs,
 } from '../tools/plan-write-guard.js';
 import { assessHostKillCommand } from '../tools/host-kill-guard.js';
+import { classifyToolCall, decidePermission, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 import { assessHostPortBindCommand } from '../tools/host-port-bind-guard.js';
 import { assessUnixPipeOnWindows } from '../tools/windows-pipe-guard.js';
 import { resolveExecuteShellProfile } from '../terminal/shell-config.js';
@@ -114,7 +115,7 @@ import { loadSearchSettings } from '../research/search.js';
 import { runTavilyMap, runTavilyExtract } from '../tools/tavily-tools.js';
 import { unsupportedSearchOptions } from '../tools/tavily-options.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';
-import { callMcpTool, isMcpToolName } from '../mcp/registry.js';
+import { callMcpTool, getMcpToolHint, isMcpToolName } from '../mcp/registry.js';
 import { callPluginTool, isPluginToolName } from '../tools/loader.js';
 import { inspectPlugins, pluginManage } from '../plugins/authoring.js';
 import {
@@ -1616,7 +1617,7 @@ export function isServerToolAvailable(name) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ modeId?: string, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require', approvedOutsideWorkspace?: boolean }} [options]
+ * @param {{ modeId?: string, turnClamp?: 'read-only'|'plans'|null, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require', approvedOutsideWorkspace?: boolean }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
@@ -1630,7 +1631,17 @@ export async function executeServerTool(name, args, options = {}) {
   return runWithToolContext(async () => {
     return runWithOutputCapPolicy(outputPolicy, async () => {
     try {
-      args = resolvePlanWriteArgs(options.modeId, name, args, getEffectiveWorkspaceRoot());
+      const workspaceRoot = getEffectiveWorkspaceRoot();
+      if (options.turnClamp) {
+        const action = classifyToolCall(name, args, { workspaceRoots: [workspaceRoot], toolHint: getMcpToolHint(name) });
+        const verdict = decidePermission('full', action, { clamp: options.turnClamp });
+        if (verdict.decision === 'deny') return { result: `Error: ${verdict.reason}` };
+        if (action.planScoped && options.turnClamp === 'plans') {
+          args = resolvePlanWriteArgs('plan', name, args, workspaceRoot, { lexicalScopeChecked: true });
+        }
+      } else {
+        args = resolvePlanWriteArgs(options.modeId, name, args, workspaceRoot);
+      }
       if (isPluginToolName(name)) {
         const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
@@ -1827,7 +1838,7 @@ export function createToolsMiddleware() {
         let out;
         try {
           out = await executeServerTool(name, args, {
-            modeId, workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+            modeId, turnClamp: normalizeTurnClamp(body?.turnClamp), workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
             approvedOutsideWorkspace: body?.approvedOutsideWorkspace === true,

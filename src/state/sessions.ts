@@ -73,6 +73,7 @@ import {
 import type { ExpertChatSeed } from '../chat/experts/runtime-profile';
 import {
   normalizeChatRow,
+  normalizePersistedModeId,
   normalizeGroupRow,
 } from './session-schema.mjs';
 import type {
@@ -1060,7 +1061,7 @@ export function migrateSessionV5ToV6(state: SessionState): void {
         chat.expertRuntime = {
           ...(chat.providerId?.trim() ? { providerId: chat.providerId.trim() } : {}),
           modelId: chat.modelId ?? '',
-          modeId: normalizeModeId(chat.modeId),
+          modeId: normalizePersistedModeId(chat.modeId),
           toolAllowlist: null,
           toolDenylist: [],
           enabledToolNames: [],
@@ -1093,7 +1094,7 @@ export function migrateScratchWorkspacePaths(state: SessionState, scratchPath: s
     if (nextWs !== ws) {
       chat.workspacePath = nextWs;
     }
-    chat.modeId = normalizeModeId(chat.modeId);
+    chat.modeId = normalizePersistedModeId(chat.modeId);
   }
 
   for (const group of state.groups ?? []) {

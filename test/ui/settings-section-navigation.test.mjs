@@ -39,11 +39,11 @@ describe('resolveSettingsSectionNavigation', () => {
     });
   });
 
-  // Super Plan is disabled for release, so modes lands on the Plan mode settings.
-  test('maps modes to agent-center Plan mode settings', () => {
+  // Legacy mode links land on the replacement skills.
+  test('maps modes to workflow skills', () => {
     assert.deepEqual(resolveSettingsSectionNavigation('modes'), {
       sectionId: 'agent-center',
-      searchKey: 'modes.plan',
+      searchKey: 'agents.skills',
     });
   });
 

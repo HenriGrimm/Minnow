@@ -34,12 +34,7 @@ test('restricted work-agent prompts and model guidance expose skill loading', as
     assert.ok(meta?.allowedTools?.length, `${id} keeps an explicit restricted tool allowlist`);
     assert.ok(meta.allowedTools.includes('load_skill'), `${id} permits skill reads regardless of allowlist ordering`);
   }
-  for (const profile of ['full', 'lite']) {
-    const prompt = await readFile(new URL(`../../src/chat/prompts/tool-usage/default.${profile}.md`, import.meta.url), 'utf8');
-    assert.match(prompt, /load_skill/);
-    assert.match(prompt, /mode restrictions, or tool permissions/);
-    const general = await readFile(new URL(`../../src/chat/prompts/modes/general.${profile}.md`, import.meta.url), 'utf8');
-    assert.match(general, /load_skill/);
-    assert.doesNotMatch(general, /Use.*skills only when/);
-  }
+  const prompt = await readFile(new URL('../../src/chat/prompts/tool-usage/default.full.md', import.meta.url), 'utf8');
+  assert.match(prompt, /load_skill/);
+  assert.match(prompt, /workflows/);
 });

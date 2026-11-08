@@ -67,7 +67,7 @@ export function initHomeFlow(): void {
       if (!status || status === previous) continue;
       observed.set(chat.id, status);
       if (status === 'running') patchGroup(issue, 'working');
-      else if (previous === 'running') patchGroup(issue, status === 'completed' ? chat.modeId === 'plan' ? 'planned' : 'ready' : status === 'failed' ? 'failed' : 'paused');
+      else if (previous === 'running') patchGroup(issue, status === 'completed' ? issue.agent?.home?.mode === 'plan' ? 'planned' : 'ready' : status === 'failed' ? 'failed' : 'paused');
     }
   });
   subscribeIssuesChanges(() => { queueMicrotask(() => void pumpHomeQueue()); });
@@ -149,9 +149,10 @@ async function runHomeTurn(issue: IssueCard, chat: Chat, text: string, first = f
     await ensureChatHistoryLoaded(chat.id);
     const { sendProgrammaticChatText } = await import('../chat/messaging');
     const snapshot = first ? { id: issue.id, title: issue.title, type: issue.type, description: issue.description, status: issue.status, priority: issue.priority, labels: issue.labels, workspacePath: issue.workspacePath } : undefined;
-    await sendProgrammaticChatText(chat, text, { requireCompletedTurn: true, ownsGlobalStreaming: false, parseSlash: false, issue: snapshot });
+    const requiredSkillId = issue.agent?.home?.mode === 'plan' ? 'plan' : undefined;
+    await sendProgrammaticChatText(chat, text, { requireCompletedTurn: true, ownsGlobalStreaming: false, parseSlash: false, issue: snapshot, requiredSkillId });
     if (findIssueById(issue.id)?.agent?.home?.state === 'paused') return;
-    patchGroup(issue, chat.modeId === 'plan' ? 'planned' : 'ready');
+    patchGroup(issue, findIssueById(issue.id)?.agent?.home?.mode === 'plan' ? 'planned' : 'ready');
   } catch (error) {
     if (findIssueById(issue.id)?.agent?.home?.state !== 'paused') patchGroup(issue, 'failed', error instanceof Error ? error.message : String(error));
   } finally { activeTurns.delete(chat.id); await saveIssuesNow(); }
@@ -170,7 +171,9 @@ export async function replyHomeIssue(issue: IssueCard, text: string, build = fal
     return;
   }
   if (build) {
-    chat.modeId = 'build'; touchChat(chat); scheduleSaveSessions();
+    chat.modeId = 'build';
+    if (chat.pinnedSkill?.id === 'plan') delete chat.pinnedSkill;
+    touchChat(chat); scheduleSaveSessions();
     for (const item of members(issue)) updateIssueAgentRun(item.id, { home: { ...item.agent!.home!, mode: 'build' } });
   }
   patchGroup(issue, 'working');
@@ -212,7 +215,7 @@ export async function addToHomeChat(issues: IssueCard[], chat: Chat): Promise<st
   if (!accepted.length) throw new Error('The selected issues are blocked. They stay selected.');
   await ensureChatHistoryLoaded(chat.id);
   const existing = all.find(i => i.agent?.chatId === chat.id && i.agent.home);
-  const home: HomeIssueRun = existing?.agent?.home ?? { groupId: crypto.randomUUID(), state: 'working', mode: chat.modeId === 'plan' ? 'plan' : 'build', modelId: chat.modelId, providerId: chat.providerId, baseBranch: 'main' };
+  const home: HomeIssueRun = existing?.agent?.home ?? { groupId: crypto.randomUUID(), state: 'working', mode: chat.pinnedSkill?.id === 'plan' || chat.modeId === 'plan' ? 'plan' : 'build', modelId: chat.modelId, providerId: chat.providerId, baseBranch: 'main' };
   for (const issue of accepted) {
     appendIssueLinks(issue.id, { chatId: chat.id });
     updateIssue(issue.id, { status: requireIssueStatusForRole('in_progress'), agent: { agentId: 'builder', phase: 'running', startedAt: Date.now(), updatedAt: Date.now(), chatId: chat.id, branch: chat.gitBranch, worktreePath: chat.worktreeRoot, home: { ...home, state: 'working' } } });

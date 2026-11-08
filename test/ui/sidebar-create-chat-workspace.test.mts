@@ -107,7 +107,8 @@ describe('createChatWithMode workspace option', () => {
     const created = result.chatId ? findChatById(result.chatId) : null;
     assert.ok(created);
     assert.equal(created.workspacePath, WS_A);
-    assert.equal(created.modeId, 'plan');
+    assert.equal(created.modeId, 'build');
+    assert.equal(created.pinnedSkill?.id, 'plan');
   });
 
   test('a follow-up always creates a chat with the source model binding', async () => {

@@ -1,13 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parsePatch, patchText } from '../../src/lib/apply-patch.mjs';
-import { resolveSafePath } from '../runtime/path-access.js';
+import { getEffectiveWorkspaceRoot, resolveSafePath } from '../runtime/path-access.js';
 import { codeChangeFromDiff } from './line-diff-stats.js';
 import { withFileWriteLocks } from '../workspace/file-write-lock.js';
 
 // Refuse symlink traversal even when a lexical path is inside the workspace.
 async function checkPath(target) {
+  const workspace = path.resolve(getEffectiveWorkspaceRoot());
   for (let current = target; ; current = path.dirname(current)) {
+    // The workspace was already resolved and admitted. Ancestor aliases such
+    // as macOS /var do not constitute symlink traversal within that checkout.
+    if (path.relative(workspace, current) === '') break;
     try {
       if ((await fs.lstat(current)).isSymbolicLink()) throw new Error(`Patch path traverses a symbolic link: ${current}`);
     } catch (error) { if (error.code !== 'ENOENT') throw error; }

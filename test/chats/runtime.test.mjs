@@ -29,7 +29,7 @@ before(async () => {
   ]);
   modules = Object.assign({}, ...imports);
   modules.resetMinnowHomeCache(); await modules.ensureMinnowLayout();
-  await modules.writeConfigJson('config.json', { toolSecurity: { filesystemAccess: 'full' } });
+  await modules.writeConfigJson('config.json', { toolSecurity: { permissionLevel: 'full' } });
   const { outfile } = await modules.buildChatPreparation({ outfile: path.join(root, 'composer.mjs'), logLevel: 'error' });
   composer = await import(pathToFileURL(outfile).href);
 });
@@ -78,7 +78,7 @@ async function fixture(t, respond, extraNames = [], runtimeOptions = {}) {
   db.prepare('DELETE FROM chat_conversation_state WHERE chat_id=?').run('legacy');
   const names = ['read_file', 'save_file', 'wait', ...extraNames];
   const settings = { meta: { features: { memoryInjection: false, codeMapInjectionDefault: false, contextDocumentsInjectionDefault: true },
-    toolSecurity: { filesystemAccess: 'full' }, thinking: { defaultMode: 'off', thinkingBudgetTokens: null } },
+    toolSecurity: { permissionLevel: 'full' }, thinking: { defaultMode: 'off', thinkingBudgetTokens: null } },
     tools: { enabled: {}, permissions: { default: Object.fromEntries(names.map(name => [name, 'full'])) } }, rules: { version: 2, enabled: false, groups: [], rules: [] } };
   const preparationAdapters = {
     loadComposer: async () => composer, readSettings: async () => settings,

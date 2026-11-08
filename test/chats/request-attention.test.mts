@@ -101,13 +101,13 @@ test('two child questions keep independent selections and answers across chat sw
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []);
 });
 
-test('approvals show exact arguments safely and only Allow once or Deny for their owning request', async () => {
+test('approvals show exact arguments safely and only Allow or Deny for their owning request', async () => {
   const owner = chat('approval-child'), first = request(owner.id, 'approval-one', 'approval'), second = request(owner.id, 'approval-two', 'approval'); records.set(owner.id, [first, second]);
   owner.agentRequestSummary = [first, second].map(item => ({ requestId: item.requestId, kind: item.kind }));
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
   assert.equal(panel(first.requestId).querySelector('script'), null); assert.match(panel(first.requestId).querySelector('pre')!.textContent!, /<script>text only/);
-  assert.deepEqual([...panel(first.requestId).querySelectorAll('button')].map(node => node.textContent), ['Allow once', 'Deny']);
-  clickText(panel(first.requestId), 'Allow once'); await until(() => records.get(owner.id)![0]!.state === 'answered'); await idle(); assert.equal(panel(second.requestId).querySelector('form')!.hidden, false);
+  assert.deepEqual([...panel(first.requestId).querySelectorAll('button')].map(node => node.textContent), ['Allow', 'Deny']);
+  clickText(panel(first.requestId), 'Allow'); await until(() => records.get(owner.id)![0]!.state === 'answered'); await idle(); assert.equal(panel(second.requestId).querySelector('form')!.hidden, false);
   clickText(panel(second.requestId), 'Deny'); await until(() => records.get(owner.id)![1]!.state === 'answered'); await idle();
   assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.decision]), [[first.requestId, 'allow_once'], [second.requestId, 'deny']]);
 });
@@ -128,7 +128,7 @@ test('lost answer receipt retries the same identity; a subsequent delayed pendin
   const owner = chat('retry-child'), pending = request(owner.id, 'retry-answer', 'approval'); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'approval' }]; records.set(owner.id, [pending]);
   const area = setup([owner]); const normal = globalThis.fetch; let attempts = 0;
   globalThis.fetch = (async (url, options) => { if (String(url).endsWith('/respond') && ++attempts === 1) { await normal(url, options); throw new TypeError('Connection lost after commit'); } return normal(url, options); }) as typeof fetch;
-  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow once'); await until(() => posts.length === 2); await idle();
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow'); await until(() => posts.length === 2); await idle();
   assert.equal(posts.length, 2); assert.equal(posts[0]!.body.clientRequestId, posts[1]!.body.clientRequestId); assert.equal(panel(pending.requestId).querySelector('form')!.hidden, true);
   records.set(owner.id, [pending]); window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-reconnected')); await idle();
   assert.match(panel(pending.requestId).textContent!, /Answer saved/); assert.deepEqual(owner.agentRequestSummary, []);
@@ -245,9 +245,9 @@ test('answer failures retain the selection and a retry reuses its receipt identi
   const owner = chat('failure-child'), pending = request(owner.id, 'failure-request', 'approval'); records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'approval' }];
   const area = setup([owner]), normal = globalThis.fetch; let reject = true; const attempted: string[] = [];
   globalThis.fetch = (async (url, options) => { if (String(url).endsWith('/respond')) { attempted.push(JSON.parse(String(options?.body)).clientRequestId); if (reject) return Response.json({ error: { message: 'Answer could not be saved' } }, { status: 503 }); } return normal(url, options); }) as typeof fetch;
-  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow once');
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow');
   await until(() => attempted.length === 1); await idle(); assert.match(panel(pending.requestId).textContent!, /Answer could not be saved/); assert.equal(panel(pending.requestId).querySelector('form')!.hidden, false);
-  reject = false; clickText(panel(pending.requestId), 'Allow once'); await until(() => posts.length === 1); await idle();
+  reject = false; clickText(panel(pending.requestId), 'Allow'); await until(() => posts.length === 1); await idle();
   assert.equal(attempted[0], attempted[1]); assert.match(panel(pending.requestId).textContent!, /Answer saved/);
 });
 
@@ -388,7 +388,7 @@ test('request hydration and saved answers remain server projections during a lat
   try {
     dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
     saveSessionsNow(); await waitForSessionSaveForTests(); assert.deepEqual(writes, []);
-    captureDirtyTrackingShadowForTests(); clickText(panel(pending.requestId), 'Allow once'); await until(() => posts.length === 1); await idle();
+    captureDirtyTrackingShadowForTests(); clickText(panel(pending.requestId), 'Allow'); await until(() => posts.length === 1); await idle();
     saveSessionsNow(); await waitForSessionSaveForTests();
     assert.deepEqual(writes, []); assert.equal(warnings.some(value => value.includes('without touchChat')), false);
     assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, []); assert.equal(owner.history[0]!.content, 'Preserve canonical history'); assert.equal(owner.composerDraft, 'Preserve draft');

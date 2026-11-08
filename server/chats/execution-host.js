@@ -219,6 +219,12 @@ export function createServerChatExecutionHost({
           if (combinedSignal.aborted) throw combinedSignal.reason ?? new DOMException('Stopped', 'AbortError');
           const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {};
           if (!ctx?.toolCallId) throw new ChatContractError('invalid_request', 'Durable tools require a tool call identity');
+          const detached = args.background === true || name === 'start_background_command' ||
+            name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
+            name === 'action_run' && args.location === 'local';
+          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
+            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
+          }
           const allowed = await checkTool(name, args, ctx.toolCallId);
           const dispatchContext = { ...ctx, approvalGranted: allowed.permission === 'ask' };
           // No intent exists until an adapter can own this exact call. A
@@ -230,12 +236,6 @@ export function createServerChatExecutionHost({
           }
           const effect = allowed.policy.toolEffects[name] ?? 'unknown';
           if (effect === 'read') return dispatchTool(name, args, dispatchContext);
-          const detached = args.background === true || name === 'start_background_command' ||
-            name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
-            name === 'action_run' && args.location === 'local';
-          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
-            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
-          }
           const invoke = async () => {
           // Waiting for a checkout baseline must never preserve a stale grant.
           await checkTool(name, args, ctx.toolCallId);

@@ -50,6 +50,30 @@ function askQuestionArgsValid(args: Record<string, unknown>): boolean {
 
 /** One probe per built-in skill id in `builtin-manifest.json`. */
 export const SKILL_PROBES: Record<string, SkillProbe> = {
+  ask: {
+    skillId: 'ask',
+    prompt: 'Why can a stale Git branch cause a merge conflict? Explain without making changes.',
+    passKind: 'regex',
+    pattern: /\b(branch|commit)\b[\s\S]*\b(changes|diverg|same lines|conflict)/i,
+  },
+  plan: {
+    skillId: 'plan',
+    prompt: 'Plan a new retry setting for the editor. Ask me how I want to build it before drafting.',
+    passKind: 'tool', expectedTools: ['ask_question'], toolIds: ['ask_question'],
+    expectToolArgs: (_, args) => askQuestionArgsValid(args) && /orchestrate/i.test(JSON.stringify(args.questions)),
+  },
+  debug: {
+    skillId: 'debug',
+    prompt: 'The app exits when an empty settings file is loaded. Outline how you would reproduce the crash and isolate its cause.',
+    passKind: 'regex',
+    pattern: /\b(reproduc\w*|recreat\w*)\b[\s\S]*\b(parse\w*|stack|log|error|exception)\b/i,
+  },
+  onboarding: {
+    skillId: 'onboarding',
+    prompt: 'I am new to Minnow and want to understand this repository before changing it. Where should I start?',
+    passKind: 'regex',
+    pattern: /\bCode\b[\s\S]*\/ask|\/ask[\s\S]*\bCode\b/i,
+  },
   'build-plugin': {
     skillId: 'build-plugin',
     prompt: 'Before building a Minnow plugin, load the current authoring contract. Call plugin_inspect with docs=true. Use the tool only.',

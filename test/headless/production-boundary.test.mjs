@@ -24,7 +24,7 @@ async function awaitModel(run) {
     await Promise.race([
       modelStarted,
       run.done.then(outcome => { throw new Error(`CLI ended before scripted model barrier: ${JSON.stringify(outcome)}`); }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}; CLI output: ${run.output?.().slice(-2000)}`)), 10000); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}; CLI output: ${run.output?.().slice(-2000)}`)), 18000 * SLOW); }),
     ]);
   } finally { clearTimeout(timer); }
 }

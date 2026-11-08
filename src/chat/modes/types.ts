@@ -39,6 +39,13 @@ export function normalizeModeId(value: string | null | undefined): ModeId {
   return DEFAULT_MODE_ID;
 }
 
+/** Workflow identities accepted by older programmatic chat launchers. */
+export function workflowSkillForMode(value: string | null | undefined): 'plan' | 'debug' | 'onboarding' | undefined {
+  if (value === 'plan' || value === 'super-plan') return 'plan';
+  if (value === 'debug' || value === 'onboarding') return value;
+  return undefined;
+}
+
 export type ToolPolicyAction = 'allow' | 'deny' | 'ask';
 
 /** Wildcard keys match tool function names from definitions.ts (same as tool id). */

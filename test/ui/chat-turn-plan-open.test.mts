@@ -11,7 +11,7 @@ mock.module('../../src/ui/file-viewer.ts', { namedExports: { openFileInViewer: a
 test('Open plan in an issue conversation opens its details preview; ordinary Code cards retain the viewer', async () => {
   const win = new Window();
   installHappyDomGlobals(win, { fetch: (async () => new Response('---\nplanType: build\n---\n# Build')) as typeof fetch });
-  const chat = seedMinimalSession('planner'); chat.modeId = 'plan';
+  const chat = seedMinimalSession('planner');
   const path = 'documentation/plans/clicked-plan.md';
   chat.history = [
     { role: 'assistant', content: null, tool_calls: [{ id: 'save', type: 'function', function: { name: 'save_file', arguments: JSON.stringify({ path }) } }] },

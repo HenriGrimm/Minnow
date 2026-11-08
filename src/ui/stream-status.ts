@@ -191,6 +191,9 @@ export interface ToolStartIndicatorHandle {
   dispose(): void;
 }
 
+/** Structural change: token and clock updates do not emit this event. */
+export const TOOL_START_INDICATOR_CHANGED = 'minnow:tool-start-indicator-changed';
+
 /** Keep token detail on the tool-start row while stream-status is hidden. */
 function syncToolStartDetail(wrap: HTMLElement, text: string): void {
   const detail = wrap.querySelector<HTMLElement>('.tool-start-indicator__detail');
@@ -205,6 +208,10 @@ export function attachToolStartIndicator(row: ToolStartIndicatorRow): ToolStartI
   let indicatorEl: HTMLDivElement | null = null;
   let labelEl: HTMLSpanElement | null = null;
   let disposed = false;
+  const notifyStructure = () => {
+    const view = row.wrap.ownerDocument.defaultView;
+    if (view) row.wrap.dispatchEvent(new view.Event(TOOL_START_INDICATOR_CHANGED, { bubbles: true }));
+  };
 
   const show = (toolName: string): void => {
     if (disposed || !toolName.trim()) return;
@@ -213,6 +220,7 @@ export function attachToolStartIndicator(row: ToolStartIndicatorRow): ToolStartI
     const statusEl = row.wrap.querySelector('.stream-status');
     statusEl?.classList.add('hidden');
 
+    const created = !indicatorEl;
     if (!indicatorEl) {
       indicatorEl = document.createElement('div');
       indicatorEl.className = 'tool-start-indicator';
@@ -242,13 +250,16 @@ export function attachToolStartIndicator(row: ToolStartIndicatorRow): ToolStartI
     }
     const current = row.wrap.querySelector('.stream-status__detail')?.textContent ?? '';
     syncToolStartDetail(row.wrap, current);
+    if (created) notifyStructure();
   };
 
   const dispose = (): void => {
     disposed = true;
+    const hadIndicator = Boolean(indicatorEl);
     indicatorEl?.remove();
     indicatorEl = null;
     labelEl = null;
+    if (hadIndicator) notifyStructure();
   };
 
   return { show, dispose };

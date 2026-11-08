@@ -15,6 +15,8 @@ export interface ClassifiedAction {
   risk: ActionRisk;
   reasons: string[];
   resources: string[];
+  planScoped?: boolean;
+  clampedShellRead?: boolean;
   floor: boolean;
   title: string;
   detail: string;

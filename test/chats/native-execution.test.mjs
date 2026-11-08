@@ -19,7 +19,7 @@ const derive = (patch = {}) => deriveChatNativePolicy({ capturedPolicy: policy()
   workspaceId: 'workspace', workspace: path.resolve('fixture'), platform: 'win32', cliVersion: '0.166.0', modelId: 'gpt-5.5', ...patch });
 
 async function fixture(t, options = {}) {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-host-'));
+  const cwd = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-host-')));
   const db = new Database(':memory:'); initSessionsSchema(db);
   const repository = createChatRepository({ db });
   repository.createChat({ id: 'chat', name: 'native host fixture', workspacePath: cwd });
@@ -340,7 +340,7 @@ test('a native successful file write observed under Plan is uncertainty, not a c
 });
 
 test('read-only approval checks cannot follow a junction out of the admitted checkout', async t => {
-  const f = await fixture(t), outside = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-outside-'));
+  const f = await fixture(t), outside = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-outside-')));
   t.after(() => fs.rm(outside, { recursive: true, force: true, maxRetries: 5 }));
   await fs.symlink(outside, path.join(f.cwd, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(f.authority.runTurn(f.meta(), async () => {

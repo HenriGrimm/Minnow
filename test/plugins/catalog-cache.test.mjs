@@ -21,6 +21,7 @@ before(async () => {
   home = path.join(temp, 'home');
   process.env.MINNOW_HOME = home;
   resetMinnowHomeCache();
+  await Promise.all(['tools', 'plugins'].map(dir => fs.mkdir(path.join(home, dir), { recursive: true })));
   await writeConfigJson('tools.json', { enabled: {}, permissions: { default: {} }, plugins: {} });
 });
 after(async () => {

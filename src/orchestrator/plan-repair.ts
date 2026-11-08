@@ -96,7 +96,7 @@ function resolveRepairKey(planPath: string): string {
 async function sendRepairTurn(chat: Chat, text: string): Promise<void> {
   const { sendProgrammaticChatText } = await import('../chat/messaging');
   await sendProgrammaticChatText(chat, text, {
-    parseSlash: false,
+    requiredSkillId: 'plan',
     ownsGlobalStreaming: false,
     requireCompletedTurn: true,
     reportStatus: () => {},

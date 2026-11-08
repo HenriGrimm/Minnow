@@ -2,7 +2,7 @@
  * Apply concierge / router launch options when foregrounding the Code app.
  */
 
-import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
+import { DEFAULT_MODE_ID, workflowSkillForMode } from '../chat/modes/types';
 import { sendMessageWithTools, sendProgrammaticChatText } from '../chat/messaging';
 import { formatCodeRefLabel } from '../attachments/code-ref-format';
 import type { Attachment } from '../attachments/types';
@@ -148,7 +148,7 @@ export async function applyCodeLaunchOptions(
     return {};
   }
 
-  const modeId = normalizeModeId(options.modeId ?? DEFAULT_MODE_ID);
+  const modeId = options.modeId ?? DEFAULT_MODE_ID;
   const created = await createChatWithMode({ modeId });
   if (!created.ok || !seed) return {};
   if (created.chatId) onChatCreated?.(created.chatId);
@@ -230,13 +230,16 @@ export async function applyCodeLaunchOptions(
           issue: options.issue,
           validAttachments: issueAttachments,
           parseSlash: false,
+          requiredSkillId: workflowSkillForMode(modeId),
         });
       }
     } else {
       await sendMessageWithTools();
     }
     clearForegroundSeed();
-  } catch {} finally {
+  } catch (error) {
+    return { chatId: created.chatId, error: error instanceof Error ? error.message : String(error) };
+  } finally {
     syncComposerFromStreamingState();
   }
 

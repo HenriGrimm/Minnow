@@ -138,6 +138,8 @@ export interface SendProgrammaticChatTextOptions {
   validAttachments?: Attachment[];
   composerSurface?: Partial<ComposerSurface>;
   parseSlash?: boolean;
+  /** The calling workflow depends on this skill and must not run without it. */
+  requiredSkillId?: string;
   /** Reject a handoff if its turn could not run to completion. */
   requireCompletedTurn?: boolean;
   /** Pre-adjusted slash input (orchestrate plan injection); defaults to `text`. */
@@ -157,7 +159,8 @@ export interface SendProgrammaticChatTextOptions {
 
 /** The renderer selects identities; only the server resolves their instruction bodies. */
 function managedSendContext(chat: Chat, text: string, options: SendProgrammaticChatTextOptions) {
-  const slash = options.parseSlash === false ? { skillId: null, userText: (options.slashInput ?? text).trim() }
+  const slash = options.requiredSkillId || options.parseSlash === false
+    ? { skillId: options.requiredSkillId ?? null, userText: (options.slashInput ?? text).trim() }
     : parseSlashCommand(options.slashInput ?? text);
   if (slash.skillId && !isSkillEnabled(slash.skillId)) throw new Error(`Skill "${slash.skillId}" is disabled in Settings`);
   const turn = resolveTurnSkill({ slashSkillId: slash.skillId, userText: slash.userText, pinned: chat.pinnedSkill, isSkillEnabled });
@@ -184,6 +187,9 @@ export async function sendProgrammaticChatText(
 ): Promise<void> {
   const readOnly = chatReadOnlyReason(chat);
   if (readOnly) throw new Error(readOnly);
+  if (options.requiredSkillId && !isSkillEnabled(options.requiredSkillId)) {
+    throw new Error(`Skill "${options.requiredSkillId}" is disabled in Settings`);
+  }
   const draftBeforeAdmission = chat.composerDraft;
   const composerInput = options.clearComposerOnSend !== false && sessionState?.activeId === chat.id
     ? resolveComposerSurface(options.composerSurface).inputEl : null;
@@ -242,9 +248,9 @@ export async function sendProgrammaticChatText(
   const validAttachments = options.validAttachments ?? [];
   const parseSlash = options.parseSlash !== false;
 
-  const { skillId: slashSkillId, userText: slashUserText } = parseSlash
+  const { skillId: slashSkillId, userText: slashUserText } = parseSlash && !options.requiredSkillId
     ? parseSlashCommand(slashInput)
-    : { skillId: null, userText: slashInput.trim() };
+    : { skillId: options.requiredSkillId ?? null, userText: slashInput.trim() };
 
   const turnSkill = resolveTurnSkill({
     slashSkillId,
@@ -295,7 +301,7 @@ export async function sendProgrammaticChatText(
     const skill = await resolveActiveSkill(skillId);
     if (!skill?.body?.trim()) {
       report('err', `Unknown skill: ${skillId}`);
-      if (options.requireCompletedTurn) throw new Error(`Unknown skill: ${skillId}`);
+      if (options.requireCompletedTurn || options.requiredSkillId) throw new Error(`Unknown skill: ${skillId}`);
       return;
     }
     skillBody = skill.body;

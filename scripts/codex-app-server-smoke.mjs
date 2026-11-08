@@ -29,6 +29,9 @@ export async function runCodexAppServerSmoke({ compactThreshold } = {}) {
         'default_mode_request_user_input', 'sleep_tool', 'view_image', 'workspace_dependencies',
         'plugins', 'plugin_sharing', 'tool_suggest', 'skill_search', 'goals', 'enable_request_compression']
         .map(name => `${name} = false`),
+      'skip_host_skill_discovery = true',
+      '[skills.bundled]', 'enabled = false',
+      '[orchestrator.skills]', 'enabled = false',
     ].join('\n');
     await fs.writeFile(path.join(root, 'config.toml'), config, { mode: 0o600 });
     const env = {};

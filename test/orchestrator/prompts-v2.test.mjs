@@ -34,10 +34,10 @@ describe('efficient build and verification guidance', () => {
     it(`${profile} builders batch edits and per-task testers leave the full ladder to integration`, () => {
       const builder = read(path.join(PROMPTS_DIR, 'builder', `agent.${profile}.md`));
       const tester = read(path.join(PROMPTS_DIR, 'tester', `agent.${profile}.md`));
-      const chat = read(path.join(PROJECT_ROOT, 'src/chat/prompts/tool-usage', `default.${profile}.md`));
+      const chat = read(path.join(PROJECT_ROOT, 'src/chat/prompts/tool-usage', 'default.full.md'));
       for (const body of [builder, chat]) {
         assert.match(body, /apply_patch/);
-        assert.match(body, /[Bb]atch independent/);
+        assert.match(body, /[Bb]atch independent|Independent calls go in one message/);
       }
       assert.match(tester, /final integration/i);
       assert.doesNotMatch(builder, /After editing each file/);

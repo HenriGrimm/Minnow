@@ -4,7 +4,8 @@
  */
 
 import { AUTO_TITLE_MAX_LEN, PLACEHOLDER_CHAT_NAME } from '../constants';
-import { DEFAULT_MODE_ID, normalizeModeId } from '../chat/modes/types';
+import { DEFAULT_MODE_ID } from '../chat/modes/types';
+import { normalizePersistedModeId } from './session-schema.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { Chat, SessionState } from '../types';
 
@@ -408,7 +409,7 @@ export function coerceChatWorkspaceFields(raw: unknown): Chat {
         ? normalizeWorkspacePath(row.workspacePath)
         : '',
     modelId: typeof row.modelId === 'string' ? row.modelId : '',
-    modeId: normalizeModeId(row.modeId),
+    modeId: normalizePersistedModeId(row.modeId),
     history: [],
     lastStats: null,
     modelInfo: {},

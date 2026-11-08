@@ -148,11 +148,12 @@ export async function executeInProcessTool(name, args = {}, options) {
     return { content: `Error: ${message}` };
   }
 
+  const turnClamp = options.turnClamp ?? (normalizeModeId(modeId) === 'plan' ? 'plans' : null);
   const { level, action, verdict } = await checkAgentToolPermission(toolName, toolArgs, {
     workspaceRoot,
     permissionLevel: options.permissionLevel,
     chatId: options.activityChatId ?? options.runtimeOwner?.chatId,
-    clamp: options.turnClamp ?? (normalizeModeId(modeId) === 'plan' ? 'plans' : null),
+    clamp: turnClamp,
   });
   if (verdict.decision === 'deny') return { content: `Error: ${verdict.reason}` };
   if (verdict.decision === 'ask' && options.interactiveApproval !== true) {
@@ -171,6 +172,7 @@ export async function executeInProcessTool(name, args = {}, options) {
 
   const out = await executeServerTool(toolName, guardedArgs, {
     modeId,
+    turnClamp,
     agentActivity: true,
     workspaceRoot,
     runtimeOwner: options.runtimeOwner,

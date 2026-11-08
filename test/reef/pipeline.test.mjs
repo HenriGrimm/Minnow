@@ -96,7 +96,10 @@ test('calculator, CSV converter and image resizer build, verify and survive rest
             const unpacked = directories.find(name => /^mac(?:-|$)/.test(name));
             executable = path.join(output, unpacked, 'Calculator.app', 'Contents', 'MacOS', 'Calculator');
           }
-          await command(executable, ['--reef-smoke-test'], { timeout: 120000, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
+          // The unpacked Linux fixture has no root-owned setuid helper. This
+          // smoke launch loads only the fixture's own bundled page.
+          const args = process.platform === 'linux' ? ['--no-sandbox', '--reef-smoke-test'] : ['--reef-smoke-test'];
+          await command(executable, args, { timeout: 120000, env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined } });
         }
       }
     }

@@ -208,10 +208,12 @@ export function blockPlanModeWrite(modeId, toolName, args) {
 }
 
 /** Resolve against the actual workspace immediately before dispatching a Plan tool. */
-export function resolvePlanWriteArgs(modeId, toolName, args, workspaceRoot) {
+export function resolvePlanWriteArgs(modeId, toolName, args, workspaceRoot, { lexicalScopeChecked = false } = {}) {
   if (!isPlanFamilyMode(modeId)) return args;
-  const blocked = blockPlanModeWrite(modeId, toolName, args);
-  if (blocked) throw new Error(blocked.replace(/^Error: /, ''));
+  if (!lexicalScopeChecked) {
+    const blocked = blockPlanModeWrite(modeId, toolName, args);
+    if (blocked) throw new Error(blocked.replace(/^Error: /, ''));
+  }
   if (!PLAN_SCOPED_WRITE_TOOLS.has(toolName)) return args;
   const planRoot = path.join(realpathForBoundaryCheck(workspaceRoot), PLANS_ROOT);
   const target = realpathForBoundaryCheck(path.resolve(workspaceRoot, args.path));

@@ -50,22 +50,21 @@ test('actual native chat_send uses one production command path and persists agen
   assert.equal(f.calls.some(body => body.messages.some(row => row.provenance || row.commandId || row.messageId)), false);
 });
 
-test('actual Plan execution cannot send into broader Build authority or another project through native coordination', { timeout: 20000 }, async t => {
-  const f = await environment.fixture(t, { install, chats: { coordinator: { modeId: 'plan' }, peer: { modeId: 'build' }, foreign: { foreign: true } },
+test('/plan cannot start work in another chat through native coordination', { timeout: 20000 }, async t => {
+  const f = await environment.fixture(t, { install, chats: { coordinator: {}, peer: {}, foreign: { foreign: true } },
     respond: body => body.messages.some(row => row.role === 'tool') ? 'Dispatch was refused.' : [
       tool('chat_send', { chat_id: 'peer', message: 'Attempt broader work' }, 'broader-call'),
       tool('chat_send', { chat_id: 'foreign', message: 'Attempt cross-project work' }, 'foreign-call'),
     ] });
-  const accepted = await f.request('/api/chats/coordinator/commands', { action: 'send', text: 'Try restricted coordination', clientRequestId: 'plan' });
+  const accepted = await f.request('/api/chats/coordinator/commands', { action: 'send', text: 'Try restricted coordination', clientRequestId: 'plan',
+    intent: { version: 1, skill: { id: 'plan', source: 'slash' } } });
   assert.equal(accepted.status, 202); await f.runtime.service.idle();
   assert.equal(f.repository.readTranscript('peer').messages.length, 0);
   assert.equal(f.repository.readTranscript('foreign').messages.length, 0);
   assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
   const result = f.repository.getCommand(accepted.body.receipt.commandId);
-  const canonical = f.repository.readTranscript('coordinator').messages;
-  assert.ok(canonical.some(row => row.role === 'tool' && /policy|scope|broader|project|registered|permission|not allowed|outside/i.test(row.content)), JSON.stringify(result.result));
-  assert.equal(result.state, 'settled');
-  assert.ok(f.calls.every(body => String(body.messages[0].content).includes('REAL COORDINATION COMPOSER plan')));
+  assert.match(result.result.error, /planning only/);
+  assert.equal(result.state, 'failed');
 });
 
 test('legacy agent HTTP bridge derives exact live owner authority, deduplicates peer input and rejects devices or forged fields', { timeout: 20000 }, async t => {
@@ -121,9 +120,9 @@ test('production bounded chat reads find unmanaged peers without hydrating canon
   f.turns.release('legacy', 'legacy-reader');
 });
 
-test('raw renderer Ask is server-owned, answer-bound and retry-safe without taking its unflushed history', { timeout: 20000 }, async t => {
+test('raw renderer Manual approval is server-owned, answer-bound and retry-safe without taking its unflushed history', { timeout: 20000 }, async t => {
   const f = await environment.fixture(t, { install, agentMiddleware: agentTransport.createAgentChatToolsMiddleware, respond: () => 'Approved peer result.' });
-  f.settings.tools.permissions.default.chat_send = 'ask';
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   assert.equal(f.turns.claim('legacy', 'legacy-ask-owner', 'desktop'), true);
   const body = { sourceChatId: 'legacy', ownerId: 'legacy-ask-owner', toolCallId: 'ask-call', name: 'chat_send',
     args: { chat_id: 'peer', message: 'Approved peer input', client_request_id: 'ask-input' } };
@@ -147,21 +146,22 @@ test('raw renderer Ask is server-owned, answer-bound and retry-safe without taki
   f.turns.release('legacy', 'legacy-ask-owner');
 });
 
-test('raw approval rechecks Off and exact owner revocation before any peer effect', { timeout: 20000 }, async t => {
-  const f = await environment.fixture(t, { install, agentMiddleware: agentTransport.createAgentChatToolsMiddleware, respond: () => 'Must not run.' });
-  f.settings.tools.permissions.default.chat_send = 'ask';
+test('raw approval rechecks tool availability and exact owner revocation before any peer effect', { timeout: 20000 }, async t => {
+  const toolNames = ['chat_send', 'chat_read'];
+  const f = await environment.fixture(t, { install, toolNames, agentMiddleware: agentTransport.createAgentChatToolsMiddleware, respond: () => 'Must not run.' });
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   assert.equal(f.turns.claim('legacy', 'revocable-owner', 'desktop'), true);
   const body = { sourceChatId: 'legacy', ownerId: 'revocable-owner', toolCallId: 'off-call', name: 'chat_send',
     args: { chat_id: 'peer', message: 'Do not execute after revocation' } };
   const attempt = f.request('/api/chats/agent-commands', body);
   const request = await pendingRequest(f, 'legacy');
-  f.settings.tools.permissions.default.chat_send = 'off';
+  toolNames.shift();
   const answered = await f.request('/api/chats/legacy/requests/' + request.requestId + '/respond',
     { answer: { decision: 'allow_once' }, clientRequestId: 'off-answer' });
   assert.equal(answered.status, 200);
   assert.equal((await attempt).status, 403);
   assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
-  f.settings.tools.permissions.default.chat_send = 'ask';
+  toolNames.unshift('chat_send');
   const next = f.request('/api/chats/agent-commands', { ...body, toolCallId: 'released-call' });
   const releaseRequest = await pendingRequest(f, 'legacy');
   f.turns.release('legacy', 'revocable-owner');
@@ -170,14 +170,14 @@ test('raw approval rechecks Off and exact owner revocation before any peer effec
   assert.equal(f.calls.length, 0);
 });
 
-test('managed native Ask uses the same durable approval without a duplicate permission prompt', { timeout: 20000 }, async t => {
+test('managed native Manual approval uses the same durable approval without a duplicate permission prompt', { timeout: 20000 }, async t => {
   const f = await environment.fixture(t, { install, respond: body => {
     if (lastUser(body) === 'Native Ask coordination' && !body.messages.some(row => row.role === 'tool')) {
       return [tool('chat_send', { chat_id: 'peer', message: 'Native approved input' }, 'native-ask-call')];
     }
     return 'Completed after approval.';
   } });
-  f.settings.tools.permissions.default.chat_send = 'ask';
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   const accepted = await f.request('/api/chats/coordinator/commands',
     { action: 'send', text: 'Native Ask coordination', clientRequestId: 'native-ask' });
   assert.equal(accepted.status, 202);
@@ -196,7 +196,7 @@ test('raw approval deadline expires its live callback and a late answer cannot e
   const f = await environment.fixture(t, { install,
     agentMiddleware: options => agentTransport.createAgentChatToolsMiddleware({ ...options, approvalTimeoutMs: 10 }),
     respond: () => 'Must not run.' });
-  f.settings.tools.permissions.default.chat_send = 'ask';
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   assert.equal(f.turns.claim('legacy', 'timeout-owner', 'desktop'), true);
   const response = await f.request('/api/chats/agent-commands', { sourceChatId: 'legacy', ownerId: 'timeout-owner',
     toolCallId: 'timeout-call', name: 'chat_send', args: { chat_id: 'peer', message: 'Expired operation' } });
@@ -219,7 +219,7 @@ test('a human Stop expires a pending raw approval before the actual bound render
       return { stopRequested: true };
     } }, respond: () => 'Must not run.' });
   current = f;
-  f.settings.tools.permissions.default.chat_send = 'ask';
+  f.settings.meta.toolSecurity.permissionLevel = 'manual';
   assert.equal(f.turns.claim('legacy', 'stopped-owner', 'desktop'), true);
   const pending = f.request('/api/chats/agent-commands', { sourceChatId: 'legacy', ownerId: 'stopped-owner',
     toolCallId: 'stop-call', name: 'chat_send', args: { chat_id: 'peer', message: 'Stopped operation' } });

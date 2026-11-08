@@ -31,7 +31,7 @@ import {
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
   WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
 } from '../../server/runner/turn-continuation.js';
-import { withSubAgentReportTool } from '../../server/sub-agents/reporting.js';
+import { withSubAgentReportTool } from '../../server/chats/sub-agent-report-tool.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUN_TURN_JS = path.join(PROJECT_ROOT, 'server', 'runner', 'run-turn.js');
