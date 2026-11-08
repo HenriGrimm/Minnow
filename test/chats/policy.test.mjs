@@ -130,10 +130,12 @@ describe('Plan and restricted file effects', () => {
     assert.equal(createChatPolicy({ modeId: 'desktop' }).modeId, 'general');
   });
 
-  it('allows shell, reads and scoped markdown writes while denying application/git writes', () => {
+  it('allows reads and scoped markdown writes while denying shell, file and git mutations', () => {
     const plan = policy({ modeId: 'plan' });
     const options = { currentPolicy: plan };
-    for (const name of ['read_file', 'execute_command']) assert.equal(assertChatToolAllowed(plan, name, {}, options).permission, 'full');
+    assert.equal(assertChatToolAllowed(plan, 'read_file', { path: 'README.md' }, options).permission, 'full');
+    assert.equal(assertChatToolAllowed(plan, 'execute_command', { command: 'git status' }, options).permission, 'full');
+    assert.throws(() => assertChatToolAllowed(plan, 'execute_command', { command: 'node write.js' }, options), reason('tool_denied'));
     assert.equal(assertChatToolAllowed(plan, 'save_file', { path: 'documentation/plans/task.md' }, options).permission, 'full');
     for (const path of ['src/app.ts', 'documentation/plans/task.js', '../documentation/plans/task.md']) {
       assert.throws(() => assertChatToolAllowed(plan, 'save_file', { path }, options), reason('plan_write_denied'));
