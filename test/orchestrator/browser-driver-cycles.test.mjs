@@ -112,10 +112,14 @@ describe('browser driver — launch/teardown cycles', { skip: skipReason }, () =
 
     assert.deepEqual(trackedBrowserPids(), [], 'the driver should track no live browsers');
 
-    const stillReferencing = countProcessesReferencing(
-      path.join(homeDir, 'browser-profiles'),
-      path.basename(capability.available ? capability.executablePath : 'chrome.exe'),
-    );
+    const profileRoot = path.join(homeDir, 'browser-profiles');
+    const imageName = path.basename(capability.available ? capability.executablePath : 'chrome.exe');
+    let stillReferencing = countProcessesReferencing(profileRoot, imageName);
+    const deadline = Date.now() + 10_000;
+    while (stillReferencing > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      stillReferencing = countProcessesReferencing(profileRoot, imageName) ?? stillReferencing;
+    }
     if (stillReferencing !== null) {
       assert.equal(
         stillReferencing,

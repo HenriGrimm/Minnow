@@ -351,17 +351,23 @@ export class ScenarioRunManager {
 
   /** @param {string} id */
   async readManifest(id) {
+    const wasActive = this.active.has(id);
+    const manifestPath = path.join(runDir(id), 'manifest.json');
     let manifest;
     try {
-      manifest = JSON.parse(await fs.readFile(path.join(runDir(id), 'manifest.json'), 'utf8'));
+      manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
     } catch (err) {
       if (/** @type {NodeJS.ErrnoException} */ (err).code === 'ENOENT') return null;
       throw err;
     }
     if (
       (manifest.status === 'running' || manifest.status === 'stopping') &&
-      !this.active.has(id)
+      !this.active.has(id) &&
+      !this.starting.has(id)
     ) {
+      // A poll can open the previous file before the terminal rename and finish
+      // reading it after the live runner has removed itself.
+      if (wasActive) return this.readManifest(id);
       const result = {
         iteration: manifest.summary?.completed ?? 0,
         seed: null,
@@ -377,7 +383,7 @@ export class ScenarioRunManager {
       manifest.finishedAt = result.finishedAt;
       manifest.summary.completed += 1;
       manifest.summary.failed += 1;
-      await writeJsonAtomic(path.join(runDir(id), 'manifest.json'), manifest);
+      await writeJsonAtomic(manifestPath, manifest);
     }
     return manifest;
   }

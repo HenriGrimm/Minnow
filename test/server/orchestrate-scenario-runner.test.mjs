@@ -167,6 +167,7 @@ describe('orchestrate scenario runner', () => {
   });
 
   test('cooperatively stops an active driver and bounds iteration timeout', async () => {
+    const driverStarted = Promise.withResolvers();
     let observedAbort = false;
     const manager = new ScenarioRunManager({
       driver: ({ signal }) =>
@@ -179,6 +180,7 @@ describe('orchestrate scenario runner', () => {
             },
             { once: true },
           );
+          driverStarted.resolve();
         }),
     });
     const prepared = await manager.prepare({
@@ -186,6 +188,7 @@ describe('orchestrate scenario runner', () => {
       timeoutMs: 1_000,
     });
     await manager.start(prepared.id);
+    await driverStarted.promise;
     await manager.stop(prepared.id);
     const stopped = await waitForTerminal(manager, prepared.id);
     assert.equal(observedAbort, true);
@@ -204,6 +207,31 @@ describe('orchestrate scenario runner', () => {
     const terminal = await waitForTerminal(timeoutManager, timed.id);
     assert.equal(terminal.classification, 'timeout');
     assert.ok(Date.now() - started < 1_000);
+  });
+
+  test('a status read across completion preserves the terminal manifest', async (t) => {
+    const driver = Promise.withResolvers();
+    const manager = new ScenarioRunManager({ driver: () => driver.promise });
+    const run = await manager.prepare({ scenario: legacyScenario('status-race') });
+    await manager.start(run.id);
+    const execution = manager.active.get(run.id).promise;
+    const manifestPath = path.join(homeDir, 'logs', 'orchestrate-scenarios', run.id, 'manifest.json');
+    const readFile = fs.readFile;
+    let capturedRunningManifest = false;
+    t.mock.method(fs, 'readFile', async (file, ...args) => {
+      const contents = await readFile(file, ...args);
+      if (file === manifestPath && !capturedRunningManifest) {
+        capturedRunningManifest = true;
+        assert.equal(JSON.parse(contents).status, 'running');
+        driver.resolve({ classification: 'pass' });
+        await execution;
+      }
+      return contents;
+    });
+
+    assert.equal((await manager.status(run.id)).classification, 'pass');
+    const results = await manager.results(run.id);
+    assert.deepEqual(results.iterations.map((row) => row.classification), ['pass']);
   });
 
   test('external API accepts only the next deterministic result and supports replay', async () => {

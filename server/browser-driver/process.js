@@ -235,24 +235,33 @@ export async function killBrowserProcess(child, opts = {}) {
   // A browser parent can exit before its helpers finish writing to the profile.
   // close waits for inherited stdio to be released by those owned descendants.
   const closed = new Promise((resolve) => child.once('close', () => resolve(true)));
+  let treeKill = Promise.resolve();
 
   if (process.platform === 'win32') {
-    try {
-      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
-        windowsHide: true,
-        stdio: 'ignore',
-      });
-      killer.on('error', () => {
-        try {
-          child.kill('SIGKILL');
-        } catch {
-        }
-      });
-    } catch {
+    const killParent = () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
       try {
         child.kill('SIGKILL');
       } catch {
       }
+    };
+    try {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+        signal: AbortSignal.timeout(waitMs),
+      });
+      killer.on('error', killParent);
+      // Some helpers do not inherit the parent's pipes. Wait for taskkill to
+      // finish walking the tree even if the browser has already closed.
+      treeKill = new Promise((resolve) => {
+        killer.once('close', (code) => {
+          if (code !== 0) killParent();
+          resolve();
+        });
+      });
+    } catch {
+      killParent();
     }
   } else {
     const grace = opts.graceMs ?? 2_000;
@@ -278,7 +287,10 @@ export async function killBrowserProcess(child, opts = {}) {
     }
   }
 
-  const confirmed = await Promise.race([closed, delay(waitMs).then(() => false)]);
+  const confirmed = await Promise.race([
+    Promise.all([closed, treeKill]).then(() => true),
+    delay(waitMs).then(() => false),
+  ]);
   for (const entry of liveBrowsers) if (entry.pid === pid) liveBrowsers.delete(entry);
   return { killed: Boolean(confirmed), alreadyDead: false };
 }
