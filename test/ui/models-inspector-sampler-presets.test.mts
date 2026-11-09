@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { Window } from 'happy-dom';
 import type { LibraryModel } from '../../src/models/library.ts';
 import {
@@ -61,9 +62,12 @@ function change(field: HTMLInputElement): void {
   field.dispatchEvent(new window.Event('change', { bubbles: true }));
 }
 
-async function finishSaves(): Promise<void> {
-  // Flush the ordered save chain and response/cache writes.
-  await new Promise((resolve) => setTimeout(resolve, 50));
+async function waitForSavedTemperature(libraryId: string, expected: number): Promise<void> {
+  const deadline = performance.now() + 5_000;
+  while (getLibrarySamplerForId(libraryId)?.temperature !== expected && performance.now() < deadline) {
+    await delay(10);
+  }
+  assert.equal(getLibrarySamplerForId(libraryId)?.temperature, expected, 'the save should update the sampler cache');
 }
 
 test('apply fills fields, saves once, and later edits survive reopen and the send path', async () => {
@@ -90,10 +94,9 @@ test('apply fills fields, saves once, and later edits survive reopen and the sen
   assert.equal(input('Temperature').value, '0.6', 'an inspector rebuild keeps the pending preset');
   input('Temperature').value = '0.85';
   change(input('Temperature'));
-  await finishSaves();
+  await waitForSavedTemperature(model.id, 0.85);
   assert.equal(saves.length, 2, 'apply and edit each save a snapshot');
   assert.equal(saves[0].sampler?.temperature, 0.6);
-  assert.equal(getLibrarySamplerForId(model.id)?.temperature, 0.85);
   assert.equal(getLibrarySamplerForId(model.id)?.minP, 0);
   assert.deepEqual(getLibrarySamplerForId(model.id)?.stop, ['END']);
 
@@ -126,7 +129,6 @@ test('unknown models remain editable and another model never receives the preset
   assert.match(document.body.textContent ?? '', /No recommended preset/);
   input('Temperature').value = '0.35';
   change(input('Temperature'));
-  await finishSaves();
-  assert.equal(getLibrarySamplerForId(other.id)?.temperature, 0.35);
+  await waitForSavedTemperature(other.id, 0.35);
   assert.equal(getLibrarySamplerForId(model.id), null);
 });
