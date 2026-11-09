@@ -66,7 +66,7 @@ after(() => {
 /** A clock the test drives. Nothing here waits on real time. */
 function fakeClock() {
   let now = 1_700_000_000_000;
-  /** @type {Map<number, { at: number, fn: () => void }>} */
+  /** @type {Map<number, { at: number, fn: () => void | Promise<void> }>} */
   const timers = new Map();
   let nextHandle = 0;
   return {
@@ -84,7 +84,7 @@ function fakeClock() {
       const due = [...timers.entries()].filter(([, t]) => t.at <= now);
       for (const [handle, timer] of due) {
         timers.delete(handle);
-        timer.fn();
+        await timer.fn();
       }
       await settle();
     },
@@ -322,7 +322,7 @@ describe('writeEndOfRunReport — stateless', () => {
 // ── one report per run ───────────────────────────────────────────────────────
 
 describe('engine — one report per run', () => {
-  it('a fully successful run produces exactly one report event and one artifact', async () => {
+  it('a fully successful run produces exactly one report event and one artifact', async (t) => {
     const boardId = 'success-report';
     await createBoard(boardId);
     await appendEvent(
@@ -349,15 +349,18 @@ describe('engine — one report per run', () => {
         return `# Report\n\nShipped ${/** @type {unknown[]} */ (input.shipped).length} task(s).`;
       },
     });
+    t.after(() => engine.dispose());
     await engine.load();
     await engine.startBoard(1);
-    for (let i = 0; i < 80; i += 1) {
+    // The fake clock drives scheduling, but report and journal writes use real disk I/O.
+    const deadline = performance.now() + 40_000;
+    while (performance.now() < deadline) {
       await settle();
       if (engine.getState().finished && journalHasReport(await engine.getEvents())) break;
       await engine.tick();
       if (clock.pending > 0) await clock.advance(10_000);
     }
-    assert.equal(engine.getState().finished, true);
+    assert.equal(engine.getState().finished, true, 'the run should finish after its report is saved');
     const events = await engine.getEvents();
     const reports = events.filter((e) => e.type === REPORT_EVENT_TYPE);
     assert.equal(reports.length, 1);
@@ -370,7 +373,6 @@ describe('engine — one report per run', () => {
     await engine.tick();
     assert.equal((await engine.getEvents()).filter((e) => e.type === REPORT_EVENT_TYPE).length, 1);
     assert.equal(calls.length, 1);
-    engine.dispose();
   });
 
   it('a user-stopped run describes partial progress, not an error', async () => {
