@@ -7,11 +7,12 @@ import { execFile, fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 import { functionCallChunks, proseSseChunks } from '../../scripts/fake-model-server.mjs';
+import { buildHeadlessRunner } from '../../scripts/build-headless-runner.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-// Each CLI turn cold-compiles the headless graph through tsx; Windows CI runners need far longer.
+// Windows CI needs more time for child process and filesystem startup.
 const SLOW = process.platform === 'win32' ? 3 : 1;
-let home, workspace, foreign, model, host, base, token;
+let home, workspace, foreign, model, host, base, token, cliBundle;
 const children = new Set();
 let modelStarted;
 let notifyModelStarted;
@@ -62,7 +63,7 @@ async function until(predicate) {
   assert.fail('production boundary condition did not settle');
 }
 function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', reef = false } = {}) {
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--json', '--profile', 'lite', '--stdin',
+  const child = spawn(process.execPath, [cliBundle, 'run', '--json', '--profile', 'lite', '--stdin',
     '--workspace', runWorkspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', modelId,
     '--persist-chat', '--chat-id', chatId, ...(reef ? ['--agent', 'builder', '--mode', 'build'] : [])], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1', ...(reef ? { MINNOW_REEF_PHASE: 'build' } : {}) }, windowsHide: true,
@@ -86,6 +87,9 @@ function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture',
 
 before(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-production-boundary-'));
+  // Exercise the installed CLI and compile it once per suite, instead of
+  // cold-compiling the whole graph in each child before it reaches the host.
+  ({ outfile: cliBundle } = await buildHeadlessRunner({ outfile: path.join(home, 'minnow-run.mjs'), logLevel: 'error' }));
   workspace = path.join(home, 'project');
   foreign = path.join(home, 'other-project');
   await fs.mkdir(workspace);
@@ -242,7 +246,7 @@ async function spawnChild(parentChatId, runId) {
 test('actual CLI streams partial agent text before completion and keeps the JSON artifact separate', { timeout: 30000 * SLOW }, async () => {
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
   const outputFile = path.join(home, 'stream-result.json');
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream', '--quiet', '--json-out', outputFile,
+  const child = spawn(process.execPath, [cliBundle, 'run', '--stream', '--quiet', '--json-out', outputFile,
     '--profile', 'lite', '--prompt', '[hold-generation]', '--workspace', workspace,
     '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
@@ -269,7 +273,7 @@ test('actual CLI streams partial agent text before completion and keeps the JSON
 
 test('actual Reef Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
   const outputFile = path.join(home, 'reef-json-stream-result.json');
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream-json', '--quiet', '--json-out', outputFile,
+  const child = spawn(process.execPath, [cliBundle, 'run', '--stream-json', '--quiet', '--json-out', outputFile,
     '--agent', 'builder', '--mode', 'build', '--profile', 'lite', '--prompt', '[recover-tool-error] Read README.md and confirm.',
     '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
     '--persist-chat', '--chat-id', 'boundary-reef-json'], {
