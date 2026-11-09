@@ -6,7 +6,7 @@ import { createChatPresentation } from './presentation.js';
 import { createChatRequestService } from './requests.js';
 import { createServerChatExecutionHost } from './execution-host.js';
 import { createChatHostCapabilities } from './host-capabilities.js';
-import { prepareChatExecution, resolveChatPolicyInput, captureChatProfile } from './preparation.js';
+import { prepareChatExecution, resolveChatPolicyInput, captureChatProfile, captureChatTurnIntent } from './preparation.js';
 import { createChatTaskDelivery } from './task-delivery.js';
 import { createChatCausality } from './causality.js';
 import { createChatQuestionRecovery } from './question-recovery.js';
@@ -161,6 +161,8 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
       return stopExternalOwner(input);
     },
     isExternalExecutionActive,
+    captureTurnIntent: (intent, chat, message) =>
+      captureChatTurnIntent(intent, chat, message, { adapters: preparationAdapters }),
     captureProfile: async ({ target, selection }) => ({
       profileId: 'profile-' + digest(target.chat.id), profileVersion: 1,
       snapshot: await captureChatProfile(target.chat, target.scope, { adapters: preparationAdapters,

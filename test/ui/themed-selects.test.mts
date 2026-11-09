@@ -21,7 +21,7 @@ function setup(html: string): Document {
   return win.document as unknown as Document;
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+const settle = () => win.happyDOM.waitUntilComplete();
 
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
@@ -105,6 +105,7 @@ test('changing a select into a listbox removes only the generated button', async
   const doc = setup('<select><option>A</option></select>');
   disposers.push(installThemedSelects());
   const select = doc.querySelector('select')!;
+  assert.equal(select.querySelectorAll('button').length, 1);
   select.multiple = true;
   await settle();
   assert.equal(select.querySelectorAll('button').length, 0);

@@ -58,7 +58,9 @@ test('/plan cannot start work in another chat through native coordination', { ti
     ] });
   const accepted = await f.request('/api/chats/coordinator/commands', { action: 'send', text: 'Try restricted coordination', clientRequestId: 'plan',
     intent: { version: 1, skill: { id: 'plan', source: 'slash' } } });
-  assert.equal(accepted.status, 202); await f.runtime.service.idle();
+  assert.equal(accepted.status, 202, JSON.stringify(accepted.body));
+  assert.deepEqual(f.loadedSkills, ['plan']);
+  await f.runtime.service.idle();
   assert.equal(f.repository.readTranscript('peer').messages.length, 0);
   assert.equal(f.repository.readTranscript('foreign').messages.length, 0);
   assert.equal(f.repository.listCommands({ chatId: 'peer' }).length, 0);
