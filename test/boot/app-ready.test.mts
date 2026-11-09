@@ -302,15 +302,25 @@ describe('dual-gate chrome ready', () => {
     assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
   });
 
-  it('uses the stylesheet deadline when chrome is ready but CSS never signals', async () => {
+  it('uses the stylesheet deadline when chrome is ready but CSS never signals', async (t) => {
     win = new Window();
     installWindow(win);
     win.document.body.innerHTML = '<div id="app-loader"></div>';
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.method(win, 'setTimeout', (callback: () => void, ms: number) => setTimeout(callback, ms));
+    t.mock.method(win, 'clearTimeout', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
 
     scheduleMarkAppReady({ styleTimeoutMs: 20, chromeTimeoutMs: 100 });
     markChromeReady();
 
-    await new Promise<void>((resolve) => win.setTimeout(resolve, 60));
+    t.mock.timers.tick(19);
+    assert.equal(win.document.documentElement.classList.contains('app-ready'), false);
+    // The deadline opens the style gate, then reveal waits for two 8 ms frames.
+    t.mock.timers.tick(1);
+    t.mock.timers.tick(8);
+    t.mock.timers.tick(8);
+    await Promise.resolve();
+    assert.equal(isAppShellStyled(), false);
     assert.equal(win.document.documentElement.classList.contains('app-ready'), true);
   });
 });
