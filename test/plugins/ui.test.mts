@@ -6,7 +6,7 @@ const win = new Window();
 Object.assign(globalThis, {
   window: win, document: win.document, HTMLElement: win.HTMLElement,
   MutationObserver: win.MutationObserver, localStorage: win.localStorage,
-  requestAnimationFrame: (fn: FrameRequestCallback) => win.setTimeout(() => fn(0), 0),
+  requestAnimationFrame: (fn: FrameRequestCallback) => { queueMicrotask(() => fn(0)); return 0; },
 });
 const originalFetch = globalThis.fetch;
 const toolCalls: unknown[][] = [];
@@ -27,7 +27,11 @@ const { listRailApps } = await import('../../src/os/app-preferences.ts');
 const { launchInstance, getForegroundAppId } = await import('../../src/os/instances.ts');
 const { getSlashCommandCatalog, dispatchPluginSlashCommand, isPluginSlashCommand } = await import('../../src/chat/slash-commands/registry.ts');
 after(async () => { globalThis.fetch = originalFetch; mock.restoreAll(); await win.happyDOM.abort(); });
-const settle = () => win.happyDOM.waitUntilComplete();
+// Flush the observer and its queued frame in the same event-loop turn.
+async function settle() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 const dom = () => { document.body.innerHTML = '<div id="osAppsLayer"></div><div id="metric"><span id="tps" data-plugin-slot="chat.throughput">20</span></div>'; };
 
 test('trusted UI adds DOM, apps, menus and commands, then revokes them with cleanup', async () => {

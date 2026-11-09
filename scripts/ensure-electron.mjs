@@ -36,6 +36,10 @@ function log(message) {
 function installerEnv(attempt) {
   if (attempt === 1 || process.env.npm_config_platform || process.env.npm_config_arch) return process.env;
   if (Object.keys(process.env).some(key => /electron_/i.test(key))) return process.env;
+  if (attempt === 3) {
+    // The mirror only supplies bytes. The installer still checks the package's bundled hashes.
+    return { ...process.env, ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/' };
+  }
   // Let Electron detect Rosetta itself when a macOS x64 Node may be translated.
   if (process.platform === 'darwin' && process.arch === 'x64') return process.env;
   const { version } = JSON.parse(fs.readFileSync(path.join(path.dirname(ELECTRON_INSTALL_JS), 'package.json'), 'utf8'));
