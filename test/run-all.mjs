@@ -5,6 +5,7 @@
  * Usage:
  *   node test/run-all.mjs              # full suite
  *   node test/run-all.mjs --suite memory
+ *   node test/run-all.mjs --shard 1/3
  *   node test/run-all.mjs --list       # print discovered files
  */
 
@@ -22,6 +23,7 @@ import {
 function parseArgs(argv) {
   let suite = null;
   let listOnly = false;
+  let shard = null;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -32,6 +34,15 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg.startsWith('--suite=')) {
       suite = arg.slice('--suite='.length);
+    } else if (arg === '--shard' || arg.startsWith('--shard=')) {
+      const value = arg === '--shard' ? argv[++i] : arg.slice('--shard='.length);
+      const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(value ?? '');
+      const index = Number(match?.[1]);
+      const count = Number(match?.[2]);
+      if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count) || index > count) {
+        throw new Error('--shard must be an index/count pair, such as 1/3');
+      }
+      shard = { index, count };
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -42,11 +53,12 @@ function parseArgs(argv) {
     }
   }
 
-  return { suite, listOnly };
+  if (suite && shard) throw new Error('--shard is only supported for the full suite');
+  return { suite, listOnly, shard };
 }
 
 function printHelp() {
-  console.log(`Usage: node test/run-all.mjs [--suite <name>] [--list]
+  console.log(`Usage: node test/run-all.mjs [--suite <name> | --shard <index>/<count>] [--list]
 
 Runs all discoverable test/**/*.test.{js,mjs,mts,ts} files, grouped by runner profile.
 Orphan detection: npm run test:check-coverage`);
@@ -148,8 +160,15 @@ function runShellCommand(command) {
 }
 
 function main() {
-  const { suite, listOnly } = parseArgs(process.argv.slice(2));
-  const files = listTestsForSuite(suite);
+  const { suite, listOnly, shard } = parseArgs(process.argv.slice(2));
+  let files = listTestsForSuite(suite);
+  if (shard && shard.count > 1) {
+    // Deal each runner's sorted files across shards so every machine gets a
+    // mix of fast tests and integrations. Continue the index between runners.
+    let position = 0;
+    files = [...groupByRunner(files).values()]
+      .flatMap(group => group.filter(() => position++ % shard.count === shard.index - 1));
+  }
 
   if (listOnly) {
     for (const file of files) {
@@ -159,8 +178,9 @@ function main() {
   }
 
   if (files.length === 0) {
-    console.error(suite ? `No tests matched suite "${suite}".` : 'No tests discovered.');
-    process.exit(1);
+    const reason = shard ? 'No tests matched the requested shard'
+      : suite ? `No tests matched suite "${suite}".` : 'No tests discovered.';
+    throw new Error(reason);
   }
 
   const groups = groupByRunner(files);
@@ -188,4 +208,9 @@ function main() {
   process.exit(exitCode);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}
