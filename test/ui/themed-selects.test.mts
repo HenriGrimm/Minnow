@@ -21,7 +21,9 @@ function setup(html: string): Document {
   return win.document as unknown as Document;
 }
 
-const settle = () => win.happyDOM.waitUntilComplete();
+// Mutation observers deliver in the microtask queue. Stay in the same event-loop turn
+// so Happy DOM's weakly held listener cannot be collected between mutations.
+const settle = () => Promise.resolve();
 
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();

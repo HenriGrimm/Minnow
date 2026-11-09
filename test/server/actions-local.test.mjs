@@ -72,7 +72,7 @@ test('stream redaction handles secrets crossing chunk boundaries', () => {
   delete process.env.GH_TOKEN;
   delete process.env.ACTION_TEST_SECRET;
 });
-test('local run captures logs, masks selected secrets, holds checkout lock and releases it', async () => {
+test('local run captures logs, masks selected secrets, holds checkout lock and releases it', async (t) => {
   await fs.writeFile(
     path.join(root, 'run.cjs'),
     'process.stdout.write(process.env.TEST_VALUE); setTimeout(() => process.stdout.write(" done"), 200);',
@@ -87,7 +87,20 @@ test('local run captures logs, masks selected secrets, holds checkout lock and r
       secrets: { TEST_VALUE: 'TEST_SECRET' },
     },
   });
+  const rename = fs.rename;
+  let runPath;
+  let statusDuringFinalSave;
+  t.mock.method(fs, 'rename', async (source, destination) => {
+    await rename(source, destination);
+    if (destination !== runPath) return;
+    const saved = JSON.parse(await fs.readFile(destination, 'utf8'));
+    if (saved.status !== 'success') return;
+    const { run } = await localRunView({ cwd: root, id: saved.id });
+    const { runs } = await localRunList({ cwd: root });
+    statusDuringFinalSave = [run.status, runs.find((item) => item.id === saved.id)?.status];
+  });
   const { run } = await localRunStart({ cwd: root, kind: 'command', commandId: 'run' });
+  runPath = path.join(process.env.MINNOW_HOME, 'runs', 'actions', `${run.id}.json`);
   assert.throws(() => assertActionWorktreeIdle(root), /local action/);
   let result;
   for (let i = 0; i < 100; i++) {
@@ -97,6 +110,7 @@ test('local run captures logs, masks selected secrets, holds checkout lock and r
   }
   assert.equal(result.run.status, 'success', result.run.error);
   assert.equal(result.log, '[REDACTED] done');
+  assert.deepEqual(statusDuringFinalSave, ['running', 'running']);
   assert.doesNotThrow(() => assertActionWorktreeIdle(root));
   const other = path.join(scratch, 'other');
   await fs.mkdir(other);

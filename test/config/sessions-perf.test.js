@@ -20,6 +20,7 @@ const MESSAGES_PER_CHAT = 200;
 const LOOKUP_SAMPLES = 200;
 const P50_LOOKUP_MS = 5;
 const WHOLE_BLOB_MS = 500;
+const WHOLE_BLOB_SAMPLES = 5;
 
 /** Median of a numeric sample (sorted copy). */
 function median(samples) {
@@ -129,17 +130,21 @@ describe('sessions SQLite narrow-query perf (A.3)', () => {
     );
   });
 
-  test('whole-blob GET stays under 500ms', () => {
-    // Warm once, then time a full reconstruct (eleven .all() queries + stitch).
+  test('whole-blob GET p50 stays under 500ms', () => {
+    // Warm once, then sample full reconstructions so a single scheduling pause does not decide the result.
     readWholeSessionState();
-    const t0 = performance.now();
-    const state = readWholeSessionState();
-    const elapsed = performance.now() - t0;
-    assert.equal(state.chats.length, CHAT_COUNT);
-    assert.equal(state.chats[0].history.length, MESSAGES_PER_CHAT);
+    const samples = [];
+    for (let i = 0; i < WHOLE_BLOB_SAMPLES; i += 1) {
+      const t0 = performance.now();
+      const state = readWholeSessionState();
+      samples.push(performance.now() - t0);
+      assert.equal(state.chats.length, CHAT_COUNT);
+      assert.equal(state.chats[0].history.length, MESSAGES_PER_CHAT);
+    }
+    const p50 = median(samples);
     assert.ok(
-      elapsed < WHOLE_BLOB_MS,
-      `readWholeSessionState took ${elapsed.toFixed(1)}ms (limit ${WHOLE_BLOB_MS}ms)`,
+      p50 < WHOLE_BLOB_MS,
+      `readWholeSessionState p50=${p50.toFixed(1)}ms (limit ${WHOLE_BLOB_MS}ms, samples: ${samples.map(ms => ms.toFixed(1)).join(', ')})`,
     );
   });
 });

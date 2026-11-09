@@ -312,19 +312,20 @@ export async function localRunStart(args) {
             await cleanupContainers(id, root).catch((error) => {
               record.cleanupError = error.message;
             });
-          record.status = entry.stopping
-            ? 'cancelled'
-            : code === 0 && !record.error
-              ? 'success'
-              : 'failure';
-          record.exitCode = code;
-          record.finishedAt = new Date().toISOString();
-          await writeJson(runFile(id), record).catch((error) => {
-            record.error = `Could not save final run status: ${error.message}`;
+          const finished = {
+            ...record,
+            status: entry.stopping ? 'cancelled' : code === 0 && !record.error ? 'success' : 'failure',
+            exitCode: code,
+            finishedAt: new Date().toISOString(),
+          };
+          // Pollers must still see a running action while the checkout is locked for this write.
+          await writeJson(runFile(id), finished).catch((error) => {
+            finished.error = `Could not save final run status: ${error.message}`;
           });
+          Object.assign(record, finished);
         } finally {
-          active.delete(id);
           releaseActionWorktree(root, id);
+          active.delete(id);
           if (scratch) await fs.rm(scratch, { recursive: true, force: true }).catch(() => {});
           resolve();
         }
@@ -353,7 +354,8 @@ export async function localRunList(args = {}) {
   const runs = [];
   for (const name of await fs.readdir(runDir()).catch(() => [])) {
     if (!/^local-[a-f0-9-]{36}\.json$/.test(name)) continue;
-    const record = await fs
+    const id = path.basename(name, '.json');
+    const record = active.get(id)?.record ?? await fs
       .readFile(path.join(runDir(), name), 'utf8')
       .then(JSON.parse)
       .catch(() => null);
