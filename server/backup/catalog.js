@@ -43,11 +43,6 @@ export const CREDENTIALS_CATEGORY = 'credentials';
 /** @type {BackupCategory[]} */
 export const BACKUP_CATEGORIES = [
   {
-    id: 'reef', label: 'Reef apps', description: 'Utility source, local Git history, metadata and app data.',
-    defaultOn: true, requiresPassphrase: true,
-    roots: [{ path: 'reef', omit: ['cache'], skipDirNames: ['node_modules', 'worktrees', 'exports', 'test-data', 'release-test-data'] }],
-  },
-  {
     id: 'settings',
     label: 'Settings and preferences',
     description:
@@ -223,6 +218,8 @@ export const NEVER_BACKED_UP = [
   'voice',
   'benchmark-workspace',
   'session-token',
+  // Legacy app data stays on disk for standalone Reef's importer.
+  'reef',
   // The built-in Tailscale node's identity is bound to this machine; restoring
   // it elsewhere would put two computers on one tailnet name.
   'tailnet',

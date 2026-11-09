@@ -61,11 +61,11 @@ async function until(predicate) {
   }
   assert.fail('production boundary condition did not settle');
 }
-function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', reef = false } = {}) {
+function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', builder = false } = {}) {
   const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--json', '--profile', 'lite', '--stdin',
     '--workspace', runWorkspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', modelId,
-    '--persist-chat', '--chat-id', chatId, ...(reef ? ['--agent', 'builder', '--mode', 'build'] : [])], {
-    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1', ...(reef ? { MINNOW_REEF_PHASE: 'build' } : {}) }, windowsHide: true,
+    '--persist-chat', '--chat-id', chatId, ...(builder ? ['--agent', 'builder', '--mode', 'build'] : [])], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
   });
   children.add(child);
   let stdout = '', stderr = '';
@@ -267,13 +267,13 @@ test('actual CLI streams partial agent text before completion and keeps the JSON
   } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
 });
 
-test('actual Reef Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
-  const outputFile = path.join(home, 'reef-json-stream-result.json');
+test('actual Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
+  const outputFile = path.join(home, 'builder-json-stream-result.json');
   const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream-json', '--quiet', '--json-out', outputFile,
     '--agent', 'builder', '--mode', 'build', '--profile', 'lite', '--prompt', '[recover-tool-error] Read README.md and confirm.',
     '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
-    '--persist-chat', '--chat-id', 'boundary-reef-json'], {
-    cwd: root, env: { ...process.env, MINNOW_HOME: home, MINNOW_REEF_PHASE: 'build', BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
+    '--persist-chat', '--chat-id', 'boundary-builder-json'], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
   });
   children.add(child);
   let stdout = '', stderr = '';
@@ -290,16 +290,16 @@ test('actual Reef Builder CLI recovers a failed tool, streams both results and p
     assert.ok(call); assert.ok(resultEvent); assert.match(resultEvent.content, /boundary read persisted/);
     assert.ok(events.some(event => event.type === 'delta' && event.text.includes('Read confirmed.')));
     const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
-    assert.equal(result.workAgentId, 'builder'); assert.equal(result.chatId, 'boundary-reef-json');
+    assert.equal(result.workAgentId, 'builder'); assert.equal(result.chatId, 'boundary-builder-json');
     assert.equal(result.ok, true); assert.ok(!stdout.includes('"assistantFinal"'));
     assert.equal(result.turns.length, 3);
     const generations = await states();
     for (const turn of result.turns) {
-      assert.equal(generations.find(row => row.id === turn.generationId)?.chatId, 'boundary-reef-json',
-        'every tool round must retain the Reef chat binding for native CLI reuse');
+      assert.equal(generations.find(row => row.id === turn.generationId)?.chatId, 'boundary-builder-json',
+        'every tool round must retain the Builder chat binding for native CLI reuse');
     }
     const sessions = await (await api('/api/config/sessions')).json();
-    const chat = sessions.chats.find(row => row.id === 'boundary-reef-json');
+    const chat = sessions.chats.find(row => row.id === 'boundary-builder-json');
     assert.equal(chat.workAgentId, 'builder'); assert.ok(chat.history.some(row => row.role === 'tool'));
   } finally { children.delete(child); await killOwnedChild(child); }
 });
@@ -332,6 +332,14 @@ test('normal runtime rejects missing/bad tokens and keeps tools inside the reque
   assert.doesNotMatch(JSON.stringify(body), /foreign data/);
 });
 
+test('retired Reef API routes use the unknown API fallback', async () => {
+  const options = { headers: { Accept: 'application/json' } };
+  const retired = await api('/api/reef/apps', options);
+  const unknown = await api('/api/unknown-app/apps', options);
+  assert.equal(retired.status, unknown.status);
+  assert.equal(retired.headers.get('content-type'), unknown.headers.get('content-type'));
+});
+
 test('model-window HTTP lookup uses the shared host resolver and validates its inputs', async () => {
   const route = '/api/providers/boundary-fixture/context-window';
   assert.equal((await api(route)).status, 400);
@@ -343,13 +351,13 @@ test('model-window HTTP lookup uses the shared host resolver and validates its i
   }
 });
 
-test('actual Reef Builder uses the full model window and leaves an automatic context cap at zero', { timeout: 30000 * SLOW }, async () => {
+test('actual Builder CLI uses the full model window and leaves an automatic context cap at zero', { timeout: 30000 * SLOW }, async () => {
   const config = await (await api('/api/config/sub-agents')).json();
   const updated = { ...config, defaultContextCompaction: { highWater: 0.8, lowWater: 0.5, minRecentTurns: 3, workingContextTokens: 0 } };
   assert.equal((await api('/api/config/sub-agents', { method: 'PUT', body: JSON.stringify(updated) })).status, 200);
   try {
     const prompt = `[full-context]\n${'Implement the detailed app specification.\n'.repeat(4500)}full-context-end`;
-    const run = await launch(prompt, 'boundary-reef-full-context', workspace, { modelId: 'fixture-large', reef: true }).done;
+    const run = await launch(prompt, 'boundary-builder-full-context', workspace, { modelId: 'fixture-large', builder: true }).done;
     assert.equal(run.code, 0, run.stderr);
     assert.equal(run.result.ok, true, run.result.error);
     assert.equal(run.result.workAgentId, 'builder');
@@ -362,18 +370,18 @@ test('actual Reef Builder uses the full model window and leaves an automatic con
   }
 });
 
-test('actual CLI registers a fresh Reef worktree before scoped requests and releases it afterward', { timeout: 30000 * SLOW }, async () => {
-  const worktree = path.join(home, 'reef', 'apps', crypto.randomUUID(), 'worktrees', crypto.randomUUID());
+test('actual CLI registers a fresh worktree before scoped requests and releases it afterward', { timeout: 30000 * SLOW }, async () => {
+  const worktree = path.join(home, 'fixture-repos', 'worktrees', crypto.randomUUID());
   await fs.mkdir(worktree, { recursive: true });
-  await fs.writeFile(path.join(worktree, 'README.md'), 'fresh Reef workspace');
+  await fs.writeFile(path.join(worktree, 'README.md'), 'fresh worktree workspace');
   const scope = { headers: { 'X-Minnow-Workspace': worktree } };
   assert.equal((await api('/api/tools/ping', scope)).status, 400);
-  const run = await launch('Read README.md and confirm.', 'boundary-reef-fresh', worktree).done;
+  const run = await launch('Read README.md and confirm.', 'boundary-worktree', worktree).done;
   assert.equal(run.code, 0, run.stderr);
   assert.equal(run.result.ok, true);
   const sessions = await (await api('/api/config/sessions')).json();
-  const chat = sessions.chats.find(row => row.id === 'boundary-reef-fresh');
-  assert.ok(chat?.history.some(row => row.role === 'tool' && row.content.includes('fresh Reef workspace')));
+  const chat = sessions.chats.find(row => row.id === 'boundary-worktree');
+  assert.ok(chat?.history.some(row => row.role === 'tool' && row.content.includes('fresh worktree workspace')));
   assert.equal((await api('/api/tools/ping', scope)).status, 400);
 });
 

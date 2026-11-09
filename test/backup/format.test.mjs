@@ -17,7 +17,7 @@ import {
   writeArchive,
 } from '../../server/backup/format.js';
 import { stageRestore } from '../../server/backup/restore.js';
-import { readPendingRestore } from '../../server/backup/restore-apply.js';
+import { applyPendingRestore, readPendingRestore } from '../../server/backup/restore-apply.js';
 import { FAST_KDF, PASSPHRASE, cleanupTempDirs, homeHas, makeTempDir, readAllEntries } from './helpers.mjs';
 
 after(cleanupTempDirs);
@@ -52,6 +52,34 @@ async function writeSample(files, passphrase, name = 'sample.mnbak') {
   await writeArchive({ outPath: out, header: HEADER, passphrase, entries: entriesOf(files), kdf: FAST_KDF });
   return out;
 }
+
+test('a legacy encrypted backup restores supported categories without replacing Reef data', async () => {
+  const home = await makeTempDir('legacy-reef-restore');
+  const archivePath = path.join(await makeTempDir('format'), 'legacy-reef.mnbak');
+  const reefPath = 'reef/apps/fixture/app.json';
+  await fs.mkdir(path.dirname(path.join(home, reefPath)), { recursive: true });
+  await fs.writeFile(path.join(home, reefPath), 'existing app');
+  await writeArchive({
+    outPath: archivePath,
+    header: {
+      ...HEADER,
+      categories: [...HEADER.categories, { id: 'reef', files: 1, bytes: 12 }],
+      roots: [...HEADER.roots, { path: 'reef', category: 'reef', kind: 'dir', exclude: [] }],
+      totals: { files: 2, bytes: 13 },
+    },
+    passphrase: PASSPHRASE,
+    kdf: FAST_KDF,
+    entries: entriesOf([
+      { p: 'issues/fixture', data: Buffer.from('x') },
+      { p: reefPath, data: Buffer.from('archived app'), c: 'reef' },
+    ]),
+  });
+
+  await stageRestore({ home, archivePath, passphrase: PASSPHRASE });
+  assert.equal(applyPendingRestore({ home }).applied, true);
+  assert.equal(await fs.readFile(path.join(home, 'issues/fixture'), 'utf8'), 'x');
+  assert.equal(await fs.readFile(path.join(home, reefPath), 'utf8'), 'existing app');
+});
 
 describe('container round trip', () => {
   for (const size of [0, 1, 65_535, 65_536, 65_537, 131_072, 3_000_000]) {

@@ -54,10 +54,9 @@ type ComposerModelVariant =
   | 'menubar'
   | 'board'
   | 'research'
-  | 'super-plan'
-  | 'app';
+  | 'super-plan';
 
-type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar' | 'board' | 'app'>;
+type ComposerModelSurfaceVariant = Exclude<ComposerModelVariant, 'menubar' | 'board'>;
 
 type MenubarStyleVariant = 'menubar' | 'board';
 
@@ -69,24 +68,6 @@ export interface BoardModelChipContext {
 }
 
 let boardModelTriggerContext: BoardModelChipContext | null = null;
-
-/** A model binding an app owns (Reef workspace): same chip and menu, the app persists picks. */
-export interface AppModelTriggerContext {
-  ariaLabel: string;
-  resolveBinding: () => { providerId?: string; modelId: string };
-  /** Called with the picked #modelSelect value. */
-  pick: (selectValue: string) => void;
-}
-
-export interface AppModelTriggerHandle {
-  root: HTMLDivElement;
-  trigger: HTMLButtonElement;
-  /** Repaint the chip from the app binding. */
-  sync: () => void;
-  /** Disable the chip while the app saves a pick. */
-  setBusy: (busy: boolean) => void;
-  dispose: () => void;
-}
 
 /** How long the menubar hover label stays visible before collapsing. */
 const MENUBAR_EXPAND_HOLD_MS = 3200;
@@ -105,8 +86,6 @@ interface ComposerModelTrigger {
   dotEl?: HTMLElement;
   expandEl?: HTMLElement;
   collapseTimer?: number;
-  app?: AppModelTriggerContext;
-  appBusy?: boolean;
 }
 
 const triggers: ComposerModelTrigger[] = [];
@@ -221,10 +200,6 @@ function resolveTriggerSelectValue(trigger: ComposerModelTrigger): string {
     const values = [...sel.options].map((o) => o.value);
     return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
   }
-  if (trigger.app) {
-    const values = [...sel.options].map((o) => o.value);
-    return resolveModelSelectValueForChat(trigger.app.resolveBinding(), values);
-  }
   const values = [...sel.options].map((o) => o.value);
   return resolveModelSelectValueForChat(canonicalRouterBinding(getActiveChat()), values);
 }
@@ -282,10 +257,8 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
   const sel = getModelSelect();
   const selectValue = resolveTriggerSelectValue(trigger);
   trigger.usage?.setProvider(decodeModelSelectKey(selectValue)?.providerId);
-  // An app binding outside the catalog names its own model, never the global selection.
-  const appModelId = trigger.app && !selectValue ? trigger.app.resolveBinding().modelId.trim() : '';
-  const selectedOpt = sel && !appModelId ? selectedOptionForValue(sel, selectValue) : undefined;
-  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : appModelId;
+  const selectedOpt = sel ? selectedOptionForValue(sel, selectValue) : undefined;
+  const modelId = selectValue ? canonicalModelIdFromSelectValue(selectValue) : '';
   const { model, provider } = selectedOpt
     ? parseModelOptionLabels(selectedOpt)
     : { model: modelId || 'Select model', provider: decodeModelSelectKey(selectValue)?.providerId || '' };
@@ -294,7 +267,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     ? getRouterConfigSync().routers.find((r) => r.id === modelId)
     : undefined;
   // Auto pools own their reasoning and model label; plain writes would reset it.
-  const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) && !trigger.app ? router : undefined;
+  const autoPool = router?.policy === 'evaluate' && !isMenubarStyleVariant(trigger.variant) ? router : undefined;
 
   if (!autoPool) clearRouterRouteLabel(trigger.labelEl);
   if (autoPool) {
@@ -308,7 +281,7 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
       trigger.providerEl.textContent = provider;
       trigger.providerEl.hidden = !showProvider;
     }
-  } else if (trigger.variant === 'code' || trigger.variant === 'app') {
+  } else if (trigger.variant === 'code') {
     // The Code footer row names the model only; the provider lives in the tooltip.
     trigger.labelEl.textContent = model;
   } else {
@@ -319,8 +292,8 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 
   const fullLabel = selectedOpt?.text?.trim() || '';
   const title = selectedOpt?.title?.trim()
-    || ((trigger.variant === 'code' || trigger.variant === 'app') && provider ? fullLabel : '')
-    || selectValue || appModelId;
+    || (trigger.variant === 'code' && provider ? fullLabel : '')
+    || selectValue;
   if (title) trigger.labelEl.title = title;
   else trigger.labelEl.removeAttribute('title');
 
@@ -351,16 +324,16 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     trigger.trigger.title = trigger.labelEl.title;
   } else {
     if (decodeModelSelectKey(selectValue)?.providerId === 'minnow-router') {
-      const assignment = !isMenubarStyleVariant(trigger.variant) && !trigger.app ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
+      const assignment = !isMenubarStyleVariant(trigger.variant) ? routerAssignmentLabel(getActiveChat()?.id || '', modelId) : '';
       trigger.labelEl.textContent = `${router?.name || modelId} · ${router?.policy === 'evaluate' ? 'Auto model pool' : 'Model pool'}${assignment ? ` → ${assignment}` : ''}`;
     }
     if (!isMenubarStyleVariant(trigger.variant)) {
-      trigger.trigger.setAttribute('aria-label', `${trigger.app?.ariaLabel || 'Active model'}: ${trigger.labelEl.textContent}`);
+      trigger.trigger.setAttribute('aria-label', `Active model: ${trigger.labelEl.textContent}`);
       trigger.trigger.title = trigger.labelEl.title;
     }
   }
 
-  if (selectValue && !isMenubarStyleVariant(trigger.variant) && !trigger.app && !router) {
+  if (selectValue && !isMenubarStyleVariant(trigger.variant) && !router) {
     const reasoning = getComposerReasoningState();
     if (reasoning.label) {
       const suffix = document.createElement('span');
@@ -371,14 +344,14 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
     }
   }
 
-  const composerChat = !trigger.app && ['desktop', 'code', 'chat'].includes(trigger.variant) ? getActiveChat() : null;
+  const composerChat = ['desktop', 'code', 'chat'].includes(trigger.variant) ? getActiveChat() : null;
   const managed = composerChat?.chatCommandVersion === 1;
   const hasSelectable =
     Boolean(sel) &&
     [...sel!.options].some((o) => o.value.trim() !== '') &&
     (managed || !sel!.disabled);
   const readOnly = composerChat ? managedModelReadOnlyReason(composerChat) : null;
-  trigger.trigger.disabled = !hasSelectable || Boolean(trigger.appBusy) || Boolean(readOnly) || Boolean(managed && isManagedModelBusy(composerChat!.id));
+  trigger.trigger.disabled = !hasSelectable || Boolean(readOnly) || Boolean(managed && isManagedModelBusy(composerChat!.id));
   if (readOnly) trigger.trigger.title = readOnly;
 }
 
@@ -417,16 +390,12 @@ function handleComposerModelPick(trigger: ComposerModelTrigger, modelId: string)
     onActiveChatModelChange(modelId);
     return;
   }
-  if (trigger.app) {
-    if (modelId.trim() && modelId !== resolveTriggerSelectValue(trigger)) trigger.app.pick(modelId);
-    return;
-  }
   onActiveChatModelChange(modelId);
 }
 
 function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
   let section = trigger.panel.querySelector<HTMLElement>('.composer-model-reasoning');
-  if (isMenubarStyleVariant(trigger.variant) || trigger.app) return;
+  if (isMenubarStyleVariant(trigger.variant)) return;
   const binding = decodeModelSelectKey(resolveTriggerSelectValue(trigger));
   const state = getComposerReasoningState();
   if (binding?.providerId === 'minnow-router' || !state.choices.length) {
@@ -492,7 +461,7 @@ function rebuildOpenMenu(): void {
   const chat = getActiveChat();
   const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
   syncRouterReevaluateAction(openTrigger.panel,
-    router?.policy === 'evaluate' && chat && !isMenubarStyleVariant(openTrigger.variant) && !openTrigger.app
+    router?.policy === 'evaluate' && chat && !isMenubarStyleVariant(openTrigger.variant)
       ? { chatId: chat.id, routerId: router.id, route: routerRouteState(chat.id, router.id), busy: streamingChatIds.has(chat.id) }
       : undefined,
   );
@@ -951,7 +920,7 @@ function buildMenubarStyleTrigger(variant: MenubarStyleVariant): ComposerModelTr
   return entry;
 }
 
-function buildTrigger(variant: ComposerModelVariant, app?: AppModelTriggerContext): ComposerModelTrigger {
+function buildTrigger(variant: ComposerModelVariant): ComposerModelTrigger {
   if (isMenubarStyleVariant(variant)) {
     return buildMenubarStyleTrigger(variant);
   }
@@ -959,12 +928,12 @@ function buildTrigger(variant: ComposerModelVariant, app?: AppModelTriggerContex
   const root = document.createElement('div');
   root.className = `composer-model-trigger-wrap composer-model-trigger-wrap--${variant}`;
 
-  const ariaLabel = app?.ariaLabel ?? (
+  const ariaLabel =
     variant === 'research'
       ? 'Research model'
       : variant === 'super-plan'
         ? 'Super Plan model'
-        : 'Active model');
+        : 'Active model';
   const { trigger: triggerBtn, dotEl, logoEl, labelEl } = createComposerModelButton(ariaLabel);
   root.appendChild(triggerBtn);
 
@@ -983,7 +952,6 @@ function buildTrigger(variant: ComposerModelVariant, app?: AppModelTriggerContex
     dotEl,
     menu,
     panel,
-    app,
   };
 
   triggerBtn.addEventListener('click', () => toggleMenu(entry));
@@ -1004,36 +972,6 @@ export function mountComposerModelTrigger(
   const entry = buildTrigger(variant);
   anchor.appendChild(entry.root);
   syncTrigger(entry);
-}
-
-/** Mount a model chip bound to an app's own provider/model (full shared catalog and menu). */
-export function mountAppModelTrigger(
-  anchor: HTMLElement,
-  app: AppModelTriggerContext,
-): AppModelTriggerHandle {
-  ensureGlobals();
-  const entry = buildTrigger('app', app);
-  anchor.appendChild(entry.root);
-  return {
-    root: entry.root,
-    trigger: entry.trigger,
-    sync: () => {
-      syncTrigger(entry);
-      if (openTrigger === entry) rebuildOpenMenu();
-    },
-    setBusy: (busy) => {
-      entry.appBusy = busy;
-      if (busy && openTrigger === entry) closeComposerModelMenu();
-      syncTrigger(entry);
-    },
-    dispose: () => {
-      if (openTrigger === entry) closeComposerModelMenu();
-      entry.panel.remove();
-      entry.root.remove();
-      const index = triggers.indexOf(entry);
-      if (index !== -1) triggers.splice(index, 1);
-    },
-  };
 }
 
 /** Mount the menubar default-model icon chip (shared composer model menu). */

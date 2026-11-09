@@ -8,7 +8,7 @@ import { resolveHeadlessContextLimits } from '../../src/headless/context-policy.
 import { installHeadlessLocalStorage } from '../../src/headless/server-context.ts';
 import type { Chat } from '../../src/types';
 
-const chat = { id: 'reef-context', modelId: 'custom/model', providerId: 'custom-cloud', modeId: 'build' } as Chat;
+const chat = { id: 'headless-context', modelId: 'custom/model', providerId: 'custom-cloud', modeId: 'build' } as Chat;
 const settings = {
   defaultContextEnforcementPolicy: 'compact',
   defaultContextCompaction: { workingContextTokens: 0, highWater: 0.65, lowWater: 0.35, minRecentTurns: 4 },

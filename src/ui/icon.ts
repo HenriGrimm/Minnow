@@ -52,8 +52,7 @@ export type ModeIconName =
   | 'modePlan'
   | 'modeSuperPlan'
   | 'modeDebug'
-  | 'modeOrchestrate'
-  | 'modeReef';
+  | 'modeOrchestrate';
 
 export type GitIconName =
   | 'gitPull'
@@ -241,7 +240,6 @@ export const ICON_CLASS: Record<IconName, string> = {
   modeSuperPlan: 'fi-sr-clipboard-list-check',
   modeDebug: 'fi-sr-bug',
   modeOrchestrate: 'fi-sr-network',
-  modeReef: 'fi-rr-coral-reef',
 
   gitPull: 'fi-rr-cloud-download',
   gitPush: 'fi-rr-cloud-upload',

@@ -98,8 +98,6 @@ Currently hidden (MIN-471):
 
 No catalog entries carry an `appId`. Email and Calendar apps were removed (not gated).
 
-**Removed, not gated:** **Reef** mini-app and mode (MIN-473); **Email** and **Calendar** apps.
-
 ---
 
 ## Operating modes
@@ -122,5 +120,3 @@ Entered elsewhere (not in the strip):
 | **Onboarding** | First-run wizard only. |
 
 Persisted `'desktop'` and `'email'` remaps to **General** (`normalizeModeId`); they are not live registry entries.
-
-**Reef** mode was removed in MIN-473.

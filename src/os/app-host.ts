@@ -17,7 +17,6 @@ import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
 // ── Layers ───────────────────────────────────────────────────────────────────
 
 const APP_LAYER_IDS: Record<BuiltinAppId, string> = {
-  reef: 'reefView',
   home: 'homeView',
   'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
@@ -100,7 +99,6 @@ function layerForApp(appId: AppId): HTMLElement | null {
 
 /** Page apps that mark readiness with `is-open` on their root layer. */
 const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
-  'reef',
   'home',
   'settings',
   'models',
@@ -169,7 +167,6 @@ function hideAllLayers(): void {
 
 function closeAllAppPages(): void {
   for (const id of [
-    'reefView',
     'homeView',
     'settingsView',
     'benchmarkView',
@@ -293,11 +290,6 @@ async function openAppPage(
     case 'source-control': {
       const { mountSourceControlCenter } = await import('../ui/source-control-center');
       await mountSourceControlCenter();
-      break;
-    }
-    case 'reef': {
-      const { openReef } = await import('../ui/reef-page');
-      await openReef(options?.reefAppId ?? getCurrentRoute().reefAppId);
       break;
     }
     case 'scheduler': {

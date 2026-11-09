@@ -373,7 +373,6 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     const contextLimits = await resolveHeadlessContextLimits(chat, options.signal);
     const shared = await runHeadlessSharedTurn({
       onEvent: options.onEvent,
-      externalDeadline: Boolean(process.env.MINNOW_REEF_PHASE),
       chatId: chat.id,
       messages: messages as unknown as TranscriptMessage[],
       systemPrompt: composedSystem,

@@ -47,11 +47,6 @@ export const APPS: readonly AppDefinition[] = [
     releaseState: 'released',
   },
   {
-    id: 'reef', name: 'Reef', icon: 'reef', tag: 'Make a utility from a prompt',
-    description: 'Build, run, refine and export your own small apps',
-    availability: 'core', releaseState: 'released',
-  },
-  {
     id: 'source-control',
     name: 'Source Control',
     icon: 'sourceControl',
@@ -218,7 +213,6 @@ type AppModuleLoader = () => Promise<{ init: () => void | Promise<void> }>;
 
 /** Dynamic import entry points for each Minnow app page bundle. */
 export const APP_MODULE_LOADERS: Partial<Record<AppId, AppModuleLoader>> = {
-  reef: () => import('../ui/reef-page').then(m => ({ init: m.initReefPage })),
   home: () => import('../ui/home-page').then((m) => ({ init: m.initHomePage })),
   settings: () => import('../ui/settings-page').then((m) => ({ init: m.initSettingsPage })),
   bench: () => import('../ui/benchmark-page').then((m) => ({ init: m.initBenchmarkPage })),

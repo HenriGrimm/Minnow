@@ -235,7 +235,7 @@ Settings UI: **Agents → Rules** — grouped list with per-rule enable switches
 
 Composer strip: `general` · `build` · `plan` · `debug`
 
-Entered elsewhere: `orchestrate` (hub) · `super-plan` (Plan sub-menu) · `onboarding` (first run). Persisted `desktop` and `email` remap to `general`. `reef` was removed in MIN-473.
+Entered elsewhere: `orchestrate` (hub) · `super-plan` (Plan sub-menu) · `onboarding` (first run). Persisted `desktop` and `email` remap to `general`.
 
 Only the four composer modes are listed on the Agents settings page. Internal first-run and board-entry modes remain runtime concerns.
 

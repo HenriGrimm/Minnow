@@ -86,6 +86,7 @@ describe('encrypted backup round trip', () => {
 
   test('leaves caches, logs, worktrees and dependency folders out', async () => {
     const source = await seedHome(await makeTempDir('backup-src'));
+    await writeHomeFile(source, 'reef/apps/fixture/app.json', 'legacy Reef data');
     const out = path.join(await makeTempDir('backup-out'), 'full.mnbak');
     await createBackup({ home: source, outPath: out, passphrase: PASSPHRASE, kdf: FAST_KDF });
 
@@ -96,6 +97,7 @@ describe('encrypted backup round trip', () => {
       'browser-profiles/',
       'screenshots/',
       'worktrees/',
+      'reef/',
       'sessions/snapshots/',
       'brain/code/',
       'workspace/node_modules/',

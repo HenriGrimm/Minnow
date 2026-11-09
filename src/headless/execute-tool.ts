@@ -29,9 +29,6 @@ import { isLocalServerAvailable } from '../tools/config';
 import { executeTodoWrite } from '../tools/todo-tools';
 import { loadSearchConfig, hasConfiguredTavilyKey } from '../config/search-config';
 import { unsupportedSearchOptions } from '../../server/tools/tavily-options.js';
-import { reefToolAllowed, reefProtectedPath } from '../../server/reef/tool-policy.js';
-import path from 'node:path';
-import { getHeadlessWorkspace } from './server-context';
 import { AGENT_CHAT_TOOL_IDS } from '../../server/chats/tool-catalog.js';
 
 /** Browser-catalog tools that run on the server when the tool server is up (BUG-011). */
@@ -85,9 +82,6 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
 
 export async function getHeadlessToolsWithMcp(modeId: ModeId): Promise<OpenAIFunctionDefinition[]> {
   const builtins = getHeadlessToolDefinitions(modeId);
-  if (process.env.MINNOW_REEF_PHASE) {
-    return builtins.filter(tool => reefToolAllowed(tool.function.name, process.env.MINNOW_REEF_PHASE));
-  }
   const catalogs = await Promise.all(['/api/mcp/tools', '/api/plugins/tools'].map(async endpoint => {
     try {
       const response = await fetch(headlessApiUrl(endpoint));
@@ -153,17 +147,6 @@ export async function executeHeadlessTool(
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
   if (AGENT_CHAT_TOOL_IDS.includes(name)) return { content: 'Error: conversation tools require a managed --chat-id execution; this local CLI session has no canonical sender.' };
-  if (process.env.MINNOW_REEF_PHASE) {
-    const workspace = getHeadlessWorkspace();
-    for (const [key, value] of Object.entries(args)) {
-      if (!/path|file|directory/i.test(key) || typeof value !== 'string') continue;
-      const relative = path.relative(workspace, path.resolve(workspace, value));
-      if (!workspace || relative.startsWith('..') || path.isAbsolute(relative)) return { content: 'Error: Reef source tools cannot access paths outside the app workspace.' };
-    }
-  }
-  if (process.env.MINNOW_REEF_PHASE && (!reefToolAllowed(name, process.env.MINNOW_REEF_PHASE) || reefProtectedPath(args))) {
-    return { content: 'Error: Reef only permits source-file operations for this stage. The host manages commands, Git, dependencies and verification.' };
-  }
   if (signal?.aborted) throw new DOMException('Generation cancelled', 'AbortError');
 
   const modeId = normalizeModeId(options.modeId);

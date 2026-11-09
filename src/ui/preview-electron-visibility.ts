@@ -104,7 +104,7 @@ export function isProductWikiOverlayVisible(): boolean {
 let previewHideHoldCount = 0;
 const hideHoldListeners = new Set<() => void>();
 
-/** Native guests bound to other hosts (secondary split, Reef) react to holds and overlay changes. */
+/** Native guests bound to other hosts, such as the secondary split, react to holds and overlay changes. */
 export function onPreviewOcclusionChange(listener: () => void): () => void {
   hideHoldListeners.add(listener);
   const unsubscribeOverlays = subscribePreviewOcclusion(listener);

@@ -10,7 +10,6 @@
  */
 
 export const APP_WINDOW_ALLOWED_IDS = [
-  'reef',
   'source-control',
   'research',
   'models',

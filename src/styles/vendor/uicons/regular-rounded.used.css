@@ -2994,9 +2994,6 @@ line-height: 1;
         .fi-rr-copyright:before {
     content: "\e5ae";
     }
-        .fi-rr-coral-reef:before {
-    content: "\e5af";
-    }
         .fi-rr-corn:before {
     content: "\e5b1";
     }

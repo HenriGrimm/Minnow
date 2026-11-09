@@ -26,7 +26,6 @@ const VALID_LABELS = new Set([
   'skills',
   'streaming',
   'onboarding',
-  'reef',
   'benchmark',
   'bug-tracker',
   'Source Control',
@@ -186,7 +185,6 @@ function classifyAreas(t, title) {
     ['skills', ['skill', 'impeccable', 'handoff', 'matt pocock', 'git-commit', '/command', 'slash command']],
     ['streaming', ['streaming', 'sse', 'token estim', 'context window', 'anthropic', 'kimi', 'minimax', 'glm']],
     ['onboarding', ['onboarding', 'first-run', 'first open', 'setup system', 'searxng', 'electron launch', 'install process']],
-    ['reef', ['reef']],
     ['benchmark', ['benchmark', 'swe-bench', 'bench app', 'evals']],
     ['bug-tracker', ['bug tracker', 'bug reporting']],
     ['polish', ['light mode', 'font issue', 'scroll', 'selecting text', 'ui improvement', 'hard to read', 'hard to see', 'minimize window']],
@@ -197,7 +195,6 @@ function classifyAreas(t, title) {
   }
 
   const priorityOrder = [
-    'reef',
     'benchmark',
     'bug-tracker',
     'onboarding',

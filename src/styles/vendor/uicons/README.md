@@ -3,7 +3,6 @@
 Regular Rounded and Solid Rounded styles, downloaded from Flaticon's official
 versioned CDN: https://cdn-uicons.flaticon.com/4.0.0/.
 
-The npm package still publishes 3.3.1, which lacks `fi-rr-coral-reef`.
 These styles replace the npm CSS imports and are bundled locally for offline use.
 CSS font URLs are changed to local WOFF2 files; legacy WOFF/EOT fallbacks are
 omitted because Minnow targets modern Chromium. Glyph definitions are unchanged.

@@ -52,15 +52,15 @@ function visibleFrame(host: Element): HTMLImageElement | null {
 function setup(placeholder: () => Promise<string> = async () => 'anBn') {
   win = new Window();
   const doc = win.document as unknown as Document;
-  doc.body.innerHTML = '<div id="appBody"><div id="previewPane"><div id="previewBody"></div></div></div><div id="reefHost"></div>';
+  doc.body.innerHTML = '<div id="appBody"><div id="previewPane"><div id="previewBody"></div></div></div><div id="otherHost"></div>';
   doc.documentElement.dataset.osApp = 'code';
   const body = doc.getElementById('previewBody')!;
-  const reefHost = doc.getElementById('reefHost')!;
+  const otherHost = doc.getElementById('otherHost')!;
   rects.clear();
   rects.set('previewBody', box(400, 0, 400, 300));
-  rects.set('reefHost', box(0, 400, 300, 300));
+  rects.set('otherHost', box(0, 400, 300, 300));
   body.getBoundingClientRect = () => rects.get('previewBody')!;
-  reefHost.getBoundingClientRect = () => rects.get('reefHost')!;
+  otherHost.getBoundingClientRect = () => rects.get('otherHost')!;
   win.HTMLImageElement.prototype.decode = async () => {};
 
   let id = 0;
@@ -115,7 +115,7 @@ function setup(placeholder: () => Promise<string> = async () => 'anBn') {
     await pending;
     await flush();
   };
-  return { doc, body, reefHost, actions, addOverlay, flush, sync };
+  return { doc, body, otherHost, actions, addOverlay, flush, sync };
 }
 
 afterEach(async () => {
@@ -171,13 +171,13 @@ test('a force-hide hold hides the guest without any overlay', async () => {
 });
 
 test('the workspace chooser hides primary and split guests through the opening cover, then restores them', async () => {
-  const { doc, reefHost, actions, sync, flush } = setup();
+  const { doc, otherHost, actions, sync, flush } = setup();
   const gate = doc.createElement('div');
   gate.id = 'osWorkspaceGate';
   gate.hidden = true;
   doc.body.appendChild(gate);
   await sync();
-  bindPreviewInstanceToElement('secondary', reefHost);
+  bindPreviewInstanceToElement('secondary', otherHost);
   await flush();
   assert.ok(actions.includes('show'));
   assert.ok(actions.includes('show:secondary'));
@@ -288,15 +288,15 @@ test('a first cache frame arriving after occlusion becomes visible without anoth
 });
 
 test('an overlay over a bound instance host hides only that instance', async () => {
-  const { reefHost, actions, addOverlay, sync, flush } = setup();
+  const { otherHost, actions, addOverlay, sync, flush } = setup();
   await sync();
-  bindPreviewInstanceToElement('reef', reefHost);
-  assert.ok(actions.includes('show:reef'));
+  bindPreviewInstanceToElement('other', otherHost);
+  assert.ok(actions.includes('show:other'));
 
   addOverlay('menu', box(0, 400, 100, 100));
-  syncPreviewInstanceBounds('reef');
+  syncPreviewInstanceBounds('other');
   await flush();
-  assert.ok(actions.includes('hide:reef'));
+  assert.ok(actions.includes('hide:other'));
   await sync();
   assert.ok(!actions.includes('hide') && !actions.includes('hide-with-frame'));
 });

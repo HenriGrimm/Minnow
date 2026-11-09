@@ -42,8 +42,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     { initNetworkAccess },
     { startIsolatedPreviewHost, stopIsolatedPreviewHost },
     { startSchedulerForHost, stopSchedulerForHost },
-    { startReefForHost, stopReefForHost },
-    { stopExports },
   ] = await Promise.all([
     importServerModule<{
       applyMinnowMiddlewares: (
@@ -84,8 +82,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
       startSchedulerForHost: (baseUrl: string) => Promise<void>;
       stopSchedulerForHost: () => void;
     }>('scheduler/host.js'),
-    importServerModule<{ startReefForHost: (url: string) => Promise<void>; stopReefForHost: () => void }>('reef/supervisor.js'),
-    importServerModule<{ stopExports: () => void }>('reef/exports.js'),
   ]);
 
   const configMeta = (await readConfigJson('config.json')) ?? {};
@@ -140,7 +136,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
   // not take the whole app down with it.
   try {
     await startSchedulerForHost(url);
-    await startReefForHost(url);
   } catch (err) {
     console.warn('[scheduler] could not start; scheduled jobs will not run:', err);
   }
@@ -149,8 +144,6 @@ export async function startInProcessServer(): Promise<InProcessServerHandle> {
     url,
     async close(): Promise<void> {
       stopSchedulerForHost();
-      stopReefForHost();
-      stopExports();
       flushDeviceActivity();
       try {
         await shutdownRemoteIngress();

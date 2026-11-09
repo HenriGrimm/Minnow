@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 import { Window } from 'happy-dom';
 import {
   APPS,
+  isAppId,
   isCoreApp,
   isDeveloperReleased,
   isOptionalApp,
@@ -29,6 +30,8 @@ import {
   setEnabledOptionalApps,
   subscribeAppPreferences,
 } from '../../src/os/app-preferences.ts';
+
+import { parseOsHash } from '../../src/os/router.ts';
 
 let testWindow: Window | null = null;
 
@@ -57,7 +60,6 @@ describe('app registry availability invariants', () => {
       'home',
       'issues',
       'models',
-      'reef',
       'scheduler',
       'settings',
       'source-control',
@@ -75,8 +77,8 @@ describe('app registry availability invariants', () => {
   });
 
   test('every app has availability + releaseState; four apps are hidden', () => {
-    assert.equal(APPS.length, 13);
-    assert.equal(listReleasedApps().length, 9);
+    assert.equal(APPS.length, 12);
+    assert.equal(listReleasedApps().length, 8);
     for (const app of APPS) {
       assert.ok(app.availability === 'core' || app.availability === 'optional');
       assert.ok(app.releaseState === 'released' || app.releaseState === 'hidden');
@@ -103,8 +105,13 @@ describe('app preferences', () => {
     assert.equal(isAppAvailable('settings'), true);
     assert.equal(isAppEnabled('research'), false, 'hidden while disabled for release');
     assert.equal(isAppEnabled('scheduler'), true);
-    assert.ok(listRailApps().some((app) => app.id === 'reef'));
-    assert.ok(listDockApps().some((app) => app.id === 'reef'));
+  });
+
+  test('legacy Reef links fall back to workspaces and Reef is absent from the app catalog', () => {
+    assert.equal(isAppId('reef'), false);
+    assert.deepEqual(parseOsHash('#/app/reef/new'), { view: 'workspaces' });
+    assert.ok(listRailApps().every((app) => String(app.id) !== 'reef'));
+    assert.ok(listDockApps().every((app) => String(app.id) !== 'reef'));
   });
 
   test('normalizeDisabledAppIds drops core, hidden, unknown, and duplicates', () => {

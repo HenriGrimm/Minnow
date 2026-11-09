@@ -10,7 +10,6 @@ export type BuiltinAppId =
   | 'models'
   | 'brain'
   | 'scheduler'
-  | 'reef'
   | 'issues'
   | 'settings';
 
@@ -39,7 +38,6 @@ export interface AppInstance {
 
 /** Options when launching or foregrounding an app from the shell or router. */
 export interface LaunchOptions {
-  reefAppId?: string;
   seed?: string;
   /** Issue snapshot rendered as a dedicated ticket when the seed is auto-sent. */
   issue?: IssueMessageSnapshot;
@@ -114,7 +112,6 @@ export type IssuesSectionId = 'projects';
 export interface OsRoute {
   /** Stable Code conversation link; independent of the chat's current title. */
   chatId?: string;
-  reefAppId?: string;
   view: OsView;
   appId?: AppId;
   settingsSection?: string;

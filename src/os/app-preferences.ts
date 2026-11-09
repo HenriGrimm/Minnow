@@ -170,7 +170,6 @@ const RAIL_PRIMARY_APP_IDS: AppId[] = [
   'issues',
   'brain',
   'scheduler',
-  'reef',
 ];
 
 /** Available apps shown on the workspace rail. */

@@ -105,7 +105,6 @@ test('tool errors return to the model so it can correct the call and finish', as
       assert.equal(messages.at(-1)!.content, 'Source read successfully');
       return response({ content: 'Recovered and finished.' });
     })),
-    externalDeadline: true,
     execute: async (_name, args) => ({ content: (args as { path: string }).path === 'README.md' ? 'Error: file not found' : 'Source read successfully' }),
   });
   assert.equal(requests, 3);
@@ -114,7 +113,7 @@ test('tool errors return to the model so it can correct the call and finish', as
   assert.deepEqual(recovered.history.filter(row => row.role === 'tool').map(row => row.content), ['Error: file not found', 'Source read successfully']);
 });
 
-test('supervised agents continue beyond CLI time and round ceilings', async t => {
+test('explicit turn limits can override the default headless ceilings', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
   let count = 0;
   const result = await runHeadlessSharedTurn({
@@ -126,14 +125,14 @@ test('supervised agents continue beyond CLI time and round ceilings', async t =>
         ? response({ tool_calls: [{ ...call, id: `read-${count}`, function: { name: 'read_file', arguments: JSON.stringify({ path: `file-${count}.ts` }) } }] }, 'tool_calls')
         : response({ content: 'Long build finished.' });
     })),
-    externalDeadline: true,
+    limits: { maxTurns: 110, wallClockMs: 0 },
   });
   assert.equal(count, 102);
   assert.equal(result.result.outcome, 'no_report');
   assert.equal(result.assistantFinal, 'Long build finished.');
 });
 
-test('supervised agents still abort the active transport on the caller deadline', async () => {
+test('the caller can abort the active headless transport', async () => {
   const controller = new AbortController();
   let aborted = false;
   const result = await runHeadlessSharedTurn({
@@ -143,7 +142,6 @@ test('supervised agents still abort the active transport on the caller deadline'
       signal.throwIfAborted();
       throw new Error('unreachable');
     })),
-    externalDeadline: true,
     signal: controller.signal,
   });
   assert.equal(aborted, true);
@@ -226,7 +224,6 @@ test('supervised builds retain context above 32K when the model window allows it
     adapters.resolveModelContextLimit = () => modelWindow;
     const result = await runHeadlessSharedTurn({
       ...options(adapters),
-      externalDeadline: true,
       systemPrompt,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: 'Build the app.' }],
     });
@@ -265,7 +262,6 @@ test('supervised builds compact against chat watermarks and recall original tool
   adapters.resolveModelContextLimit = () => modelWindow;
   const result = await runHeadlessSharedTurn({
     ...options(adapters),
-    externalDeadline: true,
     messages: messages as TranscriptMessage[],
     systemPrompt: 'Build the app.',
     limits: { contextBudget: { enforcementPolicy: 'compact', highWater: 0.6, lowWater: 0.4, minRecentTurns: 3 } },

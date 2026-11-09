@@ -9,10 +9,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const serverRoot = path.join(repoRoot, 'server');
 
 const REQUIRED_RUNTIME_PATHS = [
-  'server/reef/template/package-lock.json',
-  'server/reef/runtime-host.mjs',
-  'server/reef/verify-browser.mjs',
-  'server/reef/electron-wrapper.cjs',
   'server/git/action-worker.js',
   'src/lsp/merge-config.mjs',
   'src/lsp/defaults.json',
@@ -33,7 +29,6 @@ const REQUIRED_RUNTIME_PATHS = [
 ];
 
 const REQUIRED_RUNTIME_DIRS = [
-  'server/reef/template',
   'src/skills',
   'src/chat/prompts',
   'src/evals/packs',

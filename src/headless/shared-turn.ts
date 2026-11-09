@@ -20,8 +20,6 @@ export interface HeadlessSharedTurnOptions {
   refreshTools?: () => Promise<RunTurnOptions['tools']>;
   onEvent?: (event: TurnEvent) => void;
   limits?: TurnLimits;
-  /** The caller's signal owns the deadline instead of CLI time/round ceilings. */
-  externalDeadline?: boolean;
 }
 
 /** CLI and Scheduler use the same bounded loop as chat and board workers. */
@@ -63,8 +61,8 @@ export async function runHeadlessSharedTurn(options: HeadlessSharedTurnOptions) 
     signal: options.signal,
     deps,
     limits: {
-      maxTurns: options.externalDeadline ? undefined : HEADLESS_MAX_TURNS,
-      wallClockMs: options.externalDeadline ? 0 : HEADLESS_WALL_CLOCK_MS,
+      maxTurns: HEADLESS_MAX_TURNS,
+      wallClockMs: HEADLESS_WALL_CLOCK_MS,
       maxRepeatedToolCalls: HEADLESS_MAX_REPEATED_TOOL_CALLS,
       ...options.limits,
     },

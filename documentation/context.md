@@ -16,7 +16,7 @@
 
 **Sub-agent completion:** Delegated and legacy sub-agent lifecycles distinguish a delivered assessment from execution failure. A valid final `pass`/`fail`/`blocked` report completes the run without retrying a negative assessment; its original verdict, blockers, prerequisites and validation limits remain in the handoff and audit evidence. Live settlement and restart recovery share this rule. Crashes, timeouts, cancellation and recovery barriers retain their execution semantics. The legacy Codex JSONL transport waits for turn completion/failure after an MCP tool error instead of terminating on the individual tool result. Board reviewer verdict semantics are unchanged.
 
-**Windows publication and action cancellation:** Provider profiles/capabilities, encrypted secret replacement and scheduler atomic writes share bounded transient-sharing-lock rename retries without an unlink fallback. Legacy app metadata readers serialize with per-app writers so polling cannot starve publication. Local action workers acknowledge IPC readiness before receiving launch descriptors; Stop cooperatively prevents a pending launch or terminates the running command, with a bounded process-tree fallback. The checkout lock remains held until worker close and final run bookkeeping. Coverage: atomic-file, secret-box, native-policy-monitor, board-testing, Reef core/recovery and actions-local tests.
+**Windows publication and action cancellation:** Provider profiles/capabilities, encrypted secret replacement and scheduler atomic writes share bounded transient-sharing-lock rename retries without an unlink fallback. Local action workers acknowledge IPC readiness before receiving launch descriptors; Stop cooperatively prevents a pending launch or terminates the running command, with a bounded process-tree fallback. The checkout lock remains held until worker close and final run bookkeeping. Coverage: atomic-file, secret-box, native-policy-monitor, board-testing and actions-local tests.
 
 **Chat latency diagnostics:** Runner timing events carry bounded metadata, a recorder-local `clockId`, monotonic start/end offsets and (for managed execution) execution correlation. Intervals overlap; neither wall-clock subtraction across renderer/server nor summing nested spans is valid. The shared painter records first visible prose receipt to the Markdown DOM-write callback as `first_prose_dom`, excluding hidden/disposed/stale response callbacks; this is not hardware compositor paint. Legacy timing history remains bounded to 256 entries and uses existing round/final saves. Managed host preparation, external execution, human/host waits and transcript durability have separate stages. Coverage: runner timing/efficiency, execution-host and chat painter tests.
 
@@ -145,193 +145,12 @@ Authoritative technical reference for the codebase. For orientation, start with 
 4.0.0 Regular Rounded and Solid Rounded styles from `src/styles/vendor/uicons/`.
 The official versioned CDN supplies these assets because the npm package still
 publishes 3.3.1. WOFF2 fonts ship locally for offline use; `npm run check:icons`
-validates `src/ui/icon.ts` against the bundled CSS. Reef uses `fi-rr-coral-reef`.
+validates `src/ui/icon.ts` against the bundled CSS.
 
-## Reef implementation (MIN-18)
-
-Reef is a lazy app, ungated (`released`) for testing. It is not a composer mode.
-Shared records and client API helpers live in `src/reef/`; `src/ui/reef-page.ts`
-owns separate app-store (`#/app/reef`) and creation (`#/app/reef/new`) screens;
-the reserved `new` route never loads an app record. Creation is a three-step
-setup (idea, name, look; `src/reef/setup.ts`) whose answers persist while
-navigating within Reef. The name step suggests playful names from the idea's
-subject words; the look step offers six vibe presets (swatches from the
-`--mn-label-*` tokens), Match Minnow (the live theme tokens, resolved to hex at
-submit) and Make your own (a background/main/highlight palette set with colour
-pickers), plus free text. Build reads the remembered chat model and
-swaps the form for a live orb seeded with the answers until the app opens.
-`POST /api/reef/apps` takes `{ prompt, name?, look? }`; the app stores `look`, and
-`initialBuildRequest` folds the name and look into the first run's prompt. The workspace model control is the composer's own chip
-(`mountAppModelTrigger`, an app-bound variant in `composer-model-trigger.ts`): the same menu, filter bar
-and search over the full `#modelSelect` catalog, CLI agents included;
-`PUT /api/reef/apps/:id/model` validates and persists the app's provider/model and
-publishes a model event. Each fresh agent reads the latest app binding, so a change
-applies to the next stage, continuation, repair, retry or reply; an active response
-finishes on its original model. The global default and Code chat stay unchanged.
-App UUID routes open a workspace
-with Build/Preview views. Build is a stage built around one ring
-(`src/ui/reef-orb.ts`, canvas): each snapshot's newly streamed text and log
-output is written into the rim at a rotating head and spreads as a damped wave,
-and tool calls land as splashes. It animates at a fixed 30 Hz only while a run is
-busy, pauses when hidden or render-idle, and draws one still frame otherwise.
-`describeReefActivity` (`src/reef/activity.ts`) turns the run into the ring's
-plain-language stage, headline and caption; raw errors never reach the headline.
-A six-step track, the files touched and Retry (inside the ring) sit on the stage.
-The agent transcript and build log are backstage disclosures, closed by default,
-and the transcript only renders while open. The conversation pane is hidden behind
-a Chat toggle (`minnow.reef.chatOpen`, per viewer). Preview opens the verified app
-automatically through `src/ui/reef-preview.ts`, using an explicit Electron guest
-tab or a separate-origin iframe so controls accept clicks, typing and scrolling.
-Loading and launch/navigation failures appear in the preview with Run app as the
-retry action; leaving the page disposes its guest and pending frame load.
-Preview and export require a verified release; failed
-revisions retain access to the previous release. The app store and Build view
-offer Retry build for failures and Resume build for cancelled/interrupted runs;
-builds recover on their own, so these are for a stop only the user can clear.
-The runs endpoint accepts `{ action: 'resume' | 'reset-phase' | 'reset-build', runId }`;
-recovery targets only the latest stopped run. Retry requeues that same run and
-retains its workspace, final plan, logs and agent chats. Reset current phase
-restores the source tree saved at phase entry and reruns that phase; Reset whole
-build enqueues a fresh run for the same request from the last verified repository.
-Neither reset removes the previous release or build history. `reef-chat.ts` embeds
-the shared message renderer and composer without selecting a Code chat or
-changing Code's workspace. Only the explicit Open in Code action switches it.
-`src/ui/reef-export.ts` mounts the build/export panel with labeled platform,
-architecture and method controls beside export history. Live snapshots update
-status, downloads and logs in place, preserving selected options and open logs;
-the fallback poll also stays active while an export is queued or building.
-
-The authenticated `/api/reef` middleware exposes apps, runs, cancellation,
-replayable SSE events, verified previews, launch/stop, chats and exports.
-`server/reef/supervisor.js` owns a persisted FIFO queue with one active build,
-a three-hour backstop deadline, process-tree cancellation and automatic resume:
-on start it requeues any unfinished run (and one Minnow's own shutdown
-interrupted, `hostStopped`) as `recovery: 'resume'`. A run records `ownerPid`;
-start leaves a run alone while another live Minnow on the same home owns it, and
-after `MAX_AUTO_RESUMES` (3) consecutive restarts it waits for Resume instead.
-`pipeline.js` scaffolds a versioned Vite/TypeScript project, plans through the
-shared headless engine, implements in an isolated local Git worktree, installs
-with lifecycle scripts disabled, runs host-controlled type/test/build and
-Chromium scenario checks, then commits and promotes a release. A build runs
-unattended: `buildApp` retries any failure from its checkpoint unless
-`needsUser()` says only the user can clear it (spent credit or quota, a rejected
-sign-in, a missing model, missing Git, uncommitted repository changes, a lost
-workspace); those stop at once with a plain `run.stopReason`. Verification
-failures get `MAX_REPAIRS` (4) repairs. Anything else, including network trouble
-during install or checks, retries the same phase with backoff (15 s doubling to
-5 min, `MAX_RETRIES` 8) while `run.retry` drives a "Trying again shortly" state.
-A per-attempt watchdog aborts and retries an attempt that produces no output for
-`STALL_MS` (15 min). Retry, continuation and repair counts live in the
-checkpoint, so an automatic resume cannot reset them; a phase advance refills
-retries and continuations but never repairs. Every agent attempt is a separate persisted
-normal chat; plans and diagnostics are explicitly passed between attempts.
-Each run persists `runs/<id>/checkpoint.json` with its next/current phase,
-plan, repair diagnostics, phase-entry Git tree and promotion commit. Completed
-phases are skipped on recovery; incomplete Builder work is continued in a fresh
-chat against the same files. Installation and checking safely rerun the stopped
-phase's host checks. Promotion resumes with its saved commit without rebuilding.
-Legacy runs reuse their existing worktree and `plan.txt` when available; missing
-workspaces require Reset whole build, and phase reset needs a saved checkpoint.
-Reef explicitly launches the Planner and Builder work agents in different
-headless processes and fresh chat/context windows. Only the final plan and
-verification diagnostics are passed to the Builder, never the Planner transcript.
-Builder context-budget exhaustion allows `MAX_CONTINUATIONS` (6) continuations in
-fresh Builder chats, inspecting the files already written in the same worktree;
-after that the saved work goes to verification, whose failures direct a repair.
-Structured result errors take precedence over command stdout dumps.
-Reef agents use the supervisor's cancellation signal, the stall watchdog and the
-build deadline
-instead of the CLI's ten-minute/100-round ceilings or a second process timer.
-Ordinary tool failures return to the shared chat runner for model recovery;
-context exhaustion continues from saved files in a fresh Builder chat. Process
-timeouts retain their cause, and streamed agent JSON is excluded from failure
-diagnostics when no structured result is available. CLI and Scheduler limits
-remain bounded independently.
-Reef, CLI and Scheduler context limits use the same saved work-agent/global
-context policy and compaction settings as regular chat, without a headless 32K
-fallback. `GET /api/providers/:id/context-window?modelId=…` exposes the shared
-host model-window resolver: a running local serve's per-slot window wins, then
-provider catalog/probe metadata and known-model resolution. Unknown capacity
-stays unknown rather than introducing a separate headless cap.
-Headless opening transcript rows retain their store IDs so deterministic
-compaction can fold them and `recall_history` can read the original content.
-Headless `--stream-json` forwards runner events as JSON lines; `--stream` remains
-the readable CLI format. Reef folds events into bounded `agentSessions` (512 KB
-of display data per run; full chats persist separately), batches activity and
-process-log persistence every 200ms, and replays notifications over SSE through
-the shared WebSocket transport. Backpressure waits for drain instead of closing
-the connection. The Build view reuses Markdown, Thoughts and tool-call components
-with stable rows and disclosures for each Planner/Builder context. It retains
-legacy `agentLog` display, separates command output, and shows elapsed time,
-last-activity age and reconnect status. A five-second snapshot refresh catches
-missed updates without app navigation. These updates never switch the Code chat
-or its workspace.
-Read-only app conversations use the same runner and can enqueue explicit
-revision requests. Failed revisions leave the prior release available.
-
-Reef source tools use the headless request-scoped workspace and a run-specific
-allowlist. Model providers and CLI agents use this same policy: CLI adapters
-expose the permitted tools through Minnow's bridge/dynamic tools with native
-execution disabled, and the headless runner owns source-tool execution.
-Headless generations retain the runner's chat ID across tool rounds so native
-CLI processes resume pending tool results. Reef closes that attempt's CLI
-sessions after success, failure or cancellation while preserving saved chats
-and clean native checkpoints. Anonymous Codex handoffs close immediately because
-they have no binding that a later generation can resume.
-The headless CLI registers each fresh workspace with an authenticated,
-unscoped request before attaching its workspace header to agent requests.
-Disabled tools stay disabled; interactive questions, shell execution,
-remote Git and connector tools are excluded. Node 24.21.0/npm are downloaded
-with official SHA-256 verification. Playwright 1.64.0 supplies Chromium checks.
-Packaged hosts extract trusted runtime/verifier scripts from app.asar into a
-content-addressed cache before launching managed Node. Generated Node code is
-trusted local code, not an OS sandbox. Runtime environments exclude Minnow's
-session token and provider secrets. Each app serves a separate loopback origin
-with an app-specific capability token, using an isolated Electron preview guest
-or a separate-origin iframe.
-
-Storage is `getMinnowHome()/reef/apps/<UUID>/`: `repo/`, `app.json`, `runs/`,
-`releases/`, `data/`, temporary `worktrees/`, and `exports/`. App repositories
-have no remotes. The passphrase-required Reef backup category preserves source,
-Git, releases, metadata and user data; it excludes dependencies, toolchains,
-worktrees, temporary verification data and export outputs. Launch restores
-omitted runtime dependencies from the release lockfile after a backup restore.
-
-Export staging copies a selected validated release. The Electron wrapper owns
-its runtime, isolated renderer and user data directory. Native export produces
-a Windows portable executable, macOS app ZIP or Linux unpacked tar archive.
-Exports carry the app's name, never its id: `server/reef/icon.js` derives the
-product name (window, menu, `.exe`/`.app`, download filename) and npm/Linux
-executable name. The Builder draws `icon.svg` (README contract; `checkProject`
-rejects scripts, external references or a non-square viewBox so a repair fixes
-it); apps without a usable one get a deterministic monogram. Export rasterizes it
-in Reef's Playwright Chromium through `<img>` (`render-icon.mjs`) and writes
-PNG-based `icon.ico`/`icon.icns`/`icon.png` itself into `reef-build/`, so
-electron-builder needs no icon toolset. Windows uses `signExecutable: false`,
-never `signAndEditExecutable: false`, which would also skip stamping the icon
-and version info. If no icon renders the export proceeds with Electron's default.
-The wrapper reads `reef-host/identity.json`: user data lives under
-`<appData>/Reef Apps/<app id>` (rename-stable, never shared by same-named apps),
-one instance runs at a time, Windows/Linux have no default Electron menu, http(s)
-and mailto links open in the system browser, and window bounds persist.
-Source build kits exclude Git history, chats, logs, data and credentials.
-Docker supplies optional Windows/Linux cross-builds. Every cloud export requires
-explicit consent: `gh` creates/reuses a private per-app staging repository,
-dispatches a platform workflow, watches its exact commit and downloads the
-artifact. The original repository remains local. Packages are unsigned and
-unnotarized; no GitHub releases are published.
-
-`test/reef/core.test.mjs` covers storage, confinement, runtime tokens/origins,
-queue/recovery, process cancellation, SSE replay, encrypted backup selection
-and mocked GitHub contracts. `chat.test.mts` verifies composer isolation.
-`MINNOW_REEF_E2E=1` enables deterministic-agent fixtures exercising real
-Git/npm/Chromium, automatic repair and restart. Add `MINNOW_REEF_EXPORT_E2E=1`
-for native packaging and executable smoke checks. These use scratch profiles
-and never create cloud repositories. `.github/workflows/reef.yml` runs native
-fixtures on Windows, macOS and Linux. Cross-platform installed-host and
-live-provider/cloud acceptance remains the release gate.
-
----
+**Legacy Reef profiles:** Reef's app and API were extracted from Minnow. The
+legacy `reef/` directory is outside the current backup catalog and stays on disk
+for migration. To recover that directory from an older encrypted backup, use
+a pre-extraction Minnow build with a separate scratch profile.
 
 **Git change selection:** `src/ui/git-change-selection.ts` shares highlighted row selection, Shift ranges, Cmd/Ctrl toggling, keyboard selection and the existing context-menu primitive between Code’s sidebar and Source Control Changes. Selection is local to each view, survives unchanged polling, and clears on checkout changes; file rows and their action buttons are retained. Batch menus capture the checkout and invalidate pending actions on navigation/disposal. `/api/git` status expands untracked directories with `--untracked-files=all`. Discard restores tracked working files from the index, restores explicitly selected `stagedPaths` (and unmerged files) from HEAD, and cleans only selected untracked paths, preserving ignored files. Staged renames include their original index path for discard/unstage; unborn repositories support unstage/discard. The `ignore` operation appends escaped exact paths or validated extension rules to the repository’s `.gitignore`, without unstaging tracked files or adding a Minnow-home store. Change mutations use literal Git pathspecs. Coverage: `test/server/git-change-actions.test.mjs`, `test/ui/git-change-selection.test.mts`, and the sidebar/Changes/app integration suites.
 
@@ -491,7 +310,7 @@ Board work agents continue an unfinished task when a reasoning round ends at the
 
 **Composer prompt recall:** `src/ui/composer-prompt-history.ts` snapshots the unsent text, selection, and scroll position before browsing. Down at the draft tail does nothing; returning from history restores the snapshot. Recalled edits survive navigation between entries. Plain arrows recall only at single-line edges; Alt+Up/Down explicitly browse multiline or wrapped prompts. Draft persistence reads the saved unsent text while recall is active, so browsing does not overwrite it on blur, chat switch, or session save; explicit edits to recalled text become the durable draft. `composer-auto-resize.ts` restores overflow after clears in both sizing paths and retains the scroll offset when pinning CSS field sizing; composers expose native scrollbars, and the skill highlight overlay matches their text width.
 
-Four composer modes: **General**, **Build**, **Plan**, **Debug**. **Orchestrate** opens from the sidebar hub. **Super Plan** is a Plan sub-mode. **Onboarding** is first-run only (not in the Code composer strip). Seven live entries in the registry; persisted `'desktop'` and `'email'` remap to **General** via [`normalizeModeId`](../src/chat/modes/types.ts). **Reef** mode was removed in MIN-473.
+Four composer modes: **General**, **Build**, **Plan**, **Debug**. **Orchestrate** opens from the sidebar hub. **Super Plan** is a Plan sub-mode. **Onboarding** is first-run only (not in the Code composer strip). Seven live entries in the registry; persisted `'desktop'` and `'email'` remap to **General** via [`normalizeModeId`](../src/chat/modes/types.ts).
 
 Registry: [`src/chat/modes/registry.ts`](../src/chat/modes/registry.ts). Tool allowlists: [`src/chat/modes/tool-groups.ts`](../src/chat/modes/tool-groups.ts). Prompts: [`src/chat/prompts/modes/`](../src/chat/prompts/modes/).
 
@@ -1600,7 +1419,7 @@ Both release workflows run the packaged runtime verifier before uploading artifa
 - **Packaged `src/` for the Node server:** electron-builder does not ship the SPA TypeScript tree. Anything `server/` imports from `src/` at runtime must be listed in `package.json` `build.files` — including [`src/models/**`](../src/models/) (`.mjs` memory/geometry/launch-plan shared with llama.cpp hosting). `!src/**/*.ts` still strips TS. [`scripts/validate-packaged-runtime-files.mjs`](../scripts/validate-packaged-runtime-files.mjs) walks those imports **and their relative imports**, and refuses extraResources-only leaves (the v0.1.3 `harness-commands.json` miss). It is invoked from [`electron-builder-run.mjs`](../scripts/electron-builder-run.mjs) and [`package-linux-docker.mjs`](../scripts/package-linux-docker.mjs) so `package:win` / `package:linux:docker` cannot skip it (npm `prepackage` only runs for `npm run package`).
 - **Packaged boot:** Electron `bootstrapInner` awaits the in-process server before restoring windows. Workspace claim never POSTs the leftover Vite origin in a packaged build; a failed `fetch` includes `error.cause` in the crash dialog (`~/.minnow/logs/crash.jsonl`).
 - **Research HTML export:** [`server/research/report-theme.js`](../server/research/report-theme.js) reads [`src/styles/tokens.css`](../src/styles/tokens.css) at runtime to inline palette tokens. Packaged builds exclude most `src/**/*.css` but must re-include `src/styles/tokens.css` after that negation (see `package.json` `build.files`); the same validator asserts the file exists.
-- **Preview browser:** requires Electron (`window.minnow.preview`); hidden in plain browser tabs. The native `WebContentsView` is a window-level overlay. The workspace chooser marks its gate as a preview occluder and re-syncs visibility on open/close; primary and split guests stay hidden through the opaque workspace-opening cover, including when pointer events are disabled. Guest visibility is **renderer-gated**: [`preview-electron-visibility.ts`](../src/ui/preview-electron-visibility.ts) hides it when another app is foreground (`data-os-app !== 'code'`), a full-screen app page is open, the Minnow wiki overlay (`#/wiki`, [`product-wiki.ts`](../src/ui/product-wiki.ts)) is open, or marked shell overlays actually cover the pane. [`preview-occlusion.ts`](../src/ui/preview-occlusion.ts) observes `mn-occludes-preview` roots (`markPreviewOccluder(root, kind)`, kinds `menu | dialog | panel | notification`), intersects host/overlay rectangles and confirms paint order at the overlap centre by hit-testing. Mark each toast, not its click-through stack; roots must receive pointer events where they paint. Reused panels unmark on close. Transparent click catchers may use `mn-occluder-hit-exclude`. Observers run while native hosts subscribe, track mounted marker changes, and invalidate on scroll, resize, top-layer toggle and animation/transition end. `holdPreviewGuestHidden` / `releasePreviewGuestHidden` are reserved for unmeasurable native select pickers. Primary, secondary split and Reef hosts use per-host occlusion, not a global menu counter. [`preview-popover-snapshot.ts`](../src/ui/preview-popover-snapshot.ts) caches a JPEG (quality 80) approximately one second after each completed capture while a guest/document is visible, skipping recent resize activity; source changes invalidate old frames. It shows the cached frame while occluded, with an immediate on-demand fallback before the first cache frame. Notifications add “Paused while a notification is open.” Cached frames are presentation only and do not change browser screenshot output. [`preview-capture-gate.ts`](../electron/preview-capture-gate.ts) tracks the raw native copy, not its caller timeout: hide suppresses painting immediately but defers zero-bounds/detach until native copies settle, and a later show cancels stale cleanup. A timed-out native copy blocks further captures for that guest until settlement; no cancellation API or platform-wide hang fix is claimed. Main-process navigate / tab activate / `loadSource` attach the guest for background loads but **must not** restore `lastBounds` and `setVisible(true)` — only renderer `preview.show(bounds)` turns a hidden guest on ([`electron/preview-host.ts`](../electron/preview-host.ts), [`preview-guest-reveal.ts`](../src/ui/preview-guest-reveal.ts)). The user-surface `browser_navigate` opens the Code preview panel (chrome + body, including Orchestrate stage views) then shows the guest inside it; on Issues / Settings / other apps it navigates in the background and never paints the overlay ([`preview-panel.ts`](../src/ui/preview-panel.ts) `revealPreviewPanelForAgentNavigation`). Code stage views (Overview, Code map, Super Plan, Orchestrate, Dev servers) replace `#chatArea` only; `#previewPane` is a sibling in `#workspaceSplit`, so the guest stays painted **when the pane is open** and [`notifyCodeStageViewChanged`](../src/ui/main-column-overlay.ts) / Super Plan chrome re-sync bounds after the chat rail hides. [`app-host.ts`](../src/os/app-host.ts) re-syncs visibility on every app-layer switch so a stale guest cannot block clicks (hand cursor, dead buttons). Preview `capturePage` is bounded at 3s and re-hides afterward if the instance was not previously visible; guest `executeJavaScript` (`browser_eval`, snapshot, click, fill) is bounded at **30s** in both the guest wrapper and main-process `previewExecJs` ([`electron/preview-guest-actions.ts`](../electron/preview-guest-actions.ts)), with a matching renderer race plus chat abort in [`browser-preview-tools.ts`](../src/tools/browser-preview-tools.ts), so a never-settling Promise or infinite loop cannot stall the tool loop or orchestrator task chats. The header browser menu provides per-tab zoom, hard reload, URL copy, and screenshot copy to the system clipboard. Its history action clears the renderer's saved suggestions plus every preview tab's navigation stack; cookies and cache are cleared only through the dedicated `persist:minnow-preview` session, never the OS browser profile.
+- **Preview browser:** requires Electron (`window.minnow.preview`); hidden in plain browser tabs. The native `WebContentsView` is a window-level overlay. The workspace chooser marks its gate as a preview occluder and re-syncs visibility on open/close; primary and split guests stay hidden through the opaque workspace-opening cover, including when pointer events are disabled. Guest visibility is **renderer-gated**: [`preview-electron-visibility.ts`](../src/ui/preview-electron-visibility.ts) hides it when another app is foreground (`data-os-app !== 'code'`), a full-screen app page is open, the Minnow wiki overlay (`#/wiki`, [`product-wiki.ts`](../src/ui/product-wiki.ts)) is open, or marked shell overlays actually cover the pane. [`preview-occlusion.ts`](../src/ui/preview-occlusion.ts) observes `mn-occludes-preview` roots (`markPreviewOccluder(root, kind)`, kinds `menu | dialog | panel | notification`), intersects host/overlay rectangles and confirms paint order at the overlap centre by hit-testing. Mark each toast, not its click-through stack; roots must receive pointer events where they paint. Reused panels unmark on close. Transparent click catchers may use `mn-occluder-hit-exclude`. Observers run while native hosts subscribe, track mounted marker changes, and invalidate on scroll, resize, top-layer toggle and animation/transition end. `holdPreviewGuestHidden` / `releasePreviewGuestHidden` are reserved for unmeasurable native select pickers. Primary and secondary split hosts use per-host occlusion, not a global menu counter. [`preview-popover-snapshot.ts`](../src/ui/preview-popover-snapshot.ts) caches a JPEG (quality 80) approximately one second after each completed capture while a guest/document is visible, skipping recent resize activity; source changes invalidate old frames. It shows the cached frame while occluded, with an immediate on-demand fallback before the first cache frame. Notifications add “Paused while a notification is open.” Cached frames are presentation only and do not change browser screenshot output. [`preview-capture-gate.ts`](../electron/preview-capture-gate.ts) tracks the raw native copy, not its caller timeout: hide suppresses painting immediately but defers zero-bounds/detach until native copies settle, and a later show cancels stale cleanup. A timed-out native copy blocks further captures for that guest until settlement; no cancellation API or platform-wide hang fix is claimed. Main-process navigate / tab activate / `loadSource` attach the guest for background loads but **must not** restore `lastBounds` and `setVisible(true)` — only renderer `preview.show(bounds)` turns a hidden guest on ([`electron/preview-host.ts`](../electron/preview-host.ts), [`preview-guest-reveal.ts`](../src/ui/preview-guest-reveal.ts)). The user-surface `browser_navigate` opens the Code preview panel (chrome + body, including Orchestrate stage views) then shows the guest inside it; on Issues / Settings / other apps it navigates in the background and never paints the overlay ([`preview-panel.ts`](../src/ui/preview-panel.ts) `revealPreviewPanelForAgentNavigation`). Code stage views (Overview, Code map, Super Plan, Orchestrate, Dev servers) replace `#chatArea` only; `#previewPane` is a sibling in `#workspaceSplit`, so the guest stays painted **when the pane is open** and [`notifyCodeStageViewChanged`](../src/ui/main-column-overlay.ts) / Super Plan chrome re-sync bounds after the chat rail hides. [`app-host.ts`](../src/os/app-host.ts) re-syncs visibility on every app-layer switch so a stale guest cannot block clicks (hand cursor, dead buttons). Preview `capturePage` is bounded at 3s and re-hides afterward if the instance was not previously visible; guest `executeJavaScript` (`browser_eval`, snapshot, click, fill) is bounded at **30s** in both the guest wrapper and main-process `previewExecJs` ([`electron/preview-guest-actions.ts`](../electron/preview-guest-actions.ts)), with a matching renderer race plus chat abort in [`browser-preview-tools.ts`](../src/tools/browser-preview-tools.ts), so a never-settling Promise or infinite loop cannot stall the tool loop or orchestrator task chats. The header browser menu provides per-tab zoom, hard reload, URL copy, and screenshot copy to the system clipboard. Its history action clears the renderer's saved suggestions plus every preview tab's navigation stack; cookies and cache are cleared only through the dedicated `persist:minnow-preview` session, never the OS browser profile.
 - **Update restart shutdown:** `electron/server-host.ts` tracks TCP connections from before the packaged server starts listening and destroys them during shutdown, including WebSocket upgrades that `closeAllConnections()` omits. Restart waits for runtime cleanup, then calls `quitAndInstall(true, true)` to apply the downloaded update silently and reopen Minnow. Windows NSIS includes `build/installer.nsh` and `build/update-launch.nsh`: silent relaunch uses the installed executable directly and, when the installer has an unelevated UAC parent, launches in that original user's process. Definite launch failures get bounded retries; ambiguous timeouts are not retried, and final failures show a manual-reopen message instead of disappearing silently. Branch/retry coverage: `test/electron/windows-update-launch.test.mjs` (native NSIS harness enabled with `MINNOW_TEST_MAKENSIS`). Regression coverage includes live HTTP streams and multiple upgraded WebSockets in `test/electron/server-host-close.test.mts`.
 - **Auto-update:** GitHub Releases on [`henrigrimm/minnow`](https://github.com/henrigrimm/minnow) via `electron-updater` (`package.json` `build.publish` + `repository`); packaged installs use Settings ? General ? App updates. Releases must be **published** (not draft); Stable channel needs a non–pre-release **Latest** on GitHub or checks fail with “Could not check for updates”. **`latest.yml` / `latest-linux.yml` / `latest-mac.yml` must come from the same `electron-builder` run as the installer they list** — replacing `Minnow-Setup-*.exe` later without re-uploading `latest.yml` makes the app download then reject the file (SHA-512 / size mismatch) so it never installs. Check with `node scripts/verify-github-update-feed.mjs`. Unpackaged `npm start` writes `electron/dist/package.json` so `app.getVersion()` matches the repo instead of a stale FileVersion on branded `electron.exe`. Release notes for maintainers: [`releases/`](releases/) (`v0.0.1.md` … `v0.1.0.md`); ship `latest.yml` (Windows), `latest-linux.yml` (Linux AppImage), and `latest-mac.yml` (macOS) with each build.
 - **System tray:** Close-to-tray is **on by default** (`config.desktopShell.closeToTray`). Closing the last window hides Minnow to the tray so chats, agents, and the tool server keep running; tray **Quit Minnow** runs the normal shutdown path. Closing one of several windows **asks** (`config.desktopShell.windowCloseAction`, default `ask`) via the in-app dialog ([`src/ui/window-close-prompt.ts`](../src/ui/window-close-prompt.ts), IPC `WINDOW_CLOSE_PROMPT`); native `dialog.showMessageBox` is only the fallback when that window's renderer is not ready. Tray menu: Open, New chat, agent/model status, unload local models, Settings, launch at startup (OS login item — not duplicated in config). Platform tray icons live under `build/tray/` (generated by `npm run app-icon:sync` from `public/logos/minnow-glyph.svg`): macOS uses a menu-bar template (`trayTemplate.png` + `@2x`); Linux uses `tray-linux.png`; Windows uses `build/icon.ico`. **macOS:** left-click focuses the window and opens the tray menu; right-click opens the menu. **Linux:** requires a desktop environment with AppIndicator/StatusNotifier support (GNOME extension, KDE, etc.). Modules: [`electron/tray.ts`](../electron/tray.ts), [`electron/tray-icon.ts`](../electron/tray-icon.ts), [`electron/tray-close.ts`](../electron/tray-close.ts), [`electron/window-close-prompt.ts`](../electron/window-close-prompt.ts), [`electron/login-item.ts`](../electron/login-item.ts), [`src/electron-tray-bridge.ts`](../src/electron-tray-bridge.ts). Settings ? General ? **Desktop app**.

@@ -12,7 +12,6 @@ import { getSessionToken, resetSessionTokenCache } from '../../server/runtime/se
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { rpcFetch, streamFetch } from '../../src/api/stream-fetch.ts';
 import { StreamEventSource } from '../../src/api/stream-event-source.ts';
-import { subscribeReef } from '../../src/reef/client.ts';
 import { handleGenerationsRequest } from '../../server/generations/routes.js';
 import { createGenerationState, appendChunk, markComplete, deleteGenerationsForProviderShutdown } from '../../server/generations/store.js';
 
@@ -144,17 +143,18 @@ test('HTTP errors retain status/body and abort releases only its subscription', 
   await until(() => active.size === 0);
 });
 
-test('Reef subscriptions use the shared socket while many other apps are streaming', async () => {
+test('EventSource shares the socket with other active streams', async () => {
   const controllers = Array.from({ length: 12 }, () => new AbortController());
   await Promise.all(controllers.map(controller => streamFetch('/api/live', { signal: controller.signal })));
-  let notifications = 0, connected = false;
-  const dispose = subscribeReef('test-app', () => { notifications++; }, value => { connected = value; });
+  let notifications = 0;
+  const source = new StreamEventSource('/api/live');
+  source.onmessage = () => { notifications++; };
   try {
-    await until(() => connected && notifications > 0 && active.size === 13);
+    await until(() => notifications > 0 && active.size === 13);
     assert.equal(connections, 1);
     const ping = await fetch(`${base}/api/ping`, { headers: { 'X-Minnow-Token': token }, signal: AbortSignal.timeout(1000) });
     assert.equal(await ping.text(), 'pong');
-  } finally { dispose(); controllers.forEach(controller => controller.abort()); }
+  } finally { source.close(); controllers.forEach(controller => controller.abort()); }
   await until(() => active.size === 0);
 });
 

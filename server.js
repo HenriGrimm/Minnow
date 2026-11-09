@@ -27,8 +27,6 @@ import { createSpaAuthHtmlMiddleware } from './server/runtime/spa-auth-html.js';
 import { bootstrapMinnowRuntime, reportPendingRestore } from './server/runtime/bootstrap.js';
 import { applyPendingRestore } from './server/backup/restore-apply.js';
 import { startSchedulerForHost, stopSchedulerForHost } from './server/scheduler/host.js';
-import { startReefForHost, stopReefForHost } from './server/reef/supervisor.js';
-import { stopExports } from './server/reef/exports.js';
 import { shutdownAllServers, shutdownAllServersNow } from './server/servers/index.js';
 import { shutdownLocalActions } from './server/git/local-action-ops.js';
 import { shutdownAllModelServes } from './server/models/index.js';
@@ -192,7 +190,6 @@ async function main() {
   console.log(`Terminal PTY: ${localUrl.replace(/\/$/, '')}/api/terminal/ws?sessionId=…`);
   console.log(`Scheduler API: ${localUrl.replace(/\/$/, '')}/api/scheduler/ping`);
   await startSchedulerForHost(localUrl);
-  await startReefForHost(localUrl);
   // Phones get a bundled build kept current in the background, not ~1,600 live
   // modules. MINNOW_REMOTE_LIVE_MODULES=1 serves them live modules instead.
   const remoteBundle = process.env.MINNOW_REMOTE_LIVE_MODULES === '1'
@@ -225,8 +222,6 @@ async function main() {
     await shutdownLocalActions();
     clearDevHostState();
     stopSchedulerForHost();
-    stopReefForHost();
-    stopExports();
     await shutdownAllServers();
     await shutdownAllModelServes();
     await shutdownAgentBrowserService();
@@ -241,8 +236,6 @@ async function main() {
     void shutdownAgentCliLogins();
     clearDevHostState();
     stopSchedulerForHost();
-    stopReefForHost();
-    stopExports();
     shutdownAllServersNow();
     void shutdownAllModelServes();
     void shutdownAgentBrowserService();

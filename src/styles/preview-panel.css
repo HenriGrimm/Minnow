@@ -365,8 +365,7 @@
 }
 
 /* The live native guest steps aside for shell menus; retain its painted page. */
-.preview-popover-snapshot,
-.reef-preview img.preview-popover-snapshot {
+.preview-popover-snapshot {
   z-index: 1;
   position: absolute;
   inset: 0;
@@ -377,8 +376,7 @@
   user-select: none;
 }
 
-.preview-popover-snapshot[hidden],
-.reef-preview img.preview-popover-snapshot[hidden] {
+.preview-popover-snapshot[hidden] {
   display: none;
 }
 
