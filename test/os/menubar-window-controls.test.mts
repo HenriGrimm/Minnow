@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test, afterEach, beforeEach } from 'node:test';
 import { Window } from 'happy-dom';
 import { initShellMenubarChrome } from '../../src/os/menubar-window-controls.ts';
+import { isWideMacTrafficLights } from '../../src/os/shell-platform.ts';
 import type { MinnowElectronBridge } from '../../src/electron.d.ts';
 
 function makeWindowBridge(
@@ -47,6 +48,7 @@ describe('menubar-window-controls', () => {
     ({ container } = installDom());
     document.documentElement.className = '';
     document.documentElement.removeAttribute('data-platform');
+    document.documentElement.removeAttribute('data-mac-titlebar');
   });
 
   afterEach(() => {
@@ -108,6 +110,53 @@ describe('menubar-window-controls', () => {
     assert.equal(right.querySelector('.mn-os-mb-window-controls'), null);
     assert.equal(menubar.classList.contains('mn-os-menubar--shell-frameless'), true);
     assert.equal(document.documentElement.dataset.platform, 'darwin');
+    assert.equal(document.documentElement.dataset.macTitlebar, undefined);
+  });
+
+  test('marks macOS 26+ for the wider traffic-light inset and clears it on cleanup', () => {
+    const bridge = makeWindowBridge('darwin');
+    bridge.app = { ...bridge.app!, osVersion: '26.1.0' };
+    (globalThis.window as Window & { minnow?: MinnowElectronBridge }).minnow = bridge;
+
+    const menubar = document.createElement('div');
+    const right = document.createElement('div');
+    menubar.appendChild(right);
+    container.appendChild(menubar);
+    const cleanup = initShellMenubarChrome(menubar, right);
+
+    assert.equal(document.documentElement.dataset.macTitlebar, 'wide');
+    cleanup();
+    assert.equal(document.documentElement.dataset.platform, undefined);
+    assert.equal(document.documentElement.dataset.macTitlebar, undefined);
+  });
+
+  test('tracks live page zoom so the inset clears native traffic lights', () => {
+    let zoom = 0.9;
+    const bridge = makeWindowBridge('darwin');
+    bridge.app = { ...bridge.app!, getZoomFactor: () => zoom };
+    (globalThis.window as Window & { minnow?: MinnowElectronBridge }).minnow = bridge;
+
+    const menubar = document.createElement('div');
+    const right = document.createElement('div');
+    menubar.appendChild(right);
+    container.appendChild(menubar);
+    const cleanup = initShellMenubarChrome(menubar, right);
+
+    const root = document.documentElement;
+    assert.equal(root.style.getPropertyValue('--mn-shell-zoom'), '0.9');
+    zoom = 1.25;
+    window.dispatchEvent(new window.Event('resize'));
+    assert.equal(root.style.getPropertyValue('--mn-shell-zoom'), '1.25');
+    cleanup();
+    assert.equal(root.style.getPropertyValue('--mn-shell-zoom'), '');
+  });
+
+  test('isWideMacTrafficLights keys off the macOS major version', () => {
+    assert.equal(isWideMacTrafficLights('26.0.1'), true);
+    assert.equal(isWideMacTrafficLights('27.0'), true);
+    assert.equal(isWideMacTrafficLights('15.6.1'), false);
+    assert.equal(isWideMacTrafficLights(''), false);
+    assert.equal(isWideMacTrafficLights(undefined), false);
   });
 
   test('tracks macOS full screen so the traffic-light inset can clear and return', async () => {

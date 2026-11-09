@@ -40,7 +40,7 @@ test('script executor returns only fixtures and has no live fallback after exhau
       assert.equal(result.content, typeof step.result === 'string' ? step.result : JSON.stringify(step.result));
     }
     assert.equal(execute.fixtureReport!().pass, true);
-    const exhausted = await execute('create_chat_with_mode', { mode_id: 'build' });
+    const exhausted = await execute('chat_read', { chat_id: 'extra-chat' });
     assert.match(exhausted.content, /no real operation was performed/);
     assert.equal(execute.fixtureReport!().pass, false);
   }

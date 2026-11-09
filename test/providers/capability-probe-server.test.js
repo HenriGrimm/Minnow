@@ -415,6 +415,58 @@ describe('probe-capabilities route', () => {
 });
 
 describe('openai-v1 capabilities/probe route', () => {
+  it('keeps absent tool calls and failed probes inconclusive', async () => {
+    let outcome = 'no-calls';
+    const bodies = [];
+    const probeMock = http.createServer((req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'GET' && req.url === '/v1/models') {
+        res.end(JSON.stringify({ data: [{ id: 'model', capabilities: { vision: true } }] }));
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/v1/chat/completions') {
+        let raw = '';
+        req.on('data', chunk => { raw += chunk; });
+        req.on('end', () => {
+          const body = JSON.parse(raw);
+          bodies.push(body);
+          res.statusCode = outcome === 'failed' ? 503 : 200;
+          res.end(JSON.stringify(outcome === 'failed' ? { error: 'Temporarily unavailable' }
+            : { choices: [{ message: { content: 'pong' }, finish_reason: 'length' }] }));
+        });
+        return;
+      }
+      res.statusCode = 404;
+      res.end('{}');
+    });
+    await new Promise(resolve => probeMock.listen(0, '127.0.0.1', resolve));
+    const port = probeMock.address().port;
+    try {
+      await httpRequest(baseUrl, 'POST', '/api/providers', {
+        id: 'probe-inconclusive', label: 'Inconclusive', baseUrl: `http://127.0.0.1:${port}`, apiKind: 'openai-v1',
+      });
+      for (outcome of ['no-calls', 'failed']) {
+        const result = await httpRequest(baseUrl, 'POST', '/api/providers/probe-inconclusive/capabilities/probe', { modelIds: ['model'] });
+        assert.equal(result.status, 200);
+        const cap = result.json.models.model;
+        assert.equal(cap.tools, null, outcome);
+        assert.equal(cap.streaming, outcome === 'failed' ? null : true);
+        assert.equal(cap.probeErrors.tools, outcome === 'failed' ? 'tool probe failed' : 'tool probe returned no tool calls');
+        const saved = await httpRequest(baseUrl, 'GET', '/api/providers/probe-inconclusive/capabilities');
+        assert.equal(saved.json.models.model.tools, null);
+      }
+      const toolBodies = bodies.filter(body => body.tools?.length);
+      assert.equal(toolBodies.length, 2);
+      for (const body of toolBodies) {
+        assert.deepEqual(body.tool_choice, { type: 'function', function: { name: 'probe_noop' } });
+        assert.ok(body.max_tokens >= 256);
+        assert.match(body.messages[0].content, /Call probe_noop/);
+      }
+    } finally {
+      await new Promise(resolve => probeMock.close(resolve));
+    }
+  });
+
   it('writes capabilities.json with tool probe results', async () => {
     const openaiMock = http.createServer((req, res) => {
       if (req.method === 'GET' && req.url === '/v1/models') {

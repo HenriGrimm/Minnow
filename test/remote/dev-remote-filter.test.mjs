@@ -7,7 +7,8 @@ import { after, describe, test } from 'node:test';
 import { createServer as createVite } from 'vite';
 import { createDevRemoteHandler, createDevRemotePathPolicy, isDevClientImport } from '../../server/remote/dev-remote-filter.js';
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-'));
+// Vite rejects Windows 8.3 paths (containing "~") in its own file allowlist.
+const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'minnow-dev-remote-')));
 for (const dir of ['src', 'node_modules', 'public/icons', 'server', 'documentation']) {
   fs.mkdirSync(path.join(root, dir), { recursive: true });
 }

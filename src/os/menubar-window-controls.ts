@@ -1,4 +1,5 @@
 import { isMinnowElectronShell } from '../tools/minnow-shell';
+import { applyShellPlatform } from './shell-platform';
 import {
   createWindowControlButton,
   setWindowControlButtonKind,
@@ -28,10 +29,7 @@ export function initShellMenubarChrome(
 ): () => void {
   if (!isMinnowElectronShell()) return () => {};
 
-  const platform = window.minnow?.app?.platform;
-  if (platform) {
-    document.documentElement.dataset.platform = platform;
-  }
+  const clearPlatform = applyShellPlatform();
   document.documentElement.classList.add('is-electron-shell');
   menubarRoot.classList.add('mn-os-menubar--shell-frameless');
   markMenubarNoDrag(menubarRoot);
@@ -106,7 +104,7 @@ export function initShellMenubarChrome(
     for (const fn of cleanups) fn();
     menubarRoot.classList.remove('mn-os-menubar--shell-frameless');
     document.documentElement.classList.remove('is-electron-shell');
-    document.documentElement.removeAttribute('data-platform');
+    clearPlatform();
     document.documentElement.removeAttribute('data-window-full-screen');
   };
 }

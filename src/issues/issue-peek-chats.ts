@@ -4,7 +4,8 @@
  * is the list contract tests pin.
  */
 
-import { getMode, normalizeModeId } from '../chat/modes/registry';
+import { getMode } from '../chat/modes/registry';
+import { workflowSkillForMode } from '../chat/modes/types';
 import type { Chat, ChatGroup, IssueCard } from '../types';
 
 /** One row in the peek Chats list (chat session or sibling board). */
@@ -33,11 +34,8 @@ export interface IssuePeekChatLookup {
 }
 
 function modeLabelForChat(chat: Chat): string {
-  try {
-    return getMode(normalizeModeId(chat.modeId)).label;
-  } catch {
-    return 'Build';
-  }
+  const workflow = workflowSkillForMode(chat.pinnedSkill?.id) ?? workflowSkillForMode(chat.modeId);
+  return workflow ? getMode(workflow).label : chat.modeId === 'orchestrate' ? 'Orchestrate' : 'Agent';
 }
 
 function chatSortAt(chat: Chat): number {

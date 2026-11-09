@@ -69,7 +69,7 @@ describe('issues workflow seeds', () => {
   test('buildIssuePlanSeed points at the issues plan path', () => {
     const path = 'documentation/plans/issues/ISS-42.md';
     const seed = buildIssuePlanSeed(makeIssue(), path);
-    assert.match(seed, /Plan mode/);
+    assert.match(seed, /\/plan/);
     assert.match(seed, /documentation\/plans\/issues\/ISS-42\.md/);
     assert.match(seed, /do not implement/i);
     assert.match(seed, /ask Build or Orchestrate before exploring or drafting/);
@@ -97,7 +97,7 @@ describe('issues workflow seeds', () => {
     assert.deepEqual(ISSUE_FOREGROUND_CHAT_MODES, ['general', 'build', 'plan', 'debug']);
     assert.match(buildIssueForegroundSeed(makeIssue(), 'build'), /Build mode/);
     assert.match(buildIssueForegroundModeSeed(makeIssue(), 'general'), /General mode/);
-    assert.match(buildIssueForegroundModeSeed(makeIssue(), 'plan'), /Plan mode/);
+    assert.match(buildIssueForegroundModeSeed(makeIssue(), 'plan'), /\/plan/);
   });
 
   test('canSendIssueToBoard requires planPath', () => {

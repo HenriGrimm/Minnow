@@ -8,7 +8,6 @@ import path from 'node:path';
 import { readConfigJson, writeConfigJson } from '../config/store.js';
 import { resetSubAgentServerConfigCache } from '../sub-agents/config.js';
 import { mergeConfigMeta, normalizeSubAgentsConfig, normalizeToolConfig, validateUserRulesSettings } from '../config/validators.js';
-import { ALL_TOOL_IDS } from '../config/tool-ids.js';
 import { getMinnowHome } from '../config/home.js';
 import { loadPromptConfigFile, savePromptConfigFile } from '../prompt-configs/handlers.js';
 import { workAgentsOverridesPath } from '../work-agents/paths.js';
@@ -33,24 +32,6 @@ function composeUserRulesLegacyTextFromRaw(rulesRaw) {
 }
 
 /**
- * @param {object} toolsConfig
- */
-export function flattenToolPermissionsForBundle(toolsConfig) {
-  const normalized = normalizeToolConfig(toolsConfig);
-  const out = {};
-  const def =
-    normalized.permissions?.default && typeof normalized.permissions.default === 'object'
-      ? normalized.permissions.default
-      : {};
-  for (const id of ALL_TOOL_IDS) {
-    if (typeof def[id] === 'string') {
-      out[id] = def[id];
-    }
-  }
-  return out;
-}
-
-/**
  * Build a profile bundle snapshot from current ~/.minnow state.
  * @param {string} id
  * @param {string} label
@@ -58,7 +39,6 @@ export function flattenToolPermissionsForBundle(toolsConfig) {
  */
 export async function captureCurrentSettings(id, label, description) {
   const meta = (await readConfigJson('config.json')) ?? {};
-  const toolsRaw = (await readConfigJson('tools.json')) ?? {};
   const subAgentsRaw = (await readConfigJson('sub-agents.json')) ?? {};
   const rulesRaw = (await readConfigJson('rules.json')) ?? {};
   const skillsRaw = (await readConfigJson('skills.json')) ?? {};
@@ -127,10 +107,7 @@ export async function captureCurrentSettings(id, label, description) {
       workAgents: workAgents && typeof workAgents === 'object' ? workAgents : {},
       subAgents: subAgentsRaw && typeof subAgentsRaw === 'object' ? subAgentsRaw : {},
     },
-    tools: {
-      permissions: flattenToolPermissionsForBundle(toolsRaw),
-      replaceAll: false,
-    },
+    tools: {},
     rules: {
       enabled: rulesRaw?.enabled === true,
       text: composeUserRulesLegacyTextFromRaw(rulesRaw),
@@ -142,39 +119,6 @@ export async function captureCurrentSettings(id, label, description) {
           : {},
     },
   };
-}
-
-/**
- * Merge bundle tool permissions into existing tools.json (partial by default).
- * @param {object} bundle
- * @param {object} existingTools
- */
-function mergeToolPermissionsFromBundle(bundle, existingTools) {
-  const normalized = normalizeToolConfig(existingTools);
-  const bundleTools = bundle.tools && typeof bundle.tools === 'object' ? bundle.tools : {};
-  const flat =
-    bundleTools.permissions && typeof bundleTools.permissions === 'object'
-      ? /** @type {Record<string, string>} */ (bundleTools.permissions)
-      : {};
-
-  if (bundleTools.replaceAll === true) {
-    for (const id of ALL_TOOL_IDS) {
-      if (typeof flat[id] === 'string') {
-        normalized.permissions.default[id] = flat[id];
-        normalized.enabled[id] = flat[id] !== 'off';
-      }
-    }
-    return normalized;
-  }
-
-  for (const [id, mode] of Object.entries(flat)) {
-    if (!ALL_TOOL_IDS.includes(id)) continue;
-    if (mode === 'off' || mode === 'ask' || mode === 'full') {
-      normalized.permissions.default[id] = mode;
-      normalized.enabled[id] = mode !== 'off';
-    }
-  }
-  return normalized;
 }
 
 /**
@@ -255,7 +199,7 @@ export async function applyProfileBundle(bundle) {
   }
 
   const toolsExisting = (await readConfigJson('tools.json')) ?? {};
-  const toolsNext = mergeToolPermissionsFromBundle(bundle, toolsExisting);
+  const toolsNext = normalizeToolConfig(toolsExisting);
   await writeConfigJson('tools.json', toolsNext);
 
   let workExisting = {};

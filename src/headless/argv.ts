@@ -67,7 +67,7 @@ Environment:
   --minnow-home <path>  MINNOW_HOME for --start-server child (tests)
 
 Safety:
-  --no-approval         Auto-allow tools that would show a modal (requires env below)
+  --no-approval         Deprecated compatibility flag; the global permission mode applies
   --auto-reject-questions  Return non-interactive error for ask_question (default)
 
 Output:
@@ -87,7 +87,6 @@ Session:
   --scheduler-run         Scheduled-job context (suppress routine save_memory)
 
 Env:
-  MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION=1  Required with --no-approval
   BROWSER=none                             Use with npm start in CI
   MINNOW_HEADLESS=1                          Skips browser open in server.js
 

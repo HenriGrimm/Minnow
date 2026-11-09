@@ -19,7 +19,6 @@ const {
   syncModeSelectorFromActiveChat,
 } = await import('../../src/ui/mode-selector.ts');
 const { setStreaming } = await import('../../src/app-state.ts');
-const { syncComposerFromStreamingState } = await import('../../src/ui/composer-send.ts');
 
 let windowInstance: Window | null = null;
 
@@ -55,33 +54,6 @@ afterEach(() => {
 });
 
 describe('mode selector for orchestrator board chats', () => {
-  test('enables mode buttons when the active chat finishes without navigating away', () => {
-    const modeSelector = setupModeSelectorDom();
-    const chat = createEmptyChatObject('');
-    chat.id = REGULAR_CHAT_ID;
-    chat.modeId = 'general';
-    setSessionStateForTests({
-      version: 2,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    initModeSelector();
-    const buildButton = modeSelector.querySelector<HTMLButtonElement>('[data-mode-id="build"]');
-    assert.ok(buildButton);
-
-    setStreaming(true, chat.id);
-    syncComposerFromStreamingState();
-    assert.equal(buildButton.disabled, true);
-
-    setStreaming(false, chat.id);
-    syncComposerFromStreamingState();
-    assert.equal(buildButton.disabled, false);
-    buildButton.click();
-    assert.equal(chat.modeId, 'build');
-  });
-
   test('hides mode selection and preserves a board task chat role', () => {
     const modeSelector = setupModeSelectorDom();
     const chat = createEmptyChatObject('');
@@ -110,7 +82,7 @@ describe('mode selector for orchestrator board chats', () => {
     assert.equal(chat.workAgentId, 'tester');
   });
 
-  test('hides mode selection for the board planner and restores it for regular chats', () => {
+  test('switching from a board planner to a regular chat keeps modes hidden', () => {
     const modeSelector = setupModeSelectorDom();
     const boardPlanner = createEmptyChatObject('');
     boardPlanner.id = BOARD_CHAT_ID;
@@ -137,72 +109,8 @@ describe('mode selector for orchestrator board chats', () => {
     });
     syncModeSelectorFromActiveChat();
 
-    assert.equal(modeSelector.hidden, false);
-  });
-
-  test('compact composer uses a mode dropdown instead of icon-only segments', () => {
-    const modeSelector = setupModeSelectorDom({ hubComposer: true });
-    const chat = createEmptyChatObject('');
-    chat.id = REGULAR_CHAT_ID;
-    chat.modeId = 'build';
-    setSessionStateForTests({
-      version: 2,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    initModeSelector();
-    document.getElementById('composerControls')?.classList.add('composer-controls--compact');
-    syncModeSelectorFromActiveChat();
-
-    const dropdown = document.getElementById('modeSelectorDropdown');
-    assert.ok(dropdown);
-    assert.equal(dropdown?.hidden, false);
-    assert.match(dropdown?.textContent ?? '', /Build/);
-    assert.equal(modeSelector.classList.contains('mode-segmented--compact'), false);
-    assert.ok(modeSelector.querySelector('.mode-segment__label'));
-  });
-
-  test('Plan is a plain segment: no caret, no hidden Super Plan menu', () => {
-    const modeSelector = setupModeSelectorDom();
-    const chat = createEmptyChatObject('');
-    chat.id = REGULAR_CHAT_ID;
-    chat.modeId = 'plan';
-    setSessionStateForTests({
-      version: 2,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    initModeSelector();
-
-    assert.equal(modeSelector.querySelector('.mode-segment__caret'), null);
-    assert.equal(modeSelector.querySelector('.mode-submenu'), null);
-    const plan = modeSelector.querySelector('[data-mode-id="plan"]');
-    assert.equal(plan?.querySelector('.mode-segment__label')?.textContent, 'Plan');
-    assert.equal(plan?.getAttribute('aria-checked'), 'true');
-  });
-
-  test('a Super Plan chat still lights the Plan segment', () => {
-    const modeSelector = setupModeSelectorDom();
-    const chat = createEmptyChatObject('');
-    chat.id = REGULAR_CHAT_ID;
-    chat.modeId = 'super-plan';
-    setSessionStateForTests({
-      version: 2,
-      activeId: chat.id,
-      sidebarCollapsed: false,
-      chats: [chat],
-    });
-
-    initModeSelector();
-
-    assert.equal(
-      modeSelector.querySelector('[data-mode-id="plan"]')?.getAttribute('aria-checked'),
-      'true',
-    );
+    assert.equal(modeSelector.hidden, true);
+    assert.equal(modeSelector.querySelector('[data-mode-id]'), null);
   });
 
   test('keeps the hidden selector out of layout despite its inline-flex styling', () => {

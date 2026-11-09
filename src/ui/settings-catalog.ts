@@ -40,7 +40,7 @@ export const SETTINGS_CATEGORY_DESCRIPTIONS: Record<SettingsCategoryId, string> 
   apps: 'Install and manage plugins, connections, custom panels and issue workflows.',
   appearance: 'Interface zoom, theme, fonts, and custom accent colors.',
   models: 'LLM backends, per-role model picks, sampling, reasoning, and usage.',
-  agents: 'System prompts, standing rules, composer modes, personas, workers, and tool policies.',
+  agents: 'The one agent: its prompts, workflow skills, sub-agent limits, rules, and boards.',
   integrations: 'Web search, dev tools, permissions, skills, and external hooks.',
   advanced: 'Local health probes, capability matrix, and diagnostics.',
 };
@@ -207,9 +207,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['lan', 'wifi', 'local network', 'network access', 'phone', 'tablet', '0.0.0.0'],
     description: 'Let phones and tablets on your Wi-Fi connect to Minnow. Applies immediately.',
   }),
-  field('general.filesystem', 'Filesystem access', 'general', 'general', {
-    keywords: ['workspace', 'full disk', 'path', 'sandbox', 'file tools', 'git'],
-    description: 'Limit file and git tools to the open project folder, or allow paths anywhere on this computer.',
+  field('general.permissions', 'Permissions', 'general', 'general', {
+    keywords: ['permission', 'approval', 'approve', 'manual', 'auto', 'full access', 'bypass', 'yolo', 'filesystem', 'full disk', 'browser origin', 'allowlist', 'mcp', 'plugin'],
+    description: 'Manual, Auto or Full access — one level for every tool, command, website, MCP server and plugin.',
   }),
   field('general.projectLocation', 'Default project folder', 'general', 'general', {
     keywords: ['projects', 'location', 'directory', 'workspace', 'new project'],
@@ -342,17 +342,19 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('models.usage.active', 'Active chat usage', 'models', 'usage'),
   field('models.usage.session', 'Workspace session usage', 'models', 'usage'),
 
-  field('agents.center', 'Agents center', 'agents', 'agent-center', {
-    keywords: ['modes', 'work agents', 'sub-agents', 'prompts', 'routing'],
+  field('agents.center', 'Agent', 'agents', 'agent-center', {
+    keywords: ['agent', 'prompts', 'system prompt', 'sub-agents', 'skills', 'plan', 'ask', 'debug'],
   }),
-  field('agents.modes', 'Composer modes', 'agents', 'agent-center'),
-  field('agents.modes.planGranularity', 'Plan granularity', 'agents', 'agent-center', {
-    keywords: ['large', 'medium', 'small', 'planner tasks'],
+  field('agents.localModelGuidance', 'Local model guidance', 'agents', 'agent-center', {
+    keywords: ['local', 'lm studio', 'llama', 'small model', 'appendix'],
+    description: 'Auto adds stricter tool rules for local providers; On or Off overrides it.',
   }),
-  field('agents.experts', 'Experts', 'agents', 'agent-center', {
-    keywords: ['persona', 'specialist', 'expert lab'],
+  field('agents.skills', 'Workflow skills', 'agents', 'agent-center', {
+    keywords: ['/ask', '/plan', '/debug', 'modes'],
   }),
-  field('agents.workAgents', 'Work agents', 'agents', 'agent-center'),
+  field('agents.boards', 'Boards prompt', 'agents', 'agent-center', {
+    keywords: ['orchestrate', 'board', 'plan granularity'],
+  }),
   field('agents.agentPacks', 'Agent packs', 'agents', 'agent-packs', {
     keywords: ['template', 'download', 'default pack', 'builtin', 'manifest', 'work agent'],
   }),
@@ -469,8 +471,8 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.servers', 'Managed servers', 'integrations', 'servers', {
     keywords: ['searxng', 'local search'],
   }),
-  field('integrations.tools', 'Tool permissions', 'integrations', 'tools', {
-    keywords: ['allow', 'deny', 'security'],
+  field('integrations.tools', 'Tools', 'integrations', 'tools', {
+    keywords: ['schemas', 'cache', 'result size'],
   }),
   field('integrations.tools.cache', 'Tool result cache', 'integrations', 'tools'),
   field('integrations.tools.lazyLoading', 'Load tool schemas on demand', 'integrations', 'tools', {
@@ -483,9 +485,6 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   }),
   field('integrations.tools.outputCap.maxChars', 'Maximum characters per tool result', 'integrations', 'tools', {
     keywords: ['truncation', 'max chars', 'output cap'],
-  }),
-  field('integrations.tools.bulk', 'Bulk tool permissions', 'integrations', 'tools', {
-    keywords: ['reset defaults', 'all full permissions'],
   }),
   field('integrations.mcp', 'MCP servers', 'integrations', 'mcp', {
     keywords: ['model context protocol', 'context7'],

@@ -709,7 +709,9 @@ export async function runTurn(options) {
         const content = inspected.name === SEARCH_TOOLS_NAME && callableNames.has(SEARCH_TOOLS_NAME)
           ? lazyTools.search(inspected.arguments)
           : catalog.some(tool => tool.function.name === inspected.name) && callableNames.has(SEARCH_TOOLS_NAME)
-            ? `Error: permitted tool is not loaded. Call search_tools with query "${inspected.name}" and use its schema on the next request.`
+            // Load it for the model instead of making it ask: models often call a name
+            // straight from the capability index. The schema comes back in this result.
+            ? `Error: permitted tool is not loaded yet, so this call did not run. search_tools has now loaded ${inspected.name}; retry it on the next request with this schema: ${JSON.stringify(JSON.parse(lazyTools.search({ query: `select:${inspected.name}` })).tools?.[0] ?? {})}`
             : 'Error: tool is unavailable in this execution. Choose an offered capability.';
         publish({ type: 'tool_result', name: inspected.name, id: inspected.id,
           content, ...(content.startsWith('Error:') ? { isError: true } : {}) });

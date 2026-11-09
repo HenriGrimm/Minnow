@@ -1,138 +1,173 @@
 /**
- * Tests for client-side tool permission / workspace prompt heuristics.
+ * Renderer permission gate: one system-wide level decides through the shared
+ * classifier; chat grants and turn clamps narrow or widen single calls.
+ *
+ * No DOM here, so any call that would show the approval card returns the
+ * "needs approval" error instead — which is exactly what these tests assert.
  */
 
 import assert from 'node:assert/strict';
-import { afterEach, describe, test } from 'node:test';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
+  addChatPermissionGrant,
   blockAfkInteractionAttempt,
-  companionToolRequiresApproval,
-  outsideWorkspaceBlockMessage,
-  toolInvocationWouldPrompt,
+  classifyForGate,
+  getChatPermissionGrants,
+  isExternalCallApproved,
+  maybeBlockToolForUserApproval,
 } from '../../src/tools/permission-gate.ts';
 import { defaultToolConfig, setToolConfigForTests } from '../../src/tools/config.ts';
+import {
+  applyRemoteToolSecurityMeta,
+  resetToolSecurityMetaCache,
+} from '../../src/config/tool-security-meta.ts';
 import {
   createEmptyChatObject,
   flushScheduledSessionSaveForTests,
   setSessionStateForTests,
 } from '../../src/state/sessions.ts';
-import type { ChatGroup } from '../../src/types.ts';
+
+const WS = '/tmp/minnow-gate-ws';
+
+function setLevel(level: 'manual' | 'auto' | 'full'): void {
+  applyRemoteToolSecurityMeta({ permissionLevel: level });
+}
+
+function seedChat(id = 'chat-gate'): string {
+  const chat = createEmptyChatObject('model', WS);
+  chat.id = id;
+  setSessionStateForTests({ version: 5, activeId: chat.id, chats: [chat], groups: [] });
+  return chat.id;
+}
+
+beforeEach(() => {
+  resetToolSecurityMetaCache();
+  const config = defaultToolConfig();
+  setToolConfigForTests(config);
+});
 
 afterEach(() => {
   flushScheduledSessionSaveForTests();
   setSessionStateForTests(null);
   setToolConfigForTests(defaultToolConfig());
+  resetToolSecurityMetaCache();
 });
 
-describe('companionToolRequiresApproval', () => {
-  test('forces approval for mutating and command tools', () => {
-    assert.equal(companionToolRequiresApproval('save_file'), true);
-    assert.equal(companionToolRequiresApproval('git_commit'), true);
-    assert.equal(companionToolRequiresApproval('execute_command'), true);
-  });
-
-  test('does not force an extra prompt for read-only tools', () => {
-    assert.equal(companionToolRequiresApproval('read_file'), false);
-    assert.equal(companionToolRequiresApproval('web_search'), false);
-    assert.equal(companionToolRequiresApproval('git_status'), false);
+describe('classifyForGate', () => {
+  test('uses the context workspace for in/out of project decisions', () => {
+    const inside = classifyForGate('read_file', { path: 'src/a.ts' }, { workspaceRoot: WS });
+    assert.equal(inside.kind, 'read');
+    assert.equal(inside.external, false);
+    const outside = classifyForGate('read_file', { path: '/etc/hosts' }, { workspaceRoot: WS });
+    assert.equal(outside.external, true);
   });
 });
 
-describe('toolInvocationWouldPrompt', () => {
-  test('ask mode prompts even when paths are inside workspace', () => {
-    assert.equal(
-      toolInvocationWouldPrompt(
-        'read_file',
-        { path: 'src/foo.ts' },
-        'ask',
-        'workspace',
-        'C:/proj',
-      ),
-      true,
-    );
-  });
-
-  test('full permission skips modal when paths stay inside workspace', () => {
-    assert.equal(
-      toolInvocationWouldPrompt(
-        'read_file',
-        { path: 'src/foo.ts' },
-        'full',
-        'workspace',
-        'C:/proj',
-      ),
-      false,
-    );
-  });
-
-  test('full permission blocks without modal when path escapes workspace in workspace FS mode', () => {
-    assert.equal(
-      toolInvocationWouldPrompt(
-        'read_file',
-        { path: 'C:/Windows/system.ini' },
-        'full',
-        'workspace',
-        'C:/proj',
-      ),
-      false,
-    );
-  });
-
-  test('full filesystem mode skips path-only prompt', () => {
-    assert.equal(
-      toolInvocationWouldPrompt(
-        'read_file',
-        { path: 'C:/Windows/system.ini' },
-        'full',
-        'full',
-        'C:/proj',
-      ),
-      false,
-    );
-  });
-
-  test('outsideWorkspaceBlockMessage matches server copy', () => {
-    assert.equal(
-      outsideWorkspaceBlockMessage('/'),
-      'Error: Path "/" resolves outside the workspace directory. Enable full disk access in Settings → General → Filesystem access (dangerous) to allow paths outside the workspace.',
-    );
-  });
-});
-
-describe('leftover interaction execution guard', () => {
-  test('no longer skips prompts based on leftover board flags', () => {
-    const planner = createEmptyChatObject('model', '/tmp/ws');
-    planner.id = 'planner-leftover';
-    planner.modeId = 'orchestrate';
-    const group: ChatGroup = {
-      id: 'group-leftover',
-      name: 'Leftover board',
-      workspacePath: '/tmp/ws',
-      collapsed: false,
-      order: 0,
-      plannerChatId: planner.id,
-      orchestrateBoard: {
-        planPath: 'documentation/plans/leftover.md',
-        tasks: [{ id: 'W1-A', title: 'Task', wave: 'W1', category: 'build', status: 'planned' }],
-        waves: [{ id: 'W1' }],
-        startedAt: 1,
-        lastUpdatedAt: 1,
-        status: 'running',
-      },
-    };
-    setSessionStateForTests({
-      version: 5,
-      activeId: planner.id,
-      chats: [planner],
-      groups: [group],
-    });
-
-    const result = blockAfkInteractionAttempt(
-      { chatId: planner.id, modeId: 'orchestrate' },
-      'question',
-      'ask_question was attempted',
-    );
-
+describe('maybeBlockToolForUserApproval', () => {
+  test('legacy per-tool Off cannot override global Full access', async () => {
+    const config = defaultToolConfig();
+    Object.assign(config, { enabled: { save_file: false }, permissions: { default: { save_file: 'off' } } });
+    setToolConfigForTests(config);
+    setLevel('full');
+    const result = await maybeBlockToolForUserApproval('save_file', { path: 'a.ts', content: '' }, { workspaceRoot: WS });
     assert.equal(result, null);
+  });
+
+  test('reads inside the project never ask, even in Manual', async () => {
+    setLevel('manual');
+    const result = await maybeBlockToolForUserApproval('read_file', { path: 'src/a.ts' }, { workspaceRoot: WS });
+    assert.equal(result, null);
+  });
+
+  test('Manual asks before an in-project edit', async () => {
+    setLevel('manual');
+    const result = await maybeBlockToolForUserApproval('save_file', { path: 'src/a.ts', content: 'x' }, { workspaceRoot: WS });
+    assert.match(result?.content ?? '', /needs approval/);
+  });
+
+  test('Auto allows a routine edit and asks before a destructive command', async () => {
+    setLevel('auto');
+    assert.equal(
+      await maybeBlockToolForUserApproval('save_file', { path: 'src/a.ts', content: 'x' }, { workspaceRoot: WS }),
+      null,
+    );
+    const risky = await maybeBlockToolForUserApproval('execute_command', { command: 'git push --force' }, { workspaceRoot: WS });
+    assert.match(risky?.content ?? '', /needs approval/);
+  });
+
+  test('Full allows outside-project edits and marks the call for the server', async () => {
+    setLevel('full');
+    const args = { path: '/tmp/elsewhere/notes.md', content: 'x' };
+    assert.equal(await maybeBlockToolForUserApproval('save_file', args, { workspaceRoot: WS }), null);
+    assert.equal(isExternalCallApproved(args), true);
+  });
+
+  test('Full still denies the secret floor', async () => {
+    setLevel('full');
+    const result = await maybeBlockToolForUserApproval(
+      'read_file',
+      { path: '~/.minnow/.key' },
+      { workspaceRoot: WS },
+    );
+    assert.match(result?.content ?? '', /^Error:/);
+  });
+
+  test('a read-only clamp denies edits whatever the level', async () => {
+    setLevel('full');
+    const result = await maybeBlockToolForUserApproval(
+      'save_file',
+      { path: 'src/a.ts', content: 'x' },
+      { workspaceRoot: WS, turnClamp: 'read-only' },
+    );
+    assert.match(result?.content ?? '', /^Error:/);
+  });
+
+  test('the plans clamp allows plan files only', async () => {
+    setLevel('auto');
+    assert.equal(
+      await maybeBlockToolForUserApproval(
+        'save_file',
+        { path: 'documentation/plans/x.md', content: '# x' },
+        { workspaceRoot: WS, turnClamp: 'plans' },
+      ),
+      null,
+    );
+    const blocked = await maybeBlockToolForUserApproval(
+      'save_file',
+      { path: 'src/a.ts', content: 'x' },
+      { workspaceRoot: WS, turnClamp: 'plans' },
+    );
+    assert.match(blocked?.content ?? '', /^Error:/);
+  });
+
+  test('an "Allow for this chat" grant skips the prompt for matching calls', async () => {
+    setLevel('manual');
+    const chatId = seedChat();
+    const args = { command: 'npm test' };
+    const action = classifyForGate('execute_command', args, { workspaceRoot: WS });
+    assert.ok(action.grant, 'shell commands carry a grant key');
+    assert.match(
+      (await maybeBlockToolForUserApproval('execute_command', args, { workspaceRoot: WS, chatId }))?.content ?? '',
+      /needs approval/,
+    );
+    addChatPermissionGrant(chatId, action.grant!.key);
+    assert.deepEqual(getChatPermissionGrants(chatId), [action.grant!.key]);
+    assert.equal(await maybeBlockToolForUserApproval('execute_command', args, { workspaceRoot: WS, chatId }), null);
+  });
+
+  test('legacy benchmark flags cannot override the global permission mode', async () => {
+    setLevel('manual');
+    const result = await maybeBlockToolForUserApproval(
+      'save_file',
+      { path: 'src/a.ts', content: 'x' },
+      { workspaceRoot: WS, benchmarkAutonomous: true },
+    );
+    assert.match(result?.content ?? '', /needs approval/);
+  });
+});
+
+describe('blockAfkInteractionAttempt', () => {
+  test('never blocks (board-managed chats use the same level)', () => {
+    assert.equal(blockAfkInteractionAttempt({ chatId: 'x' }, 'question', 'ask_question'), null);
   });
 });

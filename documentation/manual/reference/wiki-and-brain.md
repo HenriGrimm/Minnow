@@ -36,7 +36,7 @@ See [the Brain app](../apps/brain.md) and [Context, memory, and rules](../concep
 
 ## Asking chat about Minnow
 
-In **General** mode and during first-run onboarding, the assistant has three read-only tools for this manual:
+Every chat can load three read-only tools for this manual:
 
 | Tool | Does |
 |------|------|
@@ -44,9 +44,7 @@ In **General** mode and during first-run onboarding, the assistant has three rea
 | `minnow_docs_read` | Opens a page |
 | `minnow_docs_list` | Browses the catalog |
 
-They default to **Full** permission and work regardless of your workspace or Brain settings. Ask "how do I point Minnow at Ollama?" and you get an answer citing a page rather than a guess.
-
-**Build, Plan and Debug do not have these tools.** Developer modes keep a tighter payload budget and read your repository directly. Ask product questions in General.
+They are reads, so they never ask, and they work regardless of your workspace or Brain settings. Ask "how do I point Minnow at Ollama?" and you get an answer citing a page rather than a guess.
 
 The prompts are deliberate about the split: Minnow product questions go to the manual, your project knowledge goes to Brain, and repository architecture comes from reading the repository.
 
@@ -60,7 +58,7 @@ It mirrors the repository, not your Brain. Nothing of yours is published.
 
 | Question | Surface |
 |----------|---------|
-| How does an orchestrate board work? | Minnow wiki, or ask in General mode |
+| How does an orchestrate board work? | Minnow wiki, or ask in chat |
 | What is the shortcut for the terminal? | Minnow wiki → [Keyboard shortcuts](keyboard-shortcuts.md) |
 | Why did we choose Postgres? | Brain |
 | What is our release date? | Brain, or Issues |

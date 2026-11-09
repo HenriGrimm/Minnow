@@ -130,8 +130,9 @@ const MODE_IDS = [
 const DEFAULT_MODE_ID = 'build';
 
 /** Normalize persisted or unknown mode ids. */
-function normalizeModeId(value) {
+export function normalizePersistedModeId(value) {
   if (value === 'desktop' || value === 'email') return 'general';
+  if (value === 'super-plan') return 'plan';
   if (typeof value === 'string' && MODE_IDS.includes(value)) return value;
   return DEFAULT_MODE_ID;
 }
@@ -158,7 +159,7 @@ function ensureExpertRuntime(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const row = /** @type {Record<string, unknown>} */ (raw);
   const modelId = typeof row.modelId === 'string' ? row.modelId : '';
-  const modeId = normalizeModeId(typeof row.modeId === 'string' ? row.modeId : undefined);
+  const modeId = normalizePersistedModeId(row.modeId);
   const toolDenylist = Array.isArray(row.toolDenylist)
     ? row.toolDenylist.filter((t) => typeof t === 'string')
     : [];
@@ -208,7 +209,7 @@ export function migrateChatRowV5ToV6(chat) {
       chat.expertRuntime = {
         ...(chat.providerId?.trim() ? { providerId: chat.providerId.trim() } : {}),
         modelId: chat.modelId ?? '',
-        modeId: normalizeModeId(chat.modeId),
+        modeId: normalizePersistedModeId(chat.modeId),
         toolAllowlist: null,
         toolDenylist: [],
         enabledToolNames: [],
@@ -1031,7 +1032,7 @@ function ensureFollowupChain(raw) {
     index,
     remaining,
     promptText,
-    modeId: normalizeModeId(typeof row.modeId === 'string' ? row.modeId : undefined),
+    modeId: normalizePersistedModeId(row.modeId),
     rootChatId,
     parentChatId,
     createdAt,
@@ -1197,9 +1198,7 @@ export function normalizeChatRow(raw) {
     ...(typeof row.providerId === 'string' && row.providerId.trim()
       ? { providerId: row.providerId.trim() }
       : {}),
-    modeId: normalizeModeId(
-      typeof row.modeId === 'string' ? row.modeId : undefined,
-    ),
+    modeId: normalizePersistedModeId(row.modeId),
     ...(row.expertSelection && typeof row.expertSelection === 'object'
       ? { expertSelection: ensureExpertSelection(row.expertSelection) }
       : {}),

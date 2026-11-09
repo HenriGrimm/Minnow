@@ -1,5 +1,5 @@
 # Required CI gate for pull requests and main (MIN-383).
-# Enable branch protection: Settings → Branches → main → require status check "ci".
+# See .github/BRANCH_PROTECTION.md for the required checks.
 name: ci
 
 on:
@@ -115,14 +115,27 @@ jobs:
       - name: Bundle size budgets
         run: npm run check:performance-budgets
 
-  gate:
-    name: typecheck + tests
+  platform-tests:
+    name: tests (${{ matrix.os }}, ${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            shard: '1/1'
+          - os: windows-latest
+            shard: '1/3'
+          - os: windows-latest
+            shard: '2/3'
+          - os: windows-latest
+            shard: '3/3'
+          - os: macos-latest
+            shard: '1/3'
+          - os: macos-latest
+            shard: '2/3'
+          - os: macos-latest
+            shard: '3/3'
     runs-on: ${{ matrix.os }}
-    # windows-latest often spends ~17 min in npm test; 20 left no headroom after setup.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -148,13 +161,28 @@ jobs:
           if-no-files-found: error
 
       - name: Verify test discovery coverage
+        if: startsWith(matrix.shard, '1/')
         run: npm run test:check-coverage
 
       - name: Verify Uicons registry
+        if: startsWith(matrix.shard, '1/')
         run: npm run check:icons
 
       - name: Typecheck
+        if: startsWith(matrix.shard, '1/')
         run: npx tsc --noEmit
 
       - name: Test suite
-        run: npm test
+        run: npm test -- --shard ${{ matrix.shard }}
+
+  gate:
+    name: typecheck + tests
+    needs: platform-tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every platform job to pass
+        env:
+          TESTS_RESULT: ${{ needs.platform-tests.result }}
+        run: test "$TESTS_RESULT" = success

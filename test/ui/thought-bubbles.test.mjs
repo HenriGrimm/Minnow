@@ -96,7 +96,8 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     const toggle = wrap.querySelector('.thoughts-toggle');
     const activity = wrap.querySelector('.reasoning-summary-activity');
     assert.equal(toggle.textContent, 'Reasoning summary');
-    assert.ok(activity.querySelector('.tool-call-spinner'));
+    assert.ok(toggle.querySelector('.activity-shimmer'));
+    assert.equal(activity.querySelector('.tool-call-spinner'), null);
     assert.match(activity.textContent, /Working/);
     toggle.click();
     assert.equal(wrap.querySelector('.thoughts-flow').hidden, false);
@@ -217,10 +218,13 @@ describe('ThoughtBubbleController', { concurrency: false }, () => {
     const ctrl = new ThoughtBubbleController(wrap);
 
     ctrl.appendReasoningDelta('Reasoning');
+    const firstLetter = wrap.querySelector('.activity-shimmer__char');
     ctrl.setThinkingElapsed(5000);
 
     const label = wrap.querySelector('.thoughts-toggle__label');
     assert.equal(label?.textContent, 'Thinking… 5.0s');
+    assert.equal(label.querySelector('.activity-shimmer__char'), firstLetter, 'elapsed ticks preserve the shimmer');
+    assert.equal(label.querySelector('.activity-shimmer__suffix').textContent, ' 5.0s');
 
     ctrl.endReasoningPhase();
   });

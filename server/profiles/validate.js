@@ -3,10 +3,8 @@
  */
 
 import { validatePromptConfig } from '../prompt-configs/validate.js';
-import { ALL_TOOL_IDS } from '../config/tool-ids.js';
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
-const PERMISSION_MODES = new Set(['off', 'ask', 'full']);
 const MAX_BUNDLE_BYTES = 512 * 1024;
 
 /**
@@ -81,18 +79,6 @@ export function validateProfileBundle(body) {
   }
 
   const tools = /** @type {Record<string, unknown>} */ (raw.tools);
-  if (tools.permissions && typeof tools.permissions === 'object') {
-    const perms = /** @type {Record<string, unknown>} */ (tools.permissions);
-    for (const [toolId, mode] of Object.entries(perms)) {
-      if (!ALL_TOOL_IDS.includes(toolId)) {
-        return { ok: false, error: `Unknown tool id in bundle: ${toolId}` };
-      }
-      if (typeof mode !== 'string' || !PERMISSION_MODES.has(mode)) {
-        return { ok: false, error: `Invalid permission for ${toolId}` };
-      }
-    }
-  }
-
   if (tools.keys && typeof tools.keys === 'object') {
     const keys = /** @type {Record<string, unknown>} */ (tools.keys);
     for (const key of Object.keys(keys)) {
@@ -133,7 +119,7 @@ export function validateProfileBundle(body) {
       ...(prompt.parts && typeof prompt.parts === 'object' ? { parts: prompt.parts } : {}),
     },
     agents: /** @type {object} */ (raw.agents),
-    tools: /** @type {object} */ (raw.tools),
+    tools: {},
     ...(raw.rules && typeof raw.rules === 'object' ? { rules: raw.rules } : {}),
     ...(raw.skills && typeof raw.skills === 'object' ? { skills: raw.skills } : {}),
   };

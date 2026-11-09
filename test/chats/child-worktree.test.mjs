@@ -22,7 +22,7 @@ import { runWorktreeSetupProcess } from '../../server/worktree/setup-process.js'
 
 const exec = promisify(execFile);
 async function fixture(run, { gitRepository = true, committed = true, existing = false, parentInWorktree = false } = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-child-worktree-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-child-worktree-')));
   const repo = path.join(root, 'project'), home = path.join(root, 'home');
   const previous = process.env.MINNOW_HOME;
   process.env.MINNOW_HOME = home; resetMinnowHomeCache();
@@ -81,7 +81,7 @@ async function fixture(run, { gitRepository = true, committed = true, existing =
     db.close();
     if (previous === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previous;
     resetMinnowHomeCache();
-    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    assert.ok(path.resolve(root).startsWith((await fs.realpath(os.tmpdir())) + path.sep));
     await fs.rm(root, { recursive: true, force: true });
   }
 }
@@ -344,7 +344,7 @@ test('source without a commit cannot allocate isolation and arbitrary strategy r
 });
 
 test('owned setup process confirms shutdown before Stop returns and cannot write later', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-setup-process-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-setup-process-')));
   const marker = path.join(root, 'late.txt'), controller = new AbortController();
   let child;
   let notify;
@@ -362,7 +362,7 @@ test('owned setup process confirms shutdown before Stop returns and cannot write
       child.kill('SIGKILL');
       await new Promise(resolve => { child.once('exit', resolve); setTimeout(resolve, 500); });
     }
-    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep));
+    assert.ok(path.resolve(root).startsWith((await fs.realpath(os.tmpdir())) + path.sep));
     await fs.rm(root, { recursive: true, force: true });
   }
 });

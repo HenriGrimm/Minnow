@@ -57,7 +57,7 @@ function normalizeSources(raw) {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/**
+/** Legacy tool/chat probes recorded inconclusive replies and transport failures as negatives.
  * @param {unknown} raw
  * @returns {object | null}
  */
@@ -67,8 +67,8 @@ export function normalizeModelCapabilities(raw) {
 
   const out = {
     vision: coerceNullableBool(row.vision),
-    tools: coerceNullableBool(row.tools),
-    streaming: coerceNullableBool(row.streaming),
+    tools: row.sources?.tools === 'probe' && row.tools === false ? null : coerceNullableBool(row.tools),
+    streaming: row.sources?.streaming === 'probe' && row.streaming === false ? null : coerceNullableBool(row.streaming),
     grammar: coerceNullableBool(row.grammar),
     reasoning: coerceNullableBool(row.reasoning),
     contextLength: coerceNullableNumber(row.contextLength),

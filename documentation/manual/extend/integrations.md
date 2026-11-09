@@ -24,7 +24,7 @@ Under **Settings → Integrations → MCP servers**, paste a standard JSON confi
 
 You can also give this configuration to an agent and ask it to add the servers. Agents can use the new tools in the same task. Configurations can be saved directly in `~/.minnow/mcp.json` using the same `mcpServers` object; existing Minnow server configurations remain supported.
 
-**Adding a server approves its tools.** MCP tools are available across modes and agents without per-tool permission prompts. Disable or remove the server to stop access.
+**Adding a server makes its tools available.** MCP calls follow the global permission mode across chats and agents. Disable or remove the server to stop access.
 
 Minnow discovers tools when it connects and updates them when the server announces a change. It does not poll tool lists. For a server that does not announce changes, choose **Refresh tools** on its Settings row. A failed connection waits for **Refresh connection**, a configuration change, or completed sign-in before trying again.
 
@@ -89,7 +89,7 @@ The `/browser-automation` skill has the recipes.
 
 Result count and API keys are set here. Tavily search accepts domain filters, relative date windows or explicit dates, result count (up to 20), topic, and search depth. Basic search is the default; advanced search uses more credits. These additional search arguments require Tavily as the selected provider.
 
-With a saved Tavily key, agents also have `web_map` to discover documentation URLs and `web_extract` to read up to ten selected pages as Markdown. Map defaults to depth 1, a 50-link limit, and external links excluded. Extract accepts an optional query for relevant excerpts and basic or advanced extraction. Both tools use Tavily credits and have their own Off/Ask/Full permissions under Tools. They are available with any selected search provider while Minnow's local server is running.
+With a saved Tavily key, agents also have `web_map` to discover documentation URLs and `web_extract` to read up to ten selected pages as Markdown. Map defaults to depth 1, a 50-link limit, and external links excluded. Extract accepts an optional query for relevant excerpts and basic or advanced extraction. Both tools use Tavily credits and follow the global permission mode. They are available with any selected search provider while Minnow's local server is running.
 
 The **Tavily usage** group shows the saved key's credit usage, account plan usage, pay-as-you-go usage when available, and a breakdown by endpoint. It loads on opening Search Settings; use **Refresh** for an updated reading. These totals can include activity outside Minnow. Unavailable values are labeled explicitly.
 

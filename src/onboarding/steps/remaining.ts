@@ -7,12 +7,13 @@ import {
   fetchMemoryInjectionEnabled,
   saveMemorySettings,
 } from '../../memory/config';
-import { setAllBuiltInToolPermissions } from '../../tools/config';
+import { setPermissionLevel } from '../../config/tool-security-meta';
+import { PERMISSION_LEVEL_META, type PermissionLevel } from '../../lib/permissions.mjs';
 import { el, createChoiceCard, renderStepHeader } from '../ui-helpers';
 import type { OnboardingContext, OnboardingStep } from '../types';
 import { recordStepProgress } from '../state-core';
 
-let permissionPreset: 'full' | 'ask' | 'minimal' = 'full';
+let permissionPreset: PermissionLevel = 'auto';
 let memoryStoreEnabled = true;
 let memoryInjectionEnabled = true;
 
@@ -39,12 +40,12 @@ function createMemoryToggleRow(options: {
 
 export const permissionsStep: OnboardingStep = {
   id: 'permissions',
-  title: 'Tool permissions',
+  title: 'Permissions',
   canSkip: true,
   isApplicable: () => true,
   render(container, ctx, actions) {
     const savedPreset = ctx.state.steps.permissions?.data?.preset;
-    permissionPreset = savedPreset === 'ask' || savedPreset === 'minimal' ? savedPreset : 'full';
+    permissionPreset = savedPreset === 'manual' || savedPreset === 'full' ? savedPreset : 'auto';
     container.innerHTML = '';
     container.className = 'mn-onboarding-step';
     renderStepHeader(container, permissionsStep, actions.stepIndex, actions.totalSteps);
@@ -52,21 +53,19 @@ export const permissionsStep: OnboardingStep = {
       el(
         'p',
         'mn-onboarding-step-desc',
-        'Choose a permission level for built-in tools. You can adjust individual tools later in Settings.',
+        'Choose what the agent may do without asking. It applies everywhere — tools, commands, the browser, MCP and plugins — and you can change it any time from the composer (Shift+Tab).',
       ),
     );
 
     const grid = el('div', 'mn-onboarding-choice-grid');
-    const presets: { id: typeof permissionPreset; title: string; desc: string; rec?: boolean }[] = [
-      {
-        id: 'full',
-        title: 'Full access',
-        desc: 'Allow built-in tools to run without per-call permission prompts.',
-        rec: true,
-      },
-      { id: 'ask', title: 'Ask first', desc: 'Ask before running built-in tools.' },
-      { id: 'minimal', title: 'Tools off', desc: 'Disable built-in tools. Enable individual tools later in Settings.' },
-    ];
+    const presets: { id: typeof permissionPreset; title: string; desc: string; rec?: boolean }[] = (
+      ['manual', 'auto', 'full'] as const
+    ).map((id) => ({
+      id,
+      title: PERMISSION_LEVEL_META[id].label,
+      desc: PERMISSION_LEVEL_META[id].description,
+      rec: id === 'auto',
+    }));
 
     presets.forEach((preset) => {
       grid.appendChild(
@@ -88,9 +87,7 @@ export const permissionsStep: OnboardingStep = {
     actions.setPrimaryEnabled(true);
   },
   async commit(ctx) {
-    if (permissionPreset === 'full') await setAllBuiltInToolPermissions('full');
-    else if (permissionPreset === 'ask') await setAllBuiltInToolPermissions('ask');
-    else await setAllBuiltInToolPermissions('off');
+    await setPermissionLevel(permissionPreset);
     ctx.state = recordStepProgress(ctx.state, 'permissions', {
       done: true,
       data: { preset: permissionPreset },
@@ -236,7 +233,7 @@ export const doneStep: OnboardingStep = {
       ],
       ['Extras', Boolean(ctx.state.steps.extras?.done)],
       ['GitHub', Boolean(ctx.state.steps.github?.done)],
-      ['Tool permissions', Boolean(ctx.state.steps.permissions?.done)],
+      ['Permissions', Boolean(ctx.state.steps.permissions?.done)],
       ['Memory and Brain', Boolean(ctx.state.steps.memory?.done)],
       ['Context7 library docs', Boolean(ctx.state.steps.context7?.done)],
     ];

@@ -12,14 +12,14 @@ import { createChatNativeExecution, deriveChatNativePolicy, NATIVE_READ_TOOLS, N
 import { assertNativeExecutionContext, bindNativeExecutionContext, getNativeExecutionContext } from '../../server/generations/native-execution-context.js';
 
 const gate = () => Promise.withResolvers();
-const policy = (patch = {}) => createChatPolicy({ modeId: 'build', filesystemAccess: 'workspace', fileWriteScope: 'workspace',
+const policy = (patch = {}) => createChatPolicy({ modeId: 'build', permissionLevel: 'full', filesystemAccess: 'workspace', fileWriteScope: 'workspace',
   shellSandboxMode: 'require', workspaceIds: ['workspace'], capabilities: [],
   toolPermissions: Object.fromEntries([...NATIVE_READ_TOOLS, ...NATIVE_WRITE_TOOLS].map(name => [name, 'full'])), ...patch });
 const derive = (patch = {}) => deriveChatNativePolicy({ capturedPolicy: policy(), currentPolicy: policy(),
   workspaceId: 'workspace', workspace: path.resolve('fixture'), platform: 'win32', cliVersion: '0.166.0', modelId: 'gpt-5.5', ...patch });
 
 async function fixture(t, options = {}) {
-  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-host-'));
+  const cwd = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-host-')));
   const db = new Database(':memory:'); initSessionsSchema(db);
   const repository = createChatRepository({ db });
   repository.createChat({ id: 'chat', name: 'native host fixture', workspacePath: cwd });
@@ -59,18 +59,26 @@ test('native policy admits only the verified exact platform/version/model and wo
   assert.throws(() => derive({ capturedPolicy: JSON.parse(JSON.stringify(policy())) }), /server-validated/);
 });
 
-test('captured/current Ask or Off cannot be widened; all writable equivalents must be Full', () => {
+test('native capability restrictions remain enforced independently of the global level', () => {
   for (const name of [...NATIVE_READ_TOOLS, ...NATIVE_WRITE_TOOLS]) {
-    for (const permission of ['ask', 'off']) {
+    for (const permission of ['off']) {
       const narrower = policy({ toolPermissions: { ...policy().toolPermissions, [name]: permission } });
-      assert.throws(() => derive({ currentPolicy: narrower }), /Ask\/Off/);
-      assert.throws(() => derive({ capturedPolicy: narrower }), /Ask\/Off/);
+      assert.throws(() => derive({ currentPolicy: narrower }), /requires? the tool capability/);
+      assert.throws(() => derive({ capturedPolicy: narrower }), /requires? the tool capability/);
     }
   }
   const plan = policy({ modeId: 'plan', fileWriteScope: 'plans',
     toolPermissions: { ...policy().toolPermissions, apply_patch: 'ask', git_commit: 'off' } });
   assert.equal(derive({ capturedPolicy: plan, currentPolicy: policy() }).mode, 'read-only');
   assert.equal(derive({ capturedPolicy: policy(), currentPolicy: plan }).mode, 'read-only');
+});
+
+test('native writes require global Full access and legacy Ask is availability only', () => {
+  for (const permissionLevel of ['manual', 'auto', 'full']) {
+    const available = policy({ permissionLevel, toolPermissions: { ...policy().toolPermissions, save_file: 'ask' } });
+    assert.equal(derive({ capturedPolicy: available, currentPolicy: available }).mode,
+      permissionLevel === 'full' ? 'workspace-write' : 'read-only');
+  }
 });
 
 test('native turn starts only after baseline and durable exclusive intent', async t => {
@@ -177,7 +185,7 @@ test('live invalidation aborts silent native work; Stop never settles an uncerta
 test('current policy rechecked after waiting; no native launch on changed policy or skipped baseline', async t => {
   const f = await fixture(t); let ran = false;
   f.setPolicy(policy({ toolPermissions: { ...policy().toolPermissions, apply_patch: 'off' } }));
-  await assert.rejects(f.authority.runTurn(f.meta(), async () => { ran = true; }), /Ask\/Off/);
+  await assert.rejects(f.authority.runTurn(f.meta(), async () => { ran = true; }), /requires? the tool capability/);
   assert.equal(ran, false);
   const skipped = await fixture(t, { capture: async () => ({ ok: false, error: 'Not a git repository' }) });
   await assert.rejects(skipped.authority.runTurn(skipped.meta(), async () => { ran = true; }), /Git safety baseline/);
@@ -332,7 +340,7 @@ test('a native successful file write observed under Plan is uncertainty, not a c
 });
 
 test('read-only approval checks cannot follow a junction out of the admitted checkout', async t => {
-  const f = await fixture(t), outside = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-outside-'));
+  const f = await fixture(t), outside = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-outside-')));
   t.after(() => fs.rm(outside, { recursive: true, force: true, maxRetries: 5 }));
   await fs.symlink(outside, path.join(f.cwd, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(f.authority.runTurn(f.meta(), async () => {
@@ -490,32 +498,32 @@ test('native redaction configuration rejects wrong argument types and excessive 
 test('native equivalence covers Python/JavaScript in Plan as well as workspace-write modes', () => {
   for (const modeId of ['build', 'plan']) {
     for (const name of ['run_python', 'run_javascript']) {
-      for (const permission of ['off', 'ask']) {
+      for (const permission of ['off']) {
         const narrowed = policy({ modeId, toolPermissions: { ...policy().toolPermissions, [name]: permission } });
-        assert.throws(() => derive({ capturedPolicy: narrowed }), /Ask\/Off/);
-        assert.throws(() => derive({ currentPolicy: narrowed }), /Ask\/Off/);
+        assert.throws(() => derive({ capturedPolicy: narrowed }), /requires? the tool capability/);
+        assert.throws(() => derive({ currentPolicy: narrowed }), /requires? the tool capability/);
       }
     }
   }
 });
 
-test('all captured/current Git mutation names and code aliases retain Ask/Off even with false read metadata', () => {
+test('all captured/current Git mutation names and code aliases retain capability restrictions with false read metadata', () => {
   const mutations = ['git_switch', 'git_reset', 'git_restore', 'git_clean', 'git_merge', 'git_rebase',
     'git_cherry_pick', 'git_stash', 'git_push', 'git_tag'];
   for (const name of [...mutations, 'execute_code']) {
-    for (const permission of ['off', 'ask']) {
+    for (const permission of ['off']) {
       const broadened = policy({ toolPermissions: { ...policy().toolPermissions, [name]: 'full' }, toolEffects: { [name]: 'read' } });
       const narrowed = policy({ toolPermissions: { ...policy().toolPermissions, [name]: permission }, toolEffects: { [name]: 'read' } });
-      assert.throws(() => derive({ capturedPolicy: narrowed, currentPolicy: broadened }), /Ask\/Off/);
-      assert.throws(() => derive({ capturedPolicy: broadened, currentPolicy: narrowed }), /Ask\/Off/);
+      assert.throws(() => derive({ capturedPolicy: narrowed, currentPolicy: broadened }), /requires? the tool capability/);
+      assert.throws(() => derive({ capturedPolicy: broadened, currentPolicy: narrowed }), /requires? the tool capability/);
     }
   }
-  const shellAlias = policy({ toolPermissions: { ...policy().toolPermissions, custom_shell: 'ask' }, toolEffects: { custom_shell: 'shell' } });
-  assert.throws(() => derive({ currentPolicy: shellAlias }), /Ask\/Off/);
+  const shellAlias = policy({ toolPermissions: { ...policy().toolPermissions, custom_shell: 'off' }, toolEffects: { custom_shell: 'shell' } });
+  assert.throws(() => derive({ currentPolicy: shellAlias }), /requires? the tool capability/);
   for (const name of ['create_pdf', 'create_spreadsheet', 'create_word_document']) {
     const narrowed = policy({ toolPermissions: { ...policy().toolPermissions, [name]: 'off' } });
-    assert.throws(() => derive({ capturedPolicy: narrowed }), /Ask\/Off/);
-    assert.throws(() => derive({ currentPolicy: narrowed }), /Ask\/Off/);
+    assert.throws(() => derive({ capturedPolicy: narrowed }), /requires? the tool capability/);
+    assert.throws(() => derive({ currentPolicy: narrowed }), /requires? the tool capability/);
   }
 });
 

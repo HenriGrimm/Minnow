@@ -181,6 +181,11 @@ async function main(): Promise<void> {
   }
 
   const code = await runCommand(parsed.options);
+  // A piped stdout is asynchronous on POSIX. Wait for the final JSON and any
+  // queued stream events before forcing exit past the runner's open handles.
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write('', error => error ? reject(error) : resolve());
+  });
   process.exit(code);
 }
 

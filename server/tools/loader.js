@@ -15,7 +15,7 @@ import {
 } from './bridge.js';
 import { createPluginContext } from './plugin-context.js';
 import { listMergedPlugins } from './scan.js';
-import { getMinnowHome } from '../config/home.js';
+import { ensureMinnowLayout, getMinnowHome } from '../config/home.js';
 import { getPluginCatalogRevision, invalidatePluginCatalog, watchPluginCatalog } from '../plugins/catalog.js';
 
 export { getPluginCatalogRevision, subscribePluginCatalogChanges } from '../plugins/catalog.js';
@@ -45,7 +45,7 @@ async function pluginCatalog() {
   if (pendingCatalog) return pendingCatalog;
   pendingCatalog = (async () => {
     try {
-      await fs.mkdir(path.join(home, 'tools'), { recursive: true });
+      await ensureMinnowLayout();
       await fs.mkdir(path.join(home, 'plugins'), { recursive: true });
       watchPluginCatalog(home);
     } catch (error) {
@@ -145,12 +145,10 @@ export async function reloadPlugins() {
 /**
  * @returns {Promise<object[]>}
  */
-export async function getPluginToolDefinitions(options = {}) {
+export async function getPluginToolDefinitions() {
   while (true) {
     const { definitions, revision } = await pluginCatalog();
-    const permissions = (await readConfigJson('tools.json'))?.permissions?.default ?? {};
-    if (revision !== getPluginCatalogRevision()) continue;
-    return definitions.filter(t => options.requireFull ? permissions[t.function.name] === 'full' : permissions[t.function.name] !== 'off');
+    if (revision === getPluginCatalogRevision()) return [...definitions];
   }
 }
 
@@ -170,7 +168,6 @@ export async function getPluginToolCatalog() {
  */
 export async function callPluginTool(name, args, options = {}) {
   try {
-    if ((await readConfigJson('tools.json'))?.permissions?.default?.[name] === 'off') return 'Error: plugin tool is disabled in Settings';
     const result = await executePackageTool(name, args ?? {}, options);
     if (result !== undefined) return result;
   } catch (error) {
@@ -196,7 +193,7 @@ export async function callPluginTool(name, args, options = {}) {
     const run = await compileHandler(item);
     // A cached inventory/compiled handler cannot preserve a revoked grant.
     const config = await readConfigJson('tools.json');
-    if (config?.plugins?.[item.id]?.enabled === false || config?.permissions?.default?.[name] === 'off') {
+    if (config?.plugins?.[item.id]?.enabled === false) {
       return 'Error: plugin tool is disabled in Settings';
     }
     return await run(args ?? {}, ctx);

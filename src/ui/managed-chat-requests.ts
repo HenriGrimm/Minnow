@@ -18,6 +18,20 @@ interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElemen
 const views = new Map<string, ChatRequestsView>();
 let subscriptions: (() => void)[] | undefined;
 
+interface PresentedAction { detail: string; reasons: string[]; risk: 'low' | 'elevated' | 'high'; grant: { key: string; label: string } | null }
+/** The server sends the classifier's view of the call; tolerate older requests without it. */
+function readPresentedAction(raw: unknown): PresentedAction | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const grant = row.grant && typeof row.grant === 'object' ? row.grant as Record<string, unknown> : null;
+  return {
+    detail: typeof row.detail === 'string' ? row.detail : '',
+    reasons: Array.isArray(row.reasons) ? row.reasons.filter((r): r is string => typeof r === 'string' && r.length > 0).slice(0, 6) : [],
+    risk: row.risk === 'low' || row.risk === 'high' ? row.risk : 'elevated',
+    grant: grant && typeof grant.key === 'string' && typeof grant.label === 'string' ? { key: grant.key, label: grant.label } : null,
+  };
+}
+
 function button(text: string, action: () => void): HTMLButtonElement {
   const node = document.createElement('button'); node.type = 'button'; node.textContent = text; node.addEventListener('click', action); return node;
 }
@@ -68,14 +82,35 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
   element.append(title, status);
   if (request.kind === 'approval') {
     element.append(form);
-    const workspace = document.createElement('p'); workspace.className = 'managed-chat-request__scope';
+    element.classList.add('managed-chat-request--approval');
+    const action = readPresentedAction(request.presentation.action);
+    if (action) element.dataset.risk = action.risk;
     const toolName = request.presentation.toolName ?? request.presentation.name;
-    workspace.textContent = `${typeof toolName === 'string' ? `Tool: ${toolName}. ` : ''}${typeof request.presentation.workspaceRoot === 'string' ? `Workspace: ${request.presentation.workspaceRoot}` : 'Applies to this tool call only.'}`;
+    if (action?.detail) {
+      const detail = document.createElement('pre'); detail.className = 'managed-chat-request__detail'; detail.textContent = action.detail;
+      form.append(detail);
+    }
+    if (action?.reasons.length) {
+      const chips = document.createElement('div'); chips.className = 'managed-chat-request__chips';
+      for (const reason of action.reasons) { const chip = document.createElement('span'); chip.textContent = reason; chips.append(chip); }
+      form.append(chips);
+    }
+    const workspace = document.createElement('p'); workspace.className = 'managed-chat-request__scope';
+    workspace.textContent = `${typeof toolName === 'string' ? `Tool: ${toolName}. ` : ''}${typeof request.presentation.workspaceRoot === 'string' ? `Project: ${request.presentation.workspaceRoot}` : 'Applies to this tool call only.'}`;
     const details = document.createElement('details'), summary = document.createElement('summary'), args = document.createElement('pre');
-    summary.textContent = 'Review tool arguments'; args.textContent = typeof request.presentation.argsPreview === 'string' ? request.presentation.argsPreview : JSON.stringify(request.presentation.arguments ?? {}, null, 2); details.append(summary, args);
+    summary.textContent = 'Details'; args.textContent = typeof request.presentation.argsPreview === 'string' ? request.presentation.argsPreview : JSON.stringify(request.presentation.arguments ?? {}, null, 2); details.append(summary, workspace, args);
+    const feedback = document.createElement('input'); feedback.type = 'text'; feedback.className = 'managed-chat-request__feedback';
+    feedback.placeholder = 'Or tell Minnow what to do instead…'; feedback.setAttribute('aria-label', 'Deny with a note for the agent');
+    const deny = () => { const note = feedback.value.trim(); void submit(view, panel, note ? { decision: 'deny', feedback: note } : { decision: 'deny' }); };
+    feedback.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); deny(); } });
     const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions';
-    actions.append(button('Allow once', () => void submit(view, panel, { decision: 'allow_once' })), button('Deny', () => void submit(view, panel, { decision: 'deny' })));
-    form.append(workspace, details, actions);
+    const allow = button('Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
+    actions.append(allow);
+    if (action?.grant && action.risk !== 'high') {
+      actions.append(button(`Allow ${action.grant.label} for this chat`, () => void submit(view, panel, { decision: 'allow_chat' })));
+    }
+    actions.append(button('Deny', deny));
+    form.append(details, actions, feedback);
   } else {
     const parsed = validateAskQuestionArgs(request.presentation.question);
     if (!parsed.ok) {

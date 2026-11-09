@@ -34,6 +34,19 @@ export function parseNamespacedName(name) {
 }
 
 /**
+ * Permission hint from MCP tool annotations: `read` for readOnlyHint tools,
+ * `destructive` for destructiveHint, otherwise `write` (an unknown effect).
+ * @param {{ annotations?: { readOnlyHint?: boolean, destructiveHint?: boolean } }} tool
+ * @returns {'read'|'write'|'destructive'}
+ */
+export function mcpToolPermissionHint(tool) {
+  const a = tool?.annotations;
+  if (a?.readOnlyHint === true) return 'read';
+  if (a?.destructiveHint === true) return 'destructive';
+  return 'write';
+}
+
+/**
  * @param {string} serverId
  * @param {Array<{ name: string, description?: string, inputSchema?: object }>} tools
  */

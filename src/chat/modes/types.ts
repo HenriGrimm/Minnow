@@ -29,19 +29,21 @@ export function isModeId(value: string): value is ModeId {
   return (MODE_IDS as readonly string[]).includes(value);
 }
 
-/**
- * Normalize persisted or unknown values to a valid ModeId.
- *
- * Super Plan is disabled for release: it stays a valid persisted id so existing
- * records still load, but every runtime read collapses it to Plan mode. That
- * single mapping is what disables the whole surface — the pipeline, the
- * composer routing and the Super Plan page all key off this normalized id.
- */
+/** Normalize persisted or unknown values to a valid ModeId. */
 export function normalizeModeId(value: string | null | undefined): ModeId {
-  if (value === 'desktop' || value === 'email') return 'general';
-  if (value === 'super-plan') return 'plan';
-  if (value && isModeId(value)) return value;
+  // One agent: every chat mode collapses to the single agent ('build'). Only
+  // Orchestrate survives, as the Boards surface. Old ids stay valid in the
+  // persisted schema so existing records load; /ask, /plan and /debug are
+  // skills now.
+  if (value === 'orchestrate') return 'orchestrate';
   return DEFAULT_MODE_ID;
+}
+
+/** Workflow identities accepted by older programmatic chat launchers. */
+export function workflowSkillForMode(value: string | null | undefined): 'plan' | 'debug' | 'onboarding' | undefined {
+  if (value === 'plan' || value === 'super-plan') return 'plan';
+  if (value === 'debug' || value === 'onboarding') return value;
+  return undefined;
 }
 
 export type ToolPolicyAction = 'allow' | 'deny' | 'ask';

@@ -1,28 +1,28 @@
 import { showToolApprovalModal } from '../ui/tool-approval-modal';
-import type { ToolApprovalModalResult } from '../ui/tool-approval-modal';
-import type { ToolApprovalRequest } from './tool-approval-types';
+import type { ToolApprovalDecision, ToolApprovalRequest } from './tool-approval-types';
 
-export type { ToolApprovalRequest } from './tool-approval-types';
+export type { ToolApprovalDecision, ToolApprovalRequest } from './tool-approval-types';
 
-export type ToolApprovalDecision = ToolApprovalModalResult;
-
-/** Optional executor metadata (sub-agent label for the modal). */
+/** Executor metadata the gate needs for one tool call. */
 export interface ToolApprovalContext {
   serverAdmission?: import('./server-admission').ServerToolAdmission;
   executionId?: string;
   chatId?: string;
   toolCallId?: string;
+  /** Title of the sub-agent running this call (shown on the approval card). */
   subAgentType?: string;
   workAgentId?: string | null;
-  /** Active composer mode (General always prompts before tool execution). */
+  /** Legacy persisted mode id; ignored by the permission system. */
   modeId?: string;
-  /** Override workspace for path-outside checks (benchmark sandbox, worktree, etc.). */
+  /** Turn clamp from a skill's `access` front matter (`/ask`, `/plan`). */
+  turnClamp?: 'read-only' | 'plans' | null;
+  /** Override workspace for path checks (benchmark sandbox, worktree, etc.). */
   workspaceRoot?: string;
   /** Additional allowed roots (board worktrees under ~/.minnow/worktrees). */
   extraPathRoots?: string[];
-  /** Benchmark runs proceed without approval or path-ack modals. */
+  /** @deprecated Compatibility marker; never bypasses the global permission mode. */
   benchmarkAutonomous?: boolean;
-  /** Cancels this approval (and dismisses the strip if it is showing). */
+  /** Cancels this approval (and dismisses the card if it is showing). */
   signal?: AbortSignal;
 }
 
@@ -32,12 +32,31 @@ interface Queued {
   settled: boolean;
 }
 
+const CANCEL: ToolApprovalDecision = { kind: 'deny' };
 const queue: Queued[] = [];
 let draining = false;
+const listeners = new Set<() => void>();
 
-/** True while a tool approval modal is open or queued (progress-stall pause). */
+/** True while an approval card is open or queued (progress-stall pause). */
 export function hasPendingToolApproval(): boolean {
   return draining || queue.length > 0;
+}
+
+/** Requests waiting behind the visible card (for the "1 of 3" counter). */
+export function pendingToolApprovalCount(): number {
+  return queue.length + (draining ? 1 : 0);
+}
+
+/** Notified whenever the queue length changes. */
+export function onToolApprovalQueueChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function notify(): void {
+  for (const fn of listeners) {
+    try { fn(); } catch { /* listener errors never block approvals */ }
+  }
 }
 
 function settle(item: Queued, decision: ToolApprovalDecision): void {
@@ -49,7 +68,7 @@ function settle(item: Queued, decision: ToolApprovalDecision): void {
 export function enqueueToolApproval(request: ToolApprovalRequest): Promise<ToolApprovalDecision> {
   return new Promise((resolve) => {
     if (request.signal?.aborted) {
-      resolve('cancel');
+      resolve(CANCEL);
       return;
     }
     const item: Queued = { request, resolve, settled: false };
@@ -57,13 +76,30 @@ export function enqueueToolApproval(request: ToolApprovalRequest): Promise<ToolA
       const idx = queue.indexOf(item);
       if (idx >= 0) {
         queue.splice(idx, 1);
+        notify();
       }
-      settle(item, 'cancel');
+      settle(item, CANCEL);
     };
     request.signal?.addEventListener('abort', onAbort, { once: true });
     queue.push(item);
+    notify();
     void drainQueue();
   });
+}
+
+/**
+ * Settle every queued request whose grant key matches — used after "Allow for
+ * this chat" so parallel sub-agents asking the same thing don't each prompt.
+ */
+export function settleQueuedApprovalsForGrant(grantKey: string, chatId?: string): void {
+  for (let i = queue.length - 1; i >= 0; i--) {
+    const item = queue[i]!;
+    if (item.request.action?.grant?.key !== grantKey || item.request.action.risk === 'high') continue;
+    if (chatId && item.request.chatId && item.request.chatId !== chatId) continue;
+    queue.splice(i, 1);
+    settle(item, { kind: 'allow-once' });
+  }
+  notify();
 }
 
 async function drainQueue(): Promise<void> {
@@ -71,17 +107,19 @@ async function drainQueue(): Promise<void> {
   const next = queue.shift();
   if (!next) return;
   draining = true;
+  notify();
   try {
     if (next.settled || next.request.signal?.aborted) {
-      settle(next, 'cancel');
+      settle(next, CANCEL);
       return;
     }
     const decision = await showToolApprovalModal(next.request);
     settle(next, decision);
   } catch {
-    settle(next, 'cancel');
+    settle(next, CANCEL);
   } finally {
     draining = false;
+    notify();
     if (queue.length > 0) {
       void drainQueue();
     }
@@ -92,4 +130,5 @@ async function drainQueue(): Promise<void> {
 export function resetApprovalQueueForTests(): void {
   queue.length = 0;
   draining = false;
+  listeners.clear();
 }

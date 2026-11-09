@@ -452,3 +452,15 @@
     transition: none;
   }
 }
+
+/* Local model guidance sits under the prompt cards it modifies. */
+.settings-agent-center__inline {
+  margin-top: var(--mn-space-3);
+}
+
+.settings-agent-card__icon.fi,
+.settings-agent-card__head > i.settings-agent-card__icon {
+  color: var(--mn-fg-muted);
+  font-size: 1rem;
+  line-height: 1;
+}

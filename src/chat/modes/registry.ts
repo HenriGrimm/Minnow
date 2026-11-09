@@ -78,14 +78,12 @@ export function listModes(): ModeDefinition[] {
   return MODE_DEFINITIONS.filter((m) => m.id !== 'super-plan');
 }
 
-/** Composer mode strip (excludes Orchestrate, Super Plan, and Onboarding). */
+/**
+ * Composer mode strip — retired. Minnow runs one agent; /ask, /plan and
+ * /debug are skills. Kept (empty) so older callers compile.
+ */
 export function listComposerModes(): ModeDefinition[] {
-  return MODE_DEFINITIONS.filter(
-    (m) =>
-      m.id !== 'orchestrate' &&
-      m.id !== 'super-plan' &&
-      m.id !== 'onboarding',
-  );
+  return [];
 }
 
 export function getMode(id: ModeId): ModeDefinition {

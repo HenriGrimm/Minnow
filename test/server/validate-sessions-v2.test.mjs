@@ -196,7 +196,7 @@ describe('validateSessionState workspace schema', () => {
       ],
     });
 
-    assert.equal(out.chats[0].modeId, 'super-plan');
+    assert.equal(out.chats[0].modeId, 'plan');
     assert.deepEqual(out.chats[0].superPlan, {
       slug: 'oauth',
       prompt: 'Add OAuth login',

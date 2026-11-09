@@ -16,7 +16,7 @@ Each installed plugin has **Enable / Disable**, **Reload from source**, and **Re
 
 UI contributions load at startup and refresh live on install, reload, disable and remove. Other open Minnow windows check the catalog every three seconds. Managed mounts, apps, menus, commands and subscriptions are disposed on unload. A UI initialization error removes that module's managed contributions and appears in Settings; fix the source and reload. Reload requires the source folder or GitHub repository to remain available.
 
-Expand **Tools, panels and connections** to set each tool to **Ask each time**, **Full permission**, or **Off**, configure connections, or open a panel. Unattended server agents and boards discover plugin tools only when you grant Full permission. Ordinary chat and CLI calls follow the existing approval flow. A plugin installed during a chat becomes discoverable on the next model round.
+Expand **Tools, panels and connections** to inspect tools, configure connections, or open a panel. Plugin tools follow the global permission mode in chats, CLI runs, sub-agents, and Boards. Unattended calls that need approval return an approval-required error. Disable or remove a plugin package to disconnect it. A plugin installed during a chat becomes discoverable on the next model round.
 
 ## Ask Minnow to build a plugin
 
@@ -118,7 +118,7 @@ try {
 }
 ```
 
-The bridge accepts only the owning plugin's declared tools, checks the current release, and dispatches through normal tool permissions. It provides no arbitrary host API and never sends connection secrets to the frame. Results are strings; JSON results can be parsed by the panel. Set loading and error states, use labels and keyboard-accessible controls, and insert tool output with `textContent`. Tool errors may be returned as `Error:` text, following Minnow's tool-result convention.
+The bridge accepts only the owning plugin's declared tools, checks the current release, and dispatches through the global permission mode. It provides no arbitrary host API and never sends connection secrets to the frame. Results are strings; JSON results can be parsed by the panel. Set loading and error states, use labels and keyboard-accessible controls, and insert tool output with `textContent`. Tool errors may be returned as `Error:` text, following Minnow's tool-result convention.
 
 ## Apps, menus and DOM extensions
 
@@ -229,6 +229,6 @@ All HTTP endpoints require the normal Minnow API authentication and workspace sc
 | `GET /api/plugins/packages/:id/ui/:release` | Declared UI module source and tool ids for the pinned, enabled release; no credentials |
 | `GET /api/plugins/tools` | Enabled tool definitions, including legacy tools |
 
-Management actions are `scaffold`, `install`, `update`, `reload`, `enable`, `disable` and `remove`. Scaffold creates source only. Install requires `source` or `path`. Update requires an installed `id` and accepts a replacement source. Reload uses the stored source. Pass the inspected `digest` to reject changed files, and the inspected `commit` to install the reviewed GitHub snapshot. Files are staged before the atomic registry switch. The old release remains selected if validation or writing fails. Existing `~/.minnow/tools/<id>/tool.json` plugins retain their compatibility API and tool permissions.
+Management actions are `scaffold`, `install`, `update`, `reload`, `enable`, `disable` and `remove`. Scaffold creates source only. Install requires `source` or `path`. Update requires an installed `id` and accepts a replacement source. Reload uses the stored source. Pass the inspected `digest` to reject changed files, and the inspected `commit` to install the reviewed GitHub snapshot. Files are staged before the atomic registry switch. The old release remains selected if validation or writing fails. Existing `~/.minnow/tools/<id>/tool.json` plugins retain their compatibility API and follow the global permission mode.
 
 Storage lives under `~/.minnow/plugins/`: `registry.json` selects active releases, `packages/<id>/<release>/` contains installed copies, `connections/<id>.json` holds encrypted fields, and `data/<id>/` holds plugin state. Include this directory and Minnow's `.key` in backups. Interrupted staging can leave unreferenced release folders; these are never discovered or executed.

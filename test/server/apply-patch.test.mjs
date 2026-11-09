@@ -141,7 +141,7 @@ test('patch is catalogued and builder-only; Plan refuses even plan-document patc
 });
 
 test('existing editors get patch with Ask permission, preserving explicit off', () => {
-  assert.equal(normalizeToolConfig({ permissions: { default: { save_file: 'full' } } }).permissions.default.apply_patch, 'ask');
-  assert.equal(normalizeToolConfig({ permissions: { default: { save_file: 'full', apply_patch: 'off' } } }).permissions.default.apply_patch, 'off');
-  assert.equal(normalizeToolConfig({ enabled: { save_file: true, apply_patch: false } }).permissions.default.apply_patch, 'off');
+  assert.equal('permissions' in normalizeToolConfig({ permissions: { default: { save_file: 'full' } } }), false);
+  assert.equal('permissions' in normalizeToolConfig({ permissions: { default: { save_file: 'full', apply_patch: 'off' } } }), false);
+  assert.equal('permissions' in normalizeToolConfig({ enabled: { save_file: true, apply_patch: false } }), false);
 });

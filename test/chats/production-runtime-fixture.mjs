@@ -39,7 +39,7 @@ export async function createProductionRuntimeTestEnvironment() {
         }
         modules.closeWorkspace(workspace); modules.closeWorkspace(foreign); if (db?.open) db.close();
       });
-      const calls = [];
+      const calls = [], loadedSkills = [];
       upstream = http.createServer(async (request, response) => {
         if (request.method === 'GET') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'model' }] })); return; }
         let encoded = ''; for await (const chunk of request) encoded += chunk;
@@ -79,6 +79,10 @@ export async function createProductionRuntimeTestEnvironment() {
           'info/general-assistant.full.md': raw('info', 'general-assistant', 'Current project context.'),
           ...Object.fromEntries(agents.map(agent => ['work-agents/' + agent.id + '/agent.full.md', raw('work-agent', agent.id, 'Complete this ' + agent.label + ' task.')])) },
         userRaw: {} }),
+        loadSkill: async id => {
+          loadedSkills.push(id);
+          return { body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null };
+        },
         resolveModelContextLimit: async () => 32000,
       };
       const modelAdapters = { listProviders: async () => [provider], listModels: async () => [{ id: 'model' }],
@@ -105,7 +109,7 @@ export async function createProductionRuntimeTestEnvironment() {
           ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
         return { status: response.status, body: await response.json() };
       }
-      return { runtime, repository, db, calls, workspace, foreign, turns, providerId, request, settings,
+      return { runtime, repository, db, calls, loadedSkills, workspace, foreign, turns, providerId, request, settings,
         preparationAdapters, modelAdapters, installation };
     },
     async dispose() {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { modelOptionSupport, resolveAgentModelSelection } from '../../server/chats/model-selection.js';
 import { listAgentCapabilities } from '../../server/chats/capabilities.js';
+import { normalizeCapabilitiesFile } from '../../server/providers/capabilities-schema.js';
 
 function fixture() {
   const calls = [];
@@ -33,6 +34,18 @@ function fixture() {
 }
 
 describe('agent model selection preflight', () => {
+  it('admits tools and streaming after an inconclusive legacy capability probe', async () => {
+    for (const streaming of [true, false]) {
+      const { context, adapters } = fixture();
+      adapters.readCapabilities = async () => normalizeCapabilitiesFile({ models: { small: {
+        tools: false, streaming, sources: { tools: 'probe', streaming: 'probe' },
+      } } });
+      const result = await resolveAgentModelSelection({ target: { providerId: 'api', modelId: 'small' } },
+        { ...context, request: { tools: [{ type: 'function' }], stream: true } });
+      assert.equal(result.selection.modelId, 'small');
+    }
+  });
+
   it('delivers attachments when catalogs omit vision metadata or retain an inferred catalog negative', async () => {
     const images = [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,aA==' } }] }];
     for (const stored of [undefined, { vision: false, sources: { vision: 'catalog' } }]) {

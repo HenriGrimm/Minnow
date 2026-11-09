@@ -13,7 +13,6 @@ import type {
 } from '../ui/question-cards-modal';
 import { resolveOrchestratePlanScreenQuestionHost } from '../ui/orchestrate-plan-screen';
 import { resolveBoardOnboardingQuestionHost } from '../ui/orchestrate-board-onboarding-questions';
-import { applyBrowserAllowlistFromAskQuestion } from './browser-navigation-gate';
 import type { AskQuestionArgs } from './ask-question-types';
 import { stringifyAskQuestionResult } from './ask-question-types';
 
@@ -103,7 +102,6 @@ async function drainQueue(chatId: string): Promise<void> {
       next.context,
       modalOptions,
     );
-    await applyBrowserAllowlistFromAskQuestion(next.args, result);
     void import('../chat/issues/agent-watch')
       .then((m) => {
         try {

@@ -1,8 +1,7 @@
 /**
- * Settings field registry — catalog + storage overlay + dynamic tool-permission keys.
+ * Settings field registry — catalog and storage overlay for global and operational settings.
  */
 
-import { BUILT_IN_TOOLS } from '../tools/definitions';
 import { resolveSettingsSectionNavigation } from '../ui/settings-section-navigation';
 import {
   SETTINGS_FIELD_CATALOG,
@@ -11,7 +10,6 @@ import {
 import {
   DEFAULT_OVERLAY,
   SETTINGS_STORAGE_OVERLAY,
-  toolPermissionFieldDef,
 } from './storage-overlay';
 import type {
   SettingsCatalogEntry,
@@ -49,16 +47,9 @@ export function buildStaticFieldRegistry(): SettingsFieldDef[] {
   return SETTINGS_FIELD_CATALOG.map(catalogEntryToFieldDef);
 }
 
-/** Dynamic per-tool permission keys (integrations.tools.permission.<toolId>). */
-export function buildDynamicToolPermissionFields(): SettingsFieldDef[] {
-  return BUILT_IN_TOOLS.map((tool) => toolPermissionFieldDef(tool.id));
-}
-
-/** Full registry: static catalog + dynamic tool permissions. */
+/** Registry of the supported global and operational settings. */
 export function buildFullFieldRegistry(): SettingsFieldDef[] {
-  const staticKeys = new Set(SETTINGS_FIELD_CATALOG.map((e) => e.key));
-  const dynamic = buildDynamicToolPermissionFields().filter((d) => !staticKeys.has(d.key));
-  return [...buildStaticFieldRegistry(), ...dynamic];
+  return buildStaticFieldRegistry();
 }
 
 let cachedRegistry: SettingsFieldDef[] | null = null;

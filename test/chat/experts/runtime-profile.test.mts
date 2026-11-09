@@ -53,7 +53,7 @@ Body`,
     ]);
   });
 
-  test('applies valid model and mode overrides', () => {
+  test('applies valid model overrides with the shared agent', () => {
     const result = resolveExpertChatSeed(
       'software-engineer',
       {
@@ -84,7 +84,7 @@ Body`,
     assert.ok(!('error' in result));
     if ('error' in result) return;
     assert.equal(result.modelId, 'mistral');
-    assert.equal(result.modeId, 'general');
+    assert.equal(result.modeId, 'build');
     assert.deepEqual(result.runtimeSnapshot.enabledToolNames, ['read_file']);
   });
 });

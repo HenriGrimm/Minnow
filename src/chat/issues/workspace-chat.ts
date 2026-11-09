@@ -9,6 +9,7 @@ import { isChatStreaming } from '../streaming-state';
 import { canRunIssueWorkflow, buildIssueForegroundModeSeed, type IssueForegroundChatMode } from './workflow-seeds';
 import { getChatRunActivity, setChatRunActivity } from '../../state/chat-run-activity';
 import { randomUUID } from '../../lib/random-id';
+import { workflowSkillForMode } from '../modes/types';
 
 /** Issue-owned chats run on the shared engine without changing the foreground app. */
 export async function runIssueWorkspaceChat(
@@ -56,7 +57,7 @@ export async function runIssueWorkspaceChat(
       text: ref.snippet || `(code reference: ${ref.path})`, workspacePath: ref.path, lineStart: ref.startLine ?? 1, lineEnd: ref.endLine ?? ref.startLine ?? 1,
     }));
     const { sendProgrammaticChatText } = await import('../messaging');
-    void sendProgrammaticChatText(chat, seed, { issue: snapshot, validAttachments: attachments, parseSlash: false, ownsGlobalStreaming: false, requireCompletedTurn: true }).catch(async (error: unknown) => {
+    void sendProgrammaticChatText(chat, seed, { issue: snapshot, validAttachments: attachments, parseSlash: false, requiredSkillId: workflowSkillForMode(modeId), ownsGlobalStreaming: false, requireCompletedTurn: true }).catch(async (error: unknown) => {
       if (!getChatRunActivity(chat.id, chat)) setChatRunActivity(chat.id, 'failed');
       appendIssueActivity(issue.id, { kind: 'chat-failed', actorKind: 'system', data: { chatId: chat.id, error: error instanceof Error ? error.message : String(error) } });
       const { showToast } = await import('../../ui/toast');

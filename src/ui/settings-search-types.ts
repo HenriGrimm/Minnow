@@ -3,8 +3,6 @@ import type { SettingsSectionId } from './settings-page-types';
 export type SettingsSearchEntryKind =
   | 'section'
   | 'nav-group'
-  | 'tool'
-  | 'tool-category'
   | 'mode'
   | 'expert'
   | 'work-agent'

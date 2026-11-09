@@ -240,6 +240,7 @@ import {
   isPartyModePinned,
   resolveActiveSkill,
 } from '../skills';
+import { getSkillTurnClamp } from '../skills/client';
 import { burstPartyConfetti } from '../ui/party-confetti';
 import {
   appendBubble,
@@ -635,7 +636,10 @@ export async function composeRunTurnChatSystemPrompt(input: {
       firstUserSend: input.firstUserSend,
       attachmentWorkspacePaths: input.attachmentWorkspacePaths,
       modelContextLimit: input.modelContextLimit,
-      overrides: skillBody ? { skillBody } : undefined,
+      overrides: {
+        ...(skillBody ? { skillBody } : {}),
+        turnClamp: getSkillTurnClamp(input.skillId ?? null),
+      },
     });
     composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim() || legacy;
     cliTurnContext = outbound.cliTurnContext;
@@ -1866,6 +1870,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           toolCallId: ctx.toolCallId,
           modeId: toolLoopModeId,
           workAgentId: chat.workAgentId ?? null,
+          turnClamp: getSkillTurnClamp(skillId),
           signal: chatSignal,
           ...(scopedWorkspaceRoot ? { workspaceRoot: scopedWorkspaceRoot } : {}),
         });

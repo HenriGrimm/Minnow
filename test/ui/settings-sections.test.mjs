@@ -78,10 +78,10 @@ describe('settings-sections', () => {
       const backups = document.getElementById('settingsBackupsBody');
       const access = document.getElementById('settingsAccessBody');
       assert.ok(backups.querySelector('#settingsBackup'));
-      assert.equal(backups.querySelector('#settingsFilesystemAccess'), null);
+      assert.equal(backups.querySelector('#settingsPermissions'), null);
       assert.equal(access.childElementCount, 0);
       await refreshSettingsSection('access');
-      assert.ok(access.querySelector('#settingsFilesystemAccess'));
+      assert.ok(access.querySelector('#settingsPermissions'));
       assert.ok(access.querySelector('#settingsShellSandbox'));
       assert.equal(access.querySelector('#settingsBackup'), null);
       assert.ok(backups.querySelector('#settingsBackup'));

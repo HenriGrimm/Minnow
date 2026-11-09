@@ -1,4 +1,3 @@
-import { normalizeModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import { readWorkspaceTextFile } from '../attachments/workspace-text-read';
 import { readPlanType } from '../../server/orchestrator/core/plan-format.js';
@@ -102,7 +101,7 @@ export function createTurnChanges(
     undo.appendChild(createIcon('undo', { className: 'chat-turn-changes__undo-icon', size: 13 }));
   }
 
-  const planPath = findTurnPlanPath(chat, files.map((file) => file.path));
+  const planPath = findTurnPlanPath(files.map((file) => file.path));
 
   const review = document.createElement('button');
   review.type = 'button';
@@ -211,10 +210,8 @@ export function createTurnChanges(
   return card;
 }
 
-/** Plan file written by a Plan-mode turn; the card offers next steps for it. */
-export function findTurnPlanPath(chat: Chat, paths: string[]): string | undefined {
-  const mode = normalizeModeId(chat.modeId);
-  if (mode !== 'plan' && mode !== 'super-plan') return undefined;
+/** A saved plan remains actionable after its skill has been unpinned. */
+export function findTurnPlanPath(paths: string[]): string | undefined {
   for (const path of paths) {
     const plan = normalizeOrchestratePlanPath(path);
     if (plan) return plan;
@@ -240,15 +237,20 @@ function createPlanActions(chat: Chat, planPath: string): HTMLElement {
     if (host?.openPlan && host.transcript.contains(actions)) { host.openPlan(planPath); return; }
     void import('./file-viewer').then((m) => m.openFileInViewer(planPath));
   });
-  const build = button('Build here', 'Switch this chat to Build and implement the plan', async () => {
-    const { setChatMode } = await import('./mode-selector');
-    if (!setChatMode('build', chat).ok) return;
-    const input = document.getElementById('msgInput') as HTMLTextAreaElement | null;
-    if (!input) return;
-    input.value = `Implement the plan in \`${planPath}\`.`;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    const { sendMessage } = await import('../chat/messaging');
-    await sendMessage();
+  const build = button('Build here', 'Implement the saved plan in this chat', async () => {
+    const [{ sendProgrammaticChatText }, { scheduleSaveSessions, touchChat }, { setStatus }] = await Promise.all([
+      import('../chat/messaging'), import('../state/sessions'), import('./status'),
+    ]);
+    if (chat.pinnedSkill?.id === 'plan') {
+      delete chat.pinnedSkill;
+      touchChat(chat);
+      scheduleSaveSessions();
+    }
+    try {
+      await sendProgrammaticChatText(chat, `Implement the plan in \`${planPath}\`.`, { clearComposerOnSend: false });
+    } catch (error) {
+      setStatus('err', error instanceof Error ? error.message : 'Could not start building the plan');
+    }
   });
   const orchestrate = button('Orchestrate', 'Create a board from this plan', () => {
     void import('./orchestrate-launch').then((m) => m.launchBoardFromPlan(planPath));

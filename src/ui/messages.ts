@@ -1,4 +1,5 @@
 import { syncChatWorktreeSetup } from './chat-worktree-setup';
+import { setActivityShimmerText } from './activity-shimmer';
 import { notifyManagedChatView } from '../chat/managed-chat-view';
 import { captureAgentConversationFocus, createAttributedAgentMessage, isAttributedAgentMessage, syncAgentConversationHeader } from './agent-conversation';
 import { syncManagedChatRequests } from './managed-chat-requests';
@@ -140,6 +141,7 @@ import {
 import {
   attachStreamStatus,
   createStreamStatusElement,
+  syncPendingStreamStatusVisibility,
   type StreamingStatusHandle,
   type StreamPhase,
 } from './stream-status';
@@ -1282,15 +1284,14 @@ export function setStreamingRowPhase(wrap: HTMLElement, phase: StreamPhase): voi
     wrap.dataset.streamPhase = phase;
     return;
   }
-  status.classList.remove('hidden');
+  syncPendingStreamStatusVisibility(wrap, status);
   status.setAttribute('aria-busy', 'true');
   status.classList.remove('stream-status--generating', 'stream-status--thinking');
   status.classList.add(
     phase === 'thinking' ? 'stream-status--thinking' : 'stream-status--generating',
   );
   if (label) {
-    label.textContent =
-      phase === 'thinking' ? 'Thinking…' : 'Generating response…';
+    setActivityShimmerText(label, phase === 'thinking' ? 'Thinking…' : 'Generating response…');
   }
   wrap.dataset.streamPhase = phase;
 }

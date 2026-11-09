@@ -8,7 +8,7 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Brain** — Your own knowledge wiki: markdown pages in your Minnow home that the assistant reads and writes. Minnow's memory system. Not this manual.
 
-**Composer** — The input card: text field, then one control row — mode, run target, reasoning, settings, context ring, model picker, attachments, microphone, send.
+**Composer** — The input card: text field, then one control row — permission level, run target, reasoning, settings, context ring, model picker, attachments, microphone, send.
 
 **Context policy** — What an agent does when it hits its input cap: summarize, slide, truncate or archive.
 
@@ -30,9 +30,9 @@ Terms Minnow uses, in the sense Minnow means them.
 
 **Minnow home** — The folder holding everything Minnow keeps: `%USERPROFILE%\.minnow` or `~/.minnow`.
 
-**Mode** — What the assistant is allowed to be this turn. Changes the system prompt and the tool list. General, Build, Plan, Debug, plus surface-bound ones.
+**Permission level** — Manual, Auto or Full access: one setting for what every agent may do without asking. See [Tools and permissions](../concepts/tools-and-permissions.md).
 
-**Plan document** — Markdown under `documentation/plans/`. The one place Plan mode may write or edit. Build plans contain sequential instructions for one chat; Orchestrate plans contain the tasks a board executes.
+**Plan document** — Markdown under `documentation/plans/`. The one place a `/plan` turn may write or edit. Build plans contain sequential instructions for one chat; Orchestrate plans contain the tasks a board executes.
 
 **Provider** — An OpenAI-compatible endpoint Minnow talks to: a local runtime, a served model, or a cloud API.
 
@@ -45,11 +45,11 @@ Terms Minnow uses, in the sense Minnow means them.
 **Sub-agent** — A nested agent spawned for one job, running in the background and reporting a structured result.
 
 
-**Tool** — A function the model can call. Every one is Off, Ask or Full.
+**Tool** — A function the model can call. Each one is On or Off; the permission level decides whether a call asks first.
 
 **Wave** — A dependency group on a board. Tasks in one wave can run in parallel; the next wave waits.
 
-**Work agent** — A role with its own prompt, sampler and optional model: builder, planner, reviewer, researcher and others.
+**Work agent** — A board role with its own prompt, sampler and optional model: builder, planner, reviewer, researcher and others.
 
 **Workspace root** — The folder file and git tools are confined to. Set by the project you open in Code, or **Sandbox** (`~/.minnow/workspace`) when you have not picked a repo yet.
 

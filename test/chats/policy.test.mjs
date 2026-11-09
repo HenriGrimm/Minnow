@@ -72,7 +72,7 @@ describe('captured and current chat policy', () => {
     const type = policy({ toolPermissions: { read_file: 'full', mcp__docs__read: 'full', plugin__editor__write: 'full' }, workspaceIds: ['tree'], capabilities: ['chat.read'] });
     const current = policy({ toolPermissions: { read_file: 'ask', mcp__docs__read: 'off', plugin__editor__write: 'off' } });
     const effective = intersectChatPolicies(captured, type, current);
-    assert.deepEqual(Object.entries(effective.toolPermissions), [['read_file', 'ask']]);
+    assert.deepEqual(Object.entries(effective.toolPermissions), [['read_file', 'full']]);
     assert.deepEqual(effective.workspaceIds, ['tree']);
     assert.deepEqual(effective.capabilities, ['chat.read']);
     for (const name of ['mcp__docs__read', 'plugin__editor__write']) {
@@ -81,11 +81,12 @@ describe('captured and current chat policy', () => {
   });
 
   it('does not regain a captured denial when a live setting becomes more permissive', () => {
-    const captured = policy({ toolPermissions: { read_file: 'ask' } });
-    const current = policy();
+    const captured = policy({ permissionLevel: 'manual', toolPermissions: { execute_command: 'ask' } });
+    const current = policy({ permissionLevel: 'full' });
     assert.throws(() => assertChatToolAllowed(captured, 'save_file', { path: 'app.js' }, { currentPolicy: current }), reason('tool_denied'));
-    assert.throws(() => assertChatToolAllowed(captured, 'read_file', {}, { currentPolicy: current }), reason('approval_required'));
-    assert.equal(assertChatToolAllowed(captured, 'read_file', {}, { currentPolicy: current, approvalGranted: true }).permission, 'ask');
+    // The captured Manual level survives a live switch to Full access.
+    assert.throws(() => assertChatToolAllowed(captured, 'execute_command', { command: 'npm test' }, { currentPolicy: current }), reason('approval_required'));
+    assert.equal(assertChatToolAllowed(captured, 'execute_command', { command: 'npm test' }, { currentPolicy: current, approvalGranted: true }).permission, 'ask');
   });
 
   it('fails closed when the execution adapter forgets current permissions', () => {
@@ -104,7 +105,7 @@ describe('captured and current chat policy', () => {
     const captured = policy({ toolPermissions: { read_file: 'ask' }, workspaceIds: ['main'], capabilities: ['chat.read'], fileWriteScope: 'none' });
     const target = policy({ toolPermissions: { read_file: 'full' }, filesystemAccess: 'full', fileWriteScope: 'full' });
     const result = compareChatPolicies(captured, target);
-    for (const violation of ['tool:read_file', 'filesystem_access', 'file_write_scope', 'workspace:tree', 'capability:chat.send']) assert.ok(result.violations.includes(violation), violation);
+    for (const violation of ['filesystem_access', 'file_write_scope', 'workspace:tree', 'capability:chat.send']) assert.ok(result.violations.includes(violation), violation);
   });
 
   it('reports policy failures through the common serialized error contract', () => {
@@ -129,10 +130,12 @@ describe('Plan and restricted file effects', () => {
     assert.equal(createChatPolicy({ modeId: 'desktop' }).modeId, 'general');
   });
 
-  it('allows shell, reads and scoped markdown writes while denying application/git writes', () => {
+  it('allows reads and scoped markdown writes while denying shell, file and git mutations', () => {
     const plan = policy({ modeId: 'plan' });
     const options = { currentPolicy: plan };
-    for (const name of ['read_file', 'execute_command']) assert.equal(assertChatToolAllowed(plan, name, {}, options).permission, 'full');
+    assert.equal(assertChatToolAllowed(plan, 'read_file', { path: 'README.md' }, options).permission, 'full');
+    assert.equal(assertChatToolAllowed(plan, 'execute_command', { command: 'git status' }, options).permission, 'full');
+    assert.throws(() => assertChatToolAllowed(plan, 'execute_command', { command: 'node write.js' }, options), reason('tool_denied'));
     assert.equal(assertChatToolAllowed(plan, 'save_file', { path: 'documentation/plans/task.md' }, options).permission, 'full');
     for (const path of ['src/app.ts', 'documentation/plans/task.js', '../documentation/plans/task.md']) {
       assert.throws(() => assertChatToolAllowed(plan, 'save_file', { path }, options), reason('plan_write_denied'));

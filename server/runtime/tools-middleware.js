@@ -40,6 +40,7 @@ import {
   resolvePlanWriteArgs,
 } from '../tools/plan-write-guard.js';
 import { assessHostKillCommand } from '../tools/host-kill-guard.js';
+import { classifyToolCall, decidePermission, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 import { assessHostPortBindCommand } from '../tools/host-port-bind-guard.js';
 import { assessUnixPipeOnWindows } from '../tools/windows-pipe-guard.js';
 import { resolveExecuteShellProfile } from '../terminal/shell-config.js';
@@ -114,7 +115,7 @@ import { loadSearchSettings } from '../research/search.js';
 import { runTavilyMap, runTavilyExtract } from '../tools/tavily-tools.js';
 import { unsupportedSearchOptions } from '../tools/tavily-options.js';
 import { getFilesystemAccessFromConfig } from '../config/tool-security.js';
-import { callMcpTool, isMcpToolName } from '../mcp/registry.js';
+import { callMcpTool, getMcpToolHint, isMcpToolName } from '../mcp/registry.js';
 import { callPluginTool, isPluginToolName } from '../tools/loader.js';
 import { inspectPlugins, pluginManage } from '../plugins/authoring.js';
 import {
@@ -1616,25 +1617,36 @@ export function isServerToolAvailable(name) {
 /**
  * @param {string} name
  * @param {Record<string, unknown>} [args]
- * @param {{ modeId?: string, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require' }} [options]
+ * @param {{ modeId?: string, turnClamp?: 'read-only'|'plans'|null, workspaceRoot?: string, runtimeOwner?: { chatId: string, runId: string, agentId: string }, agentActivity?: boolean, activityChatId?: string, abortSignal?: AbortSignal, pluginRelease?: string, filesystemAccessCeiling?: 'workspace'|'full', shellSandboxMode?: 'off'|'prefer'|'require', approvedOutsideWorkspace?: boolean }} [options]
  */
 export async function executeServerTool(name, args, options = {}) {
   const fsAccess = await getFilesystemAccessFromConfig();
-  const allowOutsideWorkspace = options.filesystemAccessCeiling === 'workspace' ? false : fsAccess === 'full';
+  // Full access reaches the whole disk; otherwise only a call the permission
+  // gate approved (or auto-allowed) may resolve paths outside the workspace.
+  const allowOutsideWorkspace = options.filesystemAccessCeiling === 'workspace' ? false
+    : fsAccess === 'full' || options.approvedOutsideWorkspace === true;
   const toolsRaw = await readConfigJson('tools.json');
   const tools = normalizeToolConfig(toolsRaw);
   const outputPolicy = resolveOutputCapPolicy(tools.toolOutput, args ?? {});
   return runWithToolContext(async () => {
     return runWithOutputCapPolicy(outputPolicy, async () => {
     try {
-      args = resolvePlanWriteArgs(options.modeId, name, args, getEffectiveWorkspaceRoot());
+      const workspaceRoot = getEffectiveWorkspaceRoot();
+      if (options.turnClamp) {
+        const action = classifyToolCall(name, args, { workspaceRoots: [workspaceRoot], toolHint: getMcpToolHint(name) });
+        const verdict = decidePermission('full', action, { clamp: options.turnClamp });
+        if (verdict.decision === 'deny') return { result: `Error: ${verdict.reason}` };
+        if (action.planScoped && options.turnClamp === 'plans') {
+          args = resolvePlanWriteArgs('plan', name, args, workspaceRoot, { lexicalScopeChecked: true });
+        }
+      } else {
+        args = resolvePlanWriteArgs(options.modeId, name, args, workspaceRoot);
+      }
       if (isPluginToolName(name)) {
-        if (tools.permissions.default[name] === 'off') return { result: 'Error: plugin tool is disabled in Settings' };
         const result = await callPluginTool(name, args ?? {}, { pluginRelease: options.pluginRelease });
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
       if (isMcpToolName(name)) {
-        if (tools.permissions.default[name] === 'off') return { result: 'Error: MCP tool is disabled in Settings' };
         const result = await callMcpTool(name, args ?? {});
         return { result: wrapServerToolResult(name, args ?? {}, String(result)) };
       }
@@ -1647,7 +1659,6 @@ export async function executeServerTool(name, args, options = {}) {
         });
       }
       const handler = SERVER_TOOL_HANDLERS[name];
-      if (Object.hasOwn(ACTION_TOOL_HANDLERS, name) && tools.permissions.default[name] === 'off') return { result: 'Error: action tool is disabled in Settings' };
       if (!handler) {
         return { result: `Not implemented: ${name}` };
       }
@@ -1827,9 +1838,10 @@ export function createToolsMiddleware() {
         let out;
         try {
           out = await executeServerTool(name, args, {
-            modeId, workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+            modeId, turnClamp: normalizeTurnClamp(body?.turnClamp), workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
+            approvedOutsideWorkspace: body?.approvedOutsideWorkspace === true,
             abortSignal: toolController?.signal,
           });
         } finally { res.removeListener('close', onDisconnected); }

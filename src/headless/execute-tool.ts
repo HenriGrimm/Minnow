@@ -2,13 +2,12 @@
  * Headless tool execution — server POST only; block browser/UI tools with clear errors.
  */
 
+import { loadToolSecurityMeta } from '../config/tool-security-meta';
 import { blockPlanModeWriteWithContent } from '../chat/modes/plan-write-guard';
 import { isToolAllowedForMode, filterToolsByMode } from '../chat/modes/tool-policy';
 import { normalizeModeId, type ModeId } from '../chat/modes/types';
 import {
   ensureToolConfigReady,
-  getToolPermissionForId,
-  isToolEnabled,
   loadToolConfig,
 } from '../tools/config';
 import {
@@ -20,6 +19,7 @@ import type { ExecuteToolContext } from '../tools/client';
 import type { ToolExecutionResult } from '../types';
 import {
   maybeBlockHeadlessToolApproval,
+  isHeadlessExternalCallApproved,
   type HeadlessApprovalOptions,
 } from './approval';
 import { headlessApiUrl } from './server-context';
@@ -41,9 +41,6 @@ const BROWSER_ONLY_TOOLS = new Set([
   'get_datetime',
   'calculate',
   'ask_question',
-  'propose_mode_switch',
-  'set_chat_mode',
-  'create_chat_with_mode',
   'spawn_sub_agent',
   'cancel_sub_agent',
   'list_sub_agents',
@@ -66,7 +63,6 @@ export function getHeadlessToolDefinitions(modeId: ModeId): OpenAIFunctionDefini
     // Managed --chat-id runs execute these through the canonical server owner.
     // A fresh legacy CLI session has no persisted sender or execution lease.
     if (AGENT_CHAT_TOOL_IDS.includes(tool.id)) return false;
-    if (!isToolEnabled(tool.id)) return false;
     if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
     const fn = tool.definition.function.name;
     if (fn === 'todo_write') {
@@ -96,7 +92,7 @@ export async function getHeadlessToolsWithMcp(modeId: ModeId): Promise<OpenAIFun
       return Array.isArray(body.tools) ? body.tools as OpenAIFunctionDefinition[] : [];
     } catch { return []; }
   }));
-  return [...builtins, ...catalogs.flat().filter(t => !t.function.name.startsWith('plugin__') || getToolPermissionForId(loadToolConfig(), t.function.name) !== 'off')];
+  return [...builtins, ...catalogs.flat()];
 }
 
 async function postServerTool(
@@ -105,11 +101,12 @@ async function postServerTool(
   modeId: ModeId,
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
-  const payload: { name: string; args: Record<string, unknown>; modeId?: string } = {
+  const payload: { name: string; args: Record<string, unknown>; modeId?: string; approvedOutsideWorkspace?: boolean } = {
     name,
     args,
   };
   payload.modeId = modeId;
+  if (isHeadlessExternalCallApproved(args)) payload.approvedOutsideWorkspace = true;
   let response: Response;
   try {
     response = await fetch(headlessApiUrl('/api/tools'), {
@@ -152,6 +149,7 @@ export async function executeHeadlessTool(
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   await ensureToolConfigReady();
+  await loadToolSecurityMeta({ refresh: true });
   if (AGENT_CHAT_TOOL_IDS.includes(name)) return { content: 'Error: conversation tools require a managed --chat-id execution; this local CLI session has no canonical sender.' };
   if (process.env.MINNOW_REEF_PHASE) {
     const workspace = getHeadlessWorkspace();
@@ -225,9 +223,7 @@ export async function executeHeadlessTool(
       name,
     );
     if (blockedWeb) return blockedWeb;
-    const deepRead =
-      args.deep_read === true &&
-      getToolPermissionForId(config, 'fetch_web_content') !== 'off';
+    const deepRead = args.deep_read === true;
     return postServerTool(serverTool, { ...args, deep_read: deepRead }, modeId, signal);
   }
 

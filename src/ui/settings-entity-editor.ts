@@ -37,6 +37,7 @@ import {
 import { createSettingsToggleRow } from './settings-switch';
 import { setStatus } from './status';
 import { appConfirm } from './app-dialog';
+import { mountPromptPreview } from './settings-prompt-preview';
 
 const CONTEXT_POLICY_OPTIONS: { value: ContextEnforcementPolicy; label: string }[] = [
   { value: 'compact', label: 'Compact (default)' },
@@ -273,6 +274,10 @@ function buildProfileTabs(
 interface PromptEditorOptions {
   family: PromptFileFamily;
   entityId: string;
+  /** One prompt for every profile (agent parts, D7): hide the Full/Lite tabs. */
+  singleProfile?: boolean;
+  /** Textarea height in rows (default 12). */
+  rows?: number;
 }
 
 // ── Prompt ───────────────────────────────────────────────────────────────────
@@ -289,8 +294,8 @@ export function mountPromptFileEditor(
   let sourceLabel = el('span', 'settings-badge', '…');
   const ta = document.createElement('textarea');
   ta.className = 'settings-part-editor';
-  ta.rows = 12;
-  ta.placeholder = 'System prompt body for this profile';
+  ta.rows = options.rows ?? 12;
+  ta.placeholder = options.singleProfile ? 'Prompt body' : 'System prompt body for this profile';
 
   const reloadBaseline = async () => {
     builtinBaseline = await resolveFilePromptBuiltinBaseline(
@@ -309,6 +314,7 @@ export function mountPromptFileEditor(
       ta.value = '';
       ta.disabled = true;
       lastSavedContent = '';
+      preview.refresh();
       await reloadBaseline();
       return;
     }
@@ -316,6 +322,7 @@ export function mountPromptFileEditor(
     ta.value = data.content;
     lastSavedContent = data.content;
     ta.disabled = false;
+    preview.refresh();
     await reloadBaseline();
   };
 
@@ -324,12 +331,13 @@ export function mountPromptFileEditor(
     void reload();
   });
 
-  container.appendChild(tabs.root);
+  if (!options.singleProfile) container.appendChild(tabs.root);
   const meta = el('p', 'settings-field-hint');
   meta.appendChild(document.createTextNode('Source: '));
   meta.appendChild(sourceLabel);
   container.appendChild(meta);
   container.appendChild(ta);
+  const preview = mountPromptPreview(container, ta);
 
   const diffControls = mountPromptDiffControls(container, {
     getBaseline: () => builtinBaseline,
@@ -379,6 +387,7 @@ export function mountPromptFileEditor(
       ta.value = restored.content;
       lastSavedContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
+      preview.refresh();
       await reloadBaseline();
     })();
   });
@@ -430,6 +439,7 @@ export function mountWorkAgentPromptEditor(
       sourceLabel.textContent = 'unavailable';
       ta.value = '';
       lastSavedPromptContent = '';
+      preview.refresh();
       await reloadBaseline();
       return;
     }
@@ -437,6 +447,7 @@ export function mountWorkAgentPromptEditor(
       data.source === 'override' ? 'Custom override' : 'Built-in default';
     ta.value = data.content;
     lastSavedPromptContent = data.content;
+    preview.refresh();
     await reloadBaseline();
   };
 
@@ -452,6 +463,7 @@ export function mountWorkAgentPromptEditor(
   meta.appendChild(sourceLabel);
   container.appendChild(meta);
   container.appendChild(ta);
+  const preview = mountPromptPreview(container, ta);
 
   const diffControls = mountPromptDiffControls(container, {
     getBaseline: () => builtinBaseline,
@@ -501,6 +513,7 @@ export function mountWorkAgentPromptEditor(
       ta.value = restored.content;
       lastSavedPromptContent = restored.content;
       sourceLabel.textContent = 'Built-in default';
+      preview.refresh();
       await reloadBaseline();
     })();
   });

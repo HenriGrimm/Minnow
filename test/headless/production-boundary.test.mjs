@@ -7,11 +7,12 @@ import { execFile, fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 import { functionCallChunks, proseSseChunks } from '../../scripts/fake-model-server.mjs';
+import { buildHeadlessRunner } from '../../scripts/build-headless-runner.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-// Each CLI turn cold-compiles the headless graph through tsx; Windows CI runners need far longer.
+// Windows CI needs more time for child process and filesystem startup.
 const SLOW = process.platform === 'win32' ? 3 : 1;
-let home, workspace, foreign, model, host, base, token;
+let home, workspace, foreign, model, host, base, token, cliBundle;
 const children = new Set();
 let modelStarted;
 let notifyModelStarted;
@@ -24,7 +25,7 @@ async function awaitModel(run) {
     await Promise.race([
       modelStarted,
       run.done.then(outcome => { throw new Error(`CLI ended before scripted model barrier: ${JSON.stringify(outcome)}`); }),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}; CLI output: ${run.output?.().slice(-2000)}`)), 10000); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Model barrier timeout; last request: ${lastModelText.slice(-1000)}; CLI output: ${run.output?.().slice(-2000)}`)), 18000 * SLOW); }),
     ]);
   } finally { clearTimeout(timer); }
 }
@@ -62,7 +63,7 @@ async function until(predicate) {
   assert.fail('production boundary condition did not settle');
 }
 function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture', reef = false } = {}) {
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--json', '--profile', 'lite', '--stdin',
+  const child = spawn(process.execPath, [cliBundle, 'run', '--json', '--profile', 'lite', '--stdin',
     '--workspace', runWorkspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', modelId,
     '--persist-chat', '--chat-id', chatId, ...(reef ? ['--agent', 'builder', '--mode', 'build'] : [])], {
     cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1', ...(reef ? { MINNOW_REEF_PHASE: 'build' } : {}) }, windowsHide: true,
@@ -86,6 +87,9 @@ function launch(prompt, chatId, runWorkspace = workspace, { modelId = 'fixture',
 
 before(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-production-boundary-'));
+  // Exercise the installed CLI and compile it once per suite, instead of
+  // cold-compiling the whole graph in each child before it reaches the host.
+  ({ outfile: cliBundle } = await buildHeadlessRunner({ outfile: path.join(home, 'minnow-run.mjs'), logLevel: 'error' }));
   workspace = path.join(home, 'project');
   foreign = path.join(home, 'other-project');
   await fs.mkdir(workspace);
@@ -149,8 +153,8 @@ before(async () => {
   await startHost();
   const toolsResponse = await api('/api/config/tools');
   const tools = await toolsResponse.json();
-  tools.enabled.read_file = true;
-  tools.permissions.default.read_file = 'full';
+
+
   assert.equal((await api('/api/config/tools', { method: 'PUT', body: JSON.stringify(tools) })).status, 200);
   const sessions = await (await api('/api/config/sessions')).json();
   const seed = { id: 'boundary-binding', name: 'Boundary binding', workspacePath: workspace, providerId: 'boundary-fixture', modelId: 'fixture', modeId: 'general', history: [], lastStats: null, modelInfo: {}, updatedAt: Date.now() };
@@ -239,37 +243,9 @@ async function spawnChild(parentChatId, runId) {
   assert.equal(response.status, 201, await response.text());
 }
 
-test('actual CLI streams partial agent text before completion and keeps the JSON artifact separate', { timeout: 30000 * SLOW }, async () => {
-  modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
-  const outputFile = path.join(home, 'stream-result.json');
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream', '--quiet', '--json-out', outputFile,
-    '--profile', 'lite', '--prompt', '[hold-generation]', '--workspace', workspace,
-    '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
-    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
-  });
-  children.add(child);
-  let stdout = '', stderr = '';
-  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-  child.stdout.on('data', text => { stdout += text; }); child.stderr.on('data', text => { stderr += text; });
-  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => { children.delete(child); resolve(code); }); });
-  void done.catch(() => {});
-  try {
-    await awaitModel({ done, output: () => stdout + stderr });
-    await until(() => stdout.includes('Partial waiting text'));
-    assert.equal(child.exitCode, null, 'the live response must be visible while the model stream remains open');
-    const active = await until(async () => (await states()).find(row => row.status === 'streaming'));
-    assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
-    assert.equal(await done, 130);
-    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
-    assert.equal(result.ok, false); assert.match(result.assistantFinal, /Partial waiting text/);
-    assert.equal(stdout.match(/Partial waiting text/g)?.length, 1, 'the final response must not duplicate the streamed text');
-    assert.ok(!stdout.includes('"assistantFinal"'), 'JSON metadata must stay in its artifact');
-  } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
-});
-
 test('actual Reef Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
   const outputFile = path.join(home, 'reef-json-stream-result.json');
-  const child = spawn(process.execPath, [path.join(root, 'bin/minnow.mjs'), 'run', '--stream-json', '--quiet', '--json-out', outputFile,
+  const child = spawn(process.execPath, [cliBundle, 'run', '--stream-json', '--quiet', '--json-out', outputFile,
     '--agent', 'builder', '--mode', 'build', '--profile', 'lite', '--prompt', '[recover-tool-error] Read README.md and confirm.',
     '--workspace', workspace, '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture',
     '--persist-chat', '--chat-id', 'boundary-reef-json'], {
@@ -406,17 +382,34 @@ test('provider terminal failure keeps partial text and reports failure through a
   assert.ok(run.result.error);
 });
 
-test('Stop through the real generations handler cancels upstream and produces exit 130', { timeout: 30000 * SLOW }, async () => {
+test('actual CLI streams partial text, then Stop cancels it and writes a separate JSON artifact', { timeout: 30000 * SLOW }, async () => {
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
-  const run = launch('[hold-generation]', 'boundary-cancel');
-  await awaitModel(run);
-  const active = await until(async () => (await states()).find(row => row.status === 'streaming' || row.status === 'pending'));
-  assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
-  const outcome = await run.done;
-  assert.equal(outcome.code, 130, outcome.stderr);
-  assert.equal(outcome.result.ok, false);
-  assert.match(outcome.result.assistantFinal, /Partial waiting text/);
-  await until(async () => !(await states()).some(row => row.status === 'pending' || row.status === 'streaming'));
+  const outputFile = path.join(home, 'stream-result.json');
+  const child = spawn(process.execPath, [cliBundle, 'run', '--stream', '--quiet', '--json-out', outputFile,
+    '--profile', 'lite', '--stdin', '--persist-chat', '--chat-id', 'boundary-cancel', '--workspace', workspace,
+    '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
+  });
+  children.add(child);
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.on('data', text => { stdout += text; }); child.stderr.on('data', text => { stderr += text; });
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => { children.delete(child); resolve(code); }); });
+  void done.catch(() => {});
+  child.stdin.end('[hold-generation]');
+  try {
+    await awaitModel({ done, output: () => stdout + stderr });
+    await until(() => stdout.includes('Partial waiting text'));
+    assert.equal(child.exitCode, null, 'the live response must be visible while the model stream remains open');
+    const active = await until(async () => (await states()).find(row => row.status === 'streaming'));
+    assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
+    assert.equal(await done, 130);
+    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
+    assert.equal(result.ok, false); assert.match(result.assistantFinal, /Partial waiting text/);
+    assert.equal(stdout.match(/Partial waiting text/g)?.length, 1, 'the final response must not duplicate the streamed text');
+    await until(async () => !(await states()).some(row => row.status === 'pending' || row.status === 'streaming'));
+    assert.ok(!stdout.includes('"assistantFinal"'), 'JSON metadata must stay in its artifact');
+  } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
 });
 
 test('real disk-journal completion delivers live and offline, and durable ACK survives host reload', { timeout: 30000 * SLOW }, async () => {

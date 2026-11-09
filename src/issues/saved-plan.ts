@@ -11,7 +11,8 @@ export interface SavedIssuePlan { path: string; markdown: string; workspaceRoot:
 /** Resolve previews and approval actions against the same planning checkout. */
 export async function readSavedIssuePlan(issue: IssueCard): Promise<SavedIssuePlan> {
   const chats = linkedIssueChats(issue);
-  const chat = chats.find(c => c.id === issue.agent?.chatId) ?? [...chats].reverse().find(c => c.modeId === 'plan');
+  const chat = chats.find(c => c.id === issue.agent?.chatId)
+    ?? [...chats].reverse().find(c => c.pinnedSkill?.id === 'plan' || c.modeId === 'plan');
   if (chat) await ensureChatHistoryLoaded(chat.id);
   const path = inferIssuePlanPath(issue) || (chat && findLastPlanSavePath(chat.history));
   if (!path) throw new Error('No saved plan is linked yet. Open the planning conversation to locate the plan.');

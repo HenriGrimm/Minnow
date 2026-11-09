@@ -16,7 +16,7 @@ import { resetMinnowHomeCache } from '../../server/config/home.js';
 
 const exec = promisify(execFile);
 async function fixture(t, options = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-canonical-workspace-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-canonical-workspace-')));
   const repo = path.join(root, 'repo'), previousHome = process.env.MINNOW_HOME;
   process.env.MINNOW_HOME = path.join(root, 'home'); resetMinnowHomeCache();
   const git = (args, cwd = repo) => exec('git', args, { cwd, windowsHide: true });
@@ -250,7 +250,7 @@ test('workspace policy rebinding preserves restrictions and cannot grant an unau
   assert.deepEqual(rebound.workspaceIds, ['isolated']);
   assert.equal(rebound.modeId, 'plan');
   assert.equal(rebound.fileWriteScope, 'plans');
-  assert.equal(rebound.toolPermissions.read_file, 'ask');
+  assert.equal(rebound.toolPermissions.read_file, 'full');
   assert.equal(rebound.toolPermissions.execute_command, 'off');
   assert.throws(() => rebindChatWorkspacePolicy(policy, { sourceWorkspaceId: 'foreign', workspaceId: 'isolated' }),
     error => error.code === 'workspace_denied');

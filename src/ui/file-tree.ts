@@ -595,11 +595,11 @@ function friendlyListingError(message: string): string {
 
 function renderTreeError(host: HTMLElement, message: string): void {
   host.innerHTML = '';
-  const permissionBlocked = /tool "list_directory" is disabled in Settings/i.test(message);
+  const permissionBlocked = /needs approval|permission.*denied/i.test(message);
   const msg = document.createElement('p');
   msg.className = 'file-tree-empty file-tree-error';
   msg.textContent = permissionBlocked
-    ? 'File browsing is off. Set List directory to Requires permission or Full permission, then retry.'
+    ? 'File browsing needs authorization. Review the global permission mode, then retry.'
     : friendlyListingError(message);
   host.appendChild(msg);
   if (permissionBlocked) {
@@ -608,10 +608,10 @@ function renderTreeError(host: HTMLElement, message: string): void {
     const settings = document.createElement('button');
     settings.type = 'button';
     settings.className = 'file-tree-readiness-action';
-    settings.textContent = 'List directory permission';
+    settings.textContent = 'Open permissions';
     settings.addEventListener('click', () => {
       void import('./settings-page').then((m) =>
-        m.navigateToSettingsField('tools.item.list_directory', 'tools'),
+        m.navigateToSettingsField('general.permissions', 'access'),
       );
     });
     const retry = document.createElement('button');

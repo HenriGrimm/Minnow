@@ -12,9 +12,9 @@ describe('resolveSubAgentToolModeId', () => {
     assert.equal(resolveSubAgentToolModeId('plan'), 'build');
   });
 
-  test('passes through other modes unchanged', () => {
+  test('uses the shared agent outside Boards', () => {
     assert.equal(resolveSubAgentToolModeId('build'), 'build');
-    assert.equal(resolveSubAgentToolModeId('general'), 'general');
+    assert.equal(resolveSubAgentToolModeId('general'), 'build');
     assert.equal(resolveSubAgentToolModeId(undefined), 'build');
   });
 });

@@ -99,7 +99,8 @@ test('Send prepares the worktree, restores progress on remount, then runs the me
   await waitForSetup();
   assert.equal(turns, 0);
   assert.equal(input.disabled, true);
-  assert.equal(input.value, 'Fix the login page');
+  assert.equal(input.value, '');
+  assert.equal(chat.composerDraft, 'Fix the login page', 'the pending send keeps its recoverable draft');
   assert.equal(chat.history.length, 0);
   assert.match(document.querySelector('.chat-worktree-setup')!.textContent!, /Setting up your worktree/);
   assert.equal(document.querySelector('.chat-worktree-setup')!.getAttribute('aria-busy'), 'true');

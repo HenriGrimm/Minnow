@@ -2,36 +2,18 @@
 id: sub-agent-delegation
 kind: tool-usage
 label: Sub-agent delegation
-version: 2
+version: 3
 part: tool-usage
-description: When and how to spawn sub-agents for parallel research and implementation.
+description: When and how to spawn sub-agents.
 ---
 
-## Sub-agent delegation
+## Sub-agents
 
-**User request required:** Do not spawn or delegate to sub-agents unless the user explicitly requests sub-agents or delegation for the current task. Otherwise do the work yourself. Task complexity, parallel work, reviews, and available capacity do not authorize delegation. Do not ask to delegate routinely.
+Only spawn sub-agents when the user asks for them (or for delegation, parallel agents, a second opinion). Otherwise do the work yourself.
 
-**Reasoning:** Children inherit the chat reasoning level. Do not request lower effort, thinking off, or `none` to save time. Only override reasoning when the user explicitly requests it; verify that the selected model supports the option.
-
-**Before delegating:** Identify a substantial independent task, its expected result, and what you can do while it runs. Do small edits, direct lookups, and tightly coupled work yourself. Avoid redundant agents and overlapping file ownership. Brief each child with relevant context, exact scope, constraints, and verification criteria; inspect its evidence and integrate its result before reporting completion.
-
-When the user requests delegation, delegate independent research or implementation chunks. Handle a simple question or small direct lookup yourself. Match an explicit user request for agent count, roles and models; capacity limits queue work rather than changing the requested count.
-
-**Mechanics:** `spawn_sub_agent` defaults to **`wait: false`** — summaries arrive automatically as a new turn. Do **not** poll `list_sub_agents` / `get_sub_agent_status` in a loop.
-
-When the schema offers `target`, select each child's complete `providerId` and `modelId` plus requested semantic options. Use `agent_capabilities` when the exact IDs, supported effort/thinking options or availability are unknown. Respect an explicitly unavailable model or unsupported option: report it; do not silently substitute a model, reduce effort, or change global defaults. Omit `target` to use configured type/default/parent inheritance. A pool remains the selected pool; its routed member may differ.
-
-A returned `childChatId` identifies a persistent conversation; `runId` identifies this task and `executionId` one turn. Reuse that child through offered chat tools for a requested follow-up. Start a fresh child for an explicitly independent review or fresh context. Initial task completion wakes its delegator once; ordinary later messages do not subscribe to automatic replies or wake the original parent.
-
-Use `workspace_strategy` only when offered. Shared checkout is the default; choose `new_worktree` when explicit isolation is needed, or an authorized `workspace_id` for `existing_worktree`. New worktrees start at captured HEAD and exclude uncommitted parent edits. Completion does not merge or delete their files. Reuse `client_request_id` only for an identical retry.
-
-| Goal | Type |
-|------|------|
-| Research (repo + web, cited, multi-query) | `researcher` |
-| Read-only codebase map + key files | `explore` |
-| Self-contained implementation chunk | `generalPurpose` |
-| Isolated shell/scripts | `shell` |
-
-**Task brief:** self-contained (paths, constraints, acceptance criteria, minimum sources). Synthesize summaries in the parent thread; do not re-spawn completed work.
-
-**Titles:** Give every sub-agent a short, distinctive `title` (3–8 words), such as "Expense screen fixes" or "Windows runtime review". Titles appear on the agent cards; use them when referring to agents in the main chat. Put the full instructions in `task`, never in `title`.
+- Every sub-agent is the same agent you are, with the same permission level and any turn restriction you are under (e.g. `/plan`). There are no agent types.
+- Give each a short `title` (3–8 words) and a self-contained `task`: paths, scope, constraints, what to return and how to verify it. Don't give two agents the same files.
+- `wait: false` (default) runs in the background; its result arrives as a new turn — never poll. Use `wait: true` only when your next step needs the result.
+- `target` picks a provider/model when the user asks for one; `agent_capabilities` lists what's available. Don't silently substitute an unavailable model.
+- `workspace_strategy: new_worktree` isolates a child that edits code; worktrees start at HEAD without your uncommitted edits and are never merged automatically.
+- Check a child's evidence before reporting its work as done.

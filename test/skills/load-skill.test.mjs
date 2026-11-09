@@ -140,16 +140,16 @@ test('character budgets return complete JSON with continuation rather than losin
 });
 
 test('registers a read-only tool across shared and unattended tool sets with preserved permissions', () => {
-  assert.equal(defaultToolsJson().permissions.default.load_skill, 'full');
+  assert.equal('permissions' in defaultToolsJson(), false);
   assert.ok(BUILT_IN_TOOLS.some(tool => tool.id === 'load_skill' && tool.serverRequired));
   assert.ok(DEFAULT_HEADLESS_TOOL_IDS.includes('load_skill'));
   assert.ok(BOARD_VERIFIER_TOOL_IDS.includes('load_skill'));
   assert.equal(isParallelSafeTool('load_skill'), true);
   for (const raw of [undefined, {}, { enabled: { read_file: true } }]) {
     const config = normalizeToolConfig(raw);
-    assert.equal(config.enabled.load_skill, true);
-    assert.equal(config.permissions.default.load_skill, 'full');
+    assert.equal('enabled' in config, false);
+    assert.equal('permissions' in config, false);
   }
-  assert.equal(normalizeToolConfig({ enabled: { load_skill: false } }).permissions.default.load_skill, 'off');
-  assert.equal(normalizeToolConfig({ permissions: { default: { load_skill: 'ask' } } }).permissions.default.load_skill, 'ask');
+  assert.equal('permissions' in normalizeToolConfig({ enabled: { load_skill: false } }), false);
+  assert.equal('permissions' in normalizeToolConfig({ permissions: { default: { load_skill: 'ask' } } }), false);
 });

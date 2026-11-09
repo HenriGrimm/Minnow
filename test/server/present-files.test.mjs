@@ -57,8 +57,8 @@ test('is enabled as a read-only tool and available to unattended agents', () => 
   assert.ok(getToolById('present_files'));
   assert.ok(DEFAULT_HEADLESS_TOOL_IDS.includes('present_files'));
   const config = normalizeToolConfig({});
-  assert.equal(config.enabled.present_files, true);
-  assert.equal(config.permissions.default.present_files, 'full');
+  assert.equal('enabled' in config, false);
+  assert.equal('permissions' in config, false);
 });
 
 test('the tool dispatcher returns durable structured content without recording a file edit', async () => {

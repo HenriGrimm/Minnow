@@ -10,13 +10,9 @@ import type { SubAgentTypeConfig } from '../../src/agents/types.ts';
 import subAgents from '../../src/agents/defaults/sub-agents.json' with { type: 'json' };
 import { parseWorkAgentMetaFromMarkdown } from '../../src/agents/work-agent-meta-parse.ts';
 
-test('client defaults and backfill make Load skill callable without replacing saved permissions', () => {
-  assert.equal(defaultToolConfig().permissions.default.load_skill, 'full');
-  assert.equal(normalizeToolConfig({ enabled: { read_file: true } }).permissions.default.load_skill, 'full');
-  assert.equal(normalizeToolConfig({ enabled: { load_skill: false } }).permissions.default.load_skill, 'off');
-  for (const permission of ['off', 'ask', 'full']) {
-    assert.equal(normalizeToolConfig({ permissions: { default: { load_skill: permission } } }).permissions.default.load_skill, permission);
-  }
+test('skill loading has no per-tool permission override', () => {
+  assert.equal('permissions' in defaultToolConfig(), false);
+  assert.equal('permissions' in normalizeToolConfig({ enabled: { load_skill: false } }), false);
 });
 
 test('composer modes and every shipped sub-agent type allow skill reads through their existing policies', () => {
@@ -38,12 +34,7 @@ test('restricted work-agent prompts and model guidance expose skill loading', as
     assert.ok(meta?.allowedTools?.length, `${id} keeps an explicit restricted tool allowlist`);
     assert.ok(meta.allowedTools.includes('load_skill'), `${id} permits skill reads regardless of allowlist ordering`);
   }
-  for (const profile of ['full', 'lite']) {
-    const prompt = await readFile(new URL(`../../src/chat/prompts/tool-usage/default.${profile}.md`, import.meta.url), 'utf8');
-    assert.match(prompt, /load_skill/);
-    assert.match(prompt, /mode restrictions, or tool permissions/);
-    const general = await readFile(new URL(`../../src/chat/prompts/modes/general.${profile}.md`, import.meta.url), 'utf8');
-    assert.match(general, /load_skill/);
-    assert.doesNotMatch(general, /Use.*skills only when/);
-  }
+  const prompt = await readFile(new URL('../../src/chat/prompts/tool-usage/default.full.md', import.meta.url), 'utf8');
+  assert.match(prompt, /load_skill/);
+  assert.match(prompt, /workflows/);
 });

@@ -335,7 +335,7 @@ test('a settled effect with missing canonical result still blocks automatic reru
 
 test('live policy revocation after durable approval blocks the side effect', async () => {
   const s = setup(); let effects = 0; let pending;
-  s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { save_file: 'ask' }, fileWriteScope: 'workspace' }));
+  s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'manual', toolPermissions: { save_file: 'full' }, fileWriteScope: 'workspace' }));
   try {
     const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true, onChange: request => { if (request.state === 'pending') pending = request; } });
     const host = createServerChatExecutionHost({ repository: s.repository, requestService: requests, resolveCurrentPolicy: s.policy,
@@ -383,7 +383,7 @@ test('missing host capability retains accepted input and offers a truthful waiti
 
 test('bound host tools commit intent before waiting and never replay an unresolved remote effect', async () => {
   const s = setup(); let calls = 0; let rounds = 0; const states = [];
-  s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
+  s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'full', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
   try {
     const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy, onStatus: event => states.push(event.status),
       prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('browser_click', { ref: 'button' })] : []), { tools: [schema('browser_click')], hostToolNames: ['browser_click'] }),
@@ -398,7 +398,7 @@ test('bound host tools commit intent before waiting and never replay an unresolv
 
 test('one-time approval executes once and a disconnected viewer cannot turn it into a permanent grant', async () => {
   const s = setup(); let pending; let effects = 0; let rounds = 0;
-  s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { save_file: 'ask' }, fileWriteScope: 'workspace' }));
+  s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'manual', toolPermissions: { save_file: 'full' }, fileWriteScope: 'workspace' }));
   try {
     const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true,
       onChange: request => { if (request.state === 'pending') pending = request; } });
@@ -410,7 +410,7 @@ test('one-time approval executes once and a disconnected viewer cannot turn it i
     assert.ok(pending);
     await requests.respond(pending.requestId, { answerCommandId: 'allow', answer: { decision: 'allow_once' } });
     assert.equal((await running).outcome, 'no_report'); assert.equal(effects, 1);
-    assert.equal(s.policy().toolPermissions.save_file, 'ask');
+    assert.equal(s.policy().permissionLevel, 'manual');
     assert.equal(s.repository.getRequest(pending.requestId).answerCommandId, 'allow');
   } finally { s.cleanup(); }
 });
@@ -529,14 +529,14 @@ test('a durable steer failure cannot be swallowed by the inner boundary callback
   } finally { s.cleanup(); }
 });
 
-test('Full to Ask while awaiting a host opens a durable approval before dispatch and reuses it on receipt replay', async () => {
+test('Full to Manual while awaiting a host opens a durable approval before dispatch and reuses it on receipt replay', async () => {
   const s = setup(); let pending; let asks = 0; let frames = 0; let rounds = 0;
-  s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
+  s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'full', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
   const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true,
     onChange: request => { if (request.state === 'pending') { pending = request; asks++; } } });
   const broker = createChatHostCapabilities({ repository: s.repository, retryMs: 10,
     resolveProject: () => ({ projectId: 'project', workspaceRoot: s.scratch }),
-    beforeDispatch: () => s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { browser_click: 'ask' }, fileWriteScope: 'workspace' })) });
+    beforeDispatch: () => s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'manual', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' })) });
   broker.register({ hostId: 'browser', projectId: 'project', capabilities: ['tool:browser_click'], send: frame => {
     if (frame.type !== 'execute') return;
     if (++frames === 2) broker.respond({ hostId: 'browser', invocationId: frame.invocationId, result: { content: 'Clicked once; cached receipt' } });
@@ -554,15 +554,15 @@ test('Full to Ask while awaiting a host opens a durable approval before dispatch
   } finally { broker.dispose(); s.cleanup(); }
 });
 
-test('new Ask denial or Off before first host dispatch settles a known non-effect instead of inventing uncertainty', async () => {
+test('Manual denial or tool removal before first host dispatch settles a known non-effect instead of inventing uncertainty', async () => {
   for (const permission of ['ask', 'off']) {
     const s = setup(); let pending; let frames = 0; let rounds = 0;
-    s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
+    s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'full', toolPermissions: { browser_click: 'full' }, fileWriteScope: 'workspace' }));
     const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true,
       onChange: request => { if (request.state === 'pending') pending = request; } });
     const broker = createChatHostCapabilities({ repository: s.repository,
       resolveProject: () => ({ projectId: 'project', workspaceRoot: s.scratch }),
-      beforeDispatch: () => s.changePolicy(createChatPolicy({ modeId: 'build', toolPermissions: { browser_click: permission }, fileWriteScope: 'workspace' })) });
+      beforeDispatch: () => s.changePolicy(createChatPolicy({ modeId: 'build', permissionLevel: 'manual', toolPermissions: { browser_click: permission === 'off' ? 'off' : 'full' }, fileWriteScope: 'workspace' })) });
     broker.register({ hostId: 'browser', projectId: 'project', capabilities: ['tool:browser_click'], send: () => { frames++; } });
     try {
       const host = createServerChatExecutionHost({ repository: s.repository, requestService: requests, resolveCurrentPolicy: s.policy,

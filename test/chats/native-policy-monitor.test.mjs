@@ -6,19 +6,22 @@ import os from 'node:os';
 import { test } from 'node:test';
 import { invalidateNativePolicyBeforeWrite, invalidateNativeProviderBeforeWrite, subscribeNativePolicyChanges } from '../../server/chats/native-policy-monitor.js';
 
-function fixture(t) {
+async function fixture(t) {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-watch-')));
+  const home = path.join(root, 'home'), cwd = path.join(root, 'workspace');
+  await fs.mkdir(home); await fs.mkdir(cwd);
   const watches = []; let invalidations = 0;
-  const dispose = subscribeNativePolicyChanges({ home: path.resolve('fixture-home'), cwd: path.resolve('fixture-checkout'),
+  const dispose = subscribeNativePolicyChanges({ home, cwd,
     onInvalidate() { invalidations++; }, watchPath(root, options, change) {
       const emitter = new EventEmitter(); emitter.close = () => emitter.emit('close');
       watches.push({ root, options, change, emitter }); return emitter;
     } });
-  t.after(dispose);
-  return { watches, dispose, get invalidations() { return invalidations; } };
+  t.after(async () => { dispose(); await fs.rm(root, { recursive: true, force: true }); });
+  return { watches, cwd, dispose, get invalidations() { return invalidations; } };
 }
 
-test('native admissions invalidate synchronously before policy writes, but not transcript or preference-only saves', t => {
-  const f = fixture(t);
+test('native admissions invalidate synchronously before policy writes, but not transcript or preference-only saves', async t => {
+  const f = await fixture(t);
   for (const key of ['sessions/state.json', 'providers/codex-cli/profile.json', 'issues/state.json']) invalidateNativePolicyBeforeWrite(key);
   assert.equal(f.invalidations, 0);
   invalidateNativePolicyBeforeWrite('tools.json');
@@ -26,8 +29,8 @@ test('native admissions invalidate synchronously before policy writes, but not t
   invalidateNativePolicyBeforeWrite('config.json'); assert.equal(f.invalidations, 1, 'revocation is irreversible for this admission');
 });
 
-test('provider preference changes preserve active admissions but provider disable revokes before commit', t => {
-  const f = fixture(t);
+test('provider preference changes preserve active admissions but provider disable revokes before commit', async t => {
+  const f = await fixture(t);
   const before = { enabled: true, agentCli: { kind: 'codex', nativeCodingTools: false, maxConcurrent: 1 } };
   invalidateNativeProviderBeforeWrite(before, { ...before, updatedAt: 'later', agentCli: { ...before.agentCli, nativeCodingTools: true, maxConcurrent: 2 } });
   assert.equal(f.invalidations, 0);
@@ -35,15 +38,18 @@ test('provider preference changes preserve active admissions but provider disabl
   assert.equal(f.invalidations, 1);
 });
 
-test('external policy edits, replaced checkout and watcher loss invalidate; ordinary native files do not', t => {
+test('external policy edits, replaced checkout and watcher loss invalidate; ordinary native files do not', async t => {
   for (const cause of ['policy', 'checkout', 'error', 'close']) {
-    const f = fixture(t);
+    const f = await fixture(t);
     f.watches[0].change('change', 'sessions/sessions.db-wal');
     f.watches[0].change('change', 'tmp/codex-app-server/native/rollout.jsonl');
     f.watches[0].change('change', 'providers/codex-cli/profile.json');
     assert.equal(f.invalidations, 0);
     if (cause === 'policy') f.watches[0].change('rename', 'work-agents/builder/agent.full.md');
-    if (cause === 'checkout') f.watches[1].change('rename', 'fixture-checkout');
+    if (cause === 'checkout') {
+      await fs.rename(f.cwd, f.cwd + '-old');
+      f.watches[1].change('rename', 'workspace');
+    }
     if (cause === 'error') f.watches[0].emitter.emit('error', Error('watcher failed'));
     if (cause === 'close') f.watches[0].emitter.emit('close');
     assert.equal(f.invalidations, 1, cause);
@@ -59,7 +65,7 @@ test('unsupported monitoring fails closed and removes its synchronous subscripti
 });
 
 test('real filesystem monitoring ignores native workspace/SQLite writes and observes external policy edits', async t => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-monitor-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-native-monitor-')));
   const home = path.join(root, 'home'), cwd = path.join(root, 'workspace');
   await fs.mkdir(home); await fs.mkdir(cwd);
   let invalidations = 0;
@@ -77,7 +83,7 @@ test('real filesystem monitoring ignores native workspace/SQLite writes and obse
 });
 
 async function targetedFixture(t, { directories = ['mcp', 'plugins', 'prompts', 'tools', 'providers'], watchFailure } = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-targeted-native-monitor-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-targeted-native-monitor-')));
   const home = path.join(root, 'home'), cwd = path.join(root, 'workspace');
   await fs.mkdir(home); await fs.mkdir(cwd);
   for (const name of directories) await fs.mkdir(path.join(home, name), { recursive: true });
@@ -121,9 +127,10 @@ test('targeted watcher errors and home/checkout replacement irreversibly invalid
       const parent = f.watches.find(row => row.root === f.root);
       if (cause === 'error') policy.emitter.emit('error', new Error('lost coverage'));
       if (cause === 'close') policy.emitter.emit('close');
-      if (cause === 'home') parent.change('rename', 'home');
-      if (cause === 'checkout') parent.change('rename', 'workspace');
+      if (cause === 'home') { await fs.rename(f.home, f.home + '-old'); parent.change('rename', 'home'); }
+      if (cause === 'checkout') { await fs.rename(f.cwd, f.cwd + '-old'); parent.change('rename', 'workspace'); }
       if (cause === 'null') policy.change('change', null);
+      assert.equal(f.invalidations, 1);
       invalidateNativePolicyBeforeWrite('tools.json');
       assert.equal(f.invalidations, 1);
     });
@@ -144,11 +151,11 @@ test('unavailable targeted coverage fails a new admission and closes every parti
   assert.equal(f.invalidations, 0);
 });
 
-test('policy source categories revoke synchronously, including legacy tool and pack definitions', t => {
+test('policy source categories revoke synchronously, including legacy tool and pack definitions', async t => {
   for (const key of ['config.json', 'tools.json', 'sub-agents.json', 'work-agents.json', 'mcp.json',
     'mcp/servers/scope.json', 'plugins/index.json', 'tools/legacy/manifest.json', 'agent-packs/installed.json',
     'prompt-configs/default.json', 'profiles/custom.json', 'providers/codex-cli/secrets.json']) {
-    const f = fixture(t);
+    const f = await fixture(t);
     invalidateNativePolicyBeforeWrite(key);
     assert.equal(f.invalidations, 1, key);
     f.dispose();
@@ -244,7 +251,7 @@ test('the actual config writer invalidates before replacing the previous policy 
   const { readFileSync } = await import('node:fs');
   const { writeConfigJson } = await import('../../server/config/store.js');
   const { resetMinnowHomeCache } = await import('../../server/config/home.js');
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-policy-before-write-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-policy-before-write-')));
   const home = path.join(root, 'home'), cwd = path.join(root, 'workspace'); await fs.mkdir(cwd);
   const previousHome = process.env.MINNOW_HOME;
   process.env.MINNOW_HOME = home; resetMinnowHomeCache();

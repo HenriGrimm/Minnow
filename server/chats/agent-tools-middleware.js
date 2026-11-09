@@ -1,6 +1,7 @@
 import { ChatContractError } from './contracts.js';
 import { AGENT_CHAT_TOOL_IDS } from './tool-catalog.js';
 import { hashChatPayload } from './repository.js';
+import { classifyToolCall, decidePermission, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 
 /** Local execution transport; a normal human command endpoint never accepts agent identity. */
 export function createAgentChatToolsMiddleware({ getRuntime, approvalTimeoutMs = 120000 } = {}) {
@@ -16,7 +17,8 @@ export function createAgentChatToolsMiddleware({ getRuntime, approvalTimeoutMs =
       for await (const chunk of req) { size += chunk.length; if (size > 256 * 1024) throw new ChatContractError('invalid_request', 'Agent chat command exceeds its input budget'); chunks.push(chunk); }
       let body;
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new ChatContractError('invalid_request', 'Invalid agent chat JSON'); }
-      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['sourceChatId', 'ownerId', 'toolCallId', 'name', 'args'].includes(key)) ||
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['sourceChatId', 'ownerId', 'toolCallId', 'name', 'args', 'turnClamp'].includes(key)) ||
+          (body.turnClamp != null && !normalizeTurnClamp(body.turnClamp)) ||
           !/^[A-Za-z0-9_-]{1,160}$/.test(body.sourceChatId ?? '') || !/^[A-Za-z0-9_-]{1,160}$/.test(body.ownerId ?? '') ||
           typeof body.toolCallId !== 'string' || !body.toolCallId || body.toolCallId.length > 256 || !AGENT_CHAT_TOOL_IDS.includes(body.name)) {
         throw new ChatContractError('invalid_request', 'A current source execution and known conversation tool are required');
@@ -28,6 +30,8 @@ export function createAgentChatToolsMiddleware({ getRuntime, approvalTimeoutMs =
       res.once('close', disconnected);
       try {
         const { caller } = await runtime.legacyCaller({ chatId: body.sourceChatId, ownerId: body.ownerId });
+        const turnRestriction = decidePermission('full', classifyToolCall(body.name, body.args), { clamp: body.turnClamp });
+        if (turnRestriction.decision === 'deny') throw new ChatContractError('policy_denied', turnRestriction.reason);
         const input = { caller, toolCallId: body.toolCallId, signal: controller.signal };
         let result;
         try { result = await runtime.chatTools.execute(body.name, body.args ?? {}, input); }

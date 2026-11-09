@@ -20,11 +20,9 @@ When another Minnow app clearly fits the user's goal better than staying in the 
 | Scheduled jobs | `scheduler` | — |
 | Change providers, tools, or preferences | `settings` | — |
 
-Optional apps (`bench`, `experts`, `compare`) are **off by default** — only offer them if the user has enabled the app in **Settings → Apps** (otherwise the tool errors).
 
 ### Rules
 
 - **Ask first:** Do not call `launch_minnow_app` until the user agrees to switch (e.g. "yes", "open Code", "go ahead").
 - Use the table above to pick the right `app_id` when offering; pass a concise **`seed`** when it helps prefill Code.
-- For **implement** / **plan** / **orchestrate** workflows, still use **Mode handoff** tools — do not route those to Code unless the user explicitly wants the Code app.
 - Wait for tool approval before assuming navigation succeeded.

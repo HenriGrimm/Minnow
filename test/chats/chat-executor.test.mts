@@ -25,17 +25,17 @@ test('renderer helper derives source proof from the current lease and keeps argu
   assert.equal(sent.policy, undefined); assert.equal(sent.approvalGranted, undefined);
 });
 
-test('renderer Ask delegates once to the durable server request and Off never sends', async () => {
+test('renderer delegates approvals to the durable server and ignores legacy Off', async () => {
   sessionStorage.setItem('minnow.chatTurnOwner.source', 'owning-lease');
-  const config = defaultToolConfig(); config.permissions.default.chat_send = 'ask'; setToolConfigForTests(config);
+  const config = defaultToolConfig(); setToolConfigForTests(config);
   let calls = 0;
   globalThis.fetch = async () => { calls++; return Response.json({ result: { commandId: 'approved' } }); };
   const approved = await executeTool('chat_send', { chat_id: 'target', message: 'Review' }, { chatId: 'source', toolCallId: 'call', modeId: 'build' });
   assert.equal(JSON.parse(approved.content).commandId, 'approved'); assert.equal(calls, 1);
   assert.equal(document.querySelectorAll('.tool-approval-strip').length, 0);
-  config.permissions.default.chat_send = 'off'; setToolConfigForTests(config);
-  assert.match((await executeTool('chat_send', { chat_id: 'target', message: 'No' }, { chatId: 'source', toolCallId: 'off' })).content, /disabled/);
-  assert.equal(calls, 1);
+  Object.assign(config, { permissions: { default: { chat_send: 'off' } } }); setToolConfigForTests(config);
+  await executeTool('chat_send', { chat_id: 'target', message: 'Continue' }, { chatId: 'source', toolCallId: 'off' });
+  assert.equal(calls, 2);
 });
 
 test('renderer without a current owner cannot forge a sender from tool arguments', async () => {

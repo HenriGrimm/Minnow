@@ -1,3 +1,4 @@
+import { applyRemoteToolSecurityMeta, resetToolSecurityMetaCache } from '../../src/config/tool-security-meta.ts';
 import './install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { beforeEach, afterEach, mock, test } from 'node:test';
@@ -10,21 +11,22 @@ import { executeHeadlessTool, getHeadlessToolDefinitions } from '../../src/headl
 
 let calls: Array<{ name: string; args: Record<string, unknown> }>;
 let search: typeof DEFAULT_SEARCH_CONFIG;
+let permissionLevel: 'full' | 'manual';
 
 beforeEach(() => {
+  resetToolSecurityMetaCache();
+  applyRemoteToolSecurityMeta({ permissionLevel: 'full' });
   resetSearchConfigCache();
   clearAllCaches();
   calls = [];
+  permissionLevel = 'full';
   search = { ...DEFAULT_SEARCH_CONFIG, provider: 'tavily', keys: { braveApiKey: '', tavilyApiKey: 'test-key' } };
   const config = defaultToolConfig();
-  for (const id of ['web_search', 'web_map', 'web_extract']) {
-    config.enabled[id] = true;
-    config.permissions.default[id] = 'full';
-  }
   setToolConfigForTests(config);
   setLocalServerAvailable(true);
   mock.method(globalThis, 'fetch', async (input, options) => {
     const url = String(input);
+    if (url.endsWith('/api/config/meta')) return Response.json({ toolSecurity: { permissionLevel } });
     if (url.endsWith('/api/config/search')) {
       if (options?.method === 'PUT') {
         search = JSON.parse(options.body as string);
@@ -77,17 +79,11 @@ test('Changing provider invalidates cached searches and unsupported controls are
   assert.equal(calls.length, 2);
 });
 
-test('Off and Ask permissions cannot be bypassed by cached Map results', async () => {
+test('global permission changes are checked before returning cached Map results', async () => {
   const args = { url: 'https://example.com' };
   await executeTool('web_map', args, {});
-  const config = defaultToolConfig();
-  config.enabled.web_map = false;
-  config.permissions.default.web_map = 'off';
-  setToolConfigForTests(config);
-  assert.match((await executeTool('web_map', args, {})).content, /disabled|off/i);
-  config.enabled.web_map = true;
-  config.permissions.default.web_map = 'ask';
-  setToolConfigForTests(config);
-  assert.match((await executeHeadlessTool('web_map', args, {}, { modeId: 'plan' })).content, /approval|permission/i);
+  permissionLevel = 'manual';
+  applyRemoteToolSecurityMeta({ permissionLevel });
+  assert.match((await executeHeadlessTool('web_map', args, {}, { modeId: 'plan', noApproval: false })).content, /approval/i);
   assert.equal(calls.length, 1);
 });

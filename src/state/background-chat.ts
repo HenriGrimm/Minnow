@@ -67,7 +67,9 @@ export function ensureBackgroundChat(
   const chat = createEmptyChatObject(binding.modelId, options.workspacePath);
   if (binding.providerId) chat.providerId = binding.providerId;
   chat.name = options.name.trim() || chat.name;
-  chat.modeId = options.modeId ?? 'build';
+  chat.modeId = normalizeModeId(options.modeId);
+  const workflowSkill = workflowSkillForMode(options.modeId);
+  if (workflowSkill) chat.pinnedSkill = { id: workflowSkill };
   chat.background = true;
   chat.backgroundKey = key;
 
@@ -88,3 +90,4 @@ export function ensureBackgroundChat(
 export function isBackgroundChat(chat: Pick<Chat, 'background'>): boolean {
   return chat.background === true;
 }
+import { normalizeModeId, workflowSkillForMode } from '../chat/modes/types';

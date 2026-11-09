@@ -16,11 +16,11 @@ afterEach(() => {
   globalThis.document = originalDocument;
   resetToolSecurityMetaCache(); setToolConfigForTests(defaultToolConfig());
 });
-function prepare(permission: 'ask' | 'off' = 'ask') {
+function prepare() {
   globalThis.document = new Window().document as unknown as Document;
-  globalThis.fetch = (async () => new Response(JSON.stringify({ toolSecurity: { filesystemAccess: 'workspace', shellSandbox: 'off' } }),
+  globalThis.fetch = (async () => new Response(JSON.stringify({ toolSecurity: { permissionLevel: 'manual', shellSandbox: 'off' } }),
     { headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
-  const config = defaultToolConfig(); config.permissions.default.browser_click = permission;
+  const config = defaultToolConfig();
   setToolConfigForTests(config); resetToolSecurityMetaCache();
 }
 
@@ -44,25 +44,25 @@ test('only saved Brave key enrichment may differ from the original search args',
   assert.equal(consumeServerToolAdmission(explicit, 'web_search', { query: 'Minnow', api_key: 'changed' }, context), false);
 });
 
-test('valid server-once approval avoids a duplicate Ask while current Off still denies the same branded call', async () => {
+test('valid server-once approval avoids a duplicate prompt while turn clamps still deny', async () => {
   prepare();
   assert.equal(await maybeBlockToolForUserApproval('browser_click', args, { ...context, serverAdmission: mint() }), null);
   assert.equal(document.querySelectorAll('.tool-approval-strip').length, 0);
-  prepare('off');
-  const denied = await maybeBlockToolForUserApproval('browser_click', args, { ...context, serverAdmission: mint() });
-  assert.match(denied!.content, /disabled in Settings/);
+  prepare();
+  const denied = await maybeBlockToolForUserApproval('browser_click', args, { ...context, turnClamp: 'read-only', serverAdmission: mint() });
+  assert.match(denied!.content, /Error:/);
 });
 
-test('forged or mismatched proof keeps the ordinary Ask gate, and approval cannot bypass the path boundary', async () => {
+test('forged proof keeps the global approval gate; exact proof authorizes an outside read', async () => {
   prepare();
   for (const token of [{} as ReturnType<typeof mint>, mint()]) {
     const denied = await maybeBlockToolForUserApproval('browser_click', args, { ...context, chatId: 'wrong-child', serverAdmission: token,
       signal: AbortSignal.abort(new DOMException('Declined', 'AbortError')) });
-    assert.match(denied!.content, /denied tool execution/);
+    assert.match(denied!.content, /user denied/);
   }
-  const config = defaultToolConfig(); config.permissions.default.read_file = 'ask'; setToolConfigForTests(config);
+  const config = defaultToolConfig(); setToolConfigForTests(config);
   const outside = { path: 'C:/outside/private.txt' };
   const token = createServerToolAdmission({ ...context, toolName: 'read_file', args: outside });
   const blocked = await maybeBlockToolForUserApproval('read_file', outside, { ...context, serverAdmission: token });
-  assert.match(blocked!.content, /outside the workspace/);
+  assert.equal(blocked, null, 'an exact approval authorizes the outside read');
 });

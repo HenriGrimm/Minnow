@@ -7,6 +7,7 @@ import {
   ensureMcpSeed,
   listServers,
   listEnabledMcpTools,
+  getMcpToolHints,
   listMcpToolCatalog,
   callMcpTool,
   reloadMcp,
@@ -117,7 +118,7 @@ export function createMcpMiddleware() {
       if (url === '/api/mcp/tools' && req.method === 'GET') {
         const revision = getMcpCatalogRevision();
         const tools = await listEnabledMcpTools();
-        sendJson(res, 200, { tools, revision });
+        sendJson(res, 200, { tools, revision, hints: getMcpToolHints() });
         return;
       }
 

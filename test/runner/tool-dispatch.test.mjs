@@ -11,6 +11,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { MINNOW_DEFAULT_PORT } from '../../server/constants/minnow-port.js';
+import { updateConfigJson } from '../../server/config/store.js';
 import { ensureMinnowLayout } from '../../server/config/home.js';
 import { createToolsMiddleware } from '../../server/runtime/tools-middleware.js';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
@@ -68,6 +69,7 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
   before(async () => {
     homeDir = setTestHome(process.env, `minnow-test-p2d-dispatch-${randomUUID()}`);
     await ensureMinnowLayout();
+    await updateConfigJson('config.json', config => ({ ...config, toolSecurity: { permissionLevel: 'full' } }));
     codeWorkspace = path.join(homeDir, 'code-project');
     await fs.mkdir(codeWorkspace, { recursive: true });
     await initWorkspaceRoot();
@@ -264,7 +266,7 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     await fs.writeFile(path.join(dirA, 'secret-a.txt'), 'AAA\n', 'utf8');
     await fs.writeFile(path.join(dirB, 'secret-b.txt'), 'BBB\n', 'utf8');
 
-    const dispatchA = createInProcessToolDispatch({ cwd: dirA });
+    const dispatchA = createInProcessToolDispatch({ cwd: dirA, filesystemAccessCeiling: 'workspace' });
 
     const own = await dispatchA.execute('read_file', { path: 'secret-a.txt' });
     assert.match(own.content, /AAA/);
@@ -296,7 +298,7 @@ describe('in-process tool dispatch', { concurrency: false }, () => {
     await fs.mkdir(dirB, { recursive: true });
     await fs.writeFile(path.join(dirB, 'secret-b.txt'), 'LEAK\n', 'utf8');
 
-    const dispatchA = createInProcessToolDispatch({ cwd: dirA });
+    const dispatchA = createInProcessToolDispatch({ cwd: dirA, filesystemAccessCeiling: 'workspace' });
     const command = `cd "${dirB}" && node -e "console.log(require('fs').readFileSync('secret-b.txt','utf8'))"`;
     const out = await dispatchA.execute('execute_command', { command });
     assert.doesNotMatch(out.content, /LEAK/);

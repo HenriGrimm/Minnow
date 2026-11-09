@@ -16,16 +16,25 @@ test('packaging and cleanup leave a running unpacked app and sibling files intac
   await Promise.all([directory, other].map(dir => fs.mkdir(dir, { recursive: true })));
   const isWindows = process.platform === 'win32';
   const program = path.join(directory, isWindows ? 'Minnow.exe' : 'Minnow');
-  await fs.copyFile(isWindows ? process.env.ComSpec : '/bin/sleep', program);
+  await fs.copyFile(isWindows ? process.env.ComSpec : process.execPath, program);
   if (!isWindows) await fs.chmod(program, 0o755);
   const sibling = path.join(other, path.basename(program));
   await fs.copyFile(program, sibling);
-  const start = (exe) => spawn(exe, isWindows ? ['/d', '/q'] : ['120'], { windowsHide: true, stdio: 'pipe' });
+  const start = (exe) => spawn(exe, isWindows ? ['/d', '/q'] : ['-e', 'setInterval(() => {}, 1000)'], {
+    windowsHide: true, stdio: 'pipe',
+  });
   const child = start(program);
   const unrelated = start(sibling);
   const children = [child, unrelated];
   try {
     await Promise.all(children.map(proc => once(proc, 'spawn')));
+    for (let n = 0; n < 20; n++) {
+      try { assertReleaseOutputReady(root); } catch (error) {
+        if (!/running from/.test(error.message)) throw error;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     assert.throws(() => assertReleaseOutputReady(root), /running from .*win-unpacked\. Close/);
     assert.throws(() => prepareReleaseOutput(root), /running from .*win-unpacked\. Close/);
     assert.throws(() => cleanRelease(root), /running from .*win-unpacked\. Close/);

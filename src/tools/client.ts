@@ -12,10 +12,8 @@ import { withIssueToolImages } from './issue-tool-images';
 import { executeIssueV2Tool, isIssueV2Tool } from './issue-tools-v2';
 import {
   ensureToolConfigReady,
-  getToolPermissionForId,
   invalidateToolConfigCache,
   isLocalServerAvailable,
-  isToolEnabled,
   loadToolConfig,
   loadToolConfigFromStorage,
   setLocalServerAvailable,
@@ -51,12 +49,6 @@ import {
   createWaitCapability,
   parseWaitDuration,
 } from './wait-tool';
-import {
-  executeBrowserNavigateWithGate,
-  executeRequestBrowserOriginAccess,
-  formatBrowserAllowlistCheckFailure,
-} from './browser-navigation-gate';
-import { checkBrowserNavigationAllowed } from '../config/browser-meta';
 import { isElectronPreviewAvailable } from './minnow-shell';
 import {
   executeCreateChatWithMode,
@@ -66,8 +58,10 @@ import {
 import { validateAskQuestionArgs, stringifyAskQuestionResult } from './ask-question-types';
 import {
   blockAfkInteractionAttempt,
+  isExternalCallApproved,
   maybeBlockToolForUserApproval,
 } from './permission-gate';
+import { setToolHintResolver } from './tool-hint-resolver';
 import { getChatsWorkspacePath } from '../lib/chats-workspace';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { runWithFileTreeAutoRefresh } from '../ui/file-tree-auto-refresh';
@@ -106,6 +100,7 @@ const PING_TIMEOUT_MS = 2500;
 
 /** Cached MCP tool definitions from GET /api/mcp/tools. */
 const mcpToolCache = createMcpToolCache();
+setToolHintResolver((name) => (name.startsWith('mcp__') ? mcpToolCache.hintFor(name) : null));
 
 /** Cached native plugin tool definitions from GET /api/plugins/tools. */
 const pluginToolCache = createPluginToolCache();
@@ -185,8 +180,10 @@ export interface ExecuteToolContext {
   workspaceRoot?: string;
   /** Additional allowed path roots (board worktrees under ~/.minnow/worktrees). */
   extraPathRoots?: string[];
-  /** Benchmark runs bypass Ask permission modals and path-ack prompts. */
+  /** @deprecated Compatibility marker; the global permission mode still applies. */
   benchmarkAutonomous?: boolean;
+  /** Turn clamp from the turn's skill (`/ask` read-only, `/plan` plans). */
+  turnClamp?: 'read-only' | 'plans' | null;
   /** Abort when the user stops the chat turn (server tools). */
   signal?: AbortSignal;
 }
@@ -271,73 +268,26 @@ async function executeToolInner(
   await ensureToolConfigReady();
 
   if (AGENT_CHAT_TOOL_IDS.includes(name)) {
-    if (getToolPermissionForId(loadToolConfig(), name) === 'off') return { content: `Error: tool "${name}" is disabled.` };
     // The server owns Ask receipts; a renderer modal is not execution proof.
     const { executeChatTool } = await import('./chat-executor');
     return executeChatTool(name, args, context);
   }
 
-  if (
-    name === 'ask_question' ||
-    name === 'propose_mode_switch' ||
-    name === 'request_browser_origin_access' ||
-    name === 'wait'
-  ) {
+  if (name === 'ask_question' || name === 'wait') {
     const blocked = blockAfkInteractionAttempt(
       context,
-      name === 'ask_question'
-        ? 'question'
-        : name === 'propose_mode_switch'
-          ? 'mode_switch'
-          : name === 'wait'
-            ? 'other'
-            : 'confirmation',
+      name === 'ask_question' ? 'question' : 'other',
       `${name} was attempted during AFK execution`,
     );
     if (blocked) return blocked;
   }
 
-  if (name === 'set_chat_mode') {
-    if (!isToolEnabled('set_chat_mode')) {
-      return {
-        content:
-          'Error: tool "set_chat_mode" is disabled in Settings (enable it to switch modes from the model).',
-      };
-    }
-    return { content: executeSetChatMode(args, context.chatId) };
-  }
-
-  if (name === 'create_chat_with_mode') {
-    if (!isToolEnabled('create_chat_with_mode')) {
-      return {
-        content:
-          'Error: tool "create_chat_with_mode" is disabled in Settings (enable it to fork chats by mode).',
-      };
-    }
-    return { content: await executeCreateChatWithMode(args) };
-  }
-
-  if (name === 'propose_mode_switch') {
-    if (!isToolEnabled('propose_mode_switch')) {
-      return {
-        content:
-          'Error: tool "propose_mode_switch" is disabled in Settings (enable it or use ask_question).',
-      };
-    }
-    const content = await executeProposeModeSwitch(args, {
-      subAgentType: context.subAgentType,
-      chatId: context.chatId,
-    });
-    return { content };
+  if (name === 'set_chat_mode' || name === 'create_chat_with_mode' || name === 'propose_mode_switch') {
+    // Retired with chat modes; old transcripts may still replay these calls.
+    return { content: `Error: "${name}" was removed. Minnow runs one agent — the user picks /ask, /plan or /debug per message.` };
   }
 
   if (name === 'ask_question') {
-    if (!isToolEnabled('ask_question')) {
-      return {
-        content:
-          'Error: tool "ask_question" is disabled in Settings (set permission to Ask or Full to use it).',
-      };
-    }
     const parsed = validateAskQuestionArgs(args);
     if (parsed.ok === false) {
       return {
@@ -353,12 +303,6 @@ async function executeToolInner(
   }
 
   if (name === 'wait') {
-    if (!isToolEnabled('wait')) {
-      return {
-        content:
-          'Error: tool "wait" is disabled in Settings (enable it to let the agent pause on a timer).',
-      };
-    }
     const parsed = parseWaitDuration(args.duration);
     if (parsed.ok === false) {
       return { content: parsed.error };
@@ -382,34 +326,6 @@ async function executeToolInner(
       const message = err instanceof Error ? err.message : String(err);
       return { content: `Error: wait failed (${message})` };
     }
-  }
-
-  if (name === 'request_browser_origin_access') {
-    if (!isToolEnabled('request_browser_origin_access')) {
-      return {
-        content:
-          'Error: tool "request_browser_origin_access" is disabled in Settings (enable it to request browser allowlist changes).',
-      };
-    }
-    const targetUrl =
-      typeof args.url === 'string' && args.url.trim() ? args.url.trim() : '';
-    const allowlistCheck =
-      targetUrl && isLocalServerAvailable()
-        ? await checkBrowserNavigationAllowed(targetUrl)
-        : null;
-    if (allowlistCheck && !allowlistCheck.success) {
-      return { content: formatBrowserAllowlistCheckFailure(allowlistCheck) };
-    }
-    if (!allowlistCheck?.success || !allowlistCheck.allowed) {
-      const blocked = await maybeBlockToolForUserApproval(
-        'request_browser_origin_access',
-        args,
-        context,
-        name,
-      );
-      if (blocked) return blocked;
-    }
-    return { content: await executeRequestBrowserOriginAccess(args, context) };
   }
 
   if (name.startsWith('mcp__') || name.startsWith('plugin__')) {
@@ -497,9 +413,7 @@ async function executeToolInner(
     const unsupported = unsupportedSearchOptions(enrichedArgs, route.kind);
     if (unsupported) return { content: unsupported };
 
-    const deepRead =
-      enrichedArgs.deep_read === true &&
-      getToolPermissionForId(config, 'fetch_web_content') !== 'off';
+    const deepRead = enrichedArgs.deep_read === true;
 
     return executeWithResultCache('web_search', { ...enrichedArgs, _provider: route.kind, _searchRevision: getSearchConfigRevision() }, context, async () => {
       if (route.kind === 'brave') {
@@ -623,12 +537,7 @@ async function executeToolBodyAfterGates(
           typeof enrichedArgs.url === 'string' &&
           /^https?:\/\//i.test(enrichedArgs.url.trim()))
       ) {
-        return executeBrowserNavigateWithGate(
-          enrichedArgs,
-          (navArgs) => executeBrowserPreviewTool(name, navArgs),
-          context,
-          context.modeId,
-        );
+        return executeBrowserPreviewTool(name, enrichedArgs);
       }
       return executeBrowserPreviewTool(name, enrichedArgs, context.signal);
     }
@@ -647,12 +556,7 @@ async function executeToolBodyAfterGates(
         typeof enrichedArgs.url === 'string' &&
         enrichedArgs.url.trim())
     ) {
-      return executeBrowserNavigateWithGate(
-        enrichedArgs,
-        callServer,
-        context,
-        context.modeId,
-      );
+      return callServer(enrichedArgs);
     }
     return callServer(enrichedArgs);
   }
@@ -665,12 +569,7 @@ async function executeToolBodyAfterGates(
       };
     }
     if (name === 'browser_navigate') {
-      return executeBrowserNavigateWithGate(
-        enrichedArgs,
-        (navArgs) => executeBrowserPreviewTool('browser_navigate', navArgs),
-        context,
-        context.modeId,
-      );
+      return executeBrowserPreviewTool('browser_navigate', enrichedArgs);
     }
     return executeBrowserPreviewTool(name, enrichedArgs, context.signal);
   }
@@ -706,13 +605,10 @@ async function executeToolBodyAfterGates(
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
-/** User + server gating only (no mode filter). */
+/** Runtime and released-app availability only (no per-tool settings). */
 export function getEnabledToolCatalogEntries(): ToolDefinition[] {
   return BUILT_IN_TOOLS.filter((tool) => {
     if (tool.appId && !isAppEnabled(tool.appId)) {
-      return false;
-    }
-    if (!isToolEnabled(tool.id)) {
       return false;
     }
     if (tool.keyId === 'tavilyApiKey' && !hasConfiguredTavilyKey(loadToolConfig())) return false;
@@ -727,9 +623,7 @@ export function getEnabledToolCatalogEntries(): ToolDefinition[] {
 }
 
 function getEnabledDynamicToolDefinitions(): OpenAIFunctionDefinition[] {
-  return [...mcpToolCache.tools, ...pluginToolCache.tools].filter(
-    (def) => isToolEnabled(def.function.name),
-  );
+  return [...mcpToolCache.tools, ...pluginToolCache.tools];
 }
 
 export function getEnabledToolDefinitions(): OpenAIFunctionDefinition[] {
@@ -777,7 +671,7 @@ export function getEnabledToolDefinitionsForChat(
   return defs;
 }
 
-/** Alias for send path — built-in, MCP, and plugin tools after mode + permission filters. */
+/** Alias for send path — built-in, MCP, and plugin tools after runtime availability filters. */
 export const getEnabledToolDefinitionsForSend = getEnabledToolDefinitionsForChat;
 
 /** Pass chat/tool ids to the Node tool server for terminal registry and filters. */
@@ -938,13 +832,18 @@ async function executeServerTool(
     name: string;
     args: Record<string, unknown>;
     modeId?: string;
+    turnClamp?: ExecuteToolContext['turnClamp'];
     workspaceRoot?: string;
     runtimeOwner?: { chatId: string; runId: string; agentId: string };
     agentActivity?: boolean;
     activityChatId?: string;
     pluginRelease?: string;
+    approvedOutsideWorkspace?: boolean;
   } = { name, args };
+  // The permission gate already decided this call may leave the workspace.
+  if (isExternalCallApproved(args)) payload.approvedOutsideWorkspace = true;
   if (context?.pluginRelease) payload.pluginRelease = context.pluginRelease;
+  if (context?.turnClamp) payload.turnClamp = context.turnClamp;
   if (modeId != null && String(modeId).trim()) {
     payload.modeId = String(modeId).trim();
   }

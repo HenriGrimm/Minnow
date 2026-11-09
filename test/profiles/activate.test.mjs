@@ -28,7 +28,7 @@ describe('profile activate', () => {
     resetMinnowHomeCache();
   });
 
-  test('activate restores bundled tool permissions', async () => {
+  test('activate ignores retired per-tool permissions in legacy bundles', async () => {
     const tools = (await readConfigJson('tools.json')) ?? {};
     const def = tools.permissions?.default ?? {};
     def.execute_command = 'full';
@@ -57,8 +57,8 @@ describe('profile activate', () => {
     assert.equal(result.ok, true);
 
     const after = await readConfigJson('tools.json');
-    assert.equal(after.permissions.default.execute_command, 'off');
-    assert.equal(after.permissions.default.save_file, 'ask');
+    assert.equal('permissions' in after, false);
+    assert.equal('enabled' in after, false);
 
     const meta = await readConfigJson('config.json');
     assert.equal(meta.activeSetupProfileId, 'restore-me');

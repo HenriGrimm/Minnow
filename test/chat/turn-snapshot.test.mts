@@ -15,7 +15,7 @@ describe('turn-snapshot', () => {
     assert.match(a, /^[0-9a-f]{64}$|^fallback_/);
   });
 
-  test('buildTurnSnapshot captures mode and tools', async () => {
+  test('buildTurnSnapshot captures the shared agent and tools', async () => {
     const chat: Chat = {
       id: 'c1',
       name: 'T',
@@ -41,7 +41,7 @@ describe('turn-snapshot', () => {
       skillId: null,
       userContent: 'hi',
     });
-    assert.equal(snap.modeId, 'plan');
+    assert.equal(snap.modeId, 'build');
     assert.equal(snap.workAgentId, 'coder');
     assert.deepEqual(snap.enabledToolNames, ['grep', 'read_file']);
     assert.equal(snap.composedSystemPrompt, 'SYS');

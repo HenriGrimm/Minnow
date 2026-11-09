@@ -1,4 +1,5 @@
 import type { ReefRun, ReefAgentRound, ReefAgentSession } from '../reef/types';
+import { setActivityShimmerText } from './activity-shimmer';
 import { setAssistantBubbleContent, cancelAssistantBubbleRenderDebounce } from '../markdown/renderer';
 import { renderThoughtsToggle, updateThoughtsToggleSegments } from './thought-bubbles';
 import { renderToolCall, renderToolResult } from './tool-messages';
@@ -43,7 +44,9 @@ export function mountReefAgentStream(host: HTMLElement) {
     const thinking = live && session.activity === 'thinking';
     const panel = view.thought.querySelector<HTMLElement>('.thoughts-panel-wrap');
     panel?.classList.toggle('thoughts-panel-wrap--live', thinking);
-    const label = panel?.querySelector('.thoughts-toggle__label'); if (label) label.textContent = thinking ? 'Thinking…' : 'Thoughts';
+    const label = panel?.querySelector('.thoughts-toggle__label');
+    if (label && thinking) setActivityShimmerText(label, 'Thinking…');
+    else if (label) { label.classList.remove('activity-shimmer'); label.textContent = 'Thoughts'; }
     const caret = panel?.querySelector('.thoughts-caret'); caret?.classList.toggle('thoughts-caret--pulse', thinking);
     const ids = new Set(round.tools.map(tool => tool.id));
     for (const [id, call] of view.calls) if (!ids.has(id)) { call.root.remove(); view.calls.delete(id); }
@@ -113,8 +116,8 @@ export function mountReefAgentStream(host: HTMLElement) {
           if (view.status.dataset.live !== phase || view.status.dataset.tool !== (session.currentTool ?? '')) {
             view.status.replaceChildren(createTranscriptStreamStatus(phase === 'thinking' ? 'thinking' : 'generating'));
             const label = view.status.querySelector('.stream-status__label');
-            if (label && phase === 'tools') label.textContent = session.currentTool ? `Running ${session.currentTool}…` : 'Running tools…';
-            if (label && phase === 'loading') label.textContent = 'Loading model…';
+            if (label && phase === 'tools') setActivityShimmerText(label, session.currentTool ? `Running ${session.currentTool}…` : 'Running tools…');
+            if (label && phase === 'loading') setActivityShimmerText(label, 'Loading model…');
             view.status.dataset.live = phase; view.status.dataset.tool = session.currentTool ?? '';
           }
         }

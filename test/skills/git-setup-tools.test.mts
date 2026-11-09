@@ -11,9 +11,9 @@ import { getEnabledToolDefinitionsForChat } from '../../src/tools/client.ts';
 import { createEmptyChatObject } from '../../src/state/sessions.ts';
 
 describe('git-setup skill tool grant', () => {
-  test('orchestrate mode denies execute_command without the skill grant', () => {
-    assert.equal(isToolAllowedForMode('orchestrate', 'execute_command'), false);
-    assert.equal(isToolAllowedForMode('orchestrate', 'git_add'), false);
+  test('mode labels do not impose tool permissions', () => {
+    assert.equal(isToolAllowedForMode('orchestrate', 'execute_command'), true);
+    assert.equal(isToolAllowedForMode('orchestrate', 'git_add'), true);
   });
 
   test('orchestrate planner chat exposes git-setup tools when skillId is set', () => {

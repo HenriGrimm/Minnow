@@ -41,6 +41,13 @@ test('attachStreamStatus starts in generating', () => {
   assert.equal(labelEl?.textContent, fixtures.generating);
   assert.equal(labelEl?.textContent, STREAM_LABEL_GENERATING);
   assert.equal(status?.getAttribute('aria-busy'), 'true');
+  assert.equal(labelEl.querySelector('.activity-shimmer__text').textContent, fixtures.generating);
+  assert.equal(labelEl.querySelector('.activity-shimmer__visual').getAttribute('aria-hidden'), 'true');
+  assert.equal(status.querySelector('.stream-status__dots'), null);
+  assert.equal(labelEl.querySelectorAll('.activity-shimmer__dot').length, 3);
+  const letter = labelEl.querySelector('.activity-shimmer__char');
+  handle.setPhase('generating');
+  assert.equal(labelEl.querySelector('.activity-shimmer__char'), letter, 'repeated phases preserve the animation');
   handle.dispose();
 });
 
@@ -83,6 +90,22 @@ test("setPhase('prose') hides status and clears aria-busy", () => {
   assert.ok(status?.classList.contains('hidden'));
   assert.equal(status?.getAttribute('aria-busy'), 'false');
 
+  handle.dispose();
+});
+
+test('repeated phase updates leave the live reasoning disclosure as the only thinking label', () => {
+  setupDom();
+  const wrap = document.createElement('div');
+  const handle = attachStreamStatus(wrap);
+  const stage = document.createElement('div');
+  stage.className = 'thought-stage';
+  wrap.append(stage);
+  handle.setPhase('thinking');
+  handle.setPhase('thinking');
+  assert.ok(wrap.querySelector('.stream-status').classList.contains('hidden'));
+  stage.remove();
+  handle.setPhase('generating');
+  assert.ok(!wrap.querySelector('.stream-status').classList.contains('hidden'));
   handle.dispose();
 });
 

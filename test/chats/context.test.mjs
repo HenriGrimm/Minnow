@@ -11,7 +11,7 @@ import { assertCaller, assertExecutionCaller } from '../../server/chats/caller.j
 const exec = promisify(execFile);
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-chat-context-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-chat-context-')));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const dirs = Object.fromEntries(['main', 'child', 'other', 'common', 'other-common'].map(name => [name, path.join(root, name)]));
   await Promise.all(Object.values(dirs).map(dir => fs.mkdir(dir)));
@@ -136,7 +136,7 @@ test('a supplied project snapshot cannot authorize an unrelated replacement chec
 
 
 test('real Git unchanged discovery avoids a second full registry scan and fails closed after Git errors', async t => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-real-chat-registry-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-real-chat-registry-')));
   t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }));
   const directoryIdentity = await readChatCheckoutIdentity(root);
   await fs.writeFile(path.join(root, 'ordinary-file.txt'), 'Normal workspace writes preserve identity.');

@@ -1,3 +1,4 @@
+import { normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 /**
  * Scan skill directories under built-in and user roots.
  */
@@ -13,6 +14,13 @@ import {
   MANAGED_SKILL_MARKER,
 } from '../impeccable/skill-install.js';
 import { defaultSkillLabel, parseSkillFrontmatter } from './parse-frontmatter.js';
+
+/** `access: read-only | plans` front matter narrows the turn the skill runs in. */
+function skillAccess(meta) {
+  const access = normalizeTurnClamp(typeof meta.access === 'string' ? meta.access.trim() : null);
+  return access ? { access } : {};
+}
+
 
 /** Skill id: lowercase alphanumeric with hyphens. */
 export const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -122,7 +130,7 @@ export async function scanSkillDir(rootDir, source) {
         source: source === 'user' ? userRootSkillSource(path.join(rootDir, entry.name)) : source,
         path: skillPath,
         version: meta.version?.trim() || undefined,
-        disableModelInvocation: meta['disable-model-invocation'] === 'true',
+        disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -186,7 +194,7 @@ async function readPackageSkill(file) {
   try {
     const raw = await fs.readFile(file.path, 'utf8');
     const { meta, body } = parseSkillFrontmatter(raw);
-    return { id: file.id, label: meta.label?.trim() || `${file.pluginName}: ${defaultSkillLabel(file.id)}`, description: meta.description, source: 'user', path: file.path, body, raw, disableModelInvocation: meta['disable-model-invocation'] === 'true' };
+    return { id: file.id, label: meta.label?.trim() || `${file.pluginName}: ${defaultSkillLabel(file.id)}`, description: meta.description, source: 'user', path: file.path, body, raw, disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta) };
   } catch { return null; }
 }
 
@@ -242,7 +250,7 @@ export async function getSkillById(projectRoot, id) {
       version: meta.version?.trim() || undefined,
       body,
       raw,
-      disableModelInvocation: meta['disable-model-invocation'] === 'true',
+      disableModelInvocation: meta['disable-model-invocation'] === 'true', ...skillAccess(meta),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

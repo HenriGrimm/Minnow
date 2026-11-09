@@ -115,8 +115,8 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   const pause = button('Pause', () => { if (issue.agent?.home?.state === 'paused') void perform(() => replyHomeIssue(issue, 'Continue from where you stopped.')); else pauseHomeIssue(issue); });
   const primary = button('Merge into main', () => {
     if (issue.agent?.home?.boardId) void perform(() => approveHomePlan(issue));
-    else if (issue.agent?.home?.state === 'failed') void perform(() => replyHomeIssue(issue, chat?.modeId === 'plan' ? 'Retry the unfinished planning work. Address the last failure and finish the plan in its selected format. Stay in Plan mode.' : 'Retry the unfinished work. Address the last failure, run the relevant checks, commit the changes, and stop for review. Do not merge.'));
-    else if (chat?.modeId === 'plan') void perform(() => approveHomePlan(issue));
+    else if (issue.agent?.home?.state === 'failed') void perform(() => replyHomeIssue(issue, issue.agent?.home?.mode === 'plan' ? 'Retry the unfinished planning work. Address the last failure and finish the plan in its selected format. Keep using /plan.' : 'Retry the unfinished work. Address the last failure, run the relevant checks, commit the changes, and stop for review. Do not merge.'));
+    else if (issue.agent?.home?.mode === 'plan') void perform(() => approveHomePlan(issue));
     else if (!snapshot) { selectView('changes'); changeView.refresh(true); }
     else if (snapshot?.dirty) void perform(() => replyHomeIssue(issue, 'Review and commit the changes in this worktree, then stop for review. Do not merge.'));
     else void perform(() => approveHomeIssue(issue));
@@ -180,7 +180,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
   function updateActions(): void {
     const state = issue.agent?.home?.state;
     const boardId = issue.agent?.home?.boardId;
-    const planning = chat?.modeId === 'plan' && !boardId;
+    const planning = issue.agent?.home?.mode === 'plan' && !boardId;
     const active = Boolean(chat && (isChatStreaming(chat.id) || listMainTurnActivity().some(turn => turn.chatId === chat.id)));
     if (active) snapshot = undefined;
     const ready = ['planned', 'ready', 'conflict'].includes(state || '');
@@ -203,7 +203,7 @@ export function mountIssueDock(host: HTMLElement, options: DockOptions): { updat
     primary.disabled = busy || active || planning && state !== 'failed' && (!savedPlan || savedPlan.type === 'invalid');
     primary.querySelector('span')!.textContent = boardId ? 'Open orchestrator board' : state === 'failed' ? 'Retry agent' : planning ? !savedPlan ? 'Load plan to continue' : savedPlan.type === 'invalid' ? 'Revise plan type' : savedPlan.type === 'orchestrate' ? 'Orchestrate' : 'Approve plan & build' : !snapshot ? 'Review changes' : snapshot.dirty ? 'Ask agent to commit' : state === 'conflict' ? 'Retry merge' : count > 1 ? `Merge ${count} issues into ${target() || 'main'}` : `Merge into ${target() || 'main'}`;
     conflict.hidden = state !== 'conflict';
-    const captions: Record<string, string> = { working: 'Agent is working', paused: 'Work is paused', planned: 'Planned · ready to build', ready: chat?.modeId === 'plan' ? 'Plan ready for approval' : `Ready to merge into ${target() || 'main'}`, conflict: 'Merge needs attention', merging: 'Merging changes…', mergequeued: 'Queued to merge', done: 'Work merged', failed: 'Work needs attention', held: 'Waiting on blockers', waitslot: 'Waiting for an agent slot' };
+    const captions: Record<string, string> = { working: 'Agent is working', paused: 'Work is paused', planned: 'Planned · ready to build', ready: issue.agent?.home?.mode === 'plan' ? 'Plan ready for approval' : `Ready to merge into ${target() || 'main'}`, conflict: 'Merge needs attention', merging: 'Merging changes…', mergequeued: 'Queued to merge', done: 'Work merged', failed: 'Work needs attention', held: 'Waiting on blockers', waitslot: 'Waiting for an agent slot' };
     footerTitle.textContent = boardId ? 'Execution handed to the orchestrator board' : planning && ready ? savedPlan?.type === 'orchestrate' ? 'Plan ready to orchestrate' : 'Plan ready for approval' : issue.agent?.phase === 'awaiting_input' ? 'The agent needs your answer' : captions[state || ''] || (chat ? 'Linked conversation' : 'Start work on this issue');
     footerDetail.textContent = count > 1 ? `Actions apply to ${group.map(i => i.id).join(', ')} in the shared worktree.` : snapshot?.dirty && ready ? 'Uncommitted changes must be committed before merging.' : state === 'done' ? 'The conversation and issue details remain available.' : 'Applies to this issue’s worktree.';
     if (!busy && (issue.agent?.error || '') !== lastAgentError) {
