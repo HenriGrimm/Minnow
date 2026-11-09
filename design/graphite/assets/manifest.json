@@ -1,0 +1,222 @@
+{
+  "/_blob/34a04dfb6ee9c0754f45e8eeba7d2fbf": {
+    "file": "assets/34a04dfb6ee9c0754f45e8eeba7d2fbf.svg",
+    "icon": "css",
+    "source": "public/material-icons/css.svg"
+  },
+  "/_blob/bf76e4ea763bfc8f6c8875284d570986": {
+    "file": "assets/bf76e4ea763bfc8f6c8875284d570986.svg",
+    "icon": "file",
+    "source": "public/material-icons/file.svg"
+  },
+  "/_blob/adb6aad3fcedd244ef077b3ff3fdf48c": {
+    "file": "assets/adb6aad3fcedd244ef077b3ff3fdf48c.svg",
+    "icon": "folder",
+    "source": "public/material-icons/folder.svg"
+  },
+  "/_blob/617583cb751687da849396cbd1e4b7d7": {
+    "file": "assets/617583cb751687da849396cbd1e4b7d7.svg",
+    "icon": "folder-css",
+    "source": "public/material-icons/folder-css.svg"
+  },
+  "/_blob/39948e4e220118869b4a072917549ff3": {
+    "file": "assets/39948e4e220118869b4a072917549ff3.svg",
+    "icon": "folder-css-open",
+    "source": "public/material-icons/folder-css-open.svg"
+  },
+  "/_blob/2270b40b3726aed0b46f8b78b72c852f": {
+    "file": "assets/2270b40b3726aed0b46f8b78b72c852f.svg",
+    "icon": "folder-docs",
+    "source": "public/material-icons/folder-docs.svg"
+  },
+  "/_blob/0b2af9cab51a67108acaf49a0029b6cd": {
+    "file": "assets/0b2af9cab51a67108acaf49a0029b6cd.svg",
+    "icon": "folder-docs-open",
+    "source": "public/material-icons/folder-docs-open.svg"
+  },
+  "/_blob/dd43139acdecd76a8f2035b56593dffc": {
+    "file": "assets/dd43139acdecd76a8f2035b56593dffc.svg",
+    "icon": "folder-github",
+    "source": "public/material-icons/folder-github.svg"
+  },
+  "/_blob/9ce352d552f1804626b1be80aef2a6b5": {
+    "file": "assets/9ce352d552f1804626b1be80aef2a6b5.svg",
+    "icon": "folder-github-open",
+    "source": "public/material-icons/folder-github-open.svg"
+  },
+  "/_blob/efeaa6a76dacee7251fb2631e1d33668": {
+    "file": "assets/efeaa6a76dacee7251fb2631e1d33668.svg",
+    "icon": "folder-lib",
+    "source": "public/material-icons/folder-lib.svg"
+  },
+  "/_blob/c33316a3c760bfa0c2ceba5028ab9062": {
+    "file": "assets/c33316a3c760bfa0c2ceba5028ab9062.svg",
+    "icon": "folder-lib-open",
+    "source": "public/material-icons/folder-lib-open.svg"
+  },
+  "/_blob/c3c9c0a3db286fedf2a74cb6d09f083a": {
+    "file": "assets/c3c9c0a3db286fedf2a74cb6d09f083a.svg",
+    "icon": "folder-node",
+    "source": "public/material-icons/folder-node.svg"
+  },
+  "/_blob/380b0517c7dbb9da0455adb44ee373a1": {
+    "file": "assets/380b0517c7dbb9da0455adb44ee373a1.svg",
+    "icon": "folder-node-open",
+    "source": "public/material-icons/folder-node-open.svg"
+  },
+  "/_blob/cc7e986e4ec5dd9f20a2d6d5e508b7c1": {
+    "file": "assets/cc7e986e4ec5dd9f20a2d6d5e508b7c1.svg",
+    "icon": "folder-open",
+    "source": "public/material-icons/folder-open.svg"
+  },
+  "/_blob/a51250dd31bfa123c952641245fbb97d": {
+    "file": "assets/a51250dd31bfa123c952641245fbb97d.svg",
+    "icon": "folder-public",
+    "source": "public/material-icons/folder-public.svg"
+  },
+  "/_blob/c4af0f630a72ea951ee6aff349f3312f": {
+    "file": "assets/c4af0f630a72ea951ee6aff349f3312f.svg",
+    "icon": "folder-public-open",
+    "source": "public/material-icons/folder-public-open.svg"
+  },
+  "/_blob/d327187d6150265a748424f4df2ff0e1": {
+    "file": "assets/d327187d6150265a748424f4df2ff0e1.svg",
+    "icon": "folder-scripts",
+    "source": "public/material-icons/folder-scripts.svg"
+  },
+  "/_blob/4e5410a6a6833dd77d91c673e04468cf": {
+    "file": "assets/4e5410a6a6833dd77d91c673e04468cf.svg",
+    "icon": "folder-scripts-open",
+    "source": "public/material-icons/folder-scripts-open.svg"
+  },
+  "/_blob/1cc0349b6ee9b11201ec1ad32c9851fe": {
+    "file": "assets/1cc0349b6ee9b11201ec1ad32c9851fe.svg",
+    "icon": "folder-server",
+    "source": "public/material-icons/folder-server.svg"
+  },
+  "/_blob/dc6973d928b78ac54f97bfa0f3ddec0b": {
+    "file": "assets/dc6973d928b78ac54f97bfa0f3ddec0b.svg",
+    "icon": "folder-server-open",
+    "source": "public/material-icons/folder-server-open.svg"
+  },
+  "/_blob/8486b60d4900b0752af8d36659ce729a": {
+    "file": "assets/8486b60d4900b0752af8d36659ce729a.svg",
+    "icon": "folder-src",
+    "source": "public/material-icons/folder-src.svg"
+  },
+  "/_blob/a9107cf18fef4a4ac1064e70e5e9bfd8": {
+    "file": "assets/a9107cf18fef4a4ac1064e70e5e9bfd8.svg",
+    "icon": "folder-src-open",
+    "source": "public/material-icons/folder-src-open.svg"
+  },
+  "/_blob/9796cdbc527a779810fdf86016dbbc4a": {
+    "file": "assets/9796cdbc527a779810fdf86016dbbc4a.svg",
+    "icon": "folder-test",
+    "source": "public/material-icons/folder-test.svg"
+  },
+  "/_blob/d048ff6efeb791ebbb0fb1f79651ecb2": {
+    "file": "assets/d048ff6efeb791ebbb0fb1f79651ecb2.svg",
+    "icon": "folder-test-open",
+    "source": "public/material-icons/folder-test-open.svg"
+  },
+  "/_blob/25d2db7aa23986a52c362d0d06bcf27f": {
+    "file": "assets/25d2db7aa23986a52c362d0d06bcf27f.svg",
+    "icon": "folder-tools",
+    "source": "public/material-icons/folder-tools.svg"
+  },
+  "/_blob/3fecbd297598e909734a4676168d7b99": {
+    "file": "assets/3fecbd297598e909734a4676168d7b99.svg",
+    "icon": "folder-tools-open",
+    "source": "public/material-icons/folder-tools-open.svg"
+  },
+  "/_blob/1d8a11ebd209b3ebad479fd543a852ff": {
+    "file": "assets/1d8a11ebd209b3ebad479fd543a852ff.svg",
+    "icon": "folder-ui",
+    "source": "public/material-icons/folder-ui.svg"
+  },
+  "/_blob/bf18b5a813a14295c06fba73c6d49420": {
+    "file": "assets/bf18b5a813a14295c06fba73c6d49420.svg",
+    "icon": "folder-ui-open",
+    "source": "public/material-icons/folder-ui-open.svg"
+  },
+  "/_blob/473569a01c686ae21233e98221c5e8f1": {
+    "file": "assets/473569a01c686ae21233e98221c5e8f1.svg",
+    "icon": "git",
+    "source": "public/material-icons/git.svg"
+  },
+  "/_blob/6ef2bbf2ebaecdb7b9b6e34546d45515": {
+    "file": "assets/6ef2bbf2ebaecdb7b9b6e34546d45515.svg",
+    "icon": "html",
+    "source": "public/material-icons/html.svg"
+  },
+  "/_blob/7c0b2569ab55cccd34e7217ef3110879": {
+    "file": "assets/7c0b2569ab55cccd34e7217ef3110879.svg",
+    "icon": "image",
+    "source": "public/material-icons/image.svg"
+  },
+  "/_blob/dd5e5c3d6d9a33ef5fe49bad80c964c2": {
+    "file": "assets/dd5e5c3d6d9a33ef5fe49bad80c964c2.svg",
+    "icon": "javascript",
+    "source": "public/material-icons/javascript.svg"
+  },
+  "/_blob/a139c874be131a95fb82bc1dd4a3fb07": {
+    "file": "assets/a139c874be131a95fb82bc1dd4a3fb07.svg",
+    "icon": "json",
+    "source": "public/material-icons/json.svg"
+  },
+  "/_blob/1493f6802c668059fd6258f56aa6d66b": {
+    "file": "assets/1493f6802c668059fd6258f56aa6d66b.svg",
+    "icon": "markdown",
+    "source": "public/material-icons/markdown.svg"
+  },
+  "/_blob/558e7751360ee5fd40df796791e3a252": {
+    "file": "assets/558e7751360ee5fd40df796791e3a252.svg",
+    "icon": "nodejs",
+    "source": "public/material-icons/nodejs.svg"
+  },
+  "/_blob/2dd72e53539e635922036905e49da45c": {
+    "file": "assets/2dd72e53539e635922036905e49da45c.svg",
+    "icon": "readme",
+    "source": "public/material-icons/readme.svg"
+  },
+  "/_blob/7ef1eacedbf7dc1bdcc8b4a9fe320342": {
+    "file": "assets/7ef1eacedbf7dc1bdcc8b4a9fe320342.svg",
+    "icon": "svg",
+    "source": "public/material-icons/svg.svg"
+  },
+  "/_blob/35c2a1a649faa31fc36a178648c3749e": {
+    "file": "assets/35c2a1a649faa31fc36a178648c3749e.svg",
+    "icon": "test-js",
+    "source": "public/material-icons/test-js.svg"
+  },
+  "/_blob/3b46c3d09169eba41253796709ef7c7a": {
+    "file": "assets/3b46c3d09169eba41253796709ef7c7a.svg",
+    "icon": "test-ts",
+    "source": "public/material-icons/test-ts.svg"
+  },
+  "/_blob/454b9142cd81f0829fc1e161fca7e848": {
+    "file": "assets/454b9142cd81f0829fc1e161fca7e848.svg",
+    "icon": "tsconfig",
+    "source": "public/material-icons/tsconfig.svg"
+  },
+  "/_blob/898eee568386bc1b92a64e3216ead754": {
+    "file": "assets/898eee568386bc1b92a64e3216ead754.svg",
+    "icon": "tune",
+    "source": "public/material-icons/tune.svg"
+  },
+  "/_blob/285e24628fbfacf107d53c453fd7e65b": {
+    "file": "assets/285e24628fbfacf107d53c453fd7e65b.svg",
+    "icon": "typescript",
+    "source": "public/material-icons/typescript.svg"
+  },
+  "/_blob/2359a5dd62988a647d423fc3ec52d735": {
+    "file": "assets/2359a5dd62988a647d423fc3ec52d735.svg",
+    "icon": "vite",
+    "source": "public/material-icons/vite.svg"
+  },
+  "/_blob/5015703454ca643584216c885c3ba9d3": {
+    "file": "assets/5015703454ca643584216c885c3ba9d3.svg",
+    "icon": "yaml",
+    "source": "public/material-icons/yaml.svg"
+  }
+}

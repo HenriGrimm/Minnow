@@ -1,0 +1,481 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Approval.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Approval, with the Agents surface open",
+      "w": 1440,
+      "x": 0,
+      "y": 1320
+    },
+    "Archive.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Archive",
+      "w": 1440,
+      "x": 1520,
+      "y": 2640
+    },
+    "Boards.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Boards: waves, worktrees, gates",
+      "w": 1168,
+      "x": 2496,
+      "y": 3960
+    },
+    "Brain.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Brain: graph, proposals, code map",
+      "w": 1168,
+      "x": 3744,
+      "y": 3960
+    },
+    "Changes.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Ready to commit, Diff surface open",
+      "w": 1440,
+      "x": 1520,
+      "y": 1320
+    },
+    "Command.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "⌘K command menu",
+      "w": 1440,
+      "x": 3040,
+      "y": 2640
+    },
+    "Composer.dc.html": {
+      "expand": "fill",
+      "h": 560,
+      "is_interactive": true,
+      "title": "Composer: Minnow's own, with the new model menu",
+      "w": 760,
+      "x": 0,
+      "y": 6432
+    },
+    "Issues.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Issues on the same sheet",
+      "w": 1440,
+      "x": 0,
+      "y": 2640
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Prototype: click anything, drag any panel edge",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Models.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Models: my models, Discover, pools, usage",
+      "w": 1168,
+      "x": 1248,
+      "y": 3960
+    },
+    "NewThread.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "New thread",
+      "w": 1440,
+      "x": 3040,
+      "y": 1320
+    },
+    "Preview.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Preview: dev servers, Design Mode, Agent Browser",
+      "w": 1168,
+      "x": 2496,
+      "y": 5196
+    },
+    "Scheduler.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Scheduler: jobs, editor, live run",
+      "w": 1168,
+      "x": 0,
+      "y": 5196
+    },
+    "Settings.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Settings: every group and page",
+      "w": 1168,
+      "x": 1248,
+      "y": 5196
+    },
+    "SourceControl.dc.html": {
+      "expand": "fill",
+      "h": 836,
+      "is_interactive": true,
+      "title": "Source control: AI commit, review, PRs, releases",
+      "w": 1168,
+      "x": 0,
+      "y": 3960
+    },
+    "Notify.dc.html": {
+      "x": 840,
+      "y": 6432,
+      "w": 1168,
+      "h": 836,
+      "title": "Notifications: cards, Activity, alerts",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Mobile.dc.html": {
+      "x": 2088,
+      "y": 6432,
+      "w": 390,
+      "h": 844,
+      "title": "Phone prototype: tap anything",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Phones.dc.html": {
+      "x": 0,
+      "y": 7680,
+      "w": 4428,
+      "h": 1000,
+      "title": "Every phone surface",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Workspaces.dc.html": {
+      "x": 2040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Choose a workspace: open, create, clone",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Search.dc.html": {
+      "x": 0,
+      "y": 9200,
+      "w": 1440,
+      "h": 900,
+      "title": "Search chats: threads, messages, issues (⌘F)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Shortcuts.dc.html": {
+      "x": 1520,
+      "y": 9200,
+      "w": 1440,
+      "h": 900,
+      "title": "Keyboard shortcuts (?)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Capture.dc.html": {
+      "x": 3040,
+      "y": 9200,
+      "w": 1440,
+      "h": 900,
+      "title": "Capture issue from a thread (⌘I)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Goal.dc.html": {
+      "x": 4560,
+      "y": 9200,
+      "w": 1440,
+      "h": 900,
+      "title": "Goal loop: evaluator, rounds, compaction divider",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Recovery.dc.html": {
+      "x": 0,
+      "y": 10220,
+      "w": 1440,
+      "h": 900,
+      "title": "Failed turn: retry, continue, or fork",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Fork.dc.html": {
+      "x": 1520,
+      "y": 10220,
+      "w": 1440,
+      "h": 900,
+      "title": "Fork with different model",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Resume.dc.html": {
+      "x": 3040,
+      "y": 10220,
+      "w": 1440,
+      "h": 900,
+      "title": "Resume interrupted work?",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "IssueProjects.dc.html": {
+      "x": 4560,
+      "y": 10220,
+      "w": 1440,
+      "h": 900,
+      "title": "Issues › Projects",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ThreadCard.dc.html": {
+      "x": 0,
+      "y": 11720,
+      "w": 1440,
+      "h": 900,
+      "title": "Thread card (⌘.): where it runs, branch, commit, model, permissions",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Surfaces.dc.html": {
+      "x": 1520,
+      "y": 11720,
+      "w": 1440,
+      "h": 900,
+      "title": "Open a surface: one letter each, greyed when it doesn’t apply",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "BottomDock.dc.html": {
+      "x": 3040,
+      "y": 11720,
+      "w": 1440,
+      "h": 900,
+      "title": "Side panel and bottom panel open together",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "PullRequest.dc.html": {
+      "x": 4560,
+      "y": 11720,
+      "w": 1440,
+      "h": 900,
+      "title": "Pull request surface on the CI thread",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SideChat.dc.html": {
+      "x": 0,
+      "y": 13040,
+      "w": 1440,
+      "h": 900,
+      "title": "Side chat: a read-only /ask next to the thread",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ThemeOcean.dc.html": {
+      "x": 1520,
+      "y": 13040,
+      "w": 1440,
+      "h": 900,
+      "title": "Ocean theme, rich color",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ThemeDesert.dc.html": {
+      "x": 3040,
+      "y": 13040,
+      "w": 1440,
+      "h": 900,
+      "title": "Desert theme, light mode, subtle color",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Appearance.dc.html": {
+      "x": 4560,
+      "y": 13040,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings › Appearance: theme, color, accent",
+      "expand": "fill",
+      "is_interactive": true
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-08T12:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "noteOrder": [
+    "row1",
+    "howto",
+    "row2",
+    "row3",
+    "row4",
+    "row5",
+    "row6",
+    "row7",
+    "row8",
+    "row9",
+    "row10",
+    "themenote"
+  ],
+  "notes": {
+    "howto": {
+      "text": "This board is the whole prototype. Pick a thread in the sidebar, or an app above it. Models, alerts and Settings sit at the bottom of the sidebar; the project name at the top switches workspaces.\n\nA thread opens full width. The branch chip next to its title opens the thread card (⌘.): where it runs, Open in, the dev server, branch, changes and commit, model, permissions, issue, goal, pin and archive.\n\nSurfaces open in two panels that can be open together: the side panel (⌘J) and the bottom panel (⌃`). From either panel’s +, press a letter: D Diff, T Terminal, F Files, B Browser, A Agents, P Pull request, I Issue, S Side chat, N Brain, M Phone. Terminal opens at the bottom and the rest at the side, and each tab can move to the other panel or maximize. Each thread keeps its own layout. Files, commands and agents in the transcript open their surface too.\n\nDrag any panel edge to resize it. ⌘K reaches everything, ⌘F searches chats, ⌘I captures an issue, ? lists shortcuts, ⌥↓ ⌥↑ step through threads. Icons are Minnow’s own (Uicons, regular rounded).",
+      "w": 420,
+      "x": 1520,
+      "y": 0
+    },
+    "row1": {
+      "kind": "title1",
+      "maxW": 3480,
+      "text": "Graphite v4: one thread, its agents, and every app one click away",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "row2": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Threads in three states: waiting on you, ready, and new",
+      "w": 240,
+      "x": 0,
+      "y": 1020
+    },
+    "row3": {
+      "kind": "title1",
+      "maxW": 4480,
+      "text": "Around the thread: issues, archive, and ⌘K",
+      "w": 240,
+      "x": 0,
+      "y": 2340
+    },
+    "row4": {
+      "kind": "title1",
+      "maxW": 4912,
+      "text": "The apps, full size: each one also opens inside the prototype",
+      "w": 240,
+      "x": 0,
+      "y": 3660
+    },
+    "row5": {
+      "kind": "title1",
+      "maxW": 3664,
+      "text": "Scheduler, Settings and the preview browser",
+      "w": 240,
+      "x": 0,
+      "y": 4996
+    },
+    "row6": {
+      "kind": "title1",
+      "maxW": 4912,
+      "text": "The composer, notifications, and the phone",
+      "w": 240,
+      "x": 0,
+      "y": 6332
+    },
+    "row7": {
+      "kind": "title1",
+      "maxW": 4428,
+      "w": 240,
+      "x": 0,
+      "y": 7380,
+      "text": "Minnow on a phone: the same threads, agents and apps, over Tailscale or the home network"
+    },
+    "row8": {
+      "kind": "title1",
+      "maxW": 6000,
+      "w": 240,
+      "x": 0,
+      "y": 8900,
+      "text": "The missing moments: search, shortcuts, capture, goal loops, recovery, fork, resume and projects"
+    },
+    "row9": {
+      "kind": "title1",
+      "maxW": 6000,
+      "w": 240,
+      "x": 0,
+      "y": 11420,
+      "text": "Less like an editor: a thread card in the chat, and surfaces you open when you need them"
+    },
+    "row10": {
+      "kind": "title1",
+      "maxW": 6000,
+      "w": 240,
+      "x": 0,
+      "y": 12740,
+      "text": "More color: Minnow’s palettes as themes, with a color intensity you set"
+    },
+    "themenote": {
+      "w": 420,
+      "x": 6080,
+      "y": 13040,
+      "text": "Themes are Minnow’s palettes: Swamp, Ocean, Desert, Coral, Human, Mint and Mono, plus Graphite, which takes any accent. A theme sets the accent for dark and light mode. Color sets how much of it reaches the surfaces: Off is neutral grey, Subtle (the default) tints the ground, sheet and selected rows, and Rich goes further and tints your own messages. Diff, warning and syntax colors stay the same."
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Workspaces.dc.html",
+    "Approval.dc.html",
+    "Changes.dc.html",
+    "NewThread.dc.html",
+    "Issues.dc.html",
+    "Archive.dc.html",
+    "Command.dc.html",
+    "SourceControl.dc.html",
+    "Models.dc.html",
+    "Boards.dc.html",
+    "Brain.dc.html",
+    "Scheduler.dc.html",
+    "Settings.dc.html",
+    "Preview.dc.html",
+    "Composer.dc.html",
+    "Notify.dc.html",
+    "Mobile.dc.html",
+    "Phones.dc.html",
+    "Search.dc.html",
+    "Shortcuts.dc.html",
+    "Capture.dc.html",
+    "Goal.dc.html",
+    "Recovery.dc.html",
+    "Fork.dc.html",
+    "Resume.dc.html",
+    "IssueProjects.dc.html",
+    "ThreadCard.dc.html",
+    "Surfaces.dc.html",
+    "BottomDock.dc.html",
+    "PullRequest.dc.html",
+    "SideChat.dc.html",
+    "ThemeOcean.dc.html",
+    "ThemeDesert.dc.html",
+    "Appearance.dc.html"
+  ],
+  "pages": [
+    {
+      "id": "graphite",
+      "name": "Graphite"
+    }
+  ],
+  "title": "Minnow Chat-First Workspace"
+}

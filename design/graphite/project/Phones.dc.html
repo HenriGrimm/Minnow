@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Phones</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./graphite.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="g" data-mode="{{mode}}" style="--accent: {{accent}}; width: 100%; min-height: 1000px; padding: 40px 48px; box-sizing: border-box; display: flex; gap: 48px; background: var(--ground)">
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="list" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">list</span><br>Threads, with the live model and the real composer</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="drawer" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">drawer</span><br>Drawer: apps, threads, the model card, the connection</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="thread:shimmer" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">thread:shimmer</span><br>A running thread: steps, agents, changes</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="thread:shimmer:agents" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">thread:shimmer:agents</span><br>Sub-agents as a chat in a sheet</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="thread:shimmer:models" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">thread:shimmer:models</span><br>The model menu, from the composer</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="thread:shimmer:changes" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">thread:shimmer:changes</span><br>Changes: AI commit message, review, commit</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="boards:task" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">boards:task</span><br>Board task chat with an approval</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="issues:expand" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">issues:expand</span><br>Issue expander, streaming for review</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="models" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">models</span><br>Models › Local server</figcaption>
+  </figure>
+  <figure style="margin: 0; display: flex; flex-direction: column; gap: 14px; flex: none; width: 390px">
+    <div style="width: 390px; height: 844px; border-radius: 44px; overflow: hidden; border: 1px solid var(--line-2); box-shadow: var(--pop); position: relative"><dc-import name="Mobile" start="devices" mode="{{mode}}" accent="{{accent}}" local-model="{{localModel}}" hint-size="390px,844px"></dc-import></div>
+    <figcaption style="font-size: 13px; color: var(--t2); line-height: 1.45"><span class="mono" style="color: var(--t3); font-size: 11.5px">devices</span><br>This phone: connection, level, alerts</figcaption>
+  </figure>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"localModel":{"editor":"enum","options":["running","stopped"],"default":"running","section":"Prototype"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark","section":"Theme"},"accent":{"editor":"color","options":["#4FD1B0","#6E9BFF","#F5A524","#B79CFF"],"default":"#4FD1B0","section":"Theme"},"$preview":{"width":4428,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() { return { mode: this.props.mode || 'dark', accent: this.props.accent ?? '#4FD1B0', localModel: this.props.localModel || 'running' }; }
+}
+</script>
+</body>
+</html>
