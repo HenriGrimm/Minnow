@@ -20,6 +20,7 @@ import {
   setServeBackgroundRunOverrideForTests,
   setServeHealthOverrideForTests,
   setServeRestartDelayMsForTests,
+  setStopActiveRunOverrideForTests,
   setSubscribeRunOverrideForTests,
   shouldAutoRestartServe,
   startServe,
@@ -196,8 +197,13 @@ describe('serve crash watcher', () => {
   });
 
   test('user stopServe does not mark crashed', async () => {
+    setStopActiveRunOverrideForTests(async (runId) => {
+      assert.equal(runId, RUN_ID_1);
+      return { ok: true };
+    });
     const serve = await startServe({ modelPath, runtime: 'llama-cpp', async: true });
     await waitForStatus(serve.id, 'running');
+    await waitForRunListener(RUN_ID_1);
     await stopServe(serve.id);
     emitRunExit(RUN_ID_1, { type: 'exit', code: 0, stopped: true });
     const row = await getServe(serve.id);
