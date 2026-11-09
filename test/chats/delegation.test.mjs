@@ -95,9 +95,13 @@ function fixture(overrides = {}) {
   });
   return { repository, db, caller, human, context, delegation, service, engines, settlements, requests, errors, home, policy,
     get posts() { return posts; }, get modelResolutions() { return modelResolutions; }, enableHost() { canRun = true; }, getEngine,
-    async cleanup() { for (const engine of engines.values()) engine.dispose(); await service.dispose(); db.close(); agentsJournal.resetJournalCache();
+    async cleanup() { for (const engine of engines.values()) engine.dispose(); await service.dispose(); db.close();
+      // deleteEntry queues behind any append already in progress for this owner.
+      for (const owner of engines.keys()) await agentsJournal.deleteEntry(owner);
+      agentsJournal.resetJournalCache();
       if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome; resetMinnowHomeCache();
-      assert.ok(path.resolve(home).startsWith(path.resolve(os.tmpdir()) + path.sep)); fs.rmSync(home, { recursive: true, force: true }); }
+      assert.ok(path.resolve(home).startsWith(path.resolve(os.tmpdir()) + path.sep));
+      await fs.promises.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   };
 }
 

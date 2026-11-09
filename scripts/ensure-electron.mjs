@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { buildElectronMain } from './build-electron.mjs';
 import { isElectronBuildFresh } from './spawn-electron.mjs';
@@ -31,7 +32,7 @@ function log(message) {
   console.log(`[ensure-electron] ${message}`);
 }
 
-function main() {
+async function main() {
   if (shouldSkip()) {
     log('Skipping Electron binary download (MINNOW_SKIP_ELECTRON or MINNOW_HEADLESS is set).');
     return;
@@ -45,11 +46,18 @@ function main() {
   }
 
   log('Ensuring Electron binary is downloaded…');
-  const result = spawnSync(process.execPath, [ELECTRON_INSTALL_JS], {
-    cwd: PROJECT_ROOT,
-    stdio: 'inherit',
-    env: process.env,
-  });
+  const attempts = process.env.GITHUB_ACTIONS === 'true' ? 3 : 1;
+  let result;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    result = spawnSync(process.execPath, [ELECTRON_INSTALL_JS], {
+      cwd: PROJECT_ROOT,
+      stdio: 'inherit',
+      env: process.env,
+    });
+    if (result.status === 0 || attempt === attempts) break;
+    warn(`Electron download attempt ${attempt}/${attempts} failed. Retrying…`);
+    await delay(attempt * 5_000);
+  }
 
   if (result.status !== 0) {
     warn(`Electron binary download failed (exit ${result.status ?? 'unknown'}).`);
@@ -91,4 +99,4 @@ function main() {
   }
 }
 
-main();
+await main();
