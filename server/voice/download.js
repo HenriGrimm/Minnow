@@ -7,6 +7,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { downloadHfSnapshot, listRepoFilesRecursive } from '../models/hf-client.js';
 import { validateJobId, validateRepoId } from '../models/validate.js';
+import { renameFileWithRetry } from '../runtime/atomic-file.js';
 import {
   getVoiceDownloadsIndexPath,
   getVoiceInstalledPath,
@@ -67,7 +68,7 @@ async function writeJson(file, value) {
   const tmp = file + '.' + crypto.randomUUID() + '.tmp';
   try {
     await fsp.writeFile(tmp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx', flush: true });
-    await fsp.rename(tmp, file);
+    await renameFileWithRetry(tmp, file);
   } finally {
     await fsp.rm(tmp, { force: true });
   }

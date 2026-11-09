@@ -128,7 +128,15 @@ describe('voice download API', () => {
     );
   });
 
-  test('POST /api/voice/download creates TTS job and completes manifest', async () => {
+  test('POST /api/voice/download creates TTS job and completes manifest', async (t) => {
+    const rename = fs.rename;
+    let manifestWrites = 0;
+    t.mock.method(fs, 'rename', async (source, destination) => {
+      if (destination === getVoiceInstalledPath() && ++manifestWrites === 2) {
+        throw Object.assign(new Error('Manifest is temporarily locked'), { code: 'EPERM' });
+      }
+      await rename(source, destination);
+    });
     const start = await httpRequest(baseUrl, 'POST', '/api/voice/download', {
       modelId: 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice',
       kind: 'tts',
@@ -137,24 +145,14 @@ describe('voice download API', () => {
     assert.equal(start.json.job.kind, 'tts');
     assert.equal(start.json.job.modelId, 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice');
 
-    let installed = false;
-    for (let i = 0; i < 80; i += 1) {
-      await new Promise((r) => setTimeout(r, 50));
-      try {
-        const manifestRaw = await fs.readFile(getVoiceInstalledPath(), 'utf8');
-        const manifest = JSON.parse(manifestRaw);
-        if (manifest.tts?.some((row) => row.modelId === 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice')) {
-          installed = true;
-          break;
-        }
-      } catch {
-        /* manifest not written yet */
-      }
-    }
-    assert.equal(installed, true);
+    await resetVoiceDownloadsForTests();
+    const job = (await listVoiceDownloads()).find((row) => row.id === start.json.job.id);
+    assert.equal(job?.status, 'completed', job?.error);
+    assert.equal(manifestWrites, 3, 'the second manifest replacement retries after a sharing error');
 
     const manifestRaw = await fs.readFile(getVoiceInstalledPath(), 'utf8');
     const manifest = JSON.parse(manifestRaw);
+    assert.ok(manifest.tts?.some((row) => row.modelId === start.json.job.modelId));
     assert.ok(
       manifest.tts?.some((row) => row.modelId === 'Qwen/Qwen3-TTS-Tokenizer-12Hz'),
       'expected tokenizer auto-install when TTS model requires it',
@@ -171,21 +169,11 @@ describe('voice download API', () => {
     assert.equal(start.json.job.modelId, 'openai/whisper-tiny');
     assert.ok(['queued', 'running', 'completed'].includes(start.json.job.status));
 
-    let installed = false;
-    for (let i = 0; i < 80; i += 1) {
-      await new Promise((r) => setTimeout(r, 50));
-      try {
-        const manifestRaw = await fs.readFile(getVoiceInstalledPath(), 'utf8');
-        const manifest = JSON.parse(manifestRaw);
-        if (manifest.stt?.some((row) => row.modelId === 'openai/whisper-tiny')) {
-          installed = true;
-          break;
-        }
-      } catch {
-        /* manifest not written yet */
-      }
-    }
-    assert.equal(installed, true);
+    await resetVoiceDownloadsForTests();
+    const job = (await listVoiceDownloads()).find((row) => row.id === start.json.job.id);
+    assert.equal(job?.status, 'completed', job?.error);
+    const manifest = JSON.parse(await fs.readFile(getVoiceInstalledPath(), 'utf8'));
+    assert.ok(manifest.stt?.some((row) => row.modelId === start.json.job.modelId));
   });
 
   test('GET /api/voice/models/installed returns manifest', async () => {
