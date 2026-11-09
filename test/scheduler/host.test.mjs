@@ -8,11 +8,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { resetMinnowHomeCache } from '../../server/config/home.js';
 import { startSchedulerForHost, stopSchedulerForHost } from '../../server/scheduler/host.js';
 import { getSchedulerServerBaseUrl } from '../../server/scheduler/server-base-url.js';
 import { createJob, getStoredJobById, mutateStoredJob } from '../../server/scheduler/store.js';
+import { runSchedulerTick } from '../../server/scheduler/tick.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -27,10 +29,17 @@ before(async () => {
 
 after(async () => {
   stopSchedulerForHost();
+  // Drain the startup tick before switching homes. A tick at epoch zero can
+  // acquire the tick slot without starting any fixture jobs.
+  const deadline = performance.now() + 5_000;
+  while ((await runSchedulerTick({ now: new Date(0) })).skipped === 'tick_in_progress') {
+    assert.ok(performance.now() < deadline, 'scheduler startup tick did not finish');
+    await delay(10);
+  }
   if (priorHome === undefined) delete process.env.MINNOW_HOME;
   else process.env.MINNOW_HOME = priorHome;
   resetMinnowHomeCache();
-  if (home) await fs.rm(home, { recursive: true, force: true });
+  if (home) await fs.rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 /** A job left `running` by a process that no longer exists. */
