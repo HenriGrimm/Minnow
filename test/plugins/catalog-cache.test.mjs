@@ -21,8 +21,6 @@ before(async () => {
   home = path.join(temp, 'home');
   process.env.MINNOW_HOME = home;
   resetMinnowHomeCache();
-  await Promise.all(['tools', 'plugins'].map(dir => fs.mkdir(path.join(home, dir), { recursive: true })));
-  await writeConfigJson('tools.json', { enabled: {}, permissions: { default: {} }, plugins: {} });
 });
 after(async () => {
   if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome;
@@ -60,6 +58,7 @@ test('discovery failures are latched and explicit reload retries once', async t 
 });
 
 test('package install, enable, handler reload, connections and removal publish revisions; execution rechecks policy', async () => {
+  await writeConfigJson('tools.json', { enabled: {}, permissions: { default: {} }, plugins: {} });
   await runWithToolContext(async () => {
     await scaffoldPackage({ id: 'catalog', path: 'catalog' });
     let revision = getPluginCatalogRevision();

@@ -15,7 +15,7 @@ import {
 } from './bridge.js';
 import { createPluginContext } from './plugin-context.js';
 import { listMergedPlugins } from './scan.js';
-import { getMinnowHome } from '../config/home.js';
+import { ensureMinnowLayout, getMinnowHome } from '../config/home.js';
 import { getPluginCatalogRevision, invalidatePluginCatalog, watchPluginCatalog } from '../plugins/catalog.js';
 
 export { getPluginCatalogRevision, subscribePluginCatalogChanges } from '../plugins/catalog.js';
@@ -45,7 +45,7 @@ async function pluginCatalog() {
   if (pendingCatalog) return pendingCatalog;
   pendingCatalog = (async () => {
     try {
-      await fs.mkdir(path.join(home, 'tools'), { recursive: true });
+      await ensureMinnowLayout();
       await fs.mkdir(path.join(home, 'plugins'), { recursive: true });
       watchPluginCatalog(home);
     } catch (error) {
