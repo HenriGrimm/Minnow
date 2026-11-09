@@ -57,7 +57,8 @@ try {
     }, { workspaceIds: ['packaged-workspace'], modelSelection: { providerId: 'fixture', modelId: 'fixture' } });
     const bodies = Object.values({ ...profile.prompt.sources.builtinRaw, ...profile.prompt.sources.userRaw });
     assert.ok(bodies.some(body => typeof body === 'string' && body.trim()), 'Capture actual prompt assets from the packaged app');
-    assert.equal(profile.policy.modeId, 'general');
+    // A saved General chat now runs the unified agent under the build mode id.
+    assert.equal(profile.policy.modeId, 'build');
   });
   await check('manual-assets', async () => {
     const manual = await fs.readFile(path.join(path.dirname(app), 'documentation/manual/chat/chatting.md'), 'utf8');
