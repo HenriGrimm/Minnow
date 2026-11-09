@@ -243,34 +243,6 @@ async function spawnChild(parentChatId, runId) {
   assert.equal(response.status, 201, await response.text());
 }
 
-test('actual CLI streams partial agent text before completion and keeps the JSON artifact separate', { timeout: 30000 * SLOW }, async () => {
-  modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
-  const outputFile = path.join(home, 'stream-result.json');
-  const child = spawn(process.execPath, [cliBundle, 'run', '--stream', '--quiet', '--json-out', outputFile,
-    '--profile', 'lite', '--prompt', '[hold-generation]', '--workspace', workspace,
-    '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
-    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
-  });
-  children.add(child);
-  let stdout = '', stderr = '';
-  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-  child.stdout.on('data', text => { stdout += text; }); child.stderr.on('data', text => { stderr += text; });
-  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => { children.delete(child); resolve(code); }); });
-  void done.catch(() => {});
-  try {
-    await awaitModel({ done, output: () => stdout + stderr });
-    await until(() => stdout.includes('Partial waiting text'));
-    assert.equal(child.exitCode, null, 'the live response must be visible while the model stream remains open');
-    const active = await until(async () => (await states()).find(row => row.status === 'streaming'));
-    assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
-    assert.equal(await done, 130);
-    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
-    assert.equal(result.ok, false); assert.match(result.assistantFinal, /Partial waiting text/);
-    assert.equal(stdout.match(/Partial waiting text/g)?.length, 1, 'the final response must not duplicate the streamed text');
-    assert.ok(!stdout.includes('"assistantFinal"'), 'JSON metadata must stay in its artifact');
-  } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
-});
-
 test('actual Reef Builder CLI recovers a failed tool, streams both results and persists its independent context', { timeout: 30000 * SLOW }, async () => {
   const outputFile = path.join(home, 'reef-json-stream-result.json');
   const child = spawn(process.execPath, [cliBundle, 'run', '--stream-json', '--quiet', '--json-out', outputFile,
@@ -410,17 +382,34 @@ test('provider terminal failure keeps partial text and reports failure through a
   assert.ok(run.result.error);
 });
 
-test('Stop through the real generations handler cancels upstream and produces exit 130', { timeout: 30000 * SLOW }, async () => {
+test('actual CLI streams partial text, then Stop cancels it and writes a separate JSON artifact', { timeout: 30000 * SLOW }, async () => {
   modelStarted = new Promise(resolve => { notifyModelStarted = resolve; });
-  const run = launch('[hold-generation]', 'boundary-cancel');
-  await awaitModel(run);
-  const active = await until(async () => (await states()).find(row => row.status === 'streaming' || row.status === 'pending'));
-  assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
-  const outcome = await run.done;
-  assert.equal(outcome.code, 130, outcome.stderr);
-  assert.equal(outcome.result.ok, false);
-  assert.match(outcome.result.assistantFinal, /Partial waiting text/);
-  await until(async () => !(await states()).some(row => row.status === 'pending' || row.status === 'streaming'));
+  const outputFile = path.join(home, 'stream-result.json');
+  const child = spawn(process.execPath, [cliBundle, 'run', '--stream', '--quiet', '--json-out', outputFile,
+    '--profile', 'lite', '--stdin', '--persist-chat', '--chat-id', 'boundary-cancel', '--workspace', workspace,
+    '--base-url', base, '--token', token, '--provider', 'boundary-fixture', '--model', 'fixture'], {
+    cwd: root, env: { ...process.env, MINNOW_HOME: home, BROWSER: 'none', MINNOW_HEADLESS: '1' }, windowsHide: true,
+  });
+  children.add(child);
+  let stdout = '', stderr = '';
+  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+  child.stdout.on('data', text => { stdout += text; }); child.stderr.on('data', text => { stderr += text; });
+  const done = new Promise((resolve, reject) => { child.once('error', reject); child.once('close', code => { children.delete(child); resolve(code); }); });
+  void done.catch(() => {});
+  child.stdin.end('[hold-generation]');
+  try {
+    await awaitModel({ done, output: () => stdout + stderr });
+    await until(() => stdout.includes('Partial waiting text'));
+    assert.equal(child.exitCode, null, 'the live response must be visible while the model stream remains open');
+    const active = await until(async () => (await states()).find(row => row.status === 'streaming'));
+    assert.equal((await api(`/api/generations/${active.id}/cancel`, { method: 'POST' })).status, 200);
+    assert.equal(await done, 130);
+    const result = JSON.parse(await fs.readFile(outputFile, 'utf8'));
+    assert.equal(result.ok, false); assert.match(result.assistantFinal, /Partial waiting text/);
+    assert.equal(stdout.match(/Partial waiting text/g)?.length, 1, 'the final response must not duplicate the streamed text');
+    await until(async () => !(await states()).some(row => row.status === 'pending' || row.status === 'streaming'));
+    assert.ok(!stdout.includes('"assistantFinal"'), 'JSON metadata must stay in its artifact');
+  } finally { await killOwnedChild(child); notifyModelStarted = undefined; }
 });
 
 test('real disk-journal completion delivers live and offline, and durable ACK survives host reload', { timeout: 30000 * SLOW }, async () => {
