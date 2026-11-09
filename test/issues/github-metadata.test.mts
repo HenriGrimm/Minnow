@@ -3,7 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { decodeGithubIssueBody, encodeGithubIssueBody, type GithubIssueMetadata } from '../../src/issues/github-metadata.ts';
 import { createDefaultIssuesTaxonomy } from '../../src/issues/taxonomy.ts';
 import { importGithubIssues, syncAllIssuesWithGithub, syncIssueWithGithub, resetIssuesGithubForTests, setIssuesGithubMode } from '../../src/state/issues-github.ts';
-import { addIssueComment, deleteIssueComment, findIssueById, findIssueProject, listIssues, parseIssuesState, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
+import { addIssueComment, deleteIssueComment, findIssueById, findIssueProject, listIssues, parseIssuesState, setIssuesNowForTests, setIssuesStateForTests, updateIssue } from '../../src/state/issues-store.ts';
 import { getIssuesTaxonomySync, setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
 import { setLocalServerAvailableForTests } from '../../src/tools/config.ts';
 import { resetWorkspaceStateForTests, setWorkspaceFromServer } from '../../src/state/workspace.ts';
@@ -49,6 +49,7 @@ afterEach(() => {
   resetIssuesGithubForTests();
   resetWorkspaceStateForTests();
   setLocalServerAvailableForTests(false);
+  setIssuesNowForTests(null);
   setIssuesStateForTests(null);
   setIssuesTaxonomyForTests(null);
 });
@@ -167,6 +168,8 @@ test('a missing remote parent reports an error without overwriting its relations
 });
 
 test('type-only edits and comment changes publish; parsed bodies subsequently stay in sync', async () => {
+  let now = 2000;
+  setIssuesNowForTests(() => now);
   let remote = { number: 1, title: 'An issue', body: 'Description', state: 'open', labels: [], url: 'https://github.com/o/r/issues/1', updatedAt: 1000 };
   let edits = 0;
   globalThis.fetch = async (_input, init) => {
@@ -174,7 +177,7 @@ test('type-only edits and comment changes publish; parsed bodies subsequently st
     if (request.op === 'issueView') return Response.json({ ok: true, issue: remote });
     if (request.op === 'issueEdit') {
       edits++;
-      remote = { ...remote, title: request.title, body: request.body, updatedAt: Date.now() };
+      remote = { ...remote, title: request.title, body: request.body, updatedAt: now };
       return Response.json({ ok: true });
     }
     return Response.json({ ok: false, error: 'Unexpected operation' });
@@ -186,12 +189,15 @@ test('type-only edits and comment changes publish; parsed bodies subsequently st
   assert.equal(data.type.id, 'bug');
   assert.equal(data.priority.id, 'high');
   assert.equal(data.comments[0].body, comment.body);
+  // A local-only edit advances the sync watermark without changing the GitHub fields.
+  now += 100;
+  updateIssue('MIN-1', { rank: 1 });
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'noop');
   assert.equal(edits, 1);
   deleteIssueComment('MIN-1', comment.id);
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'push');
   assert.deepEqual(decodeGithubIssueBody(remote.body).metadata?.comments, []);
-  remote = { ...remote, updatedAt: Date.now() + 10_000, body: encodeGithubIssueBody('Remote description', { ...decodeGithubIssueBody(remote.body).metadata!, type: { id: 'feature', label: 'Feature', order: 0 } }) };
+  remote = { ...remote, updatedAt: now + 10_000, body: encodeGithubIssueBody('Remote description', { ...decodeGithubIssueBody(remote.body).metadata!, type: { id: 'feature', label: 'Feature', order: 0 } }) };
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'pull');
   assert.equal(findIssueById('MIN-1')?.type, 'feature');
   assert.equal(findIssueById('MIN-1')?.description, 'Remote description');

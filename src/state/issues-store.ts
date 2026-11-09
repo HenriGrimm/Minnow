@@ -1763,7 +1763,8 @@ export function updateIssue(
   const afterSynced = githubSyncedSnapshot(issue, isClosedStatus(taxonomy, issue.status));
   issue.updatedAt = nowMs;
   if (issue.github && githubSyncedFieldsChanged(beforeSynced, afterSynced)) {
-    issue.updatedAt = Math.max(nowMs, (issue.github.localChangedAt ?? issue.github.localUpdatedAt ?? 0) + 1);
+    const syncedAt = issue.github.localUpdatedAt ?? issue.github.syncedAt;
+    issue.updatedAt = Math.max(nowMs, Math.max(issue.github.localChangedAt ?? 0, syncedAt) + 1);
     issue.github.localChangedAt = issue.updatedAt;
   }
   touchIssuesStore();

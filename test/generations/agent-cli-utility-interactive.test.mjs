@@ -139,8 +139,8 @@ test('helper opt-in remains required before starting Claude', async () => {
 });
 for (const mode of ['failure', 'cancel', 'hang']) test(`utility ${mode} closes the interactive process and removes private files`, async () => {
   setup(mode);
-  const result = await generate('utility', { idleMs: 100 });
-  assert.equal(result.state.status, mode === 'cancel' ? 'cancelled' : 'error');
+  const result = await generate('utility', mode === 'hang' ? { idleMs: 100 } : {});
+  assert.equal(result.state.status, mode === 'cancel' ? 'cancelled' : 'error', result.state.errorMessage);
   if (mode === 'failure') assert.equal(result.state.errorMessage, 'Utility startup failed');
   await assertClean();
 });
