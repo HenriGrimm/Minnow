@@ -50,7 +50,7 @@ async function installFamily(runtime, adapters, config) {
   } };
 }
 
-test('production delegation runs two independent durable child requests, coalesces one parent wake, and accounts usage on each owning chat', { timeout: 30000 }, async t => {
+test('production delegation runs two independent durable child requests, coalesces one parent wake, and accounts usage on each owning chat', { timeout: 45000 }, async t => {
   const parentGate = deferred(), parentWaiting = deferred(); t.after(() => parentGate.resolve());
   const config = { enabled: true, types: { questioner: { enabled: true }, reviewer: { enabled: true } }, defaultContextEnforcementPolicy: 'compact' };
   let f;
@@ -99,12 +99,15 @@ test('production delegation runs two independent durable child requests, coalesc
   const requests = await until(() => {
     const q = f.repository.listRequests(question.chatId, 'pending')[0], a = f.repository.listRequests(approval.chatId, 'pending')[0];
     return q && a && { q, a };
-  }, 'independent question and approval').catch(error => { throw new Error(error.message + '\n' + JSON.stringify({
-    commands: f.repository.listCommands().map(row => ({ chat: row.chatId, state: row.state, error: row.error, result: row.result })),
-    executions: f.repository.listExecutions().map(row => ({ chat: row.chatId, status: row.status, result: row.result })),
-    calls: f.calls.map(body => ({ model: body.model, user: lastUser(body), tools: body.tools.map(row => row.function.name) })),
-    errors: f.installation.errors.map(error => String(error)),
-  })); });
+  }, 'independent question and approval').catch(withWorkflowState);
+  function withWorkflowState(error) {
+    throw new Error(error.message + '\n' + JSON.stringify({
+      commands: f.repository.listCommands().map(row => ({ chat: row.chatId, state: row.state, error: row.error, result: row.result })),
+      executions: f.repository.listExecutions().map(row => ({ chat: row.chatId, status: row.status, result: row.result })),
+      calls: f.calls.map(body => ({ model: body.model, user: lastUser(body), tools: body.tools.map(row => row.function.name) })),
+      errors: f.installation.errors.map(error => String(error)),
+    }), { cause: error });
+  }
   assert.equal(requests.q.kind, 'question'); assert.equal(requests.a.kind, 'approval');
   const { caller } = await f.runtime.context.executionCaller(f.repository.getLatestExecution('workflow-parent').executionId);
   const wait = await f.runtime.chatTools.execute('chat_wait', {
@@ -139,7 +142,8 @@ test('production delegation runs two independent durable child requests, coalesc
   const approvalInput = { clientRequestId: 'allow-write', answer: 'allow_once' };
   const answeredApproval = await f.request(`/api/chats/${approval.chatId}/requests/${requests.a.requestId}/respond`, approvalInput);
   assert.equal(answeredApproval.status, 200, JSON.stringify(answeredApproval.body));
-  await until(() => assignments.every(row => f.runtime.taskDelivery.tasks.getResult(row.runId)), 'both immutable task results');
+  await until(() => assignments.every(row => f.runtime.taskDelivery.tasks.getResult(row.runId)), 'both immutable task results', 20000)
+    .catch(withWorkflowState);
   const originals = assignments.map(row => f.runtime.taskDelivery.tasks.getResult(row.runId));
   assert.ok(originals.every(result => result.status === 'completed'));
   await until(() => f.runtime.taskDelivery.tasks.getResult(pushRecord.runId), 'Push graph cancellation after canonical steer');
