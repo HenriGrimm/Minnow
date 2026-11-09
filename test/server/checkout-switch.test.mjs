@@ -11,7 +11,7 @@ import { acquireActionWorktree, releaseActionWorktree } from '../../server/git/a
 
 const exec = promisify(execFile);
 async function fixture(t) {
-  const cwd = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-checkout-')));
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-checkout-'));
   t.after(() => fs.rm(cwd, { recursive: true, force: true }));
   const git = async (...args) => (await exec('git', args, { cwd, windowsHide: true })).stdout.trim();
   await git('init', '-b', 'main');

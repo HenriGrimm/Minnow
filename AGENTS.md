@@ -57,7 +57,7 @@ Perf regressions fail CI the same way as `impeccable:detect` — loudly and with
 - **Preview overlays:** call `markPreviewOccluder(root, kind)` from `src/ui/preview-occlusion.ts` on visible menu/dialog/panel/notification roots (`mn-occludes-preview`); unmark on close if reused. Roots must receive pointer events where they paint. Native guests pause only for actual overlap. Use `holdPreviewGuestHidden` only for unmeasurable surfaces such as `::picker(select)`.
 - `postinstall` runs `scripts/sync-impeccable-skill.mjs` (vendors the Impeccable skill) and `scripts/ensure-electron.mjs`. Both are expected and idempotent.
 - **Browser-only tools** (`get_datetime`, `calculate`, `ask_question`, sub-agent/board tools, mode handoff, `browser_*`) run client-side; calling them via `POST /api/tools` returns "Not implemented".
-- `browser_*` automation requires the Electron shell and an origin allowlist; hidden in a plain browser tab.
+- `browser_*` automation requires the Electron shell; the global permission level governs navigation and actions. It is hidden in a plain browser tab.
 - The `[providers] fetch failed` log on startup is normal without LM Studio (provider discovery can't reach `localhost:1234`).
 - **Streaming SSE** is parsed in [`src/api/sse-parse.ts`](src/api/sse-parse.ts) (event boundaries + glued JSON); non-streaming fallback uses `parseCompletionResponseBody` — do not call `Response.json()` on the generations shim. Some non–OpenAI providers (e.g. `llmster`) may still yield empty text; verify the provider's `chatCompletionsPath` is `/v1/chat/completions`.
 - **Secrets are encrypted** at rest with `~/.minnow/.key`. Deleting/rotating the key makes existing encrypted secrets unrecoverable.
