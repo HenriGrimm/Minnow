@@ -98,24 +98,18 @@ describe('browser driver — launch/teardown cycles', { skip: skipReason }, () =
       assert.equal(launched.ok, true, `cycle ${i} failed to launch: ${launched.ok ? '' : launched.detail}`);
       const session = launched.session;
       pids.push(session.status().pid);
+      const child = session.handle.child;
 
       assert.equal(await session.evaluate('1 + 1'), 2);
       await session.close();
       assert.equal(session.status().alive, false);
+      assert.ok(child.exitCode !== null || child.signalCode !== null, `cycle ${i} browser ${child.pid} did not exit`);
     }
 
     assert.equal(pids.length, CYCLES);
     // Windows recycles PIDs quickly, so a closed cycle's pid can legitimately reappear.
     assert.ok(new Set(pids).size >= CYCLES - 3, `cycles should be separate processes (${new Set(pids).size}/${CYCLES} distinct pids)`);
 
-    const reapDeadline = Date.now() + 30_000;
-    /** @type {number[]} */
-    let alive = pids.filter((pid) => isPidAlive(pid));
-    while (alive.length > 0 && Date.now() < reapDeadline) {
-      await new Promise((r) => setTimeout(r, 250));
-      alive = alive.filter((pid) => isPidAlive(pid));
-    }
-    assert.deepEqual(alive, [], `orphaned browser processes: ${alive.join(', ')}`);
     assert.deepEqual(trackedBrowserPids(), [], 'the driver should track no live browsers');
 
     const stillReferencing = countProcessesReferencing(
