@@ -1,5 +1,6 @@
 
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -32,6 +33,18 @@ function log(message) {
   console.log(`[ensure-electron] ${message}`);
 }
 
+function installerEnv(attempt) {
+  if (attempt === 1 || process.env.npm_config_platform || process.env.npm_config_arch) return process.env;
+  if (Object.keys(process.env).some(key => /electron_/i.test(key))) return process.env;
+  // Let Electron detect Rosetta itself when a macOS x64 Node may be translated.
+  if (process.platform === 'darwin' && process.arch === 'x64') return process.env;
+  const { version } = JSON.parse(fs.readFileSync(path.join(path.dirname(ELECTRON_INSTALL_JS), 'package.json'), 'utf8'));
+  // Retry through the same release asset with a fresh redirect. The installer
+  // still validates the archive against the checksums bundled with the package.
+  const asset = `electron-v${version}-${process.platform}-${process.arch}.zip`;
+  return { ...process.env, ELECTRON_CUSTOM_FILENAME: `${asset}?minnow-retry=${randomUUID()}` };
+}
+
 async function main() {
   if (shouldSkip()) {
     log('Skipping Electron binary download (MINNOW_SKIP_ELECTRON or MINNOW_HEADLESS is set).');
@@ -52,7 +65,7 @@ async function main() {
     result = spawnSync(process.execPath, [ELECTRON_INSTALL_JS], {
       cwd: PROJECT_ROOT,
       stdio: 'inherit',
-      env: process.env,
+      env: installerEnv(attempt),
     });
     if (result.status === 0 || attempt === attempts) break;
     warn(`Electron download attempt ${attempt}/${attempts} failed. Retrying…`);
