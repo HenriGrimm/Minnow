@@ -120,6 +120,7 @@ export async function appendSubAgentMemorySection(
       os: typeof navigator !== 'undefined' ? navigator.platform : 'node',
       plan_granularity: '',
       orchestrate_plan: '',
+      permission_line: '',
     });
     if (section.trim()) {
       result = `${result}\n\n---\n\n${section.trim()}`;

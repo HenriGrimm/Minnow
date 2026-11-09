@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { runTurn } from '../runner/run-turn.js';
 import { createInProcessToolDispatch } from '../runner/tool-dispatch.js';
 import { ChatContractError, validateChatCommand } from './contracts.js';
-import { assertChatPolicy, assertChatToolAllowed } from './policy.js';
+import { assertChatPolicy, assertChatToolAllowed, classifyChatToolCall } from './policy.js';
+import { addChatPermissionGrant, getChatPermissionGrants } from './permission-grants.js';
 import { createChatTranscriptStore } from './transcript-store.js';
 import { createChatRequestService } from './requests.js';
 import { isHostToolNotStartedError } from './host-capabilities.js';
@@ -19,7 +20,9 @@ const crash = (error, failure = {}) => ({ outcome: 'crashed', error: errorText(e
 const present = (callback, payload) => {
   try { callback?.(payload)?.catch?.(() => {}); } catch { /* Viewers never own execution. */ }
 };
-const approvedOnce = answer => answer === 'allow_once' || answer?.decision === 'allow_once';
+const answerDecision = answer => (typeof answer === 'string' ? answer : answer?.decision);
+const approvedOnce = answer => ['allow_once', 'allow_chat'].includes(answerDecision(answer));
+const denialNote = answer => (typeof answer?.feedback === 'string' ? answer.feedback.trim().slice(0, 2000) : '');
 
 /**
  * A server owner around the shared runner. Preparation is injected by the
@@ -146,6 +149,8 @@ export function createServerChatExecutionHost({
         const dispatch = createToolDispatch
           ? await createToolDispatch(prepared, dispatchContext)
           : createInProcessToolDispatch({ cwd: prepared.cwd, modeId: policy.modeId,
+            permissionLevel: policy.permissionLevel, turnClamp: policy.turnClamp,
+            filesystemAccessCeiling: policy.filesystemAccess, shellSandboxMode: policy.shellSandboxMode,
             allowedToolNames: Object.keys(policy.toolPermissions).filter(name => policy.toolPermissions[name] !== 'off'),
             runtimeOwner, activityChatId: chatId });
         if (typeof dispatch?.execute !== 'function' || typeof dispatch.runHeadlessToolBatch !== 'function') {
@@ -190,21 +195,36 @@ export function createServerChatExecutionHost({
         const checkTool = async (name, args, toolCallId) => {
           repository.assertFence(chatId, fence);
           const approvalKey = digest([name, args]);
-          try { return assertChatToolAllowed(policy, name, args, { currentPolicy: await livePolicy(), approvalGranted: approvals.get(toolCallId) === approvalKey }); }
+          const gate = { workspaceRoot: prepared.cwd, grants: getChatPermissionGrants(chatId) };
+          try { return assertChatToolAllowed(policy, name, args, { ...gate, currentPolicy: await livePolicy(), approvalGranted: approvals.get(toolCallId) === approvalKey }); }
           catch (error) {
             if (error?.reason !== 'approval_required') throw error;
-            const answer = await waitForHuman({ toolCallId, kind: 'approval', title: `Allow ${name}?`,
-              presentation: { toolName: name, arguments: args, workspaceRoot: prepared.cwd } });
-            if (!approvedOnce(answer)) throw new ChatContractError('policy_denied', `Approval for ${name} was declined`);
+            const current = await livePolicy();
+            const action = classifyChatToolCall(current, name, args, gate);
+            const answer = await waitForHuman({ toolCallId, kind: 'approval', title: action.title,
+              presentation: { toolName: name, arguments: args, workspaceRoot: prepared.cwd, action, level: current.permissionLevel } });
+            if (!approvedOnce(answer)) {
+              const note = denialNote(answer);
+              throw new ChatContractError('policy_denied', note
+                ? `The user denied "${action.title}" and said: ${note}`
+                : `The user denied "${action.title}". Do not retry or work around it; ask the user how to proceed.`);
+            }
+            if (answerDecision(answer) === 'allow_chat' && action.grant && action.risk !== 'high') addChatPermissionGrant(chatId, action.grant.key);
             approvals.set(toolCallId, approvalKey);
             repository.assertFence(chatId, fence);
-            return assertChatToolAllowed(policy, name, args, { currentPolicy: await livePolicy(), approvalGranted: true });
+            return assertChatToolAllowed(policy, name, args, { ...gate, currentPolicy: await livePolicy(), approvalGranted: true });
           }
         };
         const execute = async (name, rawArgs, ctx) => {
           if (combinedSignal.aborted) throw combinedSignal.reason ?? new DOMException('Stopped', 'AbortError');
           const args = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {};
           if (!ctx?.toolCallId) throw new ChatContractError('invalid_request', 'Durable tools require a tool call identity');
+          const detached = args.background === true || name === 'start_background_command' ||
+            name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
+            name === 'action_run' && args.location === 'local';
+          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
+            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
+          }
           const allowed = await checkTool(name, args, ctx.toolCallId);
           const dispatchContext = { ...ctx, approvalGranted: allowed.permission === 'ask' };
           // No intent exists until an adapter can own this exact call. A
@@ -216,12 +236,6 @@ export function createServerChatExecutionHost({
           }
           const effect = allowed.policy.toolEffects[name] ?? 'unknown';
           if (effect === 'read') return dispatchTool(name, args, dispatchContext);
-          const detached = args.background === true || name === 'start_background_command' ||
-            name === 'manage_dev_servers' && ['start', 'restart'].includes(args.action) ||
-            name === 'action_run' && args.location === 'local';
-          if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
-            return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
-          }
           const invoke = async () => {
           // Waiting for a checkout baseline must never preserve a stale grant.
           await checkTool(name, args, ctx.toolCallId);

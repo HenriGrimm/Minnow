@@ -10,7 +10,7 @@ You choose by category. The selection is saved and used for both manual backups 
 
 | Category | Contains | Default |
 |----------|----------|---------|
-| **Settings and preferences** | Preferences, appearance, tool permissions, provider profiles, MCP and language servers, prompts, rules, agents | On |
+| **Settings and preferences** | Preferences, appearance, the global permission mode, tool settings, provider profiles, MCP and language servers, prompts, rules, agents | On |
 | **Credentials and encryption key** | API keys, sign-in tokens, connection secrets, scheduled-job prompts, and `.key` | On — needs a passphrase |
 | **Chats and usage history** | Every conversation, sub-agent transcripts, plan drafts, usage statistics | On |
 | **Brain and memory** | Wiki pages, memories, ingested sources, search vectors | On |

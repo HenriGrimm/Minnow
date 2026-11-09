@@ -6,6 +6,7 @@ import { ChatContractError, validateAgentProfileReference, validateModelSelectio
 import { projectAgentConversationTools } from './tool-catalog.js';
 import { getAgentConversationsFeature } from './feature.js';
 import { createChatPolicy, intersectChatPolicies } from './policy.js';
+import { normalizePermissionLevel, normalizeTurnClamp } from '../../src/lib/permissions.mjs';
 import { createAgentCatalogContext, resolveAgentModelSelection, inspectAgentModel, AGENT_POOL_PROVIDER_ID, AGENT_LIBRARY_PROVIDER_ID } from './model-selection.js';
 import { clampShellSandboxModeForPlatform, normalizeShellSandboxMode } from '../terminal/sandbox/mode.js';
 import { agentContextBudgetFromWorkAgent, withCompactionDefaults, normalizeContextEnforcementPolicy } from '../runner/context-budget.js';
@@ -15,7 +16,9 @@ import { readChatCheckoutIdentity } from './context.js';
 import { rebindChatWorkspacePolicy } from './workspace-preparation.js';
 import { validateChatSendIntent } from './contracts.js';
 import { wrapUntrusted } from '../../src/lib/untrusted.mjs';
-import { SUB_AGENT_COMPLETION_GUIDANCE, withSubAgentReportTool } from '../sub-agents/reporting.js';
+import { isLanProviderBaseUrl } from '../../src/lib/lan-provider-host.mjs';
+import { SUB_AGENT_COMPLETION_GUIDANCE } from '../sub-agents/reporting.js';
+import { withSubAgentReportTool } from './sub-agent-report-tool.js';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
 let composerPromise;
@@ -206,12 +209,13 @@ export async function captureChatTurnIntent(intent, chat, message, options = {})
   const adapters = createChatPreparationAdapters(options.adapters);
   try { return await runWithDeadline(async signal => {
     const value = parsed.value;
-    let skillBody = null, uiDesigner = null;
+    let skillBody = null, uiDesigner = null, turnClamp = null;
     if (value.skill) {
       const userText = value.skill.input ?? message;
       const composer = await adapters.loadComposer();
       const skill = await adapters.loadSkill(value.skill.id);
       skillBody = skill.body;
+      turnClamp = normalizeTurnClamp(skill.access);
       if (composer.shouldComposeImpeccableBody(value.skill.id, userText)) skillBody = await adapters.composeImpeccable(skillBody, userText, composer);
       if (value.skill.id === 'caveman') skillBody = composer.augmentCavemanSkillBody(skillBody, { userText, pinnedIntensity: value.skill.intensity });
       if (value.skill.id === 'partymode') skillBody = composer.augmentPartyModeSkillBody(skillBody);
@@ -224,7 +228,7 @@ export async function captureChatTurnIntent(intent, chat, message, options = {})
     }
     signal.throwIfAborted();
     if (skillBody && Buffer.byteLength(skillBody) > 256 * 1024) throw new ChatContractError('capability_unavailable', 'The selected skill exceeds 256 KiB');
-    return { intent: value, skillBody, uiDesigner };
+    return { intent: value, skillBody, uiDesigner, ...(turnClamp ? { turnClamp } : {}) };
   }, { timeoutMs: options.timeoutMs ?? 10000 }); }
   catch (error) {
     if (error?.name === 'TimeoutError') throw new ChatContractError('capability_unavailable', 'Required skill preparation exceeded its deadline. Retry after checking the selected skill.');
@@ -264,24 +268,20 @@ async function policySnapshot(chat, scope, options = {}) {
   }
   const mode = composer.resolveChatModeTools({ chat: effectiveChat, workAgents: agents,
     workAgentOverrides: registry.overrides, toolNames: [...byName.keys()] });
-  const allowed = new Set(mode.allowedToolNames);
-  const typeAllow = type?.allowedTools?.length ? new Set(type.allowedTools) : null;
-  const typeDeny = new Set(type?.deniedTools ?? []);
+  // Catalog membership is capability availability; authorization comes only from
+  // the global level and the active turn clamp, never legacy tools.json flags.
   const effects = composer.classifyChatBuiltinTools([...byName.keys()].filter(name => !/^(?:mcp__|plugin__)/.test(name)));
   const permissions = {};
   for (const name of byName.keys()) {
-    const configured = settings.tools?.permissions?.default?.[name];
-    const permission = ['full', 'ask', 'off'].includes(configured) ? configured
-      : name.startsWith('mcp__') ? 'full' : name.startsWith('plugin__') ? 'ask' : 'off';
-    // In particular, MCP does not bypass an explicit off or work-agent allowlist.
-    permissions[name] = typeAvailable && allowed.has(name) && (!typeAllow || typeAllow.has(name)) &&
-      !typeDeny.has(name) && settings.tools?.enabled?.[name] !== false ? permission : 'off';
+    permissions[name] = typeAvailable ? 'full' : 'off';
     effects[name] ??= 'unknown';
     if (mode.modeId === 'plan' && effects[name] === 'unknown' && /^(?:mcp__|plugin__)/.test(name)) permissions[name] = 'off';
   }
-  const filesystemAccess = settings.meta?.toolSecurity?.filesystemAccess === 'full' ? 'full' : 'workspace';
+  const toolSecurity = settings.meta?.toolSecurity ?? {};
+  const permissionLevel = normalizePermissionLevel(toolSecurity.permissionLevel);
+  const filesystemAccess = permissionLevel === 'full' ? 'full' : 'workspace';
   const policyInput = {
-    modeId: mode.modeId, toolPermissions: permissions, toolEffects: effects,
+    modeId: mode.modeId, permissionLevel, toolPermissions: permissions, toolEffects: effects,
     shellSandboxMode: clampShellSandboxModeForPlatform(normalizeShellSandboxMode(settings.meta?.toolSecurity?.shellSandbox)),
     workspaceIds: options.workspaceIds ?? [scope.workspaceId], filesystemAccess,
     fileWriteScope: mode.modeId === 'plan' ? 'plans' : filesystemAccess,
@@ -300,7 +300,9 @@ async function rolePromptSnapshot(live, effectiveChat) {
   let selected = live.composer.resolveChatModeTools({ chat: effectiveChat, workAgents: live.agents,
     workAgentOverrides: live.workAgentOverrides, toolNames: [] }).workAgent;
   const sources = await live.adapters.loadPromptSources(selected ? [selected] : []);
-  if (live.typeId && (!live.type?.workAgentId || live.type.systemPromptPath)) {
+  // One agent: a delegated child composes the same prompt as its parent. Only a
+  // user-authored legacy type prompt (systemPromptPath) still adds a role part.
+  if (live.typeId && live.type?.systemPromptPath) {
     selected = { id: `subagent-${live.typeId}`, label: live.type.label ?? live.typeId, kind: 'work-agent',
       version: '1', providerId: null, modelId: null, allowedTools: null };
     sources.userRaw ??= {};
@@ -312,6 +314,15 @@ async function rolePromptSnapshot(live, effectiveChat) {
   }
   return { sources, workAgent: selected ? structuredClone(selected) : null };
 }
+
+/** Five-line delegation envelope appended to a child's (otherwise identical) prompt. */
+export const SUB_AGENT_ENVELOPE = [
+  '## Delegated task',
+  'Another agent delegated this task to you. Do it yourself; you cannot spawn agents.',
+  'You are not alone in the workspace: others may edit files at the same time. Never revert changes you did not make.',
+  'Do not ask the user questions unless you are blocked; state assumptions instead.',
+  'Finish with a self-contained report (final response or report_outcome if offered): what you did, evidence, and anything unverified. Completion delivers it to the delegator.',
+].join('\n');
 
 /** Immutable initial prompt/config capture. Current grants are rechecked separately. */
 export async function captureChatProfile(chat, scope, options = {}) {
@@ -330,6 +341,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
     activePromptProfile: meta.activePromptProfile ?? 'full', activePromptConfigId: meta.activePromptConfigId ?? null,
     activeInfoPresetId: meta.activeInfoPresetId ?? 'general-assistant',
     flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled !== false,
+    localModelGuidance: ['on', 'off'].includes(meta.localModelGuidance) ? meta.localModelGuidance : 'auto',
     planning: { granularity: meta.planning?.granularity ?? 'medium' },
     sampler: pick(meta.sampler, ['temperature', 'topP', 'topK', 'minP', 'repetitionPenalty', 'presencePenalty', 'maxTokens', 'stop']),
     thinking: pick(meta.thinking, ['defaultMode', 'thinkingBudgetTokens']),
@@ -348,7 +360,8 @@ export async function captureChatProfile(chat, scope, options = {}) {
       contextDocumentsBlock: '{{context_documents}}', contextDocumentsInjectionEnabled: true,
       enabledToolIds: Object.keys(policy.toolPermissions).filter(name => policy.toolPermissions[name] !== 'off'),
       infoPresetId: capturedMeta.activeInfoPresetId, shellSandboxMode: policy.shellSandboxMode,
-      flaticonIconGuidanceEnabled: capturedMeta.flaticonIconGuidanceEnabled },
+      flaticonIconGuidanceEnabled: capturedMeta.flaticonIconGuidanceEnabled,
+      localModelGuidance: capturedMeta.localModelGuidance, permissionLevel: policy.permissionLevel },
     rules: live.settings.rules, legacySystemPrompt: live.settings.legacySystemPrompt ?? '',
   });
   const overrideIds = new Set(['default', role.workAgent?.id, live.type?.workAgentId].filter(Boolean));
@@ -370,6 +383,18 @@ export async function captureChatProfile(chat, scope, options = {}) {
   };
 }
 
+const LOCAL_PROVIDER_IDS = new Set(['lm-studio-local', 'vite-fallback', 'llama-cpp-local', 'mlx-lm-local', AGENT_LIBRARY_PROVIDER_ID]);
+/** True when inference runs on this machine or the LAN (local-model appendix `auto`). */
+function providerRunsLocally(providerId, provider) {
+  if (provider?.apiKind === 'agent-cli-v1') return false;
+  if (LOCAL_PROVIDER_IDS.has(providerId)) return true;
+  const baseUrl = typeof provider?.baseUrl === 'string' ? provider.baseUrl : '';
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
+  } catch { return false; }
+  return isLanProviderBaseUrl(baseUrl);
+}
 function enabled(tri, fallback) { return tri === 'on' || (tri !== 'off' && fallback); }
 function nonempty(value) { return typeof value === 'string' && value.trim() ? value : null; }
 
@@ -452,6 +477,9 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   if (snapshotPolicy) policy = intersectChatPolicies(policy, snapshotPolicy);
   if (execution.captured?.policy) policy = intersectChatPolicies(policy, createChatPolicy(execution.captured.policy));
   if (!policy.capabilities.includes('execution.host')) throw new ChatContractError('capability_unavailable', 'This agent configuration is disabled or unavailable');
+  // A skill with `access:` front matter (/ask, /plan) narrows this turn only.
+  const skillClamp = normalizeTurnClamp(turn?.turnClamp);
+  if (skillClamp) policy = intersectChatPolicies(policy, createChatPolicy({ ...policy, turnClamp: skillClamp }));
   let tools = live.definitions.filter(definition => policy.toolPermissions[definition.function.name] && policy.toolPermissions[definition.function.name] !== 'off')
     .map(definition => structuredClone(definition));
   if (turn?.uiDesigner?.active) {
@@ -544,6 +572,9 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       chatLinksBlock: snapshot.prompt?.chatLinksBlock ?? null, enabledToolIds: tools.map(row => row.function.name),
       infoPresetId: meta.activeInfoPresetId ?? 'general-assistant', planGranularity: meta.planning?.granularity ?? 'medium',
       flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled !== false, userMessagePreview: query.slice(0, 200),
+      localModelGuidance: ['on', 'off'].includes(meta.localModelGuidance) ? meta.localModelGuidance : 'auto',
+      providerIsLocal: providerRunsLocally(model.providerId, inspection?.provider),
+      permissionLevel: policy.permissionLevel, turnClamp: policy.turnClamp ?? null,
       shellSandboxMode, browserActivated: history.some(row => /browser_/.test(row.toolName ?? '')),
     }, rules: snapshot.prompt?.rules ?? live.settings.rules, separateCliContext: cli,
     legacySystemPrompt: snapshot.prompt?.legacySystemPrompt ?? live.settings.legacySystemPrompt,
@@ -571,8 +602,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   }));
   const hostToolNames = tools.filter((_, index) => !hostAvailability[index]).map(row => row.function.name);
   const delegated = execution?.captured?.completionPolicy?.kind === 'wake_delegator';
-  const taskGuidance = delegated
-    ? '\n\nFinish this assignment with findings in your final response or report_outcome if offered. Completion delivers the result to the delegator. Use chat_send only to request separate work.\n' + SUB_AGENT_COMPLETION_GUIDANCE : '';
+  const taskGuidance = delegated ? '\n\n' + SUB_AGENT_ENVELOPE + '\n' + SUB_AGENT_COMPLETION_GUIDANCE : '';
   if (delegated) tools = withSubAgentReportTool(tools);
   const enrichmentNotice = enrichmentOmissions.length
     ? `\n\nOptional enrichment unavailable: ${enrichmentOmissions.map(row => `${row.kind} (${row.reason})`).join(', ')}. Use tools if this context is needed.` : '';

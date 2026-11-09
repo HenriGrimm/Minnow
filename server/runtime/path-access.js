@@ -72,7 +72,7 @@ export function runWithViewWorkspace(viewWorkspaceRoot, fn) {
 
 /**
  * Resolve a user-supplied path under the workspace root unless full access is allowed
- * (TOOLS_ALLOW_ALL_PATHS=1 or persisted toolSecurity.filesystemAccess === 'full').
+ * (TOOLS_ALLOW_ALL_PATHS=1, global Full access, or a per-call admission).
  * Returns absolute path string, or throws with a message suitable for tool results.
  * @param {string} userPath
  * @param {{ write?: boolean }} [options]

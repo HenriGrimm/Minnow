@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import DOMPurify from 'dompurify';
 import { installHappyDomGlobals, seedMinimalSession, teardownHappyDomAsync } from './dom-helpers.mts';
 import { setWorkspaceFromServer } from '../../src/state/workspace.ts';
-import { setIssuesStateForTests, addIssue, setIssueLabelColor, collectIssues, deleteIssues } from '../../src/state/issues-store.ts';
+import { setIssuesStateForTests, addIssue, setIssueLabelColor, collectIssues, deleteIssues, findIssueById } from '../../src/state/issues-store.ts';
 import { closeIssueLabelPopovers } from '../../src/ui/issues-label-chip.ts';
 import { closeContextMenu } from '../../src/ui/context-menu.ts';
 import { getIssuesTaxonomySync, setIssuesTaxonomyForTests } from '../../src/state/issues-taxonomy-store.ts';
@@ -65,7 +65,7 @@ test('Home issue dock uses the main transcript and selects its composer context'
     const title = details.querySelector<HTMLTextAreaElement>('[aria-label="Issue title"]')!;
     assert.equal(title.value, issue.title);
     title.value = 'Updated from Dashboard'; title.dispatchEvent(new win.Event('change'));
-    assert.equal(issue.title, 'Updated from Dashboard');
+    assert.equal(findIssueById(issue.id)?.title, 'Updated from Dashboard');
     details.querySelector<HTMLButtonElement>('.issues-detail__close')!.click();
     assert.equal(conversation.hidden, false);
     document.getElementById('home-tab-details')!.click();
@@ -85,6 +85,13 @@ test('Home issue dock uses the main transcript and selects its composer context'
     await Promise.resolve(); dock.update();
     assert.equal(issue.status, 'todo', 'completed issues can be reopened in the dock');
     assert.equal(issue.agent?.chatId, linked.id, 'status edits preserve the linked agent');
+    linked.modeId = 'build';
+    linked.pinnedSkill = { id: 'plan' };
+    issue.agent!.home = { groupId: 'planned-issue', state: 'planned', mode: 'plan', modelId: 'test-model', baseBranch: 'main' };
+    dock.update();
+    const approval = document.querySelector<HTMLButtonElement>('[data-approve]')!;
+    assert.equal(approval.textContent, 'Load plan to continue');
+    assert.equal(approval.disabled, true, 'a planning workflow cannot merge without a saved plan');
   } finally {
     closeContextMenu(); dock.dispose(); await new Promise(resolve => setTimeout(resolve, 30)); DOMPurify.sanitize = originalSanitize; setStorageModeForTests(null); setIssuesStateForTests(null); await teardownHappyDomAsync(win);
   }

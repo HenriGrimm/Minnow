@@ -77,7 +77,10 @@ export function syncComposerSkillHighlight(textarea: HTMLTextAreaElement): void 
   if (syncInlineComposerReferences(textarea)) return;
   const layer = ensureLayer(textarea);
   copyTextareaMetrics(textarea, layer);
-  const html = highlightedSkillTextHtml(textarea.value);
+  const editingOffset = textarea.ownerDocument.activeElement === textarea && textarea.selectionStart === textarea.selectionEnd
+    ? textarea.selectionStart
+    : undefined;
+  const html = highlightedSkillTextHtml(textarea.value, undefined, editingOffset);
   const markup = html ? `${html}\n` : '';
   if (paintedMarkup.get(layer) !== markup) {
     layer.innerHTML = markup;

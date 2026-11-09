@@ -12,6 +12,7 @@ import { observeChatScrollLayout } from './chat-scroll';
 import { supportsLocalHistoryMutation } from '../state/chat-relationships';
 import { subscribeManagedChatMetadata } from '../chat/managed-chat-view';
 import { groupWorkedToolRows } from './chat-work-tool-groups';
+import { TOOL_START_INDICATOR_CHANGED } from './stream-status';
 
 interface WorkGroup {
   button: HTMLButtonElement;
@@ -35,7 +36,7 @@ interface WorkGroup {
 }
 
 /** Text that ticks on a timer during a stream; never worth a transcript walk. */
-const LIVE_TEXT_LEAVES = '.stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label, .reasoning-summary-activity__elapsed';
+const LIVE_TEXT_LEAVES = '.stream-status__label, .stream-status__detail, .stream-status__elapsed, .tool-start-indicator__detail, .thoughts-toggle__label, .reasoning-summary-activity__elapsed';
 
 const controllers = new WeakMap<HTMLElement, { chat: Chat; sync: () => void; dispose: () => void }>();
 const expandedByChat = new WeakMap<Chat, Set<number>>();
@@ -400,11 +401,13 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     if (timer) clearTimeout(timer);
     view!.removeEventListener(CHAT_VIEW_CHANGED, onPreference);
     view!.removeEventListener('minnow:todos-changed', schedule);
+    mount.removeEventListener(TOOL_START_INDICATOR_CHANGED, schedule);
     unsubscribeMetadata();
     controllers.delete(mount);
   }
   view.addEventListener(CHAT_VIEW_CHANGED, onPreference);
   view.addEventListener('minnow:todos-changed', schedule);
+  mount.addEventListener(TOOL_START_INDICATOR_CHANGED, schedule);
   const unsubscribeMetadata = subscribeManagedChatMetadata(chatId => { if (chatId === chat.id) schedule(); });
   controllers.set(mount, { chat, sync, dispose });
   sync();

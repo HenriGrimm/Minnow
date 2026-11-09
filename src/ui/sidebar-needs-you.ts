@@ -189,7 +189,8 @@ function questionBody(card: HTMLElement, chat: Chat, request: ChatRequest, hooks
 
 function approvalBody(card: HTMLElement, chat: Chat, request: ChatRequest, hooks: NeedsYouHooks): void {
   card.append(el('p', 'needs-you-card__sub', request.title || 'Wants to use a tool'));
-  const preview = request.presentation.argsPreview;
+  const presented = request.presentation.action as { detail?: unknown } | undefined;
+  const preview = typeof presented?.detail === 'string' && presented.detail ? presented.detail : request.presentation.argsPreview;
   const command = typeof preview === 'string' ? preview.split('\n').find(line => line.trim()) ?? '' : '';
   if (command) {
     const code = el('code', 'needs-you-card__code', command.trim());
@@ -198,7 +199,7 @@ function approvalBody(card: HTMLElement, chat: Chat, request: ChatRequest, hooks
   }
   const actions = el('div', 'needs-you-card__actions');
   actions.append(
-    action('Allow once', 'needs-you-card__primary', () => void respond(chat.id, request, { decision: 'allow_once' }, { text: `Allowed: ${request.title || 'tool call'}`, tone: 'ok' }, hooks)),
+    action('Allow', 'needs-you-card__primary', () => void respond(chat.id, request, { decision: 'allow_once' }, { text: `Allowed: ${request.title || 'tool call'}`, tone: 'ok' }, hooks)),
     action('Deny', 'needs-you-card__secondary', () => void respond(chat.id, request, { decision: 'deny' }, { text: `Denied: ${request.title || 'tool call'}`, tone: 'muted' }, hooks)),
     action('Open chat', 'needs-you-card__link', () => hooks.openChat(chat.id, request.requestId)),
   );

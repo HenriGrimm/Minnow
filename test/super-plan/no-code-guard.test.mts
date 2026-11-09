@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   blockSuperPlanCodeSnippets,
-  blockPlanModeWriteWithContent,
 } from '../../src/chat/modes/plan-write-guard.ts';
 import { validatePlanSaveNoCodeSnippets } from '../../src/chat/super-plan/no-code-guard.ts';
 
@@ -107,18 +106,4 @@ describe('blockSuperPlanCodeSnippets', () => {
     assert.equal(msg, null);
   });
 
-  test('blockPlanModeWriteWithContent combines path and content guards', () => {
-    const pathBlock = blockPlanModeWriteWithContent('super-plan', 'save_file', {
-      path: 'src/evil.ts',
-      content: '# ok',
-    });
-    assert.ok(pathBlock?.includes('Plan mode may only save_file'));
-
-    // Content guard is dormant while Super Plan is disabled.
-    const contentBlock = blockPlanModeWriteWithContent('super-plan', 'save_file', {
-      path: 'documentation/plans/feature.md',
-      content: '```rust\nfn main() {}\n```',
-    });
-    assert.equal(contentBlock, null);
-  });
 });

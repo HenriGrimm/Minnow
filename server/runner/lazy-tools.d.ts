@@ -3,6 +3,7 @@ export const ISSUE_TOOL_NAMES: readonly string[];
 export const CORE_TOOL_NAMES: readonly string[];
 export const SEARCH_TOOLS_NAME: string;
 export const SEARCH_TOOLS_DEFINITION: TurnToolDefinition;
+export function buildCapabilityIndex(deferredNames: string[]): string;
 export function createLazyToolSession(catalog: TurnToolDefinition[], alwaysLoaded?: string[]): {
   tools: TurnToolDefinition[];
   isLoaded(name: string): boolean;

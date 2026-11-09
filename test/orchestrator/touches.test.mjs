@@ -232,13 +232,13 @@ describe('journaled expansion vs the live filesystem', () => {
     liveEngines.push(engine);
     await engine.load();
     await engine.startBoard(1);
-    for (let i = 0; i < 80; i += 1) {
-      await settle();
-      if (engine.getState().finished) break;
+    const deadline = Date.now() + 10_000;
+    while (!engine.getState().finished && Date.now() < deadline) {
       await engine.tick();
+      await new Promise(resolve => setTimeout(resolve, 25));
     }
     const state = engine.getState();
-    assert.equal(state.finished, true);
+    assert.equal(state.finished, true, `board did not finish; task phase: ${state.tasks.get('A')?.phase}`);
     assert.deepEqual(state.tasks.get('A').emptyTouchesGlobs, ['no-such-path/**']);
     assert.equal(state.tasks.get('A').phase, 'merged');
   });

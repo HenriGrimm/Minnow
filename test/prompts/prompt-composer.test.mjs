@@ -40,18 +40,18 @@ describe('prompt-composer', () => {
 
   test('CLI composition keeps stable instructions while current-turn info changes', async () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
-    const context = { profile: 'full', cwd: '/one', modeId: 'general', expertId: null, workAgentId: null,
-      skillBody: null, memoryBlock: 'Memory one', enabledToolIds: ['get_datetime'], infoPresetId: 'general-assistant' };
+    const context = { profile: 'full', cwd: '/one', modeId: 'build', expertId: null, workAgentId: null,
+      skillBody: null, memoryBlock: 'Memory one', enabledToolIds: ['get_datetime'], infoPresetId: null };
     const first = [], second = [];
     const a = composeSystemPrompt(context, { turnContext: first });
     const b = composeSystemPrompt({ ...context, memoryBlock: 'Memory two' }, { turnContext: second });
-    assert.equal(a, b); assert.equal(a.includes('INFO_GENERAL_BODY'), false);
-    assert.ok(first.join('').includes('INFO_GENERAL_BODY'));
+    assert.equal(a, b); assert.equal(a.includes('Memory one'), false);
+    assert.ok(first.join('').includes('Memory one'));
     assert.notDeepEqual(first, second);
     const custom = { ...context, profile: 'custom', customConfig: { parts: { info: { enabled: true, contentOverride: 'Opaque policy /one' } } } };
     const opaque = [];
     assert.ok(composeSystemPrompt(custom, { turnContext: opaque }).includes('Opaque policy /one'));
-    assert.deepEqual(opaque, []);
+    assert.deepEqual(opaque.filter((row) => row.includes('Opaque')), []);
     const notice = 'Optional enrichment unavailable: memory (deadline).';
     const feedback = [];
     assert.equal(composeSystemPrompt({ ...context, enrichmentNotice: notice }, { turnContext: feedback }), a);
@@ -79,48 +79,30 @@ describe('prompt-composer', () => {
     const out = composeSystemPrompt({
       profile: 'full',
       cwd: '/test',
-      modeId: 'general',
-      expertId: null,
-      workAgentId: null,
-      skillBody: null,
-      memoryBlock: null,
-      enabledToolIds: ['get_datetime'],
-      infoPresetId: 'general-assistant',
-    });
-    const parts = out.split('\n\n---\n\n');
-    assert.ok(parts[0].includes('BASE_FULL_BODY'));
-    assert.ok(parts.some((p) => p.includes('TOOLS_FULL')));
-    assert.ok(parts.some((p) => p.includes('INFO_GENERAL_BODY')));
-    assert.ok(parts.length >= 3);
-  });
-
-  test('info part renders in General mode only', async () => {
-    registerPromptFilesFromRaw(await loadFixtureMap());
-    const generalOut = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/test',
-      modeId: 'general',
-      expertId: null,
-      workAgentId: null,
-      skillBody: null,
-      memoryBlock: null,
-      enabledToolIds: ['get_datetime'],
-      infoPresetId: 'general-assistant',
-    });
-    assert.ok(generalOut.includes('INFO_GENERAL_BODY'));
-
-    const buildOut = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/test',
       modeId: 'build',
       expertId: null,
       workAgentId: null,
-      skillBody: null,
+      skillBody: 'SKILL_BODY',
       memoryBlock: null,
       enabledToolIds: ['get_datetime'],
-      infoPresetId: 'general-assistant',
+      infoPresetId: null,
     });
-    assert.ok(!buildOut.includes('INFO_GENERAL_BODY'));
+    const parts = out.split('\n\n---\n\n');
+    assert.ok(parts[0].includes('BASE_FULL_BODY'));
+    const tools = parts.findIndex((p) => p.includes('TOOLS_FULL'));
+    const skill = parts.findIndex((p) => p.includes('SKILL_BODY'));
+    assert.ok(tools > 0 && skill > tools);
+  });
+
+  test('info presets are retired with General mode', async () => {
+    registerPromptFilesFromRaw(await loadFixtureMap());
+    for (const modeId of ['general', 'build']) {
+      const out = composeSystemPrompt({
+        profile: 'full', cwd: '/test', modeId, expertId: null, workAgentId: null, skillBody: null,
+        memoryBlock: null, enabledToolIds: ['get_datetime'], infoPresetId: 'general-assistant',
+      });
+      assert.ok(!out.includes('INFO_GENERAL_BODY'), modeId);
+    }
   });
 
   test('disabled info in lite profile', async () => {

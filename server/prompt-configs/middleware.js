@@ -111,7 +111,7 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
     }
 
     const filePromptMatch = pathname.match(
-      /^\/api\/prompts\/(modes|experts|sub-agents)\/([a-zA-Z][a-zA-Z0-9_-]{0,63})\/prompt$/,
+      /^\/api\/prompts\/(modes|experts|sub-agents|base|tool-usage|info)\/([a-zA-Z][a-zA-Z0-9_-]{0,63})\/prompt$/,
     );
     if (filePromptMatch) {
       const family = filePromptMatch[1];

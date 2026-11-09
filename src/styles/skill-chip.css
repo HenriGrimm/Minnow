@@ -37,13 +37,39 @@
   z-index: 0;
 }
 
-/* Chip decoration must not change the textarea's glyph positions or wrapping. */
-.composer-skill-highlight .skill-chip {
-  padding: 0;
-  margin: 0;
+/* Source text reserves the native textarea's width; the label is paint-only. */
+:is(.composer-skill-highlight, .composer-inline-editor) .skill-chip {
+  position: relative;
+  padding: 0.05em 0.08em;
+  margin: 0 -0.08em;
   border: 0;
+  border-radius: var(--mn-radius-xs);
+  background: var(--mn-accent-soft);
+  color: transparent;
   font-weight: inherit;
-  box-shadow: 0 0 0 1px var(--mn-accent-border);
+  box-shadow: none;
+}
+
+:is(.composer-skill-highlight, .composer-inline-editor) .skill-chip::after {
+  content: attr(data-label);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mn-accent-ink);
+  font-size: var(--mn-type-md);
+  font-weight: var(--mn-weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.composer-skill-highlight .skill-chip[data-editing='true'] {
+  color: var(--mn-accent-ink);
+}
+
+.composer-skill-highlight .skill-chip[data-editing='true']::after {
+  content: none;
 }
 
 .composer-skill-input {

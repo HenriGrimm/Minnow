@@ -1,0 +1,258 @@
+/**
+ * Permission level: composer pill, level menu, Settings → Permissions cards.
+ * The level icon carries the tone: Manual neutral, Auto accent, Full danger.
+ */
+
+.permission-pill-anchor {
+  flex: 0 0 auto;
+}
+
+.permission-pill {
+  --pp-tone: var(--mn-fg-muted);
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px 0 7px;
+  border: 1px solid var(--mn-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-out), background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.permission-pill[data-level='auto'] {
+  --pp-tone: var(--mn-accent);
+}
+
+.permission-pill[data-level='full'] {
+  --pp-tone: var(--mn-danger);
+  border-color: var(--mn-danger-border);
+  background: var(--mn-danger-soft);
+  color: var(--mn-danger-ink);
+}
+
+.permission-pill__icon {
+  --mn-icon-size: 13px;
+  color: var(--pp-tone);
+}
+
+.permission-pill__chevron {
+  --mn-icon-size: 10px;
+  opacity: 0.7;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .permission-pill:hover {
+    border-color: var(--mn-border-strong);
+    color: var(--mn-fg);
+  }
+}
+
+.permission-pill:focus-visible {
+  outline: 2px solid var(--mn-accent);
+  outline-offset: 2px;
+}
+
+.permission-pill[aria-expanded='true'] {
+  border-color: var(--mn-accent);
+}
+
+/* Compact composer: icon only. */
+.composer-controls--compact .permission-pill__label {
+  display: none;
+}
+
+/* ── Menu ─────────────────────────────────────────────────────────────── */
+
+.permission-menu {
+  position: fixed;
+  z-index: var(--mn-z-menu);
+  width: min(340px, calc(100vw - 16px));
+  padding: var(--mn-menu-padding);
+  border-radius: var(--mn-menu-radius);
+  border: 1px solid var(--mn-menu-border);
+  background: var(--mn-menu-bg);
+  box-shadow: var(--mn-menu-shadow);
+  color: var(--mn-fg);
+  font-family: var(--font-ui);
+  animation: minnow-panel-reveal var(--duration-fast, 120ms) var(--ease-out);
+}
+
+.permission-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 4px;
+  color: var(--mn-fg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: var(--mn-tracking-label);
+  text-transform: uppercase;
+}
+
+.permission-menu__kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--mn-surface-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.permission-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.permission-menu__item {
+  --pm-tone: var(--mn-fg-muted);
+  appearance: none;
+  display: grid;
+  grid-template-columns: 28px 1fr 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--mn-menu-item-radius);
+  background: transparent;
+  color: var(--mn-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.permission-menu__item--auto {
+  --pm-tone: var(--mn-accent);
+}
+
+.permission-menu__item--full {
+  --pm-tone: var(--mn-danger);
+}
+
+.permission-menu__item:hover,
+.permission-menu__item:focus-visible {
+  background: var(--mn-menu-hover-bg);
+  outline: none;
+}
+
+.permission-menu__item[aria-checked='true'] {
+  background: var(--mn-menu-selected-bg);
+}
+
+.permission-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--mn-surface-2);
+  color: var(--pm-tone);
+  --mn-icon-size: 14px;
+}
+
+.permission-menu__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.permission-menu__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.permission-menu__desc {
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.permission-menu__check {
+  --mn-icon-size: 13px;
+  color: var(--mn-accent);
+  visibility: hidden;
+}
+
+.permission-menu__item[aria-checked='true'] .permission-menu__check {
+  visibility: visible;
+}
+
+.permission-menu__footer {
+  margin: 4px 8px 4px;
+  color: var(--mn-fg-subtle);
+  font-size: 11.5px;
+}
+
+/* ── Settings → Permissions ───────────────────────────────────────────── */
+
+.settings-permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-permissions .permission-menu__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.settings-permissions .permission-menu__item {
+  grid-template-columns: 28px 1fr 16px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--mn-border);
+  border-radius: var(--mn-radius-md);
+}
+
+.settings-permissions .permission-menu__item[aria-checked='true'] {
+  border-color: var(--mn-accent);
+  background: var(--mn-accent-soft);
+}
+
+.settings-permissions .permission-menu__item--full[aria-checked='true'] {
+  border-color: var(--mn-danger-border);
+  background: var(--mn-danger-soft);
+}
+
+.settings-permissions__rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  color: var(--mn-fg-muted);
+  font-size: 12.5px;
+}
+
+.settings-permissions__rules li::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--mn-fg-subtle);
+}
+
+.settings-permissions__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .permission-menu {
+    animation: none;
+  }
+}

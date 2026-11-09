@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron';
 import * as channels from './ipc-channels.js';
 import type { CodeWindowCommand } from './code-window-command.js';
 import type { CdpPickedElement } from './preview-cdp-adapt.js';
@@ -435,6 +435,10 @@ const minnowBridge = {
   },
   app: {
     platform: process.platform,
+    /** OS version (e.g. "26.1.0" on macOS) — sizes the traffic-light inset. */
+    osVersion: process.getSystemVersion(),
+    /** Live page zoom (shell zoom, Cmd +/−) — native titlebar chrome does not scale with it. */
+    getZoomFactor: (): number => webFrame.getZoomFactor(),
     isElectron: true as const,
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(channels.APP_OPEN_EXTERNAL, url),

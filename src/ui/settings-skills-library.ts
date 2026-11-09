@@ -206,7 +206,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
       const warn = el(
         'p',
         'settings-skills-library__trust-warn',
-        'Unvetted — installs run with your tool permissions.',
+        'Unvetted — installs run with the global permission mode.',
       );
       card.appendChild(warn);
     }
@@ -340,7 +340,7 @@ export async function renderSkillsLibrarySettingsSection(mount: HTMLElement): Pr
         el(
           'p',
           'settings-skills-library__trust-warn',
-          'Unvetted — installs run with your tool permissions.',
+          'Unvetted — installs run with the global permission mode.',
         ),
       );
     }

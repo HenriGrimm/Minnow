@@ -31,7 +31,7 @@ import {
   SUB_AGENT_TOOL_USE_NUDGE_INSTRUCTION,
   WORK_AGENT_TRUNCATION_CONTINUE_INSTRUCTION,
 } from '../../server/runner/turn-continuation.js';
-import { withSubAgentReportTool } from '../../server/sub-agents/reporting.js';
+import { withSubAgentReportTool } from '../../server/chats/sub-agent-report-tool.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUN_TURN_JS = path.join(PROJECT_ROOT, 'server', 'runner', 'run-turn.js');
@@ -372,7 +372,8 @@ test('lazy discovery loads schemas on the next request, executes matches, and su
         assert.deepEqual(names(requests[3]), ['git_log']);
         const result = requests[2].body.messages.find(row => row.tool_call_id === 'search');
         assert.deepEqual(JSON.parse(result.content).loaded, ['git_log']);
-        assert.equal(result.content.includes('parameters'), false);
+        // The schema comes back in the result too, so the model sees what it loaded.
+        assert.deepEqual(JSON.parse(result.content).tools.map(fn => fn.name), ['git_log']);
       }
     });
   }
@@ -504,7 +505,7 @@ test('lazy mode rejects undiscovered and unauthorized calls before execution', a
     const last = fake.requests.filter(row => row.pathname === '/v1/chat/completions').at(-1);
     const results = last.body.messages.filter(row => row.role === 'tool');
     assert.equal(results.length, 2);
-    assert.match(results[0].content, /permitted tool is not loaded.*search_tools.*git_log/);
+    assert.match(results[0].content, /permitted tool is not loaded.*search_tools has now loaded git_log/);
     assert.match(results[1].content, /unavailable in this execution/);
   });
 });

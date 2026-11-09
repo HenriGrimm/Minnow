@@ -39,7 +39,7 @@ export function createServerToolAdmission(input: Required<ServerAdmissionContext
   return token;
 }
 
-/** Consume only after the current permission Off check has passed. */
+/** Consume only after the current global permission decision and turn clamp checks. */
 export function consumeServerToolAdmission(token: unknown, toolName: string, args: Record<string, unknown>, context: ServerAdmissionContext): boolean {
   if (!token || typeof token !== 'object') return false;
   const admission = admissions.get(token);

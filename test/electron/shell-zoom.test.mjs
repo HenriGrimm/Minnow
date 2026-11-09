@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   clampShellZoomPercent,
+  macTrafficLightPosition,
   nextShellZoomPercent,
   shellZoomFactorFromPercent,
   shellZoomPercentFromFactor,
@@ -53,5 +54,22 @@ describe('nextShellZoomPercent', () => {
   test('zooming out clamps at the min', () => {
     assert.equal(nextShellZoomPercent(50, 'out'), 50);
     assert.equal(nextShellZoomPercent(300, 'out'), 200);
+  });
+});
+
+describe('macTrafficLightPosition', () => {
+  test('centers the native buttons on the 46px menubar at 100%', () => {
+    assert.deepEqual(macTrafficLightPosition(1), { x: 17, y: 15 });
+  });
+
+  test('follows the zoomed menubar center', () => {
+    assert.equal(macTrafficLightPosition(0.9).y, 13);
+    assert.equal(macTrafficLightPosition(1.25).y, 21);
+    assert.equal(macTrafficLightPosition(0.5).y, 4);
+  });
+
+  test('invalid zoom falls back to 100%', () => {
+    assert.deepEqual(macTrafficLightPosition(Number.NaN), { x: 17, y: 15 });
+    assert.deepEqual(macTrafficLightPosition(0), { x: 17, y: 15 });
   });
 });

@@ -80,7 +80,7 @@ Minnow ships no weights and has no built-in provider. It streams to any OpenAI, 
 **Code is the workspace.** Everything else is a surface that serves it.
 
 ```
-idea  →  Plan mode          →  a spec in documentation/plans/
+idea  →  /plan              →  a spec in documentation/plans/
       →  Orchestrator board →  Builder and Tester agents in isolated worktrees
       →  Source Control     →  review the diff, open the PR, watch CI
       →  Issues             →  what broke, filed by the agent that found it
@@ -131,8 +131,8 @@ Full tour: **[Apps guide](documentation/manual/apps/overview.md)**.
 
 | | |
 |---|---|
-| **Chat beside the repo** | Sessions in the Code rail: modes, attachments, voice, notifications. Same files, git, and terminals you're using. |
-| **Planning** | Plan mode takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
+| **Chat beside the repo** | Sessions in the Code rail: one agent, one permission level, attachments, voice, notifications. Same files, git, and terminals you're using. |
+| **Planning** | `/plan` takes an idea to a buildable spec in `documentation/plans/` without touching your code. |
 | **Intent-based coding** | Type what a line should do in plain English; Tab turns it into code. |
 | **Autocomplete** | Inline ghost text, with language-server context behind it. |
 | **Quick Edit** | Ctrl+K turns a description into a diff on your selection. |
@@ -153,8 +153,8 @@ The point of open source is not that you *could* read the source. It's that the 
 
 - **Skills**: drop a `SKILL.md` into `~/.minnow/skills/` and call it with `/` in the composer. Nineteen ship built in; install more from the Skills Library, or write your own.
 - **Plugins**: ask `/build-plugin` to create tools, connections, panels and skills, then install and reload them live in Settings → Plugins ([plugin authoring](documentation/manual/plugins.md)). Legacy local tools and MCP servers are also supported.
-- **Agents**: define sub-agents and work agents with their own prompts, models, samplers, and context budgets.
-- **Prompts and modes**: every system prompt in the app is a markdown file in the repo. Edit them.
+- **Agents**: one agent everywhere; edit its system prompt, tool guidance and local-model guidance in Settings → Agents, and give board roles their own models and samplers.
+- **Prompts and skills**: every system prompt in the app is a markdown file in the repo, and `/ask`, `/plan` and `/debug` are ordinary skills. Edit them.
 - **Themes**: sixteen built in, which is fifteen more than strictly necessary; the whole UI is `--mn-*` tokens in one file.
 
 ![Minnow themes](documentation/images/themes.png)

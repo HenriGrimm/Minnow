@@ -36,7 +36,7 @@ html[data-agent-browser-viewer='true'] #app {
 }
 
 html[data-agent-browser-viewer='true'][data-platform='darwin'] .agent-browser-titlebar {
-  padding-left: 92px;
+  padding-left: calc(var(--mn-mac-traffic-lights-end) / var(--mn-shell-zoom, 1) + var(--mn-mac-traffic-lights-gap));
 }
 
 .agent-browser-titlebar__name,

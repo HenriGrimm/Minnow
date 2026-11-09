@@ -238,7 +238,10 @@ export function syncModeSelectorFromActiveChat(): void {
   if (!root || !sessionState) return;
 
   const chat = getActiveChat();
-  root.hidden = isBoardManagedChat(chat);
+  // One agent: the mode strip is retired. The root stays (hidden) so the
+  // composer's compact layout and sibling syncs keep a stable anchor.
+  root.hidden = true;
+  void isBoardManagedChat(chat);
 
   if (!root.hidden) {
     const activeId = normalizeModeId(chat.modeId);
@@ -393,6 +396,7 @@ export function initModeSelector(): void {
 
   root.innerHTML = '';
   root.setAttribute('role', 'radiogroup');
+  root.hidden = true;
 
   for (const mode of listComposerModes()) {
     const btn = document.createElement('button');
@@ -420,7 +424,7 @@ export function initModeSelector(): void {
   }
 
   root.dataset.initialized = 'true';
-  ensureModeDropdown(root);
+  if (listComposerModes().length) ensureModeDropdown(root);
   syncModeSelectorFromActiveChat();
 }
 

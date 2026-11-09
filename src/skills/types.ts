@@ -10,6 +10,8 @@ export interface SkillListItem {
   path?: string;
   version?: string;
   disableModelInvocation?: boolean;
+  /** Turn clamp from `access:` front matter (`/ask` read-only, `/plan` plans). */
+  access?: 'read-only' | 'plans';
 }
 
 /** Full skill for send-path injection. */

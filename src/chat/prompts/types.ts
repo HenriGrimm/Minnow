@@ -109,6 +109,14 @@ export interface ComposeContext {
   planGranularity?: string | null;
   /** Adds the default UI rule that forbids emoji icons and points to Flaticon Uicons. */
   flaticonIconGuidanceEnabled?: boolean;
+  /** Local-model appendix setting (Settings → Agents); `auto` follows `providerIsLocal`. */
+  localModelGuidance?: 'auto' | 'on' | 'off';
+  /** True when the chat's provider runs on this machine or LAN (LM Studio, llama.cpp…). */
+  providerIsLocal?: boolean;
+  /** System permission level, for the prompt's environment line. */
+  permissionLevel?: 'manual' | 'auto' | 'full';
+  /** Restriction a skill puts on this turn (`/ask` → read-only, `/plan` → plans). */
+  turnClamp?: 'read-only' | 'plans' | null;
   /** Workspace-relative plan path when mode is orchestrate (for {{orchestrate_plan}}). */
   orchestratePlanPath?: string | null;
   /** True once a preview browser tool has been invoked in this chat (gates allowlist fragment). */
@@ -135,6 +143,8 @@ export interface InterpolationVars {
   os: string;
   plan_granularity: string;
   orchestrate_plan: string;
+  /** Permission level (and any turn clamp) sentence for the environment block. */
+  permission_line: string;
 }
 
 /** List entry returned by GET /api/prompt-configs. */

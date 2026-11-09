@@ -1,8 +1,29 @@
+/**
+ * Approval card: docks above the composer (in `#toolApprovalHost`) whenever
+ * the permission level decides a call needs the user.
+ *
+ * Layout — one glance answers "what, where, how risky":
+ *   [kind icon] Headline                         1 of 3 · sub-agent
+ *   detail (command / path / URL)
+ *   risk chips
+ *   ▸ Details (tool id, arguments, workspace)
+ *   [1 Allow] [2 Allow <thing> for this chat] [3 Deny]   feedback field
+ *   level footer: ✋ Manual · Change
+ *
+ * Keys: Enter / 1 allow, 2 allow for chat, Esc / 3 deny. Typing in the
+ * feedback field and pressing Enter denies with that note for the agent.
+ */
+
 import { streaming } from '../app-state';
-import type { ToolApprovalRequest } from '../tools/tool-approval-types';
+import { PERMISSION_LEVEL_META, type ActionKind } from '../lib/permissions.mjs';
+import type { ToolApprovalDecision, ToolApprovalRequest } from '../tools/tool-approval-types';
+import { pendingToolApprovalCount } from '../tools/approval-queue';
 import { getActiveComposerSurface } from './composer-surface';
 import { setComposerStreamingMode } from './composer-send';
 import { setSidebarInputPendingForActiveChat } from './chat-item-dot';
+import { createIcon, type IconName } from './icon';
+import { PERMISSION_LEVEL_ICON, openPermissionMenu } from './permission-level';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import {
   resolvePromptComposerShell,
   resolveToolApprovalHost,
@@ -13,69 +34,77 @@ import {
   releaseUserPromptLock,
 } from './user-prompt-lock';
 
-export type ToolApprovalModalResult = 'allow-once' | 'always-allow' | 'cancel';
+const KIND_ICON: Record<ActionKind, IconName> = {
+  none: 'check',
+  read: 'fileText',
+  edit: 'edit',
+  shell: 'terminal',
+  git: 'gitBranch',
+  app: 'grid',
+  network: 'globe',
+  browser: 'browser',
+  integration: 'tools',
+  settings: 'settings',
+  unknown: 'help',
+};
 
 function digitHotkeyChoice(ev: KeyboardEvent): 1 | 2 | 3 | null {
-  if (ev.metaKey || ev.ctrlKey || ev.altKey) return null;
-  if (ev.shiftKey && /^Digit[1-3]$/.test(ev.code)) return null;
+  if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return null;
   const byCode: Record<string, 1 | 2 | 3> = {
-    Digit1: 1,
-    Digit2: 2,
-    Digit3: 3,
-    Numpad1: 1,
-    Numpad2: 2,
-    Numpad3: 3,
+    Digit1: 1, Digit2: 2, Digit3: 3, Numpad1: 1, Numpad2: 2, Numpad3: 3,
   };
   const fromCode = byCode[ev.code];
   if (fromCode !== undefined) return fromCode;
-  if (ev.key === '1' || ev.key === '2' || ev.key === '3') {
-    return Number(ev.key) as 1 | 2 | 3;
-  }
+  if (ev.key === '1' || ev.key === '2' || ev.key === '3') return Number(ev.key) as 1 | 2 | 3;
   return null;
 }
 
-/**
- * True when focus is in a text-entry control outside the approval host (do not steal 1/2/3).
- */
-function isTypingOutsideApprovalHost(host: HTMLElement, el: Element | null): boolean {
+/** True when focus is in a text-entry control (inside or outside the card). */
+function isTypingTarget(el: Element | null): boolean {
   if (!el || !(el instanceof HTMLElement)) return false;
-  if (host.contains(el)) return false;
   if (el.isContentEditable) return true;
   const tag = el.tagName;
-  if (tag === 'TEXTAREA' || tag === 'SELECT') {
-    const te = el as HTMLTextAreaElement | HTMLSelectElement;
-    return !te.disabled;
-  }
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return !(el as HTMLTextAreaElement).disabled;
   if (tag === 'INPUT') {
     const input = el as HTMLInputElement;
-    const t = input.type;
-    if (t === 'button' || t === 'submit' || t === 'reset' || t === 'checkbox' || t === 'radio' || t === 'file' || t === 'hidden') {
-      return false;
-    }
+    if (['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'hidden'].includes(input.type)) return false;
     return !input.disabled && !input.readOnly;
   }
   return false;
 }
 
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+function actionButton(kbd: string, label: string, variant: 'primary' | 'secondary' | 'deny'): HTMLButtonElement {
+  const btn = el('button', `tool-approval-action tool-approval-action--${variant}`);
+  btn.type = 'button';
+  btn.append(el('span', 'tool-approval-action__kbd', kbd), el('span', 'tool-approval-action__label', label));
+  btn.setAttribute('aria-keyshortcuts', kbd);
+  return btn;
+}
+
 /**
- * Renders the approval strip in the `#toolApprovalHost` slot (see index.html) and resolves when the user picks an action.
+ * Render the approval card and resolve with the user's decision.
+ * Never rejects: a missing host or an aborted signal resolves as a denial.
  */
-export function showToolApprovalModal(
-  request: ToolApprovalRequest,
-): Promise<ToolApprovalModalResult> {
+export function showToolApprovalModal(request: ToolApprovalRequest): Promise<ToolApprovalDecision> {
   return new Promise((resolve) => {
     if (request.signal?.aborted) {
-      resolve('cancel');
+      resolve({ kind: 'deny' });
       return;
     }
-
-    const host = resolveToolApprovalHost();
-    if (!host) {
-      resolve('cancel');
+    const resolvedHost = resolveToolApprovalHost();
+    if (!resolvedHost) {
+      resolve({ kind: 'deny' });
       return;
     }
+    const host: HTMLElement = resolvedHost;
 
-    /** Hides the composer row via CSS while the approval strip is visible (see `tool-approval.css`). */
     const composerShell = resolvePromptComposerShell();
     const { inputEl: msgInput, sendBtnEl: sendBtn } = getActiveComposerSurface();
     const prevInputDisabled = msgInput?.disabled ?? false;
@@ -85,203 +114,179 @@ export function showToolApprovalModal(
     composerShell?.classList.add('main-column--tool-approval-pending');
     host.hidden = false;
     host.replaceChildren();
+    markPreviewOccluder(host, 'panel');
 
-    const panel = document.createElement('div');
-    panel.className = 'tool-approval-panel';
-    panel.setAttribute('role', 'region');
+    const action = request.action;
+    const risk = action?.risk ?? 'elevated';
+    const panel = el('div', `tool-approval-panel tool-approval-panel--${risk}`);
+    panel.setAttribute('role', 'alertdialog');
     panel.setAttribute('aria-labelledby', 'tool-approval-title');
+    panel.setAttribute('aria-describedby', 'tool-approval-detail');
 
-    const header = document.createElement('div');
-    header.className = 'tool-approval-panel__header';
-
-    const heading = document.createElement('h2');
+    // ── Header ──
+    const header = el('div', 'tool-approval-panel__header');
+    const kindIcon = el('span', 'tool-approval-kind');
+    kindIcon.appendChild(createIcon(KIND_ICON[action?.kind ?? 'unknown']));
+    const heading = el('h2', 'tool-approval-panel__title', request.title);
     heading.id = 'tool-approval-title';
-    heading.className = 'tool-approval-panel__title';
-    heading.textContent = `Allow ${request.title}?`;
-
-    header.appendChild(heading);
-
-    if (request.subAgentType) {
-      const badge = document.createElement('span');
-      badge.className = 'tool-approval-badge';
-      badge.textContent = `Sub-agent · ${request.subAgentType}`;
-      header.appendChild(badge);
-    } else if (request.workAgentId?.trim()) {
-      const badge = document.createElement('span');
-      badge.className = 'tool-approval-badge';
-      badge.textContent = `Work agent · ${request.workAgentId.trim()}`;
-      header.appendChild(badge);
+    const meta = el('div', 'tool-approval-panel__meta');
+    if (request.agentLabel?.trim()) {
+      meta.appendChild(el('span', 'tool-approval-badge', request.agentLabel.trim()));
     }
+    const counter = el('span', 'tool-approval-counter');
+    meta.appendChild(counter);
+    header.append(kindIcon, heading, meta);
 
-    const toolIdRow = document.createElement('p');
-    toolIdRow.className = 'tool-approval-tool-id';
-    toolIdRow.textContent = request.toolName;
+    const syncCounter = (): void => {
+      const total = pendingToolApprovalCount();
+      counter.textContent = total > 1 ? `1 of ${total}` : '';
+      counter.hidden = total <= 1;
+    };
+    syncCounter();
+    const counterTimer = window.setInterval(syncCounter, 400);
 
-    const body = document.createElement('div');
-    body.className = 'tool-approval-stack';
-
-    if (request.workspace) {
-      const ws = document.createElement('section');
-      ws.className = 'tool-approval-block';
-      const wsLabel = document.createElement('div');
-      wsLabel.className = 'tool-approval-block__label';
-      wsLabel.textContent = 'Workspace';
-      ws.appendChild(wsLabel);
-      if ('hint' in request.workspace) {
-        const hint = document.createElement('p');
-        hint.className = 'tool-approval-block__text';
-        hint.textContent = request.workspace.hint;
-        ws.appendChild(hint);
-      } else {
-        const name = document.createElement('p');
-        name.className = 'tool-approval-block__text';
-        name.textContent = request.workspace.label;
-        const path = document.createElement('pre');
-        path.className = 'tool-approval-mono-inline';
-        path.textContent = request.workspace.path;
-        ws.append(name, path);
+    // ── Detail + chips ──
+    const body = el('div', 'tool-approval-body');
+    const detailText = request.description?.trim();
+    if (detailText) {
+      const detail = el('pre', 'tool-approval-detail', detailText);
+      detail.id = 'tool-approval-detail';
+      body.appendChild(detail);
+    }
+    const reasons = action?.reasons?.filter(Boolean) ?? [];
+    if (reasons.length || risk !== 'low') {
+      const chips = el('div', 'tool-approval-chips');
+      if (risk !== 'low') {
+        chips.appendChild(el('span', `tool-approval-chip tool-approval-chip--${risk}`, risk === 'high' ? 'High risk' : 'Needs a look'));
       }
-      body.appendChild(ws);
+      for (const reason of reasons) chips.appendChild(el('span', 'tool-approval-chip', reason));
+      body.appendChild(chips);
     }
 
-    if (request.pathWarning) {
-      const warn = document.createElement('div');
-      warn.className = 'tool-approval-callout';
-      warn.setAttribute('role', 'note');
-      warn.textContent = request.pathWarning;
-      body.appendChild(warn);
+    const details = el('details', 'tool-approval-details');
+    details.appendChild(el('summary', 'tool-approval-details__summary', 'Details'));
+    const dl = el('dl', 'tool-approval-details__grid');
+    const addRow = (term: string, value: string, mono = false): void => {
+      dl.append(el('dt', '', term), el('dd', mono ? 'tool-approval-mono' : '', value));
+    };
+    addRow('Tool', request.toolName, true);
+    if (request.workspace) {
+      addRow('Project', 'hint' in request.workspace ? request.workspace.hint : request.workspace.path, !('hint' in request.workspace));
     }
+    details.appendChild(dl);
+    details.appendChild(el('pre', 'tool-approval-code', request.argsJson));
+    body.appendChild(details);
 
-    if (request.description) {
-      const desc = document.createElement('p');
-      desc.className = 'tool-approval-description';
-      desc.textContent = request.description;
-      body.appendChild(desc);
+    // ── Actions ──
+    const actions = el('div', 'tool-approval-panel__actions');
+    const btnAllow = actionButton('1', 'Allow', 'primary');
+    const grant = action?.grant && action.risk !== 'high' ? action.grant : null;
+    const btnChat = grant ? actionButton('2', `Allow ${grant.label} for this chat`, 'secondary') : null;
+    const btnDeny = actionButton(grant ? '3' : '2', 'Deny', 'deny');
+    actions.append(btnAllow, ...(btnChat ? [btnChat] : []), btnDeny);
+
+    const feedback = el('input', 'tool-approval-feedback');
+    feedback.type = 'text';
+    feedback.placeholder = 'Or tell Minnow what to do instead…';
+    feedback.setAttribute('aria-label', 'Deny with a note for the agent');
+    feedback.autocomplete = 'off';
+    feedback.spellcheck = false;
+
+    // ── Footer: level ──
+    const footer = el('div', 'tool-approval-footer');
+    if (request.level) {
+      const levelBtn = el('button', 'tool-approval-level');
+      levelBtn.type = 'button';
+      levelBtn.setAttribute('aria-haspopup', 'menu');
+      levelBtn.append(
+        createIcon(PERMISSION_LEVEL_ICON[request.level], { className: 'tool-approval-level__icon' }),
+        el('span', '', PERMISSION_LEVEL_META[request.level].label),
+        createIcon('chevronDown', { className: 'tool-approval-level__chevron' }),
+      );
+      levelBtn.title = 'Change the permission level';
+      levelBtn.addEventListener('click', () => openPermissionMenu({ anchor: levelBtn }));
+      footer.appendChild(levelBtn);
     }
+    footer.appendChild(el('span', 'tool-approval-hints', grant ? '↵ allow · 2 this chat · esc deny' : '↵ allow · esc deny'));
 
-    const argsSection = document.createElement('section');
-    argsSection.className = 'tool-approval-block';
-    const argsLabel = document.createElement('div');
-    argsLabel.className = 'tool-approval-block__label';
-    argsLabel.textContent = 'Arguments';
-    const pre = document.createElement('pre');
-    pre.className = 'tool-approval-code';
-    pre.textContent = request.argsJson;
-    argsSection.append(argsLabel, pre);
-    body.appendChild(argsSection);
-
-    const actions = document.createElement('div');
-    actions.className = 'tool-approval-panel__actions';
-
-    const btnAllowOnce = document.createElement('button');
-    btnAllowOnce.type = 'button';
-    btnAllowOnce.className =
-      'tool-approval-action tool-approval-action--outline';
-    btnAllowOnce.innerHTML =
-      '<span class="tool-approval-action__kbd" aria-hidden="true">1</span><span class="tool-approval-action__label">Allow once</span>';
-
-    const btnAlways = document.createElement('button');
-    btnAlways.type = 'button';
-    btnAlways.className =
-      'tool-approval-action tool-approval-action--accent';
-    btnAlways.innerHTML =
-      '<span class="tool-approval-action__kbd" aria-hidden="true">2</span><span class="tool-approval-action__label">Always allow</span>';
-
-    const btnCancel = document.createElement('button');
-    btnCancel.type = 'button';
-    btnCancel.className =
-      'tool-approval-action tool-approval-action--muted';
-    btnCancel.innerHTML =
-      '<span class="tool-approval-action__kbd" aria-hidden="true">3</span><span class="tool-approval-action__label">Cancel</span>';
-
-    btnAllowOnce.setAttribute('aria-keyshortcuts', '1');
-    btnAlways.setAttribute('aria-keyshortcuts', '2');
-    btnCancel.setAttribute('aria-keyshortcuts', '3');
-
-    actions.append(btnAllowOnce, btnAlways, btnCancel);
-
-    const hints = document.createElement('p');
-    hints.className = 'tool-approval-hints';
-    hints.textContent = 'Keys 1 / 2 / 3 while this prompt is open · Esc to cancel';
-
-    panel.append(header, toolIdRow, body, actions, hints);
+    panel.append(header, body, actions, feedback, footer);
     host.appendChild(panel);
 
-    const focusables = (): HTMLElement[] =>
-      [btnAllowOnce, btnAlways, btnCancel].filter((el) => !el.hasAttribute('disabled'));
-
     let settled = false;
-    const onAbort = (): void => finish('cancel');
-    const finish = (value: ToolApprovalModalResult): void => {
+    const onAbort = (): void => finish({ kind: 'deny' });
+    function finish(value: ToolApprovalDecision): void {
       if (settled) return;
       settled = true;
+      window.clearInterval(counterTimer);
       request.signal?.removeEventListener('abort', onAbort);
       document.removeEventListener('keydown', onDocKeyDown, true);
-      panel.removeEventListener('keydown', onPanelKeyDown);
       composerShell?.classList.remove('main-column--tool-approval-pending');
+      unmarkPreviewOccluder(host);
       host.replaceChildren();
       host.hidden = true;
       setSidebarInputPendingForActiveChat(false);
       releaseUserPromptLock();
       if (!isUserPromptLocked()) {
-        if (msgInput) {
-          msgInput.disabled = streaming ? false : prevInputDisabled;
-        }
+        if (msgInput) msgInput.disabled = streaming ? false : prevInputDisabled;
         if (sendBtn) {
-          if (streaming) {
-            setComposerStreamingMode('streaming');
-          } else {
-            sendBtn.disabled = prevSendDisabled;
-          }
+          if (streaming) setComposerStreamingMode('streaming');
+          else sendBtn.disabled = prevSendDisabled;
         }
         msgInput?.focus();
       }
       resolve(value);
+    }
+
+    const deny = (): void => {
+      const note = feedback.value.trim();
+      finish(note ? { kind: 'deny', feedback: note } : { kind: 'deny' });
     };
 
-    const onDocKeyDown = (ev: KeyboardEvent): void => {
+    function onDocKeyDown(ev: KeyboardEvent): void {
       if (host.hidden) return;
+      // A permission menu opened from the footer handles its own keys.
+      if (document.querySelector('.permission-menu')) return;
       if (ev.key === 'Escape') {
         ev.preventDefault();
         ev.stopPropagation();
-        finish('cancel');
+        deny();
+        return;
+      }
+      const active = document.activeElement;
+      if (active === feedback) {
+        if (ev.key === 'Enter' && !ev.isComposing) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          deny();
+        }
+        return;
+      }
+      if (isTypingTarget(active)) return;
+      if (ev.key === 'Enter' && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+        if (active instanceof HTMLButtonElement && panel.contains(active)) return; // native click
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish({ kind: 'allow-once' });
         return;
       }
       const digit = digitHotkeyChoice(ev);
       if (digit === null) return;
-      if (isTypingOutsideApprovalHost(host, document.activeElement)) return;
       ev.preventDefault();
       ev.stopPropagation();
-      if (digit === 1) finish('allow-once');
-      else if (digit === 2) finish('always-allow');
-      else finish('cancel');
-    };
+      if (digit === 1) finish({ kind: 'allow-once' });
+      else if (digit === 2 && btnChat) finish({ kind: 'allow-chat' });
+      else deny();
+    }
 
-    const onPanelKeyDown = (ev: KeyboardEvent): void => {
-      if (ev.key !== 'Tab') return;
-      const nodes = focusables();
-      if (nodes.length === 0) return;
-      const i = nodes.indexOf(document.activeElement as HTMLElement);
-      const from = i >= 0 ? i : 0;
-      ev.preventDefault();
-      const next =
-        ev.shiftKey ?
-          nodes[(from - 1 + nodes.length) % nodes.length]
-        : nodes[(from + 1) % nodes.length];
-      next.focus();
-    };
-
-    btnAllowOnce.addEventListener('click', () => finish('allow-once'));
-    btnAlways.addEventListener('click', () => finish('always-allow'));
-    btnCancel.addEventListener('click', () => finish('cancel'));
+    btnAllow.addEventListener('click', () => finish({ kind: 'allow-once' }));
+    btnChat?.addEventListener('click', () => finish({ kind: 'allow-chat' }));
+    btnDeny.addEventListener('click', deny);
 
     request.signal?.addEventListener('abort', onAbort, { once: true });
-
     document.addEventListener('keydown', onDocKeyDown, true);
-    panel.addEventListener('keydown', onPanelKeyDown);
 
     requestAnimationFrame(() => {
-      btnAllowOnce.focus();
+      btnAllow.focus();
       host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   });

@@ -13,7 +13,7 @@ This page walks through one real turn: send a message, watch it stream, approve 
 | **App rail** (left edge) | Switch between Code, Dashboard, Source Control, Models, Brain, Issues, Scheduler; open the workspaces picker from the workspace control in the menubar |
 | **Menubar** (top) | Workspace control, Activity, Models, update pill, Settings, help (**?**) |
 | **Chat rail** (inside Code, left) | Your conversations. Search and start new chats from here. |
-| **Composer** (centre) | Where you type. Mode, run target, reasoning, settings, model, attachments, microphone, send. |
+| **Composer** (centre) | Where you type. Permission level, run target, reasoning, settings, model, attachments, microphone, send. |
 | **Project panel** (right) | File tree, editor, preview — everything scoped to the folder you opened |
 
 The folder you pick at the workspaces screen becomes the **workspace root**. File and git tools in chat resolve inside that folder. Change workspace anytime from the menubar — you return to the picker (`#/workspaces`) and can open a different project.
@@ -28,36 +28,31 @@ Try a question that forces Minnow to actually look at something rather than reci
 
 While the reply streams you will see a live token/second readout and a growing response. Press **Enter** again — or the stop button — to cut it short. Nothing is lost; the partial reply stays in the transcript.
 
-## Approving a tool
+## Approving an action
 
-Most interesting requests make the model call a tool. When a tool's permission is **Ask**, a strip appears with three choices, and there are keyboard shortcuts for them:
+Most interesting requests make the model call a tool. Under the default **Auto** permission level, routine work inside your project just runs; when something is risky, destructive, or outside the project, a card appears above the composer:
 
 | Key | Action |
 |-----|--------|
-| **1** | Allow once |
-| **2** | Always allow this tool |
-| **3** | Cancel |
+| **1** or **Enter** | Allow once |
+| **2** | Allow this kind of action for the rest of this chat |
+| **3** or **Escape** | Deny |
 
-Digits work whenever the strip is open and you are not typing in a field.
+Digits work whenever the card is open and you are not typing in a field. Type in the card's field and press **Enter** to deny and tell the agent what to do instead.
 
-"Always allow" writes a real permission change to disk. It applies to every future chat, not just this one. If you want it back, **Settings → Integrations → Tools** — or the composer's settings cog → **Tools**, which opens the same Off/Ask/Full controls.
+The permission pill in the composer switches between **Manual**, **Auto** and **Full access** (or press **Shift+Tab**). It is one setting for every chat. Read [Tools and permissions](../concepts/tools-and-permissions.md) before choosing Full access.
 
-Read [Tools and permissions](../concepts/tools-and-permissions.md) before you turn a lot of things to Full. The short version: file and git tools are confined to the folder you have open, and that boundary is the main thing standing between an over-eager agent and the rest of your disk.
+## Asking, planning and debugging
 
-## Choosing a mode
+There is one agent, and it can do everything you allow. To shape a single turn, start your message with a workflow command:
 
-The tinted pill at the left of the composer's control row picks one of four modes. They change the system prompt *and* which tools exist at all.
+| Command | Use it for |
+|---------|------------|
+| **/ask** | Questions about the code or the project. The turn is read-only: nothing is edited or run that changes anything. |
+| **/plan** | Designing before building. The turn can only write plan documents under `documentation/plans/`. |
+| **/debug** | Investigating a failure: reproduce, find the cause, then fix it. |
 
-| Mode | Use it for |
-|------|------------|
-| **General** | Everyday questions and mixed tasks. The only composer mode that can read this manual (`minnow_docs_*`). |
-| **Build** | Writing code. Files, git, terminal, code intelligence. |
-| **Plan** | Designing and analysing. Reads anything; cannot edit your files except plan documents. |
-| **Debug** | Investigating failures, with access to diagnostics and the Issues tracker. |
-
-Pick the mode *before* you send. "Design this, do not touch my code" is a Plan-mode instruction that Plan mode actually enforces — the mutating tools are not merely discouraged; they are absent, or scoped so tightly that only the plan document itself is reachable.
-
-[Modes](../concepts/modes.md) explains what each one allows in detail.
+See [Skills and slash commands](../chat/skills-and-commands.md).
 
 ## The context ring
 

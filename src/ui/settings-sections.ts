@@ -39,7 +39,7 @@ import { renderUsageSettingsSection } from './settings-usage';
 import { renderAudioSettingsSection } from './settings-audio';
 import { renderNotificationsSettingsSection } from './settings-notifications';
 import { renderDesktopShellSettings } from './settings-desktop-shell';
-import { renderFilesystemAccessSettings } from './settings-filesystem';
+import { renderPermissionSettings } from './settings-filesystem';
 import { renderProjectLocationSettings } from './settings-project-location';
 import { renderShellSandboxSettings } from './settings-shell-sandbox';
 import { renderAppUpdatesSettings } from './settings-updates';
@@ -49,9 +49,7 @@ import { renderAgentSupervisionSection } from './settings-watchdog';
 import { renderSkillsSettingsSection } from './settings-skills';
 import { renderSkillsLibrarySettingsSection } from './settings-skills-library';
 import {
-  fillToolsSection,
   refreshProvidersBanner,
-  registerToolHandlers,
 } from './settings';
 import {
   importMcpServers,
@@ -69,9 +67,7 @@ import {
   isToolConfigReadyForSettingsUi,
   loadToolConfigForSettingsUi,
   loadToolConfigIntoDrawer,
-  resetBuiltInToolPermissionsToDefaults,
   saveToolConfig,
-  setAllBuiltInToolPermissions,
 } from '../tools/config';
 import {
   DEFAULT_MAX_OUTPUT_CHARS,
@@ -521,15 +517,15 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
   }
 
   if (area === 'access') {
-    const filesystem = appendSettingsGroup(
+    const permissions = appendSettingsGroup(
       shell,
-      'Filesystem access',
-      'Choose whether file and git tools stay inside your open project or can reach anywhere on this computer.',
-      'general.filesystem',
+      'Permissions',
+      'One level for every chat, agent, tool, MCP server, plugin and website. The composer pill and Shift+Tab change the same setting.',
+      'general.permissions',
       { emphasis: true },
     );
-    filesystem.id = 'settingsFilesystemAccess';
-    await renderFilesystemAccessSettings(filesystem);
+    permissions.id = 'settingsPermissions';
+    await renderPermissionSettings(permissions);
     if (isAsyncSectionRenderStale(area, generation)) return;
 
     const shellSandbox = appendSettingsGroup(
@@ -1213,8 +1209,6 @@ async function renderWatchdogSection(): Promise<void> {
   await renderAgentSupervisionSection(content, { emphasis: true });
 }
 
-let toolsSectionInitialized = false;
-
 async function renderToolsSection(): Promise<void> {
   const generation = beginAsyncSectionRender('tools');
   const mount = clearMount('settingsToolsBody');
@@ -1224,7 +1218,7 @@ async function renderToolsSection(): Promise<void> {
   mount.appendChild(shell);
 
   const lead = el('p', 'settings-section-lead');
-  lead.textContent = 'Choose what agents may run. Off disables a tool, Ask requests approval, and Full allows it to run.';
+  lead.textContent = 'Configure tool loading, caching, and result size. Agent actions follow the global permission mode.';
   shell.appendChild(lead);
 
   appendSettingsOfflineHint(shell, 'Some tools need Minnow running locally. Open or restart the app.', {
@@ -1338,75 +1332,7 @@ async function renderToolsSection(): Promise<void> {
     ),
   );
 
-  const catalog = appendSettingsGroup(
-    content,
-    'Tool catalog',
-    'Each tool can be off, ask before run, or full permission. File and git tools need Minnow running locally. Plugin tools appear at the bottom when Minnow is running.',
-    'integrations.tools',
-    { emphasis: true },
-  );
-
-  const list = document.createElement('div');
-  list.id = 'settingsToolsList';
-  list.className = 'tools-list settings-tools-list';
-
   content.appendChild(advanced);
-
-  catalog.appendChild(
-    createSettingsActionsRow(
-      [
-        {
-          id: 'settingsToolsAllFull',
-          label: 'All full permissions',
-          variant: 'danger',
-          onClick: () => {
-            void (async () => {
-              const ok = await appConfirm(
-                'Grant full permission to all tools?\n\nEvery built-in tool will run without the approval prompt. Paths outside the workspace stay blocked unless you enable full disk access under Settings → Data & privacy → Filesystem access.\n\nOnly use this if you accept that risk.',
-              );
-              if (!ok) return;
-              try {
-                await setAllBuiltInToolPermissions('full', list);
-              } catch {
-                setStatus('err', 'Could not save. Open or restart Minnow and try again.');
-              }
-            })();
-          },
-        },
-        {
-          id: 'settingsToolsResetDefaults',
-          label: 'Reset to defaults',
-          onClick: () => {
-            void (async () => {
-              const ok = await appConfirm(
-                'Reset all tool permissions to defaults?\n\nBuilt-in tools will return to factory on/off and ask settings.',
-              );
-              if (!ok) return;
-              try {
-                await resetBuiltInToolPermissionsToDefaults(list);
-              } catch {
-                setStatus('err', 'Could not save. Open or restart Minnow and try again.');
-              }
-            })();
-          },
-        },
-      ],
-      { searchKey: 'integrations.tools.bulk', className: 'settings-tools-toolbar' },
-    ),
-  );
-  catalog.appendChild(list);
-
-  fillToolsSection('settingsToolsList', { variant: 'settings' });
-  const { appendPluginToolsToList } = await import('./settings-plugins');
-  await appendPluginToolsToList('settingsToolsList');
-  const { appendMcpToolsToList } = await import('./settings-mcp-tools');
-  await appendMcpToolsToList('settingsToolsList');
-  if (isAsyncSectionRenderStale('tools', generation)) return;
-
-  if (!toolsSectionInitialized) {
-    toolsSectionInitialized = true;
-    registerToolHandlers();
-  }
 
   const persistToolCache = (): void => {
     const config = getToolConfig();
@@ -1435,7 +1361,7 @@ async function renderToolsSection(): Promise<void> {
   outputCapCheckbox.checked = toolOutput.enabled;
   maxCharsInput.value = String(toolOutput.maxChars);
   maxCharsInput.disabled = !toolOutput.enabled;
-  loadToolConfigIntoDrawer(list);
+  loadToolConfigIntoDrawer();
 
   document.getElementById('settingsToolsServerBanner')?.classList.toggle(
     'hidden',
@@ -1443,6 +1369,7 @@ async function renderToolsSection(): Promise<void> {
   );
 
   appendSettingsCrosslinks(content, [
+    { label: 'Global permission mode', sectionId: 'access' },
     { label: 'MCP servers', sectionId: 'mcp' },
     { label: 'Browser automation', sectionId: 'browser' },
     { label: 'Skills catalog', sectionId: 'skills' },
@@ -1726,7 +1653,7 @@ function ensureMcpSettingsShell(mount: HTMLElement): {
   appendSettingsCrosslinks(content, [
     { label: 'Language servers', sectionId: 'lsp' },
     { label: 'Editor', sectionId: 'editor' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
   ]);
 
   mcpSettingsShellReady = true;
@@ -1935,7 +1862,7 @@ async function renderSkillsSection(): Promise<void> {
 
   appendSettingsCrosslinks(content, [
     { label: 'Skills Library', sectionId: 'skills-library' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
     { label: 'Browser automation', sectionId: 'browser' },
   ]);
 }
@@ -1969,7 +1896,7 @@ async function renderSkillsLibrarySection(): Promise<void> {
 
   appendSettingsCrosslinks(content, [
     { label: 'Skills catalog', sectionId: 'skills' },
-    { label: 'Tool permissions', sectionId: 'tools' },
+    { label: 'Tools', sectionId: 'tools' },
   ]);
 }
 

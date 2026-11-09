@@ -32,11 +32,11 @@ for (const role of ['builder', 'tester', 'final', 'sub-agent']) {
 
 test('lazy discovery retains required arguments and canonical descriptions', () => {
   const session = createLazyToolSession(headlessToolDefinitions(headlessToolIdsForRole('builder')));
-  assert.equal(session.isLoaded('find_files'), false);
-  session.search({ query: 'find_files', limit: 1 });
-  const tool = session.tools.find(tool => tool.function.name === 'find_files');
-  assert.deepEqual(tool, getToolById('find_files').definition);
-  assert.ok(tool.function.parameters.required.includes('pattern'));
+  assert.equal(session.isLoaded('search_in_file'), false);
+  session.search({ query: 'select:search_in_file' });
+  const tool = session.tools.find(tool => tool.function.name === 'search_in_file');
+  assert.deepEqual(tool, getToolById('search_in_file').definition);
+  assert.ok(tool.function.parameters.required.length > 0);
 });
 
 test('server search schemas require query without advertising unused API key overrides', () => {

@@ -27,7 +27,7 @@ const { listRailApps } = await import('../../src/os/app-preferences.ts');
 const { launchInstance, getForegroundAppId } = await import('../../src/os/instances.ts');
 const { getSlashCommandCatalog, dispatchPluginSlashCommand, isPluginSlashCommand } = await import('../../src/chat/slash-commands/registry.ts');
 after(async () => { globalThis.fetch = originalFetch; mock.restoreAll(); await win.happyDOM.abort(); });
-const settle = () => new Promise(resolve => setTimeout(resolve, 15));
+const settle = () => win.happyDOM.waitUntilComplete();
 const dom = () => { document.body.innerHTML = '<div id="osAppsLayer"></div><div id="metric"><span id="tps" data-plugin-slot="chat.throughput">20</span></div>'; };
 
 test('trusted UI adds DOM, apps, menus and commands, then revokes them with cleanup', async () => {

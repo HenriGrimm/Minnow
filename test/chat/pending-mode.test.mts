@@ -94,16 +94,14 @@ describe('pending-mode (MIN-191)', () => {
     assert.equal(chat.pendingModeId, undefined);
   });
 
-  test('the tool updates both composer selectors before streaming ends', async () => {
+  test('legacy handoffs do not bring back a composer mode selector', () => {
     const chat = seedChat('plan');
     document.body.innerHTML = '<div><div id="modeSelector"></div></div>';
     initModeSelector();
     setStreaming(true, chat.id);
     executeSetChatMode({ mode_id: 'build' });
     assert.equal(chat.modeId, 'build');
-    assert.equal(chat.pendingModeId, undefined);
-    assert.equal(document.querySelector('#modeSelector [data-mode-id="build"]')?.getAttribute('aria-checked'), 'true');
-    assert.equal(document.querySelector('.mode-selector-dropdown__label')?.textContent, 'Build');
+    assert.equal(document.querySelector('#modeSelector [data-mode-id]'), null);
   });
 
   test('a background handoff changes only its originating chat', async () => {

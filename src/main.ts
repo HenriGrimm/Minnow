@@ -40,13 +40,13 @@ import './styles/preview-panel.css';
 import './styles/design-mode.css';
 import './styles/skill-picker.css';
 import './styles/skill-chip.css';
-import './styles/composer-tools-popover.css';
 import './styles/composer-overflow.css';
 import './styles/workspace-menu.css';
 import './styles/workspace-folder-picker.css';
 import './styles/research-panel.css';
 import './styles/git-help-lightbox.css';
 import './styles/tool-approval.css';
+import './styles/permissions.css';
 import './styles/question-cards.css';
 import './styles/transcript-view.css';
 import './styles/sub-agent-drawer.css';
@@ -150,9 +150,8 @@ import { initAppSidebarResizers } from './ui/sidebar-resize';
 import {
   fillSystemPromptPresetSelect,
   loadSystemPromptSettings,
-  registerToolHandlers,
 } from './ui/settings';
-import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig } from './tools/config';
+import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig, registerWebSearchSettingsHandlers } from './tools/config';
 import {
   initModelSelectPicker,
   syncModelSelectPicker,
@@ -183,6 +182,8 @@ import {
   syncViewModeToggleFromActiveChat,
 } from './ui/view-mode-toggle';
 import { initModeSelector, syncModeSelectorFromActiveChat } from './ui/mode-selector';
+import { initComposerPermissionPill } from './ui/permission-level';
+import { registerSlashMenuCommands } from './ui/slash-menu-commands';
 import { initComposerCompact } from './ui/composer-compact';
 import { initThinkingControl } from './ui/composer-thinking';
 import { initCodeMapInjectionControl } from './ui/composer-code-map';
@@ -198,13 +199,6 @@ import { initSubAgentUi } from './ui/sub-agent-cards';
 import { initGoalEvalUi } from './ui/goal-eval-status';
 import { initLoopStatusUi } from './ui/loop-active-hint';
 import { initAgentActivityPanel } from './ui/agent-activity-panel';
-import {
-  closeComposerToolsPopover,
-  closeAllToolsPopovers,
-  initChatAppToolsPopover,
-  initComposerToolsPopover,
-  initDesktopToolsPopover,
-} from './ui/composer-tools-popover';
 import { initComposerVoice } from './ui/composer-voice';
 import { initComposerExpand } from './ui/composer-expand';
 import { initComposerUndo } from './ui/composer-undo';
@@ -321,15 +315,13 @@ export async function initApp(): Promise<void> {
       scheduleSaveSessions();
     }
   }
-  registerToolHandlers();
+
   if (hasComposerSurface) {
     initSubAgentUi();
     initGoalEvalUi();
     initLoopStatusUi();
     initAgentActivityPanel();
-    initComposerToolsPopover();
-    initChatAppToolsPopover();
-    initDesktopToolsPopover();
+
     initComposerVoice();
     initComposerExpand();
     initComposerUndo();
@@ -339,6 +331,8 @@ export async function initApp(): Promise<void> {
     initAttachments();
     initContextUsageRing();
     initModeSelector();
+    initComposerPermissionPill();
+    registerSlashMenuCommands();
     initThinkingControl();
     initCodeMapInjectionControl();
     initBrainNotesInjectionControl();
@@ -426,6 +420,7 @@ export async function initApp(): Promise<void> {
   }
   initMinnowBrowserLinkRouting();
   initMarkdownLinkRouting();
+  registerWebSearchSettingsHandlers();
   loadToolConfigIntoDrawer();
   void syncWebSearchProviderFromSearchConfig();
 
@@ -560,7 +555,7 @@ export async function initApp(): Promise<void> {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeAllToolsPopovers();
+
       closeContextUsageBreakdown();
       dismissOpenLayers();
     }

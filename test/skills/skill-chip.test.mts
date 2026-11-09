@@ -39,8 +39,22 @@ describe('skill chips', () => {
 
   test('highlightedSkillTextHtml escapes user text', () => {
     const html = highlightedSkillTextHtml('/impeccable <script>');
-    assert.match(html, /<span class="skill-chip">\/impeccable<\/span>/);
+    assert.match(html, /<span class="skill-chip" data-label="Impeccable">\/impeccable<\/span>/);
     assert.match(html, /&lt;script&gt;/);
     assert.equal(html.includes('<script>'), false);
+  });
+
+  test('composer labels are capitalized while slash tokens remain intact', () => {
+    const html = highlightedSkillTextHtml('/plan /ask /debug');
+    for (const [token, label] of [['plan', 'Plan'], ['ask', 'Ask'], ['debug', 'Debug']]) {
+      assert.ok(html.includes(`data-label="${label}">/${token}</span>`));
+    }
+    assert.match(highlightedSkillTextHtml('/git-commit'), /data-label="Git Commit"/);
+  });
+
+  test('reveals only the source token being edited', () => {
+    assert.match(highlightedSkillTextHtml('/plan /ask', undefined, 8), /data-label="Ask" data-editing="true">\/ask/);
+    assert.doesNotMatch(highlightedSkillTextHtml('/plan /ask', undefined, 10), /data-editing/);
+    assert.doesNotMatch(highlightedSkillTextHtml('/plan /ask', undefined, 5), /data-editing/);
   });
 });

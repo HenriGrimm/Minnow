@@ -275,18 +275,8 @@ describe('settings page HTML', () => {
     assert.doesNotMatch(html, /Voice model settings moved to/);
   });
 
-  test('composer tools button and popover exist in index.html', () => {
-    assert.match(html, /id="btnComposerTools"/);
-    assert.match(html, /id="composerToolsPopover"/);
-    assert.match(html, /id="composerToolsList"/);
-    assert.match(html, /id="composerToolsServerBanner"/);
-    assert.match(html, /id="composerToolsStatus"/);
-    assert.match(html, /id="composerToolsWebSearchProvider"/);
-    assert.match(html, /id="composerToolsWebSearchProvider"[^>]*>[\s\S]*value="searxng"/);
-    assert.match(html, /id="composerToolsCacheEnabled"/);
-    assert.match(html, /id="composerToolsOpenSettings"/);
-    assert.match(html, /class="tools-list tools-list--composer"/);
-    assert.match(html, /composer-tools-popover__settings-link/);
+  test('composer has no tool permission button, popover, or catalog', () => {
+    assert.doesNotMatch(html, /id="(?:btnComposerTools|composerToolsPopover|composerToolsList|composerToolsOpenSettings|btnChatAppTools)"/);
   });
 
   test('integrations category includes the MCP hub alongside connected servers', () => {

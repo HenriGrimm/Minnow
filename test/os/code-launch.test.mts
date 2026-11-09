@@ -70,6 +70,9 @@ describe('applyCodeLaunchOptions', () => {
     let workspacePath = CURRENT_WS;
     g.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);
+      if (path.endsWith('/api/skills/debug')) {
+        return Response.json({ skill: { id: 'debug', label: 'Debug', source: 'builtin', body: 'Investigate the issue and verify the cause.' } });
+      }
       if (path.includes('/api/workspace') && init?.method === 'PUT') {
         const body = JSON.parse(String(init.body)) as { path: string };
         workspacePath = body.path;
@@ -95,6 +98,7 @@ describe('applyCodeLaunchOptions', () => {
       return { ok: false, status: 503, json: async () => ({ error: 'offline' }), text: async () => 'offline' } as Response;
     }) as typeof fetch;
 
+    await (await import('../../src/skills/client.ts')).refreshSkillCatalog();
     resetWorkspaceStateForTests();
     const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
     setWorkspaceFromServer({
@@ -134,6 +138,7 @@ describe('applyCodeLaunchOptions', () => {
     happyDomWindow?.close();
     happyDomWindow = undefined;
     setSessionStateForTests(null);
+    await (await import('../../src/skills/client.ts')).refreshSkillCatalog();
     resetWorkspaceStateForTests();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
@@ -165,7 +170,7 @@ describe('applyCodeLaunchOptions', () => {
     assert.equal(getWorkspacePath(), CURRENT_WS);
   });
 
-  test('switches workspace, creates debug chat, and fills composer', async () => {
+  test('switches workspace, starts the debug skill, and preserves the seed', async () => {
     const { applyCodeLaunchOptions } = await import('../../src/os/code-launch.ts');
     await applyCodeLaunchOptions({
       seed: 'Find bugs in the finance app',
@@ -179,13 +184,14 @@ describe('applyCodeLaunchOptions', () => {
 
     const { getActiveChat } = await import('../../src/state/sessions.ts');
     const chat = getActiveChat();
-    assert.equal(chat.modeId, 'debug');
+    assert.equal(chat.modeId, 'build');
+    assert.equal(chat.pinnedSkill?.id, 'debug');
     assert.notEqual(chat.id, 'chat-existing');
 
     const input = document.getElementById('msgInput') as HTMLTextAreaElement;
     const inComposer = input.value;
     const inHistory = chat.history.some(
-      (m) => m.role === 'user' && m.content === 'Find bugs in the finance app',
+      (m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes('Find bugs in the finance app'),
     );
     assert.ok(
       inComposer === 'Find bugs in the finance app' || inHistory,
@@ -308,6 +314,9 @@ describe('applyCodeLaunchOptions', () => {
     const prevFetch = g.fetch;
     g.fetch = (async (url: RequestInfo | URL) => {
       const path = String(url);
+      if (path.endsWith('/api/skills/debug')) {
+        return Response.json({ skill: { id: 'debug', label: 'Debug', source: 'builtin', body: 'Investigate the issue and verify the cause.' } });
+      }
       if (path.includes('/api/chats-workspace')) {
         return {
           ok: true,
@@ -371,6 +380,9 @@ describe('applyCodeLaunchOptions', () => {
     const prevFetch = g.fetch;
     g.fetch = (async (url: RequestInfo | URL) => {
       const path = String(url);
+      if (path.endsWith('/api/skills/debug')) {
+        return Response.json({ skill: { id: 'debug', label: 'Debug', source: 'builtin', body: 'Investigate the issue and verify the cause.' } });
+      }
       if (path.includes('/api/chats-workspace')) {
         return {
           ok: true,

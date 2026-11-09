@@ -73,15 +73,15 @@ test('spawn requires a reference title in both legacy and persistent tool schema
   }
 });
 
-test('six catalog schemas and defaults stay gated, with explicit off/ask preserved', () => {
+test('six catalog schemas retain capability gating without per-tool settings', () => {
   const catalog = BUILT_IN_TOOLS.filter(row => AGENT_CHAT_TOOL_IDS.includes(row.id));
   assert.equal(catalog.length, 6);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition)).length, 0);
   assert.equal(projectAgentConversationTools(catalog.map(row => row.definition), { creationEnabled: true }).length, 6);
   const defaults = normalizeToolConfig({});
-  for (const name of AGENT_CHAT_TOOL_IDS) assert.equal(defaults.permissions.default[name], 'full');
+  assert.equal('permissions' in defaults, false);
   const stored = normalizeToolConfig({ enabled: { chat_send: false }, permissions: { default: { chat_send: 'off', chat_stop: 'ask' } } });
-  assert.equal(stored.permissions.default.chat_send, 'off'); assert.equal(stored.permissions.default.chat_stop, 'ask');
+  assert.equal('permissions' in stored, false);
 });
 
 test('native CLI handoff advertises exactly the same bounded tool schemas, with coordination mutations sequential', () => {
@@ -149,7 +149,7 @@ test('broader-target guidance follows a live callback only to the original deleg
     tasks.setSubscription('child-run', { state: 'disposed' });
     await refused('target', false);
     assert.equal(f.repository.listCommands().length, 0);
-  }, { mode: 'plan', runId: 'child-run' });
+  }, { runId: 'child-run' });
 });
 
 test('list cursor binds query and project, and reads never hydrate whole transcripts or attachment bytes', async () => {
@@ -336,9 +336,9 @@ test('capabilities use the captured selection and bounded injected production ca
   });
 });
 
-test('explicit Ask requires a trusted approval; feature disable permits recovery reads but no new sends', async () => {
+test('global Manual requires a trusted approval; feature disable permits recovery reads but no new sends', async () => {
   await fixture(async f => {
-    const ask = createChatPolicy({ ...f.initial, toolPermissions: { ...f.initial.toolPermissions, chat_send: 'ask' } });
+    const ask = createChatPolicy({ ...f.initial, permissionLevel: 'manual' });
     f.policies.set('source', ask);
     await assert.rejects(f.execute('chat_send', { chat_id: 'target', message: 'Needs approval' }), error => error.reason === 'approval_required');
     assert.equal(f.repository.listCommands().length, 0);

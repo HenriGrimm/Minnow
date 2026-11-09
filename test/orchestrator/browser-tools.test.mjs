@@ -6,8 +6,7 @@ import path from 'node:path';
 import { after, afterEach, before, describe, test } from 'node:test';
 
 import { resetMinnowHomeCache } from '../../server/config/home.js';
-import { resetBrowserConfigCache, loadBrowserConfig } from '../../server/cdp/browser-config.js';
-import { isNavigationAllowed } from '../../server/cdp/allowlist.js';
+import { resetBrowserConfigCache } from '../../server/cdp/browser-config.js';
 import { executeInProcessTool } from '../../server/runner/node.js';
 import {
   BOARD_BUILDER_TOOL_IDS,
@@ -28,7 +27,6 @@ import {
 } from '../../server/tools/browser-driver-tool-defs.js';
 import { DEFAULT_MAX_OUTPUT_CHARS } from '../../server/tools/output-cap.js';
 import {
-  BROWSER_BLOCKED_PREFIX,
   BROWSER_UNAVAILABLE_PREFIX,
   browserToolSessionKeys,
   closeAllBrowserToolSessions,
@@ -78,6 +76,7 @@ afterEach(async () => {
 async function callTool(name, args = {}, opts = {}) {
   const result = await executeInProcessTool(name, args, {
     cwd,
+    permissionLevel: opts.permissionLevel,
     ...(opts.allowedToolNames ? { allowedToolNames: [...opts.allowedToolNames] } : {}),
   });
   return result.content;
@@ -237,39 +236,17 @@ describe('standard tool dispatch', () => {
   });
 });
 
-// ── allowlist ────────────────────────────────────────────────────────────────
+// ── permissions ────────────────────────────────────────────────────────────────
 
-describe('allowlist', () => {
-  test('a disallowed origin is blocked, with the same verdict as the renderer path', async () => {
-    setBrowserToolLauncher(launcherFor(fakeSession()));
-    const config = await loadBrowserConfig();
-
-    const cases = [
-      'http://localhost:5173/',
-      'http://127.0.0.1:8080/app',
-      'https://evil.example.com/',
-      'http://10.0.0.5:3000/',
-    ];
-    for (const url of cases) {
-      const content = await callTool('browser_drive_navigate', { url });
-      const blocked = content.startsWith(BROWSER_BLOCKED_PREFIX);
-      assert.equal(
-        blocked,
-        !isNavigationAllowed(url, config.allowedOriginPatterns),
-        `verdict for ${url} diverged from the renderer allowlist: ${content}`,
-      );
-      await closeAllBrowserToolSessions();
-    }
-  });
-
-  test('a blocked navigation never starts a browser', async () => {
+describe('browser permission and availability', () => {
+  test('Manual approval is checked before launching a browser', async () => {
     let launches = 0;
     setBrowserToolLauncher(async () => {
       launches += 1;
       return { ok: true, session: fakeSession(), capability: { available: true } };
     });
-    const content = await callTool('browser_drive_navigate', { url: 'https://evil.example.com/' });
-    assert.ok(content.startsWith(BROWSER_BLOCKED_PREFIX), content);
+    const content = await callTool('browser_drive_navigate', { url: 'https://example.test/' }, { permissionLevel: 'manual' });
+    assert.match(content, /needs approval/, content);
     assert.equal(launches, 0);
   });
 

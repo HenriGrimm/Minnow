@@ -6,7 +6,6 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { ALL_TOOL_IDS, BRAIN_FULL_PERMISSION_TOOL_ID_SET } from './tool-ids.js';
 import { defaultServersConfig } from './validators.js';
 
 /** Cached resolved home path for this process. */
@@ -115,6 +114,7 @@ const DEFAULT_META = {
   activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
   flaticonIconGuidanceEnabled: true,
+  localModelGuidance: 'auto',
   activeSetupProfileId: null,
   workspaceProfiles: {},
   workspaceProfileAutoApply: false,
@@ -163,7 +163,7 @@ const DEFAULT_META = {
     fallbackToChatModel: true,
   },
   toolSecurity: {
-    filesystemAccess: 'workspace',
+    permissionLevel: 'auto',
   },
   desktopShell: {
     closeToTray: true,
@@ -358,75 +358,8 @@ const DEFAULT_RULES = {
 };
 
 /** Tool ids enabled on first run (matches client defaultToolConfig). */
-const DEFAULT_ENABLED_TOOL_IDS = new Set([
-  'load_skill',
-  'plugin_inspect',
-  'plugin_manage',
-  'get_datetime',
-  'calculate',
-  'wait',
-  'web_search',
-  'web_map',
-  'web_extract',
-  'fetch_web_content',
-  'rag_web_content',
-  'wikipedia_search',
-  'save_file',
-  'append_file',
-  'insert_at_line',
-  'replace_text_in_file',
-  'make_directory',
-  'save_memory',
-  'ask_question',
-  'brain_search',
-  'brain_read_page',
-  'brain_list',
-  'brain_write_page',
-  'brain_append_log',
-  'brain_ingest_source',
-  'manage_brain',
-  'search_settings',
-  'get_settings',
-  'update_settings',
-  'get_appearance',
-  'update_appearance',
-  'upload_appearance_asset',
-  'repo_map',
-  'find_symbol',
-  'who_calls',
-  'read_symbol',
-  'read_diagnostics',
-  'godot_inspect',
-  'godot_control',
-]);
-
-function defaultPermissionForTool(id, enabled) {
-  if (id === 'plugin_inspect' || id === 'load_skill' || id === 'search_settings' || id === 'get_settings' || id === 'get_appearance' || id === 'godot_inspect') {
-    return enabled ? 'full' : 'off';
-  }
-  if (id === 'wait') {
-    return enabled ? 'full' : 'off';
-  }
-  if (id === 'read_diagnostics') {
-    return enabled ? 'ask' : 'off';
-  }
-  if (BRAIN_FULL_PERMISSION_TOOL_ID_SET.has(id)) {
-    return enabled ? 'full' : 'off';
-  }
-  return enabled ? 'ask' : 'off';
-}
-
 function defaultToolsJson() {
-  const enabled = {};
-  const permissionsDefault = {};
-  for (const id of ALL_TOOL_IDS) {
-    const on = DEFAULT_ENABLED_TOOL_IDS.has(id);
-    enabled[id] = on;
-    permissionsDefault[id] = defaultPermissionForTool(id, on);
-  }
   return {
-    enabled,
-    permissions: { default: permissionsDefault },
     keys: { braveApiKey: '', tavilyApiKey: '' },
     webSearchProvider: 'tavily',
     plugins: {},

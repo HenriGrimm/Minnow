@@ -122,11 +122,11 @@ minnow restore /mnt/backups --yes --passphrase-env MINNOW_BACKUP_PASSPHRASE
 
 ## Tests
 
-`npm test` runs the full suite via [`test/run-all.mjs`](../../test/run-all.mjs) — it discovers every `test/**/*.test.{js,mjs,mts,ts}` file and runs the correct runner/loader per path (see [`test/test-config.mjs`](../../test/test-config.mjs)). New test files are included automatically; `npm run test:check-coverage` fails CI when a file would be orphaned. Worker parallelism defaults to `min(16, availableParallelism())`; override with `MINNOW_TEST_CONCURRENCY`.
+`npm test` discovers test files and chooses a runner for each. New test files are included automatically. `npm run test:check-coverage` fails if a file would be orphaned. Run `npm test -- --shard 1/3` to reproduce one CI shard locally. Worker parallelism defaults to `min(26, availableParallelism())`. Override it with `MINNOW_TEST_CONCURRENCY`. See [`test/run-all.mjs`](../../test/run-all.mjs) and [`test/test-config.mjs`](../../test/test-config.mjs).
 
 **Memory:** every runner preloads [`test/assert-dom-safe.mjs`](../../test/assert-dom-safe.mjs). Without it a *failing* `assert.equal(document.querySelector('.x'), null)` hands a happy-dom node to node:assert, which inspects it at `depth: 1000` and Myers-diffs the result — synchronous, unbounded typed-array allocation that `--max-old-space-size` cannot cap, and enough to freeze a 64 GB workstation from a single test process (measured: one child at 49 GB and still climbing). The guard compares DOM operands itself and reports a short descriptor (`<section.board-root>`) instead. Do not remove the preload, and prefer `assert.ok(!el)` over comparing elements when adding assertions.
 
-**CI (MIN-383):** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pull requests and pushes to `main`: `npm ci` → `test:check-coverage` → `npx tsc --noEmit` → `npm test` on `windows-latest`, `ubuntu-latest`, and `macos-latest` (includes `test/headless/`). Require the **`ci`** status check on `main` before merge ([`.github/BRANCH_PROTECTION.md`](../../.github/BRANCH_PROTECTION.md)).
+**CI (MIN-383).** Pull requests and pushes to `main` run the full suite in one Ubuntu job and three parallel jobs each on Windows and macOS. The first job for each platform also checks test discovery, icons, and TypeScript. The aggregate **`typecheck + tests`** check requires all seven jobs to pass. See [the CI workflow](../../.github/workflows/ci.yml) and [branch protection](../../.github/BRANCH_PROTECTION.md).
 
 Scoped suites (each delegates to `node test/run-all.mjs --suite <name>`):
 

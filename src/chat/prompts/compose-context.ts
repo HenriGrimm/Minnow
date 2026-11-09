@@ -37,6 +37,19 @@ import type { ComposeContext, PromptProfile } from './types';
 import { getBoardGroupForChat } from '../../state/chat-groups';
 import { resolveEffectiveOrchestratePlanPath } from '../plans/plan-path';
 import { runWithDeadline } from '../../lib/async-deadline.mjs';
+import { getPermissionLevelCached } from '../../config/tool-security-meta';
+import { getCachedProviderList } from '../../providers/store';
+import { isLocalProvider } from '../../providers/provider-host';
+import { isLanProviderBaseUrl } from '../../lib/lan-provider-host.mjs';
+
+/** True when the chat's provider runs on this machine or the LAN (local-model appendix `auto`). */
+export function chatProviderIsLocal(chat: Pick<Chat, 'providerId'>): boolean {
+  const list = getCachedProviderList();
+  const id = chat.providerId?.trim() || list?.activeProviderId || '';
+  const provider = list?.providers.find((row) => row.id === id);
+  if (!provider) return id === 'lm-studio-local';
+  return isLocalProvider(provider) || isLanProviderBaseUrl(provider.baseUrl);
+}
 
 // ── Cwd ──────────────────────────────────────────────────────────────────────
 
@@ -212,6 +225,9 @@ export async function buildComposeContext(
     infoPresetId,
     planGranularity: meta.planGranularity ?? 'medium',
     flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled,
+    localModelGuidance: meta.localModelGuidance,
+    providerIsLocal: chatProviderIsLocal(chat),
+    permissionLevel: getPermissionLevelCached(),
     userMessagePreview:
       options?.userMessagePreview ??
       chat.history

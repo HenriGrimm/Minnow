@@ -1051,7 +1051,7 @@ describe('P6-D runTurn chat adapter (MIN-726)', () => {
     // spawn_sub_agent reads this same latch (P10-K / MIN-776).
     assert.equal(seenDuringExecute.parentToolCallId, 'call_ctx');
     assert.equal(seenDuringExecute.parentChatId, CHAT_ID);
-    assert.equal(seenDuringExecute.modeId, 'debug');
+    assert.equal(seenDuringExecute.modeId, 'build');
     assert.ok(seenDuringExecute.parentTurnId);
     const turn = chat.runs?.find((r) => r.runId === seenDuringExecute?.parentTurnId);
     assert.ok(turn, 'parentTurnId must match the turn run cancelAllForParentTurn indexes');

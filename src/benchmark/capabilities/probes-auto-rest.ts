@@ -225,24 +225,19 @@ export const REMAINING_AUTO_PROBES: Record<string, CapabilityProbeSpec> = {
       return settings ? pass('Settings/appearance tool emitted') : fail('No settings tool emit');
     },
   },
-  'mode-set-chat-mode': {
+  'workflow-load-skill': {
     kind: 'tool-call',
-    toolIds: ['set_chat_mode', 'propose_mode_switch'],
+    toolIds: ['load_skill'],
     emitOnly: true,
-    verdict: (out) =>
-      hasTool(out.toolCalls, 'set_chat_mode') || hasTool(out.toolCalls, 'propose_mode_switch')
-        ? pass('Mode switch tool emitted')
-        : fail('No mode switch emit'),
+    verdict: (out) => /"id"\s*:\s*"explain-code"/.test(argsTextFor(out, 'load_skill'))
+      ? pass('Requested the explain-code skill') : fail('Did not request the explain-code skill'),
   },
-  'mode-create-chat': {
+  'workflow-launch-code': {
     kind: 'tool-call',
-    toolIds: ['create_chat_with_mode', 'launch_minnow_app'],
+    toolIds: ['launch_minnow_app'],
     emitOnly: true,
-    verdict: (out) => {
-      const launch =
-        hasTool(out.toolCalls, 'create_chat_with_mode') || hasTool(out.toolCalls, 'launch_minnow_app');
-      return launch ? pass('Chat/app launch tool emitted') : fail('No create_chat/launch emit');
-    },
+    verdict: (out) => /"app_id"\s*:\s*"code"/.test(argsTextFor(out, 'launch_minnow_app'))
+      ? pass('Requested the Code app') : fail('Did not request the Code app'),
   },
   'mode-impeccable': {
     kind: 'derived',

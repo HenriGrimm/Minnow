@@ -41,7 +41,7 @@ describe('cached model scan TTL', () => {
     process.env.HUGGINGFACE_HUB_CACHE = hubDir;
     resetMinnowHomeCache();
 
-    mlxDir = path.join(homeDir, 'models', 'artifacts', 'mlx-community--Qwen3-8B-4bit');
+    mlxDir = path.join(homeDir, 'models', 'artifacts', 'minnow-fixture--Qwen3-8B-4bit-ttl');
     await fsp.mkdir(mlxDir, { recursive: true });
     await fsp.writeFile(
       path.join(mlxDir, 'config.json'),
@@ -73,7 +73,7 @@ describe('cached model scan TTL', () => {
     const first = await listCachedModels();
     assert.equal(getCachedModelsScanCountForTests(), 1);
 
-    const row = first.models.find((m) => m.repo_id === 'mlx-community/Qwen3-8B-4bit');
+    const row = first.models.find((m) => m.repo_id === 'minnow-fixture/Qwen3-8B-4bit-ttl');
     assert.ok(row, 'expected the MLX artifact row');
     // Scan-time context from max_position_embeddings — must still land on the library row.
     assert.equal(row.mlx_context_length, 32_768);

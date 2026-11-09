@@ -334,31 +334,46 @@ test('a received chat link checks local access without forwarding itself to anot
   assert.equal(sessionState!.activeId, root.id);
 });
 
-test('leaving Code while a chat link is loading cancels the late selection', async () => {
+function holdChatNavigation(chatId: string) {
+  const requested = Promise.withResolvers<void>();
+  const response = Promise.withResolvers<Response>();
+  globalThis.fetch = (async url => {
+    if (String(url) !== `/api/chats/${chatId}?view=navigation`) return Response.json({}, { status: 404 });
+    requested.resolve();
+    return response.promise;
+  }) as typeof fetch;
+  return {
+    waitForRequest: (opening: Promise<void>) => Promise.race([
+      requested.promise,
+      opening.then(() => assert.fail('The chat link finished without checking access.')),
+    ]),
+    allow: () => response.resolve(Response.json({ chatId, available: true })),
+  };
+}
+
+test('leaving Code while a chat link is loading cancels the late selection', { timeout: 10_000 }, async () => {
   const root = chat('waiting-root'), child = chat('waiting-child', root.id);
   setup([root, child]); setStorageModeForTests('server');
   setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
-  let resolve!: (response: Response) => void;
-  globalThis.fetch = (() => new Promise<Response>(done => { resolve = done; })) as typeof fetch;
+  const navigation = holdChatNavigation(child.id);
   let current = true;
   const opening = switchToCodeChat(child.id, { isCurrent: () => current });
-  while (!resolve) await new Promise(done => setImmediate(done));
+  await navigation.waitForRequest(opening);
   current = false;
-  resolve(Response.json({ chatId: child.id, available: true }));
+  navigation.allow();
   await opening;
   assert.equal(sessionState!.activeId, root.id);
 });
 
-test('a late child-link response cannot reopen Code after the user switches apps', async () => {
+test('a late child-link response cannot reopen Code after the user switches apps', { timeout: 10_000 }, async () => {
   const root = chat('origin-root'), child = chat('origin-child', root.id);
   setup([root, child]); setStorageModeForTests('server');
   setAgentConversationsCapabilityForTests({ version: 1, capability: 'agentConversationsV1', creationEnabled: false, recoveryEnabled: true, reason: 'not_released', conversationStorage: 'sqlite' });
-  let resolve!: (response: Response) => void;
-  globalThis.fetch = (() => new Promise<Response>(done => { resolve = done; })) as typeof fetch;
+  const navigation = holdChatNavigation(child.id);
   const opening = launchCodeWithChat(child.id);
-  while (!resolve) await new Promise(done => setImmediate(done));
+  await navigation.waitForRequest(opening);
   window.location.hash = '#/app/models';
-  resolve(Response.json({ chatId: child.id, available: true }));
+  navigation.allow();
   await opening;
   assert.equal(window.location.hash, '#/app/models');
   assert.equal(sessionState!.activeId, root.id);

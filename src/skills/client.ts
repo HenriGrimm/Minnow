@@ -74,6 +74,13 @@ export function getSkillCatalog(): readonly SkillListItem[] {
 }
 
 /** Full catalog including disabled skills (settings UI). */
+/** Turn clamp a skill applies (`access:` front matter), or null. */
+export function getSkillTurnClamp(id: string | null | undefined): 'read-only' | 'plans' | null {
+  if (!id) return null;
+  const row = skillCatalog.find((s) => s.id === id) ?? getBuiltinListFromManifest().find((s) => s.id === id);
+  return row?.access === 'read-only' || row?.access === 'plans' ? row.access : null;
+}
+
 export function getAllSkillCatalog(): readonly SkillListItem[] {
   return skillCatalog;
 }
@@ -125,6 +132,7 @@ export async function fetchSkillById(id: string): Promise<SkillDetail | null> {
         description: meta.description.trim(),
         source: 'builtin',
         disableModelInvocation: meta['disable-model-invocation'] === 'true',
+        ...(meta.access === 'read-only' || meta.access === 'plans' ? { access: meta.access } : {}),
         body,
         raw,
       };

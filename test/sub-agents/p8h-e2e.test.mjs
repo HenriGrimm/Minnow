@@ -683,7 +683,7 @@ describe('P8-H induced failures', { concurrency: false }, () => {
     }
   });
 
-  test('fail past the cap journals run.abandoned with the full evidence bundle', { timeout: 60_000 }, async () => {
+  test('a delivered negative assessment completes without retries', { timeout: 60_000 }, async () => {
     fake.reset();
     // Dedicated host so the shared happy-path scenario cannot pass a retry.
     const failing = createFakeModelServer({ scenario: failForeverScenario() });
@@ -696,20 +696,15 @@ describe('P8-H induced failures', { concurrency: false }, () => {
       const spawned = await spawn({ parentChatId: nextId('chat-abandon') });
       const done = await waitUntilRun(
         spawned.runId,
-        (body) => body.run?.phase === 'abandoned' || body.status === 'failed',
+        (body) => body.run?.phase === 'passed',
         40_000,
-        'abandon after fail cap',
+        'completed negative assessment',
       );
-      assert.equal(done.run.phase, 'abandoned');
-      const evidence = done.run.abandonedEvidence;
-      assert.ok(evidence && typeof evidence === 'object', 'abandonment must carry evidence');
-      assert.ok(Array.isArray(evidence.attempts), 'attempt list must not be truncated away');
-      assert.ok(
-        evidence.attempts.length >= 3,
-        `full bundle expected ≥3 attempts, got ${evidence.attempts.length}`,
-      );
+      assert.equal(done.run.phase, 'passed');
       const events = await journalOf(spawned.runId);
-      assert.ok(events.some((e) => e.type === 'run.abandoned'));
+      assert.equal(events.filter(event => event.type === 'attempt.started').length, 1);
+      assert.ok(!events.some(event => event.type === 'run.abandoned'));
+      assert.match(JSON.stringify(events), /Reported assessment: fail/);
     } finally {
       await pointProviderAt(fakeBase);
       if (typeof failing.server.closeAllConnections === 'function') {

@@ -2,7 +2,7 @@ import type { OpenAIFunctionDefinition } from '../tools/definitions';
 import { createRefreshGate } from '../tools/refresh-gate';
 import { StreamEventSource } from '../api/stream-event-source';
 
-type Catalog = { tools?: OpenAIFunctionDefinition[]; revision?: string };
+type Catalog = { tools?: OpenAIFunctionDefinition[]; revision?: string; hints?: Record<string, 'read' | 'write' | 'destructive'> };
 
 function subscribeChanges(onRevision: (revision: string) => void): () => void {
   if (typeof window === 'undefined' || !/^https?:/.test(window.location.href)) return () => {};
@@ -26,6 +26,7 @@ export function createMcpToolCache({
   subscribe = subscribeChanges,
 } = {}) {
   let tools: OpenAIFunctionDefinition[] = [];
+  let hints: Record<string, 'read' | 'write' | 'destructive'> = {};
   let revision: string | undefined;
   let loaded = false;
   let unsubscribe: (() => void) | undefined;
@@ -35,6 +36,7 @@ export function createMcpToolCache({
     const body = await read();
     if (epoch !== capturedEpoch) return;
     tools = Array.isArray(body.tools) ? body.tools : [];
+    hints = body.hints && typeof body.hints === 'object' ? body.hints : {};
     revision = body.revision;
     loaded = true;
     // The initial stream snapshot catches changes during the read or a reconnect.
@@ -63,5 +65,5 @@ export function createMcpToolCache({
     loaded = false;
     gate = createRefreshGate(load);
   };
-  return { get tools() { return tools; }, refresh, clear };
+  return { get tools() { return tools; }, hintFor: (name: string) => hints[name] ?? null, refresh, clear };
 }

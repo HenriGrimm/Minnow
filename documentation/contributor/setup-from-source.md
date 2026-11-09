@@ -108,7 +108,7 @@ A bare request without the header returns `401 Unauthorized` — that is the gat
 1. **Provider** — **Models → Providers**: confirm the base URL and that the provider is reachable.
 2. **Model** — pick one from the menubar model chip (use refresh if empty). Vision tasks need a **VLM**; tool-calling models work best for agent turns.
 3. **Mode** — composer: General / Build / Plan / Debug. (Orchestrate opens from the sidebar hub, not the composer picker.)
-4. **Tools** — Settings → Tools & integrations → **Tools**: enable capabilities; set per-tool permission (`full` / `ask` / `off`). Server tools need `npm start` and a healthy tools ping.
+4. **Permissions** — choose the global Manual / Auto / Full access mode. Settings → Tools configures schema loading, caching, and result limits. Server tools need `npm start` and a healthy tools ping.
 5. **Workspace** — open **Code** and pick a project folder; file/git tools resolve under this root.
 
 ## 6. Optional contributor setup

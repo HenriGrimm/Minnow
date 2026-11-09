@@ -11,6 +11,7 @@
  * @property {string} path
  * @property {string} [version]
  * @property {boolean} [disableModelInvocation]
+ * @property {'read-only'|'plans'} [access] Turn clamp the skill applies (`/ask`, `/plan`).
  */
 
 /**

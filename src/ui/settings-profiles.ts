@@ -60,10 +60,8 @@ function summarizeActivateImpact(bundle: MinnowProfileBundle): string {
   const subTypes = Object.keys(
     (bundle.agents?.subAgents as { types?: Record<string, unknown> } | undefined)?.types ?? {},
   ).length;
-  const toolCount = Object.keys(bundle.tools?.permissions ?? {}).length;
   return [
     `Prompt profile: ${bundle.prompt.promptProfile}`,
-    `Tool permissions: ${toolCount} entries`,
     `Work agent overrides: ${workCount}`,
     `Sub-agent type overrides: ${subTypes}`,
   ].join('\n');
@@ -84,7 +82,7 @@ export function mountSetupProfilesPanel(
     el(
       'p',
       'settings-field-hint',
-      'Setup profiles bundle prompt settings, agent bindings, and tool permissions into one portable file. (Not the same as terminal shell profiles.)',
+      'Setup profiles bundle prompt settings and agent bindings into one portable file. (Not the same as terminal shell profiles.)',
     ),
   );
 

@@ -16,7 +16,7 @@ The ring beside **Send** shows how much of the model's window this conversation 
 
 The breakdown separates **context used** (the latest request’s prompt and reply, plus pending input) from **session usage** (tokens across all recorded requests, including tool rounds and the chat title). Each tool round sends history again, so session usage can greatly exceed the context size. Cached input may have a different price; token totals are not a bill.
 
-Everything competes for that space: the system prompt, your standing rules, retrieved memories, the tool definitions your mode allows, the whole conversation so far, and every tool result. A single large file read can cost more than an hour of conversation.
+Everything competes for that space: the system prompt, your standing rules, retrieved memories, the tool definitions loaded so far, the whole conversation so far, and every tool result. A single large file read can cost more than an hour of conversation.
 
 If the ring shows no cap, the model did not report a context length. Minnow will not invent one.
 
@@ -59,7 +59,7 @@ When memory is on, Minnow retrieves relevant pages on the first user turn of a c
 
 Three ways:
 
-- **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which defaults to Full permission.
+- **Ask.** "Remember that we deploy on Fridays" — the model calls `save_memory`, which follows the global permission mode.
 - **Write a page yourself** in Brain → Edit.
 - **Let synthesis extract one.** By default, facts below 0.6 confidence are skipped, facts from 0.6 up to 0.85 queue in Brain → Proposals, and facts at or above 0.85 are saved directly. See [Brain](../apps/brain.md) for confidence settings and how to require review for all eligible facts.
 
@@ -95,5 +95,5 @@ Once a conversation has been compacted, the model gets the `recall_history` tool
 
 - [Brain app](../apps/brain.md)
 - [Working in chat](../chat/chatting.md)
-- [Modes](modes.md)
+- [Tools and permissions](tools-and-permissions.md)
 - [Agents, sub-agents, and packs](../orchestrate/agents.md)

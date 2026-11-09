@@ -25,6 +25,7 @@ import { isLocalServerAvailable } from '../tools/config';
 import { createSettingsSelectRow } from './settings-controls';
 import { createSettingsSwitch, createSettingsToggleRow } from './settings-switch';
 import { setStatus } from './status';
+import { mountPromptPreview } from './settings-prompt-preview';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function createSwitch(
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-function mountSkillEditor(
+export function mountSkillEditor(
   body: HTMLElement,
   skill: SkillListItem,
   onSaved: () => void,
@@ -72,6 +73,7 @@ function mountSkillEditor(
   ta.placeholder = 'SKILL.md content (YAML front matter + markdown body)';
   ta.disabled = true;
   body.appendChild(ta);
+  const preview = mountPromptPreview(body, ta, { stripFrontMatter: true });
 
   const actions = el('div', 'settings-actions');
   const saveBtn = el('button', 'settings-action-btn', 'Save SKILL.md');
@@ -85,6 +87,7 @@ function mountSkillEditor(
     if (!detail?.body) {
       ta.value = '';
       ta.placeholder = 'Could not load skill (Minnow must be running for custom skills).';
+      preview.refresh();
       return;
     }
     ta.value =
@@ -92,6 +95,7 @@ function mountSkillEditor(
       `---\nname: ${detail.id}\nlabel: ${detail.label}\ndescription: ${detail.description}\n---\n\n${detail.body}`;
     ta.disabled = !isLocalServerAvailable();
     saveBtn.disabled = !isLocalServerAvailable();
+    preview.refresh();
 
     saveBtn.addEventListener('click', () => {
       void (async () => {

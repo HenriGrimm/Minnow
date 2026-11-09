@@ -1,11 +1,26 @@
 # Skills and slash commands
 
-Type **/** at the start of an empty composer and a picker opens. It holds two different kinds of thing:
+Type **/** at the start of an empty composer and the menu opens. Keep typing to filter it; the best match on a command's name comes first.
 
+- **Recent** — the last few things you picked, when you have not typed anything yet.
+- **Commands** — the workflow skills `/ask`, `/plan` and `/debug`, then app commands: **Review**, **Model**, **Permissions**, **Reasoning**, **MCP**, plus `/goal`, `/loop`, `/followup` and `/compact`, which change how the *chat* behaves rather than what the model is told.
 - **Skills** — packaged instructions that shape how the model does one job.
-- **Commands** — `/goal`, `/loop`, `/followup` and `/compact`, which change how the *chat* behaves rather than what the model is told.
 
-Navigate with **↑ ↓**, choose with **Enter** or **Tab**, dismiss with **Escape**. Add your own text after the skill name before sending.
+Commands that have a current value show it on the right — the model name, or **Auto** beside Permissions — so the menu doubles as a status panel. Commands marked **›** open a submenu in place: **Review** picks what to review (uncommitted changes, this branch, or the last commit), **Permissions** switches between Manual, Auto and Full access, and **Reasoning** picks the reasoning level the model supports.
+
+Navigate with **↑ ↓**, choose with **Enter** or **Tab**, open a submenu with **→**, go back with **←** or **Escape**. Add your own text after a skill name before sending.
+
+## Workflow skills: `/ask`, `/plan`, `/debug`
+
+Minnow has one agent. These three skills shape a single turn instead of switching the chat into a mode:
+
+| Command | What the turn does |
+|---------|--------------------|
+| `/ask` | Answers, explains, compares or brainstorms without changing anything. The turn is **read-only** — files, git and settings stay untouched, whatever your permission level. |
+| `/plan` | Writes or revises an implementation plan under `documentation/plans/`. The turn can read, research and run checks, but can **only write plan files**. |
+| `/debug` | Reproduces a bug, finds the root cause, fixes and verifies it, and files or updates it in Issues. Uses your normal permission level. |
+
+The `/ask` and `/plan` limits are enforced when each tool runs, not just requested in the prompt. Edit any of the three in **Settings → Agents → Workflow skills**.
 
 ## Skills
 
@@ -130,6 +145,6 @@ The agent-chosen tasks use the model bound in **Models → Routing → Utility t
 ## Related
 
 - [Working in chat](chatting.md)
-- [Modes](../concepts/modes.md)
+- [Tools and permissions](../concepts/tools-and-permissions.md)
 - [Scheduler app](../apps/scheduler.md)
 - [Settings app](../apps/settings.md)

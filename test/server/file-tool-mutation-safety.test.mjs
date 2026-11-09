@@ -16,6 +16,21 @@ after(async () => { await rmTestHome(home); });
 
 const call = (name, args) => executeServerTool(name, args, { workspaceRoot: workspace, filesystemAccessCeiling: 'workspace' });
 
+test('plan writes cannot follow a directory link out of the plans directory', async () => {
+  const plans = path.join(workspace, 'documentation', 'plans');
+  const source = path.join(workspace, 'source');
+  await fs.mkdir(plans, { recursive: true });
+  await fs.mkdir(source);
+  await fs.symlink(source, path.join(plans, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+  const savePlan = file => executeServerTool('save_file', { path: file, content: 'plan' }, {
+    workspaceRoot: workspace, turnClamp: 'plans', filesystemAccessCeiling: 'workspace',
+  });
+  assert.match((await savePlan('documentation/plans/alias/task.md')).result, /only write markdown plans/);
+  await assert.rejects(fs.stat(path.join(source, 'task.md')), { code: 'ENOENT' });
+  assert.doesNotMatch((await savePlan('documentation/plans/task.md')).result, /^Error:/);
+  assert.equal(await fs.readFile(path.join(plans, 'task.md'), 'utf8'), 'plan');
+});
+
 test('exclusive file creation keeps the winning bytes across a collision', async () => {
   const name = 'new-file.txt';
   const create = content => call('save_file', { path: name, content, create_only: true });
@@ -104,7 +119,7 @@ test('patch and replacement serialize the entire read-modify-write cycle', async
   await first.promise;
   const patch = '*** Begin Patch\n*** Update File: parallel.txt\n@@\n-two\n+second\n*** End Patch';
   const changed = await Promise.all([saving, call('apply_patch', { patch })]);
-  assert.ok(changed.every(row => !row.result.startsWith('Error:')));
+  assert.ok(changed.every(row => !row.result.startsWith('Error:')), JSON.stringify(changed));
   assert.equal(await originalRead(target, 'utf8'), 'first\r\nsecond\r\n');
   const overlap = await Promise.all([replace('first', 'A'), replace('first', 'B')]);
   assert.equal(overlap.filter(row => row.result.startsWith('Replaced 1 occurrence')).length, 1);

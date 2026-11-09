@@ -95,14 +95,25 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function chipLabel(skillId: string): string {
+  return skillId.replace(/(^|-)([a-z])/g, (_, separator: string, letter: string) =>
+    `${separator ? ' ' : ''}${letter.toUpperCase()}`,
+  );
+}
+
 /** Overlay HTML for a composer highlight layer (text is escaped). */
-export function highlightedSkillTextHtml(text: string, extraIds?: Iterable<string>): string {
+export function highlightedSkillTextHtml(text: string, extraIds?: Iterable<string>, editingOffset?: number): string {
+  let offset = 0;
   return splitSlashSkillTokens(text, extraIds)
-    .map((part) =>
-      part.kind === 'chip'
-        ? `<span class="skill-chip">${escapeHtml(part.value)}</span>`
-        : escapeHtml(part.value),
-    )
+    .map((part) => {
+      const start = offset;
+      offset += part.value.length;
+      if (part.kind !== 'chip') return escapeHtml(part.value);
+      // Keep the source glyphs' width for textarea wrapping and caret placement.
+      // Reveal the source while editing inside a token; the badge is display-only.
+      const editing = editingOffset !== undefined && editingOffset > start && editingOffset < offset;
+      return `<span class="skill-chip" data-label="${escapeHtml(chipLabel(part.skillId))}"${editing ? ' data-editing="true"' : ''}>${escapeHtml(part.value)}</span>`;
+    })
     .join('');
 }
 
@@ -119,6 +130,7 @@ export function appendHighlightedSkillText(
     }
     const chip = document.createElement('span');
     chip.className = 'skill-chip';
+    chip.dataset.label = chipLabel(part.skillId);
     chip.textContent = part.value;
     parent.appendChild(chip);
   }

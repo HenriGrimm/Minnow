@@ -288,6 +288,10 @@ export interface MinnowPreviewApi {
 
 export interface MinnowAppApi {
   platform: NodeJS.Platform;
+  /** OS version string, e.g. "26.1.0" on macOS. Absent on a preload from an older build. */
+  osVersion?: string;
+  /** Live page zoom factor. Absent on a preload from an older build. */
+  getZoomFactor?(): number;
   isElectron: true;
   openExternal(url: string): Promise<void>;
   /** Optional: absent on a preload from an older build until the shell restarts. */

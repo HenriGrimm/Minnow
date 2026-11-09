@@ -1,24 +1,39 @@
 /**
- * Headless CLI tool approval — explicit deny on "ask" unless --no-approval + env opt-in.
+ * Headless CLI / Scheduler tool approval. Same level and classifier as the
+ * desktop gate; there is no one to ask, so an "ask" verdict is a denial the
+ * agent can read. Legacy automation flags never override the global mode.
  */
 
-import { loadToolConfig } from '../tools/config';
+import { getToolSecurityMetaCached } from '../config/tool-security-meta';
+import {
+  classifyToolCall,
+  decidePermission,
+  minPermissionLevel,
+  type PermissionLevel,
+} from '../lib/permissions.mjs';
 import type { ToolApprovalContext } from '../tools/permission-gate';
-import { resolveEffectivePermission } from '../tools/permission-resolve';
 import type { ToolExecutionResult } from '../types';
-import type { ToolPermissionMode } from '../tools/tool-settings-types';
-
-/** Env var required with --no-approval (documented in CLI --help). */
-export const UNSAFE_AUTOMATION_ENV = 'MINNOW_I_UNDERSTAND_UNSAFE_AUTOMATION';
 
 export interface HeadlessApprovalOptions {
-  /** When true, tools with permission "ask" may run if env is set. */
+  /** @deprecated Accepted for CLI compatibility; never raises the global mode. */
   noApproval: boolean;
+  /** Optional captured caller ceiling; cannot raise the saved global level. */
+  permissionLevel?: PermissionLevel;
+}
+
+/** Captured callers may narrow the current global level, never widen it. */
+export function resolveHeadlessPermissionLevel(options: HeadlessApprovalOptions): PermissionLevel {
+  return minPermissionLevel(options.permissionLevel ?? 'full', getToolSecurityMetaCached().permissionLevel);
+}
+
+const approvedExternalCalls = new WeakSet<object>();
+
+export function isHeadlessExternalCallApproved(args: object): boolean {
+  return approvedExternalCalls.has(args);
 }
 
 /**
  * Returns a tool result to short-circuit execution, or null to proceed.
- * Unlike browser permission-gate, never auto-allows "ask" when document is missing.
  */
 export function maybeBlockHeadlessToolApproval(
   permissionToolId: string,
@@ -27,44 +42,19 @@ export function maybeBlockHeadlessToolApproval(
   options: HeadlessApprovalOptions,
   displayToolName?: string,
 ): ToolExecutionResult | null {
-  const config = loadToolConfig();
-  const resolved = resolveEffectivePermission(config, permissionToolId, args, {
-    subAgentType: context.subAgentType,
-    workAgentId: context.workAgentId,
-    modeId: context.modeId,
-  });
-  const perm: ToolPermissionMode = resolved.mode;
   const execName = displayToolName ?? permissionToolId;
-
-  if (perm === 'off') {
-    return {
-      content: `Error: tool "${execName}" is disabled in Settings (set permission to Ask or Full to use it).`,
-    };
-  }
-
-  if (perm !== 'ask') {
+  const level = resolveHeadlessPermissionLevel(options);
+  const roots = [context.workspaceRoot, ...(context.extraPathRoots ?? [])].filter((r): r is string => Boolean(r?.trim()));
+  const action = classifyToolCall(execName, args, { workspaceRoots: roots });
+  const verdict = decidePermission(level, action, { clamp: context.turnClamp ?? null });
+  if (verdict.decision === 'allow') {
+    if (action.external) approvedExternalCalls.add(args);
     return null;
   }
-
-  if (!options.noApproval) {
-    return {
-      content:
-        `Error: tool "${execName}" requires user approval in non-interactive mode. ` +
-        'Pass --no-approval only with explicit risk acceptance, or set the tool to Full in Settings.',
-    };
-  }
-
-  if (process.env[UNSAFE_AUTOMATION_ENV] !== '1') {
-    return {
-      content:
-        `Error: --no-approval requires ${UNSAFE_AUTOMATION_ENV}=1 in the environment.`,
-    };
-  }
-
-  return null;
-}
-
-/** Whether this permission mode would block in default headless (no --no-approval). */
-export function headlessWouldBlockPermission(perm: ToolPermissionMode): boolean {
-  return perm === 'ask' || perm === 'off';
+  if (verdict.decision === 'deny') return { content: `Error: ${verdict.reason}` };
+  return {
+    content:
+      `Error: "${action.title}" needs approval, and this non-interactive run cannot ask. ` +
+      'Change the global permission mode in Settings → Permissions before running unattended work.',
+  };
 }

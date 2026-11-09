@@ -5,7 +5,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ALL_TOOL_IDS } from '../config/tool-ids.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.join(__dirname, 'registry-manifest.json');
@@ -19,7 +18,7 @@ let cachedManifest = null;
 export function loadRegistryManifest() {
   if (cachedManifest) return cachedManifest;
   const raw = fs.readFileSync(manifestPath, 'utf8');
-  cachedManifest = JSON.parse(raw);
+  cachedManifest = JSON.parse(raw).filter(field => !field.key.startsWith('integrations.tools.permission.') && field.key !== 'integrations.tools.bulk');
   return cachedManifest;
 }
 
@@ -70,31 +69,4 @@ function toCatalogEntry(field) {
     sensitivity: field.sensitivity,
     writable: field.writable,
   };
-}
-
-/** Ensure dynamic tool permission keys exist even if manifest is stale. */
-export function ensureToolPermissionFields() {
-  const manifest = loadRegistryManifest();
-  const keys = new Set(manifest.map((f) => f.key));
-  for (const toolId of ALL_TOOL_IDS) {
-    const key = `integrations.tools.permission.${toolId}`;
-    if (!keys.has(key)) {
-      manifest.push({
-        key,
-        label: `Tool permission: ${toolId}`,
-        description: `Permission mode for the ${toolId} tool.`,
-        keywords: [toolId, 'permission'],
-        category: 'integrations',
-        area: 'tools',
-        storage: 'resource',
-        resource: 'tools',
-        path: `permissions.default.${toolId}`,
-        type: 'enum',
-        allowedValues: ['off', 'ask', 'full'],
-        sensitivity: 'normal',
-        writable: true,
-        refreshAreas: ['tools'],
-      });
-    }
-  }
 }

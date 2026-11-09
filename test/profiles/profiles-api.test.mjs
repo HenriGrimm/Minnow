@@ -101,7 +101,7 @@ describe('profiles API', () => {
     const get = await httpRequest(baseUrl, 'GET', '/api/profiles/backend-strict');
     assert.equal(get.status, 200);
     assert.equal(get.json.id, 'backend-strict');
-    assert.equal(get.json.tools.permissions.save_file, 'ask');
+    assert.equal('permissions' in get.json.tools, false);
   });
 
   test('import rejects invalid id', async () => {

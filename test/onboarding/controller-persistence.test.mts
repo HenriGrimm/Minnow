@@ -103,7 +103,7 @@ test('keyboard controls retain native Enter behavior and search appears before e
     assert.equal(selectEvent.defaultPrevented, false);
     select.remove();
     const skip = root.querySelector<HTMLButtonElement>('.mn-onboarding-skip-btn')!;
-    for (const title of ['How will you run models?', 'Connect web search', 'Install extras', 'Tool permissions', 'Memory and Brain']) {
+    for (const title of ['How will you run models?', 'Connect web search', 'Install extras', 'Permissions', 'Memory and Brain']) {
       skip.click();
       await waitUntil(() => root.querySelector('h2')?.textContent === title);
     }

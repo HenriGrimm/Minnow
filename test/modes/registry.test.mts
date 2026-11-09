@@ -10,6 +10,7 @@ import {
   listModes,
 } from '../../src/chat/modes/registry.ts';
 import { normalizeModeId } from '../../src/chat/modes/types.ts';
+import { normalizePersistedModeId } from '../../src/state/session-schema.mjs';
 import { isToolAllowedForMode } from '../../src/chat/modes/tool-policy.ts';
 
 describe('mode registry super-plan', () => {
@@ -19,8 +20,9 @@ describe('mode registry super-plan', () => {
     assert.ok(!ids.includes('super-plan'));
   });
 
-  test('normalizeModeId collapses super-plan to plan', () => {
-    assert.equal(normalizeModeId('super-plan'), 'plan');
+  test('persisted super-plan stays a compatible Plan record', () => {
+    assert.equal(normalizePersistedModeId('super-plan'), 'plan');
+    assert.equal(normalizeModeId('super-plan'), 'build');
   });
 
   test('getMode returns Super Plan definition', () => {
@@ -33,13 +35,13 @@ describe('mode registry super-plan', () => {
   test('listComposerModes excludes super-plan from top-level strip', () => {
     const composer = listComposerModes().map((m) => m.id);
     assert.ok(!composer.includes('super-plan'));
-    assert.ok(composer.includes('plan'));
+    assert.deepEqual(composer, []);
   });
 });
 
 describe('super-plan tool policy', () => {
-  test('denies execute_command', () => {
-    assert.equal(isToolAllowedForMode('super-plan', 'execute_command'), false);
+  test('the retired mode does not gate tool availability', () => {
+    assert.equal(isToolAllowedForMode('super-plan', 'execute_command'), true);
   });
 
   test('allows spawn_sub_agent and get_sub_agent_status', () => {
@@ -58,8 +60,8 @@ describe('super-plan tool policy', () => {
 });
 
 describe('persisted email mode remap', () => {
-  test("normalizeModeId('email') === 'general'", () => {
-    assert.equal(normalizeModeId('email'), 'general');
+  test("normalizePersistedModeId('email') === 'general'", () => {
+    assert.equal(normalizePersistedModeId('email'), 'general');
   });
 
   test('getMode remaps email to the general definition', () => {
@@ -75,8 +77,8 @@ describe('persisted email mode remap', () => {
 });
 
 describe('persisted desktop mode remap', () => {
-  test("normalizeModeId('desktop') === 'general'", () => {
-    assert.equal(normalizeModeId('desktop'), 'general');
+  test("normalizePersistedModeId('desktop') === 'general'", () => {
+    assert.equal(normalizePersistedModeId('desktop'), 'general');
   });
 
   test('getMode remaps desktop to the general definition', () => {

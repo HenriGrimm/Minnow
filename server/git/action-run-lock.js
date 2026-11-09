@@ -8,7 +8,7 @@ const queues = new Map();
 const key = (cwd) => {
   let root = path.resolve(cwd);
   try {
-    root = realpathSync(root);
+    root = realpathSync.native(root);
   } catch {
     /* Removed worktrees still need to release their lock. */
   }

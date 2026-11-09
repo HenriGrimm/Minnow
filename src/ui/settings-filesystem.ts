@@ -1,137 +1,77 @@
+/**
+ * Settings → Permissions: the one system-wide level (Manual / Auto / Full
+ * access). Same level the composer pill and Shift+Tab change.
+ *
+ * (File keeps its historical name; it replaced the old "Filesystem access"
+ * Workspace/Full-disk switch, which is now implied by the level.)
+ */
+
 import { detectConfigServer } from '../config/storage-mode';
 import {
   loadToolSecurityMeta,
-  saveToolSecurityMeta,
-  type FilesystemAccessMode,
+  onToolSecurityMetaChange,
 } from '../config/tool-security-meta';
-import { appConfirm } from './app-dialog';
-import { setStatus } from './status';
+import type { PermissionLevel } from '../lib/permissions.mjs';
+import { buildPermissionLevelList, choosePermissionLevel } from './permission-level';
 import { appendSettingsOfflineHint } from './settings-controls';
 
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text != null) node.textContent = text;
-  return node;
-}
+const RULES = [
+  'Reads inside your project never ask.',
+  'Auto approves routine edits and commands, and asks before anything risky, remote, or outside the project.',
+  '“Allow for this chat” remembers a command, folder, site, MCP server or plugin until the chat ends.',
+  'Full access never asks. Agents still cannot touch Minnow’s encryption key or stored secrets.',
+  '/ask and /plan narrow a single turn (read-only, or plan files only) whatever the level.',
+];
 
-function dangerBanner(message: string): HTMLElement {
-  const p = el('p', 'settings-filesystem-warning');
-  p.setAttribute('role', 'note');
-  p.textContent = message;
-  return p;
-}
-
-function createSegmentButton(
-  label: string,
-  mode: FilesystemAccessMode,
-  group: HTMLElement,
-  onSelect: (mode: FilesystemAccessMode) => void,
-): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'settings-segment settings-filesystem-segment';
-  btn.dataset.fsAccess = mode;
-  btn.textContent = label;
-  btn.setAttribute('aria-pressed', 'false');
-  btn.addEventListener('click', () => onSelect(mode));
-  group.appendChild(btn);
-  return btn;
-}
-
-function setActiveSegment(group: HTMLElement, mode: FilesystemAccessMode): void {
-  for (const btn of group.querySelectorAll<HTMLButtonElement>('.settings-filesystem-segment')) {
-    const active = btn.dataset.fsAccess === mode;
-    btn.classList.toggle('is-active', active);
-    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-  }
-}
-
-/** Render filesystem access controls into the General settings mount. */
-export async function renderFilesystemAccessSettings(mount: HTMLElement): Promise<void> {
+/** Render the permission level controls into the Settings mount. */
+export async function renderPermissionSettings(mount: HTMLElement): Promise<void> {
   const serverUp = await detectConfigServer();
   if (serverUp !== 'server') {
     appendSettingsOfflineHint(
       mount,
-      'Filesystem access settings are saved on this device. Open Minnow, then reopen Settings.',
+      'Permission settings are saved by the Minnow server. Open Minnow, then reopen Settings.',
     );
     return;
   }
 
-  const meta = await loadToolSecurityMeta();
-  let selectedMode: FilesystemAccessMode =
-    meta.filesystemAccess === 'full' ? 'full' : 'workspace';
+  const section = document.createElement('section');
+  section.className = 'settings-permissions';
+  section.dataset.settingsSearchKey = 'general.permissions';
 
-  const section = el('section', 'settings-filesystem');
-  section.dataset.settingsSearchKey = 'general.filesystem';
+  let current: PermissionLevel = (await loadToolSecurityMeta()).permissionLevel;
 
-  const segmentGroup = el('div', 'settings-segments settings-filesystem-segments');
-  segmentGroup.setAttribute('role', 'group');
-  segmentGroup.setAttribute('aria-label', 'Filesystem access');
+  const render = (): void => {
+    const list = buildPermissionLevelList(current, (level) => {
+      void choosePermissionLevel(level);
+    });
+    list.setAttribute('role', 'radiogroup');
+    list.setAttribute('aria-label', 'Permission level');
+    for (const item of list.querySelectorAll('[role="menuitemradio"]')) item.setAttribute('role', 'radio');
+    section.querySelector('.permission-menu__list')?.remove();
+    section.prepend(list);
+  };
 
-  const workspaceBtn = createSegmentButton('Workspace only', 'workspace', segmentGroup, (mode) => {
-    void applyMode(mode);
-  });
-  workspaceBtn.id = 'fsAccessWorkspaceSettings';
-
-  const fullBtn = createSegmentButton('Full disk', 'full', segmentGroup, (mode) => {
-    void applyMode(mode);
-  });
-  fullBtn.id = 'fsAccessFullSettings';
-
-  setActiveSegment(segmentGroup, selectedMode);
-  section.appendChild(segmentGroup);
-
-  const workspaceHint = el(
-    'p',
-    'settings-field-hint settings-filesystem-hint',
-    'File, git, and related tools stay inside your open project folder. Paths outside the workspace are blocked.',
-  );
-  workspaceHint.hidden = selectedMode !== 'workspace';
-  section.appendChild(workspaceHint);
-
-  const warning = dangerBanner(
-    'Full disk lets models read and write anywhere on this computer. A mistaken or untrusted model could touch sensitive files outside your project. Use only when you need paths outside the workspace and accept that risk.',
-  );
-  warning.hidden = selectedMode !== 'full';
-  section.appendChild(warning);
-
+  const rules = document.createElement('ul');
+  rules.className = 'settings-permissions__rules';
+  for (const text of RULES) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    rules.appendChild(li);
+  }
+  section.appendChild(rules);
+  render();
   mount.appendChild(section);
 
-  function refreshHints(mode: FilesystemAccessMode): void {
-    workspaceHint.hidden = mode !== 'workspace';
-    warning.hidden = mode !== 'full';
-  }
-
-  async function applyMode(mode: FilesystemAccessMode): Promise<void> {
-    if (mode === selectedMode) return;
-
-    if (mode === 'full') {
-      const ok = await appConfirm(
-        'Enable full filesystem access?\n\nFile and git tools will resolve paths outside your current workspace. A malicious or mistaken model could read or modify sensitive files anywhere on this computer.\n\nOnly continue if you understand and accept this risk.',
-      );
-      if (!ok) return;
+  const off = onToolSecurityMetaChange((meta) => {
+    if (!section.isConnected) {
+      off();
+      return;
     }
-
-    const prev = selectedMode;
-    selectedMode = mode;
-    setActiveSegment(segmentGroup, mode);
-    refreshHints(mode);
-
-    try {
-      await saveToolSecurityMeta({ filesystemAccess: mode });
-    } catch {
-      selectedMode = prev;
-      setActiveSegment(segmentGroup, prev);
-      refreshHints(prev);
-      setStatus('err', 'Could not save filesystem access');
-    }
-  }
-
-  void workspaceBtn;
-  void fullBtn;
+    if (meta.permissionLevel === current) return;
+    current = meta.permissionLevel;
+    render();
+  });
 }
+
+/** @deprecated Kept for older imports; renders the Permissions section. */
+export const renderFilesystemAccessSettings = renderPermissionSettings;

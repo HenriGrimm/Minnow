@@ -15,12 +15,8 @@ test('action tools are registered, permissioned and guarded on both sides', () =
   for (const id of [...ACTION_READ_TOOLS, ...ACTION_WRITE_TOOLS]) {
     assert(ALL_TOOL_IDS.includes(id));
     assert(BUILT_IN_TOOLS.some((t) => t.id === id));
-    assert.equal(config.enabled[id], true);
-    assert.equal(
-      config.permissions.default[id],
-      ACTION_READ_TOOLS.includes(id as any) ? 'full' : 'ask',
-    );
-    assert.equal(clientConfig.permissions.default[id], config.permissions.default[id]);
+    assert.equal('permissions' in config, false);
+    assert.equal('permissions' in clientConfig, false);
   }
   for (const id of ACTION_READ_TOOLS) assert(TOOL_GROUP_IDS['git-read'].includes(id));
   for (const id of ACTION_WRITE_TOOLS) {

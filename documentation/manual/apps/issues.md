@@ -103,7 +103,7 @@ Keep the taxonomy small. Humans and agents share this vocabulary, and every extr
 
 ## Related
 
-- [Modes](../concepts/modes.md)
+- [Tools and permissions](../concepts/tools-and-permissions.md)
 - [Code app](code.md)
 - [Orchestrate boards](../orchestrate/boards.md)
 

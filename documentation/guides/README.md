@@ -6,7 +6,7 @@ Stable paths for the **GitHub Wiki** and repository links. End users should open
 |-------|----------------------|--------------------------------|
 | Orientation | [manual/concepts/how-minnow-works.md](../manual/concepts/how-minnow-works.md) | [contributor/architecture.md](../contributor/architecture.md) |
 | Apps | [manual/apps/](../manual/apps/overview.md) | [contributor/apps-and-routes.md](../contributor/apps-and-routes.md) |
-| Modes and tools | [manual/concepts/modes.md](../manual/concepts/modes.md), [manual/concepts/tools-and-permissions.md](../manual/concepts/tools-and-permissions.md) | [context.md](../context.md) |
+| Modes and tools | [manual/concepts/tools-and-permissions.md](../manual/concepts/tools-and-permissions.md) | [context.md](../context.md) |
 | Orchestrate | [manual/orchestrate/boards.md](../manual/orchestrate/boards.md) | [contributor/orchestrate-board-testing.md](../contributor/orchestrate-board-testing.md) |
 | Configuration | [manual/reference/configuration.md](../manual/reference/configuration.md) | [maintainer/settings-reference.md](../maintainer/settings-reference.md) |
 | Security | [manual/reference/privacy-and-security.md](../manual/reference/privacy-and-security.md) | [context.md](../context.md) |

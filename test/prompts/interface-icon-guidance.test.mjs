@@ -19,7 +19,6 @@ async function loadPromptMap() {
   const promptsRoot = path.join(REPO_ROOT, 'src', 'chat', 'prompts');
   const files = [
     'base/default.full.md',
-    'base/default.lite.md',
     'info/interface-icons.full.md',
     'info/interface-icons.lite.md',
   ];

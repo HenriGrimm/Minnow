@@ -10,16 +10,14 @@ import { Window } from 'happy-dom';
 describe('turn-changes plan actions', () => {
   const plan = 'documentation/plans/issues/MIN-344.md';
 
-  test('plan modes offer actions for a written plan file', () => {
-    assert.equal(findTurnPlanPath({ modeId: 'plan' }, ['src/a.ts', plan]), plan);
-    assert.equal(findTurnPlanPath({ modeId: 'super-plan' }, [plan]), plan);
+  test('saved plans offer actions without a chat mode or pinned skill', () => {
+    assert.equal(findTurnPlanPath(['src/a.ts', plan]), plan);
   });
 
-  test('other modes and non-plan files get no actions', () => {
-    assert.equal(findTurnPlanPath({ modeId: 'build' }, [plan]), undefined);
-    assert.equal(findTurnPlanPath({ modeId: 'plan' }, ['README.md']), undefined);
+  test('ordinary files and plan references get no plan actions', () => {
+    assert.equal(findTurnPlanPath(['README.md']), undefined);
     assert.equal(
-      findTurnPlanPath({ modeId: 'plan' }, ['documentation/plans/references/x.md']),
+      findTurnPlanPath(['documentation/plans/references/x.md']),
       undefined,
     );
   });
@@ -33,7 +31,7 @@ describe('turn-changes plan actions', () => {
     let markdown = '---\nplanType: build\n---\n# Build';
     globalThis.fetch = async (url) => { urls.push(String(url)); return new Response(markdown); };
     const chat = {
-      id: 'planner', modeId: 'plan', workspacePath: 'C:/work/plan-project',
+      id: 'planner', modeId: 'build', workspacePath: 'C:/work/plan-project',
       history: [{ role: 'tool', content: 'Saved', codeChange: { path: plan, additions: 12, deletions: 0 } }],
     };
     try {

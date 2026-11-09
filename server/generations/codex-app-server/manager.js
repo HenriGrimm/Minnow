@@ -168,7 +168,10 @@ export async function createCodexSession({ key, state, candidate, runtime, ident
       // Code-mode-only models cannot invoke dynamic tools without this isolated
       // executor. It has no filesystem/network API; calls still reach Minnow.
       'code_mode = ' + !nativePolicy,
+      'skip_host_skill_discovery = true',
       ...(nativePolicy ? ['shell_tool = true', 'unified_exec = true', await nativeConfig(nativePolicy, session.home, runtime)] : []),
+      '[skills.bundled]', 'enabled = false',
+      '[orchestrator.skills]', 'enabled = false',
     ].join('\n'), { mode: 0o600 });
     const bin = await resolveAgentCliBin({ kind: 'codex', binPath: runtime.profile.agentCli.binPath });
     const env = {};

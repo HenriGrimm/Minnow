@@ -136,8 +136,8 @@ for (const layout of ['nested', 'hoisted', 'legacy', 'missing', 'custom']) {
     await fs.writeFile(shim, 'node "%~dp0\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
     const resolved = await resolveWindowsCmdShim(shim);
     const fallback = layout === 'missing' || layout === 'custom';
-    const expected = !fallback && ['nested', 'hoisted'].includes(layout) ? await fs.realpath(executable) : executable;
-    assert.equal(resolved.command, fallback ? process.execPath : expected);
+    if (fallback) assert.equal(resolved.command, process.execPath);
+    else assert.equal(await fs.realpath(resolved.command), await fs.realpath(executable));
     assert.deepEqual(resolved.argsPrefix, fallback ? [script] : []);
     assert.equal(resolved.display, shim);
   });

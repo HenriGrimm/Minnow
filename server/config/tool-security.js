@@ -4,24 +4,30 @@
 
 import { readConfigJson } from './store.js';
 import { normalizeShellSandboxMode, clampShellSandboxModeForPlatform } from '../terminal/sandbox/mode.js';
+import { normalizePermissionLevel } from '../../src/lib/permissions.mjs';
 
 /**
- * @returns {Promise<'workspace'|'full'>}
+ * The one system-wide agent permission level (Manual / Auto / Full access).
+ * @returns {Promise<'manual'|'auto'|'full'>}
  */
-export async function getFilesystemAccessFromConfig() {
+export async function getPermissionLevelFromConfig() {
   try {
     const meta = await readConfigJson('config.json');
-    if (meta && typeof meta === 'object') {
-      const ts = /** @type {Record<string, unknown>} */ (meta).toolSecurity;
-      if (ts && typeof ts === 'object') {
-        const fa = /** @type {Record<string, unknown>} */ (ts).filesystemAccess;
-        if (fa === 'full') return 'full';
-      }
-    }
+    const ts = meta && typeof meta === 'object' ? /** @type {Record<string, unknown>} */ (meta).toolSecurity : null;
+    if (ts && typeof ts === 'object') return normalizePermissionLevel(/** @type {Record<string, unknown>} */ (ts).permissionLevel);
   } catch {
     /* ignore */
   }
-  return 'workspace';
+  return normalizePermissionLevel(undefined);
+}
+
+/**
+ * Filesystem reach follows the permission level: Full access reaches the whole
+ * disk; other levels need a per-call admission to leave the workspace.
+ * @returns {Promise<'workspace'|'full'>}
+ */
+export async function getFilesystemAccessFromConfig() {
+  return (await getPermissionLevelFromConfig()) === 'full' ? 'full' : 'workspace';
 }
 
 /**

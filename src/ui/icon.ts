@@ -173,6 +173,22 @@ export type BrainIconName =
   | 'brainIngest'
   | 'brainLint';
 
+export type PermissionIconName =
+  | 'permManual'
+  | 'permAuto'
+  | 'permFull'
+  | 'localModel'
+  | 'fish'
+  | 'slashAsk'
+  | 'slashPlan'
+  | 'slashDebug'
+  | 'slashReview'
+  | 'slashCompact'
+  | 'slashGoal'
+  | 'slashLoop'
+  | 'slashFollowup'
+  | 'slashMcp';
+
 export type MetricIconName =
   | 'metricTps'
   | 'metricTtft'
@@ -180,7 +196,7 @@ export type MetricIconName =
   | 'metricTotal'
   | 'metricCtx';
 
-/** All 155 semantic icon names. */
+/** All semantic icon names. */
 export type IconName =
   | ShellIconName
   | AppIconName
@@ -191,7 +207,8 @@ export type IconName =
   | BoardIconName
   | StatusIconName
   | BrainIconName
-  | MetricIconName;
+  | MetricIconName
+  | PermissionIconName;
 
 /** Uicons class for each semantic name — transcribed from confirmed mapping. */
 export const ICON_CLASS: Record<IconName, string> = {
@@ -359,6 +376,21 @@ export const ICON_CLASS: Record<IconName, string> = {
   metricGen: 'fi-rr-clock',
   metricTotal: 'fi-rr-layers',
   metricCtx: 'fi-rr-scale',
+
+  permManual: 'fi-rr-hand-paper',
+  permAuto: 'fi-rr-sparkles',
+  permFull: 'fi-rr-unlock',
+  localModel: 'fi-rr-microchip',
+  fish: 'fi-rr-fish',
+  slashAsk: 'fi-rr-interrogation',
+  slashPlan: 'fi-rr-list-check',
+  slashDebug: 'fi-rr-bug',
+  slashReview: 'fi-rr-code-compare',
+  slashCompact: 'fi-rr-compress-alt',
+  slashGoal: 'fi-rr-bullseye',
+  slashLoop: 'fi-rr-refresh',
+  slashFollowup: 'fi-rr-arrow-right',
+  slashMcp: 'fi-rr-plug-connection',
 };
 
 /** Build class list for a Uicons glyph. */

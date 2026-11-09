@@ -21,7 +21,6 @@ before(async () => {
   home = path.join(temp, 'home');
   process.env.MINNOW_HOME = home;
   resetMinnowHomeCache();
-  await writeConfigJson('tools.json', { enabled: {}, permissions: { default: {} }, plugins: {} });
 });
 after(async () => {
   if (previousHome === undefined) delete process.env.MINNOW_HOME; else process.env.MINNOW_HOME = previousHome;
@@ -59,6 +58,7 @@ test('discovery failures are latched and explicit reload retries once', async t 
 });
 
 test('package install, enable, handler reload, connections and removal publish revisions; execution rechecks policy', async () => {
+  await writeConfigJson('tools.json', { enabled: {}, permissions: { default: {} }, plugins: {} });
   await runWithToolContext(async () => {
     await scaffoldPackage({ id: 'catalog', path: 'catalog' });
     let revision = getPluginCatalogRevision();
@@ -75,11 +75,11 @@ test('package install, enable, handler reload, connections and removal publish r
     const full = await readConfigJson('tools.json');
     full.permissions.default[name] = 'full';
     await writeConfigJson('tools.json', full);
-    assert.ok((await getPluginToolDefinitions({ requireFull: true })).some(t => t.function.name === name));
+    assert.ok((await getPluginToolDefinitions()).some(t => t.function.name === name));
     full.permissions.default[name] = 'off';
     await writeConfigJson('tools.json', full);
-    assert.ok(!(await getPluginToolDefinitions()).some(t => t.function.name === name));
-    assert.match(await callPluginTool(name, { name: 'Ada' }), /disabled/i);
+    assert.ok((await getPluginToolDefinitions()).some(t => t.function.name === name));
+    assert.match(await callPluginTool(name, { name: 'Ada' }), /Hello, Ada!/);
     revision = getPluginCatalogRevision();
     await fs.writeFile(path.join(temp, 'catalog/greet.mjs'), 'export default () => "changed";');
     await managePackage({ action: 'reload', id: 'catalog' });

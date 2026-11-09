@@ -73,13 +73,24 @@ export function subscribeNativePolicyChanges({ home, cwd, providerId, onInvalida
     // Detect replacement of the watched home too; watching an old directory
     // handle must not keep its successor's authority alive.
     const parents = new Map();
+    const identity = target => {
+      try {
+        const stat = lstatSync(target, { bigint: true });
+        return `${stat.dev}:${stat.ino}:${stat.mode}`;
+      } catch { return null; }
+    };
     for (const target of [cwd, home]) {
       const parent = path.dirname(target);
-      if (!parents.has(parent)) parents.set(parent, new Set());
-      parents.get(parent).add(normalize(path.basename(target)));
+      if (!parents.has(parent)) parents.set(parent, new Map());
+      const initial = identity(target);
+      if (!initial) throw new Error('A native policy root cannot be identified.');
+      parents.get(parent).set(normalize(path.basename(target)), { target, initial });
     }
     for (const [parent, names] of parents) observe(parent, {}, (event, filename) => {
-      if (filename == null || event === 'rename' && names.has(normalize(filename))) invalidate();
+      if (filename == null) { invalidate(); return; }
+      const entry = names.get(normalize(filename));
+      // macOS reports rename for a watched directory when a child is created.
+      if (event === 'rename' && entry && identity(entry.target) !== entry.initial) invalidate();
     });
     if (invalidated) throw new Error('Native policy monitoring failed during admission.');
   } catch (error) {

@@ -45,3 +45,10 @@ export function isCachedRegisteredWorktreePath(userPath: string): boolean {
   }
   return false;
 }
+
+/** Registered worktree roots still fresh in the cache (treated as part of the project). */
+export function getCachedRegisteredWorktreePaths(): string[] {
+  const local = repoLocalWorktreesPrefix();
+  const fresh = Date.now() > cacheExpiresAt ? [] : cachedPaths;
+  return local ? [local, ...fresh] : [...fresh];
+}

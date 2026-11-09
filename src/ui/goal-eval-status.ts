@@ -7,6 +7,7 @@ import { scrollChatIfPinned } from './chat-scroll';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
 import { openGoalEvalDrawer, initGoalEvalDrawerLiveUpdates } from './goal-eval-drawer';
+import { setActivityShimmerText } from './activity-shimmer';
 
 const GOAL_EVAL_STATUS_CLASS = 'goal-eval-status';
 const statusRowByChatId = new Map<string, HTMLElement>();
@@ -23,24 +24,14 @@ function buildGoalEvalStatusRow(chatId: string): HTMLElement {
   el.dataset.chatId = chatId;
   el.setAttribute('aria-label', 'Evaluating goal completion. Click to view evaluator activity.');
 
-  const dots = document.createElement('span');
-  dots.className = 'stream-status__dots';
-  dots.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 3; i += 1) {
-    const dot = document.createElement('span');
-    dot.className = 'stream-status__dot';
-    dots.appendChild(dot);
-  }
-
   const labelEl = document.createElement('span');
   labelEl.className = 'stream-status__label';
-  labelEl.textContent = 'Evaluating goal completion…';
+  setActivityShimmerText(labelEl, 'Evaluating goal completion…');
 
   const hintEl = document.createElement('span');
   hintEl.className = 'goal-eval-status__hint';
   hintEl.textContent = 'View activity';
 
-  el.appendChild(dots);
   el.appendChild(labelEl);
   el.appendChild(hintEl);
 

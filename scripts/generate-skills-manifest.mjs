@@ -52,6 +52,7 @@ async function main() {
         source: 'builtin',
         version: meta.version?.trim() || undefined,
         disableModelInvocation: meta['disable-model-invocation'] === 'true',
+        ...(meta.access === 'read-only' || meta.access === 'plans' ? { access: meta.access } : {}),
       });
     } catch (err) {
       console.warn(`Skip ${entry.name}:`, err.message);

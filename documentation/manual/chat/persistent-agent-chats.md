@@ -51,7 +51,7 @@ An agent using `chat_send` has three choices: **auto** starts an idle chat or qu
 
 **Needs you** in Activity opens the conversation that owns the request. Each agent has its own question and approval cards, so two waiting children can be answered independently without changing either chat's draft.
 
-Use **Send answer** or **Skip question** on a question. For an approval, inspect **Review tool arguments** and the shown workspace, then choose **Allow once** or **Deny**. Allow once applies to that one tool call; it does not change the agent's saved tool permissions.
+Use **Send answer** or **Skip question** on a question. For an approval, inspect **Review tool arguments** and the shown workspace, then choose **Allow once** or **Deny**. Allow once applies to that one tool call; it does not change the global permission mode.
 
 Opening Activity or marking an item seen does not answer it. Requests remain attached to their original chat after navigation and reload. A safely recoverable question can resume the same turn after a restart. Approvals whose execution callback has gone expire; an old approval cannot authorize a new action. Expired or otherwise unrecoverable requests retain their saved context, but cannot accept a late answer.
 

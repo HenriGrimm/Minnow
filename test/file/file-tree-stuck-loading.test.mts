@@ -89,7 +89,7 @@ describe('file tree stuck-loading recovery', { concurrency: false }, () => {
     assert.equal(document.querySelector('.file-tree-readiness-actions'), null);
   });
 
-  test('disabled browsing links to its permission and retries after it is enabled', async () => {
+  test('browsing authorization links to the global mode and allows a retry', async () => {
     setupDom();
     let enabled = false;
     let navigated: unknown[] = [];
@@ -97,7 +97,7 @@ describe('file tree stuck-loading recovery', { concurrency: false }, () => {
       namedExports: {
         executeTool: async () => ({ content: enabled
           ? '[file] README.md'
-          : 'Error: tool "list_directory" is disabled in Settings (set permission to Ask or Full to use it).',
+          : 'Error: File browsing needs approval.',
         }),
       },
     });
@@ -111,7 +111,7 @@ describe('file tree stuck-loading recovery', { concurrency: false }, () => {
     assert.equal(buttons.length, 2);
     buttons[0]!.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.deepEqual(navigated, ['tools.item.list_directory', 'tools']);
+    assert.deepEqual(navigated, ['general.permissions', 'access']);
     enabled = true;
     buttons[1]!.click();
     await new Promise((resolve) => setTimeout(resolve, 50));

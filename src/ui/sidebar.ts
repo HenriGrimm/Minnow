@@ -76,7 +76,7 @@ import {
 } from './experts/experts-scope';
 import { getWorkspacePath } from '../state/workspace';
 import { getChatLastMessageAt } from '../state/session-workspace-scope';
-import { normalizeModeId, type ModeId } from '../chat/modes/types';
+import { normalizeModeId, workflowSkillForMode, type ModeId } from '../chat/modes/types';
 import { normalizeOrchestratePlanPath } from '../chat/plans/plan-path';
 import type { BoardCategory, Chat, ChatGroup, LeftoverBoardTask } from '../types';
 import {
@@ -2427,6 +2427,7 @@ export async function createChatWithMode(
   setSidebarChatView('working');
 
   const requestedMode = normalizeModeId(options.modeId);
+  const workflowSkill = workflowSkillForMode(options.modeId);
   // An explicit workspace must never reuse (or retarget) the active chat.
   const sameWorkspace =
     !requestedWorkspace &&
@@ -2449,6 +2450,8 @@ export async function createChatWithMode(
       if (requestedMode !== activeMode) {
         applyModeIdToChat(active, requestedMode);
       }
+      if (workflowSkill) active.pinnedSkill = { id: workflowSkill };
+      else if (workflowSkillForMode(active.pinnedSkill?.id)) delete active.pinnedSkill;
       applyDefaultModelToChat(active);
       seedNewChatComposerRunTarget(active);
       touchChat(active);
@@ -2481,6 +2484,7 @@ export async function createChatWithMode(
     chat.providerId = options.providerId?.trim() || undefined;
   }
   chat.modeId = modeId;
+  if (workflowSkill) chat.pinnedSkill = { id: workflowSkill };
   if (chat.workAgentAuto !== false) {
     const agent = getDefaultWorkAgentForMode(modeId);
     chat.workAgentId = agent?.id ?? null;

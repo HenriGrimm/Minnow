@@ -711,6 +711,9 @@ test('the actual streaming shell reports thinking, runtime progress, and tools a
   assert.ok(!row.wrap.classList.contains('chat-work-hidden'));
   assert.ok(mount.querySelector('.tool-start-indicator'), 'the call in flight is visible as a step');
   assert.equal(mount.querySelector('.tool-start-indicator').parentElement, row.wrap);
+  for (let i = 0; i < 25 && !row.wrap.classList.contains('chat-step'); i++) {
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
   assert.ok(row.wrap.classList.contains('chat-step'), 'the calling indicator owns a visible timeline step');
   toolStart.dispose();
   await new Promise((resolve) => setTimeout(resolve, 40));

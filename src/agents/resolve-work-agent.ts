@@ -1,9 +1,5 @@
-import { normalizeModeId } from '../chat/modes/types';
 import type { Chat } from '../types';
-import {
-  getDefaultWorkAgentForMode,
-  getWorkAgent,
-} from './work-agent-registry';
+import { getWorkAgent } from './work-agent-registry';
 import type { WorkAgentDefinition } from './work-agent-types';
 
 export function isPassthroughWorkAgentId(agentId: string | null | undefined): boolean {
@@ -23,12 +19,8 @@ export function resolveActiveWorkAgent(chat: Chat): WorkAgentDefinition | null {
     if (pinned && !pinned.disabled) return pinned;
   }
 
-  if (auto) {
-    const modeId = normalizeModeId(chat.modeId);
-    const fromMode = getDefaultWorkAgentForMode(modeId);
-    if (fromMode) return fromMode;
-  }
-
+  // One agent: chats no longer pick a work agent from their mode. Only an
+  // explicitly pinned agent (board lanes, the UI designer) adds a role part.
   return null;
 }
 

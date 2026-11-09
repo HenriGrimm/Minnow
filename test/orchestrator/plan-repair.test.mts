@@ -87,7 +87,7 @@ describe('planRepairBackgroundKey', () => {
 });
 
 describe('startPlanRepair', () => {
-  test('sends the task as a turn in a regular Plan chat without changing activeId', async () => {
+  test('sends the task as a turn in a regular chat using /plan without changing activeId', async () => {
     setWorkspaceFromServer({ path: WORKSPACE, label: 'workspace', isDefault: false });
     const existing = seedSession();
     const activeBefore = sessionState?.activeId;
@@ -120,7 +120,8 @@ describe('startPlanRepair', () => {
     const repairChat = sessionState?.chats.find((c) => c.backgroundKey?.startsWith('plan-repair:'));
     assert.ok(repairChat, 'expected a repair chat');
     assert.equal(repairChat.id, sends[0]!.chat.id);
-    assert.equal(repairChat.modeId, 'plan');
+    assert.equal(repairChat.modeId, 'build');
+    assert.equal(repairChat.pinnedSkill?.id, 'plan');
     assert.equal(repairChat.name, 'Repair plan');
   });
 

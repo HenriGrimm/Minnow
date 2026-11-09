@@ -1,9 +1,6 @@
 import { scheduleAnimationFrame } from '../lib/schedule-animation-frame';
 import { closeModeSelectorMenu } from './mode-selector';
 import { closeComposerRunTargetMenus } from './composer-run-target';
-import { closeComposerToolsPopover } from './composer-tools-popover';
-import { loadToolConfigIntoDrawer } from '../tools/config';
-import { ensureToolsSectionFilled } from './tools-list';
 
 /** Park the Cursor Fast control at or below this controls-row width. */
 export const COMPOSER_COMPACT_ENTER_PX = 560;
@@ -14,7 +11,6 @@ export const COMPOSER_COMPACT_LEAVE_PX = 600;
 /**
  * The footer row keeps mode, worktree, context and model one click away;
  * everything else lives in the cog sheet. Settings-page order follows this list.
- * Tools parks into the second page, not this list.
  */
 const SETTINGS_ITEM_IDS = [
   'composerCursorFast',
@@ -29,7 +25,6 @@ const SETTINGS_ITEM_IDS = [
 /** Footer-row controls that only park when the row is too narrow to hold them. */
 const NARROW_ITEM_IDS = new Set<string>(['composerCursorFast']);
 
-const TOOLS_ITEM_ID = 'composerToolsAnchor';
 
 const overflowHomes = new Map<string, { parent: Node; next: ChildNode | null }>();
 
@@ -38,16 +33,10 @@ let compact = false;
 /** Row is too narrow for secondary model controls. */
 let narrow = false;
 let overflowOpen = false;
-/** True while the cog sheet is showing the Tools drill-in, not this-turn settings. */
-let toolsPageOpen = false;
 let rowObserver: ResizeObserver | null = null;
 let outsideHandler: ((event: PointerEvent) => void) | null = null;
 let escapeHandler: ((event: KeyboardEvent) => void) | null = null;
 let controlsChangedHandler: ((event: Event) => void) | null = null;
-let toolsNavHandler: ((event: Event) => void) | null = null;
-let toolsBackHandler: ((event: Event) => void) | null = null;
-let settingsLinkHandler: ((event: Event) => void) | null = null;
-let toolsListClickHandler: ((event: Event) => void) | null = null;
 let initialized = false;
 /** Original neighbor of the overflow sheet before it was portaled to `document.body`. */
 let overflowPopoverHome: { parent: Node; next: ChildNode | null } | null = null;
@@ -78,25 +67,7 @@ function getSettingsPage(): HTMLElement | null {
   return document.getElementById('composerOverflowSettingsPage') ?? getOverflowSlot();
 }
 
-function getToolsPage(): HTMLElement | null {
-  return document.getElementById('composerOverflowToolsPage');
-}
 
-function getToolsBody(): HTMLElement | null {
-  return document.getElementById('composerOverflowToolsBody') ?? getToolsPage();
-}
-
-function getToolsNav(): HTMLButtonElement | null {
-  return document.getElementById('composerOverflowToolsNav') as HTMLButtonElement | null;
-}
-
-function getToolsBack(): HTMLButtonElement | null {
-  return document.getElementById('composerOverflowToolsBack') as HTMLButtonElement | null;
-}
-
-function getEnableAllSlot(): HTMLElement | null {
-  return document.getElementById('composerOverflowEnableAllSlot');
-}
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -110,10 +81,7 @@ export function isComposerControlsNarrow(): boolean {
   return narrow;
 }
 
-/** True when the open cog sheet is on the Tools drill-in page. */
-export function isComposerOverflowToolsPageOpen(): boolean {
-  return overflowOpen && toolsPageOpen;
-}
+
 
 /** Width hysteresis for the narrow strip. */
 export function nextComposerCompactState(current: boolean, width: number): boolean {
@@ -217,125 +185,11 @@ function firstFocusable(root: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-function setPopoverLabel(page: 'settings' | 'tools'): void {
-  const popover = getOverflowPopover();
-  if (!popover) return;
-  if (page === 'tools') {
-    popover.setAttribute('aria-labelledby', 'composerOverflowToolsTitle');
-    popover.removeAttribute('aria-label');
-    return;
-  }
-  popover.removeAttribute('aria-labelledby');
-  popover.setAttribute('aria-label', 'Composer settings');
-}
-
-/** Put Enable all back in the tools list before a fill recreates the toolbar. */
-function restoreEnableAllToolbar(): void {
-  const slot = getEnableAllSlot();
-  const list = document.getElementById('composerToolsList');
-  const toolbar = slot?.querySelector('.tool-list-toolbar');
-  if (toolbar && list) {
-    list.insertBefore(toolbar, list.firstChild);
-  }
-}
-
-/** Lift Enable all into the Tools page header so it sits with Back + title. */
-function parkEnableAllToolbar(): void {
-  const list = document.getElementById('composerToolsList');
-  const toolbar = list?.querySelector('.tool-list-toolbar');
-  const slot = getEnableAllSlot();
-  if (toolbar && slot) slot.appendChild(toolbar);
-}
-
-function formatGroupMode(values: string[]): string {
-  const unique = [...new Set(values)];
-  if (unique.length === 0) return '';
-  if (unique.length > 1) return 'Mix';
-  if (unique[0] === 'full') return 'Full';
-  if (unique[0] === 'ask') return 'Ask';
-  if (unique[0] === 'off') return 'Off';
-  return unique[0] ?? '';
-}
-
-/** Glanceable Full / Ask / Off / Mix on each Tools group row. */
-function syncOverflowToolGroupModes(): void {
-  const list = document.getElementById('composerToolsList');
-  if (!list) return;
-  for (const group of list.querySelectorAll<HTMLElement>('.tool-group--collapsible')) {
-    const summary = group.querySelector(':scope > .tool-group-summary');
-    if (!(summary instanceof HTMLElement)) continue;
-    let modeEl = summary.querySelector<HTMLElement>(':scope > .tool-group-mode');
-    if (!modeEl) {
-      modeEl = document.createElement('span');
-      modeEl.className = 'tool-group-mode';
-      summary.appendChild(modeEl);
-    }
-    const values = [...group.querySelectorAll<HTMLElement>('.tool-permission-segment[aria-checked="true"]')]
-      .map((el) => el.dataset.value)
-      .filter((value): value is string => Boolean(value));
-    const label = formatGroupMode(values);
-    modeEl.textContent = label;
-    const unique = [...new Set(values)];
-    modeEl.dataset.mode = unique.length === 1 ? (unique[0] ?? '') : unique.length > 1 ? 'mix' : '';
-  }
-}
-
 function showOverflowSettingsPage(): void {
-  toolsPageOpen = false;
   const settings = getSettingsPage();
-  const tools = getToolsPage();
   settings?.classList.remove('hidden');
   settings?.removeAttribute('hidden');
-  tools?.classList.add('hidden');
-  tools?.setAttribute('hidden', '');
-  setToolsPopoverInline(false);
-  restoreEnableAllToolbar();
-  setPopoverLabel('settings');
-}
-
-function showOverflowToolsPage(): void {
-  toolsPageOpen = true;
-  const settings = getSettingsPage();
-  const tools = getToolsPage();
-  settings?.classList.add('hidden');
-  settings?.setAttribute('hidden', '');
-  tools?.classList.remove('hidden');
-  tools?.removeAttribute('hidden');
-  try {
-    const list = document.getElementById('composerToolsList');
-    if (list) {
-      ensureToolsSectionFilled('composerToolsList', { variant: 'composer' });
-      loadToolConfigIntoDrawer(document);
-    }
-  } catch {
-  }
-  setToolsPopoverInline(true);
-  parkEnableAllToolbar();
-  syncOverflowToolGroupModes();
-  setPopoverLabel('tools');
-}
-
-function onToolsNavClick(event: Event): void {
-  event.stopPropagation();
-  showOverflowToolsPage();
-  repositionOverflowPopover();
-  getToolsBack()?.focus();
-}
-
-function onToolsBackClick(event: Event): void {
-  event.stopPropagation();
-  showOverflowSettingsPage();
-  repositionOverflowPopover();
-  getToolsNav()?.focus();
-}
-
-function onSettingsLinkClick(): void {
-  closeComposerOverflowPopover();
-}
-
-function onToolsListClick(): void {
-  if (!toolsPageOpen) return;
-  syncOverflowToolGroupModes();
+  getOverflowPopover()?.setAttribute('aria-label', 'Composer settings');
 }
 
 /** Close the overflow settings sheet (cog popover). */
@@ -345,7 +199,6 @@ export function closeComposerOverflowPopover(): void {
   if (!popover) {
     overflowOpen = false;
     overflowPopoverHome = null;
-    toolsPageOpen = false;
     return;
   }
   showOverflowSettingsPage();
@@ -411,7 +264,7 @@ function attachOverflowListeners(): void {
 
   escapeHandler = (event: KeyboardEvent) => {
     if (event.key === 'Tab' && overflowOpen) {
-      const page = toolsPageOpen ? getToolsPage() : getSettingsPage();
+      const page = getSettingsPage();
       const nodes = Array.from(page?.querySelectorAll<HTMLElement>('button, select, input, a[href], [tabindex]') ?? [])
         .filter(el => !el.hasAttribute('disabled') && el.tabIndex >= 0 && !el.closest('[hidden], .hidden, [inert]'))
         .filter(el => {
@@ -501,7 +354,7 @@ function restoreElement(el: HTMLElement): void {
   }
   const row = getRow();
   const trail = row?.querySelector('.composer-controls__trail');
-  if (el.id === TOOLS_ITEM_ID || el.id === 'btnViewModeToggleBoard') {
+  if (el.id === 'btnViewModeToggleBoard') {
     const overflowAnchor = document.getElementById('composerOverflowAnchor');
     if (overflowAnchor?.parentElement) {
       overflowAnchor.parentElement.insertBefore(el, overflowAnchor);
@@ -523,19 +376,6 @@ function settingsElements(all = false): HTMLElement[] {
     if (el) found.push(el);
   }
   return found;
-}
-
-function overflowElements(): HTMLElement[] {
-  const found = settingsElements(true);
-  const tools = document.getElementById(TOOLS_ITEM_ID);
-  if (tools) found.push(tools);
-  return found;
-}
-
-function setToolsPopoverInline(inline: boolean): void {
-  const popover = document.getElementById('composerToolsPopover');
-  if (!popover) return;
-  popover.classList.toggle('hidden', !inline);
 }
 
 /** Compact row is flex, not a 4-column grid: the cog must be a sibling of the mode dropdown. */
@@ -565,32 +405,25 @@ function placeOverflowAnchor(compactMode: boolean): void {
 /** Park (or restore) overflow controls to match the current compact flag. */
 export function refreshComposerCompactOverflow(): void {
   const settingsPage = getSettingsPage();
-  const toolsBody = getToolsBody();
   if (!settingsPage) return;
 
   if (compact) {
-    const nav = getToolsNav();
     // Leaving narrow: footer controls go back to the row, in list order.
     for (const id of [...NARROW_ITEM_IDS].reverse()) {
       const el = document.getElementById(id);
       if (!narrow && el && settingsPage.contains(el)) restoreElement(el);
     }
     for (const el of settingsElements()) {
-      parkElement(el, settingsPage, nav);
+      parkElement(el, settingsPage);
     }
-    const tools = document.getElementById(TOOLS_ITEM_ID);
-    if (tools && toolsBody) parkElement(tools, toolsBody);
-    setToolsPopoverInline(toolsPageOpen);
     placeOverflowAnchor(true);
     return;
   }
 
-  restoreEnableAllToolbar();
   placeOverflowAnchor(false);
-  setToolsPopoverInline(false);
   showOverflowSettingsPage();
-  for (const el of overflowElements().reverse()) {
-    if (settingsPage.contains(el) || toolsBody?.contains(el) || getOverflowSlot()?.contains(el)) {
+  for (const el of settingsElements(true).reverse()) {
+    if (settingsPage.contains(el) || getOverflowSlot()?.contains(el)) {
       restoreElement(el);
     }
   }
@@ -614,7 +447,6 @@ function applyCompactState(nextCompact: boolean, nextNarrow: boolean): void {
     closeComposerOverflowPopover();
     closeModeSelectorMenu();
     closeComposerRunTargetMenus();
-    closeComposerToolsPopover();
   }
 
   refreshComposerCompactOverflow();
@@ -655,20 +487,6 @@ export function initComposerCompact(): void {
 
   button.addEventListener('click', onOverflowButtonClick);
 
-  const nav = getToolsNav();
-  const back = getToolsBack();
-  const settingsLink = document.getElementById('composerToolsOpenSettings');
-  const toolsList = document.getElementById('composerToolsList');
-
-  toolsNavHandler = onToolsNavClick;
-  toolsBackHandler = onToolsBackClick;
-  settingsLinkHandler = onSettingsLinkClick;
-  toolsListClickHandler = onToolsListClick;
-  nav?.addEventListener('click', toolsNavHandler);
-  back?.addEventListener('click', toolsBackHandler);
-  settingsLink?.addEventListener('click', settingsLinkHandler);
-  toolsList?.addEventListener('click', toolsListClickHandler);
-
   applyCompactState(true, narrow);
 
   controlsChangedHandler = () => onControlsChanged();
@@ -700,25 +518,12 @@ export function disposeComposerCompactForTests(): void {
   document.removeEventListener('minnow:close-composer-overflow', closeComposerOverflowPopover);
   const button = getOverflowButton();
   button?.removeEventListener('click', onOverflowButtonClick);
-  const nav = getToolsNav();
-  const back = getToolsBack();
-  const settingsLink = document.getElementById('composerToolsOpenSettings');
-  const toolsList = document.getElementById('composerToolsList');
-  if (toolsNavHandler) nav?.removeEventListener('click', toolsNavHandler);
-  if (toolsBackHandler) back?.removeEventListener('click', toolsBackHandler);
-  if (settingsLinkHandler) settingsLink?.removeEventListener('click', settingsLinkHandler);
-  if (toolsListClickHandler) toolsList?.removeEventListener('click', toolsListClickHandler);
-  toolsNavHandler = null;
-  toolsBackHandler = null;
-  settingsLinkHandler = null;
-  toolsListClickHandler = null;
   overflowHomes.clear();
   overflowPopoverHome = null;
   initialized = false;
   compact = false;
   narrow = false;
   overflowOpen = false;
-  toolsPageOpen = false;
   getRow()?.classList.remove('composer-controls--compact', 'composer-controls--narrow');
   getInputBar()?.classList.remove('input-bar--composer-compact');
 }

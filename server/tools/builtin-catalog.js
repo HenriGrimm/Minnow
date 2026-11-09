@@ -276,55 +276,6 @@ export const BUILT_IN_TOOLS = [
     ),
   },
   {
-    id: 'set_chat_mode',
-    label: 'Set chat mode',
-    description:
-      'Switch the active chat operating mode (General, Build, Plan, Orchestrate, Debug) after the user chooses a handoff option.',
-    category: 'utility',
-    serverRequired: false,
-    definition: toolSchema(
-      'set_chat_mode',
-      'Set the active chat operating mode. Use only after the user selects a mode switch (never auto-switch without consent).',
-      {
-        mode_id: {
-          type: 'string',
-          enum: ['general', 'build', 'plan', 'orchestrate', 'debug'],
-          description: 'Target operating mode for the active chat',
-        },
-      },
-      ['mode_id'],
-    ),
-  },
-  {
-    id: 'create_chat_with_mode',
-    label: 'Create chat with mode',
-    description:
-      'Create a new chat with a preset operating mode, optional Orchestrate plan path, and optional seed user message.',
-    category: 'utility',
-    serverRequired: false,
-    definition: toolSchema(
-      'create_chat_with_mode',
-      'Create and activate a new chat with the given mode. For Orchestrate handoff, pass plan_path and optional initial_user_message (e.g. Execute plan at documentation/plans/foo.md).',
-      {
-        mode_id: {
-          type: 'string',
-          enum: ['general', 'build', 'plan', 'orchestrate', 'debug'],
-          description: 'Operating mode for the new chat',
-        },
-        plan_path: {
-          type: 'string',
-          description:
-            'Workspace-relative plan path for Orchestrate (documentation/plans/*.md)',
-        },
-        initial_user_message: {
-          type: 'string',
-          description: 'Optional first user message seeded into the new chat history',
-        },
-      },
-      ['mode_id'],
-    ),
-  },
-  {
     id: 'launch_minnow_app',
     label: 'Launch Minnow app',
     description:
@@ -357,29 +308,6 @@ export const BUILT_IN_TOOLS = [
         },
       },
       ['app_id'],
-    ),
-  },
-  {
-    id: 'propose_mode_switch',
-    label: 'Propose mode switch',
-    description:
-      'Show standard mode-handoff multiple-choice cards (wrong mode).',
-    category: 'utility',
-    serverRequired: false,
-    definition: toolSchema(
-      'propose_mode_switch',
-      'Ask the user a standard mode-handoff question via the ask_question UI. Situations: implement_in_wrong_mode, plan_in_build.',
-      {
-        situation: {
-          type: 'string',
-          enum: [
-            'implement_in_wrong_mode',
-            'plan_in_build',
-          ],
-          description: 'Which handoff preset to show',
-        },
-      },
-      ['situation'],
     ),
   },
 
@@ -1191,50 +1119,32 @@ export const BUILT_IN_TOOLS = [
     id: 'spawn_sub_agent',
     label: 'Spawn sub-agent',
     description:
-      'Starts an isolated sub-agent with its own model, tools, and context. By default returns immediately; the summary is delivered automatically when the run finishes.',
+      'Starts the agent in a fresh context for an independent task. Returns immediately; the result is delivered when the run finishes.',
     category: 'agents',
     serverRequired: false,
     definition: toolSchema(
       'spawn_sub_agent',
-      'Spawn a sub-agent of the given type to complete a task in isolation.',
+      'Start a sub-agent: the same agent in a fresh context, for an independent piece of work. Give it a complete brief — it sees none of this conversation. Returns at once; the result arrives when it finishes (wait: true blocks instead).',
       {
-        type: {
-          type: 'string',
-          description:
-            'Configured agent type ID.',
+        task: { type: 'string', description: 'Self-contained brief: goal, relevant files, constraints, what to return.' },
+        title: { type: 'string', minLength: 1, maxLength: 240, description: 'Short assignment title (3–8 words) shown on the card.' },
+        wait: { type: 'boolean', description: 'Block until it finishes. Default false.' },
+        workspace_strategy: { type: 'string', enum: ['shared', 'new_worktree', 'existing_worktree'], description: 'Default shared. new_worktree gives it its own checkout at HEAD.' },
+        workspace_id: { type: 'string', description: 'Registered checkout id for existing_worktree.' },
+        target: {
+          type: 'object', description: 'Optional exact model; list options with agent_capabilities.',
+          properties: {
+            providerId: { type: 'string' }, modelId: { type: 'string' },
+            options: { type: 'object', properties: {
+              reasoningEffort: { type: 'string', description: 'Advertised effort.' },
+              thinkingMode: { type: 'string', enum: ['inherit', 'on', 'off'] },
+              thinkingBudgetTokens: { type: ['integer', 'null'], minimum: 0 },
+            }, additionalProperties: false },
+          }, required: ['providerId', 'modelId'], additionalProperties: false,
         },
-        task: { type: 'string', description: 'Task for the agent.' },
-          title: { type: 'string', minLength: 1, maxLength: 240, description: 'Short, distinctive assignment title (3–8 words), shown on the sub-agent card. Use it to refer to this agent; keep instructions in task.' },
-          target: {
-            type: 'object', description: 'Exact model; discover IDs/options with agent_capabilities.',
-            properties: {
-              providerId: { type: 'string' }, modelId: { type: 'string' },
-              options: { type: 'object', properties: {
-                reasoningEffort: { type: 'string', description: 'Advertised effort.' },
-                thinkingMode: { type: 'string', enum: ['inherit', 'on', 'off'] },
-                thinkingBudgetTokens: { type: ['integer', 'null'], minimum: 0 },
-              }, additionalProperties: false },
-            }, required: ['providerId', 'modelId'], additionalProperties: false,
-          },
-          client_request_id: { type: 'string', description: 'Stable key for identical retries.' },
-          workspace_strategy: { type: 'string', enum: ['shared', 'new_worktree', 'existing_worktree'], description: 'Default shared; new_worktree starts at HEAD and retains its checkout.' },
-          workspace_id: { type: 'string', description: 'Authorized ID required for existing_worktree.' },
-        wait: {
-          type: 'boolean',
-          description:
-            'Wait for the aggregate result. Default false: completion is pushed; no polling.',
-        },
-        category: {
-          type: 'string',
-          enum: ['build', 'fix', 'test', 'research'],
-          description: 'Legacy board category.',
-        },
-        board_task_id: {
-          type: 'string',
-          description: 'Legacy board task ID.',
-        },
+        client_request_id: { type: 'string', description: 'Stable key for identical retries.' },
       },
-      ['type', 'task', 'title'],
+      ['task', 'title'],
     ),
   },
   {
