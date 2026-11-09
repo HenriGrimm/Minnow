@@ -28,7 +28,7 @@ test('Home issue dock uses the main transcript and selects its composer context'
   sessionState!.chats.push(linked);
   setIssuesStateForTests({ version: 2, issues: [] } as Parameters<typeof setIssuesStateForTests>[0]);
   const issue = addIssue({ title: 'Renderer regression', description: '**Context**\n\n- Preserve the chat.' });
-  issue.agent = { agentId: 'builder', phase: 'completed', startedAt: 1, updatedAt: 1, chatId: linked.id };
+  updateIssue(issue.id, { agent: { agentId: 'builder', phase: 'done', startedAt: 1, updatedAt: 1, chatId: linked.id } });
   document.body.innerHTML = '<div id="chatArea"><p>Keep this conversation</p></div><div id="dock"></div>';
   localStorage.setItem('minnow.chatView', 'compact');
   const code = document.querySelector('#chatArea p');

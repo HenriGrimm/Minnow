@@ -191,7 +191,7 @@ test('type-only edits and comment changes publish; parsed bodies subsequently st
   assert.equal(data.comments[0].body, comment.body);
   // A local-only edit advances the sync watermark without changing the GitHub fields.
   now += 100;
-  updateIssue('MIN-1', { rank: 1 });
+  updateIssue('MIN-1', { rank: '1' });
   assert.equal((await syncIssueWithGithub('MIN-1')).action, 'noop');
   assert.equal(edits, 1);
   deleteIssueComment('MIN-1', comment.id);

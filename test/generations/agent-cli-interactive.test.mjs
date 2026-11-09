@@ -316,7 +316,8 @@ test('startup trust acceptance is limited to the exact private directory', async
   f.data('Accessing workspace: other-folder\nNo, exit\nYes, I trust this folder');
   await delay(450); assert.equal(f.commands.length, 0);
   f.data(`Accessing workspace: ${f.cwd}\nNo, exit\nYes, I trust this folder`);
-  await delay(450);
+  const deadline = performance.now() + 5_000;
+  while (f.commands.length < 2 && performance.now() < deadline) await delay(20);
   assert.deepEqual(f.commands, ['\x1b[B', '\r\n']);
 });
 
