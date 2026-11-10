@@ -6,6 +6,10 @@
   background: var(--mn-graphite-ground, var(--mn-bg));
 }
 
+html.is-electron-shell[data-platform='win32'].mn-graphite-workspace .mn-os {
+  --mn-window-controls-width: calc(3 * var(--os-window-btn-size) + 3 * var(--mn-window-controls-gap) + 1px);
+}
+
 .mn-graphite-workspace .mn-os-menubar {
   background: var(--mn-graphite-ground, var(--mn-bg));
   border: 0;
@@ -121,12 +125,25 @@ html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-w
 
 .mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-app-sep,
 .mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-appname,
-.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-right > :not(.mn-os-mb-window-controls) {
+.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar .mn-os-mb-right {
   display: none !important;
 }
 
-.mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-mb-right {
-  flex: 0 0 auto;
+/* Windows caption buttons stay at the window edge while the menubar shrinks to the rail. */
+html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) #osMenubar > .mn-os-mb-window-controls {
+  position: fixed;
+  top: calc((var(--os-menubar-h) - var(--os-window-btn-size)) / 2);
+  right: calc(var(--mn-graphite-window-inset) + var(--mn-menubar-inline-padding));
+}
+
+/* The thread header shares the titlebar row while the sidebar is open or moving. */
+html.is-electron-shell[data-platform='win32']:is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion) #graphiteThreadHeader:not([hidden]) {
+  padding-right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding) + var(--mn-space-2));
+}
+
+/* Other app surfaces start below the controls when there is no thread header. */
+html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-stage.is-in-app:not(:has(.mn-os-app-layer.is-active #graphiteThreadHeader:not([hidden]))) {
+  margin-block-start: var(--os-menubar-h);
 }
 
 .mn-graphite-sidebar-open:not(.os-workspace-gate-open) .mn-os-mb-chat-toggle {
@@ -584,7 +601,7 @@ html.mn-graphite-workspace.is-electron-shell[data-platform='darwin']:not([data-w
   display: none;
 }
 
-.mn-graphite-workspace.os-workspace-gate-open .mn-os-mb-right > :not(.mn-os-workspace-actions, .mn-os-mb-window-controls),
+.mn-graphite-workspace.os-workspace-gate-open .mn-os-mb-right > :not(.mn-os-workspace-actions),
 .mn-graphite-workspace.os-workspace-gate-open .mn-os-workspace-actions > :not([data-graphite-workspace-settings]) {
   display: none;
 }

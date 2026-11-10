@@ -23,10 +23,7 @@ function markMenubarNoDrag(root: HTMLElement): void {
 }
 
 /** Mount Win/Linux shell window controls and wire drag + maximize sync for frameless Electron. */
-export function initShellMenubarChrome(
-  menubarRoot: HTMLElement,
-  rightCluster: HTMLElement,
-): () => void {
+export function initShellMenubarChrome(menubarRoot: HTMLElement): () => void {
   if (!isMinnowElectronShell()) return () => {};
 
   const clearPlatform = applyShellPlatform();
@@ -83,7 +80,7 @@ export function initShellMenubarChrome(
     });
 
     controls.append(minBtn, maxBtn, closeBtn);
-    rightCluster.appendChild(controls);
+    menubarRoot.appendChild(controls);
 
     void windowApi.isMaximized().then((initial) => {
       if (!syncedMaximizedFromEvent) applyMaximized(initial);

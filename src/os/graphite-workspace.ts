@@ -236,7 +236,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
       }
     }
     const controls = menubar.querySelectorAll<HTMLElement>(sidebarShown ? '.mn-os-mb-brand' :
-      '.mn-os-mb-workspace-slot, .mn-os-mb-app-sep, .mn-os-mb-appname, .mn-os-mb-right > :not(.mn-os-mb-window-controls)');
+      '.mn-os-mb-workspace-slot, .mn-os-mb-app-sep, .mn-os-mb-appname, .mn-os-mb-right > *');
     for (const control of controls) {
       if (control.getClientRects().length && control.animate) {
         menubarMotion.push(control.animate({ opacity: [0, 1] }, timing));

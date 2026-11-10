@@ -189,7 +189,7 @@ export function renderMenubar(root: HTMLElement): () => void {
   right.append(pluginMenu, updateSlot, workspaceActions);
   root.append(left, right);
 
-  const cleanupShellChrome = initShellMenubarChrome(root, right);
+  const cleanupShellChrome = initShellMenubarChrome(root);
 
   function syncSidebarToggle(): void {
     const desktop = document.documentElement.classList.contains('mn-graphite-workspace');

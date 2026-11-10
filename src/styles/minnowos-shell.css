@@ -55,7 +55,7 @@ html.minnow-os-enabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 var(--mn-menubar-inline-padding);
   background: var(--os-surface-1);
   border-bottom: 1px solid var(--os-border);
   position: relative;
@@ -408,9 +408,15 @@ html.is-electron-shell[data-platform='darwin'] .mn-os-mb-window-controls {
 .mn-os-mb-window-controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--mn-window-controls-gap);
   flex-shrink: 0;
-  margin-left: 6px;
+}
+
+html.is-electron-shell[data-platform='win32'] .mn-os-mb-window-controls::before {
+  content: '';
+  width: 1px;
+  height: 18px;
+  background: var(--os-border-strong);
 }
 
 /* Frameless Electron titlebar — shared with legacy floating windows (styles live here after Phase 5). */

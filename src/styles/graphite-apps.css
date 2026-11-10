@@ -167,6 +167,12 @@
   width: var(--mn-workbench-control-h);
 }
 
+.mn-graphite-apps .graphite-surface-header .graphite-surface-close-tab {
+  margin-inline-end: 0;
+  border: var(--mn-space-1) solid transparent;
+  background-clip: padding-box;
+}
+
 /* Settings */
 .settings-nav__graphite-icon {
   display: none;
