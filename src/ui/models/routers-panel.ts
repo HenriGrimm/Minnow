@@ -26,9 +26,10 @@ import { listProviders } from '../../providers/store';
 import { sessionState as state } from '../../state/sessions';
 import { listFillProviderOptions } from '../settings-model-binding';
 import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox } from '../model-select-picker';
-import { closePoolTaskTypeChoices, createPoolEntry, poolStrategyChoices, poolTaskTypeChoices } from '../model-pool-fields';
+import { closePoolTaskTypeChoices, createPoolEntry, POOL_POLICIES, poolStrategyChoices, poolTaskTypeChoices } from '../model-pool-fields';
 import { iconHtml } from '../icon';
 import { openContextMenu, type ContextMenuHandle } from '../context-menu';
+import { createModelsResizeHandle, setModelsRailCount } from './graphite-chrome';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag); el.textContent = text; el.className = className; return el;
@@ -95,6 +96,10 @@ export async function mountRoutersPanel(): Promise<void> {
     const root = node('div', '', 'router-panel');
     const bar = node('div', '', 'router-toolbar');
     const picker = node('select'); picker.setAttribute('aria-label', 'Model pool');
+    const index = node('aside', '', 'router-index');
+    index.setAttribute('aria-label', 'Model pools');
+    const indexRows = node('div', '', 'router-index__rows');
+    const panelBody = node('div', '', 'router-panel__body');
     const message = node('p', '', 'router-message'); message.setAttribute('role', 'status');
     const retry = button('Retry save', () => { void commit(); }); retry.hidden = true;
     const editor = node('div', '', 'router-editor');
@@ -116,6 +121,11 @@ export async function mountRoutersPanel(): Promise<void> {
       [...picker.options].forEach((option, index) => {
         const router = config.routers[index];
         if (router) option.text = router.name;
+      });
+      [...indexRows.children].forEach((item, index) => {
+        const label = item.querySelector('.router-index__name');
+        const router = config.routers[index];
+        if (label && router) label.textContent = router.name;
       });
     };
     /**
@@ -189,7 +199,16 @@ export async function mountRoutersPanel(): Promise<void> {
     create.className = 'router-primary';
     bar.append(heading, picker, create);
     const saveStatus = node('div', '', 'router-save-status'); saveStatus.append(message, retry);
-    root.append(bar, saveStatus, editor, live); host.replaceChildren(root);
+    const indexHeading = node('div', '', 'router-index__heading');
+    const indexCreate = button('New model pool', () => create.click());
+    indexCreate.className = 'router-index__create';
+    indexHeading.append(node('h2', 'Model pools'), indexCreate);
+    index.append(indexHeading, indexRows);
+    const resize = createModelsResizeHandle(root, {
+      label: 'Resize model pool list', property: '--models-graphite-pool-list-width', initial: 290, min: 210, max: 340,
+    });
+    panelBody.append(bar, saveStatus, editor, live);
+    root.append(index, resize, panelBody); host.replaceChildren(root);
 
     type ModelChoice = { providerId: string; modelId: string; label: string; providerLabel: string; detail: string };
     const choices: ModelChoice[] = providerChoices.flatMap((provider) => {
@@ -323,6 +342,24 @@ export async function mountRoutersPanel(): Promise<void> {
       releasePickers(editor); releasePickers(live);
       picker.replaceChildren(...config.routers.map((router) => new Option(router.name, router.id)));
       picker.value = selected; picker.disabled = !config.routers.length;
+      setModelsRailCount('routers', config.routers.length);
+      indexRows.replaceChildren(...config.routers.map((pool) => {
+        const item = button('', () => {
+          selected = pool.id;
+          adding = false;
+          searchQuery = '';
+          render();
+          indexRows.querySelector<HTMLButtonElement>('[aria-current="true"]')?.focus();
+        });
+        item.className = 'router-index__pool';
+        if (pool.id === selected) item.setAttribute('aria-current', 'true');
+        const strategy = POOL_POLICIES.find((policy) => policy.id === pool.policy)?.title;
+        const count = `${pool.entries.length} ${pool.entries.length === 1 ? 'model' : 'models'}`;
+        const description = [strategy, count, pool.enabled ? '' : 'Paused'].filter(Boolean).join(' · ');
+        item.append(node('span', pool.name, 'router-index__name'), node('span', description, 'router-index__meta'));
+        return item;
+      }));
+      if (!config.routers.length) indexRows.append(node('p', 'No model pools yet.'));
       editor.replaceChildren(); live.replaceChildren();
       const router = current();
       if (!router) {

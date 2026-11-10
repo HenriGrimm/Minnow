@@ -18,7 +18,7 @@
         "Reference"
       ],
       "section": "Overview",
-      "hash": "d83d7bc4f9be681a3d808c6753104ddd57c1596b247c692e1334833c6c1909c5"
+      "hash": "7c16da0ab873e38370c7ab18bcc505c13618f083c5e817d567ecd38b9f338d1e"
     },
     {
       "path": "documentation/manual/get-started/install.md",
@@ -55,7 +55,7 @@
         "Related"
       ],
       "section": "Get started",
-      "hash": "3c920a35a31a35c52965536d57d9ecdf629949b44bb71b258902a0046d0290e4"
+      "hash": "9e0a4b619f98edb10cd4b9743df439863e9194a84ebee0c3fc962206097e4f98"
     },
     {
       "path": "documentation/manual/get-started/costs-and-providers.md",
@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "17925cfaec192ad3e3b532000ee6de5073bd53e9a3fa9526990a4de8e1bf2069"
+      "hash": "56d0dc090e366bcbb9c80a57bc09008dfe0606cfdb90054339f87f9065fc83b7"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -203,10 +203,9 @@
     {
       "path": "documentation/manual/apps/overview.md",
       "title": "Apps overview",
-      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. Code, Dashboard, Source Control, Mo",
+      "summary": "Minnow is one shell built around Code . Everything else is a surface that supports the work you do there. There are no toggles, no marketplace and nothing to enable: what ships is installed and on, which removes an entire category of afternoon. The left rail opens Source Control,",
       "headings": [
         "Code",
-        "Dashboard",
         "The supporting surfaces",
         "Source Control history",
         "Models",
@@ -218,7 +217,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "7d20dc74dc75377ad1174492b6f418ee129c493246b8c7c6ddee52faa5e085d5"
+      "hash": "ee58e31469c3c6c73bc6f2723f1de04612cfe08a4f3f823ab14e3e1d58891e3d"
     },
     {
       "path": "documentation/manual/apps/code.md",
@@ -244,7 +243,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "8b8d2e60e6aa181139cbe88ed608e6c4921e1f24d142d9a9c998452bc6b92495"
+      "hash": "fd9750ff0bed85645d9106373f263bcc1e2bfcbadb4337005d49555916f524cc"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -288,7 +287,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "d50280f879c72c1851a7207aa1a6cfcfed27afd9795114b8bce438fc3f56b8d5"
+      "hash": "f4d83afea851d764dc7f80af947ffa79c178ec7d648db4fbc66cce522402e055"
     },
     {
       "path": "documentation/manual/apps/issues.md",
@@ -306,7 +305,7 @@
         "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "f9d6b979172e2ee75b99f84fb7fd1ef64f2fb6b776995f52c08412532ebd0143"
+      "hash": "15ba99e5811584bff6f58128554d4b89d5550158e62b352144c1cd5ce3a39257"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -343,7 +342,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "6a97f179c1618272bd692996e7f74454918c328322ec643e5a32981fcdea6812"
+      "hash": "2559c379c8d32e07867d4ec0af872e57184b78551c2c969362d31eecf35d0e6d"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -434,6 +433,7 @@
       "headings": [
         "Shell",
         "Chat",
+        "Thread surfaces",
         "Code editor",
         "File tree",
         "Terminal",
@@ -445,7 +445,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "260fefbc2deff050632b361e4b16dfea3b64388bc8beff11f85f16b49d07d43b"
+      "hash": "7c8dc6e426f0bb2ac6dbb1e1ed7370935b95415f9aac153b023532e74549ca14"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -558,10 +558,11 @@
         "Application runtime (representative)",
         "Material Icon Theme",
         "Uicons (Flaticon)",
+        "Geist and Geist Mono",
         "Provider logos"
       ],
       "section": "Legal",
-      "hash": "bd8fee840fac9dcd0e0b7a40beb294c4658facad99335e1dc763d217094ed753"
+      "hash": "3314f4b7526e771cc2abf670a78e01c1141f6e040b9570c4ea3440af4947df2f"
     },
     {
       "path": "documentation/manual/plugins.md",
@@ -602,19 +603,6 @@
       ],
       "section": "Chat",
       "hash": "34382d49e5f95805be9fd45e082fd7b3bef43d6b0fc8af40061582356493a000"
-    },
-    {
-      "path": "documentation/manual/apps/home.md",
-      "title": "Dashboard",
-      "summary": "Dashboard runs your project's issues through Triage , Ready , In Progress , Review , and Done . It uses the same issues, chats, models, and worktrees as Code and Issues. Change an issue's status using the status dropdown on its card or in the issue workspace header. The menu incl",
-      "headings": [
-        "Capture and plan",
-        "Send issues to agents",
-        "Review in the dock",
-        "Refresh"
-      ],
-      "section": "Apps",
-      "hash": "d76df538c4c9673b6a4d39aa00db5b74b82e9df1d291e5ac3324fe8513e740ce"
     },
     {
       "path": "documentation/manual/extend/mcp-hub.md",

@@ -23,7 +23,9 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 
 **Startup & setup** controls desktop tray behavior and launch at startup. It also links to common settings and lets you run setup again.
 
-**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, eight theme families with dark and light variants, fonts, and custom colors. Changes apply immediately. In a browser, use the browser's zoom controls.
+**Appearance** includes interface zoom in the desktop app, Compact or Full chat view, theme families with dark and light variants, fonts, and custom colors. **Color** controls the tint on workspace surfaces with **Off**, **Subtle**, and **Rich**. In a browser, use the browser's zoom controls.
+
+**Density** adjusts spacing in sidebars, menus, chats, and lists. **Compact** fits more on screen, **Cozy** is the default, and **Roomy** adds more space between items. Text size is set separately.
 
 **Notifications** controls desktop notifications and sound packs. The menubar **Activity** dropdown keeps live work and session outcomes visible even when alerts are muted or disabled. **Test desktop notification** checks system delivery. Individual resets restore a preference to its default; **Show modified only** helps you find changes.
 

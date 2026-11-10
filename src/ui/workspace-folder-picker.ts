@@ -5,6 +5,7 @@ import {
 } from '../config/workspace-api';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { createIcon, type IconName } from './icon';
+import { trapTabKey } from './components/internal';
 import { normalizeWorkspacePath } from '../lib/normalize-workspace-path';
 import {
   closeOpenWorkspace,
@@ -22,7 +23,7 @@ const DIALOG_ID = 'workspaceFolderPicker';
 
 const ICON_FOLDER: IconName = 'folder';
 const ICON_CHEVRON: IconName = 'chevronRight';
-const ICON_UP: IconName = 'arrowUp';
+const ICON_UP: IconName = 'chevronUp';
 const ICON_FOLDER_PLUS: IconName = 'addFolder';
 const ICON_CLOSE: IconName = 'close';
 
@@ -43,6 +44,7 @@ let cancelBtn: HTMLButtonElement | null = null;
 let emptyEl: HTMLElement | null = null;
 let selectionPathEl: HTMLElement | null = null;
 let selectionWrapEl: HTMLElement | null = null;
+let locationsEl: HTMLElement | null = null;
 let creatingFolder = false;
 
 let currentPath = '';
@@ -58,6 +60,7 @@ let resolvePicker: ((result: WorkspaceFolderPickerResult) => void) | null = null
 let escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 let previousFocus: HTMLElement | null = null;
 let shellListenersBound = false;
+let listingRequest = 0;
 
 const DEFAULT_TITLE = 'Open workspace';
 const DEFAULT_CONFIRM_VERB = 'Open';
@@ -226,7 +229,7 @@ function createChildFolderRow(entry: WorkspaceBrowseEntry): HTMLLIElement {
   btn.appendChild(name);
   btn.appendChild(chevron);
   wireRowActivation(btn, entry.path, () => {
-    void loadListing(entry.path);
+    void navigateListing(entry.path);
   });
   li.appendChild(btn);
   decorateOpenWorkspaceRow(li, btn, entry.path);
@@ -315,7 +318,7 @@ function createQuickLocationRow(entry: WorkspaceBrowseEntry): HTMLLIElement {
   btn.appendChild(labelWrap);
   btn.appendChild(chevron);
   wireRowActivation(btn, entry.path, () => {
-    void loadListing(entry.path);
+    void navigateListing(entry.path);
   });
   li.appendChild(btn);
   decorateOpenWorkspaceRow(li, btn, entry.path);
@@ -355,7 +358,7 @@ function updateBreadcrumbs(): void {
       btn.textContent = label;
       btn.title = path;
       btn.addEventListener('click', () => {
-        void loadListing(path);
+        void navigateListing(path);
       });
       item.appendChild(btn);
     }
@@ -390,6 +393,7 @@ function bindShellRefs(root: HTMLDivElement): void {
   emptyEl = root.querySelector('[data-ws-picker-empty]');
   selectionPathEl = root.querySelector('[data-ws-picker-selection-path]');
   selectionWrapEl = root.querySelector('[data-ws-picker-selection]');
+  locationsEl = root.querySelector('[data-ws-picker-locations]');
 }
 
 /** Defer focus until after the activating click finishes (Electron-safe). */
@@ -420,14 +424,12 @@ function wireShellListeners(): void {
 
   overlayEl.addEventListener('click', (event) => {
     if (event.target === overlayEl) {
-      finishPicker({ cancelled: true, path: null });
+      cancelWorkspaceFolderPicker();
     }
   });
 
-  const cancel = () => finishPicker({ cancelled: true, path: null });
-
-  cancelBtn?.addEventListener('click', cancel);
-  closeBtn?.addEventListener('click', cancel);
+  cancelBtn?.addEventListener('click', cancelWorkspaceFolderPicker);
+  closeBtn?.addEventListener('click', cancelWorkspaceFolderPicker);
 
   openBtn?.addEventListener('click', () => {
     const chosen = selectedEntryPath ?? (currentPath.trim() || null);
@@ -440,10 +442,10 @@ function wireShellListeners(): void {
   upBtn?.addEventListener('click', () => {
     hideNewFolderPanel();
     if (!currentParent) {
-      void loadListing('');
+      void navigateListing('');
       return;
     }
-    void loadListing(currentParent);
+    void navigateListing(currentParent);
   });
 
   newFolderBtn?.addEventListener('click', () => {
@@ -506,6 +508,7 @@ function ensureShell(): void {
   overlayEl = document.createElement('div');
   overlayEl.id = OVERLAY_ID;
   overlayEl.className = 'workspace-picker-overlay hidden';
+  overlayEl.dataset.aboveShellOverlay = '';
   overlayEl.hidden = true;
   overlayEl.innerHTML = `
     <div
@@ -526,6 +529,8 @@ function ensureShell(): void {
         ></button>
       </header>
 
+      <nav class="workspace-picker__locations" aria-label="Quick locations" data-ws-picker-locations hidden></nav>
+
       <div class="workspace-picker__nav">
         <ol
           class="workspace-picker__breadcrumbs"
@@ -538,7 +543,7 @@ function ensureShell(): void {
             class="icon-btn workspace-picker__nav-btn"
             data-ws-picker-up
             aria-label="Go to parent folder"
-            title="Up"
+            title="Go to parent folder"
           ></button>
           <button
             type="button"
@@ -749,17 +754,57 @@ function renderEntries(entries: WorkspaceBrowseEntry[]): void {
 }
 
 async function loadListing(browsePath: string): Promise<void> {
+  const request = ++listingRequest;
   hideNewFolderPanel();
   const [listing, open] = await Promise.all([
     browseWorkspaceFolders(browsePath),
     pickingWorkspace ? readOpenWorkspaceWindows() : Promise.resolve(new Map() as OpenWorkspaceMap),
   ]);
+  if (request !== listingRequest) return;
   openWorkspaces = open;
   currentPath = listing.path ?? '';
   currentParent = listing.parent ?? null;
   selectedEntryPath = null;
   updateBreadcrumbs();
   renderEntries(listing.entries ?? []);
+  for (const button of locationsEl?.querySelectorAll<HTMLButtonElement>('button') ?? []) {
+    button.setAttribute('aria-current', String(normalizeWorkspacePath(button.dataset.path ?? '') === normalizeWorkspacePath(currentPath)));
+  }
+}
+
+async function navigateListing(path: string): Promise<void> {
+  const result = loadListing(path);
+  const request = listingRequest;
+  try {
+    await result;
+  } catch (error) {
+    if (request === listingRequest && resolvePicker) {
+      showPickerError(error instanceof Error ? error.message : 'Could not open this folder.');
+    }
+  }
+}
+
+async function fillQuickLocations(initialPath: string, isCurrent: () => boolean): Promise<void> {
+  if (!locationsEl) return;
+  locationsEl.replaceChildren();
+  locationsEl.hidden = false;
+  const label = document.createElement('span');
+  label.className = 'workspace-picker__locations-title';
+  label.textContent = 'Quick locations';
+  locationsEl.appendChild(label);
+  const roots = await browseWorkspaceFolders('').then((result) => result.entries).catch(() => []);
+  if (!isCurrent() || !locationsEl) return;
+  const entries = [...(initialPath ? [{ name: 'Default project folder', path: initialPath }] : []), ...roots];
+  for (const entry of entries) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'workspace-picker__location';
+    button.dataset.path = entry.path;
+    button.append(createIcon('folder', { size: 14 }), entry.name);
+    button.setAttribute('aria-current', String(normalizeWorkspacePath(entry.path) === normalizeWorkspacePath(currentPath)));
+    button.addEventListener('click', () => { void navigateListing(entry.path); });
+    locationsEl.appendChild(button);
+  }
 }
 
 function detachEscape(): void {
@@ -792,15 +837,23 @@ function hideOverlay(): void {
 }
 
 function finishPicker(result: WorkspaceFolderPickerResult): void {
+  listingRequest++;
   detachEscape();
   hideNewFolderPanel();
   hideOverlay();
   if (overlayEl) unmarkPreviewOccluder(overlayEl);
+  overlayEl?.classList.remove('workspace-picker-overlay--locations');
+  if (locationsEl) locationsEl.hidden = true;
   const resolve = resolvePicker;
   resolvePicker = null;
   previousFocus?.focus();
   previousFocus = null;
   resolve?.(result);
+}
+
+/** Cancel the current folder picker and return focus to its opener. */
+export function cancelWorkspaceFolderPicker(): void {
+  if (resolvePicker) finishPicker({ cancelled: true, path: null });
 }
 
 /**
@@ -815,6 +868,7 @@ export function openWorkspaceFolderPicker(options?: {
   title?: string;
   confirmVerb?: string;
   elevated?: boolean;
+  quickLocations?: boolean;
 }): Promise<WorkspaceFolderPickerResult> {
   ensureShell();
   if (resolvePicker) {
@@ -826,6 +880,7 @@ export function openWorkspaceFolderPicker(options?: {
   const titleEl = document.getElementById('workspaceFolderPickerTitle');
   if (titleEl) titleEl.textContent = options?.title?.trim() || DEFAULT_TITLE;
   overlayEl?.classList.toggle('workspace-picker-overlay--elevated', options?.elevated === true);
+  overlayEl?.classList.toggle('workspace-picker-overlay--locations', options?.quickLocations === true);
 
   previousFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -833,13 +888,28 @@ export function openWorkspaceFolderPicker(options?: {
   return new Promise((resolve) => {
     resolvePicker = resolve;
     const startPath = options?.initialPath?.trim() ?? '';
+    if (options?.quickLocations) void fillQuickLocations(startPath, () => resolvePicker === resolve);
+    currentPath = '';
+    currentParent = null;
+    selectedEntryPath = null;
+    listEl?.replaceChildren();
+    updateToolbar();
     void loadListing(startPath)
-      .catch(() => loadListing(''))
+      .catch(() => resolvePicker === resolve ? loadListing('') : undefined)
       .then(() => {
+        if (resolvePicker === resolve) showOverlay();
+      })
+      .catch((error) => {
+        if (resolvePicker !== resolve) return;
+        showPickerError(error instanceof Error ? error.message : 'Could not list folders.');
         showOverlay();
       });
 
     escapeHandler = (event: KeyboardEvent) => {
+      if (event.key === 'Tab' && dialogEl && !overlayEl?.hidden) {
+        trapTabKey(dialogEl, event);
+        return;
+      }
       if (event.key !== 'Escape') {
         return;
       }
@@ -850,6 +920,7 @@ export function openWorkspaceFolderPicker(options?: {
         return;
       }
       event.preventDefault();
+      event.stopPropagation();
       finishPicker({ cancelled: true, path: null });
     };
     document.addEventListener('keydown', escapeHandler, true);

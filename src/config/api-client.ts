@@ -206,6 +206,7 @@ export interface SessionSearchHit {
   lastMessageAt?: number;
   score: number;
   matchedIn: 'title' | 'message';
+  messageIndex?: number;
   role?: 'user' | 'assistant';
   snippet: string;
 }
@@ -215,7 +216,7 @@ export interface SessionSearchHit {
  */
 export async function searchSessions(
   query: string,
-  opts?: { workspace?: string; limit?: number },
+  opts?: { workspace?: string; limit?: number; match?: 'title' | 'message' },
 ): Promise<SessionSearchHit[]> {
   const params = new URLSearchParams();
   params.set('q', query);
@@ -223,6 +224,7 @@ export async function searchSessions(
     params.set('workspace', opts.workspace);
   }
   if (opts?.limit != null) params.set('limit', String(opts.limit));
+  if (opts?.match) params.set('match', opts.match);
   const res = await fetch(`/api/config/sessions/search?${params}`, { cache: 'no-store' });
   const body = await parseJsonResponse<{ results: SessionSearchHit[] }>(res);
   return Array.isArray(body.results) ? body.results : [];

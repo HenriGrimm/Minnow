@@ -5,7 +5,7 @@
 .settings-general .settings-group--emphasis .settings-issues-table-wrap {
   margin: 0;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   overflow-x: auto;
   background: var(--mn-bg);
 }
@@ -123,10 +123,15 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px 14px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--mn-border);
+}
+
+.settings-issues-toolbar > .settings-inline-btn {
+  margin-top: 0;
 }
 
 .settings-issues-empty td {
@@ -229,7 +234,7 @@
   height: 2rem;
   padding: 0;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: color-mix(in srgb, var(--mn-fg) 4%, var(--mn-bg));
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -277,7 +282,7 @@
   min-height: 40px;
   padding: 0;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -314,7 +319,7 @@
   height: 2rem;
   padding: 0;
   border: 1px solid color-mix(in oklch, var(--issues-chip-color, var(--mn-border)) 45%, var(--mn-border));
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: color-mix(in oklch, var(--issues-chip-color, var(--mn-fg)) 22%, var(--mn-bg));
   cursor: pointer;
 }

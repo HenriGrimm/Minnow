@@ -1285,7 +1285,7 @@ export function searchSessionChats(opts) {
         )
         .all();
 
-  for (const row of titleRows) {
+  for (const row of opts?.match === 'message' ? [] : titleRows) {
     const name = typeof row.name === 'string' ? row.name : '';
     const lower = name.toLowerCase();
     if (!tokens.every((t) => lower.includes(t))) continue;
@@ -1302,7 +1302,7 @@ export function searchSessionChats(opts) {
     });
   }
 
-  if (ftsQuery) {
+  if (ftsQuery && opts?.match !== 'title') {
     const params = [ftsQuery];
     let workspaceClause = '';
     if (workspace) {
@@ -1311,7 +1311,7 @@ export function searchSessionChats(opts) {
     }
     const msgRows = db
       .prepare(
-        `SELECT f.chat_id AS chatId, f.role AS role, f.body AS body,
+        `SELECT f.chat_id AS chatId, f.seq AS messageIndex, f.role AS role, f.body AS body,
                 c.name AS name, c.workspace_path AS workspacePath,
                 c.last_message_at AS lastMessageAt,
                 bm25(messages_fts) AS rank
@@ -1350,6 +1350,7 @@ export function searchSessionChats(opts) {
         lastMessageAt: typeof row.lastMessageAt === 'number' ? row.lastMessageAt : 0,
         score,
         matchedIn: 'message',
+        ...(Number.isSafeInteger(row.messageIndex) ? { messageIndex: row.messageIndex } : {}),
         role,
         snippet,
       });

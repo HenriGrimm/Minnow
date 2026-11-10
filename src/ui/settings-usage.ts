@@ -77,7 +77,7 @@ function formatSourceKey(key: string): string {
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
 /** Flat instrument row for ledger totals (stats-strip vocabulary, no nested cards). */
-function appendUsageMetrics(mount: HTMLElement, totals: TokenLedgerTotals): void {
+function appendUsageMetrics(mount: HTMLElement, totals: TokenLedgerTotals, graphite = false): void {
   const panel = el('div', 'usage-instrument');
   panel.setAttribute('role', 'group');
   panel.setAttribute('aria-label', 'Usage totals');
@@ -91,6 +91,9 @@ function appendUsageMetrics(mount: HTMLElement, totals: TokenLedgerTotals): void
       tone: totals.costUsd > 0 ? 'cost' : 'muted',
     },
   ];
+  if (graphite) {
+    metrics.push(metrics.shift()!, { label: 'Prompt tokens', value: formatTokens(totals.promptTokens) });
+  }
 
   for (const metric of metrics) {
     const cell = el('div', 'usage-instrument__cell');
@@ -106,6 +109,32 @@ function appendUsageMetrics(mount: HTMLElement, totals: TokenLedgerTotals): void
   }
 
   mount.appendChild(panel);
+}
+
+function usageSegments(select: HTMLSelectElement, choices: Array<[string, string]>, label: string): HTMLElement {
+  const group = el('div', 'models-usage-segments');
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', label);
+  for (const [value, title] of choices) {
+    const button = el('button', undefined, title);
+    button.type = 'button';
+    button.value = value;
+    button.addEventListener('click', () => {
+      if (select.disabled) return;
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    group.append(button);
+  }
+  const sync = () => {
+    for (const button of group.querySelectorAll('button')) {
+      button.disabled = select.disabled;
+      button.setAttribute('aria-pressed', String(button.value === select.value));
+    }
+  };
+  select.addEventListener('change', sync);
+  sync();
+  return group;
 }
 
 /** Prompt vs completion token split bar (stats-strip colors). */
@@ -143,10 +172,21 @@ function appendUsageRollup(
   totals: TokenLedgerTotals,
   bySource: TokenLedgerBySource,
   entries: TokenLedgerEntry[],
+  graphite = false,
+  chartRange = '30',
+  onChartRange?: (range: string) => void,
 ): void {
-  appendUsageMetrics(mount, totals);
-  appendTokenSplit(mount, totals);
-  mount.appendChild(createUsageTimeline(entries));
+  appendUsageMetrics(mount, totals, graphite);
+  if (!graphite) appendTokenSplit(mount, totals);
+  const timeline = createUsageTimeline(entries);
+  if (graphite) {
+    const select = timeline.querySelector('select')!;
+    select.value = chartRange;
+    select.dispatchEvent(new Event('change'));
+    select.addEventListener('change', () => onChartRange?.(select.value));
+    timeline.querySelector('figcaption')!.append(usageSegments(select, [['7', '7 days'], ['30', '30 days'], ['0', 'All retained']], 'Chart time range'));
+  }
+  mount.appendChild(timeline);
 
   const subsection = el('div', 'usage-subsection');
   const controls = el('div', 'usage-toolbar');
@@ -160,6 +200,10 @@ function appendUsageRollup(
     breakdown.appendChild(option);
   }
   controls.append(label, breakdown);
+  if (graphite) {
+    breakdown.value = 'model';
+    controls.append(usageSegments(breakdown, [['model', 'Model'], ['source', 'Source']], 'Break down by'));
+  }
   const detail = el('div', 'usage-breakdown');
   subsection.append(controls, detail);
   mount.appendChild(subsection);
@@ -274,9 +318,13 @@ export async function renderUsageSettingsSection(): Promise<void> {
   const shell = el('div', 'settings-general');
   mount.appendChild(shell);
 
+  const graphite = document.documentElement.classList.contains('mn-graphite-apps')
+    && Boolean(mount.closest('#modelsSection-usage'));
+  let chartRange = '30';
   shell.classList.add('settings-usage');
-  shell.appendChild(el('p', 'settings-section-lead',
-    'Token usage recorded from your chats and agents. A completion is one model response, including each step in a tool loop.'));
+  const lead = el('p', 'settings-section-lead',
+    'Token usage recorded from your chats and agents. A completion is one model response, including each step in a tool loop.');
+  if (!graphite) shell.append(lead);
 
   const content = el('div', 'settings-general__content settings-usage__content');
   shell.appendChild(content);
@@ -292,10 +340,20 @@ export async function renderUsageSettingsSection(): Promise<void> {
   }
   const reset = el('button', 'usage-reset', 'Reset usage');
   reset.type = 'button';
-  toolbar.append(label, scope, reset);
+  toolbar.append(label, scope);
+  if (graphite) {
+    const heading = el('h2', 'models-usage-heading', 'Usage and cost');
+    toolbar.prepend(heading);
+    toolbar.append(usageSegments(scope, [['chat', 'This chat'], ['workspace', 'Workspace'], ['total', 'All workspaces']], 'Usage scope'));
+  } else toolbar.append(reset);
   content.appendChild(toolbar);
   const report = el('div', 'usage-report');
   content.appendChild(report);
+  if (graphite) {
+    const actions = el('div', 'usage-toolbar models-usage-footer');
+    actions.append(lead, reset);
+    content.append(actions);
+  }
 
   const renderReport = () => {
     report.replaceChildren();
@@ -324,12 +382,13 @@ export async function renderUsageSettingsSection(): Promise<void> {
       ? 'All recorded usage in these workspace chats, including the active chat when it belongs to this workspace.'
       : 'All recorded usage in this chat, including agent and title responses.'));
     if (totals.completionCount === 0) {
+      if (graphite) appendUsageMetrics(group, totals, true);
       appendUsageEmpty(group, workspaceScope && !workspace
         ? 'Choose a workspace to see usage across its chats.'
         : 'No usage recorded yet. Send a message with a provider that returns token usage to see it here.');
       return;
     }
-    appendUsageRollup(group, totals, mergeSessionBySource(chats), entries);
+    appendUsageRollup(group, totals, mergeSessionBySource(chats), entries, graphite, chartRange, (range) => { chartRange = range; });
   };
   reset.addEventListener('click', async () => {
     const totalScope = scope.value === 'total';

@@ -149,6 +149,26 @@ export type ChromeIconName =
   | 'subIssues'
   | 'comment'
   | 'copy'
+  | 'sidebar'
+  | 'sort'
+  | 'book'
+  | 'stopCircle'
+  | 'shieldCheck'
+  | 'warning'
+  | 'lock'
+  | 'key'
+  | 'bulb'
+  | 'pause'
+  | 'eye'
+  | 'cube'
+  | 'pin'
+  | 'filter'
+  | 'timeline'
+  | 'keyboard'
+  | 'palette'
+  | 'tags'
+  | 'cursor'
+  | 'eject'
   | 'clock';
 
 export type BoardIconName =
@@ -350,6 +370,26 @@ export const ICON_CLASS: Record<IconName, string> = {
   subIssues: 'fi-rr-sitemap',
   comment: 'fi-rr-comment-alt',
   copy: 'fi-rr-copy-alt',
+  sidebar: 'fi-rr-sidebar',
+  sort: 'fi-rr-sort-alt',
+  book: 'fi-rr-book-alt',
+  stopCircle: 'fi-rr-stop-circle',
+  shieldCheck: 'fi-rr-shield-check',
+  warning: 'fi-rr-triangle-warning',
+  lock: 'fi-rr-lock',
+  key: 'fi-rr-key',
+  bulb: 'fi-rr-bulb',
+  pause: 'fi-rr-pause',
+  eye: 'fi-rr-eye',
+  cube: 'fi-rr-cube',
+  pin: 'fi-rr-thumbtack',
+  filter: 'fi-rr-filter',
+  timeline: 'fi-rr-list-timeline',
+  keyboard: 'fi-rr-keyboard',
+  palette: 'fi-rr-palette',
+  tags: 'fi-rr-tags',
+  cursor: 'fi-rr-cursor',
+  eject: 'fi-rr-eject',
   clock: 'fi-rr-clock',
 
   boardBuild: 'fi-sr-hammer',

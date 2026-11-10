@@ -56,15 +56,19 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', key);
     window.removeEventListener('resize', position);
+    window.removeEventListener('minnow:graphite-workspace-changed', position);
     anchor.focus();
   };
 
   const position = (): void => {
     const box = anchor.getBoundingClientRect();
-    const top = Math.max(12, Math.min(box.bottom + 8, window.innerHeight - 80));
-    panel.style.top = `${top}px`;
-    panel.style.maxHeight = `${window.innerHeight - top - 12}px`;
-    panel.style.left = `${Math.max(12, Math.min(box.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 12))}px`;
+    const below = window.innerHeight - box.bottom;
+    const showAbove = below < 260 && box.top > below;
+    panel.style.top = showAbove ? 'auto' : `${Math.max(12, box.bottom + 8)}px`;
+    panel.style.bottom = showAbove ? `${window.innerHeight - box.top + 8}px` : 'auto';
+    panel.style.maxHeight = `${Math.max(80, (showAbove ? box.top : below) - 20)}px`;
+    const left = showAbove ? box.left : box.right - panel.offsetWidth;
+    panel.style.left = `${Math.max(12, Math.min(left, window.innerWidth - panel.offsetWidth - 12))}px`;
   };
   const outside = (event: PointerEvent): void => {
     const target = event.target as Element;
@@ -102,6 +106,7 @@ export function openModelsPopover(anchor: HTMLButtonElement): () => void {
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('keydown', key);
   window.addEventListener('resize', position);
+  window.addEventListener('minnow:graphite-workspace-changed', position);
   dismiss.focus();
   return close;
 }

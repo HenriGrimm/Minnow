@@ -14,7 +14,7 @@
 .chat-history-pending__row {
   height: 14px;
   width: var(--chat-history-pending-w, 72%);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-2);
   animation: chat-history-pending-pulse 1.1s ease-in-out infinite;
 }
@@ -568,7 +568,7 @@
 .issue-mention-link:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 1px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
 }
 
 .user-msg-attachments {
@@ -706,7 +706,7 @@
 }
 
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h1 { font-size: 1.25rem; }
-:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2 { font-size: 1.12rem; }
+:is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h2 { font-size: var(--mn-type-2xl); }
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h3,
 :is(.msg-bubble, .thoughts-content, .issue-ticket__description).msg-bubble--md h4 { font-size: 1.02rem; }
 
@@ -898,10 +898,10 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   letter-spacing: .06em;
   padding: 2px 7px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
   border: 1px solid var(--mn-border-strong);
   color: var(--mn-fg-subtle);
   white-space: nowrap;
@@ -1170,7 +1170,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 .tool-call-target--file-link:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
 }
 
 /* Outcome: the measurement this tool produced. Reads as a bench gauge. */
@@ -1199,7 +1199,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   font-size: 10px;
   letter-spacing: 0.02em;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
   border: 1px solid var(--mn-border);
   color: var(--mn-fg-muted);
   background: var(--mn-surface-2, var(--mn-surface));
@@ -1625,7 +1625,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 .tool-call-raw-details__summary:focus-visible {
   outline: 2px solid var(--mn-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
 }
 
 
@@ -1647,7 +1647,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   width: 22px;
   height: 22px;
   margin-top: 2px;
-  font-size: 22px;
+  font-size: var(--mn-type-3xl);
   line-height: 22px;
   color: var(--mn-fg-muted);
 }
@@ -1669,7 +1669,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   margin-top: 16px;
   overflow: hidden;
   background: var(--mn-border);
-  border-radius: 2px;
+  border-radius: var(--mn-radius-xs);
 }
 
 .chat-worktree-setup__progress::after {

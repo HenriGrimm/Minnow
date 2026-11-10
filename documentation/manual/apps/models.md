@@ -243,7 +243,7 @@ See [Voice](../extend/voice.md).
 | Control | Scope |
 |---------|-------|
 | **Composer picker, Ctrl+M / Cmd+M** | Selects this chat's model and remembers it for new chats across projects |
-| **Issue / Dashboard launch picker** | Overrides the model for that dispatch |
+| **Issue launch picker** | Overrides the model for that dispatch |
 | **Board model picker** | Selects that board's model |
 
 Local runtimes expose **Load** and **Unload** in the composer picker, acting on the model that chat is bound to. The tray menu can unload local models without opening the window — useful when you want your VRAM back. Live load and inference numbers live on **Local Server**.

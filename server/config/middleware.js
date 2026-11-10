@@ -454,6 +454,7 @@ export async function handleConfigRequest(req, res, pathname) {
       const workspace = url.searchParams.get('workspace') ?? undefined;
       const limitRaw = url.searchParams.get('limit');
       const limit = limitRaw != null && limitRaw !== '' ? Number(limitRaw) : 30;
+      const match = url.searchParams.get('match');
 
       if (useJsonSessionsStore()) {
         const full = (await readConfigJson('sessions/state.json')) ?? (await readResource('sessions'));
@@ -471,7 +472,7 @@ export async function handleConfigRequest(req, res, pathname) {
           const name = String(chat.name ?? '');
           const nameLower = name.toLowerCase();
           let best = null;
-          if (tokens.length && tokens.every((t) => nameLower.includes(t))) {
+          if (match !== 'message' && tokens.length && tokens.every((t) => nameLower.includes(t))) {
             best = {
               chatId: chat.id,
               name,
@@ -482,8 +483,8 @@ export async function handleConfigRequest(req, res, pathname) {
               snippet: '',
             };
           }
-          const history = Array.isArray(chat.history) ? chat.history : [];
-          for (const msg of history) {
+          const history = match !== 'title' && Array.isArray(chat.history) ? chat.history : [];
+          for (const [messageIndex, msg] of history.entries()) {
             if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) continue;
             const body = typeof msg.content === 'string' ? msg.content : '';
             if (!body || !tokens.length) continue;
@@ -500,6 +501,7 @@ export async function handleConfigRequest(req, res, pathname) {
               lastMessageAt: chat.lastMessageAt ?? 0,
               score,
               matchedIn: 'message',
+              messageIndex,
               role: msg.role,
               snippet: `${start > 0 ? '…' : ''}${body.slice(start, start + 110).trim()}${start + 110 < body.length ? '…' : ''}`,
             };
@@ -514,7 +516,7 @@ export async function handleConfigRequest(req, res, pathname) {
         return true;
       }
 
-      sendJson(res, 200, searchSessionChats({ q, workspace, limit }));
+      sendJson(res, 200, searchSessionChats({ q, workspace, limit, match }));
       return true;
     }
 

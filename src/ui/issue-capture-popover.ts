@@ -22,6 +22,9 @@ import {
 import { markPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 import type { ExpandedIssueDraft } from '../chat/issues/expand-issue';
+import { createIcon } from './icon';
+import { defaultIssuePriorityId, statusIdForRole } from '../issues/taxonomy';
+import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
 
 const EDGE_GAP = 8;
 /** How many recent issues the "add to existing" menu offers. */
@@ -45,6 +48,8 @@ export interface OpenIssueCaptureOptions {
   restoreDraft?: boolean;
   /** Keep the global quick-capture flow to a title and two create actions. */
   minimal?: boolean;
+  /** Compact capture anchored in the Code thread header. */
+  thread?: boolean;
 }
 
 interface CaptureSession {
@@ -62,6 +67,7 @@ interface CaptureSession {
   onFiled?: (result: IssueCaptureResult) => void;
   submitting: boolean;
   expanding: AbortController | null;
+  thread?: { notes: HTMLTextAreaElement; label: string; priority: string; link: HTMLInputElement | null; linkedChatId?: string };
 }
 
 let session: CaptureSession | null = null;
@@ -72,10 +78,12 @@ export function isIssueCaptureOpen(): boolean {
 }
 
 function draftFromSession(current: CaptureSession): IssueCaptureDraft | null {
+  const { thread } = current;
   const draft: IssueCaptureDraft = {
     title: current.titleInput.value,
-    payload: { ...current.payload, items: [...current.payload.items] },
+    payload: { ...current.payload, description: thread?.notes.value ?? current.payload.description, items: [...current.payload.items] },
     targetIssueId: current.targetIssueId,
+    ...(thread ? { threadFields: { label: thread.label, priority: thread.priority, linkedChatId: thread.linkedChatId, link: thread.link?.checked ?? false } } : {}),
   };
   return isDraftEmpty(draft) ? null : draft;
 }
@@ -96,6 +104,7 @@ export function closeIssueCapture(options?: {
   else saveIssueCaptureDraft(current.payload.workspacePath, null);
   session = null;
   unbindGlobalListeners();
+  if (current.thread) current.anchor?.setAttribute('aria-expanded', 'false');
   const restore = options?.restoreFocus === false ? null : current.restoreFocus;
   if (restore?.isConnected) restore.focus();
   current.root.remove();
@@ -249,13 +258,19 @@ async function createNewCaptureIssue(
   draft: Pick<ExpandedIssueDraft, 'title' | 'description' | 'type' | 'labels' | 'priority'>,
 ): Promise<void> {
   const store = await import('../state/issues-store');
+  if (session !== current) return;
   const links = capturePayloadToLinks(current.payload);
+  if (current.thread?.link && !current.thread.link.checked) {
+    const index = links.chatIds.indexOf(current.thread.linkedChatId ?? '');
+    if (index !== -1) links.chatIds.splice(index, 1);
+  }
   const issue = store.addIssue({
     title: draft.title,
     description: draft.description,
     type: draft.type,
     labels: draft.labels,
     priority: draft.priority,
+    status: current.thread ? statusIdForRole(getIssuesTaxonomySync(), 'triage') : undefined,
     workspacePath: current.payload.workspacePath,
     source: 'user',
   });
@@ -362,8 +377,12 @@ async function submitCapture(current: CaptureSession): Promise<void> {
   try {
     await createNewCaptureIssue(current, {
       title,
-      description: captureDescriptionSeed(current.payload),
+      description: captureDescriptionSeed({ ...current.payload, description: current.thread?.notes.value ?? current.payload.description }),
+      labels: current.thread?.label ? [current.thread.label] : undefined,
+      priority: current.thread?.priority,
     });
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : 'Could not capture the issue', 'error');
   } finally {
     current.submitting = false;
   }
@@ -404,6 +423,7 @@ function onKeyDown(event: KeyboardEvent): void {
   }
   if (event.key === 'Enter' && !event.shiftKey) {
     const target = event.target;
+    if (current.thread && !(event.metaKey || event.ctrlKey)) return;
     if (target === current.destinationBtn) return;
     if (isTypingTarget(target) || target === current.submitBtn) {
       event.preventDefault();
@@ -430,6 +450,7 @@ function bindGlobalListeners(): void {
   document.addEventListener('pointerdown', onPointerDown, true);
   window.addEventListener('resize', onWindowChange);
   window.addEventListener('blur', onWindowChange);
+  window.addEventListener('hashchange', onWindowChange);
 }
 
 function unbindGlobalListeners(): void {
@@ -437,6 +458,7 @@ function unbindGlobalListeners(): void {
   document.removeEventListener('pointerdown', onPointerDown, true);
   window.removeEventListener('resize', onWindowChange);
   window.removeEventListener('blur', onWindowChange);
+  window.removeEventListener('hashchange', onWindowChange);
 }
 
 function bindPopoverDropTarget(root: HTMLElement): void {
@@ -469,18 +491,17 @@ function bindPopoverDropTarget(root: HTMLElement): void {
 
 function resolvedOpenState(
   options: OpenIssueCaptureOptions,
-): { payload: CapturePayload; title: string; targetIssueId: string | null } {
+): { payload: CapturePayload; title: string; targetIssueId: string | null; draft?: IssueCaptureDraft } {
   let payload = options.payload;
   let targetIssueId: string | null = null;
 
   if (options.restoreDraft) {
     const draft = loadIssueCaptureDraft(payload.workspacePath);
     if (draft) {
-      payload = mergeCapturePayloads(draft.payload, payload);
-      targetIssueId = draft.targetIssueId;
-      if (draft.title.trim()) {
-        return { payload, title: draft.title, targetIssueId };
-      }
+      const saved = options.thread ? { ...draft.payload, items: draft.payload.items.filter(item => !item.chatId) } : draft.payload;
+      payload = mergeCapturePayloads(saved, payload);
+      targetIssueId = options.thread ? null : draft.targetIssueId;
+      return { payload, title: draft.title.trim() ? draft.title : captureTitleSeed(payload), targetIssueId, draft };
     }
   }
 
@@ -496,20 +517,87 @@ export function focusOpenIssueCapture(): boolean {
   return true;
 }
 
+function threadCaptureFields(root: HTMLElement, payload: CapturePayload, saved?: IssueCaptureDraft['threadFields']): NonNullable<CaptureSession['thread']> {
+  const taxonomy = getIssuesTaxonomySync();
+  const notes = document.createElement('textarea');
+  notes.rows = 3;
+  notes.className = 'mn-capture__notes';
+  notes.placeholder = 'Notes, steps to reproduce, links (optional)';
+  notes.setAttribute('aria-label', 'Notes');
+  notes.value = payload.description ?? '';
+  const groups = document.createElement('div');
+  groups.className = 'mn-capture__choices';
+  const linked = payload.items.find(item => item.kind === 'chat' && item.chatId);
+  const link = linked ? document.createElement('input') : null;
+  const labels = ['Bug', 'Feature', 'Chore'];
+  const standard = taxonomy.priorities.filter(item => ['high', 'medium', 'low'].includes(item.id));
+  const priorities = standard.length ? standard : taxonomy.priorities;
+  const priority = priorities.find(item => item.id === saved?.priority)?.id ??
+    priorities.find(item => item.id === 'medium')?.id ?? priorities[0]?.id ?? defaultIssuePriorityId(taxonomy);
+  const label = saved && labels.includes(saved.label) ? saved.label : 'Bug';
+  const fields = { notes, label, priority, link, linkedChatId: linked?.chatId };
+
+  function select(field: 'label' | 'priority', name: string, options: readonly { id: string; label: string }[]): void {
+    const group = document.createElement('div');
+    group.className = 'mn-capture__choice-group';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', name);
+    for (const option of options) {
+      const control = document.createElement('button');
+      control.type = 'button';
+      control.textContent = option.label;
+      control.setAttribute('aria-pressed', String(fields[field] === option.id));
+      control.addEventListener('click', () => {
+        fields[field] = option.id;
+        for (const sibling of group.children) sibling.setAttribute('aria-pressed', String(sibling === control));
+      });
+      group.append(control);
+    }
+    groups.append(group);
+  }
+  select('label', 'Label', labels.map(label => ({ id: label, label })));
+  select('priority', 'Priority', priorities);
+  root.append(notes, groups);
+  if (link && linked) {
+    link.type = 'checkbox';
+    link.checked = saved && saved.linkedChatId === linked.chatId ? saved.link : true;
+    const label = document.createElement('label');
+    label.className = 'mn-capture__thread-link';
+    label.append(link, document.createTextNode(`Link to “${linked.label}”`));
+    root.append(label);
+  }
+  return fields;
+}
+
 /** Open the capture popover. */
 export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   closeIssueCapture({ restoreFocus: false });
 
-  const { payload, title, targetIssueId } = resolvedOpenState(options);
+  const { payload, title, targetIssueId, draft } = resolvedOpenState(options);
 
   const root = document.createElement('div');
   root.className = 'mn-capture';
   root.classList.toggle('mn-capture--minimal', Boolean(options.minimal));
+  root.classList.toggle('mn-capture--thread', Boolean(options.thread));
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Capture issue');
 
   let destinationBtn: HTMLButtonElement | null = null;
-  if (!options.minimal) {
+  if (options.thread) {
+    const head = document.createElement('div');
+    head.className = 'mn-capture__head';
+    const title = document.createElement('strong');
+    title.textContent = 'Capture issue';
+    const next = document.createElement('span');
+    next.className = 'mn-capture__thread-next';
+    head.append(createIcon('appIssues', { size: 14 }), title, next);
+    root.append(head);
+    void import('../state/issues-store').then(({ getNextIssueIdPreview }) => {
+      const taxonomy = getIssuesTaxonomySync();
+      const triage = taxonomy.statuses.find(item => item.role === 'triage');
+      next.textContent = [getNextIssueIdPreview(payload.workspacePath), triage?.label].filter(Boolean).join(' · ');
+    }).catch(() => undefined);
+  } else if (!options.minimal) {
     const head = document.createElement('div');
     head.className = 'mn-capture__head';
     const source = document.createElement('span');
@@ -527,13 +615,14 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
   titleInput.className = 'mn-capture__title';
-  titleInput.placeholder = 'What went wrong?';
+  titleInput.placeholder = options.thread ? 'What needs doing?' : 'What went wrong?';
   titleInput.setAttribute('aria-label', 'Issue title');
   titleInput.value = title;
   root.appendChild(titleInput);
+  const thread = options.thread ? threadCaptureFields(root, payload, draft?.threadFields) : undefined;
 
   let chipsHost: HTMLElement | null = null;
-  if (!options.minimal) {
+  if (!options.minimal && !options.thread) {
     chipsHost = document.createElement('div');
     chipsHost.className = 'mn-capture__chips';
     root.appendChild(chipsHost);
@@ -546,7 +635,18 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   submitBtn.className = 'mn-capture__submit';
   if (options.minimal) submitBtn.textContent = 'Create Issue';
   let expandAndCreateBtn: HTMLButtonElement | null = null;
-  if (options.minimal) {
+  if (options.thread) {
+    const hint = document.createElement('span');
+    hint.className = 'mn-capture__hint';
+    hint.textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵ to capture' : 'Ctrl+Enter to capture';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'mn-capture__cancel';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => closeIssueCapture());
+    submitBtn.textContent = 'Capture';
+    foot.append(hint, cancel, submitBtn);
+  } else if (options.minimal) {
     expandAndCreateBtn = document.createElement('button');
     expandAndCreateBtn.type = 'button';
     expandAndCreateBtn.className = 'mn-capture__expand-and-create';
@@ -574,6 +674,7 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     onFiled: options.onFiled,
     submitting: false,
     expanding: null,
+    thread,
   };
   openShellOverlay('capture', closeIssueCapture);
   session = current;
@@ -589,11 +690,12 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   });
 
   renderChips(current);
-  if (!options.minimal) syncDestination(current);
+  if (!options.minimal && !options.thread) syncDestination(current);
 
   bindPopoverDropTarget(root);
 
   document.body.appendChild(root);
+  if (thread) current.anchor?.setAttribute('aria-expanded', 'true');
   positionPopover(root, current.anchor);
   bindGlobalListeners();
   markPreviewOccluder(root, 'panel');

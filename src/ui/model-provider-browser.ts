@@ -130,11 +130,18 @@ export function renderModelProviderBrowser<T>(
   pane.className = 'model-browser-pane';
   pane.id = id;
   const buttons: HTMLButtonElement[] = [];
+  const isPhone = () => document.documentElement.classList.contains('mn-phone');
+  function backToProviders(): void {
+    const previous = current.active;
+    activate(null, false);
+    buttons.find(button => button.dataset.providerId === previous)?.focus();
+  }
   function activate(providerId: string | null, pinned: boolean): void {
     clearTimeout(current.timer);
     const group = groups.find(candidate => candidate.id === providerId);
     current.active = group?.id ?? null;
     current.pinned = Boolean(group && pinned);
+    columns.classList.toggle('is-provider-open', current.pinned);
     buttons.forEach(button => button.setAttribute('aria-expanded', String(button.dataset.providerId === current.active)));
     pane.replaceChildren();
     if (!group) {
@@ -149,7 +156,13 @@ export function renderModelProviderBrowser<T>(
     } else {
       const label = document.createElement('div');
       label.className = 'model-browser-pane-heading';
-      label.textContent = `${group.label} · ${group.local ? 'Local' : 'Cloud'}${current.pinned ? ' · Pinned' : ''}`;
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'model-browser-back';
+      back.setAttribute('aria-label', 'Back to providers');
+      back.innerHTML = iconHtml('chevronLeft');
+      back.addEventListener('click', backToProviders);
+      label.append(back, `${group.label} · ${group.local ? 'Local' : 'Cloud'}${current.pinned && !isPhone() ? ' · Pinned' : ''}`);
       const list = document.createElement('ul');
       list.className = 'model-browser-models';
       list.setAttribute('role', 'listbox');
@@ -197,17 +210,20 @@ export function renderModelProviderBrowser<T>(
     chevron.setAttribute('aria-hidden', 'true');
     button.append(mark, name, count, chevron);
     button.addEventListener('pointerenter', event => {
-      if (event.pointerType === 'touch' || current.pinned || current.active === group.id) return;
+      if (isPhone() || event.pointerType === 'touch' || current.pinned || current.active === group.id) return;
       clearTimeout(current.timer);
       current.timer = setTimeout(() => {
         if (button.isConnected && !current.pinned) activate(group.id, false);
       }, 180);
     });
     button.addEventListener('pointerleave', () => clearTimeout(current.timer));
-    button.addEventListener('focus', () => { if (!current.pinned && current.active !== group.id) activate(group.id, false); });
+    button.addEventListener('focus', () => { if (!isPhone() && !current.pinned && current.active !== group.id) activate(group.id, false); });
     button.addEventListener('click', () => {
       if (current.active === group.id && current.pinned) activate(null, false);
-      else activate(group.id, true);
+      else {
+        activate(group.id, true);
+        if (isPhone()) pane.querySelector<HTMLButtonElement>('.model-browser-back')?.focus({ preventScroll: true });
+      }
     });
     buttons.push(button);
     rail.appendChild(button);
@@ -228,7 +244,8 @@ export function renderModelProviderBrowser<T>(
       activate(provider.dataset.providerId ?? null, true);
       pane.querySelector<HTMLElement>('.model-select-option')?.focus();
     } else if (pane.contains(target) && event.key === 'ArrowLeft') {
-      buttons.find(button => button.dataset.providerId === current.active)?.focus();
+      if (isPhone()) backToProviders();
+      else buttons.find(button => button.dataset.providerId === current.active)?.focus();
     } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
       if (target.tagName === 'INPUT' && ['Home', 'End'].includes(event.key)) return false;
       let targets: HTMLElement[];

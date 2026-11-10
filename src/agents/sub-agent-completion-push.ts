@@ -232,7 +232,7 @@ async function defaultDeliverResume(
       message = buildSubAgentParentResumeMessage('completion', freshRuns);
     }
   }
-  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld() || cancelledResults) {
+  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld(chatId) || cancelledResults) {
     if (!completion) return;
     chat.history.push(hiddenTranscriptUserMessage(message));
     recordChatMessage(chat);
@@ -243,7 +243,7 @@ async function defaultDeliverResume(
   if (hasManagedParent(chatId)) throw new ParentChatDeliveryDeferredError();
   if (runIdsToMark.some(id => hasPersistentBinding(chatId, id))) return defaultDeliverResume(chatId, message, runIdsToMark, kind);
   // Stop can land while the turn module is being loaded.
-  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld()) {
+  if (chat.subAgentAutoResumeBlocked || isResumeGateHeld(chatId)) {
     return defaultDeliverResume(chatId, message, runIdsToMark, kind);
   }
   if (isChatTurnInProgress(chatId)) throw new ParentChatDeliveryDeferredError();

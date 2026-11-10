@@ -29,6 +29,27 @@
   display: none !important;
 }
 
+#toolApprovalHost:has(.tool-approval-panel--graphite) {
+  border-color: var(--mn-warning-border);
+  border-radius: 12px;
+  background: var(--mn-warning-soft);
+  box-shadow: none;
+}
+
+#toolApprovalHost:has(.tool-approval-panel--graphite.tool-approval-panel--high) {
+  border-color: var(--mn-danger-border);
+  background: var(--mn-danger-soft);
+}
+
+.tool-approval-panel--graphite::before { display: none; }
+.tool-approval-panel--graphite :is(.tool-approval-kind, .tool-approval-detail) {
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  border: 1px solid var(--mn-border);
+}
+.tool-approval-panel--graphite .tool-approval-panel__title { font-size: 13.5px; font-weight: 500; }
+.tool-approval-panel--graphite .tool-approval-detail { font-size: 12px; }
+.tool-approval-panel--graphite .tool-approval-action--deny { border-color: transparent; }
+
 /* Fallback when Brain/Code shells are hidden behind another Minnow Shell window */
 .tool-approval-host--global {
   position: fixed;

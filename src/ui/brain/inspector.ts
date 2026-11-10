@@ -29,8 +29,12 @@ function formatAge(iso: string | undefined): string {
   if (!iso) return '—';
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return '—';
-  const days = Math.floor((Date.now() - then) / 86_400_000);
-  if (days <= 0) return 'today';
+  const elapsed = Math.max(0, Date.now() - then);
+  const days = Math.floor(elapsed / 86_400_000);
+  if (days === 0) {
+    const hours = Math.floor(elapsed / 3_600_000);
+    return hours > 0 ? `${hours}h` : 'today';
+  }
   if (days === 1) return '1d';
   if (days < 30) return `${days}d`;
   const months = Math.floor(days / 30);
@@ -44,9 +48,11 @@ function resolveLinkTarget(
   raw: string,
 ): BrainPageMeta | null {
   const key = raw.replace(/\\/g, '/').replace(/\.md$/i, '');
-  return (
-    catalogPages.find((p) => p.path.replace(/\\/g, '/').replace(/\.md$/i, '') === key) ?? null
-  );
+  const exact = catalogPages.find((p) => p.path.replace(/\\/g, '/').replace(/\.md$/i, '') === key);
+  if (exact || key.includes('/')) return exact ?? null;
+  const name = key.toLowerCase();
+  const matches = catalogPages.filter((page) => page.title.toLowerCase() === name || page.slug.toLowerCase() === name);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
@@ -133,6 +139,7 @@ export async function renderBrainInspector(
   navigate: InspectorNavigateFn,
   onEdit: InspectorEditFn,
   onDeleted?: InspectorDeletedFn,
+  onClose?: () => void,
 ): Promise<void> {
   mount.classList.add('is-open');
   mount.setAttribute('aria-hidden', 'false');
@@ -141,36 +148,45 @@ export async function renderBrainInspector(
 
   const inner = document.createElement('div');
   inner.className = 'brain-inspector__inner';
+  const graphite = document.documentElement.classList.contains('mn-graphite-apps');
   content.append(inner);
 
-  const loadingMount = document.createElement('div');
-  inner.append(loadingMount);
-  renderBrainLoading(loadingMount, 'Loading page…');
-
-  const workspaceRoot = getWorkspacePath().trim();
-  const page = await fetchBrainPage(relPath, relPath.startsWith('workspaces/') ? workspaceRoot : undefined);
-  inner.replaceChildren();
-
-  if (!page) {
-    renderBrainEmptyState(inner, {
-      icon: 'file',
-      title: 'Page unavailable',
-      message: `Could not load ${relPath}.`,
-    });
-    return;
-  }
-
+  const close = (): void => {
+    if (!content.contains(inner)) return;
+    closeBrainInspector(mount);
+    onClose?.();
+  };
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'brain-inspector__close icon-btn';
   closeBtn.setAttribute('aria-label', 'Close inspector');
-  closeBtn.innerHTML =
-    iconHtml('close');
-  closeBtn.addEventListener('click', () => closeBrainInspector(mount));
+  closeBtn.innerHTML = iconHtml('close');
+  closeBtn.addEventListener('click', close);
+
+  const loadingMount = document.createElement('div');
+  loadingMount.className = 'brain-inspector__loading-state';
+  inner.append(loadingMount);
+  renderBrainLoading(loadingMount, 'Loading page…');
+  loadingMount.append(closeBtn);
+
+  const workspaceRoot = getWorkspacePath().trim();
+  const page = await fetchBrainPage(relPath, relPath.startsWith('workspaces/') ? workspaceRoot : undefined);
+  if (!content.contains(inner)) return;
+  inner.replaceChildren();
+
+  if (!page) {
+    inner.append(loadingMount);
+    renderBrainEmptyState(loadingMount, {
+      icon: 'file',
+      title: 'Page unavailable',
+      message: `Could not load ${relPath}.`,
+    });
+    loadingMount.append(closeBtn);
+    return;
+  }
 
   const head = document.createElement('header');
   head.className = 'brain-inspector__head';
-  head.append(closeBtn);
 
   const kindLine = document.createElement('p');
   kindLine.className = 'brain-inspector__kind';
@@ -184,10 +200,21 @@ export async function renderBrainInspector(
   const title = document.createElement('h2');
   title.className = 'brain-inspector__title';
   title.textContent = page.meta.title;
+  title.title = page.path;
   const pathLine = document.createElement('p');
   pathLine.className = 'brain-inspector__path';
   pathLine.textContent = page.path;
-  head.append(kindLine, title, pathLine);
+  if (graphite) {
+    const bar = document.createElement('div');
+    bar.className = 'brain-inspector__graphite-toolbar';
+    const updated = document.createElement('span');
+    updated.className = 'brain-inspector__graphite-updated';
+    const age = formatAge(page.meta.updatedAt);
+    if (age !== '—') updated.textContent = age === 'today' ? 'Edited today' : `Edited ${age} ago`;
+    bar.append(kindLine, updated, closeBtn);
+    inner.append(bar);
+    head.append(title);
+  } else head.append(closeBtn, kindLine, title, pathLine);
 
   if (page.meta.tags?.length) {
     const chips = document.createElement('div');
@@ -207,8 +234,6 @@ export async function renderBrainInspector(
     summary.textContent = page.meta.summary;
     head.append(summary);
   }
-
-  inner.append(head);
 
   const backlinks = computeBrainBacklinks(catalogPages, page.path);
   const outbound = (page.meta.links ?? []).map((raw) => {
@@ -232,13 +257,12 @@ export async function renderBrainInspector(
     buildMetric('Tags', String(page.meta.tags?.length ?? 0)),
     buildMetric('Updated', formatAge(page.meta.updatedAt)),
   );
-  inner.append(metrics);
 
   const relations = document.createElement('section');
   relations.className = 'brain-inspector__relations';
   const relTitle = document.createElement('h3');
   relTitle.className = 'brain-section-subtitle';
-  relTitle.textContent = 'Connections';
+  relTitle.textContent = graphite ? 'Links' : 'Connections';
   relations.append(relTitle);
 
   const groups = [
@@ -272,20 +296,38 @@ export async function renderBrainInspector(
   const bodyMarkdown = document.createElement('div');
   bodyMarkdown.className = 'brain-inspector__markdown';
   renderBrainMarkdown(bodyMarkdown, page.body, navigate);
-  bodyWrap.append(bodyTitle, bodyMarkdown);
+  if (graphite) bodyWrap.append(bodyMarkdown);
+  else bodyWrap.append(bodyTitle, bodyMarkdown);
   const scroll = document.createElement('div');
   scroll.className = 'brain-inspector__scroll';
-  scroll.append(head, metrics, bodyWrap, relations);
+  if (graphite) {
+    scroll.append(head, bodyWrap, relations);
+    if (page.meta.source?.trim()) {
+      const sources = document.createElement('section');
+      sources.className = 'brain-inspector__sources';
+      const sourcesTitle = document.createElement('h3');
+      sourcesTitle.className = 'brain-section-subtitle';
+      sourcesTitle.textContent = 'Sources';
+      const source = document.createElement('code');
+      source.textContent = page.meta.source;
+      source.title = page.meta.source;
+      sources.append(sourcesTitle, source);
+      scroll.append(sources);
+    }
+  } else scroll.append(head, metrics, bodyWrap, relations);
   inner.append(scroll);
 
   const actions = document.createElement('div');
   actions.className = 'brain-inspector__actions';
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
-  editBtn.className = 'brain-action-btn is-primary';
-  editBtn.textContent = 'Edit page';
+  editBtn.className = graphite ? 'brain-action-btn brain-inspector__graphite-edit' : 'brain-action-btn is-primary';
+  editBtn.textContent = graphite ? 'Edit' : 'Edit page';
+  if (graphite) editBtn.insertAdjacentHTML('afterbegin', iconHtml('compose', { size: 14 }));
   editBtn.addEventListener('click', () => onEdit(page.path));
-  actions.append(editBtn);
+  const toolbar = inner.querySelector('.brain-inspector__graphite-toolbar');
+  if (toolbar) toolbar.insertBefore(editBtn, closeBtn);
+  else actions.append(editBtn);
 
   if (page.workspace && page.workspace.currentKey !== page.workspace.ownerKey) {
     const assign = document.createElement('button');
@@ -322,7 +364,7 @@ export async function renderBrainInspector(
         await appAlert(result.error ?? 'Delete failed.');
         return;
       }
-      closeBrainInspector(mount);
+      close();
       await onDeleted?.();
     })();
   });
@@ -348,14 +390,23 @@ export async function renderBrainInspector(
           await appAlert(result.error ?? 'Archive delete failed.');
           return;
         }
-        closeBrainInspector(mount);
+        close();
         await onDeleted?.();
       })();
     });
     actions.append(archiveBtn);
   }
 
-  inner.append(actions);
+  if (toolbar) {
+    const more = document.createElement('details');
+    more.className = 'brain-inspector__graphite-more';
+    const trigger = document.createElement('summary');
+    trigger.setAttribute('aria-label', 'Page actions');
+    trigger.title = 'Page actions';
+    trigger.innerHTML = iconHtml('more', { size: 15 });
+    more.append(trigger, actions);
+    toolbar.insertBefore(more, closeBtn);
+  } else inner.append(actions);
 }
 
 /** Collapse the inspector panel. */

@@ -23,6 +23,8 @@ import {
 import { openWorkspaceFolderPicker } from './workspace-folder-picker';
 import { setStatus } from './status';
 import { MINNOW_GLYPH_HEADER_HTML } from './minnow-glyph';
+import { createIcon } from './icon';
+import { getWorkspaceGitSummary } from './sidebar-git-state';
 import { parseRemoteRepository, validateRemoteFolderName } from '../lib/remote-repository.mjs';
 
 /** Session-only parent for the create-project wizard (Change location). */
@@ -30,6 +32,7 @@ let wizardParentPath = '';
 
 let staticBindingsDone = false;
 let createPanelOpen = false;
+let recentsRequest = 0;
 let createRemoteMode = false;
 let createBusy = false;
 let suggestedRemoteName = '';
@@ -218,8 +221,10 @@ function showCreatePanel(show: boolean, fromRemote = false): void {
   const remoteInput = document.getElementById('welcomeRemoteUrl') as HTMLInputElement | null;
   if (remoteInput) remoteInput.value = '';
   if (actions instanceof HTMLElement) {
-    actions.classList.toggle('hidden', show);
+    actions.classList.toggle('hidden', show && !document.documentElement.classList.contains('mn-graphite-workspace'));
   }
+  document.getElementById('btnWelcomeCreateProject')?.setAttribute('aria-expanded', String(show && !fromRemote));
+  document.getElementById('btnWelcomeCreateRemote')?.setAttribute('aria-expanded', String(show && fromRemote));
   if (show) {
     const input = document.getElementById('welcomeProjectName') as HTMLInputElement | null;
     showCreateError(null);
@@ -320,7 +325,16 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   const li = document.createElement('li');
   li.setAttribute('role', 'listitem');
   li.className = 'welcome-page__recents-item';
+  li.dataset.workspaceSearch = `${item.label} ${item.path}`.toLocaleLowerCase();
   if (options.pinned) li.dataset.pinned = 'true';
+  const glyph = document.createElement('span');
+  glyph.className = 'welcome-page__recents-glyph';
+  glyph.setAttribute('aria-hidden', 'true');
+  if (options.glyphHtml) glyph.innerHTML = options.glyphHtml;
+  else {
+    glyph.classList.add('welcome-page__recents-initials');
+    glyph.textContent = item.label.trim().slice(0, 2);
+  }
 
   const copy = document.createElement('span');
   copy.className = 'welcome-page__recents-copy';
@@ -328,7 +342,18 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   const label = document.createElement('span');
   label.className = 'welcome-page__recents-label';
   label.textContent = item.label;
-  copy.appendChild(label);
+  const identity = document.createElement('span');
+  identity.className = 'welcome-page__recents-identity';
+  identity.append(label);
+  const branch = item.exists && !options.pinned ? getWorkspaceGitSummary(item.path)?.branch : '';
+  if (branch) {
+    const badge = document.createElement('span');
+    badge.className = 'welcome-page__recents-branch';
+    badge.title = branch;
+    badge.append(createIcon('gitBranch', { size: 12 }), branch);
+    identity.append(badge);
+  }
+  copy.appendChild(identity);
 
   if (options.hint) {
     const hint = document.createElement('span');
@@ -346,13 +371,11 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   if (!item.exists) {
     const row = document.createElement('div');
     row.className = 'welcome-page__recents-row welcome-page__recents-row--missing';
-    if (options.glyphHtml) {
-      const glyph = document.createElement('span');
-      glyph.className = 'welcome-page__recents-glyph';
-      glyph.setAttribute('aria-hidden', 'true');
-      glyph.innerHTML = options.glyphHtml;
-      row.appendChild(glyph);
-    }
+    row.appendChild(glyph);
+    const unavailable = document.createElement('span');
+    unavailable.className = 'welcome-page__recents-unavailable';
+    unavailable.textContent = 'Workspace folder no longer exists';
+    copy.appendChild(unavailable);
     row.appendChild(copy);
     li.appendChild(row);
     appendTrailingActions(li, item, Boolean(options.pinned));
@@ -364,15 +387,11 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   btn.className = 'welcome-page__recents-row';
   btn.title = item.path;
 
-  if (options.glyphHtml) {
-    const glyph = document.createElement('span');
-    glyph.className = 'welcome-page__recents-glyph';
-    glyph.setAttribute('aria-hidden', 'true');
-    glyph.innerHTML = options.glyphHtml;
-    btn.appendChild(glyph);
-  }
-
-  btn.appendChild(copy);
+  const action = document.createElement('span');
+  action.className = 'welcome-page__recents-open';
+  action.textContent = 'Open';
+  action.setAttribute('aria-hidden', 'true');
+  btn.append(glyph, copy, action);
   btn.addEventListener('click', () => {
     void runSettingsAction(btn, 'Opening workspace…', () => activateRecentWorkspace(item.path));
   });
@@ -439,7 +458,9 @@ function decorateOpenRecentRow(
     const badge = document.createElement('span');
     badge.className = 'welcome-page__recents-badge';
     badge.textContent = stateLabel;
-    button.appendChild(badge);
+    const open = button.querySelector('.welcome-page__recents-open');
+    if (open) open.textContent = 'Focus window';
+    button.insertBefore(badge, open);
   }
 
   const newWindowBtn = row.querySelector('button.welcome-page__recents-new-window');
@@ -484,10 +505,12 @@ async function renderRecentsList(): Promise<void> {
     return;
   }
 
+  const request = ++recentsRequest;
   const info = await fetchWorkspace();
   const recent = info?.recent ?? [];
   const sandbox = info?.sandbox;
   const openElsewhere = await readOpenWorkspaceWindows();
+  if (request !== recentsRequest || list !== document.getElementById('welcomeRecentsList')) return;
 
   if (pinnedList) {
     pinnedList.innerHTML = '';
@@ -500,6 +523,9 @@ async function renderRecentsList(): Promise<void> {
       decorateOpenRecentRow(row, sandbox, openElsewhere);
       pinnedList.appendChild(row);
     }
+    const recentSection = list.closest('.welcome-page__recents');
+    if (document.documentElement.classList.contains('mn-graphite-workspace') && recent.length) recentSection?.after(pinnedList);
+    else recentSection?.before(pinnedList);
   }
 
   list.innerHTML = '';
@@ -512,6 +538,7 @@ async function renderRecentsList(): Promise<void> {
   if (empty) {
     empty.classList.toggle('hidden', recent.length > 0);
   }
+  filterRecentWorkspaces();
   if (createBusy) {
     getWelcomeRoot()?.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = true; });
   }
@@ -559,12 +586,16 @@ async function onOpenProject(): Promise<void> {
     return;
   }
 
+  const openButton = document.getElementById('btnWelcomeOpenProject');
+  const quickLocations = document.documentElement.classList.contains('mn-graphite-workspace');
   setStatus('spin', 'Choose workspace folder…');
-  await setWorkspaceGateOpening(true);
+  if (!quickLocations) await setWorkspaceGateOpening(true);
+  openButton?.setAttribute('aria-expanded', 'true');
   try {
     const workspace = await fetchWorkspace();
     const result = await openWorkspaceFolderPicker({
       initialPath: workspace?.newProjectParent,
+      quickLocations,
     });
     if (result.cancelled) {
       await setWorkspaceGateOpening(false);
@@ -589,6 +620,8 @@ async function onOpenProject(): Promise<void> {
     await setWorkspaceGateOpening(false);
     const message = err instanceof Error ? err.message : String(err);
     setStatus('err', message);
+  } finally {
+    openButton?.setAttribute('aria-expanded', 'false');
   }
 }
 
@@ -815,11 +848,56 @@ function onHashChange(): void {
   }
 }
 
+function filterRecentWorkspaces(): void {
+  const field = document.getElementById('welcomeRecentFilter') as HTMLInputElement | null;
+  const list = document.getElementById('welcomeRecentsList');
+  const empty = document.getElementById('welcomeRecentsEmpty');
+  if (!field || !list || !empty) return;
+  const query = field.value.trim().toLocaleLowerCase();
+  const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-workspace-search]'));
+  for (const row of rows) row.hidden = !row.dataset.workspaceSearch?.includes(query);
+  empty.classList.toggle('hidden', rows.some((row) => !row.hidden));
+  empty.textContent = query ? 'No recent workspaces match.' : 'Open a folder to see it here.';
+}
+
+function mountGraphiteWelcomeDetails(): void {
+  const root = getWelcomeRoot();
+  const title = root?.querySelector('.welcome-page__title');
+  const actions = root?.querySelector('.welcome-page__actions');
+  const recent = root?.querySelector('.welcome-page__recents');
+  const heading = document.getElementById('welcomeRecentsTitle');
+  if (!root || !title || !actions || !recent || !heading) return;
+  const introduction = document.createElement('p');
+  introduction.className = 'welcome-page__intro';
+  introduction.textContent = 'Pick up where you left off, or start something new. Every chat, issue and board belongs to one workspace.';
+  title.after(introduction);
+  const recentHeader = document.createElement('div');
+  recentHeader.className = 'welcome-page__recents-header';
+  heading.before(recentHeader);
+  const search = document.createElement('label');
+  search.className = 'welcome-page__recents-search';
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.id = 'welcomeRecentFilter';
+  input.placeholder = 'Filter by name or path';
+  input.setAttribute('aria-label', 'Filter recent workspaces');
+  input.addEventListener('input', filterRecentWorkspaces);
+  search.append(createIcon('search', { size: 14 }), input);
+  recentHeader.append(heading, search);
+  const defaultLocation = root.querySelector('.welcome-page__project-default');
+  if (defaultLocation) recent.after(defaultLocation);
+  for (const id of ['btnWelcomeOpenProject', 'btnWelcomeCreateProject', 'btnWelcomeCreateRemote']) {
+    document.getElementById(id)?.setAttribute('aria-expanded', 'false');
+  }
+  document.getElementById('btnWelcomeOpenProject')?.setAttribute('aria-haspopup', 'dialog');
+}
+
 function bindStaticControls(): void {
   if (staticBindingsDone) {
     return;
   }
   staticBindingsDone = true;
+  mountGraphiteWelcomeDetails();
 
   document.getElementById('btnWelcomeProjectSettings')?.addEventListener('click', () => {
     void import('./settings-page').then(({ navigateToSettingsField }) => {
@@ -830,6 +908,13 @@ function bindStaticControls(): void {
   document
     .getElementById('btnWelcomeOpenProject')
     ?.addEventListener('click', (event) => {
+      if (document.documentElement.classList.contains('mn-graphite-workspace')) {
+        if ((event.currentTarget as HTMLElement).getAttribute('aria-expanded') !== 'true') {
+          showCreatePanel(false);
+          void onOpenProject();
+        }
+        return;
+      }
       void runSettingsAction(event.currentTarget as HTMLElement, 'Opening workspace…', onOpenProject);
     });
 

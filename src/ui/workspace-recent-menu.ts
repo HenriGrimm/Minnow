@@ -11,6 +11,8 @@ import {
   type OpenWorkspaceMap,
 } from '../lib/open-workspace-windows';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
+import { closeShellOverlay, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { createIcon } from './icon';
 export type WorkspaceMenuStatusState = 'ok' | 'err' | 'spin';
 
 /** Injectable deps so tests avoid importing tools/config or status chains. */
@@ -101,6 +103,9 @@ function ensureMenu(): HTMLUListElement {
   menuEl.id = 'workspaceMenu';
   menuEl.className = 'workspace-menu hidden';
   menuEl.setAttribute('role', 'menu');
+  menuEl.setAttribute('aria-label', 'Workspaces');
+  menuEl.dataset.shellOverlay = 'workspace-menu';
+  menuEl.addEventListener('keydown', onMenuKeydown);
   document.body.appendChild(menuEl);
   return menuEl;
 }
@@ -111,6 +116,9 @@ function positionMenu(btn: HTMLButtonElement, menu: HTMLElement): void {
   const margin = 8;
   menu.style.top = `${rect.bottom + 4}px`;
   menu.style.right = 'auto';
+  const graphite = Boolean(btn.closest('#osGraphiteWorkspaceSlot'));
+  menu.classList.toggle('workspace-menu--graphite', graphite);
+  menu.style.width = graphite ? `${rect.width}px` : '';
 
   const menuWidth = menu.offsetWidth || menu.getBoundingClientRect().width;
   let left = rect.right - menuWidth;
@@ -142,6 +150,7 @@ export function closeWorkspaceMenu(): void {
   detachGlobalListeners();
   if (menuEl) menuEl.classList.add('hidden');
   setAnchorExpanded(false);
+  shellOverlayClosed('workspace-menu');
 }
 
 /** Whether the recent workspaces menu is open. */
@@ -164,14 +173,38 @@ function attachGlobalListeners(): void {
     if (e.key !== 'Escape') return;
     e.preventDefault();
     closeWorkspaceMenu();
+    anchorBtn?.focus({ preventScroll: true });
   };
   document.addEventListener('keydown', escapeHandler, true);
+}
+
+function menuItems(menu: HTMLElement): HTMLElement[] {
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"]), button[aria-label]:not([disabled])'));
+}
+
+function onMenuKeydown(event: KeyboardEvent): void {
+  const menu = event.currentTarget as HTMLElement;
+  const items = menuItems(menu);
+  if (items.length === 0) return;
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    let next = event.key === 'ArrowDown' ? index + 1 : index - 1;
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End' || (index < 0 && event.key === 'ArrowUp')) next = items.length - 1;
+    items[(next + items.length) % items.length]?.focus();
+  } else if ((event.key === 'Enter' || event.key === ' ') && document.activeElement instanceof HTMLLIElement) {
+    event.preventDefault();
+    document.activeElement.click();
+  }
 }
 
 function createRecentRow(item: WorkspaceRecentItem): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'workspace-menu__item';
+  li.dataset.workspacePath = item.path;
   li.setAttribute('role', 'menuitem');
+  li.tabIndex = -1;
   if (!item.exists) {
     li.classList.add('workspace-menu__item--disabled');
     li.setAttribute('aria-disabled', 'true');
@@ -184,6 +217,10 @@ function createRecentRow(item: WorkspaceRecentItem): HTMLLIElement {
   check.className = 'workspace-menu__check';
   check.textContent = item.isCurrent ? '✓' : '';
   check.setAttribute('aria-hidden', 'true');
+  const mark = document.createElement('span');
+  mark.className = 'workspace-menu__mark';
+  mark.textContent = item.label.trim().slice(0, 2).toUpperCase();
+  mark.setAttribute('aria-hidden', 'true');
 
   const label = document.createElement('span');
   label.className = 'workspace-menu__label';
@@ -195,6 +232,7 @@ function createRecentRow(item: WorkspaceRecentItem): HTMLLIElement {
   li.title = item.path;
 
   li.appendChild(check);
+  li.appendChild(mark);
   li.appendChild(label);
   li.appendChild(pathLine);
 
@@ -305,7 +343,15 @@ async function selectRecentWorkspace(absPath: string): Promise<void> {
 
 /** Paint MRU rows plus footer actions into the menu element. */
 function paintWorkspaceMenuList(menu: HTMLUListElement, recent: WorkspaceRecentItem[]): void {
+  const focused = menu.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  const workspace = focused?.closest<HTMLElement>('[data-workspace-path]')?.dataset.workspacePath;
+  const action = focused?.className;
   menu.innerHTML = '';
+  const title = document.createElement('li');
+  title.className = 'workspace-menu__heading';
+  title.setAttribute('role', 'presentation');
+  title.textContent = 'Recent workspaces';
+  menu.appendChild(title);
 
   for (const item of recent) {
     menu.appendChild(createRecentRow(item));
@@ -322,7 +368,7 @@ function paintWorkspaceMenuList(menu: HTMLUListElement, recent: WorkspaceRecentI
   openBtn.type = 'button';
   openBtn.className = 'workspace-menu__action';
   openBtn.setAttribute('role', 'menuitem');
-  openBtn.textContent = 'Open new workspace…';
+  openBtn.append(createIcon('folder', { size: 14 }), 'Open new workspace…');
   openBtn.addEventListener('click', () => {
     closeWorkspaceMenu();
     void onOpenNew?.();
@@ -331,23 +377,31 @@ function paintWorkspaceMenuList(menu: HTMLUListElement, recent: WorkspaceRecentI
   menu.appendChild(openLi);
 
   const newWindow = window.minnow?.window?.newWindow;
-  if (!newWindow) return;
-  const newWindowLi = document.createElement('li');
-  newWindowLi.setAttribute('role', 'none');
-  const newWindowBtn = document.createElement('button');
-  newWindowBtn.type = 'button';
-  newWindowBtn.className = 'workspace-menu__action';
-  newWindowBtn.setAttribute('role', 'menuitem');
-  newWindowBtn.textContent = 'New window';
-  newWindowBtn.addEventListener('click', () => {
-    closeWorkspaceMenu();
-    void (async () => {
-      const result = await newWindow();
-      if (!result.ok) menuDeps.reportStatus('err', result.error);
-    })();
-  });
-  newWindowLi.appendChild(newWindowBtn);
-  menu.appendChild(newWindowLi);
+  if (newWindow) {
+    const newWindowLi = document.createElement('li');
+    newWindowLi.setAttribute('role', 'none');
+    const newWindowBtn = document.createElement('button');
+    newWindowBtn.type = 'button';
+    newWindowBtn.className = 'workspace-menu__action';
+    newWindowBtn.setAttribute('role', 'menuitem');
+    newWindowBtn.textContent = 'New window';
+    newWindowBtn.addEventListener('click', () => {
+      closeWorkspaceMenu();
+      void (async () => {
+        const result = await newWindow();
+        if (!result.ok) menuDeps.reportStatus('err', result.error);
+      })();
+    });
+    newWindowLi.appendChild(newWindowBtn);
+    menu.appendChild(newWindowLi);
+  }
+  if (focused) {
+    const replacement = menuItems(menu).find((item) => (
+      item.closest<HTMLElement>('[data-workspace-path]')?.dataset.workspacePath === workspace &&
+      item.className === action
+    ));
+    (replacement ?? menuItems(menu)[0])?.focus({ preventScroll: true });
+  }
 }
 
 /** Re-fetch workspace and paint MRU rows. */
@@ -376,31 +430,28 @@ export async function toggleWorkspaceMenu(btn: HTMLButtonElement): Promise<void>
 
   if (menuOpen) {
     closeWorkspaceMenu();
+    btn.focus({ preventScroll: true });
     return;
   }
 
+  closeShellOverlay();
   anchorBtn = btn;
   const menu = ensureMenu();
   const cached = getWorkspaceRecentItems();
-  if (cached.length > 0) {
-    paintWorkspaceMenuList(menu, [...cached]);
-    menu.classList.remove('hidden');
-    positionMenu(btn, menu);
-    menuOpen = true;
-    markPreviewOccluder(menu, 'menu');
-    setAnchorExpanded(true);
-    attachGlobalListeners();
-    void renderMenuList();
-    return;
-  }
-
-  await renderMenuList();
+  paintWorkspaceMenuList(menu, [...cached]);
+  openShellOverlay('workspace-menu', closeWorkspaceMenu);
   menu.classList.remove('hidden');
   positionMenu(btn, menu);
   menuOpen = true;
   markPreviewOccluder(menu, 'menu');
   setAnchorExpanded(true);
   attachGlobalListeners();
+  menuItems(menu)[0]?.focus({ preventScroll: true });
+  try {
+    await renderMenuList();
+  } catch (error) {
+    menuDeps.reportStatus('err', error instanceof Error ? error.message : 'Could not refresh recent workspaces');
+  }
 }
 
 /** Test helper — render list into menu without opening. */

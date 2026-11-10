@@ -105,10 +105,12 @@ function appendSigilSetting(
 }
 
 function appendModelPin(
-  mount: HTMLElement,
+  group: HTMLElement,
   config: EditorIntentModeConfig,
   refresh: () => void,
 ): void {
+  const mount = el('div', 'settings-group__panel');
+  group.append(mount);
   const pinned = Boolean(config.providerId && config.modelId);
 
   const sharedRadio = document.createElement('input');

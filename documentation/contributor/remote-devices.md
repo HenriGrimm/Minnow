@@ -34,6 +34,7 @@ Config lives in `config.json` → `server.remote = { lan: { enabled, port }, any
 | Request access | Phone `POST /api/auth/requests` → host `GET /api/auth/requests`, `POST …/:id/approve|deny` → phone polls `GET /api/auth/requests/:id` (`X-Minnow-Request-Secret`) | 4-digit verify number, 3 min TTL, at most 5 pending. Approve can attach to an existing device. On `funnel`, accepted only while a pairing window is open (10 min after a connect session is opened). |
 | Home Screen | HTML for a signed-in device points `<link rel="manifest">` at `/api/auth/manifest?handoff=<t>`; `start_url` is `/?handoff=<t>` | Install tickets last 7 days and are persisted as hashes in `auth/handoff.json`, surviving restarts. The navigation exchanges the ticket server-side (`303`). A used ticket with a valid cookie redirects silently, because iOS relaunches `start_url` every time. |
 | Move | Device `POST /api/auth/handoff { purpose: 'move' }` → navigate to `<anywhere>/?handoff=<t>` | 10 min TTL. Adds an `other-origin` credential to the same device. |
+| Disconnect | Device `DELETE /api/auth/session` | Revokes credentials for the authenticated device and clears its cookie. Device management for any other device remains host-only. |
 
 Unauthenticated routes are exactly `host-info`, `claim`, `requests` (POST), `requests/:id` (GET) and `manifest` ([`auth-middleware.js`](../../server/runtime/auth-middleware.js) `isPairingBootstrapRoute`). `funnel` ingress adds a global budget of 30 bootstrap attempts per minute, and `host-info` hides the computer name unless a pairing window is open. Responses on remote ingress carry `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and HSTS on HTTPS.
 
@@ -64,16 +65,18 @@ The connection monitor ([`connection.ts`](../../src/companion/connection.ts)) pr
 
 [`src/mobile/`](../../src/mobile/) is the phone UI. [`mode.ts`](../../src/mobile/mode.ts) decides once at boot: a non-Electron page whose viewport matches `PHONE_MQ` (or that was opened with `?mobile=1`, remembered in `localStorage`; `?mobile=0` opts out) stamps `html.mn-mobile-app`. Boot then skips the workspace gate, onboarding and the welcome page (phones follow the computer's current workspace), runs the normal `initApp()`, and mounts the shell before `markChromeReady()`. [`mobile-app.css`](../../src/styles/mobile-app.css) hides the desktop chrome but keeps the global approval and question hosts.
 
-The shell is four tabs, each with its own screen stack ([`nav.ts`](../../src/mobile/nav.ts)). Pushes add a `history` entry without touching the hash, which the OS router owns, so the back gesture pops one screen. Nothing forks the engine:
+The drawer opens four navigation stacks ([`nav.ts`](../../src/mobile/nav.ts)). Pushes add a `history` entry without touching the hash, which the OS router owns, so the back gesture pops one screen. The drawer also opens the shared Brain, Scheduler, Models and Settings views.
 
 | Tab | Data | Notes |
 |-----|------|-------|
-| Chats | `sessionState`, `subscribeSidebarRender`, chat dot states | A thread mounts the real Code transcript, composer and prompt hosts through `mountSharedChatHost`, so streaming, approvals, questions and queued messages behave as on the desktop. Model picks go through a phone sheet ([`models.ts`](../../src/mobile/models.ts)) over the same `#modelSelect` catalog. |
+| Chats | `sessionState`, `subscribeSidebarRender`, chat dot states | A thread mounts the real Code transcript, composer, model menu and prompt hosts through `mountSharedChatHost`, so streaming, approvals, questions and queued messages behave as on the desktop. |
 | Boards | `createBoardListClient`, `createBoardClient` | Task actions come from `buildTaskCardMenuItems`, attempt transcripts from `adaptAttemptTranscript` + `renderTranscriptView`, diffs from `readTaskFileDiff`. |
 | Issues | `issues-store`, taxonomy | **Work on this** runs `runIssueWorkspaceChat`. |
 | Files | `list_directory`, falling back to `/api/brain/code/files` when agent file tools are off; `/api/preview/file` for content | Read-only. Large files show their first 2000 lines. |
 
 Notification taps route to phone screens through `openMobileNotificationTarget`. Tests: `test/mobile/`.
+
+Paired devices open This phone from the drawer or from Settings → Devices. It reads the authenticated connection, uses the shared permission level control and stores alert delivery preferences in that browser. Activity continues to record events when their alerts are turned off.
 
 Host side: **Settings → Devices** ([`settings-devices.ts`](../../src/ui/settings-devices.ts)), the Connect sheet ([`settings-devices-connect.ts`](../../src/ui/settings-devices-connect.ts)), and approval cards in any app ([`device-request-prompt.ts`](../../src/ui/device-request-prompt.ts), notification kind `device_request`).
 

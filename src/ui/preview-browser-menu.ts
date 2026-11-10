@@ -34,6 +34,7 @@ export interface PreviewBrowserMenuOptions {
   address: () => string;
   instanceId?: string;
   onClose?: () => void;
+  onNewTab?: () => void;
 }
 
 let openMenu: HTMLElement | null = null;
@@ -173,6 +174,19 @@ async function openPreviewBrowserMenu(
   menu.className = 'preview-browser-menu';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', 'Browser menu');
+
+  if (options.onNewTab && anchor.closest('.graphite-browser-host')) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'preview-browser-menu__item';
+    add.setAttribute('role', 'menuitem');
+    add.textContent = 'New browser tab';
+    add.addEventListener('click', () => {
+      closePreviewBrowserMenu();
+      options.onNewTab?.();
+    });
+    menu.append(add);
+  }
 
   for (const { id, label } of options.toolbarControls ?? []) {
     const control = document.getElementById(id) as HTMLButtonElement | HTMLInputElement | null;

@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, test } from 'node:test';
 import { Window } from 'happy-dom';
-import { SETTINGS_NAV_GROUPS } from '../../src/ui/settings-page-types.ts';
+import { SETTINGS_NAV_GROUPS, SETTINGS_SECTION_LABELS } from '../../src/ui/settings-page-types.ts';
+import { initGraphiteSettingsPresentation } from '../../src/ui/settings-graphite.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
@@ -95,6 +96,23 @@ describe('settings page HTML', () => {
       const section = document.querySelector('[data-settings-nav-group="' + group.id + '"]');
       assert.equal(section.querySelector('summary').textContent.trim(), group.label);
       assert.deepEqual([...section.querySelectorAll('[data-area-jump]')].map(node => node.dataset.areaJump), group.sections);
+      for (const id of group.sections) {
+        const label = SETTINGS_SECTION_LABELS[id];
+        assert.equal(section.querySelector(`[data-area-jump="${id}"] .settings-nav__item-label`).textContent.trim(), label);
+        assert.equal(document.querySelector(`#settingsSection-${id} > h2`).textContent.trim(), label);
+      }
+    }
+  });
+  test('each Settings destination gains one summary without moving its controls', () => {
+    const document = new Window().document;
+    document.body.innerHTML = html;
+    const settings = document.getElementById('settingsView');
+    initGraphiteSettingsPresentation(settings);
+    initGraphiteSettingsPresentation(settings);
+    for (const id of SETTINGS_NAV_GROUPS.flatMap(group => group.sections)) {
+      const area = settings.querySelector(`#settingsSection-${id}`);
+      assert.equal(area.querySelectorAll(':scope > .settings-section-summary').length, 1, id);
+      assert.ok(area.querySelector(':scope > .settings-section-body'), id);
     }
   });
   for (const id of SETTINGS_SECTION_IDS) {
@@ -204,7 +222,7 @@ describe('settings page HTML', () => {
     assert.match(html, /id="settingsDiagnosticsBody"/);
     assert.match(html, /data-area="diagnostics"/);
     assert.match(html, /data-settings-nav-area="diagnostics"/);
-    assert.match(html, /Health &amp; diagnostics/);
+    assert.match(html, /Health and diagnostics/);
   });
 
   test('capability matrix section exists under advanced in index.html', () => {

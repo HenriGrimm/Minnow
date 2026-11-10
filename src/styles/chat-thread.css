@@ -7,8 +7,10 @@
   --chat-raise: color-mix(in srgb, var(--mn-fg) 5%, transparent);
   /* Timeline geometry: dot centre on the step's first line, and the gap between steps. */
   --chat-step-dot-y: 12px;
-  --chat-step-gap: 16px;
-  gap: 18px;
+  --chat-step-gap: calc(16px + 2 * var(--mn-density-step));
+  --chat-block-gap: calc(18px + 2 * var(--mn-density-step));
+  --chat-prompt-padding-block: calc(12px + var(--mn-density-step));
+  gap: var(--chat-block-gap);
 }
 
 .chat-thread > .msg.user,
@@ -30,14 +32,14 @@
 .chat-thread > .msg.user {
   align-items: stretch;
   width: 100%;
-  margin-top: 18px;
+  margin-top: var(--chat-block-gap);
 }
 
 .chat-thread > .msg.user:first-child { margin-top: 0; }
 
 /* Stack consecutive tool rows closer — the thread gap stays for prose boundaries. */
 .chat-thread > .tool-call-msg + .tool-call-msg {
-  margin-top: -14px;
+  margin-top: calc(4px - var(--chat-block-gap));
 }
 
 .chat-thread > .msg.user .msg-bubble {
@@ -45,7 +47,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 12px 16px 12px 40px;
+  padding: var(--chat-prompt-padding-block) 16px var(--chat-prompt-padding-block) 40px;
   background: var(--chat-raise);
   border: 1px solid var(--mn-border);
   border-radius: 10px;
@@ -57,7 +59,7 @@
   content: '›';
   position: absolute;
   left: 16px;
-  top: 12px;
+  top: var(--chat-prompt-padding-block);
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 600;
@@ -217,7 +219,7 @@
 .chat-thread > .chat-step--joined + .chat-step,
 /* A card's hidden spawn row sits between it and the step above. */
 .chat-thread > .chat-step--joined + .tool-call-msg--delegated + .chat-step,
-.chat-thread > .chat-step--joined + .tool-call-batch--delegated + .chat-step { margin-top: calc(var(--chat-step-gap) - 18px); }
+.chat-thread > .chat-step--joined + .tool-call-batch--delegated + .chat-step { margin-top: calc(var(--chat-step-gap) - var(--chat-block-gap)); }
 .chat-thread > .chat-step::before {
   content: '';
   position: absolute;
@@ -312,7 +314,7 @@
 /* Prompt blocks span the column, so ⋮ moves inside the block instead of a lane beside it. */
 .chat-thread > .msg.user.msg--has-actions { padding-left: 0; }
 .chat-thread > .msg.user.msg--has-actions .msg-bubble { padding-right: 40px; }
-.chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: 7px; }
+.chat-thread > .msg.user .message-actions__trigger { left: auto; right: 6px; top: calc(7px + var(--mn-density-step)); }
 
 /* ── Reply footer: copy · remake · speed under the latest answer ── */
 .chat-thread > .chat-reply-foot {

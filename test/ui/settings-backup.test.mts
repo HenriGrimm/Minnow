@@ -270,7 +270,7 @@ describe('backup settings', () => {
     const confirm = mount.querySelector<HTMLInputElement>('#settingsBackupPassphraseConfirm')!;
     change(pass, 'long enough passphrase');
     change(confirm, 'long enough passphrase');
-    change(mount.querySelector('.backup-path-input')!, 'D:/Backups');
+    change(mount.querySelector('[data-settings-search-key="general.backup.create"] .backup-path-input')!, 'D:/Backups');
     mount.querySelector<HTMLButtonElement>('#settingsBackupCreateBtn')!.click();
     await settle();
     await settle();

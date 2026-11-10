@@ -73,7 +73,7 @@
   min-width: 0;
   padding: 16px 12px;
   border-bottom: none;
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
 }
 
 .mn-palette__close {
@@ -82,7 +82,7 @@
   width: 36px;
   height: 36px;
   border: 0;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -100,7 +100,7 @@
 .mn-palette__category {
   padding: 7px 10px;
   border: 0;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted);
   font: inherit;
@@ -172,7 +172,7 @@
   gap: 10px;
   min-height: 40px;
   padding: 4px 12px;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   color: var(--mn-fg);
   font-size: 14px;
   cursor: pointer;
@@ -239,4 +239,75 @@
   }
 
   .mn-palette__category { min-height: 44px; }
+}
+
+html.mn-graphite-workspace .mn-palette-overlay {
+  padding-top: min(120px, 14vh);
+  background: var(--mn-graphite-scrim, var(--mn-overlay));
+}
+
+html.mn-graphite-workspace .mn-palette {
+  width: min(620px, 100%);
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  border-radius: 14px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  box-shadow: var(--mn-graphite-popup, var(--mn-shadow));
+}
+
+html.mn-graphite-workspace .mn-palette__header {
+  height: 52px;
+  flex: none;
+  gap: 8px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+html.mn-graphite-workspace .mn-palette__header .mn-palette__input {
+  padding: 0;
+  font-size: 15px;
+}
+
+.mn-palette__header > .icon-svg { color: var(--mn-fg-muted); }
+.mn-palette__close > kbd {
+  padding: 2px 4px;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 4px;
+  font: 10.5px var(--font-mono);
+}
+
+html.mn-graphite-workspace .mn-palette__categories {
+  padding: 4px 10px;
+}
+
+html.mn-graphite-workspace .mn-palette__category {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+html.mn-graphite-workspace .mn-palette__list {
+  padding: 6px;
+}
+
+html.mn-graphite-workspace .mn-palette__group {
+  padding: 10px 10px 6px;
+}
+
+html.mn-graphite-workspace .mn-palette__row {
+  min-height: 36px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+}
+
+html.mn-graphite-workspace .mn-palette__row.is-active {
+  background: var(--mn-graphite-active, var(--mn-surface-elevated));
+}
+
+html.mn-graphite-workspace .mn-palette__footer {
+  min-height: 38px;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 16px;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  font-size: 12px;
 }

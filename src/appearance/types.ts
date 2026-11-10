@@ -39,6 +39,10 @@ export type CustomThemeTokens = Partial<Record<CoreThemeTokenKey, string>>;
 
 export const APPEARANCE_STORAGE_KEYS = {
   chatView: 'minnow.appearance.chatView',
+  colorIntensity: 'minnow.appearance.colorIntensity',
+  graphiteAccent: 'minnow.appearance.graphiteAccent',
+  density: 'minnow.appearance.density',
+  reduceMotion: 'minnow.appearance.reduceMotion',
   customEnabled: 'minnow.appearance.customEnabled',
   customTokens: 'minnow.appearance.customTokens',
   /** `'1'` when the full per-token editor is active (vs simplified seeds). */
@@ -47,6 +51,7 @@ export const APPEARANCE_STORAGE_KEYS = {
 } as const;
 
 import type { MonoFontPresetId, UiFontPresetId } from './font-catalog';
+import { DEFAULT_APPEARANCE_FONT_ID } from '../lib/appearance-choices.mjs';
 
 export {
   MONO_FONT_PRESETS,
@@ -74,8 +79,8 @@ export interface AppearanceFonts {
 }
 
 export const DEFAULT_APPEARANCE_FONTS: AppearanceFonts = {
-  ui: { kind: 'preset', slot: 'ui', id: 'system' },
-  mono: { kind: 'preset', slot: 'mono', id: 'system' },
+  ui: { kind: 'preset', slot: 'ui', id: DEFAULT_APPEARANCE_FONT_ID },
+  mono: { kind: 'preset', slot: 'mono', id: DEFAULT_APPEARANCE_FONT_ID },
 };
 
 /** IndexedDB asset kinds for appearance uploads. */

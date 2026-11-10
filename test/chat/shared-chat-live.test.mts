@@ -12,6 +12,7 @@ import { persistComposerDraftOnChat, applyComposerDraftForChat } from '../../src
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
 import { stopGeneration } from '../../src/chat/stop-generation.ts';
 import { renderChatFromHistory } from '../../src/ui/messages.ts';
+import { mountGraphiteNewThread } from '../../src/ui/graphite-new-thread.ts';
 import type { SharedChatFrame } from '../../src/chat/shared-chat-protocol.ts';
 import type { RemoteChatCommand } from '../../src/chat/remote-chat-client.ts';
 import { normalizeChatRow } from '../../src/state/session-schema.mjs';
@@ -84,6 +85,25 @@ test('observer-only metadata invalidates a mounted view without marking the tran
   applySharedChatFrame(CHAT, { turnError: true });
   assert.equal(hasCurrentChatSurface(area, chat), false);
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
+});
+
+test('Graphite New thread keeps the wired composer outside the hidden transcript', () => {
+  const chat = setup();
+  chat.history = [];
+  document.body.innerHTML = `<div id="mainColumn">
+    <div class="chat-viewport"><div id="chatArea"></div></div>
+    <div class="input-bar"><textarea id="msgInput"></textarea><button id="sendBtn"></button></div>
+  </div>`;
+  const composer = document.querySelector('.input-bar');
+  assert.ok(composer);
+  renderChatFromHistory(chat);
+  assert.equal(document.querySelector('#hubComposerSlot .input-bar'), composer);
+
+  mountGraphiteNewThread()(true);
+  renderChatFromHistory(chat);
+
+  assert.equal(document.querySelector('#mainColumn.graphite-new-thread > .input-bar'), composer);
+  assert.equal(document.getElementById('vibeHub'), null);
 });
 
 test('an idle accepted send appears in the transcript until its canonical input arrives without duplicating saved history', async () => {

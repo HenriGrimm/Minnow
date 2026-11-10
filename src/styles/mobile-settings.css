@@ -1,0 +1,35 @@
+.m-phone-settings { max-width: 100vw; }
+
+.m-phone-settings .m-header__back {
+  min-width: var(--touch-min);
+  color: var(--mn-graphite-text-muted);
+}
+
+.m-phone-settings .m-phone-settings__body { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.m-phone-settings__list { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+.m-phone-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: calc(56px + 2 * var(--mn-density-step));
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+  border: 0;
+  border-bottom: 1px solid var(--mn-graphite-line);
+  background: transparent;
+  color: var(--mn-graphite-text);
+  font: inherit;
+  text-align: left;
+}
+
+.m-phone-settings__row:active { background: var(--mn-graphite-hover); }
+.m-phone-settings__row:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: -2px; }
+.m-phone-settings__row > .icon-svg { flex: none; color: var(--mn-graphite-text-muted); }
+.m-phone-settings__row > .icon-svg:last-child { color: var(--mn-graphite-text-subtle); }
+.m-phone-settings__label { flex: 1; min-width: 0; font-size: 14.5px; overflow-wrap: anywhere; }
+.m-phone-settings__value { max-width: 30%; overflow: hidden; color: var(--mn-graphite-text-subtle); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.m-phone-settings__value:empty { display: none; }
+
+html.mn-phone .m-native-app[data-settings-detail] .settings-page--phone-section .settings-phone-bar { display: none; }
+

@@ -185,38 +185,20 @@
 }
 
 /*
- * One list, not two. Each Code view-bar destination owns the stage and carries
- * its own navigation; leaving the session list open duplicates work on screen.
- * Orchestrate board view is the same: `#orchestrateBoardPage` already has `.ob-rail`.
- * V2 Boards (`#orchestratorBoardsRoot`) has `.ov2__list` / `.ob-rail` and must
- * hide the session list the same way — JS already treats that root as hidden.
- * The user's open/closed preference is preserved in session state — this is
- * display-only suppression, like Super Plan.
+ * Code stage views have their own navigation. Suppress the legacy chat drawer
+ * while those views are mounted. Graphite's shared desktop sidebar stays visible
+ * according to the user's sidebar preference.
  */
-html:has(#codeOverviewRoot) #chatSidebar,
-html:has(#codeOverviewRoot) #chatSidebarResizer,
-html:has(#codeBrainMapRoot) #chatSidebar,
-html:has(#codeBrainMapRoot) #chatSidebarResizer,
-html:has(#orchestrateHub) #chatSidebar,
-html:has(#orchestrateHub) #chatSidebarResizer,
-html:has(#orchestrateBoardPage) #chatSidebar,
-html:has(#orchestrateBoardPage) #chatSidebarResizer,
-html:has(#orchestratorBoardsRoot) #chatSidebar,
-html:has(#orchestratorBoardsRoot) #chatSidebarResizer,
-html:has(.main-column--board-view) #chatSidebar,
-html:has(.main-column--board-view) #chatSidebarResizer,
-html:has(#orchestratePlanScreen) #chatSidebar,
-html:has(#orchestratePlanScreen) #chatSidebarResizer,
-html:has(#devServerScreenRoot) #chatSidebar,
-html:has(#devServerScreenRoot) #chatSidebarResizer,
-html:has(#codeOverviewRoot) #sidebarBackdrop,
-html:has(#codeBrainMapRoot) #sidebarBackdrop,
-html:has(#orchestrateHub) #sidebarBackdrop,
-html:has(#orchestrateBoardPage) #sidebarBackdrop,
-html:has(#orchestratorBoardsRoot) #sidebarBackdrop,
-html:has(.main-column--board-view) #sidebarBackdrop,
-html:has(#orchestratePlanScreen) #sidebarBackdrop,
-html:has(#devServerScreenRoot) #sidebarBackdrop {
+html:not(.mn-graphite-workspace):has(
+  #codeOverviewRoot,
+  #codeBrainMapRoot,
+  #orchestrateHub,
+  #orchestrateBoardPage,
+  #orchestratorBoardsRoot,
+  .main-column--board-view,
+  #orchestratePlanScreen,
+  #devServerScreenRoot
+) :is(#chatSidebar, #chatSidebarResizer, #sidebarBackdrop) {
   display: none;
 }
 

@@ -193,6 +193,22 @@ describe('toast', () => {
     assert.deepEqual(cards.map((card) => card.hidden), [false, true, false, false]);
   });
 
+  test('new cards preserve focused notices and the overflow returns focus to a revealed card', () => {
+    showToast('Inspect this first', 'error');
+    const first = document.querySelector('.mn-toast');
+    const dismiss = first.querySelector('.mn-toast__dismiss');
+    dismiss.focus();
+    for (let i = 1; i <= 3; i += 1) showToast(`Error ${i}`, 'error');
+    assert.equal(first.hidden, false);
+    assert.equal(document.activeElement, dismiss);
+    const folded = document.querySelector('.mn-toast[hidden]');
+    const more = document.querySelector('.mn-toast-more');
+    more.focus();
+    more.click();
+    assert.equal(folded.hidden, false);
+    assert.equal(document.activeElement, folded.querySelector('.mn-toast__dismiss'));
+  });
+
   test('a "Settings → …" hint makes the card open that page', () => {
     showToast('Cannot reach providers (DeepSeek). Check Settings → Providers.', 'error');
     const open = document.querySelector('.mn-toast__open');

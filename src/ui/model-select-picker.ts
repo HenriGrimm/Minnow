@@ -21,6 +21,7 @@ import {
   resetModelProviderBrowser,
   type ModelBrowserGroup,
 } from './model-provider-browser';
+import { positionAnchoredModelPicker } from './model-picker-position';
 import { isModelLoaded, resolveModelState, type ModelLoadState } from './model-state-dot';
 import {
   getModelLoadUnloadTargetSelectValue,
@@ -1195,15 +1196,8 @@ export function mountAuxiliaryModelSelectCombobox(
   root.appendChild(panel);
 
   const position = () => {
-    const box = (typeof options === 'object' && options.anchor || trigger).getBoundingClientRect();
-    const width = Math.min(620, Math.max(0, window.innerWidth - 16));
-    panel.style.width = `${width}px`;
-    panel.style.maxHeight = `${Math.max(0, window.innerHeight - 16)}px`;
-    panel.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
-    const height = panel.getBoundingClientRect().height;
-    const below = window.innerHeight - box.bottom - 12;
-    const top = below >= height || below >= box.top - 12 ? box.bottom + 4 : box.top - height - 4;
-    panel.style.top = `${Math.max(8, Math.min(top, window.innerHeight - height - 8))}px`;
+    const anchor = typeof options === 'object' && options.anchor || trigger;
+    positionAnchoredModelPicker(panel, anchor, 'below', 4, 620);
   };
   const picker: AuxiliaryModelSelectPicker = { root, trigger, triggerText, menu, panel, search, hostFilter: 'all', position, composerButton, pick: () => {} };
   if (typeof options === 'object') {
@@ -1237,6 +1231,7 @@ export function mountAuxiliaryModelSelectCombobox(
     closeModelSelectMenu();
     closeAuxiliaryModelSelectMenu();
     openAuxiliaryPicker = picker;
+    delete panel.dataset.placement;
     picker.root.classList.add('is-open');
     picker.panel.classList.remove('hidden');
     markPreviewOccluder(picker.panel, 'menu');
@@ -1247,6 +1242,8 @@ export function mountAuxiliaryModelSelectCombobox(
     position();
     const onScroll = (event: Event) => { if (!panel.contains(event.target as Node)) position(); };
     window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
     document.addEventListener('scroll', onScroll, true);
     const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
     observer?.observe(panel);
@@ -1258,6 +1255,8 @@ export function mountAuxiliaryModelSelectCombobox(
       observer?.disconnect();
       removalObserver?.disconnect();
       window.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
       document.removeEventListener('scroll', onScroll, true);
     };
     activeIndex = -1;

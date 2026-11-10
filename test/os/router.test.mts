@@ -104,6 +104,14 @@ describe('resolveLegacyHash', () => {
 // ── parseOsHash ──────────────────────────────────────────────────────────────
 
 describe('parseOsHash', () => {
+  test('honors an explicit Settings section in the app route', () => {
+    assert.deepEqual(parseOsHash('#/app/settings/appearance'), {
+      view: 'app',
+      appId: 'settings',
+      settingsSection: 'appearance',
+    });
+  });
+
   test('parses workspaces and app routes', () => {
     assert.deepEqual(parseOsHash('#/'), { view: 'workspaces' });
     assert.deepEqual(parseOsHash('#/workspaces'), { view: 'workspaces' });

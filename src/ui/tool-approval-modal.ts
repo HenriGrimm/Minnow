@@ -118,15 +118,17 @@ export function showToolApprovalModal(request: ToolApprovalRequest): Promise<Too
 
     const action = request.action;
     const risk = action?.risk ?? 'elevated';
+    const graphite = host.id === 'toolApprovalHost' && Boolean(document.querySelector('#graphiteThreadHeader:not([hidden])'));
     const panel = el('div', `tool-approval-panel tool-approval-panel--${risk}`);
+    panel.classList.toggle('tool-approval-panel--graphite', graphite);
     panel.setAttribute('role', 'alertdialog');
     panel.setAttribute('aria-labelledby', 'tool-approval-title');
-    panel.setAttribute('aria-describedby', 'tool-approval-detail');
+    if (request.description?.trim()) panel.setAttribute('aria-describedby', 'tool-approval-detail');
 
     // ── Header ──
     const header = el('div', 'tool-approval-panel__header');
     const kindIcon = el('span', 'tool-approval-kind');
-    kindIcon.appendChild(createIcon(KIND_ICON[action?.kind ?? 'unknown']));
+    kindIcon.appendChild(createIcon(graphite ? 'shieldCheck' : KIND_ICON[action?.kind ?? 'unknown']));
     const heading = el('h2', 'tool-approval-panel__title', request.title);
     heading.id = 'tool-approval-title';
     const meta = el('div', 'tool-approval-panel__meta');
@@ -179,9 +181,10 @@ export function showToolApprovalModal(request: ToolApprovalRequest): Promise<Too
 
     // ── Actions ──
     const actions = el('div', 'tool-approval-panel__actions');
-    const btnAllow = actionButton('1', 'Allow', 'primary');
+    const btnAllow = actionButton('1', graphite ? 'Allow once' : 'Allow', 'primary');
     const grant = action?.grant && action.risk !== 'high' ? action.grant : null;
-    const btnChat = grant ? actionButton('2', `Allow ${grant.label} for this chat`, 'secondary') : null;
+    const btnChat = grant ? actionButton('2', graphite ? 'Allow in this thread' : `Allow ${grant.label} for this chat`, 'secondary') : null;
+    if (btnChat && graphite && grant) btnChat.title = `Allow ${grant.label} in this thread`;
     const btnDeny = actionButton(grant ? '3' : '2', 'Deny', 'deny');
     actions.append(btnAllow, ...(btnChat ? [btnChat] : []), btnDeny);
 

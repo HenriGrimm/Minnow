@@ -9,6 +9,8 @@ import { GIT_CHECKOUT_CHANGED_EVENT } from './git-checkout-events';
 export interface GitFileEntry {
   path: string;
   status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 export interface IssueWorkSnapshot {
@@ -197,8 +199,8 @@ async function postGit(
 
 // ── Working tree ─────────────────────────────────────────────────────────────
 
-export function gitStatus(cwd?: string, signal?: AbortSignal): Promise<GitOpResult> {
-  return postGit('status', cwd ? { cwd } : {}, signal);
+export function gitStatus(cwd?: string, signal?: AbortSignal, options?: { lineStats?: boolean }): Promise<GitOpResult> {
+  return postGit('status', { ...(cwd ? { cwd } : {}), ...(options?.lineStats ? { lineStats: true } : {}) }, signal);
 }
 
 export async function gitFileDiff(input: { cwd?: string; cached: boolean; path: string }): Promise<

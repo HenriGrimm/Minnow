@@ -205,7 +205,7 @@ describe('composer message queue mount', () => {
     assert.equal(input.placeholder, composerFollowUpPlaceholder());
     appState.setStreaming(false);
     syncComposerMessageQueue();
-    assert.equal(input.placeholder, 'Ask Minnow to plan, build, or debug…');
+    assert.equal(input.placeholder, 'Describe a change, paste an error, or @ an issue');
   });
 
   test('resolveComposerQueueMount targets the active code composer input row', () => {

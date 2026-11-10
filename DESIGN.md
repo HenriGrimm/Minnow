@@ -1,6 +1,6 @@
 ---
 name: Minnow
-description: Multi-family palette themes (8× dark/light) on --mn-* tokens; swamp-dark default; family accent, semantic metric colors, flat chrome.
+description: Graphite workspace with nine dark and light palette families, surface tint, and a shared type and spacing scale.
 colors:
   bg: "#0f1216"
   surface-0: "#0b0d11"
@@ -53,6 +53,30 @@ typography:
     fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.5
+  keyHint:
+    fontFamily: "'Geist Mono', ui-monospace, monospace"
+    fontSize: "10.5px"
+  compactMono:
+    fontFamily: "'Geist Mono', ui-monospace, monospace"
+    fontSize: "11.5px"
+  toolbar:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "12.5px"
+  sheetTitle:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "13.5px"
+  reading:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "14.5px"
+  sectionTitle:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "16px"
+  stageTitle:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "20px"
+  startTitle:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "26px"
 rounded:
   xs: "4px"
   sm: "6px"
@@ -60,6 +84,12 @@ rounded:
   lg: "14px"
   xl: "20px"
   pill: "999px"
+  graphiteControl: "7px"
+  graphiteSelection: "8px"
+  graphiteGroup: "9px"
+  graphiteSheet: "12px"
+  graphiteComposer: "16px"
+  graphitePhoneSheet: "18px"
 spacing:
   0-5: "2px"
   1: "4px"
@@ -108,9 +138,9 @@ components:
 
 ## Palette themes
 
-`<html data-theme="{family}-{mode}">` (e.g. `swamp-dark`, `coral-light`) is set from **Settings → Appearance → Theme**, the inline boot script in `index.html`, or `initTheme()` in [`src/theme.ts`](src/theme.ts). Eight families: **Swamp**, **Desert**, **Ocean**, **Coral**, **Mono** (grayscale), **Matrix** (phosphor green), **Human**, **Mint**, each with dark and light variants. Default: **swamp-dark**. Hex and rgba literals exist only in [`src/styles/tokens.css`](src/styles/tokens.css); application CSS uses **`--mn-*`** tokens (26 core variables in [`CORE_THEME_TOKEN_KEYS`](src/appearance/types.ts) plus extended semantics via `color-mix`). Extracted inventory: [`documentation/design-system/`](documentation/design-system/README.md).
+`<html data-theme="{family}-{mode}">` (e.g. `swamp-dark`, `coral-light`) is set from **Settings → Appearance → Theme**, the inline boot script in `index.html`, or `initTheme()` in [`src/theme.ts`](src/theme.ts). The families are **Graphite**, **Swamp**, **Desert**, **Ocean**, **Coral**, **Mono**, **Matrix**, **Human**, and **Mint**. Each has dark and light variants. Hex and rgba literals exist only in [`src/styles/tokens.css`](src/styles/tokens.css); application CSS uses **`--mn-*`** tokens (26 core variables in [`CORE_THEME_TOKEN_KEYS`](src/appearance/types.ts) plus extended semantics via `color-mix`). Extracted inventory: [`documentation/design-system/`](documentation/design-system/README.md).
 
-Storage: `minnow.theme` (explicit id), `minnow.theme.followSystem`, `minnow.theme.family`. Default theme: **swamp-dark**. Legacy `light` / `dark` / `system` values and pre-rename family ids (e.g. `sage`→`swamp`) migrate on read.
+Storage uses `minnow.theme`, `minnow.theme.followSystem` and `minnow.theme.family`. New profiles start with **Graphite** and **Subtle** color. Saved families, custom colors, font overrides and older aliases migrate on read. Graphite uses bundled Geist and Geist Mono by default.
 
 ## Overview
 
@@ -130,7 +160,7 @@ Minnow is a long-session chat bench: conversation first, metrics as instrumentat
 
 ## Colors
 
-Palette is **family-dependent** (hex in `tokens.css`). The YAML frontmatter above documents **swamp-dark**, the default theme, as a reference snapshot; other families swap accent and neutrals while keeping the same token roles.
+Palette is **family-dependent**. The YAML colors record the legacy Swamp token roles. Workspace chrome uses the `--mn-graphite-*` roles in `tokens.css` for its ground, sheet, elevated surfaces, text and edges. Color intensity affects those surfaces and the user bubble. Diff, warning and syntax colors use separate roles.
 
 ### Primary (accent family)
 

@@ -27,6 +27,8 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   const retry = element('button', 'settings-inline-btn', 'Refresh connection');
   retry.type = 'button';
   retry.addEventListener('click', () => { void renderMcpHubSettingsSection(); });
+  const retryActions = element('div', 'settings-actions');
+  retryActions.append(retry);
   let info: McpHubInfo;
   try {
     const response = await fetch('/api/mcp/hub/info', { cache: 'no-store', headers: workspace ? { 'X-Minnow-Workspace': workspace } : {}, signal: AbortSignal.timeout(10000) });
@@ -36,14 +38,17 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   } catch {
     if (isAsyncSectionRenderStale('mcp-hub', generation) || !root.isConnected) return;
     status.textContent = 'MCP hub is unavailable. Open or restart Minnow, then refresh the connection.';
-    root.append(retry);
+    root.append(retryActions);
     return;
   }
   if (isAsyncSectionRenderStale('mcp-hub', generation) || !root.isConnected) return;
   if (workspace !== getWorkspacePath()) { void renderMcpHubSettingsSection(); return; }
   status.textContent = 'Ready to connect';
-  const setup = appendSettingsGroup(root, 'Connect an agent', 'Keep Minnow open while your agent uses this connection.');
-  setup.append(element('p', 'field-hint', 'One connection works across projects. Your agent supplies its current workspace with each request. Stdio can read the agent’s workspace roots; HTTP tools accept workspace_path. Issues follow that folder; Brain pages and the project catalog are shared.'));
+  const setup = appendSettingsGroup(
+    root,
+    'Connect an agent',
+    'Keep Minnow open while your agent uses this connection. One connection works across projects. Your agent supplies its current workspace with each request. Stdio can read the agent’s workspace roots; HTTP tools accept workspace_path. Issues follow that folder; Brain pages and the project catalog are shared.',
+  );
   const origin = window.location.origin;
   const choices = [{ value: 'http', label: 'HTTP' }, { value: 'stdio', label: 'Local command (stdio)' }];
   const transport = createSettingsSelectRow('Connection method', {
@@ -66,7 +71,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   nameInput.value = 'My agent';
   const create = element('button', 'settings-inline-btn', 'Create connection');
   create.type = 'button';
-  const creation = element('div', 'mcp-hub-creation');
+  const creation = element('div', 'settings-group__panel mcp-hub-creation');
   creation.append(nameLabel, nameInput, create);
   setup.append(transport.row, credential.row, access.row, creation);
   type Connection = { id: string; name: string; workspace?: string | null; access: 'read' | 'write'; createdAt: string; lastUsedAt: string | null };
@@ -77,21 +82,21 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   preview.setAttribute('aria-label', 'Agent configuration preview');
   const code = element('code', '');
   preview.append(code);
-  const actions = element('div', 'mcp-hub-actions');
+  const actions = element('div', 'settings-actions mcp-hub-actions');
   const copy = element('button', 'settings-inline-btn', 'Copy configuration');
   copy.type = 'button';
   const copyToken = element('button', 'settings-inline-btn', 'Copy session token');
   copyToken.type = 'button';
-  const feedback = element('span', 'field-hint');
+  const feedback = element('p', 'field-hint mcp-hub-feedback');
   feedback.setAttribute('role', 'status');
   const done = element('button', 'settings-inline-btn', 'Hide token');
   done.type = 'button';
   done.addEventListener('click', () => { issued = null; update(); feedback.textContent = 'Token hidden. Replace the connection if you need a new token.'; });
-  actions.append(copy, copyToken, done, feedback);
-  setup.append(hint, preview, actions);
-  const saved = appendSettingsGroup(root, 'Saved HTTP connections', 'Replace rotates a connection’s token immediately. Revoke stops access immediately. Save the new token before leaving this page; Minnow cannot show it again.');
-  const savedList = element('div', 'mcp-hub-connections');
-  saved.append(savedList);
+  actions.append(copy, copyToken, done);
+  const configPanel = element('div', 'settings-group__panel settings-field-stack mcp-hub-config-panel');
+  configPanel.append(hint, preview, actions, feedback);
+  setup.append(configPanel);
+  const savedList = appendSettingsGroup(root, 'Saved HTTP connections', 'Replace rotates a connection’s token immediately. Revoke stops access immediately. Save the new token before leaving this page; Minnow cannot show it again.');
   async function requestConnections<T>(method = 'GET', body?: object, id?: string): Promise<T> {
     const response = await fetch(`/api/mcp/hub/connections${id ? `?id=${encodeURIComponent(id)}` : ''}`, {
       method, cache: 'no-store', headers: { 'X-Minnow-Workspace': workspace, 'Content-Type': 'application/json' },
@@ -111,18 +116,21 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
       const connections: Connection[] = result.connections;
       if (!Array.isArray(connections)) throw new Error('Invalid connection list');
       savedList.replaceChildren();
-      if (!connections.length) savedList.append(element('p', 'field-hint', 'No saved connections.'));
+      if (!connections.length) savedList.append(element('p', 'settings-group__panel settings-field-hint', 'No saved connections.'));
       for (const connection of connections) {
-        const row = element('div', 'mcp-hub-actions');
-        row.append(element('span', '', connection.name), element('span', 'field-hint',
+        const row = element('div', 'settings-row settings-row--actions');
+        const label = element('div', 'settings-row__label');
+        label.append(element('span', 'settings-row__title', connection.name), element('span', 'settings-row__desc',
           `${connection.access === 'read' ? 'Read only' : 'Read and write'} · ${connection.workspace ? `Folder: ${connection.workspace}` : 'Agent workspace'} · Created ${new Date(connection.createdAt).toLocaleString()} · ${connection.lastUsedAt ? `Last used ${new Date(connection.lastUsedAt).toLocaleString()}` : 'Never used'}`));
+        const controls = element('div', 'settings-actions');
         for (const action of ['Replace', 'Revoke']) {
           const button = element('button', 'settings-inline-btn', action);
           button.type = 'button';
           button.setAttribute('aria-label', `${action} ${connection.name}`);
           button.addEventListener('click', () => { void mutateConnection(action === 'Replace' ? connection.id : undefined, action === 'Revoke' ? connection.id : undefined, button); });
-          row.append(button);
+          controls.append(button);
         }
+        row.append(label, controls);
         savedList.append(row);
       }
     } catch (error) { if (currentView()) savedList.textContent = error instanceof Error ? error.message : 'Could not load connections. Refresh to retry.'; }
@@ -219,7 +227,7 @@ export async function renderMcpHubSettingsSection(): Promise<void> {
   }
   copy.addEventListener('click', () => { void copyConnection(false); });
   copyToken.addEventListener('click', () => { void copyConnection(true); });
-  root.append(retry);
+  root.append(retryActions);
   appendSettingsCrosslinks(root, [{ label: 'MCP servers', sectionId: 'mcp' }]);
   update();
   await loadConnections();

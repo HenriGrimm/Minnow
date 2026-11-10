@@ -100,7 +100,7 @@ describe('Devices page', () => {
     document.body.append(mount);
     await renderDevicesSettings(mount);
     const titles = [...mount.querySelectorAll('.devices-card__title')].map((node) => node.textContent);
-    assert.deepEqual(titles, ['Anywhere', 'Home network']);
+    assert.deepEqual(titles, ['Home network', 'Anywhere']);
     assert.ok([...mount.querySelectorAll('button')].some((b) => b.textContent === 'Make it work anywhere'));
     assert.match(mount.querySelector('.devices-list__empty')!.textContent!, /No devices yet/);
   });

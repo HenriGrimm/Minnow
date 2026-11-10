@@ -61,7 +61,7 @@ export function resolveLegacyHash(hash: string): {
   desktopExperts?: boolean;
 } {
   const trimmed = hash || '#/';
-  if (trimmed === '#/app/code/overview') return { hash: '#/app/home' };
+  if (/^#\/app\/(?:home|code\/overview)(?:[/?]|$)/.test(trimmed)) return { hash: '#/app/code/chat' };
   if (trimmed === '#/desktop' || trimmed === '#/' || trimmed === '#' || trimmed === '#/workspaces') {
     return { hash: '#/workspaces' };
   }
@@ -155,8 +155,8 @@ export function parseOsHash(hash: string): OsRoute {
   const appMatch = normalized.match(/^#\/app\/([\w-]+)(?:\/([\w-]+))?/);
   if (appMatch && isAppId(appMatch[1])) {
     const route: OsRoute = { view: 'app', appId: appMatch[1] };
-    if (route.appId === 'settings' && pendingSettingsSection) {
-      route.settingsSection = pendingSettingsSection;
+    if (route.appId === 'settings' && (appMatch[2] || pendingSettingsSection)) {
+      route.settingsSection = appMatch[2] ?? pendingSettingsSection;
     }
     if (route.appId === 'models') {
       route.modelsSection = appMatch[2] ?? pendingModelsSection ?? DEFAULT_MODELS_SECTION;
@@ -197,7 +197,7 @@ function isCodeSectionId(value: string | undefined): value is CodeSectionId {
 
 /** Hash for a Code app section. Chat is the default workspace. */
 export function hashForCodeSection(section: CodeSectionId): string {
-  if (section === 'overview') return '#/app/home';
+  if (section === 'overview') return '#/app/code/chat';
   if (section === 'chat') return '#/app/code/chat';
   return `#/app/code/${section}`;
 }
@@ -487,9 +487,9 @@ function navigateToCodeSection(section: CodeSectionId): void {
   applyRoute({ view: 'app', appId: 'code', codeSection: section });
 }
 
-/** Navigate to the Code app overview dashboard. */
+/** Keep legacy overview callers on the Code chat workspace. */
 export function navigateToCodeOverview(): void {
-  launchApp('home');
+  navigateToCodeChat();
 }
 
 /** Navigate to the Code app chat workspace. */

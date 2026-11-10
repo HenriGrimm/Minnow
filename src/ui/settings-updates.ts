@@ -77,6 +77,7 @@ export function renderAppUpdatesSettings(mount: HTMLElement): void {
   const stripLabel = el('span', 'settings-updates-strip__label');
   const progress = el('div', 'settings-updates-progress');
   progress.setAttribute('role', 'progressbar');
+  progress.setAttribute('aria-label', 'Update download progress');
   progress.setAttribute('aria-valuemin', '0');
   progress.setAttribute('aria-valuemax', '100');
   progress.hidden = true;
@@ -183,7 +184,7 @@ export function renderAppUpdatesSettings(mount: HTMLElement): void {
     if (downloading) {
       const percent = status.progressPercent ?? 0;
       progress.setAttribute('aria-valuenow', String(percent));
-      progressBar.style.width = `${percent}%`;
+      progressBar.style.setProperty('--mn-progress', String(percent / 100));
     }
 
     versionValue.textContent = status.installedVersion;

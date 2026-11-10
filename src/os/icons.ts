@@ -5,7 +5,6 @@
 import { createIcon, iconHtml, type IconName } from '../ui/icon';
 
 export type OsIconName =
-  | 'home'
   | 'sourceControl'
   | 'code'
   | 'chat'
@@ -37,7 +36,6 @@ export const BRAIN_ICON_SRC = 'appBrain';
 export const ISSUES_ICON_SRC = 'appIssues';
 
 const OS_TO_ICON: Record<OsIconName, IconName> = {
-  home: 'appCodeOverview',
   sourceControl: 'gitBranch',
   code: 'appCode',
   chat: 'appChat',

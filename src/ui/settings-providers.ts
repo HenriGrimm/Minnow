@@ -1115,6 +1115,7 @@ export function createProviderSettingsRow(
   provider: ProviderPublic,
   canRemove: boolean,
   capabilities: ProviderCapabilities | null = null,
+  active = false,
 ): HTMLElement {
   const row = el('div', 'settings-providers-row');
   row.setAttribute('role', 'listitem');
@@ -1123,6 +1124,7 @@ export function createProviderSettingsRow(
   const summary = el('summary', 'settings-providers-row-head');
   const identity = el('span', 'settings-providers-row-identity');
   identity.append(el('span', 'settings-providers-name', provider.label));
+  if (active) identity.firstElementChild?.append(el('span', 'models-provider-active', 'Active'));
   identity.append(el('span', 'settings-providers-endpoint', provider.baseUrl));
   const state = el('span', 'settings-providers-state', provider.enabled === false ? 'Disabled' : 'Enabled');
   state.dataset.enabled = String(provider.enabled !== false);
@@ -1178,6 +1180,19 @@ export function createProviderSettingsRow(
   };
   panel.addEventListener('toggle', reveal);
   row.append(panel);
+  const metrics = el('div', 'models-provider-metrics');
+  const modelCount = el('span', 'models-provider-models', '—');
+  const latency = el('span', 'models-provider-latency', '—');
+  latency.title = 'Round-trip time for the connection test';
+  const result = el('span', 'models-provider-result');
+  result.setAttribute('role', 'status');
+  const quickTest = el('button', 'models-provider-test', 'Test');
+  quickTest.type = 'button';
+  quickTest.dataset.providerTest = provider.id;
+  quickTest.setAttribute('aria-label', `Test ${provider.label}`);
+  metrics.append(el('span', 'models-provider-kind', provider.apiKind), modelCount, latency,
+    el('span', 'models-provider-credential', provider.hasApiKey || provider.hasBearer ? 'Key saved' : 'No key'), quickTest, result);
+  row.append(metrics);
   return row;
 }
 
@@ -1266,12 +1281,15 @@ function isProviderFormDirty(form: HTMLFormElement): boolean {
 }
 
 async function testProviderConnection(button: HTMLButtonElement): Promise<void> {
-  const form = button.closest('form');
-  const status = form?.querySelector<HTMLElement>('[data-provider-connection-status]');
-  if (!form || !status) return;
+  const row = button.closest('.settings-providers-row');
+  const inline = button.classList.contains('models-provider-test');
+  const form = button.closest('form') ?? row?.querySelector('form');
+  const status = inline ? row?.querySelector<HTMLElement>('.models-provider-result')
+    : form?.querySelector<HTMLElement>('[data-provider-connection-status]');
+  if (!status) return;
   status.classList.remove('hidden');
   status.dataset.tone = 'muted';
-  if (isProviderFormDirty(form)) {
+  if (form && isProviderFormDirty(form)) {
     status.textContent = 'Wait for changes to save before testing this connection.';
     return;
   }
@@ -1281,21 +1299,30 @@ async function testProviderConnection(button: HTMLButtonElement): Promise<void> 
   status.dataset.tone = 'muted';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
+  const started = performance.now();
+  const modelCount = row?.querySelector('.models-provider-models');
+  const latency = row?.querySelector('.models-provider-latency');
   try {
     const response = await fetch(`/api/providers/${encodeURIComponent(button.dataset.providerTest ?? '')}/models`, { cache: 'no-store', signal: controller.signal });
     const body = await response.json() as { data?: unknown[]; unreachable?: boolean; error?: string };
     if (!response.ok || body.unreachable || body.error) throw new Error(body.error || `Connection failed (HTTP ${response.status}).`);
     if (!Array.isArray(body.data)) throw new Error('The server returned an invalid model catalog.');
     const count = body.data.length;
+    if (modelCount) modelCount.textContent = `${count} ${count === 1 ? 'model' : 'models'}`;
+    if (latency) latency.textContent = `${Math.round(performance.now() - started)} ms`;
+    if (row instanceof HTMLElement) row.dataset.connection = 'connected';
     status.dataset.tone = 'ok';
     status.textContent = count ? `Connected. ${count} ${count === 1 ? 'model' : 'models'} available.` : 'Connected. No models available yet.';
   } catch (error) {
+    if (modelCount) modelCount.textContent = '—';
+    if (latency) latency.textContent = '—';
+    if (row instanceof HTMLElement) row.dataset.connection = 'failed';
     status.dataset.tone = 'error';
     status.textContent = error instanceof Error && error.name === 'AbortError' ? 'Connection timed out. Check the server address and try again.' : error instanceof Error ? error.message : 'Could not connect.';
   } finally {
     clearTimeout(timer);
     button.disabled = false;
-    button.textContent = 'Test connection';
+    button.textContent = inline ? 'Test' : 'Test connection';
   }
 }
 
@@ -1784,7 +1811,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   bindProvidersAddForm();
   bindProvidersListActions(listEl);
   const openIds = new Set(Array.from(listEl.querySelectorAll<HTMLDetailsElement>('.settings-providers-edit-panel[open]'), (panel) => panel.closest<HTMLElement>('[data-provider-id]')?.dataset.providerId));
-  const { providers } = await listProviders().catch(() => ({ providers: [] }));
+  const { providers, activeProviderId } = await listProviders().catch(() => ({ providers: [], activeProviderId: '' }));
   if (revision !== providersRenderRevision || !listEl.isConnected) return;
   const online = isServerStorageMode() && isProvidersApiAvailable();
   providersOfflineEl?.classList.toggle('hidden', online);
@@ -1821,7 +1848,7 @@ export async function renderProvidersSettingsSection(): Promise<void> {
   const rows = document.createDocumentFragment();
   configurableProviders.sort((a, b) => Number(b.enabled !== false) - Number(a.enabled !== false));
   configurableProviders.forEach((provider) => {
-    const row = createProviderSettingsRow(provider, canRemove);
+    const row = createProviderSettingsRow(provider, canRemove, null, provider.id === activeProviderId);
     rows.append(row);
     const panel = row.querySelector<HTMLDetailsElement>('.settings-providers-edit-panel');
     if (panel && openIds.has(provider.id)) panel.open = true;

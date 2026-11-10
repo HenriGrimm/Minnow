@@ -287,12 +287,20 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('appearance.chatView', 'Chat view', 'appearance', 'appearance', {
     keywords: ['compact', 'full', 'transcript', 'working', 'thinking', 'tools', 'activity'],
   }),
-  field('appearance.theme', 'Theme presets', 'appearance', 'appearance', {
-    keywords: ['color', 'dark', 'light', 'swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint', 'palette'],
+  field('appearance.theme', 'Theme', 'appearance', 'appearance', {
+    keywords: ['color', 'dark', 'light', 'graphite', 'swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint', 'palette'],
   }),
   field('appearance.theme.family', 'Theme family', 'appearance', 'appearance'),
   field('appearance.theme.mode', 'Theme mode', 'appearance', 'appearance', {
     keywords: ['dark mode', 'light mode', 'follow system'],
+  }),
+  field('appearance.theme.color', 'Color intensity', 'appearance', 'appearance', {
+    keywords: ['tint', 'surface', 'subtle', 'rich'],
+  }),
+  field('appearance.theme.accent', 'Accent', 'appearance', 'appearance'),
+  field('appearance.density', 'Density', 'appearance', 'appearance'),
+  field('appearance.reduceMotion', 'Reduce motion', 'appearance', 'appearance', {
+    keywords: ['accessibility', 'animation'],
   }),
   field('appearance.fonts', 'Fonts', 'appearance', 'appearance', {
     keywords: ['typography', 'mono', 'ui font'],
@@ -344,6 +352,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
 
   field('agents.center', 'Agent', 'agents', 'agent-center', {
     keywords: ['agent', 'prompts', 'system prompt', 'sub-agents', 'skills', 'plan', 'ask', 'debug'],
+  }),
+  field('agents.permissions', 'Permission level', 'agents', 'agent-center', {
+    keywords: ['manual', 'auto', 'full access', 'approval', 'tool permission'],
   }),
   field('agents.localModelGuidance', 'Local model guidance', 'agents', 'agent-center', {
     keywords: ['local', 'lm studio', 'llama', 'small model', 'appendix'],
@@ -518,7 +529,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('integrations.browser.patterns', 'Allowed origin patterns', 'integrations', 'browser'),
   field('integrations.browser.devtoolsDock', 'DevTools dock', 'integrations', 'browser'),
 
-  field('advanced.diagnostics', 'Health & diagnostics', 'advanced', 'diagnostics', {
+  field('advanced.diagnostics', 'Health and diagnostics', 'advanced', 'diagnostics', {
     keywords: ['errors', 'logs', 'crash', 'report', 'health strip', 'subsystem'],
     description: 'Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.',
   }),
@@ -526,7 +537,7 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['server', 'memory', 'brain', 'lsp', 'pty', 'status strip'],
   }),
   field('advanced.diagnostics.actions', 'Diagnostic actions', 'advanced', 'diagnostics', {
-    keywords: ['copy report', 'refresh', 'clear logs'],
+    keywords: ['copy report', 'export diagnostics', 'refresh', 'clear logs'],
   }),
   field(
     'advanced.diagnostics.fileErrorsToIssues',
@@ -590,6 +601,9 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
     keywords: ['version', 'platform', 'node', 'electron'],
   }),
   field('about.version', 'App version', 'general', 'about'),
+  field('about.boot', 'Performance diagnostics', 'general', 'about', {
+    keywords: ['startup', 'boot', 'shell ready', 'interactive', 'page load'],
+  }),
 ];
 
 /** Searchable catalog rows (release-gated apps, internal diagnostics omitted). */

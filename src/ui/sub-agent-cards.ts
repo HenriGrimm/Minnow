@@ -389,7 +389,15 @@ export function upsertSubAgentCardForRun(
     cards.set(run.runId, el);
 
     const open = (): void => {
-      openSubAgentDrawer(run.runId, chatId);
+      const header = document.getElementById('graphiteThreadHeader');
+      if (!header || header.hidden || !el?.closest('#chatArea')) {
+        void openSubAgentDrawer(run.runId, chatId);
+        return;
+      }
+      void import('./surfaces/surfaces-column').then(({ openSurface }) => {
+        if (!el?.isConnected || header.hidden) return;
+        if (!openSurface('agents', { target: run.runId })) void openSubAgentDrawer(run.runId, chatId);
+      });
     };
     el.addEventListener('click', open);
     el.addEventListener('keydown', (ev) => {

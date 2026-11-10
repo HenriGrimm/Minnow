@@ -93,6 +93,27 @@ function installMinnowWindowApi(openWindows) {
 }
 
 describe('workspace-folder-picker', { concurrency: false }, () => {
+  test('opens quick locations in a modal and returns focus on dismissal', async () => {
+    const window = setupDom();
+    resetWorkspaceFolderPickerForTests();
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    trigger.focus();
+    const result = openWorkspaceFolderPicker({ initialPath: '/projects/parent', quickLocations: true });
+    await flushPromises();
+    const overlay = document.body.querySelector(':scope > .workspace-picker-overlay--locations');
+    assert.ok(overlay);
+    assert.equal(overlay.hidden, false);
+    assert.equal(overlay.querySelector('#workspaceFolderPicker').getAttribute('aria-modal'), 'true');
+    assert.ok(overlay.querySelector('[aria-label="Quick locations"] button'));
+    overlay.click();
+    assert.deepEqual(await result, { cancelled: true, path: null });
+    assert.equal(overlay.parentElement, document.body);
+    assert.equal(document.activeElement, trigger);
+    resetWorkspaceFolderPickerForTests();
+    window.close();
+  });
+
   // A folder that already has a window cannot be opened a second time, so the
   // picker has to say so and offer the one action that helps: closing it.
   test('marks a folder that already has a window and closes it from the row', async () => {

@@ -12,13 +12,14 @@ const reparented = new Map<ModelsSectionId, HTMLElement>();
 export async function reparentSettingsSectionIntoModels(
   modelsSection: ModelsSectionId,
   settingsSection: SettingsSectionId,
+  target?: HTMLElement,
 ): Promise<void> {
-  const mount = document.getElementById(`modelsSection-${modelsSection}`);
+  const mount = target ?? document.getElementById(`modelsSection-${modelsSection}`);
   const settingsSectionEl = document.getElementById(`settingsSection-${settingsSection}`);
   const settingsContent = document.querySelector(SETTINGS_CONTENT_SELECTOR);
   if (!mount || !settingsSectionEl || !settingsContent) return;
 
-  if (!reparented.has(modelsSection)) {
+  if (settingsSectionEl.parentElement !== mount) {
     reparented.set(modelsSection, settingsSectionEl);
     mount.appendChild(settingsSectionEl);
     settingsSectionEl.classList.add('is-active');

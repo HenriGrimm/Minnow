@@ -164,7 +164,7 @@ function detachListeners(): void {
 function trapFocus(e: KeyboardEvent): void {
   if (!panelEl || e.key !== 'Tab') return;
   const nodes = [...panelEl.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) => !el.hidden && el.getAttribute('aria-hidden') !== 'true',
+    (el) => !el.matches(':disabled') && !el.closest('[hidden], [aria-hidden="true"]'),
   );
   if (nodes.length === 0) return;
   const first = nodes[0];

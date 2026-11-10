@@ -128,7 +128,8 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 7px 10px;
+  min-height: var(--mn-density-nav-row);
+  padding: calc(7px + var(--mn-density-step)) 10px;
   font: inherit;
   font-size: 13px;
   color: var(--mn-fg-muted);
@@ -1019,7 +1020,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 }
 
 .models-row {
-  min-height: 52px;
+  min-height: calc(52px + 2 * var(--mn-density-step));
   text-align: left;
   cursor: pointer;
   border-bottom: 1px solid var(--mn-border);
@@ -2359,8 +2360,8 @@ html:not(.minnow-os-enabled) .models-page.is-open {
 
   .models-row {
     grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 48px;
-    padding: 10px var(--models-gutter);
+    min-height: calc(48px + 2 * var(--mn-density-step));
+    padding: calc(10px + var(--mn-density-step)) var(--models-gutter);
   }
 
   .models-row__cell {

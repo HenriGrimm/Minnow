@@ -42,6 +42,9 @@ function formatHeaderSummary(total: number, enabled: number): string {
   if (total === 0) {
     return 'Recurring agent jobs while Minnow is open';
   }
+  if (document.documentElement.classList.contains('mn-graphite-workspace')) {
+    return `${enabled} of ${total} jobs on · Jobs run while Minnow is open`;
+  }
   const enabledPart =
     enabled === total ? `${enabled} enabled` : `${enabled} of ${total} enabled`;
   return `${total} job${total === 1 ? '' : 's'} · ${enabledPart}`;
@@ -104,6 +107,8 @@ function panelEditorCallbacks() {
 async function refreshPanel(): Promise<void> {
   const body = getBody();
   if (!body) return;
+  const add = document.getElementById('btnSchedulerAdd');
+  if (add) add.textContent = document.documentElement.classList.contains('mn-graphite-workspace') ? 'New job' : 'Add task';
   await renderSchedulerPanel(body, panelEditorCallbacks());
 }
 

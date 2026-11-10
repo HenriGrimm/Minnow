@@ -425,9 +425,10 @@
 
 .cap-matrix-run__progress-fill {
   height: 100%;
-  width: 0;
   background: var(--mn-accent);
-  transition: width 0.2s ease-out;
+  transform: scaleX(var(--mn-progress, 0));
+  transform-origin: left;
+  transition: transform 0.2s var(--ease-out);
 }
 
 .cap-matrix-run__phase,
@@ -825,7 +826,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   font-weight: 700;
   font-family: var(--font-mono, ui-monospace, monospace);
   background: var(--mn-surface-2);

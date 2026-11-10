@@ -23,7 +23,6 @@ import { formatManagedModelSelection } from './managed-chat-model';
 import { composerFollowUpPlaceholder } from './composer-shortcuts';
 
 const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  msgInput: 'Ask Minnow to plan, build, or debug…',
   chatAppInput: 'Message Minnow…',
   desktopInput: 'What would you like to do today?',
 };
@@ -346,9 +345,12 @@ export function syncComposerFollowUpPlaceholder(streaming: boolean): void {
     inputEl.dataset.defaultPlaceholder = defaultText;
   }
 
+  const idlePlaceholder = inputEl.id === 'msgInput'
+    ? (getActiveChat().history.length ? 'Ask for a follow-up…' : 'Describe a change, paste an error, or @ an issue')
+    : inputEl.dataset.defaultPlaceholder;
   inputEl.placeholder = streaming
     ? composerFollowUpPlaceholder()
-    : inputEl.dataset.defaultPlaceholder;
+    : idlePlaceholder;
 }
 
 /** Reset collapse state when switching chats (optional UX). */

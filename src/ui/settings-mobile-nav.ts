@@ -17,7 +17,8 @@ function activeSectionLabel(): string {
   return active?.querySelector('.settings-nav__item-label')?.textContent?.trim() || 'Settings';
 }
 
-function closeSection(): void {
+/** Return the embedded Settings page to its section list. */
+export function openSettingsPhoneList(): void {
   getRoot()?.classList.remove(SECTION_OPEN_CLASS);
 }
 
@@ -54,7 +55,7 @@ function ensureBar(root: HTMLElement): void {
   back.className = 'settings-phone-bar__back';
   back.setAttribute('aria-label', 'All settings');
   back.innerHTML = '<i class="fi fi-rr-arrow-left icon-svg" aria-hidden="true"></i>';
-  back.addEventListener('click', closeSection);
+  back.addEventListener('click', openSettingsPhoneList);
 
   const title = document.createElement('span');
   title.id = `${BAR_ID}Title`;
@@ -71,7 +72,7 @@ export function initSettingsMobileNav(): void {
   ensureBar(root);
 
   if (installed) {
-    if (!isPhoneLayout()) closeSection();
+    if (!isPhoneLayout()) openSettingsPhoneList();
     return;
   }
   installed = true;
@@ -84,6 +85,6 @@ export function initSettingsMobileNav(): void {
   });
 
   onPhoneLayoutChange((phone) => {
-    if (!phone) closeSection();
+    if (!phone) openSettingsPhoneList();
   });
 }

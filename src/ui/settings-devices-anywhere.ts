@@ -37,13 +37,14 @@ function actionButton(label: string, primary = false): HTMLButtonElement {
 }
 
 /**
- * Render the current Anywhere state into `mount`. `onChange` receives the new
- * status after any action so the caller can re-render.
+ * Render the current Anywhere state. Settings supplies a separate action
+ * column, while the Connect sheet keeps actions below the setup instructions.
  */
 export function renderAnywhereState(
   mount: HTMLElement,
   status: AnywhereStatus,
   onChange: (next: RemoteStatus) => void,
+  actionMount?: HTMLElement,
 ): void {
   mount.replaceChildren();
   const copy = (text: string) => mount.appendChild(el('p', 'devices-card__copy', text));
@@ -191,5 +192,9 @@ export function renderAnywhereState(
       break;
     }
   }
-  if (actions.childElementCount) mount.append(actions);
+  if (actionMount) {
+    actionMount.replaceChildren(...actions.children);
+  } else if (actions.childElementCount) {
+    mount.append(actions);
+  }
 }

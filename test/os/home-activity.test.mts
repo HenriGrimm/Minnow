@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { activityCalendar, activitySummary } from '../../src/ui/home-activity.ts';
-import { getAppById } from '../../src/os/app-registry.ts';
+import { isAppId } from '../../src/os/app-registry.ts';
 import { listRailApps } from '../../src/os/app-preferences.ts';
 import { resolveLegacyHash, hashForCodeSection } from '../../src/os/router.ts';
 
-test('Code leads the rail, followed by Dashboard with compatible overview links', () => {
-  assert.equal(getAppById('home')?.name, 'Dashboard');
-  assert.equal(getAppById('home')?.releaseState, 'released');
-  assert.equal(getAppById('home')?.availability, 'core');
-  assert.deepEqual(listRailApps().slice(0, 2).map(app => app.id), ['code', 'home']);
-  assert.deepEqual(resolveLegacyHash('#/app/code/overview'), { hash: '#/app/home' });
-  assert.equal(hashForCodeSection('overview'), '#/app/home');
+test('retired Dashboard and overview links open Code chat', () => {
+  assert.equal(isAppId('home'), false);
+  assert.deepEqual(listRailApps().slice(0, 2).map(app => app.id), ['code', 'source-control']);
+  assert.deepEqual(resolveLegacyHash('#/app/home'), { hash: '#/app/code/chat' });
+  assert.deepEqual(resolveLegacyHash('#/app/home?view=review'), { hash: '#/app/code/chat' });
+  assert.deepEqual(resolveLegacyHash('#/app/code/overview'), { hash: '#/app/code/chat' });
+  assert.equal(hashForCodeSection('overview'), '#/app/code/chat');
 });
 
 test('calendar distinguishes unknown history from zero and combines edit sources', () => {

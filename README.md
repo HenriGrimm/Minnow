@@ -89,10 +89,6 @@ idea  →  /plan              →  a spec in documentation/plans/
 
 You can also just open a repo and start typing.
 
-### Dashboard
-
-Code opens after you choose a project, keeping your existing session. Dashboard brings project issues through Triage, Ready, In Progress, Review, and Done. Projects without issues show a goal field with Plan a goal and Add issue actions. Capture a goal, review draft tasks, and send selected issues to agent chats in isolated worktrees. Review conversations, inspect branch changes, read command output, and approve queued merges in the resizable bottom dock. [Dashboard guide](documentation/manual/apps/home.md).
-
 ### Code
 
 File tree, We use CodeMirror for our editor combinded with our language-server intelligence and inline completion, terminal tabs, source control, dev servers, and a full user and agent browser. **Intent mode** turns a line of plain English into code you accept with Tab. Chat sits beside the project rather than in another window, driving the same files, git, and terminals you are. You can also never look at code and just chat if you so desire. 

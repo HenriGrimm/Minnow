@@ -1227,6 +1227,12 @@ function renderList(mount: HTMLElement, _issues: IssueCard[]): void {
     head.type = 'button';
     head.className = 'issues-group__head';
     head.setAttribute('aria-expanded', collapsedGroups.has(group.id) ? 'false' : 'true');
+    if (groupBy === 'status' && group.rows[0]) {
+      const icon = createStatusChip(group.rows[0].issue.status);
+      icon.classList.add('issues-group__status');
+      icon.setAttribute('aria-hidden', 'true');
+      head.append(icon);
+    }
     const label = document.createElement('span');
     label.className = 'issues-group__label';
     label.textContent = group.label;
@@ -1539,7 +1545,10 @@ export function renderIssuesPanel(): void {
   syncIssuesScreenNavigation();
   if (currentScreen === 'projects') {
     const next = document.createElement('div');
-    renderIssuesProjectsScreen(next, { onViewProject: showProjectIssues });
+    renderIssuesProjectsScreen(next, {
+      onViewProject: showProjectIssues,
+      onOpenIssue: (issueId) => { void openIssues({ issueId, screen: 'issues' }); },
+    });
     mount.replaceChildren(...next.childNodes);
     if (summaryEl) {
       const projects = listIssueProjects({ includeArchived: true });
@@ -1584,7 +1593,8 @@ export function renderIssuesPanel(): void {
   if (summaryEl) {
     const openAll = countOpenIssues({ scope: 'all' });
     const triageCount = countUnreviewedTriageIssues();
-    summaryEl.textContent = `${issues.length} shown · ${openAll} open`;
+    summaryEl.textContent = document.documentElement.classList.contains('mn-graphite-apps') && issues.length === openAll
+      ? `${openAll} open` : `${issues.length} shown · ${openAll} open`;
     if (triageCount > 0) {
       summaryEl.textContent += ` · ${triageCount} to triage`;
     }
@@ -1937,6 +1947,7 @@ function syncIssuesScreenNavigation(): void {
   const entries: Array<[IssuesScreen, string]> = [
     ['issues', 'btnIssuesScreenIssues'],
     ['projects', 'btnIssuesScreenProjects'],
+    ['projects', 'btnIssuesHeaderProjects'],
   ];
   for (const [screen, id] of entries) {
     const button = document.getElementById(id);
@@ -1945,6 +1956,7 @@ function syncIssuesScreenNavigation(): void {
     if (active) button?.setAttribute('aria-current', 'page');
     else button?.removeAttribute('aria-current');
   }
+  syncIssueViewButtons();
 }
 
 function setIssuesScreen(screen: IssuesScreen, updateRoute = true): void {
@@ -2001,17 +2013,19 @@ function navigateToIssueDetail(issueId: string): void {
     ?.classList.add('is-selected');
 }
 
+function syncIssueViewButtons(): void {
+  for (const [id, mode] of [['issuesViewList', 'list'], ['issuesViewBoard', 'board']] as const) {
+    const button = document.getElementById(id);
+    const active = currentScreen === 'issues' && viewMode === mode;
+    button?.classList.toggle('is-active', active);
+    button?.setAttribute('aria-pressed', String(active));
+  }
+}
+
 function syncControlsFromState(): void {
   setControlValue('issuesScope', filters.scope);
   setControlValue('issuesSearch', filters.search);
-  document.getElementById('issuesViewList')?.classList.toggle('is-active', viewMode === 'list');
-  document.getElementById('issuesViewBoard')?.classList.toggle('is-active', viewMode === 'board');
-  document
-    .getElementById('issuesViewList')
-    ?.setAttribute('aria-pressed', viewMode === 'list' ? 'true' : 'false');
-  document
-    .getElementById('issuesViewBoard')
-    ?.setAttribute('aria-pressed', viewMode === 'board' ? 'true' : 'false');
+  syncIssueViewButtons();
   syncIssuesGithubSyncAllButton();
 }
 
@@ -2747,6 +2761,7 @@ function onIssuesKeydown(event: KeyboardEvent): void {
   if (!isIssuesPageOpen()) return;
   if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey) return;
   if (isContextMenuOpen() || isAppDialogOpen() || isNewFormOpen()) return;
+  if (document.querySelector('.auxiliary-model-popover:not(.hidden)')) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest('[role="menu"], [role="listbox"], [role="combobox"], .issues-labels-popover, .issues-labels-add-popover, .issues-labels-overflow, .issues-label-color-picker')) return;
   if (getSelectedIssueId() && event.key === 'Escape' && !isIssueExpandOverlayOpen()) {
@@ -2942,16 +2957,26 @@ function bindStaticControls(): void {
       setIssuesScreen('issues');
       return;
     }
-    if (target.closest('#btnIssuesScreenProjects')) {
+    if (target.closest('#btnIssuesScreenProjects, #btnIssuesHeaderProjects')) {
       setIssuesScreen('projects');
       return;
     }
-    if (target.closest('#issuesViewList')) {
-      setViewMode('list');
+    if (target.closest('#issuesViewList, #issuesViewBoard')) {
+      const mode = target.closest('#issuesViewList') ? 'list' : 'board';
+      if (currentScreen === 'issues') setViewMode(mode);
+      else {
+        viewMode = mode;
+        setIssuesScreen('issues');
+      }
       return;
     }
-    if (target.closest('#issuesViewBoard')) {
-      setViewMode('board');
+    if (target.closest('#btnIssuesFilters, #btnIssuesSearch')) {
+      const shell = target.closest('.issues-shell');
+      const search = Boolean(target.closest('#btnIssuesSearch'));
+      const open = search || !shell?.classList.contains('is-filter-open');
+      shell?.classList.toggle('is-filter-open', open);
+      document.getElementById('btnIssuesFilters')?.setAttribute('aria-expanded', String(open));
+      if (search) document.getElementById('issuesSearch')?.focus();
       return;
     }
     if (target.closest('#btnIssuesNew')) {
@@ -3081,6 +3106,10 @@ export async function openIssues(options?: {
 
   pendingIssueId = options?.issueId;
   currentScreen = options?.screen ?? 'issues';
+  if (currentScreen === 'projects') {
+    closeIssueDetail();
+    closeIssuesFileDrawer();
+  }
   ensureIssuesChrome(root);
   root.classList.add('is-open');
   mountHeaderIcon();

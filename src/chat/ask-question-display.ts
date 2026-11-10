@@ -1,7 +1,6 @@
 import { getSharedChatHost } from '../ui/shared-chat-host-state';
 import { expertsPageOpen } from '../app-state';
 import { resolveIssueChatQuestionHost } from './issue-chat-host';
-import { resolveHomeQuestionHost } from '../home/question-host';
 import { getForegroundAppId, subscribeInstances } from '../os/instances';
 import { getActiveChat } from '../state/sessions';
 import { isChatAppForeground } from '../ui/chat-mount';
@@ -63,7 +62,6 @@ export function isAskQuestionDomVisible(chatId: string): boolean {
   if (!trimmed) return false;
   if (getSharedChatHost(trimmed)) return true;
   if (resolveIssueChatQuestionHost(trimmed)) return true;
-  if (resolveHomeQuestionHost(trimmed)) return true;
 
   if (planScreenHooks.resolveQuestionHost?.(trimmed)) {
     return true;

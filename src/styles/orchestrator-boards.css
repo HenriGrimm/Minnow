@@ -70,6 +70,141 @@
   overflow: hidden;
 }
 
+.ov2__board-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ov2.is-graphite-overview .board-header__title {
+  max-width: none;
+}
+
+.ov2.is-graphite-overview .board-header__leading {
+  flex: 1 1 230px;
+}
+
+.ov2.is-graphite-overview .board-header__controls {
+  flex: 0 1 auto;
+}
+
+.ov2.is-graphite-overview .board-header__meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ov2.is-graphite-overview .board-header__meta-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.ov2.is-graphite-overview .board-header__telemetry {
+  display: flex;
+  flex: 0 1 290px;
+  margin-inline-start: auto;
+  gap: 4px;
+}
+
+.ov2.is-graphite-overview .ov2-wave__title {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ov2-wave-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ov2-wave-grid .ov2-task {
+  padding: 12px 14px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.ov2.is-graphite-overview.is-inspector-inline {
+  grid-template-columns: 232px minmax(0, 1fr) 340px;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.ov2.is-inspector-inline .ov2__list {
+  grid-area: 1 / 1 / -1;
+}
+
+.ov2.is-inspector-inline .ov2__board {
+  display: contents;
+}
+
+.ov2.is-inspector-inline .ov2__board > .board-header {
+  grid-area: 1 / 2 / 2 / -1;
+  margin: 0;
+  padding: 12px 24px;
+}
+
+.ov2.is-inspector-inline .ov2__board-body {
+  grid-area: 2 / 2;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px 24px 24px;
+  overflow-y: auto;
+}
+
+.ov2.is-inspector-inline .ov2-detail-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  grid-area: 2 / 3;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-inline-start: 1px solid var(--mn-graphite-line, var(--mn-border));
+  background: transparent;
+}
+
+.ov2.is-inspector-inline .ov2-detail {
+  width: 100%;
+  padding: 12px 16px 8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  box-shadow: none;
+}
+
+.ov2.is-inspector-inline .ov2-detail__title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ov2.is-inspector-inline .ov2-detail__toolbar {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ov2.is-inspector-inline .ov2-detail__actions {
+  justify-content: flex-start;
+}
+
+.ov2.is-inspector-inline .ov2-detail__panes {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, auto) minmax(120px, 1fr);
+  gap: 12px;
+  overflow: auto;
+}
+
+.ov2.is-inspector-inline .ov2-detail__rail {
+  gap: 12px;
+  max-height: 260px;
+  padding-block-end: 0;
+}
+
 /* ── The list ──────────────────────────────────────────────────────────── */
 
 .ov2__list {
@@ -111,7 +246,7 @@
   flex-direction: column;
   gap: 5px;
   width: 100%;
-  padding: 9px 10px;
+  padding: calc(9px + var(--mn-density-step)) 10px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -218,7 +353,7 @@
 .ov2 .ob-ask__title {
   margin: 0 0 10px;
   color: var(--mn-fg);
-  font-size: 22px;
+  font-size: var(--mn-type-3xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -439,7 +574,7 @@
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-family: var(--font-ui);
-  font-size: 0.62rem;
+  font-size: var(--mn-type-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -821,6 +956,195 @@
   }
 }
 
+.ov2.is-graphite-overview .board-header__title {
+  max-width: none;
+}
+
+.ov2.is-graphite-overview .board-header__toolbar {
+  column-gap: 12px;
+  row-gap: 4px;
+}
+
+.ov2.is-graphite-overview .board-header__leading {
+  flex: 1 1 230px;
+}
+
+.ov2.is-graphite-overview .board-header__controls {
+  flex: 0 1 auto;
+  gap: 5px;
+}
+
+.ov2.is-graphite-overview .board-header__controls :is(.board-btn, .board-header__run-btn) {
+  min-height: 26px;
+  padding-block: 4px;
+}
+
+.ov2__graphite-add,
+.ov2 .board-header__concurrency-step {
+  display: inline-grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mn-radius-sm);
+  background: transparent;
+  color: var(--mn-fg-muted);
+  cursor: pointer;
+}
+
+.ov2__graphite-add:hover,
+.ov2 .board-header__concurrency-step:hover {
+  background: var(--mn-surface-2);
+  color: var(--mn-fg);
+}
+
+.ov2 .board-header__concurrency--stepper {
+  gap: 2px;
+}
+
+.ov2 .board-header__concurrency--stepper .board-header__field-label {
+  margin-inline-end: 4px;
+  font: 12px/1.4 var(--font-ui);
+}
+
+.ov2 .board-header__concurrency--stepper .board-header__concurrency-input {
+  width: 26px;
+  height: 25px;
+  padding: 0;
+  appearance: textfield;
+  border: 0;
+  background: transparent;
+}
+
+.board-header__concurrency--stepper .board-header__concurrency-input::-webkit-inner-spin-button,
+.board-header__concurrency--stepper .board-header__concurrency-input::-webkit-outer-spin-button {
+  appearance: none;
+}
+
+.ov2.is-graphite-overview .board-header {
+  padding-bottom: 0;
+}
+
+.ov2.is-graphite-overview.is-inspector-inline .ov2__board > .board-header {
+  padding-bottom: 0;
+}
+
+.ov2__view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.ov2__view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--mn-fg-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ov2__view-tab[aria-selected='true'] {
+  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
+  color: var(--mn-fg);
+}
+
+.ov2__view-tab-count {
+  min-width: 20px;
+  padding: 1px 4px;
+  border-radius: var(--mn-radius-sm);
+  background: var(--mn-warning-soft, var(--mn-surface-2));
+  color: var(--mn-warning);
+  font: 10.5px/1.4 var(--font-mono);
+  text-align: center;
+}
+
+.ov2__activity-header,
+.ov2__verification-list > li,
+.ov2__board-warning {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ov2__activity-header { justify-content: space-between; }
+
+.ov2__verification-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ov2__verification-list > li {
+  min-height: 34px;
+  border-bottom: 1px solid var(--mn-border);
+}
+
+.ov2__verification-list > li > span:last-child { margin-inline-start: auto; }
+
+.ov2__board-warning {
+  padding: 14px 16px;
+  border: 1px solid var(--mn-warning-border);
+  border-radius: 10px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.ov2__board-warning > .icon-svg { color: var(--mn-warning); }
+.ov2__board-warning > div { flex: 1 1 auto; }
+.ov2__board-warning p { margin: 2px 0 0; color: var(--mn-fg-muted); }
+
+.ov2.is-graphite-overview .ov2-wave.ob-sec {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.ov2-wave__header,
+.ov2-wave__header > .ov2-wave__title,
+.ov2-task__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov2-wave__number,
+.ov2-task__role {
+  color: var(--mn-fg-subtle);
+  font: 11px/1.4 var(--font-mono);
+}
+
+.ov2-wave__name { color: var(--mn-fg); }
+.ov2-wave__divider { flex: 1; border-top: 1px solid var(--mn-border); }
+
+.ov2-task__role {
+  padding: 0 5px;
+  border: 1px solid var(--mn-border);
+  border-radius: 4px;
+}
+
+.ov2-task__stage {
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--mn-border-strong);
+  color: var(--mn-accent);
+}
+
+.ov2-task__stage::-webkit-progress-bar { background: var(--mn-border-strong); }
+.ov2-task__stage::-webkit-progress-value { background: var(--mn-accent); }
+.ov2-task__stage::-moz-progress-bar { background: var(--mn-accent); }
+
 .ov2-board__final {
   display: flex;
   flex-wrap: wrap;
@@ -830,7 +1154,7 @@
 
 .ov2-board__final-run {
   padding: 2px 6px;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-1);
   font-size: 11px;
 }
@@ -1223,7 +1547,7 @@
 .ov2-task__head:focus-visible {
   outline: 2px solid var(--mn-accent-border);
   outline-offset: 2px;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1297,7 +1621,7 @@
 
 .ov2-detail__title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
@@ -1647,7 +1971,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   background: transparent;
   color: var(--mn-fg-muted);
   cursor: pointer;
@@ -2418,7 +2742,7 @@
   font-size: 12px;
   background: transparent;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   cursor: pointer;
 }
 
@@ -2493,7 +2817,7 @@
 
 .ov2-create__title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   font-weight: 650;
   letter-spacing: -0.015em;
 }
@@ -2767,7 +3091,7 @@ select.ov2-create__input {
 
 .ov2-report__run {
   padding: 2px 6px;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-1);
   font-size: 11px;
   overflow-wrap: anywhere;
@@ -2876,7 +3200,7 @@ select.ov2-create__input {
 
 .ov2-skeleton__line {
   height: 11px;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-2);
   opacity: 0.55;
 }
@@ -3092,7 +3416,7 @@ select.ov2-create__input {
 
 .ov2-report-screen__run-cmd {
   padding: 2px 6px;
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-1);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
@@ -3508,7 +3832,7 @@ select.ov2-create__input {
 .ov2-diffbar__block {
   width: 7px;
   height: 7px;
-  border-radius: 1px;
+  border-radius: var(--mn-radius-pill);
   background: var(--mn-border-strong);
 }
 
@@ -3692,7 +4016,7 @@ select.ov2-create__input {
   justify-self: start;
   padding: 2px 7px;
   border: 1px solid var(--mn-border);
-  border-radius: 5px;
+  border-radius: var(--mn-radius-sm);
   font-size: 0.6875rem;
   line-height: 1.4;
   white-space: nowrap;
@@ -3850,7 +4174,7 @@ select.ov2-create__input {
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-0);
 }
 
@@ -3875,7 +4199,7 @@ select.ov2-create__input {
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--mn-border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--mn-radius-sm);
   background: var(--mn-surface-0);
 }
 
@@ -3938,7 +4262,7 @@ select.ov2-create__input {
   padding: 0 6px;
   border: 1px solid var(--mn-border);
   border-left: 0;
-  border-radius: 0 var(--radius-sm, 6px) var(--radius-sm, 6px) 0;
+  border-radius: 0 var(--mn-radius-sm) var(--mn-radius-sm) 0;
   background: var(--mn-bg);
   color: var(--mn-fg);
   font-size: 11px;

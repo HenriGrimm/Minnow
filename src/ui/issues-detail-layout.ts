@@ -9,13 +9,29 @@ let active = false;
 let restoreFocus: HTMLElement | null = null;
 let closePanel: (() => void) | undefined;
 let listening = false;
+let inWorkspaceColumn = false;
 
 function panelHost(): HTMLElement | null {
   return document.getElementById('issuesDetailHost');
 }
 
+function syncInlineDetailBody(host: HTMLElement, inline: boolean): void {
+  const panel = host.querySelector('.issues-detail');
+  const doc = panel?.querySelector('.issues-detail__doc');
+  const rail = panel?.querySelector('.issues-detail__rail');
+  const properties = panel?.querySelector('.issues-detail__properties');
+  const workflow = panel?.querySelector('.issues-detail__workflow');
+  if (!panel || !doc || !rail || !properties || !workflow) return;
+
+  const active = document.activeElement as HTMLElement | null;
+  if (inline && properties.parentElement !== doc) doc.prepend(properties);
+  if (inline && workflow.parentElement !== panel) panel.append(workflow);
+  if (!inline && (properties.parentElement !== rail || workflow.parentElement !== rail)) rail.prepend(workflow, properties);
+  if (active && active !== document.activeElement && panel.contains(active)) active.focus({ preventScroll: true });
+}
+
 function onPanelKeydown(event: KeyboardEvent): void {
-  if (!active || event.defaultPrevented || isContextMenuOpen() || isAppDialogOpen()) return;
+  if (!active || inWorkspaceColumn || event.defaultPrevented || isContextMenuOpen() || isAppDialogOpen()) return;
   const host = panelHost();
   if (!host || event.key !== 'Tab') return;
   // Portaled menus, pickers and dialogs own their keyboard handling.
@@ -45,12 +61,25 @@ export function refreshIssuesPeekLayoutChrome(): void {
   const host = panelHost();
   const open = Boolean(host?.classList.contains('is-open'));
   const shell = document.querySelector('#issuesView .issues-shell');
+  const inline = open && !maximized && document.documentElement.classList.contains('mn-graphite-apps') &&
+    (shell?.getBoundingClientRect().width ?? 0) >= 780;
+  inWorkspaceColumn = inline;
   shell?.classList.toggle('is-detail-expanded', open);
   shell?.classList.toggle('is-detail-maximized', open && maximized);
+  shell?.classList.toggle('is-detail-inline', inline);
+  if (host && open) syncInlineDetailBody(host, inline);
+  host?.setAttribute('role', inline ? 'region' : 'dialog');
+  if (inline) host?.removeAttribute('aria-modal');
+  else host?.setAttribute('aria-modal', 'true');
   const scrim = document.getElementById('issuesDetailScrim');
-  if (scrim) scrim.hidden = !open;
+  if (scrim) {
+    scrim.hidden = !open || inline;
+    if (open && !inline) markPreviewOccluder(scrim, 'dialog');
+    else unmarkPreviewOccluder(scrim);
+  }
   // Only the list behind the panel is inert; portaled menus stay interactive.
-  document.querySelectorAll<HTMLElement>('#issuesView .issues-list-pane, #issuesView .issues-selection-bar').forEach((el) => { el.inert = open; });
+  document.querySelectorAll<HTMLElement>('#issuesView .issues-list-pane, #issuesView .issues-selection-bar').forEach((el) => { el.inert = open && !inline; });
+  if (host && open) markPreviewOccluder(host, inline ? 'panel' : 'dialog');
   const button = host?.querySelector<HTMLButtonElement>('.issues-detail__layout-expand');
   if (button) {
     const label = maximized ? 'Restore issue panel size' : 'Maximize issue panel';
@@ -64,14 +93,16 @@ export function refreshIssuesPeekLayoutChrome(): void {
   active = open;
   if (open) {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (host) markPreviewOccluder(host, 'dialog');
-    if (scrim) markPreviewOccluder(scrim, 'dialog');
     document.addEventListener('keydown', onPanelKeydown);
+    window.addEventListener('resize', refreshIssuesPeekLayoutChrome);
+    window.addEventListener('minnow:chat-sidebar-changed', refreshIssuesPeekLayoutChrome);
     listening = true;
   } else {
     if (host) unmarkPreviewOccluder(host);
     if (scrim) unmarkPreviewOccluder(scrim);
     document.removeEventListener('keydown', onPanelKeydown);
+    window.removeEventListener('resize', refreshIssuesPeekLayoutChrome);
+    window.removeEventListener('minnow:chat-sidebar-changed', refreshIssuesPeekLayoutChrome);
     listening = false;
     if (restoreFocus?.isConnected) restoreFocus.focus({ preventScroll: true });
     restoreFocus = null;
@@ -112,7 +143,10 @@ export function resetIssuesDetailLayoutForTests(): void {
   if (host) unmarkPreviewOccluder(host);
   if (scrim) unmarkPreviewOccluder(scrim);
   if (listening) document.removeEventListener('keydown', onPanelKeydown);
+  if (listening) window.removeEventListener('resize', refreshIssuesPeekLayoutChrome);
+  if (listening) window.removeEventListener('minnow:chat-sidebar-changed', refreshIssuesPeekLayoutChrome);
   active = false;
+  inWorkspaceColumn = false;
   listening = false;
   restoreFocus = null;
   closePanel = undefined;

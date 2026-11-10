@@ -71,11 +71,11 @@ export type SettingsSectionId =
 
 /** Sidebar label (hash id stays stable for bookmarks). */
 export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
-  general: 'Startup & setup',
+  general: 'Startup and setup',
   terminal: 'Terminal',
   data: 'Data & privacy',
   backups: 'Backups',
-  access: 'Permissions',
+  access: 'Access',
   updates: 'Updates',
   notifications: 'Notifications',
   devices: 'Devices',
@@ -89,7 +89,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   'model-routing': 'Routing',
   sampler: 'Sampler',
   thinking: 'Thinking',
-  'agent-center': 'Agents',
+  'agent-center': 'Agents and permissions',
   injection: 'Chat context',
   prompting: 'Prompts',
   rules: 'Rules',
@@ -98,7 +98,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   'agent-packs': 'Agent packs',
   'sub-agents': 'Sub-agents',
   autopilot: 'Autopilot',
-  watchdog: 'Timeouts & recovery',
+  watchdog: 'Timeouts and recovery',
   search: 'Web search',
   'deep-research': 'Deep Research',
   servers: 'Servers',
@@ -112,7 +112,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
   'skills-library': 'Skills Library',
   webhooks: 'Webhooks',
   voice: 'Voice',
-  diagnostics: 'Health & diagnostics',
+  diagnostics: 'Health and diagnostics',
   'capability-matrix': 'Capability matrix',
   'board-testing': 'Board testing',
   about: 'About',
@@ -135,10 +135,10 @@ export type SettingsNavGroup = {
 /** Sidebar groups and nav order (must match index.html section order). */
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   { id: 'app', label: 'General', sections: ['general', 'appearance', 'notifications', 'audio', 'devices', 'updates'] },
-  { id: 'apps', label: 'Code & workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'github', 'issues'] },
+  { id: 'apps', label: 'Code and workspace', sections: ['editor', 'terminal', 'lsp', 'browser', 'github', 'issues'] },
   {
     id: 'agents',
-    label: 'AI & agents',
+    label: 'AI and agents',
     sections: [
       'agent-center',
       'injection',
@@ -155,10 +155,10 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     // has no other consumer, so the panel would configure nothing.
     sections: ['plugins', 'skills', 'skills-library', 'agent-packs', 'search', 'mcp', 'mcp-hub', 'servers', 'webhooks'],
   },
-  { id: 'data', label: 'Data & privacy', sections: ['backups', 'access'] },
+  { id: 'data', label: 'Data and privacy', sections: ['backups', 'access'] },
   {
     id: 'advanced',
-    label: 'About & troubleshooting',
+    label: 'About',
     sections: ['about', 'diagnostics'],
   },
 ];

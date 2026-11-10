@@ -21,6 +21,10 @@ declare global {
       followSystem?: boolean;
       family?: string;
       themeId?: string;
+      colorIntensity?: string;
+      graphiteAccent?: string;
+      density?: string;
+      reduceMotion?: boolean;
       customEnabled?: boolean;
       customAdvanced?: boolean;
       customTokens?: Record<string, string>;

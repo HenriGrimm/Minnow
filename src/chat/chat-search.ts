@@ -7,6 +7,7 @@ export interface ChatSearchResult {
   score: number;
   /** Where the best match came from. */
   matchedIn: 'title' | 'message';
+  messageIndex?: number;
   /** Matched message role when matchedIn === 'message'. */
   role?: 'user' | 'assistant';
   /** Short excerpt around the first matched keyword. */
@@ -112,11 +113,11 @@ function firstMessagePreview(chat: Chat): string {
 }
 
 /** Best match for one chat across its title and message history, or null. */
-export function scoreChat(chat: Chat, tokens: string[]): ChatSearchResult | null {
+export function scoreChat(chat: Chat, tokens: string[], match?: 'title' | 'message'): ChatSearchResult | null {
   if (!isSearchableChat(chat)) return null;
 
   let best: ChatSearchResult | null = null;
-  const titleHit = matchText(tokens, chat.name);
+  const titleHit = match === 'message' ? null : matchText(tokens, chat.name);
   if (titleHit) {
     best = {
       chat,
@@ -126,7 +127,7 @@ export function scoreChat(chat: Chat, tokens: string[]): ChatSearchResult | null
     };
   }
 
-  for (const message of chat.history) {
+  for (const [messageIndex, message] of (match === 'title' ? [] : chat.history).entries()) {
     const text = searchableMessageText(message);
     if (!text) continue;
     const hit = matchText(tokens, text);
@@ -135,6 +136,7 @@ export function scoreChat(chat: Chat, tokens: string[]): ChatSearchResult | null
       chat,
       score: hit.score,
       matchedIn: 'message',
+      messageIndex,
       role: message.role as 'user' | 'assistant',
       snippet: buildSnippet(text, hit.firstIndex),
     };
@@ -152,7 +154,7 @@ export function filterChatsByWorkspacePath(chats: Chat[], workspacePath: string)
 export function searchChats(
   chats: Chat[],
   query: string,
-  options?: { limit?: number },
+  options?: { limit?: number; match?: 'title' | 'message' },
 ): ChatSearchResult[] {
   const tokens = tokenizeQuery(query);
   if (!tokens.length) return [];
@@ -160,7 +162,7 @@ export function searchChats(
 
   const results: ChatSearchResult[] = [];
   for (const chat of chats) {
-    const result = scoreChat(chat, tokens);
+    const result = scoreChat(chat, tokens, options?.match);
     if (result) results.push(result);
   }
   results.sort((a, b) => {

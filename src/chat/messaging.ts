@@ -32,7 +32,10 @@ import { runChatTurn } from './run-turn-chat';
 import {
   getActiveChat,
   getActiveGoal,
+  getDurablySavedChatRevision,
   isGoalLoopActive,
+  markChatDirty,
+  persistSessionsBeforeDeliveryAck,
   scheduleSaveSessions,
   sessionState,
   touchChat,
@@ -86,7 +89,6 @@ import { dispatchPluginSlashCommand, isPluginSlashCommand } from './slash-comman
 import { getWorkspacePath } from '../state/workspace';
 import { isPairedDevice } from '../api/session-token';
 import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
-import { persistSessionsBeforeDeliveryAck } from '../state/sessions';
 import type { ChatSendIntent } from '../../server/chats/contracts';
 import { isCavemanIntensity } from '../skills/caveman-client';
 import { ensureOrdinaryChatRoute } from './ordinary-routing';
@@ -104,6 +106,16 @@ export {
   runChatTurn,
   resumeParentChatWithMessage,
 } from './run-turn-chat';
+
+async function persistPairedChatBeforeSend(chat: Chat): Promise<void> {
+  if (chat.history.length || getDurablySavedChatRevision(chat.id) !== null) return;
+  // Device drafts are local. A newly created chat needs its own shared row
+  // before the computer can look up the target of the first send.
+  markChatDirty(chat);
+  if (!await persistSessionsBeforeDeliveryAck(chat.id) || getDurablySavedChatRevision(chat.id) === null) {
+    throw new Error('Could not save the new chat.');
+  }
+}
 export type { RunChatTurnOptions, ResumeParentChatOptions } from './run-turn-chat';
 export type { ComposerSurface } from '../ui/composer-surface';
 export { resendFromIndex } from './resend-from-index';
@@ -231,7 +243,7 @@ export async function sendProgrammaticChatText(
     return;
   }
   if (isPairedDevice()) {
-    if (!chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+    await persistPairedChatBeforeSend(chat);
     await sendRemoteChatCommand(chat.id, 'send', { text, attachments: options.validAttachments });
     return;
   }
@@ -487,7 +499,7 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     let pendingDraft = draftSubmission;
     try {
       if (attachments.some(attachment => attachment.pendingRead || attachment.kind === 'error')) throw new Error('Could not read attached files. Fix or remove them before sending.');
-      if (isPairedDevice() && !chat.history.length && !await persistSessionsBeforeDeliveryAck()) throw new Error('Could not save the new chat.');
+      if (isPairedDevice()) await persistPairedChatBeforeSend(chat);
       const context = chat.chatCommandVersion === 1 ? managedSendContext(chat, managedText, {
         ephemeralContext: composer?.ephemeralContext, issue: composer?.issue, goalDriven: managedGoal,
         parseSlash: !managedGoal, attachIssueMentions: !composer?.issue,

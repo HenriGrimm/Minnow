@@ -3,13 +3,14 @@ import '../styles/models-workspace.css';
 import '../styles/models-load-settings.css';
 import '../styles/models-inspector.css';
 import '../styles/settings-sampler.css';
+import '../styles/models-graphite.css';
 
 import { getForegroundAppId } from '../os/instances';
 import { isOsAppHash, isOsEmbedded } from '../os/page-bridge';
 import { requestCloseWindowApp, registerWindowTeardown } from '../os/window-mounted-apps';
 import { launchApp, navigateToDesktop } from '../os/router';
 import { renderModelsSection } from './models-sections';
-import { revealInTabStrip } from './mobile-layout';
+import { NARROW_MQ, revealInTabStrip } from './mobile-layout';
 import {
   DEFAULT_MODELS_SECTION,
   MODELS_SECTIONS as SECTIONS,
@@ -24,9 +25,10 @@ import {
   setModelsInspectorOpen,
 } from './models/inspector-visibility';
 import { restoreReparentedSettingsSections } from './models/settings-reparent';
-import { formatModelsHeaderLoadingLabel, getModelsState, runningServes, subscribeModelsStore, teardownModelsStore } from './models/store';
+import { formatModelsHeaderLoadingLabel, getModelsState, refreshModels, runningServes, subscribeModelsStore, teardownModelsStore } from './models/store';
 import { teardownServerSection } from './models/server-panel';
 import { teardownEngineSection } from './models/engine-panel';
+import { mountGraphiteModelsChrome, updateGraphiteModelsChrome, usesGraphiteModels } from './models/graphite-chrome';
 
 export type { ModelsSectionId };
 export { DEFAULT_MODELS_SECTION };
@@ -57,6 +59,8 @@ function parseHashSection(): ModelsSectionId {
 
 /** Mirror runtime state into the app header so it reads from any section. */
 function renderHeaderStatus(): void {
+  const root = getModelsRoot();
+  if (root?.classList.contains('is-open')) updateGraphiteModelsChrome(root);
   const host = document.getElementById('modelsHeaderStatus');
   if (!host) return;
   const serves = runningServes();
@@ -109,18 +113,22 @@ function setActiveSection(section: ModelsSectionId): void {
   closeLoadSettingsPopover();
   activeSection = section;
   const root = getModelsRoot();
+  if (root) root.dataset.modelsSection = section;
+  root?.classList.remove('is-runtime-inspector');
   root?.classList.toggle('is-workbench', WORKBENCH_SECTIONS.has(section));
   root?.classList.toggle('is-discover', section === 'recommend');
   root?.classList.toggle('is-runtime-workspace', section === 'installed' || section === 'server');
 
+  const displaySection = usesGraphiteModels() && section === 'thinking' ? 'sampler' : section;
+  const navSection = usesGraphiteModels() && section === 'engine' ? 'settings' : displaySection;
   for (const id of SECTIONS) {
     const panel = document.getElementById(`modelsSection-${id}`);
     const nav = document.querySelector(
       `[data-models-nav="${id}"]`,
     ) as HTMLButtonElement | null;
-    panel?.classList.toggle('is-active', id === section);
-    nav?.setAttribute('aria-current', id === section ? 'page' : 'false');
-    if (id === section) revealInTabStrip(nav);
+    panel?.classList.toggle('is-active', id === displaySection);
+    nav?.setAttribute('aria-current', id === navSection ? 'page' : 'false');
+    if (id === navSection) revealInTabStrip(nav);
   }
 
   if (!isOsEmbedded()) {
@@ -133,19 +141,35 @@ function setActiveSection(section: ModelsSectionId): void {
   void renderModelsSection(section);
 }
 
+function navigateModelsSection(section: ModelsSectionId): void {
+  const root = getModelsRoot();
+  if (getForegroundAppId() === 'models' && !root?.closest('.m-native-app-host, .mn-os-window-body')) {
+    launchApp('models', { modelsSection: section });
+  } else {
+    setActiveSection(section);
+  }
+}
+
 function bindStaticSections(): void {
   if (staticBindingsDone) return;
   staticBindingsDone = true;
 
+  const root = getModelsRoot();
+  if (root) mountGraphiteModelsChrome(root, navigateModelsSection);
   for (const id of SECTIONS) {
     document
       .querySelector(`[data-models-nav="${id}"]`)
-      ?.addEventListener('click', () => setActiveSection(id));
+      ?.addEventListener('click', () => navigateModelsSection(id));
   }
+  window.matchMedia?.(NARROW_MQ)?.addEventListener?.('change', () => {
+    if (getModelsRoot()?.classList.contains('is-open')) setActiveSection(activeSection);
+  });
 
   const toggle = document.getElementById('btnModelsInspector');
   toggle?.addEventListener('click', () => {
-    const hidden = getModelsRoot()?.classList.contains('is-inspector-hidden');
+    const runtime = usesGraphiteModels() && activeSection === 'server';
+    const hidden = root?.classList.contains('is-inspector-hidden') || (runtime && !root?.classList.contains('is-runtime-inspector'));
+    if (runtime) root?.classList.toggle('is-runtime-inspector', Boolean(hidden));
     setModelsInspectorOpen(Boolean(hidden));
   });
 
@@ -191,22 +215,27 @@ function closeOtherFullPages(): void {
 
 /** Open the Models app (optional section deep link). */
 export function openModels(section?: ModelsSectionId): void {
+  const root = getModelsRoot();
+  const inPhoneHost = Boolean(root?.closest('.m-native-app-host'));
+  if (!inPhoneHost && document.getElementById('mobileShell')) {
+    void import('../mobile/apps').then((mobile) => mobile.openPhoneApp('models', { modelsSection: section }));
+    return;
+  }
   // Settings cross-links (Tools → Open Providers, search hits, Voice) call this
   // while another app is foreground. Toggle `is-open` alone leaves the OS host
   // on Settings, so Providers never becomes the visible layer.
-  if (isOsEmbedded()) {
+  if (isOsEmbedded() && !inPhoneHost) {
     const foreground = getForegroundAppId();
-    if (foreground !== 'models') {
+    if (foreground !== 'models' || (section && parseHashSection() !== section && !root?.closest('.mn-os-window-body'))) {
       launchApp('models', { modelsSection: section ?? DEFAULT_MODELS_SECTION });
       return;
     }
   }
 
-  const root = getModelsRoot();
   const shell = getChatShell();
   if (!root || !shell) return;
 
-  closeOtherFullPages();
+  if (!inPhoneHost) closeOtherFullPages();
 
   const wasAlreadyOpen = root.classList.contains('is-open');
   root.classList.add('is-open');
@@ -221,6 +250,7 @@ export function openModels(section?: ModelsSectionId): void {
   );
 
   bindStaticSections();
+  if (!wasAlreadyOpen && usesGraphiteModels()) void refreshModels();
 
   const target = section ?? parseHashSection();
   if (wasAlreadyOpen && target === activeSection) {

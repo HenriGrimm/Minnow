@@ -177,7 +177,7 @@ export function createStreamingStatsPublisher(chat: Chat): StreamingStatsPublish
 
     const modelId = input.modelId ?? chat.modelId ?? '';
     const modelInfo = resolveModelInfo(modelId, input.modelInfo ?? chat.modelInfo ?? {});
-    updateStrip(meta.stats, meta.usage, modelInfo);
+    updateStrip(meta.stats, meta.usage, modelInfo, { live: true });
   }
 
   function schedule(input: StreamingStatsSnapshot): void {

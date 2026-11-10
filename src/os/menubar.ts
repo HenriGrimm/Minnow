@@ -63,7 +63,6 @@ export function renderMenubar(root: HTMLElement): () => void {
   const right = document.createElement('div');
   right.className = 'mn-os-mb-right';
   right.dataset.pluginSlot = 'menubar';
-
   const pluginMenu = document.createElement('button');
   pluginMenu.type = 'button';
   pluginMenu.className = 'mn-os-mb-icon';
@@ -113,7 +112,7 @@ export function renderMenubar(root: HTMLElement): () => void {
 
   const activityBtn = document.createElement('button');
   activityBtn.type = 'button';
-  const cleanupActivity = initAgentActivityMenubar(activityBtn);
+  const cleanupActivity = initAgentActivityMenubar(activityBtn, { bell: true });
 
   const cleanupQuickCapture = initQuickCaptureChord();
 
@@ -141,6 +140,8 @@ export function renderMenubar(root: HTMLElement): () => void {
   const settingsBtn = document.createElement('button');
   settingsBtn.type = 'button';
   settingsBtn.className = 'mn-os-mb-icon';
+  settingsBtn.dataset.graphiteWorkspaceSettings = '';
+  settingsBtn.dataset.appId = 'settings';
   settingsBtn.setAttribute('aria-label', 'Settings');
   settingsBtn.appendChild(createOsIcon('gear', { size: 16 }));
   const cleanupSettingsState = bindShellOverlayTrigger(settingsBtn, 'settings');
@@ -165,18 +166,34 @@ export function renderMenubar(root: HTMLElement): () => void {
     else openProductWiki();
   });
 
-  right.append(
-    activityBtn,
-    pluginMenu,
-    modelChipAnchor,
-    searchBtn,
-    updateSlot,
-    wikiBtn,
-    settingsBtn,
-  );
+  const workspaceActions = document.createElement('div');
+  workspaceActions.className = 'mn-os-workspace-actions';
+  workspaceActions.append(activityBtn, modelChipAnchor, wikiBtn, searchBtn, settingsBtn);
+  right.append(pluginMenu, updateSlot, workspaceActions);
   root.append(left, right);
 
   const cleanupShellChrome = initShellMenubarChrome(root, right);
+
+  function syncSidebarToggle(): void {
+    const desktop = document.documentElement.classList.contains('mn-graphite-workspace');
+    const sidebar = document.getElementById('chatSidebar');
+    const visible = sidebar && !sidebar.classList.contains('collapsed');
+    brand.hidden = getOsView() !== 'workspaces' && !(desktop && visible);
+    if (desktop && getOsView() === 'app') {
+      chatToggle.hidden = false;
+      chatToggle.setAttribute('aria-controls', 'chatSidebar');
+      chatToggle.setAttribute('aria-expanded', String(Boolean(visible)));
+      chatToggle.setAttribute('aria-label', visible ? 'Hide sidebar' : 'Show sidebar');
+      chatToggle.innerHTML = iconHtml('sidebar', { size: 16 });
+      return;
+    }
+    chatToggle.hidden = !isChatToggleVisible(getForegroundAppId()) || Boolean(document.documentElement.dataset.appWindow);
+    const label = chatToggleAriaLabel(getForegroundAppId());
+    if (label) chatToggle.setAttribute('aria-label', label);
+    chatToggle.removeAttribute('aria-controls');
+    chatToggle.removeAttribute('aria-expanded');
+    chatToggle.innerHTML = iconHtml('menu', { size: 16 });
+  }
 
   function syncMenubar(): void {
     const view = getOsView();
@@ -184,7 +201,6 @@ export function renderMenubar(root: HTMLElement): () => void {
     const onWorkspaces = view === 'workspaces';
 
     root.dataset.view = onWorkspaces ? 'workspaces' : 'app';
-    brand.hidden = !onWorkspaces;
     sep.hidden = onWorkspaces;
     appName.hidden = onWorkspaces;
 
@@ -197,12 +213,7 @@ export function renderMenubar(root: HTMLElement): () => void {
       }
     }
 
-    chatToggle.hidden = !isChatToggleVisible(fgApp) || Boolean(document.documentElement.dataset.appWindow);
-    const toggleLabel = chatToggleAriaLabel(fgApp);
-    if (toggleLabel) {
-      chatToggle.setAttribute('aria-label', toggleLabel);
-    }
-    chatToggle.removeAttribute('aria-pressed');
+    syncSidebarToggle();
 
     settingsBtn.hidden = Boolean(document.documentElement.dataset.appWindow);
 
@@ -212,6 +223,7 @@ export function renderMenubar(root: HTMLElement): () => void {
   syncMenubar();
   const unsub = subscribeInstances(syncMenubar);
   const unsubPrefs = subscribeAppPreferences(syncMenubar);
+  window.addEventListener('minnow:graphite-workspace-changed', syncSidebarToggle);
 
   return () => {
     cleanupPluginState();
@@ -220,6 +232,7 @@ export function renderMenubar(root: HTMLElement): () => void {
     cleanupWikiState();
     unsub();
     unsubPrefs();
+    window.removeEventListener('minnow:graphite-workspace-changed', syncSidebarToggle);
     cleanupModelChip();
     cleanupActivity();
     cleanupQuickCapture();

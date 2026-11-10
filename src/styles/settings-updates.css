@@ -64,17 +64,18 @@
   flex: 1;
   min-width: 80px;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-pill);
   background: color-mix(in srgb, var(--mn-fg) 10%, transparent);
   overflow: hidden;
 }
 
 .settings-updates-progress__bar {
   height: 100%;
-  width: 0;
   border-radius: inherit;
   background: var(--mn-accent);
-  transition: width 180ms cubic-bezier(0.25, 1, 0.5, 1);
+  transform: scaleX(var(--mn-progress, 0));
+  transform-origin: left;
+  transition: transform 180ms var(--ease-out);
 }
 
 .settings-updates-version {
@@ -235,7 +236,7 @@
 
 .settings-updates-notes__body code {
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
   background: var(--mn-surface-elevated);
   color: var(--mn-fg);
   font-family: var(--font-mono);

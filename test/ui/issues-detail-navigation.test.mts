@@ -75,24 +75,32 @@ test('property menus own arrow keys and do not move to another issue', () => {
   closeContextMenu();
 });
 
-test('chat-mode menu owns arrows and Escape, then returns focus to its trigger', () => {
-  const trigger = document.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger')!;
-  // No live provider is needed to exercise menu keyboard ownership.
-  trigger.disabled = false;
-  trigger.click();
-  const first = document.activeElement;
-  key('ArrowDown', first!);
-  assert.notEqual(document.activeElement, first);
-  assert.equal(detail.getSelectedIssueId(), 'MIN-2');
-  key('Escape', document.activeElement!);
-  assert.equal(detail.getSelectedIssueId(), 'MIN-2');
-  assert.equal(document.activeElement, trigger);
-  assert.equal(document.querySelector('.issues-workflow-menu'), null);
+test('the embedded Code issue mode menu owns arrows and Escape', () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const embedded = detail.createIssueDetailController({
+    host, onClose: () => {}, onNavigate: () => {}, workspaceTabs: false,
+  });
+  try {
+    embedded.openIssueDetail('MIN-2');
+    const trigger = host.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger')!;
+    assert.equal(host.querySelector('.issues-detail__compact-launch'), null);
+    trigger.click();
+    const first = document.activeElement;
+    key('ArrowDown', first!);
+    assert.notEqual(document.activeElement, first);
+    assert.equal(detail.getSelectedIssueId(), 'MIN-2');
+    key('Escape', document.activeElement!);
+    assert.equal(detail.getSelectedIssueId(), 'MIN-2');
+    assert.equal(document.activeElement, trigger);
+    assert.equal(document.querySelector('.issues-workflow-menu'), null);
+  } finally {
+    embedded.dispose();
+    host.remove();
+  }
 });
 
-test('starting an unlinked chat returns to the action rail and opens chat modes', () => {
-  const trigger = document.querySelector<HTMLButtonElement>('.issues-workflow-menu__trigger')!;
-  trigger.disabled = false;
+test('setting up an unlinked thread returns to the issue and focuses its instructions', () => {
   const worktree = document.querySelector('.issues-detail__use-worktree')!;
   const enabled = worktree.getAttribute('aria-pressed');
   (document.querySelector('[role="tab"][data-tab="Chat"]') as HTMLButtonElement).click();
@@ -101,10 +109,21 @@ test('starting an unlinked chat returns to the action rail and opens chat modes'
   (document.querySelector('.issues-work-content .issues-btn--primary') as HTMLButtonElement).click();
   assert.equal(body.hidden, false);
   assert.equal(document.querySelector('[data-tab="Issue"]')?.getAttribute('aria-selected'), 'true');
-  assert.ok(document.querySelector('.issues-workflow-menu'));
+  assert.equal(document.querySelector('.issues-workflow-menu'), null);
   assert.equal(worktree.getAttribute('aria-pressed'), enabled, 'starting chat must not toggle the worktree preference');
-  key('Escape', document.activeElement!);
-  assert.equal(document.activeElement, trigger);
+  assert.equal(document.activeElement, document.querySelector('[aria-label="Thread instructions"]'));
+});
+
+test('a portaled model picker owns Escape if focus falls back to the document', () => {
+  const picker = document.createElement('div');
+  picker.className = 'auxiliary-model-popover';
+  document.body.append(picker);
+  try {
+    key('Escape', document.body);
+    assert.equal(detail.getSelectedIssueId(), 'MIN-2');
+  } finally {
+    picker.remove();
+  }
 });
 
 test('comment drafts survive previous/next browsing', () => {

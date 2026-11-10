@@ -1,5 +1,6 @@
 import { ensureNewIssuePropertyFields } from './issues-new-property-field';
 import { ensureNewIssueWorkspaceField } from './issues-new-workspace-field';
+import { createIcon } from './icon';
 
 const CHROME_MARK = 'data-issues-chrome';
 
@@ -83,7 +84,8 @@ function buildHeader(): HTMLElement {
       'aria-pressed': 'true',
       text: 'List',
     }),
-    el('button', { type: 'button', id: 'issuesViewBoard', 'aria-pressed': 'false', text: 'Board' }),
+    el('button', { type: 'button', id: 'issuesViewBoard', 'aria-pressed': 'false', text: 'Pipeline' }),
+    el('button', { type: 'button', id: 'btnIssuesHeaderProjects', class: 'issues-graphite-only', text: 'Projects' }),
   ]);
 
   const capture = el('div', { class: 'issues-quick-capture' }, [
@@ -102,8 +104,16 @@ function buildHeader(): HTMLElement {
     id: 'btnIssuesNew',
     'aria-haspopup': 'dialog',
     'aria-expanded': 'false',
-    text: 'New issue',
-  });
+  }, [createIcon('plus', { size: 13 }), 'New issue']);
+
+  const filters = el('button', {
+    type: 'button', class: 'issues-btn issues-graphite-only issues-filter-toggle',
+    id: 'btnIssuesFilters', 'aria-expanded': 'false', 'aria-controls': 'issuesViewBar',
+  }, [createIcon('filter', { size: 14 }), 'Filter']);
+  const search = el('button', {
+    type: 'button', class: 'issues-btn issues-graphite-only issues-filter-toggle',
+    id: 'btnIssuesSearch', 'aria-label': 'Search issues', title: 'Search issues', 'aria-controls': 'issuesViewBar',
+  }, [createIcon('search', { size: 14 })]);
 
   const groupBy = el('button', {
     type: 'button',
@@ -131,14 +141,11 @@ function buildHeader(): HTMLElement {
   });
 
   const controls = el('div', { class: 'issues-header__controls issues-header__controls--issues' }, [
-    scopeLabel,
-    scope,
-    syncAllBtn,
     toggle,
-    groupBy,
-    filesBtn,
-    capture,
+    filters,
     newBtn,
+    search,
+    el('div', { class: 'issues-extra-filters' }, [scopeLabel, scope, syncAllBtn, groupBy, filesBtn, capture]),
   ]);
 
   return el('header', { class: 'issues-header' }, [brand, controls]);
@@ -168,7 +175,7 @@ function buildViewSelector(): HTMLElement {
       autocomplete: 'off',
     }),
   ]);
-  return el('div', { class: 'issues-view-bar', role: 'group', 'aria-label': 'Issue view and filters' }, [
+  return el('div', { id: 'issuesViewBar', class: 'issues-view-bar', role: 'group', 'aria-label': 'Issue view and filters' }, [
     selector, description, buildChipBar(), searchWrap,
   ]);
 }

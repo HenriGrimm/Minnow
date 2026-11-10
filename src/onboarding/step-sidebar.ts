@@ -155,14 +155,17 @@ export function mountStepSidebar(
     phaseItems.forEach((item, i) => {
       item.classList.toggle('is-active', i === phaseIndex);
       item.classList.toggle('is-done', i < phaseIndex);
+      if (i === phaseIndex) item.setAttribute('aria-current', 'step');
+      else item.removeAttribute('aria-current');
     });
 
-    progressFill.style.width = `${pct}%`;
-    mobileFill.style.width = `${pct}%`;
+    const position = formatStepPosition(stepIndex, activeSteps.length);
+    progressFill.style.setProperty('--mn-progress', String(pct / 100));
+    mobileFill.style.setProperty('--mn-progress', String(pct / 100));
     progressTrack.setAttribute('aria-valuenow', String(pct));
     mobileTrack.setAttribute('aria-valuenow', String(pct));
-
-    const position = formatStepPosition(stepIndex, activeSteps.length);
+    progressTrack.setAttribute('aria-valuetext', position);
+    mobileTrack.setAttribute('aria-valuetext', position);
     progressLabel.textContent = position;
     mobileLabel.textContent = position;
 

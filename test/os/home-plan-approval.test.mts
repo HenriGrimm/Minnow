@@ -25,7 +25,6 @@ mock.module('../../src/chat/messaging.ts', { namedExports: {
 const { approveHomePlan, reconcileHomeFlow } = await import('../../src/home/flow-actions.ts');
 let win: Window, chat: ReturnType<typeof seedMinimalSession>, rows: ReturnType<typeof addIssue>[];
 const originalSanitize = DOMPurify.sanitize;
-const flush = () => new Promise(resolve => setTimeout(resolve, 20));
 
 beforeEach(() => {
   win = new Window({ url: 'http://localhost/' });
@@ -80,33 +79,4 @@ test('invalid types and failed board creation preserve the planned batch for rec
   await assert.rejects(approveHomePlan(findIssueById(rows[0].id)!), /Could not create/);
   assert.equal(chat.modeId, 'plan');
   for (const row of rows) { assert.equal(findIssueById(row.id)?.agent?.home?.state, 'planned'); assert.equal(findIssueById(row.id)?.agent?.home?.boardId, undefined); }
-});
-
-test('Dashboard approval follows the saved type, including revisions, and invokes the board action', async () => {
-  const host = document.createElement('div'); document.body.append(host);
-  const { mountIssueDock } = await import('../../src/home/flow-dock.ts');
-  const dock = mountIssueDock(host, { issue: findIssueById(rows[0].id)!, issues: rows, workspace: '/repo', modelLabel: 'Chosen', start() {}, select() {}, addToChat() {} });
-  try {
-    await flush();
-    const primary = host.querySelector<HTMLButtonElement>('[data-approve]')!;
-    assert.equal(primary.textContent, 'Approve plan & build'); assert.equal(primary.disabled, false);
-    markdown = '---\nplanType: orchestrate\n---\n# Revised board plan';
-    const issue = findIssueById(rows[0].id)!;
-    updateIssue(issue.id, { agent: { ...issue.agent!, updatedAt: 3 } });
-    dock.update(); assert.equal(primary.disabled, true);
-    await flush();
-    assert.equal(primary.textContent, 'Orchestrate'); assert.equal(primary.disabled, false);
-    host.querySelector<HTMLButtonElement>('#home-tab-conversation')!.click();
-    const { getSharedChatHost } = await import('../../src/ui/shared-chat-host-state.ts');
-    markdown = '---\nplanType: build\n---\n# Another chat artifact';
-    getSharedChatHost()!.openPlan!('documentation/plans/another-artifact.md');
-    await flush();
-    assert.equal(host.querySelector<HTMLElement>('#home-view-details')!.hidden, false);
-    assert.equal(host.querySelector('.issues-plan-preview__path')!.textContent, 'documentation/plans/another-artifact.md');
-    assert.equal(primary.textContent, 'Orchestrate', 'previewing another artifact preserves the approval plan');
-    markdown = '---\nplanType: orchestrate\n---\n# Revised board plan';
-    primary.click(); await flush();
-    assert.equal(launches.length, 1); assert.equal(sends.length, 0);
-    assert.equal(primary.textContent, 'Open orchestrator board');
-  } finally { dock.dispose(); }
 });

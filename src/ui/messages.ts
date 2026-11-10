@@ -55,7 +55,10 @@ import type {
   UserMessage,
 } from '../types';
 import { createIcon, type IconName } from './icon';
-import { resolveModelInfo, showCachedModelInfo } from '../api/models';
+import { getModelRowForSelectOrCanonicalId, resolveModelInfo, showCachedModelInfo } from '../api/models';
+import { getPermissionLevelCached } from '../config/tool-security-meta';
+import { PERMISSION_LEVEL_META } from '../lib/permissions.mjs';
+import { resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { isActiveChatStreaming, isChatStreaming, isStreamDomVisible } from '../chat/streaming-state';
 import { STREAMING_CARET_CLASS, STREAMING_CARET_SELECTOR, setAssistantBubbleContent } from '../markdown/renderer';
 import { syncComposerMessageQueue } from './composer-message-queue';
@@ -422,19 +425,25 @@ export function syncPendingTranscriptMessages(chat: Chat, host = getActiveChatMo
 }
 
 /** Paint the shared transcript in a secondary surface without selecting or repainting Code. */
-export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>): { liveBubble: HTMLDivElement | null; dispose: () => void } {
+export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>, presentation?: ChatTranscriptPresentation): { liveBubble: HTMLDivElement | null; dispose: () => void } {
   disposeChatWorkView(area);
   const host = document.createElement('div');
-  const ctx = historyRenderContext(chat);
+  const ctx = { ...historyRenderContext(chat), presentation };
   const tailStart = Math.min(Math.max(0, chat.history.length - HISTORY_SYNC_TAIL), retainedChatHistoryStart(area, chat) ?? Infinity);
   let liveBubble: HTMLDivElement | null = null;
   function paint(target: HTMLElement, callback: () => void): void {
     const wasSuppressed = suppressBubbleScroll;
     const wasEmbedded = embeddedHistoryPaint;
+    const previousChat = embeddedHistoryChat;
     suppressBubbleScroll = true;
     embeddedHistoryPaint = true;
+    embeddedHistoryChat = chat;
     try { runWithChatMount(target, callback); }
-    finally { suppressBubbleScroll = wasSuppressed; embeddedHistoryPaint = wasEmbedded; }
+    finally {
+      suppressBubbleScroll = wasSuppressed;
+      embeddedHistoryPaint = wasEmbedded;
+      embeddedHistoryChat = previousChat;
+    }
   }
   paint(host, () => {
     for (let i = tailStart; i < chat.history.length; i += 1) appendHistoryMessageAt(host, ctx, i);
@@ -714,6 +723,33 @@ function backfillChatHistory(area: HTMLElement, ctx: HistoryRenderContext, from:
   });
 }
 
+function showGraphiteThreadSummary(area: HTMLElement, chat: Chat): void {
+  if (area.id !== 'chatArea' || !area.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader') ||
+    area.firstElementChild?.classList.contains('graphite-thread-summary')) return;
+  const summary = document.createElement('div');
+  summary.className = 'graphite-thread-summary';
+  summary.setAttribute('aria-label', 'Thread details');
+  const add = (icon: IconName, label: string, description?: string): void => {
+    const detail = document.createElement('span');
+    if (description) detail.title = description;
+    detail.append(createIcon(icon, { size: 12 }), label);
+    summary.append(detail);
+  };
+  const first = chat.history.find(message => message.role === 'user' && !isHiddenTranscriptUserMessage(message));
+  if (first?.role === 'user' && first.createdAt && Number.isFinite(first.createdAt)) {
+    const started = new Date(first.createdAt);
+    if (Number.isFinite(started.getTime())) add('clock', `Started ${started.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`, started.toLocaleString());
+  }
+  const worktree = resolveChatWorktreeRoot(chat);
+  if (worktree) {
+    const relative = chat.workspacePath && worktree.startsWith(`${chat.workspacePath}/`) ? worktree.slice(chat.workspacePath.length + 1) : worktree;
+    add('gitBranch', relative, worktree);
+  }
+  if (chat.modelId) add('appModels', getModelRowForSelectOrCanonicalId(chat.modelId)?.display_name || chat.modelId);
+  add('shieldCheck', PERMISSION_LEVEL_META[getPermissionLevelCached()].label);
+  area.prepend(summary);
+}
+
 export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement): void {
   const boardChatHost =
     mount == null && isBoardChatEmbedOpenForChat(chat.id)
@@ -817,7 +853,13 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     } else if (boardChatHost) {
       area.replaceChildren(buildBoardChatEmptyState());
     } else if (codeMount) {
-      renderHub(chat);
+      // Graphite keeps the composer outside the transcript on the starter page.
+      if (document.querySelector('#mainColumn > .graphite-new-thread__intro')) {
+        teardownHub();
+        area.replaceChildren();
+      } else {
+        renderHub(chat);
+      }
     } else {
       area.innerHTML = '';
       renderPersistedSubAgentCardsForChat(chat);
@@ -869,12 +911,14 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     appendSendingUserMessage(chat, transcriptHost);
   });
   area.replaceChildren(...transcriptHost.childNodes);
+  if (tailStart === 0) showGraphiteThreadSummary(area, chat);
   installChatWorkView(area, chat, () => isChatStreaming(chat.id));
   if (suspendedPlanChat) {
     // Floats over the viewport rather than living in the transcript, so it is order-independent.
     showOrchestratePlanScreenSuspendedBanner(area, chat);
   }
   backfillChatHistory(area, renderCtx, tailStart, () => {
+    if (area.dataset.historyStart === '0') showGraphiteThreadSummary(area, chat);
     // Cards anchor to their spawn tool row; re-place now that the older rows exist.
     runWithChatMount(area, () => renderPersistedSubAgentCardsForChat(chat));
     syncThoughtsCaretPulse(area);
@@ -1234,7 +1278,7 @@ export function appendBubble(
 
 /** Inline assistant failure copy (network, provider, or lost generation). */
 export function setAssistantErrorBubble(bubble: HTMLDivElement, message: string): void {
-  bubble.classList.remove('msg-bubble--md', 'msg-bubble--awaiting');
+  bubble.classList.remove('msg-bubble--md', 'msg-bubble--awaiting', 'graphite-turn-recovery');
   bubble.classList.add('msg-bubble--error');
   bubble.replaceChildren();
   bubble.textContent = message;
@@ -1255,6 +1299,29 @@ export function setAssistantErrorBubbleWithRecovery(
   bubble.classList.remove('msg-bubble--md', 'msg-bubble--awaiting');
   bubble.classList.add('msg-bubble--error');
   bubble.replaceChildren();
+
+  if (bubble.closest('#chatArea') && document.querySelector('#graphiteThreadHeader:not([hidden])')) {
+    bubble.classList.add('graphite-turn-recovery');
+    const icon = document.createElement('span');
+    icon.className = 'graphite-turn-recovery__icon';
+    icon.append(createIcon('warning', { size: 14 }));
+    const body = document.createElement('div');
+    body.className = 'graphite-turn-recovery__body';
+    const title = document.createElement('strong');
+    title.textContent = 'Turn failed';
+    const note = document.createElement('span');
+    note.textContent = 'Your completed work is kept.';
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Details';
+    const reason = document.createElement('p');
+    reason.textContent = message;
+    details.append(summary, reason);
+    body.append(title, note, details);
+    appendFailedTurnRecoveryActions(body, recovery);
+    bubble.append(icon, body);
+    return;
+  }
 
   const text = document.createElement('span');
   text.textContent = message;

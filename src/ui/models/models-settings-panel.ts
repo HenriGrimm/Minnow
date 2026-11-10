@@ -61,6 +61,7 @@ export async function mountModelsSettingsSection(): Promise<void> {
 
   const fragment = document.createDocumentFragment();
 
+  const folders = el('div', 'models-storage-folders');
   const rootsBlock = el('section', 'models-block');
   rootsBlock.appendChild(el('h3', 'models-block__label', 'Always scanned'));
   const roots = el('div', 'models-path-list');
@@ -71,7 +72,7 @@ export async function mountModelsSettingsSection(): Promise<void> {
     roots.appendChild(row);
   }
   rootsBlock.appendChild(roots);
-  fragment.appendChild(rootsBlock);
+  folders.appendChild(rootsBlock);
 
   const dirsBlock = el('section', 'models-block');
   dirsBlock.appendChild(el('h3', 'models-block__label', 'Extra folders'));
@@ -142,7 +143,8 @@ export async function mountModelsSettingsSection(): Promise<void> {
   });
   addRow.append(dirInput, browseBtn, textButton('Add', addDir));
   dirsBlock.appendChild(addRow);
-  fragment.appendChild(dirsBlock);
+  folders.appendChild(dirsBlock);
+  fragment.appendChild(folders);
 
   const hfBlock = el('section', 'models-block');
   hfBlock.appendChild(el('h3', 'models-block__label', 'Hugging Face token'));

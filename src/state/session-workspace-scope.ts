@@ -7,13 +7,14 @@ import { AUTO_TITLE_MAX_LEN, PLACEHOLDER_CHAT_NAME } from '../constants';
 import { DEFAULT_MODE_ID } from '../chat/modes/types';
 import { normalizePersistedModeId } from './session-schema.mjs';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import type { Chat, SessionState } from '../types';
 
 // ── Visibility ───────────────────────────────────────────────────────────────
 
-/** Legacy Expert Lab sessions stay out of the main sidebar; expert threads are listed normally. */
+/** Side conversations and legacy Expert Lab sessions stay out of the main thread lists. */
 export function isSidebarVisibleChat(chat: Chat): boolean {
-  return chat.kind !== 'expert-lab';
+  return chat.kind !== 'expert-lab' && !isGraphiteSideChat(chat);
 }
 
 /** True when the chat has unsent composer text persisted on the session row. */

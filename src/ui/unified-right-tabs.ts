@@ -35,6 +35,7 @@ import {
   setViewerTabDragData,
 } from '../attachments/tab-drag';
 import { WORKSPACE_FILE_MIME } from '../attachments/workspace-ref';
+import { usesGraphiteContentTabs } from './surfaces/surface-bridge';
 
 const PREVIEW_TAB_ICON = iconHtml('globe', { size: 14 });
 
@@ -455,6 +456,11 @@ function renderSlotTabStrip(slot: PaneSlotId): void {
 }
 
 function renderTabStrip(): void {
+  if (usesGraphiteContentTabs()) {
+    getTabBarElement('primary')?.classList.add('hidden');
+    getTabBarElement('secondary')?.classList.add('hidden');
+    return;
+  }
   renderSlotTabStrip('primary');
   if (isRightPaneSplitLayoutEnabled()) {
     renderSlotTabStrip('secondary');

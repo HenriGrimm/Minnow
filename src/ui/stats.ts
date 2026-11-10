@@ -1,6 +1,7 @@
 import { STATS_STRIP_OPEN_KEY } from '../constants';
 import { notifyPluginContextChanged } from '../plugins/events';
 import { resolveModelInfo } from '../api/models';
+import { isChatStreaming } from '../chat/streaming-state';
 import { getActiveChat, markChatDirty } from '../state/sessions';
 import {
   buildLastStatsSnapshot,
@@ -22,7 +23,7 @@ export function isStatsStripOpen(): boolean {
   return strip ? !strip.classList.contains('is-collapsed') : false;
 }
 
-/** Show or hide the entire metrics strip; syncs the top-bar toggle. */
+/** Show or hide the metrics strip and sync its disclosure. */
 export function setStatsStripOpen(open: boolean): void {
   const strip = document.getElementById('statsStrip');
   const topBtn = document.getElementById('btnStats');
@@ -36,6 +37,7 @@ export function setStatsStripOpen(open: boolean): void {
     strip.classList.remove('is-expanded');
     const expandBtn = document.getElementById('statsExpandBtn');
     expandBtn?.setAttribute('aria-expanded', 'false');
+    document.querySelector<HTMLDetailsElement>('#statsDetails')?.removeAttribute('open');
   }
 
   if (wasOpen !== open) {
@@ -58,7 +60,7 @@ export function toggleStatsStrip(): void {
   setStatsStripOpen(!isStatsStripOpen());
 }
 
-/** Wire top-bar metrics button and restore last open/closed preference. */
+/** Wire the inference metrics disclosure and restore its preference. */
 export function initStatsStrip(): void {
   let open = false;
   try {
@@ -99,20 +101,24 @@ export function syncStatsStripLayoutForViewer(viewerOpen: boolean): void {
 }
 
 export function updateStatsExpandPreview(): void {
-  const preview = document.getElementById('statsExpandPreview');
-  if (!preview) return;
   const tpsEl = document.getElementById('stripTPS');
   const totalEl = document.getElementById('stripTotal');
   if (!tpsEl || !totalEl) return;
-  const tps = tpsEl.dataset.metricValue ?? tpsEl.textContent?.trim() ?? '';
-  const total = totalEl.textContent?.trim() ?? '';
-  preview.textContent = `${tps} t/s · ${total} tokens`;
+  const metricValue = (el: HTMLElement) => el.dataset.metricValue ?? el.textContent?.trim() ?? '';
+  const tps = metricValue(tpsEl);
+  const total = metricValue(totalEl);
+  const rate = tps && tps !== '—' ? `${tps} t/s` : '';
+  const tokens = total && total !== '—' ? `${total} tokens` : '';
+  const preview = document.getElementById('statsExpandPreview');
+  if (preview) preview.textContent = [rate, tokens].filter(Boolean).join(' · ');
 
   const barPreview = document.getElementById('statusMetricPreview');
   if (barPreview) {
     barPreview.setAttribute('data-plugin-slot', 'chat.throughput');
-    barPreview.textContent = `${tps || '—'} t/s`;
+    setNativeMetricText(barPreview, rate);
   }
+  const tokenPreview = document.getElementById('statusMetricTokenPreview');
+  if (tokenPreview) tokenPreview.textContent = rate && tokens ? ` · ${tokens}` : tokens;
 }
 
 export interface UpdateStripOptions {
@@ -120,9 +126,58 @@ export interface UpdateStripOptions {
   costUsd?: number | null;
   /** Board metrics own the shared strip while Boards is open. */
   board?: boolean;
+  /** A partial response can report output without its input or a settled cost. */
+  live?: boolean;
 }
 
-/** Refresh bottom metrics strip and token bars from latest turn data. */
+/** Preserve plugin contributions when the native rate changes. */
+function setNativeMetricText(el: HTMLElement, value: string): void {
+  const first = el.firstChild;
+  if (first?.nodeType === Node.TEXT_NODE) {
+    if (first.nodeValue !== value) first.nodeValue = value;
+  } else if (value) {
+    el.prepend(document.createTextNode(value));
+  }
+}
+
+function latestTurnCost(snapshot: ReturnType<typeof buildLastStatsSnapshot>): number | null {
+  if (snapshot.total_tokens == null) return null;
+  try {
+    const entries = getActiveChat().tokenLedger?.entries ?? [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i];
+      if (entry.source.kind !== 'main') continue;
+      const measured = buildLastStatsSnapshot(undefined, entry.usage);
+      return measured.total_tokens === snapshot.total_tokens &&
+        (snapshot.prompt_tokens == null || measured.prompt_tokens === snapshot.prompt_tokens) &&
+        (snapshot.completion_tokens == null || measured.completion_tokens === snapshot.completion_tokens)
+        ? entry.costUsd : null;
+    }
+  } catch {
+    // Catalog refresh can run before sessions hydrate.
+  }
+  return null;
+}
+
+const FINISH_LABELS = new Map([
+  ['stop', 'Completed'],
+  ['eos', 'End of sequence'],
+  ['length', 'Token limit reached'],
+  ['tool_calls', 'Tool call requested'],
+  ['function_call', 'Function call requested'],
+  ['content_filter', 'Content filter'],
+  ['cancelled', 'Cancelled'],
+  ['canceled', 'Cancelled'],
+]);
+
+const secondsFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
+
+function knownText(value?: string): string | null {
+  const text = value?.trim();
+  return text && !/^(?:unknown|n\/a|none|—|-)$/i.test(text) ? text : null;
+}
+
+/** Refresh composer metrics from the canonical turn snapshot. */
 export function updateStrip(
   stats: Stats | undefined,
   usage: Usage | undefined,
@@ -136,100 +191,62 @@ export function updateStrip(
   const m = modelInfo || {};
   document.getElementById('stripTPS')?.setAttribute('data-plugin-slot', 'chat.throughput');
 
-  function set(id: string, html: string, blank: boolean, title?: string): void {
+  function set(id: string, value: string | null, title?: string): boolean {
     const el = document.getElementById(id);
-    if (!el) return;
-    if (id === 'stripTPS') el.dataset.metricValue = html;
-    el.innerHTML = html;
-    el.classList.toggle('blank', blank);
-    if (title) el.setAttribute('title', title);
+    if (!el) return false;
+    const slot = id === 'stripTPS';
+    if (slot || id === 'stripTotal') el.dataset.metricValue = value ?? '';
+    if (slot) setNativeMetricText(el, value ?? '');
+    else if (el.textContent !== (value ?? '')) el.textContent = value ?? '';
+    el.closest('.stat-cell, .stats-details__field')?.toggleAttribute('hidden', value == null);
+    if (title) el.title = title;
     else el.removeAttribute('title');
+    return value != null;
   }
 
   /** Apply compact M/B (or comma) formatting with a full-number hover title. */
-  function setCount(id: string, value: number | null | undefined): void {
+  function setCount(id: string, value: number | null | undefined, unit = ''): boolean {
     const formatted = formatStatCount(value);
-    const blank = formatted.display === '—';
-    set(id, formatted.display, blank, blank ? undefined : formatted.full);
+    return formatted.full
+      ? set(id, formatted.display + unit, formatted.full + unit)
+      : set(id, null);
   }
 
-  set(
-    'stripTPS',
-    s.tokens_per_second != null ? s.tokens_per_second.toFixed(1) : '—',
-    s.tokens_per_second == null
-  );
-
-  set(
-    'stripTTFT',
-    s.time_to_first_token != null
-      ? `${s.time_to_first_token.toFixed(3)}<span class="stat-unit">s</span>`
-      : '—',
-    s.time_to_first_token == null
-  );
-
-  set(
-    'stripGen',
-    s.generation_time != null
-      ? `${s.generation_time.toFixed(3)}<span class="stat-unit">s</span>`
-      : '—',
-    s.generation_time == null
-  );
-
-  setCount('stripTotal', snapshot.total_tokens);
-
-  let costLabel = '—';
-  if (options?.costUsd != null && options.costUsd > 0) {
-    costLabel = formatUsd(options.costUsd);
-  } else if (options?.costUsd === undefined) {
-    try {
-      const ledger = getActiveChat().tokenLedger;
-      const lastEntry = ledger?.entries?.[ledger.entries.length - 1];
-      if (lastEntry?.costUsd != null && lastEntry.costUsd > 0) {
-        costLabel = formatUsd(lastEntry.costUsd);
-      }
-    } catch {
-      // Catalog refresh can run before sessions hydrate.
-    }
+  const seconds = (value?: number): string | null =>
+    value == null ? null : `${secondsFormat.format(value)}\u00a0s`;
+  const outputOnly = options?.live && snapshot.prompt_tokens == null &&
+    snapshot.total_tokens === snapshot.completion_tokens;
+  const cost = options?.costUsd !== undefined
+    ? options.costUsd
+    : options?.live ? null : latestTurnCost(snapshot);
+  const costLabel = cost != null && Number.isFinite(cost) && cost >= 0
+    ? cost === 0 ? '$0.00' : formatUsd(cost) : null;
+  const hasSummary = [
+    set('stripTPS', s.tokens_per_second?.toFixed(1) ?? null),
+    set('stripTTFT', seconds(s.time_to_first_token)),
+    set('stripGen', seconds(s.generation_time)),
+    setCount('stripTotal', outputOnly ? null : snapshot.total_tokens),
+    set('stripCost', costLabel),
+  ].some(Boolean);
+  const finish = knownText(s.stop_reason);
+  const hasTurnDetails = [
+    setCount('cntPrompt', snapshot.prompt_tokens),
+    setCount('cntCompletion', snapshot.completion_tokens),
+    set('iStop', finish ? FINISH_LABELS.get(finish.toLowerCase()) ?? finish.replace(/[_-]/g, ' ') : null, finish ?? undefined),
+  ].some(Boolean);
+  const hasModelDetails = [
+    setCount('iCtx', m.context_length && m.context_length > 0 ? m.context_length : null, ' tokens'),
+    set('iArch', knownText(m.arch)),
+    set('iQuant', knownText(m.quant)),
+  ].some(Boolean);
+  const hasDetails = hasTurnDetails || hasModelDetails;
+  document.getElementById('statsSummary')?.toggleAttribute('hidden', !hasSummary);
+  document.getElementById('statsEmpty')?.toggleAttribute('hidden', hasSummary || hasTurnDetails);
+  const details = document.querySelector<HTMLDetailsElement>('#statsDetails');
+  if (details) {
+    details.hidden = !hasDetails;
+    if (!hasDetails) details.open = false;
   }
-  set('stripCost', costLabel, costLabel === '—');
-
-  const p = snapshot.prompt_tokens ?? 0;
-  const c = snapshot.completion_tokens ?? 0;
-  const t = p + c || 1;
-  const barPrompt = document.getElementById('barPrompt');
-  const barCompletion = document.getElementById('barCompletion');
-  const cntPrompt = document.getElementById('cntPrompt');
-  const cntCompletion = document.getElementById('cntCompletion');
-  if (barPrompt && barCompletion && cntPrompt && cntCompletion) {
-    barPrompt.style.setProperty('--fill-scale', String(p / t || 0));
-    barCompletion.style.setProperty('--fill-scale', String(c / t || 0));
-    const promptFmt = formatStatCount(snapshot.prompt_tokens);
-    const completionFmt = formatStatCount(snapshot.completion_tokens);
-    const promptBlank = promptFmt.display === '—';
-    const completionBlank = completionFmt.display === '—';
-    cntPrompt.textContent = promptFmt.display;
-    cntCompletion.textContent = completionFmt.display;
-    if (!promptBlank) cntPrompt.setAttribute('title', promptFmt.full);
-    else cntPrompt.removeAttribute('title');
-    if (!completionBlank) cntCompletion.setAttribute('title', completionFmt.full);
-    else cntCompletion.removeAttribute('title');
-  }
-
-  const archEl = document.getElementById('iArch');
-  const quantEl = document.getElementById('iQuant');
-  const ctxEl = document.getElementById('iCtx');
-  const stopEl = document.getElementById('iStop');
-  if (!archEl || !quantEl || !ctxEl || !stopEl) {
-    return;
-  }
-  archEl.textContent = m.arch ?? '—';
-  quantEl.textContent = m.quant ?? '—';
-  ctxEl.textContent = m.context_length != null ? String(m.context_length) : '—';
-  stopEl.textContent = s.stop_reason ?? '—';
-  [archEl, quantEl, ctxEl].forEach((el) => {
-    el.classList.toggle('lit', el.textContent !== '—');
-  });
-  stopEl.classList.toggle('lit', stopEl.textContent !== '—');
   updateStatsExpandPreview();
 }
 
@@ -242,13 +259,15 @@ export function refreshMetricsStripForChat(chat: Chat): void {
     markChatDirty(chat);
   }
   const ls = resolved ?? chat.lastStats;
+  const options = { live: isChatStreaming(chat.id) };
   if (!lastStatsHasMetrics(ls)) {
-    updateStrip({}, {}, resolveModelInfo(mid, chat.modelInfo || {}));
+    updateStrip({}, {}, resolveModelInfo(mid, chat.modelInfo || {}), options);
     return;
   }
   updateStrip(
     lastStatsToStats(ls),
     lastStatsToUsage(ls),
     resolveModelInfo(mid, chat.modelInfo || {}),
+    options,
   );
 }

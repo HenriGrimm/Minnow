@@ -67,7 +67,7 @@
 }
 
 .preview-tab__close:hover {
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
+  background: var(--mn-surface-2);
 }
 
 .preview-tab-add {
@@ -96,7 +96,7 @@
 }
 
 .preview-tab--crashed .preview-tab__label {
-  color: var(--mn-danger, #e5484d);
+  color: var(--mn-danger-ink);
 }
 
 .preview-header {
@@ -273,7 +273,7 @@
 }
 
 .preview-browser-menu__zoom-button {
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   line-height: 1;
 }
 
@@ -493,7 +493,7 @@
   font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--mn-fg);
-  background: color-mix(in srgb, var(--mn-warning, #c9a227) 14%, var(--mn-surface-1));
+  background: color-mix(in srgb, var(--mn-warning) 14%, var(--mn-surface-1));
   border-top: 1px solid var(--mn-border);
 }
 

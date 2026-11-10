@@ -1,6 +1,8 @@
 import '../styles/settings-page.css';
 import '../styles/settings-agent-center.css';
+import '../styles/settings-graphite.css';
 
+import { isPairedDevice } from '../api/session-token';
 import { loadPromptMetaSettings, savePromptMetaSettings } from '../config/prompt-meta';
 import { detectLocalServer } from '../tools/client';
 import { refreshSettingsSection } from './settings-sections';
@@ -51,6 +53,7 @@ import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
 import type { LaunchOptions } from '../os/types';
 import { isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { initGraphiteSettingsPresentation } from './settings-graphite';
 
 export type { SettingsSectionId, SettingsCategoryId } from './settings-page-types';
 export { categoryForArea } from './settings-page-types';
@@ -196,6 +199,10 @@ export function setActiveArea(
   area: SettingsSectionId,
   options?: { searchKey?: string; skipHash?: boolean },
 ): void {
+  if (area === 'devices' && isPairedDevice() && document.getElementById('mobileShell')) {
+    void import('../mobile/devices').then(({ openPhoneDevice }) => openPhoneDevice());
+    return;
+  }
   const resolved = resolveSettingsSectionNavigation(area, options?.searchKey);
   area = resolved.sectionId;
   options = { ...options, searchKey: resolved.searchKey };
@@ -420,15 +427,28 @@ export function openSettings(
   section?: SettingsSectionId,
   options?: { searchKey?: string; phoneList?: boolean },
 ): void {
+  const root = getSettingsRoot();
+  const inPhoneHost = Boolean(root?.closest('.m-native-app-host'));
   const modelsSection = section
     ? modelsSectionForSettingsArea(section)
     : undefined;
   if (modelsSection) {
-    launchApp('models', { modelsSection });
+    if (document.getElementById('mobileShell')) {
+      void import('../mobile/apps').then(m => m.openPhoneApp('models', { modelsSection }));
+    }
+    else launchApp('models', { modelsSection });
     return;
   }
 
-  if (isOsEmbedded()) {
+  if (!inPhoneHost && document.getElementById('mobileShell')) {
+    void import('../mobile/apps').then(m => m.openPhoneApp('settings', {
+      settingsSection: section,
+      settingsSearchKey: options?.searchKey,
+    }));
+    return;
+  }
+
+  if (isOsEmbedded() && !inPhoneHost) {
     const foreground = getForegroundAppId();
     if (foreground !== 'settings') {
       launchApp('settings', osEmbeddedSettingsLaunchOptions(section, options));
@@ -436,7 +456,6 @@ export function openSettings(
     }
   }
 
-  const root = getSettingsRoot();
   const shell = getChatShell();
   if (!root || !shell) return;
 
@@ -458,7 +477,7 @@ export function openSettings(
     clearSettingsPageFilter();
   }
 
-  openShellOverlay('settings', () => closeSettings());
+  if (!inPhoneHost) openShellOverlay('settings', () => closeSettings());
   root.classList.add('is-open');
   syncSettingsOsWindowChrome();
   requestAnimationFrame(() => syncSettingsOsWindowChrome());
@@ -581,6 +600,7 @@ export function initSettingsPage(): void {
   pageInitialized = true;
 
   const root = getSettingsRoot();
+  if (root) initGraphiteSettingsPresentation(root);
   if (root && isOsEmbedded()) {
     root.classList.add('settings-page--os-embedded');
   }
@@ -644,7 +664,9 @@ export function navigateToSettingsField(searchKey: string, area?: SettingsSectio
   const targetArea = area ?? entry?.area ?? 'general';
   const modelsSection = modelsSectionForSettingsArea(targetArea);
   if (modelsSection) {
-    launchApp('models', { modelsSection });
+    if (document.getElementById('mobileShell')) {
+      void import('../mobile/apps').then(m => m.openPhoneApp('models', { modelsSection }));
+    } else launchApp('models', { modelsSection });
     return;
   }
   openSettings(targetArea, { searchKey: entry?.key ?? searchKey });

@@ -104,7 +104,8 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
     const deny = () => { const note = feedback.value.trim(); void submit(view, panel, note ? { decision: 'deny', feedback: note } : { decision: 'deny' }); };
     feedback.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); deny(); } });
     const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions';
-    const allow = button('Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
+    const graphite = Boolean(view.host.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader:not([hidden])'));
+    const allow = button(graphite ? 'Allow once' : 'Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
     actions.append(allow);
     if (action?.grant && action.risk !== 'high') {
       actions.append(button(`Allow ${action.grant.label} for this chat`, () => void submit(view, panel, { decision: 'allow_chat' })));

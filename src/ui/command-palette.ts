@@ -125,8 +125,10 @@ export function createCommandPalette(
   const closeButton = el('button', `${prefix}__close`);
   closeButton.type = 'button';
   closeButton.setAttribute('aria-label', 'Close search');
-  closeButton.append(createIcon('close', { size: 18 }));
+  if (options.shellOverlayId) closeButton.append(el('kbd', '', 'esc'));
+  else closeButton.append(createIcon('close', { size: 18 }));
   closeButton.addEventListener('click', close);
+  if (options.shellOverlayId) header.append(createIcon('search', { size: 16 }));
   header.append(input, closeButton);
   const panel = el('div', `${prefix}__results`);
   panel.append(list);

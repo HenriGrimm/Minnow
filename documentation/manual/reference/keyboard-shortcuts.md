@@ -39,7 +39,18 @@ Open **Search** from the magnifying glass in the header or with the command pale
 
 While the skill picker is open: **↑ ↓** to move, **Enter** or **Tab** to choose, **Escape** to close.
 
-In the chat search popover: **↑ ↓** to move, **Enter** to open, **Escape** to close.
+In Code, press **Mod+F** outside the editor to search threads, messages, and issues. Use **↑ ↓** to move, **Enter** to open, and **Escape** to close.
+
+## Thread surfaces
+
+| Keys | Action |
+|------|--------|
+| **Mod+.** | Open or close the thread card |
+| **Mod+J** | Toggle the side panel |
+| **Ctrl+`** | Toggle Terminal in its current panel |
+| **D T F B A P I S** | Open Diff, Terminal, Files, Browser, Agents, Pull request, Issue, or Side chat from the focused launcher |
+| **←** / **→** | Cycle tabs in the focused panel |
+| **Delete** | Close the active tab when the tab strip has focus |
 
 ## Code editor
 

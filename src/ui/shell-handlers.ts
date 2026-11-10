@@ -95,13 +95,7 @@ export function initShellHandlers(): void {
   wireClick('sidebarBackdrop', closeMobileSidebar);
   wireClick('fileSidebarBackdrop', closeMobileFileSidebar);
 
-  wireClick('btnChatSearch', () => {
-    const btn = document.getElementById('btnChatSearch');
-    if (!btn) return;
-    void import('./chat-search-popover').then((m) => m.toggleChatSearchPopover(btn));
-  });
   wireClickAll('.chat-new-wide', createChat);
-  wireClick('btnSidebarNewChat', createChat);
   wireClick('btnOrchestrate', () => {
     void import('./orchestrate-hub').then((m) => m.toggleOrchestrateHubFromTopbar());
   });

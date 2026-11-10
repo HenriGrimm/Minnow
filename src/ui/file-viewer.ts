@@ -110,6 +110,7 @@ import { renderViewerRecentFilesEmptyState } from './file-viewer-recent';
 import { recordRecentViewerFile } from '../state/recent-viewer-files';
 import { setStatus } from './status';
 import { editorGitDiffExtensions } from './editor-git-diff';
+import { cycleGraphiteContent, refreshGraphiteSurfaceLayout, usesGraphiteContentTabs } from './surfaces/surface-bridge';
 
 export const LARGE_FILE_BYTES = 512_000;
 const RANGE_LINE_COUNT = 2000;
@@ -171,7 +172,7 @@ function revokeActivePdfPreviewBlob(): void {
 function splitLayoutEnabled(): boolean {
   const state = getFilePanelState();
   return (
-    state.rightPaneSplit.enabled && state.rightPaneMode === 'split' && !isMobileLayout()
+    state.rightPaneSplit.enabled && state.rightPaneMode === 'split' && (!isMobileLayout() || usesGraphiteContentTabs())
   );
 }
 
@@ -1172,6 +1173,10 @@ export async function confirmLeaveDirtyActiveTab(): Promise<boolean> {
   return (await saveViewerTabByPath(tab.path)) && !tab.isDirty;
 }
 
+function confirmSwitchViewerTab(): Promise<boolean> {
+  return usesGraphiteContentTabs() ? Promise.resolve(true) : confirmLeaveDirtyActiveTab();
+}
+
 /** Confirm closing a dirty tab (may be inactive). */
 async function confirmCloseDirtyTab(tab: ViewerTabState): Promise<boolean> {
   snapshotOutgoingEditorTab();
@@ -1193,7 +1198,7 @@ async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?:
 
   const ok = await activateViewerTab(path, {
     skipUnsavedGuard: options?.skipUnsavedGuard,
-    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    confirmUnsaved: confirmSwitchViewerTab,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!ok) return false;
@@ -1202,7 +1207,7 @@ async function activateTabAndRender(path: string, options?: { skipUnsavedGuard?:
     slotTabs.registerViewerTabOpened(path, targetSlot);
     split.focusPaneSlot(targetSlot);
   }
-  showViewerSplit();
+  showViewerSplit(path);
   renderViewerSlots();
   focusRequestedEditor(path);
   renderFileTreeViaBridge();
@@ -1214,10 +1219,15 @@ export async function closeViewerTab(path: string): Promise<void> {
   const tab = listViewerTabs().find((t) => t.path === path);
   if (!tab) return;
 
-  if (!(await confirmCloseDirtyTab(tab))) return;
+  if (!(await confirmCloseDirtyTab(tab)) || getViewerTab(path) !== tab) return;
 
   if (editorViewPath === path) destroyEditor();
   removeViewerTab(path);
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    renderFileTreeViaBridge();
+    return;
+  }
   const slotTabs = await import('./right-pane-slot-tabs');
   slotTabs.unregisterViewerTab(path);
   const split = await import('./right-pane-split');
@@ -1265,7 +1275,7 @@ async function groupTabPathsFor(path: string): Promise<string[]> {
 }
 
 /** Close a set of tabs with a per-tab dirty guard; aborts entirely on cancel. */
-async function closeViewerTabPaths(paths: string[]): Promise<void> {
+export async function closeViewerTabPaths(paths: string[]): Promise<void> {
   if (paths.length === 0) return;
   for (const p of paths) {
     const tab = getViewerTab(p);
@@ -1276,6 +1286,11 @@ async function closeViewerTabPaths(paths: string[]): Promise<void> {
     if (editorViewPath === p) destroyEditor();
     removeViewerTab(p);
     slotTabs.unregisterViewerTab(p);
+  }
+  if (usesGraphiteContentTabs()) {
+    refreshGraphiteSurfaceLayout();
+    renderFileTreeViaBridge();
+    return;
   }
   const split = await import('./right-pane-split');
   split.collapseEmptySlots();
@@ -1313,6 +1328,7 @@ export async function closeAllViewerTabsUi(): Promise<void> {
 
 /** Cycle to the next or previous tab within the focused group. */
 export async function cycleViewerTab(direction: 'next' | 'prev'): Promise<void> {
+  if (cycleGraphiteContent(direction)) return;
   const activePath = getActiveViewerTabPath();
   if (!activePath) return;
   const group = await groupTabPathsFor(activePath);
@@ -1699,7 +1715,7 @@ export async function openGitFileInEditor(options: {
     readOnlyExcerpt: Boolean(snapshot),
     readOnlyBannerText: snapshot
       ? `${options.staged ? 'Staged changes: HEAD → index' : 'Deleted file: index → working tree'} (read-only)` : null,
-    confirmUnsaved: async () => (await confirmLeaveDirtyActiveTab()) && options.isCurrent?.() !== false,
+    confirmUnsaved: async () => (await confirmSwitchViewerTab()) && options.isCurrent?.() !== false,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!result || options.isCurrent?.() === false) return false;
@@ -1718,7 +1734,7 @@ export async function openGitFileInEditor(options: {
   closeGitCommitDiffPanel();
   invalidatePrimaryViewerRender();
   await adoptOpenedViewerTab(path);
-  showViewerSplit();
+  showViewerSplit(path);
   renderViewerSlots();
   return true;
 }
@@ -1748,20 +1764,21 @@ export async function openAttachmentSnapshotInViewer(displayName: string, conten
     readOnlyExcerpt: true,
     readOnlyBannerText: 'Chat attachment snapshot (read-only; not saved to the project).',
     viewMode: shouldUseMarkdownPreview(path) ? 'markdown-preview' : 'editor',
-    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    confirmUnsaved: confirmSwitchViewerTab,
     skipUnsavedGuard: false,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!result) return;
 
   await adoptOpenedViewerTab(path);
-  showViewerSplit();
+  showViewerSplit(path);
   renderViewerSlots();
   renderFileTreeViaBridge();
 }
 
 /** Route a freshly opened tab into one pane: the pane that already owns it, else the focused one. */
 async function adoptOpenedViewerTab(path: string): Promise<void> {
+  if (usesGraphiteContentTabs()) return;
   const split = await import('./right-pane-split');
   if (!split.isRightPaneSplitLayoutEnabled()) return;
   const slotTabs = await import('./right-pane-slot-tabs');
@@ -1777,13 +1794,13 @@ export async function openWorkspaceImageInViewer(relativePath: string, options?:
     readOnlyExcerpt: true,
     readOnlyBannerText: 'Workspace image (read-only preview).',
     content: '',
-    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    confirmUnsaved: confirmSwitchViewerTab,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!result) return;
   noteRecentViewerOpen(relativePath);
   await adoptOpenedViewerTab(relativePath);
-  showViewerSplit();
+  showViewerSplit(relativePath);
   renderViewerSlots();
   renderFileTreeViaBridge();
 }
@@ -1800,12 +1817,12 @@ export async function openImageDataUrlInViewer(displayName: string, dataUrl: str
     viewMode: 'image',
     readOnlyExcerpt: true,
     readOnlyBannerText: 'Chat image attachment (read-only preview).',
-    confirmUnsaved: confirmLeaveDirtyActiveTab,
+    confirmUnsaved: confirmSwitchViewerTab,
     beforeActivate: snapshotOutgoingEditorTab,
   });
   if (!result) return;
   await adoptOpenedViewerTab(path);
-  showViewerSplit();
+  showViewerSplit(path);
   renderViewerSlots();
   renderFileTreeViaBridge();
 }
@@ -1834,7 +1851,7 @@ export async function openFileInViewer(
       readOnlyExcerpt: true,
       readOnlyBannerText:
         'Document preview (read-only). Use create_pdf, create_spreadsheet, or create_word_document to generate files.',
-      confirmUnsaved: options?.skipUnsavedGuard ? undefined : confirmLeaveDirtyActiveTab,
+      confirmUnsaved: options?.skipUnsavedGuard ? undefined : confirmSwitchViewerTab,
       skipUnsavedGuard: options?.skipUnsavedGuard,
       beforeActivate: snapshotOutgoingEditorTab,
     });
@@ -1848,7 +1865,7 @@ export async function openFileInViewer(
 
     noteRecentViewerOpen(relativePath);
     await adoptOpenedViewerTab(relativePath);
-    showViewerSplit();
+    showViewerSplit(relativePath);
 
     renderFileTreeViaBridge();
     result.tab.loadStatus = 'loading';
@@ -1863,7 +1880,7 @@ export async function openFileInViewer(
   const result = await openViewerTab(relativePath, {
     ...openTabOptionsFromViewerOptions(options),
     viewMode,
-    confirmUnsaved: options?.skipUnsavedGuard ? undefined : confirmLeaveDirtyActiveTab,
+    confirmUnsaved: options?.skipUnsavedGuard ? undefined : confirmSwitchViewerTab,
     skipUnsavedGuard: options?.skipUnsavedGuard,
     beforeActivate: snapshotOutgoingEditorTab,
   });
@@ -1877,7 +1894,7 @@ export async function openFileInViewer(
 
   noteRecentViewerOpen(relativePath);
   await adoptOpenedViewerTab(relativePath);
-  showViewerSplit();
+  showViewerSplit(relativePath);
 
   renderFileTreeViaBridge();
 
@@ -1922,14 +1939,14 @@ function resetAllViewerTabs(options?: { closeSplit?: boolean }): void {
 
 /** Close the primary pane's tab (its header close button); hide split when none remain. */
 export function closeFileViewer(): void {
-  const path = primarySlotViewerPath();
+  const path = usesGraphiteContentTabs() ? getActiveViewerTabPath() : primarySlotViewerPath();
   if (!path) return;
   void closeViewerTab(path);
 }
 
 /** Confirm leaving the active file tab when switching to browser preview (tabs stay open). */
 export async function dismissFileViewerForPreview(): Promise<boolean> {
-  if (getFilePanelState().rightPaneMode !== 'viewer') return true;
+  if (usesGraphiteContentTabs() || getFilePanelState().rightPaneMode !== 'viewer') return true;
   const active = getActiveViewerTab();
   if (!active?.isDirty) return true;
   return confirmLeaveDirtyActiveTab();

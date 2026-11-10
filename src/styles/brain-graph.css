@@ -491,6 +491,17 @@
   color: var(--mn-fg-muted);
 }
 
+.brain-inspector__loading-state {
+  position: relative;
+  min-height: 48px;
+  padding-inline-end: 40px;
+}
+
+.brain-inspector__loading-state .brain-inspector__close {
+  top: 8px;
+  right: 8px;
+}
+
 /* ── Graph section ────────────────────────────────────────────────────────── */
 
 .brain-graph-page-bg,
@@ -811,7 +822,7 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 4px 6px;
+  padding: calc(4px + var(--mn-density-step)) 6px;
   border: none;
   background: transparent;
   font-size: 11px;
@@ -832,7 +843,7 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 6px 8px;
+  padding: calc(6px + var(--mn-density-step)) 8px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;

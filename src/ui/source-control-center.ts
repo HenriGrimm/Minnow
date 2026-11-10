@@ -18,6 +18,7 @@ import { forgeRefresh, forgeStatus, prList, type ForgeStatus } from '../state/fo
 import { matchPrForBranch } from '../chat/review/pr-review-target';
 import { startPrReview } from '../chat/review/run-pr-review';
 import { getWorkspacePath } from '../state/workspace';
+import { worktreePathsEqual } from '../lib/worktree-list-parse';
 import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
@@ -52,6 +53,7 @@ import { createBranchesView, createStashesView, createWorktreesView } from './sc
 import { refreshForgeRailBadges, refreshGitRailBadges } from './scc-rail-badges';
 import { isCommandPaletteOpen, openCommandPalette } from './command-palette';
 import { registerCommandSource, type Command } from './command-registry';
+import { loadUtilityModelConfig } from '../config/utility-model-meta';
 import {
   button,
   el,
@@ -237,7 +239,7 @@ function buildHeader(): HTMLElement {
     icon: 'gitBranch',
     label: '—',
     title: 'Switch branch',
-    className: 'scc-head__context-btn',
+    className: 'scc-head__context-btn scc-head__branch',
     onClick: () => openBranchSwitcher(),
   });
   identity.appendChild(branchBtn);
@@ -263,6 +265,7 @@ function buildHeader(): HTMLElement {
   const fetchBtn = button({
     icon: 'gitFetch',
     title: 'Fetch from every remote',
+    className: 'scc-head__fetch',
     onClick: () => void runOp(() => gitFetch(effectiveCwd()), 'Fetched remotes'),
   });
 
@@ -270,6 +273,7 @@ function buildHeader(): HTMLElement {
     icon: 'gitPull',
     label: 'Pull',
     title: 'Pull from upstream',
+    className: 'scc-head__pull',
     onClick: () => void runOp(() => gitPull(effectiveCwd()), 'Pulled changes'),
   });
 
@@ -278,6 +282,7 @@ function buildHeader(): HTMLElement {
     label: 'Push',
     variant: 'primary',
     title: 'Push to upstream',
+    className: 'scc-head__push',
     onClick: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
   });
 
@@ -299,6 +304,7 @@ function buildHeader(): HTMLElement {
     icon: 'close',
     title: 'Close source control',
     variant: 'ghost',
+    className: 'scc-head__close',
     onClick: () => closeSourceControlCenter(),
   });
 
@@ -336,6 +342,16 @@ function buildBody(): HTMLElement {
     item.addEventListener('click', () => void showSection(section.id));
     railEl.appendChild(item);
   }
+
+  const assistance = el('aside', 'scc-graphite-assistance');
+  const assistanceTitle = el('strong', undefined, 'Assisted by');
+  assistanceTitle.prepend(createIcon('sparkles', { size: 14 }));
+  const assistanceModel = el('p', undefined, 'Commit messages, reviews and summaries use your utility model settings.');
+  assistance.append(assistanceTitle, assistanceModel);
+  railEl.appendChild(assistance);
+  void loadUtilityModelConfig().then(({ modelId }) => {
+    if (modelId.trim()) assistanceModel.textContent = `Commit messages, reviews and summaries use ${modelId.trim()}.`;
+  }).catch(() => undefined);
 
   paneEl = el('div', 'scc-pane');
   paneEl.setAttribute('role', 'region');
@@ -492,7 +508,7 @@ function paintHeader(): void {
     const cwd = panelCwd;
     const name = cwd ? (cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd) : 'Main worktree';
     if (label) label.textContent = name;
-    worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd));
+    worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd && !worktreePathsEqual(cwd, getWorkspacePath())));
     worktreeBtn.title = cwd ? `Working in ${cwd}` : 'Working in the main worktree';
   }
 

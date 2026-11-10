@@ -149,14 +149,14 @@ describe('workspace-gate boot', { concurrency: false }, () => {
     resetInstancesForTests(); resetOsRouterForTests();
   });
 
-  test('switching project from Dashboard returns to Code without starting another chat', async () => {
+  test('switching project from Issues returns to Code without starting another chat', async () => {
     const window = setupShellDom();
     resetWorkspaceGateForTests(); resetInstancesForTests(); resetOsRouterForTests();
     const codeChat = seedMinimalSession('existing-project-chat');
     window.requestAnimationFrame = globalThis.requestAnimationFrame = cb => { cb(0); return 1; };
     globalThis.fetch = async () => new Response('{}');
     document.body.innerHTML = '<div id="osWorkspaceGate" hidden></div><div id="welcomeView" hidden></div>';
-    launchInstance('home'); window.location.hash = '#/app/home';
+    launchInstance('issues'); window.location.hash = '#/app/issues';
     openWorkspaceGate({ switch: true });
     await onWorkspaceGateChosen();
     assert.equal(getForegroundAppId(), 'code');

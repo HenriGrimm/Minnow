@@ -79,6 +79,28 @@ after(async () => {
   await win.happyDOM.close();
 });
 
+test('phone alert preferences affect paired delivery and leave desktop delivery alone', async () => {
+  const { setPairedDevice } = await import('../../src/api/session-token.ts');
+  const { allowsPhoneAlert, setPhoneAlertEnabled } = await import('../../src/notifications/phone-prefs.ts');
+  const failure = { kind: 'scheduler', appId: 'scheduler', activityStatus: 'failed' } as const;
+  const approval = { kind: 'chat_question', appId: 'code' } as const;
+  setPairedDevice(true);
+  try {
+    assert.equal(allowsPhoneAlert(failure), false);
+    assert.equal(allowsPhoneAlert({ ...failure, activityStatus: 'completed' }), true);
+    assert.equal(allowsPhoneAlert(approval), true);
+    setPhoneAlertEnabled('scheduler', true);
+    setPhoneAlertEnabled('approvals', false);
+    assert.equal(allowsPhoneAlert(failure), true);
+    assert.equal(allowsPhoneAlert(approval), false);
+  } finally {
+    setPairedDevice(false);
+    localStorage.removeItem('minnow.notifications.phone.scheduler');
+    localStorage.removeItem('minnow.notifications.phone.approvals');
+  }
+  assert.equal(allowsPhoneAlert(approval), true);
+});
+
 // ── Boot decision ────────────────────────────────────────────────────────────
 
 test('phone-sized browsers boot the phone app; Electron never does', async () => {
@@ -201,6 +223,41 @@ test('the back gesture pops the top screen; in-app back does not pop twice', asy
   assert.equal(nav.getTopScreen()?.key, 'issues');
 });
 
+test('phone sheets keep focus on the top layer and return it to the trigger', async () => {
+  const { openSheet, closeMobileSheets } = await import('../../src/mobile/sheet.ts');
+  const shell = document.createElement('div');
+  shell.id = 'mobileShell';
+  const stage = document.createElement('div');
+  stage.className = 'm-stage';
+  const trigger = document.createElement('button');
+  stage.append(trigger);
+  shell.append(stage);
+  document.body.append(shell);
+  document.documentElement.setAttribute('data-reduce-motion', '');
+  try {
+    trigger.focus();
+    const drawer = openSheet(document.createElement('button'), { title: 'Minnow', placement: 'left' });
+    await Promise.resolve();
+    assert.equal(stage.inert, true);
+    const drawerButton = drawer.body.querySelector('button')!;
+    drawerButton.focus();
+    const details = openSheet(document.createElement('button'), { title: 'Details' });
+    await Promise.resolve();
+    assert.equal(drawer.el.inert, true);
+    document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape' }));
+    assert.equal(details.el.isConnected, false);
+    assert.equal(drawer.el.isConnected, true);
+    assert.equal(document.activeElement, drawerButton);
+    document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape' }));
+    assert.equal(stage.inert, false);
+    assert.equal(document.activeElement, trigger);
+  } finally {
+    closeMobileSheets();
+    shell.remove();
+    document.documentElement.removeAttribute('data-reduce-motion');
+  }
+});
+
 test('changing workspaces retires file and issue screens, stale history and pending issue edits', async () => {
   const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
   const { addIssue, findIssueById, parseIssuesState, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
@@ -213,6 +270,10 @@ test('changing workspaces retires file and issue screens, stale history and pend
     assert.ok(node, selector);
     node.click();
   };
+  const drawerTab = (tab: 'chats' | 'issues' | 'files') => {
+    click('.m-tab-host:not([hidden]) > .m-screen:not([hidden]) [aria-label="Open menu"]');
+    click(`.m-sheet--drawer:not([inert]) button[data-tab="${tab}"]`);
+  };
 
   win.localStorage.clear();
   switchTo('C:/projects/one');
@@ -222,7 +283,7 @@ test('changing workspaces retires file and issue screens, stale history and pend
     const second = addIssue({ title: 'Second workspace', workspacePath: 'C:/projects/two' });
     mountMobileShell();
     nav.pushScreen(createFileViewerScreen('logo.png', { openDir() {} }), 'files');
-    click('button[data-tab="issues"]');
+    nav.selectTab('issues');
     click(`button[data-issue-id="${first.id}"]`);
     const staleHistory = win.history.state;
     const firstScreen = nav.getTopScreen()!;
@@ -231,29 +292,29 @@ test('changing workspaces retires file and issue screens, stale history and pend
     click('[aria-label="Edit title"]');
     const editForm = document.querySelector<HTMLFormElement>('.m-sheet .m-prompt')!;
     editForm.querySelector('input')!.value = 'Stale edit';
-    click('button[data-tab="chats"]');
+    nav.selectTab('chats');
     switchTo('c:/projects/ONE/');
-    click('button[data-tab="issues"]');
+    nav.selectTab('issues');
     assert.equal(nav.getTopScreen(), firstScreen, 'equivalent path keeps the open screen');
 
     // Resolve the pending editor, then publish the workspace change before its continuation runs.
     editForm.dispatchEvent(new Event('submit', { cancelable: true }));
-    click('button[data-tab="chats"]');
+    nav.selectTab('chats');
     switchTo('C:/projects/two');
     await Promise.resolve();
     assert.equal(nav.getActiveTab(), 'chats');
-    click('button[data-tab="issues"]');
+    drawerTab('issues');
     assert.equal(nav.getTopScreen()?.key, 'issues');
     assert.equal(document.querySelector(`[data-issue-id="${first.id}"]`), null);
     assert.ok(document.querySelector(`[data-issue-id="${second.id}"]`));
     staleComment.dispatchEvent(new Event('submit', { cancelable: true }));
     assert.equal(findIssueById(first.id)?.title, 'Original title');
     assert.equal(findIssueById(first.id)?.comments?.length ?? 0, 0);
-    click('button[data-tab="files"]');
+    drawerTab('files');
     assert.equal(nav.getTopScreen()?.key, 'dir:.');
     assert.equal(document.querySelector('[data-screen="file:logo.png"]'), null);
 
-    click('button[data-tab="issues"]');
+    drawerTab('issues');
     click(`button[data-issue-id="${second.id}"]`);
     win.dispatchEvent(new win.PopStateEvent('popstate', { state: staleHistory }));
     assert.equal(nav.getTopScreen()?.key, `issue:${second.id}`, 'old history cannot pop a new detail');

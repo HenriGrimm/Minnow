@@ -76,6 +76,13 @@ export function claimConnectTicket(ticket: string, name: string): Promise<Connec
   return claim({ ticket, name });
 }
 
+/** Disconnect the current device without accepting a caller-supplied device ID. */
+export async function disconnectDevice(): Promise<void> {
+  const response = await fetch('/api/auth/session', { method: 'DELETE', credentials: 'same-origin' });
+  if (!response.ok) throw await readError(response, 'Could not disconnect this phone.');
+  window.dispatchEvent(new Event('minnow-auth-check'));
+}
+
 /** Keep only digits and require a six-digit code. */
 export function normalizePairingCode(code: string): string {
   const digits = code.replace(/\D/g, '');

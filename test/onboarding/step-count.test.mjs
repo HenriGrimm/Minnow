@@ -90,6 +90,14 @@ describe('onboarding step count (MIN-438)', () => {
       aside.querySelector('.mn-onboarding__progress-label')?.textContent,
       'Step 5 of 12',
     );
+    for (const root of [aside, mobile]) {
+      const bar = root.querySelector('[role="progressbar"]');
+      const fill = root.querySelector('.mn-onboarding__progress-fill');
+      assert.equal(bar.getAttribute('aria-valuenow'), '36');
+      assert.equal(bar.getAttribute('aria-valuetext'), 'Step 5 of 12');
+      assert.equal(fill.style.getPropertyValue('--mn-progress'), '0.36');
+    }
+    assert.equal(aside.querySelectorAll('[aria-current="step"]').length, 1);
 
     handle.destroy();
   });

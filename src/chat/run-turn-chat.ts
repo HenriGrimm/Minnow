@@ -241,6 +241,7 @@ import {
   resolveActiveSkill,
 } from '../skills';
 import { getSkillTurnClamp } from '../skills/client';
+import { GRAPHITE_SIDE_CHAT_ROLE, isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { burstPartyConfetti } from '../ui/party-confetti';
 import {
   appendBubble,
@@ -702,7 +703,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     pushUser,
     rawText,
     userText,
-    skillId,
+    skillId: requestedSkillId,
     historyContent,
     validAttachments,
     titleSeed = userText || rawText,
@@ -725,6 +726,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     codeMap,
   } = options;
 
+  const sideChat = isGraphiteSideChat(chat);
+  const skillId = sideChat ? 'ask' : requestedSkillId;
   const hideUserEcho = suppressUserEcho;
 
   if (!beginChatTurnSetup(chat.id)) {
@@ -736,6 +739,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     turnLease = options.turnLease ?? (isServerStorageMode() ? await acquireChatTurn(chat.id) : localChatTurnLease());
   } catch (error) {
     endChatTurnSetup(chat.id);
+    if (sideChat) throw error;
     if (pushUser) setStatus('err', error instanceof Error ? error.message : 'Could not connect to the computer.');
     return false;
   }
@@ -1001,6 +1005,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       }
     } catch (err) {
       if (err instanceof WorkAgentConfigError) {
+        if (sideChat) throw err;
         setStatus('err', err.message);
         if (uiDesignerCtx.active) {
           chat.workAgentId = savedWorkAgentId;
@@ -1593,7 +1598,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       const next: PostChatCompletionsOptions = {
         ...postOptions,
         persist: true,
-        fallbackRole: postOptions?.fallbackRole ?? 'main-chat',
+        fallbackRole: sideChat ? GRAPHITE_SIDE_CHAT_ROLE : postOptions?.fallbackRole ?? 'main-chat',
         chatId: chat.id,
         onGenerationId: (id) => {
           chat.currentGenerationId = id;
@@ -1811,7 +1816,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       signal: chatSignal,
       deps,
       limits: { ...chatTurnContextLimits(chat, sendModelId, servedWindow), progressGuard: chat.modeId === 'build' && chat.workAgentId === 'builder' },
-      ask: createChatAskCapability({ chatId: chat.id }),
+      ask: sideChat ? null : createChatAskCapability({ chatId: chat.id }),
       askTimeoutMs: resolveSpikeAskTimeoutMs(),
       onRoundBoundary: createChatRoundBoundary(chat, agentBrowserRuntime),
       refreshRoundConfig: async () => {
@@ -1851,13 +1856,15 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         }
 
         const toolLoopModeId = normalizeModeId(chat.modeId);
-        setSubAgentExecutorContext({
-          parentTurnId: turnRunId ?? chat.id,
-          modeId: toolLoopModeId,
-          parentChatId: chat.id,
-          parentToolCallId: ctx.toolCallId,
-        });
-        setBugBoardExecutorContext({ chatId: chat.id });
+        if (!sideChat) {
+          setSubAgentExecutorContext({
+            parentTurnId: turnRunId ?? chat.id,
+            modeId: toolLoopModeId,
+            parentChatId: chat.id,
+            parentToolCallId: ctx.toolCallId,
+          });
+          setBugBoardExecutorContext({ chatId: chat.id });
+        }
 
         const scopedWorkspaceRoot = resolveChatToolWorkspaceRoot(
           chat,
@@ -1870,7 +1877,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
           toolCallId: ctx.toolCallId,
           modeId: toolLoopModeId,
           workAgentId: chat.workAgentId ?? null,
-          turnClamp: getSkillTurnClamp(skillId),
+          turnClamp: sideChat ? 'read-only' : getSkillTurnClamp(skillId),
           signal: chatSignal,
           ...(scopedWorkspaceRoot ? { workspaceRoot: scopedWorkspaceRoot } : {}),
         });
@@ -2094,8 +2101,10 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
   } finally {
     turnTeardownRan = true;
     turnLease.signal.removeEventListener('abort', cancelUnownedGeneration);
-    setSubAgentExecutorContext(null);
-    setBugBoardExecutorContext(null);
+    if (!sideChat) {
+      setSubAgentExecutorContext(null);
+      setBugBoardExecutorContext(null);
+    }
     await Promise.all(ledgerWrites);
     streamingStatsPublisher?.reset();
     streamingStatsPublisher = null;
@@ -2147,7 +2156,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             chat.pendingMessageQueue?.some(item => item.kind === 'steer') ||
             getPendingMessageQueueCount(chat) > 0,
         );
-      if (!followUpQueued) {
+      if (!sideChat && !followUpQueued) {
         try {
           notifyChatTurnEnded(chat.id, turnRunId);
         } catch {

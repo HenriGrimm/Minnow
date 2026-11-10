@@ -51,7 +51,7 @@ describe('appearance persist', () => {
 
   test('empty storage is not a user choice', () => {
     const snap = snapshotAppearanceFromLocalStorage();
-    assert.equal(snap.themeId, 'swamp-dark');
+    assert.equal(snap.themeId, 'graphite-dark');
     assert.equal(localAppearanceHasUserChoice(snap), false);
   });
 
@@ -128,15 +128,15 @@ describe('appearance persist', () => {
         return new Response(
           JSON.stringify({
             version: 1,
-            themeId: 'swamp-dark',
-            family: 'swamp',
+            themeId: 'graphite-dark',
+            family: 'graphite',
             followSystem: false,
             customEnabled: false,
             customAdvanced: false,
             customTokens: {},
             fonts: {
-              ui: { kind: 'preset', slot: 'ui', id: 'system' },
-              mono: { kind: 'preset', slot: 'mono', id: 'system' },
+              ui: { kind: 'preset', slot: 'ui', id: 'bundled-geist' },
+              mono: { kind: 'preset', slot: 'mono', id: 'bundled-geist' },
             },
             updatedAt: null,
           }),

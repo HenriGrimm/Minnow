@@ -90,6 +90,30 @@ afterEach(() => {
 });
 
 describe('floating issue panel', () => {
+  test('Graphite uses an interactive detail column and restores it after maximizing', () => {
+    setupDom(); seedIssue();
+    document.documentElement.classList.add('mn-graphite-apps');
+    const shell = document.querySelector('.issues-shell')!;
+    Object.defineProperty(shell, 'getBoundingClientRect', { value: () => ({ width: 1120 }) });
+    const list = document.createElement('div');
+    list.className = 'issues-list-pane';
+    document.querySelector('.issues-body')!.append(list);
+    openIssueDetail('VIN-10');
+    const host = document.getElementById('issuesDetailHost')!;
+    const scrim = document.getElementById('issuesDetailScrim')!;
+    assert.equal(host.getAttribute('role'), 'region');
+    assert.equal(host.hasAttribute('aria-modal'), false);
+    assert.equal(scrim.hidden, true);
+    assert.equal(list.inert, false);
+    setIssueDetailSheetExpanded(true);
+    assert.equal(host.getAttribute('aria-modal'), 'true');
+    assert.equal(list.inert, true);
+    setIssueDetailSheetExpanded(false);
+    assert.equal(document.getElementById('issuesDetailHost'), host);
+    assert.equal(host.getAttribute('role'), 'region');
+    assert.equal(list.inert, false);
+  });
+
   test('opens over the list as a dialog, with no dock resizer', () => {
     setupDom(); seedIssue();
     const trigger = document.createElement('button'); document.body.append(trigger); trigger.focus();

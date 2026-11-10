@@ -38,8 +38,8 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* Row and sticky group offset; 4pt scale, a step above the old 28px density. */
-  --issues-row-h: 36px;
+  --issues-row-base: 36px;
+  --issues-row-h: calc(var(--issues-row-base) + 2 * var(--mn-density-step));
   --issues-list-head-h: 32px;
 }
 
@@ -1299,7 +1299,7 @@
   display: inline-block;
   width: 0.55em;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--mn-type-2xs);
   line-height: 1;
   opacity: 0;
   transform: translateY(-0.5px);
@@ -1355,8 +1355,7 @@
 }
 
 .issues-row {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-block: calc(8px + var(--mn-density-step));
   border-bottom: 1px solid var(--mn-border);
   cursor: pointer;
   min-height: var(--issues-row-h);
@@ -2376,7 +2375,7 @@
 .issues-detail__navigation { display: flex; align-items: center; gap: 2px; margin-right: 12px; }
 .issues-detail__position { padding-inline: 8px; color: var(--mn-fg-muted); font: 11px var(--font-mono); white-space: nowrap; }
 .issues-detail__step-arrow { position: relative; display: block; width: 16px; height: 16px; }
-.issues-detail__step-arrow::before { content: ''; position: absolute; left: 7.25px; top: 2px; width: 1.5px; height: 12px; border-radius: 1px; background: currentColor; }
+.issues-detail__step-arrow::before { content: ''; position: absolute; left: 7.25px; top: 2px; width: 1.5px; height: 12px; border-radius: var(--mn-radius-pill); background: currentColor; }
 .issues-detail__step-arrow::after { content: ''; position: absolute; top: 2px; left: 4px; width: 6.5px; height: 6.5px; border-top: 1.5px solid currentColor; border-left: 1.5px solid currentColor; transform: rotate(45deg); }
 .issues-detail__step-arrow.is-next { transform: rotate(180deg); }
 .issues-detail__run-state { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -2511,7 +2510,7 @@
   field-sizing: content;
   resize: none;
   font-family: var(--font-ui);
-  font-size: 24px;
+  font-size: var(--mn-type-4xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
@@ -2720,6 +2719,41 @@
   display: grid;
   gap: var(--mn-space-2);
   min-width: 0;
+}
+.issues-detail__workflow-secondary[hidden] { display: none; }
+
+.issues-detail__compact-launch {
+  display: grid;
+  gap: var(--mn-space-2);
+}
+
+.issues-detail__compact-launch textarea {
+  box-sizing: border-box;
+  min-height: 60px;
+  width: 100%;
+  padding: 9px 12px;
+  resize: vertical;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: var(--mn-radius-md);
+  background: var(--mn-graphite-sheet, var(--mn-bg));
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: inherit;
+}
+
+.issues-detail__compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mn-space-1);
+}
+
+.issues-detail__compact-actions > button:last-child {
+  margin-inline-start: auto;
+  flex-direction: row-reverse;
+}
+
+.issues-detail__compact-actions > [aria-pressed='true'] {
+  color: var(--mn-accent);
+  background: var(--mn-accent-soft);
 }
 
 .issues-detail__workflow .issues-btn {
@@ -4198,6 +4232,8 @@ button.issues-detail__row:focus-visible {
 }
 
 @media (pointer: coarse) {
+  .issues-row { min-height: max(var(--issues-row-h), var(--mn-density-touch-row)); }
+
   .issues-view-toggle button,
   .issues-filter,
   .issues-search,
@@ -4250,7 +4286,7 @@ button.issues-detail__row:focus-visible {
   width: 44px;
   height: 44px;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
   background: color-mix(in oklch, var(--mn-fg) 6%, transparent);
 }
 
@@ -4310,7 +4346,7 @@ button.issues-detail__row:focus-visible {
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--mn-radius-xs);
   background: transparent;
   color: var(--mn-fg-muted);
   font-size: 15px;
@@ -4485,7 +4521,7 @@ button.issues-detail__row:focus-visible {
   .issues-detail__talk { order: 1; }
   .issues-detail__rail { order: 2; margin-top: 24px; }
   .issues-detail__properties { padding-bottom: 20px; }
-  .issues-detail__title { font-size: 21px; }
+  .issues-detail__title { font-size: var(--mn-type-3xl); }
 }
 @container issue-detail (max-width: 520px) {
   .issues-detail__sticky { padding: 12px 16px 0; gap: var(--mn-space-2); }

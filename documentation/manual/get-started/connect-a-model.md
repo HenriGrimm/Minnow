@@ -66,7 +66,7 @@ See [Models → CLIs](../apps/models.md#clis) for supported CLI versions, conver
 
 Choose the model in the composer, or press **Ctrl+M / Cmd+M**. The choice applies to this chat and becomes the starting model for new chats across projects and restarts. Opening an older chat keeps its own model and does not change that remembered choice.
 
-Issues and Dashboard show a model choice before starting chats. They initially use the last composer-selected model; choosing another model there applies to that dispatch. Boards keep their own model picker.
+Issues shows a model choice before starting individual chats. It initially uses the last composer-selected model; choosing another model there applies to that dispatch. Boards keep their own model picker.
 
 The top-bar **Models** icon opens routing controls and links to **Providers & connections**, **Model pools**, and **Manage models…**. Local runtimes expose **Load / Unload** in the composer picker for the selected model.
 

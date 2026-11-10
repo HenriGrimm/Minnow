@@ -11,6 +11,7 @@ import { teardownGraphSection } from './brain/graph-section';
 import { renderBrainSection } from './brain/sections';
 import { revealInTabStrip } from './mobile-layout';
 import { fetchBrainUsage } from '../brain/client';
+import { createIcon } from './icon';
 
 export type BrainSectionId =
   | 'graph'
@@ -31,14 +32,14 @@ const LEGACY_SECTION_ALIASES: Record<string, BrainSectionId> = {
 
 const SECTIONS: BrainSectionId[] = [
   'graph',
-  'edit',
-  'log',
-  'schema',
   'proposals',
   'memories',
   'ingest',
   'lint',
   'code',
+  'log',
+  'schema',
+  'edit',
   'settings',
 ];
 
@@ -277,10 +278,28 @@ function bindStaticSections(): void {
     closeBrain();
   });
 
-  for (const id of SECTIONS) {
-    document
-      .querySelector(`[data-brain-nav="${id}"]`)
-      ?.addEventListener('click', () => setActiveSection(id));
+  const rail = getBrainRoot()?.querySelector<HTMLElement>('.brain-rail');
+  if (rail) {
+    const search = document.createElement('button');
+    search.type = 'button';
+    search.className = 'brain-graphite-search';
+    search.append(createIcon('search', { size: 14 }), 'Search pages');
+    search.addEventListener('click', () => document.getElementById('brainGraphSearch')?.focus());
+    rail.prepend(search);
+    for (const id of SECTIONS) {
+      const control = rail.querySelector(`[data-brain-nav="${id}"]`);
+      if (!control) continue;
+      control.addEventListener('click', () => setActiveSection(id));
+      if (id === 'code') {
+        const label = control.querySelector('.brain-rail__label');
+        if (label) label.textContent = 'Code map';
+      }
+      rail.append(control);
+    }
+    const metrics = document.createElement('div');
+    metrics.className = 'brain-graphite-metrics';
+    metrics.id = 'brainGraphRailMetrics';
+    rail.append(metrics);
   }
 }
 
@@ -318,7 +337,7 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
   const shell = getChatShell();
   if (!root || !shell) return;
 
-  closeOtherFullPages();
+  if (!root.closest('.m-native-app-host')) closeOtherFullPages();
   void import('./code-brain-map').then((m) => m.closeCodeBrainMap());
 
   const wasAlreadyOpen = root.classList.contains('is-open');

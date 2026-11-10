@@ -22,6 +22,7 @@ describe('provider browser', { concurrency: false }, () => {
   const render = () => renderModelSelectMenuRows(menu, select, value => picked.push(value));
   beforeEach(() => {
     document.body.replaceChildren(); localStorage.clear(); modelCache.clear();
+    document.documentElement.classList.remove('mn-phone');
     setModelHostFilter('all'); setModelLibraryFilter('all'); setModelLocalLoadFilter('all'); setModelSearchQuery('');
     picked = [];
     select = document.createElement('select'); menu = document.createElement('ul'); menu.className = 'model-select-menu';
@@ -127,6 +128,28 @@ describe('provider browser', { concurrency: false }, () => {
     row.click(); assert.deepEqual(picked, [key('claude')]);
     row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     assert.equal(document.activeElement, provider('claude'));
+  });
+  test('phone enters a provider without hover or focus preview and returns focus to the list', () => {
+    document.documentElement.classList.add('mn-phone');
+    const trigger = provider('claude');
+    trigger.focus();
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    trigger.click();
+    const columns = menu.querySelector('.model-browser-columns')!;
+    const back = menu.querySelector<HTMLButtonElement>('.model-browser-back')!;
+    assert.equal(columns.classList.contains('is-provider-open'), true);
+    assert.equal(document.activeElement, back);
+    back.click();
+    assert.equal(columns.classList.contains('is-provider-open'), false);
+    assert.equal(document.activeElement, trigger);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+
+    trigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    const row = menu.querySelector<HTMLButtonElement>('.model-browser-pane .model-select-option')!;
+    assert.equal(document.activeElement, row);
+    row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    assert.equal(document.activeElement, trigger);
+    assert.equal(columns.classList.contains('is-provider-open'), false);
   });
   test('ignores malformed preferences without losing model selection', () => {
     localStorage.setItem('minnow.modelPicker.v1', '{bad json'); render();

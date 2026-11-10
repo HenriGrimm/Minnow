@@ -17,6 +17,7 @@ import { modelProducerLogoSvg } from '../../providers/model-producer';
 import { createSettingsSwitch } from '../settings-switch';
 import { el, skeletonRows } from './dom';
 import { accountUsageSummary, createAccountUsageView } from '../cli-account-usage';
+import { setModelsRailCount } from './graphite-chrome';
 import { createAgentCliSignIn } from '../agent-cli-sign-in';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
@@ -462,14 +463,34 @@ function renderCli(status: AgentCliStatus): CliView {
   identity.append(title, metadata);
   const enabledState = el('span', 'models-cli-row__state');
   const usageSummary = el('span', 'models-cli-row__usage');
+  const cardState = el('span', 'models-cli-card-state');
+  const cardPath = el('span', 'models-cli-card-path');
+  const cardUsage = el('span', 'models-cli-card-usage');
+  const allowance = el('span', 'models-cli-card-usage__label', 'Usage');
+  const percentage = el('span', 'models-cli-card-usage__value', '—');
+  const meter = el('span', 'models-cli-card-usage__meter');
+  meter.setAttribute('aria-hidden', 'true');
+  cardUsage.append(allowance, percentage, meter);
+  const actionLabel = el('span', 'models-cli-card-action');
   const usage = createAccountUsageView(status.kind, {
     request: (kind, options) => deps.usage(kind, options),
     visible: () => row.isConnected && host()?.classList.contains('is-active') === true,
-    onChange: (snapshot) => { usageSummary.textContent = accountUsageSummary(snapshot); },
+    onChange: (snapshot) => {
+      usageSummary.textContent = accountUsageSummary(snapshot);
+      const windows = snapshot && ['ready', 'stale'].includes(snapshot.status) ? snapshot.windows : [];
+      const window = windows.reduce<typeof windows[number] | undefined>(
+        (highest, item) => !highest || item.usedPercent > highest.usedPercent ? item : highest, undefined,
+      );
+      const used = window ? Math.min(100, Math.max(0, window.usedPercent)) : 0;
+      allowance.textContent = window ? `${window.label}${snapshot?.status === 'stale' ? ' · last known' : ''}` : 'Usage';
+      percentage.textContent = window ? `${Math.round(used)}% used` : '—';
+      meter.style.setProperty('--cli-used', `${used}%`);
+      meter.dataset.tone = used >= 90 ? 'danger' : used >= 70 ? 'warning' : 'normal';
+    },
   });
   const chevron = el('span', 'models-cli-chevron');
   chevron.setAttribute('aria-hidden', 'true');
-  summary.append(logo, identity, usageSummary, enabledState, chevron);
+  summary.append(logo, identity, usageSummary, enabledState, chevron, cardState, cardPath, cardUsage, actionLabel);
   const body = el('div', 'models-cli-card-body');
   const connection = el('div', 'models-cli-connection');
   const badges = el('div', 'models-cli-connection__status');
@@ -540,6 +561,10 @@ function renderCli(status: AgentCliStatus): CliView {
     auth.textContent = authLabel(next);
     auth.className = `models-cli-badge models-cli-badge--${authTone(next)}`;
     auth.hidden = !next.installed;
+    cardState.textContent = next.installed ? authLabel(next) : 'Not installed';
+    cardState.dataset.tone = next.installed ? authTone(next) : 'muted';
+    cardPath.textContent = next.installed ? [next.binPath, next.version].filter(Boolean).join(' · ') : 'Not found on PATH';
+    actionLabel.textContent = next.installed ? 'Account usage and settings' : 'How to install';
     enable.checked = next.enabled;
     enable.disabled = busy || !next.installed;
     enableText.textContent = next.enabled ? 'Enabled' : 'Enable provider';
@@ -580,6 +605,7 @@ function renderCli(status: AgentCliStatus): CliView {
 
 function render(): void {
   statusListener?.(statuses);
+  setModelsRailCount('clis', statuses.length);
   const mount = host();
   if (!mount || !mounted) return;
   if (!mount.querySelector('.models-cli-header')) {

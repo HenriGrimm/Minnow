@@ -1,6 +1,7 @@
 import { decodeModelSelectKey, resolveModelSelectValueForChat } from '../lib/model-select-key';
 import { getComposerReasoningState, setComposerReasoningChoice } from './composer-reasoning-effort';
 import { handleModelProviderBrowserKeydown, resetModelProviderBrowser } from './model-provider-browser';
+import { positionAnchoredModelPicker } from './model-picker-position';
 import { syncBoardHeaderReasoning } from './orchestrate-board-reasoning.ts';
 import { getModelRowForSelectOrCanonicalId, updateModelLoadUnloadButtons } from '../api/models';
 import { modelCache, streamingChatIds } from '../app-state';
@@ -468,30 +469,10 @@ function rebuildOpenMenu(): void {
 }
 
 function positionPanel(trigger: ComposerModelTrigger): void {
-  const rect = trigger.trigger.getBoundingClientRect();
-  const margin = 8;
-  const gap = 4;
-  const panel = trigger.panel;
-
-  const panelWidth = panel.offsetWidth || panel.getBoundingClientRect().width;
-  let left = rect.right - panelWidth;
-  left = Math.max(margin, Math.min(left, window.innerWidth - panelWidth - margin));
-  panel.style.left = `${left}px`;
-  panel.style.right = 'auto';
-
-  const above = Math.max(0, rect.top - gap - margin);
-  const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
-  if (!panel.dataset.placement) {
-    const panelHeight = panel.offsetHeight || panel.getBoundingClientRect().height;
-    panel.dataset.placement = !isMenubarStyleVariant(trigger.variant)
-      && (panelHeight <= above || above >= below) ? 'above' : 'below';
-  }
-  // Keep the opening side through asynchronous view/size changes (including Pools).
-  // Anchor the near edge and scroll within the available space instead of flipping.
-  const opensAbove = panel.dataset.placement === 'above';
-  panel.style.maxHeight = `${opensAbove ? above : below}px`;
-  panel.style.top = opensAbove ? 'auto' : `${Math.max(margin, rect.bottom + gap)}px`;
-  panel.style.bottom = opensAbove ? `${Math.max(margin, window.innerHeight - rect.top + gap)}px` : 'auto';
+  positionAnchoredModelPicker(
+    trigger.panel, trigger.trigger, isMenubarStyleVariant(trigger.variant) ? 'below' : 'above',
+    trigger.variant === 'code' ? 8 : 4,
+  );
 }
 
 function clearMenubarCollapseTimer(trigger: ComposerModelTrigger): void {
@@ -583,6 +564,8 @@ function detachGlobalListeners(): void {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true);
   document.removeEventListener('keydown', onDocumentKeyDown, true);
   window.removeEventListener('resize', onWindowResize);
+  window.visualViewport?.removeEventListener('resize', onWindowResize);
+  window.visualViewport?.removeEventListener('scroll', onWindowResize);
 }
 
 function onDocumentPointerDown(e: PointerEvent): void {
@@ -653,6 +636,8 @@ function attachGlobalListeners(): void {
   document.addEventListener('pointerdown', onDocumentPointerDown, true);
   document.addEventListener('keydown', onDocumentKeyDown, true);
   window.addEventListener('resize', onWindowResize);
+  window.visualViewport?.addEventListener('resize', onWindowResize);
+  window.visualViewport?.addEventListener('scroll', onWindowResize);
 }
 
 /** Open the per-chat model picker for the active composer surface. */
@@ -787,7 +772,13 @@ function createModelMenuPanel(
 ): { panel: HTMLDivElement; menu: HTMLUListElement } {
   const panel = document.createElement('div');
   panel.className = 'composer-model-menu hidden';
-  panel.setAttribute('role', 'presentation');
+  if (variant === 'code') {
+    panel.classList.add('composer-model-menu--code');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Choose a model');
+  } else {
+    panel.setAttribute('role', 'presentation');
+  }
 
   const filterBar = mountModelHostFilterBar(
     panel,

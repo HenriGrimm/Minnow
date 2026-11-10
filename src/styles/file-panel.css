@@ -1658,13 +1658,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px 2px 4px;
+  padding: calc(2px + var(--mn-density-step)) 6px calc(2px + var(--mn-density-step)) 4px;
   font-size: 13px;
   cursor: pointer;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   margin: 0 4px;
-  min-height: 0;
+  min-height: 24px;
   color: var(--mn-fg);
   transition:
     border-color 0.2s var(--ease-out),
@@ -1674,7 +1674,7 @@
 
 @media (pointer: coarse) {
   .file-tree-row {
-    min-height: var(--touch-min);
+    min-height: var(--mn-density-touch-row);
     padding: 6px 8px 6px 4px;
   }
 }

@@ -135,6 +135,28 @@ describe('code app settings (MIN-417)', () => {
     assert.equal(document.getElementById('settingsView')?.classList.contains('is-open'), true);
   });
 
+  test('explicit section links update the already open Settings window', async () => {
+    document.getElementById('settingsView')?.insertAdjacentHTML('beforeend', `
+      <div class="settings-category" data-category="general">
+        <section id="settingsSection-general" class="settings-area" data-area="general"></section>
+      </div>
+      <div class="settings-category" data-category="appearance">
+        <section id="settingsSection-appearance" class="settings-area" data-area="appearance"></section>
+      </div>
+    `);
+    for (const section of ['general', 'appearance', 'general']) {
+      window.location.hash = `#/app/settings/${section}`;
+      syncOsRouteFromHashForTests();
+      const active = `#settingsView .settings-category.is-active #settingsSection-${section}.is-active`;
+      for (let attempt = 0; attempt < 20 && !document.querySelector(active); attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      assert.equal(getForegroundAppId(), 'settings');
+      assert.ok(document.querySelector(active), section);
+    }
+    assert.equal(getInstanceSnapshot().instances.filter(instance => instance.appId === 'settings').length, 1);
+  });
+
   test('closing settings returns to the Code app', async () => {
     openSettingsFromTopbar();
     syncOsRouteFromHashForTests();

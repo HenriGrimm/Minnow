@@ -1,0 +1,123 @@
+.graphite-new-thread__intro[hidden],
+.graphite-new-thread__context[hidden] {
+  display: none;
+}
+
+#mainColumn.graphite-new-thread {
+  gap: 0;
+  overflow: auto;
+  padding: min(130px, 14vh) 32px 40px;
+}
+
+#mainColumn.graphite-new-thread > :is(.chat-viewport, .graphite-metrics-trigger, #statsStrip) {
+  display: none;
+}
+
+#mainColumn.graphite-new-thread > :is(.graphite-new-thread__intro, .graphite-new-thread__context, .input-bar) {
+  width: min(680px, 100%);
+  flex: none;
+  margin-inline: auto;
+}
+
+#mainColumn.graphite-new-thread > .input-bar {
+  margin-block: 0;
+}
+
+.graphite-new-thread__intro {
+  padding: 0 2px 22px;
+}
+
+.graphite-new-thread__intro h2 {
+  margin: 0 0 6px;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -.03em;
+  line-height: 1.2;
+}
+
+.graphite-new-thread__intro p,
+.graphite-new-thread__context p {
+  margin: 0;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 13px;
+}
+
+.graphite-new-thread__intro code {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.graphite-new-thread__intro code,
+.graphite-new-thread__context code {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.graphite-new-thread__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 40px;
+}
+
+.graphite-new-thread__context > section {
+  min-width: 0;
+  flex: 1 1 300px;
+}
+
+.graphite-new-thread__context h3 {
+  margin: 0;
+  padding: 8px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.graphite-new-thread__section-title,
+.graphite-new-thread__context button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graphite-new-thread__section-title {
+  justify-content: space-between;
+}
+
+.graphite-new-thread__context button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-graphite-text, var(--mn-fg));
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.graphite-new-thread__context button:hover {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+}
+
+.graphite-new-thread__section-title button {
+  width: auto;
+  min-height: 24px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-new-thread__context p {
+  padding: 8px;
+}
+
+@media (max-width: 640px) {
+  #mainColumn.graphite-new-thread {
+    padding: 28px 16px 24px;
+  }
+}

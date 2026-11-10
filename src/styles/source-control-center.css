@@ -32,7 +32,7 @@
   --scc-title-xl: 24px;
   --scc-title-compact: 21px;
 
-  --scc-row-h: 32px;
+  --scc-row-h: calc(var(--mn-density-nav-row) + 2px);
   --scc-btn-h: 30px;
   /* Height of every horizontal band: header, toolbars, diff title. */
   --scc-band-h: 50px;
@@ -524,7 +524,7 @@
   padding: 7px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  min-height: 42px;
+  min-height: calc(42px + 2 * var(--mn-density-step));
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1159,7 +1159,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 10px;
+  padding: calc(8px + var(--mn-density-step)) 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
@@ -1513,7 +1513,7 @@
   font-family: inherit;
   color: var(--mn-fg);
   background: transparent;
-  padding: 12px;
+  padding: calc(12px + var(--mn-density-step)) 12px;
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -2700,11 +2700,11 @@
 
   .scc-rail__item,
   .scc-filerow {
-    height: 40px;
+    height: max(40px, var(--scc-row-h));
   }
 
   .scc-refrow {
-    min-height: 44px;
+    min-height: max(calc(42px + 2 * var(--mn-density-step)), var(--touch-min));
   }
 }
 

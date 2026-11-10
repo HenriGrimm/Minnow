@@ -1,0 +1,457 @@
+#graphiteThreadHeader:not([hidden]) {
+  display: flex;
+  height: 48px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 16px;
+  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.graphite-thread-title {
+  min-width: 0;
+  margin: 0 0 0 4px;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-thread-header__actions,
+.graphite-thread-header__panel-toggles:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graphite-thread-header__actions {
+  margin-inline-start: auto;
+}
+
+.graphite-thread-button,
+.graphite-thread-icon-button {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.graphite-thread-icon-button {
+  width: 28px;
+  justify-content: center;
+  padding: 0;
+}
+
+.graphite-thread-button:hover,
+.graphite-thread-icon-button:hover,
+.graphite-thread-card__row--action:hover,
+.graphite-thread-button[aria-expanded='true'],
+.graphite-thread-icon-button[aria-expanded='true'] {
+  background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.graphite-thread-button[hidden],
+.graphite-thread-icon-button[hidden] {
+  display: none;
+}
+
+.graphite-thread-button:disabled,
+.graphite-thread-icon-button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.graphite-thread-branch {
+  max-width: 42%;
+  flex-shrink: 1;
+  font-weight: 400;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+}
+
+.graphite-thread-mono {
+  overflow: hidden;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-thread-addition {
+  color: var(--mn-graphite-add-text, var(--mn-success));
+}
+
+.graphite-thread-deletion {
+  color: var(--mn-graphite-delete-text, var(--mn-danger));
+}
+
+.mn-popover.graphite-thread-card-popover {
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 12px;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  box-shadow: var(--mn-graphite-popup, var(--mn-shadow-popover));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.graphite-thread-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.graphite-thread-card__row {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.graphite-thread-card__row--action {
+  cursor: pointer;
+}
+
+.graphite-thread-card__row > .icon-svg {
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+}
+
+.graphite-thread-card__row-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.graphite-thread-card__detail {
+  overflow: hidden;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graphite-thread-card__environment:not([hidden]) {
+  display: block;
+  margin: 0 6px 4px 34px;
+  padding: 4px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 9px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-thread-card__divider {
+  height: 1px;
+  flex: none;
+  margin: 4px 8px;
+  background: var(--mn-graphite-line, var(--mn-border));
+}
+
+.graphite-thread-card__counts,
+.graphite-thread-card__footer,
+.graphite-thread-card__permissions,
+.graphite-thread-card__git-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.graphite-thread-card__footer {
+  padding: 2px 4px;
+}
+
+.graphite-thread-card__git-actions {
+  padding-inline: 34px 6px;
+}
+
+.graphite-thread-card__git-actions > :first-child {
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-thread-card__permissions {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-thread-card__permissions .graphite-thread-button {
+  height: 24px;
+  border-radius: 6px;
+}
+
+.graphite-thread-card__permissions [aria-pressed='true'] {
+  background: var(--mn-graphite-active, var(--mn-surface-elevated));
+  color: var(--mn-graphite-text, var(--mn-fg));
+}
+
+.graphite-thread-card__key {
+  margin-inline-start: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-radius: 4px;
+  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+}
+
+.graphite-app-logo {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  --sheet: var(--mn-graphite-sheet, var(--mn-surface-0));
+}
+
+@media (pointer: coarse) {
+  .graphite-thread-card .graphite-thread-button,
+  .graphite-thread-card .graphite-thread-icon-button,
+  .graphite-thread-card__row--action,
+  .graphite-thread-header__actions .graphite-thread-icon-button {
+    min-height: 44px;
+  }
+
+  .graphite-thread-header__actions .graphite-thread-icon-button {
+    width: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  #graphiteThreadHeader:not([hidden]) {
+    height: 52px;
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .graphite-thread-header__actions,
+  .graphite-thread-header__panel-toggles:not([hidden]) {
+    gap: 2px;
+  }
+
+  .mn-popover.graphite-thread-card-popover {
+    position: fixed;
+    inset: auto 0 0 !important;
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
+  }
+}
+
+/* Keep the transcript, composer and metrics on the same measure. The canvas
+   uses 660px at its authored width. A wider stage can grow to 840px. */
+#workspaceSplit:has(> #graphiteThreadHeader:not([hidden])) > #mainColumn:not(.graphite-new-thread) {
+  --mn-graphite-thread-gutter: 36px;
+  --chat-composer-max: min(clamp(660px, 57.5cqi, 840px), calc(100cqi - 2 * var(--mn-graphite-thread-gutter)));
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) #chatArea.chat-thread {
+  --chat-reading-width: min(var(--chat-composer-max), 100%);
+  gap: 16px;
+  padding: 20px var(--mn-graphite-thread-gutter, 36px) 8px;
+}
+
+.graphite-thread-summary {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: center;
+  gap: 6px 16px;
+  width: var(--chat-reading-width);
+  margin-bottom: 8px;
+  color: var(--mn-fg-muted);
+  font: 11px var(--font-mono);
+}
+
+.graphite-thread-summary > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+
+#workspaceSplit #chatArea.chat-thread > .managed-chat-requests {
+  max-width: var(--chat-reading-width);
+}
+
+#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending'] {
+  margin-block: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--mn-warning-border);
+  border-radius: 12px;
+  background: var(--mn-warning-soft);
+}
+
+#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending'][data-risk='high'] {
+  border-color: var(--mn-danger-border);
+  background: var(--mn-danger-soft);
+}
+
+#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending']::before { display: none; }
+#workspaceSplit #chatArea .managed-chat-request__detail { background: var(--mn-graphite-sheet, var(--mn-surface-0)); }
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user {
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
+  width: fit-content;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  border-radius: 12px 12px 4px 12px;
+  background: var(--mn-bubble, var(--mn-surface-2));
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user .msg-bubble::before {
+  content: none;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user.msg--has-actions .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
+  padding-inline-end: 36px;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.assistant > .msg-bubble {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+#chatArea.chat-thread > .msg.assistant > .graphite-turn-recovery {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 12px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-turn-recovery__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--mn-border);
+  border-radius: 8px;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  color: var(--mn-danger);
+}
+
+.graphite-turn-recovery__body { display: grid; gap: 3px; min-width: 0; flex: 1; color: var(--mn-fg-muted); font-size: 12.5px; }
+.graphite-turn-recovery__body strong { font-size: 13.5px; font-weight: 500; color: var(--mn-fg); }
+.graphite-turn-recovery__body summary { width: fit-content; padding-block: 3px; cursor: pointer; }
+.graphite-turn-recovery__body details p {
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--mn-border);
+  border-radius: 8px;
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  font: 11.5px/1.6 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.graphite-turn-recovery__body .msg-error-recover-actions { margin-top: 5px; }
+.graphite-turn-recovery__body .msg-error-recover-btn { color: var(--mn-fg); border-color: var(--mn-border); }
+.graphite-turn-recovery__body .msg-error-recover-btn--continue { background: var(--mn-accent); color: var(--mn-fg-on-accent); }
+
+@media (max-width: 640px) {
+  #workspaceSplit:has(> #graphiteThreadHeader:not([hidden])) > #mainColumn:not(.graphite-new-thread) {
+    --mn-graphite-thread-gutter: 16px;
+  }
+
+  #workspaceSplit:has(#graphiteThreadHeader:not([hidden])) #chatArea.chat-thread > .msg.assistant > .msg-bubble {
+    font-size: 14.5px;
+  }
+}
+
+.mn-popover.graphite-goal-popover {
+  width: 400px;
+  max-width: calc(100vw - 16px);
+  padding: 16px;
+  border-radius: 12px;
+  border-color: var(--mn-graphite-line, var(--mn-border));
+  background: var(--mn-graphite-sheet, var(--mn-surface-0));
+  box-shadow: var(--mn-graphite-popup, var(--mn-shadow-popover));
+}
+
+.graphite-goal-card,
+.graphite-goal-card__evaluator {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.graphite-goal-card__heading,
+.graphite-goal-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graphite-goal-card__heading > strong {
+  flex: 1;
+  font-weight: 500;
+}
+
+.graphite-goal-card__condition,
+.graphite-goal-card__evaluator p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.graphite-goal-card__state {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--mn-accent-soft);
+  color: var(--mn-accent-ink);
+  font-size: 11.5px;
+}
+
+.graphite-goal-card__evaluator {
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 10px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+}
+
+.graphite-goal-card__evaluator p {
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.graphite-goal-card__actions {
+  justify-content: flex-end;
+}
+
+.graphite-goal-card__actions > button:last-child {
+  background: var(--mn-graphite-button, var(--mn-accent));
+  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
+}

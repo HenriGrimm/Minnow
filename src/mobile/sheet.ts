@@ -2,6 +2,7 @@
 
 import { el, haptic, icon } from './dom';
 import { getMobileWorkspaceScope } from './nav';
+import { markPreviewOccluder, unmarkPreviewOccluder } from '../ui/preview-occlusion';
 
 export interface SheetHandle {
   el: HTMLElement;
@@ -13,13 +14,24 @@ export interface SheetOptions {
   title?: string;
   /** Tall sheets fill most of the screen (task details, long forms). */
   tall?: boolean;
+  placement?: 'bottom' | 'left';
   onClose?: () => void;
 }
 
-const openSheets = new Set<() => void>();
+const openSheets = new Map<() => void, HTMLElement>();
+let sheetSequence = 0;
+
+function syncSheetStack(): void {
+  const top = Array.from(openSheets.values()).at(-1);
+  document.documentElement.classList.toggle('m-sheet-open', Boolean(top));
+  for (const node of document.querySelectorAll<HTMLElement>('#mobileShell > .m-stage, #mobileShell > .m-tabbar')) {
+    node.inert = Boolean(top);
+  }
+  for (const node of openSheets.values()) node.inert = node !== top;
+}
 
 export function closeMobileSheets(): void {
-  for (const close of openSheets) close();
+  for (const close of [...openSheets.keys()].reverse()) close();
 }
 
 /** Open a modal bottom sheet. Swipe down on the handle, tap the scrim or Escape to close. */
@@ -27,10 +39,17 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   const body = el('div', { className: 'm-sheet__body' });
   body.append(...(Array.isArray(content) ? content : [content]));
   const handle = el('div', { className: 'm-sheet__handle', attrs: { 'aria-hidden': 'true' } });
-  const titleId = `m-sheet-title-${Date.now().toString(36)}`;
+  const titleId = `m-sheet-title-${++sheetSequence}`;
   const titleEl = options.title
     ? el('h2', { className: 'm-sheet__title', text: options.title, attrs: { id: titleId } })
     : null;
+  const closeButton = el(
+    'button',
+    { className: 'm-sheet__close', attrs: { type: 'button', 'aria-label': 'Close' } },
+    icon('fi-rr-cross-small', 16),
+  );
+  const isDrawer = options.placement === 'left';
+  const header = el('div', { className: 'm-sheet__header' }, titleEl, closeButton);
   const panel = el(
     'div',
     {
@@ -38,15 +57,17 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
       attrs: {
         role: 'dialog',
         'aria-modal': 'true',
-        'aria-labelledby': options.title ? titleId : null,
+        'aria-labelledby': options.title && !isDrawer ? titleId : null,
+        'aria-label': isDrawer ? options.title ?? 'Minnow' : options.title ? null : 'Details',
+        tabindex: '-1',
       },
     },
-    handle,
-    titleEl,
+    isDrawer ? null : handle,
+    isDrawer ? null : header,
     body,
   );
   const scrim = el('div', { className: 'm-sheet__scrim' });
-  const root = el('div', { className: 'm-sheet' }, scrim, panel);
+  const root = el('div', { className: `m-sheet${isDrawer ? ' m-sheet--drawer' : ''}` }, scrim, panel);
   const previousFocus = document.activeElement as HTMLElement | null;
 
   let closed = false;
@@ -55,23 +76,44 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
     closed = true;
     openSheets.delete(close);
     root.inert = true;
-    document.documentElement.classList.toggle('m-sheet-open', openSheets.size > 0);
+    unmarkPreviewOccluder(root);
+    syncSheetStack();
     document.removeEventListener('keydown', onKey, true);
     root.classList.remove('is-open');
     const finish = () => {
       root.remove();
       options.onClose?.();
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      if (previousFocus?.isConnected && !previousFocus.closest('[inert]')) previousFocus.focus({ preventScroll: true });
     };
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
-    else window.setTimeout(finish, 220);
+    if (document.documentElement.hasAttribute('data-reduce-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
+    else window.setTimeout(finish, 180);
   };
   const onKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
-    close();
+    if (root.inert) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]',
+    )).filter((node) => !node.closest('[hidden], [inert]') && node.tabIndex >= 0);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+    if (!focusable.includes(document.activeElement as HTMLElement) || document.activeElement === (event.shiftKey ? first : last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
   };
   scrim.addEventListener('click', close);
+  closeButton.addEventListener('click', close);
   document.addEventListener('keydown', onKey, true);
 
   // Drag the handle or title area down to dismiss.
@@ -79,7 +121,7 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   let dragDelta = 0;
   const dragZone = (event: TouchEvent) => {
     const target = event.target instanceof Node ? event.target : null;
-    if (!target) return false;
+    if (isDrawer || !target) return false;
     if (handle.contains(target) || titleEl?.contains(target)) return true;
     // Inside the body, only a list already at its top hands the gesture to the sheet.
     return body.scrollTop <= 0 && !(target instanceof HTMLTextAreaElement);
@@ -108,10 +150,16 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
     panel.style.transform = '';
     if (dragDelta > 96) close();
   });
+  panel.addEventListener('touchcancel', () => {
+    dragStart = null;
+    dragDelta = 0;
+    panel.style.transform = '';
+  });
 
   (document.getElementById('mobileShell') ?? document.body).append(root);
-  openSheets.add(close);
-  document.documentElement.classList.add('m-sheet-open');
+  openSheets.set(close, root);
+  markPreviewOccluder(root, 'dialog');
+  syncSheetStack();
   requestAnimationFrame(() => { if (!closed) root.classList.add('is-open'); });
   queueMicrotask(() => {
     if (closed) return;
@@ -120,7 +168,6 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
       body.querySelector<HTMLElement>('[autofocus]') ??
       body.querySelector<HTMLElement>('[aria-checked="true"]') ??
       panel;
-    if (focusTarget === panel) panel.tabIndex = -1;
     focusTarget.focus({ preventScroll: true });
   });
   return { el: root, body, close };

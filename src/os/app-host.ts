@@ -17,7 +17,6 @@ import { mountOsMobileDrawerBackdrops } from '../ui/mobile-drawer-portal';
 // ── Layers ───────────────────────────────────────────────────────────────────
 
 const APP_LAYER_IDS: Record<BuiltinAppId, string> = {
-  home: 'homeView',
   'source-control': 'sourceControlView',
   code: 'osAppLayer-code',
   settings: 'settingsView',
@@ -33,8 +32,8 @@ const APP_LAYER_IDS: Record<BuiltinAppId, string> = {
 
 let initialized = false;
 let lastForegroundApp: AppId | null = null;
-/** Last Settings section applied via openAppPage (window deep-links). */
-let lastAppliedSettingsSection: string | undefined;
+/** Options already applied to the foreground Settings window. */
+let lastAppliedSettingsOptions: LaunchOptions | undefined;
 /** Last Brain section/path applied to its mounted window. */
 let lastAppliedBrainNavigation: string | undefined;
 /** Bumps on each syncFromSnapshot so stale openAppPage work cannot relaunch apps. */
@@ -99,7 +98,6 @@ function layerForApp(appId: AppId): HTMLElement | null {
 
 /** Page apps that mark readiness with `is-open` on their root layer. */
 const PAGE_OPEN_LAYER_APPS = new Set<AppId>([
-  'home',
   'settings',
   'models',
   'brain',
@@ -167,7 +165,6 @@ function hideAllLayers(): void {
 
 function closeAllAppPages(): void {
   for (const id of [
-    'homeView',
     'settingsView',
     'benchmarkView',
     'compareView',
@@ -218,15 +215,8 @@ async function openAppPage(
   await ensureAppInitialized(appId);
   if (generation != null && generation !== syncGeneration) return;
   const route = getCurrentRoute();
-  const settingsSection =
-    options?.settingsSection ?? route.settingsSection ?? 'general';
 
   switch (appId) {
-    case 'home': {
-      const { openHome } = await import('../ui/home-page');
-      await openHome();
-      break;
-    }
     case 'settings': {
       const brainRoute = (await import('../ui/brain-memory-routing')).resolveBrainMemoryRoute(
         options?.settingsSearchKey,
@@ -234,10 +224,14 @@ async function openAppPage(
       );
       if (brainRoute) {
         const { openBrain } = await import('../ui/brain-page');
+        if (generation != null && generation !== syncGeneration) return;
+        lastAppliedSettingsOptions = options;
         openBrain(brainRoute);
         break;
       }
       const { openSettings, navigateToSettingsField } = await import('../ui/settings-page');
+      if (generation != null && generation !== syncGeneration) return;
+      lastAppliedSettingsOptions = options;
       const requestedSection = options?.settingsSection ?? route.settingsSection;
       const section = (requestedSection ?? 'general') as SettingsSectionId;
       if (options?.settingsSearchKey) {
@@ -461,7 +455,8 @@ function syncFromSnapshot(snapshot: InstanceSnapshot): void {
       openAppPageInBackground(appId, options, generation);
     }
     lastForegroundApp = appId;
-  } else if (options && (appId === 'code' || appId === 'research')) {
+  } else if (options && (appId === 'code' || appId === 'research' ||
+    appId === 'settings' && options !== lastAppliedSettingsOptions)) {
     // A repeated launch can supersede the first deferred reveal before it runs.
     // The replacement must reveal the layer too, not leave the previous app on top.
     openAppPageInBackground(
@@ -497,7 +492,7 @@ export function initAppHost(): void {
 export function resetAppHostForTests(): void {
   initialized = false;
   lastForegroundApp = null;
-  lastAppliedSettingsSection = undefined;
+  lastAppliedSettingsOptions = undefined;
   lastAppliedBrainNavigation = undefined;
   syncGeneration = 0;
   const appsLayer = getAppsLayer();

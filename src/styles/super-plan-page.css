@@ -18,14 +18,10 @@
  */
 
 /*
- * One list, not two. The rail already lists every plan and run, and each run
- * is a chat, so the session list would show the same work twice under two
- * names. The shell hides it while the surface is up; the user's own
- * open/closed preference survives the visit.
+ * Super Plan supplies its own navigation in the legacy Code layout.
+ * Graphite keeps the shared desktop sidebar available.
  */
-html.mn-super-plan-open #chatSidebar,
-html.mn-super-plan-open #chatSidebarResizer,
-html.mn-super-plan-open #sidebarBackdrop {
+html.mn-super-plan-open:not(.mn-graphite-workspace) :is(#chatSidebar, #chatSidebarResizer, #sidebarBackdrop) {
   display: none;
 }
 

@@ -147,7 +147,7 @@ export function mountCompactionKnobs(
   initial: ContextCompactionDefaults | null | undefined,
   onSave: (knobs: ContextCompactionDefaults | null) => Promise<boolean>,
 ): HTMLElement {
-  const root = el('details', 'settings-compaction-knobs');
+  const root = el('details', 'settings-compaction-knobs settings-group__panel');
   const summary = document.createElement('summary');
   summary.className = 'settings-compaction-knobs__summary';
   summary.textContent = 'Compaction tuning';

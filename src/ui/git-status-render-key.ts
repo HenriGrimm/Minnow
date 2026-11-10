@@ -5,7 +5,7 @@ export function gitStatusRenderKey(cwd: string | undefined, status: GitOpResult)
   return JSON.stringify([
     cwd ?? '',
     ...[status.staged, status.unstaged, status.untracked, status.conflicted].map((files) =>
-      (files ?? []).map(({ path, status }) => [path, status]),
+      (files ?? []).map(({ path, status, additions, deletions }) => [path, status, additions ?? null, deletions ?? null]),
     ),
   ]);
 }

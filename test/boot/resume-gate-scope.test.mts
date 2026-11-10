@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { scopeChatsToWindowWorkspace } from '../../src/boot/resume-gate-boot.ts';
+import { declineChatAutoResume, isResumeGateHeld, setResumeGateState } from '../../src/chat/resume-gate.ts';
 import type { Chat } from '../../src/types.ts';
 
 function makeChat(id: string, workspacePath: string): Chat {
@@ -38,4 +39,17 @@ describe('scopeChatsToWindowWorkspace', () => {
   test('keeps every chat when the window has no workspace', () => {
     assert.equal(scopeChatsToWindowWorkspace(chats, '').length, 3);
   });
+});
+
+test('a partial resume keeps automatic work held only for declined threads', () => {
+  try {
+    setResumeGateState('pending');
+    assert.equal(isResumeGateHeld('selected'), true);
+    declineChatAutoResume('declined');
+    setResumeGateState('resumed');
+    assert.equal(isResumeGateHeld('selected'), false);
+    assert.equal(isResumeGateHeld('declined'), true);
+  } finally {
+    setResumeGateState('idle');
+  }
 });

@@ -77,7 +77,7 @@ export function syncComposerReadOnlyState(): boolean {
   const { inputEl: input, sendBtnEl: sendBtn } = getActiveComposerSurface();
   const chat = sessionState ? getActiveChat() : undefined;
   const reason = chat && chatReadOnlyReason(chat);
-  for (const id of ['btnComposerMic', 'btnChatAppMic', 'btnDesktopMic', 'btnChatAppAttach', 'btnDesktopAttach', 'fileInput']) {
+  for (const id of ['btnComposerMic', 'btnChatAppMic', 'btnDesktopMic', 'btnComposerAttach', 'btnChatAppAttach', 'btnDesktopAttach', 'fileInput']) {
     const control = document.getElementById(id) as HTMLButtonElement | HTMLInputElement | null;
     if (!control) continue;
     const mayStopDictation = control.classList.contains('composer-mic-btn--recording');

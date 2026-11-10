@@ -1,8 +1,13 @@
 /**
- * Sixteen palette themes (8 families × dark/light), persistence, and DOM application.
+ * Palette families in dark and light, persistence, and DOM application.
  */
 
 import { scheduleAppearancePersist } from './appearance/persist-schedule';
+import {
+  DEFAULT_THEME_FAMILY,
+  DEFAULT_THEME_ID,
+  THEME_FAMILIES,
+} from './lib/appearance-choices.mjs';
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -10,7 +15,7 @@ export const THEME_STORAGE_KEY = 'minnow.theme';
 export const THEME_FOLLOW_SYSTEM_KEY = 'minnow.theme.followSystem';
 export const THEME_FAMILY_KEY = 'minnow.theme.family';
 
-export const THEME_FAMILIES = ['swamp', 'desert', 'ocean', 'coral', 'mono', 'matrix', 'human', 'mint'] as const;
+export { DEFAULT_THEME_FAMILY, DEFAULT_THEME_ID, THEME_FAMILIES };
 export type ThemeFamily = (typeof THEME_FAMILIES)[number];
 
 export const THEME_MODES = ['dark', 'light'] as const;
@@ -18,7 +23,7 @@ export type ThemeMode = (typeof THEME_MODES)[number];
 
 export type ThemeId = `${ThemeFamily}-${ThemeMode}`;
 
-const THEME_ID_RE = /^(swamp|desert|ocean|coral|mono|matrix|human|mint)-(dark|light)$/;
+const THEME_ID_RE = new RegExp(`^(${THEME_FAMILIES.join('|')})-(dark|light)$`);
 
 /** Maps pre-rename family ids (and sage default) to current ThemeFamily. */
 const LEGACY_FAMILY_ALIASES: Record<string, ThemeFamily> = {
@@ -37,6 +42,11 @@ export interface ThemeFamilyMeta {
 }
 
 export const THEME_FAMILY_META: ThemeFamilyMeta[] = [
+  {
+    id: 'graphite',
+    name: 'Graphite',
+    blurb: 'Neutral surfaces with an accent you choose.',
+  },
   {
     id: 'swamp',
     name: 'Swamp',
@@ -78,10 +88,6 @@ export const THEME_FAMILY_META: ThemeFamilyMeta[] = [
     blurb: 'Cool charcoal neutrals with mint phosphor accent and icy cyan highlights.',
   },
 ];
-
-/** Default when storage is empty or invalid. */
-export const DEFAULT_THEME_ID: ThemeId = 'swamp-dark';
-export const DEFAULT_THEME_FAMILY: ThemeFamily = 'swamp';
 
 function isThemeFamily(v: string | null): v is ThemeFamily {
   return typeof v === 'string' && (THEME_FAMILIES as readonly string[]).includes(v);
@@ -173,7 +179,7 @@ function migrateLegacyThemeStorage(): void {
   }
   if (raw === 'system') {
     writeStorage(THEME_FOLLOW_SYSTEM_KEY, '1');
-    writeStorage(THEME_FAMILY_KEY, DEFAULT_THEME_FAMILY);
+    writeStorage(THEME_FAMILY_KEY, 'swamp');
     removeStorage(THEME_STORAGE_KEY);
   }
 }
@@ -221,7 +227,8 @@ export function getMode(id: ThemeId): ThemeMode {
 function updateThemeColorMeta(id: ThemeId): void {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) return;
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--mn-bg').trim();
+  const computed = getComputedStyle(document.documentElement);
+  const bg = computed.backgroundColor || computed.getPropertyValue('--mn-bg').trim();
   if (bg) meta.setAttribute('content', bg);
   else meta.setAttribute('content', getMode(id) === 'dark' ? '#0f1216' : '#f7f7f4');
 }

@@ -243,3 +243,75 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+html.mn-graphite-workspace .fork-model-dialog__backdrop {
+  background: var(--mn-graphite-scrim, var(--mn-overlay));
+}
+
+.fork-model-dialog__backdrop--thread {
+  align-items: flex-start;
+  padding-top: min(110px, 12dvh);
+}
+
+.fork-model-dialog__backdrop--thread .fork-model-dialog {
+  max-height: calc(100dvh - min(110px, 12dvh) - 16px);
+  overflow: auto;
+}
+
+.fork-model-dialog__choices { display: grid; gap: 6px; }
+.fork-model-dialog__choices[hidden], .fork-model-dialog__model-field[hidden] { display: none; }
+.fork-model-dialog__choices > label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 8px 12px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 10px;
+  cursor: pointer;
+}
+.fork-model-dialog__choices > label:has(input:checked) { border-color: var(--mn-accent-border); }
+.fork-model-dialog__choices > label:hover { background: var(--mn-graphite-hover, var(--mn-surface-elevated)); }
+.fork-model-dialog__choices input { margin: 0; accent-color: var(--mn-accent); }
+.fork-model-dialog__choices > label > span { display: grid; gap: 2px; min-width: 0; flex: 1; font-size: 13px; overflow-wrap: anywhere; }
+.fork-model-dialog__choices small { color: var(--mn-fg-muted); font-size: 11.5px; }
+.fork-model-dialog__current { padding: 2px 6px; border-radius: 4px; background: var(--mn-graphite-active, var(--mn-surface-2)); }
+.fork-model-dialog__backdrop--thread .fork-model-dialog__btn--primary { display: inline-flex; align-items: center; gap: 6px; }
+
+html.mn-graphite-workspace .fork-model-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: var(--mn-graphite-raised, var(--mn-surface-1));
+  box-shadow: var(--mn-graphite-popup, var(--shadow-lift));
+}
+
+.fork-model-dialog__subtitle {
+  margin: -8px 0 14px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 12.5px;
+}
+
+.fork-model-dialog__carry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--mn-graphite-line, var(--mn-border));
+  border-radius: 8px;
+}
+
+.fork-model-dialog__carry legend {
+  padding-inline: 4px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  font-size: 12px;
+}
+
+.fork-model-dialog__carry label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  font-size: 12px;
+}

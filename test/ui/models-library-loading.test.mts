@@ -162,3 +162,24 @@ test('the same state renders into a new mount', () => {
   assert.equal(document.querySelectorAll('.models-row').length, 2);
   assert.equal(document.querySelector('.models-row__loading')?.textContent, 'Loading weights');
 });
+
+test('library controls disclose the existing filters and loading updates the compact row in place', () => {
+  const toolbar = document.getElementById('modelsLibraryControls');
+  const toggle = document.querySelector<HTMLButtonElement>('.models-library-toolbar-toggle')!;
+  assert.ok(toolbar?.querySelector('input[type="search"]'));
+  assert.equal(toggle.getAttribute('aria-controls'), toolbar.id);
+  toggle.click();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  assert.ok(document.getElementById('modelsInstalledBody')?.classList.contains('is-controls-open'));
+  toggle.click();
+
+  const progress = document.querySelector<HTMLProgressElement>('.models-row__graphite-progress')!;
+  assert.equal(progress.value, 12);
+  getModelsState().loads[0].percent = 68;
+  render();
+  assert.equal(document.querySelector('.models-row__graphite-progress'), progress);
+  assert.equal(progress.value, 68);
+  getModelsState().loads[0].percent = null;
+  render();
+  assert.equal(progress.hasAttribute('value'), false);
+});

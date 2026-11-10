@@ -14,7 +14,7 @@
   border: 1px solid var(--mn-border-strong);
   border-radius: 16px;
   background: var(--mn-surface-0);
-  box-shadow: 0 16px 48px -16px var(--mn-shadow);
+  box-shadow: var(--mn-composer-shadow);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 0;
@@ -26,7 +26,7 @@
 
 .input-bar:focus-within {
   border-color: var(--mn-accent-border);
-  box-shadow: 0 0 0 4px var(--mn-accent-soft), 0 16px 48px -16px var(--mn-shadow);
+  box-shadow: 0 0 0 3px var(--mn-accent-soft), var(--mn-composer-shadow);
 }
 
 /* Run status: above the card, only while the active chat's run is live. */
@@ -100,7 +100,8 @@
   max-width: 100%;
   box-sizing: border-box;
   margin: 0;
-  padding: 8px 4px 8px 10px;
+  padding: 8px 0 8px 10px;
+  gap: 2px;
 }
 
 .input-bar .input-bar-send-stack {
@@ -108,7 +109,7 @@
   order: 2;
   align-self: stretch;
   gap: 2px;
-  padding: 8px 8px 8px 0;
+  padding: 8px 8px 8px 2px;
 }
 
 .input-row {
@@ -152,6 +153,15 @@
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.input-bar .input-inset-actions:not(:empty)::before {
+  content: '';
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin-inline: 4px;
+  background: var(--mn-graphite-line);
 }
 
 .input-inset-btn {
@@ -356,7 +366,8 @@
   outline-offset: 1px;
 }
 
-#msgInput {
+#msgInput,
+.composer-textarea {
   width: 100%;
   box-sizing: border-box;
   background: var(--mn-bg);
@@ -391,9 +402,11 @@
   box-shadow: 0 0 0 3px var(--mn-accent-soft);
 }
 
-#msgInput::placeholder { color: var(--mn-fg-subtle); }
+#msgInput::placeholder,
+.composer-textarea::placeholder { color: var(--mn-fg-subtle); }
 
-#msgInput:disabled {
+#msgInput:disabled,
+.composer-textarea:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -435,10 +448,10 @@
   place-items: center;
   width: 32px;
   height: 32px;
-  background: var(--mn-accent);
+  background: var(--mn-graphite-button, var(--mn-accent));
   border: none;
   border-radius: 50%;
-  color: var(--mn-fg-on-accent);
+  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
   cursor: pointer;
   transition:
     opacity var(--duration-fast) var(--ease-out),
@@ -451,7 +464,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .send-btn:hover:not(:disabled):not(.send-btn--stop) {
-    background: color-mix(in srgb, var(--mn-accent) 88%, var(--mn-fg));
+    opacity: 0.9;
   }
 }
 
@@ -465,7 +478,7 @@
 }
 
 .send-btn.send-btn--stop {
-  background: color-mix(in srgb, var(--mn-fg) 5%, transparent);
+  background: color-mix(in srgb, var(--mn-fg) 7%, transparent);
   border: 1px solid var(--mn-border-strong);
   /* --mn-fg: white on dark veil (light theme), light text on light veil (dark theme) */
   color: var(--mn-fg);
@@ -513,6 +526,11 @@
   transition: opacity 0.4s var(--ease-out);
 }
 
+:root[data-reduce-motion] .composer-wave { display: none; }
+:root[data-reduce-motion] .send-btn.send-btn--stop.is-model-working {
+  border-color: var(--mn-accent-border);
+}
+
 .send-btn .minnow-glyph {
   width: 17px;
   height: 17px;
@@ -540,6 +558,10 @@
 }
 
 .input-bar .composer-run-target-wrap { gap: 2px; }
+
+.input-bar .composer-controls__trail { gap: 2px; }
+.input-bar .composer-attach-btn { --input-inset-btn-size: 28px; }
+.input-bar .composer-attach-btn .icon-svg { --mn-icon-size: 16px; }
 
 .input-bar .composer-run-target-btn,
 .input-bar .thinking-toggle-btn,
@@ -576,25 +598,43 @@
 .input-bar .composer-overflow-btn { width: 28px; }
 .input-bar .composer-overflow-btn[aria-expanded='true'] { background: var(--composer-ghost-hover); color: var(--mn-fg); }
 
-/* Context: a small ring and a mono percent, in the ink rather than the accent. */
-.input-bar .context-usage-ring { width: auto; gap: 6px; padding: 0 8px; }
-.input-bar .context-usage-ring__svg { width: 14px; height: 14px; }
-.input-bar .context-usage-ring__track { stroke: var(--mn-border-strong); stroke-width: 3.5; }
-.input-bar .context-usage-ring__fill { stroke: var(--mn-fg-muted); stroke-width: 3.5; }
+/* Context usage stays accessible through the button and its detail panel. */
+.input-bar .context-usage-ring { width: 28px; padding: 0; justify-content: center; }
+.input-bar .context-usage-ring__svg { width: 16px; height: 16px; }
+.input-bar .context-usage-ring__track { stroke: var(--mn-border-strong); stroke-width: 2.5; }
+.input-bar .context-usage-ring__fill { stroke: var(--mn-accent); stroke-width: 2.5; }
 .input-bar .context-usage-ring--warn .context-usage-ring__fill { stroke: var(--mn-warning); }
 .context-usage-ring__pct { display: none; }
-.input-bar .context-usage-ring__pct:not(:empty) {
-  display: inline;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--mn-fg-muted);
-}
 
 .input-bar .composer-model-trigger { gap: 4px; padding: 0 6px 0 8px; }
 .input-bar .composer-model-trigger__logo { display: none; }
+.input-bar .composer-model-trigger__spinner {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+}
+.input-bar .composer-model-trigger__spinner[data-load-state="loading"] {
+  width: 10px;
+  height: 10px;
+}
 .input-bar .composer-controls__trail :is(.composer-model-trigger-anchor, .composer-model-trigger-wrap) {
   min-width: 0;
+}
+
+#mainColumn .composer-controls--compact > .context-usage-anchor {
+  order: 3;
+  margin-inline-start: 0;
+}
+
+#mainColumn .composer-controls--compact > .composer-controls__trail { margin-inline-start: auto; }
+#mainColumn .composer-controls--compact > #composerOverflowAnchor { order: 7; }
+
+@container composer (min-width: 500px) {
+  #mainColumn .composer-controls--compact .permission-pill__label,
+  #mainColumn .composer-run-target-btn--local .composer-run-target__label { display: inline; }
+  #mainColumn .composer-run-target-btn--local { width: auto; padding-inline: 8px; }
+  #mainColumn .permission-pill:not([data-level='full']) { border-color: transparent; }
+  #mainColumn .permission-pill:not([data-level='full']):hover { background: var(--composer-ghost-hover); }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -607,9 +647,6 @@
     color: var(--mn-fg);
   }
 }
-
-/* The prompt expander only has something to work on once there is text. */
-.input-bar:has(#msgInput:placeholder-shown) .composer-expand-btn { display: none; }
 
 .send-btn .send-btn__arrow { --mn-icon-size: 18px; }
 .send-btn__stop {

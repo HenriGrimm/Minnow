@@ -175,38 +175,3 @@ test('Needs you answers a single-choice question from the sidebar and leaves a r
   assert.equal(section.querySelector('.needs-you-card'), null);
   assert.match(section.querySelector('.needs-you-done')!.textContent!, /Answered: Remove it now.*resuming/);
 });
-
-test('header: the checked-out branch with push / pull counts and changed files', () => {
-  const list = setup([chat('one')]);
-  document.body.insertAdjacentHTML('afterbegin', '<button id="sidebarBranch" hidden><span class="chat-sidebar-branch__name"></span><span class="chat-sidebar-branch__sync"></span><span class="chat-sidebar-branch__changed"></span></button>');
-  renderSidebar();
-  const branch = document.getElementById('sidebarBranch')!;
-  assert.equal(branch.hidden, true, 'hidden until git facts land');
-
-  resetSidebarGitStateForTests({ cwd: WS, current: 'codex/persistent-agent-chats', ahead: 2, behind: 0, changed: 3 });
-  renderSidebar();
-  assert.equal(branch.hidden, false);
-  assert.equal(branch.querySelector('.chat-sidebar-branch__name')!.textContent, 'codex/persistent-agent-chats');
-  assert.equal(branch.querySelector('.chat-sidebar-branch__sync')!.textContent, '↑2');
-  assert.equal(branch.querySelector('.chat-sidebar-branch__changed')!.textContent, '3 changed');
-  assert.equal(branch.getAttribute('aria-label'), 'Branch codex/persistent-agent-chats, 2 commits to push, 3 changed files. Switch branch or worktree');
-
-  resetSidebarGitStateForTests({ cwd: WS, current: 'main', ahead: 0, behind: 0, changed: 0 });
-  renderSidebar();
-  assert.equal(branch.querySelector('.chat-sidebar-branch__sync')!.textContent, '');
-  assert.match(branch.getAttribute('aria-label')!, /Branch main, up to date\./);
-  assert.ok(list);
-});
-
-test('header outside git: the Chats title holds the slot; inside git the branch replaces it', () => {
-  setup([chat('one')]);
-  document.body.insertAdjacentHTML('afterbegin', '<span id="sidebarTitle">Chats</span><button id="sidebarBranch" hidden><span class="chat-sidebar-branch__name"></span><span class="chat-sidebar-branch__sync"></span><span class="chat-sidebar-branch__changed"></span></button>');
-  resetSidebarGitStateForTests({ cwd: WS });
-  renderSidebar();
-  assert.equal(document.getElementById('sidebarBranch')!.hidden, true);
-  assert.equal(document.getElementById('sidebarTitle')!.hidden, false);
-  resetSidebarGitStateForTests({ cwd: WS, current: 'main' });
-  renderSidebar();
-  assert.equal(document.getElementById('sidebarBranch')!.hidden, false);
-  assert.equal(document.getElementById('sidebarTitle')!.hidden, true);
-});

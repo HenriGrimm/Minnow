@@ -130,7 +130,7 @@ function bindFilePanelControls(): void {
     if (!(target instanceof HTMLElement)) return;
     if (
       !target.closest(
-        '#rightPaneSlotPrimary, #rightPaneSlotSecondary, #fileViewerHost, #previewBody',
+        '#rightPaneSlotPrimary, #rightPaneSlotSecondary, .file-viewer-pane, .preview-pane',
       )
     ) {
       return;

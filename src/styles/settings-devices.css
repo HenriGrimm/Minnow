@@ -9,13 +9,14 @@
 
 .devices-header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mn-space-2) var(--mn-space-4);
 }
 
 .devices-header__intro {
   display: flex;
+  flex: 1 1 15rem;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
@@ -33,23 +34,7 @@
 }
 
 .devices-header .settings-action-btn {
-  flex-shrink: 0;
-}
-
-.devices-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.devices-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--mn-border);
-  border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  margin-inline-start: auto;
 }
 
 .devices-card__head {
@@ -65,18 +50,14 @@
 
 .devices-card__title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--mn-fg);
 }
 
 .devices-pill {
-  margin-left: auto;
-  padding: 2px 8px;
+  padding: var(--mn-space-0-5) var(--mn-space-2);
   border: 1px solid var(--mn-border);
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
+  border-radius: var(--mn-radius-pill);
+  font-size: var(--mn-type-xs);
+  font-weight: var(--mn-weight-semibold);
   color: var(--mn-fg-muted);
 }
 
@@ -101,7 +82,17 @@
 .devices-card__body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--mn-space-2);
+}
+
+.devices-card__body:empty,
+.devices-card__actions:empty,
+.devices-pill:empty {
+  display: none;
+}
+
+.devices-card__body .settings-field-hint {
+  margin: 0;
 }
 
 .devices-card__copy {
@@ -117,6 +108,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.devices-card__actions {
+  justify-content: flex-end;
 }
 
 .devices-address-list {
@@ -227,8 +222,10 @@
 
 .devices-row__actions {
   display: flex;
-  flex-shrink: 0;
+  max-width: 100%;
   gap: 6px;
+  margin: 0;
+  margin-inline-start: auto;
 }
 
 .devices-badge {
@@ -293,7 +290,7 @@
 
 .devices-sheet__title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   font-weight: 600;
   color: var(--mn-fg);
   text-wrap: balance;
@@ -427,12 +424,12 @@
   color: var(--mn-fg);
 }
 
-@media (max-width: 640px) {
-  .devices-header {
-    flex-direction: column;
-  }
-
+@container settings-content (max-width: 460px) {
   .devices-row {
     flex-wrap: wrap;
+  }
+
+  .devices-row__identity {
+    flex-basis: calc(100% - var(--mn-icon-lg) - var(--mn-space-3));
   }
 }

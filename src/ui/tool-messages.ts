@@ -6,6 +6,8 @@ import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { formatAskQuestionResultAsListItems } from './format-ask-question-result';
 import { createIcon } from './icon';
 import { syncToolCallBatchForRow } from './tool-call-batch';
+import { resolveChatWorktreeRoot } from '../state/chat-worktree';
+import { sessionState } from '../state/sessions';
 import {
   isImpeccableDetectFindingsResult,
   stripImpeccableDetectExitBanner,
@@ -42,6 +44,7 @@ const FILE_MUTATION_TOOLS = new Set([
   'create_spreadsheet',
   'create_word_document',
 ]);
+const FILE_READ_TOOLS = new Set(['read_file', 'read_file_range']);
 
 /** Shell tools that expose a user-facing Stop control while a run is active. */
 const KILLABLE_SHELL_TOOLS = new Set(['execute_command', 'start_background_command']);
@@ -159,7 +162,23 @@ function bindOpenFileLink(el: HTMLElement, workspacePath: string): void {
   el.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void import('./file-viewer').then((m) => m.openFileInViewer(workspacePath));
+    const wrap = el.closest<HTMLElement>('.tool-call-msg');
+    const path = wrap?.dataset.filePath || workspacePath;
+    const chatId = sessionState?.activeId;
+    const chat = sessionState?.chats.find(row => row.id === chatId);
+    void (async () => {
+      const header = document.getElementById('graphiteThreadHeader');
+      if (wrap?.closest('#chatArea') && chat && header && !header.hidden) {
+        const { openSurface } = await import('./surfaces/surfaces-column');
+        if (sessionState?.activeId !== chatId || !wrap.isConnected) return;
+        const args = argsRecordFromUnknown(tryParseArgsFromToolWrap(wrap));
+        const line = typeof args.start_line === 'number' && Number.isSafeInteger(args.start_line) && args.start_line > 0
+          ? args.start_line - 1 : undefined;
+        if (openSurface('files', { target: { path, line, workspaceRoot: resolveChatWorktreeRoot(chat) || chat.workspacePath } })) return;
+      }
+      const { openFileInViewer } = await import('./file-viewer');
+      if (chatId === sessionState?.activeId) await openFileInViewer(path);
+    })().catch(error => console.error('[transcript] Could not open file', error));
   });
 }
 
@@ -274,6 +293,27 @@ function paintRow(
   }
 
   summary?.setAttribute('aria-label', rowAriaLabel(row, status));
+}
+
+function linkTerminalTarget(wrap: HTMLElement, runId: string): void {
+  const target = wrap.querySelector<HTMLElement>('.tool-call-target');
+  if (!target || !target.textContent || target.dataset.linkBound) return;
+  const control = document.createElement('button');
+  control.type = 'button';
+  control.className = `${target.className} tool-call-target--file-link`;
+  control.dataset.linkBound = 'true';
+  control.textContent = target.textContent;
+  control.title = 'Show this run in Terminal';
+  control.setAttribute('aria-label', 'Show this run in Terminal');
+  control.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const chatId = sessionState?.activeId;
+    void import('./surfaces/surfaces-column').then(({ openSurface }) => {
+      if (wrap.isConnected && sessionState?.activeId === chatId) openSurface('terminal', { target: { runId } });
+    });
+  });
+  target.replaceWith(control);
 }
 
 function sectionLabel(text: string): HTMLElement {
@@ -689,6 +729,7 @@ export function renderToolCall(
   const argsRecord = argsRecordFromUnknown(argsForPresentation);
   const pathArg = typeof argsRecord.path === 'string' ? argsRecord.path : undefined;
   const isFileCard = FILE_MUTATION_TOOLS.has(name) && pathArg !== undefined;
+  const isFileLink = pathArg !== undefined && (isFileCard || FILE_READ_TOOLS.has(name));
 
   const statusGlyph = document.createElement('span');
   statusGlyph.className = 'tool-call-status';
@@ -700,9 +741,9 @@ export function renderToolCall(
   const action = document.createElement('span');
   action.className = 'tool-call-action';
 
-  const target = document.createElement(isFileCard ? 'button' : 'span');
+  const target = document.createElement(isFileLink ? 'button' : 'span');
   target.className = 'tool-call-target';
-  if (isFileCard) target.setAttribute('type', 'button');
+  if (isFileLink) target.setAttribute('type', 'button');
 
   const outcome = document.createElement('span');
   outcome.className = 'tool-call-outcome hidden';
@@ -722,12 +763,19 @@ export function renderToolCall(
   wrap.appendChild(details);
   paintRow(wrap, buildToolRow(name, argsRecord, 'running'), 'running');
 
+  if (isFileLink) {
+    wrap.dataset.filePath = pathArg;
+    if (isFileCard) applyFileCardTarget(wrap, pathArg);
+    else {
+      target.classList.add('tool-call-target--file-link');
+      target.setAttribute('aria-label', `Open ${pathArg}`);
+      bindOpenFileLink(target, pathArg);
+    }
+  }
   if (isFileCard) {
     wrap.classList.add('tool-call-msg--file');
     details.classList.add('tool-call-details--file');
     details.open = true;
-    wrap.dataset.filePath = pathArg;
-    applyFileCardTarget(wrap, pathArg);
   }
 
   if (KILLABLE_SHELL_TOOLS.has(name)) {
@@ -867,6 +915,8 @@ export function renderToolResult(
 
   if (!failed) {
     appendCodeChangeBadge(summary, codeChange);
+    const runId = extractShellRunIdFromToolResult(toolName, result);
+    if (runId) linkTerminalTarget(wrap, runId);
   } else {
     summary.querySelector('.tool-call-code-change')?.remove();
   }

@@ -290,7 +290,7 @@
 
 .settings-disclosure > summary::before {
   content: '›';
-  font-size: 18px;
+  font-size: var(--mn-type-2xl);
   color: var(--mn-fg-muted);
 }
 
@@ -1069,7 +1069,7 @@ label.settings-action-btn {
   display: block;
   width: 40px;
   height: 22px;
-  border-radius: 11px;
+  border-radius: var(--mn-radius-pill);
   background: color-mix(in srgb, var(--mn-fg) 18%, var(--mn-bg));
   border: 1px solid var(--mn-border);
   transition: background-color var(--duration-fast) var(--ease-out);

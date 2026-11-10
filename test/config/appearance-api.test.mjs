@@ -36,7 +36,7 @@ describe('appearance config API', () => {
   test('GET returns default blob when the file is missing', async () => {
     const res = await httpRequest(baseUrl, 'GET', '/api/config/appearance');
     assert.equal(res.status, 200);
-    assert.equal(res.json.themeId, 'swamp-dark');
+    assert.equal(res.json.themeId, 'graphite-dark');
     assert.equal(res.json.updatedAt, null);
   });
 
@@ -45,6 +45,10 @@ describe('appearance config API', () => {
       themeId: 'ocean-dark',
       family: 'ocean',
       followSystem: false,
+      colorIntensity: 'rich',
+      graphiteAccent: 'rose',
+      density: 'compact',
+      reduceMotion: true,
     });
     assert.equal(put.status, 200);
     assert.equal(put.json.ok, true);
@@ -55,6 +59,10 @@ describe('appearance config API', () => {
     assert.equal(get.status, 200);
     assert.equal(get.json.themeId, 'ocean-dark');
     assert.equal(get.json.family, 'ocean');
+    assert.equal(get.json.colorIntensity, 'rich');
+    assert.equal(get.json.graphiteAccent, 'rose');
+    assert.equal(get.json.density, 'compact');
+    assert.equal(get.json.reduceMotion, true);
 
     const raw = JSON.parse(await fs.readFile(path.join(homeDir, 'appearance.json'), 'utf8'));
     assert.equal(raw.themeId, 'ocean-dark');

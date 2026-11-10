@@ -86,6 +86,22 @@ test('error recovery and workspace changes invalidate cached content', async () 
   assert.equal(view.root.querySelector<HTMLElement>('.scc-filerow')?.dataset.path, 'recovered.ts');
 });
 
+test('Graphite changes keep untracked actions scoped while displaying refreshed line totals', async () => {
+  setup();
+  document.documentElement.classList.add('mn-graphite-apps');
+  status = { ok: true, unstaged: [{ path: 'edited.ts', status: 'M', additions: 4, deletions: 2 }],
+    untracked: [{ path: 'new.ts', status: '?', additions: 3, deletions: 0 }] };
+  await view.refresh();
+  assert.equal(view.root.querySelectorAll('.scc-filegroup').length, 1);
+  assert.match(view.root.querySelector('.scc-filegroup__head')?.textContent ?? '', /Changes2/);
+  const row = view.root.querySelector<HTMLElement>('[data-bucket="untracked"]')!;
+  assert.equal(row.querySelector('.scc-filerow__status')?.getAttribute('aria-label'), 'Untracked');
+  assert.match(row.querySelector('.scc-filerow__counts')?.textContent ?? '', /\+3/);
+  status.untracked![0].additions = 5;
+  await view.refresh();
+  assert.match(view.root.querySelector('[data-bucket="untracked"] .scc-filerow__counts')?.textContent ?? '', /\+5/);
+});
+
 test('late diff replies cannot replace a newer selection of the same path in another bucket', async () => {
   setup();
   status = { ok: true, staged: [{ path: 'shared.ts', status: 'M' }], unstaged: [{ path: 'shared.ts', status: 'M' }] };

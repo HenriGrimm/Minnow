@@ -52,12 +52,6 @@
   outline-offset: -2px;
 }
 
-@media (pointer: coarse) {
-  :root {
-    --mn-menu-item-height: var(--touch-min);
-  }
-}
-
 @media (hover: hover) and (pointer: fine) {
   .mn-dropdown__item:hover:not(:disabled):not([aria-selected='true']):not([aria-checked='true']) {
     background: var(--mn-menu-hover-bg);

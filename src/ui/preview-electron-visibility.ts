@@ -14,6 +14,7 @@ import {
   stopPreviewFrameCache,
 } from './preview-popover-snapshot';
 import { getPreviewOccluders, subscribePreviewOcclusion } from './preview-occlusion';
+import { isGraphiteIndependentBrowser } from './surfaces/surface-bridge';
 
 /** Full-screen app layer roots that cover the Code workspace when `is-open`. */
 const FULLSCREEN_OVERLAY_IDS = [
@@ -175,6 +176,10 @@ function isDesktopBrowserMountActive(): boolean {
 
 /** True when the preview split pane is the active right pane and not CSS-hidden. */
 export function isPreviewPaneDomVisible(): boolean {
+  if (isGraphiteIndependentBrowser()) {
+    const pane = document.getElementById('previewPane');
+    return Boolean(pane?.closest('.graphite-surface-pane') && !pane.closest('[hidden], .hidden'));
+  }
   const state = getFilePanelState();
   if (state.rightPaneMode === 'split' && isRightPaneSplitActive()) {
     const primaryPreview = state.rightPaneSplit.primary.kind === 'preview';

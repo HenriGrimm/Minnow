@@ -41,9 +41,9 @@ describe('theme', () => {
     });
   });
 
-  test('defaults to swamp-dark when storage empty', () => {
+  test('defaults to graphite-dark when storage empty', () => {
     assert.equal(getStoredTheme(), DEFAULT_THEME_ID);
-    assert.equal(DEFAULT_THEME_ID, 'swamp-dark');
+    assert.equal(DEFAULT_THEME_ID, 'graphite-dark');
   });
 
   test('reads explicit theme id from minnow.theme', () => {
@@ -104,9 +104,9 @@ describe('theme', () => {
     }
   });
 
-  test('invalid theme id falls back to swamp-dark', () => {
+  test('invalid theme id falls back to graphite-dark', () => {
     store.set(THEME_STORAGE_KEY, 'neon-dark');
-    assert.equal(getStoredTheme(), 'swamp-dark');
+    assert.equal(getStoredTheme(), 'graphite-dark');
   });
 
   test('getFollowSystem and getStoredFamily', () => {

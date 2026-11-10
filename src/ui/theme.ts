@@ -28,6 +28,7 @@ import {
   subscribeAppearanceFonts,
 } from '../appearance/fonts';
 import { seedLocalStorageFromAppearanceBoot } from '../appearance/persist';
+import { applyGraphitePreferences } from '../appearance/graphite-preferences';
 
 export {
   getFollowSystem,
@@ -62,6 +63,7 @@ function syncHljsDarkStylesheet(effective: ThemeMode): void {
 
 /** Apply effective theme to DOM and dependent surfaces. */
 export function applyResolvedTheme(id: ThemeId): void {
+  applyGraphitePreferences();
   applyThemeId(id, { persist: false });
   if (isCustomThemeEnabled()) {
     applyCustomTheme();

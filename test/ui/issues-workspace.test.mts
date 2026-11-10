@@ -15,6 +15,7 @@ import type { IssueWorkSnapshot } from '../../src/state/git-api.ts';
 import { APPEARANCE_STORAGE_KEYS } from '../../src/appearance/types.ts';
 import { streamingChatIds } from '../../src/app-state.ts';
 import { notifyChatStreamActivity, notifyChatStreamEnded, registerChatStreamText } from '../../src/chat/streaming-state.ts';
+import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 
 let calls: Array<{ action: string; input: any }> = [];
 let inspect: IssueWorkSnapshot = {} as IssueWorkSnapshot;
@@ -82,6 +83,23 @@ test('work inspection failures show recovery without the start-chat empty state'
   assert.match(content.textContent!, /Restart Minnow \(including the tool server\)/);
   assert.doesNotMatch(content.textContent!, /Start a linked chat/);
   assert.equal(calls.length, 0);
+});
+
+test('Work offers batch plan approval and keeps the plan available when approval fails', async () => {
+  const issue = findIssueById('MIN-1')!;
+  issue.planPath = 'documentation/plans/fix.md';
+  issue.agent = {
+    agentId: 'planner', phase: 'done', startedAt: 1, updatedAt: 1, chatId: 'issue-chat',
+    home: { groupId: 'plan-group', state: 'planned', mode: 'plan', modelId: 'model', baseBranch: 'main' },
+  };
+  click('Work');
+  await flush();
+  assert.match(document.querySelector('.issues-work-plan-approval')!.textContent!, /Plan ready for review/);
+  click('Approve plan');
+  assert.equal(document.querySelector<HTMLButtonElement>('.issues-work-plan-approval button[disabled]')?.textContent, 'Approving…');
+  await flush();
+  assert.match(document.querySelector('.issues-work-plan-approval [role="alert"]')?.textContent ?? '', /Open this issue’s project/);
+  assert.equal(issue.agent.home?.state, 'planned');
 });
 
 test('linked chats use the main transcript appearance and active composer context', async () => {
@@ -239,4 +257,29 @@ test('Chat borrows the wired composer and returns the same controls on close', a
   assert.equal(document.querySelector('.shared-chat-host #msgInput'), input);
   assert.equal(input.value, 'Unsent follow-up');
   send.click(); assert.equal(clicks, 2);
+});
+
+test('switching from issue Chat to Code returns the composer and restores it on return', async () => {
+  const panel = document.querySelector('.issues-work-tabs')!.parentElement!.parentElement!;
+  const issueView = document.createElement('div');
+  issueView.id = 'issuesView';
+  panel.before(issueView);
+  issueView.append(panel);
+  const composer = document.querySelector('.input-bar');
+
+  try {
+    launchInstance('issues');
+    click('Chat');
+    await flush();
+    assert.equal(issueView.querySelector('.shared-chat-host .input-bar'), composer);
+
+    launchInstance('code');
+    assert.equal(document.querySelector('#mainColumn > .input-bar'), composer);
+
+    launchInstance('issues');
+    await flush();
+    assert.equal(issueView.querySelector('.shared-chat-host .input-bar'), composer);
+  } finally {
+    resetInstancesForTests();
+  }
 });

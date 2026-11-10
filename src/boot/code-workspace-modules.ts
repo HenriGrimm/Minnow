@@ -42,6 +42,10 @@ export function ensureCodeWorkspaceModules(): Promise<void> {
       const terminal = await import('../ui/terminal-panel');
       await step('terminal panel', () => terminal.initTerminalPanel());
       await step('terminal availability', () => terminal.onTerminalServerAvailabilityChanged());
+      await step('Graphite surfaces', async () => {
+        const { initCodeGraphiteSurfaces } = await import('../ui/surfaces/code-surfaces');
+        initCodeGraphiteSurfaces();
+      });
 
       await step('shell run UI', async () => {
         const { initShellRunUi } = await import('../ui/shell-run-ui');
@@ -77,6 +81,15 @@ export function ensureCodeWorkspaceModules(): Promise<void> {
       await step('code change strip', async () => {
         const { initCodeChangeStrip } = await import('../ui/code-change-strip');
         initCodeChangeStrip();
+      });
+
+      await step('Graphite thread header', async () => {
+        const { mountGraphiteThreadHeader } = await import('../ui/thread-card');
+        mountGraphiteThreadHeader();
+      });
+      await step('Graphite context surfaces', async () => {
+        const { mountGraphiteContextSurfaces } = await import('../ui/surfaces/graphite-context-surfaces');
+        mountGraphiteContextSurfaces();
       });
 
       await step('terminal shortcut', () => terminal.registerTerminalKeyboardShortcut());

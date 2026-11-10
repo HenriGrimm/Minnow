@@ -62,7 +62,7 @@ export function backupNote(tone: 'info' | 'warn' | 'danger' | 'ok', text: string
 }
 
 /** Progress bar with a caption; reused by export, snapshot and restore. */
-export function createBackupProgress(): {
+export function createBackupProgress(label = 'Backup progress'): {
   root: HTMLElement;
   set: (percent: number, caption: string) => void;
 } {
@@ -71,6 +71,7 @@ export function createBackupProgress(): {
   root.setAttribute('aria-live', 'polite');
   const track = el('div', 'backup-progress__track');
   track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-label', label);
   track.setAttribute('aria-valuemin', '0');
   track.setAttribute('aria-valuemax', '100');
   const bar = el('div', 'backup-progress__bar');
@@ -80,7 +81,7 @@ export function createBackupProgress(): {
   return {
     root,
     set(percent, text) {
-      bar.style.width = `${percent}%`;
+      bar.style.setProperty('--mn-progress', String(percent / 100));
       track.setAttribute('aria-valuenow', String(percent));
       caption.textContent = text;
     },
@@ -358,7 +359,7 @@ export function mountRestorePanel(host: HTMLElement, options: RestorePanelOption
 
     const buttons = [...actions.querySelectorAll<HTMLButtonElement>('button')];
     for (const button of buttons) button.disabled = true;
-    const progress = createBackupProgress();
+    const progress = createBackupProgress('Restore progress');
     progress.set(0, 'Unpacking and checking the backup…');
     feedback.appendChild(progress.root);
 

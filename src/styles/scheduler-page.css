@@ -317,7 +317,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px 20px;
-  padding: 14px 16px;
+  padding: calc(14px + var(--mn-density-step)) 16px;
   border: 1px solid var(--mn-border);
   background: var(--mn-bg);
 }

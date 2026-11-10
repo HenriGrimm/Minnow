@@ -1,64 +1,64 @@
-/**
- * The phone app: four tabs (Chats, Boards, Issues, Files) over the same
- * sessions, engine, issue store and board server as the desktop.
- */
+/** The dedicated Graphite phone workspace over Minnow’s shared runtime. */
 
 import '../styles/mobile-app.css';
-import { getChatItemDotContext, resolveChatItemDotState, subscribeChatInputPending } from '../ui/chat-item-dot';
-import { subscribeChatStreamEnd } from '../chat/streaming-state';
+import { getChatItemDotContext, resolveChatItemDotState } from '../ui/chat-item-dot';
 import { listIssues } from '../state/issues-store';
-import { subscribeIssuesChanges } from '../state/issues-events';
 import { sessionState } from '../state/sessions';
-import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
+import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { normalizeWorkspacePath, workspacePathsEqual } from '../lib/normalize-workspace-path';
 import type { NotificationRecord } from '../notifications/types';
 import { createBoardScreen } from './board';
 import { createBoardsScreen } from './boards';
 import { createChatThreadScreen } from './chat-thread';
-import { createChatsScreen } from './chats';
-import { el, icon } from './dom';
+import { createChatsScreen, createMobileModelCard, listedMobileChats } from './chats';
+import { el, icon, iconButton } from './dom';
 import { createFileViewerScreen } from './file-viewer';
 import { createDirScreen } from './files';
 import { createIssueScreen } from './issue';
 import { createIssuesScreen } from './issues';
-import { setMobileShellPreference } from './mode';
 import { getActiveTab, getMobileWorkspaceScope, getTopScreen, onTabChange, popToRoot, pushScreen, registerTab, resetWorkspaceScreens, selectTab, type MobileTabId } from './nav';
-import { closeMobileSheets, openSheet, pickFromSheet } from './sheet';
+import { closeMobileSheets, openSheet } from './sheet';
+import { openPhoneApp } from './apps';
+import { switchWorkspaceFromSheet } from './workspace-switch';
+import { isPairedDevice } from '../api/session-token';
 
-const TABS: { id: MobileTabId; label: string; glyph: string; glyphActive: string }[] = [
-  { id: 'chats', label: 'Chats', glyph: 'fi-rr-comment', glyphActive: 'fi-sr-comment' },
-  { id: 'boards', label: 'Boards', glyph: 'fi-rr-square-kanban', glyphActive: 'fi-sr-square-kanban' },
-  { id: 'issues', label: 'Issues', glyph: 'fi-rr-ticket', glyphActive: 'fi-sr-ticket' },
-  { id: 'files', label: 'Files', glyph: 'fi-rr-folder', glyphActive: 'fi-sr-folder' },
-];
+const TABS: readonly MobileTabId[] = ['chats', 'boards', 'issues', 'files'];
 
 const TAB_KEY = 'minnow.mobile.tab';
 
 let mounted = false;
+let creatingThread = false;
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 
-function openChat(chatId: string): void {
-  pushScreen(createChatThreadScreen(chatId, { openFiles: () => selectTab('files') }), 'chats');
+function openChat(chatId: string, options?: { initialPrompt?: string; focus?: boolean }): void {
+  pushScreen(createChatThreadScreen(chatId, {
+    openFiles: () => selectTab('files'), openMenu: openDrawer, ...options,
+  }), 'chats');
 }
 
-async function newChat(): Promise<void> {
+async function newChat(prompt?: string): Promise<boolean> {
+  if (creatingThread) return false;
+  creatingThread = true;
   const scope = getMobileWorkspaceScope();
-  const { createChatWithMode } = await import('../ui/sidebar');
-  const { normalizeModeId } = await import('../chat/modes/registry');
-  const { getActiveChat } = await import('../state/sessions');
-  if (scope !== getMobileWorkspaceScope()) return;
-  const lastMode = normalizeModeId(getActiveChat()?.modeId);
-  const result = await createChatWithMode({ modeId: lastMode === 'orchestrate' ? 'general' : lastMode, forceNewChat: true });
-  if (scope !== getMobileWorkspaceScope()) return;
-  if (!result.ok || !result.chatId) {
+  try {
+    const { createChatWithMode } = await import('../ui/sidebar');
+    const { normalizeModeId } = await import('../chat/modes/registry');
+    const { getActiveChat } = await import('../state/sessions');
+    if (scope !== getMobileWorkspaceScope()) return false;
+    const lastMode = normalizeModeId(getActiveChat()?.modeId);
+    const result = await createChatWithMode({ modeId: lastMode === 'orchestrate' ? 'general' : lastMode, forceNewChat: true });
+    if (scope !== getMobileWorkspaceScope()) return false;
+    if (!result.ok || !result.chatId) throw new Error(result.error ?? 'Could not start a thread');
+    openChat(result.chatId, { initialPrompt: prompt, focus: true });
+    return true;
+  } catch (error) {
     const { showToast } = await import('../ui/toast');
-    showToast(result.error ?? 'Could not start a chat', 'error');
-    return;
+    showToast(error instanceof Error ? error.message : 'Could not start a thread', 'error');
+    return false;
+  } finally {
+    creatingThread = false;
   }
-  openChat(result.chatId);
-  // Land in the composer so the keyboard is up.
-  requestAnimationFrame(() => document.getElementById('msgInput')?.focus());
 }
 
 function openBoard(boardId: string): void {
@@ -82,37 +82,79 @@ function openFile(path: string): void {
   pushScreen(createFileViewerScreen(path.replace(/^\.\//, ''), { openDir }), 'files');
 }
 
-function openSettings(): void {
-  const row = (label: string, glyph: string, onClick: () => void, description?: string) =>
-    el(
-      'button',
-      { className: 'm-pick__row', attrs: { type: 'button' }, on: { click: onClick } },
-      el('span', { className: 'm-pick__icon' }, icon(glyph, 18)),
-      el('span', { className: 'm-pick__text' }, el('span', { className: 'm-pick__label', text: label }), description ? el('span', { className: 'm-pick__desc', text: description }) : null),
-    );
-  const sheet = openSheet(
-    el(
-      'div',
-      { className: 'm-pick' },
-      row('Appearance', 'fi-rr-palette', () => {
-        sheet.close();
-        void pickFromSheet('Appearance', [
-          { value: 'system' as const, label: 'Match phone', glyph: 'fi-rr-mobile-notch' },
-          { value: 'light' as const, label: 'Light', glyph: 'fi-rr-sun' },
-          { value: 'dark' as const, label: 'Dark', glyph: 'fi-rr-moon' },
-        ]).then(async (pref) => {
-          if (!pref) return;
-          const { setThemePreference } = await import('../ui/theme');
-          setThemePreference(pref);
-        });
-      }),
-      row('Use the desktop layout', 'fi-rr-computer', () => {
-        setMobileShellPreference('off');
-        window.location.reload();
-      }, 'The full app, sized down. Best on a tablet.'),
-    ),
-    { title: 'Settings' },
+function openDrawer(): void {
+  const current = getActiveTab();
+  const chats = listedMobileChats();
+  const workspaceLabel = getWorkspaceLabel() || 'Minnow';
+  const ctx = getChatItemDotContext(null);
+  const modelCard = createMobileModelCard(() => run(() => openPhoneApp('models')));
+  const panel = el('div', { className: 'm-drawer' });
+  const drawer = openSheet(panel, { title: 'Minnow', placement: 'left', onClose: modelCard.dispose });
+
+  function run(action: () => void): void {
+    drawer.close();
+    action();
+  }
+
+  function navRow(label: string, glyph: string, action: () => void, options?: { tab?: MobileTabId; count?: number; selected?: boolean }) {
+    return el('button', {
+      className: 'm-drawer__nav',
+      attrs: { type: 'button', 'aria-current': options?.selected ? 'page' : null },
+      dataset: options?.tab ? { tab: options.tab } : undefined,
+      on: { click: () => run(action) },
+    }, icon(glyph, 16), el('span', { className: 'm-drawer__name', text: label }),
+    options?.count ? el('span', { className: 'm-drawer__meta', text: String(options.count) }) : null);
+  }
+
+  const workspace = el('button', {
+    className: 'm-drawer__workspace',
+    attrs: { type: 'button', 'aria-label': 'Switch workspace' },
+    on: { click: () => run(() => void switchWorkspaceFromSheet()) },
+  },
+  el('span', { className: 'm-drawer__logo', attrs: { 'aria-hidden': 'true' }, text: workspaceLabel.charAt(0).toLowerCase() }),
+  el('span', { className: 'm-drawer__workspace-copy' },
+    el('strong', { text: workspaceLabel }),
+    el('span', { className: 'm-mono', text: getWorkspacePath() }),
+  ), icon('fi-rr-sort-alt', 14));
+
+  const start = el('button', {
+    className: 'm-drawer__new',
+    attrs: { type: 'button' },
+    on: { click: () => run(() => void newChat()) },
+  }, icon('fi-rr-pencil', 14), el('span', { text: 'New thread' }));
+
+  const applications = el('nav', { className: 'm-drawer__apps', attrs: { 'aria-label': 'Workspace apps' } });
+  applications.append(
+    navRow('Threads', 'fi-rr-comment', () => { selectTab('chats'); popToRoot('chats'); }, { tab: 'chats', count: chats.length, selected: current === 'chats' }),
+    navRow('Issues', 'fi-rr-ticket', () => selectTab('issues'), { tab: 'issues', count: countIssuesNeedingInput(), selected: current === 'issues' }),
+    navRow('Boards', 'fi-rr-layers', () => selectTab('boards'), { tab: 'boards', selected: current === 'boards' }),
+    navRow('Brain', 'fi-rr-book-alt', () => openPhoneApp('brain')),
+    navRow('Scheduler', 'fi-rr-clock', () => openPhoneApp('scheduler')),
+    navRow('Models', 'fi-rr-microchip', () => openPhoneApp('models')),
+    navRow('Settings', 'fi-rr-settings-sliders', () => openPhoneApp('settings')),
+    el('h2', { className: 'm-drawer__label', text: 'Threads' }),
   );
+  for (const chat of chats.slice(0, 5)) {
+    const status = resolveChatItemDotState(chat, ctx);
+    const title = chat.name?.trim() || 'New thread';
+    applications.append(el('button', {
+      className: 'm-drawer__nav m-drawer__thread',
+      attrs: { type: 'button' },
+      on: { click: () => run(() => openChat(chat.id)) },
+    }, el('span', { className: 'm-drawer__thread-dot', dataset: { status } }),
+    el('span', { className: 'm-drawer__name', text: title })));
+  }
+  applications.append(navRow('Files', 'fi-rr-folder', () => selectTab('files'), { tab: 'files', selected: current === 'files' }));
+
+  const footer = el('div', { className: 'm-drawer__footer' }, modelCard.el);
+  if (isPairedDevice()) {
+    footer.append(el('button', {
+      className: 'm-drawer__device',
+      attrs: { type: 'button' },
+      on: { click: () => run(() => openPhoneApp('settings', { settingsSection: 'devices' })) },
+    }, icon('fi-rr-mobile', 13), el('span', { text: 'Paired device' })));
+  }
+  panel.append(workspace, start, applications, footer);
 }
 
 /** Notifications deep-link into the matching phone screen. Returns false to fall back. */
@@ -121,79 +163,23 @@ export async function openMobileNotificationTarget(record: NotificationRecord): 
   const { acknowledgeChatViewed } = await import('../notifications/acknowledge');
   const { markNotificationRead } = await import('../notifications/store');
   if (record.chatId?.trim()) {
+    if (!sessionState?.chats.some(chat => chat.id === record.chatId)) return false;
     acknowledgeChatViewed(record.chatId);
     openChat(record.chatId);
     return true;
   }
-  markNotificationRead(record.id);
   if (record.appId === 'issues') {
+    markNotificationRead(record.id);
     selectTab('issues');
     return true;
   }
-  return false;
-}
-
-// ── Tab bar ──────────────────────────────────────────────────────────────────
-
-function buildTabBar(): { el: HTMLElement; setBadge(tab: MobileTabId, count: number): void } {
-  const badges = new Map<MobileTabId, HTMLElement>();
-  const buttons = new Map<MobileTabId, HTMLButtonElement>();
-  const bar = el('nav', { className: 'm-tabbar', attrs: { 'aria-label': 'Sections' } });
-  for (const tab of TABS) {
-    const badge = el('span', { className: 'm-tabbar__badge', attrs: { 'aria-hidden': 'true' } });
-    badge.hidden = true;
-    const glyph = icon(tab.glyph, 22);
-    const button = el(
-      'button',
-      {
-        className: 'm-tabbar__tab',
-        attrs: { type: 'button', 'aria-label': tab.label },
-        dataset: { tab: tab.id },
-        on: { click: () => selectTab(tab.id) },
-      },
-      el('span', { className: 'm-tabbar__icon' }, glyph, badge),
-      el('span', { className: 'm-tabbar__label', text: tab.label }),
-    );
-    buttons.set(tab.id, button);
-    badges.set(tab.id, badge);
-    bar.append(button);
+  const app = record.kind === 'device_request' ? 'settings' : record.appId;
+  if (app === 'settings' || app === 'brain' || app === 'models' || app === 'scheduler') {
+    markNotificationRead(record.id);
+    openPhoneApp(app, { settingsSection: record.kind === 'device_request' ? 'devices' : undefined });
+    return true;
   }
-  const sync = (active: MobileTabId) => {
-    for (const tab of TABS) {
-      const button = buttons.get(tab.id)!;
-      const selected = tab.id === active;
-      if (selected) button.setAttribute('aria-current', 'page');
-      else button.removeAttribute('aria-current');
-      const glyph = button.querySelector('.m-tabbar__icon > i');
-      if (glyph) glyph.className = `fi ${selected ? tab.glyphActive : tab.glyph} icon-svg`;
-    }
-  };
-  sync(getActiveTab());
-  onTabChange((tab) => {
-    sync(tab);
-    try {
-      window.localStorage.setItem(TAB_KEY, tab);
-    } catch {}
-  });
-  return {
-    el: bar,
-    setBadge(tab, count) {
-      const badge = badges.get(tab);
-      if (!badge) return;
-      badge.hidden = count <= 0;
-      badge.textContent = count > 9 ? '9+' : String(count);
-      buttons.get(tab)?.setAttribute('aria-label', count > 0 ? `${TABS.find((t) => t.id === tab)?.label}, ${count} need you` : TABS.find((t) => t.id === tab)?.label ?? tab);
-    },
-  };
-}
-
-function countChatsNeedingInput(): number {
-  if (!sessionState) return 0;
-  const ctx = getChatItemDotContext(null);
-  const workspace = normalizeWorkspacePath(getWorkspacePath());
-  return sessionState.chats.filter(
-    (chat) => normalizeWorkspacePath(chat.workspacePath ?? '') === workspace && resolveChatItemDotState(chat, ctx) === 'needs-input',
-  ).length;
+  return false;
 }
 
 function countIssuesNeedingInput(): number {
@@ -212,7 +198,7 @@ function countIssuesNeedingInput(): number {
 function restoredTab(): MobileTabId {
   try {
     const saved = window.localStorage.getItem(TAB_KEY);
-    if (saved && TABS.some((tab) => tab.id === saved)) return saved as MobileTabId;
+    if (saved && (TABS as readonly string[]).includes(saved)) return saved as MobileTabId;
   } catch {}
   return 'chats';
 }
@@ -225,20 +211,29 @@ export function mountMobileShell(): void {
   const stage = el('div', { className: 'm-stage' });
   const hosts = new Map<MobileTabId, HTMLElement>();
   for (const tab of TABS) {
-    const host = el('div', { className: 'm-tab-host', dataset: { tab: tab.id } });
-    host.hidden = tab.id !== 'chats';
-    hosts.set(tab.id, host);
+    const host = el('div', { className: 'm-tab-host', dataset: { tab } });
+    host.hidden = tab !== 'chats';
+    hosts.set(tab, host);
     stage.append(host);
   }
-  const tabBar = buildTabBar();
-  const shell = el('div', { className: 'm-app', attrs: { id: 'mobileShell' } }, stage, tabBar.el);
+  const shell = el('div', { className: 'm-app', attrs: { id: 'mobileShell' } }, stage);
   document.body.append(shell);
 
   function mountRoots(): void {
-    registerTab('chats', hosts.get('chats')!, createChatsScreen({ openChat, newChat: () => void newChat(), openSettings }));
-    registerTab('boards', hosts.get('boards')!, createBoardsScreen({ openBoard }));
-    registerTab('issues', hosts.get('issues')!, createIssuesScreen({ openIssue }));
-    registerTab('files', hosts.get('files')!, createDirScreen('.', { openDir, openFile }));
+    registerTab('chats', hosts.get('chats')!, createChatsScreen({
+      openChat, newChat, openMenu: openDrawer, openModels: () => openPhoneApp('models'),
+      openAlertsSettings: () => openPhoneApp('settings', { settingsSection: 'notifications' }),
+    }));
+    const roots = {
+      boards: createBoardsScreen({ openBoard }),
+      issues: createIssuesScreen({ openIssue }),
+      files: createDirScreen('.', { openDir, openFile }),
+    };
+    for (const id of ['boards', 'issues', 'files'] as const) {
+      const screen = roots[id];
+      screen.el.querySelector('.m-header')?.prepend(iconButton('fi-rr-menu-burger', 'Open menu', openDrawer));
+      registerTab(id, hosts.get(id)!, screen);
+    }
   }
 
   let workspace = getWorkspacePath();
@@ -250,26 +245,15 @@ export function mountMobileShell(): void {
     closeMobileSheets();
     mountRoots();
     getTopScreen()?.onShow?.();
-    syncBadges();
   });
   mountRoots();
 
   const initial = restoredTab();
   if (initial !== 'chats') selectTab(initial);
 
-  let badgeFrame = 0;
-  const syncBadges = () => {
-    if (badgeFrame) return;
-    badgeFrame = requestAnimationFrame(() => {
-      badgeFrame = 0;
-      tabBar.setBadge('chats', countChatsNeedingInput());
-      tabBar.setBadge('issues', countIssuesNeedingInput());
-    });
-  };
-  subscribeChatInputPending(syncBadges);
-  subscribeChatStreamEnd(syncBadges);
-  subscribeIssuesChanges(syncBadges);
-  syncBadges();
+  onTabChange((tab) => {
+    try { window.localStorage.setItem(TAB_KEY, tab); } catch {}
+  });
 
   // Keep the composer above the software keyboard.
   const viewport = window.visualViewport;

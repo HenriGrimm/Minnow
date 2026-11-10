@@ -21,8 +21,8 @@ describe('normalizeAppearanceConfig', () => {
   });
   test('defaults when raw is empty', () => {
     const state = normalizeAppearanceConfig(null);
-    assert.equal(state.themeId, 'swamp-dark');
-    assert.equal(state.family, 'swamp');
+    assert.equal(state.themeId, 'graphite-dark');
+    assert.equal(state.family, 'graphite');
     assert.equal(state.followSystem, false);
     assert.equal(state.updatedAt, null);
     assert.equal(appearanceLooksPersisted(state), false);
@@ -97,10 +97,10 @@ describe('injectAppearanceBootScript', () => {
 });
 
 describe('defaultAppearanceConfig', () => {
-  test('matches swamp-dark defaults', () => {
+  test('matches Graphite dark and bundled fonts on a clean profile', () => {
     const state = defaultAppearanceConfig();
     assert.equal(state.version, 1);
-    assert.equal(state.themeId, 'swamp-dark');
-    assert.equal(state.fonts.ui.id, 'system');
+    assert.equal(state.themeId, 'graphite-dark');
+    assert.equal(state.fonts.ui.id, 'bundled-geist');
   });
 });

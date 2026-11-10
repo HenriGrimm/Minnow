@@ -2,7 +2,7 @@
 
 Code is the development environment: a file tree, an editor with AI completion and language-server intelligence, terminals, git, dev servers, and a browser preview — with chat sitting beside all of it, working on the same folder you are.
 
-Code opens after you choose a project. You can also open it from the **app rail** or **Open Code** in Dashboard. It takes the full screen.
+Code opens after you choose a project. You can also open it from the **app rail**. It takes the full screen.
 
 Worktree chats show a branch icon in the chat list. It changes to a merge icon when the checkout is clean and its commits are included in the locally known `main` branch (`master` is used when `main` is absent). Hover over the icon for the branch and merge status. Local chats have no icon. Status refreshes while Minnow is visible; squash merges are not detected from Git ancestry.
 
@@ -31,25 +31,15 @@ The folder you pick becomes the **workspace root**, and that is the boundary for
 
 ## The layout
 
-- **Left:** chat sidebar — sessions, groups, board folders, search, and a footer rail of tools.
-- **Middle:** chat, with the composer at the bottom and the inference metrics strip beneath it.
-- **Right:** file tree, editor tabs, and preview.
-- **Bottom:** the terminal panel when you open it.
+The sidebar holds the workspace switcher, apps, threads, and Archive. Open **Activity** in its footer to see work that needs your input, running agents, and recent outcomes.
 
-The footer rail of the sidebar is where the less obvious surfaces live:
+To organize threads, run **New chat group** from the command palette and name the group in the sidebar. Drag threads into the group to add them.
 
-| Button | Opens |
-|--------|-------|
-| **Issues** | The issue tracker embedded in the Code window |
-| **Inference metrics** | Token counts, tok/s, totals |
-| **Terminal** | The terminal panel (**Ctrl+`**) |
-| **Code map** | A map of the repository: its layers and modules, the files in a folder, and who calls a function |
-| **Dev servers** | The dev-server screen |
-| **Orchestrate boards** | The board hub |
+The chat fills the workspace. The composer stays at the bottom, with inference metrics underneath. Select the branch chip or press **Mod+.** to open the thread card for its checkout, dev server, model, permissions, and linked work.
 
-The menubar **Activity** dropdown combines work that needs your input, running agents, and recent outcomes. Expand a parent item to inspect its sub-agents.
+Open the **side panel** with **Mod+J** or the **bottom panel** from the thread header. Use **+** in either panel to pick a surface. Terminal starts in the bottom panel. **Files** opens the file tree, and selecting a file adds a tab beside it. Choose **Browser** to add a browser tab in that panel. Files, browser pages, Terminal, and other surfaces share the same tab strip. Both panels can stay open, and each thread remembers its tabs and their placement. Use the panel header to move a tab, maximize, restore, or hide a panel. Drag its inner edge to resize it.
 
-Collapse the sidebar to a 48-pixel icon rail when you want the room.
+The command palette also opens Dev servers, Code map, and Orchestrate boards. **Ctrl+`** toggles Terminal in whichever panel holds it.
 
 The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
 
@@ -204,7 +194,7 @@ The `manage_dev_servers` tool gives the model the same controls, so "start the d
 
 A real Chromium view for workspace HTML and localhost URLs. Navigate, reload, and toggle **DevTools** with **F12** or **Ctrl/Cmd+Shift+I** — console, network and element inspection for the previewed page.
 
-The toolbar keeps navigation, the address field, expand, and close visible. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, DevTools, and Split right. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app. The split preview has its own menu for that pane.
+The toolbar keeps navigation and the address field visible. Use the tab strip to switch pages or close the current page. Open the **Browser menu** (three dots) for History, Auto-reload, Design Mode, annotations, and DevTools. The menu shows each toggle's current state and includes zoom, hard reload, URL and screenshot copying, and in-app browser data controls in the desktop app.
 
 The preview is the user surface for `browser_*` tools when an agent deliberately passes `surface: "user"` and an explicit `tab_id`. It is useful when you want the agent to work in a visible preview tab. Navigation is restricted to an allowlist that starts at localhost only; see [Integrations](../extend/integrations.md).
 

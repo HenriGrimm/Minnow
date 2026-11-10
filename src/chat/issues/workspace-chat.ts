@@ -17,6 +17,7 @@ export async function runIssueWorkspaceChat(
   modeId: IssueForegroundChatMode,
   runTarget?: ChatRunTargetChoice,
   selectedModel?: { modelId: string; providerId?: string },
+  instruction?: string,
 ): Promise<{ ok: boolean; chatId?: string; error?: string; planPath?: string }> {
   try {
     const issue = findIssueById(issueId);
@@ -46,7 +47,9 @@ export async function runIssueWorkspaceChat(
     touchChat(chat);
     scheduleSaveSessions();
     appendIssueActivity(issue.id, { kind: 'chat-started', actorKind: 'user', data: { chatId: chat.id, modeId, worktreePath: chat.worktreeRoot || issue.workspacePath } });
-    const seed = [buildIssueForegroundModeSeed(issue, modeId), ...(modeId === 'build' || modeId === 'debug' ? [
+    const seed = [buildIssueForegroundModeSeed(issue, modeId), ...(instruction?.trim() ? [
+      '', 'Instructions for this thread:', instruction.trim(),
+    ] : []), ...(modeId === 'build' || modeId === 'debug' ? [
       '',
       'Work in this chat\'s assigned checkout. Run relevant verification and summarize the changes, results, and remaining concerns.',
       'Keep the issue In progress while working. Minnow hands successful turns back for Review; do not mark the issue Done. Leave merging and worktree cleanup to the Issues delivery controls.',

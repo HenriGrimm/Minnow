@@ -40,7 +40,7 @@ export async function bootGenerationResumeForChat(
   options: BootGenerationResumeOptions = {},
 ): Promise<void> {
   if (isPairedDevice()) return;
-  if (isResumeGateHeld()) {
+  if (isResumeGateHeld(chat.id)) {
     return;
   }
   if (isChatStreaming(chat.id)) {

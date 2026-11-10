@@ -1,6 +1,5 @@
 import { getChatAbort } from '../app-state';
 import { resolveIssueChatQuestionHost, setIssueChatQuestionPending } from '../chat/issue-chat-host';
-import { resolveHomeQuestionHost } from '../home/question-host';
 import {
   pauseMainTurnActivityForQuestion,
   resumeMainTurnActivityFromQuestion,
@@ -80,7 +79,7 @@ async function drainQueue(chatId: string): Promise<void> {
     }
     const planHost = resolveIssueChatQuestionHost(chatId) ?? resolveOrchestratePlanScreenQuestionHost(chatId);
     const boardHost = planHost ? null : resolveBoardOnboardingQuestionHost(chatId);
-    const embedHost = planHost ?? boardHost ?? resolveHomeQuestionHost(chatId);
+    const embedHost = planHost ?? boardHost;
     const modalOptions: QuestionCardsModalOptions = embedHost
       ? { host: embedHost, embedded: true, chatId }
       : { chatId };

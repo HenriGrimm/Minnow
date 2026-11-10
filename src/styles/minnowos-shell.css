@@ -72,6 +72,12 @@ html.minnow-os-enabled {
   min-width: 0;
 }
 
+.mn-os-workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+}
+
 .mn-os-mb-left {
   flex: 0 1 auto;
   /* Clip long status text when the left cluster shrinks. */
@@ -436,9 +442,9 @@ html.is-electron-shell[data-platform='darwin'] .mn-os-mb-window-controls {
 }
 
 .mn-os-window-btn--close:hover {
-  background: color-mix(in srgb, #e5484d 18%, var(--os-surface-2));
-  color: #ffb4b4;
-  border-color: color-mix(in srgb, #e5484d 35%, var(--os-border));
+  background: var(--mn-danger-soft);
+  color: var(--mn-danger-ink);
+  border-color: var(--mn-danger-border);
 }
 
 .mn-os-ws-dot {
@@ -841,8 +847,8 @@ html.minnow-os-enabled.mn-narrow.mn-os-mobile-file-drawer #fileSidebarBackdrop.o
   color: var(--os-text-dim);
 }
 
-/* light theme menubar logo shadow tweak */
-:root[data-theme$='-light'] .mn-os-mb-logo {
+/* Light theme shadow for the legacy boxed menubar logo. */
+:root[data-theme$='-light']:not(.mn-graphite-workspace) .mn-os-mb-logo {
   box-shadow: 0 4px 14px -4px var(--os-accent-glow);
 }
 

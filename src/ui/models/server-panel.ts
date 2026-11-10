@@ -7,7 +7,6 @@ import {
   copyField,
   copyText,
   el,
-  emptyState,
   formatElapsed,
   icon,
   iconButton,
@@ -22,6 +21,7 @@ import {
   refreshModels,
   retryServe,
   runningServes,
+  selectServe,
   subscribeModelsStore,
   unloadServe,
   type LoadProgress,
@@ -33,6 +33,8 @@ import {
   getInFlightPromptOverlay,
   subscribeInFlightPromptOverlay,
 } from '../../models/in-flight-prompt';
+import { usesGraphiteModels } from './graphite-chrome';
+import { createRuntimeTelemetry } from './runtime-telemetry';
 
 /** OpenAI-compatible surface llama-server exposes. */
 const ENDPOINTS: Array<{ method: string; path: string; note: string }> = [
@@ -56,6 +58,7 @@ let renderedHost: HTMLElement | null = null;
 let structureKey = '';
 let renderedLogBody: HTMLElement | null = null;
 let renderedLogBuffer: string | null = null;
+const telemetryByCard = new WeakMap<HTMLElement, ReturnType<typeof createRuntimeTelemetry>>();
 
 function dedupeServes(serves: ServeRecord[]): ServeRecord[] {
   const seen = new Set<string>();
@@ -95,6 +98,8 @@ function bindLogStream(serve: ServeRecord | null): void {
   logRunId = runId;
   const sourceSelect = mount()?.querySelector<HTMLSelectElement>('.models-logs select');
   if (sourceSelect && serveId) sourceSelect.value = serveId;
+  const snapshot = mount()?.querySelector<HTMLElement>('.models-runtime-snapshot__body');
+  if (snapshot) paintRuntimeSnapshot(snapshot, serve);
   if (!serveId) {
     renderLogBody();
     return;
@@ -148,7 +153,7 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
   let label = 'Stopped';
   if (running.length) {
     tone = 'running';
-    label = 'Running';
+    label = 'Healthy';
   } else if (starting.length || getModelsState().loads.some((load) => !load.error)) {
     tone = 'starting';
     label = 'Starting';
@@ -161,6 +166,7 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
   }
 
   const bar = el('header', 'models-status-bar models-workspace-heading');
+  bar.dataset.state = tone;
   const main = el('div', 'models-workspace-heading__main');
   main.append(
     el('p', 'models-workspace-heading__eyebrow', 'Local inference'),
@@ -208,7 +214,7 @@ function statusBar(serves: ServeRecord[]): HTMLElement {
     'primary',
   );
   loadBtn.prepend(icon('plus-small'));
-  actions.appendChild(loadBtn);
+  actions.prepend(loadBtn);
   bar.append(main, actions, state);
   return bar;
 }
@@ -225,17 +231,22 @@ function connectionBlock(serves: ServeRecord[]): HTMLElement {
   const serve = connectionServe(serves);
   block.dataset.serveId = serve?.id ?? '';
   block.appendChild(el('h3', 'models-server-section-title', 'Connection'));
-  block.appendChild(el('p', 'models-server-connection__intro', 'Use this endpoint in any OpenAI-compatible client.'));
   if (serve) {
-    block.appendChild(el('p', 'models-field-label', 'Base URL'));
-    block.appendChild(copyField(serve.baseUrl, 'Copy server URL'));
-    block.appendChild(el('p', 'models-field-label', 'Model identifier'));
-    block.appendChild(copyField(serve.modelLabel, 'Copy connection model identifier'));
-    block.appendChild(el('p', 'models-server-connection__note', `Serving with ${serve.runtime}${serve.runtime === 'mtplx' ? ' · Powered by MTPLX' : ''}`));
+    const fields = el('dl', 'models-server-connection__fields');
+    for (const [name, field] of [
+      ['Base URL', copyField(`${serve.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '')}/v1`, 'Copy server URL')],
+      ['Model id', copyField(serve.modelLabel, 'Copy connection model identifier')],
+      ['Endpoints', endpointsControl(serve.baseUrl.replace(/\/v1\/?$/, ''))],
+    ] as const) {
+      const cell = el('dd');
+      cell.append(field);
+      fields.append(el('dt', undefined, name), cell);
+    }
+    block.append(fields);
   } else {
     block.appendChild(el('p', 'models-server-connection__note', 'Connection details appear when a model is ready.'));
+    block.appendChild(endpointsControl(null));
   }
-  block.appendChild(endpointsControl(serve?.baseUrl ?? null));
   return block;
 }
 
@@ -346,9 +357,11 @@ function tryPatchInFlightLoads(
 function makeServeCardSelectable(card: HTMLElement, serveId: string): void {
   card.classList.add('is-selectable');
   card.tabIndex = 0;
+  card.querySelector('.models-loaded__actions')?.prepend(iconButton('settings-sliders', 'Inspect model runtime', () => showServeInInspector(serveId), 'models-runtime-inspect'));
   const select = (): void => {
     bindLogStream(getModelsState().serves.find((serve) => serve.id === serveId) ?? null);
-    showServeInInspector(serveId);
+    if (usesGraphiteModels()) selectServe(serveId);
+    else showServeInInspector(serveId);
     render();
     renderLogBody();
   };
@@ -467,6 +480,9 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   );
 
   const head = el('div', 'models-loaded__head');
+  const dot = el('span', 'models-dot models-dot--running models-loaded__live-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  head.append(dot);
   for (const chipEl of activityChips(activity)) head.appendChild(chipEl);
   head.appendChild(el('span', 'models-loaded__name', serve.modelLabel));
 
@@ -499,6 +515,10 @@ function loadedCard(serve: ServeRecord): HTMLElement {
   card.appendChild(head);
 
   card.appendChild(loadedFacts(serve, activity));
+  const telemetry = createRuntimeTelemetry();
+  telemetryByCard.set(card, telemetry);
+  telemetry.update(activity);
+  card.append(telemetry.element);
 
   if (activity?.mtplx) {
     const details = el('details', 'models-advanced');
@@ -589,6 +609,7 @@ function patchLoadedCard(card: HTMLElement, serve: ServeRecord): void {
   const details = card.querySelector('details pre');
   const text = activity?.mtplx ? performanceDetails(activity) : '';
   if (details && details.textContent !== text) details.textContent = text;
+  telemetryByCard.get(card)?.update(activity);
 }
 
 /** Crashed / unhealthy / error — distinct from Stopped (user eject) and load Failed. */
@@ -716,6 +737,22 @@ function endpointsControl(baseUrl: string | null): HTMLElement {
   return control;
 }
 
+function paintRuntimeSnapshot(host: HTMLElement, serve: ServeRecord | null): void {
+  if (!serve) {
+    host.textContent = 'Select a loaded model to see its launch settings.';
+    return;
+  }
+  const pairs: Array<[string, unknown]> = [
+    ['Runtime', serve.runtime], ['Model', serve.modelLabel], ['Port', serve.port],
+    ['Context', serve.llamaSettings?.ctx ?? serve.mlxSettings?.contextLength ?? serve.mtplxSettings?.context_window],
+    ['Parallel slots', serve.llamaSettings?.parallel], ['GPU layers', serve.llamaSettings?.n_gpu_layers],
+    ['Cache type', serve.llamaSettings?.cache_type], ['Flash attention', serve.llamaSettings?.flash_attn],
+  ];
+  host.textContent = pairs.flatMap(([label, value]) =>
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+      ? [`${label}  ${value}`] : []).join('\n');
+}
+
 function logsBlock(serves: ServeRecord[]): HTMLElement {
   const block = el('section', 'models-logs');
 
@@ -750,16 +787,14 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
   });
   scrollBtn.classList.toggle('is-active', autoScroll);
   scrollBtn.setAttribute('aria-pressed', String(autoScroll));
-  controls.append(
-    iconButton('copy', 'Copy log', () => {
-      void copyText(logBuffer);
-    }),
-    iconButton('broom', 'Clear view', () => {
-      logBuffer = '';
-      renderLogBody();
-    }),
-    scrollBtn,
-  );
+  const copy = iconButton('copy', 'Copy log', () => void copyText(logBuffer));
+  const clear = iconButton('broom', 'Clear view', () => {
+    logBuffer = '';
+    renderLogBody();
+  });
+  copy.append(el('span', 'models-logs__control-label', 'Copy log'));
+  clear.append(el('span', 'models-logs__control-label', 'Clear view'));
+  controls.append(copy, clear, scrollBtn);
   head.appendChild(controls);
   block.appendChild(head);
 
@@ -769,6 +804,11 @@ function logsBlock(serves: ServeRecord[]): HTMLElement {
   body.setAttribute('aria-label', 'Runtime log output');
   body.tabIndex = 0;
   block.appendChild(body);
+  const snapshot = el('details', 'models-runtime-snapshot');
+  const snapshotBody = el('pre', 'models-runtime-snapshot__body');
+  paintRuntimeSnapshot(snapshotBody, preferredLogServe(serves) ?? null);
+  snapshot.append(el('summary', undefined, 'Runtime snapshot'), snapshotBody);
+  block.append(snapshot);
   return block;
 }
 
@@ -824,6 +864,7 @@ export function render(): void {
   const attention = attentionServes();
   const loadIds = new Set(state.loads.map((l) => l.serveId));
   const endpointsOpen = host.querySelector('.models-endpoints__popover:popover-open') != null;
+  const snapshotOpen = host.querySelector<HTMLDetailsElement>('.models-runtime-snapshot')?.open ?? false;
   const focusedEndpoint = host.querySelector('.models-endpoints button:focus');
   const endpointFocus = focusedEndpoint?.getAttribute('aria-label') ?? focusedEndpoint?.textContent;
 
@@ -859,19 +900,15 @@ export function render(): void {
   }
 
   if (!list.childElementCount) {
-    list.appendChild(
-      emptyState({
-        glyph: 'microchip',
-        title: 'Ready when you are',
-        body: 'Choose a model from your library to give your workspace a local endpoint.',
-        action: {
-          label: 'Open My Models',
-          onClick: () => {
-            void import('../models-page').then((m) => m.openModels('installed'));
-          },
-        },
-      }),
+    const empty = el('div', 'models-server-stopped');
+    empty.append(el('strong', undefined, 'No model is running on this device'), el('p', undefined, 'Load a local model to serve chats and OpenAI-compatible requests from Minnow.'));
+    const actions = el('div', 'models-server-stopped__actions');
+    actions.append(
+      textButton('My models', () => void import('../models-page').then((m) => m.openModels('installed'))),
+      textButton('Discover models', () => void import('../models-page').then((m) => m.openModels('recommend'))),
     );
+    empty.append(actions);
+    list.append(empty);
   }
   loadedBlock.appendChild(list);
   dashboard.append(loadedBlock, connectionBlock(serves));
@@ -881,6 +918,10 @@ export function render(): void {
   fragment.appendChild(logsBlock(logServes));
 
   host.replaceChildren(fragment);
+  if (snapshotOpen) {
+    const snapshot = host.querySelector<HTMLDetailsElement>('.models-runtime-snapshot');
+    if (snapshot) snapshot.open = true;
+  }
   if (endpointsOpen) {
     host.querySelector<HTMLElement>('.models-endpoints__popover')?.showPopover();
     if (endpointFocus) {

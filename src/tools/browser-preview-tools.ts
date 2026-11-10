@@ -218,10 +218,9 @@ export async function browserPreviewNewTab(url?: string): Promise<string> {
   if (disabled) return disabled;
 
   const { openPreviewTabWithCapacity } = await import('../ui/preview-tab-store');
-  const { activatePreviewTabGuest, closePreviewTabUi, loadPreviewSource } = await import(
+  const { activatePreviewTabGuest, closePreviewTabUi } = await import(
     '../ui/preview-panel'
   );
-  const { showPreviewSplit } = await import('../ui/file-layout');
 
   const trimmed = url?.trim() ?? '';
   const source =
@@ -240,16 +239,7 @@ export async function browserPreviewNewTab(url?: string): Promise<string> {
   if (!opened.tab) return 'Error: preview tab limit reached';
   const tab = opened.tab;
 
-  showPreviewSplit();
-  const api = previewApi();
-  if (api.tabs?.create) {
-    await api.tabs.create(tab.id);
-    await api.tabs.activate(tab.id);
-  }
   await activatePreviewTabGuest(tab.id, { forceLoad: Boolean(source) });
-  if (source?.kind === 'url') {
-    await loadPreviewSource(source);
-  }
 
   const evictedNote = evictedId
     ? `\nClosed oldest background tab ${evictedId} (tab limit).`
@@ -263,20 +253,16 @@ export async function browserPreviewSwitchTab(tabId: string): Promise<string> {
   if (disabled) return disabled;
   if (!tabId.trim()) return 'Error: tab_id is required';
 
-  const { getPreviewTab, activatePreviewTab } = await import('../ui/preview-tab-store');
+  const { getPreviewTab } = await import('../ui/preview-tab-store');
   const { activatePreviewTabGuest } = await import('../ui/preview-panel');
+  const { previewInstanceIdForTab } = await import('../ui/right-pane-split');
   if (!getPreviewTab(tabId.trim())) {
     return `Error: unknown preview tab "${tabId.trim()}"`;
   }
 
-  const api = previewApi();
-  if (api.tabs?.activate) {
-    await api.tabs.activate(tabId.trim());
-  }
-  activatePreviewTab(tabId.trim());
   await activatePreviewTabGuest(tabId.trim());
 
-  const info = await api.getInfo(tabId.trim());
+  const info = await previewApi().getInfo(tabId.trim(), previewInstanceIdForTab(tabId.trim()));
   return `Active tab: ${tabId.trim()}\nTitle: ${info.title || '(no title)'}\n${info.url || ''}`;
 }
 
@@ -519,12 +505,11 @@ export async function executeBrowserPreviewTool(
     typeof (args.tab_id ?? args.tabId) === 'string'
       ? String(args.tab_id ?? args.tabId).trim()
       : '';
-  const instance =
-    typeof args.instance === 'string' && args.instance.trim()
-      ? args.instance.trim()
-      : typeof window?.addEventListener === 'function'
-        ? (await import('../ui/right-pane-split')).getFocusedPreviewInstanceId()
-        : undefined;
+  let instance = typeof args.instance === 'string' ? args.instance.trim() || undefined : undefined;
+  if (!instance && typeof window?.addEventListener === 'function') {
+    const split = await import('../ui/right-pane-split');
+    instance = (explicitTabId ? split.previewInstanceIdForTab(explicitTabId) : undefined) ?? split.getFocusedPreviewInstanceId();
+  }
 
   try {
     switch (name) {

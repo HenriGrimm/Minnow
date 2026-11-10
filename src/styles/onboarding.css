@@ -200,17 +200,18 @@ html.onboarding-active .mn-os-shell {
 .mn-onboarding__progress-track {
   position: relative;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--mn-radius-pill);
   background: var(--mn-border, var(--border));
   overflow: hidden;
 }
 
 .mn-onboarding__progress-fill {
   height: 100%;
-  width: 0%;
   border-radius: inherit;
   background: var(--mn-accent, var(--accent));
-  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scaleX(var(--mn-progress, 0));
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mn-onboarding__progress-meta {
@@ -398,7 +399,7 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding-lead {
   margin: 0 0 12px;
-  font-size: 18px;
+  font-size: var(--mn-type-2xl);
   line-height: 1.4;
   color: var(--mn-fg, var(--text));
   text-wrap: balance;
@@ -510,7 +511,7 @@ html.onboarding-active .mn-os-shell {
 
 .mn-onboarding-welcome__tagline {
   margin: 0;
-  font-size: clamp(15px, 1.4vw, 17px);
+  font-size: clamp(15px, 1.4vw, 16px);
   line-height: 1.4;
   color: var(--mn-fg-muted, var(--text-muted));
 }
@@ -531,7 +532,7 @@ html.onboarding-active .mn-os-shell {
 }
 
 .mn-onboarding-welcome__letter-lead {
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   color: var(--mn-fg, var(--text));
 }
 
@@ -1119,7 +1120,7 @@ html.onboarding-active .mn-os-shell {
   border-radius: 50%;
   background: var(--mn-success-soft, color-mix(in oklch, var(--mn-success, var(--success)) 14%, transparent));
   color: var(--mn-success-ink, var(--mn-success, var(--success)));
-  font-size: 22px;
+  font-size: var(--mn-type-3xl);
   font-weight: 700;
 }
 
@@ -1190,7 +1191,8 @@ html.onboarding-active .mn-os-shell {
     animation: none;
   }
 
-  .mn-onboarding__progress-fill {
+  .mn-onboarding__progress-fill,
+  .mn-onboarding-progress-fill {
     transition: none;
   }
 
@@ -1293,8 +1295,8 @@ html.onboarding-active .mn-os-shell {
 }
 
 .mn-onboarding-fit-badge--perfect {
-  border-color: color-mix(in oklch, var(--mn-success, #22c55e) 50%, var(--mn-border-strong, var(--border-strong)));
-  color: var(--mn-success, #22c55e);
+  border-color: color-mix(in oklch, var(--mn-success) 50%, var(--mn-border-strong, var(--border-strong)));
+  color: var(--mn-success);
 }
 
 .mn-onboarding-fit-badge--good {
@@ -1303,13 +1305,13 @@ html.onboarding-active .mn-os-shell {
 }
 
 .mn-onboarding-fit-badge--marginal {
-  border-color: color-mix(in oklch, var(--mn-warning, #eab308) 50%, var(--mn-border-strong, var(--border-strong)));
-  color: var(--mn-warning, #eab308);
+  border-color: color-mix(in oklch, var(--mn-warning) 50%, var(--mn-border-strong, var(--border-strong)));
+  color: var(--mn-warning);
 }
 
 .mn-onboarding-fit-badge--tight {
-  border-color: color-mix(in oklch, var(--mn-danger, #ef4444) 40%, var(--mn-border-strong, var(--border-strong)));
-  color: var(--mn-danger, #ef4444);
+  border-color: color-mix(in oklch, var(--mn-danger) 40%, var(--mn-border-strong, var(--border-strong)));
+  color: var(--mn-danger);
 }
 
 .mn-onboarding-progress-track {
@@ -1322,7 +1324,9 @@ html.onboarding-active .mn-os-shell {
 .mn-onboarding-progress-fill {
   height: 100%;
   background: var(--mn-accent, var(--accent));
-  transition: width 0.2s ease-out;
+  transform: scaleX(var(--mn-progress, 0));
+  transform-origin: left;
+  transition: transform 0.2s ease-out;
 }
 
 .mn-onboarding-managed-progress {

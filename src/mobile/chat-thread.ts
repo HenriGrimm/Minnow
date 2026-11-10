@@ -35,38 +35,31 @@ function shortModel(chat: Chat): string {
   return tail.length > 28 ? `${tail.slice(0, 27)}…` : tail;
 }
 
-export function createChatThreadScreen(chatId: string, deps: { openFiles(): void }): MobileScreen {
+export function createChatThreadScreen(chatId: string, deps: {
+  openFiles(): void;
+  openMenu(): void;
+  initialPrompt?: string;
+  focus?: boolean;
+}): MobileScreen {
   const header = screenHeader({ title: titleOf(findChat(chatId)), back: true });
-  const modeChip = el(
-    'button',
-    {
-      className: 'm-mode-chip',
-      attrs: { type: 'button', 'aria-label': 'Change mode' },
-      on: { click: () => void changeMode() },
-    },
-    icon(modeGlyph(findChat(chatId)?.modeId), 12),
-    el('span', { className: 'm-mode-chip__label' }),
-  );
   const statusText = el('span', { className: 'm-thread__status' });
-  const subtitleRow = el('div', { className: 'm-thread__meta' }, modeChip, statusText);
+  const subtitleRow = el('div', { className: 'm-thread__meta' }, statusText);
   header.el.querySelector('.m-header__titles')?.append(subtitleRow);
+  const additions = el('span', { className: 'm-thread__diff-add' });
+  const deletions = el('span', { className: 'm-thread__diff-delete' });
+  const diff = el('button', {
+    className: 'm-thread__diff m-mono',
+    attrs: { type: 'button', 'aria-label': 'Changes' },
+    on: { click: () => void openThreadSurface('changes') },
+  }, additions, deletions);
+  const agents = iconButton('fi-rr-user-robot', 'Agents', () => void openThreadSurface('agents'));
   header.el.querySelector('.m-header__actions')?.append(
+    diff,
+    agents,
     iconButton('fi-rr-menu-dots-vertical', 'Chat actions', () => openMenu()),
   );
 
   const host = el('div', { className: 'm-thread__host' });
-  // The model chip opens the phone sheet; its hover-driven desktop menu is hard to use by touch.
-  host.addEventListener(
-    'click',
-    (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target?.closest('#codeComposerModelAnchor button')) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      void import('./models').then((m) => m.openModelSheet());
-    },
-    true,
-  );
   const emptyHint = el(
     'div',
     { className: 'm-thread__empty', attrs: { 'aria-hidden': 'true' } },
@@ -82,25 +75,47 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
   );
 
   let handle: ReturnType<typeof mountSharedChatHost> | null = null;
+  let disposePanels: (() => void) | undefined;
   let visible = false;
   let disposed = false;
+  let focusOnMount = deps.focus === true;
+
+  async function mountPanels() {
+    const { ensureCodeWorkspaceModules } = await import('../boot/code-workspace-modules');
+    await ensureCodeWorkspaceModules();
+    const surfaces = await import('../ui/surfaces/surfaces-column');
+    if (!visible || disposed) return;
+    disposePanels ??= surfaces.mountMobileSurfacePortal(root, chatId);
+    return surfaces;
+  }
+
+  async function openThreadSurface(id: 'changes' | 'agents'): Promise<void> {
+    const surfaces = await mountPanels();
+    if (!surfaces) return;
+    const opened = surfaces.openSurface(id, { force: id === 'changes' });
+    if (!opened) {
+      const { showToast } = await import('../ui/toast');
+      if (visible && !disposed) showToast(id === 'agents' ? 'This thread has no agents yet' : 'Changes are unavailable');
+    }
+  }
 
   function syncMeta(): void {
     const chat = findChat(chatId);
     if (!chat) return;
     header.setTitle(titleOf(chat));
-    const glyph = modeChip.querySelector('i');
-    if (glyph) glyph.className = `fi ${modeGlyph(chat.modeId)} icon-svg`;
-    const label = modeChip.querySelector('.m-mode-chip__label');
-    if (label) label.textContent = modeLabel(chat.modeId);
     const hintGlyph = emptyHint.querySelector('i');
     if (hintGlyph) hintGlyph.className = `fi ${modeGlyph(chat.modeId)} icon-svg`;
     const hintMode = emptyHint.querySelector('.m-thread__empty-mode');
     if (hintMode) hintMode.textContent = `${modeLabel(chat.modeId)} mode · ${getWorkspaceLabel() || 'this workspace'}`;
     const remote = isChatRunningRemotely(chatId);
     const working = isChatStreaming(chatId) || remote;
-    statusText.textContent = remote ? 'Working on computer…' : working ? 'Working…' : shortModel(chat);
+    statusText.textContent = chat.gitBranch || (remote ? 'Working on computer…' : working ? 'Working…' : shortModel(chat));
     statusText.classList.toggle('is-working', working);
+    const added = chat.codeChangeTotals?.additions ?? 0;
+    const deleted = chat.codeChangeTotals?.deletions ?? 0;
+    diff.hidden = !added && !deleted;
+    additions.textContent = `+${added}`;
+    deletions.textContent = `−${deleted}`;
   }
 
   function mount(): void {
@@ -116,24 +131,16 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
     handle?.dispose();
     host.replaceChildren();
     handle = mountSharedChatHost(host, chat, 'code');
-    addAttachButton();
     host.append(emptyHint);
-  }
-
-  /** Phones have no drag-and-drop or paste-heavy flow; give attachments a button. */
-  function addAttachButton(): void {
-    const actions = host.querySelector<HTMLElement>('#composerInsetActions');
-    if (!actions || actions.querySelector('.m-attach-btn')) return;
-    const button = el(
-      'button',
-      {
-        className: 'm-attach-btn',
-        attrs: { type: 'button', 'aria-label': 'Attach files', title: 'Attach files' },
-        on: { click: () => document.getElementById('fileInput')?.click() },
-      },
-      icon('fi-rr-clip', 18),
-    );
-    actions.prepend(button);
+    if (focusOnMount) {
+      focusOnMount = false;
+      const prompt = deps.initialPrompt;
+      void handle.focus(prompt).then(async (ready) => {
+        if (!ready || !prompt || disposed || !visible) return;
+        const { handleComposerPrimaryAction } = await import('../ui/composer-send');
+        if (!disposed && visible && getSharedChatHost(chatId)) handleComposerPrimaryAction();
+      });
+    }
   }
 
   async function changeMode(): Promise<void> {
@@ -183,11 +190,13 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
         label: 'Choose model',
         glyph: 'fi-rr-microchip',
         run: async () => {
-          const { openModelSheet } = await import('./models');
-          if (!disposed) await openModelSheet();
+          const { openActiveChatModelSelect } = await import('../ui/composer-model-trigger');
+          if (!disposed) openActiveChatModelSelect();
         },
       },
+      { label: 'Change workflow', glyph: 'fi-rr-layers', run: () => changeMode() },
       { label: 'Browse files', glyph: 'fi-rr-folder', run: () => deps.openFiles() },
+      { label: 'Open menu', glyph: 'fi-rr-menu-burger', run: () => deps.openMenu() },
       {
         label: 'Delete chat',
         glyph: 'fi-rr-trash',
@@ -229,9 +238,12 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
       visible = true;
       mount();
       syncMeta();
+      void mountPanels();
     },
     onHide() {
       visible = false;
+      disposePanels?.();
+      disposePanels = undefined;
     },
     dispose() {
       disposed = true;
@@ -239,6 +251,8 @@ export function createChatThreadScreen(chatId: string, deps: { openFiles(): void
       window.clearTimeout(metaTimer);
       handle?.dispose();
       handle = null;
+      disposePanels?.();
+      disposePanels = undefined;
     },
   };
 }

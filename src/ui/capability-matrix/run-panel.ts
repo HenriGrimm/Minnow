@@ -214,7 +214,7 @@ function paintRunState(root: HTMLElement, state: MatrixRunUiState): void {
     progress.hidden = !state.running && state.progressPct === 0;
     progress.setAttribute('aria-valuenow', String(state.progressPct));
   }
-  if (fill) fill.style.width = `${state.progressPct}%`;
+  fill?.style.setProperty('--mn-progress', String(state.progressPct / 100));
   if (detail) detail.textContent = state.progressDetail;
   if (chipsHost) renderTargetChips(chipsHost, state.targets);
 
@@ -332,6 +332,7 @@ export function mountCapabilityRunPanel(
 
   const progress = el('div', 'cap-matrix-run__progress');
   progress.setAttribute('role', 'progressbar');
+  progress.setAttribute('aria-label', 'Capability check progress');
   progress.setAttribute('aria-valuemin', '0');
   progress.setAttribute('aria-valuemax', '100');
   progress.hidden = true;

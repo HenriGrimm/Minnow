@@ -32,7 +32,7 @@ function boot({ saved, cached = {}, light = false } = {}) {
   for (const script of source.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     vm.runInContext(script[1], context);
   }
-  return { theme: attributes.get('data-theme'), tokens, storage };
+  return { theme: attributes.get('data-theme'), attributes, tokens, storage };
 }
 
 test('palette CSS blocks the first paint independently of the app entry module', () => {
@@ -47,6 +47,24 @@ test('saved palette wins over a stale origin cache before the app starts', () =>
   assert.equal(boot({ saved: { themeId: 'human-light' }, cached: { 'minnow.theme': 'ocean-dark' } }).theme, 'human-light');
   assert.equal(boot({ saved: { followSystem: true, family: 'mint' }, light: true }).theme, 'mint-light');
   assert.equal(boot({ cached: { 'minnow.theme': 'desert-dark' } }).theme, 'desert-dark');
+});
+
+test('Graphite defaults and saved visual preferences apply before the loader paints', () => {
+  const fresh = boot();
+  assert.equal(fresh.theme, 'graphite-dark');
+  assert.equal(fresh.attributes.get('data-tint'), 'subtle');
+  const { attributes } = boot({
+    saved: {
+      themeId: 'graphite-light', colorIntensity: 'rich', graphiteAccent: 'violet',
+      density: 'roomy', reduceMotion: true,
+    },
+    cached: { 'minnow.appearance.colorIntensity': 'none' },
+  });
+  assert.equal(attributes.get('data-theme'), 'graphite-light');
+  assert.equal(attributes.get('data-tint'), 'rich');
+  assert.equal(attributes.get('data-graphite-accent'), 'violet');
+  assert.equal(attributes.get('data-density'), 'roomy');
+  assert.equal(attributes.has('data-reduce-motion'), true);
 });
 
 test('custom palette is applied before the loading screen renders', () => {

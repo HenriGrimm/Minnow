@@ -18,7 +18,7 @@ import { setChatRunActivity, disposeChatRunActivity } from '../../src/state/chat
 import { setSessionStateForTests } from '../../src/state/sessions.ts';
 
 const { findIssueById, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');
-const { closeIssueDetail, openIssueDetail } = await import('../../src/ui/issues-detail.ts');
+const { closeIssueDetail, openIssueDetail, refreshIssueDetailIfOpen } = await import('../../src/ui/issues-detail.ts');
 const { resetIssuesDetailLayoutForTests } = await import('../../src/ui/issues-detail-layout.ts');
 const { resetDetailSectionsForTests } = await import('../../src/ui/issues-detail-section.ts');
 const { resetGhAvailableCache } = await import('../../src/chat/issues/git-actions.ts');
@@ -112,6 +112,40 @@ afterEach(() => {
 });
 
 describe('issues detail display', () => {
+  test('Launch options keeps model and worktree selection beside a single thread launch', () => {
+    setupDom();
+    seedIssues([{
+      id: 'GET-3', title: 'Fix the thread launcher', description: '', type: 'task',
+      status: 'backlog', priority: 'none', labels: [], source: 'user',
+      workspacePath: '/repo', createdAt: FIXED_NOW, updatedAt: FIXED_NOW,
+    }]);
+    openIssueDetail('GET-3');
+
+    const options = () => document.querySelector<HTMLButtonElement>('[aria-controls="issueLaunchOptions"]')!;
+    const panel = () => document.getElementById('issueLaunchOptions')!;
+    const worktree = () => panel().querySelector<HTMLButtonElement>('.issues-detail__use-worktree')!;
+    const button = (selector: string, label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>(selector)].find((el) => el.textContent?.trim() === label)!;
+    assert.equal(options().getAttribute('aria-expanded'), 'false');
+    assert.equal(panel().hidden, true);
+    options().click();
+    assert.equal(options().getAttribute('aria-expanded'), 'true');
+    assert.equal(panel().hidden, false);
+    assert.ok(panel().querySelector('.issues-detail__model'));
+    assert.ok(worktree());
+    assert.equal(panel().querySelector('.issues-workflow-menu-wrap'), null);
+    assert.ok(button('.issues-detail__compact-actions button', 'Start thread'));
+
+    button('.issues-detail__compact-actions button', 'New worktree').click();
+    assert.equal(worktree().getAttribute('aria-pressed'), 'true');
+    refreshIssueDetailIfOpen();
+    assert.equal(options().getAttribute('aria-expanded'), 'true');
+    assert.equal(worktree().getAttribute('aria-pressed'), 'true');
+    worktree().click();
+    assert.equal(worktree().getAttribute('aria-pressed'), 'false');
+
+  });
+
   test('description line breaks render without rewriting an untouched issue', () => {
     setupDom();
     const description = 'Test available models.<br><br>Use the spreadsheet.';
@@ -208,9 +242,7 @@ describe('issues detail display', () => {
       [...scroll.querySelectorAll('.issues-detail__props .issues-detail__property-label')].map((el) => el.textContent),
       ['Status', 'Type', 'Priority'],
     );
-    const workflowMenus = scroll.querySelectorAll('.issues-detail__rail .issues-workflow-menu-wrap');
-    assert.equal(workflowMenus.length, 1);
-    assert.equal(workflowMenus[0]?.textContent?.includes('Send to chat'), true);
+    assert.equal(scroll.querySelector('.issues-detail__rail .issues-workflow-menu-wrap'), null);
     assert.ok(scroll.querySelector('.issues-detail__properties .issues-detail__labels'));
     assert.ok(scroll.querySelector('.issues-detail__rail > .issues-detail__workflow'));
     assert.equal(sticky.querySelector('.issues-detail__workflow'), null);

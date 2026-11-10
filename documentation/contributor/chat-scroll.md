@@ -1,6 +1,6 @@
 # Chat scrolling
 
-The transcript uses native chronological DOM flow with incremental history paging. Code, shared Issues/Dashboard chats, board chats and embedded transcripts use a scroll controller per viewport in `src/ui/transcript-scroll.ts`. `chat-scroll.ts` resolves the active surface and connects its jump control and layout observer. It does not maintain a global follow flag.
+The transcript uses native chronological DOM flow with incremental history paging. Code, shared Issues chats, board chats and embedded transcripts use a scroll controller per viewport in `src/ui/transcript-scroll.ts`. `chat-scroll.ts` resolves the active surface and connects its jump control and layout observer. It does not maintain a global follow flag.
 
 ## Scroll policies
 

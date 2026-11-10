@@ -109,6 +109,7 @@ function showGateElement(): void {
   gateOpen = true;
   document.documentElement.classList.add('os-workspace-gate-open');
   markPreviewOccluder(gate, 'panel');
+  window.dispatchEvent(new window.Event('minnow:workspace-gate-changed'));
   syncPreviewVisibility();
 }
 
@@ -130,6 +131,7 @@ function hideGateElement(): void {
   welcome?.classList.remove('is-open', 'welcome-page--os-overlay');
   if (welcome) welcome.hidden = true;
   document.documentElement.classList.remove('os-workspace-gate-open');
+  window.dispatchEvent(new window.Event('minnow:workspace-gate-changed'));
   syncPreviewVisibility();
 }
 

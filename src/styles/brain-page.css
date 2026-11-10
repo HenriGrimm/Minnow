@@ -1828,7 +1828,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   color: var(--mn-fg-muted);
 }
 
-.brain-ingest-guide h4 {
+.brain-ingest-guide h3 {
   margin: 16px 0 6px;
   font-size: 12px;
   font-weight: 600;
@@ -1837,7 +1837,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   color: var(--mn-fg);
 }
 
-.brain-ingest-guide h4:first-child {
+.brain-ingest-guide h3:first-child {
   margin-top: 0;
 }
 

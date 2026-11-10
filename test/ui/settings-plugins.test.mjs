@@ -32,10 +32,10 @@ test('empty state exposes the authoring workflow and a labelled install form', a
   globalThis.fetch = async () => Response.json({ revision: 0, packages: [] });
   const mount = document.getElementById('mount');
   await renderPluginPackagesSection(mount);
-  assert.match(mount.textContent, /\/build-plugin/);
+  assert.match(mount.querySelector('button[title]').title, /\/build-plugin/);
   assert.match(mount.querySelector('[role="status"]').textContent, /No plugins installed/);
   assert.equal(mount.querySelector('label input').required, true);
-  assert.equal(mount.querySelector('button').textContent, 'Review plugin');
+  assert.equal(mount.querySelector('button[type="submit"]').textContent, 'Review plugin');
   assert.match(mount.querySelector('label').textContent, /GitHub URL or plugin folder/);
   assert.ok([...mount.querySelectorAll('button')].some(button => button.textContent === 'Choose folder'));
   assert.ok(fieldByKey('plugins.add').keywords.includes('github'));
@@ -137,7 +137,8 @@ test('disabled packages remain manageable and cannot open a panel', async () => 
   await renderPluginPackagesSection(mount);
   assert.equal(mount.querySelector('script'), null);
   const buttons = [...mount.querySelectorAll('button')];
-  assert.ok(buttons.some(b => b.textContent === 'Enable' && !b.disabled));
+  const enabled = mount.querySelector('[role="switch"]');
+  assert.ok(enabled && !enabled.disabled && !enabled.checked);
   assert.ok(buttons.some(b => b.textContent === 'Open Main' && b.disabled));
   assert.ok(buttons.some(b => b.textContent === 'Remove'));
 });

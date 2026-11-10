@@ -233,11 +233,10 @@
 
 .settings-agent-base-prompt__summary::before {
   content: '';
-  width: 0;
-  height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 5px solid var(--mn-fg-muted);
+  width: 5px;
+  height: 8px;
+  background: var(--mn-fg-muted);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -311,7 +310,7 @@
 
 .agent-center-header__title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--mn-type-xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.25;

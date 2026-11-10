@@ -10,6 +10,8 @@ import { readConfigJson } from '../config/store.js';
 import { listProviders } from '../providers/store.js';
 import { resolveFallbackChain } from './fallback.js';
 import { pumpUpstream } from './upstream.js';
+import { bindMinnowOnlyExecution } from './native-execution-context.js';
+import { GRAPHITE_SIDE_CHAT_ROLE } from '../../src/lib/graphite-side-chat.mjs';
 import { getAgentCliOutput, subscribeAgentCliOutput } from './agent-cli/output.js';
 import { shutdownCodexSessions } from './codex-app-server/manager.js';
 import {
@@ -122,6 +124,7 @@ export async function handleGenerationsRequest(req, res, pathname) {
         modelCapabilities: payload.modelCapabilities,
       });
 
+      if (fallbackRole === GRAPHITE_SIDE_CHAT_ROLE) bindMinnowOnlyExecution(state);
       if (providerId === 'minnow-router') pumpRouterGeneration(state);
       else pumpUpstream({ state });
       sendJson(res, 201, {

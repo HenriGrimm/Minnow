@@ -17,7 +17,7 @@
   line-height: 1.4;
   text-align: center;
   pointer-events: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px var(--mn-shadow);
 }
 
 .mn-design-notice--info {
@@ -48,7 +48,7 @@
   border: 1px solid var(--mn-border);
   border-radius: 8px;
   background: var(--mn-surface-2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 4px 16px var(--mn-shadow);
   pointer-events: auto;
 }
 
@@ -110,7 +110,7 @@
 }
 
 .mn-design-strip__btn:hover {
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
+  background: var(--mn-surface-2);
   color: var(--mn-fg);
 }
 
@@ -121,7 +121,7 @@
 }
 
 .mn-design-strip__clear-all:hover {
-  color: var(--mn-error, #e5484d);
+  color: var(--mn-danger-ink);
 }
 
 /* Inline text-label editor for the Draw tool's label kind (replaces window.prompt). */
@@ -136,7 +136,7 @@
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 0.8rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 2px 8px var(--mn-shadow);
 }
 
 /* Viewport preset frame — mobile/tablet constrain the guest's host width so the native
@@ -186,7 +186,7 @@
   border: 1px solid var(--mn-border);
   border-radius: 8px;
   background: var(--mn-surface-2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 4px 16px var(--mn-shadow);
   font-family: var(--font-ui);
   font-size: 0.8rem;
 }
@@ -224,8 +224,8 @@
 }
 
 .mn-design-pin-popover__delete:hover {
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
-  color: var(--mn-error, #e5484d);
+  background: var(--mn-surface-2);
+  color: var(--mn-danger-ink);
 }
 
 .mn-design-pin-popover__notes {
@@ -239,7 +239,7 @@
 .mn-design-pin-popover__note {
   padding: 4px 6px;
   border-radius: var(--mn-radius-xs);
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
+  background: var(--mn-surface-2);
   color: var(--mn-fg);
   white-space: pre-wrap;
 }
@@ -267,7 +267,7 @@
 
 .mn-design-pin-popover__add:hover,
 .mn-design-pin-popover__close:hover {
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
+  background: var(--mn-surface-2);
   color: var(--mn-fg);
 }
 
@@ -384,7 +384,7 @@
 }
 
 .mn-design-annotations-panel__row:hover {
-  background: var(--mn-surface-3, rgba(127, 127, 127, 0.15));
+  background: var(--mn-surface-2);
 }
 
 .mn-design-annotations-panel__row-kind {
@@ -398,8 +398,8 @@
 .mn-design-annotations-panel__row-badge {
   padding: 1px 6px;
   border-radius: var(--mn-radius-xs);
-  background: var(--mn-warn-soft, rgba(217, 119, 6, 0.18));
-  color: var(--mn-warn, #d97706);
+  background: var(--mn-warning-soft);
+  color: var(--mn-warning);
   font-size: 0.68rem;
   white-space: nowrap;
 }

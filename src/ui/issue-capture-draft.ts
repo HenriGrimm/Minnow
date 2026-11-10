@@ -10,6 +10,7 @@ export interface IssueCaptureDraft {
   title: string;
   payload: CapturePayload;
   targetIssueId: string | null;
+  threadFields?: { label: string; priority: string; linkedChatId?: string; link: boolean };
 }
 
 type DraftStore = Record<string, IssueCaptureDraft>;
@@ -93,6 +94,7 @@ function cloneDraft(draft: IssueCaptureDraft): IssueCaptureDraft {
   return {
     title: draft.title,
     targetIssueId: draft.targetIssueId,
+    ...(draft.threadFields ? { threadFields: { ...draft.threadFields } } : {}),
     payload: {
       ...draft.payload,
       items: draft.payload.items.map((item) => ({ ...item })),
@@ -111,7 +113,10 @@ function sanitizeDraft(raw: IssueCaptureDraft): IssueCaptureDraft | null {
     if (!title.trim() && !targetIssueId) return null;
     return { title, targetIssueId, payload: { items: [] } };
   }
-  return { title, targetIssueId, payload };
+  const fields = raw.threadFields;
+  return { title, targetIssueId, payload, ...(fields && typeof fields.label === 'string' && typeof fields.priority === 'string' ? {
+    threadFields: { label: fields.label, priority: fields.priority, linkedChatId: typeof fields.linkedChatId === 'string' ? fields.linkedChatId : undefined, link: fields.link === true },
+  } : {}) };
 }
 
 /** Reset module state (tests). */

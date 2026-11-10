@@ -1236,6 +1236,7 @@ async function renderToolsSection(): Promise<void> {
 
   const advanced = document.createElement('details');
   advanced.className = 'settings-advanced';
+  advanced.open = true;
   const summary = document.createElement('summary');
   summary.textContent = 'Advanced tool settings';
   advanced.appendChild(summary);
@@ -1581,7 +1582,7 @@ function buildMcpAddPanel(): HTMLDetailsElement {
   errEl.id = 'settingsMcpAddError';
   errEl.setAttribute('role', 'alert');
 
-  const actions = el('div', 'settings-mcp-form-actions');
+  const actions = el('div', 'settings-form-actions');
   const submitBtn = Object.assign(document.createElement('button'), {
     type: 'submit',
     className: 'settings-action-btn',

@@ -7,6 +7,8 @@ import { invalidateToolConfigCache, loadToolConfigFromStorage } from '../tools/c
 import { mountPluginPanel, type PluginPanelContent } from '../plugins/panel';
 import { refreshPluginUi, pluginUiError } from '../plugins/ui-runtime';
 import { createPollingTask } from '../lib/polling-task';
+import { createIcon } from './icon';
+import { createSettingsSwitch } from './settings-switch';
 
 interface ConnectionField { id: string; label: string; secret: boolean; required: boolean }
 interface PluginPackage {
@@ -41,10 +43,11 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   shell.dataset.settingsSearchKey = 'plugins.installed';
   mount.replaceChildren(shell);
   const header = el('div', undefined, 'plugin-settings__header');
-  const heading = el('div');
-  heading.append(el('p', 'Add apps, menus, UI, tools, connections and skills. Ask Minnow to build one with /build-plugin.'));
-  header.append(heading, linkToRepositoryDoc('Authoring guide', 'documentation/manual/plugins.md'));
-  shell.append(header);
+  const build = el('button', undefined, 'settings-action-btn settings-action-btn--primary');
+  build.type = 'button';
+  build.title = 'Open a new thread with /build-plugin';
+  build.append(createIcon('sparkles', { size: 14 }), 'Build a plugin');
+  header.append(linkToRepositoryDoc('Authoring guide', 'documentation/manual/plugins.md'), build);
   const status = el('p', 'Loading plugins…', 'plugin-settings__status');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
@@ -69,7 +72,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   const list = el('div', undefined, 'plugin-settings__list');
   const panelHost = el('section', undefined, 'plugin-settings__panel');
   panelHost.hidden = true;
-  shell.append(add, hint, preview, status, list, panelHost);
+  shell.append(header, add, hint, preview, status, list, panelHost);
   let revision = -1;
   let installedIds = new Set<string>();
   let busy = false;
@@ -78,7 +81,7 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
   const alive = () => mount.firstChild === shell;
   const closePanel = () => { disposePanel?.(); disposePanel = undefined; panelHost.replaceChildren(); panelHost.hidden = true; };
 
-  async function action(button: HTMLButtonElement, work: () => Promise<void>) {
+  async function action(button: HTMLButtonElement | HTMLInputElement, work: () => Promise<void>) {
     if (busy) return;
     busy = true;
     button.disabled = true;
@@ -93,6 +96,23 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
       add.removeAttribute('aria-busy');
     }
   }
+
+  build.addEventListener('click', () => void action(build, async () => {
+    const [sidebar, router, sessions, draft, composer] = await Promise.all([
+      import('./sidebar'), import('../os/router'), import('../state/sessions'), import('./composer-draft'), import('./composer-surface'),
+    ]);
+    const result = await sidebar.createChatWithMode({ modeId: 'general' });
+    const chat = result.ok && result.chatId ? sessions.findChatById(result.chatId) : undefined;
+    if (!chat) throw new Error(result.error || 'Could not create a plugin thread');
+    draft.persistComposerDraftOnChat(chat, '/build-plugin');
+    sessions.scheduleSaveSessions({ chatId: chat.id });
+    status.textContent = '';
+    router.launchApp('code', { codeSection: 'chat' });
+    draft.applyComposerDraftForChat(chat);
+    const input = composer.getActiveComposerSurface().inputEl;
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+    requestAnimationFrame(() => input?.focus());
+  }));
 
   function button(text: string, work: (button: HTMLButtonElement) => Promise<void>) {
     const node = el('button', text, 'settings-action-btn');
@@ -181,24 +201,44 @@ export async function renderPluginPackagesSection(mount: HTMLElement): Promise<v
     list.replaceChildren();
     for (const plugin of catalog.packages) {
       const row = el('article', undefined, 'plugin-settings__row');
-      const meta = el('div');
+      const main = el('div', undefined, 'plugin-settings__row-main');
+      const icon = el('span', undefined, 'plugin-settings__row-icon');
+      icon.appendChild(createIcon('tools', { size: 16 }));
+      const meta = el('div', undefined, 'plugin-settings__row-meta');
       const count = (n: number, label: string) => `${n} ${label}${n === 1 ? '' : 's'}`;
-      meta.append(el('h3', plugin.name), el('p', plugin.description), el('p', `${plugin.version} · ${plugin.enabled ? 'Enabled' : 'Disabled'} · ${count(plugin.tools.length, 'tool')} · ${count(plugin.panels.length, 'panel')} · ${count(plugin.skills.length, 'skill')}`, 'plugin-settings__meta'));
+      meta.append(el('h3', plugin.name), el('p', plugin.description), el('p', `${count(plugin.tools.length, 'tool')} · ${count(plugin.panels.length, 'panel')} · ${count(plugin.skills.length, 'skill')}`, 'plugin-settings__meta'));
       if (plugin.ui) meta.append(el('p', 'UI extension: apps, menus and DOM access', 'plugin-settings__meta'));
       const uiError = pluginUiError(plugin.id);
       if (uiError) meta.append(el('p', `UI failed: ${uiError}. Fix the source and reload.`, 'plugin-settings__status'));
+      const { root: enabled, input: enabledInput } = createSettingsSwitch({
+        checked: plugin.enabled,
+        ariaLabel: `Enable ${plugin.name}`,
+      });
+      enabledInput.addEventListener('change', () => {
+        const checked = enabledInput.checked;
+        const restoreFocus = document.activeElement === enabledInput;
+        enabledInput.checked = plugin.enabled;
+        void action(enabledInput, async () => {
+          await mutate({ action: checked ? 'enable' : 'disable', id: plugin.id });
+          if (restoreFocus && document.activeElement === document.body) {
+            [...list.querySelectorAll<HTMLInputElement>('[role="switch"]')]
+              .find(input => input.dataset.pluginId === plugin.id)?.focus();
+          }
+        });
+      });
+      enabledInput.dataset.pluginId = plugin.id;
+      main.append(icon, meta, el('code', plugin.version, 'plugin-settings__row-version'), enabled);
       const controls = el('div', undefined, 'plugin-settings__actions');
       controls.append(
-        button(plugin.enabled ? 'Disable' : 'Enable', async () => { await mutate({ action: plugin.enabled ? 'disable' : 'enable', id: plugin.id }); }),
         button('Reload from source', async () => { await mutate({ action: 'reload', id: plugin.id }); }),
         button('Remove', async () => {
           if (await appConfirm(`Remove ${plugin.name}? Its tools, skills, panels and saved connections will be removed. Plugin data is kept.`, { title: 'Remove plugin' })) await mutate({ action: 'remove', id: plugin.id });
           else status.textContent = '';
         }),
       );
-      row.append(meta, controls);
+      row.append(main);
       const details = el('details');
-      details.append(el('summary', 'Tools, panels and connections'), el('p', `Source: ${plugin.source}`, 'plugin-settings__source'));
+      details.append(el('summary', 'Configure'), el('p', `Source: ${plugin.source}`, 'plugin-settings__source'), controls);
       for (const tool of plugin.tools) {
         const toolLabel = el('p', tool.id, 'plugin-settings__tool');
         toolLabel.title = tool.description;

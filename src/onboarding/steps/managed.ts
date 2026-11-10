@@ -82,19 +82,19 @@ function formatModelMeta(row: ModelFitResult): string {
 }
 
 function renderProgressBar(host: HTMLElement, percent: number): void {
-
-  host.replaceChildren();
-
-  const track = el('div', 'mn-onboarding-progress-track');
-
-  const fill = el('div', 'mn-onboarding-progress-fill');
-
-  fill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
-
-  track.appendChild(fill);
-
-  host.appendChild(track);
-
+  let track = host.querySelector<HTMLElement>('.mn-onboarding-progress-track');
+  if (!track) {
+    track = el('div', 'mn-onboarding-progress-track');
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-label', 'Model download progress');
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', '100');
+    track.appendChild(el('div', 'mn-onboarding-progress-fill'));
+    host.replaceChildren(track);
+  }
+  const value = Math.min(100, Math.max(0, percent));
+  track.style.setProperty('--mn-progress', String(value / 100));
+  track.setAttribute('aria-valuenow', String(value));
 }
 
 function modelRowKey(row: ModelFitResult): string {

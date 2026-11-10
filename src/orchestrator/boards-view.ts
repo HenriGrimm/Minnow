@@ -21,7 +21,7 @@ import {
   type BoardListClient,
   type BoardSummary,
 } from './client';
-import { appConfirm } from '../ui/app-dialog';
+import { appConfirm, isAppDialogOpen } from '../ui/app-dialog';
 import { resetTargets, rewindCascade } from '../../server/orchestrator/core/rewind.js';
 import { resyncHasWork } from '../../server/orchestrator/core/plan-resync.js';
 import { describeResync } from './plan-resync-summary';
@@ -31,6 +31,7 @@ import {
   renderBoardHeader,
   renderBoardSkeleton,
   renderMergeQueue,
+  renderRunLedger,
   renderTaskList,
   renderTimeline,
   pendingDependents,
@@ -59,7 +60,8 @@ import {
 } from '../chat/plans/list-plans';
 import { button, el, empty, pill } from './dom';
 import { createIcon } from '../ui/icon';
-import { deferUntilContextMenuClosed } from '../ui/context-menu';
+import { deferUntilContextMenuClosed, isContextMenuOpen, openContextMenu } from '../ui/context-menu';
+import { markPreviewOccluder } from '../ui/preview-occlusion';
 import {
   attachV2BoardHeaderInstruments,
   detachV2BoardHeaderInstruments,
@@ -80,7 +82,7 @@ import { getActiveChat } from '../state/sessions';
 import { refreshMetricsStripForChat, updateStrip } from '../ui/stats';
 import { boardUsage } from './board-usage';
 import { attemptInterruption } from './attempt-status';
-import { collectBoardAttention, createBoardAttentionInbox } from './board-attention';
+import { collectBoardAttention, createBoardAttentionInbox, type BoardAttentionItem } from './board-attention';
 import {
   cancelPlanRepair,
   startPlanRepair,
@@ -144,6 +146,9 @@ interface Surface {
   root: HTMLElement;
   listPane: HTMLElement;
   boardPane: HTMLElement;
+  desktopLayout: boolean;
+  wideInspector: boolean;
+  resizeObserver?: ResizeObserver;
 }
 
 let surface: Surface | null = null;
@@ -160,11 +165,15 @@ let selectedBoardId: string | null = null;
  */
 let lastOpenedBoardId: string | null = null;
 let selectedTaskId: string | null = null;
+const BOARD_PANES = ['Waves', 'Verification', 'Activity'] as const;
+type BoardPane = typeof BOARD_PANES[number];
+let selectedPane: BoardPane = 'Waves';
 let journalView: {
   boardId: string;
   events: readonly Record<string, unknown>[];
   truncated: boolean;
 } | null = null;
+let journalLoad: { boardId: string; error?: string } | null = null;
 let timelinePopover: {
   root: HTMLElement;
   anchor: HTMLButtonElement;
@@ -240,7 +249,15 @@ export async function openBoardsView(options: { fromPlan?: boolean } = {}): Prom
   stripMainColumnOverlayClasses();
   area.classList.add(CHAT_AREA_CLASS);
   document.getElementById('mainColumn')?.classList.add(MAIN_COLUMN_CLASS);
-  surface = { root, listPane, boardPane };
+  surface = { root, listPane, boardPane, desktopLayout: false, wideInspector: false };
+  syncBoardsLayout(surface);
+  if (typeof ResizeObserver === 'function') {
+    const mounted = surface;
+    mounted.resizeObserver = new ResizeObserver(() => {
+      if (surface === mounted && syncBoardsLayout(mounted)) paintBoard();
+    });
+    mounted.resizeObserver.observe(root);
+  }
   document.addEventListener('keydown', onBoardsDocumentKeydown, true);
 
   list = createBoardListClient();
@@ -271,6 +288,7 @@ export function teardownBoardsView(): void {
   closeTimelinePopover(false);
   attentionInbox?.dispose();
   attentionInbox = null;
+  surface?.resizeObserver?.disconnect();
   document.removeEventListener('keydown', onBoardsDocumentKeydown, true);
   unsubscribeBoard?.();
   unsubscribeBoard = null;
@@ -310,9 +328,10 @@ export function teardownBoardsView(): void {
 }
 
 function onBoardsDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return;
+  if (event.key !== 'Escape' || event.defaultPrevented || isContextMenuOpen() || isAppDialogOpen()) return;
   if (!surface || !selectedTaskId) return;
-  if (!surface.root.querySelector('.ov2-detail-overlay')) return;
+  const overlay = surface.root.querySelector('.ov2-detail-overlay');
+  if (!overlay || (surface.root.classList.contains('is-inspector-inline') && !overlay.contains(event.target as Node))) return;
   event.preventDefault();
   selectTaskDetail(null);
 }
@@ -456,8 +475,10 @@ function selectBoard(boardId: string | null): void {
   selectedBoardId = boardId;
   if (boardId) rememberOpenedBoard(boardId);
   selectedTaskId = null;
+  selectedPane = 'Waves';
   closeTimelinePopover(false);
   journalView = null;
+  journalLoad = null;
   clearTaskDetailState();
   pendingTasks.clear();
   confirmingDelete.clear();
@@ -541,14 +562,20 @@ function paintList(): void {
 
   const head = el('div', 'ov2__list-head');
   head.appendChild(el('h1', 'ov2__list-title', 'Boards'));
-  head.appendChild(
-    button({
+  if (document.documentElement.classList.contains('mn-graphite-apps')) {
+    const add = el('button', 'ov2__graphite-add');
+    add.type = 'button';
+    add.title = 'Create a board from a plan file';
+    add.setAttribute('aria-label', 'New board');
+    add.append(createIcon('plus', { size: 13 }));
+    add.addEventListener('click', () => openAskPane());
+    head.append(add);
+  } else head.appendChild(button({
       label: 'New board',
       title: 'Create a board from a plan file',
       variant: 'primary',
       onClick: () => openAskPane(),
-    }),
-  );
+    }));
   pane.appendChild(head);
 
   const boards = list?.getBoards() ?? [];
@@ -564,6 +591,12 @@ function paintList(): void {
   if (error) {
     pane.appendChild(el('p', 'ov2__list-error', `Could not refresh the list: ${error.message}`));
   }
+
+  const help = el('aside', 'ov2__graphite-help');
+  const helpTitle = el('strong', undefined, 'How boards run');
+  helpTitle.prepend(createIcon('help', { size: 14 }));
+  help.append(helpTitle, el('p', undefined, 'A plan becomes waves. Agents work in isolated worktrees, and each wave advances when its checks pass.'));
+  pane.append(help);
 }
 
 function renderListItem(board: BoardSummary): HTMLElement {
@@ -571,11 +604,14 @@ function renderListItem(board: BoardSummary): HTMLElement {
   const btn = el('button', 'ov2__board-btn');
   btn.type = 'button';
   btn.dataset.focusKey = `board:${board.boardId}`;
-  if (board.boardId === selectedBoardId) btn.classList.add('is-selected');
+  const selected = board.boardId === selectedBoardId;
+  if (selected) btn.classList.add('is-selected');
+  btn.setAttribute('aria-current', selected ? 'true' : 'false');
   btn.addEventListener('click', () => selectBoard(board.boardId));
 
   btn.appendChild(el('span', 'ov2__board-name', board.name || board.boardId));
   const meta = el('span', 'ov2__board-meta');
+  btn.dataset.status = board.finished ? 'finished' : board.stopReason === 'paused' ? 'paused' : board.status;
   meta.appendChild(
     pill(
       board.finished ? 'finished' : board.stopReason === 'paused' ? 'paused' : board.status === 'running' && board.attentionCount ? 'action needed' : board.status === 'running' && board.waitingCount ? 'recovering' : board.status,
@@ -1228,6 +1264,41 @@ function restoreFocus(captured: { key: string; selectionStart: number | null } |
 
 // ── Board ────────────────────────────────────────────────────────────────────
 
+function syncBoardsLayout(mounted: Surface): boolean {
+  const width = mounted.root.getBoundingClientRect().width;
+  const desktopLayout = width >= 840 && document.documentElement.classList.contains('mn-graphite-apps');
+  const wideInspector = desktopLayout && width >= 1100;
+  if (mounted.desktopLayout === desktopLayout && mounted.wideInspector === wideInspector) return false;
+  mounted.desktopLayout = desktopLayout;
+  mounted.wideInspector = wideInspector;
+  mounted.root.classList.toggle('is-graphite-overview', desktopLayout);
+  return true;
+}
+
+function closeTaskInspector(root: HTMLElement): void {
+  root.classList.remove('is-detail-open', 'is-inspector-inline');
+  root.querySelector('.ov2-detail-overlay')?.remove();
+}
+
+function syncInspectorPresentation(overlay: HTMLElement | null, inline: boolean): void {
+  const panel = overlay?.querySelector('.ov2-detail');
+  if (!overlay || !panel) return;
+  panel.setAttribute('role', inline ? 'region' : 'dialog');
+  if (inline) panel.removeAttribute('aria-modal');
+  else panel.setAttribute('aria-modal', 'true');
+  markPreviewOccluder(overlay, inline ? 'panel' : 'dialog');
+  const rail = panel.querySelector('.ov2-detail__rail');
+  const spec = rail?.querySelector('[data-spec-panel]');
+  if (rail && spec) {
+    if (spec.tagName === 'DETAILS' && !panel.hasAttribute('data-spec-presented')) {
+      if (inline) (spec as HTMLDetailsElement).open = true;
+      panel.setAttribute('data-spec-presented', '');
+    }
+    if (inline && spec !== rail.firstElementChild) rail.prepend(spec);
+    if (!inline && spec !== rail.lastElementChild) rail.append(spec);
+  }
+}
+
 function paintBoard(): void {
   if (!surface) return;
   // Journal events can repaint the entire board while a task actions menu is
@@ -1242,8 +1313,7 @@ function paintBoard(): void {
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     if (pane.querySelector('[data-plan-launch]')) return;
     detachV2BoardHeaderInstruments();
-    surface.root.classList.remove('is-detail-open');
-    surface.root.querySelector('.ov2-detail-overlay')?.remove();
+    closeTaskInspector(surface.root);
     pane.classList.add('ov2__board--ask');
     if (pane.querySelector('.ob-pane--ask')) {
       paintAskErrors(pane);
@@ -1266,8 +1336,7 @@ function paintBoard(): void {
     attentionInbox?.update([]);
     updateStrip({}, {}, undefined, { costUsd: null, board: true });
     detachV2BoardHeaderInstruments();
-    surface.root.classList.remove('is-detail-open');
-    surface.root.querySelector('.ov2-detail-overlay')?.remove();
+    closeTaskInspector(surface.root);
     pane.replaceChildren(renderBoardSkeleton());
     return;
   }
@@ -1278,17 +1347,20 @@ function paintBoard(): void {
   metricsButton?.setAttribute('aria-label', `Show board metrics, ${metrics.measured} measured attempts or rounds, ${metrics.active} active attempts`);
 
   const connected = client?.isConnected() ?? false;
-  const scrollTop = pane.scrollTop;
+  const inline = surface.root.classList.contains('is-inspector-inline');
+  const scrollTop = (inline ? pane.querySelector<HTMLElement>('.ov2__board-body') : pane)?.scrollTop ?? 0;
   const focused = captureFocus();
   detachV2BoardHeaderInstruments();
   pane.replaceChildren();
-  pane.appendChild(renderBoardHeader(state, connected, renderControls(state)));
+  const header = renderBoardHeader(state, connected, renderControls(state), surface.desktopLayout);
+  pane.appendChild(header);
   const recoveryClient = client;
   const headerControls = pane.querySelector('.board-header__controls');
+  let attention: BoardAttentionItem[] = [];
   if (headerControls instanceof HTMLElement) {
     attentionInbox ??= createBoardAttentionInbox();
     headerControls.prepend(attentionInbox.element);
-    attentionInbox.update(collectBoardAttention(state, {
+    attention = collectBoardAttention(state, {
       resetTask: (taskId) => {
         attentionInbox?.close();
         void commandResetTask(taskId);
@@ -1301,7 +1373,8 @@ function paintBoard(): void {
         if (!recoveryClient?.checkRecovery) throw new Error('Reconnect to check recovery.');
         await recoveryClient.checkRecovery(key);
       },
-    }, client?.getEngineErrors(), notice));
+    }, client?.getEngineErrors(), notice);
+    attentionInbox.update(attention);
     attachV2BoardHeaderInstruments(headerControls, state, {
       setModel: commandSetModel,
       onNeedModel: () => {
@@ -1330,9 +1403,8 @@ function paintBoard(): void {
         resetTask: (taskId: string) => void commandResetTask(taskId),
       }),
     );
+    closeTaskInspector(surface.root);
     pane.scrollTop = scrollTop;
-    surface.root.classList.remove('is-detail-open');
-    surface.root.querySelector('.ov2-detail-overlay')?.remove();
     restoreFocus(focused);
     return;
   }
@@ -1340,12 +1412,41 @@ function paintBoard(): void {
   const actions = boardActions();
   const options = boardViewOptions();
 
-  pane.appendChild(renderTaskList(state, actions, options));
-  pane.appendChild(renderMergeQueue(state));
-  pane.scrollTop = scrollTop;
+  const body = el('div', 'ov2__board-body');
+  if (surface.desktopLayout) {
+    header.append(renderBoardPaneTabs(attention.length));
+    body.id = 'graphite-board-pane';
+    body.setAttribute('role', 'tabpanel');
+    body.setAttribute('aria-labelledby', `graphite-board-tab-${selectedPane.toLowerCase()}`);
+  }
+  if (surface.desktopLayout && selectedPane !== 'Waves') {
+    closeTaskInspector(surface.root);
+    body.append(selectedPane === 'Activity' ? renderBoardActivity(state.boardId) : renderBoardVerification(state));
+    pane.append(body);
+    pane.scrollTop = scrollTop;
+    restoreFocus(focused);
+    return;
+  }
+  const warning = surface.desktopLayout ? attention.find(item => item.tone === 'warn' || item.tone === 'bad') : undefined;
+  if (warning) {
+    const notice = el('section', 'ov2__board-warning');
+    notice.dataset.tone = warning.tone;
+    const copy = el('div');
+    copy.append(el('strong', undefined, warning.title), el('p', undefined, warning.subtitle));
+    const review = el('button', 'board-btn board-btn--compact', 'Review');
+    review.type = 'button';
+    review.addEventListener('click', () => attentionInbox?.element.click());
+    notice.append(createIcon(warning.icon, { size: 16 }), copy, review);
+    body.append(notice);
+  }
+  body.append(renderTaskList(state, actions, options), renderMergeQueue(state));
+  pane.append(body);
 
   const selected = selectedTaskId ? state.tasks.get(selectedTaskId) : undefined;
+  const inspectorInline = Boolean(selected && surface.wideInspector);
   surface.root.classList.toggle('is-detail-open', Boolean(selected));
+  surface.root.classList.toggle('is-inspector-inline', inspectorInline);
+  (inspectorInline ? body : pane).scrollTop = scrollTop;
   const existingOverlay = surface.root.querySelector<HTMLElement>('.ov2-detail-overlay');
   if (!selected) {
     existingOverlay?.remove();
@@ -1366,10 +1467,92 @@ function paintBoard(): void {
     existingOverlay?.remove();
     surface.root.appendChild(renderTaskDetail(state, selected, actions, options));
   }
+  syncInspectorPresentation(surface.root.querySelector<HTMLElement>('.ov2-detail-overlay'), inspectorInline);
   syncLogPolling(state);
   syncElapsedTicker(state);
 
   restoreFocus(focused);
+}
+
+function renderBoardPaneTabs(attentionCount: number): HTMLElement {
+  const tabs = el('div', 'ov2__view-tabs');
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Board views');
+  function select(next: BoardPane): void {
+    if (selectedPane === next) return;
+    selectedPane = next;
+    if (next !== 'Waves') {
+      selectedTaskId = null;
+      clearTaskDetailState();
+    }
+    paintBoard();
+    document.getElementById(`graphite-board-tab-${next.toLowerCase()}`)?.focus({ preventScroll: true });
+  }
+  for (const name of BOARD_PANES) {
+    const tab = el('button', 'ov2__view-tab', name);
+    tab.type = 'button';
+    tab.id = `graphite-board-tab-${name.toLowerCase()}`;
+    tab.dataset.focusKey = `board-view:${name}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', 'graphite-board-pane');
+    tab.setAttribute('aria-selected', String(name === selectedPane));
+    tab.tabIndex = name === selectedPane ? 0 : -1;
+    if (name === 'Waves' && attentionCount) {
+      tab.append(el('span', 'ov2__view-tab-count', String(attentionCount)));
+      tab.setAttribute('aria-label', `Waves, ${attentionCount} board notices`);
+    }
+    tab.addEventListener('click', () => select(name));
+    tabs.append(tab);
+  }
+  tabs.addEventListener('keydown', (event) => {
+    const index = BOARD_PANES.indexOf(selectedPane);
+    const next = event.key === 'Home' ? BOARD_PANES[0] : event.key === 'End' ? BOARD_PANES[BOARD_PANES.length - 1]
+      : event.key === 'ArrowRight' ? BOARD_PANES[(index + 1) % BOARD_PANES.length]
+        : event.key === 'ArrowLeft' ? BOARD_PANES[(index + BOARD_PANES.length - 1) % BOARD_PANES.length] : null;
+    if (!next) return;
+    event.preventDefault();
+    select(next);
+  });
+  return tabs;
+}
+
+function renderBoardVerification(state: BoardState): HTMLElement {
+  const section = el('section', 'ov2__verification');
+  section.append(el('h3', undefined, 'Verification'));
+  const ledger = renderRunLedger(state, boardActions());
+  if (ledger) section.append(ledger);
+  else {
+    const list = el('ul', 'ov2__verification-list');
+    for (const task of state.tasks.values()) {
+      if (!task.testSpec) continue;
+      const test = task.attempts.filter(attempt => attempt.role === 'tester' && !attempt.retired).at(-1);
+      const status = test?.ended ? (test.outcome === 'pass' ? 'Passed' : test.outcome || 'Ended') : test ? 'Running' : 'Waiting';
+      const row = el('li');
+      row.append(el('code', undefined, task.id), el('span', undefined, task.title),
+        pill(status, status === 'Passed' ? 'good' : test?.ended ? 'warn' : 'neutral'));
+      list.append(row);
+    }
+    section.append(list.children.length ? list : el('p', 'ov2-notice', 'There are no task checks to show yet.'));
+  }
+  return section;
+}
+
+function renderBoardActivity(boardId: string): HTMLElement {
+  const section = el('section', 'ov2__activity');
+  const heading = el('header', 'ov2__activity-header');
+  const refresh = el('button', 'board-btn board-btn--compact', 'Refresh');
+  refresh.type = 'button';
+  refresh.addEventListener('click', () => void loadTimeline());
+  heading.append(el('h3', undefined, 'Activity'), refresh);
+  const content = el('div', 'ov2__activity-content');
+  if (journalView?.boardId === boardId) content.append(renderTimeline(journalView.events, journalView.truncated));
+  else if (journalLoad?.error) content.append(el('p', 'ov2-notice ov2-notice--warn', journalLoad.error));
+  else {
+    content.textContent = 'Loading activity…';
+    void loadTimeline();
+  }
+  section.append(heading, content);
+  return section;
 }
 
 function boardActions() {
@@ -1393,6 +1576,7 @@ function boardActions() {
 function boardViewOptions() {
   return {
     selectedTaskId,
+    desktopLayout: surface?.desktopLayout,
     pendingTaskIds: pendingTasks,
     liveActivity: client?.getLiveActivity(),
     attemptStartedAt: client?.getAttemptStartedAt(),
@@ -1748,7 +1932,7 @@ function renderControls(state: BoardState): HTMLElement {
     controls.appendChild(toggle);
   }
 
-  if (!showingReport(state)) {
+  if (!showingReport(state) && !surface?.desktopLayout) {
     const timelineBtn = el('button', 'board-btn board-btn--compact board-timeline-btn');
     timelineBtn.type = 'button';
     timelineBtn.textContent = 'Timeline';
@@ -1766,9 +1950,23 @@ function renderControls(state: BoardState): HTMLElement {
   sync.title = `Pull changes from ${state.planPath} into this board. You see what will change first.`;
   sync.dataset.focusKey = 'board-resync';
   sync.addEventListener('click', () => void commandResyncPlan());
-  controls.appendChild(sync);
-
-  controls.appendChild(renderRenameControl(state));
+  const rename = renderRenameControl(state);
+  if (surface?.desktopLayout && renamingBoardId !== state.boardId) {
+    const more = el('button', 'board-btn board-btn--compact ov2__graphite-more');
+    more.type = 'button';
+    more.title = 'Board actions';
+    more.setAttribute('aria-label', more.title);
+    more.setAttribute('aria-haspopup', 'menu');
+    more.append(createIcon('more', { size: 14 }));
+    more.addEventListener('click', () => openContextMenu({
+      anchor: more, label: 'Board actions',
+      items: [
+        { id: 'sync-plan', label: sync.textContent!, disabled: sync.disabled, onSelect: () => sync.click() },
+        { id: 'rename-board', label: 'Rename board', onSelect: () => rename.click() },
+      ],
+    }));
+    controls.append(more);
+  } else controls.append(sync, rename);
   return controls;
 }
 
@@ -1777,11 +1975,11 @@ function renderConcurrencyControl(
   finished: boolean,
   running: boolean,
 ): HTMLElement {
-  const wrap = el('label', 'board-header__concurrency');
+  const wrap = el('div', 'board-header__concurrency');
   wrap.title =
     'Agents running at once. Each is a model call and a worktree. There is no hard cap; pick what this machine can hold. Changing it while running takes effect on the next tick; agents already working keep going.';
 
-  const label = el('span', 'board-header__field-label', 'Agents');
+  const label = el('span', 'board-header__field-label', surface?.desktopLayout ? 'Parallel' : 'Agents');
   wrap.appendChild(label);
 
   const input = el('input', 'board-header__concurrency-input');
@@ -1799,7 +1997,21 @@ function renderConcurrencyControl(
     if (!running || finished) return;
     void commandConcurrency(readConcurrencyInput());
   });
-  wrap.appendChild(input);
+  if (surface?.desktopLayout) {
+    wrap.classList.add('board-header__concurrency--stepper');
+    const step = (delta: -1 | 1, text: string, labelText: string): HTMLButtonElement => {
+      const control = el('button', 'board-header__concurrency-step', text);
+      control.type = 'button';
+      control.setAttribute('aria-label', labelText);
+      control.dataset.focusKey = delta < 0 ? 'board-concurrency-down' : 'board-concurrency-up';
+      control.addEventListener('click', () => {
+        if (delta < 0) input.stepDown(); else input.stepUp();
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      return control;
+    };
+    wrap.append(step(-1, '−', 'Decrease parallel agents'), input, step(1, '+', 'Increase parallel agents'));
+  } else wrap.append(input);
   return wrap;
 }
 
@@ -1964,21 +2176,27 @@ function toggleTimelinePopover(anchor: HTMLButtonElement): void {
 
 async function loadTimeline(): Promise<void> {
   const boardId = selectedBoardId;
-  if (!boardId) return;
+  if (!boardId || (journalLoad?.boardId === boardId && !journalLoad.error)) return;
+  const load: NonNullable<typeof journalLoad> = { boardId };
+  journalLoad = load;
+  const update = (renderContent: () => HTMLElement): void => {
+    surface?.boardPane.querySelector('.ov2__activity-content')?.replaceChildren(renderContent());
+    const popup = timelinePopover;
+    if (popup) {
+      popup.root.querySelector('.ov2-timeline-popover__body')?.replaceChildren(renderContent());
+      positionTimelinePopover(popup.anchor, popup.root);
+    }
+  };
   try {
     const { events, truncated } = await readJournal(boardId, { limit: TIMELINE_LIMIT });
-    if (boardId !== selectedBoardId || !timelinePopover) return;
+    if (boardId !== selectedBoardId || journalLoad !== load) return;
     journalView = { boardId, events, truncated };
-    const body = timelinePopover.root.querySelector<HTMLElement>('.ov2-timeline-popover__body');
-    body?.replaceChildren(renderTimeline(events, truncated));
-    positionTimelinePopover(timelinePopover.anchor, timelinePopover.root);
+    journalLoad = null;
+    update(() => renderTimeline(events, truncated));
   } catch (err) {
-    if (boardId !== selectedBoardId || !timelinePopover) return;
-    const body = timelinePopover.root.querySelector<HTMLElement>('.ov2-timeline-popover__body');
-    body?.replaceChildren(
-      el('p', 'ov2-notice ov2-notice--warn', err instanceof Error ? err.message : String(err)),
-    );
-    positionTimelinePopover(timelinePopover.anchor, timelinePopover.root);
+    if (boardId !== selectedBoardId || journalLoad !== load) return;
+    load.error = err instanceof Error ? err.message : String(err);
+    update(() => el('p', 'ov2-notice ov2-notice--warn', load.error));
   }
 }
 

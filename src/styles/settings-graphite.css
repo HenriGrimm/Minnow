@@ -1,0 +1,457 @@
+/* The Settings workbench shares one heading rhythm and card treatment. */
+#settingsView.settings-page--graphite {
+  --settings-card-bg: var(--mn-graphite-raised);
+  --settings-card-line: var(--mn-graphite-line);
+  --settings-card-radius: 12px;
+  --settings-card-padding: var(--mn-space-4);
+  --settings-row-padding-block: calc(var(--mn-space-2-5) + var(--mn-density-step));
+  --settings-card-row: calc(60px + 2 * var(--mn-density-step));
+  --settings-control-height: var(--mn-control-h-md);
+  background: var(--mn-graphite-sheet);
+  color: var(--mn-graphite-text);
+}
+
+#settingsView.settings-page--graphite .settings-content {
+  --settings-column-max: 696px;
+  --settings-column-wide-max: 696px;
+}
+
+.settings-page--graphite .settings-section-summary {
+  margin: 4px 0 18px;
+  color: var(--mn-graphite-text-subtle);
+  font: 400 13px/1.45 var(--font-ui);
+}
+
+#settingsView.settings-page--graphite .settings-area.is-active > h2 {
+  margin-bottom: 0;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.settings-page--graphite :is(.settings-section-body, .settings-general, .settings-general__content) {
+  gap: calc(18px + 2 * var(--mn-density-step));
+}
+
+.settings-page--graphite .settings-general > .settings-section-lead {
+  margin: 0;
+}
+
+.settings-page--graphite :is(.settings-section-lead, .settings-field-hint, .settings-lead) {
+  color: var(--mn-graphite-text-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.settings-page--graphite .settings-area .settings-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.settings-page--graphite .settings-area .settings-group__title {
+  margin: 0 0 8px;
+  color: var(--mn-graphite-text-subtle);
+  font: 500 12px/1.45 var(--font-ui);
+  letter-spacing: 0;
+}
+
+.settings-page--graphite .settings-area .settings-group__lead {
+  margin: 0 0 12px;
+  color: var(--mn-graphite-text-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.settings-page--graphite .settings-area .settings-group__body:has(> :is(.settings-row, .settings-toggle-row, .settings-kv, .settings-group__panel)) {
+  gap: 0;
+  border: 1px solid var(--settings-card-line);
+  border-radius: var(--settings-card-radius);
+  background: var(--settings-card-bg);
+}
+
+.settings-page--graphite .settings-area .settings-group__body > :is(.settings-row, .settings-toggle-row) {
+  min-height: var(--settings-card-row);
+  gap: var(--mn-space-2) var(--mn-space-4);
+  border-bottom: 0;
+}
+
+.settings-page--graphite .settings-area .settings-group__body
+  > :is(.settings-row, .settings-toggle-row, .settings-group__panel) {
+  padding: var(--settings-row-padding-block) var(--settings-card-padding);
+}
+
+.settings-page--graphite .settings-area .settings-group__body > .settings-group__panel {
+  margin: 0;
+}
+
+.settings-page--graphite .settings-area .settings-group__body
+  > :not([hidden], .hidden, .is-filter-hidden) ~ :is(.settings-row, .settings-toggle-row, .settings-group__panel) {
+  border-top: 1px solid var(--settings-card-line);
+}
+
+.settings-page--graphite .settings-area .settings-group__body
+  > :is(.settings-row, .settings-toggle-row):nth-child(1 of :not([hidden], .hidden, .is-filter-hidden)) {
+  border-start-start-radius: var(--settings-card-radius);
+  border-start-end-radius: var(--settings-card-radius);
+}
+
+.settings-page--graphite .settings-area .settings-group__body
+  > :is(.settings-row, .settings-toggle-row):nth-last-child(1 of :not([hidden], .hidden, .is-filter-hidden)) {
+  border-end-start-radius: var(--settings-card-radius);
+  border-end-end-radius: var(--settings-card-radius);
+}
+
+.settings-page--graphite .settings-area .settings-group__body:has(> :is(.settings-row, .settings-toggle-row, .settings-kv, .settings-group__panel))
+  > :is(.settings-actions, .settings-field-hint, .settings-group__lead, .settings-kv, .settings-group, .settings-inline-row) {
+  margin: 0;
+  padding: var(--settings-row-padding-block) var(--settings-card-padding);
+}
+
+.settings-page--graphite :is(.settings-row__label, .settings-toggle-row__label) { gap: 2px; }
+
+.settings-page--graphite :is(.settings-row__title, .settings-toggle-row__title) {
+  color: var(--mn-graphite-text);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+
+.settings-page--graphite :is(.settings-row__desc, .settings-toggle-row__desc) {
+  color: var(--mn-graphite-text-subtle);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-page--graphite .settings-row.settings-row--actions {
+  flex-flow: row wrap;
+  align-items: center;
+  column-gap: var(--mn-space-4);
+  row-gap: var(--mn-space-2);
+}
+
+.settings-page--graphite .settings-row--actions > .settings-row__label {
+  flex: 1 1 15rem;
+}
+
+.settings-page--graphite .settings-row--actions > .settings-actions {
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin: 0;
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+}
+
+.settings-page--graphite :is(.settings-actions, .settings-form-actions) {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.settings-page--graphite :is(.settings-actions, .settings-form-actions) > .settings-inline-btn {
+  margin-top: 0;
+}
+
+.settings-page--graphite .settings-form-actions { margin-top: 0; }
+
+#settingsView.settings-page--graphite :is(.settings-select, .settings-input, .settings-textarea, .settings-search-finder__input, .settings-search-managed-url) {
+  border-radius: 8px;
+  border-color: var(--mn-graphite-line-2);
+  background-color: var(--mn-graphite-raised-2);
+  font-size: 12.5px;
+}
+
+#settingsView.settings-page--graphite :is(.settings-select, .settings-input, .settings-textarea):focus-visible {
+  border-color: var(--mn-accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #settingsView.settings-page--graphite :is(.settings-select, .settings-input, .settings-textarea):hover:not(:disabled, :focus-visible) {
+    border-color: var(--mn-border-strong);
+  }
+}
+
+#settingsView.settings-page--graphite :is(.settings-select, .settings-input) {
+  min-height: var(--settings-control-height);
+  padding-block: var(--mn-space-1-5);
+}
+
+@supports (appearance: base-select) {
+  #settingsView.settings-page--graphite select.settings-select {
+    padding-inline-end: var(--mn-space-3);
+  }
+}
+
+.settings-page--graphite :is(.settings-action-btn, .settings-inline-btn, .settings-btn) {
+  border-radius: 7px;
+}
+
+.settings-page--graphite :is(button, a):is(.settings-action-btn, .settings-inline-btn) {
+  min-height: var(--settings-control-height);
+  padding: var(--mn-space-1-5) var(--mn-space-3);
+}
+
+.settings-page--graphite :is(.settings-action-btn--primary, .settings-health__primary) {
+  border-color: transparent;
+  background: var(--mn-graphite-text);
+  color: var(--mn-graphite-sheet);
+}
+
+.settings-page--graphite :is(.settings-action-btn--primary, .settings-health__primary):is(:hover, :active):not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--mn-graphite-text) 86%, var(--mn-graphite-sheet));
+  color: var(--mn-graphite-sheet);
+}
+
+.settings-page--graphite :is(.about-build__hero, .about-build__metric, .about-build__links, .settings-permissions__safeguards,
+  .settings-health-checks, .settings-skills-list, .devices-header, .devices-list,
+  .devices-list__empty, .plugin-settings__list, .plugin-settings__add, .backup-section, .backup-summary,
+  .settings-mcp-add-panel, .settings-skills-library__pack-card) {
+  min-width: 0;
+  border: 1px solid var(--settings-card-line);
+  border-radius: var(--settings-card-radius);
+  background: var(--settings-card-bg);
+}
+
+.settings-page--graphite :is(.settings-permissions__help, .settings-health-checks__last) {
+  align-self: start;
+  color: var(--mn-graphite-text-subtle);
+  font-size: 12px;
+}
+
+.settings-page--graphite .settings-permissions .permission-menu__list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-page--graphite .settings-permissions .permission-menu__item {
+  grid-template-columns: 14px minmax(0, 1fr) 14px;
+  align-items: start;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--settings-card-line);
+  border-radius: var(--settings-card-radius);
+  background: var(--settings-card-bg);
+}
+
+.settings-page--graphite .settings-permissions .permission-menu__icon {
+  grid-area: 1 / 1;
+  width: 14px;
+  height: 19px;
+  background: transparent;
+}
+
+.settings-page--graphite .settings-permissions .permission-menu__text { display: contents; }
+.settings-page--graphite .settings-permissions .permission-menu__label { grid-area: 1 / 2; font-size: 13.5px; font-weight: 500; }
+.settings-page--graphite .settings-permissions .permission-menu__desc { grid-area: 2 / 1 / 3 / -1; line-height: 1.55; }
+.settings-page--graphite .settings-permissions .permission-menu__check { grid-area: 1 / 3; align-self: center; }
+
+.settings-page--graphite .settings-permissions .permission-menu__item:hover { background: var(--mn-graphite-hover); }
+.settings-page--graphite .settings-permissions .permission-menu__item[aria-checked='true'] { border-color: var(--mn-accent); }
+.settings-page--graphite .settings-permissions .permission-menu__item--full[aria-checked='true'] { border-color: var(--mn-danger); }
+.settings-page--graphite .settings-permissions .permission-menu__item:focus-visible { outline: 2px solid var(--mn-accent); outline-offset: 2px; }
+.settings-page--graphite .settings-permissions__safeguards { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px; color: var(--mn-graphite-text-muted); font-size: 12.5px; line-height: 1.55; }
+.settings-page--graphite .settings-permissions__safeguards .mn-icon { flex: none; align-self: flex-start; margin-top: 2px; }
+
+.settings-page--graphite .about-build__hero {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px;
+}
+
+.settings-page--graphite .about-build__mark {
+  display: grid;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--mn-accent);
+  color: var(--mn-accent-ink);
+  font-size: var(--mn-type-2xl);
+  font-weight: 600;
+}
+
+.settings-page--graphite .about-build__name { display: grid; flex: 1; gap: 3px; min-width: 8rem; }
+.settings-page--graphite .about-build__title { font-size: 15px; font-weight: 500; }
+.settings-page--graphite .about-build__caption { color: var(--mn-graphite-text-subtle); font: 400 11.5px/1.45 var(--font-mono); overflow-wrap: anywhere; }
+.settings-page--graphite .about-build__metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.settings-page--graphite .about-build__metric { display: grid; gap: 4px; padding: 12px 14px; }
+.settings-page--graphite .about-build__metric :is(dt, .about-build__metric-hint) { color: var(--mn-graphite-text-subtle); font-size: 11.5px; }
+.settings-page--graphite .about-build__metric dd { display: grid; gap: 4px; margin: 0; }
+.settings-page--graphite .about-build__metric-value { font-size: var(--mn-type-2xl); font-weight: 500; font-variant-numeric: tabular-nums; }
+.settings-page--graphite .about-build__links { display: grid; }
+
+.settings-page--graphite .about-build__links .settings-inline-link {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-radius: 0;
+  color: var(--mn-graphite-text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.settings-page--graphite .about-build__links .settings-inline-link + .settings-inline-link {
+  border-top: 1px solid var(--settings-card-line);
+}
+
+.settings-page--graphite .about-build__links .settings-inline-link:hover { background: var(--mn-graphite-hover); }
+.settings-page--graphite .about-build__links .mn-icon { color: var(--mn-graphite-text-subtle); --mn-icon-size: 14px; }
+
+.settings-page--graphite .settings-health { display: grid; gap: 14px; }
+.settings-page--graphite .settings-health__toolbar { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.settings-page--graphite .settings-health__toolbar .settings-inline-btn { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.settings-page--graphite .settings-health-checks { display: grid; margin: 0; padding: 0; list-style: none; }
+
+.settings-page--graphite .settings-health-checks__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.settings-page--graphite .settings-health-checks__row + .settings-health-checks__row { border-top: 1px solid var(--settings-card-line); }
+.settings-page--graphite .settings-health-checks__row .mn-icon { --mn-icon-size: 14px; color: var(--mn-graphite-text-subtle); }
+.settings-page--graphite .settings-health-checks__row[data-status='ok'] .mn-icon { color: var(--mn-success); }
+.settings-page--graphite .settings-health-checks__row[data-status='error'] .mn-icon { color: var(--mn-danger); }
+.settings-page--graphite .settings-health-checks__label { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.settings-page--graphite .settings-health-checks__detail { color: var(--mn-graphite-text-subtle); font: 400 11px/1.45 var(--font-mono); overflow-wrap: anywhere; }
+.settings-page--graphite .settings-health-checks__status { color: var(--mn-graphite-text-muted); font-size: 12px; }
+.settings-page--graphite .settings-health-checks__last { margin-top: 8px; }
+
+.settings-page--graphite .settings-skills-list { gap: 0; }
+.settings-page--graphite .settings-skills-list .settings-skill-card { padding: 12px 16px; border: 0; border-radius: 0; background: transparent; }
+.settings-page--graphite .settings-skill-card + .settings-skill-card { border-top: 1px solid var(--settings-card-line); }
+.settings-page--graphite .settings-skill-card__label { font-size: 13.5px; font-weight: 500; }
+.settings-page--graphite .settings-skill-card__id { color: var(--mn-graphite-text-subtle); font-size: 11.5px; }
+.settings-page--graphite .settings-skills-library__pack-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.settings-page--graphite .settings-skills-library__pack-card { min-height: 112px; padding: 14px; }
+.settings-page--graphite .settings-skills-library__pack-card:hover { background: var(--mn-graphite-hover); }
+
+.settings-page--graphite .plugin-settings { gap: 14px; padding-top: 0; }
+.settings-page--graphite .plugin-settings__header { align-items: center; }
+.settings-page--graphite .plugin-settings__header .settings-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mn-space-1-5);
+  margin-inline-start: auto;
+}
+.settings-page--graphite .plugin-settings__add { padding: 14px 16px; gap: 8px; }
+.settings-page--graphite .plugin-settings__list:empty { display: none; }
+.settings-page--graphite .plugin-settings__row { display: grid; gap: 8px; padding: 14px 16px; border: 0; }
+.settings-page--graphite .plugin-settings__row + .plugin-settings__row { border-top: 1px solid var(--settings-card-line); }
+.settings-page--graphite .plugin-settings__row h3 { margin: 0; font-size: 13.5px; font-weight: 500; }
+.settings-page--graphite .plugin-settings__row p { margin: 3px 0 0; }
+.settings-page--graphite .plugin-settings__row details { margin-top: 0; }
+.settings-page--graphite .plugin-settings__row-main { display: flex; align-items: center; gap: 12px; }
+.settings-page--graphite .plugin-settings__row-meta { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.settings-page--graphite .plugin-settings__row-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border: 1px solid var(--settings-card-line); border-radius: 8px; color: var(--mn-graphite-text-subtle); }
+.settings-page--graphite .plugin-settings__row-version { color: var(--mn-graphite-text-subtle); font: 400 11px/1.4 var(--font-mono); }
+
+.settings-page--graphite .devices-settings { gap: 14px; }
+.settings-page--graphite .devices-header { padding: 16px; }
+.settings-page--graphite .devices-header__title { font-size: 14px; font-weight: 500; }
+.settings-page--graphite .devices-card__body .devices-card__copy {
+  color: var(--mn-graphite-text-subtle);
+  font-size: var(--mn-type-sm);
+}
+.settings-page--graphite .devices-list:empty { display: none; }
+.settings-page--graphite .devices-list__empty { max-width: none; margin: 0; padding: 14px 16px; }
+.settings-page--graphite .devices-list .devices-row { min-height: 54px; border-radius: 0; padding: 8px 16px; }
+
+.settings-page--graphite .backup-settings { gap: 14px; }
+.settings-page--graphite .backup-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+.settings-page--graphite .backup-summary > .mn-icon { color: var(--mn-graphite-text-subtle); }
+.settings-page--graphite .backup-summary__text { display: grid; flex: 1; min-width: 10rem; gap: 2px; overflow-wrap: anywhere; }
+.settings-page--graphite .backup-summary__title { font-size: 13.5px; font-weight: 500; }
+.settings-page--graphite .backup-summary__detail { color: var(--mn-graphite-text-subtle); font-size: 12px; }
+.settings-page--graphite .backup-settings .backup-section { padding: 14px 16px; }
+.settings-page--graphite .backup-section__title { font-size: 13.5px; font-weight: 500; }
+.settings-page--graphite .backup-section__lead { color: var(--mn-graphite-text-subtle); font-size: 12px; }
+
+.settings-page--graphite .settings-mcp-add-panel:not(.hidden) { padding: 12px 16px; }
+.settings-page--graphite :is(.settings-mcp-row, .settings-lsp-row, .settings-mcp-list__item, .settings-lsp-list__item) {
+  padding: var(--settings-row-padding-block) var(--settings-card-padding);
+  border-color: var(--settings-card-line);
+  background: var(--settings-card-bg);
+}
+
+@container settings-content (max-width: 500px) {
+  .settings-page--graphite .settings-permissions .permission-menu__list,
+  .settings-page--graphite .settings-skills-library__pack-grid { grid-template-columns: 1fr; }
+  .settings-page--graphite .about-build__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.settings-page--graphite :is(.settings-switch, .settings-skill-switch) {
+  width: 34px;
+  justify-content: center;
+}
+
+.settings-page--graphite :is(.settings-switch__track, .settings-skill-switch__track) {
+  width: 30px;
+  height: 18px;
+  border: 0;
+  background: var(--mn-graphite-line-2);
+}
+
+.settings-page--graphite :is(.settings-switch__thumb, .settings-skill-switch__thumb) {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  background: var(--mn-graphite-text);
+}
+
+.settings-page--graphite :is(.settings-switch__input, .settings-skill-switch__input):checked + :is(.settings-switch__track, .settings-skill-switch__track)
+  :is(.settings-switch__thumb, .settings-skill-switch__thumb) {
+  transform: translateX(12px);
+  background: var(--mn-graphite-switch-knob-active);
+}
+
+@container settings-content (min-width: 570px) {
+  .settings-page--graphite .settings-skills-list .settings-skill-card__head {
+    display: grid;
+    grid-template-columns: minmax(135px, .42fr) minmax(0, 1fr) auto;
+    grid-template-areas: 'id description switch' 'label description switch';
+    gap: 2px 14px;
+    align-items: center;
+  }
+
+  .settings-page--graphite .settings-skill-card__meta { display: contents; }
+  .settings-page--graphite .settings-skill-card__title-row { grid-area: label; }
+  .settings-page--graphite .settings-skill-card__id { grid-area: id; overflow-wrap: anywhere; }
+  .settings-page--graphite .settings-skill-card__desc { grid-area: description; margin: 0; }
+  .settings-page--graphite .settings-skill-card__head .settings-switch { grid-area: switch; }
+
+  .settings-page--graphite .settings-group__body > .settings-row:not(.settings-row--control-only, .settings-row--textarea, .settings-row--actions) {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .settings-page--graphite .settings-group__body > .settings-row:not(.settings-row--control-only, .settings-row--textarea, .settings-row--actions) > .settings-row__control {
+    flex: 0 1 240px;
+    width: 240px;
+    max-width: 45%;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-page--graphite .settings-area .settings-group__body > :is(.settings-row, .settings-toggle-row):hover {
+    background: var(--mn-graphite-hover);
+  }
+}
+
+@media (pointer: coarse) {
+  #settingsView.settings-page--graphite { --settings-control-height: var(--touch-min); }
+  .settings-page--graphite :is(.settings-switch, .settings-skill-switch, .settings-btn) {
+    min-height: var(--touch-min);
+  }
+  .settings-page--graphite :is(.settings-switch, .settings-skill-switch) { min-width: 44px; }
+  #settingsView.settings-page--graphite :is(.settings-select, .settings-input, .settings-textarea) { font-size: 16px; }
+}

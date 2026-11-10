@@ -347,16 +347,29 @@ export function openQuickCapture(options?: {
   anchor?: HTMLElement | null;
   restoreFocus?: HTMLElement | null;
   extra?: CapturePayload;
+  thread?: boolean;
 }): void {
   if (isIssueCaptureOpen()) {
     if (options?.extra) mergeIntoOpenIssueCapture(options.extra);
     else focusOpenIssueCapture();
     return;
   }
+  if (!options) {
+    const capture = document.getElementById('btnGraphiteCaptureIssue');
+    if (capture?.getClientRects().length) {
+      capture.click();
+      return;
+    }
+  }
 
   let payload = emptyCapturePayload();
   payload.workspacePath = getWorkspacePath();
   if (options?.extra) payload = mergeCapturePayloads(payload, options.extra);
+
+  if (options?.thread) {
+    openIssueCapture({ payload, anchor: options.anchor, restoreFocus: options.anchor, thread: true, restoreDraft: true });
+    return;
+  }
 
   void import('./issues-page').then(({ openQuickIssueForm }) => {
     openQuickIssueForm(payload, options?.restoreFocus ?? options?.anchor ?? null);

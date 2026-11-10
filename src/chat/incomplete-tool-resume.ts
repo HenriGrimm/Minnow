@@ -93,7 +93,7 @@ export async function resumeIncompleteToolBatch(
 
   }
 
-  if (isResumeGateHeld()) {
+  if (isResumeGateHeld(chat.id)) {
 
     return false;
 
@@ -324,7 +324,7 @@ export async function bootIncompleteToolResumeForChats(chats: readonly Chat[]): 
 
 export async function resumeIncompleteToolBatchOnChatSwitch(chat: Chat): Promise<void> {
 
-  if (isResumeGateHeld()) {
+  if (isResumeGateHeld(chat.id)) {
 
     return;
 

@@ -21,6 +21,13 @@ function getMenubarSlot(): HTMLElement | null {
   return document.getElementById(MENUBAR_SLOT_ID);
 }
 
+function getWorkspaceDestination(): HTMLElement | null {
+  if (document.documentElement.classList.contains('mn-graphite-sidebar-open')) {
+    return document.getElementById('osGraphiteWorkspaceSlot') ?? getMenubarSlot();
+  }
+  return getMenubarSlot();
+}
+
 /** True when workspace controls should live in the menubar left slot. */
 export function shouldMountWorkspaceInMenubar(): boolean {
   if (!isOsShellEnabled()) return false;
@@ -32,14 +39,21 @@ export function mountWorkspaceToMenubar(): void {
   if (!shouldMountWorkspaceInMenubar()) return;
 
   const control = getWorkspaceControl();
-  const menubarSlot = getMenubarSlot();
+  const menubarSlot = getWorkspaceDestination();
   const homeSlot = getHomeSlot();
   if (!control || !menubarSlot || !homeSlot) return;
   if (control.parentElement === menubarSlot) return;
 
   menubarSlot.hidden = false;
   menubarSlot.appendChild(control);
-  control.classList.add('is-in-menubar');
+  control.classList.toggle('is-in-menubar', menubarSlot.id === MENUBAR_SLOT_ID);
+  const button = control.querySelector('#btnWorkspace');
+  button?.setAttribute('aria-haspopup', menubarSlot.id === MENUBAR_SLOT_ID ? 'dialog' : 'menu');
+  button?.setAttribute('aria-controls', menubarSlot.id === MENUBAR_SLOT_ID ? 'osWorkspaceGate' : 'workspaceMenu');
+  if (menubarSlot.id !== MENUBAR_SLOT_ID) {
+    const legacySlot = getMenubarSlot();
+    if (legacySlot) legacySlot.hidden = true;
+  }
 }
 
 /** Return workspace controls to the top bar home slot. */

@@ -1,4 +1,5 @@
 import type { Chat } from '../types';
+import { isGraphiteSideChat } from '../lib/graphite-side-chat.mjs';
 import { getChatLastMessageAt } from './session-workspace-scope';
 
 export const AGENT_CHILD_PAGE_SIZE = 8;
@@ -57,7 +58,7 @@ export function chatReadOnlyReason(chat: Chat): string | null {
 
 /** Canonical and imported agent transcripts cannot be rewritten by legacy local branch helpers. */
 export function supportsLocalHistoryMutation(chat: Chat): boolean {
-  return chat.chatCommandVersion !== 1 && !chat.agentConversation;
+  return chat.chatCommandVersion !== 1 && !chat.agentConversation && !isGraphiteSideChat(chat);
 }
 
 export const CANONICAL_HISTORY_HINT = 'This conversation keeps its saved history. Send a new message to continue.';

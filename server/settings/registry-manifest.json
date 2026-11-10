@@ -890,11 +890,12 @@
   },
   {
     "key": "appearance.theme",
-    "label": "Theme presets",
+    "label": "Theme",
     "keywords": [
       "color",
       "dark",
       "light",
+      "graphite",
       "swamp",
       "desert",
       "ocean",
@@ -957,6 +958,68 @@
       "light",
       "system"
     ],
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.theme.color",
+    "label": "Color intensity",
+    "keywords": [
+      "tint",
+      "surface",
+      "subtle",
+      "rich"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.theme.accent",
+    "label": "Accent",
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.density",
+    "label": "Density",
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "appearance"
+    ]
+  },
+  {
+    "key": "appearance.reduceMotion",
+    "label": "Reduce motion",
+    "keywords": [
+      "accessibility",
+      "animation"
+    ],
+    "category": "appearance",
+    "area": "appearance",
+    "storage": "section",
+    "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
@@ -1329,6 +1392,26 @@
       "plan",
       "ask",
       "debug"
+    ],
+    "category": "agents",
+    "area": "agent-center",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "agent-center"
+    ]
+  },
+  {
+    "key": "agents.permissions",
+    "label": "Permission level",
+    "keywords": [
+      "manual",
+      "auto",
+      "full access",
+      "approval",
+      "tool permission"
     ],
     "category": "agents",
     "area": "agent-center",
@@ -2457,7 +2540,7 @@
   },
   {
     "key": "advanced.diagnostics",
-    "label": "Health & diagnostics",
+    "label": "Health and diagnostics",
     "description": "Subsystem probes, grouped errors, and a local log tail. Nothing is sent off-device.",
     "keywords": [
       "errors",
@@ -2503,6 +2586,7 @@
     "label": "Diagnostic actions",
     "keywords": [
       "copy report",
+      "export diagnostics",
       "refresh",
       "clear logs"
     ],
@@ -2561,6 +2645,26 @@
   {
     "key": "about.version",
     "label": "App version",
+    "category": "general",
+    "area": "about",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "about"
+    ]
+  },
+  {
+    "key": "about.boot",
+    "label": "Performance diagnostics",
+    "keywords": [
+      "startup",
+      "boot",
+      "shell ready",
+      "interactive",
+      "page load"
+    ],
     "category": "general",
     "area": "about",
     "storage": "section",

@@ -4,6 +4,8 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type Simulation,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
@@ -199,7 +201,9 @@ export function createForceGraph(
   let focusId: string | null = null;
   let mutedKinds = new Set<GraphEmphasisKey>();
   let insets: ViewportInsets = { top: 0, right: 0, bottom: 0, left: 0 };
-  let pendingFit = false;
+  // null fits the catalog, a set fits a neighborhood, false preserves a manually positioned camera.
+  let cameraFit: Set<string> | null | false = null;
+  let viewportCenter: [number, number] | null = null;
   let rafId = 0;
   let destroyed = false;
 
@@ -468,7 +472,7 @@ export function createForceGraph(
       const emphasis = node.emphasis;
       if (emphasis <= 0.02) continue;
       const eased = 1 - Math.pow(1 - node.appear, 3);
-      const r = node.radius * (0.4 + eased * 0.6);
+      const r = Math.max(1.8 * px, node.radius * (0.4 + eased * 0.6));
       const active = node.id === selectedId;
       const hovered = node.id === hoverId;
       const color = nodeColor(node);
@@ -640,6 +644,7 @@ export function createForceGraph(
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
+    if (!w || !h) return;
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
@@ -665,56 +670,72 @@ export function createForceGraph(
     rafId = requestAnimationFrame(tickLoop);
   };
 
-  const fitToNodes = (ids?: Set<string>): void => {
-    const target = ids ? nodes.filter((n) => ids.has(n.id)) : nodes;
-    if (!target.length) {
-      transform = zoomIdentity;
-      select(canvas).call(zoomBehavior.transform, zoomIdentity);
+  const visibleViewport = () => {
+    const { width, height } = canvas.getBoundingClientRect();
+    const w = width - insets.left - insets.right;
+    const h = height - insets.top - insets.bottom;
+    if (w <= 0 || h <= 0) return null;
+    return { w, h, x: insets.left + w / 2, y: insets.top + h / 2 };
+  };
+
+  const reframeCamera = (): void => {
+    const viewport = visibleViewport();
+    if (!viewport) return;
+    const previousCenter = viewportCenter;
+    const { w, h, x, y } = viewport;
+    viewportCenter = [x, y];
+    if (cameraFit === false) {
+      if (previousCenter) {
+        const [oldX, oldY] = previousCenter;
+        const dx = x - oldX;
+        const dy = y - oldY;
+        if (dx || dy) {
+          const next = zoomIdentity.translate(transform.x + dx, transform.y + dy).scale(transform.k);
+          select(canvas).call(zoomBehavior.transform, next);
+        }
+      }
       return;
     }
+    const ids = cameraFit;
+    const target = ids ? nodes.filter((n) => ids.has(n.id)) : nodes;
+    if (!target.length) return;
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (const n of target) {
       if (n.x == null || n.y == null) continue;
-      minX = Math.min(minX, n.x);
-      minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x);
-      maxY = Math.max(maxY, n.y);
+      minX = Math.min(minX, n.x - n.radius);
+      minY = Math.min(minY, n.y - n.radius);
+      maxX = Math.max(maxX, n.x + n.radius);
+      maxY = Math.max(maxY, n.y + n.radius);
     }
     if (!isFinite(minX)) return;
-    const rect = canvas.getBoundingClientRect();
-    const pad = 40;
-    const availW = Math.max(120, rect.width - insets.left - insets.right - pad * 2);
-    const availH = Math.max(120, rect.height - insets.top - insets.bottom - pad * 2);
-    const centerX = insets.left + pad + availW / 2;
-    const centerY = insets.top + pad + availH / 2;
+    const availW = w - Math.min(80, w * 0.24);
+    const availH = h - Math.min(80, h * 0.24);
     const gw = Math.max(1, maxX - minX);
     const gh = Math.max(1, maxY - minY);
     const k = Math.min(availW / gw, availH / gh, 2.5);
-    const tx = centerX - ((minX + maxX) / 2) * k;
-    const ty = centerY - ((minY + maxY) / 2) * k;
+    const tx = x - ((minX + maxX) / 2) * k;
+    const ty = y - ((minY + maxY) / 2) * k;
     transform = zoomIdentity.translate(tx, ty).scale(k);
     select(canvas).call(zoomBehavior.transform, transform);
   };
 
   const centerOnNode = (id: string): void => {
     const node = nodeById.get(id);
-    if (!node || node.x == null || node.y == null) return;
-    const rect = canvas.getBoundingClientRect();
+    const viewport = visibleViewport();
+    if (!viewport || !node || node.x == null || node.y == null) return;
+    cameraFit = false;
     const k = transform.k;
-    const tx = insets.left + (rect.width - insets.left - insets.right) / 2 - node.x * k;
-    const ty = insets.top + (rect.height - insets.top - insets.bottom) / 2 - node.y * k;
+    const tx = viewport.x - node.x * k;
+    const ty = viewport.y - node.y * k;
     transform = zoomIdentity.translate(tx, ty).scale(k);
     select(canvas).call(zoomBehavior.transform, transform);
   };
 
   const restartSimulation = (): void => {
     simulation?.stop();
-    const rect = canvas.getBoundingClientRect();
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
 
     simulation = forceSimulation(nodes)
       .force(
@@ -730,66 +751,66 @@ export function createForceGraph(
           .strength((l) => (l.kind === 'tag' ? 0.35 : l.kind === 'similar' ? 0.4 : 0.6)),
       )
       .force('charge', forceManyBody<SimNode>().strength((d) => -150 - d.degree * 14))
-      .force('center', forceCenter(cx, cy))
+      .force('center', forceCenter(0, 0))
+      // Disconnected groups still need to stay near the catalog when zooming to fit.
+      .force('x', forceX<SimNode>(0).strength(0.025))
+      .force('y', forceY<SimNode>(0).strength(0.025))
       .force('collide', forceCollide<SimNode>().radius((d) => d.radius + 14))
-      .alpha(reducedMotion ? 0 : 0.9)
-      .alphaDecay(reducedMotion ? 1 : 0.035);
+      .alpha(0.9)
+      .alphaDecay(0.035);
 
     if (reducedMotion) {
-      simulation.tick(160);
-      if (pendingFit) {
-        pendingFit = false;
-        fitToNodes();
-      }
+      simulation.stop().tick(160);
     } else {
-      simulation.on('end', () => {
-        if (pendingFit) {
-          pendingFit = false;
-          fitToNodes();
-        }
+      simulation.on('tick', () => {
+        if (cameraFit !== false) reframeCamera();
       });
     }
+    reframeCamera();
   };
 
   const zoomBehavior: ZoomBehavior<HTMLCanvasElement, unknown> = zoom<HTMLCanvasElement, unknown>()
-    .scaleExtent([0.15, 4])
+    .scaleExtent([0.01, 4])
+    .filter((event) => {
+      if ((event.ctrlKey && event.type !== 'wheel') || event.button) return false;
+      if (event.type === 'mousedown' || event.type === 'dblclick') {
+        return !pickNode(event.clientX, event.clientY);
+      }
+      return true;
+    })
     .on('zoom', (event) => {
+      if (event.sourceEvent) cameraFit = false;
       transform = event.transform;
     });
 
   select(canvas).call(zoomBehavior);
 
   let draggingNode: SimNode | null = null;
+  let nodeMoved = false;
 
   const dragBehavior = drag<HTMLCanvasElement, unknown>()
     .filter((event) => {
       if (event.button !== 0) return false;
-      const target = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
-      return Boolean(target);
+      return Boolean(pickNode(event.clientX, event.clientY));
     })
     .on('start', (event) => {
-      const target = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
-      if (!target) return;
-      draggingNode = target;
-      draggingNode.fx = draggingNode.x;
-      draggingNode.fy = draggingNode.y;
-      simulation?.alphaTarget(0.25).restart();
-      select(canvas).on('.zoom', null);
+      draggingNode = pickNode(event.sourceEvent.clientX, event.sourceEvent.clientY);
+      nodeMoved = false;
     })
     .on('drag', (event) => {
       if (!draggingNode) return;
+      if (!nodeMoved) {
+        nodeMoved = true;
+        cameraFit = false;
+        simulation?.alphaTarget(0.25).restart();
+      }
       const pt = screenToGraph(event.sourceEvent.clientX, event.sourceEvent.clientY);
       draggingNode.fx = pt.x;
       draggingNode.fy = pt.y;
     })
     .on('end', () => {
-      if (draggingNode) {
-        draggingNode.fx = draggingNode.x ?? null;
-        draggingNode.fy = draggingNode.y ?? null;
-      }
+      if (nodeMoved) simulation?.alphaTarget(0);
       draggingNode = null;
-      simulation?.alphaTarget(0);
-      select(canvas).call(zoomBehavior);
     });
 
   select(canvas).call(dragBehavior);
@@ -844,7 +865,9 @@ export function createForceGraph(
   });
 
   const scheduleCanvasResize = scheduleAnimationFrame(() => {
+    if (destroyed) return;
     resizeCanvas();
+    reframeCamera();
     draw(performance.now());
   });
   const resizeObserver = new ResizeObserver(scheduleCanvasResize);
@@ -870,12 +893,17 @@ export function createForceGraph(
       }
       nodes = rawNodes.map((n) => {
         const degree = degrees.get(n.id) ?? 0;
+        const previous = nodeById.get(n.id);
         return {
           ...n,
+          x: previous?.x,
+          y: previous?.y,
+          fx: previous?.fx,
+          fy: previous?.fy,
           degree,
           radius: KIND_BASE_RADIUS[n.kind] + Math.min(9, Math.sqrt(degree) * 2.4),
-          emphasis: reducedMotion ? 1 : 0,
-          appear: reducedMotion ? 1 : 0,
+          emphasis: previous?.emphasis ?? (reducedMotion ? 1 : 0),
+          appear: previous?.appear ?? (reducedMotion ? 1 : 0),
         };
       });
       nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -884,7 +912,7 @@ export function createForceGraph(
       hoverId = null;
       focusId = null;
       highlightIds = null;
-      pendingFit = true;
+      cameraFit = null;
       restartSimulation();
     },
     selectNode(id) {
@@ -896,10 +924,12 @@ export function createForceGraph(
       hoverId = id;
     },
     fitToView() {
-      fitToNodes();
+      cameraFit = null;
+      reframeCamera();
     },
     fitToNodes(ids) {
-      fitToNodes(ids);
+      cameraFit = ids ?? null;
+      reframeCamera();
     },
     centerOnNode(id) {
       centerOnNode(id);
@@ -908,7 +938,8 @@ export function createForceGraph(
       focusId = id;
       selectedId = id;
       highlightIds = computeNeighborSet(id);
-      fitToNodes(highlightIds);
+      cameraFit = highlightIds;
+      reframeCamera();
     },
     clearFocus() {
       focusId = null;
@@ -918,7 +949,11 @@ export function createForceGraph(
       mutedKinds = new Set(keys);
     },
     setViewportInsets(next) {
-      insets = { ...insets, ...next };
+      const updated = { ...insets, ...next };
+      if (updated.top === insets.top && updated.right === insets.right &&
+          updated.bottom === insets.bottom && updated.left === insets.left) return;
+      insets = updated;
+      reframeCamera();
     },
     getStats() {
       const kinds: Record<GraphNodeKind, number> = { page: 0, tag: 0 };
@@ -942,15 +977,14 @@ export function createForceGraph(
       };
     },
     zoomBy(factor) {
-      const rect = canvas.getBoundingClientRect();
-      const cx = rect.width / 2;
-      const cy = rect.height / 2;
-      transform = transform.translate(cx, cy).scale(factor).translate(-cx, -cy);
-      select(canvas).call(zoomBehavior.transform, transform);
+      const viewport = visibleViewport();
+      if (!viewport) return;
+      cameraFit = false;
+      select(canvas).call(zoomBehavior.scaleBy, factor, [viewport.x, viewport.y]);
     },
     resize() {
       resizeCanvas();
-      restartSimulation();
+      reframeCamera();
     },
     destroy() {
       destroyed = true;

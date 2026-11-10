@@ -16,6 +16,12 @@ function restoreSidebarHome(sidebarId: string, placement: 'prepend' | 'append'):
   const appBody = document.getElementById('appBody');
   const side = document.getElementById(sidebarId);
   if (!appBody || !side || side.parentElement === appBody) return;
+  if (
+    sidebarId === 'chatSidebar' &&
+    side.parentElement?.id === 'osAppRail' &&
+    document.documentElement.classList.contains('mn-graphite-workspace')
+  ) return;
+  if (sidebarId === 'fileSidebar' && side.closest('.graphite-files-host')) return;
   // Issues borrows the file sidebar as its own drawer (issues-file-drawer.ts) and
   // restores it on close; pulling it back here hides it inside the inactive Code layer.
   if (side.classList.contains('file-sidebar--issues-drawer')) return;

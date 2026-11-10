@@ -288,6 +288,9 @@ export async function initApp(): Promise<void> {
     await loadIssuesTaxonomyFromStorage();
     const issuesStore = await import('./state/issues-store.ts');
     await issuesStore.loadIssuesFromStorage();
+    if (hasChatSurface && !isPairedDevice() && issuesStore.listIssues().some(issue => issue.agent?.home)) {
+      void import('./home/flow-actions').then(({ initHomeFlow }) => initHomeFlow());
+    }
     const { startGithubAutoSyncLoop } = await import('./state/issues-github-auto.ts');
     startGithubAutoSyncLoop();
     return issuesStore;
@@ -446,8 +449,8 @@ export async function initApp(): Promise<void> {
 
   if (hasChatSurface) {
     applySidebarVisuals();
-    const { wireSidebarNewGroupButton } = await import('./ui/sidebar');
-    wireSidebarNewGroupButton();
+    const { initChatSidebarInteractions } = await import('./ui/sidebar');
+    initChatSidebarInteractions();
   }
   const { ensureBootAppsInitialized, warmIssuesAppInBackground } = await import(
     './os/app-modules'
