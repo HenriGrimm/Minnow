@@ -21,6 +21,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   const html = document.documentElement;
   const body = document.getElementById('appBody');
   const sidebar = document.getElementById('chatSidebar');
+  const stage = document.getElementById('osStage');
   const nav = rail.querySelector<HTMLElement>('.mn-os-app-rail__nav');
   if (!body || !sidebar || !nav) return () => {};
 
@@ -48,6 +49,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   actions.appendChild(create);
 
   const search = menubar.querySelector<HTMLElement>('.mn-os-mb-search');
+  const sidebarToggle = menubar.querySelector<HTMLButtonElement>('.mn-os-mb-chat-toggle');
   const menubarActions = menubar.querySelector<HTMLElement>('.mn-os-mb-right');
   const workspaceActions = menubar.querySelector<HTMLElement>('.mn-os-workspace-actions');
   const modelsTrigger = workspaceActions?.querySelector<HTMLButtonElement>('[aria-controls="modelsSystemPopover"]');
@@ -89,6 +91,8 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
 
   let desktop = false;
   let sidebarShown = false;
+  let stageMotion: Animation | undefined;
+  const menubarMotion: Animation[] = [];
   let modelRequest: AbortController | null = null;
   let serveId: string | undefined;
   let stopModelActivity: (() => void) | undefined;
@@ -195,26 +199,91 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
       },
     },
   ]);
-  const sync = (): void => {
+  function syncPreviewLayout(): void {
+    if (!window.minnow?.preview) return;
+    void import('../ui/preview-electron-visibility').then((preview) => {
+      preview.scheduleElectronPreviewHostLayoutSync();
+      preview.scheduleSecondaryPreviewHostLayoutSync();
+    });
+  }
+
+  function stopStageMotion(): void {
+    stageMotion = undefined;
+    workspaceSlot.style.removeProperty('min-height');
+    footer.style.removeProperty('min-height');
+    if (html.classList.contains('mn-graphite-sidebar-motion')) {
+      html.classList.remove('mn-graphite-sidebar-motion');
+      syncPreviewLayout();
+    }
+  }
+
+  function stopMenubarMotion(): void {
+    for (const animation of menubarMotion.splice(0)) animation.cancel();
+    menubar.classList.remove('mn-graphite-menubar--moving');
+  }
+
+  function animateMenubar(from: DOMRect | undefined, duration: number): void {
+    const timing = { duration, easing: getComputedStyle(menubar).getPropertyValue('--ease-out').trim() || 'ease-out' };
+    if (sidebarToggle?.animate && from?.width) {
+      const to = sidebarToggle.getBoundingClientRect();
+      const x = from.left - to.left;
+      const y = from.top - to.top;
+      if (to.width && (x || y)) {
+        menubar.classList.add('mn-graphite-menubar--moving');
+        const animation = sidebarToggle.animate({ translate: [`${x}px ${y}px`, '0px 0px'] }, timing);
+        animation.onfinish = () => menubar.classList.remove('mn-graphite-menubar--moving');
+        menubarMotion.push(animation);
+      }
+    }
+    const controls = menubar.querySelectorAll<HTMLElement>(sidebarShown ? '.mn-os-mb-brand' :
+      '.mn-os-mb-workspace-slot, .mn-os-mb-app-sep, .mn-os-mb-appname, .mn-os-mb-right > :not(.mn-os-mb-window-controls)');
+    for (const control of controls) {
+      if (control.getClientRects().length && control.animate) {
+        menubarMotion.push(control.animate({ opacity: [0, 1] }, timing));
+      }
+    }
+  }
+
+  const sync = (animateToggle = false): void => {
     const nextDesktop = !isNarrowLayout();
-    const nextShown = nextDesktop && getOsView() === 'app' &&
-      !sidebar.classList.contains('collapsed') && !html.classList.contains('os-workspace-gate-open');
+    const canShow = nextDesktop && getOsView() === 'app' && !html.classList.contains('os-workspace-gate-open');
+    const nextShown = canShow && !sidebar.classList.contains('collapsed');
     const desktopChanged = nextDesktop !== desktop;
     const visibilityChanged = nextShown !== sidebarShown;
+    const animate = animateToggle && desktop && canShow && visibilityChanged &&
+      Boolean(stage) &&
+      !html.hasAttribute('data-reduce-motion') && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (desktopChanged || visibilityChanged) closeWorkspaceMenu();
+
+    const toggleBefore = animate ? sidebarToggle?.getBoundingClientRect() : undefined;
+    if (desktopChanged || visibilityChanged || !canShow) stopMenubarMotion();
+    if (animate) {
+      // Keep the thread list still when the workspace and footer controls move.
+      if (!nextShown) {
+        const workspaceHeight = workspaceSlot.getBoundingClientRect().height;
+        const footerHeight = footer.getBoundingClientRect().height;
+        workspaceSlot.style.minHeight = `${workspaceHeight}px`;
+        footer.style.minHeight = `${footerHeight}px`;
+      }
+      html.classList.add('mn-graphite-sidebar-motion');
+    } else if (desktopChanged || visibilityChanged || !canShow) {
+      stopStageMotion();
+    }
+    if (!nextShown && canShow && rail.contains(document.activeElement)) sidebarToggle?.focus({ preventScroll: true });
     desktop = nextDesktop;
     sidebarShown = nextShown;
     html.classList.toggle('mn-graphite-workspace', desktop);
     html.classList.toggle('mn-graphite-sidebar-open', sidebarShown);
-    workspaceSlot.hidden = !sidebarShown;
-    actions.hidden = !sidebarShown;
-    auxiliary.hidden = !sidebarShown;
+    rail.toggleAttribute('inert', desktop && !sidebarShown);
+    workspaceSlot.hidden = !canShow;
+    actions.hidden = !canShow;
+    auxiliary.hidden = !canShow;
     if (desktop) move(sidebar, rail, auxiliary);
     else move(sidebar, body, body.firstElementChild);
     const threadViews = document.getElementById('chatListViews');
     if (threadViews) {
-      const target = sidebarShown ? footer : document.getElementById('chatSidebarMain');
-      if (target) move(threadViews, target, sidebarShown ? target.firstElementChild : null);
+      const target = canShow ? footer : document.getElementById('chatSidebarMain');
+      if (target) move(threadViews, target, canShow ? target.firstElementChild : null);
     }
     if (workspaceActions && menubarActions) {
       const focused = document.activeElement;
@@ -225,6 +294,20 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     }
     syncWorkspaceMenubarPlacement();
     if (desktopChanged || visibilityChanged) window.dispatchEvent(new window.Event('minnow:graphite-workspace-changed'));
+    if (animate) {
+      const transition = stage?.getAnimations?.().find(animation =>
+        'transitionProperty' in animation && ['margin-inline-start', 'margin-left'].includes(String(animation.transitionProperty)));
+      stageMotion = transition;
+      const duration = transition?.effect?.getComputedTiming().duration;
+      if (transition && typeof duration === 'number') {
+        animateMenubar(toggleBefore, duration);
+        syncPreviewLayout();
+        const finish = () => { if (stageMotion === transition) stopStageMotion(); };
+        void transition.finished.then(finish, finish);
+      } else {
+        stopStageMotion();
+      }
+    }
     if (visibilityChanged && sidebarShown) void refreshModel();
     if (!sidebarShown) {
       modelRequest?.abort();
@@ -232,23 +315,25 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     }
   };
 
+  const onLayoutChange = () => sync();
+  const onSidebarChange = () => sync(true);
   const breakpoint = window.matchMedia?.(NARROW_MQ);
-  breakpoint?.addEventListener?.('change', sync);
-  window.addEventListener(CHAT_SIDEBAR_CHANGED_EVENT, sync);
-  window.addEventListener('minnow:workspace-gate-changed', sync);
+  breakpoint?.addEventListener?.('change', onLayoutChange);
+  window.addEventListener(CHAT_SIDEBAR_CHANGED_EVENT, onSidebarChange);
+  window.addEventListener('minnow:workspace-gate-changed', onLayoutChange);
   const onModelRefresh = () => { void refreshModel(); };
   window.addEventListener('focus', onModelRefresh);
   document.addEventListener('visibilitychange', onModelRefresh);
   const unsubscribeModelInventory = subscribeModelInventory(onModelRefresh);
   const modelTimer = window.setInterval(onModelRefresh, 10_000);
-  const unsubscribe = subscribeInstances(sync);
+  const unsubscribe = subscribeInstances(onLayoutChange);
   sync();
 
   return () => {
     unsubscribe();
-    breakpoint?.removeEventListener?.('change', sync);
-    window.removeEventListener(CHAT_SIDEBAR_CHANGED_EVENT, sync);
-    window.removeEventListener('minnow:workspace-gate-changed', sync);
+    breakpoint?.removeEventListener?.('change', onLayoutChange);
+    window.removeEventListener(CHAT_SIDEBAR_CHANGED_EVENT, onSidebarChange);
+    window.removeEventListener('minnow:workspace-gate-changed', onLayoutChange);
     window.removeEventListener('focus', onModelRefresh);
     document.removeEventListener('visibilitychange', onModelRefresh);
     window.clearInterval(modelTimer);
@@ -256,6 +341,9 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     unregisterCommands();
     modelRequest?.abort();
     setTrackedModel(undefined);
+    stopStageMotion();
+    stopMenubarMotion();
+    rail.removeAttribute('inert');
     html.classList.remove('mn-graphite-workspace', 'mn-graphite-sidebar-open');
     move(sidebar, body, body.firstElementChild);
     const threadViews = document.getElementById('chatListViews');

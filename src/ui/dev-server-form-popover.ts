@@ -7,6 +7,7 @@ type ServerInput = Partial<DevServerDefinition> & { name: string; command: strin
 
 interface DevServerFormOptions {
   anchor: HTMLElement;
+  inline?: { host: HTMLElement; worktreeRoot: string; reposition(): void };
   existing?: DevServerListItem;
   workspacePath: string;
   worktrees: { value: string; label: string }[];
@@ -27,19 +28,21 @@ function pathKey(value: string): string {
 
 /** Anchored add/edit form. Advanced values stay mounted when their disclosure closes. */
 export function openDevServerFormPopover(options: DevServerFormOptions): () => void {
-  const { anchor, existing, workspacePath } = options;
+  const { anchor, existing, inline, workspacePath } = options;
   const def = existing?.def;
   const lockedCmd = def?.source === 'startup.md';
-  const selectedWorktree = def?.worktreeRoot || existing?.worktreeRoot || workspacePath;
+  const selectedWorktree = def?.worktreeRoot || existing?.worktreeRoot || (existing ? workspacePath : inline?.worktreeRoot || workspacePath);
   const worktrees = [...options.worktrees];
   if (selectedWorktree && !worktrees.some((wt) => pathKey(wt.value) === pathKey(selectedWorktree))) {
     worktrees.push({ value: selectedWorktree, label: selectedWorktree });
   }
   const panel = document.createElement('div');
   panel.id = 'devServerFormPopover';
-  panel.className = 'dev-server-screen__popover';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-labelledby', 'devServerFormTitle');
+  if (!inline) {
+    panel.className = 'dev-server-screen__popover';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-labelledby', 'devServerFormTitle');
+  }
   panel.innerHTML = `
     <form class="dev-server-screen__form" novalidate>
       <header class="dev-server-screen__form-heading">
@@ -103,6 +106,7 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
     </form>
   `;
   const form = panel.querySelector<HTMLFormElement>('form')!;
+  if (inline) form.setAttribute('aria-labelledby', 'devServerFormTitle');
   const input = (name: string) => form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
   const select = (name: string) => form.querySelector<HTMLSelectElement>(`select[name="${name}"]`)!;
   const error = panel.querySelector<HTMLElement>('[role="alert"]')!;
@@ -113,6 +117,10 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
   let findingPort = false;
 
   function position(): void {
+    if (inline) {
+      inline.reposition();
+      return;
+    }
     const margin = 12;
     const rect = anchor.getBoundingClientRect();
     const width = panel.offsetWidth;
@@ -165,7 +173,7 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
 
   panel.addEventListener('click', (event) => {
     const action = (event.target as HTMLElement).closest<HTMLElement>('[data-form-action]');
-    if (action?.dataset.formAction === 'close') close();
+    if (action?.dataset.formAction === 'close' && (!inline || !saving)) close();
     if (action?.dataset.formAction === 'free-port' && !findingPort && !saving) {
       findingPort = true;
       const requestedPort = input('port').value;
@@ -235,16 +243,18 @@ export function openDevServerFormPopover(options: DevServerFormOptions): () => v
       form.removeAttribute('aria-busy');
     });
   });
-  document.body.appendChild(panel);
-  markPreviewOccluder(panel, 'panel');
+  (inline?.host ?? document.body).appendChild(panel);
+  if (!inline) markPreviewOccluder(panel, 'panel');
   anchor.setAttribute('aria-expanded', 'true');
   anchor.setAttribute('aria-controls', panel.id);
-  anchor.setAttribute('aria-haspopup', 'dialog');
+  if (!inline) anchor.setAttribute('aria-haspopup', 'dialog');
   syncPortWarning();
   (lockedCmd ? input('name') : input('command')).focus();
-  document.addEventListener('pointerdown', onOutsidePointer, true);
-  document.addEventListener('keydown', onEscape, true);
-  window.addEventListener('resize', position);
-  window.addEventListener('scroll', onScroll, true);
+  if (!inline) {
+    document.addEventListener('pointerdown', onOutsidePointer, true);
+    document.addEventListener('keydown', onEscape, true);
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', onScroll, true);
+  }
   return close;
 }

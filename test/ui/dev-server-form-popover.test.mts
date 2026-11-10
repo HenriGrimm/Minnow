@@ -189,3 +189,22 @@ test('clicking outside dismisses without moving focus back to the trigger', () =
   assert.equal(document.querySelector('#devServerFormPopover'), null);
   assert.equal(document.activeElement, outside);
 });
+
+test('an embedded server form saves the thread checkout and leaves dismissal to its parent', async () => {
+  const host = document.createElement('section');
+  document.body.append(host);
+  const submissions: unknown[] = [];
+  open({
+    inline: { host, worktreeRoot: '/linked', reposition() {} },
+    onSave: async values => { submissions.push(values.worktreeRoot); },
+  });
+  assert.equal(host.contains(form()), true);
+  anchor.dispatchEvent(new win.PointerEvent('pointerdown', { bubbles: true }));
+  document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(host.contains(form()), true);
+  field('command').value = 'npm run dev';
+  form().requestSubmit();
+  await settle();
+  assert.deepEqual(submissions, ['/linked']);
+  assert.equal(host.querySelector('form'), null);
+});

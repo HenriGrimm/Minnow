@@ -3,6 +3,7 @@ import {
   parseCapturePayloadJson,
   type CapturePayload,
 } from '../issues/capture-payload';
+import { normalizeIssueLabelsList } from '../issues/label-catalog';
 
 const STORAGE_KEY = 'minnow-issue-capture-draft-v1';
 
@@ -10,10 +11,18 @@ export interface IssueCaptureDraft {
   title: string;
   payload: CapturePayload;
   targetIssueId: string | null;
-  threadFields?: { label: string; priority: string; linkedChatId?: string; link: boolean };
+  threadFields?: {
+    type?: string;
+    priority?: string;
+    status?: string;
+    labels: string[];
+    linkedChatId?: string;
+    link: boolean;
+  };
 }
 
 type DraftStore = Record<string, IssueCaptureDraft>;
+const legacyThreadTypes = new Map([['Bug', 'bug'], ['Feature', 'feature'], ['Chore', 'task']]);
 
 function workspaceKey(workspacePath: string | undefined): string {
   return workspacePath?.trim() || '__default__';
@@ -94,7 +103,7 @@ function cloneDraft(draft: IssueCaptureDraft): IssueCaptureDraft {
   return {
     title: draft.title,
     targetIssueId: draft.targetIssueId,
-    ...(draft.threadFields ? { threadFields: { ...draft.threadFields } } : {}),
+    ...(draft.threadFields ? { threadFields: { ...draft.threadFields, labels: [...draft.threadFields.labels] } } : {}),
     payload: {
       ...draft.payload,
       items: draft.payload.items.map((item) => ({ ...item })),
@@ -109,14 +118,21 @@ function sanitizeDraft(raw: IssueCaptureDraft): IssueCaptureDraft | null {
       ? raw.targetIssueId.trim()
       : null;
   const payload = parseCapturePayloadJson(JSON.stringify(raw.payload ?? { items: [] }));
-  if (!payload) {
-    if (!title.trim() && !targetIssueId) return null;
-    return { title, targetIssueId, payload: { items: [] } };
+  const fields = raw.threadFields as (IssueCaptureDraft['threadFields'] & { label?: string }) | undefined;
+  const draft: IssueCaptureDraft = { title, targetIssueId, payload: payload ?? { items: [] } };
+  if (fields && typeof fields === 'object') {
+    draft.threadFields = {
+      type: typeof fields.type === 'string' ? fields.type : legacyThreadTypes.get(fields.label ?? ''),
+      priority: typeof fields.priority === 'string' ? fields.priority : undefined,
+      status: typeof fields.status === 'string' ? fields.status : undefined,
+      labels: Array.isArray(fields.labels)
+        ? normalizeIssueLabelsList(fields.labels.filter((label) => typeof label === 'string'))
+        : [],
+      linkedChatId: typeof fields.linkedChatId === 'string' ? fields.linkedChatId : undefined,
+      link: fields.link === true,
+    };
   }
-  const fields = raw.threadFields;
-  return { title, targetIssueId, payload, ...(fields && typeof fields.label === 'string' && typeof fields.priority === 'string' ? {
-    threadFields: { label: fields.label, priority: fields.priority, linkedChatId: typeof fields.linkedChatId === 'string' ? fields.linkedChatId : undefined, link: fields.link === true },
-  } : {}) };
+  return isDraftEmpty(draft) ? null : draft;
 }
 
 /** Reset module state (tests). */

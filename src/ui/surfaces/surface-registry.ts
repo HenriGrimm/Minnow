@@ -29,6 +29,7 @@ export interface SurfaceRegistration {
 export interface SurfaceDefinition {
   id: LauncherSurfaceId;
   label: string;
+  description: string;
   icon: IconName;
   key: string;
 }
@@ -59,18 +60,26 @@ export interface SurfaceContent {
   restore(state: ThreadSurfaceState, saved: boolean): void;
 }
 
-export const SURFACE_GROUPS: ReadonlyArray<ReadonlyArray<SurfaceDefinition>> = [
-  [
-    { id: 'changes', label: 'Diff', icon: 'gitGraph', key: 'D' },
-    { id: 'terminal', label: 'Terminal', icon: 'terminal', key: 'T' },
-    { id: 'files', label: 'Files', icon: 'fileText', key: 'F' },
-    { id: 'preview', label: 'Browser', icon: 'browser', key: 'B' },
-  ],
-  [
-    { id: 'agents', label: 'Agents', icon: 'appAgentActivity', key: 'A' },
-    { id: 'pr', label: 'Pull request', icon: 'pullRequest', key: 'P' },
-    { id: 'issue', label: 'Issue', icon: 'appIssues', key: 'I' },
-    { id: 'side', label: 'Side chat', icon: 'comment', key: 'S' },
-  ],
+export const SURFACE_GROUPS: ReadonlyArray<{
+  id: 'workspace' | 'thread';
+  label: string;
+  items: readonly SurfaceDefinition[];
+}> = [
+  {
+    id: 'workspace', label: 'Workspace tools', items: [
+      { id: 'changes', label: 'Diff', description: 'Inspect changes', icon: 'gitGraph', key: 'D' },
+      { id: 'terminal', label: 'Terminal', description: 'Run commands', icon: 'terminal', key: 'T' },
+      { id: 'files', label: 'Files', description: 'Browse project files', icon: 'fileText', key: 'F' },
+      { id: 'preview', label: 'Browser', description: 'Preview a page', icon: 'browser', key: 'B' },
+    ],
+  },
+  {
+    id: 'thread', label: 'This thread', items: [
+      { id: 'agents', label: 'Agents', description: 'Track subagents', icon: 'appAgentActivity', key: 'A' },
+      { id: 'pr', label: 'Pull request', description: 'Review the linked PR', icon: 'pullRequest', key: 'P' },
+      { id: 'issue', label: 'Issue', description: 'View the linked issue', icon: 'appIssues', key: 'I' },
+      { id: 'side', label: 'Side chat', description: 'Ask a quick question', icon: 'comment', key: 'S' },
+    ],
+  },
 ];
-export const SURFACES = SURFACE_GROUPS.flat();
+export const SURFACES = SURFACE_GROUPS.flatMap(group => group.items);

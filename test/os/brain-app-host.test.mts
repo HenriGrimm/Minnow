@@ -84,6 +84,7 @@ describe('brain app host layer reveal', () => {
     installHappyDomGlobals(win, { fetch: win.fetch });
     seedMinimalSession('chat-1');
     win.localStorage.clear();
+    win.localStorage.setItem('minnow.brain.graphSelection', 'index.md');
     win.location.hash = '#/app/code/chat';
     setupBrainAppHostDom(win.document);
 
@@ -164,5 +165,74 @@ describe('brain app host layer reveal', () => {
     assert.equal(getForegroundAppId(), 'brain');
     assert.ok(root?.classList.contains('is-open'));
     assert.ok(root?.classList.contains('is-active'));
+  });
+
+  test('restores the graph layout when returning to an open Brain app', async () => {
+    const launchApp = (happyDomWindow as unknown as { __launchApp: (id: string) => void }).__launchApp;
+    const root = document.getElementById('brainView');
+    assert.ok(root);
+
+    launchApp('brain');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(root.classList.contains('is-graph-canvas-bg'));
+
+    launchApp('code');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(root.classList.contains('is-open'));
+    assert.ok(!root.classList.contains('is-graph-canvas-bg'));
+
+    launchApp('brain');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(root.classList.contains('is-active'));
+    assert.ok(root.classList.contains('is-graph-canvas-bg'));
+  });
+
+  test('opens the graph without restoring a page from storage or the last visit', async (t) => {
+    const { launchApp } = await import('../../src/os/router.ts');
+    const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+    setLocalServerAvailableForTests(true);
+    t.after(() => setLocalServerAvailableForTests(false));
+
+    const page = { type: 'page', title: 'Index', path: 'index.md' };
+    const inspector = document.getElementById('brainInspector')!;
+    const stage = document.getElementById('brainGraphStage')!;
+    stage.insertAdjacentHTML('beforeend', '<div id="brainGraphTree"></div>');
+    // Exercise the tree and reader without requiring a canvas renderer in happy-dom.
+    document.getElementById('brainGraphCanvas')?.remove();
+    t.mock.method(globalThis, 'fetch', async (input: string) => {
+      if (input === '/api/brain/tree') return Response.json({ tree: { 'index.md': page } });
+      if (input.startsWith('/api/brain/page?')) {
+        return Response.json({ path: page.path, meta: page, body: '' });
+      }
+      return brainApiFetchResponse(input);
+    });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    launchApp('brain');
+    await settle();
+    const row = document.querySelector<HTMLButtonElement>('.brain-tree__page')!;
+    assert.equal(row.getAttribute('aria-current'), 'false');
+    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
+
+    row.click();
+    await settle();
+    assert.equal(inspector.querySelector('h2')?.textContent, 'Index');
+
+    launchApp('code');
+    await settle();
+    launchApp('brain');
+    await settle();
+    assert.equal(document.querySelector('.brain-tree__page')?.getAttribute('aria-current'), 'false');
+    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
+
+    launchApp('brain', { brainSection: 'edit' });
+    await settle();
+    assert.ok(document.getElementById('brainSection-edit')?.classList.contains('is-active'));
+    launchApp('code');
+    await settle();
+    launchApp('brain');
+    await settle();
+    assert.equal(window.location.hash, '#/app/brain/graph');
+    assert.equal(inspector.getAttribute('aria-hidden'), 'true');
   });
 });

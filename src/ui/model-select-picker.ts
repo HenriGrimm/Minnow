@@ -867,7 +867,8 @@ export function mountModelMenuActions(
   const settingsBtn = document.createElement('button');
   settingsBtn.type = 'button';
   settingsBtn.className = 'model-menu-action model-menu-action--settings';
-  settingsBtn.textContent = 'Open settings';
+  settingsBtn.innerHTML = iconHtml('appSettings', { size: 16 });
+  settingsBtn.setAttribute('aria-label', 'Open model settings');
   settingsBtn.title = 'Open this model in Models → My models load settings';
   settingsBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   settingsBtn.addEventListener('click', (e) => {
@@ -1441,6 +1442,10 @@ function appendModelOptionRow(
     }
   });
 
+  if (li.getAttribute('aria-selected') === 'true') {
+    li.insertAdjacentHTML('beforeend', iconHtml('check', { className: 'model-select-option-check' }));
+  }
+
   const favorite = document.createElement('button');
   favorite.type = 'button';
   favorite.className = 'model-select-favorite';
@@ -1452,13 +1457,17 @@ function appendModelOptionRow(
   favorite.innerHTML = iconHtml(starred ? 'starFilled' : 'star');
   favorite.addEventListener('mousedown', event => event.stopPropagation());
   favorite.addEventListener('click', event => {
+    const browser = menu.closest('.model-select-menu') ?? menu;
     event.stopPropagation();
     toggleModelPickerFavorite(favoriteKey);
     const keyboard = event.detail === 0;
     onFavoriteChange?.();
     if (keyboard) {
-      [...(menu.closest('.model-select-menu, .model-provider-browser') ?? menu).querySelectorAll<HTMLButtonElement>('.model-select-favorite')]
-        .find(button => button.dataset.favoriteKey === favoriteKey)?.focus();
+      const next = [...browser.querySelectorAll<HTMLButtonElement>('.model-select-favorite')]
+        .find(button => button.dataset.favoriteKey === favoriteKey)
+        ?? browser.querySelector<HTMLElement>(document.documentElement.classList.contains('mn-phone')
+          ? '.model-browser-back' : '.model-browser-favorites-tab');
+      next?.focus();
     }
   });
 
@@ -1662,8 +1671,10 @@ export function renderModelSelectMenuRows(
       group.entries.push(entry);
       if (preferences.favorites.includes(favoriteKeyForEntry(entry))) group.hasFavorites = true;
     }
+    const selectedOption = options.find(option => option.value === selectedValue);
     renderModelProviderBrowser(menu, [...groups.values()],
-      entries.filter(entry => preferences.favorites.includes(favoriteKeyForEntry(entry))), appendEntry, rerender);
+      entries.filter(entry => preferences.favorites.includes(favoriteKeyForEntry(entry))), appendEntry, rerender,
+      selectedOption && providerIdForOption(selectedOption));
   }
   menu.scrollTop = scrollTop;
   void import('../api/models').then((m) => m.updateModelLoadUnloadButtons());

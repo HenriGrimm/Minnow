@@ -121,6 +121,7 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
   let maxWidth = hardMaxWidth;
   let minDragWidth = minWidth;
   let liveWidth: number | null = null;
+  let grabOffset = 0;
 
   function currentDragTarget(): { container: HTMLElement; property: string; min: number; max: number } {
     const graphiteRoot = graphiteChat ? graphiteShell() : null;
@@ -142,7 +143,7 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
       side === 'start'
         ? clientX - dragRect.left
         : dragRect.right - clientX;
-    const clamped = Math.min(maxWidth, Math.max(minDragWidth, Math.round(nextWidth)));
+    const clamped = Math.min(maxWidth, Math.max(minDragWidth, Math.round(nextWidth + grabOffset)));
     liveWidth = clamped;
     applyWidth(clamped);
   });
@@ -174,10 +175,13 @@ function bindSidebarResizer(options: BindSidebarResizerOptions): void {
     dragRect = target.container.getBoundingClientRect();
     minDragWidth = target.min;
     maxWidth = maxWidthForContainer(dragRect, minDragWidth, target.max);
+    const startWidth = readWidth();
+    // Grabbing anywhere inside the Graphite rail gutter should not snap the sheet to the pointer.
+    grabOffset = graphiteChat && graphiteShell() ? startWidth - (e.clientX - dragRect.left) : 0;
     resizer.classList.add('dragging');
     resizer.setPointerCapture(e.pointerId);
     document.body.style.cursor = 'col-resize';
-    resizer.setAttribute('aria-valuenow', String(readWidth()));
+    resizer.setAttribute('aria-valuenow', String(startWidth));
     resizer.setAttribute('aria-valuemin', String(minDragWidth));
     resizer.setAttribute('aria-valuemax', String(maxWidth));
     window.addEventListener('pointermove', onPointerMove);

@@ -173,6 +173,11 @@
   font: 400 11.5px/1.4 var(--font-ui);
 }
 
+/* Prompt cards replace the composer and its larger bottom margin. */
+:is(#questionHost, #toolApprovalHost):not([hidden]) ~ .graphite-metrics-trigger {
+  margin-top: 0;
+}
+
 .graphite-metrics-trigger:hover,
 .graphite-metrics-trigger:focus-visible,
 .stats-details summary:hover,

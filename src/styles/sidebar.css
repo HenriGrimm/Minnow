@@ -210,7 +210,7 @@
   padding: 4px 8px 2px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--mn-text-muted);
+  color: var(--mn-fg-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: default;

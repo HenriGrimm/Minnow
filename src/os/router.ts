@@ -36,7 +36,6 @@ let lastForegroundApp: AppId | null = null;
 let lastRecordedSurface: AppId | null = null;
 let pendingSettingsSection: string | undefined;
 let pendingModelsSection: string | undefined;
-let pendingBrainSection: string | undefined;
 let pendingCodeSection: CodeSectionId | undefined;
 /** Preserves launch options (e.g. concierge seed) across hash-only navigation. */
 let pendingLaunchOptions: LaunchOptions | undefined;
@@ -162,7 +161,7 @@ export function parseOsHash(hash: string): OsRoute {
       route.modelsSection = appMatch[2] ?? pendingModelsSection ?? DEFAULT_MODELS_SECTION;
     }
     if (route.appId === 'brain') {
-      route.brainSection = appMatch[2] ?? pendingBrainSection ?? 'graph';
+      route.brainSection = appMatch[2] ?? 'graph';
     }
     if (route.appId === 'code') {
       const seg = appMatch[2];
@@ -183,10 +182,9 @@ export function parseOsHash(hash: string): OsRoute {
 
 /** Current route derived from location hash + pending redirect state. */
 export function getCurrentRoute(): OsRoute {
-  const { hash, settingsSection, modelsSection, brainSection } = resolveLegacyHash(window.location.hash);
+  const { hash, settingsSection, modelsSection } = resolveLegacyHash(window.location.hash);
   if (settingsSection) pendingSettingsSection = settingsSection;
   if (modelsSection) pendingModelsSection = modelsSection;
-  if (brainSection) pendingBrainSection = brainSection;
   return parseOsHash(hash);
 }
 
@@ -279,7 +277,6 @@ function applyRoute(route: OsRoute, options?: LaunchOptions): void {
   }
   if (route.brainSection) {
     routeFields.brainSection = route.brainSection;
-    pendingBrainSection = route.brainSection;
   }
   if (route.codeSection) {
     routeFields.codeSection = route.codeSection;
@@ -313,13 +310,11 @@ function applyRouteFromHash(): void {
     if (legacy.hash !== raw) {
       if (legacy.settingsSection) pendingSettingsSection = legacy.settingsSection;
       if (legacy.modelsSection) pendingModelsSection = legacy.modelsSection;
-      if (legacy.brainSection) pendingBrainSection = legacy.brainSection;
       window.location.hash = legacy.hash;
       return;
     }
     pendingSettingsSection = legacy.settingsSection ?? pendingSettingsSection;
     pendingModelsSection = legacy.modelsSection ?? pendingModelsSection;
-    pendingBrainSection = legacy.brainSection ?? pendingBrainSection;
     const opts = pendingLaunchOptions;
     pendingLaunchOptions = undefined;
     applyRoute(parseOsHash(raw), opts);
@@ -371,9 +366,6 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
   }
   if (options?.modelsSection) {
     pendingModelsSection = options.modelsSection;
-  }
-  if (options?.brainSection) {
-    pendingBrainSection = options.brainSection;
   }
   if (options?.codeSection) {
     pendingCodeSection = options.codeSection;
@@ -456,7 +448,6 @@ export function resetOsRouterForTests(): void {
   lastRecordedSurface = null;
   pendingSettingsSection = undefined;
   pendingModelsSection = undefined;
-  pendingBrainSection = undefined;
   pendingCodeSection = undefined;
   pendingLaunchOptions = undefined;
 }

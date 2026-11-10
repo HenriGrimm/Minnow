@@ -10,7 +10,7 @@
   display: none;
   flex-direction: column;
   height: 100vh;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 14px;
@@ -30,7 +30,7 @@
   min-height: 52px;
   padding: 0 20px;
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
 }
 
 .settings-page-header > .icon-btn {
@@ -159,8 +159,7 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  /* srgb mix keeps each palette's fg/bg tint (oklch mix washed non-amber themes to neutral gray). */
-  background: color-mix(in srgb, var(--mn-fg) 2.5%, var(--mn-bg));
+  background: var(--mn-surface-0);
 }
 
 .settings-nav {
@@ -173,7 +172,7 @@
   border-right: 1px solid var(--mn-border);
   padding: 16px 10px 24px;
   overflow-y: auto;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .settings-nav-group {
@@ -240,7 +239,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {.settings-nav__item:hover {
-    background: color-mix(in srgb, var(--mn-bg) 88%, var(--mn-fg) 12%);
+    background: var(--mn-surface-elevated);
     color: var(--mn-fg);
     border-color: var(--mn-border);
   }}
@@ -1006,7 +1005,7 @@ label.settings-action-btn {
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--mn-surface-1) 90%, var(--mn-fg) 2%);
+  background: var(--mn-surface-1);
   font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;

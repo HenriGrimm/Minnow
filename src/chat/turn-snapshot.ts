@@ -16,6 +16,7 @@ export interface BuildTurnSnapshotParams {
   maxTokens: number;
   thinkingMode: ThinkingResolvedMode;
   reasoningEffort?: ReasoningEffortOption;
+  cliFastMode?: boolean;
   skillId: string | null;
   userContent: string;
 }
@@ -78,6 +79,7 @@ export async function buildTurnSnapshot(
     maxTokens,
     thinkingMode: params.thinkingMode,
     ...(params.reasoningEffort ? { reasoningEffort: params.reasoningEffort } : {}),
+    ...(params.cliFastMode ? { cliFastMode: true } : {}),
     modeId: normalizeModeId(chat.modeId),
     workAgentId: chat.workAgentId ?? null,
     workAgentAuto: chat.workAgentAuto !== false,

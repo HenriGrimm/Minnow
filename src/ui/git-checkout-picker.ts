@@ -14,38 +14,47 @@ export interface CheckoutPickerState {
   savedChanges: GitSavedCheckoutChanges[];
 }
 
-interface PickerOptions {
+interface PickerActions {
   onSwitch(input: GitCheckoutSwitchInput): Promise<GitOpResult>;
-  onWorktree(path: string): void;
   onRestore(input: { cwd: string; sha: string; expectedBranch: string }): Promise<GitOpResult>;
-  onNewBranch(anchor: HTMLButtonElement): void;
-  onNewWorktree(anchor: HTMLButtonElement): void;
-  onDeleteBranch(): void;
-  onRemoveWorktree(): void;
 }
+
+type PickerOptions = PickerActions & (
+  | { inline: true; onWorktree(path: string): Promise<void> }
+  | {
+      inline?: false;
+      onWorktree(path: string): void;
+      onNewBranch(anchor: HTMLButtonElement): void;
+      onNewWorktree(anchor: HTMLButtonElement): void;
+      onDeleteBranch(): void;
+      onRemoveWorktree(): void;
+    }
+);
 
 export function createGitCheckoutPicker(options: PickerOptions) {
   const root = document.createElement('div');
   root.className = 'git-checkout';
+  const id = options.inline ? 'threadCheckout' : 'gitCheckout';
   const trigger = button('', 'git-checkout__trigger', () => {
     open = !open;
     pending = undefined;
     render();
     if (open) focusSearch();
   });
-  trigger.id = 'gitCheckoutTrigger';
-  trigger.setAttribute('aria-controls', 'gitCheckoutMenu');
+  trigger.id = `${id}Trigger`;
+  trigger.setAttribute('aria-controls', `${id}Menu`);
   const menu = document.createElement('div');
   menu.className = 'git-checkout__menu';
-  menu.id = 'gitCheckoutMenu';
+  menu.id = `${id}Menu`;
   menu.setAttribute('role', 'region');
   menu.setAttribute('aria-label', 'Choose a checkout');
   const notices = document.createElement('div');
   notices.className = 'git-checkout__notices';
   notices.setAttribute('aria-live', 'polite');
-  root.append(trigger, notices, menu);
+  if (!options.inline) root.append(trigger);
+  root.append(notices, menu);
   let state: CheckoutPickerState = { cwd: '', workspace: '', branch: '', branches: [], worktrees: [], savedChanges: [] };
-  let open = false;
+  let open = Boolean(options.inline);
   let tab: 'branches' | 'worktrees' = 'branches';
   let query = '';
   let busy = false;
@@ -78,7 +87,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   }
   function close() {
     if (busy) return;
-    open = false;
+    open = Boolean(options.inline);
     pending = undefined;
     pendingComplete = undefined;
     query = '';
@@ -86,6 +95,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   }
   function focusSearch() {
     menu.querySelector<HTMLInputElement>('input')?.focus();
+  }
+  function resetSelection() {
+    close();
+    if (options.inline) focusSearch();
+    else trigger.focus();
   }
   async function requestSwitch(input: GitCheckoutSwitchInput, onComplete = pendingComplete) {
     if (busy || disposed) return;
@@ -99,7 +113,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       if (result.ok) {
         pending = undefined;
         pendingComplete = undefined;
-        open = false;
+        open = Boolean(options.inline);
         if (input.cwd && panelPathsEqual(input.cwd, state.cwd)) await onComplete?.();
         return;
       }
@@ -121,6 +135,30 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       if (!disposed) {
         render();
         if (pending) menu.querySelector<HTMLButtonElement>('.git-checkout__choice')?.focus();
+        else if (options.inline && document.activeElement === document.body) focusSearch();
+      }
+    }
+  }
+  async function selectWorktree(path: string) {
+    if (!options.inline) {
+      close();
+      options.onWorktree(path);
+      trigger.focus();
+      return;
+    }
+    if (busy || disposed) return;
+    busy = true;
+    message = '';
+    render();
+    try {
+      await options.onWorktree(path);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    } finally {
+      busy = false;
+      if (!disposed) {
+        render();
+        if (document.activeElement === document.body) focusSearch();
       }
     }
   }
@@ -174,11 +212,12 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         const wt = state.worktrees.find((w) => w.branch === branch && !panelPathsEqual(w.path, state.cwd));
         const current = branch === state.branch;
         const row = button('', 'git-checkout__item', () => {
-          if (current) { close(); trigger.focus(); }
-          else if (wt) { close(); options.onWorktree(wt.path); trigger.focus(); }
+          if (current) resetSelection();
+          else if (wt) void selectWorktree(wt.path);
           else void requestSwitch({ branch, cwd: state.cwd, expectedBranch: state.branch, ...(create ? { create: true, startPoint: label } : {}) });
         }, current ? 'check' : 'gitBranch');
         row.disabled = busy;
+        if (current) row.setAttribute('aria-current', 'true');
         const identity = document.createElement('span');
         identity.className = 'git-checkout__identity';
         identity.append(text(label, 'git-checkout__branch'));
@@ -191,8 +230,9 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     } else {
       for (const wt of state.worktrees.filter((w) => `${w.branch} ${w.path}`.toLocaleLowerCase().includes(needle))) {
         const current = panelPathsEqual(wt.path, state.cwd);
-        const row = button('', 'git-checkout__item', () => { close(); options.onWorktree(wt.path); trigger.focus(); }, current ? 'check' : 'gitWorktree');
+        const row = button('', 'git-checkout__item', () => void selectWorktree(wt.path), current ? 'check' : 'gitWorktree');
         row.disabled = busy;
+        if (current) row.setAttribute('aria-current', 'true');
         const identity = document.createElement('span');
         identity.className = 'git-checkout__identity';
         identity.append(text(worktreeName(wt), 'git-checkout__title'), text(wt.branch || 'Detached HEAD', 'git-checkout__branch'), text(wt.path, 'git-checkout__detail'));
@@ -235,7 +275,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         row.append(copy);
         menu.append(row);
       }
-      const cancel = button(busy ? 'Switching…' : 'Cancel switch', 'git-checkout__action', () => { close(); trigger.focus(); });
+      const cancel = button(busy ? 'Switching…' : 'Cancel switch', 'git-checkout__action', resetSelection);
       cancel.disabled = busy;
       menu.append(cancel);
       return;
@@ -244,12 +284,12 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     tabs.className = 'git-checkout__tabs';
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'Checkout type');
-    for (const [id, label] of [['branches', 'Branches'], ['worktrees', 'Worktrees']] as const) {
-      const tabBtn = button(label, 'git-checkout__tab', () => { tab = id; query = ''; render(); focusSearch(); });
-      tabBtn.id = `gitCheckoutTab-${id}`;
+    for (const [type, label] of [['branches', 'Branches'], ['worktrees', 'Worktrees']] as const) {
+      const tabBtn = button(label, 'git-checkout__tab', () => { tab = type; query = ''; render(); focusSearch(); });
+      tabBtn.id = `${id}Tab-${type}`;
       tabBtn.setAttribute('role', 'tab');
-      tabBtn.setAttribute('aria-selected', String(tab === id));
-      tabBtn.setAttribute('aria-controls', 'gitCheckoutList');
+      tabBtn.setAttribute('aria-selected', String(tab === type));
+      tabBtn.setAttribute('aria-controls', `${id}List`);
       tabBtn.disabled = busy;
       tabs.append(tabBtn);
     }
@@ -264,19 +304,21 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     label.append(search);
     const list = document.createElement('div');
     list.className = 'git-checkout__list';
-    list.id = 'gitCheckoutList';
+    list.id = `${id}List`;
     list.setAttribute('role', 'tabpanel');
-    list.setAttribute('aria-labelledby', `gitCheckoutTab-${tab}`);
+    list.setAttribute('aria-labelledby', `${id}Tab-${tab}`);
     search.addEventListener('input', () => { query = search.value; renderRows(list); });
     search.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') { e.preventDefault(); list.querySelector<HTMLButtonElement>('button')?.focus(); } });
     tabs.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         tab = tab === 'branches' ? 'worktrees' : 'branches'; query = ''; render();
-        menu.querySelector<HTMLButtonElement>(`#gitCheckoutTab-${tab}`)?.focus();
+        menu.querySelector<HTMLButtonElement>(`#${id}Tab-${tab}`)?.focus();
       }
     });
     renderRows(list);
+    menu.append(tabs, label, list);
+    if (options.inline) return;
     const footer = document.createElement('div');
     footer.className = 'git-checkout__footer';
     const add = button(tab === 'branches' ? 'New branch…' : 'Add worktree…', 'git-checkout__action', () => {
@@ -291,12 +333,12 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     add.disabled = busy;
     footer.append(add, remove);
     if (tab === 'worktrees') footer.append(text('Each worktree keeps its own files and changes.', 'git-checkout__detail'));
-    menu.append(tabs, label, list, footer);
+    menu.append(footer);
   }
   const outside = (e: PointerEvent) => { if (!root.contains(e.target as Node)) close(); };
-  document.addEventListener('pointerdown', outside);
+  if (!options.inline) document.addEventListener('pointerdown', outside);
   root.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); trigger.focus(); }
+    if (e.key === 'Escape' && !options.inline) { e.preventDefault(); close(); trigger.focus(); }
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (e.target as HTMLElement).closest('.git-checkout__list')) {
       e.preventDefault();
       const rows = Array.from(menu.querySelectorAll<HTMLButtonElement>('.git-checkout__item'));
@@ -306,13 +348,13 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   });
   render();
   return {
-    root, requestSwitch, close,
+    root, requestSwitch, close, focusSearch,
     update(next: CheckoutPickerState) {
       if (JSON.stringify(next) === JSON.stringify(state)) return;
       const moved = !panelPathsEqual(next.cwd, state.cwd) || next.branch !== state.branch;
       const branchesChanged = JSON.stringify([next.branches, next.remoteBranches]) !== JSON.stringify([state.branches, state.remoteBranches]);
       state = next;
-      if (moved) { open = false; pending = undefined; message = ''; query = ''; if (!busy) pendingComplete = undefined; }
+      if (moved) { open = Boolean(options.inline); pending = undefined; message = ''; query = ''; if (!busy) pendingComplete = undefined; }
       // A poll must not steal focus from a user searching or choosing an action.
       if (!open || moved) render();
       else {

@@ -23,7 +23,7 @@
 .mn-design-notice--info {
   border-color: var(--mn-border);
   background: var(--mn-surface-2);
-  color: var(--mn-text-secondary);
+  color: var(--mn-fg-muted);
 }
 
 #btnPreviewDesignToggle[aria-pressed='true'] {

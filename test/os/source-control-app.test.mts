@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { Window } from 'happy-dom';
 import { listRailApps } from '../../src/os/app-preferences.ts';
 import { parseOsHash, hashForRoute } from '../../src/os/router.ts';
@@ -36,6 +37,64 @@ test('mounting and leaving Source Control preserves the chat DOM', async () => {
   } finally {
     scc.resetSourceControlCenterForTests();
     resetInstancesForTests();
+    await teardownHappyDomAsync(win);
+  }
+});
+
+test('Pull and Push show their commit counts and sync the selected worktree with a clean working tree', async () => {
+  const win = new Window();
+  const cwd = '/repo/feature-worktree';
+  const requests: { op: string; cwd?: string }[] = [];
+  let behind = 1;
+  let ahead = 2;
+  installHappyDomGlobals(win, {
+    fetch: async (_input, init) => {
+      const request = JSON.parse(String(init?.body ?? '{}'));
+      requests.push(request);
+      if (request.op === 'pull') behind = 0;
+      if (request.op === 'push') ahead = 0;
+      return new Response(JSON.stringify({
+        ok: true, ahead, behind, current: 'feature', local: ['feature'],
+        branches: [{ name: 'feature', upstream: 'origin/feature' }],
+      }));
+    },
+  });
+  const { setLocalServerAvailableForTests } = await import('../../src/tools/config.ts');
+  const { launchInstance, resetInstancesForTests } = await import('../../src/os/instances.ts');
+  const { resetToastsForTests } = await import('../../src/ui/toast.ts');
+  const scc = await import('../../src/ui/source-control-center.ts');
+  setLocalServerAvailableForTests(true);
+  seedMinimalSession('sync-chat');
+  document.body.innerHTML = '<main id="sourceControlView"></main>';
+
+  try {
+    launchInstance('source-control');
+    await scc.openSourceControlCenter({ cwd });
+    await scc.mountSourceControlCenter();
+    const pull = document.querySelector<HTMLButtonElement>('.scc-head__pull')!;
+    const push = document.querySelector<HTMLButtonElement>('.scc-head__push')!;
+    const pullCount = pull.querySelector<HTMLElement>('.scc-head__sync-count')!;
+    const pushCount = push.querySelector<HTMLElement>('.scc-head__sync-count')!;
+    assert.deepEqual([pullCount.textContent, pushCount.textContent], ['1', '2']);
+    assert.deepEqual([pullCount.hidden, pushCount.hidden], [false, false]);
+    assert.equal(pull.getAttribute('aria-label'), 'Pull, 1 commit');
+    assert.equal(push.getAttribute('aria-label'), 'Push, 2 commits');
+
+    pull.click();
+    await setImmediate();
+    assert.equal(pullCount.hidden, true);
+    assert.equal(pushCount.hidden, false);
+    push.click();
+    await setImmediate();
+    assert.equal(pushCount.hidden, true);
+    assert.deepEqual(requests.filter(({ op }) => op === 'pull' || op === 'push'), [
+      { op: 'pull', cwd }, { op: 'push', cwd },
+    ]);
+  } finally {
+    scc.resetSourceControlCenterForTests();
+    resetInstancesForTests();
+    resetToastsForTests();
+    setLocalServerAvailableForTests(false);
     await teardownHappyDomAsync(win);
   }
 });

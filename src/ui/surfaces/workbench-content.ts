@@ -140,7 +140,7 @@ export function createWorkbenchContent(stage: HTMLElement): SurfaceContent {
       const current = getFilePanelState();
       const enabled = secondary.surface !== 'none';
       const mode = enabled ? 'split' : primary.surface === 'none' ? null : primary.surface;
-      const focusedSlot = (files[1] ?? browsers[1])?.panel === focused ? 'secondary' : 'primary';
+      const focusedSlot = files[1]?.panel === focused || browsers[1]?.panel === focused ? 'secondary' : 'primary';
       const filesChanged = files.some((tab, index) => tab?.id !== hosts[index].current.file?.id);
       const browsersChanged = browsers.some((tab, index) => tab?.id !== hosts[index].current.preview?.id);
       const focusChanged = current.rightPaneSplit.focusedSlot !== focusedSlot;

@@ -193,7 +193,7 @@ import {
   getPendingAttachments,
 } from '../attachments/store';
 import { getActiveProvider } from '../providers/store';
-import { decodeModelSelectKey } from '../lib/model-select-key';
+import { decodeModelSelectKey, encodeModelSelectKey } from '../lib/model-select-key';
 import { resolveCursorVariantId, cursorVariantParts } from '../models/cursor-variants.mjs';
 import { isLocalProvider } from '../providers/provider-host';
 import { canSendImagesToModel, recordImageRejection } from '../providers/vision-model.ts';
@@ -837,6 +837,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     if (replaySnapshot) {
       chat.providerId = replaySnapshot.providerId;
       chat.modelId = replaySnapshot.modelId;
+      if (replaySnapshot.cliFastMode === true) chat.cliFastMode = true;
+      else delete chat.cliFastMode;
     } else if (chat.modelId?.trim()) {
       syncPerChatModelBindingFromCatalog(chat);
     } else {
@@ -1024,6 +1026,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       throw err;
     }
 
+    if (chat.providerId !== sendProviderId || chat.modelId !== sendModelId) delete chat.cliFastMode;
     chat.modelId = sendModelId;
     chat.providerId = sendProviderId;
 
@@ -1471,6 +1474,8 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
       global: globalSampler,
     });
 
+    const cliFastMode = chat.cliFastMode === true && provider.apiKind === 'agent-cli-v1'
+      && modelCache.get(encodeModelSelectKey(provider.id, sendModelId))?.supportsFastMode === true;
     if (!resumeGenerationId) {
       const forkHistoryIndex = resolveForkHistoryIndex(chat, pushUser);
       const userRow = chat.history[forkHistoryIndex];
@@ -1512,6 +1517,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
             0.7,
           maxTokens: resolvedSampler.maxTokens,
           thinkingMode: resolvedThinking.mode,
+          cliFastMode,
           skillId,
           userContent,
         });
@@ -1551,6 +1557,11 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     });
     store = chatStore;
     const deps = createRendererRunnerDeps(chatStore);
+    if (cliFastMode) {
+      const post = deps.postChatCompletions;
+      deps.postChatCompletions = (target, body, signal, options) => post(target,
+        target.id === provider.id ? { ...body, minnow_cli_fast_mode: true } : body, signal, options);
+    }
     const applyPolicy = deps.applyContextPolicy;
     deps.applyContextPolicy = async (input) => {
       const prev =

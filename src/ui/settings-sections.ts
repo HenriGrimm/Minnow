@@ -520,7 +520,7 @@ async function renderGeneralSection(area: 'general' | 'terminal' | 'backups' | '
     const permissions = appendSettingsGroup(
       shell,
       'Permissions',
-      'One level for every chat, agent, tool, MCP server, plugin and website. The composer pill and Shift+Tab change the same setting.',
+      'One level for every chat, agent, tool, MCP server, plugin and website. The composer’s permission icon and Shift+Tab change the same setting.',
       'general.permissions',
       { emphasis: true },
     );

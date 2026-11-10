@@ -52,7 +52,9 @@ export function onActiveChatModelChange(selectValue: string, chat = getActiveCha
     showToast('Stopped — model changed');
   }
 
-  applyModelSelectValueToChat(chat, raw);
+  const previous = { providerId: chat.providerId, modelId: chat.modelId };
+  const selected = applyModelSelectValueToChat(chat, raw);
+  if (previous.providerId !== selected.providerId || previous.modelId !== selected.modelId) delete chat.cliFastMode;
   void persistDefaultModelValue(raw).catch((error) => showToast(`${error.message}. Select the model again to retry.`, 'error'));
   applyModelReasoningDefaultToChat(chat, raw);
   touchChat(chat);

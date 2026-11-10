@@ -311,13 +311,13 @@
   padding: 2px 8px;
   border-radius: var(--mn-radius-sm);
   border: 1px solid var(--mn-border);
-  background: var(--mn-bg-elevated);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   cursor: pointer;
 }
 
 .msg-truncated-continue-btn:hover:not(:disabled) {
-  background: var(--mn-bg-hover);
+  background: var(--mn-surface-2);
 }
 
 .msg-truncated-continue-btn:disabled {
@@ -425,7 +425,7 @@
 
 .msg-error-recover-btn--continue {
   color: var(--mn-fg);
-  background: var(--mn-bg-elevated);
+  background: var(--mn-surface-1);
   border-color: var(--mn-border);
 }
 
@@ -434,7 +434,7 @@
 }
 
 .msg-error-recover-btn--continue:hover:not(:disabled) {
-  background: var(--mn-bg-hover);
+  background: var(--mn-surface-2);
 }
 
 .msg-error-recover-btn:disabled {
@@ -1202,7 +1202,7 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   border-radius: var(--mn-radius-xs);
   border: 1px solid var(--mn-border);
   color: var(--mn-fg-muted);
-  background: var(--mn-surface-2, var(--mn-surface));
+  background: var(--mn-surface-2);
 }
 
 .tool-call-sandbox-badge--ok {

@@ -744,7 +744,9 @@ export async function renderSchedulerPanel(
       empty.appendChild(cta);
     } else {
       empty.appendChild(
-        el('p', 'scheduler-empty__action-hint', 'Use Add task above to create your first schedule.'),
+        el('p', 'scheduler-empty__action-hint', graphite
+          ? 'Use New job above to create your first schedule.'
+          : 'Use Add task above to create your first schedule.'),
       );
     }
     return empty;

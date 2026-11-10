@@ -288,6 +288,7 @@ test('provider autosave serializes edits, preserves newer drafts, and keeps fail
 
 test('logos use provider identity, including custom names, CLI kinds, and a neutral fallback', () => {
   assert.equal(providerLogoId({ ...connection, id: 'work', label: 'Work API' }), 'openrouter');
+  assert.equal(providerLogoId({ ...connection, id: 'work', label: 'Work API', baseUrl: 'https://api.anthropic.com' }), 'claude');
   assert.equal(providerLogoId({ ...connection, id: 'custom', label: 'Acme', baseUrl: 'https://acme.example' }), null);
   assert.equal(providerLogoId({ ...connection, apiKind: 'agent-cli-v1', id: 'cursor-agent-cli', baseUrl: '' }), 'cursor');
   assert.equal(providerLogoId({ ...connection, baseUrl: 'https://openrouter.ai.evil.example', id: 'custom', label: 'Acme' }), null);

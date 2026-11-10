@@ -551,8 +551,8 @@
 .hidden { display: none !important; }
 
 /* ─── Footer row controls ───
- * Only the mode pill is tinted; run target, branch, reasoning, the cog, the
- * context readout and the model name are quiet ghost buttons that lift on hover. */
+ * Permissions, run target, branch, reasoning, the cog, the context readout
+ * and the model name are quiet ghost buttons that lift on hover. */
 .input-bar {
   --composer-ghost-hover: color-mix(in srgb, var(--mn-fg) 5%, transparent);
 }
@@ -582,7 +582,6 @@
 
 .input-bar .composer-run-target-btn { gap: 6px; padding: 0 8px; }
 .input-bar .composer-branch-btn { font-family: var(--font-mono); font-size: 12px; }
-.input-bar .composer-run-target-btn .composer-run-target__icon { --mn-icon-size: 15px; }
 .input-bar .composer-run-target-btn--local { width: 28px; padding: 0; justify-content: center; }
 .input-bar .composer-run-target-btn--local .composer-run-target__label { display: none; }
 .input-bar .composer-run-target-btn[aria-pressed='true'] { color: var(--mn-accent-ink); }
@@ -597,6 +596,7 @@
 
 .input-bar .composer-overflow-btn { width: 28px; }
 .input-bar .composer-overflow-btn[aria-expanded='true'] { background: var(--composer-ghost-hover); color: var(--mn-fg); }
+.input-bar .permission-pill[aria-expanded='true'] { background: var(--composer-ghost-hover); }
 
 /* Context usage stays accessible through the button and its detail panel. */
 .input-bar .context-usage-ring { width: 28px; padding: 0; justify-content: center; }
@@ -629,15 +629,9 @@
 #mainColumn .composer-controls--compact > .composer-controls__trail { margin-inline-start: auto; }
 #mainColumn .composer-controls--compact > #composerOverflowAnchor { order: 7; }
 
-@container composer (min-width: 500px) {
-  #mainColumn .composer-controls--compact .permission-pill__label,
-  #mainColumn .composer-run-target-btn--local .composer-run-target__label { display: inline; }
-  #mainColumn .composer-run-target-btn--local { width: auto; padding-inline: 8px; }
-  #mainColumn .permission-pill:not([data-level='full']) { border-color: transparent; }
-  #mainColumn .permission-pill:not([data-level='full']):hover { background: var(--composer-ghost-hover); }
-}
-
 @media (hover: hover) and (pointer: fine) {
+  .input-bar .permission-pill:hover { background: var(--composer-ghost-hover); }
+
   .input-bar .composer-run-target-btn:hover:not(:disabled),
   .input-bar .thinking-toggle-btn:hover:not(:disabled),
   .input-bar .composer-overflow-btn:hover:not(:disabled),
@@ -660,7 +654,7 @@
 @media (pointer: coarse) {
   .input-bar .input-bar-send-stack,
   .input-bar .input-inset-actions { gap: 4px; }
-  .input-bar :is(.input-inset-btn, .send-btn, .composer-overflow-btn, .thinking-toggle-btn, .context-usage-ring) {
+  .input-bar :is(.input-inset-btn, .send-btn, .permission-pill, .composer-overflow-btn, .thinking-toggle-btn, .context-usage-ring) {
     min-width: 44px;
     min-height: 44px;
     width: 44px;

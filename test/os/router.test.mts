@@ -11,6 +11,7 @@ import {
   getForegroundAppId,
   getInstanceSnapshot,
   resetInstancesForTests,
+  subscribeInstances,
 } from '../../src/os/instances.ts';
 import { initOsPageBridge, resetOsPageBridgeForTests } from '../../src/os/page-bridge.ts';
 import {
@@ -219,6 +220,41 @@ describe('os router navigation', () => {
     const route = getCurrentRoute();
     assert.equal(route.view, 'app');
     assert.equal(route.appId, 'code');
+  });
+
+  test('Code stage routes replace the menubar logo with Back to chat', { timeout: 5000 }, async () => {
+    const { renderMenubar } = await import('../../src/os/menubar.ts');
+    const menubar = document.createElement('header');
+    document.body.append(menubar);
+    const cleanup = renderMenubar(menubar);
+    try {
+      const logo = menubar.querySelector<HTMLElement>('.mn-os-mb-logo')!;
+      const back = menubar.querySelector<HTMLButtonElement>('button[aria-label="Back to chat"]')!;
+      assert.equal(logo.hidden, false);
+      assert.equal(back.hidden, true);
+
+      for (const section of ['map', 'orchestrate', 'boards', 'dev-server']) {
+        window.location.hash = `#/app/code/${section}`;
+        syncOsRouteFromHashForTests();
+        assert.equal(logo.hidden, true, section);
+        assert.equal(back.hidden, false, section);
+      }
+
+      const returned = new Promise<void>((resolve) => {
+        const unsubscribe = subscribeInstances(() => {
+          if (window.location.hash !== '#/app/code/chat') return;
+          unsubscribe();
+          resolve();
+        });
+      });
+      back.click();
+      await returned;
+      assert.equal(logo.hidden, false);
+      assert.equal(back.hidden, true);
+    } finally {
+      cleanup();
+      menubar.remove();
+    }
   });
 
   test('explicit #/app/code/chat wins over leftover overview pending', () => {

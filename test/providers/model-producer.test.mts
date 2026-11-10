@@ -3,6 +3,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import {
   modelProducerLogoSvg,
@@ -72,12 +73,17 @@ describe('modelProducerLogoSvg', () => {
 });
 
 describe('resolveModelProducer', () => {
-  test('catalog ownership resolves Claude aliases with the Anthropic logo', () => {
-    for (const id of ['sonnet', 'opus', 'haiku']) {
+  test('Claude models and catalog aliases use the Claude provider mark', () => {
+    const asset = readFileSync(new URL('../../public/logos/providers/claude.svg', import.meta.url), 'utf8');
+    const path = asset.match(/<path d="([^"]+)"/)?.[1];
+    assert.ok(path);
+    for (const id of ['claude-opus-5-5', 'sonnet', 'opus', 'haiku', 'opaque-id']) {
       const producer = resolveModelProducer(id, 'anthropic');
       assert.equal(producer.slug, 'anthropic');
       assert.equal(producer.displayName, 'Anthropic');
-      assert.equal(producer.logoSvg, modelProducerLogoSvg('claude-opus-5-5'));
+      assert.ok(producer.logoSvg?.includes(`d="${path}"`));
+    }
+    for (const id of ['sonnet', 'opus', 'haiku']) {
       assert.equal(resolveModelProducer(id).slug, 'anthropic', 'bare Claude aliases map without catalog ownership');
     }
   });

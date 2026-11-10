@@ -1,7 +1,8 @@
 import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import '../styles/issue-capture.css';
+import '../styles/issues.css';
 
-import { openContextMenu } from './context-menu';
+import { closeContextMenu, isContextMenuOpen, openContextMenu } from './context-menu';
 import {
   captureDescriptionSeed,
   captureTitleSeed,
@@ -21,10 +22,12 @@ import {
 } from './issue-capture-draft';
 import { markPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
-import type { ExpandedIssueDraft } from '../chat/issues/expand-issue';
+import type { AddIssueInput } from '../state/issues-store';
 import { createIcon } from './icon';
-import { defaultIssuePriorityId, statusIdForRole } from '../issues/taxonomy';
-import { getIssuesTaxonomySync } from '../state/issues-taxonomy-store';
+import { subscribeIssuesTaxonomyChanges } from '../state/issues-taxonomy-events';
+import { paintIssuePropertyField } from './issues-new-property-field';
+import { createIssuesLabelsField } from './issues-labels-field';
+import { closeIssueLabelPopovers, isIssueLabelPopoverOpenFor } from './issues-label-chip';
 
 const EDGE_GAP = 8;
 /** How many recent issues the "add to existing" menu offers. */
@@ -52,6 +55,14 @@ export interface OpenIssueCaptureOptions {
   thread?: boolean;
 }
 
+type ThreadCaptureFields = Pick<AddIssueInput, 'type' | 'priority' | 'status'> & {
+  notes: HTMLTextAreaElement;
+  labels: string[];
+  link: HTMLInputElement | null;
+  linkedChatId?: string;
+  unsubscribeTaxonomy: () => void;
+};
+
 interface CaptureSession {
   root: HTMLElement;
   payload: CapturePayload;
@@ -67,7 +78,7 @@ interface CaptureSession {
   onFiled?: (result: IssueCaptureResult) => void;
   submitting: boolean;
   expanding: AbortController | null;
-  thread?: { notes: HTMLTextAreaElement; label: string; priority: string; link: HTMLInputElement | null; linkedChatId?: string };
+  thread?: ThreadCaptureFields;
 }
 
 let session: CaptureSession | null = null;
@@ -83,7 +94,14 @@ function draftFromSession(current: CaptureSession): IssueCaptureDraft | null {
     title: current.titleInput.value,
     payload: { ...current.payload, description: thread?.notes.value ?? current.payload.description, items: [...current.payload.items] },
     targetIssueId: current.targetIssueId,
-    ...(thread ? { threadFields: { label: thread.label, priority: thread.priority, linkedChatId: thread.linkedChatId, link: thread.link?.checked ?? false } } : {}),
+    ...(thread ? { threadFields: {
+      type: thread.type,
+      priority: thread.priority,
+      status: thread.status,
+      labels: thread.labels,
+      linkedChatId: thread.linkedChatId,
+      link: thread.link?.checked ?? false,
+    } } : {}),
   };
   return isDraftEmpty(draft) ? null : draft;
 }
@@ -104,7 +122,12 @@ export function closeIssueCapture(options?: {
   else saveIssueCaptureDraft(current.payload.workspacePath, null);
   session = null;
   unbindGlobalListeners();
-  if (current.thread) current.anchor?.setAttribute('aria-expanded', 'false');
+  if (current.thread) {
+    current.thread.unsubscribeTaxonomy();
+    if (isIssueLabelPopoverOpenFor(current.root)) closeIssueLabelPopovers();
+    closeContextMenu({ restoreFocus: false });
+    current.anchor?.setAttribute('aria-expanded', 'false');
+  }
   const restore = options?.restoreFocus === false ? null : current.restoreFocus;
   if (restore?.isConnected) restore.focus();
   current.root.remove();
@@ -255,7 +278,8 @@ async function openDestinationMenu(current: CaptureSession): Promise<void> {
 
 async function createNewCaptureIssue(
   current: CaptureSession,
-  draft: Pick<ExpandedIssueDraft, 'title' | 'description' | 'type' | 'labels' | 'priority'>,
+  draft: AddIssueInput,
+  expandInBackground = false,
 ): Promise<void> {
   const store = await import('../state/issues-store');
   if (session !== current) return;
@@ -265,12 +289,7 @@ async function createNewCaptureIssue(
     if (index !== -1) links.chatIds.splice(index, 1);
   }
   const issue = store.addIssue({
-    title: draft.title,
-    description: draft.description,
-    type: draft.type,
-    labels: draft.labels,
-    priority: draft.priority,
-    status: current.thread ? statusIdForRole(getIssuesTaxonomySync(), 'triage') : undefined,
+    ...draft,
     workspacePath: current.payload.workspacePath,
     source: 'user',
   });
@@ -286,8 +305,15 @@ async function createNewCaptureIssue(
   store.scheduleSaveIssues();
   const filed = { issueId: issue.id, created: true };
   closeIssueCapture({ clearDraft: true });
-  showToast(`Filed ${issue.id}`, 'success');
+  showToast(expandInBackground ? `Filed ${issue.id}. Expanding in the background.` : `Filed ${issue.id}`, 'success');
   current.onFiled?.(filed);
+  if (expandInBackground) {
+    void import('./issues-expand').then(({ expandCreatedIssueInBackground }) =>
+      expandCreatedIssueInBackground(issue.id),
+    ).catch((error) => {
+      showToast(error instanceof Error ? error.message : `Could not expand ${issue.id}`, 'error');
+    });
+  }
 }
 
 function setExpandAndCreateBusy(current: CaptureSession, busy: boolean): void {
@@ -333,7 +359,7 @@ async function expandAndCreateCapture(current: CaptureSession): Promise<void> {
   }
 }
 
-async function submitCapture(current: CaptureSession): Promise<void> {
+async function submitCapture(current: CaptureSession, expandInBackground = false): Promise<void> {
   if (current.submitting) return;
   const links = capturePayloadToLinks(current.payload);
 
@@ -378,9 +404,11 @@ async function submitCapture(current: CaptureSession): Promise<void> {
     await createNewCaptureIssue(current, {
       title,
       description: captureDescriptionSeed({ ...current.payload, description: current.thread?.notes.value ?? current.payload.description }),
-      labels: current.thread?.label ? [current.thread.label] : undefined,
+      type: current.thread?.type,
+      labels: current.thread?.labels,
       priority: current.thread?.priority,
-    });
+      status: current.thread?.status,
+    }, expandInBackground);
   } catch (error) {
     showToast(error instanceof Error ? error.message : 'Could not capture the issue', 'error');
   } finally {
@@ -415,6 +443,7 @@ function positionPopover(root: HTMLElement, anchor: HTMLElement | null): void {
 function onKeyDown(event: KeyboardEvent): void {
   const current = session;
   if (!current) return;
+  if (isContextMenuOpen() || isIssueLabelPopoverOpenFor(current.root)) return;
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
@@ -423,7 +452,7 @@ function onKeyDown(event: KeyboardEvent): void {
   }
   if (event.key === 'Enter' && !event.shiftKey) {
     const target = event.target;
-    if (current.thread && !(event.metaKey || event.ctrlKey)) return;
+    if (current.thread && (!(event.metaKey || event.ctrlKey) || !(target instanceof Node) || !current.root.contains(target))) return;
     if (target === current.destinationBtn) return;
     if (isTypingTarget(target) || target === current.submitBtn) {
       event.preventDefault();
@@ -437,7 +466,7 @@ function onPointerDown(event: PointerEvent): void {
   if (!current) return;
   const target = event.target;
   if (target instanceof Node && current.root.contains(target)) return;
-  if (target instanceof Element && target.closest('.mn-menu')) return;
+  if (target instanceof Element && target.closest('.mn-menu, .issues-labels-popover')) return;
   closeIssueCapture({ restoreFocus: false });
 }
 
@@ -517,47 +546,56 @@ export function focusOpenIssueCapture(): boolean {
   return true;
 }
 
-function threadCaptureFields(root: HTMLElement, payload: CapturePayload, saved?: IssueCaptureDraft['threadFields']): NonNullable<CaptureSession['thread']> {
-  const taxonomy = getIssuesTaxonomySync();
+function threadCaptureFields(root: HTMLElement, payload: CapturePayload, saved?: IssueCaptureDraft['threadFields']): ThreadCaptureFields {
   const notes = document.createElement('textarea');
   notes.rows = 3;
   notes.className = 'mn-capture__notes';
-  notes.placeholder = 'Notes, steps to reproduce, links (optional)';
-  notes.setAttribute('aria-label', 'Notes');
+  notes.placeholder = 'Description (optional)';
+  notes.setAttribute('aria-label', 'Description');
   notes.value = payload.description ?? '';
   const groups = document.createElement('div');
-  groups.className = 'mn-capture__choices';
+  groups.className = 'mn-capture__properties';
   const linked = payload.items.find(item => item.kind === 'chat' && item.chatId);
   const link = linked ? document.createElement('input') : null;
-  const labels = ['Bug', 'Feature', 'Chore'];
-  const standard = taxonomy.priorities.filter(item => ['high', 'medium', 'low'].includes(item.id));
-  const priorities = standard.length ? standard : taxonomy.priorities;
-  const priority = priorities.find(item => item.id === saved?.priority)?.id ??
-    priorities.find(item => item.id === 'medium')?.id ?? priorities[0]?.id ?? defaultIssuePriorityId(taxonomy);
-  const label = saved && labels.includes(saved.label) ? saved.label : 'Bug';
-  const fields = { notes, label, priority, link, linkedChatId: linked?.chatId };
-
-  function select(field: 'label' | 'priority', name: string, options: readonly { id: string; label: string }[]): void {
-    const group = document.createElement('div');
-    group.className = 'mn-capture__choice-group';
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', name);
-    for (const option of options) {
-      const control = document.createElement('button');
-      control.type = 'button';
-      control.textContent = option.label;
-      control.setAttribute('aria-pressed', String(fields[field] === option.id));
-      control.addEventListener('click', () => {
-        fields[field] = option.id;
-        for (const sibling of group.children) sibling.setAttribute('aria-pressed', String(sibling === control));
-      });
-      group.append(control);
+  const fields: ThreadCaptureFields = {
+    type: saved?.type,
+    priority: saved?.priority,
+    status: saved?.status,
+    labels: saved?.labels ?? [],
+    notes,
+    link,
+    linkedChatId: linked?.chatId,
+    unsubscribeTaxonomy: () => {},
+  };
+  const propertyFields = (['type', 'priority', 'status'] as const).map((property) => {
+    const field = document.createElement('div');
+    field.className = 'mn-capture__property';
+    const label = document.createElement('span');
+    label.className = 'issues-new-form__field-label';
+    label.textContent = property;
+    const host = document.createElement('div');
+    host.className = 'issues-new-form__prop-host';
+    field.append(label, host);
+    groups.append(field);
+    return { property, host };
+  });
+  const paintProperties = (): void => {
+    for (const { property, host } of propertyFields) {
+      paintIssuePropertyField(host, property, fields[property], (id) => { fields[property] = id; });
     }
-    groups.append(group);
-  }
-  select('label', 'Label', labels.map(label => ({ id: label, label })));
-  select('priority', 'Priority', priorities);
-  root.append(notes, groups);
+  };
+  paintProperties();
+  fields.unsubscribeTaxonomy = subscribeIssuesTaxonomyChanges(paintProperties);
+  root.append(notes, groups, createIssuesLabelsField({
+    issueId: '__thread_capture__',
+    workspacePath: () => session?.payload.workspacePath ?? payload.workspacePath ?? '',
+    labels: fields.labels,
+    variant: 'form',
+    onChange: (labels) => {
+      fields.labels = labels;
+      if (session?.root === root) positionPopover(root, session.anchor);
+    },
+  }));
   if (link && linked) {
     link.type = 'checkbox';
     link.checked = saved && saved.linkedChatId === linked.chatId ? saved.link : true;
@@ -593,9 +631,7 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     head.append(createIcon('appIssues', { size: 14 }), title, next);
     root.append(head);
     void import('../state/issues-store').then(({ getNextIssueIdPreview }) => {
-      const taxonomy = getIssuesTaxonomySync();
-      const triage = taxonomy.statuses.find(item => item.role === 'triage');
-      next.textContent = [getNextIssueIdPreview(payload.workspacePath), triage?.label].filter(Boolean).join(' · ');
+      next.textContent = getNextIssueIdPreview(payload.workspacePath);
     }).catch(() => undefined);
   } else if (!options.minimal) {
     const head = document.createElement('div');
@@ -635,6 +671,12 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
   submitBtn.className = 'mn-capture__submit';
   if (options.minimal) submitBtn.textContent = 'Create Issue';
   let expandAndCreateBtn: HTMLButtonElement | null = null;
+  if (options.thread || options.minimal) {
+    expandAndCreateBtn = document.createElement('button');
+    expandAndCreateBtn.type = 'button';
+    expandAndCreateBtn.className = 'mn-capture__expand-and-create';
+    expandAndCreateBtn.textContent = options.thread ? 'Expand and Capture' : 'Expand and Create';
+  }
   if (options.thread) {
     const hint = document.createElement('span');
     hint.className = 'mn-capture__hint';
@@ -645,12 +687,13 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     cancel.textContent = 'Cancel';
     cancel.addEventListener('click', () => closeIssueCapture());
     submitBtn.textContent = 'Capture';
-    foot.append(hint, cancel, submitBtn);
-  } else if (options.minimal) {
-    expandAndCreateBtn = document.createElement('button');
-    expandAndCreateBtn.type = 'button';
-    expandAndCreateBtn.className = 'mn-capture__expand-and-create';
-    expandAndCreateBtn.textContent = 'Expand and Create';
+    foot.append(hint, cancel);
+    if (expandAndCreateBtn) {
+      expandAndCreateBtn.title = 'Capture the issue and expand it in the background';
+      foot.append(expandAndCreateBtn);
+    }
+    foot.append(submitBtn);
+  } else if (expandAndCreateBtn) {
     foot.append(submitBtn, expandAndCreateBtn);
   } else {
     const hint = document.createElement('span');
@@ -686,7 +729,8 @@ export function openIssueCapture(options: OpenIssueCaptureOptions): void {
     void submitCapture(current);
   });
   expandAndCreateBtn?.addEventListener('click', () => {
-    void expandAndCreateCapture(current);
+    if (thread) void submitCapture(current, true);
+    else void expandAndCreateCapture(current);
   });
 
   renderChips(current);
@@ -723,10 +767,6 @@ export function addToOpenIssueCapture(items: CaptureItem[]): boolean {
 
 /** Reset module state (tests). */
 export function resetIssueCaptureForTests(): void {
-  if (session) {
-    unbindGlobalListeners();
-    session.root.remove();
-  }
-  session = null;
+  closeIssueCapture({ restoreFocus: false, clearDraft: true });
   resetIssueCaptureDraftForTests();
 }

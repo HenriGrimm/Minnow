@@ -13,7 +13,6 @@ const SHOW_ARCHIVES_KEY = 'minnow.brain.showArchives';
 const READOUT_COLLAPSED_KEY = 'minnow.brain.readoutCollapsed';
 const LAYOUT_KEY = 'minnow.brain.graphLayout';
 const TAGS_KEY = 'minnow.brain.graphTags';
-const SELECTION_KEY = 'minnow.brain.graphSelection';
 
 // ── Prefs ────────────────────────────────────────────────────────────────────
 
@@ -42,16 +41,20 @@ function filterCatalogPages(pages: BrainPageMeta[]): BrainPageMeta[] {
   return pages.filter((p) => !isBrainArchivePagePath(p.path));
 }
 
-const savedSelection = readPref(SELECTION_KEY);
-let selectedPath: string | null = savedSelection || null;
-let initialSelectionPending = savedSelection === null;
+let selectedPath: string | null = null;
 let catalogPages: BrainPageMeta[] = [];
 let graphApi: ForceGraphApi | null = null;
 let renderGeneration = 0;
 
-/** Stop graph interaction when leaving the Graph section (other Brain panels stay usable). */
-export function teardownGraphSection(): void {
+/** Stop graph interaction when leaving Graph; leaving Brain also clears the reader. */
+export function teardownGraphSection(options?: { clearSelection?: boolean }): void {
   renderGeneration += 1;
+  if (options?.clearSelection) {
+    setGraphSelectedPath(null);
+    const inspector = document.getElementById('brainInspector');
+    if (inspector) closeBrainInspector(inspector);
+    syncTreeSelection();
+  }
   document.body.style.removeProperty('cursor');
   const canvas = document.getElementById('brainGraphCanvas');
   canvas?.style.removeProperty('cursor');
@@ -188,9 +191,7 @@ export function getGraphSelectedPath(): string | null {
 }
 
 export function setGraphSelectedPath(relPath: string | null): void {
-  initialSelectionPending = false;
   selectedPath = relPath;
-  writePref(SELECTION_KEY, relPath ?? '');
 }
 
 /** Highlight orphan pages from lint. Called just before openBrain('graph'), so the
@@ -625,6 +626,9 @@ export async function renderGraphSection(): Promise<void> {
   }
 
   catalogPages = filterCatalogPages(flattenBrainTree(tree));
+  if (selectedPath && !catalogPages.some((p) => p.path === selectedPath)) {
+    setGraphSelectedPath(null);
+  }
   const treeRecord = filterBrainTreeForDisplay(
     tree,
     readShowArchivesPref(),
@@ -640,12 +644,6 @@ export async function renderGraphSection(): Promise<void> {
     graphApi = null;
     if (inspector) closeBrainInspector(inspector);
     return;
-  }
-
-  if (initialSelectionPending) {
-    setGraphSelectedPath(catalogPages.find((p) => p.path === 'index.md')?.path ?? catalogPages[0].path);
-  } else if (selectedPath && !catalogPages.some((p) => p.path === selectedPath)) {
-    setGraphSelectedPath(null);
   }
 
   if (selectedPath) void openInspector(selectedPath);

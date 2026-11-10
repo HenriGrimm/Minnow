@@ -4,6 +4,7 @@ import { after, beforeEach, describe, test } from 'node:test';
 import { modelCache } from '../../src/app-state.ts';
 import { encodeModelSelectKey } from '../../src/lib/model-select-key.ts';
 import { readModelPickerPreferences, recordModelPickerUse } from '../../src/models/model-picker-preferences.ts';
+import { routerOptions, ROUTER_PROVIDER_ID } from '../../src/models/routers.ts';
 import { handleModelProviderBrowserKeydown, renderModelProviderBrowser, resetModelProviderBrowser } from '../../src/ui/model-provider-browser.ts';
 import { resolveModelHostFilterLoadUnloadValue } from '../../src/ui/model-host-filter-context.ts';
 import { mountAuxiliaryModelSelectCombobox, unmountAuxiliaryModelSelectCombobox, renderModelSelectMenuRows, setModelHostFilter, setModelLibraryFilter, setModelLocalLoadFilter, setModelSearchQuery } from '../../src/ui/model-select-picker.ts';
@@ -34,18 +35,19 @@ describe('provider browser', { concurrency: false }, () => {
     }
     document.body.append(select, menu); render();
   });
-  test('starts collapsed and separates identical models on different connections', () => {
+  test('opens the selected provider and separates identical models on different connections', () => {
     assert.equal(menu.querySelectorAll('.model-browser-provider').length, 3);
-    assert.equal(menu.querySelectorAll('.model-select-option').length, 0);
+    assert.equal(menu.querySelector<HTMLElement>('.model-select-option')?.dataset.value, key('claude'));
     provider('claude').click();
     assert.equal(menu.querySelector<HTMLElement>('.model-select-option')?.dataset.value, key('claude'));
-    assert.equal(provider('api').getAttribute('aria-expanded'), 'false');
+    assert.equal(provider('api').getAttribute('aria-selected'), 'false');
   });
   test('provider rail uses connection logos and the Minnow library mark', () => {
     menu.replaceChildren();
     const connections = [
       ['codex-cli', 'Codex CLI', 'openai'],
-      ['claude-code-cli', 'Claude Code', 'anthropic'],
+      ['claude-code-cli', 'Claude Code', 'claude'],
+      ['anthropic', 'Anthropic', 'claude'],
       ['opencode-go', 'OpenCode Go', 'opencode'],
       ['opencode-zen', 'OpenCode Zen', 'opencode'],
       ['minnow-library', 'My Models', 'minnow'],
@@ -61,35 +63,46 @@ describe('provider browser', { concurrency: false }, () => {
       assert.ok(mark.querySelector<HTMLElement>('.model-browser-provider-glyph')?.style.maskImage.includes(path));
     }
   });
-  test('delays hover previews, cancels flyovers, and honors pinned groups', async () => {
-    provider('api').dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
-    assert.equal(menu.querySelectorAll('.model-select-option').length, 0);
-    provider('api').dispatchEvent(new window.PointerEvent('pointerleave', { pointerType: 'mouse' }));
-    await new Promise(resolve => setTimeout(resolve, 210));
-    assert.equal(menu.querySelectorAll('.model-select-option').length, 0);
-    provider('claude').dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
-    await new Promise(resolve => setTimeout(resolve, 210));
-    assert.equal(provider('claude').getAttribute('aria-expanded'), 'true');
-    provider('claude').click();
-    provider('api').dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
-    await new Promise(resolve => setTimeout(resolve, 210));
-    assert.equal(provider('claude').getAttribute('aria-expanded'), 'true');
+  test('model pools use a layers icon and retain their tab label', () => {
+    routerOptions(select, {
+      revision: 0,
+      defaultRouterId: null,
+      routers: [{ id: 'coding-pool', name: 'Coding pool', enabled: true, policy: 'priority', entries: [] }],
+    });
+    render();
+    const tab = provider(ROUTER_PROVIDER_ID);
+    const mark = tab.querySelector('.model-browser-provider-mark')!;
+    assert.ok(mark.querySelector('.fi-rr-layers'));
+    assert.equal(mark.textContent, '');
+    assert.equal(tab.getAttribute('aria-label'), 'Model pool');
+  });
+  test('switches tabs on click and keeps the current provider through a catalog refresh', () => {
     provider('api').click();
-    assert.equal(provider('api').getAttribute('aria-expanded'), 'true');
+    provider('claude').dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    assert.equal(provider('api').getAttribute('aria-selected'), 'true');
+    render();
+    assert.equal(provider('api').getAttribute('aria-selected'), 'true');
     resetModelProviderBrowser(menu); render();
-    assert.equal(menu.querySelectorAll('[aria-expanded="true"]').length, 0);
+    assert.equal(provider('claude').getAttribute('aria-selected'), 'true');
   });
   test('starring does not select, survives reopening, and includes the provider identity', () => {
     provider('claude').click(); menu.querySelector<HTMLButtonElement>('.model-select-favorite')!.click();
     assert.deepEqual(picked, []);
     assert.deepEqual(readModelPickerPreferences().favorites, [key('claude')]);
     resetModelProviderBrowser(menu); render();
+    assert.equal(menu.querySelector('.model-browser-favorite-list'), null);
+    const favoritesTab = () => menu.querySelector<HTMLButtonElement>('.model-browser-favorites-tab')!;
+    favoritesTab().click();
+    assert.equal(favoritesTab().getAttribute('aria-selected'), 'true');
     assert.equal(menu.querySelectorAll('.model-browser-favorite-list .model-select-option').length, 1);
-    provider('api').click();
-    assert.equal(menu.querySelector('.model-browser-pane .model-select-favorite')?.getAttribute('aria-pressed'), 'false');
     menu.querySelector<HTMLButtonElement>('.model-browser-favorite-list .model-select-option')!.click();
     assert.deepEqual(picked, [key('claude')]);
+    provider('api').click();
+    assert.equal(menu.querySelector('.model-browser-pane .model-select-favorite')?.getAttribute('aria-pressed'), 'false');
+    favoritesTab().click();
     menu.querySelector<HTMLButtonElement>('.model-browser-favorite-list .model-select-favorite')!.click();
+    assert.equal(favoritesTab().getAttribute('aria-selected'), 'true');
+    assert.match(menu.textContent!, /Star a model/);
     assert.deepEqual(readModelPickerPreferences().favorites, []);
   });
   test('sorts by usage, name or locality, keeping favorites first in smart order', () => {
@@ -131,9 +144,10 @@ describe('provider browser', { concurrency: false }, () => {
   });
   test('phone enters a provider without hover or focus preview and returns focus to the list', () => {
     document.documentElement.classList.add('mn-phone');
+    resetModelProviderBrowser(menu); render();
     const trigger = provider('claude');
     trigger.focus();
-    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(trigger.getAttribute('aria-selected'), 'false');
     trigger.click();
     const columns = menu.querySelector('.model-browser-columns')!;
     const back = menu.querySelector<HTMLButtonElement>('.model-browser-back')!;
@@ -142,7 +156,7 @@ describe('provider browser', { concurrency: false }, () => {
     back.click();
     assert.equal(columns.classList.contains('is-provider-open'), false);
     assert.equal(document.activeElement, trigger);
-    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(trigger.getAttribute('aria-selected'), 'false');
 
     trigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     const row = menu.querySelector<HTMLButtonElement>('.model-browser-pane .model-select-option')!;

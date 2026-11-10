@@ -40,7 +40,7 @@ Most interesting requests make the model call a tool. Under the default **Auto**
 
 Digits work whenever the card is open and you are not typing in a field. Type in the card's field and press **Enter** to deny and tell the agent what to do instead.
 
-The permission pill in the composer switches between **Manual**, **Auto** and **Full access** (or press **Shift+Tab**). It is one setting for every chat. Read [Tools and permissions](../concepts/tools-and-permissions.md) before choosing Full access.
+Select the permission icon in the composer to choose **Manual**, **Auto** or **Full access**. Press **Shift+Tab** in the composer to cycle through the levels. It is one setting for every chat. Read [Tools and permissions](../concepts/tools-and-permissions.md) before choosing Full access.
 
 ## Asking, planning and debugging
 

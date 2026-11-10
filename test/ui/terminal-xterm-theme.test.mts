@@ -168,13 +168,11 @@ describe('terminal xterm selection contrast (light)', () => {
     });
   }
 
-  test('swamp-light: selection is more visible than legacy surface-0 mapping', () => {
+  test('swamp-light: selection text stays readable on the workbench sheet', () => {
     const vars = readThemeBlock(tokensCss, 'swamp-light');
     const theme = buildTerminalXtermTheme(mockLightStyle(vars));
-    const legacySurface0 = vars['--mn-surface-0'];
-    const newRatio = contrastRatio(theme.selectionBackground!, theme.background!);
-    const legacyRatio = contrastRatio(legacySurface0, theme.background!);
-    assert.ok(newRatio > legacyRatio + 0.5);
+    assert.equal(theme.background, vars['--mn-surface-0']);
+    assert.ok(contrastRatio(theme.selectionForeground!, theme.selectionBackground!) >= 4.5);
   });
 });
 
@@ -195,12 +193,10 @@ describe('terminal xterm selection contrast (dark)', () => {
     });
   }
 
-  test('swamp-dark: selection is more visible than legacy surface-0 mapping', () => {
+  test('swamp-dark: selection text stays readable on the workbench sheet', () => {
     const vars = readThemeBlock(tokensCss, 'swamp-dark');
     const theme = buildTerminalXtermTheme(mockDarkStyle(vars));
-    const legacySurface0 = vars['--mn-surface-0'];
-    const newRatio = contrastRatio(theme.selectionBackground!, theme.background!);
-    const legacyRatio = contrastRatio(legacySurface0, theme.background!);
-    assert.ok(newRatio > legacyRatio + 0.5);
+    assert.equal(theme.background, vars['--mn-surface-0']);
+    assert.ok(contrastRatio(theme.selectionForeground!, theme.selectionBackground!) >= 4.5);
   });
 });

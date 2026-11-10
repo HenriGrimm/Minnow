@@ -104,7 +104,7 @@
         "Next steps"
       ],
       "section": "Get started",
-      "hash": "56d0dc090e366bcbb9c80a57bc09008dfe0606cfdb90054339f87f9065fc83b7"
+      "hash": "2e6107ca677069898b3aa592f7508cd5a8653957c7d25827077e14a1ed96db4a"
     },
     {
       "path": "documentation/manual/concepts/how-minnow-works.md",
@@ -142,7 +142,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "0ac167a1a1fc204a5ff71695ac479e23dabb440b36bb616bfeee28301108a710"
+      "hash": "41a5c62ccbd679cce5a017b9b7ab4ffebb41e9d31d31b84ce3a1e3992534966a"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -180,7 +180,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "cc58a17163270ee460811598548d258e8e7383d3c592212a7db0cde4a8cf0f9c"
+      "hash": "c6b128ec241a1bb7528bd4084506cfb4ffc605bb63ee6786eb55ad582a38658b"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -243,12 +243,12 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "fd9750ff0bed85645d9106373f263bcc1e2bfcbadb4337005d49555916f524cc"
+      "hash": "219b4d40b4964174c8c7abe8f516d058c334984770d28e525ac7ca654c7c5ebf"
     },
     {
       "path": "documentation/manual/apps/brain.md",
       "title": "Brain",
-      "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail. It fills the main stage like the ot",
+      "summary": "Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it. Open it from the app rail to see the graph with no page select",
       "headings": [
         "The sections",
         "Reading the graph",
@@ -261,7 +261,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "127eec4f3b36b371fb7524c248e9f01ec0e76557184d3b1c11df552544cb3608"
+      "hash": "f7dd68f0abb4dbf093908c7a99ee9f8ff9c4e43a4c39986851848fd17d8b3b3a"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -305,7 +305,7 @@
         "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "15ba99e5811584bff6f58128554d4b89d5550158e62b352144c1cd5ce3a39257"
+      "hash": "f9ec6838354973e376736460cfb48151d89c89edbfa02cc2fbd036f908673bb3"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",

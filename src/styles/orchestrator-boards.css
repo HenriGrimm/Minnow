@@ -57,7 +57,7 @@
   grid-template-columns: minmax(200px, 260px) 1fr;
   height: 100%;
   min-height: 0;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   /* Hub ask pane gutters (same tokens as ob-page.css, scoped here). */
   --ob-gutter: 28px;
@@ -229,7 +229,8 @@
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--mn-tracking-title);
+  line-height: var(--mn-leading-tight);
 }
 
 .ov2__boards {
@@ -407,7 +408,7 @@
   padding: 8px 10px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   font: inherit;
   font-size: 14px;
@@ -432,7 +433,7 @@
   padding: 0 12px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--mn-surface-1);
   color: var(--mn-fg-muted);
   font: inherit;
   font-size: 13px;
@@ -442,10 +443,10 @@
 .ov2 .ob-ask .orchestrate-hub__start-btn {
   min-height: 40px;
   padding: 0 16px;
-  border: 1px solid var(--mn-accent);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--mn-accent);
-  color: var(--mn-text-hover, var(--mn-bg));
+  background: var(--mn-graphite-button, var(--mn-accent));
+  color: var(--mn-graphite-button-text, var(--mn-fg-on-accent));
   font: inherit;
   font-size: 13.5px;
   font-weight: 600;
@@ -866,7 +867,7 @@
   line-height: 1.2;
   border-radius: var(--radius-sm);
   border: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   cursor: pointer;
 }
@@ -889,9 +890,9 @@
 
 @media (hover: hover) and (pointer: fine) {
   .ov2 .board-btn:hover:not(:disabled):not(.board-btn--primary) {
-    border-color: var(--mn-accent);
-    background: var(--mn-accent);
-    color: var(--mn-fg-on-accent);
+    border-color: var(--mn-border-strong);
+    background: var(--mn-surface-2);
+    color: var(--mn-fg);
   }
 }
 
@@ -1582,7 +1583,7 @@
   min-height: 0;
   max-width: 100%;
   padding: 18px 22px 4px;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md, 10px);
   box-shadow: var(--shadow-popover-tall);

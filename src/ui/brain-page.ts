@@ -11,7 +11,6 @@ import { teardownGraphSection } from './brain/graph-section';
 import { renderBrainSection } from './brain/sections';
 import { revealInTabStrip } from './mobile-layout';
 import { fetchBrainUsage } from '../brain/client';
-import { createIcon } from './icon';
 
 export type BrainSectionId =
   | 'graph'
@@ -280,12 +279,6 @@ function bindStaticSections(): void {
 
   const rail = getBrainRoot()?.querySelector<HTMLElement>('.brain-rail');
   if (rail) {
-    const search = document.createElement('button');
-    search.type = 'button';
-    search.className = 'brain-graphite-search';
-    search.append(createIcon('search', { size: 14 }), 'Search pages');
-    search.addEventListener('click', () => document.getElementById('brainGraphSearch')?.focus());
-    rail.prepend(search);
     for (const id of SECTIONS) {
       const control = rail.querySelector(`[data-brain-nav="${id}"]`);
       if (!control) continue;
@@ -356,6 +349,8 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
 
   const target = section ?? parseHashSection();
   if (wasAlreadyOpen && target === activeSection && !options?.editPath) {
+    // Suspending Brain hides the graph canvas while leaving the section open.
+    root.classList.toggle('is-graph-canvas-bg', target === 'graph');
     updatePageHeader(target);
     void renderBrainSection(target, options);
     return;
@@ -381,7 +376,7 @@ export function openBrainNewPage(): void {
 /** Brain stayed open in the OS layer stack (e.g. user opened Settings from the menubar). */
 export function suspendBrainAppSurface(): void {
   getBrainRoot()?.classList.remove('is-graph-canvas-bg');
-  teardownGraphSection();
+  teardownGraphSection({ clearSelection: true });
   document.body.style.removeProperty('cursor');
 }
 
@@ -393,7 +388,7 @@ export function closeBrain(options?: { skipNavigate?: boolean }): void {
 
   root.classList.remove('is-open');
 
-  teardownGraphSection();
+  teardownGraphSection({ clearSelection: true });
 
   if (!isOsEmbedded()) {
     shell.classList.remove('hidden');

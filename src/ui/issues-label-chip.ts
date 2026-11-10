@@ -10,6 +10,7 @@ import {
 import type { IssueLabelSwatchId } from '../types';
 import { getIssueLabelSwatch, setIssueLabelColor } from '../state/issues-store';
 import { createIcon } from './icon';
+import { markPreviewOccluder } from './preview-occlusion';
 
 export type IssueLabelChipOptions = {
   name: string;
@@ -18,6 +19,7 @@ export type IssueLabelChipOptions = {
 };
 
 type OpenPopover = {
+  anchor: HTMLElement;
   root: HTMLElement;
   onClose: () => void;
 };
@@ -54,6 +56,10 @@ export function isIssuesLabelPopoverFocused(relatedTarget?: EventTarget | null):
     );
   if (inPopover(document.activeElement)) return true;
   return inPopover(relatedTarget);
+}
+
+export function isIssueLabelPopoverOpenFor(container: HTMLElement): boolean {
+  return openPopover !== null && container.contains(openPopover.anchor);
 }
 
 /** Close overflow, color picker, or add flyout. */
@@ -98,7 +104,8 @@ function positionIssueLabelPopover(anchor: HTMLElement, menu: HTMLElement): void
 function bindPopoverChrome(anchor: HTMLElement, root: HTMLElement, onClose: () => void): void {
   closeIssueLabelPopovers();
   document.body.appendChild(root);
-  openPopover = { root, onClose };
+  markPreviewOccluder(root, 'menu');
+  openPopover = { anchor, root, onClose };
   positionIssueLabelPopover(anchor, root);
   popoverReposition = () => {
     if (!openPopover) return;

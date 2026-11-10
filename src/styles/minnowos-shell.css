@@ -263,6 +263,7 @@ html.minnow-os-enabled {
   transition: 0.14s var(--os-ease);
 }
 
+.mn-os-mb-logo[hidden],
 .mn-os-mb-icon[hidden] {
   display: none;
 }

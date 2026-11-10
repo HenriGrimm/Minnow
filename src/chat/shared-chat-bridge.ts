@@ -32,6 +32,7 @@ import type { SharedChatFrame } from './shared-chat-protocol';
 import type { TurnEvent } from '../../server/runner/run-turn';
 import type { SendProgrammaticChatTextOptions } from './messaging';
 import { randomUUID } from '../lib/random-id';
+import { decodeModelSelectKey } from '../lib/model-select-key';
 import { getChatTranscript } from '../config/api-client';
 import { startManagedChatBridge } from './managed-chat-bridge';
 import { startManagedChatRequests } from '../ui/managed-chat-requests';
@@ -42,7 +43,7 @@ import { chatMutationVersion } from '../state/chat-mutation-version';
 
 const FIELD_KEYS = ['name', 'workspacePath', 'modelId', 'providerId', 'modeId', 'updatedAt',
   'currentGenerationId', 'lastStats', 'modelInfo', 'turnError', 'unread', 'pinnedAt', 'archivedAt', 'pendingMessageQueue',
-  'pendingSteerMessage', 'reasoningEffort', 'worktreeRoot', 'worktreeEnabled', 'worktreeSetupRequired',
+  'pendingSteerMessage', 'reasoningEffort', 'cliFastMode', 'worktreeRoot', 'worktreeEnabled', 'worktreeSetupRequired',
   'worktreeSetupError', 'subAgentAutoResumeBlocked', 'activeGoal', 'activeLoops', 'remoteCommandReceipts'] as const;
 
 function sharedFields(chat: Chat): Record<string, unknown> {
@@ -348,6 +349,14 @@ export function createHostChatCommandHandler(publish: (chatId: string, running: 
       if (typeof patch.modelSelectValue === 'string') {
         const { onActiveChatModelChange } = await import('../ui/chat-model-ui');
         onActiveChatModelChange(patch.modelSelectValue, chat);
+      }
+      if (typeof patch.cliFastMode?.enabled === 'boolean' && typeof patch.cliFastMode.modelKey === 'string') {
+        if (busy) throw new Error('Wait for the current reply to finish before changing speed.');
+        const binding = decodeModelSelectKey(patch.cliFastMode.modelKey);
+        if (!binding || binding.providerId !== chat.providerId || binding.modelId !== chat.modelId) {
+          throw new Error('The selected model changed before speed could be saved.');
+        }
+        chat.cliFastMode = patch.cliFastMode.enabled;
       }
       if (typeof patch.modeId === 'string') {
         if (!['general', 'build', 'plan', 'debug'].includes(patch.modeId)) throw new Error('Invalid chat mode.');

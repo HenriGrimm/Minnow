@@ -11,7 +11,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 14px;
@@ -74,7 +74,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   border-bottom: 1px solid var(--mn-border);
   border-radius: 0;
   box-shadow: none;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -110,7 +110,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   min-height: var(--topbar-h);
   padding: 10px 16px;
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .brain-page-header.brain-overlay-surface {
@@ -122,7 +122,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   border-radius: 0;
   box-shadow: none;
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   box-shadow: var(--shadow-card);
 }
 
@@ -807,7 +807,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   padding: 12px 14px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .brain-edit-toolbar__fields {
@@ -907,7 +907,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   min-width: 0;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   overflow: hidden;
 }
 
@@ -989,7 +989,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   padding: 12px 14px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .brain-memory-toolbar__controls {
@@ -1073,7 +1073,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   min-width: 0;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   overflow: hidden;
 }
 
@@ -1159,7 +1159,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   min-width: 0;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   overflow: hidden;
 }
 
@@ -1341,7 +1341,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   padding: 12px 14px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .brain-workbench-toolbar__lead {
@@ -1393,7 +1393,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   min-width: 0;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   overflow: hidden;
 }
 
@@ -1889,7 +1889,7 @@ html:not(.minnow-os-enabled) .brain-page.is-open {
   padding: 16px 18px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--mn-fg) 1.5%, var(--mn-bg));
+  background: var(--mn-surface-1);
 }
 
 .brain-settings-group__head {

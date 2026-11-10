@@ -179,9 +179,13 @@ export function createChatCommandService({
       record.captured.delivery.cancellationEpoch !== undefined && record.captured.delivery.cancellationEpoch !== repository.getCancellationEpoch(record.chatId)));
   }
   async function selectionFor(target, caller, input) {
+    const options = {
+      ...(target.chat.reasoningEffort ? { reasoningEffort: target.chat.reasoningEffort } : {}),
+      ...(target.chat.cliFastMode === true ? { fastMode: true } : {}),
+    };
     const stored = target.profile?.snapshot?.modelSelection ?? {
       providerId: target.chat.providerId, modelId: target.chat.modelId,
-      ...(target.chat.reasoningEffort ? { options: { reasoningEffort: target.chat.reasoningEffort } } : {}),
+      ...(Object.keys(options).length ? { options } : {}),
     };
     const resolved = typeof resolveModelSelection === 'function'
       ? await resolveModelSelection({ target, caller, input, selection: stored })

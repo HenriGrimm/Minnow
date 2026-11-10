@@ -36,7 +36,9 @@ The chat list shows one line per chat: the model's provider logo, the title, and
 
 **Needs you**, at the top of the list, collects every agent question and approval in the project. Answer a single-choice question with one click or type a reply; approve or deny a tool call in place; anything richer opens its chat. Questions from archived chats still appear here, tagged **Archived**.
 
-The bottom of the chat list has **Working** and **Archive** views, each with a chat count. Hover a chat and click the archive button (or right-click and choose **Archive chat**) to move it out of Working; a section with merged or closed pull requests offers **Archive N finished**. Each archive shows an **Undo** toast. In Archive, chats are grouped by when they were archived and can be searched; hover a chat and click **Restore**, or tick several and choose **Restore** to return them to Working. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
+Use **Archive** and **Working** in the sidebar footer to switch the chat list while keeping the current chat visible. To archive a chat, hover over it and click the archive button, or right-click and choose **Archive chat**. Sections with merged or closed pull requests offer **Archive N finished**. The archive button and **Archive N finished** offer **Undo**.
+
+In Archive, chats are grouped by when they were archived. Search by title or branch, hover over a chat and click **Restore**, or select several to restore together. Archiving keeps the conversation, worktree, pin and group, and does not stop a running reply. You can still open and continue archived chats. **New chat** returns to Working.
 
 Selecting a model in the composer remembers it for new chats across all projects and restarts. Existing chats keep their own models. Opening an old chat, running background work, or a pool choosing a model does not change the remembered choice. In a server-owned ordinary chat, model changes apply to newly submitted turns; active and already queued work keeps its captured model. A compatibility chat stops its current generation when you change the model. [Agent conversations](persistent-agent-chats.md) use **Stop and switch** and keep each queued message's captured model. A child model change does not change the remembered model for new ordinary chats.
 
@@ -51,6 +53,10 @@ If setup fails, the checkout is kept. A server-owned chat retains its accepted m
 Click the **worktree name** to open its menu. Choose **Switch branch** for a different branch in that checkout, **Change worktree…** for an existing checkout, or **New worktree** for a custom name and start branch. **Back to Local** preserves the worktree and its files; enabling it again reuses that chat's managed checkout. Use Source Control or issue delivery controls for cleanup.
 
 Drag files onto the composer to attach them for the next message, up to 10 MB each. Pasting images also adds an attachment.
+
+Use the provider tabs to browse models or search across providers. Star a model to keep it in the **Favorites** tab.
+
+The picker shows **Standard** and **Fast** for supported Codex and Claude Code models. Fast applies to new messages in this chat and may use more credits. The composer label shows **Fast** while it is selected.
 
 The model label includes the current reasoning level, such as **GPT · Medium**. Its menu offers only the levels the model supports, including **Off** where available. Changes apply to this chat; **Default** restores the model's saved or inherited setting. Auto model pools continue to select reasoning through their task evaluator.
 

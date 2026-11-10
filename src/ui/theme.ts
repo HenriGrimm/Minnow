@@ -71,7 +71,6 @@ export function applyResolvedTheme(id: ThemeId): void {
   void applyAppearanceFonts();
   syncHljsDarkStylesheet(getMode(id));
   refreshHljsInDocument();
-  void import('./terminal-xterm').then((m) => m.refreshXtermTheme());
 }
 
 /** @deprecated Use applyResolvedTheme(getStoredTheme()). */
@@ -103,7 +102,7 @@ export function initTheme(): void {
   applyResolvedTheme(getStoredTheme());
 }
 
-/** Persist preference and refresh hljs/xterm. */
+/** Persist preference and refresh syntax highlighting. */
 export function setThemePreference(pref: LegacyThemePreference): void {
   persistThemePreference(pref);
   syncThemeListeners();

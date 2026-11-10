@@ -151,7 +151,9 @@ const NOT_OBSCURED: PreviewHostOcclusion = { obscured: false, notification: fals
 export function readPreviewHostOcclusion(host: HTMLElement): PreviewHostOcclusion {
   const overlaps = getPreviewOccluders(host);
   return {
-    obscured: isWorkspaceGateVisible() || isPreviewHideHeld() || overlaps.length > 0,
+    // Keep the cached frame aligned while the renderer moves the preview host.
+    obscured: isWorkspaceGateVisible() || isPreviewHideHeld() || overlaps.length > 0 ||
+      Boolean(host.parentElement?.closest('.graphite-surface-panel--sliding, .mn-graphite-sidebar-motion #osStage')),
     notification: overlaps.some((overlap) => overlap.kind === 'notification'),
   };
 }

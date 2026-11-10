@@ -104,6 +104,7 @@ export async function pumpAgentCliUpstream({ state, runtime, candidate, index, i
     release = await admitAgentCli(candidate.providerId, settings.maxConcurrent, controller.signal);
     if (controller.signal.aborted) throw Object.assign(new Error('Agent CLI cancelled.'), { name: 'AbortError' });
     const body = JSON.parse(state.requestBody.toString('utf8'));
+    if (state.providerId !== candidate.providerId || body.model !== candidate.modelId) delete body.minnow_cli_fast_mode;
     body.model = candidate.modelId;
     if (body.n != null && body.n !== 1) throw new Error('Agent CLI supports one response per request.');
     const tools = buildAgentCliToolCatalog(body);

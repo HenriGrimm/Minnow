@@ -1435,17 +1435,16 @@ function syncSidebarChatViews(list: HTMLElement, workingCount: number, archivedC
       count.className = 'chat-list-view__count';
       button.append(createIcon(view === 'archive' ? 'archive' : 'appChat'), text, count);
       button.addEventListener('click', () => {
-        if (view === 'archive' && document.documentElement.classList.contains('mn-graphite-workspace')) {
-          void import('./graphite-archive').then(({ openGraphiteArchive }) => {
-            if (!openGraphiteArchive(button)) {
-              setSidebarChatView(view);
-              renderSidebar();
-            }
-          });
-          return;
-        }
+        // The Graphite footer hides the selected button, so move focus to a visible control.
+        const moveFocus = document.activeElement === button && button.closest('#osGraphiteSidebarFooter');
         setSidebarChatView(view);
         renderSidebar();
+        if (moveFocus) {
+          const target = view === 'archive'
+            ? list.querySelector<HTMLElement>('#chatArchiveSearch')
+            : button.parentElement?.querySelector<HTMLElement>('[data-chat-view="archive"]');
+          target?.focus({ preventScroll: true });
+        }
       });
       nav.appendChild(button);
     }
@@ -1566,7 +1565,7 @@ export function renderSidebar(): void {
     desired.push(takeArchiveSearch(list, archivedCount), takeArchiveBulkBar(list));
     const query = archiveQuery.trim().toLowerCase();
     const archived = [...listedRoots]
-      .filter(chat => !query || chat.name.toLowerCase().includes(query))
+      .filter(chat => !query || `${chat.name} ${chat.gitBranch || ''}`.toLowerCase().includes(query))
       .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
     // Newest archive first, split where it stops being this week's work.
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;

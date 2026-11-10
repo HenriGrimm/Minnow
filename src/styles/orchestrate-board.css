@@ -1255,7 +1255,7 @@
 /* ---------- card drag between lanes (orchestrate-board-dnd.ts) ---------- */
 
 .kanban-column.is-drag-over {
-  background: var(--mn-bg-hover, rgb(255 255 255 / 4%));
+  background: var(--mn-surface-elevated);
   border-radius: 6px;
 }
 

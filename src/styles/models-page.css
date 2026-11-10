@@ -14,7 +14,7 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 14px;
@@ -792,7 +792,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   gap: 8px;
   align-items: center;
   padding: 10px var(--models-gutter);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -930,7 +930,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   top: var(--models-toolbar-h, 51px);
   z-index: 1;
   min-height: 30px;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-bottom: 1px solid var(--mn-border);
 }
 
@@ -3216,7 +3216,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   color: var(--mn-success-ink);
 }
 .discover-fit--warning {
-  color: var(--mn-warning-ink);
+  color: var(--mn-warning);
 }
 .discover-fit--unknown {
   color: var(--mn-fg-muted);
@@ -3229,7 +3229,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   padding: 25px 22px;
   overflow: hidden;
   border-left: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
 }
 .discover-pick__copy > .discover-model-identity {
   margin: 5px 0 10px;
@@ -3373,7 +3373,7 @@ html:not(.minnow-os-enabled) .models-page.is-open {
   position: sticky;
   bottom: 0;
   z-index: 2;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   border-top: 1px solid var(--mn-border-strong);
 }
 .discover-downloads summary {

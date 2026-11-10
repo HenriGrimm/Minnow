@@ -72,13 +72,18 @@ export async function fetchCodexModelCatalog(options = {}) {
       // Context windows are absent from model/list on older CLIs. Use only the
       // metadata this very process wrote, restricted to its returned model IDs.
       const metadata = JSON.parse(await fs.readFile(path.join(home, 'models_cache.json'), 'utf8').catch(() => '{}'));
-      const models = listed.filter(row => row.hidden !== true).map(row => ({
-        ...(metadata.models?.find(model => model.slug === row.model) ?? {}),
-        slug: row.model || row.id, display_name: row.displayName,
-        visibility: 'list', default_reasoning_level: row.defaultReasoningEffort,
-        input_modalities: row.inputModalities ?? metadata.models?.find(model => model.slug === row.model)?.input_modalities,
-        supported_reasoning_levels: row.supportedReasoningEfforts?.map(level => ({ effort: level.reasoningEffort })),
-      }));
+      const models = listed.filter(row => row.hidden !== true).map(row => {
+        const cachedModel = metadata.models?.find(model => model.slug === row.model);
+        return {
+          ...cachedModel,
+          slug: row.model || row.id, display_name: row.displayName,
+          visibility: 'list', default_reasoning_level: row.defaultReasoningEffort,
+          service_tiers: row.serviceTiers ?? cachedModel?.service_tiers,
+          additional_speed_tiers: row.additionalSpeedTiers ?? cachedModel?.additional_speed_tiers,
+          input_modalities: row.inputModalities ?? cachedModel?.input_modalities,
+          supported_reasoning_levels: row.supportedReasoningEfforts?.map(level => ({ effort: level.reasoningEffort })),
+        };
+      });
       if (cache.size >= 16) cache.delete(cache.keys().next().value);
       cache.set(key, { at: Date.now(), models });
       return models;

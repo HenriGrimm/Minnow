@@ -27,6 +27,7 @@ export function mountGraphiteNewThread(): (visible: boolean) => void {
   const context = document.createElement('div');
   context.className = 'graphite-new-thread__context';
   const ready = document.createElement('section');
+  ready.className = 'graphite-new-thread__ready';
   const recent = document.createElement('section');
   context.append(ready, recent);
   composer.before(intro);
@@ -66,17 +67,27 @@ export function mountGraphiteNewThread(): (visible: boolean) => void {
     const issues = (isIssuesStoreLoaded() ? collectIssues({ workspacePath: path }) : []).filter(issue => open.includes(issue.status) &&
       !isTriageStatus(taxonomy, issue.status) && !isReviewStatus(taxonomy, issue.status) &&
       !issue.chatIds?.length && !issue.boardChatId && !issue.agent).slice(0, 3);
-    for (const issue of issues) {
-      const row = button(issue.title, () => {
-        void import('./issues-page').then(({ openIssues }) => openIssues({ issueId: issue.id }));
-      });
-      const code = document.createElement('code');
-      code.textContent = issue.id;
-      row.prepend(code);
-      row.append(createIcon('chevronRight', { size: 14 }));
-      ready.append(row);
+    if (issues.length) {
+      const list = document.createElement('ul');
+      list.className = 'graphite-new-thread__issue-list';
+      list.setAttribute('role', 'list');
+      for (const issue of issues) {
+        const row = document.createElement('a');
+        row.href = `#/app/issues/${encodeURIComponent(issue.id)}`;
+        const code = document.createElement('code');
+        code.textContent = issue.id;
+        code.title = issue.id;
+        const title = document.createElement('span');
+        title.textContent = issue.title;
+        row.append(code, title, createIcon('chevronRight', { size: 14 }));
+        const item = document.createElement('li');
+        item.append(row);
+        list.append(item);
+      }
+      ready.append(list);
+    } else {
+      empty(ready, 'No issues ready to pick up.');
     }
-    if (!issues.length) empty(ready, 'No issues ready to pick up.');
 
     const recentTitle = document.createElement('h3');
     recentTitle.textContent = 'Since you left';

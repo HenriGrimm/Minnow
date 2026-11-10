@@ -39,6 +39,8 @@ The chat fills the workspace. The composer stays at the bottom, with inference m
 
 Open the **side panel** with **Mod+J** or the **bottom panel** from the thread header. Use **+** in either panel to pick a surface. Terminal starts in the bottom panel. **Files** opens the file tree, and selecting a file adds a tab beside it. Choose **Browser** to add a browser tab in that panel. Files, browser pages, Terminal, and other surfaces share the same tab strip. Both panels can stay open, and each thread remembers its tabs and their placement. Use the panel header to move a tab, maximize, restore, or hide a panel. Drag its inner edge to resize it.
 
+On desktop, choose **Split right** in a panel header or press **Mod+Backslash** while focused in the panel. The right group has its own tabs and **+** menu. Drag the divider to resize the groups. Use **Close split** to bring the tabs back together. One panel can be split at a time. Across both panels, you can view up to two files and up to two browser tabs at once.
+
 The command palette also opens Dev servers, Code map, and Orchestrate boards. **Ctrl+`** toggles Terminal in whichever panel holds it.
 
 The **Issues** ticket button in the files toolbar replaces the file tree with this workspace's issues. The list starts with open issues, newest first; choose **All** or **Closed**, or search by title or ID. Use **Filter** to narrow by type, status, priority, or project (including **No project**). Filters combine with search and Open/All/Closed; select a filter chip to remove it. Selections are kept separately for each workspace while the app is open. Browsing a worktree keeps the issue list on the Code workspace.
@@ -145,6 +147,8 @@ In Code’s Source Control side panel, a failure also leaves a recovery notice b
 ## Source Control Center
 
 The sidebar panel covers the everyday loop. For the full surface — **Changes**, **History**, **Branches**, **Stashes**, **Worktrees**, **Pull requests**, **Actions**, and **Releases** — open the **Source Control Center** from the navigation rail or that panel. It opens as its own app, keeping your chat intact. **Ctrl+1**–**8** jump between sections; **Ctrl+K** opens the command palette. GitHub operations use your local `gh` CLI authentication. Open pull requests can be reviewed in-app with **Review PR**; the review stays in Minnow and is not posted to GitHub.
+
+Use **Pull** and **Push** at the top right of Source Control to sync the selected checkout, even when the working tree is clean. Each button shows how many commits are waiting for that action. Use **Fetch** to update the counts from the remotes.
 
 ### Actions and releases
 

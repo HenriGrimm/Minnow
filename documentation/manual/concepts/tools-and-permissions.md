@@ -12,7 +12,7 @@ Minnow has **one permission level** for everything an agent does: built-in tools
 | **Auto** (default) | Minnow approves routine work — edits and ordinary commands inside the project, web searches, opening sites — and asks before anything risky, destructive, remote, or outside the project. |
 | **Full access** | No prompts. Unrestricted files, commands and internet. Minnow asks you to confirm the first time you switch to it. |
 
-Change it from the **permission pill** in the composer, with **Shift+Tab** while the composer is focused, from the **/permissions** command, or in **Settings → General → Permissions**. They are all the same setting: changing it in the composer changes it everywhere. Phones and tablets connected under **Settings → Devices** follow the same level, Full access included.
+Change it from the **permission icon** in the composer, with **Shift+Tab** while the composer is focused, from the **/permissions** command, or in **Settings → General → Permissions**. They are all the same setting: changing it in the composer changes it everywhere. Phones and tablets connected under **Settings → Devices** follow the same level, Full access included.
 
 Some things are never allowed, whatever the level: file tools cannot read or change Minnow's encryption key or its stored secrets. Shell commands that name secret files ask under Manual and Auto.
 

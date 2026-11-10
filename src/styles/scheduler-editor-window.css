@@ -6,7 +6,7 @@
 
 .scheduler-editor-window-body {
   padding: 0;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
 }
 
 .mn-os-window-body.scheduler-editor-window-body .scheduler-editor {
@@ -45,7 +45,7 @@
   bottom: 0;
   margin: 16px -16px -18px;
   padding: 12px 16px 16px;
-  background: color-mix(in srgb, var(--mn-bg) 94%, transparent);
+  background: var(--mn-surface-0);
 }
 
 /* ---------- centered overlay (Add task / edit job) ---------- */

@@ -21,6 +21,7 @@ test('Graphite surface mounts, moves the same live node and restores each thread
     <section id="mobile"></section>`;
   const stage = document.getElementById('workspaceSplit')!;
   Object.defineProperty(stage, 'getClientRects', { value: () => [{}] });
+  Object.defineProperty(stage, 'clientWidth', { value: 1440 });
   const first = createEmptyChatObject('fixture', '/workspace');
   const second = createEmptyChatObject('fixture', '/workspace');
   const sessions: SessionState = { version: 6, activeId: first.id, sidebarCollapsed: false, chats: [first, second] };
@@ -69,6 +70,35 @@ test('Graphite surface mounts, moves the same live node and restores each thread
   separator.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
   assert.equal(separator.getAttribute('aria-valuenow'), '456');
 
+  separator.setPointerCapture = () => {};
+  const drag = (type: string, clientX: number) => separator.dispatchEvent(
+    new win.PointerEvent(type, { bubbles: true, pointerId: 1, clientX }),
+  );
+  drag('pointerdown', 984);
+  drag('pointermove', 360);
+  await new Promise<void>(resolve => win.requestAnimationFrame(() => resolve()));
+  assert.equal(stage.style.getPropertyValue('--mn-graphite-side-size'), '1080px');
+  drag('pointerup', 360);
+  assert.equal(stage.dataset.surfaceMax, '');
+  assert.equal(separator.getAttribute('aria-valuemax'), '1080');
+
+  drag('pointerdown', 360);
+  drag('pointerup', 300);
+  assert.equal(stage.dataset.surfaceMax, 'side');
+  assert.equal(separator.hidden, true);
+  assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
+  side.querySelector<HTMLElement>('[aria-label="Restore"]')!.click();
+  assert.equal(stage.dataset.surfaceMax, '');
+  assert.equal(separator.getAttribute('aria-valuenow'), '1080');
+
+  drag('pointerdown', 360);
+  drag('pointermove', 500);
+  await new Promise<void>(resolve => win.requestAnimationFrame(() => resolve()));
+  assert.equal(separator.getAttribute('aria-valuenow'), '940');
+  drag('pointercancel', 300);
+  assert.equal(stage.dataset.surfaceMax, '');
+  assert.equal(separator.getAttribute('aria-valuenow'), '1080');
+
   sessions.activeId = second.id;
   refreshSurfacePanels();
   await Promise.resolve();
@@ -80,23 +110,14 @@ test('Graphite surface mounts, moves the same live node and restores each thread
   assert.equal(side.querySelector('[aria-selected="true"]')?.textContent, 'Terminal');
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);
 
-  const archive = document.getElementById('mainColumn')!;
-  archive.classList.add('graphite-archive-open');
-  refreshSurfacePanels();
-  await Promise.resolve();
-  assert.equal(side.hidden, true);
-  assert.equal(openSurface('preview'), false);
-  archive.classList.remove('graphite-archive-open');
-  refreshSurfacePanels();
-  await Promise.resolve();
-  assert.equal(side.querySelector('[aria-selected="true"]')?.textContent, 'Terminal');
-
-  archive.classList.add('graphite-new-thread');
+  const mainColumn = document.getElementById('mainColumn')!;
+  mainColumn.classList.add('graphite-new-thread');
   refreshSurfacePanels();
   await Promise.resolve();
   assert.equal(side.hidden, true);
   assert.equal(bottom.hidden, true);
-  archive.classList.remove('graphite-new-thread');
+  assert.equal(openSurface('preview'), false);
+  mainColumn.classList.remove('graphite-new-thread');
   refreshSurfacePanels();
   await Promise.resolve();
   assert.equal(side.querySelector('[data-resource="pty-instance"]'), terminal);

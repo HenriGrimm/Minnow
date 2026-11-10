@@ -1569,7 +1569,8 @@ html[data-theme$="-light"],
   --mn-danger-border: color-mix(in srgb, var(--mn-danger) 28%, transparent);
   --mn-danger-ink: var(--mn-danger);
   --mn-overlay: var(--mn-graphite-scrim);
-  --mn-menu-bg: var(--mn-surface-0);
+  --mn-menu-bg: var(--mn-surface-1);
+  --mn-menu-selected-bg: var(--mn-sel);
   --mn-menu-shadow: var(--mn-graphite-popup);
   --mn-selection-bg: var(--mn-accent-soft);
   --asst-bg: var(--mn-bg);

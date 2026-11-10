@@ -57,6 +57,7 @@ export function modelOptionSupport(model, providerCapabilities = {}, provider = 
   const budget = nativeBudget ? 'native' : knownReasoning && provider.apiKind !== 'agent-cli-v1' ? 'runner' : null;
   return Object.freeze({
     reasoningEffort: Object.freeze([...allowed]),
+    ...(provider.apiKind === 'agent-cli-v1' && model?.supportsFastMode === true ? { fastMode: true } : {}),
     thinkingMode: Object.freeze(thinkingModes),
     thinkingBudgetTokens: Object.freeze({ supported: budget !== null, enforcement: budget }),
     sendCapabilities: Object.freeze({
@@ -69,6 +70,7 @@ export function modelOptionSupport(model, providerCapabilities = {}, provider = 
 
 export function assertSupportedModelOptions(options, support) {
   const value = parsed(validateModelOptions(options ?? {}));
+  if (value.fastMode === true && support.fastMode !== true) unsupported('Fast mode is not advertised by the selected model');
   if (value.thinkingBudgetTokens === 0 && value.thinkingMode === undefined) value.thinkingMode = 'off';
   if (value.reasoningEffort !== undefined && !support.reasoningEffort.includes(value.reasoningEffort)) unsupported(`Reasoning effort ${value.reasoningEffort} is not advertised by the selected model. ${support.reasoningEffort.length ? 'Supported values: ' + support.reasoningEffort.join(', ') : 'Omit reasoningEffort to inherit'}.`);
   if (value.thinkingMode !== undefined && !support.thinkingMode.includes(value.thinkingMode)) unsupported(`Thinking ${value.thinkingMode} is not supported or verified for the selected model. Supported values: ${support.thinkingMode.join(', ')}.`);
@@ -246,9 +248,11 @@ export async function resolveAgentModelSelection(input = {}, context = {}) {
   if (!selected) throw new ChatContractError('model_unavailable', 'No parent or subagent model is configured');
   const source = explicit ? 'explicit' : type ? 'type' : routing ? 'routing' : 'parent';
   const clears = explicit?.options && Object.keys(explicit.options).length === 0;
+  const inherited = { ...parent?.options };
+  if (!samePair(selected, parent)) delete inherited.fastMode;
   let defaults = clears ? {} : overlayOptions(
     overlayOptions(samePair(selected, routing) ? routing.options : {}, typeOptions(input.typeConfig)),
-    parent?.options ?? {},
+    inherited,
   );
   if (explicit?.options) defaults = overlayOptions(defaults, explicit.options);
   const selection = parsed(resolveModelSelection({

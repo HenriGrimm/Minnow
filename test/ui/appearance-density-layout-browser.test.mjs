@@ -38,9 +38,10 @@ test('density changes workspace spacing and keeps chat rows steady on hover', { 
     <div class="file-tree-row">A file</div>
     <div class="issues-shell"><div class="issues-row">An issue</div></div>
     <div class="models-row">A model</div>
+    <nav class="models-nav"><button aria-current="page">My models</button></nav>
     <div class="brain-page is-graph-canvas-bg" style="display:block"><div class="brain-rail">
-      <button class="brain-rail__btn">Graph</button></div></div>
-    <button class="scc-rail__item">Changes</button>
+      <button class="brain-rail__btn" aria-current="page">Graph</button></div></div>
+    <nav class="scc-rail"><button class="scc-rail__item is-active">Changes</button></nav>
     <div class="scheduler-graphite-job"><button class="scheduler-graphite-job__select">A job</button></div>
     <button class="m-phone-settings__row">Phone appearance</button>
     <button class="mn-dropdown__item">A menu action</button>
@@ -60,6 +61,15 @@ test('density changes workspace spacing and keeps chat rows steady on hover', { 
   assert.ok(result.ok, result.detail);
   session = result.session;
   await session.navigate(`http://127.0.0.1:${server.address().port}/`);
+
+  const railStyles = await session.evaluate(`[
+    '.scc-rail__item', '.settings-nav__item', '.models-nav button', '.brain-rail__btn',
+  ].map(selector => {
+    const { backgroundColor, borderRadius, color, fontSize, minHeight } = getComputedStyle(document.querySelector(selector));
+    return { backgroundColor, borderRadius, color, fontSize, minHeight };
+  })`);
+  assert.notEqual(railStyles[0].backgroundColor, 'rgba(0, 0, 0, 0)');
+  for (const style of railStyles.slice(1)) assert.deepEqual(style, railStyles[0]);
 
   const rows = () => session.evaluate(`[...document.querySelectorAll('.chat-item-row')].map(row => ({
     ...row.getBoundingClientRect().toJSON(), title: row.querySelector('.chat-item-name').getBoundingClientRect().width,

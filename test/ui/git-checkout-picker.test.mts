@@ -147,3 +147,30 @@ test('a late dirty response cannot paint a prompt over a different worktree', as
   assert.equal(document.querySelector('.git-checkout__choice'), null);
   assert.match(document.getElementById('gitCheckoutTrigger')?.textContent ?? '', /occupied/);
 });
+
+test('the embedded checkout picker stays open through dirty switches and worktree selection', async () => {
+  const inline = createGitCheckoutPicker({
+    inline: true,
+    onSwitch: async input => {
+      if (!input.dirtyHandling) return { ok: false, needsChoice: true, branch: 'main', fileCount: 3 };
+      inline.update({ ...state, branch: input.branch });
+      return { ok: true };
+    },
+    onWorktree: async cwd => { inline.update({ ...state, cwd, branch: 'occupied' }); },
+    onRestore: async () => ({ ok: true }),
+  });
+  document.body.append(inline.root);
+  try {
+    inline.update(state);
+    const menu = document.getElementById('threadCheckoutMenu')!;
+    assert.equal(menu.hidden, false);
+    click('feature'); await tick(); click('Bring my changes'); await tick();
+    assert.equal(menu.hidden, false);
+    assert.match(menu.querySelector('[aria-current="true"]')?.textContent ?? '', /feature/);
+    click('Worktrees'); click('occupied'); await tick();
+    assert.equal(menu.hidden, false);
+    assert.match(menu.querySelector('.git-checkout__item:has(.git-checkout__tag)')?.textContent ?? '', /occupied.*Current/);
+  } finally {
+    inline.dispose();
+  }
+});

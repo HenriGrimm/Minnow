@@ -2,7 +2,7 @@
 
 Brain is Minnow's memory, and it is not a black box. It is a wiki of markdown pages in a folder on your disk that you can read, edit, delete and back up. The assistant searches and writes it with tools; you curate it.
 
-Open it from the app rail. It fills the main stage like the other rail apps.
+Open it from the app rail to see the graph with no page selected.
 
 Brain is **not** this manual. The manual ships with the build and is read-only; Brain is yours. See [Wiki and Brain](../reference/wiki-and-brain.md).
 

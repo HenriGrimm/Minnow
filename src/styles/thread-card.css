@@ -118,6 +118,48 @@
   line-height: 1.45;
 }
 
+.graphite-thread-card[hidden] {
+  display: none;
+}
+
+.graphite-thread-card__subview-header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 6px;
+  border-bottom: 1px solid var(--mn-graphite-line, var(--mn-border));
+}
+
+.graphite-thread-card__subview-header h2 {
+  flex: 1;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+}
+
+.graphite-thread-card__subview-body {
+  padding: 6px 0 0;
+}
+
+.graphite-thread-card__subview-body .git-checkout__menu {
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+}
+
+.graphite-thread-card__subview-body .dev-server-screen__form {
+  max-height: min(62dvh, 460px);
+}
+
+.graphite-thread-card__notice {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
+  overflow-wrap: anywhere;
+}
+
 .graphite-thread-card__row {
   display: flex;
   width: 100%;
@@ -135,6 +177,19 @@
 
 .graphite-thread-card__row--action {
   cursor: pointer;
+}
+
+.graphite-thread-card__row--confirmation {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.graphite-thread-card__row--confirmation .graphite-thread-card__row-body {
+  flex-basis: 100%;
+}
+
+.graphite-thread-card__row--confirmation .graphite-thread-card__detail {
+  white-space: normal;
 }
 
 .graphite-thread-card__row > .icon-svg {
@@ -222,13 +277,6 @@
   font-size: 10.5px;
 }
 
-.graphite-app-logo {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  --sheet: var(--mn-graphite-sheet, var(--mn-surface-0));
-}
-
 @media (pointer: coarse) {
   .graphite-thread-card .graphite-thread-button,
   .graphite-thread-card .graphite-thread-icon-button,
@@ -268,7 +316,7 @@
 /* Keep the transcript, composer and metrics on the same measure. The canvas
    uses 660px at its authored width. A wider stage can grow to 840px. */
 #workspaceSplit:has(> #graphiteThreadHeader:not([hidden])) > #mainColumn:not(.graphite-new-thread) {
-  --mn-graphite-thread-gutter: 36px;
+  --mn-graphite-thread-gutter: clamp(16px, calc(10cqi - 20px), 36px);
   --chat-composer-max: min(clamp(660px, 57.5cqi, 840px), calc(100cqi - 2 * var(--mn-graphite-thread-gutter)));
 }
 
@@ -318,9 +366,20 @@
   margin-top: 4px;
 }
 
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
+/* Keep the action lane beside the bubble and within the transcript column. */
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(min(85%, calc(100% - var(--msg-actions-lane, 0px))));
+  column-gap: 0;
+  align-items: start;
+  justify-items: end;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user > .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
+  grid-area: 1 / 2;
   width: fit-content;
-  max-width: 85%;
+  min-width: 0;
+  max-width: 100%;
   padding: 10px 14px;
   border-color: var(--mn-graphite-line, var(--mn-border));
   border-radius: 12px 12px 4px 12px;
@@ -333,8 +392,18 @@
   content: none;
 }
 
-#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user.msg--has-actions .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map) {
-  padding-inline-end: 36px;
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > :is(.msg-goal-achieved-chip, .branch-picker__trigger) {
+  grid-column: 1 / -1;
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > .message-actions__trigger {
+  grid-area: 1 / 2;
+  inset-inline: auto calc(100% + var(--mn-space-1));
+}
+
+#workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.user:has(> .msg-bubble:not(.msg-bubble--issue-ticket, .msg-bubble--code-map)) > .message-actions__menu {
+  grid-area: 1 / 2;
+  inset-inline-end: max(var(--mn-space-1), calc(100% - var(--msg-actions-menu-min-width)));
 }
 
 #workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-side-chat__transcript).chat-thread > .msg.assistant > .msg-bubble {

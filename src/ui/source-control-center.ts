@@ -23,7 +23,7 @@ import { filterUserFacingBranches } from '../lib/worktree-list-parse';
 import { resolveTrunkBranchName } from '../lib/git-trunk-branch';
 import { displayRemoteRef, isSkippedRemoteRef } from '../lib/git-ref-start.mjs';
 import { appPrompt, isAppDialogOpen } from './app-dialog';
-import { createIcon, iconHtml, type IconName } from './icon';
+import { createIcon, type IconName } from './icon';
 import { launchApp } from '../os/router';
 import { getForegroundAppId } from '../os/instances';
 import { showToast } from './toast';
@@ -93,8 +93,6 @@ let currentBranch = '';
 let localBranches: string[] = [];
 let remoteBranches: string[] = [];
 let lockedLocalBranches: string[] = [];
-let ahead = 0;
-let behind = 0;
 let forge: ForgeStatus | null = null;
 
 let gitTimer: number | undefined;
@@ -121,7 +119,6 @@ function refreshActiveView(): Promise<void> {
 let repoNameEl: HTMLElement | null = null;
 let branchBtn: HTMLButtonElement | null = null;
 let worktreeBtn: HTMLButtonElement | null = null;
-let syncEl: HTMLElement | null = null;
 let forgeChipEl: HTMLElement | null = null;
 let pullBtn: HTMLButtonElement | null = null;
 let pushBtn: HTMLButtonElement | null = null;
@@ -242,6 +239,7 @@ function buildHeader(): HTMLElement {
     className: 'scc-head__context-btn scc-head__branch',
     onClick: () => openBranchSwitcher(),
   });
+  branchBtn.appendChild(createIcon('chevronDown', { className: 'scc-btn__icon', size: 12 }));
   identity.appendChild(branchBtn);
 
   worktreeBtn = button({
@@ -258,12 +256,12 @@ function buildHeader(): HTMLElement {
   identity.appendChild(forgeChipEl);
 
   const sync = el('div', 'scc-head__sync');
-
-  syncEl = el('span', 'scc-head__gauge');
-  syncEl.hidden = true;
+  sync.setAttribute('role', 'group');
+  sync.setAttribute('aria-label', 'Remote sync');
 
   const fetchBtn = button({
     icon: 'gitFetch',
+    label: 'Fetch',
     title: 'Fetch from every remote',
     className: 'scc-head__fetch',
     onClick: () => void runOp(() => gitFetch(effectiveCwd()), 'Fetched remotes'),
@@ -280,13 +278,18 @@ function buildHeader(): HTMLElement {
   pushBtn = button({
     icon: 'gitPush',
     label: 'Push',
-    variant: 'primary',
     title: 'Push to upstream',
     className: 'scc-head__push',
     onClick: () => void runOp(() => pushWithPublishPrompt(effectiveCwd()), 'Pushed changes'),
   });
 
-  sync.append(syncEl, fetchBtn, pullBtn, pushBtn);
+  for (const action of [pullBtn, pushBtn]) {
+    const count = el('span', 'scc-head__sync-count');
+    count.hidden = true;
+    count.setAttribute('aria-hidden', 'true');
+    action.appendChild(count);
+  }
+  sync.append(fetchBtn, pullBtn, pushBtn);
 
   const actions = el('div', 'scc-head__actions');
 
@@ -298,6 +301,7 @@ function buildHeader(): HTMLElement {
     className: 'scc-head__palette-btn',
     onClick: () => openCommandPalette(),
   });
+  paletteBtn.setAttribute('aria-label', 'Commands');
   paletteBtn.appendChild(el('kbd', 'scc-head__kbd', modKeyLabel('K')));
 
   const closeBtn = button({
@@ -442,9 +446,6 @@ const gitStatePoll = createPollingTask(async signal => {
   }
 
   setNoRepo(false);
-  ahead = status.ahead ?? 0;
-  behind = status.behind ?? 0;
-
   const branchResult = await gitBranches(cwd, signal);
   if (!current()) return;
   if (branchResult.ok) {
@@ -455,6 +456,8 @@ const gitStatePoll = createPollingTask(async signal => {
   }
 
   paintHeader();
+  paintSyncCount(pullBtn, 'Pull', status.behind ?? 0);
+  paintSyncCount(pushBtn, 'Push', status.ahead ?? 0);
 
   await refreshGitRailBadges(applyRailBadge, {
     cwd,
@@ -511,32 +514,20 @@ function paintHeader(): void {
     worktreeBtn.classList.toggle('is-secondary-worktree', Boolean(cwd && !worktreePathsEqual(cwd, getWorkspacePath())));
     worktreeBtn.title = cwd ? `Working in ${cwd}` : 'Working in the main worktree';
   }
+}
 
-  if (syncEl) {
-    syncEl.replaceChildren();
-    if (ahead === 0 && behind === 0) {
-      syncEl.hidden = true;
-    } else {
-      syncEl.hidden = false;
-      if (behind > 0) {
-        const el2 = el('span', 'scc-head__gauge-part scc-head__gauge-part--behind');
-        el2.innerHTML = iconHtml('arrowDown', { size: 13 });
-        el2.appendChild(el('span', undefined, String(behind)));
-        el2.title = `${behind} commit${behind === 1 ? '' : 's'} to pull`;
-        syncEl.appendChild(el2);
-      }
-      if (ahead > 0) {
-        const el2 = el('span', 'scc-head__gauge-part scc-head__gauge-part--ahead');
-        el2.innerHTML = iconHtml('arrowUp', { size: 13 });
-        el2.appendChild(el('span', undefined, String(ahead)));
-        el2.title = `${ahead} commit${ahead === 1 ? '' : 's'} to push`;
-        syncEl.appendChild(el2);
-      }
-    }
-  }
+function paintSyncCount(action: HTMLButtonElement | null, label: 'Pull' | 'Push', count: number): void {
+  if (!action) return;
+  const badge = action.querySelector<HTMLElement>('.scc-head__sync-count')!;
+  const text = count > 0 ? String(count) : '';
+  if (badge.textContent === text) return;
 
-  if (pullBtn) pullBtn.classList.toggle('is-suggested', behind > 0);
-  if (pushBtn) pushBtn.classList.toggle('is-suggested', ahead > 0);
+  const commits = `${count} commit${count === 1 ? '' : 's'}`;
+  badge.textContent = text;
+  badge.hidden = !text;
+  action.setAttribute('aria-label', text ? `${label}, ${commits}` : label);
+  const direction = label === 'Pull' ? 'from' : 'to';
+  action.title = text ? `${commits} to ${label.toLowerCase()}` : `${label} ${direction} upstream`;
 }
 
 function paintForgeChip(): void {
@@ -1099,8 +1090,6 @@ export function resetSourceControlCenterForTests(): void {
   localBranches = [];
   remoteBranches = [];
   lockedLocalBranches = [];
-  ahead = 0;
-  behind = 0;
   forge = null;
   busy = false;
   forgePollInFlight = false;

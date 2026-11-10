@@ -18,19 +18,22 @@ import {
   type SurfaceContext, type SurfaceRegistration,
 } from './surface-registry';
 import {
-  activateSurfaceTab, closeSurfaceTab, contentTab, getPanelTabs, getSurfacePanel, isPanelVisible, isSurfaceId,
-  launcherPanelForKey, normalizeSurfaceState, openSurfaceTab, PANEL_SIZES, setPanelShown,
-  surfaceSize, toggleMaximizedPanel, type ContentTabId, type LauncherSurfaceId,
-  type SurfaceId, type SurfacePanel, type SurfaceTab, type ThreadSurfaceState,
+  activateSurfaceTab, closeSurfaceTab, contentTab, getPanelTabs, getSurfaceDock, getSurfacePanel, isPanelVisible,
+  isSurfaceId, launcherPanelForKey, mergeSurfaceTabs, normalizeSurfaceState, openSurfaceTab, PANEL_SIZES,
+  setPanelShown, splitSurfaceTabs, surfaceSize, surfaceSplitRatio, SURFACE_DOCKS, SURFACE_PANELS,
+  toggleMaximizedPanel, type ContentTabId, type LauncherSurfaceId, type SurfaceDock, type SurfaceId,
+  type SurfacePanel, type SurfaceTab, type ThreadSurfaceState,
 } from './surface-state';
 
 export type { SurfaceId, SurfacePanel } from './surface-state';
 export type { SurfaceContext, SurfaceRegistration } from './surface-registry';
 
-const PANELS = ['side', 'bottom'] as const;
 const PREFIX = 'minnow.graphite.surfaces.v1';
 const SIZE_KEY = `${PREFIX}.sizes`;
 const CONTENT_TAB_MIME = 'application/x-minnow-surface-tab';
+const SIDE_CHAT_MIN_WIDTH = 360;
+const SIDE_SPLIT_MIN_WIDTH = 600;
+const SIDE_MAXIMIZE_OVERSHOOT = 48;
 
 interface PanelElements {
   root: HTMLElement;
@@ -40,6 +43,7 @@ interface PanelElements {
   controls: HTMLElement;
   body: HTMLElement;
   launcher: HTMLElement;
+  contentLimit: HTMLElement;
   resizer: HTMLElement;
   signature: string;
 }
@@ -56,19 +60,21 @@ let state = normalizeSurfaceState();
 let desktopState: ThreadSurfaceState | undefined;
 let renderInProgress = false;
 let refreshQueued = false;
-let mobileShown: SurfacePanel | null = null;
+let mobileShown: SurfaceDock | null = null;
 let mobileReturnFocus: HTMLElement | null = null;
 let mobileBackdrop: HTMLButtonElement;
 let mobilePortal: { host: HTMLElement; chatId?: string } | undefined;
+const panelSlides = new Map<SurfaceDock, { key: string; tab: SurfaceTab; closing: boolean }>();
 let legacySurfaces: readonly SurfaceId[] = [];
 let legacyMigrated = false;
-let sizes: Record<SurfacePanel, number> = { side: PANEL_SIZES.side.default, bottom: PANEL_SIZES.bottom.default };
+let sizes: Record<SurfaceDock, number> = { side: PANEL_SIZES.side.default, bottom: PANEL_SIZES.bottom.default };
+const dragSizes: Partial<Record<SurfaceDock, number>> = {};
 const mounted = new Map<SurfacePanel, PanelElements>();
 const registrations = new Map<SurfaceId, SurfaceRegistration>();
 const visible = new Map<SurfaceId, ActiveSurface>();
 const wrappers = new Map<SurfaceId, HTMLElement>();
 const targets = new Map<SurfaceId, unknown>();
-const panelToggles = new Map<SurfacePanel, HTMLButtonElement>();
+const panelToggles = new Map<SurfaceDock, HTMLButtonElement>();
 
 function read(key: string): unknown {
   try {
@@ -99,9 +105,8 @@ export function usePhonePresentation(): boolean {
   return Boolean(mobilePortal || document.documentElement.classList.contains('mn-mobile-app') || isPhoneLayout());
 }
 
-function isAlternateThreadViewOpen(): boolean {
-  return Boolean(stage?.classList.contains('graphite-archive-open') ||
-    stage?.querySelector('#mainColumn:is(.graphite-archive-open, .graphite-new-thread)'));
+function isNewThreadViewOpen(): boolean {
+  return Boolean(stage?.querySelector('#mainColumn.graphite-new-thread'));
 }
 
 function syncChat(chat: Chat): void {
@@ -115,7 +120,7 @@ function syncChat(chat: Chat): void {
     legacyMigrated = true;
     const migrationKey = `${PREFIX}.migrated.${JSON.stringify(chat.workspacePath || getWorkspacePath())}`;
     if (saved === undefined && read(migrationKey) !== true && legacySurfaces.length &&
-      getChatMessageCount(chat) > 0 && !usePhonePresentation() && !isAlternateThreadViewOpen()) {
+      getChatMessageCount(chat) > 0 && !usePhonePresentation() && !isNewThreadViewOpen()) {
       for (const id of legacySurfaces) openSurfaceTab(state, id);
       persist();
     }
@@ -143,36 +148,77 @@ function persist(): void {
   if (activeKey && !desktopState) write(activeKey, state);
 }
 
-function switchPanel(panel: SurfacePanel): SurfacePanel {
-  return panel === 'side' ? 'bottom' : 'side';
+function otherDock(panel: SurfacePanel): SurfaceDock {
+  return getSurfaceDock(state, panel) === 'side' ? 'bottom' : 'side';
 }
 
 function syncViewport(): void {
   if (usePhonePresentation() && !desktopState) {
     desktopState = state;
     state = normalizeSurfaceState(state);
+    mergeSurfaceTabs(state);
   } else if (!usePhonePresentation() && desktopState) {
     state = desktopState;
     desktopState = undefined;
   }
 }
 
-function renderPlacement(): void {
+function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked: boolean, animateClose: boolean): void {
+  const wasHidden = root.hidden;
+  const wasClosing = root.classList.contains('graphite-surface-panel--closing');
+  const priorSlide = panelSlides.get(panel);
+  // Keep the grid slot and its live tab until the exit finishes.
+  const closing = docked && !open && !wasHidden && (animateClose ||
+    (priorSlide?.closing === true && priorSlide.key === activeKey && priorSlide.tab === state[panel].active));
+  root.classList.toggle('graphite-surface-panel--closing', closing);
+  root.toggleAttribute('inert', closing);
+  root.toggleAttribute('hidden', !open && !closing);
+
+  if (!docked || root.hidden) {
+    panelSlides.delete(panel);
+    root.classList.remove('graphite-surface-panel--sliding');
+  } else if (wasHidden || wasClosing !== closing) {
+    const transition = root.getAnimations?.().find(animation =>
+      'transitionProperty' in animation && animation.transitionProperty === 'transform');
+    root.classList.toggle('graphite-surface-panel--sliding', Boolean(transition));
+    if (transition) {
+      const slide = { key: activeKey, tab: state[panel].active, closing };
+      panelSlides.set(panel, slide);
+      const finish = () => {
+        if (panelSlides.get(panel) !== slide) return;
+        panelSlides.delete(panel);
+        root.classList.remove('graphite-surface-panel--sliding');
+        if (closing) render();
+        else schedulePreviewLayout();
+      };
+      void transition.finished.then(finish, finish);
+    } else {
+      panelSlides.delete(panel);
+      if (closing) {
+        root.hidden = true;
+        root.removeAttribute('inert');
+        root.classList.remove('graphite-surface-panel--closing');
+      }
+    }
+  }
+}
+
+function renderPlacement(animateClose?: SurfaceDock): void {
   if (!stage) return;
   const isPhone = usePhonePresentation();
-  const alternateView = isAlternateThreadViewOpen();
-  const side = !alternateView && (isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side'));
-  const bottom = !alternateView && (isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom'));
+  const newThreadView = isNewThreadViewOpen();
+  const side = !newThreadView && (isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side'));
+  const bottom = !newThreadView && (isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom'));
   stage.dataset.surfaceSide = String(side);
   stage.dataset.surfaceBottom = String(bottom);
-  stage.dataset.surfaceMax = isPhone || alternateView ? '' : state.maximized ?? '';
+  stage.dataset.surfaceMax = isPhone || newThreadView ? '' : state.maximized ?? '';
   stage.classList.toggle('graphite-surfaces--phone', isPhone);
   mobileBackdrop.hidden = !(isPhone && (side || bottom));
   document.getElementById('mainColumn')?.toggleAttribute('inert', isPhone && (side || bottom));
-  for (const panel of PANELS) {
+  for (const panel of SURFACE_DOCKS) {
     const open = panel === 'side' ? side : bottom;
     const root = mounted.get(panel)?.root;
-    root?.toggleAttribute('hidden', !open);
+    if (root) placePanel(panel, root, open, !isPhone && !newThreadView && !state.maximized, animateClose === panel);
     if (isPhone && open) {
       root?.setAttribute('role', 'dialog');
       root?.setAttribute('aria-modal', 'true');
@@ -182,30 +228,46 @@ function renderPlacement(): void {
     }
     panelToggles.get(panel)?.setAttribute('aria-pressed', String(open));
   }
+  const split = mounted.get('split')!;
+  const dock = !isPhone && state.split.dock ? mounted.get(state.split.dock) : undefined;
+  split.root.hidden = !dock || dock.root.hidden;
+  moveSurfaceNode(split.root, dock?.root ?? stage);
+  for (const panel of SURFACE_DOCKS) {
+    const view = mounted.get(panel)!;
+    view.root.classList.toggle('graphite-surface-panel--split-dock', view === dock && !split.root.hidden);
+  }
+  applySplitRatio(state.split.ratio);
   applySizes();
 }
 
-function updateSize(panel: SurfacePanel, value: number, save: boolean): void {
-  sizes[panel] = surfaceSize(panel, value, availableSize(panel));
-  if (save) write(SIZE_KEY, sizes);
+function updateSize(panel: SurfaceDock, value: number): void {
+  sizes[panel] = dockSize(panel, value);
+  write(SIZE_KEY, sizes);
   applySizes();
   schedulePreviewLayout();
 }
 
-function availableSize(panel: SurfacePanel): number {
+function availableSize(panel: SurfaceDock): number {
   const dimension = panel === 'side' ? stage?.clientWidth : stage?.clientHeight;
   if (!dimension) return Infinity;
-  return dimension - (panel === 'side' ? 240 : 180);
+  return Math.max(0, dimension - (panel === 'side' ? SIDE_CHAT_MIN_WIDTH : 180));
+}
+
+function dockSize(panel: SurfaceDock, value: number, available = availableSize(panel)): number {
+  const preferred = panel === 'side' && state.split.dock === panel ? Math.max(SIDE_SPLIT_MIN_WIDTH, value) : value;
+  return surfaceSize(panel, preferred, available);
 }
 
 function applySizes(): void {
-  for (const panel of PANELS) {
+  for (const panel of SURFACE_DOCKS) {
     const available = availableSize(panel);
-    const applied = surfaceSize(panel, sizes[panel], available);
+    const applied = dockSize(panel, dragSizes[panel] ?? sizes[panel], available);
     const resizer = mounted.get(panel)?.resizer;
     stage?.style.setProperty(`--mn-graphite-${panel}-size`, `${applied}px`);
-    resizer?.setAttribute('aria-valuemin', String(surfaceSize(panel, PANEL_SIZES[panel].min, available)));
-    resizer?.setAttribute('aria-valuemax', String(surfaceSize(panel, PANEL_SIZES[panel].max, available)));
+    resizer?.setAttribute('aria-valuemin', String(dockSize(panel, PANEL_SIZES[panel].min, available)));
+    const max = Math.min(PANEL_SIZES[panel].max, available);
+    if (Number.isFinite(max)) resizer?.setAttribute('aria-valuemax', String(max));
+    else resizer?.removeAttribute('aria-valuemax');
     resizer?.setAttribute('aria-valuenow', String(applied));
   }
 }
@@ -229,6 +291,10 @@ function control(label: string, icon: IconName, run: () => void): HTMLButtonElem
   button.append(createIcon(icon, { size: 14 }));
   button.addEventListener('click', run);
   return button;
+}
+
+function panelName(panel: SurfacePanel): string {
+  return { side: 'Side panel', bottom: 'Bottom panel', split: 'Right group' }[panel];
 }
 
 function selected(id: SurfaceId, panel: SurfacePanel): boolean {
@@ -255,7 +321,7 @@ function focusSelected(panel: SurfacePanel): void {
 
 function focusPanelOpener(panel: SurfacePanel): void {
   const fallback = document.getElementById('msgInput');
-  const target = panelToggles.get(panel);
+  const target = panelToggles.get(getSurfaceDock(state, panel));
   if (target?.getClientRects().length) target.focus({ preventScroll: true });
   else fallback?.focus({ preventScroll: true });
 }
@@ -288,41 +354,66 @@ export function dismissSurface(id: LauncherSurfaceId): void {
 }
 
 function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): void {
-  const includeHeading = panel === 'side' || state.maximized === panel || usePhonePresentation();
-  const options = SURFACE_GROUPS.map(group => group.map(item => ({
-    item, availability: getAvailability(item.id, context(chat, item.id, panel)),
-  })));
-  const signature = JSON.stringify([includeHeading, options.map(group => group.map(({ availability }) => availability))]);
+  const dock = getSurfaceDock(state, panel);
+  const compact = dock === 'bottom' && state.maximized !== dock && !usePhonePresentation();
+  const groups = SURFACE_GROUPS.map(({ id, label, items }) => ({
+    id, label, choices: items.map(item => ({ item, availability: getAvailability(item.id, context(chat, item.id, panel)) })),
+  }));
+  const signature = JSON.stringify([compact, groups.map(group => group.choices.map(({ availability }) => availability))]);
   if (view.launcher.dataset.signature !== signature) {
     view.launcher.dataset.signature = signature;
+    view.launcher.classList.toggle('graphite-surface-launcher--compact', compact);
+    const focused = view.launcher.contains(document.activeElement) ? document.activeElement?.id : undefined;
+    const header = element('div', 'graphite-surface-launcher-header');
     const heading = element('span', 'graphite-surface-launcher-title');
     heading.textContent = 'Open a surface';
-    heading.hidden = !includeHeading;
-    view.launcher.replaceChildren(heading);
-    for (const group of options) {
+    const note = element('span', 'graphite-surface-launcher-note');
+    note.textContent = 'Press a shortcut to open a tab.';
+    header.append(heading, note);
+    header.hidden = compact;
+    view.launcher.replaceChildren(header);
+    for (const group of groups) {
       const list = element('div', 'graphite-surface-launcher-group');
       list.setAttribute('role', 'group');
-      for (const { item, availability } of group) {
+      list.setAttribute('aria-label', group.label);
+      list.dataset.group = group.id;
+      const caption = element('span', 'graphite-surface-launcher-caption');
+      caption.textContent = group.label;
+      caption.setAttribute('aria-hidden', 'true');
+      list.append(caption);
+      for (const { item, availability } of group.choices) {
         const button = element('button', 'graphite-surface-choice');
         button.type = 'button';
+        button.id = `graphiteLaunch-${panel}-${item.id}`;
         button.setAttribute('role', 'menuitem');
+        button.setAttribute('aria-label', item.label);
         button.setAttribute('aria-disabled', String(!availability.available));
-        button.title = availability.reason ?? '';
-        if (availability.reason) button.setAttribute('aria-description', availability.reason);
+        const description = availability.available
+          ? [item.description, availability.hint].filter(Boolean).join(' · ')
+          : availability.reason ?? 'Unavailable';
+        button.setAttribute('aria-description', description);
+        const copy = element('span', 'graphite-surface-choice-copy');
         const label = element('span', 'graphite-surface-choice-label');
         label.textContent = item.label;
         const hint = element('span', 'graphite-surface-choice-hint');
-        hint.textContent = availability.available ? availability.hint ?? '' : '';
-        const key = element('kbd', 'graphite-surface-key');
-        key.textContent = item.key;
-        button.append(createIcon(item.icon, { size: 14 }), label, hint, key);
+        hint.textContent = description;
+        copy.append(label, hint);
+        button.append(createIcon(item.icon, { size: 17, className: 'graphite-surface-choice-icon' }), copy);
+        if (availability.available) {
+          const key = element('kbd', 'graphite-surface-key');
+          key.textContent = item.key;
+          key.setAttribute('aria-hidden', 'true');
+          button.setAttribute('aria-keyshortcuts', item.key);
+          button.append(key);
+        }
         button.addEventListener('click', () => {
-          if (openSurface(item.id, { panel }) && !(content && item.id === 'preview')) focusSelected(panel);
+          if (availability.available && openSurface(item.id, { panel }) && !(content && item.id === 'preview')) focusSelected(panel);
         });
         list.append(button);
       }
       view.launcher.append(list);
     }
+    if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
   }
 }
 
@@ -334,10 +425,12 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
   const tabs = tabsForPanel(panel, chat);
   const active = state[panel].active;
   const launcher = active === 'launch' || !tabs.includes(active);
-  const maximized = state.maximized === panel;
+  const dock = getSurfaceDock(state, panel);
+  const maximized = state.maximized === dock;
+  const split = state.split.dock;
   const isPhone = usePhonePresentation();
   const phoneChanges = isPhone && active === 'changes' && !launcher;
-  const name = panel === 'side' ? 'Side panel' : 'Bottom panel';
+  const name = panelName(panel);
   view.root.classList.toggle('graphite-surface-panel--changes-sheet', phoneChanges);
   view.root.setAttribute('aria-label', phoneChanges ? 'Changes' : name);
   view.title.hidden = !phoneChanges;
@@ -351,7 +444,7 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
     if (count && Number.isFinite(count)) counts.set(id, count);
   }
   const labels = tabs.map(id => contentTab(id) ? content?.describe(id as ContentTabId) : undefined);
-  const signature = JSON.stringify([tabs, active, maximized, isPhone, Array.from(counts),
+  const signature = JSON.stringify([tabs, active, maximized, isPhone, split, Array.from(counts),
     labels.map(label => label && [label.label, label.title, label.dirty, label.loading])]);
   if (view.signature !== signature) {
     view.signature = signature;
@@ -411,8 +504,13 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
           const items: MenuItem[] = [{ id: 'close', label: 'Close', onSelect: () => void closeTab(panel, id) }];
           if (!isPhone) items.push({
             id: 'move',
-            label: panel === 'side' ? 'Move to bottom panel' : 'Move to side panel',
+            label: `Move to ${panelName(otherDock(panel)).toLowerCase()}`,
             onSelect: () => moveTab(panel, id),
+          });
+          if (!isPhone && split === dock) items.push({
+            id: 'move-split',
+            label: panel === 'split' ? 'Move to left group' : 'Move to right group',
+            onSelect: () => moveTab(panel, id, panel === 'split' ? dock : 'split'),
           });
           const file = contentTab(id);
           if (file?.kind === 'file') {
@@ -439,19 +537,25 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
     view.add.setAttribute('aria-pressed', String(launcher));
     view.controls.replaceChildren();
     if (!isPhone && !maximized && active !== 'launch') {
-      const move = control(panel === 'side' ? 'Move to bottom panel' : 'Move to side panel',
+      const move = control(`Move to ${panelName(otherDock(panel)).toLowerCase()}`,
         'inspectorPanel', () => moveActiveSurface(panel));
-      move.classList.toggle('graphite-surface-icon--bottom', panel === 'side');
+      move.classList.toggle('graphite-surface-icon--bottom', dock === 'side');
       view.controls.append(move);
     }
-    if (!isPhone) {
+    if (!isPhone && panel !== 'split' && !split) {
+      const splitButton = control('Split right', 'appCompare', () => splitSurfacePanel(panel));
+      splitButton.setAttribute('aria-keyshortcuts', 'Control+\\ Meta+\\');
+      view.controls.append(splitButton);
+    }
+    if (!isPhone && panel !== 'split') {
       const maximize = control(maximized ? 'Restore' : 'Maximize', maximized ? 'restore' : 'expand',
         () => toggleSurfaceMaximize(panel));
       maximize.setAttribute('aria-pressed', String(maximized));
       view.controls.append(maximize);
     }
-    view.controls.append(control(phoneChanges ? 'Close Changes' : panel === 'side' ? 'Hide side panel' : 'Hide bottom panel',
-      'close', () => toggleSurfacePanel(panel)));
+    view.controls.append(panel === 'split'
+      ? control('Close split', 'close', closeSurfaceSplit)
+      : control(phoneChanges ? 'Close Changes' : `Hide ${name.toLowerCase()}`, 'close', () => toggleSurfacePanel(panel)));
     if (activeWrap) {
       const strip = view.strip.getBoundingClientRect();
       const tab = activeWrap.getBoundingClientRect();
@@ -460,7 +564,7 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
     }
     if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
   }
-  view.resizer.hidden = maximized || isPhone;
+  view.resizer.hidden = panel !== 'split' && (maximized || isPhone);
   view.launcher.hidden = !launcher;
   if (launcher) renderLauncher(panel, view, chat);
 }
@@ -477,15 +581,25 @@ export function moveSurfaceNode(node: HTMLElement, host: HTMLElement): void {
 function renderSurfaces(chat: Chat): void {
   const next = new Map<SurfaceId, { view: PanelElements; context: SurfaceContext }>();
   const workbench: ContentTabPlacement[] = [];
-  for (const panel of PANELS) {
+  for (const panel of SURFACE_PANELS) {
     const view = mounted.get(panel)!;
     if (view.root.hidden) continue;
-    renderPanelChrome(panel, view, chat);
+    if (!view.root.closest('[inert]')) renderPanelChrome(panel, view, chat);
+    view.contentLimit.hidden = true;
     const id = state[panel].active;
     if (id === 'launch') continue;
     const ctx = context(chat, id, panel);
     if (contentTab(id)) workbench.push({ id: id as ContentTabId, ...ctx });
     if (registrations.has(id) || contentTab(id)) next.set(id, { view, context: ctx });
+  }
+  // Each content kind has two live hosts. Keep the focused tab visible when
+  // the split and the other dock all select the same kind of content.
+  if (workbench.length === 3 && workbench.every(tab => contentTab(tab.id)?.kind === contentTab(workbench[0].id)?.kind)) {
+    const deferredPanel = getSurfaceDock(state, state.focused) === state.split.dock ? otherDock('split') : 'split';
+    const index = workbench.findIndex(tab => tab.panel === deferredPanel);
+    const [deferred] = workbench.splice(index, 1);
+    next.get(deferred.id)!.view.contentLimit.hidden = false;
+    next.delete(deferred.id);
   }
   for (const [id, prior] of visible) {
     const newContext = next.get(id)?.context;
@@ -530,7 +644,7 @@ function renderSurfaces(chat: Chat): void {
   }
 }
 
-function render(): void {
+function render(animateClose?: SurfaceDock): void {
   if (!stage || renderInProgress) return;
   const chat = getContextChat();
   if (!chat) return;
@@ -545,7 +659,7 @@ function render(): void {
       closeSurfaceTab(state, id);
       persist();
     }
-    renderPlacement();
+    renderPlacement(animateClose);
     renderSurfaces(chat);
     for (const [id, wrapper] of wrappers) {
       if (!contentTab(id) || content?.describe(id as ContentTabId)) continue;
@@ -570,7 +684,7 @@ export function retargetContentSurface(from: ContentTabId, to: ContentTabId): vo
   state.open = state.open.map(id => id === from ? to : id);
   state.panelOf[to] = state.panelOf[from];
   delete state.panelOf[from];
-  for (const panel of PANELS) {
+  for (const panel of SURFACE_PANELS) {
     if (state[panel].active === from) state[panel].active = to;
   }
   persist();
@@ -598,11 +712,11 @@ interface OpenSurfaceOptions {
 function openMobile(panel: SurfacePanel): void {
   if (!usePhonePresentation()) return;
   if (!mobileShown && document.activeElement instanceof HTMLElement) mobileReturnFocus = document.activeElement;
-  mobileShown = panel;
+  mobileShown = getSurfaceDock(state, panel);
 }
 
 export function openSurface(id: LauncherSurfaceId, options: OpenSurfaceOptions = {}): boolean {
-  if (!stage || isAlternateThreadViewOpen()) return false;
+  if (!stage || isNewThreadViewOpen()) return false;
   const chat = getContextChat();
   if (!chat || (!registrations.has(id) && !(content && id === 'preview'))) return false;
   syncChat(chat);
@@ -626,13 +740,14 @@ export function openSurface(id: LauncherSurfaceId, options: OpenSurfaceOptions =
 }
 
 export function toggleSurfacePanel(panel: SurfacePanel): void {
-  if (!stage || isAlternateThreadViewOpen()) return;
+  if (!stage || isNewThreadViewOpen()) return;
   const chat = getContextChat();
   if (!chat) return;
   syncChat(chat);
   syncViewport();
+  const dock = getSurfaceDock(state, panel);
   if (usePhonePresentation()) {
-    if (mobileShown === panel) {
+    if (mobileShown === dock) {
       mobileShown = null;
       render();
       mobileReturnFocus?.focus({ preventScroll: true });
@@ -644,11 +759,12 @@ export function toggleSurfacePanel(panel: SurfacePanel): void {
     focusSelected(panel);
     return;
   }
-  const wasVisible = isPanelVisible(state, panel);
-  setPanelShown(state, panel, !wasVisible);
-  if (!wasVisible && state.maximized !== panel) state.maximized = null;
+  const wasVisible = isPanelVisible(state, dock);
+  const animateClose = wasVisible && !state.maximized;
+  setPanelShown(state, dock, !wasVisible);
+  if (!wasVisible && state.maximized !== dock) state.maximized = null;
   persist();
-  render();
+  render(animateClose ? dock : undefined);
   if (!wasVisible) focusSelected(panel);
   else focusPanelOpener(panel);
 }
@@ -658,17 +774,46 @@ export function moveActiveSurface(panel: SurfacePanel = state.focused): void {
   if (id !== 'launch') moveTab(panel, id);
 }
 
-function moveTab(panel: SurfacePanel, id: SurfaceId): void {
-  const destination = switchPanel(panel);
+function moveTab(panel: SurfacePanel, id: SurfaceId, destination: SurfacePanel = otherDock(panel)): void {
   openSurfaceTab(state, id, destination);
   persist();
   render();
   focusSelected(destination);
 }
 
+function splitSurfacePanel(panel?: SurfacePanel): boolean {
+  const chat = getContextChat();
+  if (!stage || !chat || usePhonePresentation() || isNewThreadViewOpen()) return false;
+  syncChat(chat);
+  syncViewport();
+  const source = panel ?? state.focused;
+  const dock = getSurfaceDock(state, source);
+  if (!isPanelVisible(state, source) || (state.split.dock && state.split.dock !== dock)) return false;
+  const destination = source === 'split' ? dock : 'split';
+  if (!state.split.dock) {
+    splitSurfaceTabs(state, dock, state[dock].active);
+  } else {
+    const active = state[source].active;
+    if (active !== 'launch' && getPanelTabs(state, source).length > 1) openSurfaceTab(state, active, destination);
+    else state.focused = destination;
+  }
+  persist();
+  render();
+  focusSelected(destination);
+  return true;
+}
+
+function closeSurfaceSplit(): void {
+  const dock = mergeSurfaceTabs(state);
+  if (!dock) return;
+  persist();
+  render();
+  focusSelected(dock);
+}
+
 export function toggleSurfaceMaximize(panel: SurfacePanel = state.focused): void {
   if (usePhonePresentation()) return;
-  toggleMaximizedPanel(state, panel);
+  toggleMaximizedPanel(state, getSurfaceDock(state, panel));
   persist();
   render();
   focusSelected(panel);
@@ -695,48 +840,134 @@ export function mountSurfacePanelToggles(host: HTMLElement): void {
   if (stage) renderPlacement();
 }
 
-function bindResize(panel: SurfacePanel, node: HTMLElement): void {
+function bindResize(panel: SurfaceDock, node: HTMLElement): void {
   const horizontal = panel === 'bottom';
   const coordinate = (event: PointerEvent) => horizontal ? event.clientY : event.clientX;
-  let origin = 0;
-  let originSize = 0;
-  let pointer: number | null = null;
-  const frame = createPointerFrame(position => updateSize(panel, originSize + origin - position, false));
+  let drag: {
+    pointerId: number;
+    origin: number;
+    originSize: number;
+    thread: ThreadSurfaceState;
+  } | undefined;
+  const frame = createPointerFrame(position => {
+    if (!drag) return;
+    dragSizes[panel] = drag.originSize + drag.origin - position;
+    applySizes();
+    schedulePreviewLayout();
+  });
   node.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || pointer !== null) return;
-    pointer = event.pointerId;
-    origin = coordinate(event);
-    originSize = surfaceSize(panel, sizes[panel], availableSize(panel));
-    node.setPointerCapture(pointer);
+    if (event.button !== 0 || drag) return;
+    drag = {
+      pointerId: event.pointerId,
+      origin: coordinate(event),
+      originSize: dockSize(panel, sizes[panel]),
+      thread: state,
+    };
+    node.setPointerCapture(event.pointerId);
     node.classList.add('is-dragging');
     event.preventDefault();
   });
   node.addEventListener('pointermove', event => {
-    if (event.pointerId === pointer) frame.schedule(coordinate(event));
+    if (event.pointerId === drag?.pointerId) frame.schedule(coordinate(event));
   });
-  function finish(): void {
-    if (pointer === null) return;
+  function finish(event: PointerEvent): void {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const { originSize, origin, thread } = drag;
+    drag = undefined;
     frame.flush();
-    pointer = null;
+    delete dragSizes[panel];
     node.classList.remove('is-dragging');
-    write(SIZE_KEY, sizes);
+    const size = originSize + origin - coordinate(event);
+    if (event.type !== 'pointerup' || size === originSize ||
+      thread !== state || node.hidden || !isPanelVisible(state, panel)) {
+      applySizes();
+      schedulePreviewLayout();
+      return;
+    }
+    if (!horizontal && size >= availableSize(panel) + SIDE_MAXIMIZE_OVERSHOOT) {
+      toggleSurfaceMaximize(panel);
+      return;
+    }
+    updateSize(panel, size);
   }
   node.addEventListener('pointerup', finish);
   node.addEventListener('pointercancel', finish);
   node.addEventListener('lostpointercapture', finish);
-  node.addEventListener('dblclick', () => updateSize(panel, PANEL_SIZES[panel].default, true));
+  node.addEventListener('dblclick', () => updateSize(panel, PANEL_SIZES[panel].default));
   node.addEventListener('keydown', event => {
-    const current = surfaceSize(panel, sizes[panel], availableSize(panel));
+    const available = availableSize(panel);
+    const current = dockSize(panel, sizes[panel], available);
     const step = event.shiftKey ? 48 : 16;
     const grow = horizontal ? 'ArrowUp' : 'ArrowLeft';
     const shrink = horizontal ? 'ArrowDown' : 'ArrowRight';
     const value = ({
       [grow]: current + step, [shrink]: current - step, Home: PANEL_SIZES[panel].min,
-      End: PANEL_SIZES[panel].max, Enter: PANEL_SIZES[panel].default,
+      End: Math.min(PANEL_SIZES[panel].max, available), Enter: PANEL_SIZES[panel].default,
     })[event.key];
     if (value === undefined) return;
     event.preventDefault();
-    updateSize(panel, value, true);
+    updateSize(panel, value);
+  });
+}
+
+function applySplitRatio(ratio: number): void {
+  stage?.style.setProperty('--mn-graphite-split-ratio', String(ratio));
+  mounted.get('split')?.resizer.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+}
+
+function bindSplitResize(node: HTMLElement): void {
+  const min = surfaceSplitRatio(0);
+  const max = surfaceSplitRatio(1);
+  node.setAttribute('aria-valuemin', String(min * 100));
+  node.setAttribute('aria-valuemax', String(max * 100));
+  let drag: { pointerId: number; x: number; width: number; ratio: number; thread: ThreadSurfaceState; dock: SurfaceDock } | undefined;
+  const ratioAt = (x: number) => drag ? surfaceSplitRatio(drag.ratio + (x - drag.x) / drag.width) : state.split.ratio;
+  const canResize = () => drag?.thread === state && drag.dock === state.split.dock && isPanelVisible(state, 'split');
+  const frame = createPointerFrame(x => {
+    if (!canResize()) return;
+    applySplitRatio(ratioAt(x));
+    schedulePreviewLayout();
+  });
+  const commit = (ratio: number) => {
+    state.split.ratio = surfaceSplitRatio(ratio);
+    applySplitRatio(state.split.ratio);
+    persist();
+    schedulePreviewLayout();
+  };
+  node.addEventListener('pointerdown', event => {
+    const dock = state.split.dock;
+    const width = dock && mounted.get(dock)?.root.clientWidth;
+    if (event.button !== 0 || drag || !dock || !width) return;
+    drag = { pointerId: event.pointerId, x: event.clientX, width, ratio: state.split.ratio, thread: state, dock };
+    node.setPointerCapture(event.pointerId);
+    node.classList.add('is-dragging');
+    event.preventDefault();
+  });
+  node.addEventListener('pointermove', event => {
+    if (event.pointerId === drag?.pointerId) frame.schedule(event.clientX);
+  });
+  const finish = (event: PointerEvent) => {
+    if (event.pointerId !== drag?.pointerId) return;
+    const ratio = event.type === 'pointerup' && canResize() ? ratioAt(event.clientX) : undefined;
+    drag = undefined;
+    frame.flush();
+    node.classList.remove('is-dragging');
+    if (ratio !== undefined) commit(ratio);
+    else {
+      applySplitRatio(state.split.ratio);
+      schedulePreviewLayout();
+    }
+  };
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) node.addEventListener(type, finish);
+  node.addEventListener('dblclick', () => commit(0.5));
+  node.addEventListener('keydown', event => {
+    const step = event.shiftKey ? 0.1 : 0.02;
+    const ratio = {
+      ArrowLeft: state.split.ratio - step, ArrowRight: state.split.ratio + step, Home: min, End: max, Enter: 0.5,
+    }[event.key];
+    if (ratio === undefined) return;
+    event.preventDefault();
+    commit(ratio);
   });
 }
 
@@ -810,16 +1041,17 @@ function bindLauncherKeys(panel: SurfacePanel, launcher: HTMLElement): void {
 }
 
 function createPanel(panel: SurfacePanel): PanelElements {
-  const name = panel === 'side' ? 'Side panel' : 'Bottom panel';
+  const name = panelName(panel);
   const root = element('aside', `graphite-surface-panel graphite-surface-panel--${panel}`);
-  root.id = panel === 'side' ? 'surfaceSide' : 'surfaceBottom';
+  root.id = { side: 'surfaceSide', bottom: 'surfaceBottom', split: 'surfaceSplit' }[panel];
+  root.dataset.surfacePanel = panel;
   root.setAttribute('aria-label', name);
   root.hidden = true;
   const resizer = element('div', 'graphite-surface-resizer');
   resizer.tabIndex = 0;
   resizer.setAttribute('role', 'separator');
-  resizer.setAttribute('aria-label', `Resize ${name.toLowerCase()}`);
-  resizer.setAttribute('aria-orientation', panel === 'side' ? 'vertical' : 'horizontal');
+  resizer.setAttribute('aria-label', panel === 'split' ? 'Resize split' : `Resize ${name.toLowerCase()}`);
+  resizer.setAttribute('aria-orientation', panel === 'bottom' ? 'horizontal' : 'vertical');
   const head = element('header', 'graphite-surface-header');
   const title = element('h2', 'graphite-surface-sheet-title');
   title.textContent = 'Changes';
@@ -837,9 +1069,14 @@ function createPanel(panel: SurfacePanel): PanelElements {
   launcher.setAttribute('role', 'menu');
   launcher.setAttribute('aria-label', 'Open a surface');
   launcher.tabIndex = -1;
-  body.append(launcher);
+  const contentLimit = element('p', 'graphite-surface-content-limit');
+  contentLimit.setAttribute('role', 'status');
+  contentLimit.textContent = 'Select this tab to bring it into view. Up to two files or two browser tabs can be visible at once.';
+  contentLimit.hidden = true;
+  body.append(launcher, contentLimit);
   root.append(resizer, head, body);
-  const focus = () => {
+  const focus = (event: Event) => {
+    if ((event.target as Element | null)?.closest?.('[data-surface-panel]') !== root) return;
     if (state.focused === panel) return;
     state.focused = panel;
     if (content) refreshSurfacePanels();
@@ -849,21 +1086,23 @@ function createPanel(panel: SurfacePanel): PanelElements {
   bindPanelKeys(panel, strip);
   bindContentTabDrop(panel, head);
   bindLauncherKeys(panel, launcher);
-  bindResize(panel, resizer);
-  return { root, title, strip, add, controls, body, launcher, resizer, signature: '' };
+  if (panel === 'split') bindSplitResize(resizer);
+  else bindResize(panel, resizer);
+  return { root, title, strip, add, controls, body, launcher, contentLimit, resizer, signature: '' };
 }
 
 function handleLegacyRequest(id: LauncherSurfaceId, action: 'show' | 'hide' | 'toggle' | 'maximize'): boolean {
-  if (isAlternateThreadViewOpen()) return true;
+  if (isNewThreadViewOpen()) return true;
   const chat = getContextChat();
   if (!chat) return false;
   syncChat(chat);
   syncViewport();
   const matches = (tab: SurfaceTab) => tab === id ||
     (id === 'preview' && contentTab(tab)?.kind === 'preview');
-  const panel = [state.focused, switchPanel(state.focused)].find(panel => matches(state[panel].active))
-    ?? getSurfacePanel(state, id);
-  const shown = (usePhonePresentation() ? mobileShown === panel : isPanelVisible(state, panel)) && matches(state[panel].active);
+  const shownPanel = [state.focused, ...SURFACE_PANELS].find(panel => matches(state[panel].active) &&
+    (usePhonePresentation() ? mobileShown === panel : isPanelVisible(state, panel)));
+  const panel = shownPanel ?? getSurfacePanel(state, id);
+  const shown = shownPanel !== undefined;
   if (action === 'show' && shown) return true;
   if (action === 'show' || (action === 'toggle' && !shown)) return openSurface(id, { force: true });
   if (action === 'maximize') {
@@ -875,11 +1114,12 @@ function handleLegacyRequest(id: LauncherSurfaceId, action: 'show' | 'hide' | 't
 
 function onShortcut(event: KeyboardEvent): void {
   const host = mobilePortal?.host ?? stage;
-  if (event.defaultPrevented || event.isComposing || isAlternateThreadViewOpen() || !host?.getClientRects().length) return;
+  if (event.defaultPrevented || event.isComposing || isNewThreadViewOpen() || !host?.getClientRects().length) return;
   const foreground = document.querySelector('.mn-os-app-layer.is-active');
   if (foreground && !mobilePortal && !foreground.contains(host)) return;
   const target = event.target instanceof HTMLElement ? event.target : null;
   const key = event.key.toLowerCase();
+  const panel = target?.closest<HTMLElement>('[data-surface-panel]')?.dataset.surfacePanel as SurfacePanel | undefined;
   if (event.key === 'Escape' && usePhonePresentation() && mobileShown) {
     event.preventDefault();
     toggleSurfacePanel(mobileShown);
@@ -897,6 +1137,9 @@ function onShortcut(event: KeyboardEvent): void {
   } else if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && key === 'j') {
     event.preventDefault();
     toggleSurfacePanel('side');
+  } else if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && !event.repeat && key === '\\' && panel) {
+    event.preventDefault();
+    splitSurfacePanel(panel);
   } else if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
     !target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .xterm, .cm-editor')) {
     const panel = usePhonePresentation() ? mobileShown ?? undefined : launcherPanelForKey(state);
@@ -915,7 +1158,7 @@ export function mountMobileSurfacePortal(host: HTMLElement, chatId?: string): ()
   mobilePortal = current;
   host.classList.add('graphite-mobile-surfaces');
   moveSurfaceNode(mobileBackdrop, host);
-  for (const view of mounted.values()) moveSurfaceNode(view.root, host);
+  for (const panel of SURFACE_DOCKS) moveSurfaceNode(mounted.get(panel)!.root, host);
   refreshSurfacePanels();
   return () => {
     if (mobilePortal !== current || !stage) return;
@@ -924,7 +1167,7 @@ export function mountMobileSurfacePortal(host: HTMLElement, chatId?: string): ()
     mobileReturnFocus = null;
     mobilePortal = undefined;
     moveSurfaceNode(mobileBackdrop, stage);
-    for (const view of mounted.values()) moveSurfaceNode(view.root, stage);
+    for (const panel of SURFACE_DOCKS) moveSurfaceNode(mounted.get(panel)!.root, stage);
     refreshSurfacePanels();
   };
 }
@@ -945,35 +1188,32 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   mobileBackdrop.hidden = true;
   mobileBackdrop.addEventListener('click', () => { if (mobileShown) toggleSurfacePanel(mobileShown); });
   host.append(mobileBackdrop);
-  for (const panel of PANELS) {
+  for (const panel of SURFACE_PANELS) {
     const view = createPanel(panel);
     mounted.set(panel, view);
     host.append(view.root);
   }
-  const saved = read(SIZE_KEY) as Partial<Record<SurfacePanel, number>> | undefined;
+  const saved = read(SIZE_KEY) as Partial<Record<SurfaceDock, number>> | undefined;
   sizes = { side: surfaceSize('side', saved?.side), bottom: surfaceSize('bottom', saved?.bottom) };
   setGraphiteSurfaceBridge({
     request: handleLegacyRequest,
     refresh: refreshSurfacePanels,
     showContent: content ? (kind, key, forceLoad, into) => {
       const chat = getContextChat();
-      if (!chat || isAlternateThreadViewOpen()) return;
+      if (!chat || isNewThreadViewOpen()) return;
       syncChat(chat);
       syncViewport();
       const id: ContentTabId = `${kind}:${key}`;
       if (!content?.describe(id)) return;
-      const panel = into ?? (state.open.includes(id) ? getSurfacePanel(state, id) : state.focused);
+      const panel = (into === 'split' && !state.split.dock ? undefined : into)
+        ?? (state.open.includes(id) ? getSurfacePanel(state, id) : state.focused);
       openSurfaceTab(state, id, panel);
       openMobile(panel);
       persist();
       render();
       return content.ready(id, forceLoad);
     } : undefined,
-    moveContent: () => {
-      if (usePhonePresentation() || !contentTab(state[state.focused].active)) return false;
-      moveActiveSurface();
-      return true;
-    },
+    splitPanel: splitSurfacePanel,
     previewSlot: content?.previewSlot,
     cycleContent: direction => {
       const chat = getContextChat();
@@ -990,7 +1230,7 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   window.addEventListener('minnow:managed-chat-change', refreshSurfacePanels);
   window.addEventListener('storage', event => {
     if (event.key === SIZE_KEY) {
-      const saved = read(SIZE_KEY) as Partial<Record<SurfacePanel, number>> | undefined;
+      const saved = read(SIZE_KEY) as Partial<Record<SurfaceDock, number>> | undefined;
       sizes = { side: surfaceSize('side', saved?.side), bottom: surfaceSize('bottom', saved?.bottom) };
       applySizes();
       schedulePreviewLayout();
@@ -1020,11 +1260,11 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   for (const view of mounted.values()) observer.observe(view.root, { attributes: true, attributeFilter: ['hidden'] });
   const mainColumn = host.querySelector('#mainColumn');
   if (mainColumn) {
-    let alternateView = isAlternateThreadViewOpen();
+    let newThreadView = isNewThreadViewOpen();
     new MutationObserver(() => {
-      const next = isAlternateThreadViewOpen();
-      if (next === alternateView) return;
-      alternateView = next;
+      const next = isNewThreadViewOpen();
+      if (next === newThreadView) return;
+      newThreadView = next;
       refreshSurfacePanels();
     }).observe(mainColumn, { attributes: true, attributeFilter: ['class'] });
   }

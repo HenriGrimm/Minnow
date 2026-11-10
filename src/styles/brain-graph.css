@@ -1,5 +1,5 @@
 /**
- * Brain knowledge graph stage, canvas glow, inspector, toolbar, and motion tokens.
+ * Brain knowledge graph stage, inspector, toolbar, and motion tokens.
  */
 
 :root {
@@ -47,7 +47,7 @@
   padding: 16px 10px;
   overflow-y: auto;
   border-right: 1px solid var(--mn-border);
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 /* Utility sections: flat workbench rail (grid placement in brain-page.css). */
@@ -61,7 +61,7 @@
   border-right: 1px solid var(--mn-border);
   border-radius: 0;
   box-shadow: none;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -78,7 +78,7 @@
   border-right: 1px solid var(--mn-border);
   border-radius: 0;
   box-shadow: none;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
 }
 
 .brain-rail__btn {
@@ -187,7 +187,7 @@
   width: 0;
   overflow: hidden;
   border-left: 1px solid transparent;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   transition:
     width 0.22s var(--brain-ease-out),
     border-color 0.22s var(--brain-ease-out);
@@ -250,7 +250,7 @@
 .brain-page.is-graph-canvas-bg .brain-inspector.is-open {
   flex: none;
   border-left-color: transparent;
-  background: var(--mn-surface-1);
+  background: var(--mn-surface-0);
   width: min(var(--brain-inspector-w), max(420px, 52%));
   border: none;
   border-left: 1px solid var(--mn-border);
@@ -611,7 +611,7 @@
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--mn-surface-2);
+  background: var(--mn-surface-1);
 }
 
 .brain-graph-seg .brain-action-btn {
@@ -627,9 +627,8 @@
 }
 
 .brain-graph-seg .brain-action-btn[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--mn-accent) 16%, transparent);
+  background: var(--mn-sel, var(--mn-surface-elevated));
   color: var(--mn-fg);
-  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--mn-accent) 70%, transparent);
 }
 
 .brain-graph-toolbar__primary {
@@ -862,11 +861,11 @@
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background: var(--brain-stage-bg);
-}
-
-.brain-graph-page-bg.brain-graph-canvas-wrap {
-  background: var(--brain-stage-bg);
+  background: var(--brain-stage-bg) radial-gradient(
+    ellipse 72% 60% at 50% 45%,
+    color-mix(in srgb, var(--mn-accent) calc(var(--mn-graphite-tint) * 3.5%), transparent),
+    transparent 72%
+  );
 }
 
 .brain-graph-canvas {

@@ -5,7 +5,7 @@ interface GraphiteSurfaceBridge {
   request(id: LauncherSurfaceId, action: 'show' | 'hide' | 'toggle' | 'maximize'): boolean;
   refresh(): void;
   showContent?(kind: ContentTabKind, key: string, forceLoad?: boolean, panel?: SurfacePanel): Promise<void> | undefined;
-  moveContent?(): boolean;
+  splitPanel?(): boolean;
   previewSlot?(tabId: string): PaneSlotId | undefined;
   cycleContent?(direction: 'next' | 'prev'): boolean;
 }
@@ -30,8 +30,8 @@ export function showGraphiteContent(
   return bridge?.showContent?.(kind, key, forceLoad, panel);
 }
 
-export function moveGraphiteContent(): boolean {
-  return bridge?.moveContent?.() ?? false;
+export function splitGraphitePanel(): boolean {
+  return bridge?.splitPanel?.() ?? false;
 }
 
 export function usesGraphiteContentTabs(): boolean {

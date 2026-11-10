@@ -1087,6 +1087,8 @@ export interface TurnSnapshot {
   thinkingMode: ThinkingResolvedMode;
   /** Resolved reasoning effort frozen for replay (when dropdown applies). */
   reasoningEffort?: ReasoningEffortOption;
+  /** Fast mode for the captured CLI binding. */
+  cliFastMode?: boolean;
   modeId: ModeId;
   workAgentId: string | null;
   workAgentAuto: boolean;
@@ -1288,6 +1290,8 @@ export interface Chat {
   reasoningEffort?: ReasoningEffortOption;
   /** Cursor Agent fast variant preference for this chat. */
   cursorFast?: boolean;
+  /** Opt-in speed override for the current Codex or Claude Code model. */
+  cliFastMode?: boolean;
   /** Active Work Agent; null = default / auto from mode (Step 08). */
   workAgentId?: string | null;
   /** When true, mode switch picks defaultForModes agent (Step 08). */
@@ -1548,6 +1552,7 @@ export interface LmModelRecord {
   id: string;
   /** Optional catalog label; the id remains the value sent to the provider. */
   display_name?: string;
+  supportsFastMode?: boolean;
   type?: string;
   state?: string;
   quantization?: string;

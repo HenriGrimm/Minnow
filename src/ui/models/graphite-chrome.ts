@@ -77,8 +77,9 @@ export function mountGraphiteModelsChrome(root: HTMLElement, navigate: (id: Mode
     button.append(label, el('span', 'models-nav__metadata'));
   }
   nav.append(el('div', 'models-rail-hardware'));
+  const railWidth = Number.parseFloat(getComputedStyle(root).getPropertyValue('--mn-workbench-rail-w')) || 232;
   nav.after(createModelsResizeHandle(body, {
-    label: 'Resize Models sidebar', property: '--models-graphite-rail-width', initial: 212, min: 176, max: 290,
+    label: 'Resize Models sidebar', property: '--models-graphite-rail-width', initial: railWidth, min: 176, max: 290,
   }));
 
   for (const [section, target, label] of [['settings', 'engine', 'Manage engines'], ['engine', 'settings', 'Storage settings']] as const) {

@@ -29,7 +29,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
 }
 
@@ -61,7 +61,7 @@
   border: 1px solid var(--mn-border);
   border-radius: var(--mn-radius-sm);
   color: var(--mn-fg-muted);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
 }
 
 .dev-server-screen__heading-copy {

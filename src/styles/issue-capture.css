@@ -50,9 +50,24 @@
   font: 13px/1.45 var(--font-ui);
 }
 .mn-capture__notes { resize: vertical; }
-.mn-capture__choices { display: flex; flex-wrap: wrap; gap: 8px; }
-.mn-capture__choice-group { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--mn-border); border-radius: 8px; }
-.mn-capture__choice-group > button, .mn-capture__cancel {
+.mn-capture__properties {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.mn-capture__property { display: grid; gap: 4px; min-width: 0; }
+.mn-capture__property .issues-status-chip {
+  width: 100%;
+  justify-content: flex-start;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.mn-capture__property :is(.issues-type-chip__label, .issues-priority-chip__label, .issues-status-chip__label) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mn-capture__cancel {
   padding: 4px 7px;
   border: 0;
   border-radius: 6px;
@@ -61,12 +76,13 @@
   font: 12px var(--font-ui);
   cursor: pointer;
 }
-.mn-capture__choice-group > button:is([aria-pressed='true'], :hover), .mn-capture__cancel:hover {
+.mn-capture__cancel:hover {
   background: var(--mn-graphite-active, var(--mn-surface-elevated));
   color: var(--mn-fg);
 }
 .mn-capture__thread-link { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--mn-fg-muted); }
 .mn-capture__thread-link > input { margin: 0; accent-color: var(--mn-accent); }
+.mn-capture--thread .mn-capture__foot { flex-wrap: wrap; justify-content: flex-end; }
 .mn-capture--thread .mn-capture__hint { flex: 1; }
 .mn-capture--thread .mn-capture__submit { color: var(--mn-fg-on-accent); }
 

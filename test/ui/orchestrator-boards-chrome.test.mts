@@ -21,7 +21,8 @@ describe('Code stage chrome', () => {
           const { document } = window;
           if (desktop) document.documentElement.classList.add('mn-graphite-workspace', 'mn-graphite-sidebar-open');
           if (htmlClass) document.documentElement.classList.add(htmlClass);
-          document.head.innerHTML = `<style>${css}</style>`;
+          // Happy DOM's CSS selector parser expects functional selectors on one line.
+          document.head.innerHTML = `<style>${css.replace(/\s*\n\s*/g, ' ')}</style>`;
           document.body.innerHTML = `
             <aside id="chatSidebar"><div id="chatSidebarResizer"></div></aside>
             <button id="sidebarBackdrop"></button>

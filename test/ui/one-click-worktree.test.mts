@@ -29,7 +29,7 @@ test('composer enables without setup and lets the user return to Local before se
   try {
     initComposerRunTarget();
     const enable = document.getElementById('composerRunTargetBtn') as HTMLButtonElement;
-    assert.equal(enable.textContent, 'Local');
+    assert.equal(enable.textContent, '');
     assert.equal(enable.getAttribute('aria-label'), 'Enable worktree');
     enable.click();
     assert.equal(requests.filter(r => r.op === 'enable_chat').length, 0);
@@ -137,7 +137,7 @@ test('one worktree control switches branches in its checkout and returns to Loca
     await settle(() => Boolean(item('Back to Local')));
     item('Back to Local')!.click();
     await settle(() => !chat.worktreeRoot && !button.disabled);
-    assert.equal(button.textContent, 'Local');
+    assert.equal(button.textContent, '');
     assert.equal(button.getAttribute('aria-label'), 'Enable worktree');
     assert.equal(chat.gitBranch, 'main');
     assert.equal(requests.some(body => body.op === 'remove'), false, 'returning Local preserves the checkout');

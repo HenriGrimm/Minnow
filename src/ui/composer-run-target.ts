@@ -409,7 +409,7 @@ function updateButtonLabels(chat: Chat): void {
   const active = isChatWorktreeMode(chat);
   const name = worktreeName(chat);
   const label = runTargetBtn?.querySelector('.composer-run-target__label');
-  if (label) label.textContent = busy ? 'Setting up…' : chat.worktreeSetupRequired ? 'Retry worktree' : active ? name : enabled ? 'Worktree' : 'Local';
+  if (label) label.textContent = busy ? 'Setting up…' : chat.worktreeSetupRequired ? 'Retry worktree' : active ? name : enabled ? 'Worktree' : '';
   runTargetBtn?.classList.toggle('composer-run-target-btn--local', !active && !enabled && !busy && !chat.worktreeSetupRequired);
   runTargetBtn?.setAttribute('aria-label', busy ? 'Setting up worktree' : chat.worktreeSetupRequired ? 'Retry worktree setup' : active ? `Worktree: ${name}. Branch: ${chat.gitBranch || 'detached'}` : enabled ? 'Worktree enabled. Creates when you send a message' : 'Enable worktree');
   runTargetBtn?.setAttribute('aria-busy', String(busy));

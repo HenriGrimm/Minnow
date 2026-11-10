@@ -93,45 +93,6 @@ const MUTED_EMPHASIS = 0.08;
 /** A node needs this many edges before it earns a permanent label. */
 const HUB_LABEL_DEGREE = 3;
 
-/** Alpha ramp for the ambient field, as [offset, alpha] pairs. */
-/** Field opacity at the centre — depth cue, not a wash. */
-const FIELD_PEAK_ALPHA = 0.085;
-
-const FIELD_STOPS: ReadonlyArray<readonly [number, number]> = [
-  [0, 1],
-  [0.16, 0.79],
-  [0.32, 0.56],
-  [0.48, 0.35],
-  [0.64, 0.19],
-  [0.78, 0.087],
-  [0.9, 0.027],
-  [1, 0],
-];
-
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** Swamp accent, used only if a theme colour fails to resolve. */
-const FALLBACK_ACCENT: Rgb = { r: 158, g: 197, b: 167 };
-
-/** Flatten any CSS colour — including the `color-mix` theme tokens — to sRGB channels, by borrowing an element's computed style. */
-function resolveRgb(host: HTMLElement, value: string): Rgb {
-  const previous = host.style.color;
-  host.style.color = '';
-  host.style.color = value;
-  const computed = host.style.color ? getComputedStyle(host).color : '';
-  host.style.color = previous;
-  if (!computed.startsWith('rgb')) return FALLBACK_ACCENT;
-  const parts = computed.match(/-?[\d.]+/g);
-  if (!parts || parts.length < 3) return FALLBACK_ACCENT;
-  return { r: Number(parts[0]), g: Number(parts[1]), b: Number(parts[2]) };
-}
-
-const rgba = (c: Rgb, alpha: number): string => `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-
 /** Read Brain graph theme tokens from the document root. */
 export function readForceGraphTheme(root: HTMLElement = document.documentElement): ForceGraphTheme {
   const style = getComputedStyle(root);
@@ -145,7 +106,8 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
   return {
     stageBg,
     surface: pick('--mn-surface-1', stageBg),
-    border: pick('--mn-border', edge),
+    border: pick('--mn-border-strong', edge),
+    shadow: pick('--mn-shadow', 'transparent'),
     nodePage,
     nodePageMuted: pick('--brain-node-page-muted', nodePage),
     nodeTag,
@@ -160,7 +122,6 @@ export function readForceGraphTheme(root: HTMLElement = document.documentElement
     edgeTag: pick('--brain-edge-tag', edge),
     label: pick('--mn-fg', 'oklch(32% 0.02 250)'),
     labelMuted: pick('--mn-fg-muted', 'oklch(52% 0.02 250)'),
-    accent: pick('--mn-accent', '#9ec5a7'),
     glow: pick('--brain-glow', 'oklch(55% 0.12 250 / 0.35)'),
     grid: pick('--brain-grid', pick('--mn-fg-subtle', 'oklch(60% 0.02 250)')),
   };
@@ -189,7 +150,6 @@ export function createForceGraph(
   if (!ctx) throw new Error('Canvas 2d context unavailable');
 
   let theme = readForceGraphTheme();
-  let accentRgb = resolveRgb(canvas, theme.accent);
   let nodes: SimNode[] = [];
   let edges: SimEdge[] = [];
   let nodeById = new Map<string, SimNode>();
@@ -357,21 +317,8 @@ export function createForceGraph(
     }
   };
 
-  /** Ambient lattice + accent field: depth cues that also make pan/zoom legible. */
-  const drawBackdrop = (w: number, h: number): void => {
-    ctx.fillStyle = theme.stageBg;
-    ctx.fillRect(0, 0, w, h);
-
-    const radius = Math.hypot(w, h) * 0.85;
-    const field = ctx.createRadialGradient(w / 2, h * 0.45, 0, w / 2, h * 0.45, radius);
-    for (const [offset, alpha] of FIELD_STOPS) {
-      field.addColorStop(offset, rgba(accentRgb, alpha * FIELD_PEAK_ALPHA));
-    }
-    ctx.save();
-    ctx.fillStyle = field;
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-
+  /** Draw the zoom-dependent lattice above the CSS stage background. */
+  const drawLattice = (w: number, h: number): void => {
     const latticeAlpha = Math.min(0.5, Math.max(0, (transform.k - 0.3) * 0.5));
     if (latticeAlpha <= 0.01) return;
     const spacing = 56;
@@ -611,14 +558,14 @@ export function createForceGraph(
     const sy = transform.applyY(node.y);
     const pos = placeCallout(sx, sy, node.radius * transform.k, boxWidth, boxHeight, w, h);
 
-    ctx.shadowColor = theme.glow;
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = theme.shadow;
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
     addRoundedRectPath(pos.x, pos.y, boxWidth, boxHeight, 8);
     ctx.fillStyle = theme.surface;
-    ctx.globalAlpha = 0.97;
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1;
+    ctx.shadowOffsetY = 0;
     ctx.strokeStyle = theme.border;
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -648,7 +595,7 @@ export function createForceGraph(
 
     ctx.save();
     ctx.clearRect(0, 0, w, h);
-    drawBackdrop(w, h);
+    drawLattice(w, h);
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
@@ -857,11 +804,10 @@ export function createForceGraph(
 
   const themeObserver = new MutationObserver(() => {
     theme = readForceGraphTheme();
-    accentRgb = resolveRgb(canvas, theme.accent);
   });
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['data-theme', 'class'],
+    attributeFilter: ['data-theme', 'data-tint', 'data-graphite-accent', 'style'],
   });
 
   const scheduleCanvasResize = scheduleAnimationFrame(() => {

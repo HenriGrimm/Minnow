@@ -292,6 +292,8 @@ export async function runRouterGeneration(state) {
       });
       if (previousError) workspace.scheduler.emit(router, chatId, entry, 'failover', previousError);
       const childBody = { ...body, model: bound.id };
+      delete childBody.minnow_cli_fast_mode;
+      if (requested?.options.fastMode === true) childBody.minnow_cli_fast_mode = true;
       if ((decision && decision.source !== 'override') || locksEffort) delete childBody.reasoning_effort;
       if (effort !== undefined) childBody.reasoning_effort = effort;
       if (requested && explicitOptions && (locksEffort || explicitOptions.thinkingMode === 'on' || explicitOptions.thinkingBudgetTokens != null)) {

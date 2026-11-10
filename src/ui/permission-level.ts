@@ -224,11 +224,7 @@ function syncPill(level: PermissionLevel): void {
   if (!pill) return;
   const meta = PERMISSION_LEVEL_META[level];
   pill.dataset.level = level;
-  pill.replaceChildren(
-    createIcon(PERMISSION_LEVEL_ICON[level], { className: 'permission-pill__icon' }),
-    Object.assign(document.createElement('span'), { className: 'permission-pill__label', textContent: meta.label }),
-    createIcon('chevronDown', { className: 'permission-pill__chevron' }),
-  );
+  pill.replaceChildren(createIcon(PERMISSION_LEVEL_ICON[level], { className: 'permission-pill__icon' }));
   pill.title = `${meta.label} — ${meta.description}. Shift+Tab to change.`;
   pill.setAttribute('aria-label', `Permissions: ${meta.label}`);
 }

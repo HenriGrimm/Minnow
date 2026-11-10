@@ -56,7 +56,8 @@ function append(state, payload) { appendChunk(state, Buffer.from(`data: ${JSON.s
 function signature(body, identity) {
   return cliHash({ transportVersion: CLI_TOOL_TRANSPORT_VERSION, identity, systems: canonicalCliMessages(body.messages).filter(row => ['system', 'developer'].includes(row.role)), model: body.model, tools: body.tools, tool_choice: body.tool_choice,
     reasoning_effort: body.reasoning_effort, response_format: body.response_format,
-    max_budget_usd: body.max_budget_usd });
+    max_budget_usd: body.max_budget_usd,
+    fastMode: identity.settings?.kind === 'claude' && body.minnow_cli_fast_mode === true ? true : undefined });
 }
 function roundUsage(round, fallback, kind) {
   if (kind !== 'claude' || !round.rawUsage.length) return fallback;
@@ -481,6 +482,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
   if (maxMs > 0) maxTimer = setTimeout(() => { maxExpired = true; if (round) round.timeoutKind = 'max'; controller.abort(); }, maxMs);
   try {
     const body = JSON.parse(state.requestBody.toString('utf8'));
+    if (state.providerId !== candidate.providerId || body.model !== candidate.modelId) delete body.minnow_cli_fast_mode;
     assertMinnowToolMode(settings);
     body.model = candidate.modelId;
     if (body.n != null && body.n !== 1) throw new Error('Agent CLI supports one response per request.');

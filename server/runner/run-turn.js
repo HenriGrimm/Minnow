@@ -640,10 +640,12 @@ export async function runTurn(options) {
     requestStarted = started;
     firstProse = false;
     firstReasoning = false;
-    const upstreamBody = stripTranscriptRouting(body, model.vision === true);
-    try { return await deps.postChatCompletions(provider,
-      provider.apiKind === 'agent-cli-v1' && options.cliTurnContext
-        ? { ...upstreamBody, minnow_cli_turn_context: options.cliTurnContext } : upstreamBody, signal, {
+    let upstreamBody = stripTranscriptRouting(body, model.vision === true);
+    if (provider.apiKind === 'agent-cli-v1') {
+      if (options.cliTurnContext) upstreamBody = { ...upstreamBody, minnow_cli_turn_context: options.cliTurnContext };
+      if (model.options?.fastMode === true) upstreamBody = { ...upstreamBody, minnow_cli_fast_mode: true };
+    }
+    try { return await deps.postChatCompletions(provider, upstreamBody, signal, {
           ...postOptions,
           ...(Object.hasOwn(model, 'options') ? { agentModelOptions: model.options } : {}),
           ...(model.exactModel === true ? { exactModel: true } : {}),

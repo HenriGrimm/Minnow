@@ -202,7 +202,9 @@ describe('model host filter actions', () => {
       const settingsBtn = host.querySelector('.model-menu-action--settings') as HTMLButtonElement;
       assert.ok(loadBtn);
       assert.ok(settingsBtn);
-      assert.equal(settingsBtn.textContent, 'Open settings');
+      assert.equal(settingsBtn.getAttribute('aria-label'), 'Open model settings');
+      assert.equal(settingsBtn.textContent, '');
+      assert.ok(settingsBtn.querySelector('.fi-rr-settings[aria-hidden="true"]'));
       assert.equal(loadBtn.hidden, false);
       assert.equal(loadBtn.textContent, 'Unload');
     } finally {

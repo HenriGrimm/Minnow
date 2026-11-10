@@ -3,19 +3,17 @@ import { hasHostSessionToken } from '../api/session-token';
 import { isChatTurnInProgress } from '../chat/chat-turn-guard';
 import { findIncompleteToolBatchAtTail } from '../chat/incomplete-tool-batch';
 import { getPendingTranscriptMessages } from '../chat/message-queue';
-import { fetchDevServers, postDevServerStartById, postDevServerStopById, type DevServerListItem } from '../config/dev-servers-api';
 import { getPermissionLevelCached, onToolSecurityMetaChange } from '../config/tool-security-meta';
 import { PERMISSION_LEVELS } from '../lib/permissions.mjs';
-import { getCurrentRoute, launchApp, navigateToCodeDevServers } from '../os/router';
+import { getCurrentRoute, launchApp } from '../os/router';
 import { isChatArchived } from '../state/chat-archive';
 import { isChatPinned, setChatPinned } from '../state/chat-groups';
 import { resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { listIssues } from '../state/issues-store';
 import { clearActiveGoal, ensureChatHistoryLoaded, getActiveGoal, getChatMessageCount, sessionState } from '../state/sessions';
-import { getWorkspacePath } from '../state/workspace';
+import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import type { Chat, IssueCard, Message } from '../types';
 import { openPopover, type PopoverHandle } from './components/popover';
-import { createGraphiteAppLogo, type GraphiteHostApp } from './graphite-app-logos';
 import { mountGraphiteNewThread } from './graphite-new-thread';
 import { createIcon, type IconName } from './icon';
 import { choosePermissionLevel } from './permission-level';
@@ -94,21 +92,21 @@ function checkoutFor(chat: Chat): string {
   return resolveChatWorktreeRoot(chat) ?? getWorkspacePath();
 }
 
-async function openIn(app: GraphiteHostApp, chat: Chat, workspace: string): Promise<void> {
+async function revealCheckout(chat: Chat, workspace: string): Promise<void> {
   if (activeChat()?.id !== chat.id || workspace !== getWorkspacePath()) return;
-  const label = app === 'cursor' ? 'Cursor' : app === 'vscode' ? 'VS Code' : fileManagerName();
+  const label = fileManagerName();
   try {
     const response = await fetch('/api/workspace/open-in-app', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ app, path: '.', checkout: checkoutFor(chat) }),
+      body: JSON.stringify({ app: 'finder', path: '.', checkout: checkoutFor(chat) }),
     });
-    const result = await response.json() as { ok?: boolean; error?: string; reason?: string };
+    const result = await response.json() as { ok?: boolean; error?: string };
     if (!response.ok || !result.ok) {
-      throw new Error(result.reason === 'not-installed' ? `${label} is not installed` : result.error || `Could not open in ${label}`);
+      throw new Error(result.error || `Could not reveal in ${label}`);
     }
   } catch (error) {
-    showToast(error instanceof Error ? error.message : `Could not open in ${label}`, 'error');
+    showToast(error instanceof Error ? error.message : `Could not reveal in ${label}`, 'error');
   }
 }
 
@@ -163,65 +161,8 @@ export async function forkThreadWithModel(chat: Chat): Promise<void> {
   }
 }
 
-function renderDevServer(host: HTMLElement, chat: Chat, close: () => void, signal: AbortSignal): void {
-  const checkout = resolveChatWorktreeRoot(chat);
-  const isCurrent = () => !signal.aborted && activeChat()?.id === chat.id;
-
-  const choose = (items: DevServerListItem[]) => items.find(item => item.worktreeRoot === checkout)
-    ?? items.find(item => !item.worktreeRoot);
-
-  async function load(): Promise<void> {
-    let server: DevServerListItem | undefined;
-    try {
-      server = choose(await fetchDevServers(signal));
-    } catch {
-      // The manage action still provides a way to diagnose the service.
-    }
-    if (!isCurrent()) return;
-    if (!server?.command) {
-      host.replaceChildren(rowButton('terminal', 'Dev server', 'Manage dev servers', () => {
-        close();
-        navigateToCodeDevServers();
-      }));
-      return;
-    }
-    const selected = server;
-    const running = selected.status === 'running' || selected.status === 'starting';
-    const display = row('terminal', selected.command ?? selected.name,
-      running ? (selected.port ? `Running on localhost:${selected.port}` : 'Running') : selected.error ? 'Failed to start' : 'Stopped', true);
-    const control = button(running ? 'Stop' : 'Run', () => {
-      if (!isCurrent() || control.disabled) return;
-      control.disabled = true;
-      void (async () => {
-        try {
-          const live = choose(await fetchDevServers(signal));
-          if (!isCurrent()) return;
-          if (live?.id !== selected.id || live.status !== selected.status || live.worktreeRoot !== selected.worktreeRoot) {
-            await load();
-            return;
-          }
-          if (running && checkout && live.worktreeRoot !== checkout) {
-            throw new Error('This dev server is running in a different checkout');
-          }
-          const result = running ? await postDevServerStopById(live.id) : await postDevServerStartById(live.id, { worktreeRoot: checkout });
-          if (!result.ok) throw new Error('Could not update the dev server');
-        } catch (error) {
-          if (isCurrent()) showToast(error instanceof Error ? error.message : 'Could not update the dev server', 'error');
-        } finally {
-          if (isCurrent()) await load();
-        }
-      })();
-    }, running ? 'stop' : 'send');
-    display.append(control);
-    host.replaceChildren(display);
-  }
-
-  host.append(row('terminal', 'Dev server', 'Loading…'));
-  void load();
-}
-
 let currentCard: PopoverHandle | undefined;
-let currentCardChat: string | undefined;
+let currentCardChat: Chat | undefined;
 let branchButton: HTMLButtonElement | undefined;
 let goalButton: HTMLButtonElement | undefined;
 let goalPopover: PopoverHandle | undefined;
@@ -302,133 +243,189 @@ async function toggleThreadGoal(chat: Chat, anchor: HTMLElement): Promise<void> 
 function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
   const content = el('div', 'graphite-thread-card');
   const workspace = getWorkspacePath();
-  const checkout = checkoutFor(chat);
-  const worktree = resolveChatWorktreeRoot(chat);
-  if (worktree) refreshSidebarGitFacts(worktree);
+  const overview = el('div', 'graphite-thread-card');
+  content.append(overview);
   const isHost = hasHostSessionToken();
-  const state = chatGitState(chat, workspace);
-  const git = getWorkspaceGitSummary(checkout);
-  const issue = findThreadIssue(chat);
-  const goal = getActiveGoal(chat);
-  const controller = new AbortController();
-  const close = () => currentCard?.close();
-  const isCurrent = () => activeChat()?.id === chat.id && getWorkspacePath() === workspace;
+  const isCurrent = () => activeChat() === chat && getWorkspacePath() === workspace;
   const action = (run: () => void) => () => {
-    close();
+    currentCard?.close();
     if (isCurrent()) run();
   };
+  const reposition = () => currentCard?.reposition();
+  let subview: AbortController | undefined;
+  let unsubscribe: (() => void) | undefined;
+  let currentBranch: string | undefined;
+  let checkoutRow: HTMLButtonElement;
 
-  const environment = row('deviceDesktop', isHost ? (/mac/i.test(navigator.platform) ? 'This Mac' : 'This computer') : 'Host computer', checkout);
-  const environmentDetails = el('div', 'graphite-thread-card__environment');
-  environmentDetails.hidden = true;
-  environmentDetails.append(rowButton('deviceMobile', 'Phone access', 'Manage paired devices', action(() => launchApp('settings', { settingsSection: 'devices' }))));
-  const reveal = button(`Reveal in ${fileManagerName()}`, () => void openIn('finder', chat, workspace), 'folder', true);
-  reveal.disabled = !isHost;
-  const environmentToggle = button('Where this thread runs', () => {
-    environmentDetails.hidden = !environmentDetails.hidden;
-    environmentToggle.setAttribute('aria-expanded', String(!environmentDetails.hidden));
-    currentCard?.reposition();
-  }, 'chevronDown', true);
-  environmentToggle.setAttribute('aria-expanded', 'false');
-  environment.append(reveal, environmentToggle);
-  content.append(environment, environmentDetails);
-
-  const editors = row('externalLink', 'Open in');
-  const appNames = { cursor: 'Cursor', vscode: 'VS Code', finder: fileManagerName() };
-  for (const app of ['cursor', 'vscode', 'finder'] as const) {
-    const editor = button(appNames[app], () => void openIn(app, chat, workspace));
-    editor.prepend(app === 'finder' && appNames[app] !== 'Finder' ? createIcon('folder', { size: 14 }) : createGraphiteAppLogo(app));
-    editor.title = isHost ? `Open ${checkout} in ${appNames[app]}` : 'Available on the host computer';
-    editor.disabled = !isHost;
-    editors.append(editor);
+  function showSubview(title: string, returnFocus: () => HTMLButtonElement) {
+    subview?.abort();
+    subview = new AbortController();
+    const { signal } = subview;
+    const section = el('section', 'graphite-thread-card__subview');
+    section.setAttribute('aria-label', title);
+    const toolbar = el('div', 'graphite-thread-card__subview-header');
+    const back = button('Back to thread menu', () => {
+      subview?.abort();
+      subview = undefined;
+      section.remove();
+      overview.hidden = false;
+      reposition();
+      returnFocus().focus();
+    }, 'chevronLeft', true);
+    const heading = el('h2', '', title);
+    const host = el('div', 'graphite-thread-card__subview-body');
+    toolbar.append(back, heading);
+    section.append(toolbar, host);
+    overview.hidden = true;
+    content.append(section);
+    reposition();
+    back.focus();
+    return { host, toolbar, signal, isCurrent, reposition };
   }
-  content.append(editors);
 
-  const devServer = el('div', 'graphite-thread-card__dev-server');
-  renderDevServer(devServer, chat, close, controller.signal);
-  content.append(devServer, el('div', 'graphite-thread-card__divider'));
-
-  const branch = rowButton('gitBranch', git?.branch || chat.gitBranch || 'Branch',
-    worktree ? `worktree · ${worktree.split(/[\\/]/).at(-1)}` : 'main checkout',
-    action(() => {
-      if (openSurface('changes', { force: true, target: { kind: 'checkout' } })) return;
-      void import('./git-panel').then(async ({ openGitSidePanel }) => {
-        await openGitSidePanel();
-        const trigger = document.getElementById('gitCheckoutTrigger');
-        if (trigger?.getAttribute('aria-expanded') === 'false') trigger.click();
-      });
-    }), true);
-  const changed = git?.changed;
-  const changes = rowButton('gitGraph',
-    changed === undefined ? 'Changes' : `${changed} changed ${changed === 1 ? 'file' : 'files'}`,
-    undefined, action(() => openSurface('changes')));
-  if (state.additions || state.deletions) {
-    const lines = el('span', 'graphite-thread-card__counts');
-    appendLineCounts(lines, chat);
-    changes.insertBefore(lines, changes.lastChild);
+  function showLoadError(panel: ReturnType<typeof showSubview>, message: string): void {
+    if (panel.signal.aborted || !isCurrent()) return;
+    const notice = el('p', 'graphite-thread-card__notice', message);
+    notice.setAttribute('role', 'alert');
+    panel.host.replaceChildren(notice);
+    reposition();
   }
-  const gitActions = el('div', 'graphite-thread-card__git-actions');
-  const commit = button('Commit and push', action(() => openSurface('changes', { force: true, target: { kind: 'commit' } })), 'gitCommit');
-  commit.disabled = !(changed || state.additions || state.deletions);
-  gitActions.append(commit,
-    button(state.prNumber ? 'View PR' : 'Open PR', action(() => {
-      if (state.prNumber && openSurface('pr', { target: state.prNumber })) return;
-      void import('./source-control-center').then(({ openSourceControlCenter }) => {
-        if (isCurrent()) void openSourceControlCenter({ section: 'pulls', cwd: checkout });
-      });
-    }), 'gitPullRequest'));
-  content.append(branch, changes, gitActions, el('div', 'graphite-thread-card__divider'));
 
-  const model = row('appModels', chat.modelId || 'No model selected', chat.providerId);
-  const fork = button('Fork…', action(() => void forkThreadWithModel(chat)), 'gitBranch');
-  fork.disabled = getChatMessageCount(chat) === 0 || Boolean(chat.agentConversation);
-  model.append(fork);
-  content.append(model);
+  function renderOverview(): void {
+    unsubscribe?.();
+    overview.replaceChildren();
+    const checkout = checkoutFor(chat);
+    const worktree = resolveChatWorktreeRoot(chat);
+    if (worktree) refreshSidebarGitFacts(worktree);
+    const state = chatGitState(chat, workspace);
+    const git = getWorkspaceGitSummary(checkout);
+    const issue = findThreadIssue(chat);
+    const goal = getActiveGoal(chat);
+    const environment = row('deviceDesktop', isHost ? (/mac/i.test(navigator.platform) ? 'This Mac' : 'This computer') : 'Host computer', checkout);
+    const environmentDetails = el('div', 'graphite-thread-card__environment');
+    environmentDetails.hidden = true;
+    environmentDetails.append(rowButton('deviceMobile', 'Phone access', 'Manage paired devices', action(() => launchApp('settings', { settingsSection: 'devices' }))));
+    const reveal = button(`Reveal in ${fileManagerName()}`, () => void revealCheckout(chat, workspace), 'folder', true);
+    reveal.disabled = !isHost;
+    const environmentToggle = button('Where this thread runs', () => {
+      environmentDetails.hidden = !environmentDetails.hidden;
+      environmentToggle.setAttribute('aria-expanded', String(!environmentDetails.hidden));
+      currentCard?.reposition();
+    }, 'chevronDown', true);
+    environmentToggle.setAttribute('aria-expanded', 'false');
+    environment.append(reveal, environmentToggle);
+    overview.append(environment, environmentDetails);
 
-  const permissions = row('permAuto', 'Permissions');
-  const segment = el('div', 'graphite-thread-card__permissions');
-  segment.setAttribute('role', 'group');
-  segment.setAttribute('aria-label', 'Permission level');
-  const syncPermission = () => {
-    for (const control of segment.querySelectorAll('button')) {
-      control.setAttribute('aria-pressed', String(control.dataset.permission === getPermissionLevelCached()));
-    }
-  };
-  for (const level of PERMISSION_LEVELS) {
-    const control = button(PERMISSION_LABELS[level], () => {
-      if (isCurrent()) void choosePermissionLevel(level).then(syncPermission);
+    const devServer = rowButton('terminal', 'Dev servers', 'Run and configure servers', () => {
+      const panel = showSubview('Dev servers', () => devServer);
+      void import('./thread-dev-servers').then(({ mountThreadDevServers }) => {
+        if (!panel.signal.aborted && isCurrent()) {
+          mountThreadDevServers({
+            ...panel, workspace, checkout, canManage: isHost,
+            isCurrent: () => isCurrent() && checkoutFor(chat) === checkout,
+          });
+        }
+      }).catch(() => showLoadError(panel, 'Could not load dev servers.'));
     });
-    control.dataset.permission = level;
-    segment.append(control);
-  }
-  syncPermission();
-  const unsubscribe = onToolSecurityMetaChange(syncPermission);
-  permissions.append(segment);
-  content.append(permissions);
+    overview.append(devServer, el('div', 'graphite-thread-card__divider'));
 
-  if (issue) content.append(rowButton('appIssues', `Issue · ${issue.id}`, issue.title, action(() => {
-    if (!openSurface('issue', { target: issue.id })) {
-      void import('./issues-page').then(({ openIssues }) => {
-        if (isCurrent()) void openIssues({ issueId: issue.id });
-      });
+    checkoutRow = rowButton('gitBranch', (currentBranch ?? git?.branch ?? chat.gitBranch) || 'Checkout',
+      worktree ? `worktree · ${worktree.split(/[\\/]/).at(-1)}` : 'main checkout', () => {
+        const panel = showSubview('Checkout', () => checkoutRow);
+        void import('./thread-checkout').then(({ mountThreadCheckout }) => {
+          if (panel.signal.aborted || !isCurrent()) return;
+          return mountThreadCheckout({
+            ...panel, chat, workspace,
+            onChanged: branch => {
+              if (!content.isConnected) return;
+              const restoreFocus = document.activeElement === checkoutRow;
+              currentBranch = branch;
+              renderOverview();
+              if (!overview.hidden) {
+                reposition();
+                if (restoreFocus) checkoutRow.focus();
+              }
+            },
+          });
+        }).catch(() => showLoadError(panel, 'Could not load checkouts.'));
+      }, true);
+    const changed = currentBranch && git?.branch !== currentBranch ? undefined : git?.changed;
+    const changes = rowButton('gitGraph',
+      changed === undefined ? 'Changes' : `${changed} changed ${changed === 1 ? 'file' : 'files'}`,
+      undefined, action(() => openSurface('changes')));
+    if (state.additions || state.deletions) {
+      const lines = el('span', 'graphite-thread-card__counts');
+      appendLineCounts(lines, chat);
+      changes.insertBefore(lines, changes.lastChild);
     }
-  })));
-  if (goal) content.append(rowButton('loop', 'Goal', goal.achieved ? 'Achieved' : goal.conditionText, action(() => {
-    if (goalButton) void toggleThreadGoal(chat, goalButton);
-  })));
+    const gitActions = el('div', 'graphite-thread-card__git-actions');
+    const commit = button('Commit and push', action(() => openSurface('changes', { force: true, target: { kind: 'commit' } })), 'gitCommit');
+    commit.disabled = !(changed || state.additions || state.deletions);
+    gitActions.append(commit,
+      button(state.prNumber ? 'View PR' : 'Open PR', action(() => {
+        if (state.prNumber && openSurface('pr', { target: state.prNumber })) return;
+        void import('./source-control-center').then(({ openSourceControlCenter }) => {
+          if (isCurrent()) void openSourceControlCenter({ section: 'pulls', cwd: checkout });
+        });
+      }), 'gitPullRequest'));
+    overview.append(checkoutRow, changes, gitActions, el('div', 'graphite-thread-card__divider'));
 
-  const footer = el('div', 'graphite-thread-card__footer');
-  const pin = button(isChatPinned(chat) ? 'Unpin' : 'Pin', action(() => {
-    setChatPinned(chat, !isChatPinned(chat));
-    renderSidebar();
-  }), 'pin');
-  pin.disabled = Boolean(chat.agentConversation);
-  footer.append(pin,
-    button(isChatArchived(chat) ? 'Restore' : 'Archive', action(() => setChatsArchivedWithUndo([chat], !isChatArchived(chat))), 'archive'),
-    el('kbd', 'graphite-thread-card__key', /mac/i.test(navigator.platform) ? '⌘.' : 'Ctrl+.'),
-  );
-  content.append(el('div', 'graphite-thread-card__divider'), footer);
-  currentCardChat = chat.id;
+    const model = row('appModels', chat.modelId || 'No model selected', chat.providerId);
+    const fork = button('Fork…', action(() => void forkThreadWithModel(chat)), 'gitBranch');
+    fork.disabled = getChatMessageCount(chat) === 0 || Boolean(chat.agentConversation);
+    model.append(fork);
+    overview.append(model);
+
+    const permissions = row('permAuto', 'Permissions');
+    const segment = el('div', 'graphite-thread-card__permissions');
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Permission level');
+    const syncPermission = () => {
+      for (const control of segment.querySelectorAll('button')) {
+        control.setAttribute('aria-pressed', String(control.dataset.permission === getPermissionLevelCached()));
+      }
+    };
+    for (const level of PERMISSION_LEVELS) {
+      const control = button(PERMISSION_LABELS[level], () => {
+        if (isCurrent()) void choosePermissionLevel(level).then(syncPermission);
+      });
+      control.dataset.permission = level;
+      segment.append(control);
+    }
+    syncPermission();
+    unsubscribe = onToolSecurityMetaChange(syncPermission);
+    permissions.append(segment);
+    overview.append(permissions);
+
+    if (issue) overview.append(rowButton('appIssues', `Issue · ${issue.id}`, issue.title, action(() => {
+      if (!openSurface('issue', { target: issue.id })) {
+        void import('./issues-page').then(({ openIssues }) => {
+          if (isCurrent()) void openIssues({ issueId: issue.id });
+        });
+      }
+    })));
+    if (goal) overview.append(rowButton('loop', 'Goal', goal.achieved ? 'Achieved' : goal.conditionText, action(() => {
+      if (goalButton) void toggleThreadGoal(chat, goalButton);
+    })));
+
+    const footer = el('div', 'graphite-thread-card__footer');
+    const pin = button(isChatPinned(chat) ? 'Unpin' : 'Pin', action(() => {
+      setChatPinned(chat, !isChatPinned(chat));
+      renderSidebar();
+    }), 'pin');
+    pin.disabled = Boolean(chat.agentConversation);
+    footer.append(pin,
+      button(isChatArchived(chat) ? 'Restore' : 'Archive', action(() => setChatsArchivedWithUndo([chat], !isChatArchived(chat))), 'archive'),
+      el('kbd', 'graphite-thread-card__key', /mac/i.test(navigator.platform) ? '⌘.' : 'Ctrl+.'),
+    );
+    overview.append(el('div', 'graphite-thread-card__divider'), footer);
+  }
+
+  renderOverview();
+  const unsubscribeWorkspace = subscribeWorkspace(() => {
+    if (!isCurrent()) currentCard?.close();
+  });
+  currentCardChat = chat;
   currentCard = openPopover({
     anchor,
     content,
@@ -436,8 +433,9 @@ function buildThreadCard(chat: Chat, anchor: HTMLButtonElement): void {
     ariaLabel: 'This thread',
     offset: 9,
     onClose: reason => {
-      controller.abort();
-      unsubscribe();
+      subview?.abort();
+      unsubscribe?.();
+      unsubscribeWorkspace();
       currentCard = undefined;
       currentCardChat = undefined;
       if (reason === 'escape') queueMicrotask(() => {
@@ -506,18 +504,17 @@ export function mountGraphiteThreadHeader(): void {
     const route = getCurrentRoute();
     const chat = activeChat();
     const isThreadView = route.appId === 'code' && (!route.codeSection || route.codeSection === 'chat');
-    const archive = document.getElementById('mainColumn')?.classList.contains('graphite-archive-open');
     const hasThread = !!chat && (getChatMessageCount(chat) > 0 || getPendingTranscriptMessages(chat).length > 0);
     header!.hidden = !isThreadView;
-    syncNewThread(isThreadView && !archive && !hasThread);
-    title.textContent = archive ? 'Archive' : hasThread ? chat.name : 'New thread';
-    if (currentCardChat && (currentCardChat !== chat?.id || !isThreadView || archive)) currentCard?.close();
-    branch.hidden = !hasThread || Boolean(archive);
-    goal.hidden = !hasThread || Boolean(archive) || !getActiveGoal(chat!);
+    syncNewThread(isThreadView && !hasThread);
+    title.textContent = hasThread ? chat.name : 'New thread';
+    if (currentCardChat && (currentCardChat !== chat || !isThreadView)) currentCard?.close();
+    branch.hidden = !hasThread;
+    goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
-    toggleHost.hidden = !hasThread || Boolean(archive);
+    toggleHost.hidden = !hasThread;
     const totals = chat ? changedLines(chat) : undefined;
-    diff.hidden = !hasThread || Boolean(archive) || !(totals?.additions || totals?.deletions);
+    diff.hidden = !hasThread || !(totals?.additions || totals?.deletions);
     if (!chat) return;
     const checkout = checkoutFor(chat);
     branchLabel.textContent = getWorkspaceGitSummary(checkout)?.branch || chat.gitBranch || 'This thread';
@@ -530,7 +527,6 @@ export function mountGraphiteThreadHeader(): void {
   subscribeSidebarRender(refresh);
   subscribeSidebarGitState(refresh);
   window.addEventListener('hashchange', refresh);
-  window.addEventListener('minnow:graphite-archive-view', refresh);
   window.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey || header.hidden) return;
     const mod = /mac/i.test(navigator.platform) ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;

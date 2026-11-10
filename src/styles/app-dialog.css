@@ -26,7 +26,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
   color: var(--mn-fg);

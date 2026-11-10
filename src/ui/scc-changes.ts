@@ -448,7 +448,9 @@ export function createChangesView(ctx: SccContext): SccView {
       const summarize = button({ icon: 'sparkles', label: 'Summarize', variant: 'ghost', onClick: () => {
         showDiffAnalysis('summary', { changedPaths: [path], patch, scope: bucket === 'staged' ? 'staged' : 'working-tree' });
       } });
-      diffHead.append(options, summarize);
+      const actions = el('div', 'scc-changes__diff-actions');
+      actions.append(options, summarize);
+      diffHead.append(actions);
     }
     paintDiff();
 

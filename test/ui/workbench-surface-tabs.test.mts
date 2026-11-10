@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
 
-test('files and browser pages share the surface strip and keep their content when moved or hidden', async () => {
+test('files and browser pages retain their content when moved, hidden, or split across tab groups', async () => {
   const win = new Window({ url: 'http://localhost' });
   Object.assign(globalThis, {
     window: win,
@@ -20,6 +20,7 @@ test('files and browser pages share the surface strip and keep their content whe
     readFileSync(new URL('../../index.html', import.meta.url), 'utf8'), 'text/html',
   );
   const stage = document.importNode(markup.getElementById('workspaceSplit')!, true) as HTMLElement;
+  Object.defineProperty(stage, 'getClientRects', { value: () => [{}] });
   document.body.append(stage);
   const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions');
   const chat = createEmptyChatObject('fixture', '/workspace');
@@ -89,6 +90,57 @@ test('files and browser pages share the surface strip and keep their content whe
     assert.equal(listPreviewTabs().length, 0);
     assert.equal(selected(side), 'notes.md');
     assert.equal(document.getElementById('previewPane'), preview);
+
+    const terminal = document.createElement('div');
+    registerSurface('terminal', { render: () => terminal });
+    assert.equal(openSurface('terminal'), true);
+    assert.equal(openSurface('preview', { panel: 'side' }), true);
+    await turn();
+    const shortcut = new win.KeyboardEvent('keydown', { key: '\\', ctrlKey: true, bubbles: true, cancelable: true });
+    side.querySelector('[aria-selected="true"]')!.dispatchEvent(shortcut);
+    assert.equal(shortcut.defaultPrevented, true);
+    const split = document.getElementById('surfaceSplit')!;
+    assert.equal(split.parentElement, side);
+    assert.equal(split.hidden, false);
+    assert.equal(split.querySelector('#previewPane'), preview);
+    assert.equal(side.querySelector('#fileViewerPane'), viewer);
+    assert.equal(bottom.contains(terminal), true);
+
+    const divider = split.querySelector('[role="separator"]')!;
+    divider.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(divider.getAttribute('aria-valuenow'), '75');
+    const savedKey = `minnow.graphite.surfaces.v1.thread.${JSON.stringify(['/workspace', chat.id])}`;
+    const saved = JSON.parse(localStorage.getItem(savedKey)!);
+    assert.equal(saved.split.dock, 'side');
+    assert.equal(saved.split.ratio, 0.75);
+
+    await openViewerTab('other.md', { content: 'other file', viewMode: 'markdown-preview' });
+    showViewerSplit('other.md');
+    await turn();
+    assert.equal(selected(split), 'other.md');
+    assert.match(split.querySelector('#fileViewerPaneSecondary')?.textContent ?? '', /other file/);
+    assert.equal(side.querySelector('#fileViewerPane'), viewer);
+
+    split.querySelector<HTMLElement>('[data-surface-tab^="preview:"] [role="tab"]')!.click();
+    assert.equal(openSurface('preview', { panel: 'side' }), true);
+    await turn();
+    assert.equal(split.querySelector('#previewPane'), preview);
+    assert.ok(side.querySelector(':scope > .graphite-surface-body #previewPaneSecondary'));
+
+    assert.equal(openSurface('preview', { panel: 'bottom' }), true);
+    await turn();
+    assert.equal(split.querySelector<HTMLElement>('[role="status"]')?.hidden, false);
+    split.querySelector<HTMLElement>('[aria-selected="true"]')!.click();
+    await turn();
+    assert.equal(split.querySelector<HTMLElement>('[role="status"]')?.hidden, true);
+    assert.equal(bottom.querySelector<HTMLElement>('[role="status"]')?.hidden, false);
+
+    split.querySelector<HTMLElement>('[aria-label="Close split"]')!.click();
+    await turn();
+    assert.equal(split.hidden, true);
+    assert.equal(side.contains(split), false);
+    assert.ok(tabs(side).includes('other.md'));
+    assert.equal(getViewerTab('notes.md')?.cachedEditorContent, 'unsaved text');
   } finally {
     resetFilePanelStateForTests();
     setSessionStateForTests(null);

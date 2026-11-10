@@ -160,7 +160,7 @@ Minnow is a long-session chat bench: conversation first, metrics as instrumentat
 
 ## Colors
 
-Palette is **family-dependent**. The YAML colors record the legacy Swamp token roles. Workspace chrome uses the `--mn-graphite-*` roles in `tokens.css` for its ground, sheet, elevated surfaces, text and edges. Color intensity affects those surfaces and the user bubble. Diff, warning and syntax colors use separate roles.
+Palette is **family-dependent**. The YAML colors record the legacy Swamp token roles. Workspace chrome uses the `--mn-graphite-*` roles in `tokens.css` for its ground, sheet, raised surfaces, text and edges. Color intensity affects those surfaces, navigation selection, and the user bubble. Diff, warning and syntax colors use separate roles.
 
 ### Primary (accent family)
 
@@ -177,10 +177,12 @@ Palette is **family-dependent**. The YAML colors record the legacy Swamp token r
 
 ### Neutrals
 
-- **`--mn-bg`**, **`--mn-surface-*`**: Top bar, sidebar, input bar, stats strip, drawer.
+- **`--mn-bg`**: Ground behind the workbench and recessed canvases such as the Brain graph.
+- **`--mn-surface-0`**: Workbench sheet, including its navigation rail, toolbar, and docked terminal.
+- **`--mn-surface-1`**, **`--mn-surface-2`**: Raised controls, cards, and floating panels.
 - **`--mn-fg`**, **`--mn-fg-muted`**, **`--mn-fg-subtle`**: Body, labels, placeholders.
 - **`--mn-border`**, **`--mn-border-strong`**: Dividers, assistant bubble outline, table cells.
-- **`--mn-surface-elevated`**: Sidebar row hover, stats expand hover (`color-mix` on fg).
+- **`--mn-surface-elevated`**, **`--mn-sel`**: Hover and navigation selection veils.
 - **`--mn-overlay`**: Settings drawer and mobile sidebar scrim.
 
 ### Named Rules

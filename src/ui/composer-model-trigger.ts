@@ -9,8 +9,10 @@ import { getForegroundAppId, getOsView } from '../os/instances';
 import { modelProducerLogoSvg } from '../providers/model-producer';
 import { isModelLoadUnloadBusy } from './model-load-unload-button';
 import { resolveModelState } from './model-state-dot';
-import { getActiveChat } from '../state/sessions';
-import { isManagedModelBusy, managedModelReadOnlyReason } from './managed-chat-model';
+import { getActiveChat, scheduleSaveSessions, touchChat } from '../state/sessions';
+import { configureManagedChatModel, isManagedModelBusy, managedChatModelSelection, managedModelReadOnlyReason } from './managed-chat-model';
+import { sendRemoteChatCommand, shouldRelayChat } from '../chat/remote-chat-client';
+import { showToast } from './toast';
 import { isChatAppForeground } from './chat-mount';
 import {
   onActiveChatModelChange,
@@ -98,6 +100,7 @@ let shortcutBound = false;
 let unregisterExternalCloser: (() => void) | null = null;
 /** Keyboard-highlighted row in the open menu (-1 = none). */
 let activeOptionIndex = -1;
+const pendingRelayedSpeedChanges = new Set<string>();
 
 // ── Finders ──────────────────────────────────────────────────────────────────
 
@@ -336,10 +339,11 @@ function syncTrigger(trigger: ComposerModelTrigger): void {
 
   if (selectValue && !isMenubarStyleVariant(trigger.variant) && !router) {
     const reasoning = getComposerReasoningState();
-    if (reasoning.label) {
+    const speed = modelCache.get(selectValue)?.supportsFastMode && chatUsesCliFastMode();
+    if (reasoning.label || speed) {
       const suffix = document.createElement('span');
       suffix.className = 'composer-model-trigger__reasoning';
-      suffix.textContent = ` · ${reasoning.label}`;
+      suffix.textContent = ` · ${[reasoning.label, speed ? 'Fast' : ''].filter(Boolean).join(' · ')}`;
       trigger.labelEl.append(suffix);
       trigger.trigger.setAttribute('aria-label', `Active model: ${trigger.labelEl.textContent}`);
     }
@@ -430,10 +434,82 @@ function syncChatReasoningMenu(trigger: ComposerModelTrigger): void {
     button.className = 'composer-model-reasoning__choice';
     button.dataset.composerReasoning = choice.value;
     button.textContent = choice.label;
-    button.setAttribute('aria-pressed', String(choice.value === state.selected));
+    const selected = choice.value === state.selected;
+    button.setAttribute('aria-pressed', String(selected));
+    if (selected) button.insertAdjacentHTML('beforeend', iconHtml('check'));
     button.disabled = state.disabled;
     return button;
   }));
+}
+
+function chatUsesCliFastMode(): boolean {
+  const chat = getActiveChat();
+  return chat.chatCommandVersion === 1
+    ? managedChatModelSelection(chat).options?.fastMode === true
+    : chat.cliFastMode === true;
+}
+
+function syncChatSpeedMenu(trigger: ComposerModelTrigger): void {
+  const button = trigger.panel.querySelector<HTMLButtonElement>('.composer-model-speed');
+  if (!button) return;
+  const chat = getActiveChat();
+  const supported = modelCache.get(resolveTriggerSelectValue(trigger))?.supportsFastMode === true;
+  const fast = chatUsesCliFastMode();
+  button.hidden = !supported && !fast;
+  button.setAttribute('aria-checked', String(fast));
+  if (button.hidden) return;
+  const disabled = getComposerReasoningState().disabled
+    || Boolean(managedModelReadOnlyReason(chat))
+    || pendingRelayedSpeedChanges.has(chat.id);
+  // Keep keyboard focus on the switch while a speed change is being saved.
+  button.setAttribute('aria-disabled', String(disabled));
+}
+
+function mountChatSpeedMenu(actions: HTMLElement): void {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'composer-model-speed';
+  button.hidden = true;
+  button.setAttribute('role', 'switch');
+  button.setAttribute('aria-checked', 'false');
+  button.title = 'Fast mode may use more credits';
+  const track = document.createElement('span');
+  track.className = 'composer-model-speed__track';
+  track.setAttribute('aria-hidden', 'true');
+  button.append(track, 'Fast mode');
+  button.addEventListener('click', async () => {
+    const trigger = openTrigger;
+    if (!trigger?.panel.contains(button)) return;
+    syncChatSpeedMenu(trigger);
+    if (button.hidden || button.getAttribute('aria-disabled') === 'true') return;
+    const chat = getActiveChat();
+    const fast = !chatUsesCliFastMode();
+    try {
+      if (chat.chatCommandVersion === 1) {
+        const selection = managedChatModelSelection(chat);
+        await configureManagedChatModel(chat, { ...selection, options: { ...selection.options, fastMode: fast } });
+      } else if (shouldRelayChat(chat.id)) {
+        pendingRelayedSpeedChanges.add(chat.id);
+        syncChatSpeedMenu(trigger);
+        try {
+          await sendRemoteChatCommand(chat.id, 'configure', {
+            patch: { cliFastMode: { enabled: fast, modelKey: resolveTriggerSelectValue(trigger) } },
+          });
+        } finally {
+          pendingRelayedSpeedChanges.delete(chat.id);
+          if (openTrigger) syncChatSpeedMenu(openTrigger);
+        }
+      } else {
+        chat.cliFastMode = fast;
+        touchChat(chat);
+        scheduleSaveSessions();
+        syncComposerModelTriggers();
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    }
+  });
+  actions.prepend(button);
 }
 
 function rebuildOpenMenu(): void {
@@ -458,6 +534,7 @@ function rebuildOpenMenu(): void {
   );
   syncAllModelMenuReasoningDefaults();
   syncChatReasoningMenu(openTrigger);
+  syncChatSpeedMenu(openTrigger);
   const binding = decodeModelSelectKey(selectedValue);
   const chat = getActiveChat();
   const router = binding?.providerId === 'minnow-router' ? getRouterConfigSync().routers.find((r) => r.id === binding.modelId) : undefined;
@@ -795,7 +872,7 @@ function createModelMenuPanel(
   menu.setAttribute('role', 'listbox');
   menu.setAttribute('aria-label', 'Model');
   panel.appendChild(menu);
-  mountModelMenuActions(panel, {
+  const actions = mountModelMenuActions(panel, {
     resolveSelectValue: resolveOpenMenuSelectValue,
     closeMenu: closeComposerModelMenu,
     showReasoningDefault: variant === 'menubar',
@@ -803,6 +880,7 @@ function createModelMenuPanel(
       refreshActiveChatReasoningDefault(selectValue);
     },
   });
+  if (variant === 'code' || variant === 'chat' || variant === 'desktop') mountChatSpeedMenu(actions);
   mountModelPoolPickerHost({
     panel, menu, filterBar, select: getModelSelect,
     selectedValue: resolveOpenMenuSelectValue, query: getModelSearchQuery,

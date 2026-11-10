@@ -1704,7 +1704,7 @@ function bindPreviewControls(): void {
         { id: 'btnPreviewHistory', label: 'History' },
         { id: 'previewAutoReload', label: 'Auto-reload saved files' },
         { id: 'btnPreviewDevToolsDock', label: () => getDevToolsDockButton()?.title ?? 'Dock DevTools' },
-        { id: 'btnPreviewPaneSplit', label: () => usesGraphiteContentTabs() ? 'Move to other panel' : 'Split right' },
+        { id: 'btnPreviewPaneSplit', label: 'Split right' },
         { id: 'btnAgentBrowserViewer', label: 'Open Agent Browser' },
       ],
       address: () => {

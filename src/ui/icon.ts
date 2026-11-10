@@ -161,6 +161,7 @@ export type ChromeIconName =
   | 'pause'
   | 'eye'
   | 'cube'
+  | 'modelPool'
   | 'pin'
   | 'filter'
   | 'timeline'
@@ -382,6 +383,7 @@ export const ICON_CLASS: Record<IconName, string> = {
   pause: 'fi-rr-pause',
   eye: 'fi-rr-eye',
   cube: 'fi-rr-cube',
+  modelPool: 'fi-rr-layers',
   pin: 'fi-rr-thumbtack',
   filter: 'fi-rr-filter',
   timeline: 'fi-rr-list-timeline',

@@ -17,24 +17,30 @@
 }
 
 .mn-graphite-apps #modelsView .models-page-body {
-  --models-rail-w: var(--models-graphite-rail-width, 212px);
-  --models-gutter: 24px;
+  --models-rail-w: var(--models-graphite-rail-width, var(--mn-workbench-rail-w));
+  --models-gutter: var(--mn-workbench-gutter);
 }
 
 .mn-graphite-apps #modelsView .models-nav {
   min-width: 0;
-  gap: 12px;
-  padding: 12px 10px;
+  gap: var(--mn-space-3);
+  padding: var(--mn-space-2) var(--mn-workbench-rail-inset) var(--mn-space-3);
   scrollbar-gutter: auto;
 }
 
 .mn-graphite-apps #modelsView .models-nav__group-label {
-  padding-block: 12px 6px;
+  padding-block: var(--mn-space-2) var(--mn-space-1);
 }
 
 .mn-graphite-apps #modelsView .models-nav__label {
   flex: 1;
   min-width: 0;
+}
+
+.mn-graphite-apps #modelsView .models-inspector-toggle {
+  width: var(--mn-workbench-control-h);
+  height: var(--mn-workbench-control-h);
+  border-radius: var(--mn-workbench-control-radius);
 }
 
 .mn-graphite-apps #modelsView .models-nav__label.has-graphite-label .models-nav__original-label,
@@ -551,12 +557,12 @@
   max-width: 100%;
   padding: 2px;
   border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 7px;
+  border-radius: var(--mn-workbench-control-radius, var(--mn-radius-sm));
   background: var(--mn-graphite-raised, var(--mn-surface-1));
 }
 
 #modelsView .models-library-tabs__button {
-  min-height: 23px;
+  min-height: var(--mn-workbench-segment-h, 23px);
   padding: 2px 7px;
   border: 1px solid transparent;
   border-radius: var(--mn-radius-xs);
@@ -564,9 +570,18 @@
 }
 
 #modelsView .models-library-tabs__button[aria-pressed='true'] {
-  border-color: var(--mn-graphite-line, var(--mn-border));
-  background: var(--mn-graphite-ground, var(--mn-bg));
+  background: var(--mn-sel, var(--mn-surface-2));
+  color: var(--mn-graphite-text, var(--mn-fg));
   font-weight: 500;
+}
+
+.mn-graphite-apps #modelsView .models-library .models-workspace-heading {
+  min-height: var(--mn-workbench-band-h);
+  padding-block: var(--mn-space-1-5);
+}
+
+.mn-graphite-apps #modelsView .models-library .models-workspace-heading__title {
+  font-size: var(--mn-type-md);
 }
 
 #modelsView .models-library-tabs__count { display: none; }

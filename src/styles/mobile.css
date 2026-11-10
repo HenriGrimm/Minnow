@@ -780,6 +780,10 @@ html.mn-phone .scc-head__identity .scc-head__context-btn {
   min-width: 0;
 }
 
+html.mn-phone .scc-head__context-btn:not(.scc-head__branch, .is-secondary-worktree) {
+  display: none;
+}
+
 html.mn-phone .scc-head__palette-btn .scc-btn__label {
   position: absolute;
   width: 1px;

@@ -23,7 +23,7 @@ import {
 } from './right-pane-slot-tabs';
 import { adoptActiveViewerTabPath, getActiveViewerTabPath } from './file-viewer-tab-store';
 import { activatePreviewTab } from './preview-tab-store';
-import { getGraphitePreviewSlot, moveGraphiteContent, usesGraphiteContentTabs } from './surfaces/surface-bridge';
+import { getGraphitePreviewSlot, splitGraphitePanel, usesGraphiteContentTabs } from './surfaces/surface-bridge';
 
 /** Same surface rule as the workspace gate (no floating desktop drawers). */
 function isWorkspaceGateSurface(): boolean {
@@ -269,7 +269,7 @@ export function enableRightPaneSplit(secondary?: SlotContent): void {
 /** Split right from whichever pane is focused, moving its active tab across. */
 export function splitRightPane(): void {
   if (usesGraphiteContentTabs()) {
-    moveGraphiteContent();
+    splitGraphitePanel();
     return;
   }
   if (isMobileLayout() || isWorkspaceGateSurface()) return;

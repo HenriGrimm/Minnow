@@ -93,6 +93,15 @@ test('Claude catalog preserves restrictions, raw IDs, advertised controls and un
   assert.ok(olderSdk[0].reasoning.allowed_options.includes('high'), 'older SDK rows retain known reasoning when the field is absent');
 });
 
+test('Claude Fast availability follows the catalog for models with settings-based opt-in', () => {
+  const rows = claudeCatalogRows([
+    { value: 'opus', resolvedModel: 'claude-opus-5-5', supportsFastMode: true },
+    { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', supportsFastMode: false },
+    { value: 'fable', resolvedModel: 'claude-fable-5-2', supportsFastMode: true },
+  ]);
+  assert.deepEqual(rows.filter(row => row.supportsFastMode).map(row => row.id), ['opus', 'claude-opus-5-5']);
+});
+
 test('Claude retains extra high defaults and never invents max for a restricted model', () => {
   for (const levels of [['low', 'high', 'xhigh'], ['low', 'high', 'xhigh', 'max']]) {
     const [row] = claudeCatalogRows([{ ...haiku, defaultEffort: 'xhigh', supportedEffortLevels: levels }]);

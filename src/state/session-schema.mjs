@@ -1276,6 +1276,7 @@ export function normalizeChatRow(raw) {
       out[key] = row[key];
     }
   }
+  if (typeof row.cliFastMode === 'boolean') out.cliFastMode = row.cliFastMode;
   if (Array.isArray(row.remoteCommandReceipts)) {
     out.remoteCommandReceipts = [...new Set(row.remoteCommandReceipts.filter(value => typeof value === 'string' && value.length <= 256))].slice(-256);
   }

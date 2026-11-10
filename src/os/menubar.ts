@@ -16,6 +16,8 @@ import { openProductWiki } from '../ui/product-wiki';
 import { bindShellOverlayTrigger, openShellOverlay, closeShellOverlay, isShellOverlayOpen } from '../ui/shell-overlay-state';
 import { initAgentActivityMenubar } from '../ui/agent-activity-panel';
 import { initQuickCaptureChord } from './quick-capture';
+import { getCurrentRoute, navigateToCodeChat } from './router';
+import { closeActiveCodeStageView } from '../ui/main-column-overlay';
 import { buildMenuItems, openRegisteredMenu, subscribeMenuRegistry } from '../ui/menu-registry';
 
 /** Render the Minnow menubar. Returns cleanup function. */
@@ -29,7 +31,22 @@ export function renderMenubar(root: HTMLElement): () => void {
   const logo = document.createElement('div');
   logo.className = 'mn-os-mb-logo';
   logo.innerHTML = MINNOW_GLYPH_HEADER_HTML;
-  left.appendChild(logo);
+
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'mn-os-mb-icon';
+  back.setAttribute('aria-label', 'Back to chat');
+  back.title = 'Back to chat';
+  back.innerHTML = iconHtml('back', { size: 16 });
+  back.addEventListener('click', async () => {
+    const origin = window.location.hash;
+    await closeActiveCodeStageView();
+    // The route can be active before the lazy stage mounts.
+    if (window.location.hash === origin && getForegroundAppId() === 'code') {
+      navigateToCodeChat();
+    }
+  });
+  left.append(logo, back);
 
   const brand = document.createElement('span');
   brand.className = 'mn-os-mb-brand';
@@ -199,6 +216,9 @@ export function renderMenubar(root: HTMLElement): () => void {
     const view = getOsView();
     const fgApp = getForegroundAppId();
     const onWorkspaces = view === 'workspaces';
+    const section = fgApp === 'code' ? getCurrentRoute().codeSection : undefined;
+    logo.hidden = Boolean(section && section !== 'chat');
+    back.hidden = !logo.hidden;
 
     root.dataset.view = onWorkspaces ? 'workspaces' : 'app';
     sep.hidden = onWorkspaces;

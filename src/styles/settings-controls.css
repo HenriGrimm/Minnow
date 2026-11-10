@@ -59,7 +59,7 @@
   padding: 16px 18px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--mn-fg) 1.5%, var(--mn-bg));
+  background: var(--mn-surface-1);
 }
 
 .settings-area .field-hint {
@@ -78,7 +78,7 @@
   padding: 16px 18px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--mn-fg) 1.5%, var(--mn-bg));
+  background: var(--mn-surface-1);
 }
 
 .settings-group--emphasis .settings-toggle-row:hover {
@@ -843,13 +843,13 @@ input.settings-select[type='number'] {
 
 @media (hover: hover) and (pointer: fine) {
   .settings-inline-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--mn-fg) 4%, var(--mn-bg));
+    background: var(--mn-surface-2);
     border-color: var(--mn-border-strong);
   }
 }
 
 .settings-inline-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--mn-fg) 8%, var(--mn-bg));
+  background: var(--mn-sel, var(--mn-surface-2));
 }
 
 .settings-inline-btn:disabled {
@@ -871,7 +871,7 @@ input.settings-select[type='number'] {
   padding: 8px 16px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -891,13 +891,13 @@ input.settings-select[type='number'] {
 
 @media (hover: hover) and (pointer: fine) {
   .settings-action-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--mn-fg) 4%, var(--mn-bg));
+    background: var(--mn-surface-2);
     border-color: var(--mn-border-strong);
   }
 }
 
 .settings-action-btn:active:not(:disabled) {
-  background: color-mix(in srgb, var(--mn-fg) 8%, var(--mn-bg));
+  background: var(--mn-sel, var(--mn-surface-2));
 }
 
 .settings-action-btn:disabled {

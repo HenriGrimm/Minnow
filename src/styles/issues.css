@@ -11,7 +11,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 13px;
@@ -89,7 +89,7 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
 }
 
 .issues-embed-back {
@@ -285,7 +285,7 @@
   gap: 8px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   flex-shrink: 0;
 }
 
@@ -384,7 +384,7 @@
   padding: 7px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
   color: var(--mn-fg);
   cursor: pointer;
   min-height: 34px;
@@ -512,7 +512,7 @@
   padding: 20px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   box-shadow: var(--shadow-popover);
   color: var(--mn-fg);
 }
@@ -703,7 +703,7 @@
   outline-offset: 1px;
 }
 
-.issues-new-form .issues-labels-field--form {
+:is(.issues-new-form, .mn-capture--thread) .issues-labels-field--form {
   min-height: 32px;
   padding: 4px 6px;
   border: 1px solid var(--mn-border);
@@ -712,7 +712,7 @@
   gap: 6px;
 }
 
-.issues-new-form .issues-labels-field--form .issues-labels-field__add--text {
+:is(.issues-new-form, .mn-capture--thread) .issues-labels-field--form .issues-labels-field__add--text {
   width: auto;
   min-width: unset;
   height: 24px;
@@ -723,7 +723,7 @@
   color: var(--mn-fg-muted);
 }
 
-.issues-new-form .issues-labels-field--form:not(:has(.issues-label-chip)) .issues-labels-field__add--text {
+:is(.issues-new-form, .mn-capture--thread) .issues-labels-field--form:not(:has(.issues-label-chip)) .issues-labels-field__add--text {
   margin-left: 0;
 }
 
@@ -1464,7 +1464,7 @@
   line-height: 15px;
   vertical-align: 1px;
   color: var(--mn-fg-muted);
-  background: var(--mn-bg-subtle, var(--mn-bg));
+  background: var(--mn-surface-1, var(--mn-bg));
   border: 1px solid var(--mn-border);
 }
 
@@ -1621,7 +1621,7 @@
   padding: 6px 16px;
   border: none;
   border-bottom: 1px solid var(--mn-border);
-  background: var(--mn-bg);
+  background: var(--mn-surface-0);
   color: var(--mn-fg);
   font-family: var(--font-ui);
   font-size: 12px;
@@ -2710,7 +2710,7 @@
   min-width: 0;
   border: 1px solid var(--mn-border);
   border-radius: var(--mn-radius-sm);
-  background: var(--mn-bg);
+  background: var(--mn-surface-1);
 }
 
 .issues-detail__workflow-heading { margin: 0; font: 500 var(--mn-type-sm)/1.5 var(--font-ui); color: var(--mn-fg); }
@@ -3220,7 +3220,7 @@ button.issues-detail__row:focus-visible {
   font-weight: 600;
   line-height: 1;
   color: var(--mn-fg-muted);
-  background: var(--mn-bg-subtle, var(--mn-bg));
+  background: var(--mn-surface-1, var(--mn-bg));
   border: 1px solid var(--mn-border);
 }
 
@@ -3238,7 +3238,7 @@ button.issues-detail__row:focus-visible {
   padding: 8px 10px;
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-sm);
-  background: var(--mn-bg-subtle, var(--mn-bg));
+  background: var(--mn-surface-1, var(--mn-bg));
 }
 
 .issues-comment--agent .issues-comment__main {
@@ -3822,7 +3822,7 @@ button.issues-detail__row:focus-visible {
   appearance: none;
   border: 1px solid var(--mn-border);
   border-radius: 999px;
-  background: var(--mn-bg-subtle);
+  background: var(--mn-surface-1);
   color: var(--mn-accent);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
@@ -3835,7 +3835,7 @@ button.issues-detail__row:focus-visible {
 }
 
 .issues-detail__parent-line-btn:hover {
-  background: var(--mn-bg-hover);
+  background: var(--mn-surface-2);
 }
 
 .issues-detail__parent-line-btn:focus-visible {
