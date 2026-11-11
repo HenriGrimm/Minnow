@@ -22,15 +22,13 @@ export function stripPromptFrontmatter(raw) {
 
 /**
  * @param {'builder' | 'tester' | 'final'} role
- * @param {'full' | 'lite'} [variant]
  * @returns {Promise<string>}
  */
-export async function loadRolePrompt(role, variant = 'full') {
+export async function loadRolePrompt(role) {
   if (role !== 'builder' && role !== 'tester' && role !== 'final') {
     throw new Error(`loadRolePrompt: ${String(role)} is not an agent role`);
   }
-  const file = variant === 'lite' ? 'agent.lite.md' : 'agent.full.md';
-  const raw = await fs.readFile(path.join(PROMPTS_DIR, role, file), 'utf8');
+  const raw = await fs.readFile(path.join(PROMPTS_DIR, role, 'agent.full.md'), 'utf8');
   return stripPromptFrontmatter(raw);
 }
 

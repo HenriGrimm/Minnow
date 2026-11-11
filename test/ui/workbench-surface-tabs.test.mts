@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { Window } from 'happy-dom';
 
-test('files and browser pages retain their content when moved, hidden, or split across tab groups', async () => {
+test('files and browser pages retain their content across panel changes on New thread', async () => {
   const win = new Window({ url: 'http://localhost' });
   Object.assign(globalThis, {
     window: win,
@@ -20,6 +20,7 @@ test('files and browser pages retain their content when moved, hidden, or split 
     readFileSync(new URL('../../index.html', import.meta.url), 'utf8'), 'text/html',
   );
   const stage = document.importNode(markup.getElementById('workspaceSplit')!, true) as HTMLElement;
+  stage.querySelector('#mainColumn')!.classList.add('graphite-new-thread');
   Object.defineProperty(stage, 'getClientRects', { value: () => [{}] });
   document.body.append(stage);
   const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions');

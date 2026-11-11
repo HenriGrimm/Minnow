@@ -276,7 +276,7 @@ interface RecentRowOptions {
   glyphHtml?: string;
 }
 
-function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pinned: boolean): HTMLDivElement {
+function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pinned: boolean): void {
   const actions = document.createElement('div');
   actions.className = 'welcome-page__recents-actions';
 
@@ -285,12 +285,12 @@ function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pin
     const newWindowBtn = document.createElement('button');
     newWindowBtn.type = 'button';
     newWindowBtn.className = 'welcome-page__recents-new-window';
-    newWindowBtn.textContent = 'New window';
+    newWindowBtn.append(createIcon('externalLink', { size: 14 }));
     newWindowBtn.title = `Open ${item.label} in a new window`;
     newWindowBtn.setAttribute('aria-label', `Open ${item.label} in a new window`);
     newWindowBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      void runSettingsAction(newWindowBtn, 'Opening…', () => openRecentWorkspaceInNewWindow(item.path));
+      void runSettingsAction(newWindowBtn, '', () => openRecentWorkspaceInNewWindow(item.path));
     });
     actions.appendChild(newWindowBtn);
   }
@@ -300,8 +300,9 @@ function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pin
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'welcome-page__recents-remove';
-    removeBtn.textContent = 'Remove';
-    removeBtn.setAttribute('aria-label', `Remove ${item.label} from recent workspaces`);
+    removeBtn.append(createIcon('trash', { size: 14 }));
+    removeBtn.title = `Remove ${item.label} from recent workspaces`;
+    removeBtn.setAttribute('aria-label', removeBtn.title);
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       void (async () => {
@@ -318,7 +319,6 @@ function appendTrailingActions(li: HTMLLIElement, item: WorkspaceRecentItem, pin
   }
 
   li.appendChild(actions);
-  return actions;
 }
 
 function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = {}): HTMLLIElement {
@@ -332,8 +332,22 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   glyph.setAttribute('aria-hidden', 'true');
   if (options.glyphHtml) glyph.innerHTML = options.glyphHtml;
   else {
-    glyph.classList.add('welcome-page__recents-initials');
-    glyph.textContent = item.label.trim().slice(0, 2);
+    const initials = item.label.trim().slice(0, 2);
+    glyph.textContent = initials;
+    if (item.exists && item.iconDataUrl) {
+      const icon = document.createElement('img');
+      icon.className = 'welcome-page__recents-icon';
+      icon.alt = '';
+      icon.decoding = 'async';
+      icon.hidden = true;
+      icon.addEventListener('load', () => {
+        glyph.replaceChildren(icon);
+        icon.hidden = false;
+      }, { once: true });
+      icon.addEventListener('error', () => icon.remove(), { once: true });
+      glyph.appendChild(icon);
+      icon.src = item.iconDataUrl;
+    }
   }
 
   const copy = document.createElement('span');
@@ -386,14 +400,22 @@ function createRecentRow(item: WorkspaceRecentItem, options: RecentRowOptions = 
   btn.type = 'button';
   btn.className = 'welcome-page__recents-row';
   btn.title = item.path;
+  btn.setAttribute('aria-label', `Open ${item.label}`);
 
   const action = document.createElement('span');
   action.className = 'welcome-page__recents-open';
   action.textContent = 'Open';
   action.setAttribute('aria-hidden', 'true');
   btn.append(glyph, copy, action);
-  btn.addEventListener('click', () => {
-    void runSettingsAction(btn, 'Opening workspace…', () => activateRecentWorkspace(item.path));
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      await runSettingsAction(action, 'Opening…', () => activateRecentWorkspace(item.path));
+    } finally {
+      btn.disabled = createBusy;
+      btn.removeAttribute('aria-busy');
+    }
   });
 
   li.appendChild(btn);
@@ -455,46 +477,31 @@ function decorateOpenRecentRow(
     button.title = backgrounded
       ? `${item.path} — running in the background`
       : `${item.path} — already open in another window`;
+    const actionLabel = backgrounded ? 'Show window' : 'Focus window';
+    button.setAttribute('aria-label', `${actionLabel} for ${item.label}`);
     const badge = document.createElement('span');
     badge.className = 'welcome-page__recents-badge';
     badge.textContent = stateLabel;
     const open = button.querySelector('.welcome-page__recents-open');
-    if (open) open.textContent = 'Focus window';
-    button.insertBefore(badge, open);
+    if (open) open.textContent = actionLabel;
+    button.querySelector('.welcome-page__recents-identity')?.append(badge);
   }
 
-  const newWindowBtn = row.querySelector('button.welcome-page__recents-new-window');
-  if (newWindowBtn instanceof HTMLElement) {
-    const focusLabel = backgrounded
-      ? `Show the window running ${item.label}`
-      : `Focus the window already on ${item.label}`;
-    newWindowBtn.textContent = backgrounded ? 'Show' : 'Focus';
-    newWindowBtn.title = focusLabel;
-    newWindowBtn.setAttribute('aria-label', focusLabel);
-  }
+  row.querySelector('.welcome-page__recents-new-window')?.remove();
 
   if (!window.minnow?.window?.closeWorkspace) return;
   const actions = row.querySelector('.welcome-page__recents-actions');
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'welcome-page__recents-close';
-  closeBtn.textContent = 'Close';
+  closeBtn.append(createIcon('windowClose', { size: 12 }));
   closeBtn.title = `Close ${item.label} and stop its chats and agents`;
   closeBtn.setAttribute('aria-label', `Close the window on ${item.label}`);
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     void closeRecentWorkspaceWindow(item);
   });
-  if (actions instanceof HTMLElement) {
-    const removeBtn = actions.querySelector('.welcome-page__recents-remove');
-    if (removeBtn) {
-      actions.insertBefore(closeBtn, removeBtn);
-    } else {
-      actions.appendChild(closeBtn);
-    }
-  } else {
-    row.appendChild(closeBtn);
-  }
+  actions?.prepend(closeBtn);
 }
 
 async function renderRecentsList(): Promise<void> {
@@ -506,7 +513,7 @@ async function renderRecentsList(): Promise<void> {
   }
 
   const request = ++recentsRequest;
-  const info = await fetchWorkspace();
+  const info = await fetchWorkspace({ includeIcons: true });
   const recent = info?.recent ?? [];
   const sandbox = info?.sandbox;
   const openElsewhere = await readOpenWorkspaceWindows();

@@ -11,7 +11,7 @@ import {
   type OpenWorkspaceMap,
 } from '../lib/open-workspace-windows';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
-import { closeShellOverlay, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { createIcon } from './icon';
 export type WorkspaceMenuStatusState = 'ok' | 'err' | 'spin';
 
@@ -282,7 +282,7 @@ function createRecentRow(item: WorkspaceRecentItem): HTMLLIElement {
     const newWindowBtn = document.createElement('button');
     newWindowBtn.type = 'button';
     newWindowBtn.className = 'workspace-menu__new-window';
-    newWindowBtn.textContent = alreadyOpen ? '→' : '⧉';
+    newWindowBtn.append(alreadyOpen ? '→' : createIcon('windowRestore', { size: 14 }));
     const action = alreadyOpen
       ? `Focus the window already on ${item.label}`
       : `Open ${item.label} in a new window`;
@@ -434,7 +434,6 @@ export async function toggleWorkspaceMenu(btn: HTMLButtonElement): Promise<void>
     return;
   }
 
-  closeShellOverlay();
   anchorBtn = btn;
   const menu = ensureMenu();
   const cached = getWorkspaceRecentItems();

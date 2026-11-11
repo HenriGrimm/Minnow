@@ -136,6 +136,29 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
   right: calc(var(--mn-graphite-window-inset) + var(--mn-menubar-inline-padding));
 }
 
+/* The menubar covers only the sidebar in this layout. The thread header fills the rest of the titlebar. */
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden]) {
+  position: relative;
+  user-select: none;
+}
+
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden])::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-app-region: drag;
+}
+
+/* The fixed caption buttons are outside the thread header's DOM subtree. */
+html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader:not([hidden])::before {
+  right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding));
+}
+
+html.is-electron-shell.mn-graphite-sidebar-open:not(.os-workspace-gate-open) #graphiteThreadHeader :is(button, a, input, select, textarea, [contenteditable='true']) {
+  -webkit-app-region: no-drag;
+}
+
 /* The thread header shares the titlebar row while the sidebar is open or moving. */
 html.is-electron-shell[data-platform='win32']:is(.mn-graphite-sidebar-open, .mn-graphite-sidebar-motion) #graphiteThreadHeader:not([hidden]) {
   padding-right: calc(var(--mn-window-controls-width) + var(--mn-menubar-inline-padding) + var(--mn-space-2));
@@ -595,8 +618,6 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
 
 .welcome-page__intro,
 .welcome-page__recents-search,
-.welcome-page__recents-initials,
-.welcome-page__recents-open,
 .welcome-page__recents-unavailable {
   display: none;
 }
@@ -759,10 +780,6 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
   background: transparent;
 }
 
-.mn-graphite-workspace .welcome-page__recents-item[hidden] {
-  display: none;
-}
-
 .mn-graphite-workspace .welcome-page__recents-item:is(:hover, :focus-within) {
   background: var(--mn-graphite-hover, var(--mn-surface-elevated));
 }
@@ -773,16 +790,9 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
 }
 
 .mn-graphite-workspace .welcome-page__recents-glyph {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
   border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 10px;
   background: var(--mn-graphite-raised-2, var(--mn-surface-2));
   color: var(--mn-graphite-text-muted, var(--mn-fg-muted));
-  font-size: 13px;
-  font-weight: 500;
 }
 
 .mn-graphite-workspace .welcome-page__recents-item[data-open-in-window] .welcome-page__recents-glyph {
@@ -826,14 +836,9 @@ html.is-electron-shell[data-platform='win32'].mn-graphite-sidebar-open:not(.os-w
 }
 
 .mn-graphite-workspace .welcome-page__recents-open {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding-inline: 10px;
-  border: 1px solid var(--mn-graphite-line-2, var(--mn-border-strong));
+  border-color: var(--mn-graphite-line-2, var(--mn-border-strong));
   border-radius: 7px;
   background: var(--mn-graphite-raised-2, var(--mn-surface-2));
-  font-size: 12.5px;
 }
 
 .mn-graphite-workspace .welcome-page__recents-unavailable {

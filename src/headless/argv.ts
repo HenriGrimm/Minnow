@@ -18,7 +18,6 @@ export interface HeadlessRunCliOptions {
   providerId: string | null;
   modelId: string | null;
   workspace: string | null;
-  profile: string;
   minnowHome: string | null;
   noApproval: boolean;
   json: boolean;
@@ -39,7 +38,6 @@ export interface HeadlessRunCliOptions {
   clientRequestId?: string | null;
   waitTimeoutSec?: number;
   managedModeExplicit?: boolean;
-  managedProfileExplicit?: boolean;
 }
 
 const RUN_HELP = `minnow run — execute one agent turn without the SPA
@@ -63,7 +61,6 @@ Agent / model:
 
 Environment:
   --workspace <path>    PUT /api/workspace before run (absolute or cwd-relative)
-  --profile <name>      full | lite | custom:<configId>
   --minnow-home <path>  MINNOW_HOME for --start-server child (tests)
 
 Safety:
@@ -132,7 +129,6 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       provider: { type: 'string' },
       model: { type: 'string' },
       workspace: { type: 'string' },
-      profile: { type: 'string', default: 'full' },
       'minnow-home': { type: 'string' },
       'no-approval': { type: 'boolean', default: false },
       'auto-reject-questions': { type: 'boolean', default: true },
@@ -168,18 +164,6 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
   }
 
   const serverTimeoutSec = Math.max(1, parseInt(String(values['server-timeout'] ?? '30'), 10) || 30);
-
-  const profile = String(values.profile ?? 'full').trim();
-  if (
-    profile !== 'full' &&
-    profile !== 'lite' &&
-    !profile.startsWith('custom:')
-  ) {
-    return {
-      ok: false,
-      message: '--profile must be full, lite, or custom:<configId>',
-    };
-  }
 
   const modeId = String(values.mode ?? 'build').trim().toLowerCase();
   if (modeId === 'orchestrate') {
@@ -219,7 +203,6 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       providerId: values.provider ? String(values.provider).trim() : null,
       modelId: values.model ? String(values.model).trim() : null,
       workspace: values.workspace ? String(values.workspace).trim() : null,
-      profile,
       minnowHome: values['minnow-home'] ? String(values['minnow-home']).trim() : null,
       noApproval: Boolean(values['no-approval']),
       json: Boolean(values.json),
@@ -236,7 +219,6 @@ export function parseRunArgs(argv: string[]): { ok: true; options: HeadlessRunCl
       ...(chatAction ? { chatAction: chatAction as 'send' | 'queue' | 'steer' } : {}),
       clientRequestId, waitTimeoutSec,
       managedModeExplicit: argv.some(arg => arg === '--mode' || arg.startsWith('--mode=')),
-      managedProfileExplicit: argv.some(arg => arg === '--profile' || arg.startsWith('--profile=')),
     },
   };
 }

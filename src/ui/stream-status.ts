@@ -79,22 +79,23 @@ export function createStreamStatusElement(text = STREAM_LABEL_GENERATING): HTMLD
  * Inserts a status row after the assistant label; caller owns the parent `wrap`.
  */
 export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
-  const statusEl = createStreamStatusElement();
+  const existing = wrap.querySelector<HTMLDivElement>(':scope > .stream-status');
+  const statusEl = existing ?? createStreamStatusElement();
   const labelEl = statusEl.querySelector<HTMLElement>('.stream-status__label')!;
   const elapsedEl = statusEl.querySelector<HTMLElement>('.stream-status__elapsed')!;
   const detailEl = statusEl.querySelector<HTMLElement>('.stream-status__detail')!;
 
-  const label = wrap.querySelector('.msg-label');
-  const bubble = wrap.querySelector('.msg-bubble');
-  if (bubble && bubble.parentElement === wrap) {
-    wrap.insertBefore(statusEl, bubble);
-  } else if (label) {
-    label.insertAdjacentElement('afterend', statusEl);
-  } else {
-    wrap.prepend(statusEl);
+  if (!existing) {
+    const bubble = wrap.querySelector(':scope > .msg-bubble');
+    const label = wrap.querySelector(':scope > .msg-label');
+    if (bubble) {
+      wrap.insertBefore(statusEl, bubble);
+    } else if (label) {
+      label.insertAdjacentElement('afterend', statusEl);
+    } else {
+      wrap.prepend(statusEl);
+    }
   }
-
-  wrap.dataset.streamPhase = 'generating';
 
   let disposed = false;
   let currentPhase: StreamPhase = 'generating';
@@ -145,22 +146,17 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
 
     syncPendingStreamStatusVisibility(wrap, statusEl);
     statusEl.setAttribute('aria-busy', 'true');
-    statusEl.classList.remove(
-      'stream-status--loading-model',
-      'stream-status--prompt-processing',
-      'stream-status--generating',
-      'stream-status--thinking',
-    );
-    if (phase === 'thinking') {
-      statusEl.classList.add('stream-status--thinking');
-    } else if (phase === 'loading_model') {
-      statusEl.classList.add('stream-status--loading-model');
-    } else if (phase === 'prompt_processing') {
-      statusEl.classList.add('stream-status--prompt-processing');
-    } else {
-      statusEl.classList.add('stream-status--generating');
+    const text = LABEL_BY_PHASE[phase];
+    if (labelEl.textContent !== text) {
+      statusEl.classList.remove(
+        'stream-status--loading-model',
+        'stream-status--prompt-processing',
+        'stream-status--generating',
+        'stream-status--thinking',
+      );
+      statusEl.classList.add(`stream-status--${phase.replace('_', '-')}`);
+      setActivityShimmerText(labelEl, text, '', { transition: true });
     }
-    setActivityShimmerText(labelEl, LABEL_BY_PHASE[phase]);
     wrap.dataset.streamPhase = phase;
     if (phase !== 'thinking') {
       elapsedEl.hidden = true;
@@ -175,6 +171,7 @@ export function attachStreamStatus(wrap: HTMLElement): StreamingStatusHandle {
     delete wrap.dataset.streamPhase;
   };
 
+  setPhase('generating');
   return { setPhase, setThinkingElapsed, setRuntimeDetail, dispose };
 }
 

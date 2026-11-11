@@ -1,18 +1,15 @@
 /*
- * Activity ripple — the pending-label animation for sending, thinking,
- * generating and running tools.
+ * Activity ripple for sending, thinking, generating and tool activity.
  *
  * Three layers, each on its own box so their transforms never fight:
- *   1. Entrance (the letter span): a new label rises in letter by letter,
- *      so a phase change ("Thinking…" → "Generating response…") reads as
- *      a handoff rather than a text swap.
+ *   1. Entrance (the letter span): a new label rises in letter by letter.
  *   2. Ripple (the letter's ::before): a crest travels left to right; each
  *      letter lifts a hair and catches the light as it passes.
  *   3. Bubbles (the ellipsis dots' ::before): the wave spills into the
  *      dots, which pop in one by one and drift up as they fade.
  *
- * Phases set tempo and lift: generating/sending/tools are brisk, thinking
- * is a slow swell with no trailing dots, loading barely moves.
+ * Phase changes crossfade the labels while their ripples keep running.
+ * Thinking uses a slower swell, and loading barely moves.
  */
 
 .activity-shimmer {
@@ -57,6 +54,33 @@ html[data-theme$='-light'] .activity-shimmer {
 
 .activity-shimmer__visual {
   white-space: nowrap;
+}
+
+/* A phase enters together over the outgoing text. The letters still carry the ripple. */
+.activity-shimmer__visual--incoming {
+  display: inline-block;
+  animation: activity-shimmer-handoff 200ms var(--ease-out) both;
+}
+
+.activity-shimmer__visual--incoming .activity-shimmer__char {
+  animation: none;
+}
+
+.activity-shimmer__visual--outgoing {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  pointer-events: none;
+  animation: activity-shimmer-exit 200ms var(--ease-out) forwards;
+}
+
+@keyframes activity-shimmer-handoff {
+  from { opacity: 0; transform: translateY(0.16em); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes activity-shimmer-exit {
+  to { opacity: 0; }
 }
 
 /* Layer 1: entrance */
@@ -154,6 +178,15 @@ html[data-theme$='-light'] .activity-shimmer {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .activity-shimmer__visual--incoming {
+    animation: none;
+  }
+
+  .activity-shimmer__visual--outgoing {
+    display: none;
+    animation: none;
+  }
+
   .activity-shimmer__char {
     animation: none;
   }
@@ -166,4 +199,19 @@ html[data-theme$='-light'] .activity-shimmer {
     animation: none;
     opacity: 1;
   }
+}
+
+:root[data-reduce-motion] .activity-shimmer__visual--outgoing {
+  display: none;
+  animation: none;
+}
+
+:root[data-reduce-motion] .stream-status .activity-shimmer__visual--incoming,
+:root[data-reduce-motion] .stream-status .activity-shimmer__char,
+:root[data-reduce-motion] .stream-status .activity-shimmer__char::before {
+  animation: none;
+}
+
+:root[data-reduce-motion] .stream-status .activity-shimmer__dot::before {
+  opacity: 1;
 }

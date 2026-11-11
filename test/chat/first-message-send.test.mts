@@ -2,11 +2,13 @@ import '../tools/install-dom-before-imports.mts';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
+import { setStreaming } from '../../src/app-state.ts';
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
+import { beginFirstMessageSubmission, releaseFirstMessageSubmission } from '../../src/chat/first-message-submission.ts';
 import { resetOrdinaryChatRoutingForTests } from '../../src/chat/ordinary-routing.ts';
 import { clearAttachments, getPendingAttachments, pushAttachment } from '../../src/attachments/store.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
-import { createChatStreamingRow, renderChatFromHistory } from '../../src/ui/messages.ts';
+import { appendBubble, createChatStreamingRow, renderChatFromHistory } from '../../src/ui/messages.ts';
 import { syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { applyComposerDraftForChat, handleComposerDraftInput, persistComposerDraftForChatId } from '../../src/ui/composer-draft.ts';
 
@@ -63,6 +65,7 @@ test('first message paints before delayed promotion, prevents duplicate sends an
   const dirtyBefore = getSessionDirtyTrackingForTests().dirtyChatIds;
   const started = performance.now();
   const sending = sendMessageWithTools();
+  const status = document.querySelector('.msg--sending-status > .stream-status');
   try {
     assert.match(document.querySelector('.msg.user.msg--sending')?.textContent ?? '', /Review the build/);
     assert.equal(input.value, '', 'the pending bubble and composer must never display the same text');
@@ -97,13 +100,16 @@ test('first message paints before delayed promotion, prevents duplicate sends an
   assert.equal(input.value, 'A newer draft');
   assert.equal(chat.composerDraft, 'A newer draft');
   assert.equal(document.querySelectorAll('.msg.user').length, 1, 'the local echo survives until canonical history arrives');
+  assert.ok(document.querySelector('.stream-status') === status, 'the receipt keeps the status mounted');
   chat.pendingMessageQueue = [{ id: 'accepted-first', text: 'Review the build', createdAt: 1,
     provenance: { version: 1, actor: 'human', source: 'composer', kind: 'human_message' } }];
   chat.agentPendingCommand = { commandId: 'accepted-first', state: 'accepted', held: false };
   renderChatFromHistory(chat);
   assert.equal(document.querySelectorAll('.msg.user').length, 1, 'the admission frame and local echo share the canonical command id');
+  assert.ok(document.querySelector('.stream-status') === status, 'an admission repaint keeps the status mounted');
   const stream = createChatStreamingRow(document.getElementById('chatArea')!);
-  assert.equal(document.querySelector('.msg--sending-status'), null, 'generation replaces the sending indicator');
+  assert.equal(document.querySelector('.msg--sending-status'), null, 'generation adopts the sending row');
+  assert.ok(document.querySelector('.stream-status') === status, 'the stream reuses the status');
   assert.equal(document.querySelectorAll('.stream-status').length, 1);
   assert.equal(document.querySelector('.stream-status__label')?.textContent, 'Generating response…');
   stream.streamStatus.dispose();
@@ -121,6 +127,32 @@ test('a first command that fails before writing history cannot leave a permanent
   await sendMessageWithTools();
   assert.equal(document.querySelector('.msg--sending'), null);
   assert.equal(chat.history.length, 0);
+});
+
+test('a renderer-owned first turn keeps the pending status as it commits the user bubble', () => {
+  const { chat, input, button } = setup();
+  globalThis.fetch = async () => Response.json({ runs: [] });
+  beginFirstMessageSubmission(chat, { id: 'local-send', text: input.value, createdAt: 1 });
+  renderChatFromHistory(chat);
+  const status = document.querySelector('.msg--sending-status > .stream-status');
+  assert.ok(status);
+  const text = input.value;
+  input.value = '';
+  releaseFirstMessageSubmission(chat);
+  setStreaming(true, chat.id);
+  try {
+    syncComposerFromStreamingState();
+    assert.equal(button.disabled, false, 'Stop is available during renderer setup');
+    assert.ok(document.querySelector('.stream-status') === status);
+
+    chat.history.push({ role: 'user', content: text });
+    appendBubble('user', text, { chatId: chat.id, historyIndex: 0, turnKind: 'user' });
+    assert.equal(document.querySelectorAll('.msg.user').length, 1);
+    assert.equal(document.querySelector('.msg--sending'), null);
+    const stream = createChatStreamingRow(document.getElementById('chatArea')!);
+    assert.ok(stream.wrap.querySelector('.stream-status') === status);
+    stream.streamStatus.dispose();
+  } finally { setStreaming(false, chat.id); }
 });
 
 test('a rejected first send removes the pending bubble and leaves the draft retryable', async () => {

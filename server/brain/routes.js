@@ -230,11 +230,7 @@ export async function handleBrainRequest(req, res, pathname) {
         sendJson(res, 200, { block: '', ids: [] });
         return true;
       }
-      const profile = body.profile === 'lite' ? 'lite' : 'full';
-      const maxChars =
-        profile === 'lite'
-          ? brain.maxInjectCharsLite ?? 800
-          : brain.maxInjectCharsFull ?? 8000;
+      const maxChars = brain.maxInjectCharsFull ?? 8000;
       const { block, ids, hits } = await retrieveBrainBlockHybrid(
         {
           query: body.query,

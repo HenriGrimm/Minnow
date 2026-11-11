@@ -42,11 +42,8 @@ function walkMarkdown(dir) {
 describe('orchestrate prompts after P4-C', () => {
   test('mode prompts say Orchestrate opens a board, not a planner chat', () => {
     const full = fs.readFileSync(path.join(PROMPTS_ROOT, 'modes', 'orchestrate.full.md'), 'utf8');
-    const lite = fs.readFileSync(path.join(PROMPTS_ROOT, 'modes', 'orchestrate.lite.md'), 'utf8');
     assert.match(full, /board, not a chat/i);
-    assert.match(lite, /board, not a chat/i);
     assert.doesNotMatch(full, FORBIDDEN_DEPENDS_ON_EMPTY);
-    assert.doesNotMatch(lite, FORBIDDEN_DEPENDS_ON_EMPTY);
   });
 
   test('prompt corpus does not name deleted board tools or the empty-dependsOn workaround', () => {
@@ -71,7 +68,7 @@ describe('orchestrate prompts after P4-C', () => {
   });
 
   test('board builders are not instructed to use renderer-only todo tools', () => {
-    for (const variant of ['agent.full.md', 'agent.lite.md']) {
+    for (const variant of ['agent.full.md']) {
       const body = fs.readFileSync(path.join(SERVER_PROMPTS, 'builder', variant), 'utf8');
       assert.doesNotMatch(body, /todo_write|progress todos/i, variant);
     }

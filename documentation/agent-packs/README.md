@@ -7,7 +7,6 @@ Drop-in work agent bundles for Minnow. Copy a folder to:
   manifest.json
   prompts/
     my-agent.full.md
-    my-agent.lite.md
 ```
 
 ## Manifest
@@ -16,7 +15,7 @@ See [`src/agents/schema/agent-pack.schema.json`](../../src/agents/schema/agent-p
 
 - **Pack id** must match the folder name (`^[a-z][a-z0-9-]{0,63}$`).
 - **Agent ids** are namespaced as `packId.agentKey` (e.g. `security.auditor`).
-- **Prompt paths** are relative to the pack root; path traversal is rejected at scan time.
+- **`prompts.full`** points to the agent prompt. Paths are relative to the pack root; path traversal is rejected at scan time.
 - **Tool names** must exist in the built-in tool catalog.
 
 ## Enable / disable
@@ -47,4 +46,4 @@ Pack agents are merged into `GET /api/work-agents` with `source: "pack"`.
 
 On first `npm start`, `~/.minnow/agent-packs/_template/` is created (ignored by the scanner). Copy it to a new id without the leading underscore.
 
-In the app: **Settings → Agents → Agent packs → Download template** (`GET /api/agent-packs/template`) saves `minnow-agent-pack-template.zip` with a starter `manifest.json` and example prompts. **Download default pack** (`GET /api/agent-packs/builtin`) exports the shipped work agents as `minnow-default-agent-pack.zip` (`minnow/` folder, agents appear as `minnow.<key>` when installed). **Upload pack** (`POST /api/agent-packs/upload`, multipart field `file`) installs a `.zip` archive: the server finds `manifest.json` (at the zip root or inside one folder), writes files to `~/.minnow/agent-packs/<manifest.id>/`, and returns validation status.
+In the app: **Settings → Agents → Agent packs → Download template** (`GET /api/agent-packs/template`) saves `minnow-agent-pack-template.zip` with a starter `manifest.json` and an example prompt. **Download default pack** (`GET /api/agent-packs/builtin`) exports the shipped work agents as `minnow-default-agent-pack.zip` (`minnow/` folder, agents appear as `minnow.<key>` when installed). **Upload pack** (`POST /api/agent-packs/upload`, multipart field `file`) installs a `.zip` archive: the server finds `manifest.json` (at the zip root or inside one folder), writes files to `~/.minnow/agent-packs/<manifest.id>/`, and returns validation status.

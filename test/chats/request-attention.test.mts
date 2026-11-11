@@ -63,7 +63,7 @@ afterEach(() => { dispose?.(); dispose = undefined; resetQuestionCardsModalForTe
 test('interrupted work requires an inspection and a nonempty observation before retirement', async () => {
   const owner = chat('recovery-ui'), area = setup([owner]);
   const normalFetch = globalThis.fetch;
-  const review = { executionId: 'stopped-turn', revision: 'review', checkout: 'C:/fixture', ownerReleased: true,
+  const review = { executionId: 'stopped-turn', revision: 'review', checkout: 'C:/fixture', ownerReleased: false,
     checkpoints: [{ checkpointId: 'write', cwd: 'C:/fixture', pre: { sha: 'saved-baseline' } }],
     operations: [{ invocationId: 'write', toolName: 'apply_patch', targets: ['effect.txt'], receiptId: null }] };
   globalThis.fetch = async (url, options) => {

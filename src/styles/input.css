@@ -134,7 +134,7 @@
   background: transparent;
 }
 
-.input-wrap--inset-actions #msgInput {
+.input-wrap--inset-actions :is(#msgInput, .composer-textarea) {
   width: 100%;
   box-sizing: border-box;
   border: none;
@@ -142,8 +142,7 @@
   background: transparent;
 }
 
-.input-wrap--inset-actions #msgInput:focus,
-.input-wrap--inset-actions #msgInput:focus-visible {
+.input-wrap--inset-actions :is(#msgInput, .composer-textarea):is(:focus, :focus-visible) {
   border: none;
   box-shadow: none;
 }

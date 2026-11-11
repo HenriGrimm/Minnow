@@ -13,6 +13,7 @@ export interface SurfaceAvailability {
   available: boolean;
   reason?: string;
   hint?: string;
+  diffStats?: { additions: number; deletions: number };
   tabCount?: number;
 }
 
@@ -32,6 +33,7 @@ export interface SurfaceDefinition {
   description: string;
   icon: IconName;
   key: string;
+  action?: { id: LauncherSurfaceId; label: string; icon: IconName; target?: unknown };
 }
 
 export interface ContentTabLabel {
@@ -67,7 +69,8 @@ export const SURFACE_GROUPS: ReadonlyArray<{
 }> = [
   {
     id: 'workspace', label: 'Workspace tools', items: [
-      { id: 'changes', label: 'Diff', description: 'Inspect changes', icon: 'gitGraph', key: 'D' },
+      { id: 'changes', label: 'Diff', description: 'Inspect changes', icon: 'gitGraph', key: 'D',
+        action: { id: 'changes', label: 'Open workspace diff', icon: 'gitWorktree', target: { kind: 'workspace' } } },
       { id: 'terminal', label: 'Terminal', description: 'Run commands', icon: 'terminal', key: 'T' },
       { id: 'files', label: 'Files', description: 'Browse project files', icon: 'fileText', key: 'F' },
       { id: 'preview', label: 'Browser', description: 'Preview a page', icon: 'browser', key: 'B' },
@@ -77,9 +80,15 @@ export const SURFACE_GROUPS: ReadonlyArray<{
     id: 'thread', label: 'This thread', items: [
       { id: 'agents', label: 'Agents', description: 'Track subagents', icon: 'appAgentActivity', key: 'A' },
       { id: 'pr', label: 'Pull request', description: 'Review the linked PR', icon: 'pullRequest', key: 'P' },
-      { id: 'issue', label: 'Issue', description: 'View the linked issue', icon: 'appIssues', key: 'I' },
+      { id: 'issue', label: 'Issue', description: 'View the linked issue', icon: 'appIssues', key: 'I',
+        action: { id: 'issues', label: 'Open issues', icon: 'slashPlan' } },
       { id: 'side', label: 'Side chat', description: 'Ask a quick question', icon: 'comment', key: 'S' },
     ],
   },
 ];
 export const SURFACES = SURFACE_GROUPS.flatMap(group => group.items);
+export const SURFACE_TABS: ReadonlyArray<Pick<SurfaceDefinition, 'id' | 'label' | 'icon'> & { key?: string }> = [
+  ...SURFACES,
+  { id: 'issues', label: 'Issues', icon: 'appIssues' },
+  { id: 'review', label: 'Review', icon: 'gitGraph' },
+];

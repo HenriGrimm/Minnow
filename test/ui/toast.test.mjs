@@ -18,6 +18,16 @@ afterEach(() => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('toast', () => {
+  test('phone toasts mount in the phone shell', () => {
+    const shell = document.createElement('div');
+    shell.id = 'mobileShell';
+    document.body.append(shell);
+
+    showToast('Cannot reach providers', 'error');
+
+    assert.ok(shell.querySelector(':scope > .mn-toast-stack'));
+  });
+
   test('ordinary feedback is politely announced and times out', async () => {
     showToast('Committed changes', 'success', 15);
     assert.equal(document.querySelector('.mn-toast__message').textContent, 'Committed changes');

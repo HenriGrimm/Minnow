@@ -51,8 +51,7 @@
           "additionalProperties": false,
           "required": ["full"],
           "properties": {
-            "full": { "type": "string", "minLength": 1 },
-            "lite": { "type": "string", "minLength": 1 }
+            "full": { "type": "string", "minLength": 1 }
           }
         },
         "providerId": { "type": ["string", "null"] },

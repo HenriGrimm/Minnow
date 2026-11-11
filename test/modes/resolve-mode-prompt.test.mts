@@ -7,56 +7,32 @@ import { describe, test } from 'node:test';
 import { resolveModePromptPath } from '../../src/chat/modes/registry.ts';
 
 describe('resolveModePromptPath', () => {
-  test('general full', () => {
+  test('general', () => {
     assert.ok(
-      resolveModePromptPath('general', 'full').endsWith('modes/general.full.md'),
+      resolveModePromptPath('general').endsWith('modes/general.full.md'),
     );
   });
 
-  test('general lite', () => {
+  test('email remaps to the general prompt file', () => {
+    assert.ok(resolveModePromptPath('email').endsWith('modes/general.full.md'));
+  });
+
+  test('build', () => {
+    assert.ok(resolveModePromptPath('build').endsWith('modes/build.full.md'));
+  });
+
+  test('plan', () => {
+    assert.ok(resolveModePromptPath('plan').endsWith('modes/plan.full.md'));
+  });
+
+  test('orchestrate', () => {
     assert.ok(
-      resolveModePromptPath('general', 'lite').endsWith('modes/general.lite.md'),
+      resolveModePromptPath('orchestrate').endsWith('modes/orchestrate.full.md'),
     );
   });
 
-  test('email remaps to general prompt files', () => {
-    assert.ok(resolveModePromptPath('email', 'full').endsWith('modes/general.full.md'));
-    assert.ok(resolveModePromptPath('email', 'lite').endsWith('modes/general.lite.md'));
+  test('debug', () => {
+    assert.ok(resolveModePromptPath('debug').endsWith('modes/debug.full.md'));
   });
 
-  test('build full', () => {
-    assert.ok(resolveModePromptPath('build', 'full').endsWith('modes/build.full.md'));
-  });
-
-  test('build lite', () => {
-    assert.ok(resolveModePromptPath('build', 'lite').endsWith('modes/build.lite.md'));
-  });
-
-  test('plan full', () => {
-    assert.ok(resolveModePromptPath('plan', 'full').endsWith('modes/plan.full.md'));
-  });
-
-  test('plan lite', () => {
-    assert.ok(resolveModePromptPath('plan', 'lite').endsWith('modes/plan.lite.md'));
-  });
-
-  test('orchestrate full', () => {
-    assert.ok(
-      resolveModePromptPath('orchestrate', 'full').endsWith('modes/orchestrate.full.md'),
-    );
-  });
-
-  test('orchestrate lite', () => {
-    assert.ok(
-      resolveModePromptPath('orchestrate', 'lite').endsWith('modes/orchestrate.lite.md'),
-    );
-  });
-
-  test('debug full', () => {
-    assert.ok(resolveModePromptPath('debug', 'full').endsWith('modes/debug.full.md'));
-  });
-
-  test('debug lite', () => {
-    assert.ok(resolveModePromptPath('debug', 'lite').endsWith('modes/debug.lite.md'));
-  });
 });

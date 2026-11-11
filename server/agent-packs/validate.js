@@ -98,14 +98,6 @@ export function validatePackManifest(manifest, packRoot, builtinAgentIds) {
         errors.push(`Agent ${key}: ${message}`);
       }
     }
-    if (promptObj.lite !== undefined && typeof promptObj.lite === 'string' && promptObj.lite.trim()) {
-      try {
-        resolvePackPromptPath(packRoot, promptObj.lite);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`Agent ${key} lite: ${message}`);
-      }
-    }
 
     const allowedTools = entry.allowedTools;
     if (allowedTools !== undefined && allowedTools !== null) {

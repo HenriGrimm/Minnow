@@ -72,7 +72,7 @@ async function runOneCell(params: {
   const config = await fetchEvalConfig();
   const tools = resolveEvalTaskTools(task, params.modeId);
   const taskSystem = task.systemPrompt?.trim() || 'You are running an offline eval task. Follow the user prompt precisely.';
-  const sharedSystem = task.toolFixtures ? composeSystemPrompt({ profile: 'full', cwd: params.workspacePath,
+  const sharedSystem = task.toolFixtures ? composeSystemPrompt({ cwd: params.workspacePath,
     modeId: params.modeId, expertId: null, workAgentId: null, skillBody: null, memoryBlock: null,
     codeMapBlock: null, contextDocumentsBlock: null, infoPresetId: 'general-assistant',
     flaticonIconGuidanceEnabled: false, enabledToolIds: tools.map(tool => tool.function.name) }) : '';

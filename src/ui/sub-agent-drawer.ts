@@ -9,7 +9,6 @@ import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome
 import type { SubAgentStructuredOutcome } from '../agents/sub-agent-structured-outcome';
 import type { PersistedSubAgentRun } from '../types';
 import { resolveSubAgentOverlayMount } from './chat-mount';
-import { appendTranscriptLiveTail } from './transcript-view';
 import { subAgentLiveStatusLine, subAgentTranscriptLiveFromRun } from './sub-agent-live-status';
 import { createIcon, type IconName } from './icon';
 import { setAssistantBubbleContent } from '../markdown/renderer';
@@ -18,18 +17,13 @@ import { getAgentConversationsCapabilitySync, loadAgentConversationsCapability }
 import { continueLegacyAgentChat } from '../chat/legacy-chat-continue';
 import { showToast } from './toast';
 import { subAgentTitle } from './sub-agent-title';
-import {
-  formatSubAgentProse, renderSubAgentConversation, subAgentFinalResponse,
-  type SubAgentConversationDisclosures,
-} from './sub-agent-conversation';
+import { createEmbeddedChatTranscript } from './embedded-chat-transcript';
+import { createLegacySubAgentTranscript, subAgentFinalResponse } from './sub-agent-conversation';
 
 type AnyRun = SubAgentRun | PersistedSubAgentRun;
 type View = 'conversation' | 'result';
 interface RunView {
   tab: View;
-  thoughts: Map<string, boolean>;
-  tools: Map<string, boolean>;
-  groups: Map<string, boolean>;
   scroll: number;
   assignmentOpen: boolean;
 }
@@ -56,7 +50,8 @@ interface OverlayState {
   details: HTMLElement;
   footer: HTMLElement;
   views: Map<string, RunView>;
-  transcriptKey: string | null;
+  conversation: ReturnType<typeof createEmbeddedChatTranscript>;
+  renderConversation: ReturnType<typeof createLegacySubAgentTranscript>;
   resultKey: string | null;
   footerKey: string | null;
   switcherKey: string | null;
@@ -114,7 +109,7 @@ function action(label: string, icon?: IconName): HTMLButtonElement {
 function viewFor(state: OverlayState): RunView {
   let view = state.views.get(state.activeRunId);
   if (!view) {
-    view = { tab: 'conversation', thoughts: new Map(), tools: new Map(), groups: new Map(), scroll: 0, assignmentOpen: false };
+    view = { tab: 'conversation', scroll: 0, assignmentOpen: false };
     state.views.set(state.activeRunId, view);
   }
   return view;
@@ -282,6 +277,7 @@ function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'st
   if (run.toolTurns) state.meta.appendChild(el('span', '', `${run.toolTurns} tool ${run.toolTurns === 1 ? 'call' : 'calls'}`));
   state.promptText.textContent = run.task || 'No assignment was recorded.';
   state.assignment.open = view.assignmentOpen;
+  state.assignment.hidden = view.tab === 'conversation';
   state.details.textContent = `Run ${run.runId}${run.startedAt ? ` · Started ${new Date(run.startedAt).toLocaleString()}` : ''}${run.endedAt ? ` · Ended ${new Date(run.endedAt).toLocaleString()}` : ''}${'modelId' in run && run.modelId ? ` · ${run.modelId}` : ''}`;
   if ('modelSource' in run && run.modelSource) state.details.textContent += ` · ${({ parent: 'Following parent', routing: 'Sub-agent routing', type: 'Type override', explicit: 'Explicit model' } as Record<string, string>)[run.modelSource] || 'Recorded model'}`;
   if (run.resolvedModel && run.resolvedModel.id !== run.modelId) state.details.textContent += ` · Ran on ${run.resolvedModel.id}`;
@@ -296,59 +292,20 @@ function renderActiveRun(state: OverlayState, scroll: 'initial' | 'sticky' = 'st
 
   const active = run as SubAgentRun;
   const error = active.startError?.message || run.error;
-  state.notice.hidden = !error && run.status !== 'queued' && run.status !== 'cancelled';
-  const notice = error || (run.status === 'queued' ? 'Waiting for an available agent slot. The conversation will appear when this agent starts.' : run.status === 'cancelled' ? 'Agent stopped. Its available thoughts, responses and tool activity are preserved below.' : '');
+  const notice = error || (run.status === 'queued' ? 'Waiting for an available agent slot.'
+    : run.status === 'cancelled' ? 'Stopped. Finished steps are kept.'
+    : !run.messages.length && !live && state.loadingRunId === run.runId ? 'Loading conversation…' : '');
+  state.notice.hidden = !notice;
   if (state.notice.textContent !== notice) state.notice.textContent = notice;
   state.notice.classList.toggle('sub-agent-overlay__notice--error', Boolean(error));
 
   const liveTail = subAgentTranscriptLiveFromRun(run, live);
-  const disclosures: SubAgentConversationDisclosures = {
-    groups: view.groups,
-    isThoughtExpanded: (key) => view.thoughts.get(key) ?? true,
-    onThoughtExpandedChange: (key, value) => view.thoughts.set(key, value),
-    isToolExpanded: (key) => view.tools.get(key) ?? false,
-    onToolExpandedChange: (key, value) => view.tools.set(key, value),
-  };
-  if (liveTail) {
-    liveTail.thoughtsExpanded = view.thoughts.get('live') ?? true;
-    liveTail.onThoughtsExpandedChange = (open) => view.thoughts.set('live', open);
-  }
-  // Patch a growing thought in place. Equal-length hydrated corrections must
-  // still invalidate every other settled message in the conversation.
-  const last = run.messages.length - 1;
-  const key = JSON.stringify([run.status, liveTail?.phase, run.messages.map((raw, i) => {
-    if (i !== last || liveTail?.phase !== 'thinking' || !raw || typeof raw !== 'object') return raw;
-    const row = raw as Record<string, unknown>;
-    return { ...row, reasoning: row.reasoning ? true : undefined, reasoning_content: row.reasoning_content ? true : undefined };
-  })]);
-  if (state.transcriptKey !== key) {
-    state.transcriptKey = key;
-    renderSubAgentConversation(state.transcriptBody, run.messages, liveTail, run.status, disclosures);
-  } else {
-    appendTranscriptLiveTail(state.transcriptBody, liveTail, run.messages);
-    formatSubAgentProse(state.transcriptBody, liveTail?.partialText);
-  }
-  if (!run.messages.length && !liveTail && state.transcriptBody.childElementCount === 0) {
-    state.transcriptBody.appendChild(el('p', 'sub-agent-overlay__empty', state.loadingRunId === run.runId ? 'Loading conversation…' : run.status === 'queued' ? 'No messages yet.' : 'No conversation was recorded for this run.'));
-  }
+  state.renderConversation(run, liveTail);
   const resultKey = JSON.stringify([run.status, run.summary, run.structuredOutcome, run.budgetEvents, subAgentFinalResponse(run.messages)]);
   if (state.resultKey !== resultKey) {
     state.resultKey = resultKey;
     renderResult(state.structuredRoot, run);
   }
-  let fallback = state.transcriptBody.querySelector<HTMLElement>('.sub-agent-conversation__reported-result');
-  const fallbackText = terminal(run.status) && !subAgentFinalResponse(run.messages) ? resolveOutcome(run)?.summary : '';
-  if (fallbackText) {
-    state.transcriptBody.querySelector('.sub-agent-overlay__empty')?.remove();
-    if (!fallback) { fallback = el('section', 'sub-agent-conversation__reported-result'); state.transcriptBody.appendChild(fallback); }
-    if (fallback.dataset.text !== fallbackText) {
-      fallback.dataset.text = fallbackText;
-      fallback.replaceChildren(el('h3', 'sub-agent-conversation__speaker', run.status === 'completed' ? 'Final response' : 'Reported result'));
-      const prose = el('div', 'sub-agent-overlay__answer');
-      setAssistantBubbleContent(prose, fallbackText);
-      fallback.appendChild(prose);
-    }
-  } else fallback?.remove();
   renderFooter(state, run, live);
   renderSwitcher(state);
   if (scroll === 'initial') state.scroll.scrollTop = view.scroll || (live ? state.scroll.scrollHeight : 0);
@@ -360,7 +317,6 @@ async function loadTranscript(state: OverlayState, runId: string): Promise<void>
   await hydrateSubAgentTranscript(runId);
   if (overlay !== state || state.activeRunId !== runId) return;
   state.loadingRunId = null;
-  state.transcriptKey = null;
   renderActiveRun(state);
 }
 function setActiveRun(runId: string): void {
@@ -370,7 +326,8 @@ function setActiveRun(runId: string): void {
   if (childChatId) { closeSubAgentDrawer(); void import('../os/chat-launch').then(module => module.launchCodeWithChat(childChatId)); return; }
   viewFor(state).scroll = state.scroll.scrollTop;
   state.activeRunId = runId;
-  state.transcriptKey = state.resultKey = state.footerKey = null;
+  state.conversation.reset();
+  state.resultKey = state.footerKey = null;
   renderActiveRun(state, 'initial');
   void loadTranscript(state, runId);
 }
@@ -406,6 +363,7 @@ export function closeSubAgentDrawer(): void {
   overlay = null;
   document.removeEventListener('keydown', state.onKey, true);
   if (state.refreshFrame != null && state.refreshFrame >= 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.refreshFrame);
+  state.conversation.dispose();
   state.root.remove();
   if (state.returnFocus?.isConnected) state.returnFocus.focus();
 }
@@ -509,7 +467,9 @@ function mountSubAgentDrawer(runId: string, chatId: string): void {
   assignment.addEventListener('toggle', () => { if (overlay) viewFor(overlay).assignmentOpen = assignment.open; });
   const notice = el('div', 'sub-agent-overlay__notice');
   notice.setAttribute('role', 'status');
-  const transcriptBody = el('div', 'sub-agent-overlay__body');
+  const transcriptBody = el('div', 'sub-agent-overlay__body chat-thread');
+  const conversation = createEmbeddedChatTranscript(transcriptBody, scroll);
+  const renderConversation = createLegacySubAgentTranscript(conversation, findChatById(chatId)?.workspacePath ?? '');
   const structuredRoot = el('div', 'sub-agent-overlay__structured');
   const runDetails = el('details', 'sub-agent-overlay__run-details');
   const details = el('p', 'sub-agent-overlay__run-id');
@@ -526,7 +486,7 @@ function mountSubAgentDrawer(runId: string, chatId: string): void {
   overlay = { root, sheet, chatId, activeRunId: runId, expanded: false, returnFocus, onKey,
     switcher, mobileSelect, count, title, meta, assignment, promptText, scroll, tabs,
     structuredRoot, transcriptBody, notice, details, footer, views: new Map(),
-    transcriptKey: null, resultKey: null, footerKey: null, switcherKey: null, loadingRunId: runId, refreshFrame: null };
+    conversation, renderConversation, resultKey: null, footerKey: null, switcherKey: null, loadingRunId: runId, refreshFrame: null };
   renderActiveRun(overlay, 'initial');
   requestAnimationFrame(() => root.classList.add('is-open'));
   close.focus();

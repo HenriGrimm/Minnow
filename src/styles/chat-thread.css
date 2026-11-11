@@ -168,8 +168,6 @@
   :scope.chat-thread .tool-call-batch__status,
   :scope.chat-thread .tool-call-batch__counts { display: none; }
   :scope.chat-thread .tool-call-batch__label { font-size: 13px; font-weight: 500; color: var(--mn-fg); }
-  /* Failure shows on the dot and the chips; the heading stays readable. */
-  :scope.chat-thread .tool-call-batch--fail .tool-call-batch__label { color: var(--mn-fg); }
   :scope.chat-thread .tool-call-batch__chevron { color: var(--mn-fg-subtle); }
   :scope.chat-thread .tool-call-batch__body { gap: 0; padding: 4px 0 0; }
 }
@@ -200,7 +198,6 @@
   line-height: 1.4;
   white-space: nowrap;
 }
-.tool-call-batch__chip--fail { color: var(--mn-danger-ink); }
 .tool-call-batch__chip--more { color: var(--mn-fg-subtle); }
 
 /* ── Timeline: each step owns a dot; consecutive steps share a rail ── */
@@ -216,10 +213,7 @@
   margin-top: 0;
   gap: 9px;
 }
-.chat-thread > .chat-step--joined + .chat-step,
-/* A card's hidden spawn row sits between it and the step above. */
-.chat-thread > .chat-step--joined + .tool-call-msg--delegated + .chat-step,
-.chat-thread > .chat-step--joined + .tool-call-batch--delegated + .chat-step { margin-top: calc(var(--chat-step-gap) - var(--chat-block-gap)); }
+.chat-thread > .chat-step--continued { margin-top: calc(var(--chat-step-gap) - var(--chat-block-gap)); }
 .chat-thread > .chat-step::before {
   content: '';
   position: absolute;
@@ -242,8 +236,6 @@
   width: 1px;
   background: var(--mn-border-strong);
 }
-.chat-thread > .chat-step.tool-call-msg--fail::before,
-.chat-thread > .chat-step.tool-call-batch--fail::before,
 .chat-thread > .chat-step.sub-agent-card[data-status='failed']::before { border-color: var(--mn-danger-ink); }
 /* Keep the active marker the same size as settled steps; the spinner carries motion. */
 .chat-thread > .chat-step.tool-call-batch--running::before,
@@ -300,7 +292,6 @@
 .chat-work__detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-work__detail:not(:empty)::before { content: '· '; }
 .chat-work__item + .chat-work__item::before { content: ' · '; }
-.chat-work__failed { color: var(--mn-danger-ink); }
 .chat-work__activity { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--mn-fg-muted); }
 .chat-work__activity:empty { display: none; }
 

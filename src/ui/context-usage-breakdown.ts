@@ -1,12 +1,8 @@
 import { escapeHtml } from '../issues/markdown-inline';
 import { iconHtml } from './icon';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 import { showToast } from './toast';
 import type { ContextBudget, ContextUsageSection } from '../chat/context-usage';
-import {
-  getPromptMetaSettingsSync,
-  savePromptMetaSettings,
-  type PromptProfileName,
-} from '../config/prompt-meta';
 import { formatStatCount } from '../usage/format-stat-count';
 
 import {
@@ -19,14 +15,8 @@ import {
 
 let panelOpen = false;
 let openSurface: ContextUsageSurface | null = null;
-const boundProfilePanels = new WeakSet<HTMLElement>();
+const boundPanels = new WeakSet<HTMLElement>();
 let panelHome: { parent: Node; next: ChildNode | null } | null = null;
-
-const PROFILE_TABS: { id: PromptProfileName; label: string }[] = [
-  { id: 'full', label: 'Full' },
-  { id: 'lite', label: 'Lite' },
-  { id: 'custom', label: 'Custom' },
-];
 
 function formatTokens(n: number): string {
   if (!Number.isFinite(n) || n < 0) return '—';
@@ -38,38 +28,10 @@ function formatUsedTokens(budget: ContextBudget): string {
   return budget.isEstimate ? `~${count}` : count;
 }
 
-function maxSectionTokens(sections: ContextUsageSection[]): number {
-  let max = 1;
-  for (const section of sections) {
-    if (section.tokens > max) max = section.tokens;
-  }
-  return max;
-}
-
-/** Bar width: each section's share of total used tokens (fallback: largest section). */
-function sectionFillScale(
-  sectionTokens: number,
-  usedTotal: number,
-  scaleMax: number,
-): number {
-  const denom = usedTotal > 0 ? usedTotal : scaleMax;
-  if (denom <= 0) return 0;
-  return Math.min(1, sectionTokens / denom);
-}
-
-function renderSectionRow(
-  section: ContextUsageSection,
-  usedTotal: number,
-  scaleMax: number,
-): string {
-  const fill = sectionFillScale(section.tokens, usedTotal, scaleMax);
-  const inFlight = section.key === 'inFlight';
+function renderSectionRow(section: ContextUsageSection): string {
   return `
     <div class="context-usage-row" role="listitem" data-section="${section.key}">
       <span class="context-usage-row__label">${escapeHtml(section.label)}</span>
-      <div class="context-usage-row__track" aria-hidden="true">
-        <div class="context-usage-row__fill${inFlight ? ' is-in-flight' : ''}" style="--fill-scale: ${fill.toFixed(4)}"></div>
-      </div>
       <span class="context-usage-row__count">~${formatTokens(section.tokens)}</span>
     </div>`;
 }
@@ -85,72 +47,15 @@ function renderSummary(budget: ContextBudget): string {
   const fill = limit ? Math.min(1, budget.used / limit) : 0;
   const mark = limit && budget.compressAtTokens != null
     ? `<div class="context-usage-breakdown__gauge-mark" style="--mark-scale: ${Math.min(1, budget.compressAtTokens / limit)}"></div>` : '';
-  const compaction = budget.compressAtTokens != null
-    ? `Auto-compact at <strong>${formatTokens(budget.compressAtTokens)}</strong>`
-    : 'Automatic compaction unavailable';
-  return `<section class="context-usage-breakdown__summary${warn ? ' is-warn' : ''}" aria-label="Current context usage" title="${budget.isEstimate ? 'Context size uses character-based token estimates.' : 'Context size uses provider-reported context or the latest request, plus pending input.'} Section counts are estimates.">
+  return `<section class="context-usage-breakdown__summary${warn ? ' is-warn' : ''}" aria-label="Current context usage" title="${budget.isEstimate ? 'Estimated context usage' : 'Reported context usage plus pending input'}">
     <div class="context-usage-breakdown__summary-stats">
-      <div class="context-usage-breakdown__summary-stat">
-        <span class="context-usage-breakdown__summary-value">${formatUsedTokens(budget)} <span>tokens used</span></span>
-        <span class="context-usage-breakdown__summary-label">${limit != null ? `of ${formatTokens(limit)} available` : 'Context window unknown'}</span>
-      </div>
-      <span class="context-usage-breakdown__gauge-pct">${budget.percent != null ? `${budget.percent}%` : '—'}</span>
+      <span><strong>${formatUsedTokens(budget)}</strong> ${limit != null ? `of ${formatTokens(limit)} tokens` : 'tokens used'}</span>
+      <span class="context-usage-breakdown__gauge-pct">${budget.percent != null ? `${budget.percent}%` : 'Limit unknown'}</span>
     </div>
-    <div class="context-usage-breakdown__gauge-track" aria-hidden="true">
+    ${limit ? `<div class="context-usage-breakdown__gauge-track" aria-hidden="true">
       <div class="context-usage-breakdown__gauge-fill" style="--fill-scale: ${fill}"></div>${mark}
-    </div>
-    <div class="context-usage-breakdown__summary-foot">
-      <span>${budget.remaining != null ? `<strong>${budget.isEstimate ? '~' : ''}${formatTokens(budget.remaining)}</strong> free` : 'Compaction disabled'}</span>
-      <span>${compaction}</span>
-    </div>
+    </div>` : ''}
   </section>`;
-}
-
-function renderProfileTabs(active: PromptProfileName): string {
-  const buttons = PROFILE_TABS.map(
-    (tab) =>
-      `<button type="button" class="context-usage-breakdown__profile-tab${
-        active === tab.id ? ' is-active' : ''
-      }" data-context-profile="${tab.id}" aria-pressed="${active === tab.id}" title="${tab.id === 'full' ? 'Complete system instructions' : tab.id === 'lite' ? 'Shorter system instructions' : 'Your custom system instructions'}">${tab.label}</button>`,
-  ).join('');
-  return `<div class="context-usage-breakdown__profile-tabs" role="group" aria-label="Prompt profile">${buttons}</div>`;
-}
-
-/** Keep Settings → Prompts profile tabs in sync when switching from the breakdown. */
-function syncSettingsProfileTabs(profile: PromptProfileName): void {
-  document.querySelectorAll('[data-profile-tab]').forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.classList.toggle('is-active', el.dataset.profileTab === profile);
-  });
-}
-
-function paintProfileTabStates(profile: PromptProfileName): void {
-  document.querySelectorAll('[data-context-profile]').forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.classList.toggle('is-active', el.dataset.contextProfile === profile);
-    el.setAttribute('aria-pressed', String(el.dataset.contextProfile === profile));
-  });
-}
-
-async function handleProfileTabSelect(profile: PromptProfileName): Promise<void> {
-  const current = getPromptMetaSettingsSync().activePromptProfile;
-  if (profile === current) return;
-
-  await savePromptMetaSettings({ activePromptProfile: profile });
-  syncSettingsProfileTabs(profile);
-  paintProfileTabStates(profile);
-
-  const { refreshContextUsageRing } = await import('./context-usage-ring');
-  refreshContextUsageRing();
-
-  const { schedulePromptTokenEstimateRefresh } = await import('./settings-prompt-estimate');
-  schedulePromptTokenEstimateRefresh();
-
-  const settingsRoot = document.getElementById('settingsView');
-  if (settingsRoot?.classList.contains('is-open')) {
-    const { refreshSettingsSection } = await import('./settings-sections');
-    await refreshSettingsSection('prompting');
-  }
 }
 
 /** Compact now: the same manual checkpoint `/compact` writes (no completion call). */
@@ -189,7 +94,7 @@ async function handleCompactNow(button: HTMLButtonElement): Promise<void> {
   }
 }
 
-function handleProfileTabClick(event: Event): void {
+function handlePanelClick(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target.closest('[data-context-action="close"]')) {
@@ -204,22 +109,17 @@ function handleProfileTabClick(event: Event): void {
     void handleCompactNow(action);
     return;
   }
-  const tab = target.closest('[data-context-profile]') as HTMLButtonElement | null;
-  if (!tab) return;
-  event.stopPropagation();
-
-  const profile = tab.dataset.contextProfile;
-  if (profile !== 'full' && profile !== 'lite' && profile !== 'custom') return;
-  void handleProfileTabSelect(profile);
 }
 
-/** Bind profile tab clicks on breakdown panels (idempotent per panel). */
-export function bindContextUsageProfileTabs(): void {
+/** Bind breakdown controls once per panel. */
+export function bindContextUsageBreakdownControls(): void {
   for (const surface of listContextUsageSurfaces()) {
     const panel = getContextUsageBreakdownPanel(surface);
-    if (!panel || boundProfilePanels.has(panel)) continue;
-    panel.addEventListener('click', handleProfileTabClick);
-    boundProfilePanels.add(panel);
+    if (!panel || boundPanels.has(panel)) continue;
+    panel.addEventListener('click', handlePanelClick);
+    // Native disclosure toggles do not bubble.
+    panel.addEventListener('toggle', positionContextPanel, true);
+    boundPanels.add(panel);
   }
 }
 
@@ -228,10 +128,8 @@ function sectionVisible(section: ContextUsageSection): boolean {
   return section.key === 'codeMap' || section.key === 'contextDocuments';
 }
 
-function renderPanelBody(budget: ContextBudget): string {
-  const visibleSections = budget.breakdown.filter(sectionVisible);
-  const scaleMax = maxSectionTokens(visibleSections);
-  const rows = visibleSections.map(section => renderSectionRow(section, budget.used, scaleMax)).join('');
+function renderDetails(budget: ContextBudget): string {
+  const rows = budget.breakdown.filter(sectionVisible).map(renderSectionRow).join('');
   const session = budget.sessionUsage;
   const count = (value: number | null | undefined) => value == null ? '—' : formatTokens(value);
   const usage = budget.lastTurnTotalTokens != null || budget.lastTurnPromptTokens != null || budget.lastTurnCompletionTokens != null || session;
@@ -246,6 +144,21 @@ function renderPanelBody(budget: ContextBudget): string {
     </table>
     <p class="context-usage-breakdown__usage-note">${session ? `${formatTokens(session.completionCount)} recorded generations this session. ` : ''}Session totals include repeated history.${budget.lastTurnPromptTokens == null && budget.lastTurnCompletionTokens == null && budget.lastTurnTotalTokens == null ? ' Individual request counts are unavailable.' : ''}</p>`
     : '<h4 class="context-usage-breakdown__sections-title">Token usage</h4><p class="context-usage-breakdown__usage-note">Usage appears after your first reply.</p>';
+  return `<div class="context-usage-breakdown__details-content">
+    ${rows ? `<section>
+      <h4 class="context-usage-breakdown__sections-title">Context breakdown <span>Estimated tokens</span></h4>
+      <div class="context-usage-breakdown__sections" role="list">${rows}</div>
+    </section>` : ''}
+    <section>${usageTable}</section>
+  </div>`;
+}
+
+function renderPanelBody(budget: ContextBudget, detailsOpen = false): string {
+  const compaction = budget.willCompress
+    ? 'Auto-compacts on next send'
+    : budget.compressAtTokens != null
+      ? `Auto-compact at ${formatTokens(budget.compressAtTokens)}`
+      : 'Auto-compaction unavailable';
   return `<header class="context-usage-breakdown__header">
       <div class="context-usage-breakdown__headline">
         <h3 class="context-usage-breakdown__title">Context</h3>
@@ -254,23 +167,14 @@ function renderPanelBody(budget: ContextBudget): string {
       <button type="button" class="context-usage-breakdown__close" data-context-action="close" aria-label="Close context details">${iconHtml('close', { size: 14 })}</button>
     </header>
     ${renderSummary(budget)}
-    <div class="context-usage-breakdown__body">
-      <section class="context-usage-breakdown__allocation">
-        <h4 class="context-usage-breakdown__sections-title">In this context <span>estimated tokens</span></h4>
-        ${rows ? `<div class="context-usage-breakdown__sections" role="list">${rows}</div>` : '<p class="context-usage-breakdown__usage-note">No context allocated yet.</p>'}
-      </section>
-      <section class="context-usage-breakdown__details">
-        ${usageTable}
-        <div class="context-usage-breakdown__profile">
-          <h4 class="context-usage-breakdown__sections-title">System prompt</h4>
-          ${renderProfileTabs(getPromptMetaSettingsSync().activePromptProfile)}
-        </div>
-      </section>
-    </div>
-    <footer class="context-usage-breakdown__actions">
-      <p class="context-usage-breakdown__action-hint${budget.willCompress ? ' is-warn' : ''}">${budget.willCompress ? 'Older turns will be summarized on the next send.' : 'Compact older turns into a summary to free up space.'}</p>
+    <div class="context-usage-breakdown__actions">
+      <p class="context-usage-breakdown__action-hint${budget.willCompress ? ' is-warn' : ''}">${compaction}</p>
       <button type="button" class="context-usage-breakdown__action" data-context-action="compact" title="Summarize older turns. The full conversation is kept.">Compact now</button>
-    </footer>`;
+    </div>
+    <details class="context-usage-breakdown__details"${detailsOpen ? ' open' : ''}>
+      <summary data-context-action="details">Details</summary>
+      ${renderDetails(budget)}
+    </details>`;
 }
 
 function positionContextPanel(): void {
@@ -283,7 +187,8 @@ function positionContextPanel(): void {
   const height = viewport?.height ?? window.innerHeight;
   const offsetLeft = viewport?.offsetLeft ?? 0;
   const offsetTop = viewport?.offsetTop ?? 0;
-  panel.classList.toggle('context-usage-breakdown--dense', height < 620);
+  panel.style.maxHeight = `${height - 16}px`;
+  panel.style.maxWidth = `${width - 16}px`;
   const rect = ring.getBoundingClientRect();
   const bounds = panel.getBoundingClientRect();
   const left = Math.max(offsetLeft + 8, Math.min(rect.right - bounds.width, offsetLeft + width - bounds.width - 8));
@@ -320,7 +225,10 @@ export function closeContextUsageBreakdown(): void {
   const surface = openSurface ?? getActiveContextUsageSurface();
   const panel = getContextUsageBreakdownPanel(surface);
   const ring = getContextUsageRingButton(surface);
-  panel?.classList.add('hidden');
+  if (panel) {
+    panel.classList.add('hidden');
+    unmarkPreviewOccluder(panel);
+  }
   if (panel && panelHome?.parent.isConnected) {
     const next = panelHome.next?.parentNode === panelHome.parent ? panelHome.next : null;
     panelHome.parent.insertBefore(panel, next);
@@ -348,11 +256,12 @@ export function toggleContextUsageBreakdown(
 
   if (panelOpen) closeContextUsageBreakdown();
 
-  bindContextUsageProfileTabs();
+  bindContextUsageBreakdownControls();
   if (panel.parentNode) panelHome = { parent: panel.parentNode, next: panel.nextSibling };
   document.body.append(panel);
   panel.innerHTML = renderPanelBody(budget);
   panel.classList.remove('hidden');
+  markPreviewOccluder(panel);
   panelOpen = true;
   openSurface = surface;
   ring.setAttribute('aria-expanded', 'true');
@@ -367,8 +276,11 @@ export function syncContextUsageBreakdownIfOpen(budget: ContextBudget): void {
   const panel = getContextUsageBreakdownPanel(openSurface);
   if (!panel) return;
   const focused = document.activeElement instanceof HTMLElement && panel.contains(document.activeElement)
-    ? document.activeElement.dataset.contextProfile ?? document.activeElement.dataset.contextAction : undefined;
-  panel.innerHTML = renderPanelBody(budget);
-  if (focused) panel.querySelector<HTMLElement>(`[data-context-profile="${focused}"], [data-context-action="${focused}"]`)?.focus({ preventScroll: true });
+    ? document.activeElement.dataset.contextAction : undefined;
+  const detailsOpen = panel.querySelector('details')?.open;
+  const scrollTop = panel.scrollTop;
+  panel.innerHTML = renderPanelBody(budget, detailsOpen);
+  if (focused) panel.querySelector<HTMLElement>(`[data-context-action="${focused}"]`)?.focus({ preventScroll: true });
   positionContextPanel();
+  panel.scrollTop = scrollTop;
 }

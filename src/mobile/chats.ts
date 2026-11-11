@@ -97,23 +97,24 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
     className: 'm-icon-btn m-phone-activity-trigger',
     attrs: { type: 'button', 'aria-label': 'Activity', disabled: true },
   }, icon('fi-rr-bell', 16));
-  const header = screenHeader({
-    title: 'minnow',
-    actions: [iconButton('fi-rr-search', 'Search threads', () => {
-      search.el.hidden = !search.el.hidden;
-      if (search.el.hidden) {
-        search.input.value = '';
-        query = '';
-        render();
-      } else search.input.focus();
-    }), notifications],
-  });
-  header.el.prepend(menu);
   const search = searchField('Search threads', (text) => {
     query = text.toLowerCase();
     render();
   });
+  search.el.id = 'mobileThreadSearch';
   search.el.hidden = true;
+  const searchToggle = iconButton('fi-rr-search', 'Search threads', () => {
+    search.el.hidden = !search.el.hidden;
+    searchToggle.setAttribute('aria-expanded', String(!search.el.hidden));
+    if (search.el.hidden) {
+      search.clear();
+      query = '';
+      render();
+    } else search.input.focus();
+  });
+  searchToggle.setAttribute('aria-expanded', 'false');
+  searchToggle.setAttribute('aria-controls', search.el.id);
+  const header = screenHeader({ title: 'Threads', large: true, leading: menu, actions: [searchToggle, notifications] });
   const list = el('div', { className: 'm-list', attrs: { role: 'list' } });
   const body = el('div', { className: 'm-screen__body' }, list);
   const modelCard = createMobileModelCard(deps.openModels);
@@ -124,10 +125,13 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
     className: 'm-thread-starter__send',
     attrs: { type: 'submit', 'aria-label': 'Send message', disabled: true },
   }, icon('fi-rr-arrow-small-up', 18));
-  const newThread = iconButton('fi-rr-edit', 'New thread', () => void deps.newChat());
-  const model = iconButton('fi-rr-microchip', 'Open Models', deps.openModels);
+  const newThread = el('button', {
+    className: 'm-thread-starter__new',
+    attrs: { type: 'button' },
+    on: { click: () => void deps.newChat() },
+  }, icon('fi-rr-edit', 15), 'New thread');
   const form = el('form', { className: 'm-thread-starter' }, prompt,
-    el('div', { className: 'm-thread-starter__controls' }, newThread, model, send));
+    el('div', { className: 'm-thread-starter__controls' }, newThread, send));
   prompt.addEventListener('input', () => { send.disabled = !prompt.value.trim(); });
   prompt.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {

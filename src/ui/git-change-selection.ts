@@ -82,7 +82,7 @@ export function createGitChangeSelection(options: Options) {
     await mutate(() => gitDiscard({ paths, stagedPaths, cwd: capturedCwd }), `Discarded ${paths.length} change${paths.length === 1 ? '' : 's'}`, capturedCwd);
   }
 
-  function showMenu(entry: GitChangeSelectionEntry, row: HTMLElement, event?: MouseEvent): void {
+  function showMenu(entry: GitChangeSelectionEntry, row: HTMLElement, event?: MouseEvent, anchor = row): void {
     if (!current()) return;
     event?.preventDefault();
     event?.stopPropagation();
@@ -118,8 +118,8 @@ export function createGitChangeSelection(options: Options) {
       }) },
       { id: 'open', label: 'Open diff', disabled: count !== 1, onSelect: guarded(() => options.onOpen(entry)) },
     ];
-    menu = openContextMenu({ items, label: `${count} selected changes`, restoreFocus: row,
-      ...(event ? { clientX: event.clientX, clientY: event.clientY } : { anchor: row }) });
+    menu = openContextMenu({ items, label: `${count} selected changes`, restoreFocus: anchor,
+      ...(event ? { clientX: event.clientX, clientY: event.clientY } : { anchor }) });
   }
 
   async function copy(text: string): Promise<void> {
@@ -198,6 +198,9 @@ export function createGitChangeSelection(options: Options) {
       row.setAttribute('aria-selected', String(selected.has(key(entry))));
     },
     discard,
+    openMenu(entry: GitChangeSelectionEntry, row: HTMLElement, anchor: HTMLElement): void {
+      showMenu(entry, row, undefined, anchor);
+    },
     onKey(event: KeyboardEvent): boolean {
       onKey(event);
       return event.defaultPrevented;

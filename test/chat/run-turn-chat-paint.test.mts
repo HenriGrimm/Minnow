@@ -622,9 +622,9 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read', content: 'source' });
       painter.onEvent({ type: 'tool_result', name: 'grep', id: 'search', content: 'Error: failed', isError: true });
       painter.onEvent({ ...roundEnd(0, '', '**Reading batch names**', 2), reasoningFormat: 'summary' });
-      assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names, 1 failed');
+      assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Reading batch names');
       assert.equal(batch.querySelector('.activity-shimmer'), null, 'settled summaries stop animating');
-      assert.match(batch.querySelector('summary')?.getAttribute('aria-label') ?? '', /Reading batch names, 1 failed.*Read 1.*Search 1/);
+      assert.equal(batch.querySelector('summary')?.getAttribute('aria-label'), 'Reading batch names. Read 1. Hide tool calls');
       assert.equal(stub.mount.querySelector('.thoughts-toggle'), null, 'settlement must not recreate the separate summary');
       assert.equal(stub.wrap.isConnected, false, 'a summary-only assistant leaves no empty row');
     } finally { painter.dispose(); thoughts.abort(); stub.mount.remove(); }
@@ -666,11 +666,12 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
     painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read-b', content: 'b' });
     painter.onEvent({ type: 'tool_result', name: 'grep', id: 'grep', content: 'Error: no matches', isError: true });
 
-    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 2 files, 1 search, 1 failed');
-    assert.ok(batch.classList.contains('tool-call-batch--fail'));
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 2 files');
+    assert.deepEqual([...batch.querySelectorAll('.tool-call-batch__chip')].map(chip => chip.textContent), ['a.ts', 'b.ts']);
+    assert.ok(batch.querySelector<HTMLElement>('.tool-call-msg[data-tool-call-id="grep"]')?.hidden);
   });
 
-  test('malformed tool arguments paint an error row, not { raw }', () => {
+  test('a live call with malformed arguments is hidden after its result arrives', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);
 
@@ -680,9 +681,9 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       id: 'call_bad',
       arguments: '{not json',
     });
-    const row = stub.mount.querySelector('.tool-call-msg');
+    const row = stub.mount.querySelector<HTMLElement>('.tool-call-msg');
     assert.ok(row);
-    assert.equal(row?.textContent?.includes('{ raw'), false);
+    assert.equal(row.hidden, false);
 
     painter.onEvent({
       type: 'tool_result',
@@ -691,11 +692,11 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       content: TOOL_ARGUMENTS_INVALID_JSON,
       isError: true,
     });
-    assert.ok(row?.classList.contains('tool-call-msg--fail'));
-    assert.ok(row?.textContent?.includes('not valid JSON'));
+    assert.ok(row.hidden);
+    assert.equal(row.hasAttribute('aria-busy'), false);
   });
 
-  test('malformed save input remains visible on the failed row', () => {
+  test('a failed live batch stays hidden until another call arrives in the same round', () => {
     const stub = hostStub();
     const painter = createChatTurnEventPainter(stub.host);
     const rawInput = '{"path":"a.ts","content":"unterminated';
@@ -714,11 +715,16 @@ describe('P10-H tool-row chrome (MIN-773)', () => {
       isError: true,
     });
 
-    const row = stub.mount.querySelector('.tool-call-msg');
-    const raw = row?.querySelector<HTMLDetailsElement>('.tool-call-raw-details');
-    assert.equal(raw?.open, true);
-    assert.equal(raw?.querySelector('.tool-call-pre--args')?.textContent, rawInput);
-    assert.match(raw?.querySelector('.tool-call-pre--result')?.textContent ?? '', /not valid JSON/);
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'read', arguments: '{"path":"missing.ts"}' });
+    const batch = stub.mount.querySelector<HTMLDetailsElement>('.tool-call-batch')!;
+    assert.equal(batch.hidden, false);
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'read', content: 'Error: file not found' });
+    assert.ok(batch.hidden);
+    painter.onEvent({ type: 'tool_call', name: 'read_file', id: 'retry', arguments: '{"path":"a.ts"}' });
+    painter.onEvent({ type: 'tool_result', name: 'read_file', id: 'retry', content: 'source' });
+    assert.equal(batch.hidden, false);
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 1 file');
+    assert.equal(batch.querySelectorAll('.tool-call-msg:not([hidden])').length, 1);
   });
 
   test('save_file tool_result shows the code-change badge', () => {

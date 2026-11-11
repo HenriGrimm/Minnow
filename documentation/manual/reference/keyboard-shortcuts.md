@@ -26,6 +26,7 @@ Open **Search** from the magnifying glass in the header or with the command pale
 
 | Keys | Action |
 |------|--------|
+| **Mod+N** | Start a new chat in the current project |
 | **Enter** | Send a message, or steer the current run at its next step; empty input does nothing |
 | **Cmd+Enter** (Mac) or **Ctrl+Enter** (Windows/Linux) | Queue a follow-up until the current reply finishes |
 | **Shift+Enter** | New line |
@@ -33,6 +34,7 @@ Open **Search** from the magnifying glass in the header or with the command pale
 | **Escape** | Dismiss the suggested follow-up |
 | **/** | Open the skill picker (at the start of an empty composer) |
 | **Mod+M** | Per-chat model picker, with search focused |
+| **Ctrl+↑** / **Ctrl+↓** | Open the previous or next chat in the sidebar while a listed chat is open |
 | **↑** / **↓** | Previous / next prompt at the start / end of a single-line composer; Down returns to your saved draft |
 | **Alt+↑** / **Alt+↓** | Browse prompt history from anywhere, including long or multiline text |
 | **1** / **2** / **3** | Tool approval: allow once, always allow, cancel |

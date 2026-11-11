@@ -142,7 +142,7 @@ function getStack(create: boolean): HTMLElement | null {
     stack.setAttribute('aria-label', 'Notifications');
     // Clicking a card must not close an open Settings or workspace overlay.
     stack.dataset.aboveShellOverlay = '';
-    document.body.appendChild(stack);
+    (document.getElementById('mobileShell') ?? document.body).appendChild(stack);
   }
   return stack;
 }

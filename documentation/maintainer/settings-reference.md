@@ -215,7 +215,6 @@ See [`src/config/voice-meta.ts`](../../src/config/voice-meta.ts) and [`src/voice
 
 | Setting | Persistence |
 |---------|-------------|
-| Prompt profile | `activePromptProfile` (`full` / `lite` / `custom`) |
 | Setup profiles | `profiles/` bundles |
 | Custom prompt configs | Per-part editors (base, mode, expert, info, tool-usage, work-agent, memory, skills) |
 | System prompt | Shared prompt parts appear first on the Agents page |
@@ -495,7 +494,7 @@ Not all exposed in Settings UI:
 | `terminal` | Open, height, `autoOpenOnAgentRun`, `autoFollowAgentTab` (MIN-242) |
 | `titles` | Chat title generation model/settings |
 | `goalEval` | /goal loop evaluator model/settings |
-| `activePromptProfile`, `activePromptConfigId`, `activeSetupProfileId` | Prompt state |
+| `activeSetupProfileId` | Active setup bundle |
 | `planning.granularity`, `planning.superPlan` | Plan / Super Plan mode settings |
 | `workspaceProfiles`, `workspaceProfileAutoApply` | Per-workspace setup profiles |
 

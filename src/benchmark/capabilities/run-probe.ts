@@ -222,7 +222,7 @@ export async function runCapabilityProbe(
 
   const systemParts: string[] = [CAPABILITY_PROBE_SYSTEM_PROMPT];
   if (probe.modeId) {
-    const modePrompt = loadModePromptBody(probe.modeId, 'lite');
+    const modePrompt = loadModePromptBody(probe.modeId);
     if (!modePrompt) {
       const reason = `mode prompt unavailable: ${probe.modeId}`;
       return { skipped: true, skipReason: reason, verdict: 'n-a', reason };

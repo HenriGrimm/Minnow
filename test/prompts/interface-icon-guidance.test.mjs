@@ -20,7 +20,6 @@ async function loadPromptMap() {
   const files = [
     'base/default.full.md',
     'info/interface-icons.full.md',
-    'info/interface-icons.lite.md',
   ];
   const out = {};
   for (const relativePath of files) {
@@ -34,7 +33,6 @@ async function loadPromptMap() {
 
 function compose(overrides = {}) {
   return composeSystemPrompt({
-    profile: 'full',
     cwd: '/test',
     modeId: null,
     expertId: null,
@@ -67,15 +65,4 @@ describe('interface icon prompt guidance', () => {
     assert.doesNotMatch(prompt, /@flaticon\/flaticon-uicons/);
   });
 
-  test('uses the compact rule in the lite profile', () => {
-    const prompt = compose({ profile: 'lite' });
-    assert.match(prompt, /Never use emojis as icons/);
-    assert.match(prompt, /@flaticon\/flaticon-uicons/);
-  });
-
-  test('stays enabled for custom prompt profiles', () => {
-    const prompt = compose({ profile: 'custom' });
-    assert.match(prompt, /Never use emojis as icons/);
-    assert.match(prompt, /@flaticon\/flaticon-uicons/);
-  });
 });

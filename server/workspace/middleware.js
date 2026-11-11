@@ -43,6 +43,7 @@ import {
 import { findFreePort, killPortOwner, listListeningPorts } from '../dev-server/ports.js';
 import { readDevServerSettings, writeDevServerSettings } from '../dev-server/settings.js';
 import { getWorkspaceGitStatus } from './git-status.js';
+import { readWorkspaceProjectIcon } from './project-icon.js';
 import { ensureBaselineGitignore } from './baseline-gitignore.js';
 import { initializeWorkspaceGit } from './initialize-git.js';
 import { revealInSystemExplorer } from './reveal-in-explorer.js';
@@ -408,10 +409,14 @@ export async function handleWorkspaceRequest(req, res, pathname, searchParams = 
       const recent = await buildRecentWorkspaceList(viewRoot);
       const sandbox = await buildSandboxWorkspaceItem(viewRoot);
       const newProjectParent = await ensureDefaultProjectsParent();
+      const includeIcons = searchParams.get('includeIcons') === '1';
       sendJson(res, 200, {
         ok: true,
         ...getWorkspaceInfo(viewRoot),
-        recent,
+        recent: includeIcons ? await Promise.all(recent.map(async (item) => ({
+          ...item,
+          iconDataUrl: item.exists ? await readWorkspaceProjectIcon(item.path) : undefined,
+        }))) : recent,
         sandbox,
         newProjectParent,
         open: listOpenWorkspaces().map((entry) => ({

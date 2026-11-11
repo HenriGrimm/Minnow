@@ -3,9 +3,8 @@ import { apiMessageContentToText } from '../../api/message-content';
 import { isPairedDevice } from '../../api/session-token';
 import { getChatAbort } from '../../app-state';
 import { isHiddenTranscriptUserMessage } from '../../chat/hidden-transcript-user-messages';
-import { readChatStreamText, isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../../chat/streaming-state';
+import { readChatStreamText, isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd, type ChatStreamText } from '../../chat/streaming-state';
 import { graphiteSideChatKey } from '../../lib/graphite-side-chat.mjs';
-import { setAssistantBubbleContent } from '../../markdown/renderer';
 import { resolveEffectiveChatModelBinding } from '../../models/selection';
 import { ensureBackgroundChat, findBackgroundChat } from '../../state/background-chat';
 import { resolveChatWorktreeRoot } from '../../state/chat-worktree';
@@ -13,8 +12,9 @@ import { ensureChatHistoryLoaded, saveSessionsNow, sessionState, touchChat } fro
 import { getWorkspacePath } from '../../state/workspace';
 import type { Chat } from '../../types';
 import { autoResize, bindComposerAutoResize } from '../composer-auto-resize';
-import { iconHtml } from '../icon';
-import { renderEmbeddedChatTranscript } from '../messages';
+import { createComposerPrimaryButton, paintComposerPrimaryButton } from '../composer-primary-button';
+import { createComposerWave } from '../composer-wave';
+import { createEmbeddedChatTranscript, readEmbeddedChatLive } from '../embedded-chat-transcript';
 
 const SIDE_CONTEXT_CHARS = 16_000;
 
@@ -75,9 +75,9 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
   header.append(skill, 'Read-only · About this thread');
 
   const scroller = document.createElement('div');
-  scroller.className = 'graphite-side-chat__scroll';
+  scroller.className = 'graphite-chat-panel__scroll';
   const transcript = document.createElement('div');
-  transcript.className = 'chat-thread graphite-side-chat__transcript';
+  transcript.className = 'chat-thread graphite-chat-panel__transcript';
   transcript.setAttribute('role', 'region');
   transcript.setAttribute('aria-label', 'Side chat transcript');
   scroller.append(transcript);
@@ -90,43 +90,38 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
   status.setAttribute('role', 'status');
 
   const form = document.createElement('form');
-  form.className = 'input-bar graphite-side-chat__composer';
+  form.className = 'input-bar';
+  const composer = document.createElement('div');
+  composer.className = 'input-bar-composer';
   const input = document.createElement('textarea');
-  input.className = 'composer-textarea graphite-side-chat__input';
+  input.className = 'composer-textarea';
   input.rows = 1;
   input.maxLength = SIDE_CONTEXT_CHARS;
   input.placeholder = 'Ask about this thread';
   input.setAttribute('aria-label', 'Ask about this thread');
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  input.autocapitalize = 'off';
+  const wrap = document.createElement('div');
+  wrap.className = 'input-wrap input-wrap--inset-actions';
+  wrap.append(input);
   const field = document.createElement('div');
   field.className = 'input-row';
-  field.append(input);
-  const send = document.createElement('button');
+  field.append(wrap);
+  composer.append(field);
+  const send = createComposerPrimaryButton();
   send.type = 'submit';
-  send.className = 'send-btn';
-  send.setAttribute('aria-label', 'Send side question');
-  send.innerHTML = iconHtml('arrowUp', { className: 'send-btn__arrow', size: 18 });
-  const stop = document.createElement('button');
-  stop.type = 'button';
-  stop.className = 'send-btn send-btn--stop';
-  stop.setAttribute('aria-label', 'Stop side reply');
-  stop.innerHTML = '<span class="send-btn__stop" aria-hidden="true"></span>';
-  stop.hidden = true;
   const footer = document.createElement('div');
   footer.className = 'input-bar-send-stack';
-  footer.append(send, stop);
-  form.append(field, footer);
+  footer.append(send);
+  form.append(composer, footer);
   root.append(header, scroller, status, form);
 
   let disposed = false;
   let controller: AbortController | null = null;
-  let paint: ReturnType<typeof renderEmbeddedChatTranscript> | undefined;
-  let renderedHistory: Chat['history'] | undefined;
-  let renderedCount = -1;
-  let renderedStreaming = false;
-  let renderedDelta = '';
-  const expanded = new Set<number>();
-  const expandedThoughts = new Set<string>();
-  const expandedTools = new Set<string>();
+  const view = createEmbeddedChatTranscript(transcript, scroller);
+  let wave: ReturnType<typeof createComposerWave> | undefined;
+  let previousStream: ChatStreamText | undefined;
   const current = () => findBackgroundChat(graphiteSideChatKey(parent.id));
 
   function render(): void {
@@ -134,37 +129,19 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
     const child = current();
     const streaming = Boolean(child && isChatStreaming(child.id));
     const busy = Boolean(controller || streaming);
-    const pinned = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 24;
-    const history = child?.historyLoaded === false ? undefined : child?.history;
-    if (history !== renderedHistory || (history?.length ?? 0) !== renderedCount || streaming !== renderedStreaming) {
-      paint?.dispose();
-      paint = undefined;
-      renderedHistory = history;
-      renderedCount = history?.length ?? 0;
-      renderedStreaming = streaming;
-      renderedDelta = '';
-      if (child && history && (renderedCount > 0 || streaming)) {
-        paint = renderEmbeddedChatTranscript(child, transcript, expanded, {
-          isThoughtExpanded: id => expandedThoughts.has(id),
-          onThoughtExpandedChange: (id, open) => { if (open) expandedThoughts.add(id); else expandedThoughts.delete(id); },
-          isToolExpanded: id => expandedTools.has(id),
-          onToolExpandedChange: (id, open) => { if (open) expandedTools.add(id); else expandedTools.delete(id); },
-        });
-      } else {
-        transcript.replaceChildren(...(child?.historyLoaded === false ? [] : [empty]));
-      }
+    if (child && child.historyLoaded !== false && (child.history.length || streaming)) {
+      view.sync(child, streaming ? readEmbeddedChatLive(child.id) : undefined);
+    } else if (child?.historyLoaded !== false && !empty.parentElement) {
+      view.reset();
+      transcript.append(empty);
     }
-    const delta = child && streaming ? readChatStreamText(child.id)?.lastDelta ?? '' : '';
-    if (paint?.liveBubble && delta !== renderedDelta) {
-      renderedDelta = delta;
-      setAssistantBubbleContent(paint.liveBubble, delta, { streaming: true, modeId: child?.modeId });
-    }
-    if (paint?.liveBubble?.parentElement) paint.liveBubble.parentElement.hidden = !delta;
-    send.hidden = busy;
-    send.disabled = busy || !input.value.trim();
-    stop.hidden = !busy;
-    stop.disabled = !controller && !(child && getChatAbort(child.id));
-    if (pinned) scroller.scrollTop = scroller.scrollHeight;
+    paintComposerPrimaryButton(send, busy, busy);
+    send.disabled = busy ? !controller && !(child && getChatAbort(child.id)) : !input.value.trim();
+    if (streaming) wave ??= createComposerWave(send);
+    wave?.setLive(streaming);
+    const stream = child && streaming ? readChatStreamText(child.id) : null;
+    if (stream) wave?.feed(stream, previousStream);
+    previousStream = stream ?? undefined;
   }
 
   const unbindResize = bindComposerAutoResize(input);
@@ -173,14 +150,15 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
     event.stopPropagation();
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
-    if (!send.disabled) form.requestSubmit();
-  });
-  stop.addEventListener('click', () => {
-    const child = current();
-    (controller ?? (child && getChatAbort(child.id)))?.abort();
+    if (send.dataset.mode === 'send' && !send.disabled) form.requestSubmit();
   });
   form.addEventListener('submit', event => {
     event.preventDefault();
+    if (event.submitter === send && send.dataset.mode === 'stop') {
+      const child = current();
+      (controller ?? (child && getChatAbort(child.id)))?.abort();
+      return;
+    }
     const question = input.value.trim();
     if (!question || send.disabled || isPairedDevice() || sessionState?.activeId !== parent.id) return;
     controller = new AbortController();
@@ -220,7 +198,7 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
           signal,
           onUserMessageAccepted: async () => {
             submitted = true;
-            status.textContent = 'Writing reply…';
+            status.textContent = '';
             render();
           },
         });
@@ -241,7 +219,6 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
 
   const unsubscribe = subscribeChatStreamActivity(chatId => {
     if (current()?.id === chatId) {
-      if (readChatStreamText(chatId)?.lastDelta) status.textContent = '';
       render();
     }
   });
@@ -253,7 +230,6 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
     status.textContent = 'Loading side chat…';
     void ensureChatHistoryLoaded(saved.id).then(() => {
       status.textContent = '';
-      renderedCount = -1;
       render();
     }, () => { status.textContent = 'Could not load the side chat.'; });
   }
@@ -265,7 +241,8 @@ export function createGraphiteSideChat(parent: Chat): { root: HTMLElement; dispo
       unsubscribe();
       unsubscribeEnd();
       unbindResize();
-      paint?.dispose();
+      view.dispose();
+      wave?.dispose();
     },
   };
 }

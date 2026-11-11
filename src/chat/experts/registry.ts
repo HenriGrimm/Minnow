@@ -1,7 +1,7 @@
 import { parsePromptMarkdown } from '../prompts/parse-front-matter';
 import { fetchPromptFileRaw } from '../prompts/prompt-file-api';
 import { parseExpertMetaFromMarkdown } from './expert-meta-parse';
-import type { ExpertMeta, ExpertRecord } from './types';
+import type { ExpertRecord } from './types';
 
 const SKIP_PREFIXES = ['_template', '_example'];
 
@@ -20,53 +20,15 @@ function shouldSkipExpertId(id: string): boolean {
 
 function expertIdFromPath(relativePath: string): string | null {
   const norm = relativePath.replace(/\\/g, '/');
-  const match = norm.match(/experts\/([^/]+)\/expert\.(full|lite)\.md$/);
+  const match = norm.match(/experts\/([^/]+)\/expert\.full\.md$/);
   return match?.[1] ?? null;
-}
-
-interface ExpertAccumulator {
-  meta?: ExpertMeta;
-  fullBody?: string;
-  liteBody?: string;
-  source: 'builtin' | 'user';
-}
-
-function mergeAccumulator(
-  accMap: Map<string, ExpertAccumulator>,
-  expertId: string,
-  suffix: 'full' | 'lite',
-  raw: string,
-  relativePath: string,
-  source: 'builtin' | 'user',
-): void {
-  if (shouldSkipExpertId(expertId)) return;
-
-  let acc = accMap.get(expertId);
-  if (!acc) {
-    acc = { source };
-    accMap.set(expertId, acc);
-  }
-
-  if (suffix === 'full') {
-    const meta = parseExpertMetaFromMarkdown(raw, relativePath);
-    if (meta) acc.meta = meta;
-    try {
-      const { markdownBody } = parsePromptMarkdown(raw, relativePath);
-      acc.fullBody = markdownBody.trim();
-    } catch {}
-  } else {
-    try {
-      const { markdownBody } = parsePromptMarkdown(raw, relativePath);
-      acc.liteBody = markdownBody.trim();
-    } catch {}
-  }
 }
 
 function buildRegistryFromRaw(
   rawMap: Record<string, string>,
   source: 'builtin' | 'user',
 ): Map<string, ExpertRecord> {
-  const accMap = new Map<string, ExpertAccumulator>();
+  const records = new Map<string, ExpertRecord>();
 
   for (const [globPath, raw] of Object.entries(rawMap)) {
     const relativePath = globPath
@@ -75,36 +37,23 @@ function buildRegistryFromRaw(
     if (!relativePath.includes('experts/')) continue;
 
     const expertId = expertIdFromPath(relativePath);
-    if (!expertId) continue;
-
-    const suffix = relativePath.endsWith('.lite.md') ? 'lite' : 'full';
-    mergeAccumulator(accMap, expertId, suffix, raw, relativePath, source);
+    if (!expertId || shouldSkipExpertId(expertId)) continue;
+    const record = recordFromRawFile(expertId, raw, source);
+    if (record) records.set(expertId, record);
   }
-
-  const out = new Map<string, ExpertRecord>();
-  for (const [id, acc] of accMap) {
-    if (!acc.meta || !acc.fullBody?.trim()) continue;
-    out.set(id, {
-      meta: acc.meta,
-      fullBody: acc.fullBody,
-      liteBody: acc.liteBody,
-      source: acc.source,
-    });
-  }
-  return out;
+  return records;
 }
 
-function recordFromRawFiles(
+function recordFromRawFile(
   expertId: string,
   fullRaw: string,
-  liteRaw: string | null,
+  source: 'builtin' | 'user',
 ): ExpertRecord | null {
   const relativePath = `experts/${expertId}/expert.full.md`;
   const meta = parseExpertMetaFromMarkdown(fullRaw, relativePath);
   if (!meta) return null;
 
   let fullBody = '';
-  let liteBody: string | undefined;
   try {
     fullBody = parsePromptMarkdown(fullRaw, relativePath).markdownBody.trim();
   } catch {
@@ -112,32 +61,16 @@ function recordFromRawFiles(
   }
   if (!fullBody) return null;
 
-  if (liteRaw?.trim()) {
-    try {
-      liteBody = parsePromptMarkdown(
-        liteRaw,
-        `experts/${expertId}/expert.lite.md`,
-      ).markdownBody.trim();
-    } catch {
-      liteBody = undefined;
-    }
-  }
-
   return {
     meta,
     fullBody,
-    liteBody,
-    source: 'user',
+    source,
   };
 }
 
 async function loadUserExpertRecordFromApi(expertId: string): Promise<ExpertRecord | null> {
-  const [fullRes, liteRes] = await Promise.all([
-    fetchPromptFileRaw('experts', expertId, 'full'),
-    fetchPromptFileRaw('experts', expertId, 'lite'),
-  ]);
-  if (!fullRes?.content?.trim()) return null;
-  return recordFromRawFiles(expertId, fullRes.content, liteRes?.content ?? null);
+  const response = await fetchPromptFileRaw('experts', expertId);
+  return response?.content?.trim() ? recordFromRawFile(expertId, response.content, 'user') : null;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

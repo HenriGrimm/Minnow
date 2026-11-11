@@ -114,8 +114,32 @@ test('polling adds remote branches while preserving the open search and focus', 
 });
 
 test('worktree tab browses checkouts without moving uncommitted changes', () => {
-  click('main'); click('Worktrees'); click('occupied');
+  click('main'); click('Worktrees');
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search worktrees');
+  assert.equal(input.parentElement?.textContent, '');
+  click('occupied');
   assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);
+});
+
+test('branch search keeps main first and orders the other names naturally', () => {
+  picker.update({
+    ...state,
+    branch: 'pr-10',
+    branches: ['pr-10', 'feature', 'main', 'pr-2'],
+    remoteBranches: ['origin/pr-10', 'origin/pr-2'],
+  });
+  click('pr-10');
+  const names = () => [...document.querySelectorAll('.git-checkout__item .git-checkout__branch')]
+    .map((row) => row.textContent);
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search branches');
+  assert.equal(input.parentElement?.textContent, '');
+  assert.deepEqual(names(), ['main', 'feature', 'pr-2', 'pr-10', 'origin/pr-2', 'origin/pr-10']);
+
+  input.value = 'pr-';
+  input.dispatchEvent(new win.Event('input') as unknown as Event);
+  assert.deepEqual(names(), ['pr-2', 'pr-10', 'origin/pr-2', 'origin/pr-10']);
 });
 
 test('branch search, arrow navigation and polling preserve focused input', () => {

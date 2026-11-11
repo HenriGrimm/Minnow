@@ -64,7 +64,7 @@ Tools are either **browser-native** (run in the page — utilities, sub-agent/bo
 - **Sub-agents** — `spawn_sub_agent` runs nested agent loops with concurrency caps, per-type model/sampler bindings, budgets + structured summaries, and persisted runs surfaced as live cards.
 - **Work agents** — composer-selectable agents with their own provider/model.
 - **Skills** — `SKILL.md` packs (built-in + user) invoked via `/` slash commands.
-- **Prompts** — full / lite / custom profiles, prompt diffing vs. shipped defaults, and portable bundles under `~/.minnow/profiles/`.
+- **Prompts** — shared system prompt with editable prompt files and diffs against shipped defaults. Portable setup bundles live under `~/.minnow/profiles/`.
 
 ## Security model
 

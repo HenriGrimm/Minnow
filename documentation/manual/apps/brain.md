@@ -51,7 +51,7 @@ Each checkout has its own workspace notes and code index, even when two folders 
 
 On the first user turn of a chat, when memory is enabled, Minnow retrieves relevant pages and saves their excerpts with the chat. Later turns replay that saved snapshot; edits to Brain do not automatically refresh it. For current notes in an existing chat, ask the assistant to use `brain_search` and `brain_read_page`, or start a new chat to refresh automatic retrieval.
 
-Retrieval is hybrid — keyword plus semantic vectors, with embeddings on by default. Roughly 12 hits, with a query-relevant excerpt from each rather than a generic first line, capped at about 8,000 characters injected on the full prompt profile.
+Retrieval is hybrid — keyword plus semantic vectors, with embeddings on by default. Roughly 12 hits, with a query-relevant excerpt from each rather than a generic first line, capped at about 8,000 characters injected.
 
 The Edit section keeps unsaved drafts when you open another page or choose New. Opening the original page restores its draft while the app stays open. Reload asks before discarding edits; save drafts before closing or restarting Minnow.
 

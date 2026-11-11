@@ -1,6 +1,3 @@
-/** Global prompt profile — drives body selection and lite rules. */
-export type PromptProfile = 'full' | 'lite' | 'custom';
-
 /** Composer part identifiers (concatenation order is fixed in prompt-composer). */
 export type PromptPartId =
   | 'base'
@@ -37,8 +34,6 @@ export interface PromptFrontMatter {
   toolPolicy?: string;
   body?: string;
   fullBody?: string;
-  liteBody?: string;
-  defaultProfile?: PromptProfile;
 }
 
 /** Loaded prompt record after parsing a markdown file. */
@@ -49,35 +44,14 @@ export interface ParsedPrompt {
   label: string;
   version: number;
   description?: string;
-  /** Resolved body for the active profile before interpolation. */
+  /** Prompt body before interpolation. */
   body: string;
   relativePath: string;
   source: 'builtin' | 'user';
 }
 
-/** Per-part settings inside a custom prompt configuration. */
-export interface PromptConfigPartSettings {
-  enabled: boolean;
-  contentOverride: string | null;
-}
-
-/** Named custom profile stored under ~/.minnow/prompt-configs/. */
-export interface PromptConfig {
-  id: string;
-  label: string;
-  profile: 'custom';
-  parts: Partial<Record<PromptPartId, PromptConfigPartSettings>>;
-  meta?: {
-    createdAt?: string;
-    updatedAt?: string;
-  };
-}
-
 /** Runtime inputs for composeSystemPrompt. */
 export interface ComposeContext {
-  profile: PromptProfile;
-  customConfigId?: string | null;
-  customConfig?: PromptConfig | null;
   cwd: string;
   modeId: string | null;
   expertId: string | null;
@@ -129,6 +103,7 @@ export interface ComposeContext {
 export interface InterpolationVars {
   mode: string;
   mode_label: string;
+  /** Compatibility token for existing prompt file overrides. */
   profile: string;
   expert: string;
   cwd: string;
@@ -145,10 +120,4 @@ export interface InterpolationVars {
   orchestrate_plan: string;
   /** Permission level (and any turn clamp) sentence for the environment block. */
   permission_line: string;
-}
-
-/** List entry returned by GET /api/prompt-configs. */
-export interface PromptConfigListItem {
-  id: string;
-  label: string;
 }

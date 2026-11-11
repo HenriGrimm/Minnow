@@ -6,10 +6,8 @@ import { withSubAgentReportTool } from '../../server/chats/sub-agent-report-tool
 import { resolveTurnTools } from '../../server/runner/run-turn.js';
 
 test('legacy sub-agent prompts and refreshed catalogs retain assignment completion semantics', async () => {
-  for (const profile of ['full', 'lite']) {
-    const prompt = await loadSubAgentSystemPrompt('explore', {}, 'Review source and report findings.', profile);
-    assert.ok(prompt.includes(SUB_AGENT_COMPLETION_GUIDANCE));
-  }
+  const prompt = await loadSubAgentSystemPrompt('explore', {}, 'Review source and report findings.');
+  assert.ok(prompt.includes(SUB_AGENT_COMPLETION_GUIDANCE));
   const catalog = [{ type: 'function', function: { name: 'read_file', parameters: { type: 'object' } } }];
   const original = structuredClone(catalog);
   for (const tools of [withSubAgentReportTool(catalog), withSubAgentReportTool(withSubAgentReportTool(catalog))]) {

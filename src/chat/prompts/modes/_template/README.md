@@ -7,7 +7,7 @@ Reference stubs for **Build**, **Plan**, **Orchestrate**, and **Research** opera
 | File | Purpose |
 |------|---------|
 | `MODE_TEMPLATE.md` | Commented reference for authors |
-| `build.full.md` / `build.lite.md` | Build mode bodies |
+| `build.full.md` | Build mode bodies |
 | `plan.*`, `orchestrate.*`, `research.*` | Other modes |
 
 **Shipped runtime copies** live one level up: `src/chat/prompts/modes/{id}.full.md` (loader glob, no `_template/`).
@@ -15,8 +15,8 @@ Reference stubs for **Build**, **Plan**, **Orchestrate**, and **Research** opera
 ## Add a new mode (future)
 
 1. Add `ModeId` + `ModeDefinition` in `src/chat/modes/registry.ts`.
-2. Add `modes/{id}.full.md` and `modes/{id}.lite.md` with front matter `kind: mode`.
-3. Embed `<!-- MINNOW_MODE_MARKER: {id} full -->` / `lite` in bodies.
+2. Add `modes/{id}.full.md` with front matter `kind: mode`.
+3. Embed `<!-- MINNOW_MODE_MARKER: {id} full -->` in bodies.
 4. Extend `test/modes/run-all.mts` cases.
 
 ## Tests
@@ -25,4 +25,4 @@ Reference stubs for **Build**, **Plan**, **Orchestrate**, and **Research** opera
 npx tsx test/modes/run-all.mts
 ```
 
-User overrides: `~/.minnow/prompts/modes/{id}.{full|lite}.md` (wins over built-in when `npm start` registry is loaded).
+User overrides: `~/.minnow/prompts/modes/{id}.full.md` (wins over built-in when `npm start` registry is loaded).

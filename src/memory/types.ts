@@ -30,7 +30,6 @@ export interface MemoryEmbeddingsConfig {
 export interface MemoryConfig {
   enabled: boolean;
   maxInjectCharsFull: number;
-  maxInjectCharsLite: number;
   retrieveLimit: number;
   defaultTags: string[];
   embeddings?: MemoryEmbeddingsConfig;

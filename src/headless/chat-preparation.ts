@@ -109,7 +109,6 @@ export function composeChatPrompt(input: RegistryInput & {
   context: ComposeContext;
   rules: UserRulesSettings;
   separateCliContext?: boolean;
-  legacySystemPrompt?: string;
 }) {
   resetPromptRegistry();
   registerPromptFilesFromRaw(input.builtinRaw, 'builtin');
@@ -121,11 +120,10 @@ export function composeChatPrompt(input: RegistryInput & {
   const turnContext: string[] = [];
   const composed = composeSystemPrompt(context,
     input.separateCliContext ? { turnContext } : undefined).trim();
-  const prompt = composed || input.legacySystemPrompt?.trim();
-  if (!prompt) throw new Error('No composed chat system prompt is available');
+  if (!composed) throw new Error('No composed chat system prompt is available');
   const rules = getUserRulesPayloadForSend(input.rules);
   return {
-    systemPrompt: rules ? `${prompt}\n\n---\n\n${rules}` : prompt,
+    systemPrompt: rules ? `${composed}\n\n---\n\n${rules}` : composed,
     ...(input.separateCliContext ? { cliTurnContext: turnContext.join('\n\n---\n\n') } : {}),
     modeId: context.modeId,
     workAgent,
@@ -137,12 +135,8 @@ export function captureChatPromptSources(input: Parameters<typeof composeChatPro
   const { prompts } = captureResolvedPromptSources(() => composeChatPrompt(input));
   const userRaw: Record<string, string> = {};
   for (const prompt of prompts) {
-    const bodies = prompt as typeof prompt & { _fullBody?: string; _liteBody?: string };
-    for (const variant of ['full', 'lite'] as const) {
-      const body = variant === 'lite' ? bodies._liteBody ?? bodies._fullBody ?? prompt.body : bodies._fullBody ?? prompt.body;
-      userRaw[`capture/${prompt.kind}/${prompt.id}.${variant}.md`] =
-        `---\nid: ${prompt.id}\nkind: ${prompt.kind}\nlabel: ${JSON.stringify(prompt.label)}\nversion: ${prompt.version}\npart: ${prompt.part}\n---\n${body}`;
-    }
+    userRaw[`capture/${prompt.kind}/${prompt.id}.full.md`] =
+      `---\nid: ${prompt.id}\nkind: ${prompt.kind}\nlabel: ${JSON.stringify(prompt.label)}\nversion: ${prompt.version}\npart: ${prompt.part}\n---\n${prompt.body}`;
   }
   return { builtinRaw: {}, userRaw };
 }

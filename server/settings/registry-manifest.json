@@ -1825,13 +1825,11 @@
   },
   {
     "key": "agents.prompting",
-    "label": "Prompt profiles",
+    "label": "System prompt settings",
     "keywords": [
       "prompt",
       "system prompt",
-      "full",
-      "lite",
-      "custom"
+      "estimate"
     ],
     "category": "agents",
     "area": "agent-center",

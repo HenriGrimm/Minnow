@@ -250,10 +250,6 @@ function recoveryControls(chatId: string, executionId: string): HTMLElement {
           checkpoint.cwd, checkpoint.pre?.sha ? `Before: ${checkpoint.pre.sha}` : 'Baseline unavailable'].filter(Boolean).join(' · ');
         items.append(item);
       }
-      if (!review.ownerReleased) {
-        info.textContent = 'Restart Minnow to verify the execution has stopped, then review the interrupted work again.';
-        panel.replaceChildren(info, items); return;
-      }
       const label = document.createElement('label'), note = document.createElement('textarea');
       label.textContent = 'Verify that the operation has stopped. Check its diff in Source Control or its log in Terminal, then record what you found.';
       note.maxLength = 2000; label.append(note);

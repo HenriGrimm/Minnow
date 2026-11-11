@@ -1,11 +1,9 @@
 /**
- * Active prompt profile settings (config.json meta + localStorage fallback).
+ * System prompt settings (config.json meta + localStorage fallback).
  */
 
 import { detectConfigServer } from './storage-mode';
 import { bumpPromptConfigEpoch } from '../chat/outbound-estimate-epochs';
-
-export type PromptProfileName = 'full' | 'lite' | 'custom';
 
 export type PlanGranularity = 'large' | 'medium' | 'small';
 
@@ -17,8 +15,6 @@ export function parseLocalModelGuidance(value: unknown): LocalModelGuidance {
 }
 
 export interface PromptMetaSettings {
-  activePromptProfile: PromptProfileName;
-  activePromptConfigId: string | null;
   activeInfoPresetId: string;
   planGranularity: PlanGranularity;
   flaticonIconGuidanceEnabled: boolean;
@@ -28,8 +24,6 @@ export interface PromptMetaSettings {
 const PROMPT_META_STORAGE_KEY = 'minnow.promptMeta';
 
 const DEFAULT_PROMPT_META: PromptMetaSettings = {
-  activePromptProfile: 'full',
-  activePromptConfigId: null,
   activeInfoPresetId: 'general-assistant',
   planGranularity: 'medium',
   flaticonIconGuidanceEnabled: true,
@@ -49,16 +43,6 @@ function readLocalPromptMeta(): PromptMetaSettings {
     if (!raw) return { ...DEFAULT_PROMPT_META };
     const parsed = JSON.parse(raw) as Partial<PromptMetaSettings>;
     return {
-      activePromptProfile:
-        parsed.activePromptProfile === 'lite' ||
-        parsed.activePromptProfile === 'custom' ||
-        parsed.activePromptProfile === 'full'
-          ? parsed.activePromptProfile
-          : 'full',
-      activePromptConfigId:
-        typeof parsed.activePromptConfigId === 'string'
-          ? parsed.activePromptConfigId
-          : null,
       activeInfoPresetId:
         typeof parsed.activeInfoPresetId === 'string'
           ? parsed.activeInfoPresetId
@@ -88,14 +72,6 @@ async function fetchPromptMetaFromServer(): Promise<PromptMetaSettings> {
     ? (meta.planning as Record<string, unknown>)
     : {};
   return {
-    activePromptProfile:
-      meta.activePromptProfile === 'lite' ||
-      meta.activePromptProfile === 'custom' ||
-      meta.activePromptProfile === 'full'
-        ? meta.activePromptProfile
-        : 'full',
-    activePromptConfigId:
-      typeof meta.activePromptConfigId === 'string' ? meta.activePromptConfigId : null,
     activeInfoPresetId:
       typeof meta.activeInfoPresetId === 'string'
         ? meta.activeInfoPresetId
@@ -161,7 +137,7 @@ export function resetPromptMetaCache(): void {
   cachedMeta = null;
 }
 
-/** Override cache without persisting (headless --profile, tests). */
+/** Override cache without persisting (tests). */
 export function setPromptMetaCacheForTests(settings: PromptMetaSettings): void {
   cachedMeta = settings;
 }

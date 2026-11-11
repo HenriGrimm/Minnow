@@ -156,7 +156,7 @@ export function buildContextUsageBreakdown(
   const rows: ContextUsageSection[] = [
     {
       key: 'system',
-      label: estimate.legacyFallback ? 'System (legacy drawer)' : 'System',
+      label: 'System',
       tokens: Math.max(
         0,
         estimate.composedSystem -
@@ -473,7 +473,7 @@ export async function getContextBudget(
     const config = resolveChatContextBudget(chat);
     estimate = {
       total: nativeContext.used, history: nativeContext.used,
-      composedSystem: 0, userRules: 0, tools: 0, legacyFallback: false,
+      composedSystem: 0, userRules: 0, tools: 0,
       trimAtShare: config.enforcementPolicy === 'compact'
         ? resolveCompactionConfig(config, nativeContext.limit ?? resolveContextLimit(modelId, chat)).highWater : 1,
     };

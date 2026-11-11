@@ -178,7 +178,7 @@ function bindRailTooltip(btn: HTMLButtonElement, getText: () => string): void {
 
 function handleRailClick(appId: AppId): void {
   if (appId === 'settings' && isShellOverlayOpen('settings')) {
-    closeShellOverlay();
+    closeShellOverlay('settings');
     return;
   }
   launchApp(appId);

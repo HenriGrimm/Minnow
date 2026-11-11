@@ -36,6 +36,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   const create = document.createElement('button');
   create.className = 'mn-graphite-thread-new';
   create.type = 'button';
+  create.setAttribute('aria-keyshortcuts', 'Control+N Meta+N');
   create.append(createIcon('edit', { size: 14 }));
   const label = document.createElement('span');
   label.textContent = 'New thread';
@@ -47,6 +48,15 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
     void import('../ui/sidebar').then(({ createChat }) => createChat());
   });
   actions.appendChild(create);
+
+  const onNewThreadKeydown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || event.isComposing || event.altKey || event.shiftKey) return;
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'n') return;
+    if (getOsView() !== 'app' || html.classList.contains('os-workspace-gate-open')) return;
+    event.preventDefault();
+    if (!event.repeat) create.click();
+  };
+  document.addEventListener('keydown', onNewThreadKeydown);
 
   const search = menubar.querySelector<HTMLElement>('.mn-os-mb-search');
   const sidebarToggle = menubar.querySelector<HTMLButtonElement>('.mn-os-mb-chat-toggle');
@@ -330,6 +340,7 @@ export function initGraphiteWorkspace(rail: HTMLElement, menubar: HTMLElement): 
   sync();
 
   return () => {
+    document.removeEventListener('keydown', onNewThreadKeydown);
     unsubscribe();
     breakpoint?.removeEventListener?.('change', onLayoutChange);
     window.removeEventListener(CHAT_SIDEBAR_CHANGED_EVENT, onSidebarChange);

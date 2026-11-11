@@ -2,14 +2,14 @@
 .pool-picker * { box-sizing: border-box; }
 .pool-picker h3 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .pool-picker p { margin: 5px 0; }
-.pool-picker button, .pool-picker input, .pool-picker select { font: inherit; }
-.pool-picker button { color: var(--mn-fg); cursor: pointer; }
-.pool-picker button:disabled { opacity: .5; cursor: not-allowed; }
-.pool-picker-heading, .pool-picker-detail-heading, .pool-picker-footer {
+.pool-picker button:not(.mn-btn), .pool-picker input, .pool-picker select { font: inherit; }
+.pool-picker button:not(.mn-btn) { color: var(--mn-fg); cursor: pointer; }
+.pool-picker button:not(.mn-btn):disabled { opacity: .5; cursor: not-allowed; }
+.pool-picker-heading, .pool-picker-footer {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
 .pool-picker-heading { padding: 14px 16px; }
-.pool-picker-heading p, .pool-picker-caption, .pool-picker-description { color: var(--mn-fg-muted); font-size: 12px; }
+.pool-picker-caption { color: var(--mn-fg-muted); font-size: var(--mn-type-sm); }
 .pool-picker-caption { display: block; overflow-wrap: anywhere; }
 .pool-picker-action, .pool-picker-icon {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -18,22 +18,83 @@
 }
 .pool-picker-primary { background: var(--mn-accent-soft); border-color: var(--mn-accent-border); color: var(--mn-accent) !important; }
 .pool-picker-danger { color: var(--mn-danger) !important; }
-.pool-picker-columns { display: grid; grid-template-columns: minmax(155px, .8fr) minmax(0, 1.5fr); }
-.pool-picker-rail { padding: 4px 7px 14px; border-right: 1px solid var(--mn-border); }
+.pool-picker--browse { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.pool-picker-browse-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.pool-picker-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 10.5rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+:is(.model-select-popover, .composer-model-menu:not(.composer-model-menu--code)) .pool-picker-browse-body {
+  max-height: min(20rem, 50dvh);
+}
+.pool-picker-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mn-space-1);
+  min-height: 0;
+  padding: var(--mn-space-1-5);
+}
+.pool-picker-list { width: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pool-picker-row {
-  display: block; width: 100%; text-align: left; padding: 11px 10px; margin: 0 0 3px;
-  border: 0; border-radius: var(--mn-menu-item-radius); background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mn-space-1-5);
+  width: 100%;
+  min-height: var(--mn-control-h-lg);
+  padding: var(--mn-space-1) var(--mn-space-2);
+  border: 0;
+  border-radius: var(--mn-menu-item-radius);
+  background: transparent;
+  text-align: left;
 }
 .pool-picker-row[aria-pressed="true"] { background: var(--mn-menu-selected-bg); }
-.pool-picker-name { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; overflow-wrap: anywhere; }
-.pool-picker-selected { color: var(--mn-accent); font-size: 11px; }
-.pool-picker-detail { padding: 4px 16px 18px; min-width: 0; }
-.pool-picker-description { margin: 14px 0 !important; }
-.pool-picker-preview { padding: 0 0 0 22px; margin: 0 0 16px; }
-.pool-picker-preview li { padding: 10px 0; border-top: 1px solid var(--mn-border); overflow-wrap: anywhere; }
-.pool-picker-preview li::marker { color: var(--mn-fg-muted); }
-.pool-picker-preview strong { font-weight: 500; }
+.pool-picker-row:focus-visible { outline: var(--mn-focus-ring-width) solid var(--mn-focus-ring); outline-offset: -2px; }
+.pool-picker-row-copy { min-width: 0; }
+.pool-picker-name { display: block; font-weight: var(--mn-weight-medium); overflow-wrap: anywhere; }
+.pool-picker-selected { flex: none; color: var(--mn-accent); }
+.pool-picker-detail {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--mn-space-2) var(--mn-space-4);
+  border-left: 1px solid var(--mn-border);
+  background: var(--mn-menu-bg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pool-picker-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mn-space-2);
+  margin-bottom: var(--mn-space-1);
+}
+.pool-picker-detail-heading > div { min-width: 0; }
+.pool-picker-preview { list-style: none; padding: 0; margin: 0; }
+.pool-picker-preview li {
+  display: grid;
+  grid-template-columns: 1.75em minmax(0, 1fr);
+  gap: var(--mn-space-1);
+  padding-block: var(--mn-space-1-5);
+  overflow-wrap: anywhere;
+}
+.pool-picker-preview .pool-picker-rank { padding-top: var(--mn-space-0-5); font-variant-numeric: tabular-nums; }
+.pool-picker-preview strong { font-weight: var(--mn-weight-medium); }
+.pool-picker-preview .router-task-badges { margin-top: var(--mn-space-1); }
 .pool-picker-footer { border-top: 1px solid var(--mn-border); padding: 10px 16px; }
+.pool-picker-browse-footer { flex: none; gap: var(--mn-space-1) var(--mn-space-2); padding: var(--mn-space-1-5) var(--mn-space-2); }
+.pool-picker-browse-footer > .pool-picker-caption {
+  flex: 1 1 9rem;
+  min-width: 0;
+  padding-inline: var(--mn-space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pool-picker-browse-actions { display: flex; flex-wrap: wrap; gap: var(--mn-space-1); margin-inline-start: auto; }
 .pool-picker-empty { padding: 26px 16px; text-align: center; }
 .pool-picker-empty p { margin: 8px 0 14px; color: var(--mn-fg-muted); }
 .pool-picker-empty button + button { margin-left: 8px; }
@@ -85,14 +146,21 @@
 .pool-picker-catalog-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .pool-picker-catalog-row > span:last-child { flex: 0 0 auto; color: var(--mn-accent); font-size: 12px; }
 @media (hover: hover) and (pointer: fine) {
-  .pool-picker-action:hover, .pool-picker-icon:hover, .pool-picker-row:hover, .pool-picker-catalog-row:hover { background: var(--mn-menu-hover-bg); }
+  .pool-picker-action:hover, .pool-picker-icon:hover, .pool-picker-row:hover:not([aria-pressed="true"]), .pool-picker-catalog-row:hover { background: var(--mn-menu-hover-bg); }
 }
 @media (max-width: 520px) {
-  .pool-picker-columns { grid-template-columns: 1fr; }
-  .pool-picker-rail { border-right: 0; border-bottom: 1px solid var(--mn-border); }
-  .pool-picker-detail { padding-top: 14px; }
   .pool-picker .router-policy-choices { flex-direction: column; }
   .pool-picker input, .pool-picker select { font-size: 16px; }
+}
+@container model-pool-host (width <= 400px) {
+  .pool-picker-columns { grid-template-columns: minmax(0, 33%) minmax(0, 1fr); }
+  .pool-picker-detail { padding-inline: var(--mn-space-2); }
+  .pool-picker-browse-footer > .pool-picker-caption { flex-basis: 5rem; }
+}
+@container model-pool-host (width <= 290px) {
+  .pool-picker-columns { display: block; overflow-y: auto; }
+  .pool-picker-list { max-height: 7rem; }
+  .pool-picker-detail { border-left: 0; border-top: 1px solid var(--mn-border); overflow-y: visible; }
 }
 @media (pointer: coarse) {
   .pool-picker button, .pool-picker summary { min-height: 44px; }

@@ -600,11 +600,6 @@ export async function composeRunTurnChatSystemPrompt(input: {
     contextDocuments: null,
   };
   if (!composed) {
-    const legacy =
-      typeof document !== 'undefined'
-        ? (document.getElementById('systemPrompt') as HTMLTextAreaElement | null)
-            ?.value?.trim() ?? ''
-        : '';
     let skillBody: string | null = input.skillBody?.trim() ? input.skillBody : null;
     if (!skillBody && input.skillId) {
       const skill = await resolveActiveSkill(input.skillId);
@@ -630,7 +625,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
     if (skillBody && uiDesignerCtx.active) {
       skillBody = augmentSkillBodyForUiDesigner(skillBody, uiDesignerCtx);
     }
-    const outbound = await resolveOutboundSystemMessages(input.chat, legacy, {
+    const outbound = await resolveOutboundSystemMessages(input.chat, {
       separateCliContext: input.separateCliContext,
       userMessagePreview: input.userText || input.rawText,
       routeUserText: input.userText || input.rawText,
@@ -642,7 +637,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
         turnClamp: getSkillTurnClamp(input.skillId ?? null),
       },
     });
-    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim() || legacy;
+    composed = (input.separateCliContext ? outbound.cliStable : outbound.composed)?.trim() || outbound.composed.trim();
     cliTurnContext = outbound.cliTurnContext;
     injectionBlocks = outbound.injectionBlocks;
     if (outbound.userRules?.trim()) {
@@ -1418,7 +1413,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         skillId,
         skillBody: presetSkillBody,
         composedSystemPromptOverride:
-          composedSystemPromptOverride?.trim() || replaySnapshot?.composedSystemPrompt,
+          composedSystemPromptOverride?.trim(),
         ephemeralContext,
         firstUserSend: firstUserSendForInjections,
         attachmentWorkspacePaths: validAttachments

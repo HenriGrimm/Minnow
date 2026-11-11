@@ -130,7 +130,7 @@ export function createChatThreadScreen(chatId: string, deps: {
     // Another thread took the composer while this one was covered.
     handle?.dispose();
     host.replaceChildren();
-    handle = mountSharedChatHost(host, chat, 'code');
+    handle = mountSharedChatHost(host, chat, 'code', { showJumpToLatest: false });
     host.append(emptyHint);
     if (focusOnMount) {
       focusOnMount = false;

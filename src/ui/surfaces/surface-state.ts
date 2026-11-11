@@ -1,5 +1,5 @@
 export const SURFACE_IDS = [
-  'changes', 'terminal', 'files', 'preview', 'agents', 'pr', 'issue', 'side', 'review',
+  'changes', 'terminal', 'files', 'preview', 'agents', 'pr', 'issue', 'side', 'review', 'issues',
 ] as const;
 export type LauncherSurfaceId = (typeof SURFACE_IDS)[number];
 export type ContentTabKind = 'file' | 'preview';

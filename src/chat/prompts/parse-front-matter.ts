@@ -165,11 +165,6 @@ export function parsePromptMarkdown(
     toolPolicy: record.toolPolicy ? String(record.toolPolicy) : undefined,
     body: record.body ? String(record.body) : undefined,
     fullBody: record.fullBody ? String(record.fullBody) : undefined,
-    liteBody: record.liteBody ? String(record.liteBody) : undefined,
-    defaultProfile:
-      record.defaultProfile === 'lite' || record.defaultProfile === 'full'
-        ? record.defaultProfile
-        : undefined,
   };
 
   return { frontMatter, markdownBody };

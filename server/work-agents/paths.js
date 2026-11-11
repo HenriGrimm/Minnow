@@ -31,17 +31,13 @@ export function workAgentsOverridesPath() {
 }
 
 /**
- * ~/.minnow/prompts/work-agents/<id>/agent.<profile>.md
+ * ~/.minnow/prompts/work-agents/<id>/agent.full.md
  * @param {string} agentId
- * @param {'full'|'lite'} profile
  */
-export function workAgentPromptOverridePath(agentId, profile) {
+export function workAgentPromptOverridePath(agentId) {
   assertValidWorkAgentId(agentId);
-  if (profile !== 'full' && profile !== 'lite') {
-    throw new Error('Invalid profile');
-  }
   const home = path.resolve(getMinnowHome());
-  const rel = path.join('prompts', 'work-agents', agentId, `agent.${profile}.md`);
+  const rel = path.join('prompts', 'work-agents', agentId, `agent.full.md`);
   const full = path.resolve(home, rel);
   const homeWithSep = home.endsWith(path.sep) ? home : `${home}${path.sep}`;
   if (full !== home && !full.startsWith(homeWithSep)) {
@@ -54,15 +50,11 @@ export function workAgentPromptOverridePath(agentId, profile) {
  * Shipped prompts under repo src/chat/prompts/work-agents/
  * @param {string} projectRoot
  * @param {string} agentId
- * @param {'full'|'lite'} profile
  */
-export function builtinWorkAgentPromptPath(projectRoot, agentId, profile) {
+export function builtinWorkAgentPromptPath(projectRoot, agentId) {
   assertValidWorkAgentId(agentId);
-  if (profile !== 'full' && profile !== 'lite') {
-    throw new Error('Invalid profile');
-  }
   const root = path.resolve(projectRoot);
-  const rel = path.join('src', 'chat', 'prompts', 'work-agents', agentId, `agent.${profile}.md`);
+  const rel = path.join('src', 'chat', 'prompts', 'work-agents', agentId, `agent.full.md`);
   const full = path.resolve(root, rel);
   const rootWithSep = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
   if (full !== root && !full.startsWith(rootWithSep)) {

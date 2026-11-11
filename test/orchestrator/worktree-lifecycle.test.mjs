@@ -311,7 +311,6 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
       getState: () => box.engine.getState(),
       model: { providerId: 'local-fake', id: 'fake-board-model' },
       worktrees: true,
-      promptVariant: 'lite',
       runTurn: async (opts) => {
         seenCwd = opts.cwd;
         await fs.writeFile(path.join(opts.cwd, 'from-turn.txt'), 'ok\n', 'utf8');
@@ -361,7 +360,6 @@ describe('P3-A worktree lifecycle', { concurrency: false }, () => {
       getState: () => box.engine.getState(),
       model: { providerId: 'local-fake', id: 'fake-board-model' },
       worktrees: true,
-      promptVariant: 'lite',
       runTurn: async (opts) => {
         await fs.writeFile(path.join(opts.cwd, 'feature.txt'), 'ok\n', 'utf8');
         return { outcome: 'pass', summary: 'built', evidence: ['feature.txt'] };

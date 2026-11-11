@@ -16,7 +16,7 @@ import {
   type GitFileEntry,
   type GitOpResult,
 } from '../state/git-api';
-import { fetchGitChangeReview, fetchGitChangeSummary, fetchGitCommitMessage, type GitCommitMessagePromptInput } from './git-commit-message-client';
+import { fetchGitChangeSummary, fetchGitCommitMessage, type GitCommitMessagePromptInput } from './git-commit-message-client';
 import { parseUnifiedPatchToDiffLines } from './git-patch-parse';
 import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { renderSideBySidePatchDiff } from './side-by-side-patch-diff';
@@ -89,7 +89,7 @@ export function createChangesView(ctx: SccContext): SccView {
   let busy = false;
   let destroyed = false;
   let generateAbort: AbortController | null = null;
-  let reviewAbort: AbortController | null = null;
+  let summaryAbort: AbortController | null = null;
   let diffLayout: 'unified' | 'split' = 'unified';
   let showInitialDiff = true;
   let lastCounts = { staged: 0, unstaged: 0, untracked: 0 };
@@ -140,8 +140,7 @@ export function createChangesView(ctx: SccContext): SccView {
   const commitHint = el('span', 'scc-commit__hint');
 
   const commitActions = el('div', 'scc-commit__actions');
-  const reviewBtn = button({ icon: 'eye', label: 'Review', variant: 'ghost', onClick: () => void reviewChanges() });
-  commitActions.append(reviewBtn, commitHint, commitBtn, commitPushBtn);
+  commitActions.append(commitHint, commitBtn, commitPushBtn);
   const generationStatus = createCommitGenerationStatus();
   const messageField = el('div', 'scc-commit__field');
   messageField.append(messageInput, generateBtn);
@@ -446,7 +445,7 @@ export function createChangesView(ctx: SccContext): SccView {
         options.append(control);
       }
       const summarize = button({ icon: 'sparkles', label: 'Summarize', variant: 'ghost', onClick: () => {
-        showDiffAnalysis('summary', { changedPaths: [path], patch, scope: bucket === 'staged' ? 'staged' : 'working-tree' });
+        showChangeSummary({ changedPaths: [path], patch, scope: bucket === 'staged' ? 'staged' : 'working-tree' });
       } });
       const actions = el('div', 'scc-changes__diff-actions');
       actions.append(options, summarize);
@@ -465,41 +464,17 @@ export function createChangesView(ctx: SccContext): SccView {
     }
   }
 
-  async function reviewChanges(): Promise<void> {
-    if (reviewAbort || destroyed) return;
-    const cwd = effectiveCwd();
-    const status = await gitStatus(cwd || undefined);
-    if (destroyed || cwd !== effectiveCwd() || reviewAbort) return;
-    if (!status.ok) {
-      showToast(status.error ?? 'Could not read Git status.', 'error');
-      return;
-    }
-    const staged = status.staged ?? [];
-    const cached = staged.length > 0;
-    const files = cached ? staged : [...status.unstaged ?? [], ...status.untracked ?? []];
-    const diff = await gitDiff({ ...(cached ? { cached } : { workingTree: true }), cwd: cwd || undefined });
-    if (destroyed || cwd !== effectiveCwd() || reviewAbort) return;
-    if (!diff.ok || !diff.patch?.trim()) {
-      showToast(diff.error ?? 'No textual changes to review.', 'error');
-      return;
-    }
-    showDiffAnalysis('review', { changedPaths: files.map(({ path }) => path), patch: diff.patch, scope: cached ? 'staged' : 'working-tree' });
-  }
-
-  function showDiffAnalysis(purpose: 'review' | 'summary', input: GitCommitMessagePromptInput): void {
-    if (reviewAbort || destroyed) return;
+  function showChangeSummary(input: GitCommitMessagePromptInput): void {
+    if (summaryAbort || destroyed) return;
     const controller = new AbortController();
-    reviewAbort = controller;
-    const review = purpose === 'review';
-    const title = review ? 'Commit review' : 'Change summary';
-    const body = el('p', 'scc-changes__summary', review ? 'Reviewing changes…' : 'Summarizing changes…');
-    void appChoice({ title, message: '', body, buttons: [{ id: 'close', label: 'Close' }], cancelId: 'close' })
+    summaryAbort = controller;
+    const body = el('p', 'scc-changes__summary', 'Summarizing changes…');
+    void appChoice({ title: 'Change summary', message: '', body, buttons: [{ id: 'close', label: 'Close' }], cancelId: 'close' })
       .finally(() => {
         controller.abort();
-        if (reviewAbort === controller) reviewAbort = null;
+        if (summaryAbort === controller) summaryAbort = null;
       });
-    const analyze = review ? fetchGitChangeReview : fetchGitChangeSummary;
-    void analyze({
+    void fetchGitChangeSummary({
       ...input,
       signal: controller.signal,
       onPartial: (text) => { if (!controller.signal.aborted) body.textContent = text; },
@@ -580,7 +555,6 @@ export function createChangesView(ctx: SccContext): SccView {
     commitBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
     commitPushBtn.disabled = !!generateAbort || !hasMessage || !hasAny;
     generateBtn.disabled = !!generateAbort || !hasAny;
-    reviewBtn.disabled = !hasAny;
 
     commitHint.textContent = !hasAny
       ? ''
@@ -754,8 +728,8 @@ export function createChangesView(ctx: SccContext): SccView {
       changesSelection.destroy();
       generateAbort?.abort();
       generateAbort = null;
-      reviewAbort?.abort();
-      reviewAbort = null;
+      summaryAbort?.abort();
+      summaryAbort = null;
       root.remove();
     },
   };

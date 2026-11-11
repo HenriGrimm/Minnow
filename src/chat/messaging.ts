@@ -92,7 +92,7 @@ import { sendRemoteChatCommand, shouldRelayChat } from './remote-chat-client';
 import type { ChatSendIntent } from '../../server/chats/contracts';
 import { isCavemanIntensity } from '../skills/caveman-client';
 import { ensureOrdinaryChatRoute } from './ordinary-routing';
-import { beginFirstMessageSubmission, finishFirstMessageSubmission, getFirstMessageSubmission, isFirstMessageSubmissionPending } from './first-message-submission';
+import { beginFirstMessageSubmission, finishFirstMessageSubmission, getFirstMessageSubmission, isFirstMessageSubmissionPending, releaseFirstMessageSubmission } from './first-message-submission';
 import { renderChatFromHistory, syncPendingTranscriptMessages } from '../ui/messages';
 import { randomUUID } from '../lib/random-id';
 
@@ -526,10 +526,9 @@ async function sendComposerMessage(composer?: ComposerSendOptions, draftSubmissi
     finally { pendingDraft?.restore(); }
     return;
   }
-  // Renderer-owned turns paint their own input and must allow steering as soon as they start.
+  // Keep the optimistic echo through local setup while the turn owns Stop and steering.
   if (isFirstMessageSubmissionPending(chat)) {
-    finishFirstMessageSubmission(chat);
-    syncPendingTranscriptMessages(chat);
+    releaseFirstMessageSubmission(chat);
     syncComposerFromStreamingState();
   }
   if (isChatWorktreeSetupPending(chat.id)) {

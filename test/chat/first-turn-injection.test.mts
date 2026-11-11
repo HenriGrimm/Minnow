@@ -131,7 +131,7 @@ describe('injection replay on later turns', () => {
 
   test('a replayed turn reports no injection blocks, so no duplicate transcript row', async () => {
     const chat = chatWithStoredInjection();
-    const outbound = await resolveOutboundSystemMessages(chat, '');
+    const outbound = await resolveOutboundSystemMessages(chat);
     assert.ok(outbound.composed.includes(STORED_DOCS));
     assert.deepEqual(outbound.injectionBlocks, {
       brainNotes: null,

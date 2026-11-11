@@ -3,10 +3,10 @@ import { isCurrentWindowWorkspace, subscribeWorkspace } from '../state/workspace
 import { applySharedChatAttention, applySharedChatFrame, findChatById, getActiveChat, refreshSessionsFromServer, sessionState } from '../state/sessions';
 import { hasUnsettledAgentWork } from '../state/chat-relationships';
 import { setRemoteChatRunning } from './remote-turn-state';
-import { getManagedChatView, notifyManagedChatMetadata, subscribeManagedChatView } from './managed-chat-view';
+import { getEmbeddedManagedChatView, getManagedChatView, notifyManagedChatMetadata, subscribeEmbeddedManagedChatView, subscribeManagedChatView } from './managed-chat-view';
 import type { SharedChatFrame } from './shared-chat-protocol';
 
-/** One project summary stream, with full live output for the mounted chat only. */
+/** Project summaries plus full live output for mounted transcripts. */
 export function startManagedChatBridge(observer: { receive(frame: SharedChatFrame): Promise<void>; reconnect(): void }, onChange: (activeChanged: boolean) => void,
   options: { createSource?: (url: string) => Pick<StreamEventSource, 'onopen' | 'onmessage' | 'close'> } = {}): () => void {
   let source: Pick<StreamEventSource, 'onopen' | 'onmessage' | 'close'> | undefined, watched = '', disposed = false;
@@ -15,6 +15,8 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
   let connectionVersion = 0;
   const awaitingBaseline = new Set<string>();
   const pending = new Map<string, Promise<void>>();
+  let embeddedSource: Pick<StreamEventSource, 'onopen' | 'onmessage' | 'close'> | undefined;
+  let embeddedId = '';
   function metadataChanged(chatId: string, baseline?: boolean): void {
     notifyManagedChatMetadata(chatId, { baseline });
     const chat = findChatById(chatId);
@@ -108,6 +110,7 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     // would permanently close EventSource on 404 before its first send.
     // Project summaries and admission receipts upgrade this subscription.
     const candidate = findChatById(mounted)?.chatCommandVersion === 1 ? mounted : '';
+    connectEmbedded(candidate, force);
     if (!force && source && watched === candidate) return;
     watched = candidate; source?.close(); reconciliation?.abort(); connection.abort(); connection = new AbortController();
     const url = `/api/chats/events${watched ? `?chatId=${encodeURIComponent(watched)}` : ''}`;
@@ -136,6 +139,28 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
       } catch { /* A complete snapshot follows reconnect. */ }
     };
   }
+  // The Agents panel can inspect one child while the main thread stays mounted.
+  function connectEmbedded(primary: string, force = false): void {
+    const id = getEmbeddedManagedChatView();
+    const candidate = id !== primary && findChatById(id)?.chatCommandVersion === 1 ? id : '';
+    if (!force && candidate === embeddedId) return;
+    embeddedId = candidate;
+    embeddedSource?.close();
+    embeddedSource = undefined;
+    if (!candidate) return;
+    const url = `/api/chats/events?chatId=${encodeURIComponent(candidate)}`;
+    const connected = options.createSource?.(url) ?? new StreamEventSource(url);
+    embeddedSource = connected;
+    connected.onmessage = event => {
+      if (disposed || embeddedSource !== connected) return;
+      try {
+        const message = JSON.parse(event.data);
+        if (message.kind === 'frame' && message.frame?.chatId === candidate) {
+          receive(message, () => !disposed && embeddedSource === connected);
+        }
+      } catch { /* The next snapshot restores the transcript. */ }
+    };
+  }
   const accepted = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     if (detail) receive(detail);
@@ -145,9 +170,10 @@ export function startManagedChatBridge(observer: { receive(frame: SharedChatFram
     if (detail?.chatId) setRemoteChatRunning(detail.chatId, false, 'managed');
   };
   const unwatch = subscribeManagedChatView(() => connect());
+  const unwatchEmbedded = subscribeEmbeddedManagedChatView(() => connect());
   const unworkspace = subscribeWorkspace(() => connect(true));
   window.addEventListener('minnow:managed-chat-change', accepted);
   window.addEventListener('minnow:managed-chat-deleted', stopRemote);
   connect();
-  return () => { disposed = true; reconciliation?.abort(); connection.abort(); source?.close(); unwatch(); unworkspace(); window.removeEventListener('minnow:managed-chat-change', accepted); window.removeEventListener('minnow:managed-chat-deleted', stopRemote); };
+  return () => { disposed = true; reconciliation?.abort(); connection.abort(); source?.close(); embeddedSource?.close(); unwatch(); unwatchEmbedded(); unworkspace(); window.removeEventListener('minnow:managed-chat-change', accepted); window.removeEventListener('minnow:managed-chat-deleted', stopRemote); };
 }

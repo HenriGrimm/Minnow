@@ -265,7 +265,7 @@ function markDelegated(anchor: HTMLElement): void {
   const batch = anchor.closest<HTMLElement>('.tool-call-batch');
   if (!batch) return;
   const rows = Array.from(
-    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg'),
+    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg:not([hidden])'),
   );
   batch.classList.toggle(
     DELEGATED_BATCH,

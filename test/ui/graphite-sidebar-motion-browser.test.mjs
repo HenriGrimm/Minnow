@@ -71,13 +71,17 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       const controls = bounds('.mn-os-mb-window-controls');
       const divider = getComputedStyle(document.querySelector('.mn-os-mb-window-controls'), '::before');
       const close = bounds('#close');
+      const dragStrip = getComputedStyle(document.getElementById('graphiteThreadHeader'), '::before');
       return { left, right, top, railRight: rail.getBoundingClientRect().right,
         coversRail: stage.contains(document.elementFromPoint(left + 16, 120)),
         controls: controls.toJSON(),
         dividerWidth: divider.width,
         minimizeLeft: bounds('.mn-os-mb-window-controls button').left,
         closeClickable: document.elementFromPoint(close.left + close.width / 2, close.top + close.height / 2)?.id === 'close',
-        threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right };
+        threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right,
+        dragStripRegion: dragStrip.getPropertyValue('app-region'),
+        dragStripRight: bounds('#graphiteThreadHeader').right - parseFloat(dragStrip.right),
+        threadActionRegion: getComputedStyle(document.getElementById('threadAction')).getPropertyValue('app-region') };
     };
     const start = measure();
     document.documentElement.classList.add('mn-graphite-sidebar-motion');
@@ -99,6 +103,10 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   })()`);
 
   assert.equal(start.left, start.railRight);
+  assert.equal(start.dragStripRegion, 'drag');
+  assert.ok(start.dragStripRight <= start.controls.left);
+  assert.equal(start.threadActionRegion, 'no-drag');
+  assert.equal(end.dragStripRegion, 'none');
   assert.equal(end.railRight, 0);
   assert.equal(end.left, 8);
   assert.equal(end.top, 52);

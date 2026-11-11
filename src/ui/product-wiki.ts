@@ -10,7 +10,7 @@ import {
 import { iconHtml } from './icon';
 import { compareProductWikiEntries } from '../product-wiki/nav-order.mjs';
 import { renderProductWikiMarkdown } from './product-wiki-markdown';
-import { closeShellOverlay, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { closeShellOverlays, isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 
 const DEFAULT_PAGE_PATH = 'documentation/manual/README.md';
 const REPOSITORY_EDIT_BASE =
@@ -397,7 +397,7 @@ export function initProductWiki(): void {
 
 /** Open the official product wiki from any Minnow surface. */
 export function openProductWiki(path = DEFAULT_PAGE_PATH): void {
-  if (!isShellOverlayOpen('wiki')) closeShellOverlay();
+  if (!isShellOverlayOpen('wiki')) closeShellOverlays();
   if (productWikiPathFromHash(window.location.hash) === null) {
     returnHash = window.location.hash || '#/desktop';
   }

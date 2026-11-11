@@ -61,7 +61,6 @@ function summarizeActivateImpact(bundle: MinnowProfileBundle): string {
     (bundle.agents?.subAgents as { types?: Record<string, unknown> } | undefined)?.types ?? {},
   ).length;
   return [
-    `Prompt profile: ${bundle.prompt.promptProfile}`,
     `Work agent overrides: ${workCount}`,
     `Sub-agent type overrides: ${subTypes}`,
   ].join('\n');

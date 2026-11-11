@@ -3,10 +3,9 @@ import { parseExpertMetaFromMarkdown } from './expert-meta-parse';
 import type { ExpertAccent, ExpertMeta } from './types';
 import { EXPERT_ACCENT_VALUES } from './types';
 
-export interface ParsedExpertFiles {
+export interface ParsedExpertFile {
   meta: ExpertMeta;
   fullBody: string;
-  liteBody: string;
 }
 
 export interface ExpertMarkdownMetaInput {
@@ -56,11 +55,10 @@ function formatFrontMatter(meta: ExpertMarkdownMetaInput): string {
   return lines.join('\n');
 }
 
-/** Full expert.{full|lite}.md file content. */
+/** Complete expert prompt file with front matter. */
 export function buildExpertMarkdown(
   meta: ExpertMarkdownMetaInput,
   body: string,
-  _profile: 'full' | 'lite',
 ): string {
   const trimmedBody = body.trim();
   const marker = `[[EXPERT:${meta.id}]]`;
@@ -70,30 +68,19 @@ export function buildExpertMarkdown(
   return `${formatFrontMatter(meta)}\n\n${bodyBlock}\n`;
 }
 
-/** Parse raw full/lite files into meta and bodies. */
-export function parseExpertFiles(
+/** Parse the expert prompt and its metadata. */
+export function parseExpertFile(
   fullRaw: string,
-  liteRaw: string,
   relativePath = 'experts/custom/expert.full.md',
-): ParsedExpertFiles | null {
+): ParsedExpertFile | null {
   const meta = parseExpertMetaFromMarkdown(fullRaw, relativePath);
   if (!meta) return null;
 
   let fullBody = '';
-  let liteBody = '';
   try {
     fullBody = parsePromptMarkdown(fullRaw, relativePath).markdownBody.trim();
   } catch {
     return null;
   }
-  try {
-    liteBody = parsePromptMarkdown(
-      liteRaw,
-      relativePath.replace('full', 'lite'),
-    ).markdownBody.trim();
-  } catch {
-    liteBody = '';
-  }
-
-  return { meta, fullBody, liteBody };
+  return { meta, fullBody };
 }

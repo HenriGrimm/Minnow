@@ -39,7 +39,7 @@ describe('work agent registry with packs', () => {
   });
 
   test('readWorkAgentPrompt resolves pack prompt file', async () => {
-    const result = await readWorkAgentPrompt(projectRoot, 'minimal.helper', 'full');
+    const result = await readWorkAgentPrompt(projectRoot, 'minimal.helper');
     assert.equal(result.source, 'pack');
     assert.match(result.content, /minimal pack helper/i);
   });

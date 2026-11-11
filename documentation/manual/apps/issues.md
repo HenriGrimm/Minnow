@@ -2,7 +2,7 @@
 
 A tracker that agents can use. Issues is a Linear-style list and board for work in your workspace, with the difference that the assistant can file, triage, expand and close items through tools — so "I found three problems while reading this" becomes three real cards instead of a paragraph you will lose.
 
-Open it from the app rail for the fullscreen app, or from the Issues button in the Code sidebar rail to embed it beside your code.
+Open **Issues** from the app rail for the full app. In Code, select the small **Open issues** button beside **Issue** in the surface launcher to browse and capture workspace issues alongside the thread. It opens the **All** filter, including closed issues, even when the thread has no linked issue.
 
 ## Views
 

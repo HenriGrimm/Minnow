@@ -16,8 +16,10 @@ export type ShellIconName =
   | 'windowRestore'
   | 'grid'
   | 'bell'
+  | 'bellFilled'
   | 'bellOff'
   | 'arrowUp'
+  | 'composerSend'
   | 'arrowDown'
   | 'globe'
   | 'folder'
@@ -243,8 +245,10 @@ export const ICON_CLASS: Record<IconName, string> = {
   windowRestore: 'fi-rr-window-restore',
   grid: 'fi-rr-apps',
   bell: 'fi-rr-bell',
+  bellFilled: 'fi-sr-bell',
   bellOff: 'fi-rr-bell-slash',
   arrowUp: 'fi-rr-arrow-up',
+  composerSend: 'fi-rr-arrow-small-up',
   arrowDown: 'fi-rr-arrow-down',
   globe: 'fi-rr-globe',
   folder: 'fi-rr-folder',

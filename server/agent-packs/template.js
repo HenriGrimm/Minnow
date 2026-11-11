@@ -29,7 +29,6 @@ export function getAgentPackTemplateFileMap(options = {}) {
         description: 'Replace with your first work agent.',
         prompts: {
           full: 'prompts/example.full.md',
-          lite: 'prompts/example.lite.md',
         },
         allowedTools: ['read_file', 'find_files', 'list_directory'],
         defaultForModes: ['general'],
@@ -59,7 +58,6 @@ export function getAgentPackTemplateFileMap(options = {}) {
       'Replace this prompt with role-specific instructions.',
       '',
     ].join('\n'),
-    'prompts/example.lite.md': 'Example pack agent (lite prompt).\n',
   };
 }
 

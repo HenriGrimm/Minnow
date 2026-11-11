@@ -6,12 +6,12 @@ import { applyFileSidebarVisuals } from '../file-layout';
 import { openContextMenu, type MenuItem } from '../context-menu';
 import { initFileTreeIfNeeded } from '../file-tree';
 import { closeGitCommitDiffPanel, getGraphiteReviewPane } from '../git-commit-diff-panel';
-import { openGitSurfaceTarget, setGitSurfaceVisible, syncGitSurfaceCommitLayout } from '../git-panel';
+import { openGitSurfaceTarget, setGitSurfaceVisible } from '../git-panel';
 import { createIcon } from '../icon';
 import { openTerminalSurfaceRun, setTerminalSurfaceVisible } from '../terminal-panel';
 import { subscribeSidebarRender } from '../sidebar';
 import { chatGitState, getWorkspaceGitSummary, subscribeSidebarGitState } from '../sidebar-git-state';
-import { mountSurfacePanels, moveSurfaceNode, refreshSurfacePanels, registerSurface, usePhonePresentation } from './surfaces-column';
+import { mountSurfacePanels, moveSurfaceNode, refreshSurfacePanels, registerSurface } from './surfaces-column';
 import type { SurfaceId } from './surface-state';
 import { createWorkbenchContent } from './workbench-content';
 
@@ -113,29 +113,52 @@ export function initCodeGraphiteSurfaces(): void {
     close: closeGitCommitDiffPanel,
   });
   registerSurface('changes', {
-    render: () => {
-      syncGitSurfaceCommitLayout(usePhonePresentation());
-      return diff;
-    },
+    render: () => diff,
     setVisible: (visible, { chat }) => {
       setGitSurfaceVisible(visible, chat);
-      if (visible) syncGitSurfaceCommitLayout(usePhonePresentation());
     },
-    availability({ chat }) {
+    availability({ chat, target }) {
       const cwd = chat.worktreeRoot ?? chat.workspacePath ?? getWorkspacePath();
       const counts = chatGitState(chat, cwd);
       const workspace = getWorkspaceGitSummary(cwd);
-      const plus = counts.additions;
-      const minus = counts.deletions;
-      const available = Boolean(plus || minus || workspace?.changed);
+      const { additions, deletions } = counts;
+      const available = Boolean(additions || deletions || workspace?.changed);
       return available
-        ? { available, hint: plus || minus ? `+${plus} −${minus}` : undefined, tabCount: workspace?.changed ?? undefined }
+        ? { available, diffStats: additions || deletions ? { additions, deletions } : undefined,
+            tabCount: record(target).kind === 'workspace' ? undefined : workspace?.changed }
         : { available, reason: 'No changes yet' };
     },
     async open({ chat, target }) {
       const { kind } = record(target);
-      if (kind === 'checkout' || kind === 'commit') await openGitSurfaceTarget(chat.id, kind);
+      await openGitSurfaceTarget(chat, kind === 'checkout' || kind === 'commit' || kind === 'workspace' ? kind : undefined);
     },
+  });
+
+  const issues = document.createElement('div');
+  issues.className = 'issues-sidebar graphite-issues-panel';
+  issues.setAttribute('role', 'region');
+  issues.setAttribute('aria-label', 'Workspace issues');
+  issues.hidden = true;
+  let issuesRequest = 0;
+  async function showIssues(resetList = false): Promise<void> {
+    const request = ++issuesRequest;
+    try {
+      const { showWorkspaceIssues } = await import('../issues-sidebar');
+      if (request === issuesRequest && !issues.hidden) await showWorkspaceIssues(issues, resetList);
+    } catch (error) {
+      if (request !== issuesRequest || issues.hidden) return;
+      issues.textContent = 'Could not open issues. Reopen the tab to retry.';
+      console.error('[graphite] Failed to open Issues', error);
+    }
+  }
+  registerSurface('issues', {
+    render: () => issues,
+    setVisible(visible) {
+      issues.hidden = !visible;
+      if (visible) void showIssues();
+      else issuesRequest++;
+    },
+    open: () => showIssues(true),
   });
 
   const open: SurfaceId[] = [];

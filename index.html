@@ -377,15 +377,6 @@
         <p class="field-hint">Upper bound for a single assistant message.</p>
       </div>
     </div>
-    <div class="field">
-      <label for="systemPromptPreset">Prompt preset</label>
-      <select id="systemPromptPreset">
-        <option value="">Custom prompt</option>
-      </select>
-      <p class="field-hint" id="systemPromptHint">Choose the shipped default or enter a custom fallback below.</p>
-      <label for="systemPrompt" class="visually-hidden">System prompt</label>
-      <textarea id="systemPrompt" placeholder="Example: You are a helpful assistant." rows="12"></textarea>
-    </div>
     <section class="tools-section" id="expertsSection" aria-labelledby="expertsSectionTitle">
       <h2 class="tools-section-title" id="expertsSectionTitle">Experts</h2>
       <div class="field-row">
@@ -619,8 +610,8 @@
         <h2>Agents and permissions</h2>
         <div id="settingsAgentCenterBody" class="settings-section-body settings-agent-center-body"></div>
         <details class="settings-agent-base-prompt" id="settingsBasePromptPanel" data-settings-search-key="agents.prompting">
-          <summary class="settings-agent-base-prompt__summary">Composed prompt &amp; profiles</summary>
-          <p class="settings-field-hint settings-agent-base-prompt__hint">Preview everything the agent is sent, estimate its size, or build a Custom layout that replaces individual parts.</p>
+          <summary class="settings-agent-base-prompt__summary">System prompt settings</summary>
+          <p class="settings-field-hint settings-agent-base-prompt__hint">Review the estimated tokens for the system prompt, rules, and available tools.</p>
           <div id="settingsFlaticonIconGuidanceMount" data-settings-search-key="agents.prompting.interfaceIcons"></div>
           <p
             id="settingsPromptTokenBreakdown"
@@ -629,19 +620,6 @@
             aria-live="polite"
           >Computing estimate…</p>
           <div id="settingsSetupProfilesMount"></div>
-          <div class="settings-profile-tabs" role="group" aria-label="Prompt profile">
-            <button type="button" data-profile-tab="full" class="is-active">Full</button>
-            <button type="button" data-profile-tab="lite">Lite</button>
-            <button type="button" data-profile-tab="custom">Custom</button>
-          </div>
-          <div id="settingsCustomConfigBar" class="settings-custom-bar hidden">
-            <select id="settingsCustomConfigSelect" aria-label="Custom configuration"></select>
-            <button type="button" id="settingsCustomConfigNew">New</button>
-            <button type="button" id="settingsCustomConfigSave">Save</button>
-            <button type="button" id="settingsCustomConfigDuplicate">Duplicate</button>
-            <button type="button" id="settingsCustomConfigDelete">Delete</button>
-          </div>
-          <div id="settingsPromptParts" class="settings-parts-mount"></div>
         </details>
       </section>
       <section id="settingsSection-injection" class="settings-section settings-area settings-area--title-suppressed" data-area="injection">
@@ -2147,10 +2125,6 @@
           <div class="experts-edit-row">
             <label class="experts-field-label experts-mono" for="expertsEditGreeting">GREETING</label>
             <input type="text" id="expertsEditGreeting" class="experts-edit-input" autocomplete="off" />
-          </div>
-          <div class="experts-edit-profile-tabs" role="tablist" aria-label="Prompt profile">
-            <button type="button" class="experts-profile-tab is-active" data-profile="full" role="tab" aria-selected="true">Full</button>
-            <button type="button" class="experts-profile-tab" data-profile="lite" role="tab" aria-selected="false">Lite</button>
           </div>
           <div class="experts-edit-row">
             <label class="experts-field-label experts-mono" for="expertsEditBody">SYSTEM PROMPT</label>

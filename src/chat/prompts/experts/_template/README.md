@@ -12,7 +12,6 @@ Experts are domain personas injected into the system prompt **after** the operat
 Each expert folder needs:
 
 - `expert.full.md` — full profile body + YAML front matter
-- `expert.lite.md` — shorter body for Lite profile
 
 ## Summoning
 
@@ -30,4 +29,4 @@ Use flat scalars in YAML (see `EXPERT_TEMPLATE.md`):
 
 Do **not** add Auto-routing fields (`keywords`, `regex`, `negativeKeywords`, `classifierHint`, `priority`, `default`) or `version` on new experts.
 
-Copy `example.full.md` / `example.lite.md`, rename folder to your `id`, and restart or refresh the app.
+Copy `example.full.md`, rename folder to your `id`, and restart or refresh the app.

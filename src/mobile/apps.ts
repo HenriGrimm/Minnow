@@ -57,6 +57,7 @@ export function openPhoneApp(id: PhoneAppId, options: PhoneAppOptions = {}): voi
       }),
     ] : [],
   });
+  const back = header.el.querySelector<HTMLButtonElement>('.m-header__back');
   const root = el('section', { className: 'm-screen m-native-app', dataset: { screen: id } }, header.el, body);
   if (detail) root.dataset.settingsDetail = detail;
   let returnSlot: Comment | undefined;
@@ -84,6 +85,7 @@ export function openPhoneApp(id: PhoneAppId, options: PhoneAppOptions = {}): voi
         if (generation !== request) return;
         closePage = () => closeModels({ skipNavigate: true });
         openModels(options.modelsSection ?? 'server');
+        useAppHeader('.models-page-header');
       } else if (id === 'brain') {
         const { openBrain, closeBrain } = await import('../ui/brain-page');
         if (generation !== request) return;
@@ -94,7 +96,9 @@ export function openPhoneApp(id: PhoneAppId, options: PhoneAppOptions = {}): voi
         if (generation !== request) return;
         initSchedulerPage();
         closePage = () => closeScheduler({ skipNavigate: true });
-        await openScheduler();
+        const opening = openScheduler();
+        useAppHeader('.scheduler-header');
+        await opening;
       } else {
         const { openSettings, closeSettings, initSettingsPage } = await import('../ui/settings-page');
         if (generation !== request) return;
@@ -116,11 +120,20 @@ export function openPhoneApp(id: PhoneAppId, options: PhoneAppOptions = {}): voi
     }
   }
 
+  function useAppHeader(selector: string): void {
+    const appHeader = page?.querySelector(selector);
+    if (!back || !appHeader) return;
+    appHeader.prepend(back);
+    root.classList.add('m-native-app--inline-header');
+  }
+
   function unmount(): void {
     ++request;
     closePage?.();
     closePage = undefined;
     if (page) {
+      if (back) header.el.prepend(back);
+      root.classList.remove('m-native-app--inline-header');
       page.classList.remove('m-native-app-page');
       page.classList.toggle('mn-os-app-layer', wasOsLayer);
       returnSlot?.replaceWith(page);

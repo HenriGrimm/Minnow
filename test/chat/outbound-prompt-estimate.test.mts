@@ -178,9 +178,7 @@ describe('computeOutboundPromptEstimateFromParts', () => {
       systemText: 'legacy drawer text',
       history: [],
       tools: [],
-      legacyFallback: true,
     });
-    assert.equal(est.legacyFallback, true);
     assert.equal(est.total, est.composedSystem);
   });
 

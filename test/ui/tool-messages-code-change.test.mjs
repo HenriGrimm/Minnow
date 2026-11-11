@@ -55,7 +55,7 @@ describe('renderToolResult codeChange badge', () => {
     window = setupDom();
     const rawInput = '{"path":"a.ts","content":"unterminated';
     const wrap = renderToolCall('save_file', rawInput);
-    renderToolResult(wrap, 'Error: Tool arguments were not valid JSON.', undefined, rawInput);
+    renderToolResult(wrap, 'Error: Tool arguments were not valid JSON.', undefined, rawInput, undefined, { showFailure: true });
 
     const raw = wrap.querySelector('.tool-call-raw-details');
     assert.ok(raw);
@@ -74,6 +74,8 @@ describe('renderToolResult codeChange badge', () => {
       'Error: Tool arguments were not valid JSON.',
       undefined,
       { _raw: rawInput },
+      undefined,
+      { showFailure: true },
     );
 
     assert.equal(wrap.querySelector('.tool-call-pre--args')?.textContent, rawInput);
@@ -177,7 +179,9 @@ describe('renderToolCall row zones', () => {
   test('failures read as words, with no status pill or check glyph', () => {
     window = setupDom();
     const wrap = renderToolCall('read_file', { path: 'test/missing.md' });
-    renderToolResult(wrap, "Error: ENOENT: no such file or directory, stat 'test/missing.md'");
+    renderToolResult(wrap, "Error: ENOENT: no such file or directory, stat 'test/missing.md'",
+      undefined, undefined, undefined, { showFailure: true });
+    assert.equal(wrap.hidden, false);
     const outcome = wrap.querySelector('.tool-call-outcome');
     assert.equal(outcome?.textContent, 'not found');
     assert.ok(outcome?.classList.contains('tool-call-outcome--danger'));

@@ -12,7 +12,7 @@
 ## Adding a prompt
 
 1. Choose a subfolder: `base/`, `modes/`, `experts/`, `tool-usage/`, `info/`, etc.
-2. Add `my-id.full.md` (and optional `my-id.lite.md` or `liteBody` in front matter).
+2. Add `my-id.full.md`.
 3. Set front matter `id`, `kind`, `label`, `version` — no central manifest required.
 4. Run `npm test` — composer tests use fixtures under `__tests__/fixtures/`.
 
@@ -21,9 +21,8 @@
 | Module | Role |
 |--------|------|
 | `prompt-loader.ts` | Parse front matter, dual-root registry |
-| `prompt-composer.ts` | `composeSystemPrompt()` — order, profiles, lite rules |
+| `prompt-composer.ts` | `composeSystemPrompt()` — prompt composition |
 | `compose-context.ts` | `buildComposeContext()` from config + tools |
-| `prompt-configs.ts` | CRUD for custom profiles |
 | `interpolate.ts` | `{{token}}` replacement |
 | `init-prompts.ts` | Boot from bundle + `GET /api/prompts/registry` |
 
@@ -39,12 +38,6 @@ Send path: `resolveComposedSystemPrompt()` in `compose-context.ts` → `buildApi
 | 08 | `work-agents/` + `workAgentId` |
 | 13 | `skill` part + slash command body |
 | 16 | `memory` part + retrieval block |
-| 20 | Settings UI for profiles and per-part editors |
-
-## Profiles
-
-- **Full** — maximum guidance (`*.full.md` / `fullBody`)
-- **Lite** — token-efficient (`liteBody`, caps, short tool list)
-- **Custom** — saved JSON under `~/.minnow/prompt-configs/`
+| 20 | Settings prompt editors |
 
 See `PROMPT_TEMPLATE.md` in this folder for the full schema and tokens.

@@ -11,6 +11,7 @@ import { registerPluginSlashCommand } from '../../src/chat/slash-commands/regist
 import { sendMessageWithTools } from '../../src/chat/messaging.ts';
 import { attachMessageActions, closeMessageActionsMenu } from '../../src/ui/message-actions.ts';
 import { readAgentConversationsCapability } from '../../src/config/agent-conversations-enabled.ts';
+import { startManagedChatBridge } from '../../src/chat/managed-chat-bridge.ts';
 
 const fetchBefore = globalThis.fetch;
 Object.assign(globalThis, { sessionStorage: window.sessionStorage });
@@ -188,6 +189,30 @@ test('managed archive and restore use authoritative configuration without changi
   assert.deepEqual(calls.map(call => call.archived), [true, false]);
   assert.ok(calls.every(call => call.expectedProfileVersion === 3));
   assert.equal(chat.archivedAt, undefined);
+});
+
+test('archiving many unloaded background chats applies receipts without entering the transcript observer', async t => {
+  const active = setup();
+  const chats = Array.from({ length: 40 }, (_, i) => {
+    const chat = createEmptyChatObject('model');
+    Object.assign(chat, { id: `unloaded-${i}`, chatCommandVersion: 1, historyLoaded: false, messageCount: 5000 });
+    return chat;
+  });
+  setSessionStateForTests({ version: 6, activeId: active.id, sidebarCollapsed: false, chats: [active, ...chats] });
+  const source = { onopen: null as any, onmessage: null as any, close() {} };
+  let transcriptFrames = 0, requests = 0;
+  t.after(startManagedChatBridge({ receive: async () => { transcriptFrames++; }, reconnect() {} }, () => {}, { createSource: () => source }));
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options?.method, 'PATCH', 'archive must not fetch the full history');
+    requests++;
+    const id = String(url).split('/')[3];
+    return Response.json({ frame: { chatId: id, fields: { archivedAt: 100, chatCommandVersion: 1 } } });
+  };
+  for (const chat of chats) await sendManagedChatAction(chat.id, 'configure', { patch: { archived: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests, chats.length);
+  assert.equal(transcriptFrames, 0);
+  assert.ok(chats.every(chat => chat.archivedAt === 100 && chat.historyLoaded === false && chat.history.length === 0));
 });
 
 

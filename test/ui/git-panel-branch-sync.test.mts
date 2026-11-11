@@ -61,7 +61,11 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     local: ['main', 'feature'], remote: remoteBranches, lockedLocal: [],
   }),
   gitCheckout: async (options: unknown) => { calls.push(['checkout', options]); return { ok: true }; },
-  gitDiff: unused, gitDiscard: unused, gitIgnore: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
+  gitDiff: async (input: unknown) => {
+    calls.push(['patch', input]);
+    return { ok: true, patch: '@@ -1 +1 @@\n-old\n+new\n' };
+  },
+  gitDiscard: unused, gitIgnore: unused, issueWorkOperation: unused, gitWorktreeStatus: unused,
   gitPull: async () => pullResult, gitStage: unused, gitStatus: async () => structuredClone(statusResult), gitUnstage: unused,
   gitDeleteBranch: unused, gitWorktreeAdd: unused,
   gitWorktreeRemove: async (options: unknown) => {
@@ -69,7 +73,8 @@ mock.module('../../src/state/git-api.ts', { namedExports: {
     featureWorktreeExists = false;
     return { ok: true };
   },
-  gitLog: unused, gitShow: unused, gitMerge: unused, gitRemoteUrl: unused,
+  gitLog: async (input: unknown) => { calls.push(['log', input]); return { ok: true, commits: [] }; },
+  gitShow: unused, gitMerge: unused, gitRemoteUrl: unused,
   gitStageAll: unused, gitFetch: unused, gitCheckoutDetach: unused, gitCreateTag: unused,
   gitDeleteRemoteBranch: unused, gitDiffSummary: unused, gitRebase: unused,
   gitStashList: unused, gitStashPush: unused, gitStashPop: unused, gitStashApply: unused,
@@ -105,6 +110,7 @@ let win: Window;
 const originals = { window: globalThis.window, document: globalThis.document, HTMLElement: globalThis.HTMLElement };
 const panel = await import('../../src/ui/git-panel.ts');
 const workspace = await import('../../src/state/workspace.ts');
+const sessions = await import('../../src/state/sessions.ts');
 beforeEach(() => {
   win = new Window({ url: 'http://localhost/' });
   Object.assign(globalThis, { window: win, document: win.document, HTMLElement: win.HTMLElement });
@@ -124,9 +130,46 @@ beforeEach(() => {
 });
 afterEach(async () => {
   panel.resetGitPanelForTests();
+  sessions.setSessionStateForTests(null);
   workspace.resetWorkspaceStateForTests();
   await win.close();
   Object.assign(globalThis, originals);
+});
+
+test('Graphite opens workspace changes from a worktree thread and loads history on demand', async () => {
+  const chat = sessions.createEmptyChatObject('fixture', '/workspace');
+  chat.worktreeRoot = '/selected-worktree';
+  sessions.setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat] });
+  statusResult = { ok: true, unstaged: [{ path: 'src/edited.ts', status: 'M' }] };
+  panel.setGitSurfaceVisible(true, chat);
+  await panel.openGitSurfaceTarget(chat, 'workspace');
+  panel.syncPanelFromActiveChat();
+  await waitForPanel(() => Boolean(document.querySelector('.git-panel-file-path')));
+
+  assert.equal(panel.getGitPanelCwd(), '/workspace');
+  assert.equal(panel.getGitPanelFileBrowseCwd(), '/selected-worktree');
+  const root = document.getElementById('gitSidePanel')!;
+  assert.equal(root.dataset.gitView, 'changes');
+  assert.equal(root.lastElementChild?.className, 'git-panel-commit-box');
+  assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'log'), false);
+  const filename = root.querySelector<HTMLButtonElement>('.git-panel-file-path')!;
+  filename.click();
+  await waitForPanel(() => Boolean(root.querySelector('.graphite-git-patch__row--addition')));
+  assert.equal(filename.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'patch'), [
+    'patch', { path: 'src/edited.ts', cached: false, cwd: undefined },
+  ]);
+  filename.click();
+  assert.equal(root.querySelector('.graphite-git-patch'), null);
+  root.querySelector<HTMLButtonElement>('[data-git-view-choice="history"]')!.click();
+  await waitForPanel(() => root.querySelector('#gitGraphMount')?.textContent === 'No commits yet');
+  assert.equal(root.dataset.gitView, 'history');
+  assert.deepEqual(calls.find(call => Array.isArray(call) && call[0] === 'log'), ['log', { cwd: undefined, count: 12 }]);
+
+  await panel.openGitSurfaceTarget(chat, 'commit');
+  assert.equal(root.dataset.gitView, 'changes');
+  assert.equal(panel.getGitPanelCwd(), '/selected-worktree');
+  await waitForPanel(() => Boolean(root.querySelector('.git-panel-file-path')));
 });
 
 test('removing the active worktree selects the workspace HEAD while retaining the removed branch', async () => {

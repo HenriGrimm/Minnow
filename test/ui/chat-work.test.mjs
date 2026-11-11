@@ -632,7 +632,7 @@ test('the collapsed button tallies the turn and names a tool-limit ending', () =
   setChatView('compact');
 });
 
-test('tool failures stay collapsed even when the turn fails', () => {
+test('tool failures stay hidden in expanded and full chat even when the turn fails', () => {
   const run = (id, content) => [
     { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'execute_command', arguments: '{"command":"npm test"}' } }] },
     { role: 'tool', tool_call_id: id, content },
@@ -641,22 +641,32 @@ test('tool failures stay collapsed even when the turn fails', () => {
     { role: 'assistant', content: 'Tests pass.' }];
   renderChatFromHistory(chat);
   assert.equal(mount.querySelector('.chat-work__detail').textContent, 'Ran 1 command');
-  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
   chat.runs[0].status = 'failed';
   renderChatFromHistory(chat);
-  assert.ok(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-work').dataset.outcome, 'failed');
   mount.querySelector('.chat-work').click();
-  assert.equal(mount.querySelector('.tool-call-msg--fail').closest('.chat-work-hidden'), null);
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
+  assert.equal(mount.querySelector('[data-tool-call-id="f2"]').closest('.chat-work-hidden'), null);
+  setChatView('full');
+  assert.ok(mount.querySelector('[data-tool-call-id="f1"]').hidden);
+  assert.equal(mount.querySelector('[data-tool-call-id="f2"]').hidden, false);
+  setChatView('compact');
 });
 
-test('an unrecovered failure reads in danger ink inside the tally', () => {
+test('an all-failed batch leaves no activity to expand in a completed turn', () => {
+  const call = id => ({ id, type: 'function', function: { name: 'read_file', arguments: JSON.stringify({ path: id }) } });
   chat.history = [{ role: 'user', content: 'Read it.' },
-    { role: 'assistant', content: null, tool_calls: [{ id: 'm', type: 'function', function: { name: 'read_file', arguments: '{"path":"gone.ts"}' } }] },
-    { role: 'tool', tool_call_id: 'm', content: 'Error: not found' },
+    { role: 'assistant', content: null, tool_calls: [call('gone.ts'), call('missing.ts')] },
+    { role: 'tool', tool_call_id: 'gone.ts', content: 'Error: not found' },
+    { role: 'tool', tool_call_id: 'missing.ts', content: 'Error: not found' },
     { role: 'assistant', content: 'The file is gone.' }];
   renderChatFromHistory(chat);
-  assert.equal(mount.querySelector('.chat-work__failed').textContent, ' · 1 failed');
-  assert.ok(mount.querySelector('.tool-call-msg--fail').classList.contains('chat-work-hidden'));
+  assert.equal(mount.querySelector('.chat-work__detail').textContent, '');
+  assert.equal(mount.querySelector('.chat-work').hasAttribute('aria-expanded'), false);
+  assert.ok(mount.querySelector('.tool-call-batch').hidden);
+  assert.equal(mount.querySelectorAll('.tool-call-msg[hidden]').length, 2);
+  assert.match(mount.querySelector('.chat-turn-final').textContent, /The file is gone/);
 });
 
 test('live narration from the current round leads the activity line', async () => {

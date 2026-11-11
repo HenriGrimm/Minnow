@@ -258,6 +258,30 @@ test('phone sheets keep focus on the top layer and return it to the trigger', as
   }
 });
 
+test('touch scrolling in a phone sheet leaves the form open', async () => {
+  const { openSheet } = await import('../../src/mobile/sheet.ts');
+  const field = document.createElement('textarea');
+  const sheet = openSheet(field, { title: 'New issue' });
+  const panel = sheet.el.querySelector<HTMLElement>('.m-sheet__panel')!;
+  const handle = sheet.el.querySelector('.m-sheet__handle')!;
+  const swipe = (target: Element) => {
+    target.dispatchEvent(Object.assign(new win.Event('touchstart', { bubbles: true }), { touches: [{ clientY: 20 }] }));
+    target.dispatchEvent(Object.assign(new win.Event('touchmove', { bubbles: true }), { touches: [{ clientY: 160 }] }));
+    target.dispatchEvent(new win.Event('touchend', { bubbles: true }));
+  };
+  document.documentElement.setAttribute('data-reduce-motion', '');
+  try {
+    swipe(sheet.body);
+    assert.equal(sheet.el.isConnected, true);
+    assert.equal(panel.style.transform, '');
+    swipe(handle);
+    assert.equal(sheet.el.isConnected, false);
+  } finally {
+    sheet.close();
+    document.documentElement.removeAttribute('data-reduce-motion');
+  }
+});
+
 test('changing workspaces retires file and issue screens, stale history and pending issue edits', async () => {
   const { setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
   const { addIssue, findIssueById, parseIssuesState, setIssuesStateForTests } = await import('../../src/state/issues-store.ts');

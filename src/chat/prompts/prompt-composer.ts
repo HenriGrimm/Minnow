@@ -6,11 +6,8 @@ import { loadPromptById } from './prompt-loader';
 import type {
   ComposeContext,
   InterpolationVars,
-  PromptConfig,
-  PromptConfigPartSettings,
   PromptKind,
   PromptPartId,
-  PromptProfile,
 } from './types';
 
 // ── Order ────────────────────────────────────────────────────────────────────
@@ -68,9 +65,6 @@ export function isContextDocumentsPartEnabled(ctx: ComposeContext): boolean {
   );
 }
 
-/** Default lite part gating (memory uses shorter retrieve cap when enabled). */
-const LITE_DISABLED_PARTS = new Set<PromptPartId>(['info']);
-
 /** Strip HTML comments (e.g. MINNOW_MODE_MARKER) before sending to the model. */
 export function stripPromptHtmlComments(text: string): string {
   return text.replace(/<!--[\s\S]*?-->/g, '').trim();
@@ -92,26 +86,7 @@ export function isLocalModelGuidanceEnabled(ctx: ComposeContext): boolean {
   return ctx.providerIsLocal === true;
 }
 
-function partSettings(
-  config: PromptConfig | null | undefined,
-  partId: PromptPartId,
-): PromptConfigPartSettings | null {
-  if (!config?.parts) return null;
-  return config.parts[partId] ?? null;
-}
-
-function isPartEnabled(
-  ctx: ComposeContext,
-  partId: PromptPartId,
-  profile: PromptProfile,
-): boolean {
-  const custom = partSettings(ctx.customConfig, partId);
-  if (profile === 'custom' && custom) {
-    return custom.enabled;
-  }
-  if (profile === 'lite' && LITE_DISABLED_PARTS.has(partId)) {
-    return false;
-  }
+function isPartEnabled(ctx: ComposeContext, partId: PromptPartId): boolean {
   if (partId === 'skill') {
     return Boolean(ctx.skillBody?.trim());
   }
@@ -170,38 +145,26 @@ function resolvePartId(
 
 // ── Resolvers ────────────────────────────────────────────────────────────────
 
-function resolvePartBody(
-  partId: PromptPartId,
-  ctx: ComposeContext,
-  profile: PromptProfile,
-): string {
-  const custom = partSettings(ctx.customConfig, partId);
-  if (custom?.contentOverride?.trim()) {
-    return stripPromptHtmlComments(custom.contentOverride.trim());
-  }
-
+function resolvePartBody(partId: PromptPartId, ctx: ComposeContext): string {
   if (partId === 'skill' && ctx.skillBody?.trim()) {
     return ctx.skillBody.trim();
   }
   if (partId === 'memory' && isMemoryPartEnabled(ctx)) {
-    const loadProfile = profile === 'lite' ? 'lite' : 'full';
-    const loaded = loadPromptById('info', 'memory', loadProfile);
+    const loaded = loadPromptById('info', 'memory');
     if (loaded?.body?.trim()) {
       return loaded.body.trim();
     }
     return ctx.memoryBlock?.trim() ?? '';
   }
   if (partId === 'code-map' && isCodeMapPartEnabled(ctx)) {
-    const loadProfile = profile === 'lite' ? 'lite' : 'full';
-    const loaded = loadPromptById('info', 'code-map', loadProfile);
+    const loaded = loadPromptById('info', 'code-map');
     if (loaded?.body?.trim()) {
       return loaded.body.trim();
     }
     return ctx.codeMapBlock?.trim() ?? '';
   }
   if (partId === 'context-documents' && isContextDocumentsPartEnabled(ctx)) {
-    const loadProfile = profile === 'lite' ? 'lite' : 'full';
-    const loaded = loadPromptById('info', 'context-documents', loadProfile);
+    const loaded = loadPromptById('info', 'context-documents');
     if (loaded?.body?.trim()) {
       return loaded.body.trim();
     }
@@ -214,13 +177,8 @@ function resolvePartBody(
     return '';
   }
 
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById(kind, id || 'default', loadProfile);
+  const loaded = loadPromptById(kind, id || 'default');
   if (!loaded?.body) return '';
-
-  if (profile === 'lite' && loaded.liteBody?.trim()) {
-    return stripPromptHtmlComments(loaded.liteBody.trim());
-  }
 
   return stripPromptHtmlComments(loaded.body);
 }
@@ -230,12 +188,11 @@ function contextHasContext7Tools(ctx: ComposeContext): boolean {
 }
 
 /** Context7 MCP workflow when Context7 tools are enabled for this chat. */
-function resolveContext7DocsBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveContext7DocsBody(ctx: ComposeContext): string {
   if (!contextHasContext7Tools(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'context7-docs', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'context7-docs');
   return loaded?.body?.trim() ?? '';
 }
 
@@ -244,53 +201,48 @@ function contextHasSpawnSubAgentTool(ctx: ComposeContext): boolean {
 }
 
 /** When/how to spawn sub-agents for parallel research and implementation. */
-function resolveSubAgentDelegationBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveSubAgentDelegationBody(ctx: ComposeContext): string {
   if (!contextHasSpawnSubAgentTool(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'sub-agent-delegation', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'sub-agent-delegation');
   return loaded?.body?.trim() ?? '';
 }
 
-function resolveChatCoordinationBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveChatCoordinationBody(ctx: ComposeContext): string {
   if (!(ctx.enabledToolIds ?? []).some(name => ['chat_list', 'chat_read', 'chat_send', 'chat_wait', 'chat_stop'].includes(name))) return '';
-  return loadPromptById('tool-usage', 'chat-coordination', profile === 'lite' ? 'lite' : 'full')?.body?.trim() ?? '';
+  return loadPromptById('tool-usage', 'chat-coordination')?.body?.trim() ?? '';
 }
 
 /** Brain save guidance when write tools are enabled for this chat. */
-function resolveMemorySaveBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveMemorySaveBody(ctx: ComposeContext): string {
   if (!contextHasBrainWriteTools(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('info', 'memory-save', loadProfile);
+  const loaded = loadPromptById('info', 'memory-save');
   return loaded?.body?.trim() ?? '';
 }
 
 /** Default-on interface icon guidance; users can disable it in Settings → Agents. */
 function resolveFlaticonIconGuidanceBody(
   ctx: ComposeContext,
-  profile: PromptProfile,
 ): string {
   if (ctx.flaticonIconGuidanceEnabled === false) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('info', 'interface-icons', loadProfile);
+  const loaded = loadPromptById('info', 'interface-icons');
   return loaded?.body?.trim() ?? '';
 }
 
 /** Local-model appendix (Settings → Agents: auto / on / off). */
 function resolveLocalModelGuidanceBody(ctx: ComposeContext): string {
   if (!isLocalModelGuidanceEnabled(ctx)) return '';
-  return loadPromptById('info', 'local-model', 'full')?.body?.trim() ?? '';
+  return loadPromptById('info', 'local-model')?.body?.trim() ?? '';
 }
 
 /** Work-agent knowledge capture when save_memory / brain_write_page are enabled. */
 function resolveWorkAgentKnowledgeCaptureBody(
   ctx: ComposeContext,
-  profile: PromptProfile,
 ): string {
   if (!contextHasBrainWriteTools(ctx)) {
     return '';
@@ -299,8 +251,7 @@ function resolveWorkAgentKnowledgeCaptureBody(
   if (!agentId || agentId === 'default') {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', `${agentId}-knowledge-capture`, loadProfile);
+  const loaded = loadPromptById('tool-usage', `${agentId}-knowledge-capture`);
   return loaded?.body?.trim() ?? '';
 }
 
@@ -318,32 +269,29 @@ function contextHasShellSandbox(ctx: ComposeContext): boolean {
 }
 
 /** GitHub forge operations via local `gh` auth (MIN-558). */
-function resolveGithubCliBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveGithubCliBody(ctx: ComposeContext): string {
   if (!contextHasExecuteCommandTool(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'github-cli', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'github-cli');
   return loaded?.body?.trim() ?? '';
 }
 
 /** Host shell sandbox note when prefer/require is on (MIN-553). */
-function resolveShellSandboxBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveShellSandboxBody(ctx: ComposeContext): string {
   if (!contextHasExecuteCommandTool(ctx) || !contextHasShellSandbox(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'shell-sandbox', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'shell-sandbox');
   return loaded?.body?.trim() ?? '';
 }
 
 /** Mandatory ask_question usage when the tool is enabled for this chat. */
-function resolveAskQuestionEnforcementBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveAskQuestionEnforcementBody(ctx: ComposeContext): string {
   if (!contextHasAskQuestionTool(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'ask-question-enforcement', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'ask-question-enforcement');
   return loaded?.body?.trim() ?? '';
 }
 
@@ -356,22 +304,20 @@ function contextHasSettingsTools(ctx: ComposeContext): boolean {
 }
 
 /** Settings agent tools guidance when update_settings is enabled. */
-function resolveManageSettingsBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveManageSettingsBody(ctx: ComposeContext): string {
   if (!contextHasSettingsTools(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'manage-settings', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'manage-settings');
   return loaded?.body?.trim() ?? '';
 }
 
 /** Minnow app routing when launch_minnow_app is enabled. */
-function resolveLaunchMinnowAppBody(ctx: ComposeContext, profile: PromptProfile): string {
+function resolveLaunchMinnowAppBody(ctx: ComposeContext): string {
   if (!contextHasLaunchMinnowAppTool(ctx)) {
     return '';
   }
-  const loadProfile = profile === 'lite' ? 'lite' : 'full';
-  const loaded = loadPromptById('tool-usage', 'launch-minnow-app', loadProfile);
+  const loaded = loadPromptById('tool-usage', 'launch-minnow-app');
   return loaded?.body?.trim() ?? '';
 }
 
@@ -380,13 +326,10 @@ function buildInterpolationVars(ctx: ComposeContext): InterpolationVars {
   const modeLabel =
     modeId && isModeId(modeId) ? getMode(modeId).label : modeId;
 
-  const profileLabel =
-    ctx.profile === 'custom' ? 'custom' : ctx.profile === 'lite' ? 'lite' : 'full';
-
   return {
     mode: modeId,
     mode_label: modeLabel,
-    profile: profileLabel,
+    profile: 'full',
     expert: ctx.expertLabel?.trim() || ctx.expertId || '',
     cwd: ctx.cwd,
     memory:
@@ -409,38 +352,30 @@ function buildInterpolationVars(ctx: ComposeContext): InterpolationVars {
 // ── Compose ──────────────────────────────────────────────────────────────────
 
 /**
- * Compose the full system prompt string for LM Studio.
+ * Compose the system prompt for a Minnow turn.
  */
 export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext: string[] }): string {
-  const profile: PromptProfile =
-    ctx.profile === 'custom' ? 'custom' : ctx.profile === 'lite' ? 'lite' : 'full';
-
-  const effectiveProfile: PromptProfile =
-    profile === 'custom' ? 'custom' : profile;
-
   const vars = buildInterpolationVars(ctx);
 
   const sections: string[] = [];
 
   for (const partId of PART_ORDER) {
-    if (!isPartEnabled(ctx, partId, effectiveProfile)) continue;
+    if (!isPartEnabled(ctx, partId)) continue;
 
-    const rawBody = resolvePartBody(partId, ctx, effectiveProfile === 'lite' ? 'lite' : 'full');
+    const rawBody = resolvePartBody(partId, ctx);
     if (!rawBody.trim()) continue;
 
     const interpolated = interpolatePromptBody(rawBody, vars);
     if (interpolated.trim()) {
       // These shipped parts carry retrieved data/current-turn information.
-      // Custom prompt layouts remain opaque and keep their original roles.
-      const target = options && effectiveProfile !== 'custom' && !partSettings(ctx.customConfig, partId)?.contentOverride?.trim()
+      const target = options
         && ['memory', 'code-map', 'context-documents', 'info'].includes(partId)
         ? options.turnContext : sections;
       target.push(interpolated.trim());
     }
 
-    const profileKey = effectiveProfile === 'lite' ? 'lite' : 'full';
     if (partId === 'memory') {
-      const saveRaw = resolveMemorySaveBody(ctx, profileKey);
+      const saveRaw = resolveMemorySaveBody(ctx);
       if (saveRaw.trim()) {
         const saveInterpolated = interpolatePromptBody(saveRaw, vars);
         if (saveInterpolated.trim()) {
@@ -449,7 +384,7 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
       }
     }
     if (partId === 'work-agent') {
-      const captureRaw = resolveWorkAgentKnowledgeCaptureBody(ctx, profileKey);
+      const captureRaw = resolveWorkAgentKnowledgeCaptureBody(ctx);
       if (captureRaw.trim()) {
         const captureInterpolated = interpolatePromptBody(captureRaw, vars);
         if (captureInterpolated.trim()) {
@@ -459,51 +394,51 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
     }
 
     if (partId === 'tool-usage') {
-      const context7DocsRaw = resolveContext7DocsBody(ctx, profileKey);
+      const context7DocsRaw = resolveContext7DocsBody(ctx);
       if (context7DocsRaw.trim()) {
         const context7Interpolated = interpolatePromptBody(context7DocsRaw, vars);
         if (context7Interpolated.trim()) {
           sections.push(context7Interpolated.trim());
         }
       }
-      const delegationRaw = resolveSubAgentDelegationBody(ctx, profileKey);
+      const delegationRaw = resolveSubAgentDelegationBody(ctx);
       if (delegationRaw.trim()) {
         const delegationInterpolated = interpolatePromptBody(delegationRaw, vars);
         if (delegationInterpolated.trim()) {
           sections.push(delegationInterpolated.trim());
         }
       }
-      const coordinationRaw = resolveChatCoordinationBody(ctx, profileKey);
+      const coordinationRaw = resolveChatCoordinationBody(ctx);
       if (coordinationRaw) sections.push(interpolatePromptBody(coordinationRaw, vars).trim());
-      const askQuestionRaw = resolveAskQuestionEnforcementBody(ctx, profileKey);
+      const askQuestionRaw = resolveAskQuestionEnforcementBody(ctx);
       if (askQuestionRaw.trim()) {
         const askInterpolated = interpolatePromptBody(askQuestionRaw, vars);
         if (askInterpolated.trim()) {
           sections.push(askInterpolated.trim());
         }
       }
-      const launchAppRaw = resolveLaunchMinnowAppBody(ctx, profileKey);
+      const launchAppRaw = resolveLaunchMinnowAppBody(ctx);
       if (launchAppRaw.trim()) {
         const launchInterpolated = interpolatePromptBody(launchAppRaw, vars);
         if (launchInterpolated.trim()) {
           sections.push(launchInterpolated.trim());
         }
       }
-      const manageSettingsRaw = resolveManageSettingsBody(ctx, profileKey);
+      const manageSettingsRaw = resolveManageSettingsBody(ctx);
       if (manageSettingsRaw.trim()) {
         const manageInterpolated = interpolatePromptBody(manageSettingsRaw, vars);
         if (manageInterpolated.trim()) {
           sections.push(manageInterpolated.trim());
         }
       }
-      const githubCliRaw = resolveGithubCliBody(ctx, profileKey);
+      const githubCliRaw = resolveGithubCliBody(ctx);
       if (githubCliRaw.trim()) {
         const githubInterpolated = interpolatePromptBody(githubCliRaw, vars);
         if (githubInterpolated.trim()) {
           sections.push(githubInterpolated.trim());
         }
       }
-      const shellSandboxRaw = resolveShellSandboxBody(ctx, profileKey);
+      const shellSandboxRaw = resolveShellSandboxBody(ctx);
       if (shellSandboxRaw.trim()) {
         const sandboxInterpolated = interpolatePromptBody(shellSandboxRaw, vars);
         if (sandboxInterpolated.trim()) {
@@ -513,10 +448,7 @@ export function composeSystemPrompt(ctx: ComposeContext, options?: { turnContext
     }
   }
 
-  const iconGuidanceRaw = resolveFlaticonIconGuidanceBody(
-    ctx,
-    effectiveProfile,
-  );
+  const iconGuidanceRaw = resolveFlaticonIconGuidanceBody(ctx);
   if (iconGuidanceRaw.trim()) {
     const iconGuidance = interpolatePromptBody(iconGuidanceRaw, vars);
     if (iconGuidance.trim()) {

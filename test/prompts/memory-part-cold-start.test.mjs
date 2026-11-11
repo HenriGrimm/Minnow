@@ -38,17 +38,12 @@ async function registerFixtures() {
       path.join(promptsDir, 'memory', 'full.md'),
       'utf8',
     ),
-    './memory/memory.lite.md': await fs.readFile(
-      path.join(promptsDir, 'memory', 'lite.md'),
-      'utf8',
-    ),
   };
   registerPromptFilesFromRaw(map);
 }
 
 function baseCtx(overrides = {}) {
   return {
-    profile: 'full',
     cwd: '/test',
     modeId: 'build',
     expertId: null,
@@ -101,20 +96,4 @@ describe('memory part cold-start gating', () => {
     assert.ok(!out.includes('save_memory'));
   });
 
-  test('lite profile also injects save guidance on empty wiki', async () => {
-    await registerFixtures();
-    const map = {
-      './base/base-default.lite.md': await fs.readFile(
-        fixturePath('base-default.lite.md'),
-        'utf8',
-      ),
-      './tool-usage/tool-usage-default.lite.md': await fs.readFile(
-        fixturePath('tool-usage-default.lite.md'),
-        'utf8',
-      ),
-    };
-    registerPromptFilesFromRaw(map);
-    const out = composeSystemPrompt(baseCtx({ profile: 'lite' }));
-    assert.ok(out.includes('save_memory'));
-  });
 });

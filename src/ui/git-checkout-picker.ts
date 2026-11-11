@@ -4,6 +4,8 @@ import { panelPathsEqual } from './panel-worktree-cwd';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
 import { displayRemoteRef, isSkippedRemoteRef, shortLocalNameFromRemote } from '../lib/git-ref-start.mjs';
 
+const branchNameOrder = new Intl.Collator(undefined, { numeric: true });
+
 export interface CheckoutPickerState {
   cwd: string;
   workspace: string;
@@ -207,7 +209,13 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         ...[...new Set((state.remoteBranches ?? []).filter((ref) => !isSkippedRemoteRef(ref)).map(displayRemoteRef))]
           .map((ref) => ({ branch: shortLocalNameFromRemote(ref), label: ref, remote: true })),
       ];
-      for (const { branch, label, remote } of branches.filter((entry) => entry.label.toLocaleLowerCase().includes(needle))) {
+      const matches = branches.filter(({ label }) => label.toLocaleLowerCase().includes(needle));
+      matches.sort((a, b) => {
+        const byRemote = Number(a.remote) - Number(b.remote);
+        const byMain = Number(b.label === 'main') - Number(a.label === 'main');
+        return byRemote || byMain || branchNameOrder.compare(a.label, b.label);
+      });
+      for (const { branch, label, remote } of matches) {
         const create = remote && !state.branches.includes(branch);
         const wt = state.worktrees.find((w) => w.branch === branch && !panelPathsEqual(w.path, state.cwd));
         const current = branch === state.branch;
@@ -293,15 +301,15 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       tabBtn.disabled = busy;
       tabs.append(tabBtn);
     }
-    const label = document.createElement('label');
-    label.className = 'git-checkout__search';
-    label.append(text(tab === 'branches' ? 'Find a branch' : 'Find a worktree', 'git-checkout__detail'));
+    const searchField = document.createElement('div');
+    searchField.className = 'git-checkout__search';
     const search = document.createElement('input');
     search.type = 'search';
     search.value = query;
     search.placeholder = tab === 'branches' ? 'Branch name…' : 'Name or path…';
+    search.setAttribute('aria-label', tab === 'branches' ? 'Search branches' : 'Search worktrees');
     search.disabled = busy;
-    label.append(search);
+    searchField.append(search);
     const list = document.createElement('div');
     list.className = 'git-checkout__list';
     list.id = `${id}List`;
@@ -317,7 +325,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       }
     });
     renderRows(list);
-    menu.append(tabs, label, list);
+    menu.append(tabs, searchField, list);
     if (options.inline) return;
     const footer = document.createElement('div');
     footer.className = 'git-checkout__footer';

@@ -420,8 +420,8 @@ const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
   field('agents.autopilot.guardCdOutsideWorktree', 'Guard cd outside worktree', 'agents', 'autopilot', {
     keywords: ['worktree', 'cd', 'guard', 'isolation'],
   }),
-  field('agents.prompting', 'Prompt profiles', 'agents', 'agent-center', {
-    keywords: ['prompt', 'system prompt', 'full', 'lite', 'custom'],
+  field('agents.prompting', 'System prompt settings', 'agents', 'agent-center', {
+    keywords: ['prompt', 'system prompt', 'estimate'],
   }),
   field('agents.prompting.profiles', 'Setup profiles', 'agents', 'agent-center', {
     keywords: ['bundle', 'export', 'import'],

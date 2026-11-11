@@ -3,16 +3,13 @@ import '../styles/settings-agent-center.css';
 import '../styles/settings-graphite.css';
 
 import { isPairedDevice } from '../api/session-token';
-import { loadPromptMetaSettings, savePromptMetaSettings } from '../config/prompt-meta';
 import { detectLocalServer } from '../tools/client';
 import { refreshSettingsSection } from './settings-sections';
 import {
   initSettingsPromptEstimate,
   refreshPromptTokenEstimate,
-  schedulePromptTokenEstimateRefresh,
 } from './settings-prompt-estimate';
 import { setStatus } from './status';
-import type { PromptProfile } from '../chat/prompts/types';
 import {
   SETTINGS_CATEGORY_AREAS,
   SETTINGS_CATEGORIES,
@@ -52,7 +49,7 @@ import { resolveSettingsSectionNavigation } from './settings-section-navigation'
 import { modelsSectionForSettingsArea } from './models-settings-navigation';
 import { getCurrentRoute, launchApp, navigateToDesktop } from '../os/router';
 import type { LaunchOptions } from '../os/types';
-import { isShellOverlayOpen, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
+import { isShellOverlayTopmost, openShellOverlay, shellOverlayClosed } from './shell-overlay-state';
 import { initGraphiteSettingsPresentation } from './settings-graphite';
 
 export type { SettingsSectionId, SettingsCategoryId } from './settings-page-types';
@@ -319,23 +316,6 @@ function bindStaticSections(): void {
     launchApp('models', { modelsSection: 'providers' });
   });
 
-  const tabs = document.querySelectorAll('[data-profile-tab]');
-  tabs.forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.addEventListener('click', async () => {
-      const profile = el.dataset.profileTab as PromptProfile;
-      await savePromptMetaSettings({ activePromptProfile: profile });
-      tabs.forEach((t) =>
-        (t as HTMLButtonElement).classList.toggle(
-          'is-active',
-          (t as HTMLButtonElement).dataset.profileTab === profile,
-        ),
-      );
-      await refreshSettingsSection('agent-center');
-      schedulePromptTokenEstimateRefresh();
-    });
-  });
-
   document.querySelectorAll('[data-area-jump]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
@@ -354,17 +334,6 @@ function bindStaticSections(): void {
         | undefined;
       if (hub) setActiveIntegrationsHub(hub);
     });
-  });
-}
-
-async function hydrateStaticFields(): Promise<void> {
-  const meta = await loadPromptMetaSettings();
-  document.querySelectorAll('[data-profile-tab]').forEach((tab) => {
-    const el = tab as HTMLButtonElement;
-    el.classList.toggle(
-      'is-active',
-      el.dataset.profileTab === meta.activePromptProfile,
-    );
   });
 }
 
@@ -493,7 +462,6 @@ export function openSettings(
   upgradeSettingsCheckboxes();
   bindStaticSections();
   initSettingsPromptEstimate();
-  void hydrateStaticFields();
   void detectLocalServer().then(() => refreshPromptTokenEstimate());
 
   const resolvedSection = section
@@ -623,7 +591,7 @@ export function initSettingsPage(): void {
 
   initSettingsMobileNav();
   document.addEventListener('keydown', (event) => {
-    if (event.defaultPrevented || event.key !== 'Escape' || !isShellOverlayOpen('settings')) return;
+    if (event.defaultPrevented || event.key !== 'Escape' || !isShellOverlayTopmost('settings')) return;
     event.preventDefault();
     closeSettings();
     document.querySelector<HTMLElement>('[data-shell-overlay="settings"]')?.focus();

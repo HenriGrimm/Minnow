@@ -581,7 +581,7 @@ export function createChatCommandService({
       const target = await authorize(caller, input.chatId, 'send');
       const original = repository.getCommand(input.targetCommandId);
       if (!original || original.chatId !== input.chatId) failure('command_not_found', 'Queued input does not belong to this conversation');
-      if (original.runId && original.executionId) failure('stale_revision', 'Task input was already consumed by an attempt');
+      if (original.runId && original.executionId && kind !== 'remove_queued') failure('stale_revision', 'Task input was already consumed by an attempt');
       const live = active.get(input.chatId);
       if (kind === 'push_queued' && live) {
         if (!live.host.supportsSteer || live.controller.signal.aborted) failure('steer_unsupported', 'The active turn does not support steering. To request a separate follow-up, send a new message with mode queue if authorized.');
@@ -606,6 +606,15 @@ export function createChatCommandService({
         });
         else {
           if (!PENDING.includes(original.state) || original.revision !== input.expectedRevision) failure('stale_revision', 'Queued input changed or was consumed');
+          const execution = original.executionId && repository.getExecution(original.executionId);
+          if (execution?.commandId === original.commandId && execution.status === 'waiting_for_host') {
+            const lease = repository.getLease(input.chatId);
+            if (lease?.executionId !== execution.executionId || lease.state !== 'released' || active.has(input.chatId) || externallyOwned(input.chatId)) {
+              failure('ownership_conflict', 'Wait for the paused execution to stop before removing its input');
+            }
+            repository.recoverExecution(execution.executionId, { fence: lease, status: 'stopped',
+              quiescence: { verified: true, source: 'queue-removal/released-host-wait', checkedAt: now() } });
+          }
           updated = repository.updateCommand(input.targetCommandId, { state: 'cancelled', result: { disposition: 'removed', removedByCommandId: commandId } }, { expectedRevision: input.expectedRevision });
         }
         return repository.updateCommand(admitted.commandId, { state: 'settled', result: {

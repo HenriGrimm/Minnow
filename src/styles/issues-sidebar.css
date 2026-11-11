@@ -30,6 +30,14 @@
   min-height: 0;
 }
 
+.graphite-issues-panel .issues-sidebar__list-view {
+  overflow: auto;
+}
+
+.graphite-issues-panel .issues-sidebar__list {
+  min-height: var(--mn-control-h-lg);
+}
+
 .issues-sidebar__capture {
   padding: 14px 12px 12px;
   border-bottom: 1px solid var(--mn-border);

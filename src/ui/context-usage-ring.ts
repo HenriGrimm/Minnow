@@ -11,7 +11,7 @@ import { resolveEffectiveChatModelBinding } from './default-model';
 import { getActiveChat, sessionState } from '../state/sessions';
 import { getActiveComposerSurface } from './composer-surface';
 import {
-  bindContextUsageProfileTabs,
+  bindContextUsageBreakdownControls,
   closeContextUsageBreakdown,
   isContextUsageBreakdownOpen,
   syncContextUsageBreakdownIfOpen,
@@ -262,7 +262,7 @@ function bindRingButton(surface: ContextUsageSurface): void {
 
 /** Bind any context rings added after initial boot (e.g. desktop composer). */
 export function bindContextUsageRings(): void {
-  bindContextUsageProfileTabs();
+  bindContextUsageBreakdownControls();
   for (const surface of listContextUsageSurfaces()) {
     bindRingButton(surface);
   }
@@ -275,7 +275,7 @@ export function initContextUsageRing(): void {
   if (initialized) return;
   initialized = true;
 
-  bindContextUsageProfileTabs();
+  bindContextUsageBreakdownControls();
 
   for (const surface of listContextUsageSurfaces()) {
     bindRingButton(surface);

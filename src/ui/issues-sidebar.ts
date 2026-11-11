@@ -24,6 +24,7 @@ import { openIssuesContextMenu } from './issues-context-menu';
 import { rememberIssueMenuAnchor } from './issues-chat-run-target';
 import { deferUntilContextMenuClosed } from './context-menu';
 import { showToast } from './toast';
+import { requestGraphiteSurface } from './surfaces/surface-bridge';
 
 interface SidebarState {
   draft: AddIssueInput;
@@ -52,6 +53,11 @@ let count: HTMLElement;
 let busy = false;
 let loading: Promise<void> | null = null;
 let subscribed = false;
+
+function isIssuesViewActive(): boolean {
+  if (root?.classList.contains('graphite-issues-panel')) return root.isConnected && !root.hidden;
+  return isIssuesSidebarActive();
+}
 
 function state(): SidebarState {
   let value = states.get(currentWorkspace);
@@ -182,7 +188,7 @@ async function showMenu(id: string, anchor: HTMLElement, point?: { x: number; y:
   const items = await buildIssueRowMenuItems(issue, [id], {
     view: () => viewIssue(id), edit: () => { void editIssue(id); },
   });
-  if (!anchor.isConnected || !isIssuesSidebarActive()) return;
+  if (!anchor.isConnected || !isIssuesViewActive()) return;
   openIssuesContextMenu({
     anchor: point ? undefined : anchor, clientX: point?.x, clientY: point?.y,
     restoreFocus: anchor,
@@ -277,7 +283,7 @@ function renderFilterChips(): void {
 }
 
 function render(): void {
-  if (!root || !isIssuesStoreLoaded()) return;
+  if (!root || !isIssuesViewActive() || currentWorkspace !== sidebarWorkspaceKey(getWorkspacePath()) || !isIssuesStoreLoaded()) return;
   if (deferUntilContextMenuClosed(render) || deferUntilIssueLabelPopoverClosed(render)) return;
   const value = state();
   const selected = value.selectedId ? findIssueById(value.selectedId) : undefined;
@@ -411,12 +417,12 @@ async function createIssue(expandInBackground = false): Promise<void> {
   }
 }
 
-function mount(): void {
-  const host = document.getElementById('issuesSidebarRoot');
-  if (!host || root === host && host.childElementCount) return;
+function mount(host: HTMLElement): void {
+  if (root === host && host.childElementCount) return;
   detailController?.dispose();
   detailController = null;
   mountedDetailId = undefined;
+  if (root !== host) root?.replaceChildren();
   root = host;
   root.innerHTML = `<div class="issues-sidebar__list-view">
     <form class="issues-sidebar__capture">
@@ -449,7 +455,7 @@ function mount(): void {
     if (id) void editIssue(id);
   }));
   detail.addEventListener('focusout', () => {
-    setTimeout(() => { if (isIssuesSidebarActive() && state().selectedId) render(); }, 0);
+    setTimeout(() => { if (isIssuesViewActive() && state().selectedId) render(); }, 0);
   });
   feedback = root.querySelector('.issues-sidebar__feedback')!;
   count = root.querySelector('[data-count]')!;
@@ -499,37 +505,66 @@ function mount(): void {
   });
   if (!subscribed) {
     subscribed = true;
-    const refresh = () => { if (isIssuesSidebarActive()) render(); };
+    const refresh = () => { if (isIssuesViewActive()) render(); };
     subscribeIssuesChanges(refresh);
     subscribeIssuesTaxonomyChanges(refresh);
   }
 }
 
 export async function openIssuesSidebar(): Promise<void> {
+  if (requestGraphiteSurface('issues', 'show')) return;
   closeGitSidePanel();
   setIssuesSidebarActive(true);
   patchFilePanelState({ fileSidebarCollapsed: false });
   if (isMobileLayout()) openMobileFileSidebar();
   applyFileSidebarVisuals();
+  const host = document.getElementById('issuesSidebarRoot');
+  if (host) await showIssues(host);
+}
+
+export function showWorkspaceIssues(host: HTMLElement, resetList = false): Promise<void> {
+  return showIssues(host, resetList || root !== host || currentWorkspace !== sidebarWorkspaceKey(getWorkspacePath()));
+}
+
+async function showIssues(host: HTMLElement, showAll = false): Promise<void> {
   const workspace = sidebarWorkspaceKey(getWorkspacePath());
-  if (workspace !== currentWorkspace) {
+  const switchedWorkspace = workspace !== currentWorkspace;
+  if (switchedWorkspace) {
     detailController?.closeIssueDetail();
     mountedDetailId = undefined;
   }
   currentWorkspace = workspace;
-  mount();
-  if (!root) return;
+  mount(host);
+  const value = state();
+  if (showAll) {
+    value.filter = 'all';
+    value.properties = {};
+    value.query = '';
+    value.selectedId = undefined;
+    value.scrollTop = list.scrollTop = 0;
+    detailController?.closeIssueDetail();
+    mountedDetailId = undefined;
+  }
+  if (switchedWorkspace || showAll) {
+    host.querySelector<HTMLElement>('.issues-sidebar__list-view')!.hidden = false;
+    detail.hidden = true;
+    list.replaceChildren();
+    count.textContent = '';
+  }
+  const isCurrent = () => root === host && !host.hidden && currentWorkspace === workspace &&
+    sidebarWorkspaceKey(getWorkspacePath()) === workspace;
   if (!detailController) {
     const { createIssueDetailController } = await import('./issues-detail');
+    if (!isCurrent()) return;
     detailController ??= createIssueDetailController({
       host: detail.querySelector<HTMLElement>('.issues-sidebar__detail-host')!,
       onClose: backToList,
       onNavigate: viewIssue,
     });
   }
-  input.value = draftText(state().draft);
-  root.querySelector('select')!.value = state().filter;
-  root.querySelector('input')!.value = state().query;
+  input.value = draftText(value.draft);
+  host.querySelector('select')!.value = value.filter;
+  host.querySelector('input')!.value = value.query;
   syncCapture();
   if (!isIssuesStoreLoaded() || isIssuesStoreRecovering()) {
     feedback.textContent = 'Loading issues…';
@@ -541,9 +576,12 @@ export async function openIssuesSidebar(): Promise<void> {
     })().finally(() => { loading = null; });
     try { await loading; }
     catch {
-      feedback.textContent = 'Could not load issues. Select Issues again to retry.';
+      if (isCurrent()) feedback.textContent = 'Could not load issues. Reopen Issues to retry.';
       return;
     }
+  }
+  if (!isCurrent()) return;
+  if (feedback.textContent === 'Loading issues…' || feedback.textContent === 'Could not load issues. Reopen Issues to retry.') {
     feedback.textContent = '';
     syncCapture();
   }

@@ -155,12 +155,12 @@
         "Saving a memory",
         "What belongs in memory",
         "Rules",
-        "Prompt profiles",
+        "System prompt",
         "Recall",
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "3b73dfe1afd131b0181b48276f5334d7f6772ba245b997984ce92a1bae92f344"
+      "hash": "5880588b5d86d66a4751a9e79ec8699ba4f1bdde53842172ff6f702845cb6210"
     },
     {
       "path": "documentation/manual/chat/chatting.md",
@@ -180,7 +180,7 @@
         "Related"
       ],
       "section": "Chat",
-      "hash": "c6b128ec241a1bb7528bd4084506cfb4ffc605bb63ee6786eb55ad582a38658b"
+      "hash": "6a76c92bb22e0fc8ee909d63bf525a465a9dcf04fb6f0f46974916abc33f11cf"
     },
     {
       "path": "documentation/manual/chat/skills-and-commands.md",
@@ -243,7 +243,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "219b4d40b4964174c8c7abe8f516d058c334984770d28e525ac7ca654c7c5ebf"
+      "hash": "8fa8f2e15e32eb1e86619a6af004880712c77d91591150d4c2ccf74b6bc6c963"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -261,7 +261,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "f7dd68f0abb4dbf093908c7a99ee9f8ff9c4e43a4c39986851848fd17d8b3b3a"
+      "hash": "130d29ebd8c96d414c28ab29cf3651edc536fc8e55a1890faf65839318a20996"
     },
     {
       "path": "documentation/manual/apps/models.md",
@@ -305,7 +305,7 @@
         "Models for issue chats"
       ],
       "section": "Apps",
-      "hash": "f9ec6838354973e376736460cfb48151d89c89edbfa02cc2fbd036f908673bb3"
+      "hash": "16fe7d1d8fa7d9a68b2ea2440e297140afe77d633ae59ecb8b5dfda53370b2d4"
     },
     {
       "path": "documentation/manual/apps/scheduler.md",
@@ -342,7 +342,7 @@
         "Where settings are stored"
       ],
       "section": "Apps",
-      "hash": "2559c379c8d32e07867d4ec0af872e57184b78551c2c969362d31eecf35d0e6d"
+      "hash": "ae928f6d8bb4783affbe529a74408a1b27ba6a7d2b33ed8bc1d620ea56ce8dd6"
     },
     {
       "path": "documentation/manual/orchestrate/boards.md",
@@ -445,7 +445,7 @@
         "Related"
       ],
       "section": "Reference",
-      "hash": "7c8dc6e426f0bb2ac6dbb1e1ed7370935b95415f9aac153b023532e74549ca14"
+      "hash": "59c2a274fb53f763bc5d7c80f982c7dadf858479ff1765aaa03b762790fec32a"
     },
     {
       "path": "documentation/manual/reference/configuration.md",
@@ -461,7 +461,7 @@
         "Model selections and shared pools"
       ],
       "section": "Reference",
-      "hash": "cfe06de88673565560b9e2acb47b260e5e1e09d5c3272faa1c8885d7d64a1c81"
+      "hash": "6ed052305a911527a1a05b4caf48b45952031dfb45c8cae40690f514c232470f"
     },
     {
       "path": "documentation/manual/reference/privacy-and-security.md",

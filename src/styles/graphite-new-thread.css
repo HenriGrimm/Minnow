@@ -6,7 +6,7 @@
 #mainColumn.graphite-new-thread {
   gap: 0;
   overflow: auto;
-  padding: min(130px, 14vh) 32px 40px;
+  padding: var(--mn-space-10) var(--mn-space-8);
 }
 
 #mainColumn.graphite-new-thread > :is(.chat-viewport, .graphite-metrics-trigger, #statsStrip) {
@@ -24,6 +24,8 @@
 }
 
 .graphite-new-thread__intro {
+  /* The outer auto margins share free space and collapse to zero when scrolling. */
+  margin-block-start: auto;
   padding: 0 2px 22px;
 }
 
@@ -60,7 +62,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--mn-space-6);
-  margin-top: var(--mn-space-10);
+  margin-block: var(--mn-space-10) auto;
 }
 
 .graphite-new-thread__context > section {
@@ -173,6 +175,6 @@
 
 @media (max-width: 640px) {
   #mainColumn.graphite-new-thread {
-    padding: 28px 16px 24px;
+    padding: var(--mn-space-6) var(--mn-space-4);
   }
 }

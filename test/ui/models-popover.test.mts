@@ -98,3 +98,30 @@ test('Models preserves nested picker dismissal, tracks mounted preview occlusion
     assert.equal(document.querySelector('#modelsSystemPopover'), null);
   } finally { closeShellOverlay(); unbind(); trigger.remove(); }
 });
+
+test('Models closes above Settings on an outside click or Escape', () => {
+  const trigger = document.createElement('button');
+  document.body.append(trigger);
+  const unbind = bindShellOverlayTrigger(trigger, 'models');
+  let settingsClosed = 0;
+  openShellOverlay('settings', () => { settingsClosed++; });
+  try {
+    openModelsPopover(trigger);
+    document.body.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true }));
+    assert.equal(isShellOverlayOpen('models'), false);
+    assert.equal(isShellOverlayOpen('settings'), true);
+
+    openModelsPopover(trigger);
+    document.activeElement!.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'Escape', bubbles: true, cancelable: true,
+    }));
+    assert.equal(isShellOverlayOpen('models'), false);
+    assert.equal(isShellOverlayOpen('settings'), true);
+    assert.equal(settingsClosed, 0);
+  } finally {
+    closeShellOverlay('models');
+    closeShellOverlay('settings');
+    unbind();
+    trigger.remove();
+  }
+});

@@ -9,7 +9,7 @@ export interface PackAgentEntry {
   key: string;
   label: string;
   description?: string;
-  prompts: { full: string; lite?: string };
+  prompts: { full: string };
   providerId?: string | null;
   modelId?: string | null;
   allowedTools?: string[] | null;
@@ -37,7 +37,7 @@ export interface PackAgentSource {
   packId: string;
   agentKey: string;
   packRoot: string;
-  promptPaths: { full: string; lite?: string };
+  promptPaths: { full: string };
   contextStrategy?: PackContextStrategy;
 }
 

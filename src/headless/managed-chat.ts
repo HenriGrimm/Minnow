@@ -142,7 +142,7 @@ export async function runManagedChatIfPresent(options: RunHeadlessOptions, adapt
       version: HEADLESS_RESULT_VERSION, ok, exitCode, startedAt, finishedAt: new Date(completedAt).toISOString(),
       workspace: snapshot.chat?.workspacePath ?? options.workspaceAbs, modeId: snapshot.chat?.modeId ?? cli.modeId,
       workAgentId: snapshot.frame?.fields?.workAgentId ?? null, providerId: snapshot.chat?.providerId ?? '', modelId: snapshot.chat?.modelId ?? '',
-      promptProfile: 'managed', userPrompt: cli.prompt, assistantFinal, turns,
+      userPrompt: cli.prompt, assistantFinal, turns,
       stats: { toolRounds: turns.length, durationMs: completedAt - started }, error, chatId: cli.chatId,
       managedChat: { clientRequestId, commandId: receipt?.commandId ?? null, executionId: receipt?.executionId ?? receipt?.result?.executionId ?? null,
         state: receipt?.state ?? 'unknown', disposition: receipt?.disposition ?? 'unknown', link: receipt?.link ?? `#/app/code/chat?chatId=${encodeURIComponent(cli.chatId!)}` },
@@ -165,8 +165,8 @@ export async function runManagedChatIfPresent(options: RunHeadlessOptions, adapt
     knownManaged = true;
     if (cli.noApproval) throw new ManagedChatError('Managed conversations use the global permission mode. The legacy --no-approval flag is unsupported.');
     if ((cli.providerId && cli.providerId !== snapshot.chat.providerId) || (cli.modelId && cli.modelId !== snapshot.chat.modelId) ||
-      cli.agentId || (cli.managedModeExplicit && cli.modeId !== snapshot.chat.modeId) || cli.managedProfileExplicit) {
-      throw new ManagedChatError('This conversation uses its saved agent, model, mode and prompt profile. Configure it in Minnow before sending this message.');
+      cli.agentId || (cli.managedModeExplicit && cli.modeId !== snapshot.chat.modeId)) {
+      throw new ManagedChatError('This conversation uses its saved agent, model, and mode. Configure it in Minnow before sending this message.');
     }
     signal.throwIfAborted();
     const action = cli.chatAction ?? 'send';

@@ -154,7 +154,7 @@ test('unavailable targeted coverage fails a new admission and closes every parti
 test('policy source categories revoke synchronously, including legacy tool and pack definitions', async t => {
   for (const key of ['config.json', 'tools.json', 'sub-agents.json', 'work-agents.json', 'mcp.json',
     'mcp/servers/scope.json', 'plugins/index.json', 'tools/legacy/manifest.json', 'agent-packs/installed.json',
-    'prompt-configs/default.json', 'profiles/custom.json', 'providers/codex-cli/secrets.json']) {
+    'profiles/custom.json', 'providers/codex-cli/secrets.json']) {
     const f = await fixture(t);
     invalidateNativePolicyBeforeWrite(key);
     assert.equal(f.invalidations, 1, key);

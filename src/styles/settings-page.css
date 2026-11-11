@@ -485,18 +485,6 @@
   background: var(--mn-accent-soft);
 }
 
-.settings-parts-mount {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-parts-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .settings-part-block {
   border: 1px solid var(--mn-border);
   border-radius: var(--radius-md);

@@ -173,7 +173,7 @@ describe('V2 runner My Models binding', { concurrency: false }, () => {
         });
         // Use the production turn runner: injecting runTurn bypasses the
         // recovery provider/auth checks that regressed. No generation is sent.
-        const effector = createRunnerEffector({ boardId, journal, getState: () => state, cwd, promptVariant: 'lite' });
+        const effector = createRunnerEffector({ boardId, journal, getState: () => state, cwd });
         await effector.preflight();
         assert.equal(starts.length, loaded ? 0 : 1);
         if (!loaded) {
@@ -208,7 +208,6 @@ describe('V2 runner My Models binding', { concurrency: false }, () => {
       getState: () => state,
       model: { providerId: LIBRARY_PROVIDER, id: GGUF_LIBRARY_ID },
       cwd,
-      promptVariant: 'lite',
       runTurn: async (opts) => {
         seenModel = opts.model;
         resolvedIds.push(opts.model.providerId);
@@ -248,7 +247,6 @@ describe('V2 runner My Models binding', { concurrency: false }, () => {
     const effector = createRunnerEffector({
       cwd,
       model: { providerId: LIBRARY_PROVIDER, id: GGUF_LIBRARY_ID },
-      promptVariant: 'lite',
       runTurn: async () => BUILDER_PASS,
     });
 

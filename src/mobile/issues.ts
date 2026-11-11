@@ -20,7 +20,7 @@ import {
 import { resolveIssuePriorityIcon, resolveIssueStatusIcon, resolveIssueTypeColor, resolveIssueTypeIcon } from '../issues/type-icons';
 import { getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import type { IssueCard } from '../types';
-import { attachPullToRefresh, fab, screenHeader, searchField, segmented } from './chrome';
+import { attachPullToRefresh, screenHeader, searchField, segmented } from './chrome';
 import { el, emptyState, icon, shortTime } from './dom';
 import { getMobileWorkspaceScope, type MobileScreen } from './nav';
 import { openSheet, pickFromSheet } from './sheet';
@@ -141,8 +141,10 @@ export function openNewIssueSheet(onCreated: (issueId: string) => void): void {
   const sync = () => {
     const typeItem = findType(taxonomy, type);
     typeBtn.replaceChildren(icon(resolveIssueTypeIcon(type, typeItem), 14), el('span', { text: typeItem?.label ?? type }));
+    typeBtn.setAttribute('aria-label', `Issue type: ${typeItem?.label ?? type}`);
     const priorityItem = findPriority(taxonomy, priority);
     priorityBtn.replaceChildren(icon(resolveIssuePriorityIcon(priority, priorityItem), 14), el('span', { text: priorityItem?.label ?? priority }));
+    priorityBtn.setAttribute('aria-label', `Priority: ${priorityItem?.label ?? priority}`);
     submit.disabled = !title.value.trim();
   };
   typeBtn.addEventListener('click', async () => {
@@ -185,7 +187,18 @@ export function createIssuesScreen(deps: { openIssue(issueId: string): void }): 
   let visible = true;
   let frame = 0;
 
-  const header = screenHeader({ title: 'Issues', large: true });
+  const createIssue = () => openNewIssueSheet(deps.openIssue);
+  const header = screenHeader({
+    title: 'Issues',
+    large: true,
+    actions: [
+      el('button', {
+        className: 'm-btn m-btn--primary',
+        attrs: { type: 'button' },
+        on: { click: createIssue },
+      }, icon('fi-rr-plus', 14), 'New issue'),
+    ],
+  });
   const search = searchField('Search issues', (text) => {
     query = text;
     render();
@@ -212,7 +225,6 @@ export function createIssuesScreen(deps: { openIssue(issueId: string): void }): 
     { className: 'm-screen m-screen--root', dataset: { screen: 'issues' } },
     header.el,
     body,
-    fab('fi-rr-plus', 'New issue', () => openNewIssueSheet(deps.openIssue)),
   );
 
   attachPullToRefresh(body, async () => {
@@ -242,7 +254,6 @@ export function createIssuesScreen(deps: { openIssue(issueId: string): void }): 
           : emptyState({
               glyph: 'fi-rr-ticket',
               title: filter === 'open' ? 'No open issues' : 'Nothing here',
-              action: filter === 'open' ? { label: 'New issue', onClick: () => openNewIssueSheet(deps.openIssue) } : undefined,
             }),
       );
       return;

@@ -117,7 +117,6 @@ function installRunnerFactory() {
     lastEffector = createRunnerEffector({
       boardId,
       cwd: sandbox,
-      promptVariant: 'lite',
       limits: { maxTurns: 8, wallClockMs: 25_000 },
     });
     return lastEffector;
@@ -226,7 +225,6 @@ function makeMiniEffector(opts) {
     getState: opts.getState,
     model: MODEL,
     cwd: sandbox,
-    promptVariant: 'lite',
     limits: { maxTurns: 8, wallClockMs: 20_000 },
     postChatCompletions: (_provider, body, signal) =>
       postChatCompletionsHttp(
@@ -494,7 +492,6 @@ describe('P2-G induced failures', { concurrency: false }, () => {
       getState: () => box.engine.getState(),
       model: MODEL,
       cwd: sandbox,
-      promptVariant: 'lite',
       limits: { maxTurns: 8, wallClockMs: 20_000 },
       postChatCompletions: (_provider, body, signal) => {
         if (firstCall) {

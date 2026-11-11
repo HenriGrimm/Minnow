@@ -277,42 +277,6 @@
   color: var(--mn-danger);
 }
 
-.graphite-context-surface__agent-content {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px 16px 12px;
-  overflow: auto;
-}
-
-.graphite-context-surface__assignment {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.graphite-context-surface__assignment-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
-  font-size: 11px;
-}
-
-.graphite-context-surface__assignment-body {
-  max-width: 92%;
-  padding: 9px 12px;
-  border: 1px solid var(--mn-graphite-line, var(--mn-border));
-  border-radius: 12px 12px 4px 12px;
-  background: var(--mn-graphite-raised-2, var(--mn-surface-2));
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.55;
-}
-
 .graphite-context-surface__agent-footer {
   border-block-start: 1px solid var(--mn-graphite-line, var(--mn-border));
   color: var(--mn-graphite-text-subtle, var(--mn-fg-muted));
@@ -352,7 +316,7 @@
   border-radius: var(--mn-radius-sm);
 }
 
-.graphite-side-chat__scroll {
+.graphite-chat-panel__scroll {
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -360,14 +324,14 @@
   scrollbar-gutter: stable;
 }
 
-.graphite-side-chat__transcript {
+.graphite-chat-panel__transcript {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: var(--mn-space-4);
+  padding: var(--mn-space-5) var(--mn-space-4) var(--mn-space-2);
 }
 
-.graphite-side-chat__transcript .msg-bubble {
+.graphite-chat-panel__transcript .msg-bubble {
   overflow-wrap: anywhere;
 }
 
@@ -377,39 +341,13 @@
   color: var(--mn-fg-muted);
 }
 
-.graphite-side-chat > .graphite-surface-status:not(:empty) {
+:is(.graphite-side-chat, .graphite-chat-panel__scroll) > .graphite-surface-status:not(:empty) {
   margin: 0;
   padding: 0 16px 6px;
 }
 
-.graphite-side-chat .graphite-side-chat__composer {
-  width: calc(100% - 24px);
-  margin: 4px 12px 12px;
-}
-
-.graphite-side-chat__composer.input-bar .input-row {
-  grid-column: 1;
-}
-
-.graphite-side-chat__composer.input-bar .input-bar-send-stack {
-  order: 1;
-  align-self: end;
-  padding: 6px;
-}
-
-.graphite-side-chat .graphite-side-chat__input {
-  flex: 1;
-  min-height: 44px;
-  max-height: 110px;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  outline: none;
-}
-
-.graphite-side-chat [hidden] {
-  display: none;
+.graphite-side-chat > .input-bar {
+  margin-block: var(--mn-space-1) var(--mn-space-3);
 }
 
 @media (pointer: coarse) {

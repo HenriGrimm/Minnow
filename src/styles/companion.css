@@ -6,11 +6,12 @@
 
 .companion-access {
   position: fixed;
-  inset: 0;
+  inset: var(--mn-viewport-offset-top, 0px) 0 auto;
+  height: var(--mn-viewport-height, 100dvh);
   z-index: 100040;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   overflow-y: auto;
   padding: max(28px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
     max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
@@ -23,7 +24,9 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: none;
   width: min(26rem, 100%);
+  margin-block: auto;
 }
 
 .companion-access__title,
@@ -226,12 +229,13 @@ html.minnow-companion-access body > :not(#companionAccess):not(#companionReconne
   align-items: center;
   justify-content: center;
   gap: 16px;
+  overflow-y: auto;
   padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
   background: var(--mn-bg);
 }
 
 .companion-scanner__video {
-  width: min(22rem, 100%);
+  width: min(22rem, 100%, 55dvh);
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: var(--radius-lg);
@@ -324,6 +328,7 @@ html.minnow-companion-access body > :not(#companionAccess):not(#companionReconne
 .companion-install__actions,
 .companion-move__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }

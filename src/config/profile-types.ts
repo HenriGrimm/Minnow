@@ -2,20 +2,14 @@
  * Minnow setup profile bundle types (~/.minnow/profiles/<id>.json).
  */
 
-import type { PromptConfigPartSettings } from '../chat/prompts/types';
-import type { PlanGranularity, PromptProfileName } from './prompt-meta';
+import type { PlanGranularity } from './prompt-meta';
 
 export const PROFILE_SCHEMA_VERSION = 1;
 
-export type ProfilePromptSource = 'embedded' | 'prompt-config' | 'full' | 'lite';
 
 export interface ProfilePromptSection {
-  promptProfile: PromptProfileName;
-  activePromptConfigId: string | null;
   activeInfoPresetId: string;
   planGranularity?: PlanGranularity;
-  source?: ProfilePromptSource;
-  parts?: Record<string, PromptConfigPartSettings>;
 }
 
 export interface ProfileAgentsSection {

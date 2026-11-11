@@ -53,6 +53,11 @@
   position: relative;
 }
 
+/* Soften the clipped transcript while leaving the jump button fully visible. */
+.chat-viewport > .chat-area.chat-thread:has(+ .chat-viewport-dock > .chat-jump-latest:not(.hidden)) {
+  mask-image: linear-gradient(to bottom, var(--mn-fg) calc(100% - var(--mn-space-8)), transparent);
+}
+
 /* Bottom-center overlay: jump chip stacked above the code-change strip. */
 .chat-viewport-dock {
   position: absolute;
@@ -934,6 +939,9 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   color: var(--mn-fg-muted);
 }
 
+.tool-call-msg[hidden],
+.tool-call-batch[hidden] { display: none; }
+
 .tool-call-batch__summary {
   display: flex;
   align-items: center;
@@ -971,7 +979,6 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
 }
 
 .tool-call-batch__icon { color: var(--mn-fg-muted); }
-.tool-call-batch__icon--fail { color: var(--mn-danger); }
 
 .tool-call-batch__label {
   flex-shrink: 0;
@@ -1006,13 +1013,12 @@ html[data-theme$='-light'] :is(.msg-bubble, .thoughts-content, .issue-ticket__de
   white-space: normal;
 }
 
-.tool-call-batch--reasoning-summary.tool-call-batch--running:not(.tool-call-batch--fail) .tool-call-batch__status {
+.tool-call-batch--reasoning-summary.tool-call-batch--running .tool-call-batch__status {
   display: none;
 }
 
 .tool-call-batch__count { flex-shrink: 0; }
 .tool-call-batch__count + .tool-call-batch__count::before { content: ' · '; }
-.tool-call-batch--fail .tool-call-batch__label { color: var(--mn-danger-ink); }
 
 .tool-call-batch__chevron {
   flex-shrink: 0;

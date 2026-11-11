@@ -292,9 +292,6 @@ describe('builder prompt cwd rendering', () => {
 
   it('shows worktree path and relative-cd rule in composed builder prompt', () => {
     const prompt = composeSystemPrompt({
-      profile: 'full',
-      customConfigId: null,
-      customConfig: null,
       cwd: WORKTREE_DIRECT,
       modeId: 'build',
       orchestratePlanPath: null,

@@ -14,18 +14,15 @@ part: expert              # optional — composer part id (defaults from kind)
 modeBindings: [build, plan]
 expertTriggers: [react, typescript]
 toolPolicy: Optional hint for mode tool policy (Step 05)
-body: |                   # optional inline full body (alternative to markdown below)
+body: |                   # optional inline body (alternative to markdown below)
   Multi-line body…
-fullBody: |               # optional explicit full body
-liteBody: |               # optional inline lite body
-defaultProfile: full      # full | lite
 ```
 
 ## When this prompt applies
 
 | `kind` | Loaded when |
 |--------|-------------|
-| `base` | Always (unless disabled in Custom) |
+| `base` | Always |
 | `mode` | `ComposeContext.modeId` matches file / binding |
 | `expert` | Manual or auto expert id (Step 06) |
 | `work-agent` | Work agent active (Step 08) |
@@ -39,7 +36,7 @@ defaultProfile: full      # full | lite
 1. **Role** — who the model is  
 2. **Constraints** — scope, safety, output format  
 3. **Tool rules** — only in `tool-usage` part (do not duplicate tool lists in `base`)  
-4. **Examples** — optional; omit or shorten in Lite  
+4. **Examples** — optional
 
 ## Interpolation tokens
 
@@ -50,7 +47,7 @@ defaultProfile: full      # full | lite
 | `{{cwd}}` | Project / page origin |
 | `{{memory}}` | Retrieved memory block (Step 16) |
 | `{{user_message}}` | Current turn preview |
-| `{{chat_history_summary}}` | Optional summarizer — **Full only** by default |
+| `{{chat_history_summary}}` | Optional summarizer |
 | `{{work_agent}}` | Work agent id |
 | `{{skill}}` | Skill body injection |
 | `{{date}}` | ISO date |
@@ -64,16 +61,7 @@ Parts concatenate in this order with `\n\n---\n\n`:
 
 `base → mode → expert → work-agent → tool-usage → info → skill → memory`
 
-## Profiles
-
-| Profile | Behavior |
-|---------|----------|
-| **full** | Full templates; all applicable parts |
-| **lite** | `liteBody` / `*.lite.md` / truncation; `info` and `memory` off by default |
-| **custom** | `~/.minnow/prompt-configs/<id>.json` per-part `enabled` + `contentOverride` |
-
 ## File layout
 
 - Shipped: `src/chat/prompts/<kind>/…`
 - User overrides: `~/.minnow/prompts/` (mirror tree; same `id` wins)
-- Custom named profiles: `~/.minnow/prompt-configs/<id>.json`

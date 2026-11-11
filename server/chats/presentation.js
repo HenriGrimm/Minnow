@@ -135,6 +135,20 @@ export function createChatPresentation({ repository, now = Date.now, flushMs = 4
       changed(chatId, event.type === 'round_end' || event.type === 'round_start');
     },
     onServiceEvent(event) {
+      // Configuration changes placement/model controls, never transcript content.
+      // Send a notice even to the mounted viewer so background receipts cannot
+      // trigger a full transcript hydration in the shared frame observer.
+      if (event.type === 'configuration') {
+        const projectId = repository.getChatProjectId(event.chatId);
+        const audiences = [...viewers].filter(viewer => viewer.projectId === projectId);
+        if (!audiences.length) return;
+        const snapshot = frame(event.chatId, { history: false });
+        const message = { kind: 'chat-changed', chatId: event.chatId, sequence: snapshot.sequence, fields: snapshot.fields };
+        for (const viewer of audiences) {
+          try { viewer.send(message); } catch { viewers.delete(viewer); }
+        }
+        return;
+      }
       if (terminal.has(event.status) && event.executionId && live.get(event.chatId)?.executionId === event.executionId) live.delete(event.chatId);
       changed(event.chatId);
     },

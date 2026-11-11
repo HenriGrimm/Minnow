@@ -22,17 +22,16 @@ export function assertValidPromptEntityId(id) {
 /**
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  */
 /** Agent prompt parts editable in Settings → Agents (one agent; see prompt-composer). */
 export const AGENT_PROMPT_FAMILIES = Object.freeze(['base', 'tool-usage', 'info']);
 
-function builtinRelativePath(family, entityId, profile) {
+function builtinRelativePath(family, entityId) {
   if (AGENT_PROMPT_FAMILIES.includes(family)) {
-    return path.join('src', 'chat', 'prompts', family, `${entityId}.${profile}.md`);
+    return path.join('src', 'chat', 'prompts', family, `${entityId}.full.md`);
   }
   if (family === 'modes') {
-    return path.join('src', 'chat', 'prompts', 'modes', `${entityId}.${profile}.md`);
+    return path.join('src', 'chat', 'prompts', 'modes', `${entityId}.full.md`);
   }
   if (family === 'experts') {
     return path.join(
@@ -41,28 +40,27 @@ function builtinRelativePath(family, entityId, profile) {
       'prompts',
       'experts',
       entityId,
-      `expert.${profile}.md`,
+      `expert.full.md`,
     );
   }
-  return path.join('src', 'agents', 'prompts', 'sub-agents', `${entityId}.${profile}.md`);
+  return path.join('src', 'agents', 'prompts', 'sub-agents', `${entityId}.full.md`);
 }
 
 /**
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  */
-function userRelativePath(family, entityId, profile) {
+function userRelativePath(family, entityId) {
   if (AGENT_PROMPT_FAMILIES.includes(family)) {
-    return path.join('prompts', family, `${entityId}.${profile}.md`);
+    return path.join('prompts', family, `${entityId}.full.md`);
   }
   if (family === 'modes') {
-    return path.join('prompts', 'modes', `${entityId}.${profile}.md`);
+    return path.join('prompts', 'modes', `${entityId}.full.md`);
   }
   if (family === 'experts') {
-    return path.join('prompts', 'experts', entityId, `expert.${profile}.md`);
+    return path.join('prompts', 'experts', entityId, `expert.full.md`);
   }
-  return path.join('prompts', 'sub-agents', `${entityId}.${profile}.md`);
+  return path.join('prompts', 'sub-agents', `${entityId}.full.md`);
 }
 
 function resolveUnderRoot(root, rel) {
@@ -87,30 +85,19 @@ function extractBody(raw, filePath) {
  * @param {string} projectRoot
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  */
 /**
  * Shipped repo prompt only (ignores ~/.minnow overrides).
  * @param {string} projectRoot
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  */
-export async function readBuiltinPromptFile(projectRoot, family, entityId, profile) {
+export async function readBuiltinPromptFile(projectRoot, family, entityId) {
   assertValidPromptEntityId(entityId);
-  if (profile !== 'full' && profile !== 'lite') {
-    throw new Error('Invalid profile');
-  }
-
-  let builtinPath = resolveUnderRoot(
+  const builtinPath = resolveUnderRoot(
     path.resolve(projectRoot),
-    builtinRelativePath(family, entityId, profile),
+    builtinRelativePath(family, entityId),
   );
-  // One prompt serves every profile (D7): a missing lite file falls back to full.
-  if (profile === 'lite' && AGENT_PROMPT_FAMILIES.includes(family)) {
-    try { await fs.access(builtinPath); }
-    catch { builtinPath = resolveUnderRoot(path.resolve(projectRoot), builtinRelativePath(family, entityId, 'full')); }
-  }
   const raw = await fs.readFile(builtinPath, 'utf8');
   return { content: extractBody(raw, builtinPath), source: 'builtin' };
 }
@@ -119,17 +106,12 @@ export async function readBuiltinPromptFile(projectRoot, family, entityId, profi
  * @param {string} projectRoot
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  * @param {{ raw?: boolean }} [options]
  */
-export async function readPromptFile(projectRoot, family, entityId, profile, options = {}) {
+export async function readPromptFile(projectRoot, family, entityId, options = {}) {
   assertValidPromptEntityId(entityId);
-  if (profile !== 'full' && profile !== 'lite') {
-    throw new Error('Invalid profile');
-  }
-
   const home = path.resolve(getMinnowHome());
-  const userPath = resolveUnderRoot(home, userRelativePath(family, entityId, profile));
+  const userPath = resolveUnderRoot(home, userRelativePath(family, entityId));
 
   try {
     const raw = await fs.readFile(userPath, 'utf8');
@@ -144,13 +126,13 @@ export async function readPromptFile(projectRoot, family, entityId, profile, opt
   if (options.raw) {
     const builtinPath = resolveUnderRoot(
       path.resolve(projectRoot),
-      builtinRelativePath(family, entityId, profile),
+      builtinRelativePath(family, entityId),
     );
     const rawBuiltin = await fs.readFile(builtinPath, 'utf8');
     return { content: rawBuiltin, source: 'builtin' };
   }
 
-  return readBuiltinPromptFile(projectRoot, family, entityId, profile);
+  return readBuiltinPromptFile(projectRoot, family, entityId);
 }
 
 /**
@@ -173,17 +155,12 @@ export async function deleteExpertEntityDir(entityId) {
 /**
  * @param {'modes'|'experts'|'sub-agents'|'base'|'tool-usage'|'info'} family
  * @param {string} entityId
- * @param {'full'|'lite'} profile
  * @param {string} content
  */
-export async function writePromptFileOverride(family, entityId, profile, content) {
+export async function writePromptFileOverride(family, entityId, content) {
   assertValidPromptEntityId(entityId);
-  if (profile !== 'full' && profile !== 'lite') {
-    throw new Error('Invalid profile');
-  }
-
   const home = path.resolve(getMinnowHome());
-  const filePath = resolveUnderRoot(home, userRelativePath(family, entityId, profile));
+  const filePath = resolveUnderRoot(home, userRelativePath(family, entityId));
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   let body =
     typeof content === 'string' && content.trim() ? `${content.trim()}\n` : '';
@@ -199,10 +176,10 @@ export async function writePromptFileOverride(family, entityId, profile, content
 /**
  * Remove user override so built-in ships again.
  */
-export async function deletePromptFileOverride(family, entityId, profile) {
+export async function deletePromptFileOverride(family, entityId) {
   assertValidPromptEntityId(entityId);
   const home = path.resolve(getMinnowHome());
-  const filePath = resolveUnderRoot(home, userRelativePath(family, entityId, profile));
+  const filePath = resolveUnderRoot(home, userRelativePath(family, entityId));
   try {
     invalidateNativePolicyBeforeWrite('prompts');
     await fs.unlink(filePath);

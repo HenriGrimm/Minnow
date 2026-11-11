@@ -52,7 +52,6 @@ test('managed --chat-id sends one durable command and never invokes generations 
   assert.equal(result?.ok, true);
   assert.equal(result?.assistantFinal, 'Canonical owned answer');
   assert.equal(result?.chatId, 'child');
-  assert.equal(result?.promptProfile, 'managed');
   assert.equal(result?.managedChat?.commandId, 'command');
   assert.deepEqual(f.calls.filter(call => call.body).map(call => call.body), [
     { action: 'send', text: 'Task', clientRequestId: 'request' },

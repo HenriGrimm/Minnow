@@ -80,7 +80,6 @@ export interface OutboundPromptEstimate {
     userRules: number;
     history: number;
     tools: number;
-    legacyFallback: boolean;
     /** Approximate tokens for injected Brain notes (subset of composedSystem). */
     brainNotesSystem?: number;
     /** Resolved on for this estimate (notes may still be loading). */
@@ -109,5 +108,4 @@ export declare function computeOutboundPromptEstimateFromParts(parts: {
     history: Message[];
     tools: OpenAIFunctionDefinition[];
     userRulesText?: string;
-    legacyFallback?: boolean;
 }): OutboundPromptEstimate;

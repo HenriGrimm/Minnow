@@ -1508,19 +1508,7 @@ export interface SessionState {
   codeChangeTotalsByWorkspace?: Record<string, ChatCodeChangeTotals>;
 }
 
-/** Built-in system prompt template for the settings drawer. */
-export interface SystemPromptPreset {
-  id: string;
-  label: string;
-  text: string;
-}
-
 /** `localStorage` payload under `minnow.systemPrompt`. */
-export interface SystemPromptSettings {
-  presetId: string;
-  text: string;
-}
-
 // ── Completions ──────────────────────────────────────────────────────────────
 
 /** Provenance for a detected model capability (feature #11). */

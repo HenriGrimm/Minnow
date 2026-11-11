@@ -39,6 +39,9 @@ function setPanelStatus(state: 'ok' | 'err', message: string): void {
 
 function formatHeaderSummary(total: number, enabled: number): string {
   if (total < 0) return '—';
+  if (getRoot()?.classList.contains('m-native-app-page')) {
+    return total ? `${enabled} of ${total} jobs on` : 'No scheduled jobs';
+  }
   if (total === 0) {
     return 'Recurring agent jobs while Minnow is open';
   }

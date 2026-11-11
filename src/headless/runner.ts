@@ -27,11 +27,6 @@ import {
 import {
   loadSamplerMeta,
 } from '../config/sampler-meta';
-import {
-  loadPromptMetaSettings,
-  setPromptMetaCacheForTests,
-  type PromptProfileName,
-} from '../config/prompt-meta';
 import { detectConfigServer, isServerStorageMode } from '../config/storage-mode';
 import { detectLocalServer } from '../tools/client';
 import {
@@ -58,20 +53,6 @@ import type { TranscriptMessage } from '../../server/runner/transcript-store';
 import type { TurnEvent } from '../../server/runner/run-turn.js';
 import { resolveHeadlessContextLimits } from './context-policy';
 import { runManagedChatIfPresent } from './managed-chat';
-
-/** Apply --profile in memory only (does not write ~/.minnow). */
-async function loadPromptMetaWithProfile(profile: string): Promise<void> {
-  const base = await loadPromptMetaSettings();
-  let activePromptProfile: PromptProfileName = 'full';
-  let activePromptConfigId: string | null = null;
-  if (profile === 'lite') {
-    activePromptProfile = 'lite';
-  } else if (profile.startsWith('custom:')) {
-    activePromptProfile = 'custom';
-    activePromptConfigId = profile.slice('custom:'.length).trim() || null;
-  }
-  setPromptMetaCacheForTests({ ...base, activePromptProfile, activePromptConfigId });
-}
 
 /** @internal Exposed for generation transport regression tests. */
 export interface ActiveHeadlessGeneration {
@@ -276,7 +257,6 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
   await initHeadlessWorkAgents();
   await loadChatMeta();
   await loadSamplerMeta();
-  await loadPromptMetaWithProfile(options.cli.profile);
   await ensureToolConfigReady();
   await loadToolSecurityMeta().catch(() => undefined);
   if (isServerStorageMode() && !isToolConfigReadyForSettingsUi()) {
@@ -336,7 +316,6 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     chat.providerId = sendProviderId;
     chat.modelId = sendModelId;
 
-    const outbound = await resolveHeadlessOutboundSystemMessages(chat, options.cli.profile);
     const schedulerSystemNote = options.cli.schedulerRun
       ? [
           'You are executing a Minnow scheduled job in headless mode.',
@@ -362,9 +341,10 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
       autoRejectQuestions: options.cli.autoRejectQuestions,
     };
 
-    const composedSystem = [outbound.composed, schedulerSystemNote]
-      .filter(part => part.trim()).join('\n\n');
-    const messages = buildHeadlessApiMessages(chat, composedSystem, outbound.userRules ?? undefined);
+    const outbound = await resolveHeadlessOutboundSystemMessages(chat, enabledTools.map(tool => tool.function.name), workspacePath);
+    const composedSystem = [outbound.composed, outbound.userRules, schedulerSystemNote]
+      .filter(part => part?.trim()).join('\n\n---\n\n');
+    const messages = buildHeadlessApiMessages(chat, composedSystem);
     let generationFailure: HeadlessGenerationError | null = null;
     const deps = createHeadlessRunnerDeps(async (provider, body, signal, postOptions) => {
       generationFailure = null;
@@ -476,7 +456,6 @@ export async function runHeadless(options: RunHeadlessOptions): Promise<Headless
     workAgentId,
     providerId,
     modelId,
-    promptProfile: options.cli.profile,
     userPrompt: options.cli.prompt,
     assistantFinal,
     turns,

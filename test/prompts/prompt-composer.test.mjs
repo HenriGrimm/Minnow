@@ -40,7 +40,7 @@ describe('prompt-composer', () => {
 
   test('CLI composition keeps stable instructions while current-turn info changes', async () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
-    const context = { profile: 'full', cwd: '/one', modeId: 'build', expertId: null, workAgentId: null,
+    const context = { cwd: '/one', modeId: 'build', expertId: null, workAgentId: null,
       skillBody: null, memoryBlock: 'Memory one', enabledToolIds: ['get_datetime'], infoPresetId: null };
     const first = [], second = [];
     const a = composeSystemPrompt(context, { turnContext: first });
@@ -48,10 +48,6 @@ describe('prompt-composer', () => {
     assert.equal(a, b); assert.equal(a.includes('Memory one'), false);
     assert.ok(first.join('').includes('Memory one'));
     assert.notDeepEqual(first, second);
-    const custom = { ...context, profile: 'custom', customConfig: { parts: { info: { enabled: true, contentOverride: 'Opaque policy /one' } } } };
-    const opaque = [];
-    assert.ok(composeSystemPrompt(custom, { turnContext: opaque }).includes('Opaque policy /one'));
-    assert.deepEqual(opaque.filter((row) => row.includes('Opaque')), []);
     const notice = 'Optional enrichment unavailable: memory (deadline).';
     const feedback = [];
     assert.equal(composeSystemPrompt({ ...context, enrichmentNotice: notice }, { turnContext: feedback }), a);
@@ -77,7 +73,6 @@ describe('prompt-composer', () => {
   test('composition order and separators', async () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
     const out = composeSystemPrompt({
-      profile: 'full',
       cwd: '/test',
       modeId: 'build',
       expertId: null,
@@ -98,15 +93,16 @@ describe('prompt-composer', () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
     for (const modeId of ['general', 'build']) {
       const out = composeSystemPrompt({
-        profile: 'full', cwd: '/test', modeId, expertId: null, workAgentId: null, skillBody: null,
+        cwd: '/test', modeId, expertId: null, workAgentId: null, skillBody: null,
         memoryBlock: null, enabledToolIds: ['get_datetime'], infoPresetId: 'general-assistant',
       });
       assert.ok(!out.includes('INFO_GENERAL_BODY'), modeId);
     }
   });
 
-  test('disabled info in lite profile', async () => {
+  test('ignores legacy prompt size and files', async () => {
     registerPromptFilesFromRaw(await loadFixtureMap());
+    registerPromptFilesFromRaw({ './base/lite.md': await fs.readFile(fixturePath('base-default.lite.md'), 'utf8') }, 'user');
     const out = composeSystemPrompt({
       profile: 'lite',
       cwd: '/test',
@@ -118,8 +114,9 @@ describe('prompt-composer', () => {
       enabledToolIds: ['a', 'b'],
       infoPresetId: 'general-assistant',
     });
-    assert.ok(out.includes('BASE_LITE_BODY'));
-    assert.ok(out.includes('TOOLS_LITE'));
+    assert.ok(out.includes('BASE_FULL_BODY'));
+    assert.ok(out.includes('TOOLS_FULL'));
+    assert.doesNotMatch(out, /BASE_LITE_BODY|TOOLS_LITE/);
     assert.ok(!out.includes('INFO_GENERAL_BODY'));
   });
 });

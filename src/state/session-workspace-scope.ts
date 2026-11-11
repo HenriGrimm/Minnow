@@ -22,7 +22,17 @@ export function hasComposerDraft(chat: Chat): boolean {
   return Boolean(chat.composerDraft?.trim());
 }
 
+const pendingArchivePlacements = new Map<string, boolean>();
+
+/** In-flight UI placement only; session saves retain the acknowledged metadata. */
+export function setPendingChatArchive(chatId: string, archived: boolean | undefined): void {
+  if (archived === undefined) pendingArchivePlacements.delete(chatId);
+  else pendingArchivePlacements.set(chatId, archived);
+}
+
 export function isChatArchived(chat: Chat): boolean {
+  const pending = pendingArchivePlacements.get(chat.id);
+  if (pending !== undefined) return pending;
   return typeof chat.archivedAt === 'number' && Number.isFinite(chat.archivedAt) && chat.archivedAt > 0;
 }
 

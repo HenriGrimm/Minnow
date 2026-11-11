@@ -87,6 +87,7 @@ import type {
   Chat,
   Message,
   ModelInfo,
+  QueuedComposerMessage,
   Stats,
   ToolResultMessage,
   Usage,
@@ -369,18 +370,24 @@ function historyRenderContext(chat: Chat): HistoryRenderContext {
 }
 
 /** Show accepted input immediately without changing the runner's saved history. */
-function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
-  const messages = getPendingTranscriptMessages(chat);
+function syncPendingUserMessages(chat: Chat, host: HTMLElement, messages: QueuedComposerMessage[]): void {
+  const ids = new Set(messages.map(item => item.id));
+  const mountedIds = new Set<string>();
+  for (const row of host.querySelectorAll<HTMLElement>('.msg--sending')) {
+    const id = row.dataset.pendingCommandId ?? '';
+    if (ids.has(id)) mountedIds.add(id);
+    else row.remove();
+  }
+  const statusRow = host.querySelector<HTMLElement>(':scope > .msg--sending-status');
   for (const pending of messages) {
-    if (chat.history.some(message => message.role === 'user' && message.commandId === pending.id) ||
-        [...host.querySelectorAll<HTMLElement>('.msg--sending')].some(row => row.dataset.pendingCommandId === pending.id)) continue;
+    if (mountedIds.has(pending.id)) continue;
     const message: UserMessage = { role: 'user', content: pending.text, provenance: pending.provenance, commandId: pending.id };
     if (isHiddenTranscriptUserMessage(message)) continue;
     if (isAttributedAgentMessage(message)) {
       const row = createAttributedAgentMessage(chat, message, -1);
       row.removeAttribute('data-history-index');
       row.classList.add('msg--sending'); row.dataset.pendingCommandId = pending.id;
-      host.append(row);
+      host.insertBefore(row, statusRow);
       continue;
     }
     const wrap = document.createElement('div');
@@ -394,43 +401,51 @@ function appendSendingUserMessage(chat: Chat, host: HTMLElement): void {
     bubble.className = 'msg-bubble';
     renderUserMessageBubble(bubble, pending.text, { persistedImages: pending.images, issue: pending.issue, codeMap: pending.codeMap });
     wrap.append(label, bubble);
-    host.append(wrap);
+    host.insertBefore(wrap, statusRow);
   }
+}
+
+/** Keep the send status mounted while the accepted turn prepares its first response. */
+function syncSendingStatus(chat: Chat, host: HTMLElement, messages: QueuedComposerMessage[]): void {
+  let statusRow = host.querySelector<HTMLElement>(':scope > .msg--sending-status');
   const pending = messages.find(item => item.kind !== 'steer');
-  let statusRow = host.querySelector<HTMLElement>('.msg--sending-status');
-  if (!pending || host.querySelector('.msg.assistant[data-stream-phase]:not([data-stream-phase="done"]):not([data-stream-phase="prose"])')) {
+  const execution = chat.agentExecution;
+  const awaitingStream = statusRow?.dataset.chatId === chat.id && (chat.chatCommandVersion !== 1
+    ? isChatStreaming(chat.id)
+    : execution?.commandId === statusRow.dataset.pendingCommandId &&
+      (execution?.status === 'running' || execution?.status === 'loading_model'));
+  if ((!pending && !awaitingStream) || host.querySelector(':scope > .msg.assistant[data-stream-phase]:not([data-stream-phase="done"])')) {
     statusRow?.remove();
     return;
   }
   if (!statusRow) {
     statusRow = document.createElement('div');
     statusRow.className = 'msg assistant msg--sending-status';
+    statusRow.dataset.chatId = chat.id;
     const label = document.createElement('div');
     label.className = 'msg-label';
     label.textContent = 'Assistant';
     statusRow.append(label, createStreamStatusElement('Sending…'));
     host.append(statusRow);
   }
-  statusRow.dataset.pendingCommandId = pending.id;
+  if (pending) statusRow.dataset.pendingCommandId = pending.id;
 }
 
 /** Update accepted messages without rebuilding the assistant's streaming DOM. */
 export function syncPendingTranscriptMessages(chat: Chat, host = getActiveChatMountElement()): void {
   if (!host || getActiveChat().id !== chat.id) return;
-  const ids = new Set(getPendingTranscriptMessages(chat).map(item => item.id));
-  for (const row of host.querySelectorAll<HTMLElement>('.msg--sending, .msg--sending-status')) {
-    if (!ids.has(row.dataset.pendingCommandId ?? '')) row.remove();
-  }
-  appendSendingUserMessage(chat, host);
+  const messages = getPendingTranscriptMessages(chat);
+  syncPendingUserMessages(chat, host, messages);
+  syncSendingStatus(chat, host, messages);
 }
 
 /** Paint the shared transcript in a secondary surface without selecting or repainting Code. */
-export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>, presentation?: ChatTranscriptPresentation): { liveBubble: HTMLDivElement | null; dispose: () => void } {
+export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expanded: Set<number>, presentation?: ChatTranscriptPresentation, isStreaming = () => isChatStreaming(chat.id)): { dispose: () => void } {
   disposeChatWorkView(area);
   const host = document.createElement('div');
   const ctx = { ...historyRenderContext(chat), presentation };
   const tailStart = Math.min(Math.max(0, chat.history.length - HISTORY_SYNC_TAIL), retainedChatHistoryStart(area, chat) ?? Infinity);
-  let liveBubble: HTMLDivElement | null = null;
+  const syncWorkView = () => installChatWorkView(area, chat, isStreaming, { expanded, isolated: true });
   function paint(target: HTMLElement, callback: () => void): void {
     const wasSuppressed = suppressBubbleScroll;
     const wasEmbedded = embeddedHistoryPaint;
@@ -447,22 +462,19 @@ export function renderEmbeddedChatTranscript(chat: Chat, area: HTMLElement, expa
   }
   paint(host, () => {
     for (let i = tailStart; i < chat.history.length; i += 1) appendHistoryMessageAt(host, ctx, i);
-    appendSendingUserMessage(chat, host);
-    if (isChatStreaming(chat.id)) {
-      liveBubble = appendBubble('assistant', '', {
-        historyIndex: chat.history.length, turnKind: 'assistant', chatId: chat.id, modeId: chat.modeId,
-      }).bubble;
-    }
+    const messages = getPendingTranscriptMessages(chat);
+    syncPendingUserMessages(chat, host, messages);
+    syncSendingStatus(chat, host, messages);
   });
   area.replaceChildren(...host.childNodes);
-  installChatWorkView(area, chat, () => isChatStreaming(chat.id), { view: 'compact', expanded, isolated: true });
+  syncWorkView();
   const cancelBackfill = mountHistoryPager({ mount: area, from: tailStart,
     scrollRoot: () => area.parentElement,
     renderRow: (row, index) => paint(row, () => appendHistoryMessageAt(row, ctx, index)),
-    onPageLoaded: () => installChatWorkView(area, chat, () => isChatStreaming(chat.id), { view: 'compact', expanded, isolated: true }),
+    onPageLoaded: syncWorkView,
   });
   rememberChatSurface(area, chat);
-  return { liveBubble, dispose: () => { cancelBackfill(); disposeChatWorkView(area); } };
+  return { dispose: () => { cancelBackfill(); disposeChatWorkView(area); } };
 }
 
 /**
@@ -841,7 +853,8 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   void import('./orchestrate-board-setup-banner').then((m) => m.syncBoardSetupReturnBanner(chat));
   if (appendStart === undefined) clearSubAgentCardDomRegistry();
-  if (!chat.history.length && !getPendingTranscriptMessages(chat).length && !isChatStreaming(chat.id)) {
+  const pending = getPendingTranscriptMessages(chat);
+  if (!chat.history.length && !pending.length && !isChatStreaming(chat.id)) {
     if (chat.agentConversation) {
       if (codeMount) teardownHub();
       area.replaceChildren();
@@ -873,10 +886,7 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   }
   if (appendStart !== undefined) {
     const update = () => {
-      const pending = getPendingTranscriptMessages(chat);
-      for (const row of area.querySelectorAll<HTMLElement>('.msg--sending, .msg--sending-status')) {
-        if (!pending.some(item => item.id === row.dataset.pendingCommandId)) row.remove();
-      }
+      const sending = area.querySelector(':scope > .msg--sending-status');
       if (chat.history.length > appendStart) removeStaleLiveStreamingRows(area);
       const renderCtx = historyRenderContext(chat);
       for (let i = appendStart; i < chat.history.length; i++) {
@@ -887,7 +897,14 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
           if (tool) renderToolResult(tool, message.content, message.attachments, undefined, message.codeChange);
         } else appendHistoryMessageAt(area, renderCtx, i);
       }
-      appendSendingUserMessage(chat, area);
+      // Insert the committed input ahead of the status without detaching the status.
+      for (let node = sending?.nextSibling; node;) {
+        const next = node.nextSibling;
+        area.insertBefore(node, sending);
+        node = next;
+      }
+      syncPendingUserMessages(chat, area, pending);
+      syncSendingStatus(chat, area, pending);
       installChatWorkView(area, chat, () => isChatStreaming(chat.id));
       renderPersistedSubAgentCardsForChat(chat);
       syncThoughtsCaretPulse(area);
@@ -908,9 +925,16 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
     for (let i = tailStart; i < total; i += 1) {
       appendHistoryMessageAt(transcriptHost, renderCtx, i);
     }
-    appendSendingUserMessage(chat, transcriptHost);
+    syncPendingUserMessages(chat, transcriptHost, pending);
   });
-  area.replaceChildren(...transcriptHost.childNodes);
+  const sending = area.querySelector<HTMLElement>(':scope > .msg--sending-status');
+  if (sending?.dataset.chatId === chat.id) {
+    for (const node of Array.from(area.childNodes)) if (node !== sending) node.remove();
+    sending.before(...transcriptHost.childNodes);
+  } else {
+    area.replaceChildren(...transcriptHost.childNodes);
+  }
+  syncSendingStatus(chat, area, pending);
   if (tailStart === 0) showGraphiteThreadSummary(area, chat);
   installChatWorkView(area, chat, () => isChatStreaming(chat.id));
   if (suspendedPlanChat) {
@@ -932,7 +956,10 @@ export function renderChatFromHistory(chat: Chat, mount?: string | HTMLElement):
   refreshMetricsStripForChat(chat);
   refreshContextUsageRing();
   if (isChatStreaming(chat.id) && isStreamDomVisible(chat.id)) {
-    void import('../tools/stream-chat-dom').then((m) => m.remountStreamDomForChat(chat.id));
+    void import('../tools/stream-chat-dom').then((m) => {
+      // A frame may already have mounted the live row during this repaint.
+      if (!area.querySelector(':scope > .msg.assistant[data-stream-phase]')) m.remountStreamDomForChat(chat.id);
+    });
   }
   } finally {
     suppressBubbleScroll = false;
@@ -1265,7 +1292,15 @@ export function appendBubble(
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
-  appendChatTranscriptNode(wrap, mount);
+  const sending = role === 'user' && meta?.historyIndex === 0 && chat.chatCommandVersion !== 1
+    ? mount.querySelector<HTMLElement>(':scope > .msg--sending-status')
+    : null;
+  if (sending?.dataset.chatId === chat.id) {
+    const preview = [...mount.querySelectorAll<HTMLElement>(':scope > .msg--sending')]
+      .find(row => row.dataset.pendingCommandId === sending.dataset.pendingCommandId);
+    if (preview) preview.replaceWith(wrap);
+    else sending.before(wrap);
+  } else appendChatTranscriptNode(wrap, mount);
   if (!suppressBubbleScroll) {
     if (role === 'user' && !userOptions?.steer) {
       scrollChatToBottom();
@@ -1358,7 +1393,8 @@ export function setStreamingRowPhase(wrap: HTMLElement, phase: StreamPhase): voi
     phase === 'thinking' ? 'stream-status--thinking' : 'stream-status--generating',
   );
   if (label) {
-    setActivityShimmerText(label, phase === 'thinking' ? 'Thinking…' : 'Generating response…');
+    const text = phase === 'thinking' ? 'Thinking…' : 'Generating response…';
+    setActivityShimmerText(label, text, '', { transition: true });
   }
   wrap.dataset.streamPhase = phase;
 }
@@ -1425,13 +1461,16 @@ export function appendStreamingAssistantRow(forChatId?: string): StreamingAssist
 
 /** Shared streaming shell; the caller owns its mount and lifecycle. */
 export function createChatStreamingRow(mount: HTMLElement): StreamingAssistantRow {
-  mount.querySelector('.msg--sending-status')?.remove();
-  const wrap = document.createElement('div');
+  const sending = mount.querySelector<HTMLDivElement>(':scope > .msg--sending-status');
+  const wrap = sending ?? document.createElement('div');
   wrap.className = 'msg assistant msg--awaiting-prose';
-
-  const label = document.createElement('div');
-  label.className = 'msg-label';
-  label.textContent = 'Assistant';
+  delete wrap.dataset.pendingCommandId;
+  if (!sending) {
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'Assistant';
+    wrap.appendChild(label);
+  }
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble msg-bubble--awaiting';
@@ -1440,11 +1479,10 @@ export function createChatStreamingRow(mount: HTMLElement): StreamingAssistantRo
   cursor.className = `cursor ${STREAMING_CARET_CLASS}`;
   cursor.setAttribute('aria-hidden', 'true');
 
-  wrap.appendChild(label);
   const streamStatus = attachStreamStatus(wrap);
   wrap.appendChild(bubble);
   bubble.appendChild(cursor);
-  appendChatTranscriptNode(wrap, mount);
+  if (!sending) appendChatTranscriptNode(wrap, mount);
   return { wrap, bubble, cursor, streamStatus };
 }
 

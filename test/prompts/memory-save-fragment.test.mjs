@@ -44,8 +44,7 @@ describe('memory-save prompt fragment', () => {
   test('includes Saving new knowledge when save_memory is enabled', async () => {
     registerPromptFilesFromRaw(await loadShippedPromptMap());
     const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
+        cwd: '/proj',
       modeId: 'build',
       expertId: null,
       workAgentId: null,
@@ -61,8 +60,7 @@ describe('memory-save prompt fragment', () => {
   test('omits save block when save_memory is disabled but keeps retrieved notes', async () => {
     registerPromptFilesFromRaw(await loadShippedPromptMap());
     const out = composeSystemPrompt({
-      profile: 'full',
-      cwd: '/proj',
+        cwd: '/proj',
       modeId: 'build',
       expertId: null,
       workAgentId: null,

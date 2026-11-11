@@ -10,7 +10,6 @@ import type {
   Message,
   SessionState,
   SessionSummariesState,
-  SystemPromptSettings,
 } from '../types';
 import type { IssuesTaxonomy } from '../issues/taxonomy';
 import type { SkillConfig } from '../skills/config';
@@ -20,7 +19,6 @@ import type { ResearchConfig } from './research-config';
 import type { UserRulesSettings } from './user-rules';
 import {
   defaultSessionState,
-  defaultSystemPromptSettings,
   defaultSkillConfig,
   defaultToolConfig,
   defaultUserRulesSettings,
@@ -665,22 +663,6 @@ export async function putSkills(config: SkillConfig): Promise<void> {
   await parseJsonResponse<{ ok: boolean }>(res);
 }
 
-/** GET /api/config/system-prompt */
-export async function getSystemPrompt(): Promise<SystemPromptSettings> {
-  const res = await fetch('/api/config/system-prompt', { cache: 'no-store' });
-  return parseJsonResponse<SystemPromptSettings>(res);
-}
-
-/** PUT /api/config/system-prompt */
-export async function putSystemPrompt(settings: SystemPromptSettings): Promise<void> {
-  const res = await fetch('/api/config/system-prompt', {
-    method: 'PUT',
-    headers: JSON_HEADERS,
-    body: JSON.stringify(settings),
-  });
-  await parseJsonResponse<{ ok: boolean }>(res);
-}
-
 /** GET /api/config/rules */
 export async function getRules(): Promise<UserRulesSettings> {
   const res = await fetch('/api/config/rules', { cache: 'no-store' });
@@ -711,6 +693,5 @@ export {
   defaultSessionState,
   defaultSkillConfig,
   defaultToolConfig,
-  defaultSystemPromptSettings,
   defaultUserRulesSettings,
 };

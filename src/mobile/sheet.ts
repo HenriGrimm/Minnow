@@ -24,7 +24,7 @@ let sheetSequence = 0;
 function syncSheetStack(): void {
   const top = Array.from(openSheets.values()).at(-1);
   document.documentElement.classList.toggle('m-sheet-open', Boolean(top));
-  for (const node of document.querySelectorAll<HTMLElement>('#mobileShell > .m-stage, #mobileShell > .m-tabbar')) {
+  for (const node of document.querySelectorAll<HTMLElement>('#mobileShell .m-stage')) {
     node.inert = Boolean(top);
   }
   for (const node of openSheets.values()) node.inert = node !== top;
@@ -57,13 +57,13 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
       attrs: {
         role: 'dialog',
         'aria-modal': 'true',
-        'aria-labelledby': options.title && !isDrawer ? titleId : null,
-        'aria-label': isDrawer ? options.title ?? 'Minnow' : options.title ? null : 'Details',
+        'aria-labelledby': options.title ? titleId : null,
+        'aria-label': options.title ? null : 'Details',
         tabindex: '-1',
       },
     },
     isDrawer ? null : handle,
-    isDrawer ? null : header,
+    header,
     body,
   );
   const scrim = el('div', { className: 'm-sheet__scrim' });
@@ -74,16 +74,19 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   const close = () => {
     if (closed) return;
     closed = true;
+    const restoreFocus = !root.inert && root.contains(document.activeElement);
     openSheets.delete(close);
     root.inert = true;
     unmarkPreviewOccluder(root);
     syncSheetStack();
     document.removeEventListener('keydown', onKey, true);
     root.classList.remove('is-open');
+    if (restoreFocus && previousFocus?.isConnected && !previousFocus.closest('[inert], [hidden]')) {
+      previousFocus.focus({ preventScroll: true });
+    }
     const finish = () => {
       root.remove();
       options.onClose?.();
-      if (previousFocus?.isConnected && !previousFocus.closest('[inert]')) previousFocus.focus({ preventScroll: true });
     };
     if (document.documentElement.hasAttribute('data-reduce-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) finish();
     else window.setTimeout(finish, 180);
@@ -116,20 +119,18 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   closeButton.addEventListener('click', close);
   document.addEventListener('keydown', onKey, true);
 
-  // Drag the handle or title area down to dismiss.
+  // Only the handle and header initiate a drag. The body scrolls independently.
   let dragStart: number | null = null;
   let dragDelta = 0;
   const dragZone = (event: TouchEvent) => {
     const target = event.target instanceof Node ? event.target : null;
     if (isDrawer || !target) return false;
-    if (handle.contains(target) || titleEl?.contains(target)) return true;
-    // Inside the body, only a list already at its top hands the gesture to the sheet.
-    return body.scrollTop <= 0 && !(target instanceof HTMLTextAreaElement);
+    return handle.contains(target) || (header.contains(target) && !closeButton.contains(target));
   };
   panel.addEventListener(
     'touchstart',
     (event) => {
-      if (!dragZone(event)) return;
+      if (event.touches.length !== 1 || !dragZone(event)) return;
       dragStart = event.touches[0]!.clientY;
       dragDelta = 0;
     },
@@ -138,7 +139,7 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
   panel.addEventListener(
     'touchmove',
     (event) => {
-      if (dragStart == null) return;
+      if (dragStart == null || event.touches.length !== 1) return;
       dragDelta = Math.max(0, event.touches[0]!.clientY - dragStart);
       if (dragDelta > 4) panel.style.transform = `translateY(${dragDelta}px)`;
     },
@@ -156,7 +157,7 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
     panel.style.transform = '';
   });
 
-  (document.getElementById('mobileShell') ?? document.body).append(root);
+  (document.querySelector('#mobileShell > .m-workspace') ?? document.getElementById('mobileShell') ?? document.body).append(root);
   openSheets.set(close, root);
   markPreviewOccluder(root, 'dialog');
   syncSheetStack();
@@ -166,7 +167,7 @@ export function openSheet(content: HTMLElement | HTMLElement[], options: SheetOp
     // Only text sheets focus a field: focusing one in a list would raise the keyboard.
     const focusTarget =
       body.querySelector<HTMLElement>('[autofocus]') ??
-      body.querySelector<HTMLElement>('[aria-checked="true"]') ??
+      body.querySelector<HTMLElement>('[aria-selected="true"]:not([disabled])') ??
       panel;
     focusTarget.focus({ preventScroll: true });
   });
@@ -205,7 +206,6 @@ export function pickFromSheet<T>(title: string, options: PickOption<T>[]): Promi
             type: 'button',
             role: 'option',
             'aria-selected': String(Boolean(option.selected)),
-            'aria-checked': option.selected ? 'true' : null,
             disabled: option.disabled ?? false,
           },
           on: {
@@ -274,11 +274,11 @@ export function promptSheet(options: {
     const field = options.multiline
       ? el('textarea', {
           className: 'm-field m-field--multiline',
-          attrs: { rows: 4, placeholder: options.placeholder ?? '', autofocus: true },
+          attrs: { rows: 4, 'aria-label': options.title, placeholder: options.placeholder ?? '', autofocus: true },
         })
       : el('input', {
           className: 'm-field',
-          attrs: { type: 'text', placeholder: options.placeholder ?? '', autofocus: true, enterkeyhint: 'done' },
+          attrs: { type: 'text', 'aria-label': options.title, placeholder: options.placeholder ?? '', autofocus: true, enterkeyhint: 'done' },
         });
     field.value = options.value ?? '';
     const submit = el('button', {

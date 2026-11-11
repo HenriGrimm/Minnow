@@ -12,7 +12,7 @@ function applyUserMessageToken(template: string, seed: string): string {
 
 export function buildTitleMessages(seed: string): ApiMessage[] {
   const trimmedSeed = seed.trim() || 'Attachment';
-  const loaded = loadPromptById('title', 'default', 'full');
+  const loaded = loadPromptById('title', 'default');
   const systemBody = applyUserMessageToken(
     loaded?.body?.trim() || FALLBACK_SYSTEM,
     trimmedSeed,

@@ -109,11 +109,13 @@
 .is-browsing-pools .model-host-filter-toolbar-end,
 .is-editing-pool .model-host-filter-search-wrap { display: none !important; }
 .model-pool-tab { margin-left: 6px; }
-.model-pool-tab[aria-checked="true"] {
-  background: var(--mn-menu-selected-bg);
-  color: var(--mn-accent);
-}
 .model-pool-host { min-height: 0; overflow-y: auto; flex: 1 1 auto; }
+.is-browsing-pools:not(.is-editing-pool) > .model-pool-host {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  container: model-pool-host / inline-size;
+}
 .model-pool-host[hidden] { display: none; }
 
 .auxiliary-model-popover > .model-host-filter-search-input {
@@ -703,7 +705,7 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.model-browser-sort { margin-left: auto; max-width: 115px; min-height: 26px; padding: 2px 4px; border: 0; background: var(--mn-menu-bg); color: var(--mn-fg-muted); font: 400 11px/1.4 var(--font-ui); }
+.model-browser-sort { margin-left: auto; max-width: 115px; min-height: 26px; padding: 2px var(--mn-space-2); border: 0; background: var(--mn-menu-bg); color: var(--mn-fg-muted); font: 400 11px/1.4 var(--font-ui); }
 .model-browser-back { display: none; }
 .model-browser-pane .model-select-option { min-height: 36px; padding-block: 5px; }
 .model-browser-models:not(.model-browser-favorite-list) .model-select-option-detail,
@@ -757,6 +759,11 @@ html.mn-phone .model-browser-back:focus-visible { outline: 2px solid var(--mn-fo
 
 [data-model-menu-constrained] > :is(.model-select-menu, .model-pool-host) {
   flex: 1 0 auto;
+}
+
+.is-browsing-pools[data-model-menu-constrained]:not(.is-editing-pool) > .model-pool-host {
+  flex-shrink: 1;
+  min-height: 10rem;
 }
 
 /* Live runtime activity on a loaded local model. Collapses to nothing when idle, so

@@ -12,7 +12,7 @@ export interface ApplyBenchmarkSystemPromptOptions {
 
 /**
  * Merge optional extra system text into messages. No default benchmark preamble —
- * capability probes use mode lite prompts only.
+ * capability probes use their own task-specific instructions.
  */
 export function applyBenchmarkSystemPrompt(
   messages: ApiMessage[],

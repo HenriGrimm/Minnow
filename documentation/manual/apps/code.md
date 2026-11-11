@@ -121,6 +121,10 @@ On Windows, **Git Bash** appears when Git for Windows is installed, and installe
 
 ## Git
 
+In Code’s surface launcher, click **Diff** to inspect the thread’s checkout. The small **Open workspace diff** button on the Diff card opens all uncommitted changes in the main workspace checkout, including when the thread has a separate worktree or the card says **No changes yet**.
+
+In **Changes**, click a filename to expand its patch or use **Open file diff** on the row for a side-by-side view. The commit controls stay below the scrolling file list. Select **History** to browse recent commits for the selected checkout.
+
 The source-control panel does status, stage, diff, commit, branch, pull and push. If the folder is not a git repository yet, **Set up git** starts a background chat that initializes it (init, `.gitignore`, first commit) without leaving the panel.
 
 In the sidebar and **Source Control → Changes**, click a row to highlight it, **Shift-click** to select a range, or **Cmd-click** (macOS) / **Ctrl-click** (Windows and Linux) to select separate rows. **Cmd/Ctrl+A** selects all changes while a change row has focus. The existing file rows and action buttons stay in place. Right-click a highlighted row to act on the selection: stage, unstage, discard, ignore paths or file extensions, copy absolute or relative paths, or reveal files in the system explorer.

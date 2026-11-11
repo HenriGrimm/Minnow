@@ -10,12 +10,12 @@ const planSkill = read('skills/plan/SKILL.md').replace(/^---[\s\S]*?\n---\s*/, '
 
 beforeEach(() => {
   resetPromptRegistry();
-  const files = ['base/default.full.md', 'tool-usage/default.full.md', 'modes/orchestrate.full.md', 'modes/orchestrate.lite.md'];
+  const files = ['base/default.full.md', 'tool-usage/default.full.md', 'modes/orchestrate.full.md'];
   registerPromptFilesFromRaw(Object.fromEntries(files.map(path => [`./${path}`, read(`chat/prompts/${path}`)])));
 });
 
 function compose(overrides: Partial<ComposeContext> = {}) {
-  return composeSystemPrompt({ profile: 'full', cwd: '/workspace', modeId: 'build', expertId: null,
+  return composeSystemPrompt({ cwd: '/workspace', modeId: 'build', expertId: null,
     workAgentId: null, skillBody: null, memoryBlock: null, enabledToolIds: ['ask_question'], infoPresetId: null,
     ...overrides });
 }
@@ -31,16 +31,14 @@ test('ordinary mode labels do not select a separate agent prompt', () => {
   }
 });
 
-test('both profiles include planning format choice when the /plan skill runs', () => {
-  for (const profile of ['full', 'lite'] as const) {
-    const out = compose({ profile, skillBody: planSkill, turnClamp: 'plans' });
-    assert.match(out, /How would you like to build this\?/);
-    assert.match(out, /planType: build/);
-    assert.match(out, /Preserve its type unless the user explicitly requests conversion/);
-    assert.match(out, /## Wave Breakdown/);
-    assert.match(out, /## Implementation steps/);
-    assert.match(out, /planning only/);
-  }
+test('the shared prompt includes planning format choice when the /plan skill runs', () => {
+  const out = compose({ skillBody: planSkill, turnClamp: 'plans' });
+  assert.match(out, /How would you like to build this\?/);
+  assert.match(out, /planType: build/);
+  assert.match(out, /Preserve its type unless the user explicitly requests conversion/);
+  assert.match(out, /## Wave Breakdown/);
+  assert.match(out, /## Implementation steps/);
+  assert.match(out, /planning only/);
 });
 
 test('Orchestrate retains its board instructions and strips prompt markers', () => {

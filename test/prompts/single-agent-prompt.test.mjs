@@ -45,14 +45,6 @@ describe('single-agent prompt', () => {
     assert.ok(orchestrate.length > build.length, 'orchestrate keeps its board prompt');
   });
 
-  test('lite profile uses the one base prompt and tool usage', () => {
-    const base = composeSystemPrompt(baseComposeContext({ enabledToolIds: ['read_file'], flaticonIconGuidanceEnabled: false }));
-    const lite = composeSystemPrompt(baseComposeContext({ profile: 'lite', enabledToolIds: ['read_file'], flaticonIconGuidanceEnabled: false }));
-    assert.match(lite, /You are Minnow/);
-    assert.match(lite, /## Tools/);
-    assert.equal(lite, base);
-  });
-
   test('no mode-handoff, browser-allowlist or duplicated verification fragments', () => {
     const prompt = composeSystemPrompt(baseComposeContext({
       enabledToolIds: ['read_file', 'execute_command', 'browser_navigate', 'ask_question', 'spawn_sub_agent'],

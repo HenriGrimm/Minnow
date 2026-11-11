@@ -6,6 +6,7 @@ import { renderUnifiedPromptDiff } from './prompt-diff-unified';
 import { formatAskQuestionResultAsListItems } from './format-ask-question-result';
 import { createIcon } from './icon';
 import { syncToolCallBatchForRow } from './tool-call-batch';
+import { isToolResultFailure } from '../lib/tool-result-failure';
 import { resolveChatWorktreeRoot } from '../state/chat-worktree';
 import { sessionState } from '../state/sessions';
 import {
@@ -199,13 +200,6 @@ function resolveFileCardPath(
 
 /** Max characters shown in raw output blocks. */
 const RESULT_DISPLAY_CAP = 2048;
-
-/** Treat executor error strings as failed tool runs. */
-export function isToolResultFailure(result: string): boolean {
-  // Detect exit 2 means "anti-patterns found", not a crashed tool.
-  if (isImpeccableDetectFindingsResult(result)) return false;
-  return result.trimStart().startsWith('Error:');
-}
 
 function argsRecordFromUnknown(
   argsObj: Record<string, unknown> | unknown,
@@ -861,6 +855,7 @@ export function renderToolResult(
   attachments?: ToolImageAttachment[],
   toolArgs?: Record<string, unknown> | unknown,
   codeChange?: CodeChangeStats,
+  options: { showFailure?: boolean } = {},
 ): void {
   const details = wrap.querySelector('.tool-call-details');
   const summary = wrap.querySelector('.tool-call-summary');
@@ -870,6 +865,13 @@ export function renderToolResult(
 
   const toolName = wrap.dataset.toolName || 'tool';
   const failed = isToolResultFailure(result);
+  wrap.hidden = failed && !options.showFailure;
+  if (wrap.hidden) {
+    wrap.removeAttribute('aria-busy');
+    summary.classList.remove('tool-call-summary--running');
+    syncToolCallBatchForRow(wrap);
+    return;
+  }
   if (toolName === 'spawn_sub_agent' && !failed) {
     try {
       const receipt = JSON.parse(result);

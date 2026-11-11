@@ -49,7 +49,7 @@ function fixture(overrides = {}) {
     loadComposer: async () => composer, readSettings: async () => settings,
     listTools: async () => names.map(definition), loadWorkAgents: async () => ({ agents, overrides: {} }),
     loadSubAgentTypes: async () => subAgents,
-    loadPromptSources: async () => sources, loadCustomPrompt: async () => null,
+    loadPromptSources: async () => sources,
     loadTypePrompt: async () => 'ACTUAL TYPE ROLE',
     loadSkill: async id => ({ body: `Workflow skill: ${id}`, access: id === 'plan' ? 'plans' : null }),
     readTranscript: async () => transcript,
@@ -234,14 +234,18 @@ test('chat preparation preserves attachment delivery without vision metadata and
   }
 });
 
-test('custom prompt disappearance fails explicitly and per-call registries never leak', async () => {
+test('legacy Custom settings are ignored and prompt overrides remain scoped per call', async () => {
   const f = fixture();
   f.settings.meta.activePromptProfile = 'custom';
   f.settings.meta.activePromptConfigId = 'missing';
-  await assert.rejects(f.prepare, error => error.code === 'capability_unavailable');
-  f.settings.meta.activePromptProfile = 'full';
+  f.setProfile({ prompt: {
+    meta: { activePromptProfile: 'lite' },
+    sources: { userRaw: { 'base/default.lite.md': raw('base', 'default', 'OLD LITE BODY') } },
+  } });
   f.sources.userRaw['base/default.full.md'] = raw('base', 'default', 'CUSTOM FIRST');
-  assert.match((await f.prepare()).systemPrompt, /CUSTOM FIRST/);
+  const prepared = await f.prepare();
+  assert.match(prepared.systemPrompt, /CUSTOM FIRST/);
+  assert.doesNotMatch(prepared.systemPrompt, /OLD LITE BODY/);
   assert.ok(!(await fixture().prepare()).systemPrompt.includes('CUSTOM FIRST'));
 });
 

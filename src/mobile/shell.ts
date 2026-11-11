@@ -128,12 +128,13 @@ function openDrawer(): void {
     navRow('Threads', 'fi-rr-comment', () => { selectTab('chats'); popToRoot('chats'); }, { tab: 'chats', count: chats.length, selected: current === 'chats' }),
     navRow('Issues', 'fi-rr-ticket', () => selectTab('issues'), { tab: 'issues', count: countIssuesNeedingInput(), selected: current === 'issues' }),
     navRow('Boards', 'fi-rr-layers', () => selectTab('boards'), { tab: 'boards', selected: current === 'boards' }),
+    navRow('Files', 'fi-rr-folder', () => selectTab('files'), { tab: 'files', selected: current === 'files' }),
     navRow('Brain', 'fi-rr-book-alt', () => openPhoneApp('brain')),
     navRow('Scheduler', 'fi-rr-clock', () => openPhoneApp('scheduler')),
     navRow('Models', 'fi-rr-microchip', () => openPhoneApp('models')),
     navRow('Settings', 'fi-rr-settings-sliders', () => openPhoneApp('settings')),
-    el('h2', { className: 'm-drawer__label', text: 'Threads' }),
   );
+  if (chats.length) applications.append(el('h2', { className: 'm-drawer__label', text: 'Recent threads' }));
   for (const chat of chats.slice(0, 5)) {
     const status = resolveChatItemDotState(chat, ctx);
     const title = chat.name?.trim() || 'New thread';
@@ -144,7 +145,6 @@ function openDrawer(): void {
     }, el('span', { className: 'm-drawer__thread-dot', dataset: { status } }),
     el('span', { className: 'm-drawer__name', text: title })));
   }
-  applications.append(navRow('Files', 'fi-rr-folder', () => selectTab('files'), { tab: 'files', selected: current === 'files' }));
 
   const footer = el('div', { className: 'm-drawer__footer' }, modelCard.el);
   if (isPairedDevice()) {
@@ -216,8 +216,11 @@ export function mountMobileShell(): void {
     hosts.set(tab, host);
     stage.append(host);
   }
-  const shell = el('div', { className: 'm-app', attrs: { id: 'mobileShell' } }, stage);
+  const workspaceFrame = el('div', { className: 'm-workspace' }, stage);
+  const shell = el('div', { className: 'm-app', attrs: { id: 'mobileShell' } }, workspaceFrame);
   document.body.append(shell);
+  const startupToasts = document.body.querySelector(':scope > .mn-toast-stack');
+  if (startupToasts) shell.append(startupToasts);
 
   function mountRoots(): void {
     registerTab('chats', hosts.get('chats')!, createChatsScreen({
@@ -259,9 +262,10 @@ export function mountMobileShell(): void {
   const viewport = window.visualViewport;
   if (viewport) {
     const syncKeyboard = () => {
+      if (viewport.scale !== 1) return;
       const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-      shell.style.setProperty('--m-keyboard', `${covered}px`);
-      shell.classList.toggle('is-keyboard-open', covered > 80);
+      document.documentElement.style.setProperty('--m-viewport-covered', `${covered}px`);
+      shell.classList.toggle('is-keyboard-open', window.innerHeight - viewport.height > 80);
     };
     viewport.addEventListener('resize', syncKeyboard);
     viewport.addEventListener('scroll', syncKeyboard);

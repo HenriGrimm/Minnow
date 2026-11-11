@@ -21,7 +21,6 @@ const FIXTURE: HeadlessRunResult = {
   workAgentId: 'builder',
   providerId: 'mock-provider',
   modelId: 'mock-model',
-  promptProfile: 'full',
   userPrompt: 'hello',
   assistantFinal: 'OK',
   turns: [
@@ -52,7 +51,6 @@ describe('HeadlessRunResult schema', () => {
       'workAgentId',
       'providerId',
       'modelId',
-      'promptProfile',
       'userPrompt',
       'assistantFinal',
       'turns',

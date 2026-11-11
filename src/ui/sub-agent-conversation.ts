@@ -1,9 +1,64 @@
 import { apiMessageContentToText } from '../api/message-content';
-import type { ApiMessageContent } from '../types';
-import { setAssistantBubbleContent } from '../markdown/renderer';
-import { createIcon } from './icon';
-import { renderTranscriptView, type TranscriptDisclosureState } from './transcript-view';
+import type { ApiMessageContent, Chat, Message, PersistedSubAgentRun } from '../types';
+import type { SubAgentRun } from '../agents/types';
+import { legacyOutcomeFromSummary } from '../agents/sub-agent-structured-outcome';
+import { assistantTranscriptThinkingSegments } from './transcript-view';
+import { createEmbeddedChatTranscript } from './embedded-chat-transcript';
 import type { SubAgentTranscriptLive } from './sub-agent-live-status';
+
+/** Adapt older journal/API rows to chat history for presentation only. */
+function legacySubAgentChat(run: SubAgentRun | PersistedSubAgentRun, messages: unknown[], workspacePath: string, summary?: string): Chat {
+  const history: Message[] = [];
+  const hasAssignment = messages.some(raw => (raw as Message | null)?.role === 'user');
+  const offset = hasAssignment || !run.task ? 0 : 1;
+  if (offset) history.push({ role: 'user', content: run.task });
+  for (const raw of messages) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Message & Record<string, unknown>;
+    if (row.role === 'assistant') {
+      const thinking = assistantTranscriptThinkingSegments(row);
+      history.push({ ...row, content: apiMessageContentToText(row.content), thinking });
+    } else if (row.role === 'context' && row.compaction?.foldThroughIndex != null && offset) {
+      history.push({ ...row, compaction: { ...row.compaction, foldThroughIndex: row.compaction.foldThroughIndex + offset } });
+    } else if (row.role === 'user' || row.role === 'tool' || row.role === 'context' || row.role === 'injection') {
+      history.push(row);
+    }
+  }
+  if (summary && !subAgentFinalResponse(history)) {
+    history.push({ role: 'assistant', content: summary, ...(run.status === 'failed' ? { failed: true as const }
+      : run.status === 'cancelled' ? { stopped: true } : {}) });
+  }
+  return { id: run.runId, name: run.title || run.type, workspacePath, modelId: run.modelId ?? '', history,
+    updatedAt: 0, lastStats: null, modelInfo: {} };
+}
+
+export function createLegacySubAgentTranscript(transcript: ReturnType<typeof createEmbeddedChatTranscript>, workspacePath: string) {
+  let cached: { chat: Chat; metadata: string; messages: unknown[] } | undefined;
+  return (run: SubAgentRun | PersistedSubAgentRun, live?: SubAgentTranscriptLive) => {
+    let messages = run.messages ?? [];
+    const tail = messages.at(-1) as Record<string, unknown> | undefined;
+    // The legacy stream also mirrors the open thought into its last journal row.
+    if (live?.partialReasoning && tail?.role === 'assistant' && !tail.content && !tail.tool_calls
+        && assistantTranscriptThinkingSegments(tail).join('\n').trim() === live.partialReasoning.trim()) {
+      messages = messages.slice(0, -1);
+    }
+    const summary = !live && (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled')
+      ? run.structuredOutcome?.summary ?? legacyOutcomeFromSummary(run.summary ?? '')?.summary : undefined;
+    const metadata = JSON.stringify([run.runId, run.task, run.status, summary]);
+    if (!cached || cached.metadata !== metadata || cached.messages.length !== messages.length ||
+        cached.messages.some((row, index) => row !== messages[index] && JSON.stringify(row) !== JSON.stringify(messages[index]))) {
+      cached = { metadata, messages, chat: legacySubAgentChat(run, messages, workspacePath, summary) };
+    }
+    const partial = live ? {
+      phase: live.phase,
+      currentTool: live.currentToolName,
+      lastThinking: live.partialReasoning,
+      lastDelta: live.partialText,
+    } : undefined;
+    const pendingToolStatus = run.status === 'cancelled' || run.status === 'failed' ? 'stopped' : undefined;
+    transcript.sync(cached.chat, partial, pendingToolStatus);
+  };
+}
 
 /** Only prose after the last tool call can be the agent's final response. */
 export function subAgentFinalResponse(messages: unknown[]): string {
@@ -15,75 +70,4 @@ export function subAgentFinalResponse(messages: unknown[]): string {
     if (text) return text;
   }
   return '';
-}
-
-export interface SubAgentConversationDisclosures extends TranscriptDisclosureState {
-  groups: Map<string, boolean>;
-}
-
-/** Use shared Thoughts and tool components, with prose taking the reading flow. */
-export function renderSubAgentConversation(
-  body: HTMLElement,
-  messages: unknown[],
-  live: SubAgentTranscriptLive | undefined,
-  status: string,
-  disclosures: SubAgentConversationDisclosures,
-): void {
-  renderTranscriptView(body, messages, live, disclosures);
-  body.querySelectorAll('.transcript-view__system').forEach((row) => row.remove());
-  const proseTurns = [...body.querySelectorAll<HTMLElement>('.transcript-view__assistant-turn')]
-    .filter((turn) => turn.querySelector('.transcript-view__assistant'));
-  for (const turn of proseTurns) {
-    const heading = document.createElement('div');
-    heading.className = 'sub-agent-conversation__speaker';
-    const final = status === 'completed' && turn === proseTurns.at(-1) && Boolean(subAgentFinalResponse(messages));
-    heading.append(createIcon(final ? 'check' : 'appChat', { size: 14 }), document.createTextNode(final ? 'Final response' : 'Update'));
-    const prose = turn.querySelector<HTMLElement>('.transcript-view__assistant')!;
-    turn.insertBefore(heading, prose);
-    if (final) turn.classList.add('sub-agent-conversation__final');
-  }
-
-  let group: HTMLDetailsElement | null = null;
-  let container: HTMLElement | null = null;
-  let count = 0;
-  const finish = () => {
-    if (!group) return;
-    const summary = group.querySelector('summary')!;
-    summary.append(createIcon('tools', { size: 14 }), document.createTextNode(`${count} tool ${count === 1 ? 'call' : 'calls'}`));
-  };
-  for (const row of [...body.children]) {
-    if (!row.classList.contains('tool-call-msg')) {
-      finish(); group = null; container = null;
-      continue;
-    }
-    if (!group) {
-      group = document.createElement('details');
-      group.className = 'sub-agent-conversation__tools';
-      const key = (row as HTMLElement).dataset.transcriptToolCallId ?? '';
-      group.open = disclosures.groups.get(key) ?? false;
-      group.addEventListener('toggle', () => disclosures.groups.set(key, groupForKey.open));
-      const groupForKey = group;
-      group.appendChild(document.createElement('summary'));
-      container = document.createElement('div');
-      container.className = 'sub-agent-conversation__tool-body';
-      group.appendChild(container);
-      body.insertBefore(group, row);
-      count = 0;
-    }
-    container!.appendChild(row);
-    count += 1;
-  }
-  finish();
-  formatSubAgentProse(body);
-}
-
-/** Format only changed live prose; streaming never replaces the whole inspector. */
-export function formatSubAgentProse(body: HTMLElement, partialText?: string): void {
-  for (const row of body.querySelectorAll<HTMLElement>('.transcript-view__assistant')) {
-    const partial = row.classList.contains('transcript-view__assistant--partial');
-    const text = partial && partialText !== undefined ? partialText : row.dataset.markdown ?? row.textContent ?? '';
-    if (row.dataset.markdown === text && !partial) continue;
-    setAssistantBubbleContent(row, text);
-    row.dataset.markdown = text;
-  }
 }

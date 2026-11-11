@@ -193,6 +193,43 @@ test('archiving an unloaded chat needs no transcript hydration', () => {
   assert.deepEqual(ids(list), ['unloaded']);
 });
 
+test('managed archive leaves immediately and Undo is serialized behind its acknowledgement', async () => {
+  const value = chat('managed-undo'); value.chatCommandVersion = 1; value.historyLoaded = false; value.history = [];
+  const list = setup([value]);
+  const requests: { archived: boolean; resolve: (response: Response) => void }[] = [];
+  globalThis.fetch = async (_url, options) => new Promise<Response>(resolve => {
+    requests.push({ archived: JSON.parse(String(options?.body)).archived, resolve });
+  });
+  list.querySelector<HTMLButtonElement>('.chat-item-archive')!.click();
+  assert.deepEqual(ids(list), [], 'placement updates before any network acknowledgement');
+  assert.equal(value.archivedAt, undefined, 'pending UI state is not serialized as a saved change');
+  for (let i = 0; i < 100 && requests.length === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(requests.length, 1);
+  document.querySelector<HTMLButtonElement>('.chat-list-toast__undo')!.click();
+  assert.deepEqual(ids(list), [value.id]);
+  assert.equal(requests.length, 1, 'Undo waits for the first write');
+  requests[0]!.resolve(Response.json({}));
+  for (let i = 0; i < 100 && requests.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(requests.map(request => request.archived), [true, false]);
+  requests[1]!.resolve(Response.json({}));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(value.archivedAt, undefined);
+  assert.equal(value.historyLoaded, false);
+  assert.deepEqual(ids(list), [value.id]);
+});
+
+test('a rejected managed archive restores its row and leaves the transcript unloaded', async () => {
+  const value = chat('managed-reject'); value.chatCommandVersion = 1; value.historyLoaded = false; value.history = [];
+  const list = setup([value]);
+  globalThis.fetch = async () => Response.json({ error: 'Archive failed' }, { status: 403 });
+  list.querySelector<HTMLButtonElement>('.chat-item-archive')!.click();
+  assert.deepEqual(ids(list), []);
+  for (let i = 0; i < 100 && ids(list).length === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(ids(list), [value.id]);
+  assert.equal(value.archivedAt, undefined);
+  assert.equal(value.historyLoaded, false);
+});
+
 
 test('archiving a parent keeps its nested agent conversations out of Working and together in Archive', () => {
   const parent = chat('parent');

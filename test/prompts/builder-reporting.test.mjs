@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 
-for (const variant of ['agent.full.md', 'agent.lite.md']) {
+for (const variant of ['agent.full.md']) {
   test(`${variant} requires evidence-scoped status and runtime reporting`, async () => {
     const body = await readFile(
       path.join(root, 'src', 'chat', 'prompts', 'work-agents', 'builder', variant),

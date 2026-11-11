@@ -3,14 +3,12 @@ import {
   patchWorkAgentOverride,
   resetWorkAgentPromptOverride,
   saveWorkAgentPromptOverride,
-  type WorkAgentPromptProfile,
 } from '../agents/work-agent-prompt-api';
 import {
   fetchPromptFile,
   resetPromptFileOverride,
   savePromptFileOverride,
   type PromptFileFamily,
-  type PromptFileProfile,
 } from '../chat/prompts/prompt-file-api';
 import {
   resolveFilePromptBuiltinBaseline,
@@ -236,46 +234,9 @@ interface ModelBindingState {
   modelId: string;
 }
 
-function buildProfileTabs(
-  onChange: (profile: PromptFileProfile) => void,
-): { root: HTMLElement; getProfile: () => PromptFileProfile } {
-  const root = el('div','settings-profile-tabs');
-  root.setAttribute('role', 'tablist');
-  let active: PromptFileProfile = 'full';
-
-  const makeTab = (profile: PromptFileProfile, label: string) => {
-    const btn = el('button', 'settings-profile-tab', label);
-    btn.type = 'button';
-    btn.setAttribute('role', 'tab');
-    btn.setAttribute('aria-selected', profile === active ? 'true' : 'false');
-    if (profile === active) btn.classList.add('is-active');
-    btn.addEventListener('click', () => {
-      active = profile;
-      root.querySelectorAll('.settings-profile-tab').forEach((tab) => {
-        const elTab = tab as HTMLButtonElement;
-        const isActive = elTab.textContent === label;
-        elTab.classList.toggle('is-active', isActive);
-        elTab.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      });
-      onChange(profile);
-    });
-    root.appendChild(btn);
-  };
-
-  makeTab('full', 'Full');
-  makeTab('lite', 'Lite');
-
-  return {
-    root,
-    getProfile: () => active,
-  };
-}
-
 interface PromptEditorOptions {
   family: PromptFileFamily;
   entityId: string;
-  /** One prompt for every profile (agent parts, D7): hide the Full/Lite tabs. */
-  singleProfile?: boolean;
   /** Textarea height in rows (default 12). */
   rows?: number;
 }
@@ -288,27 +249,25 @@ export function mountPromptFileEditor(
   options: PromptEditorOptions,
 ): void {
   const { family, entityId } = options;
-  let currentProfile: PromptFileProfile = 'full';
   let lastSavedContent = '';
   let builtinBaseline = '';
   let sourceLabel = el('span', 'settings-badge', '…');
   const ta = document.createElement('textarea');
   ta.className = 'settings-part-editor';
   ta.rows = options.rows ?? 12;
-  ta.placeholder = options.singleProfile ? 'Prompt body' : 'System prompt body for this profile';
+  ta.placeholder = 'Prompt body';
 
   const reloadBaseline = async () => {
     builtinBaseline = await resolveFilePromptBuiltinBaseline(
       family,
       entityId,
-      currentProfile,
     );
     diffControls.setBaseline(builtinBaseline);
     diffControls.refresh();
   };
 
   const reload = async () => {
-    const data = await fetchPromptFile(family, entityId, currentProfile);
+    const data = await fetchPromptFile(family, entityId);
     if (!data) {
       sourceLabel.textContent = 'unavailable';
       ta.value = '';
@@ -326,12 +285,6 @@ export function mountPromptFileEditor(
     await reloadBaseline();
   };
 
-  const tabs = buildProfileTabs((profile) => {
-    currentProfile = profile;
-    void reload();
-  });
-
-  if (!options.singleProfile) container.appendChild(tabs.root);
   const meta = el('p', 'settings-field-hint');
   meta.appendChild(document.createTextNode('Source: '));
   meta.appendChild(sourceLabel);
@@ -354,7 +307,6 @@ export function mountPromptFileEditor(
       const saved = await savePromptFileOverride(
         family,
         entityId,
-        currentProfile,
         ta.value,
       );
       if (!saved) {
@@ -378,7 +330,6 @@ export function mountPromptFileEditor(
       const restored = await resetPromptFileOverride(
         family,
         entityId,
-        currentProfile,
       );
       if (!restored) {
         setStatus('err', 'No override to reset or server unavailable');
@@ -410,12 +361,11 @@ interface WorkAgentEditorOptions {
 
 // ── Work agent ───────────────────────────────────────────────────────────────
 
-/** Work agent Full/Lite prompt editor only (Models hub holds binding). */
+/** Work agent prompt editor (Models hub holds binding). */
 export function mountWorkAgentPromptEditor(
   container: HTMLElement,
   options: Pick<WorkAgentEditorOptions, 'agentId'>,
 ): void {
-  let currentProfile: WorkAgentPromptProfile = 'full';
   let lastSavedPromptContent = '';
   let builtinBaseline = '';
 
@@ -427,14 +377,13 @@ export function mountWorkAgentPromptEditor(
   const reloadBaseline = async () => {
     builtinBaseline = await resolveWorkAgentBuiltinBaselineText(
       options.agentId,
-      currentProfile,
     );
     diffControls.setBaseline(builtinBaseline);
     diffControls.refresh();
   };
 
   const reloadPrompt = async () => {
-    const data = await fetchWorkAgentPrompt(options.agentId, currentProfile);
+    const data = await fetchWorkAgentPrompt(options.agentId);
     if (!data) {
       sourceLabel.textContent = 'unavailable';
       ta.value = '';
@@ -450,13 +399,6 @@ export function mountWorkAgentPromptEditor(
     preview.refresh();
     await reloadBaseline();
   };
-
-  const tabs = buildProfileTabs((profile) => {
-    currentProfile = profile;
-    void reloadPrompt();
-  });
-
-  container.appendChild(tabs.root);
 
   const meta = el('p', 'settings-field-hint');
   meta.appendChild(document.createTextNode('Prompt source: '));
@@ -480,12 +422,11 @@ export function mountWorkAgentPromptEditor(
     void (async () => {
       const ok = await saveWorkAgentPromptOverride(
         options.agentId,
-        currentProfile,
         ta.value,
       );
       setStatus(
         ok ? 'idle' : 'err',
-        ok ? `Prompt saved (${currentProfile})` : 'Save failed',
+        ok ? 'Prompt saved' : 'Save failed',
       );
       if (ok) {
         lastSavedPromptContent = ta.value;
@@ -501,10 +442,9 @@ export function mountWorkAgentPromptEditor(
     void (async () => {
       const dirty = ta.value !== lastSavedPromptContent;
       if (dirty && !(await appConfirm('Discard unsaved edits and remove your override?'))) return;
-      if (!dirty && !(await appConfirm('Remove prompt override for this profile?'))) return;
+      if (!dirty && !(await appConfirm('Remove prompt override?'))) return;
       const restored = await resetWorkAgentPromptOverride(
         options.agentId,
-        currentProfile,
       );
       if (!restored) {
         setStatus('err', 'No override to reset or server unavailable');

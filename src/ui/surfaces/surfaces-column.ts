@@ -14,7 +14,7 @@ import {
 import { createPointerFrame } from '../pointer-frame';
 import { setGraphiteSurfaceBridge } from './surface-bridge';
 import {
-  SURFACES, SURFACE_GROUPS, type ContentTabPlacement, type SurfaceAvailability, type SurfaceContent,
+  SURFACES, SURFACE_GROUPS, SURFACE_TABS, type ContentTabPlacement, type SurfaceAvailability, type SurfaceContent,
   type SurfaceContext, type SurfaceRegistration,
 } from './surface-registry';
 import {
@@ -105,10 +105,6 @@ export function usePhonePresentation(): boolean {
   return Boolean(mobilePortal || document.documentElement.classList.contains('mn-mobile-app') || isPhoneLayout());
 }
 
-function isNewThreadViewOpen(): boolean {
-  return Boolean(stage?.querySelector('#mainColumn.graphite-new-thread'));
-}
-
 function syncChat(chat: Chat): void {
   const next = preferenceKey(chat);
   if (activeKey === next) return;
@@ -120,7 +116,7 @@ function syncChat(chat: Chat): void {
     legacyMigrated = true;
     const migrationKey = `${PREFIX}.migrated.${JSON.stringify(chat.workspacePath || getWorkspacePath())}`;
     if (saved === undefined && read(migrationKey) !== true && legacySurfaces.length &&
-      getChatMessageCount(chat) > 0 && !usePhonePresentation() && !isNewThreadViewOpen()) {
+      getChatMessageCount(chat) > 0 && !usePhonePresentation()) {
       for (const id of legacySurfaces) openSurfaceTab(state, id);
       persist();
     }
@@ -206,19 +202,18 @@ function placePanel(panel: SurfaceDock, root: HTMLElement, open: boolean, docked
 function renderPlacement(animateClose?: SurfaceDock): void {
   if (!stage) return;
   const isPhone = usePhonePresentation();
-  const newThreadView = isNewThreadViewOpen();
-  const side = !newThreadView && (isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side'));
-  const bottom = !newThreadView && (isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom'));
+  const side = isPhone ? mobileShown === 'side' : isPanelVisible(state, 'side');
+  const bottom = isPhone ? mobileShown === 'bottom' : isPanelVisible(state, 'bottom');
   stage.dataset.surfaceSide = String(side);
   stage.dataset.surfaceBottom = String(bottom);
-  stage.dataset.surfaceMax = isPhone || newThreadView ? '' : state.maximized ?? '';
+  stage.dataset.surfaceMax = isPhone ? '' : state.maximized ?? '';
   stage.classList.toggle('graphite-surfaces--phone', isPhone);
   mobileBackdrop.hidden = !(isPhone && (side || bottom));
   document.getElementById('mainColumn')?.toggleAttribute('inert', isPhone && (side || bottom));
   for (const panel of SURFACE_DOCKS) {
     const open = panel === 'side' ? side : bottom;
     const root = mounted.get(panel)?.root;
-    if (root) placePanel(panel, root, open, !isPhone && !newThreadView && !state.maximized, animateClose === panel);
+    if (root) placePanel(panel, root, open, !isPhone && !state.maximized, animateClose === panel);
     if (isPhone && open) {
       root?.setAttribute('role', 'dialog');
       root?.setAttribute('aria-modal', 'true');
@@ -357,9 +352,14 @@ function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): v
   const dock = getSurfaceDock(state, panel);
   const compact = dock === 'bottom' && state.maximized !== dock && !usePhonePresentation();
   const groups = SURFACE_GROUPS.map(({ id, label, items }) => ({
-    id, label, choices: items.map(item => ({ item, availability: getAvailability(item.id, context(chat, item.id, panel)) })),
+    id, label, choices: items.map(item => ({
+      item,
+      availability: getAvailability(item.id, context(chat, item.id, panel)),
+      action: item.action && registrations.has(item.action.id) ? item.action : undefined,
+    })),
   }));
-  const signature = JSON.stringify([compact, groups.map(group => group.choices.map(({ availability }) => availability))]);
+  const signature = JSON.stringify([compact, groups.map(group => group.choices.map(({ availability, action }) =>
+    [availability, Boolean(action)]))]);
   if (view.launcher.dataset.signature !== signature) {
     view.launcher.dataset.signature = signature;
     view.launcher.classList.toggle('graphite-surface-launcher--compact', compact);
@@ -381,7 +381,7 @@ function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): v
       caption.textContent = group.label;
       caption.setAttribute('aria-hidden', 'true');
       list.append(caption);
-      for (const { item, availability } of group.choices) {
+      for (const { item, availability, action } of group.choices) {
         const button = element('button', 'graphite-surface-choice');
         button.type = 'button';
         button.id = `graphiteLaunch-${panel}-${item.id}`;
@@ -391,14 +391,29 @@ function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): v
         const description = availability.available
           ? [item.description, availability.hint].filter(Boolean).join(' · ')
           : availability.reason ?? 'Unavailable';
-        button.setAttribute('aria-description', description);
+        const stats = availability.available ? availability.diffStats : undefined;
+        button.setAttribute('aria-description', stats
+          ? `${description}. ${stats.additions} added, ${stats.deletions} deleted.`
+          : description);
         const copy = element('span', 'graphite-surface-choice-copy');
+        const title = element('span', 'graphite-surface-choice-title');
         const label = element('span', 'graphite-surface-choice-label');
         label.textContent = item.label;
+        title.append(label);
+        if (stats) {
+          const counts = element('span', 'graphite-surface-choice-stats');
+          counts.setAttribute('aria-hidden', 'true');
+          const added = element('span', 'graphite-surface-choice-added');
+          added.textContent = `+${stats.additions}`;
+          const deleted = element('span', 'graphite-surface-choice-deleted');
+          deleted.textContent = `−${stats.deletions}`;
+          counts.append(added, deleted);
+          title.append(counts);
+        }
         const hint = element('span', 'graphite-surface-choice-hint');
         hint.textContent = description;
-        copy.append(label, hint);
-        button.append(createIcon(item.icon, { size: 17, className: 'graphite-surface-choice-icon' }), copy);
+        copy.append(title, hint);
+        button.append(createIcon(item.icon, { size: 14, className: 'graphite-surface-choice-icon' }), copy);
         if (availability.available) {
           const key = element('kbd', 'graphite-surface-key');
           key.textContent = item.key;
@@ -409,7 +424,23 @@ function renderLauncher(panel: SurfacePanel, view: PanelElements, chat: Chat): v
         button.addEventListener('click', () => {
           if (availability.available && openSurface(item.id, { panel }) && !(content && item.id === 'preview')) focusSelected(panel);
         });
-        list.append(button);
+        if (action) {
+          const card = element('div', 'graphite-surface-choice-with-action');
+          const shortcut = element('button', 'graphite-surface-choice-action');
+          shortcut.type = 'button';
+          shortcut.id = `${button.id}-action`;
+          shortcut.title = action.label;
+          shortcut.setAttribute('role', 'menuitem');
+          shortcut.setAttribute('aria-label', action.label);
+          shortcut.append(createIcon(action.icon, { size: 13 }));
+          shortcut.addEventListener('click', () => {
+            if (openSurface(action.id, { panel, force: true, target: action.target })) focusSelected(panel);
+          });
+          card.append(button, shortcut);
+          list.append(card);
+        } else {
+          list.append(button);
+        }
       }
       view.launcher.append(list);
     }
@@ -432,7 +463,7 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
   const phoneChanges = isPhone && active === 'changes' && !launcher;
   const name = panelName(panel);
   view.root.classList.toggle('graphite-surface-panel--changes-sheet', phoneChanges);
-  view.root.setAttribute('aria-label', phoneChanges ? 'Changes' : name);
+  view.root.setAttribute('aria-label', phoneChanges ? 'Diff' : name);
   view.title.hidden = !phoneChanges;
   view.strip.hidden = phoneChanges;
   view.add.hidden = phoneChanges;
@@ -452,9 +483,9 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
     view.strip.replaceChildren();
     let activeWrap: HTMLElement | undefined;
     for (const [index, id] of tabs.entries()) {
-      const item = SURFACES.find(surface => surface.id === id);
+      const item = SURFACE_TABS.find(surface => surface.id === id);
       const details = labels[index];
-      const label = details?.label ?? item?.label ?? (id === 'review' ? 'Review' : id);
+      const label = details?.label ?? item?.label ?? id;
       const tabWrap = element('span', 'graphite-surface-tab-wrap');
       tabWrap.dataset.surfaceTab = id;
       const tab = element('button', 'graphite-surface-tab');
@@ -464,10 +495,10 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
       tab.setAttribute('aria-controls', `graphitePanel-${surfaceDomKey(id)}`);
       tab.setAttribute('aria-selected', String(selected(id, panel)));
       tab.tabIndex = selected(id, panel) || (launcher && id === tabs[0]) ? 0 : -1;
-      tab.title = details?.title ?? (item ? `${label} (${item.key})` : label);
+      tab.title = details?.title ?? (item?.key ? `${label} (${item.key})` : label);
       const name = element('span', 'graphite-surface-tab-label');
       name.textContent = label;
-      tab.append(details?.icon() ?? createIcon(item?.icon ?? (id === 'review' ? 'gitGraph' : 'fileText'), { size: 14 }), name);
+      tab.append(details?.icon() ?? createIcon(item?.icon ?? 'fileText', { size: 14 }), name);
       if (details?.dirty) {
         const dot = element('span', 'graphite-surface-tab-dirty');
         dot.setAttribute('aria-hidden', 'true');
@@ -555,7 +586,7 @@ function renderPanelChrome(panel: SurfacePanel, view: PanelElements, chat: Chat)
     }
     view.controls.append(panel === 'split'
       ? control('Close split', 'close', closeSurfaceSplit)
-      : control(phoneChanges ? 'Close Changes' : `Hide ${name.toLowerCase()}`, 'close', () => toggleSurfacePanel(panel)));
+      : control(phoneChanges ? 'Close Diff' : `Hide ${name.toLowerCase()}`, 'close', () => toggleSurfacePanel(panel)));
     if (activeWrap) {
       const strip = view.strip.getBoundingClientRect();
       const tab = activeWrap.getBoundingClientRect();
@@ -716,7 +747,7 @@ function openMobile(panel: SurfacePanel): void {
 }
 
 export function openSurface(id: LauncherSurfaceId, options: OpenSurfaceOptions = {}): boolean {
-  if (!stage || isNewThreadViewOpen()) return false;
+  if (!stage) return false;
   const chat = getContextChat();
   if (!chat || (!registrations.has(id) && !(content && id === 'preview'))) return false;
   syncChat(chat);
@@ -740,7 +771,7 @@ export function openSurface(id: LauncherSurfaceId, options: OpenSurfaceOptions =
 }
 
 export function toggleSurfacePanel(panel: SurfacePanel): void {
-  if (!stage || isNewThreadViewOpen()) return;
+  if (!stage) return;
   const chat = getContextChat();
   if (!chat) return;
   syncChat(chat);
@@ -783,7 +814,7 @@ function moveTab(panel: SurfacePanel, id: SurfaceId, destination: SurfacePanel =
 
 function splitSurfacePanel(panel?: SurfacePanel): boolean {
   const chat = getContextChat();
-  if (!stage || !chat || usePhonePresentation() || isNewThreadViewOpen()) return false;
+  if (!stage || !chat || usePhonePresentation()) return false;
   syncChat(chat);
   syncViewport();
   const source = panel ?? state.focused;
@@ -1054,7 +1085,7 @@ function createPanel(panel: SurfacePanel): PanelElements {
   resizer.setAttribute('aria-orientation', panel === 'bottom' ? 'horizontal' : 'vertical');
   const head = element('header', 'graphite-surface-header');
   const title = element('h2', 'graphite-surface-sheet-title');
-  title.textContent = 'Changes';
+  title.textContent = 'Diff';
   title.hidden = true;
   const strip = element('div', 'graphite-surface-tabs');
   strip.setAttribute('role', 'tablist');
@@ -1092,7 +1123,6 @@ function createPanel(panel: SurfacePanel): PanelElements {
 }
 
 function handleLegacyRequest(id: LauncherSurfaceId, action: 'show' | 'hide' | 'toggle' | 'maximize'): boolean {
-  if (isNewThreadViewOpen()) return true;
   const chat = getContextChat();
   if (!chat) return false;
   syncChat(chat);
@@ -1114,7 +1144,7 @@ function handleLegacyRequest(id: LauncherSurfaceId, action: 'show' | 'hide' | 't
 
 function onShortcut(event: KeyboardEvent): void {
   const host = mobilePortal?.host ?? stage;
-  if (event.defaultPrevented || event.isComposing || isNewThreadViewOpen() || !host?.getClientRects().length) return;
+  if (event.defaultPrevented || event.isComposing || !host?.getClientRects().length) return;
   const foreground = document.querySelector('.mn-os-app-layer.is-active');
   if (foreground && !mobilePortal && !foreground.contains(host)) return;
   const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1200,7 +1230,7 @@ export function mountSurfacePanels(host: HTMLElement, options: {
     refresh: refreshSurfacePanels,
     showContent: content ? (kind, key, forceLoad, into) => {
       const chat = getContextChat();
-      if (!chat || isNewThreadViewOpen()) return;
+      if (!chat) return;
       syncChat(chat);
       syncViewport();
       const id: ContentTabId = `${kind}:${key}`;
@@ -1258,15 +1288,5 @@ export function mountSurfacePanels(host: HTMLElement, options: {
   };
   const observer = new MutationObserver(syncOcclusion);
   for (const view of mounted.values()) observer.observe(view.root, { attributes: true, attributeFilter: ['hidden'] });
-  const mainColumn = host.querySelector('#mainColumn');
-  if (mainColumn) {
-    let newThreadView = isNewThreadViewOpen();
-    new MutationObserver(() => {
-      const next = isNewThreadViewOpen();
-      if (next === newThreadView) return;
-      newThreadView = next;
-      refreshSurfacePanels();
-    }).observe(mainColumn, { attributes: true, attributeFilter: ['class'] });
-  }
   render();
 }

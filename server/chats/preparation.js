@@ -42,7 +42,7 @@ async function rawPrompts(root, required = false) {
       if (entry.name.startsWith('_') || entry.name === 'node_modules') continue;
       const full = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(full, relative);
-      else if (entry.isFile() && entry.name.endsWith('.md')) result[relative] = await fs.readFile(full, 'utf8');
+      else if (entry.isFile() && entry.name.endsWith('.md') && !/(?:^|\.)lite\.md$/i.test(entry.name)) result[relative] = await fs.readFile(full, 'utf8');
     }
   }
   await walk(root);
@@ -81,10 +81,10 @@ export function createChatPreparationAdapters(overrides = {}) {
     async readSettings() {
       const { readResource } = await import('../config/store.js');
       const { normalizeToolConfig, validateUserRulesSettings } = await import('../config/validators.js');
-      const [meta, rawTools, rules, legacy] = await Promise.all([
-        readResource('meta'), readResource('tools'), readResource('rules'), readResource('system-prompt'),
+      const [meta, rawTools, rules] = await Promise.all([
+        readResource('meta'), readResource('tools'), readResource('rules'),
       ]);
-      return { meta, tools: normalizeToolConfig(rawTools), rules: validateUserRulesSettings(rules), legacySystemPrompt: legacy?.text ?? '' };
+      return { meta, tools: normalizeToolConfig(rawTools), rules: validateUserRulesSettings(rules) };
     },
     async listTools() {
       const { BUILT_IN_TOOLS } = await import('../tools/builtin-catalog.js');
@@ -123,42 +123,30 @@ export function createChatPreparationAdapters(overrides = {}) {
       const [builtinRaw, userRaw] = await Promise.all([
         rawPrompts(path.join(appRoot, 'src/chat/prompts'), true), rawPrompts(path.join(getMinnowHome(), 'prompts')),
       ]);
-      // Work-agent overrides and pack prompts may be body-only. Feed their actual
-      // resolved bodies through the normal loader, preserving both profiles.
+      // Pack prompts and user overrides can contain body-only Markdown.
       for (const agent of agents) {
-        for (const profile of ['full', 'lite']) {
-          let body;
-          try { body = await readWorkAgentPrompt(appRoot, agent.id, profile); }
-          catch (error) {
-            if (profile !== 'lite' || error.code !== 'ENOENT') throw error;
-            body = await readWorkAgentPrompt(appRoot, agent.id, 'full');
-          }
-          userRaw[`work-agents/${agent.id}/agent.${profile}.md`] =
-            `---\nid: ${agent.id}\nkind: work-agent\nlabel: ${JSON.stringify(agent.label)}\nversion: 1\n---\n${body.content}`;
-        }
+        const body = await readWorkAgentPrompt(appRoot, agent.id);
+        userRaw[`work-agents/${agent.id}/agent.full.md`] =
+          `---\nid: ${agent.id}\nkind: work-agent\nlabel: ${JSON.stringify(agent.label)}\nversion: 1\n---\n${body.content}`;
       }
       return { builtinRaw, userRaw };
     },
-    async loadTypePrompt(typeId, type, profile) {
+    async loadTypePrompt(typeId, type) {
       const { resolveSubAgentBasePrompt } = await import('../sub-agents/prompts.js');
       // The legacy override API permits lowercase ids only. The shipped
       // generalPurpose id predates that API; read its exact safe file identity.
       if (!type.systemPromptPath && !type.workAgentId && /^[a-z][A-Za-z0-9-]{0,63}$/.test(typeId) && /[A-Z]/.test(typeId)) {
         const { getMinnowHome } = await import('../config/home.js');
         const { parsePromptMarkdown } = await import('../prompts/parse.js');
-        for (const full of [path.join(getMinnowHome(), 'prompts/sub-agents', `${typeId}.${profile}.md`),
-          path.join(appRoot, 'src/agents/prompts/sub-agents', `${typeId}.${profile}.md`)]) {
+        for (const full of [path.join(getMinnowHome(), 'prompts/sub-agents', `${typeId}.full.md`),
+          path.join(appRoot, 'src/agents/prompts/sub-agents', `${typeId}.full.md`)]) {
           try {
             const text = await fs.readFile(full, 'utf8');
             try { return parsePromptMarkdown(text, full).body.trim(); } catch { return text.trim(); }
           } catch (error) { if (error.code !== 'ENOENT') throw error; }
         }
       }
-      return resolveSubAgentBasePrompt(typeId, type, profile);
-    },
-    async loadCustomPrompt(id) {
-      const { loadPromptConfigFile } = await import('../prompt-configs/handlers.js');
-      return loadPromptConfigFile(id);
+      return resolveSubAgentBasePrompt(typeId, type);
     },
     async readTranscript(chatId) {
       const { createChatRepository } = await import('./repository.js');
@@ -168,15 +156,15 @@ export function createChatPreparationAdapters(overrides = {}) {
       const { createChatRepository } = await import('./repository.js');
       return createChatRepository().getProfile(reference.profileId, reference.profileVersion);
     },
-    async retrieveMemory({ chat, cwd, query, profile, signal }) {
+    async retrieveMemory({ chat, cwd, query, signal }) {
       const { loadBrainConfig } = await import('../brain/store.js');
       const { retrieveBrainBlockHybrid } = await import('../brain/retrieve.js');
       const { brainWorkspaceKeyFromPath } = await import('../brain/paths.js');
       const brain = await loadBrainConfig();
       if (brain.enabled === false) return '';
-      const result = await retrieveBrainBlockHybrid({ query, profile, limit: 12, signal,
+      const result = await retrieveBrainBlockHybrid({ query, limit: 12, signal,
         autoInject: chat.kind !== 'expert', workspaceKey: brainWorkspaceKeyFromPath(cwd),
-        maxChars: profile === 'lite' ? brain.maxInjectCharsLite ?? 800 : brain.maxInjectCharsFull ?? 8000,
+        maxChars: brain.maxInjectCharsFull ?? 8000,
         ...(chat.kind === 'expert' && chat.expertId ? { scope: { expertId: chat.expertId } } : {}),
       }, brain);
       return result.block ?? '';
@@ -306,11 +294,9 @@ async function rolePromptSnapshot(live, effectiveChat) {
     selected = { id: `subagent-${live.typeId}`, label: live.type.label ?? live.typeId, kind: 'work-agent',
       version: '1', providerId: null, modelId: null, allowedTools: null };
     sources.userRaw ??= {};
-    for (const variant of ['full', 'lite']) {
-      const body = await live.adapters.loadTypePrompt(live.typeId, live.type, variant);
-      sources.userRaw[`work-agents/${selected.id}/agent.${variant}.md`] =
-        `---\nid: ${selected.id}\nkind: work-agent\nlabel: ${JSON.stringify(selected.label)}\nversion: 1\n---\n${body}`;
-    }
+    const body = await live.adapters.loadTypePrompt(live.typeId, live.type);
+    sources.userRaw[`work-agents/${selected.id}/agent.full.md`] =
+      `---\nid: ${selected.id}\nkind: work-agent\nlabel: ${JSON.stringify(selected.label)}\nversion: 1\n---\n${body}`;
   }
   return { sources, workAgent: selected ? structuredClone(selected) : null };
 }
@@ -331,14 +317,10 @@ export async function captureChatProfile(chat, scope, options = {}) {
   if (!policy.capabilities.includes('execution.host')) throw new ChatContractError('capability_unavailable', 'This agent configuration is disabled or unavailable');
   const role = await rolePromptSnapshot(live, live.effectiveChat);
   const meta = live.settings.meta;
-  const customConfig = meta.activePromptProfile === 'custom' && meta.activePromptConfigId
-    ? await live.adapters.loadCustomPrompt(meta.activePromptConfigId) : null;
-  if (meta.activePromptProfile === 'custom' && !customConfig) throw new ChatContractError('capability_unavailable', 'The selected custom prompt configuration is unavailable');
   const selected = validateModelSelection(options.modelSelection ?? { providerId: chat.providerId, modelId: chat.modelId });
   if (options.modelSelection && !selected.ok) throw new ChatContractError(selected.error.code, selected.error.message, selected.error);
   const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, structuredClone(value[key])]));
   const capturedMeta = {
-    activePromptProfile: meta.activePromptProfile ?? 'full', activePromptConfigId: meta.activePromptConfigId ?? null,
     activeInfoPresetId: meta.activeInfoPresetId ?? 'general-assistant',
     flaticonIconGuidanceEnabled: meta.flaticonIconGuidanceEnabled !== false,
     localModelGuidance: ['on', 'off'].includes(meta.localModelGuidance) ? meta.localModelGuidance : 'auto',
@@ -354,7 +336,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
   const promptAgents = role.workAgent ? [...live.agents.filter(agent => agent.id !== role.workAgent.id), role.workAgent] : live.agents;
   const sources = live.composer.captureChatPromptSources({ chat: promptChat, workAgents: promptAgents,
     workAgentOverrides: live.workAgentOverrides, ...role.sources,
-    context: { profile: capturedMeta.activePromptProfile, customConfig, cwd: scope.canonicalKey, modeId: policy.modeId,
+    context: { cwd: scope.canonicalKey, modeId: policy.modeId,
       expertId: null, workAgentId: null, skillBody: null, memoryBlock: '{{memory}}', memoryEnabled: true,
       codeMapBlock: '{{code_map}}', codeMapInjectionEnabled: true,
       contextDocumentsBlock: '{{context_documents}}', contextDocumentsInjectionEnabled: true,
@@ -362,7 +344,7 @@ export async function captureChatProfile(chat, scope, options = {}) {
       infoPresetId: capturedMeta.activeInfoPresetId, shellSandboxMode: policy.shellSandboxMode,
       flaticonIconGuidanceEnabled: capturedMeta.flaticonIconGuidanceEnabled,
       localModelGuidance: capturedMeta.localModelGuidance, permissionLevel: policy.permissionLevel },
-    rules: live.settings.rules, legacySystemPrompt: live.settings.legacySystemPrompt ?? '',
+    rules: live.settings.rules,
   });
   const overrideIds = new Set(['default', role.workAgent?.id, live.type?.workAgentId].filter(Boolean));
   const workAgentOverrides = Object.fromEntries([...overrideIds].filter(id => live.workAgentOverrides[id]).map(id =>
@@ -371,10 +353,9 @@ export async function captureChatProfile(chat, scope, options = {}) {
     workAgentOverrides: live.workAgentOverrides, meta,
     ...(live.typeId ? { typeId: live.typeId, typeConfig: live.type } : {}) });
   const chatSettings = pick(chat, ['thinkingMode', 'brainNotesInjection', 'codeMapInjection', 'contextDocumentsInjection', 'memoryEnabled']);
-  const prompt = { sources, workAgent: role.workAgent, meta: capturedMeta, customConfig,
+  const prompt = { sources, workAgent: role.workAgent, meta: capturedMeta,
     chatLinksBlock: standingChatLinks(chat.links),
-    workAgentOverrides, rules: structuredClone(live.settings.rules),
-    legacySystemPrompt: live.settings.legacySystemPrompt ?? '' };
+    workAgentOverrides, rules: structuredClone(live.settings.rules) };
   if (Buffer.byteLength(JSON.stringify(prompt)) > 512 * 1024) throw new ChatContractError('capability_unavailable', 'The captured chat prompt exceeds 512 KiB');
   return { policy, exactModel: options.exactModel === true, ...(selected.ok ? { modelSelection: selected.value } : {}),
     ...(live.typeId ? { typeId: live.typeId, typeConfig: pick(live.type, ['label', 'workAgentId', 'sampler', 'thinkingMode', 'thinkingBudgetTokens',
@@ -515,7 +496,6 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const replay = live.composer.replayChatContext(contextChat);
   const firstTurn = !history.some(row => row.role === 'user' && row.commandId !== command.commandId);
   const meta = { ...live.settings.meta, ...(snapshot.prompt?.meta ?? {}) };
-  const profile = ['lite', 'custom'].includes(meta.activePromptProfile) ? meta.activePromptProfile : 'full';
   const effectiveChat = { ...live.effectiveChat, modeId: policy.modeId };
   const runSettings = snapshot.runSettings ?? live.composer.resolveChatRunSettings({ chat: effectiveChat, workAgents: live.agents,
     workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides, meta,
@@ -523,9 +503,6 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   model.sampler = runSettings.sampler;
   model.thinking = runSettings.thinking;
   const shellSandboxMode = policy.shellSandboxMode;
-  let customConfig = snapshot.prompt?.customConfig ?? null;
-  if (profile === 'custom' && !customConfig && meta.activePromptConfigId) customConfig = await live.adapters.loadCustomPrompt(meta.activePromptConfigId);
-  if (profile === 'custom' && !customConfig) throw new ChatContractError('capability_unavailable', 'The selected custom prompt configuration is unavailable');
   const query = command.message ?? '';
   const memoryEnabled = firstTurn ? enabled(acceptedChat.brainNotesInjection, meta.features?.memoryInjection !== false) &&
     (acceptedChat.memoryEnabled ?? meta.memory?.enabled ?? true) && !(chat.kind === 'expert' && chat.expertRuntime?.memoryEnabled === false) : Boolean(replay.memoryBlock);
@@ -550,11 +527,15 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       throw error;
     }
   };
+  // Historical variants may have captured an incomplete set of canonical sources.
+  const capturedPrompt = snapshot.prompt;
+  const capturedPromptProfile = capturedPrompt?.meta?.activePromptProfile;
+  const useCapturedSources = capturedPrompt?.sources && (!capturedPromptProfile || capturedPromptProfile === 'full');
   const [memoryBlock, codeMapBlock, contextDocumentsBlock, role] = await Promise.all([
-    memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, profile, signal: enrichmentSignal })) : replay.memoryBlock : null,
+    memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, signal: enrichmentSignal })) : replay.memoryBlock : null,
     codeMapEnabled ? firstTurn ? optional('code-map', enrichmentSignal => live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal: enrichmentSignal })) : replay.codeMapBlock : null,
     documentsEnabled ? firstTurn ? requiredDocuments() : replay.contextDocumentsBlock : null,
-    snapshot.prompt?.sources ? { sources: snapshot.prompt.sources, workAgent: snapshot.prompt.workAgent ?? null }
+    useCapturedSources ? { sources: capturedPrompt.sources, workAgent: capturedPrompt.workAgent ?? null }
       : rolePromptSnapshot(live, effectiveChat),
   ]);
   enrichmentOmissions.sort((a, b) => a.kind.localeCompare(b.kind));
@@ -564,7 +545,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const promptAgents = role.workAgent ? [...live.agents.filter(agent => agent.id !== role.workAgent.id), role.workAgent] : live.agents;
   const composed = live.composer.composeChatPrompt({ chat: promptChat, workAgents: promptAgents,
     workAgentOverrides: snapshot.prompt?.workAgentOverrides ?? live.workAgentOverrides, ...role.sources,
-    context: { profile, customConfig, customConfigId: meta.activePromptConfigId ?? null, cwd, modeId: policy.modeId,
+    context: { cwd, modeId: policy.modeId,
       expertId: snapshot.prompt?.expertId ?? null, expertLabel: snapshot.prompt?.expertLabel ?? null,
       workAgentId: null, skillBody: turn?.skillBody ?? snapshot.prompt?.skillBody ?? null,
       memoryBlock: nonempty(memoryBlock), memoryEnabled, codeMapBlock: nonempty(codeMapBlock), codeMapInjectionEnabled: codeMapEnabled,
@@ -577,7 +558,6 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       permissionLevel: policy.permissionLevel, turnClamp: policy.turnClamp ?? null,
       shellSandboxMode, browserActivated: history.some(row => /browser_/.test(row.toolName ?? '')),
     }, rules: snapshot.prompt?.rules ?? live.settings.rules, separateCliContext: cli,
-    legacySystemPrompt: snapshot.prompt?.legacySystemPrompt ?? live.settings.legacySystemPrompt,
   });
   const contextBodies = {};
   if (nonempty(memoryBlock)) contextBodies['brain-notes'] = memoryBlock;

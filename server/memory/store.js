@@ -27,7 +27,6 @@ const FACTS_PREFIX = 'facts/';
 export const DEFAULT_MEMORY_CONFIG = {
   enabled: true,
   maxInjectCharsFull: 8000,
-  maxInjectCharsLite: 800,
   retrieveLimit: 20,
   defaultTags: [],
   embeddings: { ...DEFAULT_EMBEDDINGS_CONFIG },
@@ -91,8 +90,8 @@ export async function loadMemoryConfig() {
     config.memory && typeof config.memory === 'object'
       ? config.memory
       : {};
-  // Older profiles may still contain the removed entry-count cap.
   delete raw.maxEntries;
+  delete raw.maxInjectCharsLite;
   const brainEmb = (await loadBrainConfig()).embeddings ?? {};
   const embeddings =
     raw.embeddings && typeof raw.embeddings === 'object'
@@ -141,6 +140,7 @@ export async function saveMemoryConfig(partial) {
     embeddings: nextEmb,
   };
   delete config.memory.maxEntries;
+  delete config.memory.maxInjectCharsLite;
 
   const brain =
     config.brain && typeof config.brain === 'object' ? config.brain : {};

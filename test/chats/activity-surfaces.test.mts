@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createEmptyChatObject, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
 import { notifyManagedChatMetadata } from '../../src/chat/managed-chat-view.ts';
-import { initAgentActivityMenubar, stopAgentActivityItem, acknowledgeAgentActivityItems } from '../../src/ui/agent-activity-panel.ts';
+import { initAgentActivityMenubar, stopAgentActivityItem, acknowledgeAgentActivityItems, refreshAgentActivityPanel } from '../../src/ui/agent-activity-panel.ts';
 import { initElectronTrayBridge, disposeElectronTrayBridge } from '../../src/electron-tray-bridge.ts';
 import { buildAgentActivitySnapshot } from '../../src/state/agent-activity-registry.ts';
 import { buildActivityFeed } from '../../src/state/activity-feed.ts';
 import { __testHooks as legacyProducer } from '../../src/notifications/producers.ts';
-import { getNotifications, resetNotificationStoreForTests } from '../../src/notifications/store.ts';
+import { appendNotification, getNotifications, markNotificationRead, resetNotificationStoreForTests, resolveActivityNotifications } from '../../src/notifications/store.ts';
 import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import { resetSubAgentOrchestrator, setSubAgentApiFetchForTests } from '../../src/agents/orchestrator.ts';
 
@@ -52,6 +52,29 @@ test('panel metadata subscription is singular, responds to canonical waiting sta
   assert.equal(first.dataset.agentCount, '1', 'replaced mount no longer receives metadata');
   disposePanel(); chat.agentExecution!.status = 'running'; notifyManagedChatMetadata(chat.id);
   await new Promise(resolve => setTimeout(resolve, 130)); assert.equal(second.dataset.agentCount, '0');
+});
+
+test('the menubar bell fills for unread outcomes and unresolved alerts', async () => {
+  const button = document.createElement('button');
+  document.body.append(button);
+  disposePanel = initAgentActivityMenubar(button, { bell: true });
+  assert.ok(button.querySelector('.fi-rr-bell'));
+
+  appendNotification({ id: 'complete', appId: 'code', kind: 'chat_turn_complete', title: 'Completed', preview: '', createdAt: 100, read: false });
+  await refreshAgentActivityPanel();
+  assert.ok(button.querySelector('.fi-sr-bell'));
+
+  markNotificationRead('complete');
+  await refreshAgentActivityPanel();
+  assert.ok(button.querySelector('.fi-rr-bell'));
+
+  appendNotification({ id: 'failed', appId: 'code', kind: 'chat_turn_error', title: 'Failed', preview: '', createdAt: 200, read: true });
+  await refreshAgentActivityPanel();
+  assert.ok(button.querySelector('.fi-sr-bell'));
+
+  resolveActivityNotifications(['failed']);
+  await refreshAgentActivityPanel();
+  assert.ok(button.querySelector('.fi-rr-bell'));
 });
 
 test('Activity can stop a restored run before its child shell has hydrated', async () => {
@@ -111,4 +134,59 @@ test('late Activity acknowledgment cannot overwrite a newer execution or clear i
   release(); await acknowledgment;
   assert.deepEqual(sent, [{ messageSeq: 8, executionId: 'pinned' }]);
   assert.equal(chat.agentExecution.executionId, 'new-failure'); assert.equal(chat.unread, true); assert.equal(chat.turnError, true);
+});
+
+test('Dismiss alert clears a managed recovery alert during acknowledgement and preserves a later failure', async () => {
+  const chat = setup();
+  chat.agentExecution = { executionId: 'recovery-alert', status: 'recovery_required' };
+  chat.agentActivityCursor = { messageSeq: 8, executionId: 'recovery-alert' };
+  chat.unread = true; chat.turnError = true;
+  appendNotification({ id: 'recovery-notice', activityId: 'execution:recovery-alert', chatId: chat.id, workspacePath: chat.workspacePath,
+    appId: 'code', kind: 'chat_turn_error', title: chat.name!, preview: 'Recovery needed', createdAt: 200, read: false });
+  const sent: unknown[] = [];
+  let respond!: (value: Response) => void;
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== `/api/chats/${chat.id}/ack`) return Response.json([]);
+    sent.push(JSON.parse(String(options?.body)));
+    return new Promise<Response>(resolve => { respond = resolve; });
+  };
+  const button = document.createElement('button'); document.body.append(button); disposePanel = initAgentActivityMenubar(button);
+  button.click();
+  const panel = document.querySelector('#activityDropdown')!;
+  panel.querySelector<HTMLButtonElement>('[data-action="dismiss"]')!.click();
+  assert.deepEqual(sent, [{ messageSeq: 8, executionId: 'recovery-alert' }]);
+  assert.equal(button.classList.contains('has-attention'), false);
+  assert.equal(getNotifications()[0].resolved, true);
+  assert.ok(panel.querySelector('[aria-label="Recent"] [data-activity-id="execution:recovery-alert"]'));
+  button.click(); button.click();
+  assert.equal(panel.querySelector('[data-action="dismiss"]'), null);
+
+  chat.agentExecution = { executionId: 'later-failure', status: 'failed' };
+  chat.agentActivityCursor = { messageSeq: 9, executionId: 'later-failure' };
+  respond(Response.json({ chatId: chat.id, activity: { agentActivityCursor: { messageSeq: 8, executionId: 'recovery-alert' }, unread: false, turnError: false } }));
+  await new Promise(resolve => setImmediate(resolve));
+  await refreshAgentActivityPanel();
+  assert.ok(panel.querySelector('[data-action="dismiss"][data-item-id="execution:later-failure"]'));
+  assert.equal(chat.turnError, true);
+});
+
+test('Dismiss all clears a restored failure without an inbox record or cursor and keeps pending approvals', async () => {
+  const chat = setup();
+  chat.agentExecution = { executionId: 'restored-failure', status: 'failed' };
+  chat.unread = true; chat.turnError = true;
+  const approval = createEmptyChatObject('model');
+  approval.chatCommandVersion = 1;
+  approval.agentExecution = { executionId: 'pending-approval', status: 'waiting_for_approval' };
+  approval.agentRequestSummary = [{ requestId: 'approval', kind: 'approval' }];
+  setSessionStateForTests({ version: 6, activeId: chat.id, sidebarCollapsed: false, chats: [chat, approval] });
+  globalThis.fetch = async () => Response.json([]);
+  const button = document.createElement('button'); document.body.append(button); disposePanel = initAgentActivityMenubar(button);
+  button.click();
+  const panel = document.querySelector('#activityDropdown')!;
+  panel.querySelector<HTMLButtonElement>('[data-action="dismiss-all"]')!.click();
+  await refreshAgentActivityPanel();
+  assert.ok(panel.querySelector('[aria-label="Recent"] [data-activity-id="execution:restored-failure"]'));
+  assert.ok(panel.querySelector('[data-activity-id="execution:pending-approval"] [data-action="open"]'));
+  assert.equal(panel.querySelector('[data-action="dismiss-all"]'), null);
+  assert.match(button.getAttribute('aria-label')!, /1 need your attention/);
 });

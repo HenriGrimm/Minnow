@@ -31,6 +31,8 @@ const SHELL_SHORTCUTS: ShortcutDoc[] = [
 ];
 
 const CHAT_SHORTCUTS: ShortcutDoc[] = [
+  { section: 'Chat', keys: 'Ctrl + ↑ / ↓', label: 'Open the previous or next chat in the sidebar' },
+  { section: 'Chat', keys: 'Ctrl/Cmd + N', label: 'Start a new chat' },
   { section: 'Chat', keys: 'Enter', label: 'Send message (composer focused)' },
   { section: 'Chat', keys: 'Shift + Enter', label: 'New line in composer' },
   { section: 'Chat', keys: '/', label: 'Open skill picker in composer' },

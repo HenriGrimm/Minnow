@@ -104,6 +104,8 @@
   grid-column: 4;
   grid-row: 1 / span 2;
   align-self: center;
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;

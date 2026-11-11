@@ -1,5 +1,5 @@
 import { parsePromptMarkdown, partIdFromKind } from './parse-front-matter';
-import type { ParsedPrompt, PromptKind, PromptProfile } from './types';
+import type { ParsedPrompt, PromptKind } from './types';
 
 /** In-memory registry keyed by `${kind}:${id}`. */
 const registry = new Map<string, ParsedPrompt>();
@@ -45,63 +45,23 @@ function inferKindFromPath(relativePath: string): PromptKind | null {
   return folder as PromptKind;
 }
 
-function profileSuffix(relativePath: string): 'full' | 'lite' | null {
-  if (relativePath.endsWith('.full.md')) return 'full';
-  if (relativePath.endsWith('.lite.md')) return 'lite';
-  return null;
-}
-
-interface Accumulator {
-  full?: ParsedPrompt;
-  lite?: ParsedPrompt;
-  default?: ParsedPrompt;
-}
-
-/** Merge full/lite variants into one ParsedPrompt per id. */
-function registerVariant(
-  accMap: Map<string, Accumulator>,
-  parsed: ParsedPrompt,
-  suffix: 'full' | 'lite' | null,
-  body: string,
-): void {
-  const key = registryKey(parsed.kind, parsed.id);
-  let acc = accMap.get(key);
-  if (!acc) {
-    acc = {};
-    accMap.set(key, acc);
-  }
-
-  const entry: ParsedPrompt = { ...parsed, body };
-  if (suffix === 'full') {
-    acc.full = entry;
-  } else if (suffix === 'lite') {
-    acc.lite = entry;
-  } else {
-    acc.default = entry;
-  }
-}
-
 function buildFromRawMap(
   rawMap: Record<string, string>,
   source: 'builtin' | 'user',
 ): Map<string, ParsedPrompt> {
-  const accMap = new Map<string, Accumulator>();
+  const prompts = new Map<string, ParsedPrompt>();
 
   for (const [globPath, raw] of Object.entries(rawMap)) {
     const relativePath = globPath
       .replace(/^\.\//, '')
       .replace(/^.*?prompts[\\/]/, '');
-    if (shouldSkipPath(relativePath)) continue;
+    if (shouldSkipPath(relativePath) || /(?:^|[./\\])lite\.md$/i.test(relativePath)) continue;
 
     let parsedRecord: ParsedPrompt;
-    const suffix = profileSuffix(relativePath);
     try {
       const { frontMatter, markdownBody } = parsePromptMarkdown(raw, relativePath);
       const kind = frontMatter.kind ?? inferKindFromPath(relativePath) ?? 'base';
-      const bodyText =
-        suffix === 'lite'
-          ? (frontMatter.liteBody ?? frontMatter.body ?? markdownBody)
-          : (frontMatter.fullBody ?? frontMatter.body ?? markdownBody);
+      const bodyText = frontMatter.fullBody ?? frontMatter.body ?? markdownBody;
       parsedRecord = {
         id: frontMatter.id,
         kind,
@@ -117,22 +77,10 @@ function buildFromRawMap(
       continue;
     }
 
-    registerVariant(accMap, parsedRecord, suffix, parsedRecord.body);
+    const key = registryKey(parsedRecord.kind, parsedRecord.id);
+    if (!prompts.has(key) || relativePath.endsWith('.full.md')) prompts.set(key, parsedRecord);
   }
-
-  const out = new Map<string, ParsedPrompt>();
-  for (const [key, acc] of accMap) {
-    const merged = acc.default ?? acc.full ?? acc.lite;
-    if (!merged) continue;
-    out.set(key, {
-      ...merged,
-      body: merged.body,
-      // @ts-expect-error attach profile bodies for composer
-      _fullBody: acc.full?.body ?? acc.default?.body ?? merged.body,
-      _liteBody: acc.lite?.body,
-    });
-  }
-  return out;
+  return prompts;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -155,7 +103,9 @@ export function initBuiltinPromptRegistry(
 export function setUserPromptRegistry(entries: ParsedPrompt[]): void {
   userRegistry.clear();
   for (const entry of entries) {
-    userRegistry.set(registryKey(entry.kind, entry.id), entry);
+    if (!/(?:^|[./\\])lite\.md$/i.test(entry.relativePath)) {
+      userRegistry.set(registryKey(entry.kind, entry.id), entry);
+    }
   }
 }
 
@@ -182,69 +132,38 @@ export function registerPromptFilesFromRaw(
   }
 }
 
-export interface LoadedPromptBody {
-  body: string;
-  fullBody?: string;
-  liteBody?: string;
-}
-
-function getStoredBodies(prompt: ParsedPrompt): LoadedPromptBody {
-  const ext = prompt as ParsedPrompt & { _fullBody?: string; _liteBody?: string };
-  return {
-    body: prompt.body,
-    fullBody: ext._fullBody ?? prompt.body,
-    liteBody: ext._liteBody,
-  };
-}
-
 /**
  * Resolve shipped built-in prompt body only (ignores user registry overrides).
  */
 export function loadBuiltinPromptById(
   kind: PromptKind,
   id: string,
-  profile: PromptProfile,
-): LoadedPromptBody | null {
+): ParsedPrompt | null {
   initBuiltinPromptRegistry();
   const key = registryKey(kind, id);
   const prompt = registry.get(key);
   if (!prompt) return null;
   captureReads?.push({ ...prompt });
 
-  const bodies = getStoredBodies(prompt);
-  if (profile === 'lite' && bodies.liteBody?.trim()) {
-    return { body: bodies.liteBody.trim(), fullBody: bodies.fullBody, liteBody: bodies.liteBody };
-  }
-  if (profile === 'lite') {
-    return { body: bodies.fullBody ?? bodies.body, fullBody: bodies.fullBody, liteBody: bodies.liteBody };
-  }
-  return { body: bodies.fullBody ?? bodies.body, fullBody: bodies.fullBody, liteBody: bodies.liteBody };
+  return { ...prompt };
 }
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 
 /**
- * Resolve prompt body for kind + id and profile.
+ * Resolve the prompt body for a kind and ID.
  */
 export function loadPromptById(
   kind: PromptKind,
   id: string,
-  profile: PromptProfile,
-): LoadedPromptBody | null {
+): ParsedPrompt | null {
   initBuiltinPromptRegistry();
   const key = registryKey(kind, id);
   const prompt = userRegistry.get(key) ?? registry.get(key);
   if (!prompt) return null;
   captureReads?.push({ ...prompt });
 
-  const bodies = getStoredBodies(prompt);
-  if (profile === 'lite' && bodies.liteBody?.trim()) {
-    return { body: bodies.liteBody.trim(), fullBody: bodies.fullBody, liteBody: bodies.liteBody };
-  }
-  if (profile === 'lite') {
-    return { body: bodies.fullBody ?? bodies.body, fullBody: bodies.fullBody, liteBody: bodies.liteBody };
-  }
-  return { body: bodies.fullBody ?? bodies.body, fullBody: bodies.fullBody, liteBody: bodies.liteBody };
+  return { ...prompt };
 }
 
 /** List all registered prompt ids for a kind (built-in + user). */

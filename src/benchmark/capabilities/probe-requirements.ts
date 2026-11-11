@@ -52,7 +52,7 @@ async function requirementSkipReason(
     if (!modeId) return 'probe declares mode-prompt without a modeId';
     if (env.modePromptsReady === false) return 'mode prompts unavailable';
     if (env.modePromptsReady === true) return null;
-    return loadModePromptBody(modeId, 'lite') ? null : `mode prompt unavailable: ${modeId}`;
+    return loadModePromptBody(modeId) ? null : `mode prompt unavailable: ${modeId}`;
   }
   if (req === 'tool-server' && !ctx.localServer) {
     return 'needs npm start (tool server)';

@@ -1,24 +1,17 @@
 /**
- * HTTP middleware for /api/prompt-configs and /api/prompts/registry
+ * HTTP middleware for /api/prompts
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  deletePromptConfigFile,
-  duplicatePromptConfigFile,
-  listPromptConfigs,
-  loadPromptConfigFile,
-  savePromptConfigFile,
-} from './handlers.js';
-import { buildPromptRegistry } from '../prompts/registry.js';
+import { buildPromptRegistry } from './registry.js';
 import {
   deleteExpertEntityDir,
   deletePromptFileOverride,
   readBuiltinPromptFile,
   readPromptFile,
   writePromptFileOverride,
-} from '../prompts/file-overrides.js';
+} from './file-overrides.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -53,12 +46,11 @@ function sendJson(res, status, payload) {
  * @returns {Promise<boolean>}
  */
 export async function handlePromptRequest(req, res, pathname, search = '') {
-  if (!pathname.startsWith('/api/prompt')) {
+  if (!pathname.startsWith('/api/prompts/')) {
     return false;
   }
 
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
-  const profileParam = params.get('profile') === 'lite' ? 'lite' : 'full';
   const baselineBuiltin = params.get('baseline') === 'builtin';
   const rawFile = params.get('raw') === '1' || params.get('raw') === 'true';
 
@@ -75,36 +67,12 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
       return true;
     }
 
-    if (pathname === '/api/prompt-configs' && req.method === 'GET') {
-      const configs = await listPromptConfigs();
-      sendJson(res, 200, { configs });
-      return true;
-    }
-
-    const duplicateMatch = pathname.match(
-      /^\/api\/prompt-configs\/([a-z0-9][a-z0-9-_]{0,63})\/duplicate$/,
-    );
-    if (duplicateMatch && req.method === 'POST') {
-      const sourceId = duplicateMatch[1];
-      const body = await readJsonBody(req);
-      const newId = typeof body.newId === 'string' ? body.newId : '';
-      const newLabel = typeof body.newLabel === 'string' ? body.newLabel : undefined;
-      if (!newId) {
-        sendJson(res, 400, { error: 'newId is required' });
-        return true;
-      }
-      const saved = await duplicatePromptConfigFile(sourceId, newId, newLabel);
-      sendJson(res, 200, { ok: true, config: saved });
-      return true;
-    }
-
     const expertEntityMatch = pathname.match(
       /^\/api\/prompts\/experts\/([a-z][a-z0-9-]{0,63})$/,
     );
     if (expertEntityMatch && req.method === 'DELETE') {
       const entityId = expertEntityMatch[1];
-      await deletePromptFileOverride('experts', entityId, 'full').catch(() => false);
-      await deletePromptFileOverride('experts', entityId, 'lite').catch(() => false);
+      await deletePromptFileOverride('experts', entityId).catch(() => false);
       await deleteExpertEntityDir(entityId);
       sendJson(res, 200, { ok: true });
       return true;
@@ -116,11 +84,15 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
     if (filePromptMatch) {
       const family = filePromptMatch[1];
       const entityId = filePromptMatch[2];
+      if (params.has('profile') && params.get('profile') !== 'full') {
+        sendJson(res, 400, { error: 'Prompt variants are no longer supported' });
+        return true;
+      }
 
       if (req.method === 'GET') {
         const result = baselineBuiltin
-          ? await readBuiltinPromptFile(PROJECT_ROOT, family, entityId, profileParam)
-          : await readPromptFile(PROJECT_ROOT, family, entityId, profileParam, {
+          ? await readBuiltinPromptFile(PROJECT_ROOT, family, entityId)
+          : await readPromptFile(PROJECT_ROOT, family, entityId, {
               raw: rawFile,
             });
         sendJson(res, 200, result);
@@ -129,10 +101,13 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
 
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
+        if (body.profile !== undefined && body.profile !== 'full') {
+          sendJson(res, 400, { error: 'Prompt variants are no longer supported' });
+          return true;
+        }
         const content = typeof body.content === 'string' ? body.content : '';
-        const writeProfile = body.profile === 'lite' ? 'lite' : profileParam;
-        await writePromptFileOverride(family, entityId, writeProfile, content);
-        const result = await readPromptFile(PROJECT_ROOT, family, entityId, writeProfile);
+        await writePromptFileOverride(family, entityId, content);
+        const result = await readPromptFile(PROJECT_ROOT, family, entityId);
         sendJson(res, 200, result);
         return true;
       }
@@ -141,54 +116,14 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
         const removed = await deletePromptFileOverride(
           family,
           entityId,
-          profileParam,
         );
         if (!removed) {
           sendJson(res, 404, { error: 'No override to remove' });
           return true;
         }
-        const result = await readPromptFile(PROJECT_ROOT, family, entityId, profileParam);
+        const result = await readPromptFile(PROJECT_ROOT, family, entityId);
         sendJson(res, 200, result);
         return true;
-      }
-    }
-
-    const idMatch = pathname.match(/^\/api\/prompt-configs\/([a-z0-9][a-z0-9-_]{0,63})$/);
-    if (idMatch) {
-      const id = idMatch[1];
-
-      if (req.method === 'GET') {
-        const config = await loadPromptConfigFile(id);
-        if (!config) {
-          sendJson(res, 404, { error: 'Not found' });
-          return true;
-        }
-        sendJson(res, 200, config);
-        return true;
-      }
-
-      if (req.method === 'PUT') {
-        const body = await readJsonBody(req);
-        const withId = { ...body, id };
-        const saved = await savePromptConfigFile(withId);
-        sendJson(res, 200, { ok: true, config: saved });
-        return true;
-      }
-
-      if (req.method === 'DELETE') {
-        try {
-          const removed = await deletePromptConfigFile(id);
-          if (!removed) {
-            sendJson(res, 404, { error: 'Not found' });
-            return true;
-          }
-          sendJson(res, 200, { ok: true });
-          return true;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, 400, { error: message });
-          return true;
-        }
       }
     }
 
@@ -196,20 +131,20 @@ export async function handlePromptRequest(req, res, pathname, search = '') {
     return true;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[prompt-configs]', message);
+    console.error('[prompts]', message);
     sendJson(res, 500, { error: message });
     return true;
   }
 }
 
 /** Vite middleware hook. */
-export function createPromptConfigsMiddleware() {
+export function createPromptsMiddleware() {
   return async (req, res, next) => {
     const rawUrl = req.url ?? '';
     const q = rawUrl.indexOf('?');
     const pathname = q >= 0 ? rawUrl.slice(0, q) : rawUrl;
     const search = q >= 0 ? rawUrl.slice(q) : '';
-    if (!pathname.startsWith('/api/prompt')) {
+    if (!pathname.startsWith('/api/prompts/')) {
       next();
       return;
     }

@@ -12,7 +12,7 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   const scratch = await mkdtemp(path.join(os.tmpdir(), 'minnow-graphite-layout-'));
   const styles = await Promise.all([
     'tokens', 'code-chrome', 'input', 'chat-thread', 'messages', 'message-actions', 'mobile', 'thread-card', 'stats',
-    'question-cards', 'tool-approval', 'shared-chat-host',
+    'question-cards', 'tool-approval', 'shared-chat-host', 'graphite-context-surfaces',
   ].map(name => readFile(new URL(`../../src/styles/${name}.css`, import.meta.url), 'utf8')));
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -40,7 +40,21 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
         </div>
         <div id="toolApprovalHost" class="tool-approval-host" hidden>Allow this tool?</div>
         <div id="questionHost" class="question-host" hidden>Which option should I use?</div>
-        <div class="input-bar">Message</div><button class="graphite-metrics-trigger">Metrics</button>
+        <div class="input-bar">
+          <div class="input-bar-composer"><div class="input-row"><div class="input-wrap input-wrap--inset-actions">
+            <textarea id="msgInput" rows="1" placeholder="Message"></textarea>
+          </div></div></div>
+          <div class="input-bar-send-stack"><button class="send-btn" aria-label="Send message"></button></div>
+        </div><button class="graphite-metrics-trigger">Metrics</button>
+      </section>
+      <section class="graphite-side-chat" style="width: 220px; min-height: 180px">
+        <div class="graphite-chat-panel__scroll"></div>
+        <form class="input-bar">
+          <div class="input-bar-composer"><div class="input-row"><div class="input-wrap input-wrap--inset-actions">
+            <textarea class="composer-textarea" rows="1" placeholder="Ask about this thread"></textarea>
+          </div></div></div>
+          <div class="input-bar-send-stack"><button class="send-btn" aria-label="Send message"></button></div>
+        </form>
       </section>
     </main>`);
   });
@@ -126,7 +140,7 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
   await session.evaluate(`(() => {
     const transcript = document.querySelector('#chatArea');
     transcript.removeAttribute('id');
-    transcript.classList.add('graphite-side-chat__transcript');
+    transcript.classList.add('graphite-chat-panel__transcript');
     transcript.style.width = '220px';
     document.documentElement.classList.add('mn-touch');
   })()`);
@@ -135,4 +149,20 @@ test('Graphite aligns the thread and keeps user bubbles snug with message action
     assert.ok(message.trigger.left >= message.row.left);
     assert.ok(message.trigger.right < message.bubble.left);
   }
+
+  const [main, side] = await session.evaluate(`Array.from(document.querySelectorAll('.input-bar'), bar => {
+    const textarea = bar.querySelector('textarea');
+    const send = bar.querySelector('.send-btn');
+    const field = textarea.getBoundingClientRect();
+    const button = send.getBoundingClientRect();
+    const bounds = bar.getBoundingClientRect();
+    return {
+      card: [getComputedStyle(bar).backgroundColor, getComputedStyle(bar).borderRadius],
+      field: [getComputedStyle(textarea).fontSize, getComputedStyle(textarea).borderWidth, getComputedStyle(textarea).padding],
+      button: [button.width, button.height, getComputedStyle(send).backgroundColor],
+      fits: field.bottom <= button.top && button.right <= bounds.right && field.width <= bounds.width,
+    };
+  })`);
+  assert.deepEqual(side, main);
+  assert.equal(side.fits, true);
 });

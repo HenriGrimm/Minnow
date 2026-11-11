@@ -9,6 +9,6 @@ export interface SharedChatFrame {
   epoch?: string;
   fields?: Record<string, unknown>;
   history?: { start: number; messages: Message[]; length: number };
-  live?: (ChatStreamText & { phase?: string; currentTool?: string | null }) | null;
+  live?: ChatStreamText | null;
   liveAppend?: { textOffset: number; thinkingOffset: number; text: string; thinking: string };
 }

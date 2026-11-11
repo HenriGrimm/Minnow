@@ -261,7 +261,7 @@ function setActiveSection(section: BrainSectionId, options?: { editPath?: string
   }
 
   const nextHash = `#/app/brain/${section}`;
-  if (window.location.hash !== nextHash) {
+  if (!getBrainRoot()?.closest('.m-native-app-host') && window.location.hash !== nextHash) {
     window.location.hash = nextHash;
   }
 
@@ -360,7 +360,7 @@ export function openBrain(section?: BrainSectionId, options?: { editPath?: strin
 
 /** Jump to Edit with a pre-filled wiki path. */
 export function openBrainEditForPath(relPath: string): void {
-  if (isOsEmbedded()) {
+  if (isOsEmbedded() && !getBrainRoot()?.closest('.m-native-app-host')) {
     launchApp('brain', { brainSection: 'edit', brainEditPath: relPath });
   }
   openBrain('edit', { editPath: relPath });

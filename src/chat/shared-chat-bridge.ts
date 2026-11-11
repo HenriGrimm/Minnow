@@ -12,14 +12,13 @@ import {
 } from '../state/sessions';
 import { streamingChatIds } from '../app-state';
 import { isChatTurnSetupPending } from './chat-turn-guard';
-import { readChatStreamText } from './streaming-state';
+import { isStreamDomVisible, notifyChatStreamActivity, readChatStreamText, registerChatStreamText } from './streaming-state';
 import { getMainTurnActivity, subscribeMainTurnActivity } from './main-turn-activity';
 import { appendStreamingAssistantRow, revealAssistantProseBubble } from '../ui/messages';
 import { scheduleAssistantBubbleRender, cancelAssistantBubbleRenderDebounce, flushAssistantBubbleRender } from '../markdown/renderer';
 import { createRunnerTiming } from '../../server/runner/timing.js';
 import { ThoughtBubbleController } from '../ui/thought-bubbles';
 import { registerStreamDomRemount, type StreamDomHandles } from '../tools/stream-chat-dom';
-import { isStreamDomVisible } from './streaming-state';
 import { scrollChatIfPinned } from '../ui/chat-scroll';
 import { syncComposerFromStreamingState } from '../ui/composer-send';
 import { enqueueComposerMessage, pushQueuedMessageNow, removeQueuedMessage, updateQueuedMessage } from './message-queue';
@@ -190,7 +189,7 @@ export function createSharedChatPublisher(send: (frame: Omit<SharedChatFrame, 'h
 }
 
 interface Observation { frame: SharedChatFrame; row?: StreamDomHandles; thoughts?: ThoughtBubbleController; thinking: string;
-  proseEpoch?: string; firstProseReceived?: number; prosePainted?: boolean }
+  proseEpoch?: string; firstProseReceived?: number; prosePainted?: boolean; unregisterStreamText?: () => void }
 
 /** Render live output without executing tools or adding anything to persisted history. */
 export function createSharedChatObserver(onChange: (activeChanged: boolean) => void, options: {
@@ -285,14 +284,26 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     setRemoteChatRunning(frame.chatId, frame.running, frame.hostId === 'minnow-server' ? 'managed' : 'legacy');
     const applied = applySharedChatFrame(frame.chatId, frame.fields, frame.history);
     if (!applied) throw new Error('Transcript prefix has not arrived yet.');
+    const liveChanged = next.live !== existing?.frame.live;
     state.frame = next;
     observed.set(frame.chatId, state);
-    registerStreamDomRemount(frame.chatId, frame.running ? row => {
+    registerStreamDomRemount(frame.chatId, next.running && next.live ? row => {
       state.row = row; state.thoughts?.abort(); state.thoughts = new ThoughtBubbleController(row.wrap); state.thinking = ''; paint(state);
     } : null);
     if (frame.fields || frame.history) onChange(getActiveChat().id === frame.chatId);
     paint(state, receivedAt);
     syncComposerFromStreamingState();
+    // Observed turns have no local painter to publish activity for the composer.
+    if (next.running && next.live && !state.unregisterStreamText) {
+      state.unregisterStreamText = registerChatStreamText(frame.chatId, () => state.frame.live ?? null);
+    }
+    if (state.unregisterStreamText && (!next.running || liveChanged)) {
+      if (!next.running) {
+        state.unregisterStreamText();
+        state.unregisterStreamText = undefined;
+      }
+      notifyChatStreamActivity(frame.chatId);
+    }
     if (!frame.running) { state.frame.history = undefined; state.frame.fields = undefined; }
   }
   return {
@@ -306,6 +317,7 @@ export function createSharedChatObserver(onChange: (activeChanged: boolean) => v
     dispose() {
       disposed = true;
       for (const [id, state] of observed) {
+        state.unregisterStreamText?.();
         if (state.row) cancelAssistantBubbleRenderDebounce(state.row.bubble);
         state.thoughts?.abort(); state.row?.streamStatus.dispose(); state.row?.wrap.remove(); registerStreamDomRemount(id, null);
       }

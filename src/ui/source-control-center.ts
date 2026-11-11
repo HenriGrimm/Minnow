@@ -350,11 +350,11 @@ function buildBody(): HTMLElement {
   const assistance = el('aside', 'scc-graphite-assistance');
   const assistanceTitle = el('strong', undefined, 'Assisted by');
   assistanceTitle.prepend(createIcon('sparkles', { size: 14 }));
-  const assistanceModel = el('p', undefined, 'Commit messages, reviews and summaries use your utility model settings.');
+  const assistanceModel = el('p', undefined, 'Commit messages and summaries use your utility model settings.');
   assistance.append(assistanceTitle, assistanceModel);
   railEl.appendChild(assistance);
   void loadUtilityModelConfig().then(({ modelId }) => {
-    if (modelId.trim()) assistanceModel.textContent = `Commit messages, reviews and summaries use ${modelId.trim()}.`;
+    if (modelId.trim()) assistanceModel.textContent = `Commit messages and summaries use ${modelId.trim()}.`;
   }).catch(() => undefined);
 
   paneEl = el('div', 'scc-pane');

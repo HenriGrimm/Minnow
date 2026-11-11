@@ -176,6 +176,8 @@ import {
   switchComposerDraft,
 } from './composer-draft';
 import { isMainColumnOverlaySuppressingChatDom } from './main-column-overlay';
+import { isShellOverlayOpen } from './shell-overlay-state';
+import { isTypingTarget } from './a11y/typing-target';
 
 // ── Board waves ──────────────────────────────────────────────────────────────
 
@@ -991,11 +993,45 @@ export function createSidebarChatGroup(): void {
   if (name) beginRenameGroup(group.id, name);
 }
 
-/** Wire chat drag-drop, selection and git updates once at boot. */
+/** Wire chat drag-drop, keyboard interactions and git updates once at boot. */
 export function initChatSidebarInteractions(): void {
   void import('./sidebar-chat-dnd').then((m) => m.wireSidebarChatDragDrop());
+  let switchingByKeyboard = false;
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && selectedChatIds.size > 0) clearChatSelection();
+    if (e.defaultPrevented || e.isComposing || !e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    const route = getCurrentRoute();
+    if (route.appId !== 'code' || (route.codeSection ?? 'chat') !== 'chat') return;
+    if (isMainColumnOverlaySuppressingChatDom() || isShellOverlayOpen()) return;
+    const target = e.target;
+    if (target instanceof Element && target.closest(
+      '.cm-editor, .xterm, [role="menu"], [role="dialog"], [role="alertdialog"]',
+    )) return;
+    if (isTypingTarget(target) && target !== document.getElementById('msgInput')) return;
+
+    const activeId = sidebarHighlightChatId();
+    const list = document.getElementById('chatList');
+    if (!activeId || !list) return;
+    const rows = [...list.querySelectorAll<HTMLElement>('.chat-item-row[data-chat-id]')];
+    const index = rows.findIndex((row) => row.dataset.chatId === activeId);
+    if (index < 0) return;
+
+    e.preventDefault();
+    const next = rows[index + (e.key === 'ArrowUp' ? -1 : 1)];
+    const nextId = next?.dataset.chatId;
+    // Let a lazy transcript load finish before switching away from its draft.
+    if (!nextId || switchingByKeyboard) return;
+
+    switchingByKeyboard = true;
+    clearChatSelection();
+    lastSelectedChatId = nextId;
+    if (target instanceof Element && target.closest('.chat-item-row')) next.focus({ preventScroll: true });
+    next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    void openSidebarChat(nextId)
+      .catch((error) => reportBackgroundError('sidebar-chat-navigation', error))
+      .finally(() => { switchingByKeyboard = false; });
   });
 
   // Fresh git facts repaint the chat rows.
@@ -2124,6 +2160,11 @@ export async function deleteChat(chatId: string, evt?: Event, isCurrent: () => b
   const victim = sessionState!.chats[idx];
   const family = projectChatRelationships(sessionState!.chats);
   const descendants = sessionState!.chats.filter(chat => family.ancestors(chat.id).some(parent => parent.id === chatId));
+  const interrupted = [victim, ...descendants].find(chat => chat.agentExecution?.status === 'recovery_required');
+  if (interrupted) {
+    showToast(`Open "${interrupted.name}" and use Review interrupted work before deleting this conversation.`);
+    return;
+  }
   if ([victim, ...descendants].some(chat => hasUnsettledAgentWork(chat, id => isChatStreaming(id) || isChatRunningRemotely(id)))) {
     showToast('Stop this conversation and its agents, and resolve pending requests before deleting it.');
     return;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import {
-  bindShellOverlayTrigger, closeShellOverlay, isShellOverlayOpen,
+  bindShellOverlayTrigger, closeShellOverlay, closeShellOverlays, isShellOverlayOpen,
   openShellOverlay, shellOverlayClosed,
 } from '../../src/ui/shell-overlay-state.ts';
 
@@ -14,7 +14,7 @@ beforeEach(() => {
   win.document.body.innerHTML = '<button id="settings"></button><button id="settingsRail"></button><button id="wiki"></button><button id="workspace"></button><section id="settingsView"><input></section><section id="productWikiOverlay"></section><section id="osWorkspaceGate"></section>';
 });
 afterEach(() => {
-  closeShellOverlay();
+  closeShellOverlays();
   dispose.forEach((fn) => fn());
   win.close();
 });
@@ -54,6 +54,32 @@ test('opening a different overlay closes the previous before publishing the next
   assertState(wiki, true);
   closeShellOverlay();
   assertState(wiki, false);
+});
+
+test('switching and closing popovers keeps Settings open until Settings itself is dismissed', () => {
+  const settings = button('settings');
+  let settingsClosed = 0;
+  let activityClosed = 0;
+  openShellOverlay('settings', () => { settingsClosed++; });
+  openShellOverlay('activity', () => { activityClosed++; });
+  assertState(settings, true);
+  assert.equal(isShellOverlayOpen('activity'), true);
+
+  openShellOverlay('models', () => {});
+  assert.equal(activityClosed, 1);
+  assert.equal(isShellOverlayOpen('activity'), false);
+  assert.equal(isShellOverlayOpen('models'), true);
+  closeShellOverlay();
+  assert.equal(isShellOverlayOpen('models'), false);
+  assertState(settings, true);
+
+  openShellOverlay('search', () => {});
+  shellOverlayClosed('search');
+  assert.equal(settingsClosed, 0);
+  assertState(settings, true);
+  win.document.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  assert.equal(settingsClosed, 1);
+  assertState(settings, false);
 });
 
 test('a nav trigger can toggle without outside-pointer dismissal reopening it', () => {

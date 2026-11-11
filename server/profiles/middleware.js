@@ -10,7 +10,6 @@ import {
   importProfileBundle,
   listProfiles,
   loadProfileFile,
-  migrateFromPromptConfigs,
   saveProfileFile,
   setWorkspaceProfileDefault,
 } from './handlers.js';
@@ -72,12 +71,6 @@ export async function handleProfilesRequest(req, res, pathname) {
       const mode = body.mode === 'replace' ? 'replace' : 'create';
       const saved = await importProfileBundle(body, mode);
       sendJson(res, 200, { ok: true, profile: saved });
-      return true;
-    }
-
-    if (pathname === '/api/profiles/migrate-from-prompt-configs' && req.method === 'POST') {
-      const result = await migrateFromPromptConfigs();
-      sendJson(res, 200, result);
       return true;
     }
 

@@ -4,7 +4,7 @@ import { savePromptFileOverride } from '../prompts/prompt-file-api';
 import { createTitleProviderPort } from '../titles/provider-port';
 import { getActiveChat } from '../../state/sessions';
 import { parseExpertMetaFromMarkdown } from './expert-meta-parse';
-import { parseExpertFiles } from './expert-markdown';
+import { parseExpertFile } from './expert-markdown';
 import {
   dedupeExpertId,
   isValidExpertId,
@@ -33,10 +33,9 @@ interface LlmExpertPayload {
   icon?: string;
   accent?: string;
   fullMarkdown?: string;
-  liteMarkdown?: string;
 }
 
-const FALLBACK_CREATOR_SYSTEM = `You create custom Experts for Minnow. Output only JSON with keys: id, label, description, tagline, greeting, icon, accent, fullMarkdown, liteMarkdown. No version or routing fields (keywords, regex, classifierHint, priority, default).`;
+const FALLBACK_CREATOR_SYSTEM = `You create custom Experts for Minnow. Output only JSON with keys: id, label, description, tagline, greeting, icon, accent, fullMarkdown. No version or routing fields (keywords, regex, classifierHint, priority, default).`;
 
 function stripJsonFences(text: string): string {
   const trimmed = text.trim();
@@ -55,23 +54,21 @@ function parseAccent(value: unknown): ExpertAccent | undefined {
 function validateGeneratedExpert(
   payload: LlmExpertPayload,
   expectedId: string,
-): { full: string; lite: string; label: string } | string {
+): { full: string; label: string } | string {
   const full = typeof payload.fullMarkdown === 'string' ? payload.fullMarkdown.trim() : '';
-  const lite = typeof payload.liteMarkdown === 'string' ? payload.liteMarkdown.trim() : '';
-  if (!full || !lite) return 'Missing fullMarkdown or liteMarkdown';
+  if (!full) return 'Missing fullMarkdown';
 
   const fullMeta = parseExpertMetaFromMarkdown(full, `experts/${expectedId}/expert.full.md`);
-  const liteMeta = parseExpertMetaFromMarkdown(lite, `experts/${expectedId}/expert.lite.md`);
-  if (!fullMeta || !liteMeta) return 'Invalid expert front matter';
-  if (fullMeta.id !== expectedId || liteMeta.id !== expectedId) {
+  if (!fullMeta) return 'Invalid expert front matter';
+  if (fullMeta.id !== expectedId) {
     return 'Expert id mismatch in generated files';
   }
 
-  const parsed = parseExpertFiles(full, lite);
+  const parsed = parseExpertFile(full);
   if (!parsed?.fullBody?.trim()) return 'Empty expert body';
 
   const label = payload.label?.trim() || fullMeta.label;
-  return { full, lite, label };
+  return { full, label };
 }
 
 /** Resolve model for a non-streaming sidecar completion. */
@@ -96,7 +93,7 @@ export async function createExpertFromDescription(
   }
 
   const { modelId, providerId } = await resolveSidecarModel();
-  const loaded = loadPromptById('info', 'expert-creator', 'full');
+  const loaded = loadPromptById('info', 'expert-creator');
   const systemBody = loaded?.body?.trim() || FALLBACK_CREATOR_SYSTEM;
 
   const port = createTitleProviderPort(providerId);
@@ -138,9 +135,8 @@ export async function createExpertFromDescription(
     throw new Error(validated);
   }
 
-  const fullSaved = await savePromptFileOverride('experts', expertId, 'full', validated.full);
-  const liteSaved = await savePromptFileOverride('experts', expertId, 'lite', validated.lite);
-  if (!fullSaved || !liteSaved) {
+  const fullSaved = await savePromptFileOverride('experts', expertId, validated.full);
+  if (!fullSaved) {
     throw new Error('Could not save expert files. Open or restart Minnow.');
   }
 

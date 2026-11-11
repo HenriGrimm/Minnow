@@ -148,8 +148,6 @@ import {
 } from './ui/layout';
 import { initAppSidebarResizers } from './ui/sidebar-resize';
 import {
-  fillSystemPromptPresetSelect,
-  loadSystemPromptSettings,
 } from './ui/settings';
 import { loadToolConfigIntoDrawer, syncWebSearchProviderFromSearchConfig, registerWebSearchSettingsHandlers } from './tools/config';
 import {
@@ -281,7 +279,6 @@ export async function initApp(): Promise<void> {
   }
   refreshConfigStorageBanner();
   const migrated = await runMigrationIfNeeded();
-  fillSystemPromptPresetSelect();
 
   const issuesReady = (async () => {
     const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
@@ -307,7 +304,6 @@ export async function initApp(): Promise<void> {
     migrated ? loadSessionsFromStorage({ force: true }) : Promise.resolve(),
     issuesReady,
     prReviewsReady,
-    loadSystemPromptSettings(),
   ]);
   registerSessionPersistenceShutdownHandler();
   const { migrateLegacyBugBoardsFromChats } = await issuesReady;

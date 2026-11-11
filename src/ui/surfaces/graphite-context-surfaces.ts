@@ -5,20 +5,23 @@ import type { SubAgentRun } from '../../agents/types';
 import { isPairedDevice } from '../../api/session-token';
 import { openExternalUrl } from '../../api/remote-admin';
 import { formatWorkDuration } from '../../chat/transcript-turns';
+import { setEmbeddedManagedChatView, subscribeManagedChatMetadata } from '../../chat/managed-chat-view';
+import { isChatStreaming, subscribeChatStreamActivity } from '../../chat/streaming-state';
 import { parseMarkdownBlocks, parseTaskItems } from '../../issues/markdown-blocks';
 import { findStatus } from '../../issues/taxonomy';
 import { resolveChatWorktreeRoot } from '../../state/chat-worktree';
 import { prMerge, prView, type PullRequestDetail } from '../../state/forge-api';
 import { findIssueById } from '../../state/issues-store';
 import { getIssuesTaxonomySync } from '../../state/issues-taxonomy-store';
-import { sessionState } from '../../state/sessions';
+import { ensureChatHistoryLoaded, findChatById, sessionState } from '../../state/sessions';
 import { getWorkspacePath } from '../../state/workspace';
 import type { Chat, IssueCard, PersistedSubAgentRun } from '../../types';
 import { setAssistantBubbleContent } from '../../markdown/renderer';
 import { appConfirm } from '../app-dialog';
 import { createIcon, type IconName } from '../icon';
 import { chatGitState, subscribeSidebarGitState } from '../sidebar-git-state';
-import { renderSubAgentConversation } from '../sub-agent-conversation';
+import { createEmbeddedChatTranscript, readEmbeddedChatLive } from '../embedded-chat-transcript';
+import { createLegacySubAgentTranscript } from '../sub-agent-conversation';
 import { subAgentTranscriptLiveFromRun } from '../sub-agent-live-status';
 import { findThreadIssue } from '../thread-card';
 import { showToast } from '../toast';
@@ -273,43 +276,52 @@ function getAgentRuns(chat: Chat) {
   return [...runs.values()];
 }
 
-function agentsSurface({ chat, target }: SurfaceContext): { root: HTMLElement; dispose: () => void } {
+function agentsSurface({ chat, target }: SurfaceContext): ContextSurfaceView {
   const root = el('div', 'graphite-context-surface graphite-context-surface--agents');
   const list = el('div', 'graphite-context-surface__agent-list');
   const detail = el('div', 'graphite-context-surface__agent-detail');
   const footer = el('div', 'graphite-context-surface__agent-footer');
+  const header = el('div', 'graphite-context-surface__agent-heading');
+  const content = el('div', 'graphite-chat-panel__scroll');
+  const notice = status('');
+  const body = el('div', 'chat-thread graphite-chat-panel__transcript');
+  body.setAttribute('role', 'region');
+  body.setAttribute('aria-label', 'Agent transcript');
+  content.append(body, notice);
+  detail.append(header, content);
+  const transcript = createEmbeddedChatTranscript(body, content);
+  const renderLegacy = createLegacySubAgentTranscript(transcript, chat.workspacePath ?? '');
   root.append(list, detail, footer);
   let selected = typeof target === 'string' ? target : '';
+  let mountedRun = '';
+  let visible = false;
   let disposed = false;
   let frame: number | null = null;
+  let listKey = '';
+  let detailKey = '';
+  let childChatId = '';
+  let selectedRunStatus: SubAgentRun['status'] | undefined;
   const pendingStops = new Set<string>();
-  const thoughts = new Map<string, boolean>();
-  const tools = new Map<string, boolean>();
-  const groups = new Map<string, boolean>();
-  const disclosures = {
-    isThoughtExpanded: (key: string) => thoughts.get(key) ?? false,
-    onThoughtExpandedChange: (key: string, value: boolean) => { thoughts.set(key, value); },
-    isToolExpanded: (key: string) => tools.get(key) ?? false,
-    onToolExpandedChange: (key: string, value: boolean) => { tools.set(key, value); },
-    groups,
-  };
-  function draw(rebuildList = true): void {
+
+  function draw(): void {
     if (disposed) return;
     const runs = getAgentRuns(chat);
     const current = runs.find(run => run.runId === selected) ?? runs[0];
-    if (rebuildList) list.replaceChildren();
     if (!current) {
-      detail.replaceChildren(status('No subagents yet'));
-      footer.replaceChildren();
+      notice.textContent = 'No subagents yet';
       return;
     }
     selected = current.runId;
-    if (rebuildList) {
+    selectedRunStatus = current.status;
+    const nextListKey = JSON.stringify(runs.map(run => [run.runId, run.title, run.task, run.status, run.startedAt, run.endedAt]));
+    if (listKey !== nextListKey && !list.contains(document.activeElement)) {
+      listKey = nextListKey;
+      list.replaceChildren();
       for (const run of runs) {
         const row = action('', () => {
           selected = run.runId;
-          draw(false);
-          void hydrateSubAgentTranscript(run.runId).then(() => draw(false));
+          draw();
+          if (!run.childChatId) void hydrateSubAgentTranscript(run.runId).then(draw);
         });
         row.dataset.runId = run.runId;
         row.dataset.state = run.status;
@@ -323,34 +335,67 @@ function agentsSurface({ chat, target }: SurfaceContext): { root: HTMLElement; d
         list.append(row);
       }
     }
-    for (const row of list.querySelectorAll('button')) row.setAttribute('aria-pressed', String(row.dataset.runId === selected));
-    const header = el('div', 'graphite-context-surface__agent-heading');
+    for (const row of list.querySelectorAll('button')) {
+      const pressed = String(row.dataset.runId === selected);
+      if (row.getAttribute('aria-pressed') !== pressed) row.setAttribute('aria-pressed', pressed);
+    }
+    const model = current.resolvedModel?.id || current.modelId;
+    const key = JSON.stringify([selected, current.type, current.title, current.status, model, current.childChatId, pendingStops.has(selected)]);
+    if (key !== detailKey) {
+      detailKey = key;
+      drawDetails(current, model);
+    }
+    if (mountedRun !== selected) {
+      mountedRun = selected;
+      transcript.reset();
+    }
+    const nextChild = current.childChatId ?? '';
+    if (nextChild !== childChatId) {
+      childChatId = nextChild;
+      if (visible) setEmbeddedManagedChatView(childChatId);
+      if (childChatId && findChatById(childChatId)?.historyLoaded === false) {
+        void ensureChatHistoryLoaded(childChatId).then(draw, draw);
+      }
+    }
+    const child = childChatId ? findChatById(childChatId) : undefined;
+    if (childChatId) {
+      notice.textContent = current.error || (!child || child.historyLoaded === false ? 'Loading conversation…' : '');
+      if (!child || child.historyLoaded === false) return;
+      paintChildTranscript(child);
+      return;
+    }
+    const liveRun = listSubAgentRunsForParentChat(chat.id).find(run => run.runId === selected);
+    const live = liveRun && subAgentTranscriptLiveFromRun(liveRun, true);
+    renderLegacy(current, live);
+    notice.textContent = current.error || (current.status === 'cancelled' ? 'Stopped. Finished steps are kept.' : '');
+  }
+
+  function paintChildTranscript(child: Chat): void {
+    const live = isChatStreaming(child.id);
+    const execution = child.agentExecution?.status ?? selectedRunStatus;
+    transcript.sync(child, live ? readEmbeddedChatLive(child.id) : undefined,
+      execution === 'recovery_required' ? 'paused'
+        : !live && (execution === 'stopped' || execution === 'cancelled' || execution === 'failed') ? 'stopped' : undefined);
+  }
+
+  function drawDetails(current: SubAgentRun | PersistedSubAgentRun, model?: string): void {
     const statusName = current.status === 'cancelled' ? 'Stopped'
       : current.status.charAt(0).toUpperCase() + current.status.slice(1);
-    header.append(el('code', 'graphite-context-surface__role', current.type),
+    header.replaceChildren(el('code', 'graphite-context-surface__role', current.type),
       el('h2', '', current.title || current.type), el('span', 'graphite-context-surface__agent-state', statusName));
     header.dataset.state = current.status;
-    const content = el('div', 'graphite-context-surface__agent-content');
-    const previousScroll = detail.querySelector('.graphite-context-surface__agent-content')?.scrollTop ?? 0;
-    const assignment = el('div', 'graphite-context-surface__assignment');
-    const from = el('span', 'graphite-context-surface__assignment-label');
-    from.append(createIcon('appAgentActivity', { size: 12 }), 'From the main agent');
-    assignment.append(from, el('div', 'graphite-context-surface__assignment-body', current.task));
-    if (current.task) content.append(assignment);
-    detail.replaceChildren(header, content);
-    const model = current.resolvedModel?.id || current.modelId;
     footer.replaceChildren(el('code', 'graphite-context-surface__agent-model', model || ''));
     if (!isPairedDevice() && (current.status === 'queued' || current.status === 'running')) {
       const runId = current.runId;
       const stop = action(pendingStops.has(runId) ? 'Stopping…' : 'Stop agent', () => {
         if (!isCurrent(chat) || pendingStops.has(runId)) return;
         pendingStops.add(runId);
-        draw(false);
+        draw();
         void cancelSubAgentAndWait(runId, chat.id).catch(error => {
           showToast(error instanceof Error ? error.message : 'Could not stop this agent', 'error');
         }).finally(() => {
           pendingStops.delete(runId);
-          draw(false);
+          draw();
         });
       });
       stop.disabled = pendingStops.has(runId);
@@ -362,38 +407,45 @@ function agentsSurface({ chat, target }: SurfaceContext): { root: HTMLElement; d
         void import('../../os/chat-launch').then(({ launchCodeWithChat }) => launchCodeWithChat(child));
       }));
     }
-    const body = el('div', 'graphite-context-surface__prose');
-    const liveRun = listSubAgentRunsForParentChat(chat.id).find(run => run.runId === selected);
-    const messages = current.messages ?? [];
-    const first = messages[0] as { role?: string; content?: unknown } | undefined;
-    const transcript = first?.role === 'user' && first.content === current.task ? messages.slice(1) : messages;
-    renderSubAgentConversation(body, transcript, liveRun ? subAgentTranscriptLiveFromRun(liveRun, true) : undefined,
-      current.status, disclosures);
-    if (current.error) content.append(status(current.error));
-    if (current.summary && !body.children.length) body.textContent = current.summary;
-    content.append(body);
-    if (current.status === 'cancelled' && !current.error) content.append(status('Stopped. Finished steps are kept.'));
-    content.scrollTop = previousScroll;
   }
-  const unsubscribe = subscribeSubAgentRuns(run => {
-    if (run.parentChatId !== chat.id || frame !== null) return;
+  function scheduleDraw(): void {
+    if (!visible || frame !== null) return;
     frame = requestAnimationFrame(() => {
       frame = null;
-      draw(!list.contains(document.activeElement));
+      if (visible) draw();
     });
+  }
+  const unsubscribe = subscribeSubAgentRuns(run => {
+    if (run.parentChatId === chat.id) scheduleDraw();
   });
+  const unsubscribeMetadata = subscribeManagedChatMetadata(id => { if (id === childChatId) scheduleDraw(); });
+  const unsubscribeStream = subscribeChatStreamActivity(id => {
+    if (!visible || id !== childChatId) return;
+    const child = findChatById(id);
+    if (child && child.historyLoaded !== false) paintChildTranscript(child);
+  });
+  list.addEventListener('focusout', scheduleDraw);
   draw();
   void hydrateSubAgentRunsForParentChat(chat.id).then(async () => {
     if (disposed) return;
     draw();
-    if (selected) await hydrateSubAgentTranscript(selected);
+    if (selected && !childChatId) await hydrateSubAgentTranscript(selected);
     draw();
   });
   return {
     root,
+    setVisible(next) {
+      visible = next;
+      setEmbeddedManagedChatView(visible ? childChatId : '');
+      if (visible) draw();
+    },
     dispose: () => {
+      if (visible) setEmbeddedManagedChatView('');
       disposed = true;
       unsubscribe();
+      unsubscribeMetadata();
+      unsubscribeStream();
+      transcript.dispose();
       if (frame !== null) cancelAnimationFrame(frame);
     },
   };

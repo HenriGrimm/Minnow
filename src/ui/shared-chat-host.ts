@@ -13,8 +13,13 @@ import '../styles/shared-chat-host.css';
 
 let releaseCurrent: (() => void) | undefined;
 
+interface SharedChatHostOptions {
+  openPlan?: (path: string) => void;
+  showJumpToLatest?: boolean;
+}
+
 /** Move the actual composer, approval slots and metrics; never clone controls or handlers. */
-export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<AppId, 'issues' | 'code'>, options: { openPlan?: (path: string) => void } = {}): { dispose: () => void; focus: (text?: string) => Promise<boolean> } {
+export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<AppId, 'issues' | 'code'>, options: SharedChatHostOptions = {}): { dispose: () => void; focus: (text?: string) => Promise<boolean> } {
   releaseCurrent?.();
   teardownHub();
   const shell = document.createElement('section');
@@ -38,7 +43,7 @@ export function mountSharedChatHost(host: HTMLElement, chat: Chat, app: Extract<
     node.before(marker); parked.push({ node, marker }); shell.append(node);
   }
   const jumpDock = column?.querySelector<HTMLElement>(':scope > .chat-viewport > .chat-viewport-dock');
-  if (jumpDock) {
+  if (jumpDock && options.showJumpToLatest !== false) {
     const marker = document.createComment('shared chat jump return slot');
     jumpDock.before(marker); parked.push({ node: jumpDock, marker }); viewport.append(jumpDock);
   }

@@ -38,7 +38,7 @@ test('elision retains bounded source clues and recall coordinates', () => {
 test('working findings stay bounded and both chat/board profiles require outcome checks', () => {
   const state = ingestRows(null, Array.from({ length: 40 }, (_, id) => ({ id, row: { role: 'assistant', content: `Finding: observation ${id}` } })));
   assert.equal(state.findings.length, 12);
-  for (const file of ['src/chat/prompts/tool-usage/default.full.md', 'server/orchestrator/prompts/builder/agent.full.md', 'server/orchestrator/prompts/builder/agent.lite.md']) {
+  for (const file of ['src/chat/prompts/tool-usage/default.full.md', 'server/orchestrator/prompts/builder/agent.full.md']) {
     const prompt = fs.readFileSync(new URL('../../' + file, import.meta.url), 'utf8');
     for (const phrase of ['Hypothesis:', 'Acceptance check:', 'recall_history', 'observable pass condition', 'Honor required tests']) assert.ok(prompt.includes(phrase), file + ': ' + phrase);
   }

@@ -34,7 +34,6 @@ export async function loadAllBuiltinPrompts() {
 /** Minimal compose context for the single agent. */
 export function baseComposeContext(overrides = {}) {
   return {
-    profile: 'full',
     cwd: '/repo',
     modeId: 'build',
     expertId: null,

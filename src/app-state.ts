@@ -42,12 +42,6 @@ export const modelCache = new Map<string, LmModelRecord>();
 export let modelsFetchAbort: AbortController | null = null;
 export let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Which preset the textarea should match (empty string = Custom). */
-export let activeSystemPromptPresetId = '';
-
-/** Avoid re-entrancy when programmatically reverting the preset select after cancel. */
-export let suppressSystemPromptSelectChange = false;
-
 /** Debounced assistant markdown render while SSE tokens arrive. */
 export let assistantRenderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -123,14 +117,6 @@ export function setModelsFetchAbort(controller: AbortController | null): void {
 
 export function setSaveTimer(timer: ReturnType<typeof setTimeout> | null): void {
   saveTimer = timer;
-}
-
-export function setActiveSystemPromptPresetId(id: string): void {
-  activeSystemPromptPresetId = id;
-}
-
-export function setSuppressSystemPromptSelectChange(value: boolean): void {
-  suppressSystemPromptSelectChange = value;
 }
 
 export function setAssistantRenderDebounceTimer(

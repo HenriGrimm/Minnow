@@ -512,7 +512,6 @@ export function mountGraphiteThreadHeader(): void {
     branch.hidden = !hasThread;
     goal.hidden = !hasThread || !getActiveGoal(chat!);
     if (goal.hidden || !isThreadView || goalPopoverChat !== chat?.id) goalPopover?.close();
-    toggleHost.hidden = !hasThread;
     const totals = chat ? changedLines(chat) : undefined;
     diff.hidden = !hasThread || !(totals?.additions || totals?.deletions);
     if (!chat) return;

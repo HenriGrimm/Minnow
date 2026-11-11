@@ -129,10 +129,9 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
 
     const activityBody = overlay?.querySelector('.sub-agent-overlay__body');
     const firstToolRow = activityBody?.querySelector('.tool-call-msg');
-    const group = activity?.querySelector<HTMLDetailsElement>('.sub-agent-conversation__tools');
+    const group = activity?.querySelector<HTMLButtonElement>('.chat-work');
     assert.ok(group);
-    group.open = true;
-    group.dispatchEvent(new window.Event('toggle'));
+    assert.equal(group.getAttribute('aria-expanded'), 'true');
     for (let i = 0; i < 100; i += 1) {
       adoptSubAgentRunForTests({
         ...completedRun(),
@@ -142,7 +141,8 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
         livePartialText: `Streaming without remounting ${i}`,
       });
     }
-    assert.equal(group.open, true);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    assert.equal(group.getAttribute('aria-expanded'), 'true');
     assert.equal(activityBody?.querySelector('.tool-call-msg'), firstToolRow);
     assert.ok(activityBody?.textContent?.includes('Streaming without remounting 99'));
 
@@ -165,14 +165,16 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
       messages: [{ role: 'assistant', content: '', reasoning }] as SubAgentRun['messages'] });
     adoptSubAgentRunForTests(thinking);
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
+    document.querySelector<HTMLButtonElement>('.thoughts-toggle--live')?.click();
     assert.ok(document.querySelector('.sub-agent-overlay__body')?.textContent?.includes(reasoning));
     const thought = document.querySelector('.thoughts-panel-wrap');
     const grown = reasoning + ' One more observation.';
     adoptSubAgentRunForTests({ ...thinking, livePartialReasoning: grown, messages: [{ role: 'assistant', content: '', reasoning: grown }] as SubAgentRun['messages'] });
     assert.equal(document.querySelector('.thoughts-panel-wrap'), thought, 'growing thoughts keep their mounted disclosure');
+    await new Promise(resolve => setTimeout(resolve, 120));
     assert.ok(document.querySelector('.sub-agent-overlay__body')?.textContent?.includes(grown));
     adoptSubAgentRunForTests({ ...thinking, livePhase: 'generating', livePartialReasoning: '', livePartialText: response });
-    assert.ok(document.querySelector('.transcript-view__assistant--partial')?.textContent?.includes(response));
+    assert.ok(document.querySelector('.sub-agent-overlay__body .cursor--prose')?.parentElement?.textContent?.includes(response));
     const settled = completedRun({ modelId: 'requested-model', resolvedModel: { id: 'actual-model', providerId: 'local' }, summary: 'Short handoff summary', messages: [
       { role: 'assistant', content: '', reasoning: grown },
       ...completedRun().messages,
@@ -182,8 +184,8 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     const body = document.querySelector<HTMLElement>('.sub-agent-overlay__body')!;
     assert.equal(body.hidden, false);
     assert.ok(body.textContent?.includes(response));
-    assert.equal(body.querySelectorAll('.sub-agent-conversation__final').length, 1);
-    assert.equal(body.querySelector('.transcript-view__live-tail'), null);
+    assert.equal(body.querySelectorAll('.chat-turn-final').length, 1);
+    assert.equal(body.querySelector('.cursor--prose'), null);
     document.getElementById('sub-agent-tab-result')?.click();
     assert.ok(document.querySelector('.sub-agent-overlay__structured')?.textContent?.includes(response));
     persistSubAgentRunSnapshot(settled);
@@ -200,9 +202,11 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     assert.equal(document.querySelector('.sub-agent-overlay__chip-model')?.textContent, 'Model: actual-model');
     const reopened = document.querySelector<HTMLElement>('.sub-agent-overlay__body')!;
     assert.equal(reopened.hidden, false);
+    reopened.querySelector<HTMLButtonElement>('.chat-work')?.click();
+    reopened.querySelector<HTMLButtonElement>('.thoughts-toggle')?.click();
     assert.ok(reopened.textContent?.includes(grown));
     assert.ok(reopened.textContent?.includes(response));
-    assert.equal(reopened.querySelectorAll('.sub-agent-conversation__final').length, 1);
+    assert.equal(reopened.querySelectorAll('.chat-turn-final').length, 1);
   });
 
   test('same-role agents use explicit titles and retain the full assignment separately', async () => {
@@ -250,7 +254,7 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     adoptSubAgentRunForTests(completedRun({ status: 'queued', endedAt: null, messages: [] }));
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
     assert.ok(document.querySelector('.sub-agent-overlay__notice')?.textContent?.includes('Waiting'));
-    assert.equal(document.querySelector('.transcript-view__stream-status'), null);
+    assert.equal(document.querySelector('.sub-agent-overlay__body .stream-status'), null);
   });
 
   test('equal-length settled text corrections repaint the visible response', async () => {
@@ -259,7 +263,7 @@ describe('sub-agent Conversation inspector', { concurrency: false }, () => {
     adoptSubAgentRunForTests(completedRun({ messages: [{ role: 'assistant', content: 'Alpha' }] }));
     await openSubAgentDrawer(FIXED_RUN_ID, CHAT_ID);
     adoptSubAgentRunForTests(completedRun({ messages: [{ role: 'assistant', content: 'Bravo' }] }));
-    assert.equal(document.querySelector('.sub-agent-overlay__body .transcript-view__assistant')?.textContent?.trim(), 'Bravo');
+    assert.equal(document.querySelector('.sub-agent-overlay__body .msg.assistant .msg-bubble')?.textContent?.trim(), 'Bravo');
   });
   test('opens from cache during stalled requests and stays closed after late responses', async () => {
     setupOverlayDom();

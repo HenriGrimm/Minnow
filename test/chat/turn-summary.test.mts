@@ -41,10 +41,10 @@ describe('summarizeTurn', () => {
       call('execute_command', { command: 'npm test' }, 'Error: exit 1'),
       call('execute_command', { command: 'npm test' }, 'passed'),
     );
-    assert.deepEqual(summarize(history).entries, [{ kind: 'run', count: 1, failed: 0, text: 'Ran 1 command' }]);
+    assert.deepEqual(summarize(history).entries, [{ kind: 'run', count: 1, text: 'Ran 1 command' }]);
   });
 
-  test('unrecovered failures attach to their family and are never folded into +N more', () => {
+  test('unrecovered failures are excluded before computing visible and overflow entries', () => {
     const history = turn(
       call('read_file', { path: 'a.ts' }, 'a'),
       call('grep', { pattern: 'x' }, 'x'),
@@ -56,22 +56,22 @@ describe('summarizeTurn', () => {
       call('execute_command', { command: 'npm run build' }, 'ok'),
     );
     const summary = summarize(history);
-    assert.deepEqual(summary.entries.map((e) => [e.kind, e.failed]), [['read', 0], ['search', 0], ['run', 1], ['web', 1]]);
+    assert.deepEqual(summary.entries.map((e) => e.kind), ['read', 'search', 'edit', 'run']);
     assert.equal(summary.overflow, 1);
-    assert.equal(formatTurnSummary(summary), 'Read 1 file · 1 search · Ran 3 commands, 1 failed · 2 web lookups, 1 failed · +1 more');
+    assert.equal(formatTurnSummary(summary), 'Read 1 file · 1 search · Edited 1 file · Ran 2 commands · +1 more');
   });
 
-  test('retrying a different target does not recover the failure', () => {
+  test('only successful targets count even when the retry uses a different target', () => {
     const history = turn(
       call('read_file', { path: 'missing.ts' }, 'Error: not found'),
       call('read_file', { path: 'found.ts' }, 'ok'),
     );
-    assert.equal(texts(history), 'Read 2 files, 1 failed');
+    assert.equal(texts(history), 'Read 1 file');
   });
 
   test('Impeccable detect findings are not failures', () => {
     const history = turn(call('execute_command', { command: 'detect' }, 'Error: impeccable detect exited 2\n3 anti-patterns found.'));
-    assert.equal(summarize(history).entries[0].failed, 0);
+    assert.equal(texts(history), 'Ran 1 command');
   });
 
   test('agents, questions, browser, unknown tools and bookkeeping', () => {

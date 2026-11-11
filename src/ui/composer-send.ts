@@ -20,6 +20,7 @@ import { refreshModeSelectorDisabled } from './mode-selector';
 import { isChatAppForeground } from './chat-mount';
 import { syncBackgroundStreamHint } from './composer-stream-hint';
 import { syncComposerWave } from './composer-wave';
+import { paintComposerPrimaryButton } from './composer-primary-button';
 import { syncComposerFollowupSuggestion } from './composer-followup-suggestion';
 import { syncGoalActiveHint } from './goal-active-hint';
 import { syncLoopActiveHint } from './loop-active-hint';
@@ -146,15 +147,8 @@ export function refreshComposerStreamingAffordance(): void {
 
   const hasText = composerInputHasText();
   const steering = hasText && Boolean(sessionState && isChatTurnInProgress(getActiveChat().id));
-  sendBtn.setAttribute(
-    'aria-label',
-    hasText ? 'Send message' : 'Stop generating',
-  );
-  sendBtn.title = hasText ? 'Send message (Enter)' : 'Stop generating';
   sendBtn.dataset.steerReady = steering ? 'true' : 'false';
-  sendBtn.classList.toggle('send-btn--stop', !hasText);
-  document.getElementById('sendIcon')?.classList.toggle('hidden', !hasText);
-  document.getElementById('sendStopIcon')?.classList.toggle('hidden', hasText);
+  paintComposerPrimaryButton(sendBtn, true, !hasText);
 }
 
 /** Show or hide the Chat app dedicated stop control (#btnChatAppStop). */
@@ -191,24 +185,15 @@ export function setComposerStreamingMode(mode: ComposerStreamingMode): void {
     return;
   }
 
-  const sendIcon = document.getElementById('sendIcon');
-  const sendStopIcon = document.getElementById('sendStopIcon');
   const sendSpinner = document.getElementById('sendSpinner');
 
   sendBtn.disabled = false;
-  sendBtn.setAttribute('aria-busy', isStreaming ? 'true' : 'false');
   sendBtn.dataset.mode = isStreaming ? 'stop' : 'send';
-  sendBtn.classList.toggle('send-btn--stop', isStreaming);
-  if (!isStreaming) {
+  if (isStreaming) refreshComposerStreamingAffordance();
+  else {
     sendBtn.removeAttribute('data-steer-ready');
-    sendBtn.setAttribute('aria-label', 'Send message');
-    sendBtn.title = 'Send message (Enter)';
-  } else {
-    refreshComposerStreamingAffordance();
+    paintComposerPrimaryButton(sendBtn, false, false);
   }
-
-  sendIcon?.classList.toggle('hidden', isStreaming && !composerInputHasText());
-  sendStopIcon?.classList.toggle('hidden', !isStreaming || composerInputHasText());
   sendSpinner?.classList.add('hidden');
 
   if (input) {

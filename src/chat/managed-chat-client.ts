@@ -279,7 +279,10 @@ export async function sendManagedChatAction(chatId: string, action: RemoteChatAc
   clearReceipt();
   if (action === 'send') acceptFirstMessageSubmission(chat, data.composerSubmissionId, body.receipt.commandId, body.receipt.state);
   if (directSkill) { chat.pinnedSkill = directSkill.nextPinned; touchChat(chat); scheduleSaveSessions(); }
-  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail: { chatId, ...body } }));
+  const detail = action === 'configure'
+    ? { chatId, fields: body.frame?.fields, receipt: body.receipt }
+    : { chatId, ...body };
+  window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-change', { detail }));
   return body.receipt;
 }
 

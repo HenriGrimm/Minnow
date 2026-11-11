@@ -22,31 +22,20 @@ describe('loadModePromptBody', () => {
     clearUserPromptRegistry();
   });
 
-  test('each mode loads non-empty full and lite bodies', async () => {
+  test('each mode loads a non-empty prompt', async () => {
     registerPromptFilesFromRaw(await loadBuiltinModePromptMap());
     for (const id of MODE_IDS) {
-      const full = loadModePromptBody(id, 'full');
-      const lite = loadModePromptBody(id, 'lite');
+      const body = loadModePromptBody(id);
       const markerId = id === 'desktop' || id === 'email' ? 'general' : id;
-      assert.ok(full.length > 0, `${id} full empty`);
-      assert.ok(lite.length > 0, `${id} lite empty`);
-      assert.match(full, new RegExp(`MINNOW_MODE_MARKER: ${markerId} full`));
-      assert.match(lite, new RegExp(`MINNOW_MODE_MARKER: ${markerId} lite`));
+      assert.ok(body.length > 0, `${id} full empty`);
+      assert.match(body, new RegExp(`MINNOW_MODE_MARKER: ${markerId} full`));
     }
   });
 
   test('plan full contains do-not-modify guidance', async () => {
     registerPromptFilesFromRaw(await loadBuiltinModePromptMap());
-    const body = loadModePromptBody('plan', 'full');
+    const body = loadModePromptBody('plan');
     assert.match(body.toLowerCase(), /do not modify/);
-  });
-
-  test('build lite shorter than build full', async () => {
-    registerPromptFilesFromRaw(await loadBuiltinModePromptMap());
-    const full = loadModePromptBody('build', 'full');
-    const lite = loadModePromptBody('build', 'lite');
-    assert.ok(lite.length < full.length);
-    assert.match(lite, /LITE/);
   });
 
   test('user override wins over built-in', async () => {
@@ -63,7 +52,7 @@ describe('loadModePromptBody', () => {
         source: 'user',
       },
     ]);
-    const body = loadModePromptBody('build', 'full');
+    const body = loadModePromptBody('build');
     assert.match(body, /OVERRIDE_MARKER/);
   });
 });

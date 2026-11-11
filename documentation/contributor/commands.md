@@ -61,7 +61,6 @@ Flags (`minnow run --help` for the authoritative list):
 | `--agent <id>` | Work agent to use. |
 | `--mode <id>` | `general` / `build` / `plan` / `orchestrate` / `debug`. |
 | `--model <id>` / `--provider <id>` | Override model / provider. |
-| `--profile <id>` | Prompt profile / setup bundle. |
 | `--base-url <url>` | Server origin (default detected; e.g. `http://127.0.0.1:9473`). |
 | `--start-server` | Start a tool server for the run. |
 | `--server-timeout <ms>` | Server readiness timeout. |

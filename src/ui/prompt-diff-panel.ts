@@ -32,7 +32,6 @@ export interface PromptDiffPanelOptions {
   getCurrent: () => string;
   /** When true, show offline baseline hint (bundled builtin may differ from disk). */
   showOfflineHint?: boolean;
-  profileHint?: string;
   onResetPart?: () => void | Promise<void>;
   resetPartLabel?: string;
 }
@@ -99,9 +98,6 @@ export function mountPromptDiffControls(
     'Server offline — baseline from bundled shipped prompts; may differ from ~/.minnow on disk.',
   );
 
-  const profileHintEl = options.profileHint
-    ? el('p', 'settings-field-hint prompt-diff__profile-hint', options.profileHint)
-    : null;
 
   const panelHost = el('div', 'prompt-diff-host hidden');
   panelHost.setAttribute('role', 'region');
@@ -121,7 +117,6 @@ export function mountPromptDiffControls(
   if (resetBtn) toolbar.appendChild(resetBtn);
 
   container.appendChild(toolbar);
-  if (profileHintEl) container.appendChild(profileHintEl);
   if (options.showOfflineHint) container.appendChild(offlineBanner);
   container.appendChild(panelHost);
 

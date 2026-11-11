@@ -71,7 +71,7 @@ export function replaceToolCallRowsWithBatch(
   return batch;
 }
 
-/** Refresh aggregate running/failure state after a child tool row changes. */
+/** Refresh the disclosure when a call settles or is hidden. */
 export function syncToolCallBatchForRow(row: HTMLElement): void {
   const batch = row.closest<HTMLDetailsElement>('.tool-call-batch');
   if (batch) syncToolCallBatch(batch);
@@ -79,11 +79,11 @@ export function syncToolCallBatchForRow(row: HTMLElement): void {
 
 export function syncToolCallBatch(batch: HTMLDetailsElement): void {
   const rows = Array.from(
-    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg'),
+    batch.querySelectorAll<HTMLElement>(':scope > .tool-call-batch__body > .tool-call-msg:not([hidden])'),
   );
   const running = rows.filter((row) => row.hasAttribute('aria-busy')).length;
-  const failed = rows.filter((row) => row.classList.contains('tool-call-msg--fail')).length;
   const total = rows.length;
+  batch.hidden = total === 0;
 
   const countsByName = new Map<string, number>();
   for (const row of rows) {
@@ -105,11 +105,10 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
   batch.classList.toggle('tool-call-batch--reasoning-summary', Boolean(summaryTitle));
   if (label) {
     const explored = exploredLabel(rows);
-    const failedText = failed ? `, ${failed} failed` : '';
-    const text = summaryTitle ? `${summaryTitle}${failedText}` : running
+    const text = summaryTitle || (running
       ? explored ? 'Exploring' : `Running ${total} tools`
-      : explored ? `${explored}${failedText}` : `${total} tool ${total === 1 ? 'call' : 'calls'}${failedText}`;
-    if (summaryTitle && running && !failed) setActivityShimmerText(label, text);
+      : explored || `${total} tool ${total === 1 ? 'call' : 'calls'}`);
+    if (summaryTitle && running) setActivityShimmerText(label, text);
     else {
       label.classList.remove('activity-shimmer');
       label.textContent = text;
@@ -120,20 +119,12 @@ export function syncToolCallBatch(batch: HTMLDetailsElement): void {
 
   const status = batch.querySelector<HTMLElement>('.tool-call-batch__status');
   if (status) {
-    status.replaceChildren(
-      running
-        ? spinner()
-        : createIcon(failed ? 'statusFail' : 'tools', {
-            className: failed
-              ? 'tool-call-batch__icon tool-call-batch__icon--fail'
-              : 'tool-call-batch__icon',
-            size: 15,
-          }),
-    );
+    status.replaceChildren(running ? spinner() : createIcon('tools', {
+      className: 'tool-call-batch__icon', size: 15,
+    }));
   }
 
   batch.classList.toggle('tool-call-batch--running', running > 0);
-  batch.classList.toggle('tool-call-batch--fail', failed > 0);
   batch.setAttribute('aria-busy', String(running > 0));
   const accessibleCounts = Array.from(
     countsByName,
@@ -193,7 +184,6 @@ function paintChips(batch: HTMLDetailsElement, rows: readonly HTMLElement[]): vo
     if (!text) continue;
     const chip = document.createElement('span');
     chip.className = 'tool-call-batch__chip';
-    chip.classList.toggle('tool-call-batch__chip--fail', row.classList.contains('tool-call-msg--fail'));
     chip.textContent = text;
     chip.title = row.querySelector('.tool-call-target')?.textContent?.trim() || text;
     chips.push(chip);

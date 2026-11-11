@@ -33,12 +33,10 @@ export async function loadBuiltinModePromptMap(): Promise<Record<string, string>
   ] as const;
   const map: Record<string, string> = {};
   for (const id of ids) {
-    for (const profile of ['full', 'lite'] as const) {
-      const fileName = `${id}.${profile}.md`;
-      const abs = path.join(modesDir, fileName);
-      const key = `./modes/${fileName}`;
-      map[key] = await fs.readFile(abs, 'utf8');
-    }
+    const fileName = `${id}.full.md`;
+    const abs = path.join(modesDir, fileName);
+    const key = `./modes/${fileName}`;
+    map[key] = await fs.readFile(abs, 'utf8');
   }
   return map;
 }
@@ -50,14 +48,12 @@ export async function loadBuiltinWorkAgentPromptMap(): Promise<Record<string, st
   const map: Record<string, string> = {};
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
-    for (const profile of ['full', 'lite'] as const) {
-      const fileName = `agent.${profile}.md`;
-      const abs = path.join(agentsDir, entry.name, fileName);
-      try {
-        map[`./work-agents/${entry.name}/${fileName}`] = await fs.readFile(abs, 'utf8');
-      } catch {
-        /* agent may ship full-only */
-      }
+    const fileName = 'agent.full.md';
+    const abs = path.join(agentsDir, entry.name, fileName);
+    try {
+      map[`./work-agents/${entry.name}/${fileName}`] = await fs.readFile(abs, 'utf8');
+    } catch {
+      /* skip directories without an agent prompt */
     }
   }
   return map;

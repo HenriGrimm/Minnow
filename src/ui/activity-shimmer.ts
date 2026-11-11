@@ -12,9 +12,14 @@ const ENTER_SPREAD_MS = 320;
  * readable string; the aria-hidden letters rise in, then carry a travelling crest. Setting the
  * same text again leaves the running animation untouched, so callers may re-sync freely.
  */
-export function setActivityShimmerText(label: Element, text: string, suffix = ''): void {
+export function setActivityShimmerText(
+  label: Element,
+  text: string,
+  suffix = '',
+  options: { transition?: boolean } = {},
+): void {
   let readable = label.querySelector('.activity-shimmer__text');
-  let visual = label.querySelector<HTMLElement>('.activity-shimmer__visual');
+  let visual = label.querySelector<HTMLElement>('.activity-shimmer__visual:not(.activity-shimmer__visual--outgoing)');
   let trailing = label.querySelector('.activity-shimmer__suffix');
   if (!readable || !visual || !trailing) {
     readable = document.createElement('span');
@@ -29,13 +34,32 @@ export function setActivityShimmerText(label: Element, text: string, suffix = ''
   }
 
   if (readable.textContent !== text) {
+    const document = label.ownerDocument;
+    const canCrossfade = options.transition && readable.textContent &&
+      !document.documentElement.hasAttribute('data-reduce-motion') &&
+      !document.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const exiting = label.querySelector('.activity-shimmer__visual--outgoing');
+    // A phase can change twice in one frame. Keep fading from the last visible text.
+    if (canCrossfade && !exiting) {
+      const outgoing = visual;
+      outgoing.classList.add('activity-shimmer__visual--outgoing');
+      const removeOutgoing = (event: AnimationEvent) => {
+        if (event.target === outgoing && event.animationName === 'activity-shimmer-exit') outgoing.remove();
+      };
+      outgoing.addEventListener('animationend', removeOutgoing);
+      outgoing.addEventListener('animationcancel', removeOutgoing);
+      visual = document.createElement('span');
+      visual.className = 'activity-shimmer__visual activity-shimmer__visual--incoming';
+      visual.setAttribute('aria-hidden', 'true');
+      trailing.before(visual);
+    } else if (!canCrossfade) exiting?.remove();
     readable.textContent = text;
     visual.replaceChildren();
     const ellipsisLength = text.endsWith('…') ? 1 : text.endsWith('...') ? 3 : 0;
     const characters = Array.from(ellipsisLength ? text.slice(0, -ellipsisLength) : text);
     const visualCharacters = ellipsisLength ? [...characters, '.', '.', '.'] : characters;
     const enterStep = Math.min(16, ENTER_SPREAD_MS / Math.max(1, visualCharacters.length));
-    visualCharacters.forEach((character, index) => {
+    for (const [index, character] of visualCharacters.entries()) {
       const letter = document.createElement('span');
       letter.className = 'activity-shimmer__char';
       const dotIndex = index - characters.length;
@@ -46,7 +70,7 @@ export function setActivityShimmerText(label: Element, text: string, suffix = ''
       letter.style.setProperty('--activity-shimmer-delay', `${delay}ms`);
       letter.style.setProperty('--activity-shimmer-enter-delay', `${Math.round(index * enterStep)}ms`);
       visual.appendChild(letter);
-    });
+    }
     visual.style.setProperty('--activity-shimmer-duration', `${Math.max(2200, characters.length * RIPPLE_STEP_MS + (ellipsisLength ? 240 : 0) + 1400)}ms`);
   }
 

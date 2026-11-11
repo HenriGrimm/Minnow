@@ -2,8 +2,6 @@ import { fetchModels } from '../api/models';
 import {
   closeDrawer,
   onDrawerKeydown,
-  onSystemPromptInput,
-  onSystemPromptPresetChange,
 } from './settings';
 import { clearChat } from './messages';
 import { isAppAvailable } from '../os/app-preferences';
@@ -74,17 +72,6 @@ export function initShellHandlers(): void {
     drawer.addEventListener('keydown', onDrawerKeydown);
   }
 
-  const systemPromptPreset = document.getElementById('systemPromptPreset');
-  if (systemPromptPreset && systemPromptPreset.dataset.shellWired !== '1') {
-    systemPromptPreset.dataset.shellWired = '1';
-    systemPromptPreset.addEventListener('change', onSystemPromptPresetChange);
-  }
-
-  const systemPrompt = document.getElementById('systemPrompt');
-  if (systemPrompt && systemPrompt.dataset.shellWired !== '1') {
-    systemPrompt.dataset.shellWired = '1';
-    systemPrompt.addEventListener('input', onSystemPromptInput);
-  }
 
   const drawerClearBtn = document.querySelector<HTMLButtonElement>('.drawer-clear-btn');
   if (drawerClearBtn && drawerClearBtn.dataset.shellWired !== '1') {

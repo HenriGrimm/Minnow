@@ -52,7 +52,6 @@ export interface CreateSubAgentEffectorOptions {
   getState?: () => AgentsState | Promise<AgentsState>;
   model?: TurnModel;
   limits?: { maxTurns?: number; wallClockMs?: number };
-  promptVariant?: 'full' | 'lite';
   runTurn?: (options: RunTurnOptions) => Promise<TurnResult>;
   deps?: RunnerDeps;
   postChatCompletions?: PostChatCompletions;

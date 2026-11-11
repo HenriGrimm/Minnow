@@ -91,7 +91,6 @@ function openPromptFileLightbox(options: {
         mountPromptFileEditor(panel, {
           family: options.family,
           entityId: options.entityId,
-          singleProfile: true,
           rows: 18,
         });
       });
@@ -534,5 +533,5 @@ export async function renderAgentCenterPanel(
 
 /** Prompt preview text for a shipped agent part (tests, previews). */
 export function shippedAgentPrompt(kind: 'base' | 'tool-usage' | 'info', id: string): string {
-  return loadPromptById(kind, id, 'full')?.body?.trim() ?? '';
+  return loadPromptById(kind, id)?.body?.trim() ?? '';
 }

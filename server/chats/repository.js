@@ -871,7 +871,6 @@ export function createChatRepository({ db: injectedDb, now = Date.now } = {}) {
         if (prior && hashChatPayload(prior.decision) === hashChatPayload(decision)) return prior;
         const review = repository.inspectRecovery(chatId);
         if (executionId !== review.executionId || expected !== review.revision) fail('stale_revision', 'Refresh the recovery evidence before deciding.');
-        if (!review.ownerReleased) fail('ownership_conflict', 'Restart Minnow to verify the original execution has stopped, then review the operation again.');
         if (verifyIdle(execution) !== true) fail('ownership_conflict', 'Wait for the execution and its tools to stop before retiring it.');
         for (const op of review.operations) {
           const result = op.receiptId ? getOutbox(op.receiptId).payload.result : { content: 'Interrupted tool retired by the user. Its outcome is unknown.', indeterminate: true };

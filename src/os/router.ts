@@ -1,7 +1,7 @@
 import { isAppId } from './app-registry';
 import { isAppAvailable } from './app-preferences';
 import { DEFAULT_MODELS_SECTION } from '../ui/models-section-ids';
-import { closeShellOverlay, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
+import { closeShellOverlays, isShellOverlayOpen, shellOverlayClosed } from '../ui/shell-overlay-state';
 import {
   getForegroundAppId,
   getInstanceSnapshot,
@@ -359,7 +359,7 @@ export function launchApp(appId: AppId, options?: LaunchOptions): void {
   const bound = getAppWindowId();
   if (bound && appId !== bound) return;
   if (rejectUnavailableApp(appId)) return;
-  if (appId !== 'settings' || !isShellOverlayOpen('settings')) closeShellOverlay();
+  if (appId !== 'settings' || !isShellOverlayOpen('settings')) closeShellOverlays();
 
   if (options?.settingsSection) {
     pendingSettingsSection = options.settingsSection;

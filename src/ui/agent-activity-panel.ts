@@ -47,6 +47,7 @@ type ActivityPresentation = {
 let presentation: ActivityPresentation | undefined;
 const labels = new Map<string, string>();
 const context = new Map<string, AgentActivityContextFill>();
+const dismissedExecutionAlerts = new Set<string>();
 
 function workspace(): string {
   return getViewWorkspacePath() || getWorkspacePath();
@@ -67,7 +68,7 @@ function snapshot(): ActivityFeed {
   });
   return buildActivityFeed({
     chats, live, notifications: getNotifications().filter((record) => isAppAvailable(record.appId)),
-    pendingChatIds: pending, workspacePath: workspace(),
+    pendingChatIds: pending, dismissedExecutionAlerts, workspacePath: workspace(),
   });
 }
 
@@ -80,16 +81,18 @@ function refresh(): void {
   feed = snapshot();
   if (!anchor) return;
   const count = feed.attention.length;
+  const hasAlerts = count > 0 || feed.unreadCount > 0;
   const agents = getRunningAgentCount(feed);
   const phone = presentation?.phone === true;
-  const iconStyle = presentation?.bell || phone ? 'bell' : 'activity';
+  const bellIcon = hasAlerts ? 'bellFilled' : 'bell';
+  const iconStyle = presentation?.bell || phone ? bellIcon : 'activity';
   if (anchor.dataset.agentCount !== String(agents) || anchor.dataset.iconStyle !== iconStyle) {
     anchor.dataset.agentCount = String(agents);
     anchor.dataset.iconStyle = iconStyle;
     anchor.classList.toggle('is-running', agents > 0);
     anchor.innerHTML = agents && iconStyle === 'activity'
       ? `<span class="activity-trigger__wheel" aria-hidden="true"><span class="activity-trigger__ring"></span><span class="activity-trigger__count">${agents > 99 ? '99+' : agents}</span></span>`
-      : iconHtml(iconStyle === 'bell' ? 'bell' : 'appAgentActivity', { size: 16 });
+      : iconHtml(iconStyle === 'activity' ? 'appAgentActivity' : iconStyle, { size: 16 });
   }
   if (phone) {
     const countLabel = count > 9 ? '9+' : String(count);
@@ -100,7 +103,7 @@ function refresh(): void {
       badge.setAttribute('aria-hidden', 'true');
       anchor.append(badge);
     }
-    badge.hidden = !count && !feed.unreadCount;
+    badge.hidden = !hasAlerts;
     badge.classList.toggle('m-phone-alert-count--dot', !count);
     badge.textContent = count ? countLabel : '';
   }
@@ -244,6 +247,17 @@ export async function acknowledgeAgentActivityItems(items: ActivityItem[]): Prom
   refresh();
 }
 
+function dismissAlert(item: ActivityItem): void {
+  const executionId = item.live?.executionId;
+  // Restored executions can have an Activity row without a session notification.
+  if (executionId) dismissedExecutionAlerts.add(item.id);
+  resolveActivityNotifications(item.notifications.map((record) => record.id));
+  refresh();
+  if (item.chatId && item.activityCursor && item.activityCursor.executionId === executionId) {
+    void acknowledgeObservedManagedActivity(item.chatId, item.activityCursor).then(refresh).catch(reportError);
+  }
+}
+
 /** One workspace-scoped Activity control for live work, actionable alerts, and history. */
 export function initAgentActivityMenubar(button: HTMLButtonElement, options?: ActivityPresentation): () => void {
   disposeMountedPanel?.();
@@ -269,7 +283,7 @@ export function initAgentActivityMenubar(button: HTMLButtonElement, options?: Ac
       } else void activate(item, runId).catch(reportError);
     },
     seen: (items) => { void acknowledgeAgentActivityItems(items).catch(reportError); },
-    dismiss: (item) => { void acknowledgeAgentActivityItems([item]).then(() => resolveActivityNotifications(item.notifications.map((record) => record.id))).catch(reportError); },
+    dismiss: dismissAlert,
     stop: (item) => { void stop(item).catch(reportError); },
     mute: () => saveNotificationPref('muted', !loadNotificationPrefs().muted),
     settings: () => {

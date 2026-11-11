@@ -7,6 +7,7 @@ export interface WorkspaceRecentItem {
   label: string;
   exists: boolean;
   isCurrent: boolean;
+  iconDataUrl?: string;
 }
 
 export interface WorkspaceInfo {
@@ -46,9 +47,10 @@ export interface WorkspaceBrowseResult {
 }
 
 /** Fetch the current workspace from the dev server. */
-export async function fetchWorkspace(): Promise<WorkspaceInfo | null> {
+export async function fetchWorkspace({ includeIcons = false } = {}): Promise<WorkspaceInfo | null> {
   try {
-    const res = await fetch('/api/workspace', { cache: 'no-store' });
+    const url = includeIcons ? '/api/workspace?includeIcons=1' : '/api/workspace';
+    const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) return null;
     return (await res.json()) as WorkspaceInfo;
   } catch {

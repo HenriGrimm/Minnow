@@ -117,6 +117,33 @@ describe('workspace API', () => {
     assert.ok(stat.isDirectory());
   });
 
+  test('the picker can request local project favicons with its recent workspaces', async () => {
+    const project = path.join(homeDir, 'project-with-icon');
+    const publicDir = path.join(project, 'public', 'logos');
+    const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><path d="M0 0h1v1H0z"/></svg>';
+    await fs.mkdir(publicDir, { recursive: true });
+    await fs.writeFile(path.join(homeDir, 'outside.svg'), icon);
+    await fs.writeFile(path.join(publicDir, 'project.svg'), icon);
+    await fs.writeFile(path.join(project, 'index.html'), [
+      '<link rel="icon" href="../outside.svg">',
+      '<link href="/logos/project.svg?v=1" rel="icon">',
+    ].join('\n'));
+    await touchRecentWorkspacePath(project);
+    try {
+      const recent = (response) => response.json.recent.find((item) => item.label === 'project-with-icon');
+      const plain = await httpRequest(baseUrl, 'GET', '/api/workspace');
+      assert.equal(recent(plain).iconDataUrl, undefined);
+      const withIcons = await httpRequest(baseUrl, 'GET', '/api/workspace?includeIcons=1');
+      assert.equal(recent(withIcons).iconDataUrl, `data:image/svg+xml;base64,${Buffer.from(icon).toString('base64')}`);
+      assert.equal(withIcons.json.sandbox.iconDataUrl, undefined);
+      await fs.unlink(path.join(publicDir, 'project.svg'));
+      const missing = await httpRequest(baseUrl, 'GET', '/api/workspace?includeIcons=1');
+      assert.equal(recent(missing).iconDataUrl, undefined);
+    } finally {
+      await httpRequest(baseUrl, 'DELETE', '/api/workspace/recent', { path: project });
+    }
+  });
+
   test('clone endpoint rejects invalid requests without changing workspace', async () => {
     const before = getWorkspaceInfo().path;
     for (const body of [{}, { parentPath: workspaceDir, name: '../escape', remoteUrl: 'https://example.com/repo.git' }, { parentPath: workspaceDir, name: 'repo', remoteUrl: 'file:///local/repo' }]) {

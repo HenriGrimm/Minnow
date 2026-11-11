@@ -9,7 +9,7 @@ import { parsePromptMarkdown } from './parse.js';
 
 function shouldSkip(relativePath) {
   const norm = relativePath.replace(/\\/g, '/');
-  return norm.includes('/_example/') || norm.startsWith('_example/');
+  return norm.split('/').some(segment => segment === '_example' || segment === '_template') || /(?:^|[./])lite\.md$/i.test(norm);
 }
 
 /**
@@ -58,7 +58,8 @@ export async function buildPromptRegistry(projectRoot) {
         const key = `${parsed.kind}:${parsed.id}`;
         const existing = byKey.get(key);
         const entry = { ...parsed, source };
-        if (!existing || source === 'user') {
+        if (!existing || (source === 'user' && existing.source === 'builtin') ||
+            (source === existing.source && relative.endsWith('.full.md'))) {
           byKey.set(key, entry);
         }
       } catch {

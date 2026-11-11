@@ -65,7 +65,6 @@ Lite expert`,
 
   test('expert part included when manual id set', () => {
     const out = composeSystemPrompt({
-      profile: 'full',
       cwd: '/t',
       modeId: null,
       expertId: 'software-engineer',
@@ -80,7 +79,6 @@ Lite expert`,
 
   test('expert part omitted when expertId null', () => {
     const out = composeSystemPrompt({
-      profile: 'full',
       cwd: '/t',
       modeId: null,
       expertId: null,
@@ -93,18 +91,8 @@ Lite expert`,
     assert.ok(!out.includes('[[EXPERT:'));
   });
 
-  test('custom profile expert.enabled false', () => {
+  test('a legacy Lite file cannot override the expert prompt', () => {
     const out = composeSystemPrompt({
-      profile: 'custom',
-      customConfig: {
-        id: 'x',
-        label: 'x',
-        profile: 'custom',
-        parts: {
-          expert: { enabled: false, contentOverride: null },
-          base: { enabled: true, contentOverride: null },
-        },
-      },
       cwd: '/t',
       modeId: null,
       expertId: 'software-engineer',
@@ -114,22 +102,7 @@ Lite expert`,
       enabledToolIds: [],
       infoPresetId: null,
     });
-    assert.ok(!out.includes('[[EXPERT:software-engineer]]'));
-  });
-
-  test('lite profile uses expert.lite.md', () => {
-    const out = composeSystemPrompt({
-      profile: 'lite',
-      cwd: '/t',
-      modeId: null,
-      expertId: 'software-engineer',
-      workAgentId: null,
-      skillBody: null,
-      memoryBlock: null,
-      enabledToolIds: [],
-      infoPresetId: null,
-    });
-    assert.ok(out.includes('Lite expert'));
-    assert.ok(!out.includes('Expert full body'));
+    assert.ok(!out.includes('Lite expert'));
+    assert.ok(out.includes('Expert full body'));
   });
 });

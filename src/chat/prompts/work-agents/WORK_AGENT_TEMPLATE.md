@@ -5,7 +5,6 @@ Copy this folder layout for a new agent:
 
 src/chat/prompts/work-agents/<id>/
   agent.full.md
-  agent.lite.md
   README.md
 
 Add <id> to registry.json ids[].

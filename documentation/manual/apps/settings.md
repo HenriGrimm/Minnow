@@ -43,7 +43,7 @@ If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select
 
 ### AI & agents
 
-**Models & connections** opens Models. **Agents** configures shared prompt profiles, composer modes, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
+**Models & connections** opens Models. **Agents** configures the shared system prompt, work agents, sub-agent types, and context policy. **Chat context** chooses the default Brain notes, code map, and project documents added to chats. **Rules** manages standing instructions.
 
 **Tools** configures structured arguments, tool loading, caching, and result size. The global permission mode governs all agent actions.
 

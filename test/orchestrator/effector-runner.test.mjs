@@ -194,7 +194,6 @@ function makeEffector(opts = {}) {
     model: MODEL,
     cwd: opts.cwd ?? os.tmpdir(),
     limits: opts.limits,
-    promptVariant: 'lite',
     runTurn: opts.runTurn,
     deps: opts.deps ?? stubDeps(),
     reapOrphans: opts.reapOrphans,
@@ -1085,7 +1084,7 @@ describe('runner effector', { concurrency: false }, () => {
       const builderDone = new Promise((resolve) => { finishBuilder = resolve; });
       const box = { engine: null };
       const effector = createRunnerEffector({
-        boardId, journal, cwd, deps, promptVariant: 'lite',
+        boardId, journal, cwd, deps,
         getState: () => box.engine.getState(),
         runTurn: async (options) => {
           seen.push({ options, effort: deps.transcriptStore.load(options.chatId)?.meta.reasoningEffort });

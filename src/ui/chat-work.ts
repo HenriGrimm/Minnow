@@ -162,7 +162,10 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     live = live && !terminal;
     const pending = executionStatus != null && !terminal;
     const ongoing = live || pending;
+    const firstMountedRow = rows[0];
+    rows = rows.filter(row => !row.hidden);
     if (!ongoing) rows = groupWorkedToolRows(rows);
+    const firstRow = rows[0] ?? firstMountedRow;
     let group = groups.get(turn.fork);
     const assistants = rows.filter((row) => row.matches('.msg.assistant'));
     const final = ongoing ? undefined : assistants.find((row) => Number(row.dataset.historyIndex) === turn.finalIndex)
@@ -175,7 +178,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     const activity = rows.filter((row) => !replyRows.has(row));
     for (const row of assistants) {
       row.classList.toggle('chat-turn-final', replyRows.has(row));
-      if (replyRows.has(row)) row.classList.remove('chat-work-hidden', 'chat-step', 'chat-step--joined');
+      if (replyRows.has(row)) row.classList.remove('chat-work-hidden', ...STEP_CLASSES);
     }
     // The active checkpoint divider is a boundary, not work: alone it earns no disclosure.
     const work = activity.filter((row) => !row.matches('.compaction-divider:not(.compaction-divider--superseded)'));
@@ -189,7 +192,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       return;
     }
     group ??= makeGroup(turn.fork);
-    if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== rows[0]) mount.insertBefore(group.button, rows[0]);
+    if ((group.todos?.nextElementSibling ?? group.button.nextElementSibling) !== firstRow) mount.insertBefore(group.button, firstRow);
     const todos = getTurnTodos(chat, turn.fork, turn.end);
     const todosKey = JSON.stringify(todos);
     if (group.todosKey !== todosKey) {
@@ -201,7 +204,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
     }
     if (group.todos && group.button.nextElementSibling !== group.todos) group.button.after(group.todos);
     // A live turn draws its steps in place; the composer status line carries elapsed time.
-    const show = full || group.expanded || ongoing && !options.isolated;
+    const show = full || group.expanded || live || pending && !options.isolated;
     group.button.classList.toggle('chat-work--live-hidden', live && !options.isolated);
     if (hasActivity) group.button.setAttribute('aria-expanded', String(show));
     else group.button.removeAttribute('aria-expanded');
@@ -237,8 +240,6 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       const attention = row.matches('.msg--failed, .msg--stopped, .msg--truncated')
         || row.matches('.sub-agent-card--persistent:not([data-status="completed"]):not([data-status="cancelled"]), .sub-agent-group[data-live="true"]')
         || Boolean(row.querySelector('.sub-agent-card--persistent[data-status="failed"]'))
-        || row.matches('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]')
-        || Boolean(row.querySelector('.tool-call-msg--fail[data-tool-name="spawn_sub_agent"]'))
         || Boolean(row.querySelector('.msg-bubble--error'))
         || row.matches('.compaction-divider:not(.compaction-divider--superseded)')
         || (live && (row.dataset.toolName === 'ask_question'
@@ -277,7 +278,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       group.presentedFiles = createPresentedFileCards(presentedFiles);
       group.presentedFilesKey = presentedFilesKey;
     }
-    const lastRow = rows.at(-1)!;
+    const lastRow = rows.at(-1) ?? firstRow;
     if (group.presentedFiles && lastRow.nextElementSibling !== group.presentedFiles) lastRow.after(group.presentedFiles);
     if (!ongoing) {
       const key = `${turn.end}:${run?.endedAt ?? ''}:${turn.fork === primaryFork ? 'primary' : ''}`;
@@ -349,7 +350,7 @@ export function installChatWorkView(mount: HTMLElement, chat: Chat, isStreaming:
       groups.delete(fork);
     }
     observer.observe(mount, { childList: true, subtree: true, attributes: true,
-      attributeFilter: ['class', 'data-history-index', 'data-stream-phase', 'data-turn-kind', 'data-status', 'data-live'] });
+      attributeFilter: ['class', 'hidden', 'data-history-index', 'data-stream-phase', 'data-turn-kind', 'data-status', 'data-live'] });
     if (streaming) scheduleTick();
   }
 
@@ -564,10 +565,10 @@ function paintStatus(group: WorkGroup, outcome: WorkOutcome): void {
   group.status.replaceChildren(createIcon(name, { className: 'chat-work__status-icon', size: 12 }));
 }
 
-const STEP_CLASSES = ['chat-step', 'chat-step--joined'] as const;
+const STEP_CLASSES = ['chat-step', 'chat-step--joined', 'chat-step--continued'] as const;
 const TOOL_ROW = '.tool-call-msg, .tool-call-batch, .tool-start-indicator, .sub-agent-card';
-/** Collapsed rows, plus spawn rows (and spawn-only rounds) a sub-agent card stands in for. */
-const OFF_RAIL = '.chat-work-hidden, .tool-call-msg--delegated, .tool-call-batch--delegated';
+/** Hidden activity and spawn rows represented by sub-agent cards. */
+const OFF_RAIL = '.chat-work-hidden, [hidden], .tool-call-msg--delegated, .tool-call-batch--delegated';
 
 function hasProse(row: HTMLElement): boolean {
   const bubble = row.querySelector(':scope > .msg-bubble:not(.msg-bubble--awaiting)');
@@ -596,6 +597,7 @@ function hasSettledThoughts(row: HTMLElement): boolean {
 function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void {
   const steps = new Set<HTMLElement>();
   const joined = new Set<HTMLElement>();
+  const continued = new Set<HTMLElement>();
   if (!full) {
     const visible = activity.filter((row) => !row.matches(OFF_RAIL));
     visible.forEach((row) => {
@@ -611,12 +613,17 @@ function paintSteps(activity: HTMLElement[], full: boolean, live: boolean): void
       while (sibling instanceof HTMLElement && sibling.matches(OFF_RAIL)) {
         sibling = sibling.nextElementSibling;
       }
-      if (ordered[i + 1] && sibling === ordered[i + 1]) joined.add(row);
+      const next = ordered[i + 1];
+      if (next && sibling === next) {
+        joined.add(row);
+        continued.add(next);
+      }
     });
   }
   for (const row of activity) {
     setClass(row, 'chat-step', steps.has(row));
     setClass(row, 'chat-step--joined', joined.has(row));
+    setClass(row, 'chat-step--continued', continued.has(row));
   }
 }
 
@@ -657,12 +664,6 @@ function paintTally(group: WorkGroup, summary: TurnSummary | undefined, runningA
     item.className = 'chat-work__item';
     item.dataset.kind = entry.kind;
     item.textContent = entry.kind === 'agents' && runningAgents ? `${entry.text} · ${runningAgents} running` : entry.text;
-    if (entry.failed) {
-      const failed = document.createElement('span');
-      failed.className = 'chat-work__failed';
-      failed.textContent = ` · ${entry.failed} failed`;
-      item.append(failed);
-    }
     parts.push(item);
   }
   if (summary?.overflow) {

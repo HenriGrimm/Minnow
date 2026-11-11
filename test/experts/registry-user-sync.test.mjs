@@ -59,14 +59,6 @@ Coach instructions`;
           },
         };
       }
-      if (href.includes('my-coach') && href.includes('profile=lite')) {
-        return {
-          ok: true,
-          async json() {
-            return { content: fullMarkdown.replace('Coach instructions', 'Lite coach'), source: 'override' };
-          },
-        };
-      }
       if (href.includes('my-coach')) {
         return {
           ok: true,

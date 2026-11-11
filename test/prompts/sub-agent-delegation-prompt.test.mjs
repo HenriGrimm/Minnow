@@ -19,18 +19,16 @@ describe('sub-agent-delegation prompts', () => {
   });
 
   test('fragment describes one agent with no types and background waits', () => {
-    const body = loadPromptById('tool-usage', 'sub-agent-delegation', 'full')?.body ?? '';
+    const body = loadPromptById('tool-usage', 'sub-agent-delegation')?.body ?? '';
     assert.match(body, /same agent/);
     assert.match(body, /no agent types/i);
     assert.match(body, /wait: false/);
     assert.doesNotMatch(body, /generalPurpose|researcher|`explore`/);
   });
 
-  test('appended whenever spawn_sub_agent is available, in any profile', () => {
-    for (const profile of ['full', 'lite']) {
-      const prompt = composeSystemPrompt(baseComposeContext({ profile, enabledToolIds: ['read_file', 'spawn_sub_agent'] }));
-      assert.match(prompt, /## Sub-agents/, profile);
-    }
+  test('appended whenever spawn_sub_agent is available', () => {
+    const prompt = composeSystemPrompt(baseComposeContext({ enabledToolIds: ['read_file', 'spawn_sub_agent'] }));
+    assert.match(prompt, /## Sub-agents/);
   });
 
   test('omitted when spawn_sub_agent is unavailable', () => {

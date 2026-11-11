@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { createHostChatCommandHandler, createSharedChatObserver, createSharedChatPublisher } from '../../src/chat/shared-chat-bridge.ts';
 import { applySharedChatFrame, createEmptyChatObject, getSessionDirtyTrackingForTests, resetSessionPersistenceForTests, setSessionStateForTests } from '../../src/state/sessions.ts';
-import { registerChatStreamText, notifyChatStreamEnded } from '../../src/chat/streaming-state.ts';
+import { readChatStreamText, registerChatStreamText, notifyChatStreamEnded, subscribeChatStreamActivity } from '../../src/chat/streaming-state.ts';
 import { setChatAbort, setStreaming, streamingChatIds } from '../../src/app-state.ts';
 import { setPairedDevice } from '../../src/api/session-token.ts';
 import { setRemoteChatTurns, setRemoteChatPresence, isChatRunningRemotely } from '../../src/chat/remote-turn-state.ts';
@@ -87,6 +87,41 @@ test('observer-only metadata invalidates a mounted view without marking the tran
   assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, before);
 });
 
+test('managed live frames feed the composer wave activity until the turn settles', async () => {
+  setup();
+  const observer = createSharedChatObserver(() => {});
+  const activity: ReturnType<typeof readChatStreamText>[] = [];
+  const unsubscribe = subscribeChatStreamActivity(id => {
+    if (id === CHAT) activity.push(readChatStreamText(id));
+  });
+  const frame: SharedChatFrame = { chatId: CHAT, hostId: 'minnow-server', sequence: 1, epoch: 'turn',
+    running: true, live: { lastDelta: '', lastThinking: 'Plan', toolCallCount: 0 } };
+  try {
+    await observer.receive(frame);
+    assert.deepEqual(activity, [frame.live]);
+    assert.equal(document.querySelector('#sendBtn .composer-wave')?.getAttribute('data-tone'), 'live');
+
+    const live = { lastDelta: 'Done', lastThinking: 'Plan ahead', toolCallCount: 1 };
+    await observer.receive({ ...frame, sequence: 2, live });
+    assert.deepEqual(activity, [frame.live, live]);
+
+    await observer.receive({ ...frame, sequence: 3, live: null });
+    assert.equal(activity.at(-1), null, 'closing a round clears the previous wave input');
+    assert.equal(document.querySelector('#sendBtn .composer-wave')?.getAttribute('data-tone'), 'live');
+
+    const nextRound = { lastDelta: 'Next step', lastThinking: '', toolCallCount: 0 };
+    await observer.receive({ ...frame, sequence: 4, live: nextRound });
+    assert.equal(activity.at(-1), nextRound);
+
+    await observer.receive({ ...frame, sequence: 5, running: false, live: null });
+    assert.equal(readChatStreamText(CHAT), null);
+    assert.equal(document.querySelector('#sendBtn .composer-wave')?.getAttribute('data-tone'), 'idle');
+  } finally {
+    unsubscribe();
+    observer.dispose();
+  }
+});
+
 test('Graphite New thread keeps the wired composer outside the hidden transcript', () => {
   const chat = setup();
   chat.history = [];
@@ -123,7 +158,9 @@ test('an idle accepted send appears in the transcript until its canonical input 
     const sending = row.nextElementSibling!;
     assert.ok(sending.matches('.msg.assistant.msg--sending-status'));
     assert.equal(sending.querySelector('.stream-status__label')?.textContent, 'Sending…');
-    assert.equal(sending.querySelectorAll('.activity-shimmer__dot').length, 3);
+    const status = sending.querySelector('.stream-status');
+    const sendingLetter = status?.querySelector('.activity-shimmer__char');
+    assert.ok(sendingLetter);
     assert.equal(row.hasAttribute('data-history-index'), false);
     assert.equal(row.querySelector('.message-actions'), null);
     assert.equal(document.getElementById('composerMessageQueue')!.classList.contains('hidden'), true);
@@ -132,15 +169,31 @@ test('an idle accepted send appears in the transcript until its canonical input 
     // A repeated snapshot or remount preserves one view of the same accepted input.
     await observer.receive({ ...frame, sequence: 2 });
     assert.equal(document.querySelectorAll('.msg.user').length, 1);
+    assert.ok(document.querySelector('.stream-status') === status, 'a repeated snapshot keeps the same indicator');
     const canonical = { role: 'user' as const, content: pending.text, commandId: pending.id, provenance: pending.provenance };
     await observer.receive({ ...frame, sequence: 3, running: true, epoch: 'new-turn',
-      fields: { pendingMessageQueue: null, agentPendingCommand: null, agentExecution: { executionId: 'new-turn', status: 'running' } },
+      fields: { pendingMessageQueue: null, agentPendingCommand: null,
+        agentExecution: { executionId: 'new-turn', commandId: pending.id, status: 'running' } },
       history: { start: 0, length: 1, messages: [canonical as any] } });
     assert.equal(chat.history.length, 1);
     assert.equal(document.querySelectorAll('.msg.user').length, 1);
     assert.equal(document.querySelector('.msg--sending'), null);
-    assert.equal(document.querySelector('.msg--sending-status'), null);
     assert.equal(document.querySelector('.msg.user')?.getAttribute('data-history-index'), '0');
+    assert.ok(document.querySelector('.msg.user')!.compareDocumentPosition(sending) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(document.querySelector('.stream-status') === status, 'admission can commit before the stream opens');
+    assert.ok(status?.querySelector('.activity-shimmer__char') === sendingLetter, 'acknowledgement leaves the Sending animation in progress');
+    const live = { lastDelta: '', lastThinking: '', toolCallCount: 0 };
+    await observer.receive({ chatId: CHAT, hostId: frame.hostId, sequence: 4, epoch: 'new-turn', running: true, live });
+    assert.equal(document.querySelector('.msg--sending-status'), null);
+    assert.ok(document.querySelector('.stream-status') === status, 'the first live frame adopts the same indicator');
+    assert.equal(status?.querySelector('.stream-status__label')?.textContent, 'Generating response…');
+    assert.ok(status?.querySelector('.activity-shimmer__visual--outgoing .activity-shimmer__char') === sendingLetter);
+    assert.ok(status?.querySelector('.activity-shimmer__visual--incoming .activity-shimmer__char'));
+    await observer.receive({ chatId: CHAT, hostId: frame.hostId, sequence: 5, epoch: 'new-turn', running: true,
+      live: { ...live, lastDelta: 'Here is the review.' } });
+    assert.ok(document.querySelector('.stream-status') === status, 'the first token keeps the same indicator mounted');
+    assert.ok(status?.classList.contains('hidden'));
+    assert.match(sending.querySelector('.msg-bubble')?.textContent ?? '', /Here is the review/);
   } finally { observer.dispose(); }
 });
 
@@ -231,8 +284,11 @@ test('tool results, subsequent rounds and metadata retain existing rows and expa
     batch.open = true; details.open = true;
     const summary = details.querySelector('summary')!;
     summary.focus();
-    await observer.receive({ ...frame, sequence: 2, history: { start: 2, length: 3,
-      messages: [{ role: 'tool', tool_call_id: 'read-one', content: 'First file contents' }] } });
+    await observer.receive({ ...frame, sequence: 2, history: { start: 2, length: 4,
+      messages: [
+        { role: 'tool', tool_call_id: 'read-one', content: 'First file contents' },
+        { role: 'tool', tool_call_id: 'read-two', content: 'Error: file not found' },
+      ] } });
     assert.equal(document.querySelector('.msg.user'), user);
     assert.equal(document.querySelector('.msg.assistant'), assistant);
     assert.equal(document.querySelector('.tool-call-batch'), batch);
@@ -242,7 +298,9 @@ test('tool results, subsequent rounds and metadata retain existing rows and expa
     assert.equal(document.activeElement, summary);
     assert.match(tool.textContent!, /First file contents/);
     assert.equal(tool.hasAttribute('aria-busy'), false);
-    await observer.receive({ ...frame, sequence: 3, history: { start: 3, length: 4,
+    assert.ok(batch.querySelector<HTMLElement>('[data-tool-call-id="read-two"]')?.hidden);
+    assert.equal(batch.querySelector('.tool-call-batch__label')?.textContent, 'Explored 1 file');
+    await observer.receive({ ...frame, sequence: 3, history: { start: 4, length: 5,
       messages: [{ role: 'assistant', content: 'Now checking the next part.' }] } });
     await observer.receive({ ...frame, sequence: 4, fields: { name: 'Updated title' } });
     assert.equal(document.querySelector('.msg.user'), user);
@@ -535,7 +593,8 @@ test('phone chat settings use PC commands instead of racing its transcript persi
   assert.equal(chat.modelId, original.modelId);
   assert.equal(chat.modeId, original.modeId);
   assert.equal(chat.pinnedAt, undefined);
-  assert.equal(chat.archivedAt, undefined);
+  assert.ok(chat.archivedAt! > 0, 'archive placement is reflected after the PC acknowledges it');
+  assert.deepEqual(getSessionDirtyTrackingForTests().dirtyChatIds, [], 'the observer does not save the PC transcript');
 });
 
 test('host archive commands publish metadata and leave the active transcript intact', async () => {
