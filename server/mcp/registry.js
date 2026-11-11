@@ -459,6 +459,10 @@ export function getMcpToolHints() {
 }
 
 export async function listEnabledMcpTools() {
+  return (await listEnabledMcpToolsWithHints()).tools;
+}
+
+export async function listEnabledMcpToolsWithHints() {
   const hints = Object.create(null);
   const defs = [{ type: 'function', function: {
     name: 'mcp__minnow__add_servers',
@@ -473,7 +477,7 @@ export async function listEnabledMcpTools() {
     for (const tool of server.tools) hints[toNamespacedName(server.id, tool.name)] = mcpToolPermissionHint(tool);
   }
   lastMcpToolHints = hints;
-  return defs;
+  return { tools: defs, hints: { ...hints } };
 }
 
 /**

@@ -177,6 +177,14 @@ test('production preparation composes shared prompts, current input first-turn d
 
 test('a captured /plan skill narrows the turn even after its chat is unpinned', async () => {
   const f = fixture();
+  const readTool = 'mcp__docs__read';
+  const unknownTool = 'mcp__docs__unknown';
+  f.names.push(unknownTool);
+  f.settings.meta.toolSecurity = { permissionLevel: 'full' };
+  f.adapters.listTools = async () => ({
+    definitions: f.names.map(definition),
+    mcpHints: { [readTool]: 'read' },
+  });
   f.execution.captured.turnIntent = await captureChatTurnIntent({ version: 1, skill: { id: 'plan', source: 'slash' } },
     f.chat, 'Plan the change', { adapters: f.adapters });
   const prepared = await f.prepare();
@@ -187,6 +195,13 @@ test('a captured /plan skill narrows the turn even after its chat is unpinned', 
     { currentPolicy: prepared.policy }), error => error.code === 'policy_denied');
   assert.doesNotThrow(() => assertChatToolAllowed(prepared.policy, 'save_file', { path: 'documentation/plans/new.md', content: '# Plan' },
     { currentPolicy: prepared.policy }));
+  assert.equal(prepared.policy.toolEffects[readTool], 'read');
+  assert.doesNotThrow(() => assertChatToolAllowed(prepared.policy, readTool, {}, { currentPolicy: prepared.policy }));
+  assert.throws(() => assertChatToolAllowed(prepared.policy, unknownTool, {}, { currentPolicy: prepared.policy }),
+    error => error.reason === 'tool_denied');
+  const revoked = createChatPolicy({ ...prepared.policy, toolEffects: { ...prepared.policy.toolEffects, [readTool]: 'unknown' } });
+  assert.throws(() => assertChatToolAllowed(prepared.policy, readTool, {}, { currentPolicy: revoked }),
+    error => error.reason === 'tool_denied');
 });
 
 test('follow-ups replay exact stored context, including CLI stable/current separation', async () => {

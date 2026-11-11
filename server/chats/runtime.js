@@ -24,7 +24,7 @@ import { createChatRunnerDeps } from './runner-deps.js';
 import { resolveAgentModelSelection } from './model-selection.js';
 import { executeConversationTool } from './conversation-tools.js';
 import { createInProcessToolDispatch } from '../runner/tool-dispatch.js';
-import { createChatPolicy, intersectChatPolicies, assertChatToolAllowed } from './policy.js';
+import { createChatPolicy, intersectChatPolicies, assertChatToolAllowed, ChatPolicyError, isChatToolDenial } from './policy.js';
 import { getChatPermissionGrants } from './permission-grants.js';
 import { assertCallerCanTarget, assertExecutionCaller, createChatCaller } from './caller.js';
 import { ChatContractError } from './contracts.js';
@@ -219,8 +219,15 @@ export function createProductionChatRuntime({ turns, stopExternalOwner, reposito
         if (toolHandlers.has(name)) return toolHandlers.get(name)({ name, args, toolContext, ...executionContext, prepared, context, service, repository });
         const target = assertExecutionScope(execution, await context.resolveTarget(command.chatId), prepared);
         const policy = intersectChatPolicies(prepared.policy, target.policy);
-        assertChatToolAllowed(prepared.policy, name, args ?? {}, { currentPolicy: target.policy, approvalGranted: toolContext?.approvalGranted === true,
-          workspaceRoot: prepared.cwd, grants: getChatPermissionGrants(command.chatId) });
+        try {
+          assertChatToolAllowed(prepared.policy, name, args ?? {}, { currentPolicy: target.policy, approvalGranted: toolContext?.approvalGranted === true,
+            workspaceRoot: prepared.cwd, grants: getChatPermissionGrants(command.chatId) });
+        } catch (error) {
+          if (isChatToolDenial(error) || (error instanceof ChatPolicyError && error.reason === 'approval_required')) {
+            return { content: `Error: ${error.message}`, isError: true };
+          }
+          throw error;
+        }
         if (name === 'todo_write' || name === 'propose_mode_switch') return executeConversationTool(name, args, {
           repository, requests, execution, fence, prepared, signal, toolCallId: toolContext?.toolCallId,
           currentPolicy: policy, onChange: chatId => presentation.changed(chatId), onStatus: event => service.notifyExecution(event),

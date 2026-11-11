@@ -13,6 +13,7 @@ import {
   deleteMcpServer,
   listServers,
   listEnabledMcpTools,
+  listEnabledMcpToolsWithHints,
   defaultStdioCwd,
 } from '../../server/mcp/registry.js';
 
@@ -64,8 +65,10 @@ describe('MCP registry', () => {
     }));
     try {
       await reloadMcp();
-      const tools = await listEnabledMcpTools();
+      const { tools, hints } = await listEnabledMcpToolsWithHints();
       assert.ok(tools.some(tool => tool.function.name === 'mcp__context7__echo_message'));
+      assert.equal(hints.mcp__context7__echo_message, 'read');
+      assert.equal(hints.mcp__context7__echo, 'write');
       assert.equal(await callMcpTool('mcp__context7__echo_message', { message: 'x' }), 'called:echo_message');
     } finally {
       await reloadMcp();

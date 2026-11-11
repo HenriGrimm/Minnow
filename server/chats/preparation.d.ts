@@ -13,7 +13,10 @@ export interface ChatPreparationAdapters {
   loadSkill(id: string): Promise<{ id: string; body: string }>;
   composeImpeccable(body: string, userText: string, composer: any): Promise<string>;
   readSettings(): Promise<{ meta: any; tools: any; rules: any }>;
-  listTools(): Promise<TurnToolDefinition[]>;
+  listTools(): Promise<TurnToolDefinition[] | {
+    definitions: TurnToolDefinition[];
+    mcpHints: Record<string, 'read' | 'write' | 'destructive'>;
+  }>;
   loadWorkAgents(): Promise<any>;
   loadSubAgentTypes(): Promise<any>;
   isServerToolAvailable(name: string): Promise<boolean>;

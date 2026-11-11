@@ -43,6 +43,10 @@ export class ChatPolicyError extends ChatContractError {
   }
 }
 
+export function isChatToolDenial(error) {
+  return error instanceof ChatPolicyError && (error.reason === 'tool_denied' || error.reason === 'plan_write_denied');
+}
+
 function invalid(message) {
   throw new ChatPolicyError('invalid_policy', message);
 }

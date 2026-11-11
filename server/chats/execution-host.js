@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { runTurn } from '../runner/run-turn.js';
 import { createInProcessToolDispatch } from '../runner/tool-dispatch.js';
 import { ChatContractError, validateChatCommand } from './contracts.js';
-import { assertChatPolicy, assertChatToolAllowed, classifyChatToolCall } from './policy.js';
+import { assertChatPolicy, assertChatToolAllowed, ChatPolicyError, classifyChatToolCall, isChatToolDenial } from './policy.js';
 import { addChatPermissionGrant, getChatPermissionGrants } from './permission-grants.js';
 import { createChatTranscriptStore } from './transcript-store.js';
 import { createChatRequestService } from './requests.js';
@@ -16,6 +16,7 @@ const digest = value => createHash('sha256').update(JSON.stringify(value)).diges
 export const chatInputMessageId = commandId => commandId.length <= 154 ? `input-${commandId}`
   : `input-${createHash('sha256').update(commandId).digest('hex')}`;
 const errorText = error => error instanceof Error ? error.message : String(error);
+const toolError = error => ({ content: `Error: ${errorText(error)}`, isError: true });
 const crash = (error, failure = {}) => ({ outcome: 'crashed', error: errorText(error), failure });
 const present = (callback, payload) => {
   try { callback?.(payload)?.catch?.(() => {}); } catch { /* Viewers never own execution. */ }
@@ -205,7 +206,7 @@ export function createServerChatExecutionHost({
               presentation: { toolName: name, arguments: args, workspaceRoot: prepared.cwd, action, level: current.permissionLevel } });
             if (!approvedOnce(answer)) {
               const note = denialNote(answer);
-              throw new ChatContractError('policy_denied', note
+              throw new ChatPolicyError('tool_denied', note
                 ? `The user denied "${action.title}" and said: ${note}`
                 : `The user denied "${action.title}". Do not retry or work around it; ask the user how to proceed.`);
             }
@@ -213,6 +214,13 @@ export function createServerChatExecutionHost({
             approvals.set(toolCallId, approvalKey);
             repository.assertFence(chatId, fence);
             return assertChatToolAllowed(policy, name, args, { ...gate, currentPolicy: await livePolicy(), approvalGranted: true });
+          }
+        };
+        const checkToolForDispatch = async (name, args, toolCallId) => {
+          try { return { allowed: await checkTool(name, args, toolCallId) }; }
+          catch (error) {
+            if (!isChatToolDenial(error)) throw error;
+            return { denial: toolError(error) };
           }
         };
         const execute = async (name, rawArgs, ctx) => {
@@ -225,8 +233,8 @@ export function createServerChatExecutionHost({
           if (checkpoint && !CHECKPOINT_COORDINATION_TOOLS.has(name) && detached) {
             return { content: 'Error: Background mutations cannot release a safety checkpoint before completion. Run this command in the foreground.' };
           }
-          const allowed = await checkTool(name, args, ctx.toolCallId);
-          const dispatchContext = { ...ctx, approvalGranted: allowed.permission === 'ask' };
+          const { allowed, denial } = await checkToolForDispatch(name, args, ctx.toolCallId);
+          if (denial) return denial;
           // No intent exists until an adapter can own this exact call. A
           // connected adapter may wait for reconnection once the intent exists.
           if (hostTools.has(name) && typeof executeHostTool !== 'function') {
@@ -235,10 +243,17 @@ export function createServerChatExecutionHost({
             throw error;
           }
           const effect = allowed.policy.toolEffects[name] ?? 'unknown';
-          if (effect === 'read') return dispatchTool(name, args, dispatchContext);
+          if (effect === 'read') {
+            try { return await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask' }); }
+            catch (error) {
+              if (isHostToolNotStartedError(error) && isChatToolDenial(error)) return toolError(error);
+              throw error;
+            }
+          }
           const invoke = async () => {
           // Waiting for a checkout baseline must never preserve a stale grant.
-          await checkTool(name, args, ctx.toolCallId);
+          const { allowed, denial } = await checkToolForDispatch(name, args, ctx.toolCallId);
+          if (denial) return denial;
           const invocationId = `tool-${digest([executionId, ctx.toolCallId])}`;
           let intent;
           try {
@@ -250,13 +265,13 @@ export function createServerChatExecutionHost({
           }
           effectsStarted++;
           try {
-            const result = await dispatchTool(name, args, dispatchContext);
+            const result = await dispatchTool(name, args, { ...ctx, approvalGranted: allowed.permission === 'ask' });
             // Persist the original result before any runner/UI decoration.
             repository.settleToolInvocation(invocationId, result, { fence });
             return result;
           } catch (error) {
             if (isHostToolNotStartedError(error)) {
-              const result = { content: `Error: ${errorText(error)}` };
+              const result = toolError(error);
               try {
                 repository.settleToolInvocation(invocationId, result, { fence });
                 effectsStarted--;

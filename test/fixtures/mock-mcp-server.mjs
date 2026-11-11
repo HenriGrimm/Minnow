@@ -8,7 +8,7 @@ import process from 'node:process';
 
 const TOOLS = [
   { name: 'echo', description: 'Echo fixture' },
-  { name: 'echo_message', description: 'Snake_case fixture' },
+  { name: 'echo_message', description: 'Snake_case fixture', annotations: { readOnlyHint: true } },
   { name: 'echo-dashed', description: 'Dashed fixture' },
 ].map((tool) => ({
   ...tool,

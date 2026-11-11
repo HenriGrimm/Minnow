@@ -154,12 +154,14 @@ describe('turn clamps', () => {
     assert.equal(decideIn('plans', 'make_directory', { path: 'documentation/plans/issues' }), 'allow');
     assert.equal(decideIn('plans', 'issue_add', { title: 'x' }), 'allow');
     assert.equal(decideIn('plans', 'execute_command', { command: 'git status --short' }), 'allow');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'node --version; npm --version; git --version' }), 'allow');
   });
 
   test('/plan refuses code edits, file-writing commands, git writes and issue deletes', () => {
     assert.equal(decideIn('plans', 'save_file', { path: 'src/a.ts', content: '' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'echo x > src/a.ts' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'git commit -m x' }), 'deny');
+    assert.equal(decideIn('plans', 'execute_command', { command: 'git --version; git commit -m x' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'npm test' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'git branch new-branch' }), 'deny');
     assert.equal(decideIn('plans', 'execute_command', { command: 'echo "$(touch src/a.ts)"' }), 'deny');

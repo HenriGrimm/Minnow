@@ -88,12 +88,13 @@ export function createChatPreparationAdapters(overrides = {}) {
     },
     async listTools() {
       const { BUILT_IN_TOOLS } = await import('../tools/builtin-catalog.js');
-      const { listEnabledMcpTools } = await import('../mcp/registry.js');
+      const { listEnabledMcpToolsWithHints } = await import('../mcp/registry.js');
       const { getPluginToolDefinitions } = await import('../tools/loader.js');
-      const [mcp, plugins] = await Promise.all([listEnabledMcpTools(), getPluginToolDefinitions()]);
-      return projectAgentConversationTools([...BUILT_IN_TOOLS.map(row => row.definition), ...mcp, ...plugins], {
+      const [mcp, plugins] = await Promise.all([listEnabledMcpToolsWithHints(), getPluginToolDefinitions()]);
+      const definitions = projectAgentConversationTools([...BUILT_IN_TOOLS.map(row => row.definition), ...mcp.tools, ...plugins], {
         creationEnabled: getAgentConversationsFeature().creationEnabled, includeRecoveryTools: true,
       });
+      return { definitions, mcpHints: mcp.hints };
     },
     async loadWorkAgents() {
       const { loadWorkAgentRegistry } = await import('../work-agents/registry.js');
@@ -236,10 +237,11 @@ function standingChatLinks(links) {
 
 async function policySnapshot(chat, scope, options = {}) {
   const adapters = createChatPreparationAdapters(options.adapters);
-  const [composer, settings, definitions, registry, subAgents] = await Promise.all([
+  const [composer, settings, catalog, registry, subAgents] = await Promise.all([
     adapters.loadComposer(), adapters.readSettings(), adapters.listTools(), adapters.loadWorkAgents(),
     adapters.loadSubAgentTypes(),
   ]);
+  const { definitions, mcpHints } = Array.isArray(catalog) ? { definitions: catalog } : catalog;
   const agents = registry.agents ?? registry;
   const typeId = typeof chat.agentTypeId === 'string' ? chat.agentTypeId : null;
   const type = typeId ? subAgents.types?.[typeId] : null;
@@ -262,7 +264,7 @@ async function policySnapshot(chat, scope, options = {}) {
   const permissions = {};
   for (const name of byName.keys()) {
     permissions[name] = typeAvailable ? 'full' : 'off';
-    effects[name] ??= 'unknown';
+    effects[name] ??= name.startsWith('mcp__') && mcpHints?.[name] === 'read' ? 'read' : 'unknown';
     if (mode.modeId === 'plan' && effects[name] === 'unknown' && /^(?:mcp__|plugin__)/.test(name)) permissions[name] = 'off';
   }
   const toolSecurity = settings.meta?.toolSecurity ?? {};
