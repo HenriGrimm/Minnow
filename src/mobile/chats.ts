@@ -3,7 +3,8 @@
 import { getChatItemDotContext, resolveChatItemDotState, subscribeChatInputPending } from '../ui/chat-item-dot';
 import { subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { isChatPinned, isBoardOwnedChat } from '../state/chat-groups';
-import { getSidebarListedChatsForWorkspace, formatDraftChatSidebarName } from '../state/session-workspace-scope';
+import { projectChatRelationships } from '../state/chat-relationships';
+import { formatDraftChatSidebarName, getChatsForWorkspace, isChatArchived, isSidebarListedChat } from '../state/session-workspace-scope';
 import { getChatSummaryPreview, isHiddenFromMainSidebar, sessionState } from '../state/sessions';
 import { getWorkspaceLabel, getWorkspacePath, subscribeWorkspace } from '../state/workspace';
 import { isChatsWorkspacePath } from '../lib/chats-workspace';
@@ -12,7 +13,7 @@ import { PLACEHOLDER_CHAT_NAME } from '../constants';
 import { formatCodeChangeTotalsText, hasCodeChangeTotals } from '../usage/code-change-ledger';
 import type { Chat } from '../types';
 import { chatPreview } from './chat-preview';
-import { attachPullToRefresh, screenHeader, searchField } from './chrome';
+import { attachPullToRefresh, screenHeader, searchField, segmented } from './chrome';
 import { el, emptyState, icon, iconButton, shortTime } from './dom';
 import { modeGlyph } from './modes';
 import type { MobileScreen } from './nav';
@@ -33,12 +34,20 @@ function chatTitle(chat: Chat): string {
 }
 
 
-export function listedMobileChats(): Chat[] {
+type ThreadFilter = 'active' | 'archive';
+
+export function listedMobileChats(filter: ThreadFilter = 'active'): Chat[] {
   if (!sessionState) return [];
-  return getSidebarListedChatsForWorkspace(getWorkspacePath(), sessionState)
+  const candidates = getChatsForWorkspace(getWorkspacePath(), sessionState)
     .filter((chat) => !isHiddenFromMainSidebar(chat))
     .filter((chat) => !isBoardOwnedChat(chat))
     .filter((chat) => !isChatsWorkspacePath(chat.workspacePath ?? ''));
+  const family = projectChatRelationships(candidates);
+  return candidates.filter((chat) => {
+    if (!isSidebarListedChat(chat)) return false;
+    const archived = isChatArchived(chat) || family.ancestors(chat.id).some(isChatArchived);
+    return archived === (filter === 'archive');
+  });
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -87,6 +96,7 @@ function buildRow(chat: Chat, deps: ChatsScreenDeps, dot: string): HTMLElement {
 
 
 export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
+  let filter: ThreadFilter = 'active';
   let query = '';
   let frame = 0;
   let visible = true;
@@ -117,6 +127,14 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
   const header = screenHeader({ title: 'Threads', large: true, leading: menu, actions: [searchToggle, notifications] });
   const list = el('div', { className: 'm-list', attrs: { role: 'list' } });
   const body = el('div', { className: 'm-screen__body' }, list);
+  const filters = segmented<ThreadFilter>('Thread filter', [
+    { value: 'active', label: 'Active' },
+    { value: 'archive', label: 'Archive' },
+  ], filter, (value) => {
+    filter = value;
+    body.scrollTop = 0;
+    render();
+  });
   const modelCard = createMobileModelCard(deps.openModels);
   const prompt = el('textarea', {
     attrs: { rows: 1, placeholder: 'Start a thread…', 'aria-label': 'Start a thread', spellcheck: 'false' },
@@ -156,6 +174,7 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
     header.el,
     search.el,
     modelCard.el,
+    filters.el,
     body,
     form,
   );
@@ -187,7 +206,8 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
     frame = 0;
     const label = getWorkspaceLabel() || 'Minnow';
     header.setSubtitle(getWorkspaceLabel());
-    const all = listedMobileChats();
+    const all = listedMobileChats(filter);
+    list.setAttribute('aria-label', filter === 'archive' ? 'Archived threads' : 'Active threads');
     const chats = query
       ? all.filter((chat) => `${chatTitle(chat)} ${chatPreview(chat, getChatSummaryPreview(chat.id))}`.toLowerCase().includes(query))
       : all;
@@ -209,15 +229,13 @@ export function createChatsScreen(deps: ChatsScreenDeps): MobileScreen {
         el('span', { text: title }), el('span', { className: 'm-mono', text: String(rows.length) })), ...rows);
     }
     if (!nodes.length) {
-      nodes.push(
-        query
-          ? emptyState({ glyph: 'fi-rr-search', title: 'No matching threads' })
-          : emptyState({
-              glyph: 'fi-rr-comment',
-              title: 'No threads yet',
-              body: `Start a conversation in ${label}.`,
-            }),
-      );
+      if (query) nodes.push(emptyState({ glyph: 'fi-rr-search', title: 'No matching threads' }));
+      else if (filter === 'archive') nodes.push(emptyState({ glyph: 'fi-rr-box', title: 'No archived threads' }));
+      else nodes.push(emptyState({
+        glyph: 'fi-rr-comment',
+        title: 'No active threads',
+        body: `Start a conversation in ${label}.`,
+      }));
     }
     list.replaceChildren(...nodes);
   }

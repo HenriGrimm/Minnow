@@ -390,6 +390,60 @@ test('chat previews strip markdown and fall back to the summary preview', async 
   assert.equal(chatPreview(chat([], { historyLoaded: false, messageCount: 4 }), '`done` now'), 'done now');
 });
 
+test('phone Threads opens on Active and can browse and search Archive', async (t) => {
+  const { createChatsScreen, listedMobileChats } = await import('../../src/mobile/chats.ts');
+  const { defaultSessionState } = await import('../../src/config/defaults.ts');
+  const { createEmptyChatObject, setSessionStateForTests } = await import('../../src/state/sessions.ts');
+  const { resetWorkspaceStateForTests, setWorkspaceFromServer } = await import('../../src/state/workspace.ts');
+  const workspace = '/threads-workspace';
+  const active = { ...createEmptyChatObject('', workspace), id: 'active', name: 'Active thread', historyLoaded: false, messageCount: 1 };
+  const archived = { ...createEmptyChatObject('', workspace), id: 'archived', name: 'Archived thread', archivedAt: 100 };
+  const child = createEmptyChatObject('', workspace);
+  child.name = 'Delegated task';
+  child.agentConversation = {
+    version: 1, childChatId: child.id, parentChatId: archived.id, rootChatId: archived.id,
+    journalOwnerId: archived.id, initialRunId: 'child-task', origin: 'delegated', createdAt: 1,
+    capabilities: { canSend: true, canStop: true, canChooseModel: true },
+  };
+  const otherWorkspace = { ...archived, id: 'elsewhere', workspacePath: '/different' };
+  const boardChat = { ...archived, id: 'board', boardGroupId: 'board' };
+  setWorkspaceFromServer({ path: workspace, label: 'Threads workspace', isDefault: false });
+  setSessionStateForTests({ ...defaultSessionState(), activeId: active.id, chats: [active, archived, child, otherWorkspace, boardChat] });
+  t.mock.method(globalThis, 'fetch', async () => Response.json([]));
+  const opened: string[] = [];
+  const screen = createChatsScreen({
+    openChat: (id) => opened.push(id), newChat: async () => false,
+    openMenu() {}, openModels() {}, openAlertsSettings() {},
+  });
+  try {
+    const rows = () => [...screen.el.querySelectorAll<HTMLButtonElement>('[data-chat-id]')];
+    const ids = () => rows().map(row => row.dataset.chatId).sort();
+    const [activeButton, archiveButton] = screen.el.querySelectorAll<HTMLButtonElement>('.m-segment');
+    assert.equal(activeButton.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(ids(), [active.id]);
+    assert.deepEqual(listedMobileChats().map(chat => chat.id), [active.id], 'drawer uses active threads');
+
+    archiveButton.click();
+    assert.equal(archiveButton.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(ids(), [archived.id, child.id].sort());
+    rows().find(row => row.dataset.chatId === archived.id)!.click();
+    assert.deepEqual(opened, [archived.id]);
+
+    screen.el.querySelector<HTMLButtonElement>('button[aria-label="Search threads"]')!.click();
+    const search = screen.el.querySelector<HTMLInputElement>('input[type="search"]')!;
+    search.value = 'Active thread';
+    search.dispatchEvent(new Event('input'));
+    assert.deepEqual(ids(), []);
+    assert.equal(screen.el.querySelector('.m-empty__title')?.textContent, 'No matching threads');
+    activeButton.click();
+    assert.deepEqual(ids(), [active.id]);
+  } finally {
+    screen.dispose?.();
+    setSessionStateForTests(null);
+    resetWorkspaceStateForTests();
+  }
+});
+
 test('diffs fold long unchanged runs and keep line numbers right', async () => {
   const { renderDiff } = await import('../../src/mobile/diff.ts');
   const lines = [

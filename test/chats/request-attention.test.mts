@@ -130,7 +130,8 @@ for (const surface of ['Code', 'mobile'] as const) {
       dispose = startManagedChatRequests();
       await idle();
       const approval = request(owner.id, 'docked-approval', 'approval');
-      records.set(owner.id, [approval]);
+      const receipt: ChatRequest = { ...request(owner.id, 'older-answer'), state: 'answered', settledAt: 2, answerCommandId: 'saved-answer' };
+      records.set(owner.id, [approval, receipt]);
       owner.agentRequestSummary = [{ requestId: approval.requestId, kind: 'approval' }];
       notifyManagedChatMetadata(owner.id);
       await until(() => Boolean(panel(approval.requestId)));
@@ -138,6 +139,7 @@ for (const surface of ['Code', 'mobile'] as const) {
       assert.equal(dock.hidden, false);
       assert.ok(dock.classList.contains('managed-chat-requests--docked'));
       assert.ok(dock.contains(panel(approval.requestId)));
+      assert.equal(panel(receipt.requestId).hidden, true);
       syncManagedChatRequests(other, area);
       assert.ok(!dock.isConnected);
       syncManagedChatRequests(owner, area);
@@ -145,6 +147,7 @@ for (const surface of ['Code', 'mobile'] as const) {
       clickText(dock, 'Allow');
       await until(() => area.contains(dock));
       assert.equal(panel(approval.requestId).querySelector('form')!.hidden, true);
+      assert.equal(panel(receipt.requestId).hidden, false);
       assert.equal(posts[0]?.chatId, owner.id);
     } finally {
       setSharedChatHost(null);

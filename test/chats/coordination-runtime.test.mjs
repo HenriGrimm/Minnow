@@ -194,6 +194,33 @@ test('managed native Manual approval uses the same durable approval without a du
   assert.equal(f.repository.getCommand(accepted.body.receipt.commandId).state, 'settled');
 });
 
+test('an existing ordinary chat uses Full access for shell commands after its first Auto turn', { timeout: 20000 }, async t => {
+  const commands = [];
+  const f = await environment.fixture(t, {
+    toolNames: ['execute_command'],
+    install: runtime => runtime.setToolHandler('execute_command', ({ args }) => {
+      commands.push(args.command);
+      return { content: 'Simulated command result' };
+    }),
+    respond: body => lastUser(body) === 'Push with Full access' && !body.messages.some(row => row.role === 'tool')
+      ? [tool('execute_command', { command: 'git push origin main' }, 'test-push')]
+      : 'Done.',
+  });
+  const send = (text, clientRequestId) => f.request('/api/chats/coordinator/commands', { action: 'send', text, clientRequestId });
+  const first = await send('Initialize in Auto', 'auto-first');
+  assert.equal(first.status, 202);
+  await f.runtime.service.idle();
+  assert.equal(f.repository.getLatestProfile('coordinator').snapshot.policy.permissionLevel, 'auto');
+
+  f.settings.meta.toolSecurity.permissionLevel = 'full';
+  const full = await send('Push with Full access', 'full-second');
+  assert.equal(full.status, 202);
+  await f.runtime.service.idle();
+  assert.equal(f.repository.getCommand(full.body.receipt.commandId).state, 'settled');
+  assert.deepEqual(f.repository.listRequests('coordinator'), []);
+  assert.deepEqual(commands, ['git push origin main']);
+});
+
 test('raw approval deadline expires its live callback and a late answer cannot execute the abandoned operation', { timeout: 20000 }, async t => {
   const f = await environment.fixture(t, { install,
     agentMiddleware: options => agentTransport.createAgentChatToolsMiddleware({ ...options, approvalTimeoutMs: 10 }),

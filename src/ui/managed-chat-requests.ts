@@ -308,6 +308,9 @@ function syncHostVisibility(view: ChatRequestsView): void {
   const slot = !host.hidden && (hasControls || hasPendingApproval) ? composerApprovalSlot(mount) : null;
   const active = host.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   host.classList.toggle('managed-chat-requests--docked', Boolean(slot));
+  for (const element of view.list.querySelectorAll<HTMLElement>('.managed-chat-request[data-state]:not([data-state="pending"])')) {
+    element.hidden = Boolean(slot);
+  }
   if (slot) {
     if (host.nextElementSibling !== slot) slot.before(host);
     markPreviewOccluder(host, 'panel');

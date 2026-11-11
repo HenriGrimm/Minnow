@@ -182,6 +182,13 @@ export function createChatContext({ repository, resolvePolicyInput, validateRoot
     const currentPolicy = createChatPolicy(await resolvePolicyInput(chat, scope, root.registry));
     const checkoutIdentity = await readChatCheckoutIdentity(canonical);
     let captured = profile?.snapshot?.policy;
+    // An ordinary chat's first profile preserves its role and tools. The
+    // global permission setting is sampled at each new turn admission.
+    if (captured && !chat.agentConversation && !chat.forkOrigin) {
+      captured = { ...captured, permissionLevel: currentPolicy.permissionLevel,
+        filesystemAccess: currentPolicy.filesystemAccess,
+        fileWriteScope: ['workspace', 'full'].includes(captured.fileWriteScope) ? currentPolicy.fileWriteScope : captured.fileWriteScope };
+    }
     const prepared = chat.workspacePreparation;
     if (captured && prepared?.status === 'ready' && prepared.binding?.checkoutIdentity === checkoutIdentity &&
         prepared.intent?.projectId === scope.projectId && key(prepared.binding.path) === key(canonical) &&

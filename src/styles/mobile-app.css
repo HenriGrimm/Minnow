@@ -2210,7 +2210,7 @@ html.mn-mobile-app :is(.tool-approval-host--global, .question-host--global) {
 }
 .m-graphite-threads .m-header__subtitle,
 .m-thread__meta { font: 400 11px var(--font-mono); }
-.m-graphite-threads > .m-search { flex: none; }
+.m-graphite-threads > :is(.m-search, .m-segments) { flex: none; }
 .m-app.is-keyboard-open .m-graphite-threads > .m-model-summary { display: none; }
 .m-phone-alert-count {
   position: absolute;
