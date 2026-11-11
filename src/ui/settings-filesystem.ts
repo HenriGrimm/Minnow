@@ -19,7 +19,8 @@ const RULES = [
   'Reads inside your project never ask.',
   'Auto approves routine edits and commands, and asks before anything risky, remote, or outside the project.',
   '“Allow for this chat” remembers a command, folder, site, MCP server or plugin until the chat ends.',
-  'Full access never asks. Agents still cannot touch Minnow’s encryption key or stored secrets.',
+  'Full access skips Minnow tool approvals for new turns. Running server turns and delegated agents keep their starting permission limit.',
+  'Minnow’s encryption key and stored secrets stay protected at every level.',
   '/ask and /plan narrow a single turn (read-only, or plan files only) whatever the level.',
 ];
 
@@ -41,7 +42,7 @@ export async function renderPermissionSettings(
   section.className = 'settings-permissions';
   section.dataset.settingsSearchKey = options.searchKey ?? 'general.permissions';
 
-  const current: PermissionLevel = (await loadToolSecurityMeta()).permissionLevel;
+  const current: PermissionLevel = (await loadToolSecurityMeta({ refresh: true })).permissionLevel;
   const list = buildPermissionLevelList(current, (level) => {
     void choosePermissionLevel(level);
   });

@@ -60,8 +60,7 @@ export async function confirmFullAccess(): Promise<boolean> {
 
 /** Change the level from any surface (pill, Settings, Shift+Tab, approval card). */
 export async function choosePermissionLevel(level: PermissionLevel): Promise<boolean> {
-  if (level === getPermissionLevelCached()) return true;
-  if (level === 'full' && !(await confirmFullAccess())) return false;
+  if (level === 'full' && level !== getPermissionLevelCached() && !(await confirmFullAccess())) return false;
   try {
     await setPermissionLevel(level);
     setStatus('ok', `Permissions: ${PERMISSION_LEVEL_META[level].label}`);

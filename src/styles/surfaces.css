@@ -657,6 +657,7 @@ html:not(.mn-narrow) .mn-os-code-layer:has(.graphite-surfaces) > #codeStatusBar 
 
 .graphite-browser-host .preview-header .icon-btn:is(:hover, [aria-pressed="true"]) {
   background: var(--mn-graphite-hover, var(--mn-surface-elevated));
+  color: var(--mn-fg);
 }
 
 .graphite-browser-host .preview-url {

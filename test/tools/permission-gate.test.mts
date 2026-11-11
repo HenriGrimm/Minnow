@@ -17,9 +17,13 @@ import {
   maybeBlockToolForUserApproval,
 } from '../../src/tools/permission-gate.ts';
 import { defaultToolConfig, setToolConfigForTests } from '../../src/tools/config.ts';
+import { setStorageModeForTests } from '../../src/config/storage-mode.ts';
 import {
   applyRemoteToolSecurityMeta,
+  getPermissionLevelCached,
+  loadToolSecurityMeta,
   resetToolSecurityMetaCache,
+  saveToolSecurityMeta,
 } from '../../src/config/tool-security-meta.ts';
 import {
   createEmptyChatObject,
@@ -64,6 +68,22 @@ describe('classifyForGate', () => {
 });
 
 describe('maybeBlockToolForUserApproval', () => {
+  test('uses the live permission level after another device changes it', async (t) => {
+    let permissionLevel = 'full';
+    const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json({ toolSecurity: { permissionLevel } }));
+    setStorageModeForTests('server');
+    try {
+      setLevel('manual');
+      const check = () => maybeBlockToolForUserApproval('save_file', { path: 'notes.md', content: 'x' }, { workspaceRoot: WS });
+      assert.equal(await check(), null);
+      permissionLevel = 'manual';
+      assert.match((await check())?.content ?? '', /needs approval/);
+      assert.equal(fetch.mock.callCount(), 2);
+    } finally {
+      setStorageModeForTests(null);
+    }
+  });
+
   test('legacy per-tool Off cannot override global Full access', async () => {
     const config = defaultToolConfig();
     Object.assign(config, { enabled: { save_file: false }, permissions: { default: { save_file: 'off' } } });
@@ -164,6 +184,29 @@ describe('maybeBlockToolForUserApproval', () => {
     );
     assert.match(result?.content ?? '', /needs approval/);
   });
+});
+
+test('permission writes publish only acknowledged values and ignore older reads', async (t) => {
+  setLevel('manual');
+  const pendingRead = Promise.withResolvers<Response>();
+  const pendingWrite = Promise.withResolvers<Response>();
+  let rejectWrite = true;
+  t.mock.method(globalThis, 'fetch', async (_url: string, options?: RequestInit) => {
+    if (options?.method !== 'PUT') return pendingRead.promise;
+    assert.deepEqual(JSON.parse(String(options.body)), { toolSecurity: { permissionLevel: 'full' } });
+    return rejectWrite ? new Response(null, { status: 403 }) : pendingWrite.promise;
+  });
+  await assert.rejects(saveToolSecurityMeta({ permissionLevel: 'full' }), /Could not save/);
+  assert.equal(getPermissionLevelCached(), 'manual');
+
+  rejectWrite = false;
+  const read = loadToolSecurityMeta({ refresh: true });
+  const write = saveToolSecurityMeta({ permissionLevel: 'full' });
+  assert.equal(getPermissionLevelCached(), 'manual');
+  pendingWrite.resolve(Response.json({ ok: true, data: { toolSecurity: { permissionLevel: 'full' } } }));
+  await write;
+  pendingRead.resolve(Response.json({ toolSecurity: { permissionLevel: 'manual' } }));
+  assert.equal((await read).permissionLevel, 'full');
 });
 
 describe('blockAfkInteractionAttempt', () => {

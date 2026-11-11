@@ -12,10 +12,12 @@ import { getActiveChatMountElement } from './chat-mount';
 import { validateAskQuestionArgs } from '../tools/ask-question-types';
 import { focusAskQuestionModalForChat, isAskQuestionModalOpenForChat, showQuestionCardsModal, syncAskQuestionModalOnDisplayContextChange } from './question-cards-modal';
 import { syncChatItemDotsInDom } from './chat-item-dot';
+import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
-interface ChatRequestsView { chatId: string; host: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
+interface ChatRequestsView { chatId: string; host: HTMLElement; mount?: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
 const views = new Map<string, ChatRequestsView>();
+const mountOwners = new WeakMap<HTMLElement, string>();
 let subscriptions: (() => void)[] | undefined;
 
 interface PresentedAction { detail: string; reasons: string[]; risk: 'low' | 'elevated' | 'high'; grant: { key: string; label: string } | null }
@@ -104,7 +106,7 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
     const deny = () => { const note = feedback.value.trim(); void submit(view, panel, note ? { decision: 'deny', feedback: note } : { decision: 'deny' }); };
     feedback.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); deny(); } });
     const actions = document.createElement('div'); actions.className = 'managed-chat-request__actions';
-    const graphite = Boolean(view.host.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader:not([hidden])'));
+    const graphite = Boolean(view.mount?.closest('#workspaceSplit')?.querySelector('#graphiteThreadHeader:not([hidden])'));
     const allow = button(graphite ? 'Allow once' : 'Allow', () => void submit(view, panel, { decision: 'allow_once' })); allow.classList.add('managed-chat-request__primary');
     actions.append(allow);
     if (action?.grant && action.risk !== 'high') {
@@ -180,7 +182,7 @@ function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[])
 }
 
 async function refreshView(view: ChatRequestsView, force = false): Promise<void> {
-  if (view.loading && !force) return;
+  if (view.loading && !view.loading.signal.aborted && !force) return;
   view.loading?.abort(); const controller = new AbortController(); view.loading = controller;
   try {
     const page = await readManagedChatRequestPage(view.chatId, { cursor: view.cursor, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
@@ -195,6 +197,7 @@ async function refreshView(view: ChatRequestsView, force = false): Promise<void>
       for (const request of requests) if (request.state === 'pending') summary.set(request.requestId, { requestId: request.requestId, kind: request.kind });
       applySharedChatAttention(view.chatId, { agentRequests: requests, agentRequestSummary: [...summary.values()] });
       view.summaryKey = JSON.stringify(chat.agentRequestSummary); syncChatItemDotsInDom();
+      syncHostVisibility(view);
     }
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -286,18 +289,47 @@ function syncControls(chat: Chat, view: ChatRequestsView): void {
   controls.hidden = !controls.children.length;
 }
 
+function composerApprovalSlot(mount: HTMLElement): HTMLElement | null {
+  const shared = mount.closest('.shared-chat-host');
+  if (shared) return shared.querySelector(':scope > #toolApprovalHost');
+  if (mount.id === 'chatArea') return mount.closest('#mainColumn')?.querySelector(':scope > #toolApprovalHost') ?? null;
+  if (mount.id === 'chatAppMessageCol') return mount.closest('#chatView')?.querySelector('#chatAppToolApprovalHost') ?? null;
+  return null;
+}
+
 function syncHostVisibility(view: ChatRequestsView): void {
-  view.host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && Boolean(view.host.querySelector<HTMLElement>('.managed-chat-scopes')?.hidden);
+  const { host, mount } = view;
+  if (!mount || !mount.isConnected || mountOwners.get(mount) !== view.chatId) return;
+  const scopes = view.host.querySelector<HTMLElement>('.managed-chat-scopes');
+  const hasControls = scopes?.hidden === false;
+  host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && !hasControls;
+  const hasPendingApproval = findChatById(view.chatId)?.agentRequestSummary?.some(request => request.kind === 'approval')
+    || view.list.querySelector('.managed-chat-request--approval[data-state="pending"]');
+  const slot = !host.hidden && (hasControls || hasPendingApproval) ? composerApprovalSlot(mount) : null;
+  const active = host.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
+  host.classList.toggle('managed-chat-requests--docked', Boolean(slot));
+  if (slot) {
+    if (host.nextElementSibling !== slot) slot.before(host);
+    markPreviewOccluder(host, 'panel');
+  } else {
+    unmarkPreviewOccluder(host);
+    const context = mount.querySelector(':scope > .agent-chat-context');
+    if (context) { if (context.nextElementSibling !== host) context.after(host); }
+    else if (mount.firstElementChild !== host) mount.prepend(host);
+  }
+  if (active?.isConnected && document.activeElement === document.body) active.focus({ preventScroll: true });
 }
 
 /** Mount alongside the common transcript; forms retain draft/focus across history refreshes. */
 export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
+  mountOwners.set(mount, chat.id);
+  const inline = mount.querySelector<HTMLElement>(':scope > .managed-chat-requests');
+  if (inline && inline.dataset.chatId !== chat.id) inline.remove();
+  const docked = composerApprovalSlot(mount)?.previousElementSibling;
+  if (docked instanceof HTMLElement && docked.classList.contains('managed-chat-requests--docked') && docked.dataset.chatId !== chat.id) docked.remove();
   const needed = chat.chatCommandVersion === 1 || chat.agentRequestSummary !== undefined || Boolean(chat.agentRequests?.length) || descendants(chat).some(child => hasUnsettledAgentWork(child));
-  if (!needed) { mount.querySelector(':scope > .managed-chat-requests')?.remove(); return; }
-  const view = getView(chat.id); syncControls(chat, view);
-  const context = mount.querySelector(':scope > .agent-chat-context');
-  if (context) { if (context.nextElementSibling !== view.host) context.after(view.host); }
-  else if (mount.firstElementChild !== view.host) mount.prepend(view.host);
+  if (!needed) { inline?.remove(); return; }
+  const view = getView(chat.id); view.mount = mount; syncControls(chat, view);
   const summaryKey = JSON.stringify(chat.agentRequestSummary ?? []), changed = summaryKey !== view.summaryKey;
   const active = document.activeElement as HTMLElement | null;
   if (chat.agentRequests && !view.loaded) applyRequests(view, chat.agentRequests.slice(0, 40));

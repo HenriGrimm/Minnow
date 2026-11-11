@@ -42,6 +42,8 @@ let metaLoaded = false;
 
 /** Deduplicate overlapping loadToolSecurityMeta calls. */
 let loadPromise: Promise<ToolSecurityMeta> | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+let revision = 0;
 
 const listeners = new Set<(meta: ToolSecurityMeta) => void>();
 
@@ -70,57 +72,47 @@ export async function loadToolSecurityMeta(options: { refresh?: boolean } = {}):
   if (cached && !options.refresh) return cached;
   if (loadPromise) return loadPromise;
 
+  const loadRevision = revision;
   loadPromise = (async (): Promise<ToolSecurityMeta> => {
     try {
       const res = await fetch('/api/config/meta', { cache: 'no-store' });
-      if (!res.ok) {
-        cached = options.refresh
-          ? { ...(cached ?? DEFAULT_TOOL_SECURITY), permissionLevel: 'manual' }
-          : { ...DEFAULT_TOOL_SECURITY };
-        return cached;
-      }
+      if (!res.ok) throw new Error('Could not load permission settings');
       const meta = (await res.json()) as { toolSecurity?: unknown };
-      cached = normalizeToolSecurityMeta(meta.toolSecurity);
-      return cached;
+      if (revision === loadRevision) publishToolSecurityMeta(meta.toolSecurity);
     } catch {
-      cached = options.refresh
-        ? { ...(cached ?? DEFAULT_TOOL_SECURITY), permissionLevel: 'manual' }
-        : { ...DEFAULT_TOOL_SECURITY };
-      return cached;
+      if (revision === loadRevision) {
+        cached = options.refresh
+          ? { ...(cached ?? DEFAULT_TOOL_SECURITY), permissionLevel: 'manual', filesystemAccess: 'workspace' }
+          : { ...DEFAULT_TOOL_SECURITY };
+      }
     } finally {
       metaLoaded = true;
       loadPromise = null;
     }
+    return getToolSecurityMetaCached();
   })();
 
   return loadPromise;
 }
 
 /** Persist tool security via PUT /api/config/meta (partial merge). */
-export async function saveToolSecurityMeta(
+export function saveToolSecurityMeta(
   patch: Partial<Omit<ToolSecurityMeta, 'filesystemAccess'>>,
 ): Promise<void> {
-  const current = await loadToolSecurityMeta();
-  const permissionLevel = normalizePermissionLevel(patch.permissionLevel ?? current.permissionLevel);
-  const next: ToolSecurityMeta = {
-    permissionLevel,
-    filesystemAccess: permissionLevel === 'full' ? 'full' : 'workspace',
-    shellSandbox: patch.shellSandbox ?? current.shellSandbox,
-    allowUnsandboxedShell:
-      patch.allowUnsandboxedShell !== undefined
-        ? patch.allowUnsandboxedShell
-        : current.allowUnsandboxedShell,
-  };
-  cached = next;
-  for (const fn of listeners) {
-    try { fn(next); } catch { /* ignore listener errors */ }
-  }
-  const { filesystemAccess: _derived, ...persisted } = next;
-  await fetch('/api/config/meta', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ toolSecurity: persisted }),
+  const body = JSON.stringify({ toolSecurity: patch });
+  const save = saveQueue.then(async () => {
+    const res = await fetch('/api/config/meta', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!res.ok) throw new Error('Could not save permission settings');
+    const receipt = (await res.json()) as { ok?: boolean; data?: { toolSecurity?: unknown } };
+    if (!receipt.ok || !receipt.data?.toolSecurity) throw new Error('Missing permission settings acknowledgement');
+    applyRemoteToolSecurityMeta(receipt.data.toolSecurity);
   });
+  saveQueue = save.catch(() => undefined);
+  return save;
 }
 
 /** The system-wide permission level (cached; call loadToolSecurityMeta during init). */
@@ -141,10 +133,19 @@ export function onToolSecurityMetaChange(fn: (meta: ToolSecurityMeta) => void): 
 
 /** Apply a value pushed from another window/device without re-saving it. */
 export function applyRemoteToolSecurityMeta(raw: unknown): void {
-  cached = normalizeToolSecurityMeta(raw);
+  revision++;
+  publishToolSecurityMeta(raw);
+}
+
+function publishToolSecurityMeta(raw: unknown): void {
+  const next = normalizeToolSecurityMeta(raw);
+  const previous = cached;
+  cached = next;
   metaLoaded = true;
+  if (previous?.permissionLevel === next.permissionLevel && previous.shellSandbox === next.shellSandbox
+    && previous.allowUnsandboxedShell === next.allowUnsandboxedShell) return;
   for (const fn of listeners) {
-    try { fn(cached); } catch { /* ignore listener errors */ }
+    try { fn(next); } catch { /* ignore listener errors */ }
   }
 }
 
@@ -163,5 +164,7 @@ export function resetToolSecurityMetaCache(): void {
   cached = null;
   metaLoaded = false;
   loadPromise = null;
+  saveQueue = Promise.resolve();
+  revision++;
   listeners.clear();
 }

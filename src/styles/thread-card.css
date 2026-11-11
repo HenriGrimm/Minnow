@@ -345,7 +345,7 @@
   max-width: var(--chat-reading-width);
 }
 
-#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending'] {
+#workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request--approval[data-state='pending'] {
   margin-block: 6px;
   padding: 14px 16px;
   border: 1px solid var(--mn-warning-border);
@@ -353,13 +353,13 @@
   background: var(--mn-warning-soft);
 }
 
-#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending'][data-risk='high'] {
+#workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request--approval[data-state='pending'][data-risk='high'] {
   border-color: var(--mn-danger-border);
   background: var(--mn-danger-soft);
 }
 
-#workspaceSplit #chatArea .managed-chat-request--approval[data-state='pending']::before { display: none; }
-#workspaceSplit #chatArea .managed-chat-request__detail { background: var(--mn-graphite-sheet, var(--mn-surface-0)); }
+#workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request--approval[data-state='pending']::before { display: none; }
+#workspaceSplit :is(#chatArea, .managed-chat-requests--docked) .managed-chat-request__detail { background: var(--mn-graphite-sheet, var(--mn-surface-0)); }
 
 #workspaceSplit:has(#graphiteThreadHeader:not([hidden])) :is(#chatArea, .graphite-chat-panel__transcript).chat-thread > .msg.user {
   align-items: flex-end;

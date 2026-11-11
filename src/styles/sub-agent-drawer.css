@@ -173,6 +173,20 @@
 .agent-chat-context__model-hint { margin: 5px 0 0; font-size: 11px; line-height: 1.5; }
 .agent-chat-context__controls:empty { display: none; }
 .managed-chat-requests { align-self: center; width: 100%; max-width: min(var(--chat-msg-max), 100%); margin-bottom: 12px; font-family: var(--font-ui); font-size: 12px; color: var(--mn-fg); }
+.managed-chat-requests--docked {
+  flex: none;
+  box-sizing: border-box;
+  width: min(var(--chat-composer-max, 48rem), calc(100% - 32px));
+  max-width: none;
+  max-height: min(420px, calc(var(--mn-viewport-height, 100dvh) * .44));
+  margin: 0 auto 8px;
+  padding: 8px 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--mn-border-strong);
+  border-radius: 12px;
+  background: var(--mn-surface-elevated);
+}
 .managed-chat-requests:has(.managed-chat-scopes:empty):has(.managed-chat-requests__list:empty):has(.managed-chat-requests__notice[hidden]) { display: none; }
 .managed-chat-scopes, .managed-chat-request__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .managed-chat-requests__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--mn-fg-muted); margin: 8px 0; font-size: 11px; }

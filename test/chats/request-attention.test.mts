@@ -9,6 +9,7 @@ import { notifyManagedChatMetadata, notifyManagedChatView } from '../../src/chat
 import { focusManagedChatRequest, startManagedChatRequests, syncManagedChatRequests } from '../../src/ui/managed-chat-requests.ts';
 import { captureAgentConversationFocus } from '../../src/ui/agent-conversation.ts';
 import { resetQuestionCardsModalForTests } from '../../src/ui/question-cards-modal.ts';
+import { setSharedChatHost } from '../../src/ui/shared-chat-host-state.ts';
 import { handleComposerPrimaryAction, refreshComposerStreamingAffordance, shouldAllowComposerPrimaryAction, syncComposerFromStreamingState } from '../../src/ui/composer-send.ts';
 import { resolveAgentAncestorDotStates, resolveChatItemDotState, syncChatItemDotsInDom, type ChatItemDotContext } from '../../src/ui/chat-item-dot.ts';
 import type { Chat } from '../../src/types.ts';
@@ -111,6 +112,45 @@ test('approvals show exact arguments safely and only Allow or Deny for their own
   clickText(panel(second.requestId), 'Deny'); await until(() => records.get(owner.id)![1]!.state === 'answered'); await idle();
   assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.decision]), [[first.requestId, 'allow_once'], [second.requestId, 'deny']]);
 });
+
+for (const surface of ['Code', 'mobile'] as const) {
+  test(`live approval docks beside the ${surface} composer and returns to the transcript after answering`, async () => {
+    const owner = chat('docked-owner'), other = chat('other-chat');
+    const area = setup([owner, other]);
+    const slot = document.createElement('div'); slot.id = 'toolApprovalHost'; slot.hidden = true;
+    const main = document.getElementById('mainColumn')!;
+    const shell = surface === 'mobile' ? document.createElement('section') : main;
+    if (surface === 'mobile') {
+      shell.className = 'shared-chat-host';
+      document.body.append(shell);
+      setSharedChatHost({ chatId: owner.id, shell, transcript: area });
+    }
+    shell.append(area, slot);
+    try {
+      dispose = startManagedChatRequests();
+      await idle();
+      const approval = request(owner.id, 'docked-approval', 'approval');
+      records.set(owner.id, [approval]);
+      owner.agentRequestSummary = [{ requestId: approval.requestId, kind: 'approval' }];
+      notifyManagedChatMetadata(owner.id);
+      await until(() => Boolean(panel(approval.requestId)));
+      const dock = slot.previousElementSibling as HTMLElement;
+      assert.equal(dock.hidden, false);
+      assert.ok(dock.classList.contains('managed-chat-requests--docked'));
+      assert.ok(dock.contains(panel(approval.requestId)));
+      syncManagedChatRequests(other, area);
+      assert.ok(!dock.isConnected);
+      syncManagedChatRequests(owner, area);
+      assert.equal(slot.previousElementSibling, dock);
+      clickText(dock, 'Allow');
+      await until(() => area.contains(dock));
+      assert.equal(panel(approval.requestId).querySelector('form')!.hidden, true);
+      assert.equal(posts[0]?.chatId, owner.id);
+    } finally {
+      setSharedChatHost(null);
+    }
+  });
+}
 
 test('answered-before-open and expired callbacks render history without live controls; reconnect refreshes unchanged summaries', async () => {
   const owner = chat('reconnect-child'), first = request(owner.id, 'old-answer'), expired = request(owner.id, 'expired');
