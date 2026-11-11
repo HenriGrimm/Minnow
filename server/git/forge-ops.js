@@ -444,7 +444,13 @@ export async function prCheckout({ cwd, number } = {}) {
   const gate = await requireForge(cwd);
   if (!gate.ok) return gate;
 
-  const result = await withWorktreeMutation(gate.cwd, () => gh(['pr', 'checkout', String(Number(number))], gate.cwd));
+  return withWorktreeMutation(gate.cwd, () => checkoutForgePullRequest(gate, Number(number)));
+}
+
+/** Callers hold the worktree mutation lock. */
+export async function checkoutForgePullRequest(gate, number) {
+  const repo = `${gate.status.hostname}/${gate.status.repo}`;
+  const result = await gh(['pr', 'checkout', String(number), '--repo', repo], gate.cwd);
   if (result.code !== 0) {
     return { ok: false, error: processError(result, 'Could not check out the pull request') };
   }

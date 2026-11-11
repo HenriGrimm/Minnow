@@ -1,10 +1,16 @@
 import { createIcon, type IconName } from './icon';
 import type { GitCheckoutSwitchInput, GitOpResult, GitSavedCheckoutChanges } from '../state/git-api';
+import { forgeRefresh, prList, type ForgeResult } from '../state/forge-api';
 import { panelPathsEqual } from './panel-worktree-cwd';
 import type { ParsedWorktree } from '../lib/worktree-list-parse';
 import { displayRemoteRef, isSkippedRemoteRef, shortLocalNameFromRemote } from '../lib/git-ref-start.mjs';
 
 const branchNameOrder = new Intl.Collator(undefined, { numeric: true });
+const checkoutTabs = [
+  ['branches', 'Branches', 'Branch name…'],
+  ['worktrees', 'Worktrees', 'Name or path…'],
+  ['pulls', 'Pull requests', 'Number, title, or branch…'],
+] as const;
 
 export interface CheckoutPickerState {
   cwd: string;
@@ -38,7 +44,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   root.className = 'git-checkout';
   const id = options.inline ? 'threadCheckout' : 'gitCheckout';
   const trigger = button('', 'git-checkout__trigger', () => {
-    open = !open;
+    if (open) {
+      close();
+      return;
+    }
+    open = true;
     pending = undefined;
     render();
     if (open) focusSearch();
@@ -57,9 +67,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   root.append(notices, menu);
   let state: CheckoutPickerState = { cwd: '', workspace: '', branch: '', branches: [], worktrees: [], savedChanges: [] };
   let open = Boolean(options.inline);
-  let tab: 'branches' | 'worktrees' = 'branches';
+  let tab: (typeof checkoutTabs)[number][0] = 'branches';
+  let pulls: { result?: ForgeResult } | undefined;
   let query = '';
   let busy = false;
+  let checkingOutPull: number | undefined;
   let disposed = false;
   let message = '';
   let pending: GitCheckoutSwitchInput | undefined;
@@ -89,6 +101,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   }
   function close() {
     if (busy) return;
+    if (!options.inline) pulls = undefined;
     open = Boolean(options.inline);
     pending = undefined;
     pendingComplete = undefined;
@@ -103,10 +116,25 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     if (options.inline) focusSearch();
     else trigger.focus();
   }
+  async function loadPullRequests(refreshForge = false) {
+    if (pulls || !state.cwd) return;
+    const cwd = state.cwd;
+    const request: { result?: ForgeResult } = {};
+    pulls = request;
+    if (refreshForge) {
+      await forgeRefresh(cwd);
+      if (disposed || pulls !== request) return;
+    }
+    request.result = await prList({ cwd, state: 'open', limit: 200 });
+    if (disposed || pulls !== request || !open || tab !== 'pulls') return;
+    const list = menu.querySelector<HTMLElement>('.git-checkout__list');
+    if (list) renderRows(list);
+  }
   async function requestSwitch(input: GitCheckoutSwitchInput, onComplete = pendingComplete) {
     if (busy || disposed) return;
     const key = contextKey();
     busy = true;
+    checkingOutPull = input.pullRequest?.number;
     message = '';
     render();
     try {
@@ -116,17 +144,20 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         pending = undefined;
         pendingComplete = undefined;
         open = Boolean(options.inline);
+        if (!open) pulls = undefined;
         if (input.cwd && panelPathsEqual(input.cwd, state.cwd)) await onComplete?.();
         return;
       }
-      if (contextKey() !== key) return;
+      // gh can switch branches before an update fails. Keep its error visible in that checkout.
+      if (contextKey() !== key && !(input.pullRequest && result.branch === state.branch &&
+        input.cwd && panelPathsEqual(input.cwd, state.cwd))) return;
       if (result.needsChoice) {
         pending = { ...input, expectedBranch: result.branch };
         pendingComplete = onComplete;
         pendingCount = result.fileCount ?? 0;
         open = true;
       } else {
-        message = result.error ?? 'Could not switch branches.';
+        message = result.error ?? (input.pullRequest ? 'Could not check out the pull request.' : 'Could not switch branches.');
         pending = undefined;
         open = true;
       }
@@ -134,10 +165,14 @@ export function createGitCheckoutPicker(options: PickerOptions) {
       if (!disposed && contextKey() === key) message = err instanceof Error ? err.message : String(err);
     } finally {
       busy = false;
+      checkingOutPull = undefined;
       if (!disposed) {
         render();
         if (pending) menu.querySelector<HTMLButtonElement>('.git-checkout__choice')?.focus();
-        else if (options.inline && document.activeElement === document.body) focusSearch();
+        else if (document.activeElement === document.body) {
+          if (open) focusSearch();
+          else trigger.focus();
+        }
       }
     }
   }
@@ -183,6 +218,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   }
   function renderNotices() {
     notices.replaceChildren();
+    if (checkingOutPull !== undefined) {
+      const status = text(`Checking out PR #${checkingOutPull}…`, 'git-checkout__detail');
+      status.setAttribute('role', 'status');
+      notices.append(status);
+    }
     if (message) {
       const error = text(message, 'git-checkout__error');
       error.setAttribute('role', 'alert');
@@ -235,7 +275,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         if (state.savedChanges.some((s) => s.branch === branch)) row.append(text('Saved changes', 'git-checkout__tag'));
         list.append(row);
       }
-    } else {
+    } else if (tab === 'worktrees') {
       for (const wt of state.worktrees.filter((w) => `${w.branch} ${w.path}`.toLocaleLowerCase().includes(needle))) {
         const current = panelPathsEqual(wt.path, state.cwd);
         const row = button('', 'git-checkout__item', () => void selectWorktree(wt.path), current ? 'check' : 'gitWorktree');
@@ -248,6 +288,40 @@ export function createGitCheckoutPicker(options: PickerOptions) {
         if (current) row.append(text('Current', 'git-checkout__tag'));
         list.append(row);
       }
+    } else {
+      const result = pulls?.result;
+      if (!result?.ok) {
+        const status = text(result ? result.error ?? 'Could not load pull requests.' : 'Loading pull requests…', 'git-checkout__empty');
+        status.setAttribute('role', 'status');
+        list.append(status);
+        if (result) {
+          const retry = button('Retry', 'git-checkout__action', () => {
+            pulls = undefined;
+            renderRows(list);
+            focusSearch();
+            void loadPullRequests(result.status?.supported === false);
+          }, 'refresh');
+          retry.disabled = busy;
+          list.append(retry);
+        }
+        return;
+      }
+      for (const pr of result.prs ?? []) {
+        if (!`#${pr.number} ${pr.title} ${pr.headRef}`.toLocaleLowerCase().includes(needle)) continue;
+        const row = button('', 'git-checkout__item', () => void requestSwitch({
+          branch: pr.headRef, pullRequest: { number: pr.number, url: pr.url },
+          cwd: state.cwd, expectedBranch: state.branch,
+        }), pr.draft ? 'gitPullRequestDraft' : 'gitPullRequest');
+        row.disabled = busy;
+        const identity = document.createElement('span');
+        identity.className = 'git-checkout__identity';
+        identity.append(text(`#${pr.number} ${pr.title}`, 'git-checkout__title'), text(pr.headRef, 'git-checkout__detail'));
+        row.append(identity);
+        if (pr.draft) row.append(text('Draft', 'git-checkout__tag'));
+        list.append(row);
+      }
+      if (!list.childElementCount) list.append(text(query ? 'No matching pull requests' : 'No open pull requests', 'git-checkout__empty'));
+      return;
     }
     if (!list.childElementCount) list.append(text(query ? 'No matching checkouts' : 'No checkouts available', 'git-checkout__empty'));
   }
@@ -269,11 +343,12 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     if (pending) {
       const heading = document.createElement('h3');
       heading.className = 'git-checkout__heading';
-      heading.textContent = `Switch to ${pending.branch}?`;
+      const target = pending.pullRequest ? `PR #${pending.pullRequest.number}` : pending.branch;
+      heading.textContent = `Switch to ${target}?`;
       const detail = text(`You have ${pendingCount} uncommitted ${pendingCount === 1 ? 'file' : 'files'} on ${pending.expectedBranch}.`, 'git-checkout__detail');
       menu.append(heading, detail);
       for (const [choice, title, description, icon] of [
-        ['bring', 'Bring my changes', `Continue working on these files on ${pending.branch}.`, 'arrowUp'],
+        ['bring', 'Bring my changes', `Continue working on these files on ${target}.`, 'arrowUp'],
         ['leave', `Leave changes on ${pending.expectedBranch}`, 'Save in a stash. Offer to restore when I return.', 'gitStash'],
       ] as const) {
         const row = button('', 'git-checkout__choice', () => void requestSwitch({ ...pending!, dirtyHandling: choice }), icon);
@@ -292,7 +367,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     tabs.className = 'git-checkout__tabs';
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'Checkout type');
-    for (const [type, label] of [['branches', 'Branches'], ['worktrees', 'Worktrees']] as const) {
+    for (const [type, label] of checkoutTabs) {
       const tabBtn = button(label, 'git-checkout__tab', () => { tab = type; query = ''; render(); focusSearch(); });
       tabBtn.id = `${id}Tab-${type}`;
       tabBtn.setAttribute('role', 'tab');
@@ -306,8 +381,9 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     const search = document.createElement('input');
     search.type = 'search';
     search.value = query;
-    search.placeholder = tab === 'branches' ? 'Branch name…' : 'Name or path…';
-    search.setAttribute('aria-label', tab === 'branches' ? 'Search branches' : 'Search worktrees');
+    const [, tabLabel, placeholder] = checkoutTabs.find(([type]) => type === tab)!;
+    search.placeholder = placeholder;
+    search.setAttribute('aria-label', `Search ${tabLabel.toLowerCase()}`);
     search.disabled = busy;
     searchField.append(search);
     const list = document.createElement('div');
@@ -320,12 +396,19 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     tabs.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
-        tab = tab === 'branches' ? 'worktrees' : 'branches'; query = ''; render();
+        const index = checkoutTabs.findIndex(([type]) => type === tab);
+        tab = checkoutTabs[(index + (e.key === 'ArrowRight' ? 1 : checkoutTabs.length - 1)) % checkoutTabs.length][0];
+        query = '';
+        render();
         menu.querySelector<HTMLButtonElement>(`#${id}Tab-${tab}`)?.focus();
       }
     });
     renderRows(list);
     menu.append(tabs, searchField, list);
+    if (tab === 'pulls') {
+      void loadPullRequests();
+      return;
+    }
     if (options.inline) return;
     const footer = document.createElement('div');
     footer.className = 'git-checkout__footer';
@@ -347,7 +430,7 @@ export function createGitCheckoutPicker(options: PickerOptions) {
   if (!options.inline) document.addEventListener('pointerdown', outside);
   root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !options.inline) { e.preventDefault(); close(); trigger.focus(); }
-    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (e.target as HTMLElement).closest('.git-checkout__list')) {
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (e.target as HTMLElement).matches('.git-checkout__item')) {
       e.preventDefault();
       const rows = Array.from(menu.querySelectorAll<HTMLButtonElement>('.git-checkout__item'));
       const index = rows.indexOf(e.target as HTMLButtonElement);
@@ -359,9 +442,11 @@ export function createGitCheckoutPicker(options: PickerOptions) {
     root, requestSwitch, close, focusSearch,
     update(next: CheckoutPickerState) {
       if (JSON.stringify(next) === JSON.stringify(state)) return;
-      const moved = !panelPathsEqual(next.cwd, state.cwd) || next.branch !== state.branch;
+      const cwdChanged = !panelPathsEqual(next.cwd, state.cwd);
+      const moved = cwdChanged || next.branch !== state.branch;
       const branchesChanged = JSON.stringify([next.branches, next.remoteBranches]) !== JSON.stringify([state.branches, state.remoteBranches]);
       state = next;
+      if (cwdChanged) pulls = undefined;
       if (moved) { open = Boolean(options.inline); pending = undefined; message = ''; query = ''; if (!busy) pendingComplete = undefined; }
       // A poll must not steal focus from a user searching or choosing an action.
       if (!open || moved) render();

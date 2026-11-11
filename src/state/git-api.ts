@@ -139,6 +139,7 @@ export interface GitSavedCheckoutChanges {
 export interface GitCheckoutSwitchInput {
   cwd?: string;
   branch: string;
+  pullRequest?: { number: number; url: string };
   create?: boolean;
   startPoint?: string;
   dirtyHandling?: 'bring' | 'leave';
@@ -184,7 +185,8 @@ async function postGit(
       };
     }
     const result = (await res.json()) as GitOpResult;
-    if (result.ok && ['checkout', 'checkoutSwitch', 'checkoutDetach'].includes(op) && typeof window !== 'undefined') {
+    const checkoutChanged = result.ok || (op === 'checkoutSwitch' && result.branch && !result.needsChoice);
+    if (checkoutChanged && ['checkout', 'checkoutSwitch', 'checkoutDetach'].includes(op) && typeof window !== 'undefined') {
       window.dispatchEvent(new window.CustomEvent(GIT_CHECKOUT_CHANGED_EVENT));
     }
     return result;

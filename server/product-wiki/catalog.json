@@ -142,7 +142,7 @@
         "Related"
       ],
       "section": "Core concepts",
-      "hash": "41a5c62ccbd679cce5a017b9b7ab4ffebb41e9d31d31b84ce3a1e3992534966a"
+      "hash": "7db0c31b25bcad3a49cb7031c3863e622011a370e9571a9f9f29e7ec96a36f8f"
     },
     {
       "path": "documentation/manual/concepts/context-and-memory.md",
@@ -243,7 +243,7 @@
         "Related"
       ],
       "section": "Apps",
-      "hash": "8fa8f2e15e32eb1e86619a6af004880712c77d91591150d4c2ccf74b6bc6c963"
+      "hash": "443975396332402e1441a550a957be8af3275b0efe79290923777359a657af81"
     },
     {
       "path": "documentation/manual/apps/brain.md",
@@ -424,7 +424,7 @@
         "Related"
       ],
       "section": "Extend Minnow",
-      "hash": "cfc840a43bdd4e8c95320f7d22098abba35003b0fcdc212913d86a25fd51f1ae"
+      "hash": "ffd1d25c412f98ac62e8ea278bf3dfcc765c7fa2527b8c2822f67a73a9744303"
     },
     {
       "path": "documentation/manual/reference/keyboard-shortcuts.md",

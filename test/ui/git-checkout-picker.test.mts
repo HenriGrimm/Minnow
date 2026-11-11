@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { Window } from 'happy-dom';
 import { createGitCheckoutPicker, type CheckoutPickerState } from '../../src/ui/git-checkout-picker.ts';
 import type { GitCheckoutSwitchInput, GitOpResult } from '../../src/state/git-api.ts';
+import { isLocalServerAvailable, setLocalServerAvailable } from '../../src/tools/config.ts';
 
 let win: Window;
 let picker: ReturnType<typeof createGitCheckoutPicker>;
@@ -120,6 +121,42 @@ test('worktree tab browses checkouts without moving uncommitted changes', () => 
   assert.equal(input.parentElement?.textContent, '');
   click('occupied');
   assert.deepEqual(worktrees, ['/other']); assert.equal(calls.length, 0);
+});
+
+test('pull requests load on demand, keep search focus, and switch by PR identity through the dirty prompt', async (t) => {
+  const available = isLocalServerAvailable();
+  setLocalServerAvailable(true);
+  t.after(() => setLocalServerAvailable(available));
+  const url = 'https://github.com/owner/repo/pull/42';
+  const list = t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    assert.deepEqual(JSON.parse(init.body), { op: 'prList', cwd: '/workspace', state: 'open', limit: 200 });
+    return Response.json({ ok: true, prs: [
+      { number: 42, title: 'Fix keyboard focus', headRef: 'feature', url },
+      { number: 43, title: 'Update layout', headRef: 'design', draft: true },
+    ] });
+  });
+  click('main');
+  assert.equal(list.mock.callCount(), 0);
+  click('Pull requests');
+  const input = document.querySelector('input')!;
+  assert.equal(input.getAttribute('aria-label'), 'Search pull requests');
+  await tick();
+  assert.equal(document.activeElement === input, true);
+  assert.match(document.querySelector('.git-checkout__list')?.textContent ?? '', /#43 Update layoutdesignDraft/);
+
+  for (const query of ['#42', 'keyboard', 'feature']) {
+    input.value = query;
+    input.dispatchEvent(new win.Event('input') as unknown as Event);
+    assert.equal(document.querySelectorAll('.git-checkout__item').length, 1);
+  }
+  click('#42 Fix keyboard focus'); await tick();
+  assert.equal(document.querySelector('.git-checkout__heading')?.textContent, 'Switch to PR #42?');
+  assert.deepEqual(calls[0], {
+    branch: 'feature', cwd: '/workspace', expectedBranch: 'main', pullRequest: { number: 42, url },
+  });
+  click('Leave changes on main'); await tick();
+  assert.deepEqual(calls[1], { ...calls[0], dirtyHandling: 'leave' });
+  assert.equal(list.mock.callCount(), 1);
 });
 
 test('branch search keeps main first and orders the other names naturally', () => {

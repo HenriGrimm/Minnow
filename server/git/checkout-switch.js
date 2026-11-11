@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { runProcess } from '../process-runner.js';
 import { getEffectiveWorkspaceRoot } from '../runtime/path-access.js';
 import { withWorktreeMutation } from './action-run-lock.js';
+import { checkoutForgePullRequest, requireForge } from './forge-ops.js';
 import { slugifyGitRefName } from '../../src/lib/git-branch-slug.mjs';
 
 const PREFIX = '[minnow-checkout:';
@@ -19,8 +20,13 @@ async function context(cwd) {
   return { cwd: path.resolve(real), worktree };
 }
 
-async function inspect(cwd) {
+async function currentBranch(cwd) {
   const head = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  return head.code === 0 ? head.stdout.trim() : 'HEAD';
+}
+
+async function inspect(cwd) {
+  const branch = await currentBranch(cwd);
   const state = await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
   if (state.code !== 0) throw new Error(error(state));
   // Rename/copy records have a second NUL-delimited path. Count each file once.
@@ -32,7 +38,7 @@ async function inspect(cwd) {
     paths.add(record.slice(3));
     if (/[RC]/.test(record.slice(0, 2))) i++;
   }
-  return { branch: head.code === 0 ? head.stdout.trim() : 'HEAD', fileCount: paths.size };
+  return { branch, fileCount: paths.size };
 }
 
 async function savedEntries(cwd, worktree) {
@@ -65,15 +71,28 @@ export async function checkoutSavedChanges({ cwd } = {}) {
 }
 
 /** A dirty checkout always asks first unless the caller supplies an explicit choice. */
-export async function checkoutSwitch({ cwd, branch, create, startPoint, dirtyHandling, expectedBranch } = {}) {
+export async function checkoutSwitch({ cwd, branch, pullRequest, create, startPoint, dirtyHandling, expectedBranch } = {}) {
   const ctx = await context(cwd);
-  if (typeof branch !== 'string' || !branch.trim() || branch.trim().startsWith('-')) {
+  const isPull = pullRequest !== undefined;
+  if (isPull && (!Number.isSafeInteger(pullRequest?.number) || pullRequest.number <= 0 || typeof pullRequest.url !== 'string')) {
+    return { ok: false, error: 'A valid pull request is required' };
+  }
+  if (!isPull && (typeof branch !== 'string' || !branch.trim() || branch.trim().startsWith('-'))) {
     return { ok: false, error: 'A valid branch is required' };
   }
   if (startPoint && (typeof startPoint !== 'string' || startPoint.trim().startsWith('-'))) {
     return { ok: false, error: 'Invalid start point' };
   }
-  const target = create ? slugifyGitRefName(branch, 'branch') : branch.trim();
+  let gate;
+  if (isPull) {
+    gate = await requireForge(ctx.cwd);
+    if (!gate.ok) return gate;
+    const expectedUrl = `https://${gate.status.hostname}/${gate.status.repo}/pull/${pullRequest.number}`;
+    if (pullRequest.url.toLowerCase() !== expectedUrl.toLowerCase()) {
+      return { ok: false, error: 'The pull request is from a different repository. Reopen the checkout picker.' };
+    }
+  }
+  const target = isPull ? '' : create ? slugifyGitRefName(branch, 'branch') : branch.trim();
   return withWorktreeMutation(ctx.cwd, async () => {
     const state = await inspect(ctx.cwd);
     if (expectedBranch && state.branch !== expectedBranch) {
@@ -99,19 +118,26 @@ export async function checkoutSwitch({ cwd, branch, create, startPoint, dirtyHan
       }
     }
     const args = create ? ['checkout', '-b', target, ...(startPoint ? [startPoint] : [])] : ['checkout', target];
-    const result = await git(ctx.cwd, args);
-    if (result.code !== 0) {
+    const result = gate
+      ? await checkoutForgePullRequest(gate, pullRequest.number)
+      : await git(ctx.cwd, args).then((r) => ({ ok: r.code === 0, error: r.code === 0 ? undefined : error(r) }));
+    const checkedOutBranch = gate ? await currentBranch(ctx.cwd) : target;
+    if (!result.ok) {
+      if (gate && checkedOutBranch !== state.branch) {
+        const stash = saved ? ` Your changes remain saved on ${state.branch}.` : '';
+        return { ok: false, branch: checkedOutBranch, error: `${result.error}\nGit switched to ${checkedOutBranch} before checkout finished.${stash}` };
+      }
       if (saved) {
         const rollback = await git(ctx.cwd, ['stash', 'apply', '--index', saved.sha]);
         if (rollback.code === 0) {
           await dropSaved(ctx, saved.sha);
         } else {
-          return { ok: false, error: `${error(result)}\nYour changes remain saved in Git stash (${saved.sha}). Restoring them also failed: ${error(rollback)}` };
+          return { ok: false, error: `${result.error}\nYour changes remain saved in Git stash (${saved.sha}). Restoring them also failed: ${error(rollback)}` };
         }
       }
-      return { ok: false, error: error(result) };
+      return { ok: false, error: result.error };
     }
-    return { ok: true, branch: target };
+    return { ok: true, branch: checkedOutBranch };
   });
 }
 

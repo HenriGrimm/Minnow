@@ -83,7 +83,7 @@ export async function mountThreadCheckout(options: ThreadCheckoutOptions): Promi
     onSwitch: async input => {
       check(input.cwd ?? state.cwd, true);
       const result = await gitCheckoutSwitch(input);
-      if (result.ok) {
+      if (result.ok || (input.pullRequest && result.branch && !result.needsChoice)) {
         const branch = result.branch ?? input.branch;
         if (panelPathsEqual(cwd(), input.cwd ?? state.cwd) && chat.chatCommandVersion !== 1) {
           chat.gitBranch = branch;

@@ -1234,7 +1234,7 @@ async function switchPanelBranch(input: GitCheckoutSwitchInput): Promise<GitOpRe
   if (generation === cwdGeneration) {
     // Invalidate reads started before checkout, including a poll still in flight.
     cwdGeneration += 1;
-    if (result.ok) {
+    if (result.ok || (input.pullRequest && result.branch)) {
       currentBranchName = result.branch ?? input.branch;
       knownWorktrees = knownWorktrees.map((wt) => pathsEqual(wt.path, input.cwd ?? getWorkspacePath())
         ? { ...wt, branch: currentBranchName, detached: false }
@@ -1243,7 +1243,7 @@ async function switchPanelBranch(input: GitCheckoutSwitchInput): Promise<GitOpRe
     }
     await refreshGitPanel();
     void syncFileTreeGitPollCwd();
-    if (result.ok) showToast(`Switched to ${input.branch}`, 'success');
+    if (result.ok) showToast(input.pullRequest ? `Checked out PR #${input.pullRequest.number}` : `Switched to ${input.branch}`, 'success');
   }
   return result;
 }
