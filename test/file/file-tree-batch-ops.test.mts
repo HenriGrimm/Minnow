@@ -47,7 +47,7 @@ mock.module('../../src/tools/config.ts', {
 
 mock.module('../../src/tools/client.ts', {
   namedExports: {
-    executeTool: async (name: string, args: Record<string, unknown>) => {
+    executeWorkspaceFileAction: async (name: string, args: Record<string, unknown>) => {
       const call = { name, args };
       toolCalls.push(call);
       if (failToolsMatching?.(call)) return { content: 'Error: EPERM: permission denied' };
@@ -79,13 +79,6 @@ mock.module('../../src/ui/file-viewer-tab-store.ts', {
     listViewerTabs: () => [],
     closeViewerTabsUnderAncestor: () => undefined,
     remapViewerTabsUnderAncestor: () => undefined,
-  },
-});
-
-mock.module('../../src/state/sessions.ts', {
-  namedExports: {
-    getActiveChat: () => null,
-    scheduleSaveSessions: () => undefined,
   },
 });
 

@@ -6,6 +6,8 @@ A tool is a function the model may call: read a file, run a command, search the 
 
 Minnow has **one permission level** for everything an agent does: built-in tools, shell commands, websites and the built-in browser, MCP servers and plugins. It applies to every chat, sub-agent and board run.
 
+You can open, move, and edit files in the project using the Files pane and editor at any permission level. The Files pane still asks you to confirm deletions.
+
 | Level | What it means |
 |-------|---------------|
 | **Manual** | Ask before edits, commands, and anything outside this project. Reads and searches inside the project still run without asking. |

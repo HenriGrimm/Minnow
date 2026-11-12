@@ -6,6 +6,7 @@ import { toolApplyPatch } from '../tools/apply-patch.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import '../tools/output-cap-als.js';
 import { COMMAND_TIMEOUT_MS, formatProcessOutput, runProcess } from '../process-runner.js';
@@ -1708,6 +1709,11 @@ export async function executeServerTool(name, args, options = {}) {
 
 const MAX_TOOLS_BODY_BYTES = 32 * 1024 * 1024;
 
+const WORKSPACE_FILE_ACTIONS = new Set([
+  'list_directory', 'grep', 'get_file_metadata', 'read_file_range',
+  'save_file', 'make_directory', 'move_file', 'copy_file', 'delete_path',
+]);
+
 function readJsonBody(req, maxBytes = MAX_TOOLS_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -1782,7 +1788,8 @@ export function createToolsMiddleware() {
       return;
     }
 
-    if (url === '/api/tools' && req.method === 'POST') {
+    const workspaceFileAction = url === '/api/tools/workspace-files';
+    if ((url === '/api/tools' || workspaceFileAction) && req.method === 'POST') {
       res.setHeader('Content-Type', 'application/json');
       try {
         const body = await readJsonBody(req);
@@ -1793,7 +1800,12 @@ export function createToolsMiddleware() {
           res.end(JSON.stringify({ error: 'Missing or invalid "name"' }));
           return;
         }
-        const modeId = resolveModeIdFromToolsBody(body);
+        if (workspaceFileAction && !WORKSPACE_FILE_ACTIONS.has(name)) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Unknown workspace file action' }));
+          return;
+        }
+        const modeId = workspaceFileAction ? undefined : resolveModeIdFromToolsBody(body);
         const planWriteBlock = blockPlanModeWrite(modeId, name, args);
         if (planWriteBlock) {
           res.statusCode = 200;
@@ -1828,7 +1840,18 @@ export function createToolsMiddleware() {
           }
         }
 
-        const runtimeOwner = body?.runtimeOwner;
+        if (workspaceFileAction) {
+          const action = classifyToolCall(name, args, {
+            workspaceRoots: [workspaceRoot ?? getEffectiveWorkspaceRoot()],
+            homeDir: homedir(),
+          });
+          if (action.floor) {
+            res.statusCode = 200;
+            res.end(JSON.stringify({ result: 'Error: Access to Minnow’s encryption key and secret stores is restricted.' }));
+            return;
+          }
+        }
+
         // Obsolete sidebar searches must stop walking the disk after fetch aborts.
         const toolController = isPluginToolName(name) || name === 'grep' || name === 'find_files' ||
           name === 'web_map' || name === 'web_extract' || name === 'web_search_tavily'
@@ -1837,8 +1860,12 @@ export function createToolsMiddleware() {
         if (toolController) res.once('close', onDisconnected);
         let out;
         try {
-          out = await executeServerTool(name, args, {
-            modeId, turnClamp: normalizeTurnClamp(body?.turnClamp), workspaceRoot, runtimeOwner, agentActivity: body?.agentActivity === true,
+          out = await executeServerTool(name, args, workspaceFileAction ? {
+            workspaceRoot,
+            filesystemAccessCeiling: 'workspace',
+            abortSignal: toolController?.signal,
+          } : {
+            modeId, turnClamp: normalizeTurnClamp(body?.turnClamp), workspaceRoot, runtimeOwner: body?.runtimeOwner, agentActivity: body?.agentActivity === true,
             activityChatId: typeof body?.activityChatId === 'string' ? body.activityChatId : undefined,
             pluginRelease: typeof body?.pluginRelease === 'string' ? body.pluginRelease : undefined,
             approvedOutsideWorkspace: body?.approvedOutsideWorkspace === true,

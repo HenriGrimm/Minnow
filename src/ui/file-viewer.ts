@@ -16,7 +16,7 @@ import {
 import { setAssistantBubbleContent } from '../markdown/renderer';
 import { mountEditableMarkdownPreview } from './markdown-preview-edit';
 import { scrollMarkdownHeading, takePendingMarkdownHeading } from '../markdown/links';
-import { executeTool, getLocalServerAvailable } from '../tools/client';
+import { executeWorkspaceFileAction, getLocalServerAvailable } from '../tools/client';
 import { resolveDocumentHtmlLoadUrl, resolvePreviewLoadUrl } from './preview-load-url';
 import { getFileTreeListingWorkspaceRoot } from './file-tree-listing-root';
 import { getWorkspacePath } from '../state/workspace';
@@ -897,19 +897,9 @@ export function setViewerError(message: string): void {
   if (host) {
     destroyEditor();
     host.innerHTML = `<p class="file-viewer-status file-viewer-error">${escapeHtml(message)}</p>`;
-    const permissionBlocked = /needs approval|permission.*denied/i.test(message);
-    if (permissionBlocked) {
+    if (/permission.*denied/i.test(message)) {
       const actions = document.createElement('div');
       actions.className = 'file-tree-readiness-actions';
-      const settings = document.createElement('button');
-      settings.type = 'button';
-      settings.className = 'file-tree-readiness-action';
-      settings.textContent = 'Open permissions';
-      settings.addEventListener('click', () => {
-        void import('./settings-page').then((m) =>
-          m.navigateToSettingsField('general.permissions', 'access'),
-        );
-      });
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'file-tree-readiness-action';
@@ -921,7 +911,7 @@ export function setViewerError(message: string): void {
           void ensureViewerTabLoaded(path);
         }
       });
-      actions.append(settings, retry);
+      actions.append(retry);
       host.appendChild(actions);
     }
   }
@@ -949,7 +939,7 @@ async function loadFileContent(path: string, workspaceRoot?: string): Promise<Lo
   const toolContext = buildFileTreeToolContext();
   if (workspaceRoot) toolContext.workspaceRoot = workspaceRoot;
 
-  const metaRaw = (await executeTool('get_file_metadata', { path }, toolContext)).content;
+  const metaRaw = (await executeWorkspaceFileAction('get_file_metadata', { path }, toolContext)).content;
   if (metaRaw.startsWith('Error:')) {
     throw new Error(metaRaw.replace(/^Error:\s*/i, '').trim());
   }
@@ -957,7 +947,7 @@ async function loadFileContent(path: string, workspaceRoot?: string): Promise<Lo
 
   if (byteSize !== null && byteSize > LARGE_FILE_BYTES) {
     const rangeRaw = (
-      await executeTool(
+      await executeWorkspaceFileAction(
         'read_file_range',
         {
           path,
@@ -1417,7 +1407,7 @@ export async function saveViewerTabByPath(path: string): Promise<boolean> {
 
     const expectedRevision = await viewerDocumentRevision(loadedContent);
     const raw = (
-      await executeTool('save_file', {
+      await executeWorkspaceFileAction('save_file', {
         path: savedPath, content: contentToSave, expected_revision: expectedRevision,
       }, { workspaceRoot })
     ).content;

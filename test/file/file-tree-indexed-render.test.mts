@@ -14,7 +14,7 @@ test('sidebar paints indexed names without directory requests and cancels old co
   const toolCalls: string[] = [];
   mock.module('../../src/tools/client.ts', {
     namedExports: {
-      executeTool: (name: string, _args: unknown, context: { signal?: AbortSignal }) => {
+      executeWorkspaceFileAction: (name: string, _args: unknown, context: { signal?: AbortSignal }) => {
         toolCalls.push(name);
         searchSignal = context.signal;
         return new Promise<{ content: string }>((resolve) => { finishContent = resolve; });

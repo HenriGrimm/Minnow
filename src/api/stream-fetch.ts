@@ -53,7 +53,7 @@ export function streamFetch(path: string, init: RequestInit = {}): Promise<Respo
 }
 
 /** Mirrors STREAM_RPC_PATHS in server/runtime/stream-ws.js. */
-const RPC_PATHS = new Set(['/api/chat-turns', '/api/tools']);
+const RPC_PATHS = new Set(['/api/chat-turns', '/api/tools', '/api/tools/workspace-files']);
 // Leave headroom under the server's 1 MiB frame limit for the JSON envelope.
 const MAX_RPC_BODY_BYTES = 768 * 1024;
 
@@ -62,7 +62,7 @@ const MAX_RPC_BODY_BYTES = 768 * 1024;
  * connections and starve each other's heartbeats. Oversized bodies (one-off
  * file writes) and non-browser callers keep using HTTP.
  */
-export function rpcFetch(path: '/api/chat-turns' | '/api/tools', body: string, init: { signal?: AbortSignal } = {}): Promise<Response> {
+export function rpcFetch(path: '/api/chat-turns' | '/api/tools' | '/api/tools/workspace-files', body: string, init: { signal?: AbortSignal } = {}): Promise<Response> {
   const viaHttp = () => fetch(path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: init.signal,
   });

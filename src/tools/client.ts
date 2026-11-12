@@ -65,7 +65,7 @@ import { setToolHintResolver } from './tool-hint-resolver';
 import { getChatsWorkspacePath } from '../lib/chats-workspace';
 import { isChatAppForeground } from '../ui/chat-mount';
 import { runWithFileTreeAutoRefresh } from '../ui/file-tree-auto-refresh';
-import { executeWithResultCache } from './result-cache';
+import { executeWithResultCache, getCacheScope, invalidateAfterTool } from './result-cache';
 import { validateToolRequiredArgs } from './validate-tool-required-args';
 import { loadSearchConfig, mergeWebSearchSettings, getSearchConfigRevision, hasConfiguredTavilyKey } from '../config/search-config';
 import { unsupportedSearchOptions } from '../../server/tools/tavily-options.js';
@@ -228,6 +228,24 @@ function isAbortError(err: unknown): boolean {
 }
 
 // ── Execute ──────────────────────────────────────────────────────────────────
+
+/** File tree and editor actions scoped to the workspace of the requesting view. */
+export async function executeWorkspaceFileAction(
+  name: string,
+  args: Record<string, unknown>,
+  context: Pick<ExecuteToolContext, 'workspaceRoot' | 'signal'> = {},
+): Promise<ToolExecutionResult> {
+  return runWithFileTreeAutoRefresh(
+    name,
+    async () => {
+      const result = await executeServerTool(name, args, undefined, context, '/api/tools/workspace-files');
+      invalidateAfterTool(getCacheScope(context), name, args, result);
+      return result;
+    },
+    context,
+    args,
+  );
+}
 
 export async function executeTool(
   name: string,
@@ -824,10 +842,11 @@ async function executeServerTool(
   args: Record<string, unknown>,
   modeId?: ModeId | string,
   context?: ExecuteToolContext,
+  endpoint: '/api/tools' | '/api/tools/workspace-files' = '/api/tools',
 ): Promise<ToolExecutionResult> {
   let response: Response;
   const workspaceRoot =
-    context?.workspaceRoot?.trim() || (await resolveToolWorkspaceRoot(context));
+    context?.workspaceRoot?.trim() || (endpoint === '/api/tools' ? await resolveToolWorkspaceRoot(context) : undefined);
   const payload: {
     name: string;
     args: Record<string, unknown>;
@@ -872,7 +891,7 @@ async function executeServerTool(
   try {
     // A tool may run for minutes; holding an HTTP connection that long lets a
     // few busy chats starve every other request, including lease renewals.
-    response = await rpcFetch('/api/tools', JSON.stringify(payload), { signal });
+    response = await rpcFetch(endpoint, JSON.stringify(payload), { signal });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (context?.signal?.aborted) {

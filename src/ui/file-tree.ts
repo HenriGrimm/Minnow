@@ -255,9 +255,9 @@ async function fetchListing(relativePath: string): Promise<ParsedListing | { err
   const cached = listingCache.get(relativePath);
   if (cached) return cached;
 
-  const { executeTool } = await import('../tools/client');
+  const { executeWorkspaceFileAction } = await import('../tools/client');
   const raw = (
-    await executeTool('list_directory', { path: relativePath }, buildFileTreeToolContext())
+    await executeWorkspaceFileAction('list_directory', { path: relativePath }, buildFileTreeToolContext())
   ).content;
   const parsed = parseListDirectoryResult(raw);
   if ('error' in parsed) {
@@ -588,38 +588,26 @@ function renderOfflineEmpty(host: HTMLElement): void {
 function friendlyListingError(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes('allowlist') || lower.includes('workspaceroot')) {
-    return 'Worktree not accessible — enable Full disk access in Settings or add the path via git worktree.';
+    return 'Worktree unavailable. Check that it is registered and still exists on disk.';
   }
   return message;
 }
 
 function renderTreeError(host: HTMLElement, message: string): void {
   host.innerHTML = '';
-  const permissionBlocked = /needs approval|permission.*denied/i.test(message);
   const msg = document.createElement('p');
   msg.className = 'file-tree-empty file-tree-error';
-  msg.textContent = permissionBlocked
-    ? 'File browsing needs authorization. Review the global permission mode, then retry.'
-    : friendlyListingError(message);
+  msg.textContent = friendlyListingError(message);
   host.appendChild(msg);
-  if (permissionBlocked) {
+  if (/permission.*denied/i.test(message)) {
     const actions = document.createElement('div');
     actions.className = 'file-tree-readiness-actions';
-    const settings = document.createElement('button');
-    settings.type = 'button';
-    settings.className = 'file-tree-readiness-action';
-    settings.textContent = 'Open permissions';
-    settings.addEventListener('click', () => {
-      void import('./settings-page').then((m) =>
-        m.navigateToSettingsField('general.permissions', 'access'),
-      );
-    });
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'file-tree-readiness-action';
     retry.textContent = 'Retry file browsing';
     retry.addEventListener('click', () => void refreshFileTree());
-    actions.append(settings, retry);
+    actions.append(retry);
     host.appendChild(actions);
   }
 }
@@ -836,7 +824,7 @@ async function renderFlatResults(host: HTMLElement, root: string, query: string)
   wait.textContent = 'Searching project…';
   host.appendChild(wait);
 
-  const contentResult = import('../tools/client').then(({ executeTool }) => executeTool('grep', {
+  const contentResult = import('../tools/client').then(({ executeWorkspaceFileAction }) => executeWorkspaceFileAction('grep', {
     pattern: query,
     path: root,
     literal: true,
