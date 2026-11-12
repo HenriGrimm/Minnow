@@ -22,6 +22,7 @@ function setupDom(): void {
   testWindow?.close();
   testWindow = new Window();
   installHappyDomGlobals(testWindow);
+  globalThis.CSS = testWindow.CSS;
   document.body.innerHTML =
     '<div id="fileSidebarTitle">Files</div><div id="fileTreeHost" style="height:200px;overflow:auto"></div>';
 }
@@ -86,4 +87,33 @@ describe('renderFileTree scroll preservation', () => {
 
     assert.equal(host.scrollTop, 120);
   });
+});
+
+test('the visible tree picks up external files without a manual refresh', async (t) => {
+  setupDom();
+  launchInstance('code');
+  setFileTreeServerAvailable(true);
+  patchFilePanelState({ treeRoot: '.', expandedDirs: ['src'] });
+  const tree = await import('../../src/ui/file-tree.ts');
+  tree.seedFileTreeListingForTests('.', { dirs: ['src'], files: ['README.md'] });
+  tree.seedFileTreeListingForTests('src', { dirs: [], files: [] });
+  const host = document.getElementById('fileTreeHost')!;
+  host.checkVisibility = () => true;
+  tree.renderFileTree();
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input, init) => {
+    if (!String(input).includes('/api/tools/workspace-files')) return Response.json({ ok: true });
+    const { args } = JSON.parse(String(init?.body));
+    return Response.json({ result: args.path === '.'
+      ? '[dir] src\n[file] README.md\n[file] new.txt'
+      : '[file] nested.txt' });
+  };
+  tree.startFileTreeGitStatusPoll();
+  const deadline = Date.now() + 2000;
+  while (!host.querySelector('[data-path="src/nested.txt"]') && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(host.querySelector('[data-path="new.txt"]'));
+  assert.ok(host.querySelector('[data-path="src/nested.txt"]'));
 });

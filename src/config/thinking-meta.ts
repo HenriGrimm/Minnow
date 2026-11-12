@@ -7,7 +7,7 @@ import {
   normalizeThinkingGlobalDefault,
   type ThinkingGlobalDefault,
 } from '../agents/thinking-types';
-import { detectConfigServer } from './storage-mode';
+import { detectConfigServer, readConfigMeta } from './storage-mode';
 
 export interface ThinkingGlobalMeta {
   defaultMode: ThinkingGlobalDefault;
@@ -55,10 +55,8 @@ function writeLocalThinkingMeta(config: ThinkingGlobalMeta): void {
 }
 
 async function fetchThinkingFromServer(): Promise<ThinkingGlobalMeta> {
-  const res = await fetch('/api/config/meta', { cache: 'no-store' });
-  if (!res.ok) return readLocalThinkingMeta();
-  const meta = (await res.json()) as Record<string, unknown>;
-  return parseThinkingBlock(meta.thinking);
+  const meta = await readConfigMeta();
+  return meta ? parseThinkingBlock(meta.thinking) : readLocalThinkingMeta();
 }
 
 /** Load global thinking meta (cached until reset). */

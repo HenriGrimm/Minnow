@@ -7,6 +7,7 @@ import type { ContextDocumentsConfig } from './config';
 export interface RetrieveContextDocumentsBlockOptions {
   repoPath: string;
   documents: ContextDocumentsConfig;
+  signal?: AbortSignal;
 }
 
 /** Build sections through the same pure resolver used by the server host. */
@@ -15,11 +16,13 @@ export async function retrieveContextDocumentsBlock(options: RetrieveContextDocu
   if (!workspaceRoot) return '';
   return resolveContextDocumentsBlock(options.documents, {
     async readText(path) {
-      try { return await readWorkspaceTextFile(path, workspaceRoot); }
-      catch { return null; }
+      options.signal?.throwIfAborted();
+      try { return await readWorkspaceTextFile(path, workspaceRoot, undefined, options.signal); }
+      catch { options.signal?.throwIfAborted(); return null; }
     },
     async listFiles(path) {
-      const result = await executeTool('list_directory', { path }, { workspaceRoot });
+      options.signal?.throwIfAborted();
+      const result = await executeTool('list_directory', { path }, { workspaceRoot, signal: options.signal });
       const parsed = parseListDirectoryResult(result.content ?? '');
       return 'error' in parsed ? [] : parsed.files;
     },

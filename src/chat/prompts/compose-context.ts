@@ -22,7 +22,11 @@ import { shouldInjectCodeMap } from '../../brain/code-injection-config';
 import { retrieveCodeMapBlock } from '../../brain/code-map-injection';
 import { extractCodeMapFocusHints } from '../../brain/code-map-focus';
 import { fetchBrainCodeConfig } from '../../brain/client';
-import { loadContextDocumentsSettings, shouldInjectContextDocuments } from '../../chat/context-documents/config';
+import {
+  hasConfiguredContextDocumentPaths,
+  loadContextDocumentsSettings,
+  resolveContextDocumentsInjectionEnabled,
+} from '../context-documents/config';
 import { retrieveContextDocumentsBlock } from '../../chat/context-documents/injection';
 import { shouldRunFirstTurnInjections } from './first-turn-injection';
 import {
@@ -169,20 +173,38 @@ export async function buildComposeContext(
     }
     return { enabled, block: block || null };
   };
-  const documents = async (signal: AbortSignal) => {
+  const documents = async () => {
     const replay = replayBodies['context-documents'] && shouldReplayStoredInjection(chat.contextDocumentsInjection)
       ? replayBodies['context-documents'] : null;
-    const enabled = runFirstTurn ? await shouldInjectContextDocuments(chat) : Boolean(replay);
-    if (!enabled || !runFirstTurn) return { enabled, block: replay };
-    const { documents } = await loadContextDocumentsSettings();
-    signal.throwIfAborted();
-    const block = await retrieveContextDocumentsBlock({ repoPath: worktreeCwd ?? resolveComposeCwd(), documents });
-    return { enabled, block: block || null };
+    if (!runFirstTurn) return { enabled: Boolean(replay), block: replay };
+    const repoPath = worktreeCwd?.trim() || getWorkspacePath().trim();
+    if (!repoPath) return { enabled: false, block: null };
+    try {
+      const { injectionDefault, documents } = await runWithDeadline(loadContextDocumentsSettings, {
+        timeoutMs, signal: options?.signal,
+      });
+      if (!resolveContextDocumentsInjectionEnabled(chat, injectionDefault) || !hasConfiguredContextDocumentPaths(documents)) {
+        return { enabled: false, block: null };
+      }
+      const read = async (signal: AbortSignal) => ({
+        enabled: true,
+        block: (await retrieveContextDocumentsBlock({ repoPath, documents, signal })) || null,
+      });
+      return await (documents.customPaths.length
+        ? runWithDeadline(read, { timeoutMs, signal: options?.signal })
+        : optional('context-documents', read));
+    } catch (error) {
+      options?.signal?.throwIfAborted();
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        throw new Error('Context document preparation timed out. Retry or check Context documents settings and the project files.');
+      }
+      throw error;
+    }
   };
   // Three independent lanes with deterministic assembly; replay never fetches.
   const [memoryResult, codeResult, documentsResult] = await Promise.all([
     optional('memory', memory), optional('code-map', codeMap),
-    runWithDeadline(documents, { timeoutMs, signal: options?.signal }),
+    documents(),
   ]);
   options?.signal?.throwIfAborted();
   const { block: memoryBlock, enabled: injectMemory } = memoryResult;

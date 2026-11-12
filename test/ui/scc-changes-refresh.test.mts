@@ -86,6 +86,20 @@ test('error recovery and workspace changes invalidate cached content', async () 
   assert.equal(view.root.querySelector<HTMLElement>('.scc-filerow')?.dataset.path, 'recovered.ts');
 });
 
+test('a staged empty addition and a staged binary addition have distinct diff states', async () => {
+  setup();
+  status = { ok: true, staged: [{ path: 'empty.txt', status: 'A' }] };
+  patch = 'diff --git a/empty.txt b/empty.txt\nnew file mode 100644\nindex 0000000..e69de29\n';
+  await view.refresh();
+  view.root.querySelector<HTMLElement>('.scc-filerow')!.click();
+  await view.refresh();
+  const diff = view.root.querySelector('.scc-changes__diff-body')!;
+  assert.match(diff.textContent ?? '', /Empty file added/);
+  patch += 'Binary files /dev/null and b/empty.txt differ\n';
+  await view.refresh();
+  assert.match(diff.textContent ?? '', /Binary file changed/);
+});
+
 test('Graphite changes keep untracked actions scoped while displaying refreshed line totals', async () => {
   setup();
   document.documentElement.classList.add('mn-graphite-apps');

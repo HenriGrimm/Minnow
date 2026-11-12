@@ -96,6 +96,8 @@ let gitStatusPollTimer: ReturnType<typeof setTimeout> | undefined;
 let gitStatusPollCwd: string | undefined;
 let gitStatusPollDebounce: ReturnType<typeof setTimeout> | undefined;
 let gitStatusPollInFlight = false;
+let listingPoll: AbortController | null = null;
+let listingPollOffset = 0;
 
 // ── Git status ───────────────────────────────────────────────────────────────
 
@@ -137,7 +139,7 @@ function unrefPollTimerIfSupported(timer: ReturnType<typeof setTimeout> | null |
   }
 }
 
-/** Poll git status every 5s and refresh file tree badges. */
+/** Refresh Git badges and visible directory listings every 5s. */
 let unsubscribeGitVisibility: (() => void) | null = null;
 export function startFileTreeGitStatusPoll(cwd?: string): void {
   if (typeof window === 'undefined') return;
@@ -146,9 +148,12 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
     return;
   }
   gitStatusPollCwd = normalizedCwd;
+  listingPoll?.abort();
+  listingPollOffset = 0;
   unsubscribeGitVisibility?.();
   unsubscribeGitVisibility = subscribeRenderIdle((idle) => {
-    if (!idle) void pollFileTreeGitStatus();
+    if (idle) listingPoll?.abort();
+    else pollFileTree();
   });
   if (gitStatusPollTimer !== undefined) {
     clearInterval(gitStatusPollTimer);
@@ -158,11 +163,11 @@ export function startFileTreeGitStatusPoll(cwd?: string): void {
   }
   gitStatusPollDebounce = setTimeout(() => {
     gitStatusPollDebounce = undefined;
-    void pollFileTreeGitStatus();
+    pollFileTree();
   }, 200);
   unrefPollTimerIfSupported(gitStatusPollDebounce);
   gitStatusPollTimer = setInterval(() => {
-    void pollFileTreeGitStatus();
+    pollFileTree();
   }, 5000);
   unrefPollTimerIfSupported(gitStatusPollTimer);
 }
@@ -181,6 +186,13 @@ export function stopFileTreeGitStatusPollForTests(): void {
   }
   gitStatusPollCwd = undefined;
   gitStatusPollInFlight = false;
+  listingPoll?.abort();
+  listingPollOffset = 0;
+}
+
+function pollFileTree(): void {
+  void pollFileTreeGitStatus();
+  void pollFileTreeListings();
 }
 
 async function pollFileTreeGitStatus(): Promise<void> {
@@ -255,16 +267,64 @@ async function fetchListing(relativePath: string): Promise<ParsedListing | { err
   const cached = listingCache.get(relativePath);
   if (cached) return cached;
 
+  const parsed = await readListing(relativePath, buildFileTreeToolContext());
+  if (!('error' in parsed)) listingCache.set(relativePath, parsed);
+  return parsed;
+}
+
+async function readListing(relativePath: string, context: { workspaceRoot?: string; signal?: AbortSignal }) {
   const { executeWorkspaceFileAction } = await import('../tools/client');
   const raw = (
-    await executeWorkspaceFileAction('list_directory', { path: relativePath }, buildFileTreeToolContext())
+    await executeWorkspaceFileAction('list_directory', { path: relativePath }, context)
   ).content;
-  const parsed = parseListDirectoryResult(raw);
-  if ('error' in parsed) {
-    return parsed;
+  return parseListDirectoryResult(raw);
+}
+
+/** Compare fresh directory entries without replacing unchanged rows or refreshing hidden panes. */
+async function pollFileTreeListings(): Promise<void> {
+  const host = document.getElementById('fileTreeHost');
+  if (listingPoll || isRenderIdle() || !isFileTreeServerAvailable()
+    || !host?.checkVisibility?.({ visibilityProperty: true })) return;
+  const treeInUse = () => host.contains(document.activeElement) || host.matches(':active');
+  if (treeInUse()) return;
+  const root = getFilePanelState().treeRoot || '.';
+  if (!listingCache.has(root)) return;
+  const workspace = getWorkspacePath();
+  const context = buildFileTreeToolContext();
+  const expanded = [...host.querySelectorAll<HTMLElement>('[data-tree-dir]')]
+    .map((group) => group.dataset.treeDir!);
+  // Check the root every pass and rotate through expanded folders to bound request volume.
+  const count = Math.min(expanded.length, 7);
+  const dirs = [root, ...Array.from({ length: count }, (_, i) => expanded[(listingPollOffset + i) % expanded.length])];
+  if (expanded.length) listingPollOffset = (listingPollOffset + count) % expanded.length;
+  const poll = new AbortController();
+  listingPoll = poll;
+  const signal = AbortSignal.any([poll.signal, AbortSignal.timeout(4_000)]);
+  const stillCurrent = () => !signal.aborted && !isRenderIdle() && isFileTreeServerAvailable()
+    && !treeInUse() && host.checkVisibility({ visibilityProperty: true })
+    && workspace === getWorkspacePath() && context.workspaceRoot === getFileTreeListingWorkspaceRoot()
+    && root === (getFilePanelState().treeRoot || '.');
+  try {
+    for (const dir of dirs) {
+      if (!stillCurrent()) break;
+      const previous = listingCache.get(dir);
+      if (!previous || loadingDirs.has(dir)) continue;
+      const next = await readListing(dir, { ...context, signal });
+      if (!stillCurrent() || listingCache.get(dir) !== previous || 'error' in next) continue;
+      const unchanged = (key: keyof ParsedListing) =>
+        previous[key].length === next[key].length && previous[key].every((name, i) => name === next[key][i]);
+      if (unchanged('dirs') && unchanged('files')) continue;
+      listingCache.set(dir, next);
+      invalidateFileTreeIndex();
+      invalidateListingCacheScopes(context.workspaceRoot);
+      if (getFilterQuery().trim()) renderFileTree();
+      else patchDirChildren(dir, root);
+    }
+  } catch {
+    // The next pass retries transient failures without replacing the visible listing.
+  } finally {
+    listingPoll = null;
   }
-  listingCache.set(relativePath, parsed);
-  return parsed;
 }
 
 function setExpanded(path: string, open: boolean): void {

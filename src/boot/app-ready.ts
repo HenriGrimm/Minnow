@@ -33,6 +33,8 @@ export const APP_CSS_READY_PROPERTY = '--mn-app-css-ready';
  */
 export const APP_SHELL_STYLED_TIMEOUT_MS = 500;
 
+const PAINT_WAIT_TIMEOUT_MS = 250;
+
 /** True for app bundle stylesheets (not highlight.js, fonts CDN, etc.). */
 function isBundledStylesheetLink(link: HTMLLinkElement): boolean {
   const href = link.getAttribute('href');
@@ -60,11 +62,19 @@ function isStylesheetLinkReady(link: HTMLLinkElement): boolean {
   }
 }
 
-/** Wait until after the next layout/paint (double rAF). */
+/** Let visible chrome paint, with a timer for occluded Electron renderers that receive no frames. */
 export function waitForStablePaint(): Promise<void> {
   return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, PAINT_WAIT_TIMEOUT_MS);
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
+      if (!finished) requestAnimationFrame(finish);
     });
   });
 }

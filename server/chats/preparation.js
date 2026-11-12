@@ -529,6 +529,10 @@ export async function prepareChatExecution({ command, execution, fence, signal }
       throw error;
     }
   };
+  const customDocumentPaths = meta.contextDocuments?.customPaths;
+  const readDocuments = Array.isArray(customDocumentPaths) && customDocumentPaths.some(value => typeof value === 'string' && value.trim())
+    ? requiredDocuments
+    : () => optional('context-documents', documentSignal => contextDocuments(live.composer, meta, cwd, policy.filesystemAccess, documentSignal));
   // Historical variants may have captured an incomplete set of canonical sources.
   const capturedPrompt = snapshot.prompt;
   const capturedPromptProfile = capturedPrompt?.meta?.activePromptProfile;
@@ -536,7 +540,7 @@ export async function prepareChatExecution({ command, execution, fence, signal }
   const [memoryBlock, codeMapBlock, contextDocumentsBlock, role] = await Promise.all([
     memoryEnabled ? firstTurn ? optional('memory', enrichmentSignal => live.adapters.retrieveMemory({ chat, cwd, query, signal: enrichmentSignal })) : replay.memoryBlock : null,
     codeMapEnabled ? firstTurn ? optional('code-map', enrichmentSignal => live.adapters.retrieveCodeMap({ cwd, query, composer: live.composer, signal: enrichmentSignal })) : replay.codeMapBlock : null,
-    documentsEnabled ? firstTurn ? requiredDocuments() : replay.contextDocumentsBlock : null,
+    documentsEnabled ? firstTurn ? readDocuments() : replay.contextDocumentsBlock : null,
     useCapturedSources ? { sources: capturedPrompt.sources, workAgent: capturedPrompt.workAgent ?? null }
       : rolePromptSnapshot(live, effectiveChat),
   ]);

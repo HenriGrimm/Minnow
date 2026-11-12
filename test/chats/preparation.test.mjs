@@ -470,9 +470,19 @@ test('Stop interrupts hung optional enrichment instead of being swallowed as an 
 
 test('hung required documents fail with an actionable error instead of becoming an optional omission', async () => {
   const f = fixture();
+  f.settings.meta.contextDocuments = { customPaths: ['required.md'] };
   f.options.enrichmentTimeoutMs = 20;
   f.adapters.loadComposer = async () => ({ ...composer, resolveContextDocumentsBlock: () => new Promise(() => {}) });
   await assert.rejects(f.prepare, error => error.code === 'capability_unavailable' && /Context document preparation exceeded.*Check Context documents settings/.test(error.message));
+});
+
+test('a preset-only document timeout leaves the turn usable and records the omission', async () => {
+  const f = fixture();
+  f.options.enrichmentTimeoutMs = 20;
+  f.adapters.loadComposer = async () => ({ ...composer, resolveContextDocumentsBlock: () => new Promise(() => {}) });
+  const prepared = await f.prepare();
+  assert.deepEqual(prepared.enrichmentOmissions, [{ kind: 'context-documents', reason: 'deadline' }]);
+  assert.equal(prepared.contextBodies['context-documents'], undefined);
 });
 
 test('ordinary skills are server-resolved and captured with settings and fenced surface context', async () => {

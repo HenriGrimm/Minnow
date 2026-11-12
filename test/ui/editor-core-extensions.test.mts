@@ -19,6 +19,7 @@ function setupDom(): void {
 describe('editor core extensions precedence', () => {
   test('editorCoreExtensions bundles history, search, and folding', () => {
     const exts = editorCoreExtensions({
+      filePath: 'hello.js',
       wordWrap: true,
       tabSize: 4,
       renderWhitespace: true,
@@ -33,10 +34,12 @@ describe('editor core extensions precedence', () => {
     const view = new EditorView({
       state: EditorState.create({
         doc: 'hello',
-        extensions: [...editorCoreExtensions({ wordWrap: false, tabSize: 2 }), ...fileEditorKeymapExtensions()],
+        extensions: [...editorCoreExtensions({ filePath: 'src/hello.js', wordWrap: false, tabSize: 2 }), ...fileEditorKeymapExtensions()],
       }),
       parent,
     });
+    assert.equal(view.contentDOM.getAttribute('aria-label'), 'Editor for src/hello.js');
     assert.equal(fileEditorEscapeBlurBinding.run!(view), true);
+    view.destroy();
   });
 });

@@ -730,6 +730,7 @@ function mountEditor(tab: ViewerTabState, content: string): void {
           if (dirtyChanged) updateViewerChrome();
         }),
         ...editorCoreExtensions({
+          filePath: path,
           wordWrap: editorSettings.wordWrap,
           tabSize: editorSettings.tabSize,
           renderWhitespace: editorSettings.renderWhitespace,

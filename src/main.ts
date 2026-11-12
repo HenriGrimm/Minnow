@@ -280,6 +280,23 @@ export async function initApp(): Promise<void> {
   refreshConfigStorageBanner();
   const migrated = await runMigrationIfNeeded();
 
+  markBootPhase('config');
+  const configReady = Promise.all([
+    loadSkillConfigFromStorage(),
+    loadToolSecurityMeta().catch(() => undefined),
+    loadBrowserMeta().catch(() => undefined),
+    loadChatMeta().catch(() => undefined),
+    loadSamplerMeta().then(applySamplerMetaToDrawer).catch(() => undefined),
+    loadLibraryInferencePrefs().catch(() => undefined),
+    loadLibraryLaunchPrefs().catch(() => undefined),
+    loadAutopilotMeta().catch(() => undefined),
+    loadThinkingMeta().catch(() => undefined),
+  ]).then(() => {
+    try {
+      performance.mark('minnow:boot:config-done');
+      performance.measure('minnow:phase:config-cluster', 'minnow:boot:config', 'minnow:boot:config-done');
+    } catch {}
+  });
   const issuesReady = (async () => {
     const { loadIssuesTaxonomyFromStorage } = await import('./state/issues-taxonomy-store.ts');
     await loadIssuesTaxonomyFromStorage();
@@ -298,6 +315,7 @@ export async function initApp(): Promise<void> {
   })();
 
   await Promise.all([
+    configReady,
     loadToolConfigFromStorage(),
     initPromptSystem(),
     initWorkAgentSystem(),
@@ -381,7 +399,6 @@ export async function initApp(): Promise<void> {
   if (hasComposerSurface) {
     initModelSelectPicker();
     initComposerModelTriggers();
-    await refreshSkillCatalog();
     const msgInput = document.getElementById('msgInput') as HTMLTextAreaElement | null;
     if (msgInput) {
       initComposerInput(msgInput);
@@ -391,28 +408,6 @@ export async function initApp(): Promise<void> {
     initComposerPaste();
     initAppSidebarResizers();
   }
-  markBootPhase('config');
-  await Promise.all([
-    loadSkillConfigFromStorage(),
-    loadToolSecurityMeta().catch(() => undefined),
-    loadBrowserMeta().catch(() => undefined),
-    loadChatMeta().catch(() => undefined),
-    loadSamplerMeta()
-      .then(applySamplerMetaToDrawer)
-      .catch(() => undefined),
-    loadLibraryInferencePrefs().catch(() => undefined),
-    loadLibraryLaunchPrefs().catch(() => undefined),
-    loadAutopilotMeta().catch(() => undefined),
-    loadThinkingMeta().catch(() => undefined),
-  ]);
-  try {
-    performance.mark('minnow:boot:config-done');
-    performance.measure(
-      'minnow:phase:config-cluster',
-      'minnow:boot:config',
-      'minnow:boot:config-done',
-    );
-  } catch {}
   if (hasComposerSurface) {
     initStatsStrip();
     initChatScroll();
@@ -487,6 +482,7 @@ export async function initApp(): Promise<void> {
     mountMobileShell();
   }
   markChromeReady();
+  if (hasComposerSurface) void refreshSkillCatalog();
   window.addEventListener('minnow-host-reconnected', () => { void fetchModels(); });
   const renderSharedSessionChanges = (activeChanged: boolean) => {
     renderSidebar();

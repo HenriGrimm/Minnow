@@ -86,9 +86,15 @@ test('keyboard controls retain native Enter behavior and search appears before e
   installHappyDomGlobals(win, { fetch: async () => Response.json({ data: [], providers: [] }) });
   setStorageModeForTests('localStorage');
   try {
+    document.body.innerHTML = '<main id="osStage"><button>Run setup again</button></main>';
+    const stage = document.getElementById('osStage')!;
+    const opener = stage.querySelector('button')!;
+    opener.focus();
     await mountOnboarding({ force: true });
     const root = win.document.querySelector('.mn-onboarding')!;
     const button = win.document.querySelector<HTMLButtonElement>('.mn-onboarding-primary-btn')!;
+    assert.equal(stage.inert, true);
+    assert.equal(root.querySelector('.mn-onboarding-skip-btn')?.textContent, 'Set up later');
     const event = new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
     button.dispatchEvent(event);
     assert.equal(event.defaultPrevented, false);
@@ -96,6 +102,14 @@ test('keyboard controls retain native Enter behavior and search appears before e
     button.click();
     await waitUntil(() => Boolean(root.querySelector('.mn-onboarding-step--theme')));
     assert.equal(win.document.activeElement?.tagName, 'H2');
+    const backTab = new win.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    win.document.activeElement!.dispatchEvent(backTab);
+    assert.equal(backTab.defaultPrevented, true);
+    assert.equal(win.document.activeElement, button);
+    const tab = new win.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    button.dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, true);
+    assert.ok(root.contains(win.document.activeElement));
     const select = win.document.createElement('select');
     root.appendChild(select);
     const selectEvent = new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
@@ -103,6 +117,7 @@ test('keyboard controls retain native Enter behavior and search appears before e
     assert.equal(selectEvent.defaultPrevented, false);
     select.remove();
     const skip = root.querySelector<HTMLButtonElement>('.mn-onboarding-skip-btn')!;
+    assert.equal(skip.textContent, 'Skip this step');
     for (const title of ['How will you run models?', 'Connect web search', 'Install extras', 'Permissions', 'Memory and Brain']) {
       skip.click();
       await waitUntil(() => root.querySelector('h2')?.textContent === title);
@@ -110,6 +125,9 @@ test('keyboard controls retain native Enter behavior and search appears before e
     const mirror = JSON.parse(win.localStorage.getItem('minnow.onboarding.v1')!);
     assert.equal(mirror.steps.extras.data.searxngSkipped, true);
     assert.equal(mirror.steps.extras.done, false);
+    await unmountOnboarding(false);
+    assert.equal(stage.inert, false);
+    assert.equal(win.document.activeElement, opener);
   } finally {
     await unmountOnboarding(false);
     globalThis.fetch = previousFetch;

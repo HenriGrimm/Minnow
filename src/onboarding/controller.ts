@@ -5,6 +5,7 @@
 import { isServerStorageMode } from '../config/storage-mode';
 import { getLocalServerAvailable } from '../tools/client';
 import { isWorkspaceFolderPickerOpen } from '../ui/workspace-folder-picker';
+import { focusableWithin, markOverlayRoot, trapTabKey } from '../ui/components/internal';
 import { mountStepSidebar, type StepSidebarHandle } from './step-sidebar';
 import { getApplicableSteps, resolveStepIndex, ONBOARDING_STEPS } from './steps/registry';
 import { warmProviderProbes } from './steps/provider';
@@ -38,6 +39,8 @@ let navigating = false;
 let mounting: Promise<void> | null = null;
 let renewalTimer: ReturnType<typeof setInterval> | null = null;
 let renderGeneration = 0;
+let returnFocus: HTMLElement | null = null;
+let inertShell: HTMLElement[] = [];
 
 // ── Mount ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +88,7 @@ async function mountOverlay(options?: { force?: boolean }): Promise<void> {
   rootEl.setAttribute('role', 'dialog');
   rootEl.setAttribute('aria-modal', 'true');
   rootEl.setAttribute('aria-label', 'Minnow setup');
+  rootEl.tabIndex = -1;
 
   const asideMount = document.createElement('aside');
   const main = document.createElement('div');
@@ -107,7 +111,6 @@ async function mountOverlay(options?: { force?: boolean }): Promise<void> {
   skipBtn = document.createElement('button');
   skipBtn.type = 'button';
   skipBtn.className = 'mn-onboarding-skip-btn';
-  skipBtn.textContent = 'Set up later';
   skipBtn.addEventListener('click', () => void runNavigation(skipCurrent));
 
   primaryBtn = document.createElement('button');
@@ -136,7 +139,12 @@ async function mountOverlay(options?: { force?: boolean }): Promise<void> {
 
   main.append(mobileProgressMount, contentEl, footer);
   rootEl.append(asideMount, main);
+  returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  inertShell = [...document.querySelectorAll<HTMLElement>('#osMenubar, #osStage')]
+    .filter((element) => !element.inert);
+  for (const element of inertShell) element.inert = true;
   document.body.appendChild(rootEl);
+  markOverlayRoot(rootEl, 'dialog');
   document.documentElement.classList.add('onboarding-active');
 
   sidebarHandle = mountStepSidebar(
@@ -170,6 +178,10 @@ export async function unmountOnboarding(complete = false): Promise<void> {
   sidebarHandle?.destroy();
   sidebarHandle = null;
   rootEl?.remove();
+  for (const element of inertShell) element.inert = false;
+  inertShell = [];
+  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  returnFocus = null;
   rootEl = null;
   contentEl = null;
   mounted = false;
@@ -191,7 +203,19 @@ function unbindKeyboard(): void {
 }
 
 function onKeyDown(ev: KeyboardEvent): void {
-  if (!mounted || ev.defaultPrevented || isWorkspaceFolderPickerOpen()) return;
+  if (!rootEl || ev.defaultPrevented || isWorkspaceFolderPickerOpen()) return;
+  const active = document.activeElement;
+  const activeModal = active?.closest('[aria-modal="true"]');
+  if (activeModal && activeModal !== rootEl && !rootEl.contains(activeModal)) return;
+  if (ev.key === 'Tab') {
+    if (ev.shiftKey && active === contentEl?.querySelector('h1, h2')) {
+      ev.preventDefault();
+      (focusableWithin(rootEl).at(-1) ?? rootEl).focus();
+    } else {
+      trapTabKey(rootEl, ev);
+    }
+    return;
+  }
   if (ev.key === 'Escape') {
     ev.preventDefault();
     void runNavigation(() => unmountOnboarding(false));
@@ -269,7 +293,10 @@ function renderCurrentStep(): void {
   setWelcomeLayout(step.id === 'welcome');
 
   if (backBtn) backBtn.hidden = stepIndex === 0;
-  if (skipBtn) skipBtn.hidden = !step.canSkip;
+  if (skipBtn) {
+    skipBtn.hidden = !step.canSkip;
+    skipBtn.textContent = step.id === 'welcome' ? 'Set up later' : 'Skip this step';
+  }
 
   const cleanup = step.render(contentEl, ctx, makeActions());
   if (typeof cleanup === 'function') stepCleanup = cleanup;

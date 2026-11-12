@@ -296,6 +296,7 @@ function mountEditor(host: HTMLElement, tab: ViewerTabState, content: string): v
         EditorState.readOnly.of(tab.readOnlyExcerpt),
         EditorView.editable.of(!tab.readOnlyExcerpt),
         ...editorCoreExtensions({
+          filePath: path,
           wordWrap: editorSettings.wordWrap,
           tabSize: editorSettings.tabSize,
           renderWhitespace: editorSettings.renderWhitespace,

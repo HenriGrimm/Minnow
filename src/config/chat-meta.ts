@@ -3,7 +3,7 @@
  * Tool-loop caps and server-side generation upstream timeouts.
  */
 
-import { detectConfigServer } from './storage-mode';
+import { detectConfigServer, readConfigMeta } from './storage-mode';
 
 export interface ChatMeta {
   /** Abort when no upstream SSE bytes arrive for this long (resets per chunk). */
@@ -84,10 +84,8 @@ function writeLocalChatMeta(config: ChatMeta): void {
 }
 
 async function fetchChatMetaFromServer(): Promise<ChatMeta> {
-  const res = await fetch('/api/config/meta', { cache: 'no-store' });
-  if (!res.ok) return readLocalChatMeta();
-  const meta = (await res.json()) as Record<string, unknown>;
-  return parseChatBlock(meta.chat);
+  const meta = await readConfigMeta();
+  return meta ? parseChatBlock(meta.chat) : readLocalChatMeta();
 }
 
 /** Load main chat meta (cached until reset). */

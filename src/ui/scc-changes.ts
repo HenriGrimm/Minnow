@@ -411,17 +411,21 @@ export function createChangesView(ctx: SccContext): SccView {
       return;
     }
 
-    const lines = parseUnifiedPatchToDiffLines(result.patch ?? '');
+    const patch = result.patch ?? '';
+    const lines = parseUnifiedPatchToDiffLines(patch);
     if (lines.length === 0) {
-      diffBody.replaceChildren(
-        emptyState({
-          title: bucket === 'untracked' ? 'New file, not yet tracked' : 'No textual changes',
-          body:
-            bucket === 'untracked'
-              ? 'Stage it to see its contents as a diff.'
-              : 'This file changed in mode or is binary.',
-        }),
-      );
+      const binary = /^(?:Binary files .* differ|GIT binary patch)\r?$/m.test(patch);
+      const emptyAddition = !binary && /^new file mode \d+\r?$/m.test(patch);
+      const emptyDeletion = !binary && /^deleted file mode \d+\r?$/m.test(patch);
+      const title = bucket === 'untracked' ? 'New file, not yet tracked'
+        : binary ? 'Binary file changed'
+        : emptyAddition ? 'Empty file added'
+        : emptyDeletion ? 'Empty file removed'
+        : 'No textual changes';
+      diffBody.replaceChildren(emptyState({
+        title,
+        ...(bucket === 'untracked' ? { body: 'Stage it to see its contents as a diff.' } : {}),
+      }));
       return;
     }
 
@@ -429,7 +433,6 @@ export function createChangesView(ctx: SccContext): SccView {
     const removed = lines.filter((line) => line.type === 'remove').length;
     diffHead.appendChild(diffStat(added, removed));
 
-    const patch = result.patch ?? '';
     if (graphite) {
       const options = el('div', 'scc-changes__diff-options');
       options.setAttribute('role', 'group');

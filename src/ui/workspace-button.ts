@@ -222,8 +222,6 @@ export function initWorkspaceButton(): void {
     }
     void toggleWorkspaceMenu(btn);
   });
-
-  void refreshWorkspaceUi();
 }
 
 export { closeWorkspaceMenu };

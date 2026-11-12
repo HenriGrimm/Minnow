@@ -24,6 +24,7 @@ import {
 } from '@codemirror/view';
 
 export interface EditorCoreExtensionOptions {
+  filePath: string;
   wordWrap: boolean;
   tabSize: number;
   renderWhitespace?: boolean;
@@ -53,6 +54,7 @@ export function editorCoreExtensions(options: EditorCoreExtensionOptions): Exten
   );
 
   return [
+    EditorView.contentAttributes.of({ 'aria-label': `Editor for ${options.filePath}` }),
     history(),
     closeBrackets(),
     bracketMatching(),

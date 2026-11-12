@@ -136,6 +136,37 @@ describe('buildComposeContext cwd', () => {
     assert.notEqual(ctx.cwd, MAIN_REPO);
   });
 
+  it('times out optional preset reads in a worktree while preserving explicitly required files', async t => {
+    const originalFetch = globalThis.fetch;
+    const originalWindow = globalThis.window;
+    globalThis.window = { location: { origin: 'http://localhost:9473' } } as typeof window;
+    t.after(() => { globalThis.fetch = originalFetch; globalThis.window = originalWindow; });
+    let customPaths: string[] = [];
+    let fileSignal: AbortSignal | null | undefined;
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes('/api/config/file')) {
+        return Response.json({ contextDocuments: { enabledPresets: ['agents-md'], customPaths } });
+      }
+      if (url.includes('/api/preview/file/')) {
+        assert.ok(decodeURIComponent(url).includes(WORKTREE_DIRECT));
+        fileSignal = init?.signal;
+        return new Promise(() => {});
+      }
+      return Response.json({});
+    };
+    const chat = baseChat({ worktreeRoot: WORKTREE_DIRECT });
+    const options = { firstUserSend: true, enrichmentTimeoutMs: 50 };
+    const context = await buildComposeContext(chat, options);
+    assert.equal(context.contextDocumentsBlock, null);
+    assert.match(context.enrichmentNotice ?? '', /context-documents \(deadline\)/);
+    assert.ok(fileSignal?.aborted);
+
+    customPaths = ['required.md'];
+    resetConfigFileCacheForTests();
+    await assert.rejects(buildComposeContext(chat, options), /Context document preparation timed out/);
+  });
+
   it('a board task chat with no worktreeRoot resolves to the workspace', async () => {
     setSessionStateForTests({
       version: 5,

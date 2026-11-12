@@ -579,6 +579,7 @@ function chatTurnContextLimits(
 // ── Prompt ───────────────────────────────────────────────────────────────────
 
 export async function composeRunTurnChatSystemPrompt(input: {
+  signal?: AbortSignal;
   separateCliContext?: boolean;
   chat: Chat;
   rawText: string;
@@ -626,6 +627,7 @@ export async function composeRunTurnChatSystemPrompt(input: {
       skillBody = augmentSkillBodyForUiDesigner(skillBody, uiDesignerCtx);
     }
     const outbound = await resolveOutboundSystemMessages(input.chat, {
+      signal: input.signal,
       separateCliContext: input.separateCliContext,
       userMessagePreview: input.userText || input.rawText,
       routeUserText: input.userText || input.rawText,
@@ -1406,6 +1408,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
     };
     try {
       const composed = await composeRunTurnChatSystemPrompt({
+        signal: chatSignal,
         separateCliContext: provider.apiKind === 'agent-cli-v1',
         chat,
         rawText,
@@ -1831,6 +1834,7 @@ export async function runChatTurn(options: RunChatTurnOptions): Promise<boolean>
         const nextSignature = JSON.stringify(nextTools);
         if (chat.modeId === roundModeId && nextSignature === roundToolsSignature) return null;
         const composed = await composeRunTurnChatSystemPrompt({
+          signal: chatSignal,
           chat, rawText, userText, skillId, skillBody: presetSkillBody,
           ephemeralContext, firstUserSend: false,
           separateCliContext: provider.apiKind === 'agent-cli-v1',

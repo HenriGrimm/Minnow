@@ -425,6 +425,7 @@ export async function sendMessage(): Promise<void> {
   appendBubble('user', text);
 
   const outbound = await resolveOutboundSystemMessages(chat, {
+    signal: chatSignal,
     userMessagePreview: text,
     routeUserText: text,
     firstUserSend,
