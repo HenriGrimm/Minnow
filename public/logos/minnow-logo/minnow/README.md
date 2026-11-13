@@ -1,61 +1,42 @@
 # Minnow logo assets
 
+The mark is a **pixel minnow**: seven columns by five rows of cells. The tail is
+three cells set as a `>` (the prompt) and the eye is one missing cell, so the
+mark works in a single ink.
+
+Everything here is generated from `src/lib/minnow-mark.mjs` by
+`npm run logos:render` (which also refreshes `build/icon.ico` and the tray
+icons). Change the mark there; do not hand-edit these files.
+
+## Construction
+- Grid: 7 × 5 cells, 23 filled.
+- Vector master: cell 3 units, gap 1 unit, corner 0.67 units (`viewBox 0 0 100 100`).
+- Under 48 px the gaps close or shrink and cells land on whole pixels. The
+  16 px master is 2 px cells with no gap; 32, 48 and 64 px tiles have their
+  own snapped grids. Never downscale the vector master to these sizes.
+
 ## SVG masters (`/svg`)
-- `minnow-icon.svg` — primary app icon, 512×512 (black tile, white fish)
-- `minnow-icon-light.svg` — light variant (white tile, outline fish)
-- `minnow-glyph.svg` — fish only, transparent background
-- `minnow-favicon.svg` — simplified geometry for tiny sizes (no eye)
-- `minnow-maskable.svg` — Android adaptive icon with safe-zone padding
+- `minnow-icon.svg` — primary app icon, 512×512 (graphite tile, sage minnow)
+- `minnow-icon-light.svg` — light variant (white tile, graphite minnow)
+- `minnow-glyph.svg` / `minnow-glyph-white.svg` / `minnow-glyph-accent.svg` — mark only, transparent
+- `minnow-favicon.svg` — the 16 px pixel master on its tile
+- `minnow-maskable.svg` — full-bleed square, mark inside the safe zone
 - `minnow-lockup-horizontal.svg` — icon + wordmark + tagline
-- `minnow-lockup-stacked.svg` — icon over wordmark
+- `minnow-lockup-stacked.svg` — icon over wordmark + tagline
+
+The lockup SVGs set type in Geist Mono (wordmark) and Geist (tagline); the PNGs
+are rendered with the bundled fonts.
 
 ## PNGs (`/png`)
-
-### Main app icon (use for most things)
-`minnow-{16,32,48,64,96,128,180,192,256,384,512,1024}.png`
-
-### Favicon
-- `favicon.ico` — multi-resolution (16/32/48), drop into site root
-- `minnow-favicon-{16,32,48}.png` — individual sizes if you prefer PNG favicons
-- `apple-touch-icon.png` — 180×180 for iOS home-screen
-
-### PWA / Android
-- `minnow-192.png` and `minnow-512.png` — standard PWA icons
-- `minnow-maskable-{192,512}.png` — maskable icons for Android adaptive
-
-### Variants
-- `minnow-light-{128,256,512}.png` — light/outline variant
-- `minnow-glyph-{128,256,512}.png` — fish only, transparent bg
-
-### Lockups
-- `minnow-lockup-horizontal-{720,1440}.png` — for headers, footers, README
-- `minnow-lockup-stacked-{400,800}.png` — for splash, social cards
-
-## Suggested HTML
-```html
-<link rel="icon" type="image/svg+xml" href="/minnow-favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/minnow-favicon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/minnow-favicon-16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="icon" href="/favicon.ico" sizes="any">
-```
-
-## Suggested `manifest.json`
-```json
-{
-  "name": "Minnow",
-  "short_name": "Minnow",
-  "description": "Tiny by design. Local LLM development tool.",
-  "icons": [
-    { "src": "/minnow-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/minnow-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/minnow-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/minnow-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
-}
-```
+- `minnow-{16,32,48,64,96,128,180,192,256,384,512,1024}.png` — app icon ladder
+- `favicon.ico`, `minnow-favicon-{16,32,48}.png` — favicons
+- `apple-touch-icon.png` — 180×180, opaque square (iOS applies its own mask)
+- `minnow-maskable-{192,512}.png` — PWA / Android adaptive icons
+- `minnow-light-{128,256,512}.png` — light variant
+- `minnow-glyph-{128,256,512}.png` — mark only, transparent
+- `minnow-lockup-horizontal-{720,1440}.png`, `minnow-lockup-stacked-{400,800}.png`
 
 ## Colors
-- Tile / primary: `#0f0f10`
-- Fish / inverse: `#ffffff`
-- Tagline grey: `#6b6b70`
+- Tile / ink: `#0f1216` (graphite)
+- Minnow on dark: `#9ec5a7` (sage accent)
+- Tagline grey: `#5a626c`

@@ -225,8 +225,8 @@
 }
 
 .model-host-filter-library-toggle .minnow-glyph {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .model-host-filter-library-toggle[aria-pressed='true'] {

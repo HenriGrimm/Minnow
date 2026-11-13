@@ -24,6 +24,7 @@
     "build": "tsc && vite build",
     "postinstall": "node scripts/sync-impeccable-skill.mjs && node scripts/sync-material-file-icons.mjs && node scripts/ensure-electron.mjs",
     "app-icon:sync": "node scripts/sync-app-icon.mjs && node scripts/brand-electron-win.mjs",
+    "logos:render": "node scripts/render-logos.mjs && npm run app-icon:sync",
     "impeccable:sync": "node scripts/sync-impeccable-skill.mjs",
     "impeccable:update": "npx impeccable skills update && node scripts/sync-impeccable-skill.mjs",
     "impeccable:detect": "npx impeccable detect src/ index.html",

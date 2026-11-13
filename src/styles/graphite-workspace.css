@@ -34,8 +34,8 @@ html.is-electron-shell[data-platform='win32']:is(.mn-graphite-workspace, .mn-gra
 }
 
 .mn-graphite-workspace .mn-os-mb-logo .minnow-glyph {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .mn-graphite-workspace .mn-os-mb-brand {

@@ -365,13 +365,13 @@ describe('boot loader teardown', () => {
     assert.equal(win.document.getElementById('app-loader')!.getAttribute('role'), 'alert');
   });
 
-  it('removes the loader after the fade so its spinner stops animating', async () => {
+  it('removes the loader after the fade so its fill animation stops', async () => {
     win = new Window();
     const g = globalThis as typeof globalThis & { document: Document; window: Window };
     g.document = win.document as unknown as Document;
     g.window = win;
     win.document.body.innerHTML =
-      '<div id="app-loader"><div class="app-loader__spinner"></div>' +
+      '<div id="app-loader"><svg class="app-loader__mark"></svg>' +
       '<p id="appLoaderStatus">Loading…</p></div>';
 
     markAppReady();
