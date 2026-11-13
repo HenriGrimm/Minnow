@@ -559,6 +559,30 @@ describe('Models CLI panel', () => {
     assert.equal(link('cursor').hidden, true);
   });
 
+  test('macOS onboarding installs in place, prevents duplicates and verifies automatically', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    let finish!: () => void;
+    let installs = 0;
+    setCliPanelDepsForTests({
+      list: async () => [cli('claude', { installed: false, installable: true, authStatus: 'signed-out' })],
+      launchInstall: async () => { installs++; await new Promise<void>(resolve => { finish = resolve; }); },
+      verify: async kind => cli(kind, { installable: true, authStatus: 'signed-out' }),
+    });
+    await mountCliPanel({ container, showCommandInstructions: true, onStatusChange() {} });
+    const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Install')!;
+    button.click();
+    button.click();
+    assert.equal(installs, 1);
+    assert.equal(button.disabled, true);
+    assert.equal(button.textContent, 'Installing…');
+    finish();
+    await tick();
+    assert.match(container.textContent ?? '', /Claude Code is installed\. Sign in/);
+    assert.doesNotMatch(container.textContent ?? '', /Run .* in your terminal/);
+    assert.equal([...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Sign in')!.hidden, false);
+  });
+
   test('embedded onboarding shows commands without opening the hidden application terminal', async () => {
     let terminalLaunches = 0;
     const states: string[][] = [];

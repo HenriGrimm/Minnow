@@ -85,6 +85,7 @@ export async function getAgentCliStatus(kind, options = {}) {
     providerId: definition.providerId,
     label: definition.label,
     installed: detection.installed,
+    installable: process.platform === 'darwin',
     authStatus: detection.authStatus,
     enabled: profile?.enabled === true,
     ...(detection.version ? { version: detection.version } : {}),

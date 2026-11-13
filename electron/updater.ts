@@ -6,8 +6,10 @@ import { app, BrowserWindow } from 'electron';
 import electronUpdater from 'electron-updater';
 import * as channels from './ipc-channels.js';
 import { trustedIpc } from './trusted-ipc.js';
+import { PlatformGitHubProvider } from './platform-github-provider.js';
 import {
   createInitialUpdaterStatus,
+  defaultUpdaterChannel,
   isDeveloperIdSignedCodesignOutput,
   normalizeUpdaterChannel,
   reduceUpdaterStatus,
@@ -50,9 +52,10 @@ function loadPersistedChannel(): UpdaterChannel {
   try {
     const raw = fs.readFileSync(channelFilePath(), 'utf8');
     const parsed = JSON.parse(raw) as { channel?: unknown };
-    return normalizeUpdaterChannel(parsed?.channel);
+    return parsed?.channel === 'stable' || parsed?.channel === 'beta'
+      ? parsed.channel : defaultUpdaterChannel(app.getVersion());
   } catch {
-    return 'stable';
+    return defaultUpdaterChannel(app.getVersion());
   }
 }
 
@@ -232,6 +235,7 @@ export function initUpdater(options: { prepareQuitForUpdate: () => Promise<void>
   if (!supported) return;
 
   autoUpdater.autoDownload = true;
+  autoUpdater.setFeedURL({ provider: 'custom', updateProvider: PlatformGitHubProvider, owner: 'henrigrimm', repo: 'minnow' });
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = channel === 'beta';
   autoUpdater.logger = {

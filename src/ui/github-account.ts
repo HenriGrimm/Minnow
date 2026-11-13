@@ -1,5 +1,6 @@
 import { githubAuthRequest, type GitHubAccount } from '../state/github-auth';
 import { createGitHubMark } from './icon';
+import { installDevTool } from '../api/dev-tools';
 import '../styles/github-account.css';
 
 /** Shared account UI; credentials remain owned by GitHub CLI. */
@@ -45,6 +46,10 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   signIn.type = 'button';
   signIn.className = 'github-account__primary';
   signIn.textContent = 'Sign in with GitHub';
+  const install = document.createElement('button');
+  install.type = 'button';
+  install.className = 'github-account__primary';
+  install.textContent = 'Set up GitHub';
   const refresh = document.createElement('button');
   refresh.type = 'button';
   refresh.textContent = 'Check again';
@@ -54,7 +59,7 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   const note = document.createElement('p');
   note.className = 'github-account__note';
   note.textContent = 'Uses GitHub CLI on this machine, including any account already signed in. Credentials are managed by the CLI; Minnow does not store a separate GitHub token.';
-  actions.append(signIn, refresh, cancel);
+  actions.append(signIn, install, refresh, cancel);
   const connection = document.createElement('div');
   connection.className = 'github-account__connection';
   connection.append(status, detail, actions);
@@ -65,6 +70,8 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   let timer: ReturnType<typeof setTimeout> | undefined;
   let account: GitHubAccount = { ok: true, flow: null };
   let detailKey = '';
+  let installController: AbortController | undefined;
+  let installMessage = '';
 
   function link(label: string, url: string): HTMLAnchorElement {
     const a = document.createElement('a');
@@ -80,18 +87,21 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
     root.dataset.state = pending ? 'pending' : account.authenticated ? 'connected' : 'disconnected';
     root.setAttribute('aria-busy', String(busy));
     signIn.hidden = !account.installed || Boolean(account.managed) || pending;
+    install.hidden = account.installed !== false || !account.installable;
+    install.disabled = busy;
+    install.textContent = installController ? 'Setting up…' : 'Set up GitHub';
     signIn.textContent = account.authenticated ? 'Switch account' : 'Sign in with GitHub';
     signIn.disabled = refresh.disabled = busy;
     refresh.hidden = pending;
     cancel.hidden = !pending;
     cancel.disabled = busy;
-    status.textContent = pending ? (account.flow?.code ? 'Enter this code on GitHub to finish signing in.' : 'Starting secure sign-in…')
+    status.textContent = installMessage || (pending ? (account.flow?.code ? 'Enter this code on GitHub to finish signing in.' : 'Starting secure sign-in…')
       : account.flow?.state === 'failed' ? `${account.flow.error}${account.authenticated ? ` Still connected as @${account.login}.` : ''}`
       : account.authenticated ? `Connected as @${account.login}`
       : account.installed === false ? 'GitHub CLI is needed to connect your account.'
       : account.installed ? account.error || 'Not connected'
-      : 'Checking GitHub…';
-    const nextKey = `${pending}:${account.flow?.code}:${account.installed}:${account.managed}`;
+      : 'Checking GitHub…');
+    const nextKey = `${pending}:${account.flow?.code}:${account.installed}:${account.installable}:${account.managed}`;
     if (detailKey !== nextKey) {
       detailKey = nextKey;
       detail.replaceChildren();
@@ -110,8 +120,11 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
         detail.append(code, copy, link('Continue on GitHub', 'https://github.com/login/device'));
       } else if (account.installed === false) {
         const instructions = document.createElement('p');
-        instructions.textContent = 'Install GitHub CLI from its website, restart Minnow, then return here and choose Check again. You can also skip this step.';
-        detail.append(instructions, link('Install GitHub CLI', 'https://cli.github.com/'));
+        instructions.textContent = account.installable
+          ? 'Minnow installs GitHub CLI for you. If Git is missing, approve Apple’s installer when it opens. No Homebrew or terminal commands needed.'
+          : 'Install GitHub CLI from its website, then choose Check again. You can also skip this step.';
+        detail.append(instructions);
+        if (!account.installable) detail.append(link('Install GitHub CLI', 'https://cli.github.com/'));
       } else if (account.managed) {
         detail.textContent = 'An environment token supplies this account. Manage GH_TOKEN or GITHUB_TOKEN outside Minnow.';
       }
@@ -122,6 +135,7 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   async function request(action: 'Status' | 'Start' | 'Poll' | 'Cancel'): Promise<void> {
     if (!active || busy) return;
     clearTimeout(timer);
+    installMessage = '';
     busy = true;
     paint();
     try {
@@ -149,9 +163,34 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
 
   function cleanup(): void {
     active = false;
+    installController?.abort();
     clearTimeout(timer);
   }
   signIn.onclick = () => void request('Start');
+  install.onclick = async () => {
+    if (busy || !active) return;
+    busy = true;
+    installMessage = 'Preparing GitHub tools…';
+    installController = new AbortController();
+    paint();
+    try {
+      await installDevTool('github', installController.signal, message => {
+        if (active) { installMessage = message; paint(); }
+      });
+      if (!active) return;
+      installMessage = '';
+      installController = undefined;
+      busy = false;
+      await request('Status');
+      if (account.installed && !account.authenticated) await request('Start');
+    } catch (error) {
+      if (!active) return;
+      installMessage = error instanceof Error ? error.message : 'Setup failed. Retry here.';
+      installController = undefined;
+      busy = false;
+      paint();
+    }
+  };
   refresh.onclick = () => void request('Status');
   cancel.onclick = () => void request('Cancel');
   void request('Status');

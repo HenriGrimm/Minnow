@@ -39,6 +39,9 @@ test('nightly releases pin builds and publication to the selected commit', () =>
   assert.ok(jobs.publish.needs.includes('package'));
   assert.equal(jobs.publish.env.SHA, '${{ needs.prepare.outputs.sha }}');
   assert.ok(jobs.publish.steps.find(step => step.name === 'Create draft prerelease').run.includes('--target "$SHA"'));
+  const verify = jobs.publish.steps.findIndex(step => step.run?.includes('verify-release-assets.mjs'));
+  const publish = jobs.publish.steps.findIndex(step => step.name === 'Publish prerelease');
+  assert.ok(verify >= 0 && verify < publish, 'all platform feeds must be verified before beta publication');
 });
 
 test('stable release accepts an optional v prefix and ignores nightly tags', () => {

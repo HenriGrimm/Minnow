@@ -29,7 +29,9 @@ Two things happen behind the scenes:
 
 The **Minnow setup** dialog opens over the workspace picker. Connect a provider and choose a default chat model, or select **Set up later** to open a workspace right away. To reopen the dialog, go to **Settings → General → Run setup again**. To bring an existing Minnow profile with you, choose **Restore from a backup**.
 
-Choose **Subscriptions**, **Run with Minnow**, **Cloud API**, or **Local server**. Minnow can download a model for your hardware or load a GGUF file from an existing model folder. For Claude Code, Codex, or Cursor, enable an installed, signed-in agent and choose a model. **Sign in** keeps setup open while you approve access in your browser. If you need to install the CLI first, setup shows the command and lets you scan again after installing.
+Choose **Subscriptions**, **Run with Minnow**, **Cloud API**, or **Local server**. Minnow can download a model for your hardware or load a GGUF file from an existing model folder. For Claude Code, Codex, or Cursor, enable an installed, signed-in agent and choose a model. **Sign in** keeps setup open while you approve access in your browser.
+
+On macOS, choose **Install** to set up the selected agent in place. Minnow downloads missing Node.js and npm into its own home folder; no Homebrew or system-wide npm installation is required. **Set up GitHub** installs GitHub CLI and continues to browser sign-in. If Git is missing, approve Apple’s Command Line Tools installer; setup continues when it finishes. Keep the setup panel open to follow progress, or return and retry to rejoin an installation. On other platforms, setup shows the CLI installation command.
 
 Use **Settings** to change appearance, permissions, web search, GitHub, or memory. Use **Models → Routing** to choose models for specific tasks.
 
@@ -54,8 +56,8 @@ Packaged builds check GitHub Releases in the background. When a build is downloa
 
 | Channel | What you get |
 |---------|--------------|
-| **Stable** | Normal releases. The default. |
-| **Beta** | Pre-releases as well. Newer features, rougher edges. |
+| **Stable** | Normal releases. The default for stable installers. |
+| **Beta** | Pre-releases as well. The default for beta installers. Newer features, rougher edges. |
 
 Two things worth knowing: a completed download stays ready even if a later check fails, so a flaky network does not lose your update; and because closing to tray keeps Minnow alive, an update that wants a restart applies when you actually quit and reopen, not when you close the window.
 

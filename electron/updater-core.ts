@@ -49,6 +49,10 @@ export function normalizeUpdaterChannel(value: unknown): UpdaterChannel {
   return value === 'beta' ? 'beta' : 'stable';
 }
 
+export function defaultUpdaterChannel(version: string): UpdaterChannel {
+  return /-beta(?:\.|$)/.test(version) ? 'beta' : 'stable';
+}
+
 function decodeHtmlEntities(value: string): string {
   const named: Record<string, string> = {
     amp: '&',

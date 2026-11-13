@@ -26,6 +26,7 @@
       { ...shared, kind: 'codex', providerId: 'codex-cli', label: 'Codex CLI', installed: true, enabled: false, authStatus: 'unknown', version: '0.166.0', nativeCodingTools: false, nativeCodingCapability: agentCliNativeCodingCapability('codex'), binPath: 'C:\\Users\\Developer\\AppData\\Local\\OpenAI\\Codex\\bin\\codex.exe', installCommand: 'npm install -g @openai/codex', loginCommand: 'codex login' },
       { ...shared, kind: 'cursor', providerId: 'cursor-agent-cli', label: 'Cursor Agent', installed: false, enabled: false, authStatus: 'signed-out', installCommand: 'curl https://cursor.com/install -fsS | bash', loginCommand: 'cursor-agent login' },
     ];
+    if (params.has('mac-setup')) rows = rows.map(row => ({ ...row, installed: false, installable: true, authStatus: 'signed-out' }));
     if (params.has('login')) {
       rows = rows.map(row => ({ ...row, installed: true, authStatus: 'signed-out' }));
     }
@@ -46,9 +47,9 @@
         acceptsCode: kind === 'claude' && loginState === 'waiting', code: kind === 'codex' ? 'ABCD-1234' : null,
         error: loginState === 'failed' ? 'Sign-in timed out. Start again when you are ready.' : null };
     };
-    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { authStatus: 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: saveSettings, login,
+    setCliPanelDepsForTests({ list: async () => { if (params.has('error')) throw new Error('Could not connect. Open or restart Minnow.'); return rows; }, verify: async kind => update(kind, { installed: true, authStatus: params.has('mac-setup') ? 'signed-out' : 'signed-in' }), setEnabled: async (kind, enabled) => update(kind, { enabled }), updateSettings: saveSettings, login,
       usage: async kind => ({ kind, status: 'unavailable', windows: [], plan: null, fetchedAt: null, checkedAt: new Date().toISOString(), retryAt: null, message: 'Connect your account to see usage.' }),
-      launchInstall: async () => {} });
+      launchInstall: async () => { await new Promise(resolve => setTimeout(resolve, 700)); if (params.has('setup-error')) throw new Error('Could not download the tool. Check your connection and retry.'); } });
     await mountCliPanel();
   </script>
 </body>

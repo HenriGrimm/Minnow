@@ -8,6 +8,8 @@ import { detectHardware } from './hardware.js';
 import { listDeadHosts } from '../generations/host-cooldown.js';
 import { getNetworkStatus } from './network.js';
 import { getLanStatus } from '../remote/ingress-manager.js';
+import { getRequestIngress } from '../network/ingress.js';
+import { devToolsInstaller } from './dev-tools.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -22,6 +24,20 @@ function sendJson(res, status, payload) {
  * @returns {Promise<boolean>}
  */
 export async function handleSystemRequest(req, res, pathname) {
+
+  const setup = pathname.match(/^\/api\/system\/dev-tools\/(github|claude|codex|cursor)$/);
+  if (setup) {
+    res.setHeader('Cache-Control', 'no-store');
+    if (getRequestIngress(req) !== 'loopback' || (req.minnowAuth && req.minnowAuth.kind !== 'host')) {
+      sendJson(res, 403, { error: 'Set up tools on the computer running Minnow.' });
+    } else if (!['GET', 'POST'].includes(req.method)) {
+      sendJson(res, 405, { error: 'Method not allowed' });
+    } else {
+      try { sendJson(res, 200, req.method === 'POST' ? devToolsInstaller.start(setup[1]) : devToolsInstaller.status(setup[1])); }
+      catch (error) { sendJson(res, 400, { error: error.message }); }
+    }
+    return true;
+  }
 
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;

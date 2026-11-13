@@ -8,6 +8,7 @@ export interface GitHubLoginFlow {
 export interface GitHubAccount {
   ok: boolean;
   installed?: boolean;
+  installable?: boolean;
   authenticated?: boolean;
   login?: string;
   managed?: boolean;

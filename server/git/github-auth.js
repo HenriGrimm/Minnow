@@ -15,7 +15,7 @@ export function createGitHubAuth({ run = runGh, invalidate = invalidateForgeStat
   }
 
   async function status(signal) {
-    const base = { ok: true, installed: false, authenticated: false, login: '', managed: Boolean(env.GH_TOKEN || env.GITHUB_TOKEN), flow: loginState() };
+    const base = { ok: true, installed: false, installable: process.platform === 'darwin', authenticated: false, login: '', managed: Boolean(env.GH_TOKEN || env.GITHUB_TOKEN), flow: loginState() };
     try {
       const version = await run(['--version'], { timeout: 10_000, signal });
       if (version.code !== 0) return base;

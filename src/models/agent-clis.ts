@@ -57,6 +57,7 @@ export interface AgentCliStatus {
   providerId: string;
   label: string;
   installed: boolean;
+  installable?: boolean;
   authStatus: AgentCliAuthStatus;
   accountEmail?: string;
   enabled: boolean;

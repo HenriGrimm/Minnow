@@ -76,3 +76,31 @@ test('late status results cannot enable a step after navigation', async t => {
   await flush();
   assert.equal(values.includes(true), false);
 });
+
+test('macOS GitHub setup installs inline and continues to browser sign-in', async t => {
+  let installed = false;
+  const calls: string[] = [];
+  const container = setup(t, op => {
+    calls.push(op);
+    return op === 'githubAuthStart' ? { ok: true, flow: { state: 'pending', code: 'ABCD-1234' } }
+      : { ok: true, installed, installable: true, authenticated: false, flow: null };
+  });
+  const authFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (url: unknown, options: RequestInit) => {
+    if (String(url).startsWith('/api/system/dev-tools')) {
+      assert.equal(options.method, 'POST');
+      installed = true;
+      return new Response(JSON.stringify({ state: 'ready', message: 'Tools are ready.' }));
+    }
+    return authFetch(url as string, options);
+  });
+  const cleanup = mountGitHubAccount(container);
+  t.after(cleanup);
+  await flush();
+  const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Set up GitHub')!;
+  assert.equal(button.hidden, false);
+  button.click();
+  await flush();
+  assert.ok(calls.includes('githubAuthStart'));
+  assert.equal(container.querySelector('code')?.textContent, 'ABCD-1234');
+});

@@ -19,6 +19,7 @@ import { accountUsageSummary, createAccountUsageView } from '../cli-account-usag
 import { setModelsRailCount } from './graphite-chrome';
 import { createAgentCliSignIn } from '../agent-cli-sign-in';
 import { launchApp } from '../../os/router';
+import { installDevTool } from '../../api/dev-tools';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
 const LOGIN_COMMANDS: Record<AgentCliKind, string> = {
@@ -125,6 +126,12 @@ async function defaultLaunchSignIn(status: AgentCliStatus): Promise<boolean> {
 }
 
 async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
+  if (status.installable) {
+    await installDevTool(status.kind, actionControllers.get(status.kind)!.signal, message => {
+      if (mounted) { notice = message; render(); }
+    });
+    return;
+  }
   await runCommandInNewTerminal((shell) => buildAgentCliInstallCommand(status.kind, shell));
 }
 
@@ -554,7 +561,8 @@ function renderCli(status: AgentCliStatus): CliView {
     updateCli.disabled = busy;
     install.hidden = next.installed;
     install.disabled = busy;
-    install.textContent = pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
+    install.textContent = pending.get(next.kind) === 'Installing' ? 'Installing…'
+      : pending.get(next.kind) === 'Opening terminal' ? 'Opening…' : 'Install';
     signIn.hidden = !next.installed || next.authStatus === 'signed-in' || next.authStatus === 'token'
       || !signInView.root.hidden;
     signIn.disabled = busy;
@@ -569,7 +577,9 @@ function renderCli(status: AgentCliStatus): CliView {
       ? 'Minnow checks persistent-session support before sending a prompt. Unsupported Cursor versions use isolated replay.'
       : 'Conversations continue automatically. Matching saved conversations resume after eviction or restart.');
     info.textContent = !next.installed
-      ? 'Install in Terminal, then scan again. You can also set a binary path in Advanced settings.'
+      ? next.installable
+        ? 'Install here. Minnow sets up missing Node.js, npm and Git for you; approve Apple’s installer if prompted.'
+        : 'Install in Terminal, then scan again. You can also set a binary path in Advanced settings.'
       : next.kind === 'codex'
         ? `Sign in with your ChatGPT account to use Codex in Minnow. ${sessionHint}`
         : sessionHint;
@@ -759,11 +769,24 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
   if (loadController || pending.has(kind) || views.get(kind)?.busy()) return;
   itemErrors.delete(kind);
   notice = '';
-  pending.set(kind, 'Opening terminal');
+  const controller = new AbortController();
+  actionControllers.set(kind, controller);
+  const view = views.get(kind);
+  pending.set(kind, statuses.find(row => row.kind === kind)?.installable ? 'Installing' : 'Opening terminal');
   render();
   try {
     const status = statuses.find((row) => row.kind === kind);
     if (!status) throw new Error('CLI status is unavailable. Scan again and retry.');
+    if (status.installable) {
+      await deps.launchInstall(status);
+      if (!mounted || controller.signal.aborted || views.get(kind) !== view) return;
+      const next = await deps.verify(kind, controller.signal);
+      if (!mounted || controller.signal.aborted || views.get(kind) !== view) return;
+      if (!next.installed) throw new Error('Installation finished but the CLI was not detected. Retry setup.');
+      replaceStatus(next);
+      notice = `${next.label} is installed. Sign in to connect your account.`;
+      return;
+    }
     if (showCommandInstructions) {
       const shell = /windows/i.test(navigator.userAgent) ? 'powershell' : undefined;
       notice = `Run ${buildAgentCliInstallCommand(status.kind, shell)} in your terminal. When it finishes, scan again here.`;
@@ -772,10 +795,13 @@ async function launchInstall(kind: AgentCliKind): Promise<void> {
     await deps.launchInstall(status);
     notice = `${status.label} install started in Terminal. When it finishes, return and scan again.`;
   } catch (error) {
-    itemErrors.set(kind, errorMessage(error));
+    if (!controller.signal.aborted) itemErrors.set(kind, errorMessage(error));
   } finally {
-    pending.delete(kind);
-    render();
+    if (actionControllers.get(kind) === controller) {
+      actionControllers.delete(kind);
+      pending.delete(kind);
+      render();
+    }
   }
 }
 

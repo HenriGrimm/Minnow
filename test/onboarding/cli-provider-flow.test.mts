@@ -37,7 +37,7 @@ test('CLI detection failure can retry and authentication updates remove a provid
     setPrimaryEnabled(value: boolean) { enabled = value; }, setPrimaryLabel() {}, stepIndex: 4, totalSteps: 12 };
   setCliPanelDepsForTests({ list: async () => {
     if (++attempts === 1) throw new Error('server unavailable');
-    return [cli({ enabled: true })];
+    return [cli({ enabled: true, verifiedAt: '2026-11-13T00:00:00.000Z' })];
   }, verify: async () => cli({ enabled: true, authStatus: 'signed-out' }),
   usage: async () => ({ kind: 'codex', status: 'unavailable', windows: [], plan: null, fetchedAt: null,
     checkedAt: '', retryAt: null, message: null }) });

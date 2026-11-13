@@ -23,6 +23,7 @@ import { applyPendingRestore } from '../backup/restore-apply.js';
 import { startBackupScheduleLoop } from '../backup/schedule.js';
 import { writeHostLock } from './host-lock.js';
 import { ensureChatPreparationArtifact } from './chat-preparation-artifact.js';
+import { activateDevToolsPath } from '../system/dev-tools.js';
 
 /**
  * Log the outcome of a boot-time restore swap. Silent when nothing was pending.
@@ -53,6 +54,7 @@ export function reportPendingRestore(result) {
  */
 export async function bootstrapMinnowRuntime() {
   reportPendingRestore(applyPendingRestore());
+  activateDevToolsPath();
   await ensureChatPreparationArtifact({ appRoot: getAppRoot() });
   writeHostLock();
   await ensureMinnowLayoutInitialized();

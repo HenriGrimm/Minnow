@@ -174,11 +174,18 @@ jobs:
       TAG: ${{ needs.prepare.outputs.tag }}
       SHA: ${{ needs.prepare.outputs.sha }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
       - uses: actions/download-artifact@v4
         with:
           pattern: beta-package-*
           path: release-assets
           merge-multiple: true
+
+      - name: Verify all platform update feeds before publication
+        run: node scripts/verify-release-assets.mjs release-assets "$VERSION"
 
       - name: Create draft prerelease
         run: |
