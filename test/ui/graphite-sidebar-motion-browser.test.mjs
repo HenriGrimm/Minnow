@@ -39,7 +39,10 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
             <div id="osAppsLayer" class="mn-os-apps-layer">
               <div class="mn-os-app-layer is-active" id="code">
                 <header id="graphiteThreadHeader" data-app-titlebar><h1 class="graphite-thread-title">Workspace content</h1>
-                  <div class="graphite-thread-header__actions"><button id="threadAction">Thread action</button></div>
+                  <div class="graphite-thread-header__actions">
+                    <button id="threadAction">Thread action</button>
+                    <div class="graphite-thread-header__panel-toggles"><button id="btnSurfaceBottom">Bottom panel</button></div>
+                  </div>
                 </header>
               </div>
               <div class="mn-os-app-layer settings-page" id="settingsApp">
@@ -142,6 +145,9 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
       const divider = getComputedStyle(document.querySelector('.mn-os-mb-window-controls'), '::before');
       const close = bounds('#close');
       const dragStrip = getComputedStyle(document.getElementById('graphiteThreadHeader'), '::before');
+      const bottomToggle = document.getElementById('btnSurfaceBottom');
+      const bottomToggleBounds = bottomToggle.getBoundingClientRect();
+      const threadActions = getComputedStyle(bottomToggle.closest('.graphite-thread-header__actions'));
       const menubar = document.getElementById('osMenubar');
       const titlebarHit = document.elementFromPoint((rail.getBoundingClientRect().right + controls.left) / 2, top / 2);
       return { left, right, top, railRight: rail.getBoundingClientRect().right,
@@ -156,6 +162,12 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
         threadActionRight: bounds('#threadAction').right, settingsRight: bounds('#settings').right,
         dragStripRegion: dragStrip.getPropertyValue('app-region'),
         dragStripRight: bounds('#graphiteThreadHeader').right - parseFloat(dragStrip.right),
+        threadActionsPosition: threadActions.position,
+        threadActionsRegion: threadActions.getPropertyValue('app-region'),
+        bottomToggleClickable: document.elementFromPoint(
+          bottomToggleBounds.left + bottomToggleBounds.width / 2,
+          bottomToggleBounds.top + bottomToggleBounds.height / 2,
+        ) === bottomToggle,
         threadActionRegion: getComputedStyle(document.getElementById('threadAction')).getPropertyValue('app-region') };
     };
     const start = measure();
@@ -202,6 +214,11 @@ test('the Graphite stage covers the sidebar as it grows and Windows controls sta
   assert.equal(start.dragStripRegion, 'drag');
   assert.ok(start.dragStripRight <= start.controls.left);
   assert.equal(start.threadActionRegion, 'no-drag');
+  for (const frame of [start, end]) {
+    assert.equal(frame.threadActionsPosition, 'relative');
+    assert.equal(frame.threadActionsRegion, 'no-drag');
+    assert.ok(frame.bottomToggleClickable);
+  }
   assert.equal(end.dragStripRegion, 'drag');
   assert.equal(end.railRight, 0);
   assert.equal(end.left, 8);

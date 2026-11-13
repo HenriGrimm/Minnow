@@ -20,6 +20,7 @@ import { setModelsRailCount } from './graphite-chrome';
 import { createAgentCliSignIn } from '../agent-cli-sign-in';
 import { launchApp } from '../../os/router';
 import { installDevTool } from '../../api/dev-tools';
+import { runCommandInNewTerminal } from '../terminal-command-launcher';
 
 const CLI_ORDER: AgentCliKind[] = ['claude', 'codex', 'cursor'];
 const LOGIN_COMMANDS: Record<AgentCliKind, string> = {
@@ -92,33 +93,6 @@ export function buildAgentCliInstallCommand(kind: AgentCliKind, shell?: string):
   return INSTALL_COMMANDS.cursor;
 }
 
-async function runCommandInNewTerminal(
-  buildCommand: (shell?: string) => string,
-): Promise<void> {
-  const [{ launchApp }, terminalPanel, terminalTabs, terminalXterm] = await Promise.all([
-    import('../../os/router'),
-    import('../terminal-panel'),
-    import('../terminal-tabs'),
-    import('../terminal-xterm'),
-  ]);
-
-  launchApp('code', { codeSection: 'chat' });
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-  terminalPanel.openTerminalPanel();
-
-  for (let attempt = 0; attempt < 50 && !terminalTabs.isTerminalTabsInitialized(); attempt += 1) {
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 100));
-  }
-  if (!terminalTabs.isTerminalTabsInitialized()) {
-    throw new Error('Minnow terminal is not available. Restart Minnow and try again.');
-  }
-
-  const tabId = await terminalTabs.addTab();
-  await terminalXterm.waitForTerminalInputReady(tabId);
-  const shell = terminalTabs.getTerminalTabShellProfile(tabId)?.shell;
-  terminalXterm.insertTextAtTerminalInput(`${buildCommand(shell)}\r`);
-}
-
 async function defaultLaunchSignIn(status: AgentCliStatus): Promise<boolean> {
   const result = views.get(status.kind)?.signIn.start();
   render();
@@ -132,7 +106,7 @@ async function defaultLaunchInstall(status: AgentCliStatus): Promise<void> {
     });
     return;
   }
-  await runCommandInNewTerminal((shell) => buildAgentCliInstallCommand(status.kind, shell));
+  await runCommandInNewTerminal((profile) => buildAgentCliInstallCommand(status.kind, profile?.shell));
 }
 
 const defaultDeps: CliPanelDeps = {

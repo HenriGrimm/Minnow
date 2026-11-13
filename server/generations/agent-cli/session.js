@@ -588,7 +588,7 @@ export async function pumpAgentCliSession({ state, runtime, candidate, index, id
               appendChunk(state, Buffer.from(JSON.stringify({ id: state.id, object: 'chat.completion', model: candidate.modelId,
                 choices: [{ index: 0, message: { role: 'assistant', content: this.content || null,
                   ...(this.reasoning ? { reasoning: this.reasoning,
-                    ...(['claude', 'codex'].includes(session.kind) ? { reasoning_format: 'summary' } : {}) } : {}),
+                    ...(session.kind === 'codex' ? { reasoning_format: 'summary' } : {}) } : {}),
                   ...(this.calls.length ? { tool_calls: this.calls } : {}) }, finish_reason: reason }], ...metadata })));
             }
             markComplete(state);

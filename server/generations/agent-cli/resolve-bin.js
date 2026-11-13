@@ -126,6 +126,39 @@ export async function resolveWindowsCmdShim(requested, forUpdate = false) {
   throw new Error(`Cannot resolve Windows CLI shim safely: ${requested}`);
 }
 
+/** Run npm directly so the vendor executable is closed while npm replaces it. */
+export async function resolveWindowsNpmAgentCliUpdate(kind, binPath, options = {}) {
+  const packageName = { codex: '@openai/codex', claude: '@anthropic-ai/claude-code' }[kind];
+  if (!packageName || !binPath?.toLowerCase().endsWith('.cmd')) return null;
+  const prefix = path.dirname(binPath);
+  const modules = path.join(prefix, 'node_modules');
+  const packageRoot = path.join(modules, packageName);
+  const shimScript = extractNpmShimScript(await fs.readFile(binPath, 'utf8').catch(() => ''));
+  if (!shimScript) return null;
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+    const entry = manifest.bin?.[kind];
+    if (manifest.name !== packageName || typeof entry !== 'string'
+      || path.resolve(packageRoot, entry) !== resolveShimRelativeScript(binPath, shimScript)
+      || (await fs.lstat(packageRoot)).isSymbolicLink()
+      || await fileExists(path.join(modules, '.modules.yaml'))) return null;
+  } catch { return null; }
+
+  // Only consult absolute PATH entries, never the server or project directory.
+  for (const dir of agentCliSearchPath(options.env ?? process.env).split(path.delimiter)) {
+    const npmDir = dir.replace(/^"(.*)"$/, '$1');
+    if (!path.isAbsolute(npmDir)) continue;
+    const npmCli = path.join(npmDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    if (!await fileExists(npmCli) || !await fileExists(path.join(npmDir, 'npm.cmd'))) continue;
+    const node = path.join(npmDir, 'node.exe');
+    return {
+      command: await fileExists(node) ? node : process.execPath,
+      args: [npmCli, 'install', '--global', '--prefix', prefix, '--include=optional', '--no-audit', '--no-fund', `${packageName}@latest`],
+    };
+  }
+  throw new Error(`npm was not found. Run npm install --global --include=optional ${packageName}@latest in a terminal.`);
+}
+
 /**
  * Codex's npm entry spawns codex.exe without windowsHide. Launch the native
  * payload ourselves so background discovery and generation stay hidden.

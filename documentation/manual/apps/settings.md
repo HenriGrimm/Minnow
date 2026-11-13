@@ -13,7 +13,7 @@ Search also opens related settings in **Brain** and **Models**. Sidebar groups e
 | Group | Pages |
 |-------|-------|
 | **General** | Startup & setup, Appearance, Notifications, Audio, Devices, Updates |
-| **Code & workspace** | Editor, Terminal, Language servers, Browser, GitHub, Issues |
+| **Code & workspace** | Editor, Terminal, Language servers, Browser, External Connections, Issues |
 | **AI & agents** | Models & connections, Agents, Chat context, Rules, Tools, Autopilot, Timeouts & recovery |
 | **Extensions** | Plugins, Skills, Skills Library, Agent packs, Web search, MCP servers, Connect other apps, Servers, Webhooks |
 | **Data & privacy** | Backups, Access |
@@ -35,9 +35,11 @@ Choose **Advanced colors → Edit colors…** to change individual interface col
 
 ### Code & workspace
 
-**GitHub** connects your github.com account for pull requests, CI checks, and GitHub issue sync. Select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow verifies the account and displays your username. You can cancel and retry an unfinished sign-in.
+**External Connections** brings GitHub, Fly.io, Supabase, and Clerk account setup together. The vendor CLIs manage credentials.
 
-If GitHub CLI is missing, use **Install GitHub CLI**, restart Minnow, and select **Check again**. Existing CLI logins are detected automatically. GitHub CLI manages credentials; Minnow does not store another GitHub token. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed. Repository remotes and Git's existing credential setup remain separate from account sign-in.
+For **GitHub**, select **Sign in with GitHub**, copy the one-time code, and complete authorization using **Continue on GitHub**. Minnow displays the verified username. If the CLI is missing, use the setup action or install link and select **Check again**. Accounts supplied through `GH_TOKEN` or `GITHUB_TOKEN` are identified as environment-managed.
+
+For **Fly.io**, **Supabase**, and **Clerk**, the page checks the shell configured for the current workspace. Use **Install CLI** where offered, or open the **Install guide** for your platform. Select **Sign in** and follow the CLI prompts in the terminal, then return to External Connections to verify. If a newly installed CLI is still missing, restart Minnow so it picks up PATH changes. In chat, use `/fly-cli`, `/supabase-cli`, or `/clerk-cli` to guide the agent through that service's commands. The agent's shell actions follow your usual tool permissions.
 
 **Editor** controls wrapping, indentation, inline AI suggestions, their context, and their model. **Terminal** controls panel behavior and the default shell, with workspace overrides. **Language servers** configures code diagnostics and symbol completions.
 

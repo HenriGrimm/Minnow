@@ -9,9 +9,35 @@ import {
   findAgentCliOnPath,
   resolveAgentCliBin,
   resolveWindowsCmdShim,
+  resolveWindowsNpmAgentCliUpdate,
   stripAnsiFromCliText,
   wellKnownAgentCliPaths,
 } from '../../server/generations/agent-cli/resolve-bin.js';
+
+test('Windows npm updates target the shim prefix without launching the vendor CLI', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow npm update-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const npmDir = path.join(root, 'node runtime');
+  const npmCli = path.join(npmDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  await fs.mkdir(path.dirname(npmCli), { recursive: true });
+  await fs.writeFile(npmCli, '');
+  await fs.writeFile(path.join(npmDir, 'npm.cmd'), '');
+  const env = { PATH: npmDir };
+  for (const [kind, packageName] of [['codex', '@openai/codex'], ['claude', '@anthropic-ai/claude-code']]) {
+    const packageRoot = path.join(root, 'node_modules', packageName);
+    const entry = `bin/${kind}.js`;
+    const shim = path.join(root, `${kind}.cmd`);
+    await fs.mkdir(packageRoot, { recursive: true });
+    await fs.writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: packageName, bin: { [kind]: entry } }));
+    await fs.writeFile(shim, `node "%~dp0\\node_modules/${packageName}/${entry}" %*\r\n`);
+    const invocation = await resolveWindowsNpmAgentCliUpdate(kind, shim, { env });
+    assert.equal(invocation.command, process.execPath);
+    assert.deepEqual(invocation.args, [npmCli, 'install', '--global', '--prefix', root,
+      '--include=optional', '--no-audit', '--no-fund', `${packageName}@latest`]);
+  }
+  await fs.writeFile(path.join(root, 'node_modules', '.modules.yaml'), '');
+  assert.equal(await resolveWindowsNpmAgentCliUpdate('codex', path.join(root, 'codex.cmd'), { env }), null);
+});
 
 test('Windows npm command shims become shell-free Node script invocations', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-agent-cli-shim-'));
@@ -47,9 +73,9 @@ test('Windows PATH discovery skips npm POSIX launchers and unwraps its command s
   process.env.PATH = `${root}${path.delimiter}${original}`;
   const resolved = await resolveAgentCliBin({ kind: 'codex', binPath: 'minnow-test-cli' });
   assert.equal(resolved.command, process.execPath);
-  // Windows runners may hand `where.exe` an 8.3 temp path, while resolving
-  // the shim expands it to the canonical path. Compare that canonical target.
-  assert.deepEqual(resolved.argsPrefix, [await fs.realpath(script)]);
+  // Windows runners may report an 8.3 path or different directory casing.
+  assert.equal(resolved.argsPrefix.length, 1);
+  assert.equal(await fs.realpath(resolved.argsPrefix[0]), await fs.realpath(script));
 });
 
 test('current npm _prog command shims unwrap to the package JS entry', async (t) => {

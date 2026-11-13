@@ -4,19 +4,24 @@ import { installDevTool } from '../api/dev-tools';
 import '../styles/github-account.css';
 
 /** Shared account UI; credentials remain owned by GitHub CLI. */
-export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: boolean) => void, headingTag: 'h2' | 'h3' = 'h2'): () => void {
+export function mountGitHubAccount(
+  mount: HTMLElement,
+  onAccount?: (connected: boolean) => void,
+  headingTag: 'h2' | 'h3' = 'h2',
+  compact = false,
+): () => void {
   const root = document.createElement('section');
   root.className = 'github-account';
   root.dataset.settingsSearchKey = 'github.account';
   root.setAttribute('aria-label', 'GitHub account');
   const heading = document.createElement(headingTag);
   heading.className = 'github-account__heading';
-  heading.textContent = 'Your GitHub account';
+  heading.textContent = compact ? 'GitHub' : 'Your GitHub account';
   const intro = document.createElement('header');
   intro.className = 'github-account__intro';
   const mark = createGitHubMark({ size: 40 });
   const description = document.createElement('p');
-  description.textContent = 'Connect once for pull requests, CI checks, and GitHub issue sync across Minnow.';
+  description.textContent = compact ? 'Pull requests, CI checks, and issue sync.' : 'Connect once for pull requests, CI checks, and GitHub issue sync across Minnow.';
   const copy = document.createElement('div');
   copy.append(heading, description);
   intro.append(mark, copy);
@@ -63,7 +68,20 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
   const connection = document.createElement('div');
   connection.className = 'github-account__connection';
   connection.append(status, detail, actions);
-  root.append(intro, features, connection, note);
+  if (compact) {
+    root.classList.add('settings-row', 'settings-row--actions', 'external-connections__github');
+    const label = document.createElement('div');
+    label.className = 'settings-row__label';
+    heading.className = 'settings-row__title';
+    description.className = 'settings-field-hint';
+    status.classList.add('external-connections__status');
+    actions.className = 'settings-actions';
+    for (const button of [signIn, install, refresh, cancel]) button.className = 'settings-action-btn';
+    label.append(heading, description, status, detail);
+    root.append(label, actions);
+  } else {
+    root.append(intro, features, connection, note);
+  }
   mount.append(root);
   let active = true;
   let busy = false;
@@ -122,7 +140,7 @@ export function mountGitHubAccount(mount: HTMLElement, onAccount?: (connected: b
         const instructions = document.createElement('p');
         instructions.textContent = account.installable
           ? 'Minnow installs GitHub CLI for you. If Git is missing, approve Apple’s installer when it opens. No Homebrew or terminal commands needed.'
-          : 'Install GitHub CLI from its website, then choose Check again. You can also skip this step.';
+          : compact ? 'Install GitHub CLI, then check again.' : 'Install GitHub CLI from its website, then choose Check again. You can also skip this step.';
         detail.append(instructions);
         if (!account.installable) detail.append(link('Install GitHub CLI', 'https://cli.github.com/'));
       } else if (account.managed) {

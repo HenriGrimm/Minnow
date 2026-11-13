@@ -96,6 +96,7 @@ function metaToSession(meta: TerminalTabMeta): TerminalTabSession {
     title: meta.title ?? meta.shellProfileId,
     boundCwd: meta.boundCwd,
     chatId: meta.chatId,
+    privateHistory: meta.privateHistory,
   };
 }
 
@@ -107,6 +108,7 @@ function sessionsToMeta(): TerminalTabMeta[] {
     boundCwd: t.boundCwd,
     chatId: t.chatId ?? null,
     sessionId: t.sessionId ?? null,
+    ...(t.privateHistory ? { privateHistory: true } : {}),
     order: i,
   }));
 }
@@ -288,7 +290,7 @@ export async function switchToAgentTab(): Promise<void> {
   await switchTab(AGENT_TAB_ID);
 }
 
-export async function addTab(shellProfileId?: string): Promise<string> {
+export async function addTab(shellProfileId?: string, { privateHistory }: { privateHistory?: boolean } = {}): Promise<string> {
   const meta = getTerminalMetaCached();
   const profileId =
     shellProfileId ??
@@ -306,6 +308,7 @@ export async function addTab(shellProfileId?: string): Promise<string> {
     title: profile ? profileTabTitle(profile) : profileId,
     chatId: null,
     boundCwd: cwd,
+    privateHistory,
   };
   liveTabs.set(tabId, session);
   await switchTab(tabId);

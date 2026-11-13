@@ -11,7 +11,7 @@ const SUMMARIES: Partial<Record<SettingsSectionId, string>> = {
   terminal: 'Your terminal and the ones agents use.',
   lsp: 'Language intelligence for the editor and agents.',
   browser: 'The preview browser and Agent Browser.',
-  github: 'Pull requests, CI and the gh CLI.',
+  'external-connections': 'Connect service accounts through their CLIs. Agents can use the same sign-ins through the workspace shell.',
   issues: 'Where issues live and how they move.',
   'agent-center': 'One level for every tool, command, URL, MCP server and plugin.',
   injection: 'What every thread can see.',

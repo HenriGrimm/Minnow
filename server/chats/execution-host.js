@@ -11,6 +11,7 @@ import { createChatUsage } from './usage.js';
 import { createRunnerTiming, createRunnerTimingJournal } from '../runner/timing.js';
 import { CHECKPOINT_COORDINATION_TOOLS } from './checkpoints.js';
 import { registerAgentBrowserRuntime, formatAgentBrowserGuideForTranscript } from '../browser-agent-api.js';
+import { validateAskQuestionArgs } from '../../src/lib/ask-question.mjs';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 48);
 export const chatInputMessageId = commandId => commandId.length <= 154 ? `input-${commandId}`
@@ -301,8 +302,10 @@ export function createServerChatExecutionHost({
             // Asking a question is itself the human interaction. Its "ask"
             // permission must not create a second approval before the question.
             assertChatToolAllowed(policy, 'ask_question', {}, { currentPolicy: await livePolicy(), approvalGranted: true });
+            const parsed = validateAskQuestionArgs(question);
+            if (!parsed.ok) return `Error: Invalid ask_question arguments. ${parsed.error}`;
             return waitForHuman({ toolCallId: ctx.toolCallId, kind: 'question', title: 'Question from agent',
-              presentation: { question } }, ctx.signal);
+              presentation: { question: parsed.args } }, ctx.signal);
           },
         } : null;
         const usage = createChatUsage({ repository, now,

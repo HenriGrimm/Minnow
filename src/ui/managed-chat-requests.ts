@@ -9,14 +9,15 @@ import { applySharedChatAttention, findChatById, getActiveChat, sessionState } f
 import { hasUnsettledAgentWork, projectChatRelationships } from '../state/chat-relationships';
 import { subscribeWorkspace } from '../state/workspace';
 import { subscribeAskQuestionDisplayContext, isAskQuestionDomVisible } from '../chat/ask-question-display';
-import { getActiveChatMountElement } from './chat-mount';
+import { findToolWrapInDom } from '../tools/tool-wrap-dom';
 import { validateAskQuestionArgs } from '../tools/ask-question-types';
+import { getActiveChatMountElement } from './chat-mount';
 import { focusAskQuestionModalForChat, isAskQuestionModalOpenForChat, showQuestionCardsModal, syncAskQuestionModalOnDisplayContextChange } from './question-cards-modal';
 import { syncChatItemDotsInDom } from './chat-item-dot';
 import { markPreviewOccluder, unmarkPreviewOccluder } from './preview-occlusion';
 
 interface RequestPanel { request: ChatRequest; element: HTMLElement; form: HTMLFormElement; status: HTMLElement; busy: boolean; stale: boolean; error?: string; }
-interface ChatRequestsView { chatId: string; host: HTMLElement; mount?: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
+interface ChatRequestsView { chatId: string; host: HTMLElement; mount?: HTMLElement; list: HTMLElement; notice: HTMLElement; pager: HTMLElement; panels: Map<string, RequestPanel>; pageIds: Set<string>; loaded: boolean; summaryKey: string; loading?: AbortController; cursor?: string; previous: (string | undefined)[]; nextCursor: string | null; pendingCount: number; question?: { panel: RequestPanel; controller: AbortController }; focusedRequestId?: string; }
 const views = new Map<string, ChatRequestsView>();
 const mountOwners = new WeakMap<HTMLElement, string>();
 let subscriptions: (() => void)[] | undefined;
@@ -45,7 +46,7 @@ function paintPanel(panel: RequestPanel): void {
   const live = panel.request.kind === 'approval' && panel.request.state === 'pending' && !panel.stale && panel.form.dataset.inspectOnly !== 'true';
   const hadFocus = panel.form.contains(document.activeElement);
   panel.element.dataset.state = panel.request.state;
-  panel.element.hidden = panel.request.kind === 'question' && panel.form.dataset.questionPopup === 'true' && panel.request.state === 'pending' && panel.form.dataset.inspectOnly !== 'true';
+  if (panel.request.state !== 'pending') panel.element.remove();
   panel.form.hidden = !live;
   for (const control of panel.form.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>('input,button,textarea')) {
     control.disabled = panel.busy || control.dataset.unavailable === 'true';
@@ -78,7 +79,7 @@ async function submit(view: ChatRequestsView, panel: RequestPanel, answer: unkno
 
 function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
   const element = document.createElement('section'); element.className = 'managed-chat-request'; element.dataset.requestId = request.requestId; element.dataset.chatId = request.chatId;
-  const title = document.createElement('h3'); title.tabIndex = -1; title.textContent = request.kind === 'approval' ? request.title : 'Question from agent';
+  const title = document.createElement('h3'); title.tabIndex = -1; title.textContent = request.title;
   const status = document.createElement('p'); status.className = 'managed-chat-request__status'; status.tabIndex = -1; status.setAttribute('role', 'status');
   const form = document.createElement('form'); form.className = 'managed-chat-request__form';
   const panel: RequestPanel = { request, element, form, status, busy: false, stale: false };
@@ -115,14 +116,6 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
     }
     actions.append(button('Deny', deny));
     form.append(details, actions, feedback);
-  } else {
-    const parsed = validateAskQuestionArgs(request.presentation.question);
-    if (!parsed.ok) {
-      panel.error = 'This saved question has an unsupported format. The agent must ask again.';
-    } else {
-      if (parsed.args.title) title.textContent = parsed.args.title;
-      form.dataset.questionPopup = 'true';
-    }
   }
   form.addEventListener('submit', event => event.preventDefault()); paintPanel(panel); return panel;
 }
@@ -131,7 +124,7 @@ function makePanel(view: ChatRequestsView, request: ChatRequest): RequestPanel {
 function syncQuestionPopup(view: ChatRequestsView): void {
   if (views.get(view.chatId) !== view) return;
   const native = findChatById(view.chatId)?.agentConversation?.origin === 'native';
-  const eligible = (panel: RequestPanel) => !native && panel.request.kind === 'question' && panel.request.state === 'pending' && !panel.stale && panel.form.dataset.questionPopup === 'true';
+  const eligible = (panel: RequestPanel) => !native && panel.request.kind === 'question' && panel.request.state === 'pending' && !panel.stale;
   if (view.question) {
     if (!eligible(view.question.panel) || (view.focusedRequestId && view.focusedRequestId !== view.question.panel.request.requestId)) view.question.controller.abort();
     return;
@@ -140,10 +133,12 @@ function syncQuestionPopup(view: ChatRequestsView): void {
   const panel = view.focusedRequestId ? view.panels.get(view.focusedRequestId) : [...view.panels.values()].find(eligible);
   if (!panel || !eligible(panel)) { view.focusedRequestId = undefined; return; }
   const parsed = validateAskQuestionArgs(panel.request.presentation.question);
-  if (!parsed.ok) return;
   const controller = new AbortController();
   const question = { panel, controller }; view.question = question;
-  void showQuestionCardsModal(parsed.args, {}, {
+  void showQuestionCardsModal(parsed.ok ? parsed.args : {
+    title: 'Question unavailable',
+    unavailable: 'This saved question could not be opened. Ask the agent to send it again.',
+  }, {}, {
     chatId: view.chatId,
     signal: controller.signal,
     notify: false,
@@ -163,8 +158,9 @@ function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[])
   const active = view.host.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   const selected = [...requests.filter(item => item.state === 'pending'), ...requests.filter(item => item.state !== 'pending').slice(-8)];
   const ids = new Set(selected.map(item => item.requestId));
+  view.pageIds = ids;
   for (const [id, panel] of view.panels) if (!ids.has(id)) panel.element.remove();
-  let next = view.list.firstElementChild;
+  const approvals: HTMLElement[] = [];
   for (const request of selected) {
     let panel = view.panels.get(request.requestId);
     if (!panel) { panel = makePanel(view, request); view.panels.set(request.requestId, panel); }
@@ -172,9 +168,12 @@ function applyRequests(view: ChatRequestsView, requests: readonly ChatRequest[])
     if (panel.request.state === 'pending' || request.state !== 'pending') panel.request = request;
     panel.stale = false; panel.form.dataset.inspectOnly = String(findChatById(view.chatId)?.agentConversation?.origin === 'native');
     paintPanel(panel);
-    if (next !== panel.element) view.list.insertBefore(panel.element, next);
-    next = panel.element.nextElementSibling;
+    if (panel.request.kind === 'approval' && panel.request.state === 'pending') approvals.push(panel.element);
   }
+  approvals.forEach((element, index) => {
+    const at = view.list.children.item(index);
+    if (at !== element) view.list.insertBefore(element, at);
+  });
   view.loaded = true; view.notice.replaceChildren(); view.notice.hidden = true;
   while (view.panels.size > 80) { const old = [...view.panels.entries()].find(([id, panel]) => !ids.has(id) && !panel.busy); if (!old) break; view.panels.delete(old[0]); }
   syncHostVisibility(view);
@@ -210,10 +209,10 @@ async function refreshView(view: ChatRequestsView, force = false): Promise<void>
 function getView(chatId: string): ChatRequestsView {
   const prior = views.get(chatId); if (prior) return prior;
   const host = document.createElement('section'); host.className = 'managed-chat-requests'; host.dataset.chatId = chatId; host.setAttribute('aria-label', 'Conversation requests and controls');
-  const notice = document.createElement('p'); notice.className = 'managed-chat-requests__notice'; notice.hidden = true; notice.setAttribute('role', 'status');
+  const notice = document.createElement('p'); notice.className = 'managed-chat-requests__notice'; notice.hidden = true; notice.tabIndex = -1; notice.setAttribute('role', 'status');
   const list = document.createElement('div'); list.className = 'managed-chat-requests__list'; host.append(notice, list);
   const pager = document.createElement('nav'); pager.className = 'managed-chat-requests__pager'; pager.hidden = true; pager.setAttribute('aria-label', 'Pending request pages'); host.append(pager);
-  const view: ChatRequestsView = { chatId, host, list, notice, pager, panels: new Map(), loaded: false, summaryKey: '', previous: [], nextCursor: null, pendingCount: 0 }; views.set(chatId, view);
+  const view: ChatRequestsView = { chatId, host, list, notice, pager, panels: new Map(), pageIds: new Set(), loaded: false, summaryKey: '', previous: [], nextCursor: null, pendingCount: 0 }; views.set(chatId, view);
   while (views.size > 16) { const old = [...views.values()].find(item => item.chatId !== getActiveChat().id && !item.host.isConnected && !item.question); if (!old) break; old.loading?.abort(); views.delete(old.chatId); }
   return view;
 }
@@ -302,23 +301,16 @@ function syncHostVisibility(view: ChatRequestsView): void {
   if (!mount || !mount.isConnected || mountOwners.get(mount) !== view.chatId) return;
   const scopes = view.host.querySelector<HTMLElement>('.managed-chat-scopes');
   const hasControls = scopes?.hidden === false;
-  host.hidden = ![...view.list.children].some(panel => !(panel as HTMLElement).hidden) && view.notice.hidden && view.pager.hidden && !hasControls;
-  const hasPendingApproval = findChatById(view.chatId)?.agentRequestSummary?.some(request => request.kind === 'approval')
-    || view.list.querySelector('.managed-chat-request--approval[data-state="pending"]');
-  const slot = !host.hidden && (hasControls || hasPendingApproval) ? composerApprovalSlot(mount) : null;
+  host.hidden = view.list.childElementCount === 0 && view.notice.hidden && view.pager.hidden && !hasControls;
+  const slot = host.hidden ? null : composerApprovalSlot(mount);
   const active = host.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   host.classList.toggle('managed-chat-requests--docked', Boolean(slot));
-  for (const element of view.list.querySelectorAll<HTMLElement>('.managed-chat-request[data-state]:not([data-state="pending"])')) {
-    element.hidden = Boolean(slot);
-  }
   if (slot) {
     if (host.nextElementSibling !== slot) slot.before(host);
     markPreviewOccluder(host, 'panel');
   } else {
     unmarkPreviewOccluder(host);
-    const context = mount.querySelector(':scope > .agent-chat-context');
-    if (context) { if (context.nextElementSibling !== host) context.after(host); }
-    else if (mount.firstElementChild !== host) mount.prepend(host);
+    if (host.parentElement !== mount) mount.append(host);
   }
   if (active?.isConnected && document.activeElement === document.body) active.focus({ preventScroll: true });
 }
@@ -356,18 +348,38 @@ export function syncManagedChatRequests(chat: Chat, mount: HTMLElement): void {
 export async function focusManagedChatRequest(chatId: string, requestId: string): Promise<void> {
   if (getActiveChat().id !== chatId) return;
   const chat = findChatById(chatId), mount = getActiveChatMountElement(); if (!chat || !mount) return;
-  syncManagedChatRequests(chat, mount); const view = getView(chatId); view.cursor = undefined; view.previous = []; await refreshView(view, true);
+  syncManagedChatRequests(chat, mount); const view = getView(chatId);
+  if (chat.agentConversation?.origin !== 'native') {
+    view.cursor = undefined; view.previous = []; await refreshView(view, true);
+  }
   const seen = new Set<string>();
-  while (view.panels.get(requestId)?.element.parentElement !== view.list && view.nextCursor && !seen.has(view.nextCursor)) {
+  while (!view.pageIds.has(requestId) && view.nextCursor && !seen.has(view.nextCursor)) {
     if (getActiveChat().id !== chatId || !view.host.isConnected) return;
     seen.add(view.nextCursor); view.previous.push(view.cursor); view.cursor = view.nextCursor; await refreshView(view, true);
   }
   if (getActiveChat().id !== chatId || !view.host.isConnected) return;
-  const panel = view.panels.get(requestId); if (!panel || panel.element.parentElement !== view.list) { view.notice.hidden = false; view.notice.textContent = 'This request is no longer available.'; syncHostVisibility(view); return; }
-  if (panel.form.dataset.questionPopup === 'true' && panel.request.state === 'pending') {
+  const panel = view.pageIds.has(requestId) ? view.panels.get(requestId) : undefined;
+  if (panel?.request.kind === 'question' && panel.request.state === 'pending' && !panel.stale && chat.agentConversation?.origin !== 'native') {
     view.focusedRequestId = requestId; syncQuestionPopup(view);
     await Promise.resolve();
     focusAskQuestionModalForChat(chatId);
+    return;
+  }
+  if (!panel || !view.list.contains(panel.element)) {
+    const tool = panel && findToolWrapInDom(panel.request.toolCallId, mount);
+    if (tool && panel.request.state !== 'pending') {
+      for (let detail = tool.closest('details'); detail && mount.contains(detail); detail = detail.parentElement?.closest('details') ?? null) detail.open = true;
+      const summary = tool.querySelector<HTMLElement>('.tool-call-summary');
+      summary?.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+      summary?.focus({ preventScroll: true });
+      return;
+    }
+    view.notice.hidden = false;
+    view.notice.textContent = panel?.request.state === 'pending' && chat.agentConversation?.origin === 'native'
+      ? 'Continue this request in its original host.'
+      : panel && panel.request.state !== 'pending' ? statusText(panel.request) : 'This request is no longer available.';
+    syncHostVisibility(view);
+    view.notice.focus();
     return;
   }
   panel.element.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });

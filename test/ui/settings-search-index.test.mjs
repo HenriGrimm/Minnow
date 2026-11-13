@@ -38,6 +38,14 @@ describe('settings-search-index', () => {
     }
   });
 
+  test('service searches open External Connections', async () => {
+    const { rankSettingsSearch } = await import('../../src/ui/settings-search-rank.ts');
+    const index = buildSettingsSearchIndex();
+    for (const query of ['GitHub account', 'flyctl', 'Supabase login', 'Clerk account']) {
+      assert.equal(rankSettingsSearch(query, index)[0]?.sectionId, 'external-connections', query);
+    }
+  });
+
   test('diagnostics aliases include health keywords', () => {
     const index = buildSettingsSearchIndex();
     const diagnostics = index.find((e) => e.id === 'section:diagnostics');

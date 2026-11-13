@@ -30,6 +30,12 @@
   margin-inline-start: auto;
 }
 
+/* Keep the title-bar drag strip below the thread actions in Electron. */
+html.is-electron-shell .graphite-thread-header__actions {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
 .graphite-thread-button,
 .graphite-thread-icon-button {
   display: inline-flex;

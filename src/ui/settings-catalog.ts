@@ -51,7 +51,7 @@ export const SETTINGS_CATEGORY_AREAS: Record<
   SettingsSectionId[]
 > = {
   general: ['general', 'terminal', 'backups', 'access', 'updates', 'notifications', 'audio', 'devices', 'about'],
-  apps: ['plugins', 'github', 'issues'],
+  apps: ['plugins', 'external-connections', 'issues'],
   appearance: ['appearance'],
   models: ['providers', 'model-routing', 'sampler', 'thinking', 'usage'],
   agents: ['agent-center', 'injection', 'rules', 'agent-packs', 'autopilot', 'watchdog'],
@@ -134,9 +134,21 @@ function field(
 
 /** Static field catalog source — filtered for release gates in SETTINGS_FIELD_CATALOG. */
 const SETTINGS_FIELD_CATALOG_ALL: SettingsFieldEntry[] = [
-  field('github.account', 'GitHub account', 'apps', 'github', {
+  field('github.account', 'GitHub account', 'apps', 'external-connections', {
     keywords: ['login', 'sign in', 'authentication', 'gh', 'pull requests', 'CI', 'repository'],
     description: 'Connect the GitHub account shared by pull requests, CI and issue sync.',
+  }),
+  field('externalConnections.fly', 'Fly.io account', 'apps', 'external-connections', {
+    keywords: ['external connections', 'flyctl', 'login', 'sign in', 'CLI', 'deploy', 'hosting'],
+    description: 'Set up the Fly.io CLI and sign in to manage apps and deployments.',
+  }),
+  field('externalConnections.supabase', 'Supabase account', 'apps', 'external-connections', {
+    keywords: ['external connections', 'login', 'sign in', 'CLI', 'database', 'migrations'],
+    description: 'Set up the Supabase CLI and sign in to manage projects.',
+  }),
+  field('externalConnections.clerk', 'Clerk account', 'apps', 'external-connections', {
+    keywords: ['external connections', 'login', 'sign in', 'CLI', 'auth', 'authentication'],
+    description: 'Set up the Clerk CLI and sign in to manage application authentication.',
   }),
   field('general.updates', 'Software updates', 'general', 'general', {
     keywords: ['update', 'version', 'upgrade', 'beta', 'release', 'restart', 'auto-update', 'cli', 'codex', 'claude', 'cursor'],

@@ -86,7 +86,9 @@ test('interactive handoffs retain concurrent tool calls while later native commi
   });
   assert.equal(result.state.status, 'complete', result.state.errorMessage);
   const calls = result.rows.flatMap(row => row.choices?.[0]?.delta?.tool_calls ?? []);
-  assert.ok(result.rows.some(row => row.choices?.[0]?.delta?.reasoning_format === 'summary'));
+  const reasoning = result.rows.map(row => row.choices?.[0]?.delta).filter(delta => delta?.reasoning);
+  assert.equal(reasoning.map(delta => delta.reasoning).join(''), 'Compare both calls.');
+  assert.ok(reasoning.every(delta => delta.reasoning_format === undefined));
   assert.deepEqual(calls.map(call => JSON.parse(call.function.arguments).value).sort(), [1, 2]);
   assert.equal((await readCliCheckpoint('fixture-claude-durable', 'concurrent-interactive-handoff')).clean, false);
 });

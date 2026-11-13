@@ -104,6 +104,17 @@ test('timeout terminates the attempt and Cursor exposes a browser link and devic
   assert.equal(stopped.length, 1);
 });
 
+test('a broken Windows Codex launcher points to repair before browser approval', async () => {
+  const { service, children } = harness();
+  const flow = await service.start('codex');
+  children[0].stderr.write('Error: Missing optional dependency @openai/codex-win32-x64. private-value');
+  children[0].emit('close', 1);
+  const failed = service.poll('codex', flow.id);
+  assert.equal(failed.state, 'failed');
+  assert.match(failed.error, /Windows executable is missing.*Settings → Updates/);
+  assert.doesNotMatch(failed.error, /private-value|approval/);
+});
+
 test('shutdown stops live attempts immediately and prevents late process startup', async () => {
   const { service, stopped } = harness();
   await service.start('claude');

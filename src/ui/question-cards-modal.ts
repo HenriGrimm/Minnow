@@ -43,6 +43,8 @@ export interface QuestionCardsModalContext {
   subAgentType?: string;
 }
 
+type QuestionCardsContent = AskQuestionArgs | { title: string; unavailable: string };
+
 export interface QuestionCardsModalOptions {
   /** When set, render inside this element instead of #questionHost. */
   host?: HTMLElement;
@@ -130,7 +132,7 @@ export function focusAskQuestionModalForChat(chatId: string): void {
   const state = modalsByChatId.get(chatId.trim());
   if (!state || !isModalForeground(state)) return;
   const card = state.panel.querySelector('.question-cards-card--current');
-  (card?.querySelector<HTMLElement>('input:checked') ?? card?.querySelector<HTMLElement>('input') ?? state.panel).focus({ preventScroll: true });
+  (card?.querySelector<HTMLElement>('input:checked') ?? card?.querySelector<HTMLElement>('input') ?? state.panel.querySelector<HTMLElement>('.question-cards-submit') ?? state.panel).focus({ preventScroll: true });
 }
 
 /** True when the open strip is embedded in the Super Plan / plan screen host. */
@@ -282,7 +284,7 @@ function unparkQuestionModal(state: ActiveQuestionModalState): void {
   }
 
   const host = resolveQuestionHost();
-  if (!host) return;
+  if (!host?.isConnected) return;
   attachPanelToHost(state, host);
   state.composerShell = resolvePromptComposerShell();
   const surface = getActiveComposerSurface();
@@ -425,7 +427,7 @@ function getOrCreateDraft(
  * so another chat's strip can occupy the shared host without mixing questions.
  */
 export function showQuestionCardsModal(
-  args: AskQuestionArgs,
+  args: QuestionCardsContent,
   context: QuestionCardsModalContext = {},
   options: QuestionCardsModalOptions = {},
 ): Promise<AskQuestionToolResult> {
@@ -454,11 +456,12 @@ export function showQuestionCardsModal(
     }
     // Dedicated embed hosts (plan/board) mount immediately. Composer host only
     // when this chat is the visible surface — otherwise park off-DOM.
-    const shouldShowNow =
+    const canShowNow =
       isAskQuestionDomVisible(chatIdForAbort) || (embedded && Boolean(host));
-    if (!host && shouldShowNow) {
+    if (!host && canShowNow) {
       host = getQuestionHost() ?? undefined;
     }
+    const shouldShowNow = canShowNow && Boolean(host?.isConnected);
     if (!host) {
       host = document.createElement('div');
       host.className = 'question-host';
@@ -485,7 +488,8 @@ export function showQuestionCardsModal(
 
     const drafts = new Map<string, AskQuestionAnswerDraft>();
     let cardIndex = 0;
-    const questions = args.questions.map((q) => normalizeAskQuestionItem(q));
+    const unavailable = 'unavailable' in args ? args.unavailable : undefined;
+    const questions = 'questions' in args ? args.questions.map((q) => normalizeAskQuestionItem(q)) : [];
 
     const surfaceClass = resolveQuestionPanelSurfaceClass(host);
     const panelClasses = ['question-cards-panel'];
@@ -559,6 +563,12 @@ export function showQuestionCardsModal(
     cardBody.className = 'question-cards-panel__body';
     const cards = questions.map((q, i) => buildCard(q, i));
     for (const card of cards) cardBody.appendChild(card.root);
+    if (unavailable) {
+      const message = document.createElement('p');
+      message.className = 'question-cards-prompt';
+      message.textContent = unavailable;
+      cardBody.append(message);
+    }
 
     const footer = document.createElement('div');
     footer.className = 'question-cards-panel__footer';
@@ -613,7 +623,7 @@ export function showQuestionCardsModal(
     const close = (result: AskQuestionToolResult): void => {
       if (settled) return;
       settled = true;
-      if (options.notify !== false) notifyAskQuestionFinished(chatIdForAbort, args);
+      if (options.notify !== false && 'questions' in args) notifyAskQuestionFinished(chatIdForAbort, args);
       cancelAutoAdvance();
       document.removeEventListener('keydown', onDocKeyDown, true);
       if (abortListener) {
@@ -848,6 +858,10 @@ export function showQuestionCardsModal(
     /** Focus the picked option on the current card, else its first option. */
     function focusCardControl(): void {
       const card = cards[cardIndex];
+      if (!card) {
+        btnSubmit.focus();
+        return;
+      }
       const picked = card.inputs.find((input) => input.checked);
       if (picked) {
         picked.focus();
@@ -923,8 +937,9 @@ export function showQuestionCardsModal(
     }
 
     btnNext.addEventListener('click', () => goToCard(cardIndex + 1));
-    btnSubmit.addEventListener('click', submitAnswers);
-    btnClose.addEventListener('click', () => finish({ status: 'cancelled', answers: [] }));
+    const cancel = () => finish({ status: 'cancelled', answers: [] });
+    btnSubmit.addEventListener('click', unavailable ? cancel : submitAnswers);
+    btnClose.addEventListener('click', cancel);
 
     const onDocKeyDown = (ev: KeyboardEvent): void => {
       if (submitting) return;
@@ -936,6 +951,7 @@ export function showQuestionCardsModal(
         finish({ status: 'cancelled', answers: [] });
         return;
       }
+      if (unavailable) return;
       if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
       const active = document.activeElement;
       const card = cards[cardIndex];
@@ -978,14 +994,20 @@ export function showQuestionCardsModal(
     };
 
     document.addEventListener('keydown', onDocKeyDown, true);
-    showCard();
+    if (unavailable) {
+      btnNext.hidden = true;
+      hints.hidden = true;
+      btnSubmit.textContent = 'Dismiss question';
+    } else {
+      showCard();
+    }
 
-    if (options.notify !== false) notifyAskQuestionShown(chatIdForAbort, args);
+    if (options.notify !== false && 'questions' in args) notifyAskQuestionShown(chatIdForAbort, args);
 
     requestAnimationFrame(() => {
       const modal = modalsByChatId.get(chatIdForAbort);
       if (!modal || !isModalForeground(modal)) return;
-      host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      modal.host.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       focusCardControl();
     });
   });

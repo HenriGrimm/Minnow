@@ -92,7 +92,19 @@ export function createAgentCliLoginService({ resolveBin = resolveAgentCliBin, sp
     child.once('error', () => fail('Could not start sign-in. Check that the CLI is installed and try again.'));
     child.once('close', async (code) => {
       if (!pending(session)) return;
-      if (code !== 0) { fail('Sign-in did not finish. Try again and complete approval in your browser.'); return; }
+      if (code !== 0) {
+        const label = { claude: 'Claude Code', codex: 'Codex CLI', cursor: 'Cursor Agent' }[kind];
+        if (kind === 'codex' && /Missing optional dependency @openai\/codex-win32-/i.test(output)) {
+          fail('The Codex Windows executable is missing. Run Update for Codex CLI in Settings → Updates, then try signing in again.');
+        } else if (/\b(?:ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED)\b/i.test(output)) {
+          fail(`${label} could not reach its sign-in service. Check your network or proxy and retry.`);
+        } else if (session.state === 'waiting') {
+          fail('Sign-in did not finish. Try again and complete approval in your browser.');
+        } else {
+          fail(`${label} exited before sign-in could start. Run its sign-in command in a terminal to see the error.`);
+        }
+        return;
+      }
       session.state = 'verifying';
       clear();
       try {

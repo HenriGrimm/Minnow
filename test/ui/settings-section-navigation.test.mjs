@@ -9,6 +9,12 @@ const { resolveSettingsSectionNavigation } = await import(
 );
 
 describe('resolveSettingsSectionNavigation', () => {
+  test('the old GitHub page opens its row in External Connections', () => {
+    assert.deepEqual(resolveSettingsSectionNavigation('github'), {
+      sectionId: 'external-connections',
+      searchKey: 'github.account',
+    });
+  });
   test('old General field links follow their new pages', () => {
     for (const [key, area] of [
       ['general.backup', 'backups'],

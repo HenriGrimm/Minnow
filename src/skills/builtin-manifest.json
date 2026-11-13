@@ -37,6 +37,13 @@
       "disableModelInvocation": true
     },
     {
+      "id": "clerk-cli",
+      "label": "Clerk CLI",
+      "description": "Use the Clerk CLI to inspect applications, link projects, diagnose authentication setup, and manage Clerk configuration.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
       "id": "code-review",
       "label": "Code Review",
       "description": "Review code changes with security, correctness, and style checklist. Use for PR review, diff review, or /code-review.",
@@ -82,6 +89,13 @@
       "id": "fix-ci",
       "label": "Fix CI",
       "description": "Investigates GitHub Actions CI failures for the latest commit on the current branch, fixes scoped issues using subagents, re-runs failing tests locally, and commits fixes. Use when CI is red, checks failed, GitHub Actions failed, or the user asks to fix CI, fix the build, or green the branch.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
+      "id": "fly-cli",
+      "label": "Fly.io CLI",
+      "description": "Use the authenticated Fly.io CLI to inspect apps, logs, machines, releases, and deploy projects on Fly.io.",
       "source": "builtin",
       "disableModelInvocation": false
     },
@@ -167,6 +181,13 @@
       "id": "security-review",
       "label": "Security Review",
       "description": "OWASP-style security pass on changes or files. Use before merge or for audit requests.",
+      "source": "builtin",
+      "disableModelInvocation": false
+    },
+    {
+      "id": "supabase-cli",
+      "label": "Supabase CLI",
+      "description": "Use the Supabase CLI for local development, hosted projects, migrations, type generation, and Edge Functions.",
       "source": "builtin",
       "disableModelInvocation": false
     },

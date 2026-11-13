@@ -272,10 +272,10 @@ describe('buildFriendlyToolBody', () => {
     const args = {
       questions: [
         {
-          id: 'q',
+          id: ' q ',
           prompt: 'Pick one',
           options: [
-            { id: 'a', label: 'Yes' },
+            { id: ' a ', label: 'Yes' },
             { id: 'b', label: 'No' },
           ],
         },

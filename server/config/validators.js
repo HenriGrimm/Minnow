@@ -1618,6 +1618,7 @@ export function mergeConfigMeta(existing, patch) {
           shellProfileId,
           ...(typeof tab.title === 'string' ? { title: tab.title } : {}),
           ...(typeof tab.boundCwd === 'string' ? { boundCwd: tab.boundCwd } : {}),
+          ...(tab.privateHistory === true ? { privateHistory: true } : {}),
           ...(tab.chatId === null || typeof tab.chatId === 'string'
             ? { chatId: tab.chatId }
             : {}),

@@ -44,6 +44,8 @@ export interface TerminalTabSession {
   chatId?: string | null;
   /** Absolute cwd used when the PTY was spawned. */
   boundCwd?: string;
+  /** Skip Minnow's command history in tabs used for interactive sign-in. */
+  privateHistory?: boolean;
 }
 
 /** Padded outer shell from index.html (#terminalXtermHost). */
@@ -55,6 +57,7 @@ let fitAddon: FitAddon | null = null;
 let activeWs: WebSocket | null = null;
 let activeTabId: string | null = null;
 let activeShellProfileId: string | null = null;
+let privateHistory = false;
 let lineBuffer = '';
 let historyIndex = -1;
 let tabHistory: string[] = [];
@@ -227,7 +230,7 @@ function sendPtyInput(data: string): void {
 function dispatchPtyUserInput(data: string): void {
   if (!activeWs || activeWs.readyState !== WebSocket.OPEN || !data) return;
   if (handleHistoryKeys(data)) return;
-  trackLineBufferInput(data);
+  if (!privateHistory) trackLineBufferInput(data);
   sendPtyInput(data);
 }
 
@@ -427,7 +430,8 @@ export async function attachTerminalTab(
   attachedTabId = tab.tabId;
   activeTabId = tab.tabId;
   activeShellProfileId = tab.shellProfileId;
-  tabHistory = loadTabHistory(tab.tabId);
+  privateHistory = tab.privateHistory === true;
+  tabHistory = privateHistory ? [] : loadTabHistory(tab.tabId);
   historyIndex = tabHistory.length;
   lineBuffer = '';
   lastSentCols = 0;

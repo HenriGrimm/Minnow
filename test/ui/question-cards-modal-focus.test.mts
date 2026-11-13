@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, test } from 'node:test';
+import { notifyAskQuestionDisplayContextChanged } from '../../src/chat/ask-question-display.ts';
 import { launchInstance, resetInstancesForTests } from '../../src/os/instances.ts';
 import {
   initOsPageBridge,
@@ -68,7 +69,7 @@ describe('question-cards-modal focus scope', () => {
     }
   });
 
-  for (const answer of [true, false]) test(`${answer ? 'answering' : 'cancelling'} in chat dismisses its toast without clicking it`, async () => {
+  for (const answer of [true, false]) test(`returning to the chat dismisses its toast before ${answer ? 'answering' : 'cancelling'}`, async () => {
     const { initNotificationCards } = await import('../../src/notifications/cards.ts');
     const { getNotifications, resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
     const { pushNotification } = await import('../../src/notifications/push.ts');
@@ -77,10 +78,16 @@ describe('question-cards-modal focus scope', () => {
     const stopCards = initNotificationCards();
     try {
       pushNotification({ kind: 'chat_question', title: 'Another chat', preview: 'Still pending', chatId: 'other', appId: 'code' });
+      launchInstance('settings');
       const pending = showQuestionCardsModal({ questions: [{ id: 'q1', prompt: 'Pick one', options: [{ id: 'a', label: 'Alpha' }] }] });
       // Allow the lazy toast import to render both cards.
       await new Promise((resolve) => setTimeout(resolve, 50));
       assert.equal(document.querySelectorAll('.mn-toast').length, 2);
+      launchInstance('code');
+      notifyAskQuestionDisplayContextChanged();
+      assert.ok(document.querySelector('.question-cards-panel'));
+      assert.equal(document.querySelectorAll('.mn-toast').length, 1);
+      assert.equal(getNotifications().find((row) => row.chatId === 'chat-focus')?.resolved, undefined);
       if (answer) (document.querySelector('.question-cards-options input') as HTMLInputElement).click();
       else forceCloseAskQuestionModal();
       assert.equal((await pending).status, answer ? 'answered' : 'cancelled');
@@ -95,6 +102,54 @@ describe('question-cards-modal focus scope', () => {
     }
   });
 
+  test('returning to a covered phone chat dismisses its question toast', async () => {
+    const { initNotificationCards } = await import('../../src/notifications/cards.ts');
+    const { resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
+    const { pushNotification } = await import('../../src/notifications/push.ts');
+    const { setSharedChatHost } = await import('../../src/ui/shared-chat-host-state.ts');
+    const shell = document.getElementById('mainColumn')!;
+    const screen = document.createElement('section');
+    screen.hidden = true;
+    document.body.append(screen);
+    screen.append(shell);
+    document.documentElement.classList.add('mn-mobile-app');
+    setSharedChatHost({ chatId: 'chat-focus', shell, transcript: shell });
+    resetNotificationStoreForTests();
+    const stopCards = initNotificationCards();
+    try {
+      pushNotification({ kind: 'chat_question', title: 'Chat', preview: 'Still pending', chatId: 'chat-focus', appId: 'code' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(document.querySelectorAll('.mn-toast').length, 1);
+      screen.hidden = false;
+      notifyAskQuestionDisplayContextChanged();
+      assert.equal(document.querySelectorAll('.mn-toast').length, 0);
+    } finally {
+      setSharedChatHost(null);
+      stopCards();
+      resetNotificationStoreForTests();
+    }
+  });
+
+  test('questions for a visible chat stay in Activity without raising a toast', async () => {
+    const { initNotificationCards } = await import('../../src/notifications/cards.ts');
+    const { getNotifications, resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
+    const { pushNotification } = await import('../../src/notifications/push.ts');
+    resetNotificationStoreForTests();
+    const stopCards = initNotificationCards();
+    try {
+      for (const kind of ['chat_question', 'issue_agent_question', 'chat_turn_error'] as const) {
+        pushNotification({ kind, title: 'Chat', preview: 'Activity', chatId: 'chat-focus', appId: 'code' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(document.querySelectorAll('.mn-toast').length, 1);
+      assert.match(document.querySelector('.mn-toast')?.textContent ?? '', /Turn failed/);
+      assert.equal(getNotifications().length, 3);
+    } finally {
+      stopCards();
+      resetNotificationStoreForTests();
+    }
+  });
+
   test('a question settled before the toast loads never leaves a stale card', async () => {
     const { initNotificationCards } = await import('../../src/notifications/cards.ts');
     const { resetNotificationStoreForTests } = await import('../../src/notifications/store.ts');
@@ -102,6 +157,7 @@ describe('question-cards-modal focus scope', () => {
     resetNotificationStoreForTests();
     const stopCards = initNotificationCards();
     try {
+      launchInstance('settings');
       const pending = showQuestionCardsModal({ questions: [{ id: 'quick', prompt: 'Pick one', options: [{ id: 'a', label: 'Alpha' }] }] });
       forceCloseAskQuestionModal();
       await pending;

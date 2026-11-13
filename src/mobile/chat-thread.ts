@@ -6,6 +6,7 @@
 
 import { mountSharedChatHost } from '../ui/shared-chat-host';
 import { getSharedChatHost } from '../ui/shared-chat-host-state';
+import { notifyAskQuestionDisplayContextChanged } from '../chat/ask-question-display';
 import { isChatStreaming, subscribeChatStreamActivity, subscribeChatStreamEnd } from '../chat/streaming-state';
 import { isChatPinned, setChatPinned } from '../state/chat-groups';
 import { renameChatTitle, scheduleSaveSessions, sessionState } from '../state/sessions';
@@ -126,7 +127,10 @@ export function createChatThreadScreen(chatId: string, deps: {
       );
       return;
     }
-    if (handle && getSharedChatHost(chatId)) return;
+    if (handle && getSharedChatHost(chatId)) {
+      notifyAskQuestionDisplayContextChanged();
+      return;
+    }
     // Another thread took the composer while this one was covered.
     handle?.dispose();
     host.replaceChildren();

@@ -187,7 +187,6 @@
   border-radius: 12px;
   background: var(--mn-surface-elevated);
 }
-.managed-chat-requests:has(.managed-chat-scopes:empty):has(.managed-chat-requests__list:empty):has(.managed-chat-requests__notice[hidden]) { display: none; }
 .managed-chat-scopes, .managed-chat-request__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .managed-chat-requests__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--mn-fg-muted); margin: 8px 0; font-size: 11px; }
 .managed-chat-requests[hidden], .managed-chat-request[hidden], .managed-chat-scopes[hidden], .managed-chat-requests__pager[hidden], .managed-chat-request__form[hidden] { display: none; }

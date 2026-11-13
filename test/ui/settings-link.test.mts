@@ -23,6 +23,7 @@ describe('findSettingsLink', () => {
   it('prefers the deepest named section', () => {
     assert.equal(findSettingsLink('adjust timeouts in Settings → Agents → Watchdog.')?.section, 'watchdog');
     assert.equal(findSettingsLink('Turn on Two-way mirror in Settings → Issues → GitHub')?.section, 'github');
+    assert.equal(findSettingsLink('Sign in under Settings → External Connections → Supabase.')?.section, 'external-connections');
     assert.equal(findSettingsLink('set its path in Settings → Tools → Browser.')?.section, 'browser');
     assert.equal(findSettingsLink('Settings → General → Filesystem access (dangerous)')?.section, 'access');
   });

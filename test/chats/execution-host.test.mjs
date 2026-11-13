@@ -400,22 +400,40 @@ test('a plan denial returns to the model alongside successful tools in the same 
   } finally { s.cleanup(); }
 });
 
+const versionQuestion = { questions: [{ id: 'version', prompt: 'Which version?', options: [{ id: 'one', label: 'One' }, { id: 'two', label: 'Two' }] }] };
+
 test('ask_question is durable, attributed to its tool call and resumes the same turn after a scoped answer', async () => {
   const s = setup(); let pending; let rounds = 0;
   try {
     const requests = createChatRequestService({ repository: s.repository, authorizeResponse: () => true,
       onChange: request => { if (request.state === 'pending') pending = request; } });
     const host = createServerChatExecutionHost({ repository: s.repository, requestService: requests, resolveCurrentPolicy: s.policy,
-      prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('ask_question', { question: 'Which version?' }, 'question-call')] : [])) });
+      prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('ask_question', versionQuestion, 'question-call')] : [])) });
     const running = host.execute({ command, execution: s.execution, fence: s.fence });
     for (let n = 0; !pending && n < 100; n++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(pending); assert.equal(pending.kind, 'question'); assert.equal(pending.toolCallId, 'question-call');
+    assert.deepEqual(pending.presentation.question, versionQuestion);
     assert.equal(s.repository.getExecution('execution').status, 'waiting_for_input');
     await requests.respond(pending.requestId, { answerCommandId: 'answer', answer: 'Version two' });
     assert.equal((await running).outcome, 'no_report');
     assert.equal(rounds, 2);
     assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Version two/);
     assert.equal(s.repository.getExecution('execution').status, 'running');
+  } finally { s.cleanup(); }
+});
+
+test('malformed ask_question arguments return a tool error without pausing for input', async () => {
+  const s = setup(); let rounds = 0; const states = [];
+  try {
+    const host = createServerChatExecutionHost({ repository: s.repository, resolveCurrentPolicy: s.policy,
+      onStatus: ({ status }) => states.push(status),
+      prepareExecution: s.prepare(async () => response(rounds++ === 0 ? [tool('ask_question', { question: 'Which version?' })] : [])) });
+    const result = await host.execute({ command, execution: s.execution, fence: s.fence });
+    assert.equal(result.outcome, 'no_report');
+    assert.equal(rounds, 2);
+    assert.ok(!states.includes('waiting_for_input'));
+    assert.deepEqual(s.repository.listRequests('chat', null), []);
+    assert.match(s.repository.readTranscript('chat').messages.find(row => row.role === 'tool').content, /Invalid ask_question arguments.*questions/);
   } finally { s.cleanup(); }
 });
 
@@ -471,7 +489,7 @@ test('stop cancels a durable question without starting another model request or 
       onChange: request => { if (request.state === 'pending') pending = request; } });
     const stop = new AbortController();
     const host = createServerChatExecutionHost({ repository: s.repository, requestService: requests, resolveCurrentPolicy: s.policy,
-      prepareExecution: s.prepare(async () => { rounds++; return response([tool('ask_question', { question: 'Continue?' })]); }) });
+      prepareExecution: s.prepare(async () => { rounds++; return response([tool('ask_question', versionQuestion)]); }) });
     const running = host.execute({ command, execution: s.execution, fence: s.fence, signal: stop.signal });
     for (let n = 0; !pending && n < 100; n++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(pending); stop.abort(new DOMException('Stopped', 'AbortError'));

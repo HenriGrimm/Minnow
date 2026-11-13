@@ -13,19 +13,86 @@
       "repository"
     ],
     "category": "apps",
-    "area": "github",
+    "area": "external-connections",
     "storage": "section",
     "type": "string",
     "sensitivity": "normal",
     "writable": false,
     "refreshAreas": [
-      "github"
+      "external-connections"
+    ]
+  },
+  {
+    "key": "externalConnections.fly",
+    "label": "Fly.io account",
+    "description": "Set up the Fly.io CLI and sign in to manage apps and deployments.",
+    "keywords": [
+      "external connections",
+      "flyctl",
+      "login",
+      "sign in",
+      "CLI",
+      "deploy",
+      "hosting"
+    ],
+    "category": "apps",
+    "area": "external-connections",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "external-connections"
+    ]
+  },
+  {
+    "key": "externalConnections.supabase",
+    "label": "Supabase account",
+    "description": "Set up the Supabase CLI and sign in to manage projects.",
+    "keywords": [
+      "external connections",
+      "login",
+      "sign in",
+      "CLI",
+      "database",
+      "migrations"
+    ],
+    "category": "apps",
+    "area": "external-connections",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "external-connections"
+    ]
+  },
+  {
+    "key": "externalConnections.clerk",
+    "label": "Clerk account",
+    "description": "Set up the Clerk CLI and sign in to manage application authentication.",
+    "keywords": [
+      "external connections",
+      "login",
+      "sign in",
+      "CLI",
+      "auth",
+      "authentication"
+    ],
+    "category": "apps",
+    "area": "external-connections",
+    "storage": "section",
+    "type": "string",
+    "sensitivity": "normal",
+    "writable": false,
+    "refreshAreas": [
+      "external-connections"
     ]
   },
   {
     "key": "general.updates",
-    "label": "App updates",
-    "description": "Stay on the latest build. Downloads run in the background; restart when you are ready.",
+    "label": "Software updates",
+    "description": "Check Minnow and installed CLI providers for new releases.",
     "keywords": [
       "update",
       "version",
@@ -33,7 +100,11 @@
       "beta",
       "release",
       "restart",
-      "auto-update"
+      "auto-update",
+      "cli",
+      "codex",
+      "claude",
+      "cursor"
     ],
     "category": "general",
     "area": "general",
@@ -47,7 +118,7 @@
   },
   {
     "key": "general.updates.channel",
-    "label": "Update channel",
+    "label": "Release channel",
     "description": "Choose Stable releases or Beta pre-releases for auto-update.",
     "keywords": [
       "beta",
@@ -937,8 +1008,8 @@
     "keywords": [
       "tint",
       "surface",
-      "subtle",
-      "rich"
+      "intensity",
+      "background color"
     ],
     "category": "appearance",
     "area": "appearance",

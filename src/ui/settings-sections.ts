@@ -1570,11 +1570,11 @@ export async function refreshSettingsSection(
   section: SettingsSectionId,
 ): Promise<void> {
   switch (section) {
-    case 'github': {
-      const mount = clearMount('settingsGitHubBody');
+    case 'external-connections': {
+      const mount = document.getElementById('settingsExternalConnectionsBody');
       if (mount) {
-        const { mountGitHubAccount } = await import('./github-account');
-        mountGitHubAccount(mount);
+        const { renderExternalConnections } = await import('./settings-external-connections');
+        renderExternalConnections(mount);
       }
       break;
     }

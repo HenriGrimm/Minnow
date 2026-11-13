@@ -7,10 +7,11 @@ export type SettingsSectionNavigation = {
 };
 
 /**
- * Legacy area slugs merged into Agents (agent-center). Hash bookmarks and
- * cross-links may still use the old ids.
+ * Legacy area slugs merged into other pages. Hash bookmarks and cross-links
+ * may still use the old ids.
  */
 const LEGACY_SECTION_ALIASES: Partial<Record<SettingsSectionId, SettingsSectionId>> = {
+  github: 'external-connections',
   prompting: 'agent-center',
   modes: 'agent-center',
   'work-agents': 'agent-center',
@@ -19,6 +20,7 @@ const LEGACY_SECTION_ALIASES: Partial<Record<SettingsSectionId, SettingsSectionI
 
 /** Default search anchors when landing on agent-center from a legacy slug. */
 const LEGACY_SECTION_SEARCH_KEYS: Partial<Record<SettingsSectionId, string>> = {
+  github: 'github.account',
   modes: 'agents.skills',
   'sub-agents': 'agents.subAgents',
   'work-agents': 'agents.center',

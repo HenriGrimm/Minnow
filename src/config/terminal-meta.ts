@@ -16,6 +16,7 @@ export interface TerminalTabMeta {
   chatId?: string | null;
   /** Live PTY session id for reconnect after SPA reload (server must still be running). */
   sessionId?: string | null;
+  privateHistory?: boolean;
   order: number;
 }
 
@@ -136,6 +137,7 @@ function normalizeTab(raw: unknown, index: number): TerminalTabMeta | null {
     shellProfileId,
     title: typeof row.title === 'string' ? row.title : undefined,
     boundCwd: typeof row.boundCwd === 'string' ? row.boundCwd : undefined,
+    ...(row.privateHistory === true ? { privateHistory: true } : {}),
     chatId:
       row.chatId === null || typeof row.chatId === 'string'
         ? (row.chatId as string | null)

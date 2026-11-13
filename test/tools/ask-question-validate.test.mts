@@ -99,6 +99,20 @@ describe('validateAskQuestionArgs', () => {
     assert.equal(r.ok, false);
   });
 
+  test('checks trimmed IDs before returning renderable options', () => {
+    assert.equal(validateAskQuestionArgs({ questions: [validQ('same'), validQ(' same ')] }).ok, false);
+    for (const id of [' a ', ` ${ASK_QUESTION_OTHER_ID} `]) {
+      const question = { ...validQ('q1'), options: [{ id: 'a', label: 'A' }, { id, label: 'B' }] };
+      assert.equal(validateAskQuestionArgs({ questions: [question] }).ok, false);
+    }
+  });
+
+  test('omits unusable descriptions and optional titles from the durable payload', () => {
+    const question = validQ('q1');
+    const raw = { ...question, options: [{ ...question.options[0], description: true }, question.options[1]] };
+    assert.deepEqual(validateAskQuestionArgs({ questions: [raw] }), { ok: true, args: { questions: [question] } });
+  });
+
   test('diagnose hints when prompt is named question', () => {
     const hint = diagnoseAskQuestionItem({
       id: 'q1',

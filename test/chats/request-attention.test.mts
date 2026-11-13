@@ -98,7 +98,7 @@ test('two child questions keep independent selections and answers across chat sw
   for (const item of [first, second]) (item.presentation.question as any).questions[0].allow_multiple = true;
   one.agentRequestSummary = [{ requestId: first.requestId, kind: 'question' }]; two.agentRequestSummary = [{ requestId: second.requestId, kind: 'question' }];
   const area = setup([parent, one, two], one.id); dispose = startManagedChatRequests(); syncManagedChatRequests(one, area); await idle();
-  assert.equal(area.querySelector('input'), null); assert.equal(panel(first.requestId).hidden, true);
+  assert.equal(area.querySelector('input'), null); assert.equal(panel(first.requestId), undefined);
   assert.equal(document.getElementById('mainColumn')!.classList.contains('main-column--question-pending'), true);
   questionPopup().querySelector<HTMLInputElement>('input[value="a"]')!.click();
   const saved = questionPopup(); area.replaceChildren(); setSessionStateForTests({ ...defaultSessionState(), chats: [parent, one, two], activeId: two.id }); notifyManagedChatView(two.id); syncManagedChatRequests(two, area); await idle();
@@ -123,7 +123,7 @@ test('approvals show exact arguments safely and only Allow or Deny for their own
 });
 
 for (const surface of ['Code', 'mobile'] as const) {
-  test(`live approval docks beside the ${surface} composer and returns to the transcript after answering`, async () => {
+  test(`live approval docks beside the ${surface} composer without displaying saved receipts`, async () => {
     const owner = chat('docked-owner'), other = chat('other-chat');
     const area = setup([owner, other]);
     const slot = document.createElement('div'); slot.id = 'toolApprovalHost'; slot.hidden = true;
@@ -148,15 +148,16 @@ for (const surface of ['Code', 'mobile'] as const) {
       assert.equal(dock.hidden, false);
       assert.ok(dock.classList.contains('managed-chat-requests--docked'));
       assert.ok(dock.contains(panel(approval.requestId)));
-      assert.equal(panel(receipt.requestId).hidden, true);
+      assert.equal(panel(receipt.requestId), undefined);
       syncManagedChatRequests(other, area);
       assert.ok(!dock.isConnected);
       syncManagedChatRequests(owner, area);
       assert.equal(slot.previousElementSibling, dock);
       clickText(dock, 'Allow');
       await until(() => area.contains(dock));
-      assert.equal(panel(approval.requestId).querySelector('form')!.hidden, true);
-      assert.equal(panel(receipt.requestId).hidden, false);
+      assert.equal(dock.hidden, true);
+      assert.equal(panel(approval.requestId), undefined);
+      assert.equal(panel(receipt.requestId), undefined);
       assert.equal(posts[0]?.chatId, owner.id);
     } finally {
       setSharedChatHost(null);
@@ -164,15 +165,22 @@ for (const surface of ['Code', 'mobile'] as const) {
   });
 }
 
-test('answered-before-open and expired callbacks render history without live controls; reconnect refreshes unchanged summaries', async () => {
+test('saved questions stay at their tool rows and reconnect finds new requests', async () => {
   const owner = chat('reconnect-child'), first = request(owner.id, 'old-answer'), expired = request(owner.id, 'expired');
   records.set(owner.id, [{ ...first, state: 'answered', settledAt: 2, answerCommandId: 'answer' }, { ...expired, state: 'expired', settledAt: 2 }]);
   owner.agentRequestSummary = [{ requestId: first.requestId, kind: 'question' }, { requestId: expired.requestId, kind: 'question' }];
-  const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
-  assert.match(panel(first.requestId).textContent!, /Answer saved/); assert.match(panel(expired.requestId).textContent!, /Expired/);
-  assert.equal(panel(expired.requestId).querySelector('form'), null); assert.deepEqual(owner.agentRequestSummary, []);
+  const area = setup([owner]);
+  area.innerHTML = `<div class="msg user">Start of chat</div><details><summary>Work</summary><div class="tool-call-msg" data-tool-call-id="${first.toolCallId}"><details><summary class="tool-call-summary">Ask</summary></details></div></details>`;
+  dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
+  assert.equal(area.firstElementChild?.textContent, 'Start of chat');
+  assert.equal(area.querySelector('.managed-chat-request'), null);
+  assert.equal(questionPopup(), null);
+  assert.deepEqual(owner.agentRequestSummary, []);
+  await focusManagedChatRequest(owner.id, first.requestId);
+  assert.equal(document.activeElement, area.querySelector('.tool-call-summary'));
+  assert.equal(area.querySelector('details')!.open, true);
   const next = request(owner.id, 'new-after-reconnect'); records.set(owner.id, [next]); window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-reconnected')); await idle();
-  assert.ok(panel(next.requestId)); await focusManagedChatRequest(owner.id, next.requestId);
+  await focusManagedChatRequest(owner.id, next.requestId);
   assert.equal(document.activeElement, questionPopup().querySelector('input'));
 });
 
@@ -181,9 +189,9 @@ test('lost answer receipt retries the same identity; a subsequent delayed pendin
   const area = setup([owner]); const normal = globalThis.fetch; let attempts = 0;
   globalThis.fetch = (async (url, options) => { if (String(url).endsWith('/respond') && ++attempts === 1) { await normal(url, options); throw new TypeError('Connection lost after commit'); } return normal(url, options); }) as typeof fetch;
   dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow'); await until(() => posts.length === 2); await idle();
-  assert.equal(posts.length, 2); assert.equal(posts[0]!.body.clientRequestId, posts[1]!.body.clientRequestId); assert.equal(panel(pending.requestId).querySelector('form')!.hidden, true);
+  assert.equal(posts.length, 2); assert.equal(posts[0]!.body.clientRequestId, posts[1]!.body.clientRequestId); assert.equal(panel(pending.requestId), undefined);
   records.set(owner.id, [pending]); window.dispatchEvent(new window.CustomEvent('minnow:managed-chat-reconnected')); await idle();
-  assert.match(panel(pending.requestId).textContent!, /Answer saved/); assert.deepEqual(owner.agentRequestSummary, []);
+  assert.equal(panel(pending.requestId), undefined); assert.deepEqual(owner.agentRequestSummary, []);
 });
 
 test('ordinary raw chat summaries display durable requests without taking ownership of history or draft', async () => {
@@ -300,7 +308,7 @@ test('answer failures retain the selection and a retry reuses its receipt identi
   dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle(); clickText(panel(pending.requestId), 'Allow');
   await until(() => attempted.length === 1); await idle(); assert.match(panel(pending.requestId).textContent!, /Answer could not be saved/); assert.equal(panel(pending.requestId).querySelector('form')!.hidden, false);
   reject = false; clickText(panel(pending.requestId), 'Allow'); await until(() => posts.length === 1); await idle();
-  assert.equal(attempted[0], attempted[1]); assert.match(panel(pending.requestId).textContent!, /Answer saved/);
+  assert.equal(attempted[0], attempted[1]); assert.equal(panel(pending.requestId), undefined);
 });
 
 test('ordinary root question batches use the composer popup and preserve the conversation draft', async () => {
@@ -359,6 +367,23 @@ test('queued questions share one normal popup and cancellation advances only its
   assert.equal(questionPopup(), null);
 });
 
+test('a malformed legacy question can be dismissed from the composer and advances to the next question', async () => {
+  const owner = chat('legacy-question'), invalid = request(owner.id, 'invalid'), next = request(owner.id, 'next');
+  invalid.presentation = { question: { question: 'Old question format' } };
+  records.set(owner.id, [invalid, next]);
+  owner.agentRequestSummary = [invalid, next].map(item => ({ requestId: item.requestId, kind: 'question' }));
+  const area = setup([owner]); area.innerHTML = '<div class="msg user">Start of chat</div>';
+  dispose = startManagedChatRequests(); await idle();
+  const popup = questionPopup();
+  assert.match(popup.textContent!, /This saved question could not be opened/);
+  assert.equal(popup.querySelector('input'), null);
+  assert.equal(area.querySelector('.managed-chat-request'), null);
+  assert.equal(area.firstElementChild?.textContent, 'Start of chat');
+  clickText(popup, 'Dismiss question');
+  await until(() => Boolean(questionPopup()?.querySelector('input[value="a"]')));
+  assert.deepEqual(posts.map(item => [item.requestId, item.body.answer.status]), [[invalid.requestId, 'cancelled']]);
+});
+
 for (const state of ['answered', 'expired'] as const) test(`a question ${state} on another surface dismisses its popup without another response`, async () => {
   const owner = chat(`question-${state}`), pending = request(owner.id, `external-${state}`);
   records.set(owner.id, [pending]); owner.agentRequestSummary = [{ requestId: pending.requestId, kind: 'question' }];
@@ -401,7 +426,11 @@ test('a new request summary cancels stale detail hydration so every newly pendin
   dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area); await idle();
   records.set(owner.id, [first, second]); owner.agentRequestSummary.push({ requestId: second.requestId, kind: 'question' }); notifyManagedChatMetadata(owner.id); await idle();
   old!(Response.json({ requests: [first], pendingCount: 1, nextCursor: null, truncated: false })); await idle();
-  assert.ok(panel(first.requestId)); assert.ok(panel(second.requestId)); assert.equal(owner.agentRequestSummary.length, 2);
+  assert.ok(questionPopup()); assert.equal(owner.agentRequestSummary.length, 2);
+  await focusManagedChatRequest(owner.id, second.requestId);
+  questionPopup().querySelector<HTMLInputElement>('input[value="a"]')!.click();
+  await until(() => posts.length === 1);
+  assert.equal(posts[0]!.requestId, second.requestId);
 });
 
 test('collapsed ancestor and manual group dots reflect a hidden child request without creating a spinner', () => {
@@ -427,7 +456,7 @@ test('failed canonical turns do not add status text above the transcript or chan
 test('native saved requests remain inspect-only and never create a live response control', () => {
   const owner = chat('native-request', 'parent'); owner.agentConversation!.origin = 'native'; owner.agentRequests = [request(owner.id, 'native-question')]; owner.agentRequestSummary = [{ requestId: 'native-question', kind: 'question' }];
   const area = setup([owner]); dispose = startManagedChatRequests(); syncManagedChatRequests(owner, area);
-  const row = panel('native-question'); assert.equal(row.querySelector('form'), null); assert.match(row.textContent!, /original host/); assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
+  assert.equal(panel('native-question'), undefined); assert.equal(questionPopup(), null); assert.equal(posts.length, 0);
 });
 
 test('request hydration and saved answers remain server projections during a later forced dirty-verifier flush', async () => {

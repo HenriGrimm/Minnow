@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { AGENT_CLI_DEFINITIONS, clearAgentCliModelCatalogCache } from './agent-cli-catalog.js';
 import { detectAgentCli } from './agent-cli-detect.js';
 import { getAgentCliProviderConfig } from '../providers/store.js';
-import { applyAgentCliCaptureEnv, cursorAgentVersionSortKey, resolveAgentCliBin } from '../generations/agent-cli/resolve-bin.js';
+import { applyAgentCliCaptureEnv, cursorAgentVersionSortKey, resolveAgentCliBin, resolveWindowsNpmAgentCliUpdate } from '../generations/agent-cli/resolve-bin.js';
 import { beginAgentCliMaintenance } from '../generations/agent-cli/admission.js';
 import { cliSessionIsIdle, disposeCliSessions } from '../generations/agent-cli/lifecycle.js';
 import { runProcess } from '../process-runner.js';
@@ -106,29 +106,45 @@ export function createAgentCliUpdates(deps = {}) {
     const release = beginAgentCliMaintenance(providerId);
     if (!release) throw new Error(`Finish or stop active ${label} work before updating.`);
     const work = (async () => {
-      await disposeCliSessions(session => session.providerId === providerId && cliSessionIsIdle(session));
+      await disposeCliSessions(session => session.providerId === providerId && (session.closed || cliSessionIsIdle(session)));
       const before = await detectCli(kind, true);
       if (!before.resolvedCommand) throw new Error(`${label} is not installed.`);
-      const bin = process.platform === 'win32' && kind === 'codex' && before.resolvedBinPath?.toLowerCase().endsWith('.cmd')
-        ? await resolveAgentCliBin({ kind, binPath: before.resolvedBinPath, forUpdate: true })
-        : { command: before.resolvedCommand, argsPrefix: before.resolvedArgsPrefix };
+      let invocation = process.platform === 'win32'
+        ? await resolveWindowsNpmAgentCliUpdate(kind, before.resolvedBinPath) : null;
+      if (!invocation) {
+        const bin = process.platform === 'win32' && kind === 'codex' && before.resolvedBinPath?.toLowerCase().endsWith('.cmd')
+          ? await resolveAgentCliBin({ kind, binPath: before.resolvedBinPath, forUpdate: true })
+          : { command: before.resolvedCommand, argsPrefix: before.resolvedArgsPrefix };
+        invocation = { command: bin.command, args: [...bin.argsPrefix, 'update'] };
+      }
       const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'minnow-cli-update-'));
+      const signal = AbortSignal.timeout(180_000);
       let result;
       try {
-        result = await run(bin.command, [...bin.argsPrefix, 'update'], {
+        result = await run(invocation.command, invocation.args, {
           cwd,
-          env: applyAgentCliCaptureEnv(process.env, bin.command),
+          env: applyAgentCliCaptureEnv(process.env, invocation.command),
           ignoreStdin: true,
           timeout: 185_000,
           // Installation belongs to the host even if the renderer navigates away.
-          signal: AbortSignal.timeout(180_000),
+          signal,
         }).catch(() => null);
       } finally { await fs.rm(cwd, { recursive: true, force: true }).catch(() => {}); }
       clearAgentCliModelCatalogCache(kind);
       const after = await detectCli(kind, true);
       const installedVersion = parseCliVersion(kind, after.version);
-      if (result?.code !== 0 || !installedVersion) {
-        throw new Error(`Could not update ${label}. Retry or use your original package manager.`);
+      if (result?.code !== 0) {
+        const output = `${result?.stderr ?? ''}\n${result?.stdout ?? ''}`;
+        const reason = signal.aborted ? 'The updater timed out. Check your connection and retry.'
+          : /\b(?:ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED)\b/i.test(output)
+            ? 'The updater could not reach the download server. Check your network or proxy and retry.'
+            : /\b(?:EBUSY|EPERM|EACCES|ERROR_SHARING_VIOLATION)\b/i.test(output)
+              ? 'The updater could not replace the installation. Close other CLI sessions and check install permissions.'
+              : 'Run the updater in a terminal to see its output.';
+        throw new Error(`Could not update ${label}. ${reason}`);
+      }
+      if (!installedVersion) {
+        throw new Error(`${label} could not start after updating. Repair the installation using its original installer.`);
       }
       return { installedVersion };
     })().finally(() => {

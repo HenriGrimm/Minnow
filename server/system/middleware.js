@@ -10,6 +10,8 @@ import { getNetworkStatus } from './network.js';
 import { getLanStatus } from '../remote/ingress-manager.js';
 import { getRequestIngress } from '../network/ingress.js';
 import { devToolsInstaller } from './dev-tools.js';
+import { listExternalConnections } from './external-connections.js';
+import { runRequestWork } from '../runtime/request-work.js';
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -24,6 +26,22 @@ function sendJson(res, status, payload) {
  * @returns {Promise<boolean>}
  */
 export async function handleSystemRequest(req, res, pathname) {
+  if (pathname === '/api/system/external-connections' && req.method === 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
+    if (getRequestIngress(req) !== 'loopback' || req.minnowAuth?.kind !== 'host') {
+      sendJson(res, 403, { error: 'Open External Connections on the computer running Minnow.' });
+      return true;
+    }
+    await runRequestWork(req, res, async () => {
+      try {
+        const result = await listExternalConnections();
+        if (!res.destroyed) sendJson(res, 200, result);
+      } catch {
+        if (!res.destroyed) sendJson(res, 500, { error: 'Could not check the workspace shell. Try again.' });
+      }
+    });
+    return true;
+  }
 
   const setup = pathname.match(/^\/api\/system\/dev-tools\/(github|claude|codex|cursor)$/);
   if (setup) {

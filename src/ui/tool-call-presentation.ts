@@ -453,7 +453,7 @@ function parseAskQuestionItems(
     const rec = q as Record<string, unknown>;
     const prompt = typeof rec.prompt === 'string' ? rec.prompt.trim() : '';
     if (!prompt) continue;
-    const answer = typeof rec.id === 'string' ? answers.get(rec.id) : undefined;
+    const answer = typeof rec.id === 'string' ? answers.get(rec.id.trim()) : undefined;
     const options: AskQuestionOptionView[] = Array.isArray(rec.options)
       ? rec.options
           .map((o) => {
@@ -461,7 +461,7 @@ function parseAskQuestionItems(
             const opt = o as Record<string, unknown>;
             if (typeof opt.label !== 'string' || !opt.label) return null;
             const selected = Boolean(
-              answer && typeof opt.id === 'string' && answer.ids.has(opt.id),
+              answer && typeof opt.id === 'string' && answer.ids.has(opt.id.trim()),
             );
             return { label: opt.label, selected };
           })

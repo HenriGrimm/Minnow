@@ -1,0 +1,35 @@
+.external-connections__toolbar {
+  align-items: center;
+}
+
+.external-connections :is(.external-connections__row, .external-connections__github) {
+  flex-wrap: wrap;
+  max-width: none;
+}
+
+.external-connections .external-connections__github {
+  display: flex;
+}
+
+.external-connections .external-connections__details {
+  margin: 0;
+}
+
+.external-connections a.settings-action-btn {
+  text-decoration: none;
+}
+
+.external-connections__status {
+  margin: var(--mn-space-1) 0 0;
+  color: var(--mn-fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.external-connections [data-state='connected'] .external-connections__status {
+  color: var(--mn-success-ink);
+}
+
+.external-connections [hidden] {
+  display: none;
+}
